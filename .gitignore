@@ -5,9 +5,8 @@ Saved/
 DerivedDataCache/
 .vs/
 
-# Plugin content and visual resources are intentionally excluded
+# Material content is intentionally excluded; SVG UI resources are tracked
 Content/
-Resources/
 
 # Texture and Unreal asset formats
 *.uasset
