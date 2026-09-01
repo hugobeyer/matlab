@@ -1,0 +1,37 @@
+# Unreal generated output
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+
+# Plugin content and visual resources are intentionally excluded
+Content/
+Resources/
+
+# Texture and Unreal asset formats
+*.uasset
+*.umap
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.bmp
+*.tif
+*.tiff
+*.exr
+*.hdr
+*.webp
+
+# IDE and local build files
+*.sln
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.opensdf
+*.sdf
+*.suo
+*.user
+.DS_Store
+Thumbs.db

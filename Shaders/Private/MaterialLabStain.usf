@@ -1,0 +1,72 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float4> PreviousStainData;
+Texture2D<float> ChildMask;
+Texture2D<float> AccumulatedHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<float4> OutputStainData;
+
+int2 OutputSize;
+uint Initialize;
+float Strength;
+float4 StainColor;
+float RoughnessInfluence;
+float HeightInfluence;
+float HeightWarp;
+float HeightBias;
+float HeightContrast;
+
+float2 WarpStainUV(float2 UV)
+{
+	float2 SourceUV = UV;
+	float2 Texel = 1.0f / float2(OutputSize);
+	float ResolutionScale = max(float(OutputSize.x), float(OutputSize.y));
+
+	[unroll]
+	for (uint Step = 0; Step < 2; ++Step)
+	{
+		float HeightLeft = AccumulatedHeight.SampleLevel(
+			LinearWrapSampler, frac(SourceUV - float2(Texel.x, 0.0f)), 0.0f);
+		float HeightRight = AccumulatedHeight.SampleLevel(
+			LinearWrapSampler, frac(SourceUV + float2(Texel.x, 0.0f)), 0.0f);
+		float HeightDown = AccumulatedHeight.SampleLevel(
+			LinearWrapSampler, frac(SourceUV - float2(0.0f, Texel.y)), 0.0f);
+		float HeightUp = AccumulatedHeight.SampleLevel(
+			LinearWrapSampler, frac(SourceUV + float2(0.0f, Texel.y)), 0.0f);
+		float2 Gradient = float2(HeightRight - HeightLeft, HeightUp - HeightDown);
+		float GradientLength = length(Gradient);
+		float Slope = saturate(GradientLength * ResolutionScale * 0.25f);
+		float2 UphillDirection = GradientLength > 1.0e-5f
+			? Gradient / GradientLength
+			: float2(0.0f, 0.0f);
+
+		// Trace the source uphill so the visible stain is displaced downhill.
+		SourceUV = frac(SourceUV + UphillDirection * HeightWarp * Slope * 0.0125f);
+	}
+	return SourceUV;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	float2 StainUV = HeightWarp > 1.0e-4f ? WarpStainUV(UV) : UV;
+	float Mask = ChildMask.SampleLevel(LinearWrapSampler, StainUV, 0.0f);
+	float Height = AccumulatedHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float ValleyRidge = lerp(1.0f - Height, Height, saturate(HeightBias * 0.5f + 0.5f));
+	float HeightMask = saturate((ValleyRidge - 0.5f) * max(HeightContrast, 0.01f) + 0.5f);
+	float Coverage = saturate(Mask * Strength * lerp(1.0f, HeightMask, saturate(HeightInfluence)));
+
+	float4 Previous = Initialize != 0
+		? float4(1.0f, 1.0f, 1.0f, 0.0f)
+		: PreviousStainData.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float3 ColorMultiplier = lerp(float3(1.0f, 1.0f, 1.0f), StainColor.rgb, Coverage);
+	OutputStainData[DispatchThreadId.xy] = float4(
+		Previous.rgb * ColorMultiplier,
+		clamp(Previous.a + RoughnessInfluence * Coverage, -1.0f, 1.0f));
+}

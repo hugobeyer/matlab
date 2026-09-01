@@ -1,0 +1,172 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float4> PreviousEffectData;
+Texture2D<float> ChildMask;
+Texture2D<float4> PeelData;
+Texture2D<float4> PeelMask;
+Texture2D<float4> PeelHeight;
+Texture2D<float4> PeelSDF;
+SamplerState LinearWrapSampler;
+SamplerState PointWrapSampler;
+RWTexture2D<float4> OutputEffectData;
+
+int2 OutputSize;
+uint Initialize;
+float Tiling;
+float Strength;
+float Front;
+float Width;
+float MacroWarp;
+float MicroWarp;
+float MicroMorph;
+float Thickness;
+float Lift;
+float DetailStrength;
+float DistanceRange;
+float SDFRange;
+float HeightRange;
+
+float Smooth01(float Value)
+{
+	Value = saturate(Value);
+	return Value * Value * (3.0f - 2.0f * Value);
+}
+
+float3 DecodeNormalXY(float2 EncodedXY)
+{
+	float2 XY = EncodedXY * 2.0f - 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+float3 EncodeNormal(float3 Normal)
+{
+	return Normal * 0.5f + 0.5f;
+}
+
+float3 BlendReorientedNormals(float3 BaseNormal, float3 DetailNormal)
+{
+	float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+	float3 U = DetailNormal * float3(-1.0f, -1.0f, 1.0f);
+	return normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+}
+
+void EvaluatePeeling(
+	float2 UV,
+	out float Coverage,
+	out float Edge,
+	out float SDFOcclusion,
+	out float DynamicHeight)
+{
+	float2 EffectUV = frac(UV * max(Tiling, 0.0001f));
+	float3 Data = PeelData.SampleLevel(LinearWrapSampler, EffectUV, 0.0f).rgb;
+	float3 Mask = PeelMask.SampleLevel(LinearWrapSampler, EffectUV, 0.0f).rgb;
+	float CoverageMask = PeelMask.SampleLevel(PointWrapSampler, EffectUV, 0.0f).r;
+	float EncodedHeight = PeelHeight.SampleLevel(LinearWrapSampler, EffectUV, 0.0f).r;
+	float EncodedSDF = PeelSDF.SampleLevel(LinearWrapSampler, EffectUV, 0.0f).r;
+
+	float Arrival = Data.r * DistanceRange;
+	float MacroField = Data.g * 2.0f - 1.0f;
+	float MicroField = Data.b * 2.0f - 1.0f;
+	float Distance = Arrival
+		+ MacroField * MacroWarp
+		+ MicroField * MicroWarp * MicroMorph
+		- Front;
+	float NormalizedDistance = Distance / max(Width, 1.0e-6f);
+	Coverage = (1.0f - Smooth01(NormalizedDistance * 0.5f + 0.5f)) * CoverageMask;
+	Coverage *= ChildMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	float SignedDistance = (EncodedSDF * 2.0f - 1.0f) * SDFRange;
+	float TravelEdge = exp(-2.0f * NormalizedDistance * NormalizedDistance);
+	float SDFEdge = exp(-abs(SignedDistance) / max(Width, 1.0e-6f));
+	SDFOcclusion = saturate(SDFEdge * Mask.g);
+	Edge = saturate(max(TravelEdge, SDFEdge) * Mask.g);
+
+	float BaseHeight = EncodedHeight * HeightRange;
+	float Relief = Mask.b * DetailStrength;
+	float PeeledCoverage = Coverage;
+	DynamicHeight = (BaseHeight + Relief) * PeeledCoverage
+		+ Edge * (Thickness * Mask.g + Lift);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	float Coverage;
+	float Edge;
+	float SDFOcclusion;
+	float CenterHeight;
+	EvaluatePeeling(UV, Coverage, Edge, SDFOcclusion, CenterHeight);
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float SampleCoverage;
+	float SampleEdge;
+	float SampleSDFOcclusion;
+	float HeightLeft;
+	float HeightRight;
+	float HeightDown;
+	float HeightUp;
+	EvaluatePeeling(
+		UV - float2(Texel.x, 0.0f),
+		SampleCoverage,
+		SampleEdge,
+		SampleSDFOcclusion,
+		HeightLeft);
+	EvaluatePeeling(
+		UV + float2(Texel.x, 0.0f),
+		SampleCoverage,
+		SampleEdge,
+		SampleSDFOcclusion,
+		HeightRight);
+	EvaluatePeeling(
+		UV - float2(0.0f, Texel.y),
+		SampleCoverage,
+		SampleEdge,
+		SampleSDFOcclusion,
+		HeightDown);
+	EvaluatePeeling(
+		UV + float2(0.0f, Texel.y),
+		SampleCoverage,
+		SampleEdge,
+		SampleSDFOcclusion,
+		HeightUp);
+
+	float2 HeightGradient = float2(HeightRight - HeightLeft, HeightUp - HeightDown)
+		* float2(OutputSize) * 0.5f;
+	float3 DynamicNormal = normalize(float3(-HeightGradient, 1.0f));
+
+	float PeelAmount = saturate(Coverage * Strength);
+	float KeepAmount = 1.0f - PeelAmount;
+	float TransitionWeight = saturate(4.0f * PeelAmount * KeepAmount);
+	float NormalWeight = saturate(max(TransitionWeight, Edge * Strength));
+	float3 WeightedNormal = normalize(float3(
+		DynamicNormal.xy * NormalWeight,
+		lerp(1.0f, DynamicNormal.z, NormalWeight)));
+
+	float LiftScale = saturate((Thickness + Lift) / max(HeightRange, 1.0e-4f));
+	float PeelAO = lerp(1.0f, 0.35f, saturate(SDFOcclusion * Strength * LiftScale));
+
+	float PreviousKeep = 1.0f;
+	float3 PreviousNormal = float3(0.0f, 0.0f, 1.0f);
+	float PreviousAO = 1.0f;
+	if (Initialize == 0)
+	{
+		float4 Previous = PreviousEffectData.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		PreviousKeep = Previous.r;
+		PreviousNormal = DecodeNormalXY(Previous.gb);
+		PreviousAO = Previous.a;
+	}
+
+	float CombinedKeep = saturate(PreviousKeep * KeepAmount);
+	float3 CombinedNormal = BlendReorientedNormals(PreviousNormal, WeightedNormal);
+	float CombinedAO = saturate(PreviousAO * PeelAO);
+	OutputEffectData[DispatchThreadId.xy] = float4(
+		CombinedKeep,
+		EncodeNormal(CombinedNormal).xy,
+		CombinedAO);
+}

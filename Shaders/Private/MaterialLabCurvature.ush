@@ -1,0 +1,69 @@
+#ifndef MATERIAL_LAB_CURVATURE_USH
+#define MATERIAL_LAB_CURVATURE_USH
+
+float MaterialLabBias01(float Value, float Bias)
+{
+	Value = saturate(Value);
+	Bias = clamp(Bias, 0.001f, 0.999f);
+	return Value / ((((1.0f / Bias) - 2.0f) * (1.0f - Value)) + 1.0f);
+}
+
+float3 MaterialLabLoadNormal(
+	Texture2D<float4> NormalTexture,
+	int2 Pixel,
+	uint FlipY)
+{
+	float2 XY = NormalTexture.Load(int3(Pixel, 0)).xy * 2.0f - 1.0f;
+	XY.y *= FlipY != 0 ? -1.0f : 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+void MaterialLabEvaluateCurvature(
+	Texture2D<float4> NormalTexture,
+	int2 Pixel,
+	int2 Dimensions,
+	int Radius,
+	uint Iteration,
+	float Strength,
+	float Power,
+	uint FlipY,
+	float Blend,
+	float BlendBias,
+	float PreviousCurvature,
+	out float Curvature,
+	out float Cavity,
+	out float Convex)
+{
+	const int SampleRadius = clamp(Radius + int(Iteration), 1, 32);
+	const int2 MaxPixel = Dimensions - 1;
+	const int2 LeftPixel = int2(clamp(Pixel.x - SampleRadius, 0, MaxPixel.x), Pixel.y);
+	const int2 RightPixel = int2(clamp(Pixel.x + SampleRadius, 0, MaxPixel.x), Pixel.y);
+	const int2 UpPixel = int2(Pixel.x, clamp(Pixel.y - SampleRadius, 0, MaxPixel.y));
+	const int2 DownPixel = int2(Pixel.x, clamp(Pixel.y + SampleRadius, 0, MaxPixel.y));
+
+	const float3 LeftNormal = MaterialLabLoadNormal(NormalTexture, LeftPixel, FlipY);
+	const float3 RightNormal = MaterialLabLoadNormal(NormalTexture, RightPixel, FlipY);
+	const float3 UpNormal = MaterialLabLoadNormal(NormalTexture, UpPixel, FlipY);
+	const float3 DownNormal = MaterialLabLoadNormal(NormalTexture, DownPixel, FlipY);
+
+	const float InverseDiameter = 1.0f / (2.0f * float(SampleRadius));
+	const float Dx = (RightNormal.x - LeftNormal.x) * InverseDiameter;
+	const float Dy = (UpNormal.y - DownNormal.y) * InverseDiameter;
+	float SignedCurvature = clamp((Dx + Dy) * Strength, -1.0f, 1.0f);
+
+	const float ShapedMagnitude = pow(abs(SignedCurvature), max(Power, 0.001f));
+	SignedCurvature = SignedCurvature < 0.0f ? -ShapedMagnitude : ShapedMagnitude;
+
+	if (Iteration > 0)
+	{
+		const float PreviousSignedCurvature = PreviousCurvature * 2.0f - 1.0f;
+		const float BlendWeight = MaterialLabBias01(saturate(Blend), BlendBias);
+		SignedCurvature = lerp(PreviousSignedCurvature, SignedCurvature, BlendWeight);
+	}
+
+	Curvature = saturate(0.5f + SignedCurvature * 0.5f);
+	Cavity = saturate(-SignedCurvature);
+	Convex = saturate(SignedCurvature);
+}
+
+#endif

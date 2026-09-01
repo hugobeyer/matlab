@@ -1,0 +1,72 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> PreviousMask;
+Texture2D<float4> IncomingMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+uint Initialize;
+uint BlendMode;
+uint Invert;
+float Weight;
+float Tiling;
+float Balance;
+float Contrast;
+
+float ApplyMaskOperation(float Previous, float Incoming)
+{
+	if (BlendMode == 0)
+	{
+		return Incoming;
+	}
+	if (BlendMode == 1)
+	{
+		return Previous + Incoming;
+	}
+	if (BlendMode == 2)
+	{
+		return Previous - Incoming;
+	}
+	if (BlendMode == 3)
+	{
+		return Previous * Incoming;
+	}
+	if (BlendMode == 4)
+	{
+		return min(Previous, Incoming);
+	}
+	return max(Previous, Incoming);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float Incoming = IncomingMask.SampleLevel(
+		LinearWrapSampler,
+		frac(UV * max(Tiling, 1.0f)),
+		0.0f).r;
+	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f);
+
+	float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
+	float BalanceStrength = abs(SignedBalance);
+	float BalanceExponent = exp2(BalanceStrength * 6.0f);
+	float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
+	float Balanced = SignedBalance < 0.0f
+		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
+		: pow(Incoming, BalanceExponent);
+	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
+	Incoming = Invert != 0 ? 1.0f - Incoming : Incoming;
+
+	float OperationResult = ApplyMaskOperation(Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+}

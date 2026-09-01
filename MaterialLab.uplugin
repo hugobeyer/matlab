@@ -1,0 +1,34 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Material Lab",
+	"Description": "Material browsing, mixing, look-development, and runtime controls.",
+	"Category": "Rendering",
+	"CreatedBy": "Material Lab",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"Modules": [
+		{
+			"Name": "MaterialLabRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "MaterialLabShaders",
+			"Type": "Editor",
+			"LoadingPhase": "PostConfigInit",
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "MaterialLabEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}
