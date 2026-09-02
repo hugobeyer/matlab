@@ -118,16 +118,19 @@ direction of what is already composed beneath the layer. Two sources, both point
 NormalFlow = decoded tangent normal .xy at this pixel
 HeightFlow = -gradient(accumulated height, WarpRadius)
 
-Flow   = normalize(lerp(NormalFlow, HeightFlow, WarpSource))
-WarpUV = UV + Flow * WarpAmount
+Flow     = lerp(NormalFlow, HeightFlow, WarpSource)
+SoftFlow = Flow / (1 + length(Flow))
+WarpUV   = UV + SoftFlow * WarpAmount
 ```
 
 `WarpSource` 0 uses the normal map's own slope, which is high-frequency and follows surface
 detail. 1 uses the composited height gradient, which is coarser and follows real spatial
 relief. `WarpRadius` sets the gradient sample distance in pixels.
 
-The flow vector is normalized so `WarpAmount` is a distance in UV, independent of how steep
-the surface happens to be. `WarpAmount = 0` must be bit-identical to the unwarped path.
+Magnitude is softened rather than normalized. Displacement stays proportional to slope on
+gentle ground and rolls off asymptotically on steep ground, so the warp feathers out across
+flat regions instead of displacing every pixel equally. Direction is preserved exactly, and
+`WarpAmount = 0` must be bit-identical to the unwarped path.
 
 Do not warp by sampling the normal at a scaled UV. That borrows an unrelated point on the
 surface and produces decorative noise rather than flow.
