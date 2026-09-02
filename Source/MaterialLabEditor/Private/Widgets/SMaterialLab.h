@@ -95,6 +95,12 @@ private:
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
+	FReply AddGeneratedMaskToLayer(int32 LayerIndex);
+	FReply RemoveGeneratedFromLayer(int32 LayerIndex, int32 ChildIndex);
+	void SetGeneratedEnabled(ECheckBoxState CheckState, int32 LayerIndex, int32 ChildIndex);
+	FMaterialLabGeneratedMask* GetSelectedGeneratedMask();
+	const FMaterialLabGeneratedMask* GetSelectedGeneratedMask() const;
+
 	FMaterialLabLayerEffect* GetSelectedLayerEffect();
 	const FMaterialLabLayerEffect* GetSelectedLayerEffect() const;
 	FMaterialLabMaskLayer* GetSelectedLayerMask();
@@ -180,6 +186,10 @@ private:
 	TSharedRef<SWidget> BuildSurfaceMaskInfluenceControls();
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
+	TSharedRef<SWidget> BuildGeneratedMaskControls();
+	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
+	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
+
 
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;

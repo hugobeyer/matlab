@@ -155,6 +155,57 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+class FMaterialLabGeneratedMaskCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMaterialLabGeneratedMaskCS);
+	SHADER_USE_PARAMETER_STRUCT(FMaterialLabGeneratedMaskCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(uint32, SurfaceValid)
+		SHADER_PARAMETER(uint32, FlipNormalY)
+		SHADER_PARAMETER(float, CurvatureWeight)
+		SHADER_PARAMETER(float, CurvatureBias)
+		SHADER_PARAMETER(float, DirectionWeight)
+		SHADER_PARAMETER(float, DirectionAngle)
+		SHADER_PARAMETER(float, DirectionBroadness)
+		SHADER_PARAMETER(float, AOWeight)
+		SHADER_PARAMETER(float, HeightWeight)
+		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(uint32, NormalizeWeights)
+		SHADER_PARAMETER(int32, Broadness)
+		SHADER_PARAMETER(float, Bias)
+		SHADER_PARAMETER(float, WarpAmount)
+		SHADER_PARAMETER(float, WarpSource)
+		SHADER_PARAMETER(int32, WarpRadius)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMaterialLabGeneratedMaskCS,
+	"/Plugin/MaterialLab/Private/MaterialLabGeneratedMask.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMaterialLabPeelingCS final : public FGlobalShader
 {
 public:
@@ -277,12 +328,37 @@ namespace MaterialLabGpuCompositor
 		float StainHeightContrast = 1.0f;
 	};
 
+	struct FGeneratedMaskRenderData
+	{
+		float CurvatureWeight = 0.0f;
+		float CurvatureBias = 0.0f;
+		float DirectionWeight = 0.0f;
+		float DirectionAngle = 90.0f;
+		float DirectionBroadness = 1.0f;
+		float AOWeight = 0.0f;
+		float HeightWeight = 0.0f;
+		float HeightBias = 0.0f;
+		bool bNormalizeWeights = true;
+		int32 Broadness = 2;
+		float Bias = 0.5f;
+		float WarpAmount = 0.0f;
+		float WarpSource = 0.0f;
+		int32 WarpRadius = 1;
+		EMaterialLabMaskBlendMode BlendMode = EMaterialLabMaskBlendMode::Multiply;
+		float Weight = 1.0f;
+		float Balance = 0.5f;
+		float Contrast = 1.0f;
+		float Offset = 0.0f;
+		bool bInvert = false;
+	};
+
 	struct FChildRenderData
 	{
 		EMaterialLabLayerChildType Type = EMaterialLabLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
 		FMaskRenderData Mask;
 		FEffectRenderData Effect;
+		FGeneratedMaskRenderData Generated;
 	};
 
 	struct FLayerRenderData
@@ -569,6 +645,42 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				continue;
 			}
 
+			if (LayerChild.Type == EMaterialLabLayerChildType::Generated)
+			{
+				const FMaterialLabGeneratedMask& GeneratedMask = LayerChild.Generated;
+				if (!GeneratedMask.bEnabled || !GeneratedMask.HasAnySignal())
+				{
+					continue;
+				}
+
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMaterialLabLayerChildType::Generated;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
+				GeneratedData.CurvatureWeight = FMath::Clamp(GeneratedMask.CurvatureWeight, -1.0f, 1.0f);
+				GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
+				GeneratedData.DirectionWeight = FMath::Clamp(GeneratedMask.DirectionWeight, -1.0f, 1.0f);
+				GeneratedData.DirectionAngle = GeneratedMask.DirectionAngle;
+				GeneratedData.DirectionBroadness = FMath::Clamp(GeneratedMask.DirectionBroadness, 0.05f, 8.0f);
+				GeneratedData.AOWeight = FMath::Clamp(GeneratedMask.AOWeight, -1.0f, 1.0f);
+				GeneratedData.HeightWeight = FMath::Clamp(GeneratedMask.HeightWeight, -1.0f, 1.0f);
+				GeneratedData.HeightBias = FMath::Clamp(GeneratedMask.HeightBias, -1.0f, 1.0f);
+				GeneratedData.bNormalizeWeights = GeneratedMask.bNormalizeWeights;
+				GeneratedData.Broadness = FMath::Clamp(GeneratedMask.Broadness, 1, 32);
+				GeneratedData.Bias = FMath::Clamp(GeneratedMask.Bias, 0.001f, 0.999f);
+				GeneratedData.WarpAmount = FMath::Clamp(GeneratedMask.WarpAmount, 0.0f, 0.25f);
+				GeneratedData.WarpSource = FMath::Clamp(GeneratedMask.WarpSource, 0.0f, 1.0f);
+				GeneratedData.WarpRadius = FMath::Clamp(GeneratedMask.WarpRadius, 1, 16);
+				GeneratedData.BlendMode = GeneratedMask.BlendMode;
+				GeneratedData.Weight = FMath::Clamp(GeneratedMask.Weight, 0.0f, 1.0f);
+				GeneratedData.Balance = FMath::Clamp(GeneratedMask.Balance, 0.0f, 2.0f);
+				GeneratedData.Contrast = FMath::Clamp(GeneratedMask.Contrast, 0.0f, 10.0f);
+				GeneratedData.Offset = FMath::Clamp(GeneratedMask.Offset, -1.0f, 1.0f);
+				GeneratedData.bInvert = GeneratedMask.bInvert;
+				Data.bHasMask = true;
+				continue;
+			}
+
 			const FMaterialLabLayerEffect& LayerEffect = LayerChild.Effect;
 			if (!LayerEffect.bEnabled)
 			{
@@ -816,6 +928,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[0]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[1]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
 				TShaderMapRef<FMaterialLabMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMaterialLabGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -854,6 +967,72 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
+						if (Child.Type == EMaterialLabLayerChildType::Generated)
+						{
+							// Generated masks read the surface accumulated below this layer,
+							// which is the same ping-pong slot the layer composite reads.
+							const int32 LayerReadIndex = 1 - (LayerIndex & 1);
+							const FGeneratedMaskRenderData& Generated = Child.Generated;
+							const int32 MaskWriteIndex = MaskPassIndex & 1;
+							const int32 MaskReadIndex = 1 - MaskWriteIndex;
+							FMaterialLabGeneratedMaskCS::FParameters* GeneratedParameters =
+								GraphBuilder.AllocParameters<FMaterialLabGeneratedMaskCS::FParameters>();
+							GeneratedParameters->OutputSize = Request.Resolution;
+							GeneratedParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+							GeneratedParameters->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
+							GeneratedParameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
+							GeneratedParameters->CurvatureWeight = Generated.CurvatureWeight;
+							GeneratedParameters->CurvatureBias = Generated.CurvatureBias;
+							GeneratedParameters->DirectionWeight = Generated.DirectionWeight;
+							GeneratedParameters->DirectionAngle = Generated.DirectionAngle;
+							GeneratedParameters->DirectionBroadness = Generated.DirectionBroadness;
+							GeneratedParameters->AOWeight = Generated.AOWeight;
+							GeneratedParameters->HeightWeight = Generated.HeightWeight;
+							GeneratedParameters->HeightBias = Generated.HeightBias;
+							GeneratedParameters->NormalizeWeights = Generated.bNormalizeWeights ? 1u : 0u;
+							GeneratedParameters->Broadness = Generated.Broadness;
+							GeneratedParameters->Bias = Generated.Bias;
+							GeneratedParameters->WarpAmount = Generated.WarpAmount;
+							GeneratedParameters->WarpSource = Generated.WarpSource;
+							GeneratedParameters->WarpRadius = Generated.WarpRadius;
+							GeneratedParameters->BlendMode = static_cast<uint32>(Generated.BlendMode);
+							GeneratedParameters->Invert = Generated.bInvert ? 1u : 0u;
+							GeneratedParameters->Weight = Generated.Weight;
+							GeneratedParameters->Balance = Generated.Balance;
+							GeneratedParameters->Contrast = Generated.Contrast;
+							GeneratedParameters->Offset = Generated.Offset;
+							GeneratedParameters->PreviousMask = MaskTargets[MaskReadIndex];
+							GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
+							GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
+							GeneratedParameters->SurfaceHeight = HeightTargets[LayerReadIndex];
+							GeneratedParameters->LinearWrapSampler =
+								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+							GeneratedParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("MaterialLab.GeneratedMask.Layer%d.Child%d", LayerIndex, ChildIndex),
+								GeneratedMaskShader,
+								GeneratedParameters,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+							CombinedMask = MaskTargets[MaskWriteIndex];
+							if (Request.DebugSettings.Mode == EMaterialLabDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+							{
+								FRDGTextureRef DebugGeneratedSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc,
+									TEXT("MaterialLab.DebugGeneratedSnapshot"));
+								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugGeneratedSnapshot);
+								DebugMask = DebugGeneratedSnapshot;
+							}
+							++MaskPassIndex;
+							continue;
+						}
+
 						if (Child.Type == EMaterialLabLayerChildType::Mask)
 						{
 							const FMaskRenderData& Mask = Child.Mask;

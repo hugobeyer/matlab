@@ -48,7 +48,11 @@ void MaterialLabEvaluateCurvature(
 
 	const float InverseDiameter = 1.0f / (2.0f * float(SampleRadius));
 	const float Dx = (RightNormal.x - LeftNormal.x) * InverseDiameter;
-	const float Dy = (UpNormal.y - DownNormal.y) * InverseDiameter;
+	// Curvature is div(N.xy) = dNx/dx + dNy/dy. Both partials must use the same
+	// forward-minus-backward convention in pixel space, or a vertical ridge reads
+	// as the opposite of a horizontal one. Normal-map Y convention is handled at
+	// decode by FlipY, not here.
+	const float Dy = (DownNormal.y - UpNormal.y) * InverseDiameter;
 	float SignedCurvature = clamp((Dx + Dy) * Strength, -1.0f, 1.0f);
 
 	const float ShapedMagnitude = pow(abs(SignedCurvature), max(Power, 0.001f));

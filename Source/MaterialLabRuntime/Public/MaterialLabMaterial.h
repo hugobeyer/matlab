@@ -107,6 +107,92 @@ struct MATERIALLABRUNTIME_API FMaterialLabMaskLayer
 };
 
 USTRUCT(BlueprintType)
+struct MATERIALLABRUNTIME_API FMaterialLabGeneratedMask
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask")
+	bool bEnabled = true;
+
+	// Signal weights. All default to zero so a new node is neutral until authored.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float CurvatureWeight = 0.0f;
+
+	// 0 = cavity, 1 = convex.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float CurvatureBias = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float DirectionWeight = 0.0f;
+
+	// Tangent-space direction in degrees. 90 is +Y.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "360.0"))
+	float DirectionAngle = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float DirectionBroadness = 1.0f;
+
+	// Positive weight uses inverted AO, concentrating in occluded areas.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float AOWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float HeightWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float HeightBias = 0.0f;
+
+	// Shaping.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping")
+	bool bNormalizeWeights = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "32"))
+	int32 Broadness = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.001", ClampMax = "0.999"))
+	float Bias = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "0.25"))
+	float WarpAmount = 0.0f;
+
+	// Flow source: 0 samples the accumulated normal slope, 1 the accumulated height
+	// gradient. Both point downhill, so intermediate values blend two flow fields.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float WarpSource = 0.0f;
+
+	// Gradient sample radius in pixels. Larger values follow broader slopes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 WarpRadius = 1;
+
+	// Accumulator controls, matching FMaterialLabMaskLayer.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
+	EMaterialLabMaskBlendMode BlendMode = EMaterialLabMaskBlendMode::Multiply;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Weight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
+	bool bInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float Balance = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "10.0"))
+	float Contrast = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Offset = 0.0f;
+
+	bool HasAnySignal() const
+	{
+		return !FMath::IsNearlyZero(CurvatureWeight)
+			|| !FMath::IsNearlyZero(DirectionWeight)
+			|| !FMath::IsNearlyZero(AOWeight)
+			|| !FMath::IsNearlyZero(HeightWeight);
+	}
+};
+
+USTRUCT(BlueprintType)
 struct MATERIALLABRUNTIME_API FMaterialLabLayerEffect
 {
 	GENERATED_BODY()
@@ -167,7 +253,8 @@ UENUM(BlueprintType)
 enum class EMaterialLabLayerChildType : uint8
 {
 	Mask UMETA(DisplayName = "Mask"),
-	Effect UMETA(DisplayName = "Effect")
+	Effect UMETA(DisplayName = "Effect"),
+	Generated UMETA(DisplayName = "Generated Mask")
 };
 
 USTRUCT(BlueprintType)
@@ -183,6 +270,9 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMaterialLabLayerChildType::Effect"))
 	FMaterialLabLayerEffect Effect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMaterialLabLayerChildType::Generated"))
+	FMaterialLabGeneratedMask Generated;
 };
 
 USTRUCT(BlueprintType)

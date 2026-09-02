@@ -4594,7 +4594,8 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 	int32 EffectCount = 0;
 	for (const FMaterialLabLayerChild& Child : Layer.Children)
 	{
-		MaskCount += Child.Type == EMaterialLabLayerChildType::Mask ? 1 : 0;
+		MaskCount += (Child.Type == EMaterialLabLayerChildType::Mask
+			|| Child.Type == EMaterialLabLayerChildType::Generated) ? 1 : 0;
 		EffectCount += Child.Type == EMaterialLabLayerChildType::Effect ? 1 : 0;
 	}
 	const FText LayerSummary = Layer.Children.IsEmpty()
@@ -4769,6 +4770,7 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 		{
 			const FMaterialLabLayerChild& Child = Layer.Children[ChildIndex];
 			const bool bEffect = Child.Type == EMaterialLabLayerChildType::Effect;
+			const bool bGenerated = Child.Type == EMaterialLabLayerChildType::Generated;
 			FText ChildName;
 			FText ChildSummary;
 			TSharedRef<SWidget> ChildIcon = SNew(SImage).Image(MaterialLabUI::LucideIcon(TEXT("nodes")));
@@ -4788,6 +4790,15 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 					ChildName = FText::FromString(Child.Effect.Effect.ToSoftObjectPath().GetAssetName());
 				}
 				ChildSummary = FText::FromString(FString::Printf(TEXT("Effect · %.2f"), Child.Effect.Strength));
+			}
+			else if (bGenerated)
+			{
+				const FMaterialLabGeneratedMask& Gen = Child.Generated;
+				ChildName = LOCTEXT("GeneratedChildName", "Generated Mask");
+				ChildSummary = FText::Format(
+					LOCTEXT("GeneratedChildSummary", "{0} · {1}"),
+					MaterialLabUI::MaskBlendModeText(Gen.BlendMode),
+					FText::FromString(FString::Printf(TEXT("%.2f"), Gen.Weight)));
 			}
 			else
 			{
@@ -4822,8 +4833,12 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 				.LayerIndex(LayerIndex)
 				.ChildIndex(ChildIndex)
 				.DisplayName(ChildName)
-				.OnGetMenuContent_Lambda([this, LayerIndex, ChildIndex, bEffect]()
+				.OnGetMenuContent_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
 				{
+					if (bGenerated)
+					{
+						return BuildGeneratedContextMenu(LayerIndex, ChildIndex);
+					}
 					return bEffect
 						? BuildEffectContextMenu(LayerIndex, ChildIndex)
 						: BuildMaskContextMenu(LayerIndex, ChildIndex);
@@ -4868,15 +4883,26 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 										return ECheckBoxState::Unchecked;
 									}
 									const FMaterialLabLayerChild& Current = WorkingLayers[LayerIndex].Children[ChildIndex];
-									const bool bEnabled = Current.Type == EMaterialLabLayerChildType::Effect
-										? Current.Effect.bEnabled : Current.Mask.bEnabled;
+									bool bEnabled = Current.Mask.bEnabled;
+									if (Current.Type == EMaterialLabLayerChildType::Effect)
+									{
+										bEnabled = Current.Effect.bEnabled;
+									}
+									else if (Current.Type == EMaterialLabLayerChildType::Generated)
+									{
+										bEnabled = Current.Generated.bEnabled;
+									}
 									return bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 								})
-								.OnCheckStateChanged_Lambda([this, LayerIndex, ChildIndex, bEffect](const ECheckBoxState State)
+								.OnCheckStateChanged_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated](const ECheckBoxState State)
 								{
 									if (bEffect)
 									{
 										ToggleLayerEffect(LayerIndex, ChildIndex);
+									}
+									else if (bGenerated)
+									{
+										SetGeneratedEnabled(State, LayerIndex, ChildIndex);
 									}
 									else
 									{
@@ -5038,6 +5064,14 @@ TSharedRef<SWidget> SMaterialLab::BuildAddChildMenu(const int32 LayerIndex)
 		}),
 		false,
 		FSlateIcon());
+	MenuBuilder.AddMenuEntry(
+		LOCTEXT("AddGeneratedChild", "Generated Mask"),
+		LOCTEXT("AddGeneratedChildHint", "Append a mask derived from the surface below this layer."),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
+		{
+			AddGeneratedMaskToLayer(LayerIndex);
+		})));
 	return MenuBuilder.MakeWidget();
 }
 
@@ -5795,6 +5829,473 @@ TSharedRef<SWidget> SMaterialLab::BuildStudioLightingMenu()
 	}
 	return SNew(SBorder).Padding(4.0f).BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))[Menu];
 }
+
+FReply SMaterialLab::AddGeneratedMaskToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMaterialLabLayer& Layer = WorkingLayers[LayerIndex];
+	FMaterialLabLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMaterialLabLayerChildType::Generated;
+	SelectedLayerIndex = LayerIndex;
+	SelectedMaskIndex = Layer.Children.Num() - 1;
+	SelectedEffectIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMaterialLab::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMaterialLabLayerChildType::Generated)
+	{
+		return FReply::Handled();
+	}
+
+	WorkingLayers[LayerIndex].Children.RemoveAt(ChildIndex);
+	if (SelectedLayerIndex == LayerIndex && SelectedMaskIndex == ChildIndex)
+	{
+		SelectedMaskIndex = INDEX_NONE;
+	}
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+void SMaterialLab::SetGeneratedEnabled(
+	const ECheckBoxState CheckState,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMaterialLabLayerChildType::Generated)
+	{
+		return;
+	}
+
+	WorkingLayers[LayerIndex].Children[ChildIndex].Generated.bEnabled =
+		CheckState == ECheckBoxState::Checked;
+	RefreshLayeredPreview();
+	RebuildLayerList();
+}
+
+FMaterialLabGeneratedMask* SMaterialLab::GetSelectedGeneratedMask()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMaterialLabLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMaterialLabLayerChildType::Generated ? &Child.Generated : nullptr;
+}
+
+const FMaterialLabGeneratedMask* SMaterialLab::GetSelectedGeneratedMask() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMaterialLabLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMaterialLabLayerChildType::Generated ? &Child.Generated : nullptr;
+}
+
+TSharedRef<SWidget> SMaterialLab::BuildGeneratedContextMenu(
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	FMenuBuilder MenuBuilder(true, nullptr);
+	MenuBuilder.AddMenuEntry(
+		LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask"),
+		LOCTEXT("RemoveGeneratedChildHint", "Remove this generated mask from the layer."),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
+		})));
+	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> SMaterialLab::BuildGeneratedBlendModeMenu(
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	FMenuBuilder MenuBuilder(true, nullptr);
+	const EMaterialLabMaskBlendMode Modes[] = {
+		EMaterialLabMaskBlendMode::Replace,
+		EMaterialLabMaskBlendMode::Add,
+		EMaterialLabMaskBlendMode::Subtract,
+		EMaterialLabMaskBlendMode::Multiply,
+		EMaterialLabMaskBlendMode::Min,
+		EMaterialLabMaskBlendMode::Max,
+		EMaterialLabMaskBlendMode::AddSub,
+		EMaterialLabMaskBlendMode::Overlay
+	};
+	for (const EMaterialLabMaskBlendMode Mode : Modes)
+	{
+		MenuBuilder.AddMenuEntry(
+			MaterialLabUI::MaskBlendModeText(Mode),
+			FText::GetEmpty(),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			{
+				if (WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+					&& WorkingLayers[LayerIndex].Children[ChildIndex].Type
+						== EMaterialLabLayerChildType::Generated)
+				{
+					WorkingLayers[LayerIndex].Children[ChildIndex].Generated.BlendMode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			})));
+	}
+	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> SMaterialLab::BuildGeneratedMaskControls()
+{
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMaterialLabInspectorGroup)
+			.Title(LOCTEXT("GeneratedMaskHeading", "GENERATED MASK"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMaterialLabDebugPreviewMode::LayerMask,
+						LOCTEXT("PreviewGeneratedMask", "Preview this generated mask in unlit dark red and cyan"))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SCheckBox)
+					.ToolTipText(LOCTEXT("GeneratedEnabledHint", "Enable this generated mask"))
+				.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } })
+				])
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("GeneratedMaskHint", "Derives a mask from the surface accumulated below this layer. All weights start at zero."))
+					.AutoWrapText(true)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenBlendMode", "Blend Mode"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SComboButton)
+						.ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? MaterialLabUI::MaskBlendModeText(Gen->BlendMode) : FText::GetEmpty(); })]
+						.OnGetMenuContent_Lambda([this]() { return BuildGeneratedBlendModeMenu(SelectedLayerIndex, SelectedMaskIndex); })
+					]
+				]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+			[SNew(STextBlock).Text(LOCTEXT("GenHdrSignals", "SIGNALS")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureWeight", "Cavity / Curvature"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureWeight : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureWeight = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureWeight, 0.0f)) { Gen->CurvatureWeight = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureBias", "Cavity to Convex"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureBias : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureBias = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureBias, 0.0f)) { Gen->CurvatureBias = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionWeight", "Direction (Tangent Y)"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionWeight : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionWeight = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionWeight, 0.0f)) { Gen->DirectionWeight = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionAngle", "Direction Angle"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(360.0f).MinSliderValue(0.0f).MaxSliderValue(360.0f).Delta(1.0f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionAngle : 90.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionAngle = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionAngle, 90.0f)) { Gen->DirectionAngle = 90.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionBroadness", "Direction Falloff"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.05f).MaxValue(8.0f).MinSliderValue(0.05f).MaxSliderValue(8.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionBroadness : 1.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionBroadness = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionBroadness, 1.0f)) { Gen->DirectionBroadness = 1.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenAOWeight", "Inverted AO"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->AOWeight : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->AOWeight = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->AOWeight, 0.0f)) { Gen->AOWeight = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightWeight", "Height"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightWeight : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightWeight = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightWeight, 0.0f)) { Gen->HeightWeight = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightBiasCtl", "Height Bias"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightBias : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightBias = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightBias, 0.0f)) { Gen->HeightBias = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+			[SNew(STextBlock).Text(LOCTEXT("GenHdrShaping", "SHAPING")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenNormalizeWeights", "Normalize Weights"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SCheckBox)
+					.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bNormalizeWeights ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bNormalizeWeights = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenBiasCtl", "Bias"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.001f).MaxValue(0.999f).MinSliderValue(0.001f).MaxSliderValue(0.999f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Bias : 0.5f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Bias = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Bias, 0.5f)) { Gen->Bias = 0.5f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpAmount", "Warp Amount"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(0.25f).MinSliderValue(0.0f).MaxSliderValue(0.25f).Delta(0.005f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpAmount : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpAmount = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpAmount, 0.0f)) { Gen->WarpAmount = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpSource", "Warp Flow (Normal to Height)"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpSource : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpSource = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpSource, 0.0f)) { Gen->WarpSource = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpRadius", "Warp Radius"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<int32>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(1).MaxValue(16).MinSliderValue(1).MaxSliderValue(16).Delta(1).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpRadius : 1; })
+						.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpRadius = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->WarpRadius != 1) { Gen->WarpRadius = 1; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+			[SNew(STextBlock).Text(LOCTEXT("GenHdrBlend", "BLEND")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenWeight", "Weight"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Weight : 1.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Weight = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Weight, 1.0f)) { Gen->Weight = 1.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenInvert", "Invert"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SCheckBox)
+					.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bInvert = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenBalance", "Balance"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(2.0f).MinSliderValue(0.0f).MaxSliderValue(2.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Balance : 0.5f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Balance = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Balance, 0.5f)) { Gen->Balance = 0.5f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenContrast", "Contrast"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(0.0f).MaxValue(10.0f).MinSliderValue(0.0f).MaxSliderValue(10.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Contrast : 1.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Contrast = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Contrast, 1.0f)) { Gen->Contrast = 1.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenOffset", "Offset"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Offset : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Offset = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Offset, 0.0f)) { Gen->Offset = 0.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenBroadness", "Broadness"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(1).MaxValue(32).MinSliderValue(1).MaxSliderValue(32).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Broadness : 2; })
+							.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Broadness = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->Broadness != 2) { Gen->Broadness = 2; RefreshLayeredPreview(); } }))
+					]
+				]
+			]
+		];
+}
+
 
 TSharedRef<SWidget> SMaterialLab::BuildLayerMaskControls()
 {
@@ -7357,17 +7858,6 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 							]
 							+ SVerticalBox::Slot().AutoHeight()
 							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("FlipNormalYLabel", "Flip Normal Y"))]
-								+ SHorizontalBox::Slot().AutoWidth()
-								[
-									SNew(SCheckBox)
-									.IsChecked_Lambda([this]() { return WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].bFlipNormalY ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-									.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (WorkingLayers.IsValidIndex(SelectedLayerIndex)) { WorkingLayers[SelectedLayerIndex].bFlipNormalY = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
-								]
-							]
-							+ SVerticalBox::Slot().AutoHeight()
-							[
 								BuildSurfaceMaskInfluenceControls()
 							]
 								]
@@ -7383,6 +7873,10 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 							BuildHeightBlendControls()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						[
+							BuildGeneratedMaskControls()
+						]
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							BuildLayerMaskControls()
 						]
