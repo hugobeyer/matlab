@@ -94,11 +94,14 @@ struct MATERIALLABRUNTIME_API FMaterialLabMaskLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1", ClampMax = "16"))
 	int32 Tiling = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float Balance = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "10.0"))
 	float Contrast = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Offset = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -397,6 +400,9 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeightInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
+	bool bInvertFeature = false;
 };
 
 UCLASS(BlueprintType)

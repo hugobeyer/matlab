@@ -12,12 +12,14 @@ Texture2D<float4> LayerRAM;
 Texture2D<float> LayerMask;
 Texture2D<float4> EffectData;
 Texture2D<float4> StainData;
+Texture2D<float> DebugMask;
 SamplerState LinearWrapSampler;
 
 RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
 RWTexture2D<float4> OutputRAM;
 RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
 uint Initialize;
@@ -42,6 +44,9 @@ uint InvertHeight;
 uint DirectHeightComparison;
 uint InvertHeightFeature;
 uint InvertAOFeature;
+uint InvertFeature;
+uint DebugMode;
+uint WriteDebug;
 float Opacity;
 float Tiling;
 float NormalIntensity;
@@ -286,8 +291,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float PlacementMask = SamplePlacementMask(UV);
 	float IncomingHeight = SampleIncomingHeight(UV);
 
+	float GeneratedFeatureMask = 1.0f;
 	float FeatureWeight = 1.0f;
-	if (FeatureInfluence > 0.0f && Initialize == 0)
+	if ((FeatureInfluence > 0.0f || (WriteDebug != 0 && DebugMode == 1)) && Initialize == 0)
 	{
 		const int2 FeaturePixel = int2(DispatchThreadId.xy);
 		float Curvature;
@@ -308,8 +314,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			Curvature,
 			Cavity,
 			Convex);
-		float FeatureMask = lerp(Cavity, Convex, FeatureBias);
-		FeatureWeight = lerp(1.0f, FeatureMask, saturate(FeatureInfluence));
+		GeneratedFeatureMask = lerp(Cavity, Convex, FeatureBias);
+		GeneratedFeatureMask = InvertFeature != 0
+			? 1.0f - GeneratedFeatureMask
+			: GeneratedFeatureMask;
+		FeatureWeight = lerp(1.0f, GeneratedFeatureMask, saturate(FeatureInfluence));
 	}
 
 	float UnderlyingHeightMask = InvertHeightFeature != 0
@@ -330,7 +339,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? saturate(Opacity * PlacementCoverage * SurfaceMaskWeight * EffectKeep)
 		: 0.0f;
 	float HeightWeight = 1.0f;
-	if (HeightBlendEnabled != 0 && Initialize == 0 && NormalOnly == 0)
+	if ((HeightBlendEnabled != 0 || (WriteDebug != 0 && DebugMode == 2))
+		&& Initialize == 0
+		&& NormalOnly == 0)
 	{
 		HeightWeight = SampleHeightBlendField(UV, HeightRange);
 	}
@@ -445,6 +456,42 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			LayerResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
 		}
 		ResultHeight = lerp(PreviousHeightValue, LayerResultHeight, saturate(HeightInfluence));
+	}
+
+	if (WriteDebug != 0)
+	{
+		float DebugValue = 0.0f;
+		if (DebugMode == 1)
+		{
+			DebugValue = GeneratedFeatureMask;
+		}
+		else if (DebugMode == 2)
+		{
+			DebugValue = HeightWeight;
+		}
+		else if (DebugMode == 3)
+		{
+			DebugValue = SampleContactField(UV);
+		}
+		else if (DebugMode == 4)
+		{
+			float2 Texel = 1.0f / float2(OutputSize);
+			float HeightLeft = SampleBorderHeight(UV - float2(Texel.x, 0.0f));
+			float HeightRight = SampleBorderHeight(UV + float2(Texel.x, 0.0f));
+			float HeightDown = SampleBorderHeight(UV - float2(0.0f, Texel.y));
+			float HeightUp = SampleBorderHeight(UV + float2(0.0f, Texel.y));
+			float2 BorderGradient = float2(
+				HeightRight - HeightLeft,
+				HeightUp - HeightDown) * float2(OutputSize) * 0.5f;
+			DebugValue = saturate(length(BorderGradient) * max(HeightBorderWidth, 1.0e-4f));
+		}
+		else if (DebugMode == 5)
+		{
+			DebugValue = DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		}
+		const float3 DebugLow = float3(0.22f, 0.055f, 0.065f);
+		const float3 DebugHigh = float3(0.18f, 0.65f, 0.68f);
+		OutputDebug[DispatchThreadId.xy] = float4(lerp(DebugLow, DebugHigh, saturate(DebugValue)), 1.0f);
 	}
 
 	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);

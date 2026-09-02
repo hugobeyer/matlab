@@ -13,6 +13,7 @@ float Weight;
 float Tiling;
 float Balance;
 float Contrast;
+float Offset;
 
 float ApplyMaskOperation(float Previous, float Incoming)
 {
@@ -55,7 +56,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		LinearWrapSampler,
 		frac(UV * max(Tiling, 1.0f)),
 		0.0f).r;
-	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f);
+	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
 
 	float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
 	float BalanceStrength = abs(SignedBalance);

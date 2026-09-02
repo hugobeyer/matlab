@@ -57,6 +57,10 @@ private:
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
 	void PreviewSelectedSurfaceWithDisplacement();
+	FReply ToggleFeaturePreview(EMaterialLabDebugPreviewMode Mode);
+	TSharedRef<SWidget> MakeFeaturePreviewButton(
+		EMaterialLabDebugPreviewMode Mode,
+		const FText& ToolTip);
 	FReply SetStudioLighting(EMaterialLabStudioLighting LightingPreset);
 	FReply SetHdriLighting(FSoftObjectPath HdriPath);
 	FReply StartNewMaterial();
@@ -219,6 +223,7 @@ private:
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = false;
 	bool bIsBaking = false;
+	EMaterialLabDebugPreviewMode DebugPreviewMode = EMaterialLabDebugPreviewMode::None;
 	int32 SelectedLayerIndex = INDEX_NONE;
 	int32 SoloLayerIndex = INDEX_NONE;
 	int32 SelectedEffectIndex = INDEX_NONE;

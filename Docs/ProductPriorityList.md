@@ -228,6 +228,21 @@ Implemented and built; editor/global-shader runtime verification pending:
 - Height-driven Contact AO and Border Normal respect Height plus AO/Normal influence.
 - Roughness/Metallic-only Fill uses zero weights for BC, AO, F0, Normal, and Height.
 
+Implemented in source; build/editor/global-shader verification pending:
+
+- The cavity-to-convex generated feature mask has an append-only one-minus toggle.
+- Tiny inspector eyes preview curvature, height blending, Contact AO, Border Normal, and selected masks.
+- Debug previews use a transient unlit material and a muted dark-red-to-cyan ramp.
+- Only one eye is active at a time; clicking it again restores normal shaded preview.
+- Debug state is transient, never serialized, and never passed to baking.
+- The protected `M_MaterialLab_Substrate` graph remains unchanged.
+- Hue Shift uses finer `0.01` scrub increments.
+- Ordered masks expose Balance `0–2`, Contrast `0–10`, and signed Offset `-1–1`.
+- Mask Offset defaults to `0` and is applied after contrast without changing existing recipes.
+- HDRI previews add a dim `0.35` directional fill with a very soft `24°` source radius.
+- HDRI fill softness is reapplied after lighting rotation; contact shadows remain disabled.
+- Studio height fog uses a darker near-black blue response.
+
 Implemented and built; editor/import verification pending:
 
 - `_RAM` surfaces without authored height derive it from normals during import/reimport.

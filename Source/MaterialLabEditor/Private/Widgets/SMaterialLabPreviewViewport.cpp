@@ -6,10 +6,13 @@
 #include "Components/StaticMeshComponent.h"
 #include "EditorViewportClient.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/Texture2D.h"
 #include "Engine/TextureCube.h"
 #include "InputCoreTypes.h"
 #include "MaterialLabGpuCompositor.h"
 #include "MaterialLabMaterial.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionTextureSampleParameter2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 
@@ -17,6 +20,32 @@ namespace MaterialLabPreview
 {
 	const FName UseHeightParameter(TEXT("ML_UseHeight"));
 	const FName HeightAmountParameter(TEXT("ML_HeightAmount"));
+	const FName DebugTextureParameter(TEXT("ML_DebugTexture"));
+
+	UMaterial* CreateDebugMaterial()
+	{
+		UMaterial* Material = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
+		if (!Material)
+		{
+			return nullptr;
+		}
+
+		Material->MaterialDomain = MD_Surface;
+		Material->BlendMode = BLEND_Opaque;
+		Material->SetShadingModel(MSM_Unlit);
+		UMaterialExpressionTextureSampleParameter2D* DebugTexture =
+			NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
+		DebugTexture->SetParameterName(DebugTextureParameter);
+		DebugTexture->ExpressionGUID = FGuid::NewGuid();
+		DebugTexture->SamplerType = SAMPLERTYPE_LinearColor;
+		DebugTexture->Texture = LoadObject<UTexture2D>(
+			nullptr,
+			TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+		Material->GetExpressionCollection().AddExpression(DebugTexture);
+		Material->GetEditorOnlyData()->EmissiveColor.Expression = DebugTexture;
+		Material->PostEditChange();
+		return Material;
+	}
 
 	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile)
 	{
@@ -137,7 +166,7 @@ void SMaterialLabPreviewViewport::Construct(const FArguments& InArgs)
 	StudioFogComponent = NewObject<UExponentialHeightFogComponent>();
 	StudioFogComponent->SetFogHeightFalloff(0.01f);
 	StudioFogComponent->SetFogMaxOpacity(1.0f);
-	StudioFogComponent->SetFogInscatteringColor(FLinearColor(0.018f, 0.022f, 0.028f));
+	StudioFogComponent->SetFogInscatteringColor(FLinearColor(0.006f, 0.008f, 0.012f));
 	PreviewScene.AddComponent(StudioFogComponent, FTransform::Identity);
 
 	PreviewScene.SetFloorVisibility(true);
@@ -151,6 +180,7 @@ void SMaterialLabPreviewViewport::Construct(const FArguments& InArgs)
 void SMaterialLabPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 {
 	bUsingLayerPreview = false;
+	bUsingDebugPreview = false;
 	if (!PreviewMeshComponent)
 	{
 		return;
@@ -183,14 +213,23 @@ void SMaterialLabPreviewViewport::SetPreviewMaterial(UMaterialInterface* Materia
 
 void SMaterialLabPreviewViewport::SetPreviewLayers(
 	const TArray<FMaterialLabLayer>& Layers,
-	const int32 Resolution)
+	const int32 Resolution,
+	FMaterialLabDebugPreviewSettings DebugSettings)
 {
-	ComposeLayersAtResolution(Layers, Resolution);
+	ComposeLayersWithDebug(Layers, Resolution, DebugSettings);
 }
 
 bool SMaterialLabPreviewViewport::ComposeLayersAtResolution(
 	const TArray<FMaterialLabLayer>& Layers,
 	const int32 Resolution)
+{
+	return ComposeLayersWithDebug(Layers, Resolution, FMaterialLabDebugPreviewSettings());
+}
+
+bool SMaterialLabPreviewViewport::ComposeLayersWithDebug(
+	const TArray<FMaterialLabLayer>& Layers,
+	const int32 Resolution,
+	FMaterialLabDebugPreviewSettings DebugSettings)
 {
 	if (!LayerCompositor)
 	{
@@ -201,17 +240,33 @@ bool SMaterialLabPreviewViewport::ComposeLayersAtResolution(
 		return false;
 	}
 
-	if (!bUsingLayerPreview || !PreviewMaterialInstance.IsValid())
+	const bool bDebugPreview = DebugSettings.Mode != EMaterialLabDebugPreviewMode::None;
+	if (!bUsingLayerPreview
+		|| !PreviewMaterialInstance.IsValid()
+		|| bUsingDebugPreview != bDebugPreview)
 	{
-		UMaterialInterface* Master = LoadObject<UMaterialInterface>(
-			nullptr,
-			TEXT("/MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
-		if (!Master)
+		UMaterialInterface* PreviewMaterial = nullptr;
+		if (bDebugPreview)
+		{
+			if (!DebugPreviewMaterial.IsValid())
+			{
+				DebugPreviewMaterial.Reset(MaterialLabPreview::CreateDebugMaterial());
+			}
+			PreviewMaterial = DebugPreviewMaterial.Get();
+		}
+		else
+		{
+			PreviewMaterial = LoadObject<UMaterialInterface>(
+				nullptr,
+				TEXT("/MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
+		}
+		if (!PreviewMaterial)
 		{
 			return false;
 		}
-		SetPreviewMaterial(Master);
+		SetPreviewMaterial(PreviewMaterial);
 		bUsingLayerPreview = true;
+		bUsingDebugPreview = bDebugPreview;
 	}
 
 	if (!PreviewMaterialInstance.IsValid())
@@ -231,11 +286,20 @@ bool SMaterialLabPreviewViewport::ComposeLayersAtResolution(
 			}
 		}
 	});
-	if (!LayerCompositor->RequestCompose(Layers, OnComposeComplete))
+	if (!LayerCompositor->RequestCompose(Layers, OnComposeComplete, DebugSettings))
 	{
 		return false;
 	}
-	LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
+	if (bDebugPreview)
+	{
+		PreviewMaterialInstance->SetTextureParameterValue(
+			MaterialLabPreview::DebugTextureParameter,
+			LayerCompositor->GetDebugOutput());
+	}
+	else
+	{
+		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
+	}
 	PreviewMaterialInstance->SetScalarParameterValue(
 		MaterialLabPreview::UseHeightParameter,
 		bDisplacementEnabled ? 1.0f : 0.0f);
@@ -392,7 +456,7 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 
 	float LightBrightness = 2.0f;
 	float SkyBrightness = 0.45f;
-	float LightSourceAngle = 5.0f;
+	float LightSourceAngle = 10.0f;
 	FRotator LightRotation(-35.0f, -45.0f, 0.0f);
 
 	switch (LightingPreset)
@@ -400,19 +464,19 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 	case EMaterialLabStudioLighting::Soft:
 		LightBrightness = 1.25f;
 		SkyBrightness = 0.65f;
-		LightSourceAngle = 8.0f;
+		LightSourceAngle = 16.0f;
 		LightRotation = FRotator(-28.0f, 30.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Dramatic:
 		LightBrightness = 3.0f;
 		SkyBrightness = 0.15f;
-		LightSourceAngle = 3.0f;
+		LightSourceAngle = 6.0f;
 		LightRotation = FRotator(-48.0f, -65.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Rim:
 		LightBrightness = 2.5f;
 		SkyBrightness = 0.2f;
-		LightSourceAngle = 4.0f;
+		LightSourceAngle = 8.0f;
 		LightRotation = FRotator(-22.0f, 145.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Neutral:
@@ -428,6 +492,9 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 	{
 		PreviewScene.DirectionalLight->SetLightSourceAngle(LightSourceAngle);
 		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(LightSourceAngle * 0.5f);
+		PreviewScene.DirectionalLight->SetShadowBias(0.75f);
+		PreviewScene.DirectionalLight->SetShadowSlopeBias(0.8f);
+		PreviewScene.DirectionalLight->ShadowSharpen = 0.0f;
 		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
@@ -452,15 +519,31 @@ void SMaterialLabPreviewViewport::SetHdriLighting(UTextureCube* Cubemap)
 	HdriPreviewProfile->LightingRigRotation = HdriYaw;
 	MaterialLabPreview::ConfigureLookdevProfile(*HdriPreviewProfile);
 	HdriPreviewProfile->SkyLightIntensity = 0.55f;
-	HdriPreviewProfile->DirectionalLightIntensity = 0.0f;
+	HdriPreviewProfile->DirectionalLightIntensity = 0.35f;
 	bUsingHdri = true;
 
 	PreviewScene.UpdateScene(*HdriPreviewProfile, true, true, false, true);
 	PreviewScene.SetEnvironmentVisibility(false, true);
+	UpdateHdriFillLight();
 	PreviewScene.SetFloorVisibility(true, true);
 	if (PreviewViewportClient.IsValid())
 	{
 		PreviewViewportClient->Invalidate();
+	}
+}
+
+void SMaterialLabPreviewViewport::UpdateHdriFillLight()
+{
+	PreviewScene.SetLightBrightness(0.35f);
+	if (PreviewScene.DirectionalLight)
+	{
+		PreviewScene.DirectionalLight->SetLightSourceAngle(24.0f);
+		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(12.0f);
+		PreviewScene.DirectionalLight->SetShadowBias(0.75f);
+		PreviewScene.DirectionalLight->SetShadowSlopeBias(0.8f);
+		PreviewScene.DirectionalLight->ShadowSharpen = 0.0f;
+		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
+		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
 }
 
@@ -516,6 +599,7 @@ void SMaterialLabPreviewViewport::RotateLighting(const float YawDelta)
 		HdriPreviewProfile->LightingRigRotation = HdriYaw;
 		PreviewScene.UpdateScene(*HdriPreviewProfile, true, true, false, false);
 		PreviewScene.SetEnvironmentVisibility(false, true);
+		UpdateHdriFillLight();
 	}
 	else
 	{

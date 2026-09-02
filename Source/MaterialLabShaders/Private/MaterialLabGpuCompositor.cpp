@@ -46,6 +46,9 @@ public:
 		SHADER_PARAMETER(uint32, DirectHeightComparison)
 		SHADER_PARAMETER(uint32, InvertHeightFeature)
 		SHADER_PARAMETER(uint32, InvertAOFeature)
+		SHADER_PARAMETER(uint32, InvertFeature)
+		SHADER_PARAMETER(uint32, DebugMode)
+		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(float, Opacity)
 		SHADER_PARAMETER(float, Tiling)
 		SHADER_PARAMETER(float, NormalIntensity)
@@ -97,11 +100,13 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, EffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, StainData)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -131,6 +136,7 @@ public:
 		SHADER_PARAMETER(float, Tiling)
 		SHADER_PARAMETER(float, Balance)
 		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -239,6 +245,7 @@ namespace MaterialLabGpuCompositor
 		float Tiling = 1.0f;
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
+		float Offset = 0.0f;
 		bool bInvert = false;
 	};
 
@@ -273,6 +280,7 @@ namespace MaterialLabGpuCompositor
 	struct FChildRenderData
 	{
 		EMaterialLabLayerChildType Type = EMaterialLabLayerChildType::Mask;
+		int32 SourceChildIndex = INDEX_NONE;
 		FMaskRenderData Mask;
 		FEffectRenderData Effect;
 	};
@@ -344,6 +352,7 @@ namespace MaterialLabGpuCompositor
 		bool bDirectHeightComparison = false;
 		bool bInvertHeightFeature = false;
 		bool bInvertAOFeature = false;
+		bool bInvertFeature = false;
 		uint32 HeightSource = 2u;
 		int32 HeightReferenceLayerIndex = INDEX_NONE;
 	};
@@ -356,6 +365,8 @@ namespace MaterialLabGpuCompositor
 		FTextureRHIRef OutputN[2];
 		FTextureRHIRef OutputRAM[2];
 		FTextureRHIRef OutputHeight[2];
+		FTextureRHIRef OutputDebug[2];
+		FMaterialLabDebugPreviewSettings DebugSettings;
 		FSimpleDelegate OnComplete;
 		int32 PublishedTargetIndex = 0;
 	};
@@ -430,6 +441,7 @@ bool FMaterialLabGpuCompositor::Initialize(const FIntPoint InResolution)
 		Set.Normal.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.5f, 1.0f, 1.0f)));
 		Set.RAM.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 1.0f, 0.0f, 0.04f)));
 		Set.Height.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.0f, 0.0f, 0.0f), PF_R16F));
+		Set.Debug.Reset(CreateTarget(Resolution, FLinearColor(0.22f, 0.055f, 0.065f, 1.0f)));
 	}
 	FlushRenderingCommands();
 	PublishedTargetIndex = 0;
@@ -439,7 +451,8 @@ bool FMaterialLabGpuCompositor::Initialize(const FIntPoint InResolution)
 
 bool FMaterialLabGpuCompositor::RequestCompose(
 	const TArray<FMaterialLabLayer>& Layers,
-	FSimpleDelegate OnComplete)
+	FSimpleDelegate OnComplete,
+	FMaterialLabDebugPreviewSettings DebugSettings)
 {
 	using namespace MaterialLabGpuCompositor;
 	check(IsInGameThread());
@@ -461,6 +474,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 
 	FRenderRequest Request;
 	Request.Resolution = Resolution;
+	Request.DebugSettings = DebugSettings;
 	Request.OnComplete = MoveTemp(OnComplete);
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
@@ -468,10 +482,12 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 		Request.OutputN[Index] = GetTargetRHI(Targets[Index].Normal.Get());
 		Request.OutputRAM[Index] = GetTargetRHI(Targets[Index].RAM.Get());
 		Request.OutputHeight[Index] = GetTargetRHI(Targets[Index].Height.Get());
+		Request.OutputDebug[Index] = GetTargetRHI(Targets[Index].Debug.Get());
 		if (!Request.OutputBC[Index].IsValid()
 			|| !Request.OutputN[Index].IsValid()
 			|| !Request.OutputRAM[Index].IsValid()
-			|| !Request.OutputHeight[Index].IsValid())
+			|| !Request.OutputHeight[Index].IsValid()
+			|| !Request.OutputDebug[Index].IsValid())
 		{
 			return false;
 		}
@@ -509,8 +525,9 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			Layer.BaseColor.G,
 			Layer.BaseColor.B,
 			Layer.BaseColor.A);
-		for (const FMaterialLabLayerChild& LayerChild : Layer.Children)
+		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
 		{
+			const FMaterialLabLayerChild& LayerChild = Layer.Children[SourceChildIndex];
 			if (LayerChild.Type == EMaterialLabLayerChildType::Mask)
 			{
 				const FMaterialLabMaskLayer& MaskLayer = LayerChild.Mask;
@@ -534,6 +551,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMaterialLabLayerChildType::Mask;
+				ChildData.SourceChildIndex = SourceChildIndex;
 				FMaskRenderData& MaskData = ChildData.Mask;
 				MaskData.Texture = GetTextureRHI(MaskTexture);
 				if (!MaskData.Texture.IsValid())
@@ -543,8 +561,9 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				MaskData.BlendMode = MaskLayer.BlendMode;
 				MaskData.Weight = FMath::Clamp(MaskLayer.Weight, 0.0f, 1.0f);
 				MaskData.Tiling = FMath::Max(1.0f, static_cast<float>(MaskLayer.Tiling));
-				MaskData.Balance = MaskLayer.Balance;
-				MaskData.Contrast = MaskLayer.Contrast;
+				MaskData.Balance = FMath::Clamp(MaskLayer.Balance, 0.0f, 2.0f);
+				MaskData.Contrast = FMath::Clamp(MaskLayer.Contrast, 0.0f, 10.0f);
+				MaskData.Offset = FMath::Clamp(MaskLayer.Offset, -1.0f, 1.0f);
 				MaskData.bInvert = MaskLayer.bInvert;
 				Data.bHasMask = true;
 				continue;
@@ -572,6 +591,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 
 			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMaterialLabLayerChildType::Effect;
+			ChildData.SourceChildIndex = SourceChildIndex;
 			FEffectRenderData& EffectData = ChildData.Effect;
 			EffectData.Type = EffectAsset->EffectType;
 			EffectData.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
@@ -663,6 +683,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 		Data.bDirectHeightComparison = !bNormalOnly;
 		Data.bInvertHeightFeature = Layer.bInvertHeightFeature;
 		Data.bInvertAOFeature = Layer.bInvertAOFeature;
+		Data.bInvertFeature = Layer.bInvertFeature;
 		Data.HeightReferenceLayerIndex = Layer.HeightReferenceLayerIndex >= 0
 			&& Layer.HeightReferenceLayerIndex < LayerIndex
 			? Layer.HeightReferenceLayerIndex
@@ -713,6 +734,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			FRDGTextureRef OutputN[2];
 			FRDGTextureRef OutputRAM[2];
 			FRDGTextureRef OutputHeight[2];
+			FRDGTextureRef OutputDebug[2];
 			for (int32 Index = 0; Index < 2; ++Index)
 			{
 				OutputBC[Index] = RegisterTexture(
@@ -735,7 +757,17 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					RegisteredTextures,
 					Request.OutputHeight[Index],
 					TEXT("MaterialLab.OutputHeight"));
+				OutputDebug[Index] = RegisterTexture(
+					GraphBuilder,
+					RegisteredTextures,
+					Request.OutputDebug[Index],
+					TEXT("MaterialLab.OutputDebug"));
 			}
+
+			AddClearUAVPass(
+				GraphBuilder,
+				GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]),
+				FVector4f(0.22f, 0.055f, 0.065f, 1.0f));
 
 			if (Request.Layers.IsEmpty())
 			{
@@ -815,6 +847,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 						RegisteredTextures,
 						Layer.BaseColor,
 						TEXT("MaterialLab.DefaultStainData"));
+					FRDGTextureRef DebugMask = CombinedMask;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
 					int32 StainPassIndex = 0;
@@ -836,6 +869,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 							MaskParameters->Tiling = Mask.Tiling;
 							MaskParameters->Balance = Mask.Balance;
 							MaskParameters->Contrast = Mask.Contrast;
+							MaskParameters->Offset = Mask.Offset;
 							MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
 							MaskParameters->IncomingMask = RegisterTexture(
 								GraphBuilder,
@@ -856,6 +890,16 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 									1));
 							CombinedMask = MaskTargets[MaskWriteIndex];
+							if (Request.DebugSettings.Mode == EMaterialLabDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+							{
+								FRDGTextureRef DebugMaskSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc,
+									TEXT("MaterialLab.DebugMaskSnapshot"));
+								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugMaskSnapshot);
+								DebugMask = DebugMaskSnapshot;
+							}
 							++MaskPassIndex;
 							continue;
 						}
@@ -968,6 +1012,10 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
 					Parameters->InvertHeightFeature = Layer.bInvertHeightFeature ? 1u : 0u;
 					Parameters->InvertAOFeature = Layer.bInvertAOFeature ? 1u : 0u;
+					Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
+					Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
+					Parameters->WriteDebug = Request.DebugSettings.Mode != EMaterialLabDebugPreviewMode::None
+						&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 					Parameters->Opacity = Layer.Opacity;
 					Parameters->Tiling = Layer.Tiling;
 					Parameters->NormalIntensity = Layer.NormalIntensity;
@@ -1035,11 +1083,13 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					Parameters->LayerMask = CombinedMask;
 					Parameters->EffectData = CombinedEffectData;
 					Parameters->StainData = CombinedStainData;
+					Parameters->DebugMask = DebugMask;
 					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
 					Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);
 					Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
 					Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
+					Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]);
 
 					FComputeShaderUtils::AddPass(
 						GraphBuilder,
@@ -1073,6 +1123,9 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				ERHIAccess::SRVMask);
 			GraphBuilder.SetTextureAccessFinal(
 				OutputHeight[Request.PublishedTargetIndex],
+				ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(
+				OutputDebug[Request.PublishedTargetIndex],
 				ERHIAccess::SRVMask);
 			GraphBuilder.Execute();
 			if (Request.OnComplete.IsBound())
@@ -1122,4 +1175,9 @@ UTextureRenderTarget2D* FMaterialLabGpuCompositor::GetRAMOutput() const
 UTextureRenderTarget2D* FMaterialLabGpuCompositor::GetHeightOutput() const
 {
 	return Targets[PublishedTargetIndex].Height.Get();
+}
+
+UTextureRenderTarget2D* FMaterialLabGpuCompositor::GetDebugOutput() const
+{
+	return Targets[PublishedTargetIndex].Debug.Get();
 }

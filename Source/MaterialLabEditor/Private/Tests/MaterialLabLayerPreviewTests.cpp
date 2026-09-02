@@ -78,6 +78,7 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("AO mask influence is opt-in"), BaseLayer.AOFeatureInfluence, 0.0f);
 	TestFalse(TEXT("Height mask inversion defaults off"), BaseLayer.bInvertHeightFeature);
 	TestFalse(TEXT("AO mask inversion defaults off"), BaseLayer.bInvertAOFeature);
+	TestFalse(TEXT("Generated feature inversion defaults off"), BaseLayer.bInvertFeature);
 	TestEqual(TEXT("Hue Shift defaults neutral"), BaseLayer.HueShift, 0.0f);
 	TestEqual(TEXT("Saturation defaults neutral"), BaseLayer.Saturation, 1.0f);
 	TestEqual(TEXT("Value defaults neutral"), BaseLayer.Value, 1.0f);
@@ -277,6 +278,7 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 		FMaterialLabLayerChild& MaskChild = Layers[1].Children.AddDefaulted_GetRef();
 		MaskChild.Type = EMaterialLabLayerChildType::Mask;
 		FMaterialLabMaskLayer& Mask = MaskChild.Mask;
+		TestEqual(TEXT("Mask offset defaults neutral"), Mask.Offset, 0.0f);
 		Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
 		Mask.bInvert = true;
 		TestTrue(TEXT("Compositor accepts a texture mask"), Compositor.RequestCompose(Layers));
@@ -301,6 +303,16 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 		{
 			TestTrue(TEXT("Minimum mask balance restores the upper layer"), Pixel.B > Pixel.R);
 		}
+
+		Mask.Balance = 0.5f;
+		Mask.Offset = -1.0f;
+		TestTrue(TEXT("Compositor accepts mask offset"), Compositor.RequestCompose(Layers));
+		FlushRenderingCommands();
+		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Offset mask output can be read"), Pixel))
+		{
+			TestTrue(TEXT("Negative mask offset rejects the upper layer"), Pixel.R > Pixel.B);
+		}
+		Mask.Offset = 0.0f;
 
 		Layers[1].Children.Reset();
 
@@ -498,6 +510,25 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("Flat underlying normals produce no cavity mask"), Pixel.R > Pixel.B);
 	}
+	Layers[1].bInvertFeature = true;
+	TestTrue(TEXT("Compositor accepts inverted normal-derived feature masking"), Compositor.RequestCompose(Layers));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Inverted feature-mask output can be read"), Pixel))
+	{
+		TestTrue(TEXT("Inverting a flat cavity mask restores the upper layer"), Pixel.B > Pixel.R);
+	}
+	FMaterialLabDebugPreviewSettings DebugSettings;
+	DebugSettings.Mode = EMaterialLabDebugPreviewMode::GeneratedFeature;
+	DebugSettings.LayerIndex = 1;
+	TestTrue(
+		TEXT("Compositor accepts generated-feature debug preview"),
+		Compositor.RequestCompose(Layers, FSimpleDelegate(), DebugSettings));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetDebugOutput(), TEXT("Generated-feature debug output can be read"), Pixel))
+	{
+		TestTrue(TEXT("Active feature coverage uses the cyan debug color"), Pixel.G > Pixel.R && Pixel.B > Pixel.R);
+	}
+	Layers[1].bInvertFeature = false;
 	Layers[1].FeatureInfluence = 0.0f;
 	Layers[0].ConstantHeight = 1.0f;
 	Layers[1].HeightFeatureInfluence = 1.0f;

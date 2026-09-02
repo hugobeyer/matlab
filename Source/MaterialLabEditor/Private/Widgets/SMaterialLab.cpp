@@ -2102,6 +2102,7 @@ FReply SMaterialLab::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 	SelectedLayerIndex = INDEX_NONE;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
+	DebugPreviewMode = EMaterialLabDebugPreviewMode::None;
 	WorkingLayers.Reset();
 	WorkingMaterialName = TEXT("No material");
 	if (SelectedSurfaceText.IsValid())
@@ -2241,6 +2242,56 @@ void SMaterialLab::SetPreviewDisplacementAmount(const float Amount)
 	}
 }
 
+FReply SMaterialLab::ToggleFeaturePreview(const EMaterialLabDebugPreviewMode Mode)
+{
+	if (Mode == EMaterialLabDebugPreviewMode::LayerMask)
+	{
+		const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask();
+		if (!Mask || !Mask->bEnabled)
+		{
+			return FReply::Handled();
+		}
+	}
+
+	DebugPreviewMode = DebugPreviewMode == Mode
+		? EMaterialLabDebugPreviewMode::None
+		: Mode;
+	RefreshLayeredPreview(false);
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMaterialLab::MakeFeaturePreviewButton(
+	const EMaterialLabDebugPreviewMode Mode,
+	const FText& ToolTip)
+{
+	return SNew(SButton)
+		.ButtonStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("MaterialLab.CompactRowButton")))
+		.ContentPadding(1.0f)
+		.ToolTipText(ToolTip)
+		.OnClicked(this, &SMaterialLab::ToggleFeaturePreview, Mode)
+		[
+			SNew(SBox)
+			.WidthOverride(14.0f)
+			.HeightOverride(14.0f)
+			[
+				SNew(SImage)
+				.Image_Lambda([this, Mode]()
+				{
+					return FMaterialLabStyle::Get().GetBrush(
+						DebugPreviewMode == Mode
+							? TEXT("MaterialLab.Icon.Eye")
+							: TEXT("MaterialLab.Icon.EyeOff"));
+				})
+				.ColorAndOpacity_Lambda([this, Mode]()
+				{
+					return DebugPreviewMode == Mode
+						? FSlateColor(FLinearColor(0.18f, 0.65f, 0.68f))
+						: FSlateColor::UseSubduedForeground();
+				})
+			]
+		];
+}
+
 void SMaterialLab::PreviewSelectedSurfaceWithDisplacement()
 {
 	if (bHasWorkingMaterial || SelectedSurfacePath.IsNull())
@@ -2314,6 +2365,7 @@ FReply SMaterialLab::StartNewMaterial()
 	WorkingMaterialName = TEXT("Untitled MatLab Material");
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
+	DebugPreviewMode = EMaterialLabDebugPreviewMode::None;
 	WorkingLayers.Reset();
 
 	FMaterialLabLayer& BaseLayer = WorkingLayers.AddDefaulted_GetRef();
@@ -2359,6 +2411,7 @@ FReply SMaterialLab::NewWorkingMaterial()
 	SelectedMaskIndex = INDEX_NONE;
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
+	DebugPreviewMode = EMaterialLabDebugPreviewMode::None;
 	WorkingLayers.Reset();
 	SavedLayers.Reset();
 	WorkingMaterialAsset.Reset();
@@ -2420,6 +2473,7 @@ FReply SMaterialLab::OpenWorkingMaterial()
 	WorkingLayers[0].bEnabled = true;
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
+	DebugPreviewMode = EMaterialLabDebugPreviewMode::None;
 	WorkingMaterialName = MaterialAsset->DisplayName.IsEmpty()
 		? MaterialAsset->GetName()
 		: MaterialAsset->DisplayName.ToString();
@@ -3237,6 +3291,7 @@ FReply SMaterialLab::AssignMaskToLayer(const int32 LayerIndex, const FSoftObject
 		NewMask.Tiling = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
 		NewMask.Balance = Mask->DefaultBalance;
 		NewMask.Contrast = Mask->DefaultContrast;
+		NewMask.Offset = Mask->DefaultOffset;
 		NewMask.bInvert = Mask->bDefaultInvert;
 	}
 	else if (Cast<UTexture2D>(MaskObject))
@@ -3780,7 +3835,8 @@ EActiveTimerReturnType SMaterialLab::FlushPendingPreviewRefresh(
 		}
 		PreviewLayers = &PreviewOverrideLayers;
 	}
-	if (WorkingLayers.IsValidIndex(SoloLayerIndex))
+	if (DebugPreviewMode == EMaterialLabDebugPreviewMode::None
+		&& WorkingLayers.IsValidIndex(SoloLayerIndex))
 	{
 		FMaterialLabLayer SoloLayer = (*PreviewLayers)[SoloLayerIndex];
 		PreviewOverrideLayers.Reset();
@@ -3789,7 +3845,9 @@ EActiveTimerReturnType SMaterialLab::FlushPendingPreviewRefresh(
 		PreviewOverrideLayers[0].HeightReferenceLayerIndex = INDEX_NONE;
 		PreviewLayers = &PreviewOverrideLayers;
 	}
-	else if (bShowCompositionBefore && !WorkingLayers.IsEmpty())
+	else if (DebugPreviewMode == EMaterialLabDebugPreviewMode::None
+		&& bShowCompositionBefore
+		&& !WorkingLayers.IsEmpty())
 	{
 		FMaterialLabLayer BaseLayer = (*PreviewLayers)[0];
 		PreviewOverrideLayers.Reset();
@@ -3803,7 +3861,13 @@ EActiveTimerReturnType SMaterialLab::FlushPendingPreviewRefresh(
 	{
 		if (Viewport.IsValid())
 		{
-			Viewport->SetPreviewLayers(*PreviewLayers, CompositionResolution);
+			FMaterialLabDebugPreviewSettings DebugSettings;
+			DebugSettings.Mode = DebugPreviewMode;
+			DebugSettings.LayerIndex = SelectedLayerIndex;
+			DebugSettings.ChildIndex = DebugPreviewMode == EMaterialLabDebugPreviewMode::LayerMask
+				? SelectedMaskIndex
+				: INDEX_NONE;
+			Viewport->SetPreviewLayers(*PreviewLayers, CompositionResolution, DebugSettings);
 		}
 	}
 	return EActiveTimerReturnType::Stop;
@@ -5693,11 +5757,21 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerMaskControls()
 			.Title(LOCTEXT("LayerMaskHeading", "MASK BLENDING"))
 			.InitiallyExpanded(false)
 			.HeaderAction(
-				SNew(SCheckBox)
-				.ToolTipText(LOCTEXT("SelectedMaskEnabled", "Enable selected mask"))
-				.IsEnabled_Lambda([this]() { return GetSelectedLayerMask() != nullptr; })
-				.IsChecked_Lambda([this]() { const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); return Mask && Mask->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask()) { Mask->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMaterialLabDebugPreviewMode::LayerMask,
+						LOCTEXT("PreviewSelectedMask", "Preview the selected processed mask in unlit dark red and cyan"))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SCheckBox)
+					.ToolTipText(LOCTEXT("SelectedMaskEnabled", "Enable selected mask"))
+					.IsEnabled_Lambda([this]() { return GetSelectedLayerMask() != nullptr; })
+					.IsChecked_Lambda([this]() { const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); return Mask && Mask->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask()) { Mask->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } })
+				])
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, 2.0f, 2.0f, 5.0f)
@@ -5774,7 +5848,7 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerMaskControls()
 					MakeResettableNumeric(
 						SNew(SNumericEntryBox<float>)
 						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.AllowSpin(true).MinValue(0.0f).MaxValue(2.0f).MinSliderValue(0.0f).MaxSliderValue(2.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
 						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); return Mask ? Mask->Balance : 0.5f; })
 						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask()) { Mask->Balance = Value; RefreshLayeredPreview(); } }),
 						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); Mask && !FMath::IsNearlyEqual(Mask->Balance, 0.5f)) { Mask->Balance = 0.5f; RefreshLayeredPreview(); } }))
@@ -5789,10 +5863,25 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerMaskControls()
 					MakeResettableNumeric(
 						SNew(SNumericEntryBox<float>)
 						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(4.0f).MinSliderValue(0.0f).MaxSliderValue(4.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.AllowSpin(true).MinValue(0.0f).MaxValue(10.0f).MinSliderValue(0.0f).MaxSliderValue(10.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
 						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); return Mask ? Mask->Contrast : 1.0f; })
 						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask()) { Mask->Contrast = Value; RefreshLayeredPreview(); } }),
 						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); Mask && !FMath::IsNearlyEqual(Mask->Contrast, 1.0f)) { Mask->Contrast = 1.0f; RefreshLayeredPreview(); } }))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("MaskOffsetLabel", "Mask Offset"))]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					MakeResettableNumeric(
+						SNew(SNumericEntryBox<float>)
+						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); return Mask ? Mask->Offset : 0.0f; })
+						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask()) { Mask->Offset = Value; RefreshLayeredPreview(); } }),
+						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabMaskLayer* Mask = GetSelectedLayerMask(); Mask && !FMath::IsNearlyZero(Mask->Offset)) { Mask->Offset = 0.0f; RefreshLayeredPreview(); } }))
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()
@@ -6091,7 +6180,7 @@ TSharedRef<SWidget> SMaterialLab::BuildColorAdjustmentControls()
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					NumericRow(LOCTEXT("HueShiftLabel", "Hue Shift"), &FMaterialLabLayer::HueShift, -180.0f, 180.0f, 0.1f, 0.0f)
+					NumericRow(LOCTEXT("HueShiftLabel", "Hue Shift"), &FMaterialLabLayer::HueShift, -180.0f, 180.0f, 0.01f, 0.0f)
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
@@ -6177,23 +6266,33 @@ TSharedRef<SWidget> SMaterialLab::BuildHeightBlendControls()
 			.Title(LOCTEXT("HeightMaskBlendingHeading", "HEIGHT MASK BLENDING"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
-				SNew(SCheckBox)
-				.ToolTipText(LOCTEXT("EnableHeightBlend", "Enable Height Blend"))
-				.IsChecked_Lambda([this]()
-				{
-					return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-						&& WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled
-						? ECheckBoxState::Checked
-						: ECheckBoxState::Unchecked;
-				})
-				.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-				{
-					if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMaterialLabDebugPreviewMode::HeightBlend,
+						LOCTEXT("PreviewHeightBlendMask", "Preview the computed height blend mask in unlit dark red and cyan"))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SCheckBox)
+					.ToolTipText(LOCTEXT("EnableHeightBlend", "Enable Height Blend"))
+					.IsChecked_Lambda([this]()
 					{
-						WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled = State == ECheckBoxState::Checked;
-						RefreshLayeredPreview();
-					}
-				}))
+						return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+							&& WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
+					{
+						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+						{
+							WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+						}
+					})
+				])
 			[
 				SNew(SVerticalBox)
 				.Visibility_Lambda([this]()
@@ -6444,13 +6543,25 @@ TSharedRef<SWidget> SMaterialLab::BuildHeightBlendControls()
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-					[SNew(STextBlock).Text(LOCTEXT("HeightContactAOGroup", "CONTACT AO")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[SNew(STextBlock).Text(LOCTEXT("HeightContactAOGroup", "CONTACT AO")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+						+ SHorizontalBox::Slot().AutoWidth()
+						[MakeFeaturePreviewButton(EMaterialLabDebugPreviewMode::ContactAO, LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))]
+					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 					[NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMaterialLabLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f)]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 					[NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMaterialLabLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 3.0f)
-					[SNew(STextBlock).Text(LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[SNew(STextBlock).Text(LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+						+ SHorizontalBox::Slot().AutoWidth()
+						[MakeFeaturePreviewButton(EMaterialLabDebugPreviewMode::BorderNormal, LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))]
+					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 					[NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMaterialLabLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f)]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
@@ -7085,6 +7196,9 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 								SNew(SMaterialLabInspectorGroup)
 								.Title(LOCTEXT("GeneratedFeaturesHeading", "NORMAL / HEIGHT / AO INFLUENCE"))
 								.InitiallyExpanded(false)
+								.HeaderAction(MakeFeaturePreviewButton(
+									EMaterialLabDebugPreviewMode::GeneratedFeature,
+									LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")))
 								[
 									SNew(SVerticalBox)
 									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
@@ -7115,6 +7229,32 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 										.Value_Lambda([this]() -> TOptional<float> { return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? WorkingLayers[SelectedLayerIndex].FeatureBias : 0.0f; })
 										.OnValueChanged_Lambda([this](const float Value) { if (WorkingLayers.IsValidIndex(SelectedLayerIndex)) { WorkingLayers[SelectedLayerIndex].FeatureBias = Value; RefreshLayeredPreview(); } }),
 										FSimpleDelegate::CreateLambda([this]() { if (WorkingLayers.IsValidIndex(SelectedLayerIndex) && !FMath::IsNearlyZero(WorkingLayers[SelectedLayerIndex].FeatureBias)) { WorkingLayers[SelectedLayerIndex].FeatureBias = 0.0f; RefreshLayeredPreview(); } }))
+								]
+							]
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+								[SNew(STextBlock).Text(LOCTEXT("InvertGeneratedFeatureLabel", "Invert Feature"))]
+								+ SHorizontalBox::Slot().AutoWidth()
+								[
+									SNew(SCheckBox)
+									.ToolTipText(LOCTEXT("InvertGeneratedFeatureHint", "Apply one-minus to the selected cavity-to-convex feature mask"))
+									.IsChecked_Lambda([this]()
+									{
+										return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+											&& WorkingLayers[SelectedLayerIndex].bInvertFeature
+											? ECheckBoxState::Checked
+											: ECheckBoxState::Unchecked;
+									})
+									.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
+									{
+										if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+										{
+											WorkingLayers[SelectedLayerIndex].bInvertFeature = State == ECheckBoxState::Checked;
+											RefreshLayeredPreview();
+										}
+									})
 								]
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)

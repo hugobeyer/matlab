@@ -1,12 +1,14 @@
 #pragma once
 
 #include "AdvancedPreviewScene.h"
+#include "MaterialLabGpuCompositor.h"
 #include "SEditorViewport.h"
+#include "UObject/StrongObjectPtr.h"
 
 class FEditorViewportClient;
-class FMaterialLabGpuCompositor;
 class FMaterialLabPreviewViewportClient;
 class UExponentialHeightFogComponent;
+class UMaterial;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UStaticMeshComponent;
@@ -48,7 +50,10 @@ public:
 
 	void Construct(const FArguments& InArgs);
 	void SetPreviewMaterial(UMaterialInterface* Material);
-	void SetPreviewLayers(const TArray<FMaterialLabLayer>& Layers, int32 Resolution);
+	void SetPreviewLayers(
+		const TArray<FMaterialLabLayer>& Layers,
+		int32 Resolution,
+		FMaterialLabDebugPreviewSettings DebugSettings = FMaterialLabDebugPreviewSettings());
 	bool ComposeLayersAtResolution(const TArray<FMaterialLabLayer>& Layers, int32 Resolution);
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
@@ -74,16 +79,23 @@ private:
 	void ZoomCamera(float ZoomDelta);
 	void UpdateCamera();
 	void UpdateStudioFog();
+	void UpdateHdriFillLight();
+	bool ComposeLayersWithDebug(
+		const TArray<FMaterialLabLayer>& Layers,
+		int32 Resolution,
+		FMaterialLabDebugPreviewSettings DebugSettings);
 
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	UExponentialHeightFogComponent* StudioFogComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
+	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
 	TUniquePtr<FMaterialLabGpuCompositor> LayerCompositor;
 	TUniquePtr<FPreviewSceneProfile> DefaultPreviewProfile;
 	TUniquePtr<FPreviewSceneProfile> HdriPreviewProfile;
 	bool bUsingLayerPreview = false;
+	bool bUsingDebugPreview = false;
 	bool bUsingHdri = false;
 	bool bDisplacementEnabled = false;
 	float DisplacementAmount = 1.0f;

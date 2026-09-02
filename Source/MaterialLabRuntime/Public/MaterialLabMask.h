@@ -32,12 +32,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "1.0", ClampMax = "16.0", Delta = "1.0"))
 	float DefaultTiling = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float DefaultBalance = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0", ClampMax = "10.0"))
 	float DefaultContrast = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
 	bool bDefaultInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float DefaultOffset = 0.0f;
 };
