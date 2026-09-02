@@ -54,6 +54,7 @@ public:
 		const TArray<FMaterialLabLayer>& Layers,
 		int32 Resolution,
 		FMaterialLabDebugPreviewSettings DebugSettings = FMaterialLabDebugPreviewSettings());
+	void SetDebugPreview(FMaterialLabDebugPreviewSettings DebugSettings);
 	bool ComposeLayersAtResolution(const TArray<FMaterialLabLayer>& Layers, int32 Resolution);
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
@@ -63,6 +64,7 @@ public:
 	void SetHdriLighting(UTextureCube* Cubemap);
 	void SetPreviewQuality(EMaterialLabPreviewQuality Quality);
 	void SetCameraFov(float FovDegrees);
+	void ResetCameraAndLighting();
 	UTextureRenderTarget2D* GetCompositedBaseColor() const;
 	UTextureRenderTarget2D* GetCompositedNormal() const;
 	UTextureRenderTarget2D* GetCompositedRAM() const;
@@ -80,6 +82,7 @@ private:
 	void UpdateCamera();
 	void UpdateStudioFog();
 	void UpdateHdriFillLight();
+	void UpdateDebugLightVisibility();
 	bool ComposeLayersWithDebug(
 		const TArray<FMaterialLabLayer>& Layers,
 		int32 Resolution,
@@ -96,6 +99,9 @@ private:
 	TUniquePtr<FPreviewSceneProfile> HdriPreviewProfile;
 	bool bUsingLayerPreview = false;
 	bool bUsingDebugPreview = false;
+	EMaterialLabDebugPreviewMode bDebugPreviewMode = EMaterialLabDebugPreviewMode::None;
+	int32 bDebugLayerIndex = INDEX_NONE;
+	int32 bDebugChildIndex = INDEX_NONE;
 	bool bUsingHdri = false;
 	bool bDisplacementEnabled = false;
 	float DisplacementAmount = 1.0f;

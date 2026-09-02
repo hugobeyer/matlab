@@ -441,7 +441,7 @@ bool FMaterialLabGpuCompositor::Initialize(const FIntPoint InResolution)
 		Set.Normal.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.5f, 1.0f, 1.0f)));
 		Set.RAM.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 1.0f, 0.0f, 0.04f)));
 		Set.Height.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.0f, 0.0f, 0.0f), PF_R16F));
-		Set.Debug.Reset(CreateTarget(Resolution, FLinearColor(0.22f, 0.055f, 0.065f, 1.0f)));
+		Set.Debug.Reset(CreateTarget(Resolution, FLinearColor(0.08f, 0.02f, 0.12f, 1.0f)));
 	}
 	FlushRenderingCommands();
 	PublishedTargetIndex = 0;
@@ -767,7 +767,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			AddClearUAVPass(
 				GraphBuilder,
 				GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]),
-				FVector4f(0.22f, 0.055f, 0.065f, 1.0f));
+				FVector4f(0.08f, 0.02f, 0.12f, 1.0f));
 
 			if (Request.Layers.IsEmpty())
 			{

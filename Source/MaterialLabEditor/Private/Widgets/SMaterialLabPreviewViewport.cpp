@@ -3,12 +3,15 @@
 #include "AssetViewerSettings.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EditorViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureCube.h"
 #include "InputCoreTypes.h"
+#include "Engine/Engine.h"
+#include "RenderingThread.h"
 #include "MaterialLabGpuCompositor.h"
 #include "MaterialLabMaterial.h"
 #include "Materials/Material.h"
@@ -37,7 +40,7 @@ namespace MaterialLabPreview
 			NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
 		DebugTexture->SetParameterName(DebugTextureParameter);
 		DebugTexture->ExpressionGUID = FGuid::NewGuid();
-		DebugTexture->SamplerType = SAMPLERTYPE_LinearColor;
+		DebugTexture->SamplerType = SAMPLERTYPE_Color;
 		DebugTexture->Texture = LoadObject<UTexture2D>(
 			nullptr,
 			TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
@@ -175,6 +178,7 @@ void SMaterialLabPreviewViewport::Construct(const FArguments& InArgs)
 
 	SEditorViewport::Construct(SEditorViewport::FArguments());
 	SetPreviewMesh(EMaterialLabPreviewMesh::Sphere);
+	SetPreviewMaterial(nullptr);
 }
 
 void SMaterialLabPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
@@ -203,6 +207,8 @@ void SMaterialLabPreviewViewport::SetPreviewMaterial(UMaterialInterface* Materia
 	else
 	{
 		PreviewMeshComponent->SetMaterial(0, nullptr);
+		bUsingLayerPreview = false;
+		bUsingDebugPreview = false;
 	}
 
 	if (PreviewViewportClient.IsValid())
@@ -216,6 +222,9 @@ void SMaterialLabPreviewViewport::SetPreviewLayers(
 	const int32 Resolution,
 	FMaterialLabDebugPreviewSettings DebugSettings)
 {
+	bDebugPreviewMode = DebugSettings.Mode;
+	bDebugLayerIndex = DebugSettings.LayerIndex;
+	bDebugChildIndex = DebugSettings.ChildIndex;
 	ComposeLayersWithDebug(Layers, Resolution, DebugSettings);
 }
 
@@ -223,7 +232,11 @@ bool SMaterialLabPreviewViewport::ComposeLayersAtResolution(
 	const TArray<FMaterialLabLayer>& Layers,
 	const int32 Resolution)
 {
-	return ComposeLayersWithDebug(Layers, Resolution, FMaterialLabDebugPreviewSettings());
+	FMaterialLabDebugPreviewSettings DebugSettings;
+	DebugSettings.Mode = bDebugPreviewMode;
+	DebugSettings.LayerIndex = bDebugLayerIndex;
+	DebugSettings.ChildIndex = bDebugChildIndex;
+	return ComposeLayersWithDebug(Layers, Resolution, DebugSettings);
 }
 
 bool SMaterialLabPreviewViewport::ComposeLayersWithDebug(
@@ -267,6 +280,7 @@ bool SMaterialLabPreviewViewport::ComposeLayersWithDebug(
 		SetPreviewMaterial(PreviewMaterial);
 		bUsingLayerPreview = true;
 		bUsingDebugPreview = bDebugPreview;
+		UpdateDebugLightVisibility();
 	}
 
 	if (!PreviewMaterialInstance.IsValid())
@@ -274,22 +288,11 @@ bool SMaterialLabPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
-	const TWeakPtr<SMaterialLabPreviewViewport> WeakThis = SharedThis(this);
-	const FSimpleDelegate OnComposeComplete = FSimpleDelegate::CreateLambda([WeakThis]()
-	{
-		if (const TSharedPtr<SMaterialLabPreviewViewport> Viewport = WeakThis.Pin())
-		{
-			// The first viewport draw can occur before the asynchronous compositor command finishes.
-			if (Viewport->PreviewViewportClient.IsValid())
-			{
-				Viewport->PreviewViewportClient->Invalidate();
-			}
-		}
-	});
-	if (!LayerCompositor->RequestCompose(Layers, OnComposeComplete, DebugSettings))
+	if (!LayerCompositor->RequestCompose(Layers, FSimpleDelegate(), DebugSettings))
 	{
 		return false;
 	}
+	FlushRenderingCommands();
 	if (bDebugPreview)
 	{
 		PreviewMaterialInstance->SetTextureParameterValue(
@@ -498,6 +501,7 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
+	UpdateDebugLightVisibility();
 	if (PreviewViewportClient.IsValid())
 	{
 		PreviewViewportClient->Invalidate();
@@ -544,6 +548,20 @@ void SMaterialLabPreviewViewport::UpdateHdriFillLight()
 		PreviewScene.DirectionalLight->ShadowSharpen = 0.0f;
 		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
+	}
+	UpdateDebugLightVisibility();
+}
+
+void SMaterialLabPreviewViewport::UpdateDebugLightVisibility()
+{
+	const bool bLightsVisible = !bUsingDebugPreview;
+	if (PreviewScene.DirectionalLight)
+	{
+		PreviewScene.DirectionalLight->SetVisibility(bLightsVisible);
+	}
+	if (PreviewScene.SkyLight)
+	{
+		PreviewScene.SkyLight->SetVisibility(bLightsVisible);
 	}
 }
 
@@ -622,6 +640,18 @@ void SMaterialLabPreviewViewport::ZoomCamera(const float ZoomDelta)
 void SMaterialLabPreviewViewport::SetCameraFov(const float FovDegrees)
 {
 	CameraFov = FMath::Clamp(FovDegrees, 20.0f, 90.0f);
+	UpdateCamera();
+}
+
+void SMaterialLabPreviewViewport::ResetCameraAndLighting()
+{
+	CameraDistance = 225.0f;
+	CameraYaw = 195.0f;
+	CameraPitch = -8.0f;
+	CameraFov = 50.0f;
+	HdriYaw = 0.0f;
+	SetStudioLighting(EMaterialLabStudioLighting::Neutral);
+	UpdateStudioFog();
 	UpdateCamera();
 }
 

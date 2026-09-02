@@ -489,8 +489,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			DebugValue = DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		}
-		const float3 DebugLow = float3(0.22f, 0.055f, 0.065f);
-		const float3 DebugHigh = float3(0.18f, 0.65f, 0.68f);
+		const float3 DebugLow = float3(0.08f, 0.02f, 0.12f);
+		const float3 DebugHigh = float3(0.04f, 0.25f, 0.08f);
 		OutputDebug[DispatchThreadId.xy] = float4(lerp(DebugLow, DebugHigh, saturate(DebugValue)), 1.0f);
 	}
 

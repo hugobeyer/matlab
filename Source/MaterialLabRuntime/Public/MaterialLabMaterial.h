@@ -65,7 +65,9 @@ enum class EMaterialLabMaskBlendMode : uint8
 	Subtract UMETA(DisplayName = "Subtract"),
 	Multiply UMETA(DisplayName = "Multiply"),
 	Min UMETA(DisplayName = "Min"),
-	Max UMETA(DisplayName = "Max")
+	Max UMETA(DisplayName = "Max"),
+	AddSub UMETA(DisplayName = "Add/Sub"),
+	Overlay UMETA(DisplayName = "Overlay")
 };
 
 USTRUCT(BlueprintType)

@@ -54,6 +54,7 @@ private:
 	FReply SetPreviewMesh(EMaterialLabPreviewMesh MeshType);
 	FReply SetPreviewQuality(EMaterialLabPreviewQuality Quality);
 	void SetPreviewFov(float FovDegrees);
+	FReply ResetPreviewCameraAndLighting();
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
 	void PreviewSelectedSurfaceWithDisplacement();

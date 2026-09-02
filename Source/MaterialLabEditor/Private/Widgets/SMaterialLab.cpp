@@ -212,6 +212,8 @@ namespace MaterialLabUI
 		case EMaterialLabMaskBlendMode::Multiply: return LOCTEXT("MaskModeMultiply", "Multiply");
 		case EMaterialLabMaskBlendMode::Min: return LOCTEXT("MaskModeMin", "Min");
 		case EMaterialLabMaskBlendMode::Max: return LOCTEXT("MaskModeMax", "Max");
+		case EMaterialLabMaskBlendMode::AddSub: return LOCTEXT("MaskModeAddSub", "Add/Sub");
+		case EMaterialLabMaskBlendMode::Overlay: return LOCTEXT("MaskModeOverlay", "Overlay");
 		default: return LOCTEXT("MaskModeReplace", "Replace");
 		}
 	}
@@ -2214,6 +2216,21 @@ void SMaterialLab::SetPreviewFov(const float FovDegrees)
 	}
 }
 
+FReply SMaterialLab::ResetPreviewCameraAndLighting()
+{
+	PreviewFov = 50.0f;
+	StudioLighting = EMaterialLabStudioLighting::Neutral;
+	SelectedHdriPath.Reset();
+	for (const TSharedPtr<SMaterialLabPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->ResetCameraAndLighting();
+		}
+	}
+	return FReply::Handled();
+}
+
 void SMaterialLab::SetPreviewDisplacementEnabled(const bool bEnabled)
 {
 	bPreviewDisplacementEnabled = bEnabled;
@@ -2773,6 +2790,26 @@ FReply SMaterialLab::ExecuteBake(
 			}
 			ErrorText += FString::Printf(TEXT("• %s"), *Error.ToString());
 		}
+
+		const auto AppendAssetPaths = [&ErrorText](
+			const TCHAR* Heading,
+			const TArray<FString>& AssetPaths)
+		{
+			if (AssetPaths.IsEmpty())
+			{
+				return;
+			}
+			ErrorText += FString::Printf(TEXT("\n\n%s\n"), Heading);
+			for (const FString& AssetPath : AssetPaths)
+			{
+				ErrorText += FString::Printf(TEXT("• %s\n"), *AssetPath);
+			}
+		};
+		AppendAssetPaths(TEXT("Created in memory:"), Result.CreatedAssetPaths);
+		AppendAssetPaths(TEXT("Updated in memory:"), Result.UpdatedAssetPaths);
+		AppendAssetPaths(TEXT("Saved successfully:"), Result.SavedAssetPaths);
+		AppendAssetPaths(TEXT("Failed or incomplete:"), Result.FailedAssetPaths);
+
 		FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(ErrorText));
 		WorkingStatusText = TEXT("Bake failed · review reported asset paths");
 		return FReply::Handled();
@@ -5109,7 +5146,9 @@ TSharedRef<SWidget> SMaterialLab::BuildMaskBlendModeMenu(const int32 LayerIndex,
 		EMaterialLabMaskBlendMode::Subtract,
 		EMaterialLabMaskBlendMode::Multiply,
 		EMaterialLabMaskBlendMode::Min,
-		EMaterialLabMaskBlendMode::Max};
+		EMaterialLabMaskBlendMode::Max,
+		EMaterialLabMaskBlendMode::AddSub,
+		EMaterialLabMaskBlendMode::Overlay};
 	for (const EMaterialLabMaskBlendMode Mode : Modes)
 	{
 		Menu->AddSlot().AutoHeight()
@@ -5395,6 +5434,20 @@ TSharedRef<SWidget> SMaterialLab::BuildPreviewPanel()
 			.MinDesiredValueWidth(48.0f)
 			.Value_Lambda([this]() -> TOptional<float> { return PreviewFov; })
 			.OnValueChanged_Lambda([this](const float Value) { SetPreviewFov(Value); })
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+		[
+			SNew(SButton)
+			.ButtonStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("MaterialLab.CompactRowButton")))
+			.ContentPadding(2.0f)
+			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
+			.OnClicked(this, &SMaterialLab::ResetPreviewCameraAndLighting)
+			[
+				SNew(SBox).WidthOverride(16.0f).HeightOverride(16.0f)
+				[
+					SNew(SImage).Image(FMaterialLabStyle::Get().GetBrush(TEXT("MaterialLab.Icon.Refresh")))
+				]
+			]
 		];
 	const FCheckBoxStyle* OverlayToggle = &FMaterialLabStyle::Get().GetWidgetStyle<FCheckBoxStyle>(
 		TEXT("MaterialLab.ViewportOverlayToggle"));

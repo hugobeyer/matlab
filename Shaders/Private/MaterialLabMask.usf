@@ -37,7 +37,17 @@ float ApplyMaskOperation(float Previous, float Incoming)
 	{
 		return min(Previous, Incoming);
 	}
-	return max(Previous, Incoming);
+	if (BlendMode == 5)
+	{
+		return max(Previous, Incoming);
+	}
+	if (BlendMode == 6)
+	{
+		return Previous + (Incoming - 0.5f) * 2.0f;
+	}
+	return Previous < 0.5f
+		? 2.0f * Previous * Incoming
+		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
 }
 
 [numthreads(8, 8, 1)]

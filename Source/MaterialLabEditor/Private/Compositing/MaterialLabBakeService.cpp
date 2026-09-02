@@ -336,8 +336,22 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 		return Result;
 	}
 
+	UEditorAssetSubsystem* AssetSubsystem = GEditor
+		? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>()
+		: nullptr;
+	if (!AssetSubsystem)
+	{
+		Result.Errors.Add(NSLOCTEXT(
+			"MaterialLabBake",
+			"MissingAssetSubsystem",
+			"Bake cannot start because the editor asset subsystem is unavailable."));
+		return Result;
+	}
+
 	const TArray<FString> AssetNames = GetOutputAssetNames(Settings);
 	const TArray<FString> ObjectPaths = GetOutputObjectPaths(Settings);
+	TArray<bool> bOutputExisted;
+	bOutputExisted.Init(false, ObjectPaths.Num());
 	const UClass* ExpectedClasses[] = {
 		UTexture2D::StaticClass(),
 		UTexture2D::StaticClass(),
@@ -349,6 +363,7 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	{
 		if (UObject* ExistingAsset = LoadObject<UObject>(nullptr, *ObjectPaths[OutputIndex]))
 		{
+			bOutputExisted[OutputIndex] = true;
 			if (!ExistingAsset->IsA(ExpectedClasses[OutputIndex]))
 			{
 				Result.Errors.Add(FText::Format(
@@ -427,11 +442,23 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	UObject* TextureOutputs[] = {Result.BaseColor, Result.Normal, Result.RAM, Result.Height};
 	for (int32 TextureIndex = 0; TextureIndex < UE_ARRAY_COUNT(TextureOutputs); ++TextureIndex)
 	{
+		const FString& OutputPath = ObjectPaths[TextureIndex];
 		if (!TextureOutputs[TextureIndex])
 		{
+			Result.FailedAssetPaths.AddUnique(OutputPath);
 			Result.Errors.Add(FText::Format(
 				NSLOCTEXT("MaterialLabBake", "TextureCreationFailed", "Failed to create or update {0}."),
-				FText::FromString(ObjectPaths[TextureIndex])));
+				FText::FromString(OutputPath)));
+			continue;
+		}
+
+		if (bOutputExisted[TextureIndex])
+		{
+			Result.UpdatedAssetPaths.AddUnique(OutputPath);
+		}
+		else
+		{
+			Result.CreatedAssetPaths.AddUnique(OutputPath);
 		}
 	}
 	if (!Result.Errors.IsEmpty())
@@ -447,10 +474,19 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	Result.Material = CreateOrUpdateMaterial(Settings.DestinationPath, MaterialName, *Master);
 	if (!Result.Material)
 	{
+		Result.FailedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
 		Result.Errors.Add(FText::Format(
 			NSLOCTEXT("MaterialLabBake", "MaterialCreationFailed", "Failed to create or update {0}."),
 			FText::FromString(ObjectPaths[MaterialOutputIndex])));
 		return Result;
+	}
+	if (bOutputExisted[MaterialOutputIndex])
+	{
+		Result.UpdatedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
+	}
+	else
+	{
+		Result.CreatedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
 	}
 
 	TArray<FName> FailedParameters;
@@ -482,10 +518,7 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	SetTextureParameter(TEXT("ML_BaseColor"), Result.BaseColor);
 	SetTextureParameter(TEXT("ML_Normal"), Result.Normal);
 	SetTextureParameter(TEXT("ML_RAM"), Result.RAM);
-	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(
-		Result.Material,
-		TEXT("ML_Height"),
-		Result.Height);
+	SetTextureParameter(TEXT("ML_Height"), Result.Height);
 	SetScalarParameter(TEXT("ML_Tiling"), 1.0f);
 	SetScalarParameter(TEXT("ML_RoughnessBias"), 0.5f);
 	SetScalarParameter(TEXT("ML_RoughnessContrast"), 1.0f);
@@ -513,6 +546,7 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	Result.Material->MarkPackageDirty();
 	if (!FailedParameters.IsEmpty())
 	{
+		Result.FailedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
 		return Result;
 	}
 
@@ -523,34 +557,28 @@ FMaterialLabBakeResult FMaterialLabBakeService::Bake(
 	Recipe.BakedHeight = Result.Height;
 	Recipe.BakedMaterial = Result.Material;
 	Recipe.MarkPackageDirty();
+	Result.UpdatedAssetPaths.AddUnique(Recipe.GetPathName());
 
 	if (Progress)
 	{
 		Progress(EMaterialLabBakeStage::Save);
 	}
-	UEditorAssetSubsystem* AssetSubsystem = GEditor
-		? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>()
-		: nullptr;
-	if (!AssetSubsystem)
-	{
-		Result.Errors.Add(NSLOCTEXT(
-			"MaterialLabBake",
-			"MissingAssetSubsystem",
-			"The editor asset subsystem is unavailable; baked assets were not saved."));
-		return Result;
-	}
 
 	const auto SaveAsset = [&Result, AssetSubsystem](UObject* Asset)
 	{
+		const FString AssetPath = Asset->GetPathName();
 		if (!AssetSubsystem->SaveLoadedAsset(Asset, false))
 		{
+			Result.FailedAssetPaths.AddUnique(AssetPath);
 			Result.Errors.Add(FText::Format(
 				NSLOCTEXT(
 					"MaterialLabBake",
 					"AssetSaveFailed",
 					"Failed to save {0}."),
-				FText::FromString(Asset->GetPathName())));
+				FText::FromString(AssetPath)));
+			return;
 		}
+		Result.SavedAssetPaths.AddUnique(AssetPath);
 	};
 	SaveAsset(Result.BaseColor);
 	SaveAsset(Result.Normal);

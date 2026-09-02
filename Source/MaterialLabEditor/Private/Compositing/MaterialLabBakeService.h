@@ -28,6 +28,10 @@ struct FMaterialLabBakeResult
 	UTexture2D* RAM = nullptr;
 	UTexture2D* Height = nullptr;
 	UMaterialInstanceConstant* Material = nullptr;
+	TArray<FString> CreatedAssetPaths;
+	TArray<FString> UpdatedAssetPaths;
+	TArray<FString> SavedAssetPaths;
+	TArray<FString> FailedAssetPaths;
 	TArray<FText> Errors;
 
 	bool Succeeded() const
