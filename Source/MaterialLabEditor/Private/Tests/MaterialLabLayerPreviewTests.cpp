@@ -81,6 +81,13 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Hue Shift defaults neutral"), BaseLayer.HueShift, 0.0f);
 	TestEqual(TEXT("Saturation defaults neutral"), BaseLayer.Saturation, 1.0f);
 	TestEqual(TEXT("Value defaults neutral"), BaseLayer.Value, 1.0f);
+	TestEqual(TEXT("Base Color influence defaults full"), BaseLayer.BaseColorInfluence, 1.0f);
+	TestEqual(TEXT("Roughness influence defaults full"), BaseLayer.RoughnessInfluence, 1.0f);
+	TestEqual(TEXT("AO influence defaults full"), BaseLayer.AOInfluence, 1.0f);
+	TestEqual(TEXT("Metallic influence defaults full"), BaseLayer.MetallicInfluence, 1.0f);
+	TestEqual(TEXT("F0 influence defaults full"), BaseLayer.F0Influence, 1.0f);
+	TestEqual(TEXT("Normal influence defaults full"), BaseLayer.NormalInfluence, 1.0f);
+	TestEqual(TEXT("Height influence defaults full"), BaseLayer.HeightInfluence, 1.0f);
 
 	TArray<FMaterialLabLayer> Layers = { BaseLayer };
 	TestTrue(TEXT("Compositor accepts a base layer"), Compositor.RequestCompose(Layers));
@@ -136,6 +143,73 @@ bool FMaterialLabGpuCompositorTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("A metallic replacement layer remains metallic"), Pixel.B >= 253);
 	}
+
+	Layers[1].BaseColorInfluence = 0.0f;
+	Layers[1].RoughnessInfluence = 1.0f;
+	Layers[1].AOInfluence = 0.0f;
+	Layers[1].MetallicInfluence = 1.0f;
+	Layers[1].F0Influence = 0.0f;
+	Layers[1].NormalInfluence = 0.0f;
+	Layers[1].HeightInfluence = 0.0f;
+	Layers[1].Roughness = 0.75f;
+	Layers[1].Metallic = 0.0f;
+	Layers[1].bOverrideIOR = true;
+	Layers[1].IOR = 2.0f;
+	Layers[1].ConstantHeight = 0.9f;
+	TestTrue(TEXT("Compositor accepts a Roughness/Metallic-only Fill"), Compositor.RequestCompose(Layers));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Channel-isolated Base Color can be read"), Pixel))
+	{
+		TestTrue(TEXT("Zero Base Color influence preserves the lower color"), Pixel.R > Pixel.B);
+	}
+	if (ReadFirstPixel(Compositor.GetRAMOutput(), TEXT("Channel-isolated RAM can be read"), Pixel))
+	{
+		TestTrue(
+			TEXT("Roughness/Metallic-only Fill changes RAM R/B and preserves AO/F0"),
+			FMath::Abs(static_cast<int32>(Pixel.R) - 191) <= 2
+				&& Pixel.G >= 253
+				&& Pixel.B <= 2
+				&& FMath::Abs(static_cast<int32>(Pixel.A) - 10) <= 2);
+	}
+	if (ReadFirstPixel(Compositor.GetHeightOutput(), TEXT("Channel-isolated Height can be read"), Pixel))
+	{
+		TestTrue(
+			TEXT("Zero Height influence preserves the lower height"),
+			FMath::Abs(static_cast<int32>(Pixel.R) - 128) <= 2);
+	}
+
+	UTexture2D* DetailNormalTexture = LoadObject<UTexture2D>(
+		nullptr,
+		TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+	TestNotNull(TEXT("Engine normal-influence test texture exists"), DetailNormalTexture);
+	if (DetailNormalTexture)
+	{
+		Layers[1].Type = EMaterialLabLayerType::Material;
+		Layers[1].ChannelMode = EMaterialLabLayerChannelMode::NormalDetail;
+		Layers[1].NormalSourceType = EMaterialLabNormalSourceType::Texture;
+		Layers[1].NormalTexture = DetailNormalTexture;
+		Layers[1].NormalInfluence = 1.0f;
+		TestTrue(TEXT("Compositor accepts a full-influence normal detail"), Compositor.RequestCompose(Layers));
+		FlushRenderingCommands();
+		if (ReadFirstPixel(Compositor.GetNormalOutput(), TEXT("Full-influence Normal can be read"), Pixel))
+		{
+			TestTrue(TEXT("The test normal differs from the neutral lower normal"), Pixel.R > 160 && Pixel.G > 160);
+		}
+
+		Layers[1].NormalInfluence = 0.0f;
+		TestTrue(TEXT("Compositor accepts zero normal influence"), Compositor.RequestCompose(Layers));
+		FlushRenderingCommands();
+		if (ReadFirstPixel(Compositor.GetNormalOutput(), TEXT("Zero-influence Normal can be read"), Pixel))
+		{
+			TestTrue(
+				TEXT("Zero Normal influence preserves the neutral lower normal"),
+				FMath::Abs(static_cast<int32>(Pixel.R) - 128) <= 2
+					&& FMath::Abs(static_cast<int32>(Pixel.G) - 128) <= 2
+					&& Pixel.B >= 253);
+		}
+	}
+
+	Layers[1] = TopLayer;
 
 	UTexture2D* PeelTexture = LoadObject<UTexture2D>(
 		nullptr,

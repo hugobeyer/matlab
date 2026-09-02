@@ -58,6 +58,13 @@ public:
 		SHADER_PARAMETER(float, FillRoughness)
 		SHADER_PARAMETER(float, FillMetallic)
 		SHADER_PARAMETER(float, LayerF0)
+		SHADER_PARAMETER(float, BaseColorInfluence)
+		SHADER_PARAMETER(float, RoughnessInfluence)
+		SHADER_PARAMETER(float, AOInfluence)
+		SHADER_PARAMETER(float, MetallicInfluence)
+		SHADER_PARAMETER(float, F0Influence)
+		SHADER_PARAMETER(float, NormalInfluence)
+		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
@@ -290,6 +297,13 @@ namespace MaterialLabGpuCompositor
 		float FillRoughness = 0.5f;
 		float FillMetallic = 0.0f;
 		float LayerF0 = 0.04f;
+		float BaseColorInfluence = 1.0f;
+		float RoughnessInfluence = 1.0f;
+		float AOInfluence = 1.0f;
+		float MetallicInfluence = 1.0f;
+		float F0Influence = 1.0f;
+		float NormalInfluence = 1.0f;
+		float HeightInfluence = 1.0f;
 		float HeightBlendAmount = 1.0f;
 		float HeightThreshold = 0.5f;
 		float HeightRange = 0.1f;
@@ -615,6 +629,13 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			1.0f,
 			Layer.bOverrideIOR ? Layer.IOR : SourceIOR);
 		Data.LayerF0 = FMath::Square((LayerIOR - 1.0f) / (LayerIOR + 1.0f));
+		Data.BaseColorInfluence = FMath::Clamp(Layer.BaseColorInfluence, 0.0f, 1.0f);
+		Data.RoughnessInfluence = FMath::Clamp(Layer.RoughnessInfluence, 0.0f, 1.0f);
+		Data.AOInfluence = FMath::Clamp(Layer.AOInfluence, 0.0f, 1.0f);
+		Data.MetallicInfluence = FMath::Clamp(Layer.MetallicInfluence, 0.0f, 1.0f);
+		Data.F0Influence = FMath::Clamp(Layer.F0Influence, 0.0f, 1.0f);
+		Data.NormalInfluence = FMath::Clamp(Layer.NormalInfluence, 0.0f, 1.0f);
+		Data.HeightInfluence = FMath::Clamp(Layer.HeightInfluence, 0.0f, 1.0f);
 		Data.HeightBlendAmount = FMath::Clamp(Layer.HeightBlendAmount, 0.0f, 4.0f);
 		Data.HeightThreshold = FMath::Clamp(Layer.HeightThreshold, 0.0f, 1.0f);
 		Data.HeightRange = FMath::Max(Layer.HeightRange, 1.0e-6f);
@@ -959,6 +980,13 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					Parameters->FillRoughness = Layer.FillRoughness;
 					Parameters->FillMetallic = Layer.FillMetallic;
 					Parameters->LayerF0 = Layer.LayerF0;
+					Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
+					Parameters->RoughnessInfluence = Layer.RoughnessInfluence;
+					Parameters->AOInfluence = Layer.AOInfluence;
+					Parameters->MetallicInfluence = Layer.MetallicInfluence;
+					Parameters->F0Influence = Layer.F0Influence;
+					Parameters->NormalInfluence = Layer.NormalInfluence;
+					Parameters->HeightInfluence = Layer.HeightInfluence;
 					Parameters->HeightBlendAmount = Layer.HeightBlendAmount;
 					Parameters->HeightThreshold = Layer.HeightThreshold;
 					Parameters->HeightRange = Layer.HeightRange;

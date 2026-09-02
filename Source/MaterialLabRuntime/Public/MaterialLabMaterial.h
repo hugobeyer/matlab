@@ -376,6 +376,27 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bFlipNormalY = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BaseColorInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RoughnessInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AOInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MetallicInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (DisplayName = "IOR / F0 Influence", ClampMin = "0.0", ClampMax = "1.0"))
+	float F0Influence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float NormalInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeightInfluence = 1.0f;
 };
 
 UCLASS(BlueprintType)

@@ -5929,6 +5929,93 @@ TSharedRef<SWidget> SMaterialLab::BuildSurfaceMaskInfluenceControls()
 		];
 }
 
+TSharedRef<SWidget> SMaterialLab::BuildChannelInfluenceControls()
+{
+	const auto NumericRow = [this](
+		const FText& Label,
+		float FMaterialLabLayer::* Member) -> TSharedRef<SWidget>
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock).Text(Label)
+			]
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				MakeResettableNumeric(
+					SNew(SNumericEntryBox<float>)
+					.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+					.AllowSpin(true)
+					.MinValue(0.0f)
+					.MaxValue(1.0f)
+					.MinSliderValue(0.0f)
+					.MaxSliderValue(1.0f)
+					.Delta(0.01f)
+					.MinDesiredValueWidth(96.0f)
+					.Value_Lambda([this, Member]() -> TOptional<float>
+					{
+						return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+							? WorkingLayers[SelectedLayerIndex].*Member
+							: 1.0f;
+					})
+					.OnValueChanged_Lambda([this, Member](const float Value)
+					{
+						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+						{
+							WorkingLayers[SelectedLayerIndex].*Member = Value;
+							RefreshLayeredPreview();
+						}
+					}),
+					FSimpleDelegate::CreateLambda([this, Member]()
+					{
+						if (WorkingLayers.IsValidIndex(SelectedLayerIndex)
+							&& !FMath::IsNearlyEqual(WorkingLayers[SelectedLayerIndex].*Member, 1.0f))
+						{
+							WorkingLayers[SelectedLayerIndex].*Member = 1.0f;
+							RefreshLayeredPreview();
+						}
+					}))
+			];
+	};
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+			{
+				return EVisibility::Collapsed;
+			}
+			const FMaterialLabLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			return Layer.Type != EMaterialLabLayerType::Effect
+				&& Layer.ChannelMode == EMaterialLabLayerChannelMode::CompleteSurface
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		.Padding(FMargin(0.0f, 4.0f, 0.0f, 0.0f))
+		[
+			SNew(SMaterialLabInspectorGroup)
+			.Title(LOCTEXT("ChannelInfluenceHeading", "CHANNEL INFLUENCE"))
+			.InitiallyExpanded(false)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("BaseColorInfluenceLabel", "Base Color"), &FMaterialLabLayer::BaseColorInfluence)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("RoughnessInfluenceLabel", "Roughness"), &FMaterialLabLayer::RoughnessInfluence)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("AOInfluenceLabel", "Ambient Occlusion"), &FMaterialLabLayer::AOInfluence)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("MetallicInfluenceLabel", "Metallic"), &FMaterialLabLayer::MetallicInfluence)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("F0InfluenceLabel", "IOR / F0"), &FMaterialLabLayer::F0Influence)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[NumericRow(LOCTEXT("LayerNormalInfluenceLabel", "Normal"), &FMaterialLabLayer::NormalInfluence)]
+				+ SVerticalBox::Slot().AutoHeight()
+				[NumericRow(LOCTEXT("LayerHeightInfluenceLabel", "Height"), &FMaterialLabLayer::HeightInfluence)]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMaterialLab::BuildColorAdjustmentControls()
 {
 	const auto NumericRow = [this](
@@ -6786,6 +6873,10 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 								]
 								]
 							]
+						]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							BuildChannelInfluenceControls()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
 						[

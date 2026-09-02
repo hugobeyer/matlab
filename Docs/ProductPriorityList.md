@@ -219,7 +219,16 @@ Implemented and built; editor/global-shader verification pending:
 - Final `RAM.A` remains dielectric F0; displacement Height remains separate.
 - Compatibility source/reference controls remain serialized but are hidden.
 
-Implemented in source; build/editor/global-shader validation pending:
+Implemented and built; editor/global-shader runtime verification pending:
+
+- Every complete-surface layer has independent BC, Roughness, AO, Metallic, F0, Normal, and Height weights.
+- Each channel weight defaults to `1.0`, preserving existing recipes.
+- A `0.0` channel weight preserves the accumulated channel underneath.
+- Base Height at `0.0` emits neutral `0.5` when no lower layer exists.
+- Height-driven Contact AO and Border Normal respect Height plus AO/Normal influence.
+- Roughness/Metallic-only Fill uses zero weights for BC, AO, F0, Normal, and Height.
+
+Implemented and built; editor/import verification pending:
 
 - `_RAM` surfaces without authored height derive it from normals during import/reimport.
 - Reconstruction uses editor-only FFT Poisson integration and creates importer-owned RAMH data.

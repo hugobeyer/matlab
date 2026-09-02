@@ -170,6 +170,7 @@ private:
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();
 	TSharedRef<SWidget> BuildEffectInspectorControls();
+	TSharedRef<SWidget> BuildChannelInfluenceControls();
 	TSharedRef<SWidget> BuildColorAdjustmentControls();
 	TSharedRef<SWidget> BuildSurfaceMaskInfluenceControls();
 	TSharedRef<SWidget> BuildHeightBlendControls();

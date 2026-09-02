@@ -54,6 +54,13 @@ float RoughnessOffset;
 float FillRoughness;
 float FillMetallic;
 float LayerF0;
+float BaseColorInfluence;
+float RoughnessInfluence;
+float AOInfluence;
+float MetallicInfluence;
+float F0Influence;
+float NormalInfluence;
+float HeightInfluence;
 float HeightBlendAmount;
 float HeightThreshold;
 float HeightRange;
@@ -334,27 +341,28 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Coat = CompositionMode != 0 ? 1.0f : 0.0f;
 	float ReplaceWeight = Alpha * (1.0f - Coat);
 	float ColorWeight = saturate(ReplaceWeight + Alpha * Coat * 0.35f);
+	float NormalWeight = Alpha * saturate(NormalInfluence);
 
 	float3 ResultBaseColor = NormalOnly != 0
 		? PreviousBaseColor.rgb
-		: lerp(PreviousBaseColor.rgb, LayerBaseColor, ColorWeight);
+		: lerp(PreviousBaseColor.rgb, LayerBaseColor, ColorWeight * saturate(BaseColorInfluence));
 	float ResultRoughness = NormalOnly != 0
 		? PreviousPacked.r
-		: lerp(PreviousPacked.r, LayerRoughness, Alpha);
+		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(RoughnessInfluence));
 	float ResultAO = NormalOnly != 0
 		? PreviousPacked.g
-		: lerp(PreviousPacked.g, LayerAO, ReplaceWeight);
+		: lerp(PreviousPacked.g, LayerAO, ReplaceWeight * saturate(AOInfluence));
 	float ResultMetallic = NormalOnly != 0
 		? PreviousPacked.b
-		: lerp(PreviousPacked.b, LayerMetallic, ReplaceWeight);
+		: lerp(PreviousPacked.b, LayerMetallic, ReplaceWeight * saturate(MetallicInfluence));
 	float ResultF0 = NormalOnly != 0
 		? PreviousPacked.a
-		: lerp(PreviousPacked.a, LayerF0, Alpha);
+		: lerp(PreviousPacked.a, LayerF0, Alpha * saturate(F0Influence));
 	float3 WeightedDetail = normalize(float3(
-		SampledNormal.xy * Alpha,
-		lerp(1.0f, SampledNormal.z, Alpha)));
+		SampledNormal.xy * NormalWeight,
+		lerp(1.0f, SampledNormal.z, NormalWeight)));
 	float3 CombinedNormal = BlendReorientedNormals(PreviousNormal, WeightedDetail);
-	float3 OverriddenNormal = normalize(lerp(PreviousNormal, SampledNormal, Alpha));
+	float3 OverriddenNormal = normalize(lerp(PreviousNormal, SampledNormal, NormalWeight));
 	float3 LayerResultNormal = OverrideNormal != 0 ? OverriddenNormal : CombinedNormal;
 	float HeightVisibility = DirectHeightComparison != 0
 		? HeightWeight
@@ -362,19 +370,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float EffectVisibility = Enabled != 0 && HasEffects != 0
 		? saturate(Opacity * FeatureWeight * HeightVisibility)
 		: 0.0f;
+	float EffectNormalVisibility = EffectVisibility * saturate(NormalInfluence);
 	float3 WeightedEffectNormal = normalize(float3(
-		EffectNormal.xy * EffectVisibility,
-		lerp(1.0f, EffectNormal.z, EffectVisibility)));
+		EffectNormal.xy * EffectNormalVisibility,
+		lerp(1.0f, EffectNormal.z, EffectNormalVisibility)));
 	float3 ResultNormal = BlendReorientedNormals(LayerResultNormal, WeightedEffectNormal);
-	ResultAO *= lerp(1.0f, EffectAO, EffectVisibility);
+	ResultAO *= lerp(1.0f, EffectAO, EffectVisibility * saturate(AOInfluence));
 
 	float HeightDetailVisibility = HeightBlendEnabled != 0
 		&& Initialize == 0
 		&& NormalOnly == 0
 		&& Enabled != 0
-		? saturate(Opacity * SurfaceMaskWeight)
+		? saturate(Opacity * SurfaceMaskWeight * HeightInfluence)
 		: 0.0f;
-	if (HeightDetailVisibility > 0.0f && HeightContactAOAmount > 0.0f)
+	float ContactAOVisibility = HeightDetailVisibility * saturate(AOInfluence);
+	float BorderNormalVisibility = HeightDetailVisibility * saturate(NormalInfluence);
+	if (ContactAOVisibility > 0.0f && HeightContactAOAmount > 0.0f)
 	{
 		float2 Texel = 1.0f / float2(OutputSize);
 		float ContactCenter = SampleContactField(UV);
@@ -389,9 +400,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			ContactCenter,
 			length(ContactGradient) * max(HeightContactAOWidth, 1.0e-4f)));
 		float GeneratedAO = 1.0f - saturate(HeightContactAOAmount) * Contact;
-		ResultAO *= lerp(1.0f, GeneratedAO, HeightDetailVisibility);
+		ResultAO *= lerp(1.0f, GeneratedAO, ContactAOVisibility);
 	}
-	if (HeightDetailVisibility > 0.0f
+	if (BorderNormalVisibility > 0.0f
 		&& abs(HeightBorderLift) > 1.0e-4f
 		&& HeightBorderNormalStrength > 0.0f)
 	{
@@ -407,17 +418,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			-BorderGradient * HeightBorderNormalStrength,
 			1.0f));
 		float3 WeightedBorderNormal = normalize(float3(
-			BorderNormal.xy * HeightDetailVisibility,
-			lerp(1.0f, BorderNormal.z, HeightDetailVisibility)));
+			BorderNormal.xy * BorderNormalVisibility,
+			lerp(1.0f, BorderNormal.z, BorderNormalVisibility)));
 		ResultNormal = BlendReorientedNormals(ResultNormal, WeightedBorderNormal);
 	}
 
 	float ResultHeight = PreviousHeightValue;
 	if (Enabled != 0 && NormalOnly == 0)
 	{
+		float LayerResultHeight = PreviousHeightValue;
 		if (Initialize != 0)
 		{
-			ResultHeight = IncomingHeight;
+			LayerResultHeight = IncomingHeight;
 		}
 		else if (UseHeightBlendMask != 0)
 		{
@@ -426,12 +438,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				: PreviousHeightValue;
 			float A = BaseHeight + HeightBias;
 			float B = IncomingHeight + HeightOffset;
-			ResultHeight = lerp(A, B, Alpha);
+			LayerResultHeight = lerp(A, B, Alpha);
 		}
 		else
 		{
-			ResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
+			LayerResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
 		}
+		ResultHeight = lerp(PreviousHeightValue, LayerResultHeight, saturate(HeightInfluence));
 	}
 
 	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);

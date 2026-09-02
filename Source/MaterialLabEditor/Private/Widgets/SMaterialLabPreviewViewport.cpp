@@ -392,7 +392,7 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 
 	float LightBrightness = 2.0f;
 	float SkyBrightness = 0.45f;
-	float LightSourceAngle = 2.5f;
+	float LightSourceAngle = 5.0f;
 	FRotator LightRotation(-35.0f, -45.0f, 0.0f);
 
 	switch (LightingPreset)
@@ -400,19 +400,19 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 	case EMaterialLabStudioLighting::Soft:
 		LightBrightness = 1.25f;
 		SkyBrightness = 0.65f;
-		LightSourceAngle = 5.0f;
+		LightSourceAngle = 8.0f;
 		LightRotation = FRotator(-28.0f, 30.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Dramatic:
 		LightBrightness = 3.0f;
 		SkyBrightness = 0.15f;
-		LightSourceAngle = 1.25f;
+		LightSourceAngle = 3.0f;
 		LightRotation = FRotator(-48.0f, -65.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Rim:
 		LightBrightness = 2.5f;
 		SkyBrightness = 0.2f;
-		LightSourceAngle = 2.0f;
+		LightSourceAngle = 4.0f;
 		LightRotation = FRotator(-22.0f, 145.0f, 0.0f);
 		break;
 	case EMaterialLabStudioLighting::Neutral:
@@ -428,6 +428,8 @@ void SMaterialLabPreviewViewport::SetStudioLighting(const EMaterialLabStudioLigh
 	{
 		PreviewScene.DirectionalLight->SetLightSourceAngle(LightSourceAngle);
 		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(LightSourceAngle * 0.5f);
+		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
+		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
 	if (PreviewViewportClient.IsValid())
 	{
