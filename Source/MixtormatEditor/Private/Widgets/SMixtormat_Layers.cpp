@@ -795,23 +795,6 @@ void SMixtormat::RestoreStainColor(
 	}
 }
 
-FReply SMixtormat::HandleLayerMouseButtonDown(
-	const FGeometry& Geometry,
-	const FPointerEvent& PointerEvent,
-	const int32 LayerIndex)
-{
-	SelectWorkingLayer(LayerIndex);
-	if (PointerEvent.GetEffectingButton() == EKeys::RightMouseButton
-		&& LayerIndex > 0
-		&& WorkingLayers.IsValidIndex(LayerIndex)
-		&& LayerContextAnchors.IsValidIndex(LayerIndex)
-		&& LayerContextAnchors[LayerIndex].IsValid())
-	{
-		LayerContextAnchors[LayerIndex]->SetIsOpen(true);
-	}
-	return FReply::Handled();
-}
-
 void SMixtormat::RebuildLayerList()
 {
 	if (!LayerListBox.IsValid())
@@ -820,7 +803,6 @@ void SMixtormat::RebuildLayerList()
 	}
 
 	LayerListBox->ClearChildren();
-	LayerContextAnchors.Reset();
 	LayerThumbnails.Reset();
 	for (int32 LayerIndex = 0; LayerIndex < WorkingLayers.Num(); ++LayerIndex)
 	{
@@ -983,284 +965,258 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	// A fill layer has no asset to preview, so its own colour is the thumbnail. Read through a
+	// lambda rather than captured, because the colour picker edits it live.
+	if (Layer.Type == EMixtormatLayerType::Fill)
+	{
+		return SNew(SColorBlock)
+			.Color_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					? WorkingLayers[LayerIndex].BaseColor
+					: MixtormatPalette::Panel();
+			})
+			.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+	}
+
+	// Thumbnails are pooled and must be kept alive for as long as the widget is: LayerThumbnails
+	// is that ownership, and RebuildLayerList resets it in step with the rows.
+	const int32 Size = static_cast<int32>(MixtormatTokens::LayerThumbnailSize);
+	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
+		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
+		&& !Layer.NormalTexture.IsNull())
+	{
+		if (UTexture2D* Texture = Layer.NormalTexture.LoadSynchronous())
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail =
+				MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget();
+		}
+	}
+	else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
+	{
+		if (Surface->PreviewMaterial)
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
+				FAssetData(Surface->PreviewMaterial.Get()), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget();
+		}
+	}
+
+	return SNew(SColorBlock)
+		.Color(MixtormatPalette::Panel())
+		.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+}
+
+FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	// What the layer is made of, which is a different question from what it is called. A surface
+	// name when there is one, because that is the answer a user is scanning for; the layer's kind
+	// only when there is no asset behind it to name.
+	if (LayerIndex == 0)
+	{
+		return LOCTEXT("BaseLayerSource", "BASE");
+	}
+	if (Layer.Type == EMixtormatLayerType::Fill)
+	{
+		return LOCTEXT("FillLayerSource", "FILL");
+	}
+	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
+		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
+		&& !Layer.NormalTexture.IsNull())
+	{
+		return FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName().ToUpper());
+	}
+	if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
+	{
+		const FText Name = Surface->DisplayName.IsEmpty()
+			? FText::FromString(Layer.SourceSurface.ToSoftObjectPath().GetAssetName())
+			: Surface->DisplayName;
+		return FText::FromString(Name.ToString().ToUpper());
+	}
+	return Layer.Type == EMixtormatLayerType::Effect
+		? LOCTEXT("EffectLayerSource", "EFFECT")
+		: LOCTEXT("MaterialLayerSource", "MATERIAL");
+}
+
+FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
+{
+	if (Child.Type == EMixtormatLayerChildType::Effect)
+	{
+		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
+		if (Asset)
+		{
+			return Asset->EffectType == EMixtormatEffectType::Peeling
+				? LOCTEXT("PeelingEffectName", "Peeling")
+				: Asset->EffectType == EMixtormatEffectType::Stain
+					? LOCTEXT("StainEffectName", "Stain")
+					: LOCTEXT("ErosionEffectName", "Erosion");
+		}
+		return Child.Effect.ProceduralType == EMixtormatEffectType::Erosion
+			? LOCTEXT("ErosionEffectName", "Erosion")
+			: LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
+	}
+	if (Child.Type == EMixtormatLayerChildType::Generated)
+	{
+		return LOCTEXT("GeneratedChildName", "Generated Mask");
+	}
+	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
+		? Child.Mask.Mask.ToSoftObjectPath()
+		: Child.Mask.MaskTexture.ToSoftObjectPath();
+	return FText::FromString(MaskPath.GetAssetName());
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, const int32 ChildIndex)
+{
+	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+
+	// A mask shows itself. Everything else shows what kind of thing it is, because an effect has
+	// no image to show and a glyph is more legible at this size than a rendered swatch would be.
+	if (Child.Type == EMixtormatLayerChildType::Mask)
+	{
+		const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
+			? Child.Mask.Mask.ToSoftObjectPath()
+			: Child.Mask.MaskTexture.ToSoftObjectPath();
+		if (UObject* MaskObject = MaskPath.TryLoad())
+		{
+			UTexture2D* Texture = Cast<UTexture2D>(MaskObject);
+			if (const UMixtormatMask* MaskAsset = Cast<UMixtormatMask>(MaskObject))
+			{
+				Texture = MaskAsset->Thumbnail ? MaskAsset->Thumbnail.Get() : MaskAsset->MaskTexture.Get();
+			}
+			if (Texture)
+			{
+				const int32 Size = static_cast<int32>(MixtormatTokens::LayerChildIconSize);
+				TSharedPtr<FAssetThumbnail> Thumbnail =
+					MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
+				LayerThumbnails.Add(Thumbnail);
+				return Thumbnail->MakeThumbnailWidget();
+			}
+		}
+	}
+
+	return SNew(SImage)
+		.Image(Child.Type == EMixtormatLayerChildType::Effect
+			? MixtormatIcons::Effect()
+			: Child.Type == EMixtormatLayerChildType::Generated
+				? MixtormatIcons::Generated()
+				: MixtormatIcons::Mask())
+		.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()));
+}
+
 TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 {
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FText TypeLabel = LayerIndex == 0
-		? LOCTEXT("BaseLockedLabel", "BASE · LOCKED")
-		: Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
-			? LOCTEXT("NormalDetailLayerLabel", "NORMAL DETAIL")
-			: Layer.Type == EMixtormatLayerType::Fill
-				? LOCTEXT("FillLayerLabel", "FILL")
-				: Layer.Type == EMixtormatLayerType::Effect
-					? LOCTEXT("EffectLayerLabel", "EFFECT")
-					: LOCTEXT("MaterialLayerLabel", "MATERIAL");
-	int32 MaskCount = 0;
-	int32 EffectCount = 0;
-	for (const FMixtormatLayerChild& Child : Layer.Children)
-	{
-		MaskCount += (Child.Type == EMixtormatLayerChildType::Mask
-			|| Child.Type == EMixtormatLayerChildType::Generated) ? 1 : 0;
-		EffectCount += Child.Type == EMixtormatLayerChildType::Effect ? 1 : 0;
-	}
-	const FText LayerSummary = Layer.Children.IsEmpty()
-		? TypeLabel
-		: FText::Format(
-			LOCTEXT("LayerChildSummary", "{0} · {1} effect(s) · {2} mask(s)"),
-			TypeLabel,
-			FText::AsNumber(EffectCount),
-			FText::AsNumber(MaskCount));
+	const FText DisplayName = Layer.DisplayName;
+	// The base layer is the material itself: it cannot be hidden, moved or dragged onto.
+	const bool bIsBase = LayerIndex == 0;
 
-	TSharedRef<SWidget> LayerThumbnail = SNew(SColorBlock)
-		.Color_Lambda([this, LayerIndex]()
+	TSharedRef<SMixtormatLayerGroup> Group = SNew(SMixtormatLayerGroup)
+		.bExpanded_Lambda([this, LayerIndex]()
 		{
-			return WorkingLayers.IsValidIndex(LayerIndex)
-				&& WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Fill
-				? WorkingLayers[LayerIndex].BaseColor
-				: FLinearColor(0.08f, 0.08f, 0.08f);
+			return ExpandedLayerIndices.Contains(LayerIndex);
 		})
-		.Size(FVector2D(32.0f, 32.0f));
-	if (Layer.Type != EMixtormatLayerType::Fill)
-	{
-		if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
-			&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
-			&& !Layer.NormalTexture.IsNull())
-		{
-			if (UTexture2D* Texture = Layer.NormalTexture.LoadSynchronous())
-			{
-				TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(FAssetData(Texture), 32, 32, ThumbnailPool);
-				LayerThumbnails.Add(Thumbnail);
-				LayerThumbnail = Thumbnail->MakeThumbnailWidget();
-			}
-		}
-		else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
-		{
-			if (Surface->PreviewMaterial)
-			{
-				TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
-					FAssetData(Surface->PreviewMaterial.Get()), 32, 32, ThumbnailPool);
-				LayerThumbnails.Add(Thumbnail);
-				LayerThumbnail = Thumbnail->MakeThumbnailWidget();
-			}
-		}
-	}
-
-
-	TSharedPtr<SMenuAnchor> ContextAnchor;
-	TSharedRef<SMenuAnchor> Row = SAssignNew(ContextAnchor, SMenuAnchor)
-		.Placement(MenuPlacement_MenuRight)
-		.OnGetMenuContent(this, &SMixtormat::BuildLayerContextMenu, LayerIndex)
+		.Header()
 		[
-			SNew(SBorder)
-			.Padding(4.0f)
-			.BorderImage_Lambda([this, LayerIndex]()
+			SNew(SMixtormatLayerRow)
+			.Name(DisplayName)
+			.Source(GetLayerSourceText(LayerIndex))
+			.Badge(MixtormatLayerBadges::ForLayer(Layer))
+			.bCanDisable(!bIsBase)
+			.Thumbnail()[BuildLayerThumbnail(LayerIndex)]
+			.bEnabled_Lambda([this, LayerIndex]()
 			{
-				return SelectedLayerIndex == LayerIndex
-					? FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerCardSelected"))
-					: FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerCard"));
+				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].bEnabled;
 			})
-			.OnMouseButtonDown(this, &SMixtormat::HandleLayerMouseButtonDown, LayerIndex)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SBox)
-					.WidthOverride(12.0f)
-					.Visibility(LayerIndex > 0 ? EVisibility::Visible : EVisibility::Hidden)
-					[
-						SNew(SMixtormatLayerDragHandle)
-						.LayerIndex(LayerIndex)
-						.DisplayName(Layer.DisplayName)
-						[
-							SNew(SImage)
-							.Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Grip")))
-							.ToolTipText(LOCTEXT("LayerDragHandleHint", "Drag to reorder"))
-						]
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SCheckBox)
-					.Style(&FAppStyle::Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("ToggleButtonCheckbox")))
-					.ToolTipText(LOCTEXT("SoloLayerHint", "Preview only this layer"))
-					.IsChecked_Lambda([this, LayerIndex]()
-					{
-						return SoloLayerIndex == LayerIndex
-							? ECheckBoxState::Checked
-							: ECheckBoxState::Unchecked;
-					})
-					.OnCheckStateChanged_Lambda([this, LayerIndex](const ECheckBoxState State)
-					{
-						SoloLayerIndex = State == ECheckBoxState::Checked ? LayerIndex : INDEX_NONE;
-						if (SoloLayerIndex != INDEX_NONE)
-						{
-							bShowCompositionBefore = false;
-						}
-						RefreshLayeredPreview(false);
-						RebuildLayerList();
-					})
-					[
-						SNew(STextBlock)
-						.Text(LOCTEXT("SoloLayerButton", "S"))
-						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(3.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
-				[
-					SNew(SCheckBox)
-					.IsEnabled(LayerIndex > 0)
-					.IsChecked_Lambda([this, LayerIndex]()
-					{
-						return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].bEnabled
-							? ECheckBoxState::Checked
-							: ECheckBoxState::Unchecked;
-					})
-					.OnCheckStateChanged(this, &SMixtormat::SetWorkingLayerEnabled, LayerIndex)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
-				[
-					SNew(SBox).WidthOverride(32.0f).HeightOverride(32.0f)[LayerThumbnail]
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f).VAlign(VAlign_Center)
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						SNew(STextBlock).Text(Layer.DisplayName)
-					]
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						SNew(STextBlock)
-						.Text(LayerSummary)
-						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 8))
-						.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-					]
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.DragHandle")))
-					.ContentPadding(FMargin(2.0f, 0.0f))
-					.ToolTipText(LOCTEXT("ToggleLayerDetails", "Show layer details"))
-					.OnClicked(this, &SMixtormat::ToggleLayerExpanded, LayerIndex)
-					[
-						SNew(SImage)
-						.Image(FAppStyle::GetBrush(ExpandedLayerIndices.Contains(LayerIndex)
-							? TEXT("Icons.ChevronDown")
-							: TEXT("Icons.ChevronRight")))
-					]
-				]
-			]
+			.bExpanded_Lambda([this, LayerIndex]()
+			{
+				return ExpandedLayerIndices.Contains(LayerIndex);
+			})
+			.bSelected_Lambda([this, LayerIndex]() { return SelectedLayerIndex == LayerIndex; })
+			.bSolo_Lambda([this, LayerIndex]() { return SoloLayerIndex == LayerIndex; })
+			.OnSelected_Lambda([this, LayerIndex]() { SelectWorkingLayer(LayerIndex); })
+			.OnToggleExpanded_Lambda([this, LayerIndex]() { ToggleLayerExpanded(LayerIndex); })
+			.OnToggleEnabled_Lambda([this, LayerIndex]()
+			{
+				if (!WorkingLayers.IsValidIndex(LayerIndex))
+				{
+					return;
+				}
+				SetWorkingLayerEnabled(
+					WorkingLayers[LayerIndex].bEnabled ? ECheckBoxState::Unchecked : ECheckBoxState::Checked,
+					LayerIndex);
+			})
+			.OnToggleSolo_Lambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); })
+			.OnGetContextMenu(this, &SMixtormat::BuildLayerContextMenu, LayerIndex)
+			.OnDragDetected_Lambda([this, LayerIndex, DisplayName](const FGeometry&, const FPointerEvent&)
+			{
+				return LayerIndex > 0
+					? FReply::Handled().BeginDragDrop(
+						FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName))
+					: FReply::Unhandled();
+			})
 		];
 
-	LayerContextAnchors.SetNum(FMath::Max(LayerContextAnchors.Num(), LayerIndex + 1));
-	LayerContextAnchors[LayerIndex] = ContextAnchor;
-
-	TSharedRef<SVerticalBox> RowContent = SNew(SVerticalBox);
-	RowContent->AddSlot().AutoHeight()[Row];
-	if (ExpandedLayerIndices.Contains(LayerIndex))
+	for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 	{
+		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
+		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated;
+		const FText ChildName = GetLayerChildName(Child);
 
-		if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail)
-		{
-			const FText SourceText = Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
-				? FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName())
-				: FText::Format(LOCTEXT("SurfaceNormalSource", "Surface · {0}"), Layer.DisplayName);
-			RowContent->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 4.0f, 2.0f)
-			[SNew(STextBlock).Text(SourceText).ColorAndOpacity(FSlateColor::UseSubduedForeground())];
-		}
-
-		for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
-		{
-			const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
-			const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
-			const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated;
-			FText ChildName;
-			FText ChildSummary;
-			TSharedRef<SWidget> ChildIcon = SNew(SImage).Image(MixtormatUI::LucideIcon(TEXT("nodes")));
-			if (bEffect)
-			{
-				const UMixtormatEffect* EffectAsset = Child.Effect.Effect.LoadSynchronous();
-				if (EffectAsset && EffectAsset->EffectType == EMixtormatEffectType::Peeling)
-				{
-					ChildName = LOCTEXT("PeelingEffectName", "Peeling");
-				}
-				else if (EffectAsset && EffectAsset->EffectType == EMixtormatEffectType::Stain)
-				{
-					ChildName = LOCTEXT("StainEffectName", "Stain");
-				}
-				else if (Child.Effect.Effect.IsNull()
-					&& Child.Effect.ProceduralType == EMixtormatEffectType::Erosion)
-				{
-					ChildName = LOCTEXT("ErosionEffectName", "Erosion");
-				}
-				else if (Child.Effect.Effect.IsNull()
-					&& Child.Effect.ProceduralType == EMixtormatEffectType::Peeling)
-				{
-					ChildName = LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
-				}
-				else
-				{
-					ChildName = FText::FromString(Child.Effect.Effect.ToSoftObjectPath().GetAssetName());
-				}
-				if (Child.Effect.Effect.IsNull()
-					&& Child.Effect.ProceduralType == EMixtormatEffectType::Erosion)
-				{
-					// The pass count is fixed now, so it says nothing about this child.
-					// Amount is what distinguishes one erosion child from another.
-					ChildSummary = FText::FromString(FString::Printf(
-						TEXT("Filter · Height · %.2f"),
-						Child.Effect.ErosionAmount));
-				}
-				else
-				{
-					ChildSummary = FText::FromString(FString::Printf(TEXT("Effect · %.2f"), Child.Effect.Strength));
-				}
-			}
-			else if (bGenerated)
-			{
-				const FMixtormatGeneratedMask& Gen = Child.Generated;
-				ChildName = LOCTEXT("GeneratedChildName", "Generated Mask");
-				ChildSummary = FText::Format(
-					LOCTEXT("GeneratedChildSummary", "{0} · {1}"),
-					MixtormatUI::MaskBlendModeText(Gen.BlendMode),
-					FText::FromString(FString::Printf(TEXT("%.2f"), Gen.Weight)));
-			}
-			else
-			{
-				const FMixtormatMaskLayer& MaskLayer = Child.Mask;
-				const FSoftObjectPath MaskPath = !MaskLayer.Mask.IsNull()
-					? MaskLayer.Mask.ToSoftObjectPath() : MaskLayer.MaskTexture.ToSoftObjectPath();
-				ChildName = FText::FromString(MaskPath.GetAssetName());
-				ChildSummary = FText::Format(
-					LOCTEXT("MaskChildSummary", "{0} · {1}"),
-					MixtormatUI::MaskBlendModeText(MaskLayer.BlendMode),
-					FText::FromString(FString::Printf(TEXT("%.2f"), MaskLayer.Weight)));
-				if (UObject* MaskObject = MaskPath.TryLoad())
-				{
-					UTexture2D* Texture = Cast<UTexture2D>(MaskObject);
-					if (const UMixtormatMask* MaskAsset = Cast<UMixtormatMask>(MaskObject))
-					{
-						Texture = MaskAsset->Thumbnail ? MaskAsset->Thumbnail.Get() : MaskAsset->MaskTexture.Get();
-					}
-					if (Texture)
-					{
-						TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
-							FAssetData(Texture), 24, 24, ThumbnailPool);
-						LayerThumbnails.Add(Thumbnail);
-						ChildIcon = Thumbnail->MakeThumbnailWidget();
-					}
-				}
-			}
-
-			RowContent->AddSlot().AutoHeight().Padding(8.0f, 1.0f, 4.0f, 1.0f)
+		Group->AddChild(
+			SNew(SMixtormatChildDropTarget)
+			.LayerIndex(LayerIndex)
+			.ChildIndex(ChildIndex)
+			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
 			[
-				SNew(SMixtormatChildStackItem)
-				.LayerIndex(LayerIndex)
-				.ChildIndex(ChildIndex)
-				.DisplayName(ChildName)
-				.OnGetMenuContent_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
+				SNew(SMixtormatLayerChildRow)
+				.Name(ChildName)
+				.Kind(MixtormatLayerBadges::KindForChild(Child))
+				.Badge(MixtormatLayerBadges::ForChild(Child))
+				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
+				.bActive_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return IsLayerChildEnabled(LayerIndex, ChildIndex);
+				})
+				.bSelected_Lambda([this, LayerIndex, ChildIndex, bEffect]()
+				{
+					// Effects and masks are selected through separate indices, so which one to
+					// compare against depends on what the child is.
+					return SelectedLayerIndex == LayerIndex
+						&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
+				})
+				.OnSelected_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					SelectWorkingChild(LayerIndex, ChildIndex);
+				})
+				.OnToggleActive_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
+				{
+					const ECheckBoxState Next = IsLayerChildEnabled(LayerIndex, ChildIndex)
+						? ECheckBoxState::Unchecked
+						: ECheckBoxState::Checked;
+					if (bEffect)
+					{
+						ToggleLayerEffect(LayerIndex, ChildIndex);
+					}
+					else if (bGenerated)
+					{
+						SetGeneratedEnabled(Next, LayerIndex, ChildIndex);
+					}
+					else
+					{
+						SetMaskEnabled(Next, LayerIndex, ChildIndex);
+					}
+				})
+				.OnGetContextMenu_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
 				{
 					if (bGenerated)
 					{
@@ -1270,142 +1226,86 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						? BuildEffectContextMenu(LayerIndex, ChildIndex)
 						: BuildMaskContextMenu(LayerIndex, ChildIndex);
 				})
-				.OnSelected(this, &SMixtormat::SelectWorkingChild)
-				.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
-				[
-					SNew(SBox)
-					.HeightOverride(34.0f)
-					[
-						SNew(SBorder)
-						.Padding(FMargin(0.0f, 2.0f, 3.0f, 2.0f))
-						.BorderImage_Lambda([this, LayerIndex, ChildIndex, bEffect]()
-						{
-							const bool bSelected = SelectedLayerIndex == LayerIndex
-								&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
-							return bSelected
-								? FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerCardSelected"))
-								: FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerCard"));
-						})
-						.ToolTipText(LOCTEXT("ChildRowHint", "LMB: select · drag: reorder · overflow: actions"))
-						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Fill)
-							[
-								SNew(SMixtormatHierarchyConnector)
-								.IsLast(ChildIndex == Layer.Children.Num() - 1
-									&& (LayerIndex == 0
-										|| (Layer.Type != EMixtormatLayerType::Material
-											&& Layer.Type != EMixtormatLayerType::Fill)))
-							]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
-							[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Grip")))]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
-							[
-								SNew(SCheckBox)
-								.IsChecked_Lambda([this, LayerIndex, ChildIndex]()
-								{
-									if (!WorkingLayers.IsValidIndex(LayerIndex)
-										|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-									{
-										return ECheckBoxState::Unchecked;
-									}
-									const FMixtormatLayerChild& Current = WorkingLayers[LayerIndex].Children[ChildIndex];
-									bool bEnabled = Current.Mask.bEnabled;
-									if (Current.Type == EMixtormatLayerChildType::Effect)
-									{
-										bEnabled = Current.Effect.bEnabled;
-									}
-									else if (Current.Type == EMixtormatLayerChildType::Generated)
-									{
-										bEnabled = Current.Generated.bEnabled;
-									}
-									return bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-								})
-								.OnCheckStateChanged_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated](const ECheckBoxState State)
-								{
-									if (bEffect)
-									{
-										ToggleLayerEffect(LayerIndex, ChildIndex);
-									}
-									else if (bGenerated)
-									{
-										SetGeneratedEnabled(State, LayerIndex, ChildIndex);
-									}
-									else
-									{
-										SetMaskEnabled(State, LayerIndex, ChildIndex);
-									}
-								})
-							]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(3.0f, 0.0f).VAlign(VAlign_Center)
-							[SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)[ChildIcon]]
-							+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(4.0f, 0.0f).VAlign(VAlign_Center)
-							[SNew(STextBlock).Text(ChildName).OverflowPolicy(ETextOverflowPolicy::Ellipsis)]
-							+ SHorizontalBox::Slot().AutoWidth().Padding(3.0f, 0.0f).VAlign(VAlign_Center)
-							[
-								SNew(STextBlock)
-								.Text(ChildSummary)
-								.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 8))
-								.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-							]
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							[
-								SNew(SComboButton)
-								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-								.ContentPadding(2.0f)
-								.HasDownArrow(false)
-								.OnGetMenuContent_Lambda([this, LayerIndex, ChildIndex, bEffect]()
-								{
-									return bEffect
-										? BuildEffectContextMenu(LayerIndex, ChildIndex)
-										: BuildMaskContextMenu(LayerIndex, ChildIndex);
-								})
-								.ButtonContent()[SNew(SImage).Image(MixtormatUI::LucideIcon(TEXT("ellipsis")))]
-							]
-						]
-					]
-				]
-			];
-		}
-		if (LayerIndex > 0
-			&& (Layer.Type == EMixtormatLayerType::Material || Layer.Type == EMixtormatLayerType::Fill))
-		{
-			RowContent->AddSlot().AutoHeight().Padding(8.0f, 1.0f, 4.0f, 2.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Fill)
-				[SNew(SMixtormatHierarchyConnector).IsLast(true)]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SComboButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-					.ContentPadding(FMargin(7.0f, 2.0f))
-					.HasDownArrow(false)
-					.OnGetMenuContent(this, &SMixtormat::BuildAddChildMenu, LayerIndex)
-					.ButtonContent()
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[SNew(SImage).Image(MixtormatUI::LucideIcon(TEXT("plus")))]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
-						[SNew(STextBlock).Text(LOCTEXT("AddChild", "Add Child"))]
-					]
-				]
-			];
-		}
+				.OnDragDetected_Lambda([this, LayerIndex, ChildIndex, ChildName](const FGeometry&, const FPointerEvent&)
+				{
+					return FReply::Handled().BeginDragDrop(
+						FMixtormatChildDragDropOp::New(LayerIndex, ChildIndex, ChildName));
+				})
+			]);
 	}
 
 	return SNew(SMixtormatLayerRowDropTarget)
 		.TargetLayerIndex(LayerIndex)
 		.OnLayerDropped(this, &SMixtormat::HandleLayerDropped)
 		.OnMaskDropped(this, &SMixtormat::AssignMaskToLayer)
-		[RowContent];
+		[
+			Group
+		];
+}
+
+bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIndex) const
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return false;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Effect:    return Child.Effect.bEnabled;
+	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
+	default:                                  return Child.Mask.bEnabled;
+	}
+}
+
+FReply SMixtormat::ToggleLayerSolo(const int32 LayerIndex)
+{
+	// Solo and the before/after comparison answer the same question, so turning one on turns the
+	// other off rather than leaving the preview showing something neither setting describes.
+	SoloLayerIndex = SoloLayerIndex == LayerIndex ? INDEX_NONE : LayerIndex;
+	if (SoloLayerIndex != INDEX_NONE)
+	{
+		bShowCompositionBefore = false;
+	}
+	RefreshLayeredPreview(false);
+	RebuildLayerList();
+	return FReply::Handled();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 {
 	FMenuBuilder MenuBuilder(true, nullptr);
+
+	// Creation lives here and nowhere else. The stack used to carry an "Add Child" button at the
+	// bottom of every expanded layer, which cost a row of height per layer to say something the
+	// right button already implies.
+	MenuBuilder.BeginSection(TEXT("MixtormatLayerAdd"), LOCTEXT("LayerAddSection", "Add"));
+	MenuBuilder.AddSubMenu(
+		LOCTEXT("AddLayerChild", "Add"),
+		LOCTEXT("AddLayerChildHint", "Append a mask, an effect or a generated mask to this layer."),
+		FNewMenuDelegate::CreateLambda([this, LayerIndex](FMenuBuilder& AddMenu)
+		{
+			FillAddChildMenu(AddMenu, LayerIndex);
+		}),
+		false,
+		FSlateIcon());
+	MenuBuilder.EndSection();
+
 	MenuBuilder.BeginSection(TEXT("MixtormatLayerActions"), LOCTEXT("LayerActionsSection", "Layer"));
+
+	// Solo is reachable two ways on purpose: ctrl or alt on the eye for someone who knows, and
+	// here for someone who does not. A modifier that exists nowhere in the UI is a secret.
+	MenuBuilder.AddMenuEntry(
+		LOCTEXT("SoloLayerContext", "Solo Layer"),
+		LOCTEXT("SoloLayerContextHint", "Preview only this layer. Ctrl or Alt click the eye does the same."),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateLambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); }),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateLambda([this, LayerIndex]() { return SoloLayerIndex == LayerIndex; })),
+		NAME_None,
+		EUserInterfaceActionType::ToggleButton);
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
 		{
@@ -1432,9 +1332,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	return MenuBuilder.MakeWidget();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddChildMenu(const int32 LayerIndex)
+void SMixtormat::FillAddChildMenu(FMenuBuilder& MenuBuilder, const int32 LayerIndex)
 {
-	FMenuBuilder MenuBuilder(true, nullptr);
 	MenuBuilder.AddSubMenu(
 		LOCTEXT("AddMaskChild", "Mask"),
 		LOCTEXT("AddMaskChildHint", "Append a reusable mask child."),
@@ -1516,7 +1415,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddChildMenu(const int32 LayerIndex)
 		{
 			AddGeneratedMaskToLayer(LayerIndex);
 		})));
-	return MenuBuilder.MakeWidget();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(

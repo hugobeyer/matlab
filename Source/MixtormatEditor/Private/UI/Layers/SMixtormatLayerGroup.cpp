@@ -21,7 +21,7 @@ void SMixtormatLayerGroup::Construct(const FArguments& InArgs)
 		.AutoWidth()
 		[
 			SNew(SBox)
-			.WidthOverride(1.0f)
+			.WidthOverride(MixtormatTokens::LayerEdgeWidth)
 			.Visibility_Lambda([bExpanded]()
 			{
 				return bExpanded.Get(false) ? EVisibility::Visible : EVisibility::Collapsed;
@@ -54,6 +54,6 @@ void SMixtormatLayerGroup::AddChild(const TSharedRef<SWidget>& Child)
 	if (Children.IsValid())
 	{
 		// One pixel between children, matching the stack's own rhythm.
-		Children->AddSlot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)[Child];
+		Children->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::LayerRowGap, 0.0f, 0.0f)[Child];
 	}
 }

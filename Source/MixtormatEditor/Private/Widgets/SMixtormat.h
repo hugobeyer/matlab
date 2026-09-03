@@ -123,11 +123,9 @@ private:
 	FReply OpenStainColorPicker(int32 LayerIndex, int32 ChildIndex);
 	void SetStainColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
 	void RestoreStainColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
-	FReply HandleLayerMouseButtonDown(
-		const FGeometry& Geometry,
-		const FPointerEvent& PointerEvent,
-		int32 LayerIndex);
 	void SetWorkingLayerEnabled(ECheckBoxState CheckState, int32 LayerIndex);
+	FReply ToggleLayerSolo(int32 LayerIndex);
+	bool IsLayerChildEnabled(int32 LayerIndex, int32 ChildIndex) const;
 	void SyncSelectedLayerControls();
 	void ResetEditHistory(bool bCurrentStateIsSaved);
 	void RecordEditHistory();
@@ -386,9 +384,13 @@ private:
 	TSharedRef<SWidget> BuildSurfaceList();
 	TSharedRef<SWidget> BuildLayerStackPanel();
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
+	TSharedRef<SWidget> BuildLayerThumbnail(int32 LayerIndex);
+	TSharedRef<SWidget> BuildLayerChildIcon(int32 LayerIndex, int32 ChildIndex);
+	FText GetLayerSourceText(int32 LayerIndex) const;
+	FText GetLayerChildName(const FMixtormatLayerChild& Child) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddLayerMenu();
-	TSharedRef<SWidget> BuildAddChildMenu(int32 LayerIndex);
+	void FillAddChildMenu(class FMenuBuilder& MenuBuilder, int32 LayerIndex);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
@@ -437,7 +439,6 @@ private:
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
 	TArray<TSharedPtr<FAssetThumbnail>> MaskThumbnails;
 	TArray<TSharedPtr<FAssetThumbnail>> HdriThumbnails;
-	TArray<TSharedPtr<SMenuAnchor>> LayerContextAnchors;
 	TArray<TSharedPtr<SMixtormatPreviewViewport>> PreviewViewports;
 	TSet<int32> ExpandedLayerIndices;
 	TArray<FMixtormatLayer> WorkingLayers;

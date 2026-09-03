@@ -684,7 +684,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
-		.Padding(FMargin(0.0f, 4.0f, 0.0f, 0.0f))
+		
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("HeightMaskBlendingHeading", "HEIGHT MASK BLENDING"))
@@ -1231,7 +1231,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		.WidthOverride(MixtormatUI::InspectorWidth)
 		[
 			SNew(SBorder)
-			.Padding(MixtormatUI::PanelPadding)
+			.Padding(FMargin(0.0f))
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 			[
 				SNew(SVerticalBox)
@@ -1245,14 +1245,13 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						[
 							SAssignNew(SelectedSurfaceText, STextBlock)
 							.Text(LOCTEXT("NoSelectedSurface", "No layer selected"))
-							.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SAssignNew(SelectedIdentityText, STextBlock)
 							.Text(LOCTEXT("NoIdentity", "—"))
-							.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 8))
-							.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
 						]
 					]
 					// The channel-availability line ("BC · N · RAMH Authored") is gone: it restated
@@ -1296,7 +1295,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						{
 							return bHasSelectedLayer ? EVisibility::Visible : EVisibility::Collapsed;
 						})
-						+ SVerticalBox::Slot().AutoHeight()[SNew(SSeparator)]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 3.0f)
 						[
 							SNew(SCheckBox)
@@ -1322,7 +1320,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) return LOCTEXT("NormalSource", "Choose Normal Source..."); const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex]; return Layer.NormalSourceType == EMixtormatNormalSourceType::Texture ? FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName()) : LOCTEXT("SurfaceNormal", "Surface Normal"); })]
 							.OnGetMenuContent_Lambda([this]() { return BuildNormalSourceMenu(SelectedLayerIndex); })
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SNew(SMixtormatInspectorGroup)
 							.Visibility_Lambda([this]()
@@ -1396,7 +1394,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						[
 							BuildChannelInfluenceControls()
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SNew(SMixtormatInspectorGroup)
 							.Visibility_Lambda([this]()
@@ -1406,58 +1404,41 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									: EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("CompositionLabel", "COMPOSITION"))
-							.InitiallyExpanded(false)
+							.InitiallyExpanded(true)
 							[
 								SNew(SVerticalBox)
-								+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(LOCTEXT("CompositionModeLabel", "Layer Composition"))]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 8.0f)
-							[
-								SNew(SButton)
-								.Text_Lambda([this]()
-								{
-									return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-										&& WorkingLayers[SelectedLayerIndex].CompositionMode == EMixtormatCompositionMode::Coat
-										? LOCTEXT("CoatComposition", "Coat · Vertical Layer")
-										: LOCTEXT("ReplaceComposition", "Replace · Horizontal Blend");
-								})
-								.OnClicked_Lambda([this]()
-								{
-									if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+
+								// One control, not three fields. BLEND / OVER / COAT / DETAIL are the
+								// only combinations of ChannelMode, CompositionMode and NormalBlendMode
+								// that mean anything, and they are the same four words the layer's
+								// badge prints -- so the stack and the inspector teach one vocabulary.
+								+ SVerticalBox::Slot()
+								.AutoHeight()
+								.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+								[
+									SNew(SMixtormatSegmentedControl)
+									.Options(MixtormatLayerBadges::CompositionOptions())
+									.ToolTips(MixtormatLayerBadges::CompositionToolTips())
+									.ActiveIndex_Lambda([this]()
 									{
-										FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-										Layer.CompositionMode = Layer.CompositionMode == EMixtormatCompositionMode::Replace
-											? EMixtormatCompositionMode::Coat
-											: EMixtormatCompositionMode::Replace;
-										RefreshLayeredPreview();
-									}
-									return FReply::Handled();
-								})
-							]
-							+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(LOCTEXT("NormalBlendModeLabel", "Normal Composition"))]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 8.0f)
-							[
-								SNew(SButton)
-								.Text_Lambda([this]()
-								{
-									return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-										&& WorkingLayers[SelectedLayerIndex].NormalBlendMode == EMixtormatNormalBlendMode::Override
-										? LOCTEXT("OverrideNormalComposition", "Override · Masked")
-										: LOCTEXT("CombineNormalComposition", "Combine · RNM · Masked");
-								})
-								.ToolTipText(LOCTEXT("NormalBlendModeHint", "Combine uses RNM with the final layer mask. Override replaces toward the layer normal using that same mask."))
-								.OnClicked_Lambda([this]()
-								{
-									if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+										return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+											? static_cast<int32>(MixtormatLayerBadges::CompositionOf(
+												WorkingLayers[SelectedLayerIndex]))
+											: 0;
+									})
+									.OnChosen_Lambda([this](const int32 Index)
 									{
-										FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-										Layer.NormalBlendMode = Layer.NormalBlendMode == EMixtormatNormalBlendMode::Combine
-											? EMixtormatNormalBlendMode::Override
-											: EMixtormatNormalBlendMode::Combine;
+										if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+										{
+											return;
+										}
+										MixtormatLayerBadges::ApplyComposition(
+											WorkingLayers[SelectedLayerIndex],
+											static_cast<MixtormatLayerBadges::EComposition>(Index));
 										RefreshLayeredPreview();
-									}
-									return FReply::Handled();
-								})
-							]
+										RebuildLayerList();
+									})
+								]
 														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
@@ -1471,7 +1452,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 
 							]
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SNew(SMixtormatInspectorGroup)
 							.Visibility_Lambda([this]()

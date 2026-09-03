@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -24,7 +25,7 @@ class SMixtormatTile final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatTile)
-		: _TileSize(62.0f)
+		: _TileSize(MixtormatTokens::MaskTileSize)
 		, _bShowName(true)
 		, _bSelected(false)
 	{}
@@ -57,7 +58,7 @@ public:
 private:
 	const FSlateBrush* GetBorderBrush() const;
 
-	float TileSize = 62.0f;
+	float TileSize = MixtormatTokens::MaskTileSize;
 	TAttribute<bool> bSelected;
 	FMixtormatOnTileActivated OnActivated;
 

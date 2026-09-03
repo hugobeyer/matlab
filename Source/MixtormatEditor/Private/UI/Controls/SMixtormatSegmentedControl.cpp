@@ -36,7 +36,7 @@ namespace
 					.EndColor(this, &SMixtormatSegment::GetBottom)
 					.MultiplyStart(this, &SMixtormatSegment::GetMultiply)
 					.Orientation(Orient_Vertical)
-					.CornerRadius(1.0f)
+					.CornerRadius(MixtormatTokens::CornerRadiusInner)
 					[
 						SNew(SBox)
 						.HAlign(HAlign_Center)
@@ -81,7 +81,7 @@ namespace
 		FLinearColor GetMultiply() const
 		{
 			// A segment is only 16px wide, so it takes a lighter darkening pass than a full row.
-			return IsActive() ? MixtormatPalette::Hex(0x000000, 0.28f) : FLinearColor::Transparent;
+			return IsActive() ? MixtormatPalette::Hex(0x000000, MixtormatTokens::SegmentShadeAlpha) : FLinearColor::Transparent;
 		}
 		FSlateColor GetTextColor() const
 		{
@@ -111,7 +111,7 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 			.AutoWidth()
 			[
 				SNew(SBox)
-				.WidthOverride(1.0f)
+				.WidthOverride(MixtormatTokens::SegmentSeamWidth)
 				[
 					SNew(SImage)
 					.Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.SegmentSeam")))
@@ -140,7 +140,7 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 		.EndColor(MixtormatPalette::Hex(0x000000, 0.0f))
 		.Orientation(Orient_Vertical)
 		.CornerRadius(MixtormatTokens::CornerRadius)
-		.Padding(FMargin(1.0f))
+		.Padding(FMargin(MixtormatTokens::SegmentSeamWidth))
 		[
 			Strip
 		]

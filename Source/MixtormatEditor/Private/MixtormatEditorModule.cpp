@@ -16,7 +16,11 @@ void FMixtormatEditorModule::StartupModule()
 {
 	FMixtormatStyle::Initialize();
 
-	FGlobalTabmanager::Get()->RegisterTabSpawner(
+	// Nomad, not the base RegisterTabSpawner: this is a standalone workspace window that docks
+	// anywhere, and only the nomad registration is matched by the UnregisterNomadTabSpawner in
+	// ShutdownModule. Registered one way and unregistered the other, the spawner outlived the
+	// module that owned it and pointed at freed memory after a Live Coding reload.
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 			MixtormatTabName,
 			FOnSpawnTab::CreateRaw(this, &FMixtormatEditorModule::SpawnMixtormatTab))
 			.SetDisplayName(LOCTEXT("MixtormatTabTitle", "Mixtormat"))

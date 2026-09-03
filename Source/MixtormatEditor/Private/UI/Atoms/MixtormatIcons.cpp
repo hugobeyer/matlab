@@ -1,7 +1,6 @@
 #include "UI/Atoms/MixtormatIcons.h"
 
 #include "Style/MixtormatStyle.h"
-#include "Styling/AppStyle.h"
 
 namespace MixtormatIcons
 {
@@ -12,12 +11,17 @@ namespace MixtormatIcons
 
 	const FSlateBrush* Eye()          { return Get(TEXT("Mixtormat.Icon.Eye")); }
 	const FSlateBrush* EyeOff()       { return Get(TEXT("Mixtormat.Icon.EyeOff")); }
-	// Chevrons come from the app style: they are pure geometry and match the editor's own
-	// disclosure arrows, which is what a user expects a twisty to look like.
-	const FSlateBrush* ChevronDown()  { return FAppStyle::GetBrush(TEXT("Icons.ChevronDown")); }
-	const FSlateBrush* ChevronRight() { return FAppStyle::GetBrush(TEXT("Icons.ChevronRight")); }
+	// Chevrons are ours rather than FAppStyle's. Borrowing the editor's meant the one glyph in a
+	// layer row that we did not control changed weight with the editor theme, next to an eye and a
+	// badge that did not.
+	const FSlateBrush* ChevronDown()  { return Get(TEXT("Mixtormat.Icon.ChevronDown")); }
+	const FSlateBrush* ChevronRight() { return Get(TEXT("Mixtormat.Icon.ChevronRight")); }
 	const FSlateBrush* Refresh()      { return Get(TEXT("Mixtormat.Icon.Refresh")); }
 	const FSlateBrush* Overflow()     { return Get(TEXT("Mixtormat.Icon.Overflow")); }
 	const FSlateBrush* Add()          { return Get(TEXT("Mixtormat.Icon.Add")); }
 	const FSlateBrush* Duplicate()    { return Get(TEXT("Mixtormat.Icon.Duplicate")); }
+
+	const FSlateBrush* Mask()         { return Get(TEXT("Mixtormat.Icon.Mask")); }
+	const FSlateBrush* Effect()       { return Get(TEXT("Mixtormat.Icon.Effect")); }
+	const FSlateBrush* Generated()    { return Get(TEXT("Mixtormat.Icon.Generated")); }
 }

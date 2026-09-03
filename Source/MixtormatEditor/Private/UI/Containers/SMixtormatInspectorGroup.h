@@ -43,7 +43,6 @@ public:
 
 private:
 	FReply ToggleExpanded();
-	const FSlateBrush* GetHeaderBrush() const;
 	FLinearColor GetHeaderTint() const;
 
 	bool bExpanded = false;

@@ -116,12 +116,12 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(
 		TEXT("Mixtormat.PanelShadow"),
 		new FSlateRoundedBoxBrush(Shadow, 7.0f));
+	// The ground both columns sit on. Darker than the rows and groups stacked in it, so those
+	// read as raised sheets -- and with no outline, because contrast here comes from the shade
+	// difference rather than from a drawn edge.
 	StyleInstance->Set(
 		TEXT("Mixtormat.Panel"),
-		new FSlateRoundedBoxBrush(Panel, 5.0f, Border, 0.55f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.RaisedPanel"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 4.0f, Border, 0.45f));
+		new FSlateRoundedBoxBrush(MixtormatPalette::Shell(), MixtormatTokens::CornerRadius));
 	StyleInstance->Set(
 		TEXT("Mixtormat.InsetPanel"),
 		new FSlateRoundedBoxBrush(Inset, 4.0f, Shadow, 0.45f));
@@ -129,35 +129,14 @@ void FMixtormatStyle::Initialize()
 		TEXT("Mixtormat.SectionBar"),
 		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.3f));
 	StyleInstance->Set(
-		TEXT("Mixtormat.InspectorGroup"),
-		new FSlateColorBrush(PanelSurface));
-	StyleInstance->Set(
-		TEXT("Mixtormat.InspectorGroupHeader"),
-		new FSlateColorBrush(HeaderSurface));
-	StyleInstance->Set(
-		TEXT("Mixtormat.InspectorGroupHeaderHovered"),
-		new FSlateColorBrush(Hex(0x242424)));
-	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhost"),
 		new FSlateRoundedBoxBrush(RaisedPanel, 6.0f, BorderStrong, 0.8f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhostAccent"),
 		new FSlateRoundedBoxBrush(SelectionFill, 6.0f, AccentHover, 1.0f));
 	StyleInstance->Set(
-		TEXT("Mixtormat.ViewportBorder"),
-		new FSlateRoundedBoxBrush(Viewport, 6.0f, BorderStrong, 0.5f));
-	StyleInstance->Set(
 		TEXT("Mixtormat.ViewportOverlayGroup"),
 		new FSlateRoundedBoxBrush(WithOpacity(RaisedPanel, 0.82f), 4.0f, BorderStrong, 0.45f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.LayerCard"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 4.0f, Border, 0.4f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.LayerCardSelected"),
-		new FSlateRoundedBoxBrush(SelectionFill, 4.0f, Accent, 0.8f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.Accent"),
-		new FSlateColorBrush(Accent));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderline"),
 		new FSlateColorBrush(FLinearColor::Transparent));
@@ -167,12 +146,6 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRow"),
 		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.25f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.CompactRowHovered"),
-		new FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.35f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.CompactRowSelected"),
-		new FSlateRoundedBoxBrush(SelectionFill, 1.0f, Accent, 0.55f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRowValidDrop"),
 		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, 0.65f));
@@ -188,24 +161,11 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.SectionHeader"), SectionHeader);
 
 	FTextBlockStyle Muted = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 9))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
 		.SetColorAndOpacity(MutedText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	StyleInstance->Set(TEXT("Mixtormat.MutedText"), Muted);
-
-	FButtonStyle AssetCard = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, 2.0f, Border, 0.35f))
-		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 2.0f, BorderStrong, 0.5f))
-		.SetPressed(FSlateRoundedBoxBrush(Panel, 2.0f, Accent, 0.65f))
-		.SetDisabled(FSlateRoundedBoxBrush(Panel, 2.0f, Border, 0.35f))
-		.SetNormalForeground(FSlateColor(Text))
-		.SetHoveredForeground(FSlateColor(Text))
-		.SetPressedForeground(FSlateColor(Text))
-		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(2.0f))
-		.SetPressedPadding(FMargin(2.0f, 3.0f, 2.0f, 1.0f));
-	StyleInstance->Set(TEXT("Mixtormat.AssetCard"), AssetCard);
 
 	// Invisible in every state. It exists to catch the click and nothing else; the header bar
 	// behind it draws the normal and hovered surfaces.
@@ -275,7 +235,6 @@ void FMixtormatStyle::Initialize()
 		.SetNormalPadding(FMargin(6.0f, 1.0f))
 		.SetPressedPadding(FMargin(6.0f, 2.0f, 6.0f, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabButton"), TabButton);
-	StyleInstance->Set(TEXT("Mixtormat.CompactTab"), TabButton);
 
 	FButtonStyle TabButtonActive = FButtonStyle()
 		.SetNormal(FSlateRoundedBoxBrush(SelectionFill, 1.0f, Accent, 0.45f))
@@ -287,21 +246,6 @@ void FMixtormatStyle::Initialize()
 		.SetNormalPadding(FMargin(6.0f, 1.0f))
 		.SetPressedPadding(FMargin(6.0f, 2.0f, 6.0f, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabButtonActive"), TabButtonActive);
-	StyleInstance->Set(TEXT("Mixtormat.CompactTabActive"), TabButtonActive);
-
-	FCheckBoxStyle LayerButton = FCheckBoxStyle()
-		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
-		.SetUncheckedImage(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.35f))
-		.SetUncheckedHoveredImage(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.5f))
-		.SetUncheckedPressedImage(FSlateRoundedBoxBrush(Panel, 1.0f, BorderStrong, 0.5f))
-		.SetCheckedImage(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, Accent, 0.65f))
-		.SetCheckedHoveredImage(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, AccentHover, 0.65f))
-		.SetCheckedPressedImage(FSlateRoundedBoxBrush(Panel, 1.0f, AccentPressed, 0.65f))
-		.SetUndeterminedImage(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, BorderStrong, 0.5f))
-		.SetUndeterminedHoveredImage(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, Accent, 0.65f))
-		.SetUndeterminedPressedImage(FSlateRoundedBoxBrush(Panel, 1.0f, AccentPressed, 0.65f))
-		.SetPadding(FMargin(3.0f));
-	StyleInstance->Set(TEXT("Mixtormat.LayerButton"), LayerButton);
 
 	FCheckBoxStyle TabToggle = FCheckBoxStyle()
 		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
@@ -337,15 +281,6 @@ void FMixtormatStyle::Initialize()
 		.SetPadding(FMargin(2.0f));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
-	FSliderStyle Slider = FSliderStyle()
-		.SetNormalBarImage(FSlateRoundedBoxBrush(Border, 1.5f))
-		.SetHoveredBarImage(FSlateRoundedBoxBrush(BorderStrong, 1.5f))
-		.SetNormalThumbImage(FSlateRoundedBoxBrush(BorderStrong, 4.0f))
-		.SetHoveredThumbImage(FSlateRoundedBoxBrush(AccentHover, 5.0f))
-		.SetBarThickness(2.0f);
-	StyleInstance->Set(TEXT("Mixtormat.Slider"), Slider);
-	StyleInstance->Set(TEXT("Mixtormat.ScrubSlider"), Slider);
-
 	FButtonStyle CompactRowButton = FButtonStyle()
 		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.25f))
 		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.35f))
@@ -359,19 +294,6 @@ void FMixtormatStyle::Initialize()
 		.SetPressedPadding(FMargin(4.0f, 2.0f, 4.0f, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.CompactRowButton"), CompactRowButton);
 
-	FButtonStyle DragHandle = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(FLinearColor::Transparent, 1.0f))
-		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f))
-		.SetPressed(FSlateRoundedBoxBrush(FocusFill, 1.0f))
-		.SetDisabled(FSlateRoundedBoxBrush(FLinearColor::Transparent, 1.0f))
-		.SetNormalForeground(FSlateColor(MutedText))
-		.SetHoveredForeground(FSlateColor(Text))
-		.SetPressedForeground(FSlateColor(Accent))
-		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(2.0f, 0.0f))
-		.SetPressedPadding(FMargin(2.0f, 1.0f, 2.0f, 0.0f));
-	StyleInstance->Set(TEXT("Mixtormat.DragHandle"), DragHandle);
-
 	FSpinBoxStyle ScrubControl = AppStyle.GetWidgetStyle<FSpinBoxStyle>(TEXT("NumericEntrySpinBox"));
 	ScrubControl
 		.SetBackgroundBrush(FSlateRoundedBoxBrush(AppColor(TEXT("Colors.Input")), 1.0f, Border, 0.25f))
@@ -380,7 +302,6 @@ void FMixtormatStyle::Initialize()
 		.SetInactiveFillBrush(FSlateRoundedBoxBrush(FLinearColor::Transparent, 1.0f))
 		.SetForegroundColor(FSlateColor(Text))
 		.SetTextPadding(FMargin(3.0f, 0.0f));
-	StyleInstance->Set(TEXT("Mixtormat.ScrubControl"), ScrubControl);
 
 	// ---------------------------------------------------------------------------------------
 	// Design system. Geometry lives in MixtormatDesignTokens.h; the colours have to resolve
@@ -428,27 +349,13 @@ void FMixtormatStyle::Initialize()
 		TEXT("Mixtormat.ValueSlider.BackgroundDisabled"),
 		new FSlateRoundedBoxBrush(Hex(0x191919), MixtormatTokens::CornerRadius, Hex(0x242424), MixtormatTokens::OutlineWidth));
 
-	StyleInstance->Set(
-		TEXT("Mixtormat.ValueSlider.Fill"),
-		new FSlateRoundedBoxBrush(FillTop, MixtormatTokens::CornerRadius));
-	StyleInstance->Set(
-		TEXT("Mixtormat.ValueSlider.FillHovered"),
-		new FSlateRoundedBoxBrush(Hex(0x285586), MixtormatTokens::CornerRadius));
-	StyleInstance->Set(
-		TEXT("Mixtormat.ValueSlider.FillActive"),
-		new FSlateRoundedBoxBrush(Hex(0x2A5C93), MixtormatTokens::CornerRadius));
-	StyleInstance->Set(
-		TEXT("Mixtormat.ValueSlider.FillDisabled"),
-		new FSlateRoundedBoxBrush(WithOpacity(FillBottom, 0.45f), MixtormatTokens::CornerRadius));
-
 	// Centre tick on a signed range, and the modified-from-default stripe.
-	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.FillBottom"), new FSlateColorBrush(FillBottom));
 	// The badge: fixed-size mark carrying a row's composite mode.
 	StyleInstance->Set(
 		TEXT("Mixtormat.Badge"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::BadgeSurface(), 1.0f));
 	FTextBlockStyle BadgeText = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontGroupHeader))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBadge))
 		.SetColorAndOpacity(MixtormatPalette::BadgeText())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -473,11 +380,102 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::Shell()));
 	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Panel()));
 
+	// ---- Menus -----------------------------------------------------------------------------
+	// FMenuBuilder takes a style set and reads a fixed family of "Menu.*" keys off it -- twenty of
+	// them, and a missing one renders as the checkerboard rather than falling back. So every key is
+	// seeded from FAppStyle's own menu family first and only the ones the design speaks to are
+	// replaced. Ours live under the same names in our own style set, which is why there is no
+	// collision with the editor's.
+	{
+		const ISlateStyle& App = FAppStyle::Get();
+		const auto Inherit = [&](const TCHAR* Key) { return ISlateStyle::Join(TEXT("Menu"), TCHAR_TO_ANSI(Key)); };
+
+		// Padding and metrics, inherited then overridden where the design specifies one.
+		StyleInstance->Set(TEXT("Menu.Block.IndentedPadding"), FMargin(MixtormatTokens::MenuItemInset, 0.0f, 0.0f, 0.0f));
+		StyleInstance->Set(TEXT("Menu.Block.Padding"), FMargin(0.0f));
+		StyleInstance->Set(TEXT("Menu.MenuBar.Padding"), FMargin(MixtormatTokens::MenuItemGap, 0.0f));
+		StyleInstance->Set(TEXT("Menu.Heading.Padding"), FMargin(
+			MixtormatTokens::MenuItemInset,
+			MixtormatTokens::MenuCaptionInsetAbove,
+			MixtormatTokens::MenuItemInset,
+			MixtormatTokens::MenuCaptionInsetBelow));
+		StyleInstance->Set(TEXT("Menu.Separator.Padding"), FMargin(0.0f, MixtormatTokens::MenuSeparatorMargin));
+		StyleInstance->Set(TEXT("Menu.MenuIconSize"), MixtormatTokens::MenuIconSize);
+
+		// The ground. A brush cannot hold the canvas's three-stop tint, so a menu built by
+		// FMenuBuilder gets the flat shade and only our own popovers -- which wrap
+		// SMixtormatMenuPanel -- carry the lip.
+		StyleInstance->Set(
+			TEXT("Menu.Background"),
+			new FSlateRoundedBoxBrush(MixtormatPalette::MenuGround(), MixtormatTokens::MenuCornerRadius));
+		StyleInstance->Set(TEXT("Menu.Separator"), new FSlateColorBrush(MixtormatPalette::Divider()));
+		StyleInstance->Set(TEXT("Menu.SubMenuIndicator"), App.GetBrush(TEXT("Menu.SubMenuIndicator")));
+
+		// A row: no plate at rest, the slider's own fill when hovered. The thing under the cursor
+		// looks the same wherever you are in the tool.
+		FSlateRoundedBoxBrush* const RowHover = new FSlateRoundedBoxBrush(
+			MixtormatPalette::FillTop(), MixtormatTokens::CornerRadius);
+		FSlateRoundedBoxBrush* const RowPressed = new FSlateRoundedBoxBrush(
+			MixtormatPalette::FillBottom(), MixtormatTokens::CornerRadius);
+		FButtonStyle MenuButton = FButtonStyle()
+			.SetNormal(FSlateNoResource())
+			.SetHovered(*RowHover)
+			.SetPressed(*RowPressed)
+			.SetDisabled(FSlateNoResource())
+			.SetNormalForeground(FSlateColor(MixtormatPalette::RowText()))
+			.SetHoveredForeground(FSlateColor(FLinearColor::White))
+			.SetPressedForeground(FSlateColor(FLinearColor::White))
+			.SetDisabledForeground(FSlateColor(MixtormatPalette::DisabledText()))
+			.SetNormalPadding(FMargin(MixtormatTokens::MenuItemInset, 0.0f))
+			.SetPressedPadding(FMargin(MixtormatTokens::MenuItemInset, 0.0f));
+		StyleInstance->Set(TEXT("Menu.Button"), MenuButton);
+		StyleInstance->Set(TEXT("Menu.SplitComboButton"), App.GetWidgetStyle<FComboButtonStyle>(TEXT("Menu.SplitComboButton")));
+
+		// Ticks, radios and toggles all keep the row's own hover; only the mark differs.
+		FCheckBoxStyle MenuCheck = App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.CheckBox"));
+		MenuCheck.SetPadding(FMargin(0.0f));
+		StyleInstance->Set(TEXT("Menu.CheckBox"), MenuCheck);
+		StyleInstance->Set(TEXT("Menu.Check"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.Check")));
+		StyleInstance->Set(TEXT("Menu.RadioButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.RadioButton")));
+		StyleInstance->Set(TEXT("Menu.ToggleButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.ToggleButton")));
+		StyleInstance->Set(TEXT("Menu.SplitToggleButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.SplitToggleButton")));
+		StyleInstance->Set(TEXT("Menu.EditableText"), App.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Menu.EditableText")));
+
+		// Type. The label is body text, the shortcut is quiet enough to ignore until wanted, and
+		// the section heading is the caption used everywhere else.
+		FTextBlockStyle MenuLabel = FTextBlockStyle()
+			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
+			.SetColorAndOpacity(MixtormatPalette::RowText())
+			.SetShadowOffset(FVector2D::ZeroVector)
+			.SetShadowColorAndOpacity(FLinearColor::Transparent);
+		StyleInstance->Set(TEXT("Menu.Label"), MenuLabel);
+
+		FTextBlockStyle MenuKeybinding = FTextBlockStyle(MenuLabel)
+			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
+			.SetColorAndOpacity(MixtormatPalette::ShortcutText());
+		StyleInstance->Set(TEXT("Menu.Keybinding"), MenuKeybinding);
+
+		FTextBlockStyle MenuHeading = FTextBlockStyle(MenuLabel)
+			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontGroupHeader))
+			.SetColorAndOpacity(MixtormatPalette::CaptionText());
+		FSlateFontInfo MenuHeadingFont = MenuHeading.Font;
+		MenuHeadingFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
+		MenuHeading.SetFont(MenuHeadingFont);
+		StyleInstance->Set(TEXT("Menu.Heading"), MenuHeading);
+	}
+
+	// The lip along the top edge of a header. A flat colour brush, because it is drawn into a
+	// one-pixel box laid over the header's top edge rather than used as a border around it --
+	// Slate has no top-only border, and a brush used as a BorderImage fills the whole area.
+	StyleInstance->Set(
+		TEXT("Mixtormat.HeaderHairline"),
+		new FSlateColorBrush(MixtormatPalette::Hairline()));
+
 	// Layer stack: the enclosing edge, and the two type styles its rows use.
 	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));
 
 	FTextBlockStyle LayerName = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontBody))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontLayerName))
 		.SetColorAndOpacity(MixtormatPalette::LayerName())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
@@ -485,13 +483,13 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.LayerName"), LayerName);
 
 	FTextBlockStyle LayerSource = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontGroupHeader))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontLayerSource))
 		.SetColorAndOpacity(MixtormatPalette::LayerSource())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
 		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
 	FSlateFontInfo LayerSourceFont = LayerSource.Font;
-	LayerSourceFont.LetterSpacing = 60;
+	LayerSourceFont.LetterSpacing = MixtormatTokens::LayerSourceLetterSpacing;
 	LayerSource.SetFont(LayerSourceFont);
 	StyleInstance->Set(TEXT("Mixtormat.LayerSource"), LayerSource);
 
@@ -578,10 +576,6 @@ void FMixtormatStyle::Initialize()
 	// ---- Drag and drop ----------------------------------------------------------------------
 	// A line in the gutter means "between"; a tinted row means "into". They have to look
 	// different, or dropping an effect beside a layer versus into it is a coin flip.
-	StyleInstance->Set(TEXT("Mixtormat.DropLine"), new FSlateColorBrush(AccentBright));
-	StyleInstance->Set(
-		TEXT("Mixtormat.DropInto"),
-		new FSlateRoundedBoxBrush(WithOpacity(AccentBright, 0.16f), MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth));
 
 	const auto SetIcon = [&Icon](
 		const FName Key,
@@ -596,40 +590,53 @@ void FMixtormatStyle::Initialize()
 				FSlateColor(Icon)));
 	};
 
-	SetIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-all"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/ellipsis"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/plus"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/copy"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder-open"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh-cw"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash-2"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip-vertical"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/box"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/circle"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/rectangle-horizontal"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(20.0f, 20.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/workflow"), FVector2D(20.0f, 20.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(20.0f, 20.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/book-open-text"), FVector2D(20.0f, 20.0f));
-	SetIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/message-square"), FVector2D(20.0f, 20.0f));
-	SetIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/sun"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/cloud-sun"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/contrast"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/sunrise"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/signal-low"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/signal-medium"), FVector2D(16.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/signal-high"), FVector2D(16.0f, 16.0f));
+	SetIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-all"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/ellipsis"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/plus"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/copy"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder-open"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh-cw"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash-2"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip-vertical"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/box"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/circle"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/rectangle-horizontal"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/workflow"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/book-open-text"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/message-square"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/sun"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/cloud-sun"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/contrast"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/sunrise"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/signal-low"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/signal-medium"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/signal-high"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+
+	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
+	// beside it is already carrying the name and the blend mode -- a mask outline for something
+	// that shapes coverage, a bolt for something that acts on the surface, a shoot for something
+	// grown from what is underneath.
+	SetIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/square-dashed"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/zap"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/sprout"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+
+	// Disclosure. These were being borrowed from FAppStyle, which meant the one glyph in the stack
+	// that is not ours changed weight whenever the editor theme did.
+	SetIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the
 	// logo, so every size below holds those ratios rather than squashing the glyph.
-	SetIcon(TEXT("Mixtormat.Brand.Icon"), TEXT("Icons/mixtormat-icon"), FVector2D(15.0f, 16.0f));
-	SetIcon(TEXT("Mixtormat.Brand.Logo"), TEXT("Icons/mixtormat-logo"), FVector2D(92.0f, 18.0f));
+	SetIcon(TEXT("Mixtormat.Brand.Icon"), TEXT("Icons/mixtormat-icon"), FVector2D(MixtormatTokens::BrandIconWidth, MixtormatTokens::BrandIconHeight));
+	SetIcon(TEXT("Mixtormat.Brand.Logo"), TEXT("Icons/mixtormat-logo"), FVector2D(MixtormatTokens::BrandLogoWidth, MixtormatTokens::BrandLogoHeight));
 
 	// Viewport watermark. Tinted dark and mostly transparent so it sits under the material
 	// rather than competing with it, and small enough to stay out of the way.
@@ -637,14 +644,8 @@ void FMixtormatStyle::Initialize()
 		TEXT("Mixtormat.Brand.Watermark"),
 		new FSlateVectorImageBrush(
 			StyleInstance->RootToContentDir(TEXT("Icons/mixtormat-icon"), TEXT(".svg")),
-			FVector2D(46.0f, 50.0f),
-			FSlateColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.28f))));
-	StyleInstance->Set(
-		TEXT("Mixtormat.Icon.Trash.Danger"),
-		new FSlateVectorImageBrush(
-			StyleInstance->RootToContentDir(TEXT("Icons/trash-2"), TEXT(".svg")),
-			FVector2D(16.0f, 16.0f),
-			FSlateColor(Danger)));
+			FVector2D(MixtormatTokens::BrandWatermarkWidth, MixtormatTokens::BrandWatermarkHeight),
+			FSlateColor(MixtormatPalette::Watermark())));
 
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
 }

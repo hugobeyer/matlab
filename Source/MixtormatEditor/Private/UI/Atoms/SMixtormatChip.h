@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "Framework/SlateDelegates.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -14,7 +15,7 @@ class SMixtormatChip final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatChip)
-		: _MinWidth(120.0f)
+		: _MinWidth(MixtormatTokens::RowFieldMinWidth)
 	{}
 		SLATE_ATTRIBUTE(FText, Text)
 		SLATE_ARGUMENT(float, MinWidth)

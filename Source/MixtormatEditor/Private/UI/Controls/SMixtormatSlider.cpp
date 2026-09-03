@@ -3,7 +3,9 @@
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "UI/Primitives/MixtormatGradientPainter.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Input/SEditableText.h"
 
@@ -129,7 +131,7 @@ void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit:
 
 FVector2D SMixtormatSlider::ComputeDesiredSize(float) const
 {
-	return FVector2D(120.0f, MixtormatTokens::RowHeight);
+	return FVector2D(MixtormatTokens::RowFieldMinWidth, MixtormatTokens::RowHeight);
 }
 
 FCursorReply SMixtormatSlider::OnCursorQuery(const FGeometry&, const FPointerEvent&) const
@@ -274,28 +276,48 @@ int32 SMixtormatSlider::OnPaint(
 
 	const float FillLeft = FMath::Min(OriginFraction, ValueFraction) * Size.X;
 	const float FillRight = FMath::Max(OriginFraction, ValueFraction) * Size.X;
-	if (FillRight - FillLeft > 0.5f)
+	if (FillRight - FillLeft > MixtormatTokens::MinPaintedFill)
 	{
-		const TCHAR* FillKey =
-			!bEnabled ? TEXT("Mixtormat.ValueSlider.FillDisabled")
-			: bMovedPastThreshold ? TEXT("Mixtormat.ValueSlider.FillActive")
-			: bHighlight ? TEXT("Mixtormat.ValueSlider.FillHovered")
-			: TEXT("Mixtormat.ValueSlider.Fill");
+		// Two stacked gradients, as the design specifies the fill: a vertical ramp for the body,
+		// and a horizontal black shade over it that falls away fast and then holds. Painted rather
+		// than brushed because Slate has neither a gradient brush nor a multiply blend -- and a
+		// flat brush here is what made the bar read as a solid block with an eased edge.
+		const bool bScrubbing = bMovedPastThreshold;
+		const FLinearColor BodyTop =
+			!bEnabled ? MixtormatPalette::FillDisabled()
+			: bScrubbing ? MixtormatPalette::FillTopActive()
+			: bHighlight ? MixtormatPalette::FillTopHover()
+			: MixtormatPalette::FillTop();
+		const FLinearColor BodyBottom =
+			!bEnabled ? MixtormatPalette::FillDisabled()
+			: bScrubbing ? MixtormatPalette::FillBottomActive()
+			: bHighlight ? MixtormatPalette::FillBottomHover()
+			: MixtormatPalette::FillBottom();
 
+		const FVector2f FillSize(FillRight - FillLeft, static_cast<float>(Size.Y));
 		// Drawn at the fill's own size rather than full-size behind a clip. The clipped version
 		// collapsed to a couple of pixels at the bottom of the row -- correct width, no height --
 		// and this is the same explicitly-sized geometry the tick and the stripe below already
-		// use, which does render. The right edge picks up the corner radius as a result; at a
-		// 2px radius on an 18px row that is not worth another clip to avoid.
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			LayerId + 1,
-			AllottedGeometry.ToPaintGeometry(
-				FVector2f(FillRight - FillLeft, static_cast<float>(Size.Y)),
-				FSlateLayoutTransform(FVector2f(FillLeft, 0.0f))),
-			Style.GetBrush(FillKey),
-			ESlateDrawEffect::None,
-			Style.GetBrush(FillKey)->GetTint(InWidgetStyle));
+		// use, which does render.
+		const FPaintGeometry FillGeometry = AllottedGeometry.ToPaintGeometry(
+			FillSize, FSlateLayoutTransform(FVector2f(FillLeft, 0.0f)));
+
+		const MixtormatGradient::FStop Body[] = {
+			{ 0.0f, BodyTop },
+			{ 1.0f, BodyBottom },
+		};
+		MixtormatGradient::Paint(
+			OutDrawElements, LayerId + 1, FillGeometry, FillSize,
+			Orient_Vertical, Body, MixtormatTokens::CornerRadius);
+
+		const MixtormatGradient::FStop Shade[] = {
+			{ 0.0f, MixtormatPalette::MultiplyStart() },
+			{ MixtormatTokens::MultiplyMidPosition, MixtormatPalette::MultiplyMid() },
+			{ 1.0f, MixtormatPalette::MultiplyEnd() },
+		};
+		MixtormatGradient::Paint(
+			OutDrawElements, LayerId + 2, FillGeometry, FillSize,
+			Orient_Horizontal, Shade, MixtormatTokens::CornerRadius);
 	}
 
 	// Centre tick, so zero is still locatable when the fill is empty.
@@ -303,7 +325,7 @@ int32 SMixtormatSlider::OnPaint(
 	{
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
-			LayerId + 2,
+			LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(
 				FVector2f(MixtormatTokens::TickWidth, static_cast<float>(Size.Y) - MixtormatTokens::TickInsetY * 2.0f),
 				FSlateLayoutTransform(FVector2f(OriginFraction * static_cast<float>(Size.X), MixtormatTokens::TickInsetY))),
@@ -321,7 +343,7 @@ int32 SMixtormatSlider::OnPaint(
 	{
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
-			LayerId + 2,
+			LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(
 				FVector2f(MixtormatTokens::ModifiedStripeWidth, static_cast<float>(Size.Y)),
 				FSlateLayoutTransform(FVector2f::ZeroVector)),
@@ -356,7 +378,7 @@ int32 SMixtormatSlider::OnPaint(
 
 		FSlateDrawElement::MakeText(
 			OutDrawElements,
-			LayerId + 3,
+			LayerId + 4,
 			AllottedGeometry.ToPaintGeometry(
 				FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y)),
 				FSlateLayoutTransform(FVector2f(LabelX, TextY))),
@@ -370,7 +392,7 @@ int32 SMixtormatSlider::OnPaint(
 
 	FSlateDrawElement::MakeText(
 		OutDrawElements,
-		LayerId + 3,
+		LayerId + 4,
 		AllottedGeometry.ToPaintGeometry(
 			FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y)),
 			FSlateLayoutTransform(
@@ -380,7 +402,7 @@ int32 SMixtormatSlider::OnPaint(
 		ESlateDrawEffect::None,
 		(bEnabled ? ValueStyle : LabelStyle).ColorAndOpacity.GetSpecifiedColor());
 
-	return LayerId + 4;
+	return LayerId + 5;
 }
 
 #undef LOCTEXT_NAMESPACE

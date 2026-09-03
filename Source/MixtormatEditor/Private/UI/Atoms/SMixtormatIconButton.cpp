@@ -8,6 +8,7 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 {
 	bActive = InArgs._bActive;
 	OnClicked = InArgs._OnClicked;
+	OnClickedWithModifiers = InArgs._OnClickedWithModifiers;
 	if (InArgs._ToolTip.IsSet())
 	{
 		SetToolTipText(InArgs._ToolTip);
@@ -62,7 +63,14 @@ FReply SMixtormatIconButton::OnMouseButtonUp(const FGeometry& MyGeometry, const 
 	// Only fire when the release lands on the glyph, so a press that wanders off cancels.
 	if (MyGeometry.IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
 	{
-		OnClicked.ExecuteIfBound();
+		if (OnClickedWithModifiers.IsBound())
+		{
+			OnClickedWithModifiers.Execute(MouseEvent);
+		}
+		else
+		{
+			OnClicked.ExecuteIfBound();
+		}
 	}
 	return FReply::Handled();
 }

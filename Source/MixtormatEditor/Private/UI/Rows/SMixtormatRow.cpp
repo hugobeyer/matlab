@@ -103,7 +103,7 @@ TSharedRef<SWidget> MakeChip(
 		Content->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+		.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::ChipThumbnailSize)
@@ -124,12 +124,12 @@ TSharedRef<SWidget> MakeChip(
 
 	return SNew(SComboButton)
 		.ToolTipText(ToolTip)
-		.ContentPadding(FMargin(4.0f, 0.0f))
+		.ContentPadding(FMargin(MixtormatTokens::RowLabelGap, 0.0f))
 		.OnGetMenuContent(OnGetMenuContent)
 		.ButtonContent()
 		[
 			SNew(SBox)
-			.MinDesiredWidth(120.0f)
+			.MinDesiredWidth(MixtormatTokens::RowFieldMinWidth)
 			.HeightOverride(MixtormatTokens::ChipHeight)
 			[
 				Content

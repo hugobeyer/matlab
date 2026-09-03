@@ -21,4 +21,9 @@ namespace MixtormatIcons
 	const FSlateBrush* Overflow();
 	const FSlateBrush* Add();
 	const FSlateBrush* Duplicate();
+
+	// A layer child, by what kind of thing it is.
+	const FSlateBrush* Mask();
+	const FSlateBrush* Effect();
+	const FSlateBrush* Generated();
 }

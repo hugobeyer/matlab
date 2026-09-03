@@ -118,32 +118,20 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	const EMixtormatDebugPreviewMode Mode,
 	const FText& ToolTip)
 {
-	return SNew(SButton)
-		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-		.ContentPadding(1.0f)
+	// The same widget the layer stack's eye is, deliberately. This was a plated SButton with its
+	// own 14px box and its own teal, so the two eyes in the tool -- one saying "this layer is
+	// visible", one saying "the viewport is showing this channel" -- looked like different
+	// controls doing unrelated things. One eye, one behaviour: no plate in any state, the accent
+	// when it is on.
+	return SNew(SMixtormatIconButton)
+		.Size(MixtormatTokens::LayerEyeSize)
 		.ToolTipText(ToolTip)
-		.OnClicked(this, &SMixtormat::ToggleFeaturePreview, Mode)
-		[
-			SNew(SBox)
-			.WidthOverride(14.0f)
-			.HeightOverride(14.0f)
-			[
-				SNew(SImage)
-				.Image_Lambda([this, Mode]()
-				{
-					return FMixtormatStyle::Get().GetBrush(
-						DebugPreviewMode == Mode
-							? TEXT("Mixtormat.Icon.Eye")
-							: TEXT("Mixtormat.Icon.EyeOff"));
-				})
-				.ColorAndOpacity_Lambda([this, Mode]()
-				{
-					return DebugPreviewMode == Mode
-						? FSlateColor(FLinearColor(0.18f, 0.65f, 0.68f))
-						: FSlateColor::UseSubduedForeground();
-				})
-			]
-		];
+		.bActive_Lambda([this, Mode]() { return DebugPreviewMode == Mode; })
+		.Icon_Lambda([this, Mode]()
+		{
+			return DebugPreviewMode == Mode ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
+		})
+		.OnClicked_Lambda([this, Mode]() { ToggleFeaturePreview(Mode); });
 }
 
 void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
