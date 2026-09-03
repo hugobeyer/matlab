@@ -2,20 +2,20 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "0.1.0",
-	"FriendlyName": "Material Lab",
+	"FriendlyName": "Mixtormat",
 	"Description": "Material browsing, mixing, look-development, and runtime controls.",
 	"Category": "Rendering",
-	"CreatedBy": "Material Lab",
+	"CreatedBy": "Mixtormat",
 	"CanContainContent": true,
 	"IsBetaVersion": true,
 	"Modules": [
 		{
-			"Name": "MaterialLabRuntime",
+			"Name": "MixtormatRuntime",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "MaterialLabShaders",
+			"Name": "MixtormatShaders",
 			"Type": "Editor",
 			"LoadingPhase": "PostConfigInit",
 			"TargetAllowList": [
@@ -23,7 +23,7 @@
 			]
 		},
 		{
-			"Name": "MaterialLabEditor",
+			"Name": "MixtormatEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default",
 			"TargetAllowList": [

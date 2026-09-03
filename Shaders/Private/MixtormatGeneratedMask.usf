@@ -1,0 +1,201 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+
+Texture2D<float> PreviousMask;
+Texture2D<float4> SurfaceNormal;
+Texture2D<float4> SurfaceRAM;
+Texture2D<float> SurfaceHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+uint Initialize;
+uint SurfaceValid;
+uint FlipNormalY;
+
+float CurvatureWeight;
+float CurvatureBias;
+float CurvatureStrength;
+float CurvaturePower;
+float DirectionWeight;
+float DirectionAngle;
+float DirectionBroadness;
+float AOWeight;
+float HeightWeight;
+float HeightBias;
+
+uint NormalizeWeights;
+int Broadness;
+int Smoothing;
+float Bias;
+float WarpAmount;
+float WarpSource;
+int WarpRadius;
+
+uint BlendMode;
+uint Invert;
+float Weight;
+float Balance;
+float Contrast;
+float Offset;
+
+float ApplyMaskOperation(float Previous, float Incoming)
+{
+	if (BlendMode == 0)
+	{
+		return Incoming;
+	}
+	if (BlendMode == 1)
+	{
+		return Previous + Incoming;
+	}
+	if (BlendMode == 2)
+	{
+		return Previous - Incoming;
+	}
+	if (BlendMode == 3)
+	{
+		return Previous * Incoming;
+	}
+	if (BlendMode == 4)
+	{
+		return min(Previous, Incoming);
+	}
+	if (BlendMode == 5)
+	{
+		return max(Previous, Incoming);
+	}
+	if (BlendMode == 6)
+	{
+		return Previous + (Incoming - 0.5f) * 2.0f;
+	}
+	return Previous < 0.5f
+		? 2.0f * Previous * Incoming
+		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// No accumulated surface beneath this layer: the node has nothing to read, so
+	// leave the accumulated mask untouched.
+	if (SurfaceValid == 0)
+	{
+		OutputMask[DispatchThreadId.xy] = saturate(Previous);
+		return;
+	}
+
+	// Slope flow warp. Both sources point downhill, so the mask is dragged along the
+	// surface the way settling material would run. WarpAmount 0 must stay bit-identical
+	// to the unwarped path.
+	int2 Pixel = int2(DispatchThreadId.xy);
+	float2 SampleUV = UV;
+	if (WarpAmount > 0.0f)
+	{
+		const int2 MaxPixel = OutputSize - 1;
+		const int R = clamp(WarpRadius, 1, 16);
+
+		// Tangent-space normal XY is the surface slope at this point, pointing downhill.
+		const float2 NormalFlow = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY).xy;
+
+		// Height gradient points uphill, so negate it to match.
+		const int2 L = int2(clamp(Pixel.x - R, 0, MaxPixel.x), Pixel.y);
+		const int2 Rt = int2(clamp(Pixel.x + R, 0, MaxPixel.x), Pixel.y);
+		const int2 U = int2(Pixel.x, clamp(Pixel.y - R, 0, MaxPixel.y));
+		const int2 D = int2(Pixel.x, clamp(Pixel.y + R, 0, MaxPixel.y));
+		const float InverseDiameter = 1.0f / (2.0f * float(R));
+		float2 HeightGradient;
+		HeightGradient.x = (SurfaceHeight.Load(int3(Rt, 0)) - SurfaceHeight.Load(int3(L, 0))) * InverseDiameter;
+		HeightGradient.y = (SurfaceHeight.Load(int3(D, 0)) - SurfaceHeight.Load(int3(U, 0))) * InverseDiameter;
+		const float2 HeightFlow = -HeightGradient;
+
+		const float2 Flow = lerp(NormalFlow, HeightFlow, saturate(WarpSource));
+
+		// Soft magnitude rather than a unit vector. Displacement stays proportional to
+		// slope on gentle ground and rolls off asymptotically on steep ground, so the
+		// warp feathers out across flat regions instead of shoving every pixel the same
+		// distance. Direction is preserved exactly.
+		const float FlowLength = length(Flow);
+		const float2 SoftFlow = Flow / (1.0f + FlowLength);
+
+		SampleUV = UV + SoftFlow * WarpAmount;
+	}
+
+
+	float Raw = 0.0f;
+	float Total = 0.0f;
+
+	if (abs(CurvatureWeight) > 0.0f)
+	{
+		float Curvature;
+		float Cavity;
+		float Convex;
+		MixtormatEvaluateCurvature(
+			SurfaceNormal,
+			LinearWrapSampler,
+			SampleUV,
+			OutputSize,
+			Broadness,
+			Smoothing,
+			CurvatureStrength,
+			max(CurvaturePower, 0.001f),
+			FlipNormalY,
+			Curvature,
+			Cavity,
+			Convex);
+		Raw += CurvatureWeight * lerp(Cavity, Convex, saturate(CurvatureBias));
+		Total += abs(CurvatureWeight);
+	}
+
+	if (abs(DirectionWeight) > 0.0f)
+	{
+		const float3 Normal = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, SampleUV, FlipNormalY);
+		const float Radians = DirectionAngle * (3.14159265f / 180.0f);
+		const float2 Direction = float2(cos(Radians), sin(Radians));
+		const float Slope = dot(Normal.xy, Direction);
+		Raw += DirectionWeight * pow(saturate(Slope), max(DirectionBroadness, 0.001f));
+		Total += abs(DirectionWeight);
+	}
+
+	if (abs(AOWeight) > 0.0f)
+	{
+		const float AO = SurfaceRAM.SampleLevel(LinearWrapSampler, SampleUV, 0.0f).g;
+		Raw += AOWeight * saturate(1.0f - AO);
+		Total += abs(AOWeight);
+	}
+
+	if (abs(HeightWeight) > 0.0f)
+	{
+		const float Height = SurfaceHeight.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
+		Raw += HeightWeight * saturate(Height + HeightBias);
+		Total += abs(HeightWeight);
+	}
+
+	float Mixed = (NormalizeWeights != 0 && Total > 1.0e-5f) ? Raw / Total : Raw;
+	float Incoming = MixtormatBias01(saturate(Mixed), Bias);
+
+	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
+
+	const float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
+	const float BalanceStrength = abs(SignedBalance);
+	const float BalanceExponent = exp2(BalanceStrength * 6.0f);
+	const float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
+	const float Balanced = SignedBalance < 0.0f
+		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
+		: pow(Incoming, BalanceExponent);
+	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
+	Incoming = Invert != 0 ? 1.0f - Incoming : Incoming;
+
+	const float OperationResult = ApplyMaskOperation(Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+}

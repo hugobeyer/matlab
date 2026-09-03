@@ -1,0 +1,95 @@
+#ifndef MATERIAL_LAB_CURVATURE_USH
+#define MATERIAL_LAB_CURVATURE_USH
+
+float MixtormatBias01(float Value, float Bias)
+{
+	Value = saturate(Value);
+	Bias = clamp(Bias, 0.001f, 0.999f);
+	return Value / ((((1.0f / Bias) - 2.0f) * (1.0f - Value)) + 1.0f);
+}
+
+float3 MixtormatLoadNormal(
+	Texture2D<float4> NormalTexture,
+	int2 Pixel,
+	uint FlipY)
+{
+	float2 XY = NormalTexture.Load(int3(Pixel, 0)).xy * 2.0f - 1.0f;
+	XY.y *= FlipY != 0 ? -1.0f : 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+float3 MixtormatSampleNormal(
+	Texture2D<float4> NormalTexture,
+	SamplerState LinearSampler,
+	float2 UV,
+	uint FlipY)
+{
+	float2 XY = NormalTexture.SampleLevel(LinearSampler, UV, 0.0f).xy * 2.0f - 1.0f;
+	XY.y *= FlipY != 0 ? -1.0f : 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+// Curvature is div(N.xy). A 4-tap central difference is the noisiest possible
+// estimator and is axis-biased, and integer Load() taps quantise to texels, so
+// compressed normal blocks come through as visible steps. This uses a Sobel
+// kernel on bilinear samples instead: the 3x3 weighting averages across the
+// diagonal neighbours and the filtered fetches resolve sub-texel, which removes
+// most of the stepping at the same order of cost.
+void MixtormatEvaluateCurvature(
+	Texture2D<float4> NormalTexture,
+	SamplerState LinearSampler,
+	float2 UV,
+	int2 Dimensions,
+	int Radius,
+	int Smoothing,
+	float Strength,
+	float Power,
+	uint FlipY,
+	out float Curvature,
+	out float Cavity,
+	out float Convex)
+{
+	const float2 TexelSize = 1.0f / max(float2(Dimensions), 1.0f);
+	const int Rings = clamp(Smoothing, 1, 4);
+
+	float SignedCurvature = 0.0f;
+	float TotalWeight = 0.0f;
+
+	[unroll(4)]
+	for (int Ring = 0; Ring < Rings; ++Ring)
+	{
+		// Successive rings widen the kernel; averaging them suppresses the ringing a
+		// single radius produces on noisy normals.
+		const float RingRadius = float(clamp(Radius, 1, 32)) * (1.0f + float(Ring));
+		const float2 Step = TexelSize * RingRadius;
+
+		const float3 TL = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x, -Step.y), FlipY);
+		const float3 T  = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2( 0.0f,   -Step.y), FlipY);
+		const float3 TR = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x, -Step.y), FlipY);
+		const float3 L  = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x,  0.0f  ), FlipY);
+		const float3 R  = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x,  0.0f  ), FlipY);
+		const float3 BL = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x,  Step.y), FlipY);
+		const float3 B  = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2( 0.0f,    Step.y), FlipY);
+		const float3 BR = MixtormatSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x,  Step.y), FlipY);
+
+		// Sobel. Both partials use the same forward-minus-backward convention, so a
+		// vertical ridge and a horizontal one read the same way.
+		const float Dx = ((TR.x + 2.0f * R.x + BR.x) - (TL.x + 2.0f * L.x + BL.x)) / (8.0f * RingRadius);
+		const float Dy = ((BL.y + 2.0f * B.y + BR.y) - (TL.y + 2.0f * T.y + TR.y)) / (8.0f * RingRadius);
+
+		const float RingWeight = 1.0f / (1.0f + float(Ring));
+		SignedCurvature += (Dx + Dy) * RingWeight;
+		TotalWeight += RingWeight;
+	}
+
+	SignedCurvature = clamp(SignedCurvature / max(TotalWeight, 1.0e-6f) * Strength, -1.0f, 1.0f);
+
+	const float ShapedMagnitude = pow(abs(SignedCurvature), max(Power, 0.001f));
+	SignedCurvature = SignedCurvature < 0.0f ? -ShapedMagnitude : ShapedMagnitude;
+
+	Curvature = saturate(0.5f + SignedCurvature * 0.5f);
+	Cavity = saturate(-SignedCurvature);
+	Convex = saturate(SignedCurvature);
+}
+
+#endif

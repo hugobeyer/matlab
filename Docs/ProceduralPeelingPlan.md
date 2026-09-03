@@ -1,260 +1,155 @@
-# Material Lab — Procedural Peeling Plan
+# Mixtormat — Procedural Peeling
 
-Status: Design only. Nothing implemented.
+Status: Implemented and building. Not visually approved. One design change outstanding.
 
-## Goal
+## What it is
 
-Drive peeling from generated signals instead of an authored texture set: seed the peel from
-noise and from the surface composited underneath — convexity, cavity, AO, height, ordered child
-masks — and expose frequency, amount, intensity and type as controls rather than as a baked map
-set the artist cannot change.
+A second source for `MixtormatPeeling.usf`. Instead of the authored PDM/MSK/H/SDF texture
+set, the peel field is generated per composition from a mask and from the material
+composited below the owning layer.
 
-The authored path stays. This adds a second source for the same consumer.
-
-## The reframe
-
-Do not make peeling procedural. Make **map generation** procedural and leave the peeling shader
-a texture consumer.
-
-`MaterialLabPeeling.usf` calls `EvaluatePeeling` five times per pixel — centre plus four
-neighbours — to build the height gradient its dynamic normal comes from. Each call is five
-texture samples today, which is why five of them is affordable. Move noise evaluation inside
-`EvaluatePeeling` and that noise runs five times per pixel; `MaterialLabGullyField` alone loops
-up to 33 taps. The design collapses under its own gradient.
-
-So: add passes **before** the peeling dispatch that write transient PDM/MSK/H/SDF-equivalent
-targets, then run the existing peeling shader essentially unchanged.
+The peeling shader itself is unchanged between the two paths. The generator writes the same
+channel layout into transient float targets, and `ProceduralSource` selects which the
+shader reads. A Peeling child with a null effect asset takes the procedural path, matching
+how Erosion identifies itself.
 
 ```text
-Procedural passes  →  transient PDM / MSK / H / SDF targets  →  existing MaterialLabPeeling.usf
-Authored effect    →  imported PDM / MSK / H / SDF textures  →  existing MaterialLabPeeling.usf
+Mask + surface signals  ->  MixtormatPeelField.usf  ->  transient field targets  ->
+                            MixtormatPeeling.usf (unchanged)
 ```
 
-Benefits:
+## How it works today
 
-- The working peel math is untouched. Coverage, edge, SDF occlusion, lift, thickness and the
-  RNM normal path all keep behaving exactly as they do now.
-- Derivative taps stay cheap, because all five read the same precomputed targets.
-- Both paths converge on one consumer, so there is one place where peeling is defined.
-- It is the same structural move the compositor already makes for erosion's pre-passes.
-
-## What the authored maps actually contain
-
-Read from `Handoff/Houdini/OpenCl/peel.cl`. The set is less independent than it looks, but it is
-not a single field either.
-
-Three inputs drive everything:
+`Shaders/Private/MixtormatPeelField.usf`, three dispatch modes:
 
 ```text
-seed    thresholded to mark where peeling starts
-macro   low-frequency field, warps the peel boundary
-micro   high-frequency field, warps it again and drives secondary relief
+Seed     threshold the peel's mask into a starting region, and precompute the speed field
+Solve    one Godunov eikonal iteration (Eikonal2 / Solve8, ported from peel.cl)
+Resolve  turn arrival into the authored channel layout
 ```
 
-`arrival` (`T`) is a geodesic distance field grown from the thresholded seed by an eikonal
-solve (`solve8`, an 8-neighbour Jacobi sweep run to convergence by a Houdini solver). Every
-exported channel is then a closed-form function of `T`, `macro` and `micro`:
+Seed and Solve run at composition / `PeelSolveDivisor`; Resolve runs at full resolution and
+filters arrival up. Arrival is a smooth field, so it survives that, and the solve dominates
+cost: dividing the side both quarters the texels and halves the passes the front needs to
+cross them.
 
-```text
-D          = T + macro*warp + micro*micro_warp*micro_morph - front
-Coverage   = 1 - smooth01(D/W * 0.5 + 0.5)
-EdgeMask   = exp(-2 * (D/W)^2)
-DetailMask = f(macro, micro, mode)
-H          = f(Coverage, EdgeMask, DetailMask, thickness, lift, detail_strength, mode)
-SDF        = 0.5 + 0.5 * D / sdf_range
+Iteration count is bounded by reach, not resolution:
+`ceil((|Front| + 4|Width|) * SolveRes.X)`, capped at 256.
 
-PDM.r = T normalised      MSK.r = Coverage
-PDM.g = macro             MSK.g = EdgeMask
-PDM.b = micro             MSK.b = DetailMask
-```
+### Why eikonal and not a distance transform
 
-Two consequences for this plan:
+An earlier build used jump flooding. It produced visibly radial, star-shaped peels, because
+jump flooding computes Euclidean distance from a seed set and nothing else can influence
+it. The eikonal solve propagates a front through a **speed field**, so convexity, occlusion
+and height reshape the outline rather than merely gating coverage afterwards. That is the
+whole reason the extra passes are worth paying for.
 
-- `PDM.g` and `PDM.b` are the macro and micro **inputs**, not derivatives of `T`. Reproducing the
-  set means generating three fields, not one.
-- `MSK.b` is a function of the noise fields and `mode`, not of `D`. All five gradient taps must
-  see the same noise, which is a second reason to precompute into targets rather than evaluate
-  inline.
+Those signals belong to growth, not to seeding. On the seed they would only have decided
+where a peel started; on the speed they decide how it spreads, which is what the artist
+actually sees.
 
-`peel.cl` already implements two types. `mode == 0` is the flat chip currently shipped.
-`mode == 1` is a curled variant with distinct `flap` and `fold` terms. It was never ported to
-HLSL. That is the cheapest visible win in this whole feature and it is a port, not a design
-problem.
+### Seeding
 
-## What already exists
+The peel has its own mask slot (`PeelMask` / `PeelMaskTexture`, with tiling and invert),
+independent of the layer's ordered mask children. Unset, it falls back to the accumulated
+child mask, which is what recipes written before the slot existed were built against.
 
-Nothing here needs inventing from scratch.
+There is deliberately no noise in the generator. An earlier build generated macro/micro
+noise fields and seeded from them; that was removed. The mask is the seed field.
 
-```text
-MaterialLabGully.ush              periodic hash + gradient noise with analytic derivatives,
-                                  wrapped to an integer lattice so it tiles
-MaterialLabCurvature.ush          signed curvature, cavity, convexity from the accumulated normal
-MaterialLabGeneratedMask.usf      weighted mix of curvature / direction / AO / height, with
-                                  slope-flow warping, writing one scalar mask
-Compositor pre-pass machinery     multi-pass ping-pong dispatch inside a layer, established by
-                                  erosion
-```
+## Outstanding change: make it a true signed distance field
 
-The Generated Mask node is the important one. It already binds the accumulated Normal, packed
-RAM and Height below the owning layer and produces exactly the weighted mix of convexity, AO and
-height this feature wants. Peeling already consumes the accumulated child mask.
+This is the next task and the reason this document exists.
 
-So the requested behaviour — "weights like convexity or masks to derive the peeling" — is
-already plumbed. What is missing is that the mask currently **gates the result** rather than
-**seeding the propagation**.
+### The problem
 
-## Our design
+Seeding marks the whole thresholded region as `T = 0`. That makes the field a one-sided
+dilation distance:
 
-Three procedural passes ahead of the existing peeling dispatch.
+- Every cell inside the mask has `T = 0`, so `D = -Front` uniformly. The interior carries
+  **no gradient at all**, and the coverage smoothstep has nothing to shape there.
+- `Front` can only dilate outward. It can never erode inward.
+- The threshold snaps the boundary to whole cells, discarding the mask's sub-cell position.
 
-### 1. Noise pass
+### The fix
 
-Generate `macro` and `micro` into one RG target using the periodic noise already in
-`MaterialLabGully.ush`. Both must be periodic on an integer cell count so the peel tiles.
-Frequency is exposed per field.
+Solve distance from the mask's **isocontour** rather than from its interior, and sign the
+result. One solve, not two:
 
-### 2. Seed and arrival pass
+1. Mark cells where the mask crosses `SeedThreshold` between neighbours. Those are the zero
+   level set, `T = 0`. Interpolate the crossing position so the boundary is sub-cell rather
+   than snapped.
+2. Solve the eikonal outward from that boundary exactly as now, producing unsigned distance.
+3. Sign by side: `SDF = (mask > threshold) ? -T : +T`.
 
-Seed is a threshold on a weighted mix:
+Then `D = SDF + MacroWarp/MicroWarp terms - Front` erodes at negative `Front`, dilates at
+positive, and has a real gradient on both sides of the boundary.
 
-```text
-SeedField = w_noise    * Noise
-          + w_curvature* lerp(Cavity, Convex, CurvatureBias)
-          + w_ao       * (1 - AO)
-          + w_height   * Height
-          + w_mask     * ChildMask
+The speed field still applies, so this remains a **non-uniform** dilation — the part a plain
+distance transform cannot do.
 
-Seed = SeedField > Threshold
-```
+Cost is unchanged: still one solve over the same iteration count.
 
-That expression is the Generated Mask node's mix. Prefer reusing its evaluator over duplicating
-it — a Generated Mask child placed before the Peeling child can supply the field directly, which
-keeps one implementation of the signal mixing and gives the artist the existing per-signal
-weights, warp and shaping for free.
+### What this should fix
 
-Then compute distance from the seed set. **Use jump flooding, not the eikonal port.**
+- Flat, gradientless peel interiors.
+- `Front` being one-directional.
+- Coverage falloff being one-sided, which currently makes `Width` behave asymmetrically.
+- Hard cell-quantised boundaries at low `PeelSolveDivisor`.
 
-The eikonal sweep propagates roughly one texel per iteration, so its cost scales with the
-distance the front travels. Jump flooding is `log2(N)` passes — about 11 at 2K — and its cost is
-resolution-bound rather than distance-bound. That matters because the seed threshold is an
-exposed control: at a high threshold only a few percent of the surface is seeded and distances
-become long, which is exactly where a Jacobi sweep degrades and JFA does not.
+### Validation
 
-Known properties to design around:
-
-- JFA is **approximate**. A small fraction of texels resolve to a non-nearest seed. Usually
-  invisible at these scales; `1+JFA` or `JFA+1` reduces it. Do not describe it as exact.
-- JFA propagates **seed coordinates, not distances**, so the ping-pong targets are RG16F or
-  RG32F, not the R16F used everywhere else in the compositor.
-- Uniform speed makes the result Euclidean rather than geodesic. `peel.cl` supports a varying
-  `speed` layer; its visual effect is a warped distance field, and `D` is already warped by
-  `macro` and `micro` downstream. Treat the speed field as deferred, not required.
-
-### 3. Channel pass
-
-Evaluate `D`, `Coverage`, `EdgeMask`, `DetailMask`, `H` and `SDF` in closed form from `T`,
-`macro` and `micro`, writing the same layout the authored textures use. Port `mode == 1` here.
-
-## Tiling
-
-This is the one part with real technical risk, and it is where to start.
-
-The distance field must wrap. Candidate comparison needs toroidal delta:
-
-```text
-float2 d = abs(SeedPos - PixelPos);
-d = min(d, Resf - d);
-dist = length(d);
-```
-
-and the jump offsets themselves must wrap. Miss either and a seam runs down the tile boundary.
-
-**Prototype a seamless toroidal distance field from a periodic noise seed before building
-anything else.** If that seams, nothing downstream matters.
-
-## Build the trivial version first
-
-`ErosionEffectPlan.md` open item 5 records that erosion's cheap single-pass alternative was never
-built, so its expensive path has nothing to be compared against. Do not repeat that here.
-
-Baseline: smooth the seed field and use it directly as an arrival proxy — one pass, no JFA, no
-propagation. It will not have the grows-outward-from-a-seed character that makes peeling read as
-peeling. It gives a working end-to-end procedural path, a reference to judge JFA against, and a
-fallback if the toroidal wrap fights back.
-
-## Integration
-
-Follow the pattern erosion established for effects with no asset:
-
-- `FMaterialLabLayerEffect::ProceduralType` already exists and already carries
-  `EMaterialLabEffectType::Peeling` as its default. A procedural peel is a Peeling child with a
-  null `Effect` reference.
-- `UMaterialLabEffect` supplies the effect type *and* the decode ranges. With a null asset,
-  neither is available, which is fine because neither is needed.
-- `DistanceRange`, `SDFRange` and `HeightRange` exist only to undo 8-bit texture encoding.
-  Transient float targets have no round-trip to undo, so procedural mode must **bypass** them
-  rather than pass neutral values through.
-
-One behaviour needs an explicit decision before implementation:
-
-`EvaluatePeeling` currently does `Coverage *= ChildMask`. If the same mask also becomes the seed
-source, it is applied twice — once shaping where peeling starts, once gating the result. Choose
-seed-only, gate-only, or both under separate weights. Both-with-one-weight is the wrong answer
-and is what falls out if nobody decides.
-
-## Exposed controls
-
-Mapping the requested vocabulary onto the design:
-
-```text
-Frequency   noise cell period for the macro and micro fields; integral, so it tiles
-Amount      seed threshold — how much of the surface begins peeling
-            Front — how far the peel front has travelled from those seeds
-Intensity   Thickness, Lift, Detail Strength; all already exposed and unchanged
-Type        mode 0 flat chip / mode 1 curled flap and fold, ported from peel.cl
-Weights     per-signal seed weights: noise, curvature with cavity/convex bias, AO, height, mask
-```
-
-## Cost
-
-Per procedural peeling child, per composition:
-
-```text
-1 noise pass
-1 seed pass
-~11 jump-flood passes at 2K, ~12 at 4K
-1 channel pass
-```
-
-That is roughly 14 dispatches **per peeling child**, where the authored path costs zero
-pre-passes. Two procedural peels on one layer doubles it. This lands in a graph that erosion has
-already grown by ~17 dispatches at twice composition resolution, behind a preview refresh that
-flushes rendering commands on every slider change.
-
-Measure interactive scrubbing before adding a second procedural effect type.
-
-## Limitations
-
-- JFA distance is approximate and Euclidean, not the geodesic field `peel.cl` produces.
-- Without a speed field the propagation is isotropic; boundary variety comes from noise warping
-  rather than from anisotropic growth.
-- Seed placement can only reference the surface composited below the owning layer, so it cannot
-  produce variation independent of that surface.
-- Procedural peeling is generated per composition. It is editor-time work that bakes into the
-  final maps, exactly like the rest of the compositor.
-
-## Validation
-
-1. A seamless tile: no discontinuity in arrival, coverage or normals across the UV boundary at
-   every supported resolution.
-2. Seed weights at zero with noise weight at 1 reproduce a plain noise-seeded peel.
-3. Each signal weight in isolation concentrates peeling where that signal is high.
-4. Threshold sweeps coverage monotonically from none to nearly all.
-5. Frequency changes cell size without shifting large-scale placement.
-6. Type 0 and type 1 differ visibly in edge profile, and type 0 matches the authored look.
+1. `Front = 0` puts the coverage boundary exactly on the mask's threshold contour.
+2. Negative `Front` erodes inside the mask; positive dilates outside. Both are smooth.
+3. The interior shows a gradient rather than a constant.
+4. Growth weights at zero give a uniform, isotropic dilation.
+5. Growth weights non-zero visibly reshape the outline, not just its coverage.
+6. Output tiles with no seam at every supported resolution.
 7. An authored peeling child renders identically before and after the change.
-8. Procedural and authored children coexist in one recipe and in one layer.
-9. Recipes with procedural peels save, reopen and rebake with identical results.
-10. Baked output matches the preview.
 
-Do not run builds, Unreal, or tests without explicit permission.
+## Known issues elsewhere in the file
+
+- `WrapPixel` is called four times where two would do, and the diagonal taps mix an
+  x-wrapped and a y-wrapped coordinate. The values come out correct because each call only
+  offsets one axis, but it is fragile and should be tidied with the SDF work.
+- `MixtormatGully.ush` is now included only for `MixtormatHashU`; the noise it was there for
+  is gone.
+
+## Controls
+
+```text
+Peel Mask / Tiling / Invert   the peel's own seed mask; unset uses the child mask
+Seed - Mask Gain              scales the mask before the threshold
+Amount (Seed Threshold)       the threshold itself
+Growth - Convexity            speed weight; Convex Bias picks cavity vs ridge
+Growth - Occlusion            speed weight, inverted AO
+Growth - Height               speed weight
+Growth Strength               exponent on speed; 0 propagates uniformly
+Normalize Weights             divide the growth mix by total weight
+Size Variation                per-cell speed factor, so flakes reach different extents
+Lift Variation                per-cell lift factor
+Flake Cells                   cell count for both variations
+Curled                        peel type 0 flat chip / 1 flap and fold, ported from peel.cl
+Edge Sharpness                exponent on the crest term
+Contact AO                    procedural occlusion strength under the lifted edge
+Solve Scale                   divides the resolution the front is solved at
+Height Amount / Invert Height on the Peeling section; routes relief into composited height
+```
+
+## Peel relief
+
+The peel writes height into a dedicated `R16F` ping-pong pair, added because the effect
+data target's four channels were already spent on keep, normal xy and AO. The composite
+adds it to `ResultHeight` scaled by effect visibility. Before this, peeling changed coverage
+and normals while height silently reverted to whatever sat underneath.
+
+The flat type keys height off `Intact`, not `Coverage`. Weighting by coverage raised the
+peeled area instead of dropping it to the substrate, which read as blisters rather than
+flaking. The curled type already keyed off `Intact`.
+
+## Rules
+
+- Do not modify or generate `M_MaterialLab_Substrate`.
+- Preserve serialized fields and neutral defaults; recipes predating each change must load.
+- The authored texture path must render identically regardless of any procedural work.
+- Do not run builds, Unreal, or tests without explicit permission.

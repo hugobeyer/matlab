@@ -1,0 +1,251 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+
+// Erosion filter. One dispatch is one carving pass; the compositor runs several, each
+// re-differentiating the height the previous pass wrote so channels propagate and merge
+// rather than each pixel evolving a private estimate of the slope.
+//
+// Subtractive by construction: the result is a smooth minimum against the incoming
+// height, so the filter only ever removes material.
+
+Texture2D<float> PreviousHeight;
+Texture2D<float> SourceHeight;
+Texture2D<float4> PreviousNormal;
+Texture2D<float> GuideHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float> OutputRidge;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+int Pass;
+int NormalPass;
+int BlurPass;
+int ResamplePass;
+float BlurRadius;
+float NormalStrength;
+float Amount;
+float Strength;
+int Period;
+float GullyLength;
+int LicSteps;
+float Repose;
+float ReposeSoftness;
+float CavityBias;
+float CavityScale;
+float HeightInfluence;
+float HeightScale;
+float GullyWeight;
+float BlendSoftness;
+float Gain;
+float DerivScale;
+int DerivMin;
+int DirectionMode;
+float DirectionAngle;
+float DirectionAmount;
+uint Seed;
+
+// Neighbour taps wrap so a tiling surface erodes seamlessly across the repeat.
+int WrapI(int x, int m)
+{
+	x = x % m;
+	return x < 0 ? x + m : x;
+}
+
+float SmoothStepF(float a, float b, float x)
+{
+	float t = saturate((x - a) / max(b - a, 1.0e-6f));
+	return t * t * (3.0f - 2.0f * t);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Resf = float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+
+	// Resample. Moves height and normal between the composition resolution and the higher
+	// internal erosion resolution, in either direction. A bilinear tap at the destination
+	// texel centre lands on the 2x2 centroid at 2:1, so the downsample is an exact
+	// four-texel average rather than a point-sampled decimation.
+	//
+	// Runs before the Load()s below because source and destination differ in size here,
+	// which is exactly the case those unclamped loads do not handle.
+	if (ResamplePass != 0)
+	{
+		OutputHeight[Pixel] = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+		// Averaging encoded normals and renormalising the encoded value would aim at the
+		// corner of the unit cube, not the surface. Decode, renormalise, re-encode.
+		const float4 N = PreviousNormal.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		const float3 Decoded = normalize(N.xyz * 2.0f - 1.0f);
+		OutputNormal[Pixel] = float4(Decoded * 0.5f + 0.5f, N.w);
+		return;
+	}
+
+	const float H0 = SourceHeight.Load(int3(Pixel, 0));
+	const float H = PreviousHeight.Load(int3(Pixel, 0));
+
+	// Guidance pre-pass. Filtered UV sampling lets BlurRadius move continuously in pixel
+	// units, so values below one pixel and fractional radii do not quantise to integer taps.
+	if (BlurPass != 0)
+	{
+		const float2 D = (max(BlurRadius, 0.0f) / Resf);
+		const float b =
+			  1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x, -D.y), 0.0f)
+			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( 0.0f, -D.y), 0.0f)
+			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x, -D.y), 0.0f)
+			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  0.0f), 0.0f)
+			+ 4.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
+			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x,  0.0f), 0.0f)
+			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  D.y), 0.0f)
+			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( 0.0f,  D.y), 0.0f)
+			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x,  D.y), 0.0f);
+
+		OutputHeight[Pixel] = b * (1.0f / 16.0f);
+		OutputNormal[Pixel] = PreviousNormal.Load(int3(Pixel, 0));
+		return;
+	}
+
+
+	// Final pass: turn the accumulated carve into a normal perturbation. Height alone
+	// leaves shading flat over a carved surface, so the gradient of what was removed is
+	// converted to a tangent normal and combined with the layer normal by RNM, the same
+	// way border lift does.
+	if (NormalPass != 0)
+	{
+		const int ax = WrapI(Pixel.x - 1, OutputSize.x);
+		const int bx = WrapI(Pixel.x + 1, OutputSize.x);
+		const int ay = WrapI(Pixel.y - 1, OutputSize.y);
+		const int by = WrapI(Pixel.y + 1, OutputSize.y);
+
+		// D is what erosion removed, always >= 0.
+		const float d_m0 = SourceHeight.Load(int3(ax, Pixel.y, 0)) - PreviousHeight.Load(int3(ax, Pixel.y, 0));
+		const float d_p0 = SourceHeight.Load(int3(bx, Pixel.y, 0)) - PreviousHeight.Load(int3(bx, Pixel.y, 0));
+		const float d_0m = SourceHeight.Load(int3(Pixel.x, ay, 0)) - PreviousHeight.Load(int3(Pixel.x, ay, 0));
+		const float d_0p = SourceHeight.Load(int3(Pixel.x, by, 0)) - PreviousHeight.Load(int3(Pixel.x, by, 0));
+
+		// Height per pixel times a plain gain. Multiplying by resolution here made any
+		// visible carve read as a near-vertical normal.
+		const float2 dD = float2((d_p0 - d_m0) * 0.5f, (d_0p - d_0m) * 0.5f) * NormalStrength;
+		const float3 CarveN = normalize(float3(dD.x, dD.y, 1.0f));
+
+		float3 BaseN = PreviousNormal.Load(int3(Pixel, 0)).xyz * 2.0f - 1.0f;
+		BaseN = normalize(BaseN);
+
+		// Reoriented normal mapping.
+		const float3 T = BaseN + float3(0.0f, 0.0f, 1.0f);
+		const float3 U = CarveN * float3(-1.0f, -1.0f, 1.0f);
+		const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+
+		OutputNormal[Pixel] = float4(Combined * 0.5f + 0.5f, 1.0f);
+		OutputHeight[Pixel] = H;
+		return;
+	}
+
+
+	// Hold the octave at the finest useful band. Past about two pixels per cell there is no
+	// detail left to add, only aliasing, so later passes keep relaxing at that band.
+	int MaxOctave = 0;
+	{
+		float Cells = (float)max(Period, 1);
+		[loop]
+		while (Cells * 2.0f <= Resf.x * 0.5f && MaxOctave < 20)
+		{
+			Cells *= 2.0f;
+			MaxOctave++;
+		}
+	}
+	const int Octave = min(Pass, MaxOctave);
+	const float Freq = (float)max(Period, 1) * exp2((float)Octave);
+	const int Per = max(Period, 1) << min(Octave, 20);
+	const float Amp = Strength * pow(max(Gain, 0.0f), (float)Octave);
+
+	// Slope is measured locally, at a fixed small radius, never scaled to the octave cell.
+	// Scaling it to the cell makes the Sobel taps hundreds of pixels apart, so the measured
+	// slope is piecewise constant over large blocks; the gate and the flow direction then
+	// hold constant across each block and the carve comes out as axis-aligned rectangles.
+	const int R = max(DerivMin, 1);
+
+	const int xm = WrapI(Pixel.x - R, OutputSize.x);
+	const int xp = WrapI(Pixel.x + R, OutputSize.x);
+	const int ym = WrapI(Pixel.y - R, OutputSize.y);
+	const int yp = WrapI(Pixel.y + R, OutputSize.y);
+
+	const float h_mm = GuideHeight.Load(int3(xm, ym, 0));
+	const float h_0m = GuideHeight.Load(int3(Pixel.x, ym, 0));
+	const float h_pm = GuideHeight.Load(int3(xp, ym, 0));
+	const float h_m0 = GuideHeight.Load(int3(xm, Pixel.y, 0));
+	const float h_p0 = GuideHeight.Load(int3(xp, Pixel.y, 0));
+	const float h_mp = GuideHeight.Load(int3(xm, yp, 0));
+	const float h_0p = GuideHeight.Load(int3(Pixel.x, yp, 0));
+	const float h_pp = GuideHeight.Load(int3(xp, yp, 0));
+
+	// Sobel. Both partials use the same forward-minus-backward convention in index space.
+	const float Inv = 1.0f / (8.0f * (float)R);
+	const float2 Slope = float2(
+		((h_pm + 2.0f * h_p0 + h_pp) - (h_mm + 2.0f * h_m0 + h_mp)) * Inv * Resf.x,
+		((h_mp + 2.0f * h_0p + h_pp) - (h_mm + 2.0f * h_0m + h_pm)) * Inv * Resf.y);
+
+	const float SLen = length(Slope);
+	const float2 SlopeDir = SLen > 1.0e-6f ? -Slope / SLen : float2(0.0f, 1.0f);
+
+	// Authored direction blended against downhill. Weight adds it to the raw slope vector
+	// so it competes with steepness; Lerp blends the directions evenly.
+	const float Rad = DirectionAngle * (3.14159265358979f / 180.0f);
+	const float2 FixedDir = float2(cos(Rad), sin(Rad));
+	const float2 V = DirectionMode == 0
+		? (-Slope + FixedDir * DirectionAmount)
+		: lerp(SlopeDir, FixedDir, DirectionAmount);
+	const float VLen = length(V);
+	const float2 Dir = VLen > 1.0e-6f ? V / VLen : FixedDir;
+
+	// Angle of repose. Nothing moves until the slope passes the critical angle; past it,
+	// carving scales with the excess.
+	const float SlopeGate = SmoothStepF(Repose, Repose + max(ReposeSoftness, 1.0e-4f), SLen);
+
+	// Concavity restriction. Material collects in channels and creases rather than
+	// spreading evenly over every steep face. Laplacian at the same radius, so it is free.
+	const float Lap = (h_p0 + h_m0 + h_0p + h_0m - 4.0f * GuideHeight.Load(int3(Pixel, 0)))
+		/ ((float)R * (float)R);
+	const float Concave = -Lap * CavityScale * Resf.x;
+	const float CavityWeight = SmoothStepF(-1.0f, 1.0f, Concave);
+	const float CavityGate = lerp(1.0f, CavityWeight, CavityBias);
+
+	// Height restriction. Raised ground is exposed and weathers first, so positive
+	// influence concentrates carving where the composited height is high. Negative
+	// inverts it onto low ground. Same shape as the cavity pair: the signal is centred
+	// so flat mid height sits at 0.5, and influence past 1 expands contrast.
+	const float HeightSignal = (H - 0.5f) * HeightScale * 2.0f;
+	const float HeightWeight = SmoothStepF(-1.0f, 1.0f, HeightSignal);
+	const float HeightGate = lerp(1.0f, HeightWeight, HeightInfluence);
+
+	const float Gate = SlopeGate * CavityGate * HeightGate;
+
+	const float3 G = MixtormatGullyField(
+		UV * Freq,
+		Dir,
+		Per,
+		Seed + (uint)Octave * 977u,
+		LicSteps,
+		GullyLength);
+
+	const float Carved = H + G.x * Amp * Gate * GullyWeight;
+
+	// Height blend rather than a hard min: same subtractive behaviour, but the crossover
+	// is rounded so the carve does not stamp a crease into the derived normals.
+	const float NewH = MixtormatSoftSubtract(H, Carved, BlendSoftness);
+
+	OutputHeight[Pixel] = lerp(H0, NewH, Amount);
+	OutputNormal[Pixel] = PreviousNormal.Load(int3(Pixel, 0));
+
+	// Ridges are where successive passes keep agreeing on a crest.
+	const float PrevRidge = OutputRidge[Pixel];
+	OutputRidge[Pixel] = max(PrevRidge, saturate(abs(G.x)) * Gate);
+}

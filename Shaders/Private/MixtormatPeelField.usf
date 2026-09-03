@@ -1,0 +1,353 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+
+// Procedural peel field. Replaces the authored PDM/MSK/H/SDF texture set with a front
+// grown across the surface, so peeling can be driven by a mask and by the material
+// composited underneath rather than by a baked map.
+//
+// Three modes, dispatched in sequence by the compositor:
+//
+//   Seed     threshold the picked mask into starting points, and precompute the speed
+//            field the solve will propagate through.
+//   Solve    one Godunov eikonal iteration, ported from Handoff/Houdini/OpenCl/peel.cl.
+//            Repeated, the front advances about one texel per pass.
+//   Resolve  turn arrival into the channel layout the authored maps carry, so
+//            MixtormatPeeling.usf consumes either source through one code path.
+//
+// Seed and Solve run at a reduced resolution; Resolve runs at full resolution and filters
+// the arrival field up. Arrival is smooth, so it survives that, and the solve is by far
+// the dominant cost: halving the side both quarters the texels and halves the passes the
+// front needs to cross them.
+//
+// There is deliberately no noise here. The ordered child mask is the seed field, which
+// means peeling goes where the artist painted or generated it rather than where a hash
+// happened to land.
+
+Texture2D<float4> SurfaceNormal;
+Texture2D<float4> SurfaceRAM;
+Texture2D<float> SurfaceHeight;
+Texture2D<float> ChildMask;
+Texture2D<float4> PeelOwnMask;
+Texture2D<float2> PreviousArrival;
+Texture2D<float> GrowthField;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float2> OutputArrival;
+RWTexture2D<float> OutputGrowth;
+RWTexture2D<float4> OutputFieldA;
+RWTexture2D<float4> OutputFieldB;
+
+int2 OutputSize;
+int2 SolveSize;
+int Mode;
+uint SurfaceValid;
+uint FlipNormalY;
+
+// Seeding.
+uint Seed;
+float MaskWeight;
+float PeelMaskTiling;
+uint PeelMaskInvert;
+uint UseOwnMask;
+float SeedThreshold;
+int CurvatureRadius;
+int CurvatureSmoothing;
+
+// Growth. These shape the speed the front propagates at, which is what gives the peel its
+// outline; on the seed they would only have decided where it started.
+float CurvatureWeight;
+float CurvatureBias;
+float AOWeight;
+float HeightWeight;
+uint NormalizeWeights;
+float GrowthStrength;
+float SizeVariation;
+int FlakeCells;
+
+// Peel shaping. Same meanings as the authored path.
+int PeelType;
+float Front;
+float Width;
+float MacroWarp;
+float MicroWarp;
+float MicroMorph;
+float Thickness;
+float Lift;
+float DetailStrength;
+float LiftVariation;
+float EdgeSharpness;
+
+#define ML_PEEL_FAR 10000.0f
+
+float Smooth01(float Value)
+{
+	Value = saturate(Value);
+	return Value * Value * (3.0f - 2.0f * Value);
+}
+
+int2 WrapPixel(int2 P, int2 Res)
+{
+	P.x = P.x % Res.x;
+	P.y = P.y % Res.y;
+	P.x = P.x < 0 ? P.x + Res.x : P.x;
+	P.y = P.y < 0 ? P.y + Res.y : P.y;
+	return P;
+}
+
+// The peel's seed source. Its own mask when one is assigned, otherwise the layer's
+// accumulated child mask -- so a layer can mask its other work independently of what
+// seeds the peel, and recipes written before the slot existed still behave as they did.
+float PeelSeedMask(float2 UV)
+{
+	if (UseOwnMask != 0)
+	{
+		const float2 MaskUV = frac(UV * max(PeelMaskTiling, 1.0f));
+		const float V = PeelOwnMask.SampleLevel(LinearWrapSampler, MaskUV, 0.0f).r;
+		return PeelMaskInvert != 0 ? 1.0f - V : V;
+	}
+	return ChildMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+// One random value per cell. Regions rather than pixels, so a flake differs from its
+// neighbours instead of dissolving into noise inside itself.
+float FlakeRandom01(float2 UV)
+{
+	const int P = max(FlakeCells, 1);
+	const uint2 Cell = (uint2)floor(frac(UV) * (float)P);
+	const uint H = MixtormatHashU(
+		Cell.x * 73856093u ^ Cell.y * 19349663u ^ (Seed * 2654435761u));
+	return (float)(H & 0x00FFFFFFu) * (1.0f / 16777215.0f);
+}
+
+// Godunov update for the eikonal equation |grad T| = s, solving the quadratic for the
+// arrival time implied by two upwind neighbours. This is what makes the front follow the
+// speed field: a slow region raises s, the front stalls there, and the resulting shape is
+// governed by the surface. A plain distance transform cannot do this, which is why it
+// comes out radial.
+float Eikonal2(float c, float a, float b, float ha, float hb, float s)
+{
+	ha = max(ha, 1.0e-8f);
+	hb = max(hb, 1.0e-8f);
+	s = max(s, 0.0f);
+
+	const float ia = 1.0f / (ha * ha);
+	const float ib = 1.0f / (hb * hb);
+	const float A = ia + ib;
+	const float B = a * ia + b * ib;
+	const float C = a * a * ia + b * b * ib - s * s;
+	float t = min(a + ha * s, b + hb * s);
+	const float disc = B * B - A * C;
+
+	if (disc >= 0.0f)
+	{
+		const float q = (B + sqrt(max(disc, 0.0f))) / A;
+		if (q >= max(a, b))
+		{
+			t = min(t, q);
+		}
+	}
+
+	return min(c, t);
+}
+
+// Axis pair, diagonal pair, then every single-neighbour candidate.
+float Solve8(
+	float c,
+	float l, float r, float d, float u,
+	float nw, float ne, float sw, float se,
+	float hx, float hy, float s)
+{
+	const float hd = sqrt(hx * hx + hy * hy);
+	float t = Eikonal2(c, min(l, r), min(d, u), hx, hy, s);
+	t = min(t, Eikonal2(c, min(nw, se), min(ne, sw), hd, hd, s));
+	t = min(t, l + hx * s);
+	t = min(t, r + hx * s);
+	t = min(t, d + hy * s);
+	t = min(t, u + hy * s);
+	t = min(t, nw + hd * s);
+	t = min(t, ne + hd * s);
+	t = min(t, sw + hd * s);
+	t = min(t, se + hd * s);
+	return t;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Res = Mode == 2 ? OutputSize : SolveSize;
+	if (any(DispatchThreadId.xy >= uint2(Res)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Resf = float2(Res);
+	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+
+	if (Mode == 0)
+	{
+		// The mask is the seed field. Weight scales it before the threshold so one control
+		// can move between "only the strongest parts start peeling" and "nearly all of it".
+		const float MaskValue = PeelSeedMask(UV);
+		const bool bSeed = saturate(MaskValue * MaskWeight) > SeedThreshold;
+		OutputArrival[Pixel] = bSeed ? float2(0.0f, 1.0f) : float2(ML_PEEL_FAR, 0.0f);
+
+		// Speed field, mixed to 0..1 and centred on 0.5 so that with no weights authored
+		// it resolves to 0.5, giving speed 1 and uniform propagation.
+		float Raw = 0.0f;
+		float Total = 0.0f;
+
+		if (abs(CurvatureWeight) > 0.0f && SurfaceValid != 0)
+		{
+			float Curvature;
+			float Cavity;
+			float Convex;
+			MixtormatEvaluateCurvature(
+				SurfaceNormal,
+				LinearWrapSampler,
+				UV,
+				Res,
+				max(CurvatureRadius, 1),
+				max(CurvatureSmoothing, 1),
+				1.0f,
+				1.0f,
+				FlipNormalY,
+				Curvature,
+				Cavity,
+				Convex);
+			Raw += CurvatureWeight * lerp(Cavity, Convex, saturate(CurvatureBias));
+			Total += abs(CurvatureWeight);
+		}
+
+		if (abs(AOWeight) > 0.0f && SurfaceValid != 0)
+		{
+			Raw += AOWeight * (1.0f - SurfaceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
+			Total += abs(AOWeight);
+		}
+
+		if (abs(HeightWeight) > 0.0f && SurfaceValid != 0)
+		{
+			Raw += HeightWeight * SurfaceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+			Total += abs(HeightWeight);
+		}
+
+		const float Growth = Total > 1.0e-6f
+			? saturate((NormalizeWeights != 0) ? Raw / Total : Raw)
+			: 0.5f;
+
+		OutputGrowth[Pixel] = Growth;
+		return;
+	}
+
+	if (Mode == 1)
+	{
+		const float2 Self = PreviousArrival.Load(int3(Pixel, 0));
+
+		const int xm = WrapPixel(Pixel + int2(-1, 0), Res).x;
+		const int xp = WrapPixel(Pixel + int2( 1, 0), Res).x;
+		const int ym = WrapPixel(Pixel + int2(0, -1), Res).y;
+		const int yp = WrapPixel(Pixel + int2(0,  1), Res).y;
+
+		const float l  = PreviousArrival.Load(int3(xm, Pixel.y, 0)).x;
+		const float r  = PreviousArrival.Load(int3(xp, Pixel.y, 0)).x;
+		const float d  = PreviousArrival.Load(int3(Pixel.x, ym, 0)).x;
+		const float u  = PreviousArrival.Load(int3(Pixel.x, yp, 0)).x;
+		const float nw = PreviousArrival.Load(int3(xm, yp, 0)).x;
+		const float ne = PreviousArrival.Load(int3(xp, yp, 0)).x;
+		const float sw = PreviousArrival.Load(int3(xm, ym, 0)).x;
+		const float se = PreviousArrival.Load(int3(xp, ym, 0)).x;
+
+		// Slowness s = 1/F is what the Godunov update consumes. The per-region factor lets
+		// flakes reach different extents by genuinely propagating further, rather than by
+		// scaling a finished distance.
+		const float Growth = GrowthField.Load(int3(Pixel, 0));
+		const float Speed = exp2((Growth * 2.0f - 1.0f) * GrowthStrength)
+			* lerp(1.0f, FlakeRandom01(UV) * 2.0f, saturate(SizeVariation));
+		const float Slowness = 1.0f / max(Speed, 1.0e-4f);
+
+		float T = Solve8(
+			Self.x, l, r, d, u, nw, ne, sw, se,
+			1.0f / Resf.x, 1.0f / Resf.y, Slowness);
+		if (Self.y > 0.5f)
+		{
+			T = 0.0f;
+		}
+
+		OutputArrival[Pixel] = float2(T, Self.y);
+		return;
+	}
+
+	// Resolve, at full resolution. Arrival is filtered up from the solve resolution; it is
+	// a smooth field, so the peel boundary stays clean even though the solve was coarser.
+	const float2 Arrival = PreviousArrival.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float T = Arrival.x >= ML_PEEL_FAR * 0.5f ? 1.0e6f : Arrival.x;
+
+	// Boundary variation. The mask supplies it now that there is no noise: sampling it
+	// against a blurred copy of itself gives a signed local detail term, so Macro and
+	// Micro Warp still break the front up instead of leaving it perfectly smooth.
+	const float MaskHere = PeelSeedMask(UV);
+	const float2 Texel = 1.0f / Resf;
+	const float MaskBlur = 0.25f * (
+		  PeelSeedMask(UV + float2( Texel.x * 3.0f, 0.0f))
+		+ PeelSeedMask(UV - float2( Texel.x * 3.0f, 0.0f))
+		+ PeelSeedMask(UV + float2(0.0f,  Texel.y * 3.0f))
+		+ PeelSeedMask(UV - float2(0.0f,  Texel.y * 3.0f)));
+
+	const float M = MaskHere * 2.0f - 1.0f;
+	const float U = (MaskHere - MaskBlur) * 8.0f * saturate(MicroMorph);
+
+	const float FlakeRandom = FlakeRandom01(UV);
+	const float FlakeLift = Lift * lerp(1.0f, FlakeRandom, saturate(LiftVariation));
+
+	const float D = T + M * MacroWarp + U * MicroWarp - Front;
+	const float X = D / max(Width, 1.0e-6f);
+
+	float Coverage = 0.0f;
+	float Edge = 0.0f;
+	float Detail = 0.0f;
+	float H = 0.0f;
+
+	if (PeelType == 0)
+	{
+		Coverage = 1.0f - Smooth01(X * 0.5f + 0.5f);
+		Edge = pow(exp(-2.0f * X * X), max(EdgeSharpness, 0.01f));
+		Detail = saturate(-U * 0.75f - M * 0.25f);
+		Detail *= Detail;
+
+		// Height belongs to the film that is still attached, not to the hole it left.
+		// Weighting by Coverage raised the peeled area instead of dropping it to the
+		// substrate, which reads as blisters rather than flaking.
+		const float Intact = 1.0f - Coverage;
+		H = Intact
+			* (Thickness
+				+ (M + U * 0.35f) * DetailStrength
+				- Detail * DetailStrength * 0.75f)
+			+ Edge * FlakeLift;
+	}
+	else
+	{
+		// Curled variant: the sheet lifts into a flap ahead of the front and folds back
+		// behind it. Ported from the Houdini generator's mode 1.
+		const float Intact = Smooth01(X * 0.5f + 0.5f);
+		const float Fx = (X + 0.80f) / 0.55f;
+		const float Flap = exp(-2.0f * Fx * Fx);
+		const float Bx = (X - 0.75f) / 0.65f;
+		const float Fold = exp(-2.0f * Bx * Bx);
+
+		Coverage = 1.0f - Intact;
+		Edge = pow(exp(-2.0f * X * X), max(EdgeSharpness, 0.01f));
+		Detail = saturate(Flap + Fold);
+
+		H = Intact * Thickness
+			+ Edge * FlakeLift
+			+ Flap * FlakeLift * 0.45f
+			- Fold * FlakeLift * 0.15f
+			+ U * DetailStrength * (Edge + Flap);
+	}
+
+	// A carries arrival, the two variation fields, and the signed distance kept raw: there
+	// is no 8-bit round trip here, so none of the authored decode ranges apply.
+	OutputFieldA[Pixel] = float4(T, MaskHere, saturate(U * 0.5f + 0.5f), D);
+	OutputFieldB[Pixel] = float4(saturate(Coverage), saturate(Edge), saturate(Detail), H);
+}
