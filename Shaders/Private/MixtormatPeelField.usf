@@ -8,12 +8,15 @@
 //
 // Three modes, dispatched in sequence by the compositor:
 //
-//   Seed     threshold the picked mask into starting points, and precompute the speed
-//            field the solve will propagate through.
+//   Seed     precompute the speed field, and lay the zero level set on the mask's
+//            threshold isocontour with the crossing interpolated between cells.
 //   Solve    one Godunov eikonal iteration, ported from Handoff/Houdini/OpenCl/peel.cl.
-//            Repeated, the front advances about one texel per pass.
-//   Resolve  turn arrival into the channel layout the authored maps carry, so
-//            MixtormatPeeling.usf consumes either source through one code path.
+//            Repeated, the front advances about one texel per pass -- inward and outward
+//            from that contour alike, which is what makes the result a distance rather
+//            than a one-sided dilation.
+//   Resolve  sign the solved distance by side and turn it into the channel layout the
+//            authored maps carry, so MixtormatPeeling.usf consumes either source through
+//            one code path.
 //
 // Seed and Solve run at a reduced resolution; Resolve runs at full resolution and filters
 // the arrival field up. Arrival is smooth, so it survives that, and the solve is by far
@@ -23,6 +26,11 @@
 // There is deliberately no noise here. The ordered child mask is the seed field, which
 // means peeling goes where the artist painted or generated it rather than where a hash
 // happened to land.
+//
+// The field is a true signed distance: distance is solved from the mask's threshold
+// contour, then signed by which side of that threshold the mask falls on. It is still a
+// non-uniform distance -- the speed field reshapes the outline -- which is the part a plain
+// distance transform or a jump flood cannot do, and why they came out radial.
 
 Texture2D<float4> SurfaceNormal;
 Texture2D<float4> SurfaceRAM;
@@ -80,6 +88,13 @@ float EdgeSharpness;
 
 #define ML_PEEL_FAR 10000.0f
 
+// What an unreached cell resolves to. It has to stay half-representable: OutputFieldA is
+// RGBA16F, so the old 1.0e6f wrote +inf, and once the field is signed that sentinel covers
+// the whole unreached interior rather than only the far outside, where a texel of bilinear
+// filtering against inf would poison the edge of every large peel. 1024 saturates every
+// Smooth01 and underflows every exp(-2X*X) at any usable Width.
+#define ML_PEEL_UNREACHED 1024.0f
+
 float Smooth01(float Value)
 {
 	Value = saturate(Value);
@@ -109,6 +124,39 @@ float PeelSeedMask(float2 UV)
 	return ChildMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 }
 
+// The seed mask signed about its threshold: negative outside the peel region, positive
+// inside, zero exactly on the contour the peel is measured from. Weight scales the mask
+// before the threshold so one control can move between "only the strongest parts peel"
+// and "nearly all of it". Seeding, the sign of the distance and the macro warp term all
+// read this one quantity, so none of them can disagree about where the boundary is.
+float PeelSeedFieldFrom(float MaskValue)
+{
+	return saturate(MaskValue * MaskWeight) - SeedThreshold;
+}
+
+float PeelSeedField(float2 UV)
+{
+	return PeelSeedFieldFrom(PeelSeedMask(UV));
+}
+
+// Distance from this cell to the zero crossing on the segment towards one neighbour, in UV
+// units, or FAR when that segment carries no locatable crossing. Interpolating the crossing
+// is what puts the boundary between cells instead of snapping it to whole ones, which is
+// the difference between a sub-cell contour and a stair-stepped one at low Solve Scale.
+float CrossingDistance(float F, float Fn, float H)
+{
+	if (F * Fn > 0.0f)
+	{
+		return ML_PEEL_FAR;
+	}
+
+	// Flat at the threshold. Nothing to locate, and treating it as a crossing would seed
+	// the whole plateau at zero -- the degenerate case where the mask sits exactly on the
+	// threshold everywhere, which must stay unseeded as it was before.
+	const float Denom = abs(F - Fn);
+	return Denom > 1.0e-12f ? H * abs(F) / Denom : ML_PEEL_FAR;
+}
+
 // One random value per cell. Regions rather than pixels, so a flake differs from its
 // neighbours instead of dissolving into noise inside itself.
 float FlakeRandom01(float2 UV)
@@ -118,6 +166,21 @@ float FlakeRandom01(float2 UV)
 	const uint H = MixtormatHashU(
 		Cell.x * 73856093u ^ Cell.y * 19349663u ^ (Seed * 2654435761u));
 	return (float)(H & 0x00FFFFFFu) * (1.0f / 16777215.0f);
+}
+
+// Slowness s = 1/F, what the Godunov update consumes. The per-region factor lets flakes
+// reach different extents by genuinely propagating further, rather than by scaling a
+// finished distance.
+//
+// Seed and Solve share it deliberately. The solve propagates travel time, not geometric
+// distance, so the boundary condition has to be stated in the same units: a raw crossing
+// distance would be wrong by the local speed, and Solve8's min() can only correct that
+// downwards, leaving slow regions permanently short by up to a texel.
+float PeelSlowness(float Growth, float2 UV)
+{
+	const float Speed = exp2((Growth * 2.0f - 1.0f) * GrowthStrength)
+		* lerp(1.0f, FlakeRandom01(UV) * 2.0f, saturate(SizeVariation));
+	return 1.0f / max(Speed, 1.0e-4f);
 }
 
 // Godunov update for the eikonal equation |grad T| = s, solving the quadratic for the
@@ -187,12 +250,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (Mode == 0)
 	{
-		// The mask is the seed field. Weight scales it before the threshold so one control
-		// can move between "only the strongest parts start peeling" and "nearly all of it".
-		const float MaskValue = PeelSeedMask(UV);
-		const bool bSeed = saturate(MaskValue * MaskWeight) > SeedThreshold;
-		OutputArrival[Pixel] = bSeed ? float2(0.0f, 1.0f) : float2(ML_PEEL_FAR, 0.0f);
-
 		// Speed field, mixed to 0..1 and centred on 0.5 so that with no weights authored
 		// it resolves to 0.5, giving speed 1 and uniform propagation.
 		float Raw = 0.0f;
@@ -237,6 +294,26 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			: 0.5f;
 
 		OutputGrowth[Pixel] = Growth;
+
+		// The zero level set is the mask's threshold isocontour, not its interior. A cell
+		// whose field changes sign against a neighbour carries the interpolated distance to
+		// that crossing; everything else starts unreached, and the solve fills it inward and
+		// outward alike. Seeding the interior instead pinned it flat at T = 0, so it had no
+		// gradient for coverage to shape and Front could only ever dilate.
+		const float2 Texel = 1.0f / Resf;
+		const float F = PeelSeedField(UV);
+
+		float T0 = ML_PEEL_FAR;
+		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV - float2(Texel.x, 0.0f)), Texel.x));
+		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV + float2(Texel.x, 0.0f)), Texel.x));
+		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV - float2(0.0f, Texel.y)), Texel.y));
+		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV + float2(0.0f, Texel.y)), Texel.y));
+
+		// Boundary cells are flagged so the solve pins them: the contour has to stay where
+		// the mask put it rather than drift as the front sweeps past.
+		OutputArrival[Pixel] = T0 < ML_PEEL_FAR
+			? float2(T0 * PeelSlowness(Growth, UV), 1.0f)
+			: float2(ML_PEEL_FAR, 0.0f);
 		return;
 	}
 
@@ -244,35 +321,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float2 Self = PreviousArrival.Load(int3(Pixel, 0));
 
-		const int xm = WrapPixel(Pixel + int2(-1, 0), Res).x;
-		const int xp = WrapPixel(Pixel + int2( 1, 0), Res).x;
-		const int ym = WrapPixel(Pixel + int2(0, -1), Res).y;
-		const int yp = WrapPixel(Pixel + int2(0,  1), Res).y;
+		// Both components of each neighbour are wrapped once, so the diagonals compose two
+		// coordinates that are each valid on their own axis.
+		const int2 Lo = WrapPixel(Pixel - 1, Res);
+		const int2 Hi = WrapPixel(Pixel + 1, Res);
 
-		const float l  = PreviousArrival.Load(int3(xm, Pixel.y, 0)).x;
-		const float r  = PreviousArrival.Load(int3(xp, Pixel.y, 0)).x;
-		const float d  = PreviousArrival.Load(int3(Pixel.x, ym, 0)).x;
-		const float u  = PreviousArrival.Load(int3(Pixel.x, yp, 0)).x;
-		const float nw = PreviousArrival.Load(int3(xm, yp, 0)).x;
-		const float ne = PreviousArrival.Load(int3(xp, yp, 0)).x;
-		const float sw = PreviousArrival.Load(int3(xm, ym, 0)).x;
-		const float se = PreviousArrival.Load(int3(xp, ym, 0)).x;
+		const float l  = PreviousArrival.Load(int3(Lo.x, Pixel.y, 0)).x;
+		const float r  = PreviousArrival.Load(int3(Hi.x, Pixel.y, 0)).x;
+		const float d  = PreviousArrival.Load(int3(Pixel.x, Lo.y, 0)).x;
+		const float u  = PreviousArrival.Load(int3(Pixel.x, Hi.y, 0)).x;
+		const float nw = PreviousArrival.Load(int3(Lo.x, Hi.y, 0)).x;
+		const float ne = PreviousArrival.Load(int3(Hi.x, Hi.y, 0)).x;
+		const float sw = PreviousArrival.Load(int3(Lo.x, Lo.y, 0)).x;
+		const float se = PreviousArrival.Load(int3(Hi.x, Lo.y, 0)).x;
 
-		// Slowness s = 1/F is what the Godunov update consumes. The per-region factor lets
-		// flakes reach different extents by genuinely propagating further, rather than by
-		// scaling a finished distance.
-		const float Growth = GrowthField.Load(int3(Pixel, 0));
-		const float Speed = exp2((Growth * 2.0f - 1.0f) * GrowthStrength)
-			* lerp(1.0f, FlakeRandom01(UV) * 2.0f, saturate(SizeVariation));
-		const float Slowness = 1.0f / max(Speed, 1.0e-4f);
+		const float Slowness = PeelSlowness(GrowthField.Load(int3(Pixel, 0)), UV);
 
-		float T = Solve8(
-			Self.x, l, r, d, u, nw, ne, sw, se,
-			1.0f / Resf.x, 1.0f / Resf.y, Slowness);
-		if (Self.y > 0.5f)
-		{
-			T = 0.0f;
-		}
+		// A flagged cell holds the interpolated crossing distance from the seed pass and
+		// keeps it. The rest advance.
+		const float T = Self.y > 0.5f
+			? Self.x
+			: Solve8(
+				Self.x, l, r, d, u, nw, ne, sw, se,
+				1.0f / Resf.x, 1.0f / Resf.y, Slowness);
 
 		OutputArrival[Pixel] = float2(T, Self.y);
 		return;
@@ -280,8 +351,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Resolve, at full resolution. Arrival is filtered up from the solve resolution; it is
 	// a smooth field, so the peel boundary stays clean even though the solve was coarser.
-	const float2 Arrival = PreviousArrival.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	const float T = Arrival.x >= ML_PEEL_FAR * 0.5f ? 1.0e6f : Arrival.x;
+	// Unreached cells clamp rather than threshold: monotone, and free of the band where a
+	// bilinear mix of FAR against a solved neighbour used to fall the wrong side of a test.
+	const float T = min(
+		PreviousArrival.SampleLevel(LinearWrapSampler, UV, 0.0f).x, ML_PEEL_UNREACHED);
 
 	// Boundary variation. The mask supplies it now that there is no noise: sampling it
 	// against a blurred copy of itself gives a signed local detail term, so Macro and
@@ -294,13 +367,26 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		+ PeelSeedMask(UV + float2(0.0f,  Texel.y * 3.0f))
 		+ PeelSeedMask(UV - float2(0.0f,  Texel.y * 3.0f)));
 
-	const float M = MaskHere * 2.0f - 1.0f;
+	// Sign by side, read from the mask at full resolution rather than carried through the
+	// coarse solve. That puts the zero crossing exactly on the threshold contour; a side
+	// carried on the solve grid would snap it back to the nearest half-texel, which is the
+	// quantisation the interpolated seed exists to remove.
+	const float SeedField = PeelSeedFieldFrom(MaskHere);
+	const float SDF = SeedField > 0.0f ? -T : T;
+
+	// Macro warp rides the signed seed field, which is zero on the contour by construction.
+	// The mask remapped to -1..1 was not: at the default threshold it sat at +0.24 there, so
+	// Macro Warp injected a constant offset and Front = 0 no longer landed on the contour.
+	// Doubled to keep the control's usable range close to what it was.
+	const float M = SeedField * 2.0f;
 	const float U = (MaskHere - MaskBlur) * 8.0f * saturate(MicroMorph);
 
 	const float FlakeRandom = FlakeRandom01(UV);
 	const float FlakeLift = Lift * lerp(1.0f, FlakeRandom, saturate(LiftVariation));
 
-	const float D = T + M * MacroWarp + U * MicroWarp - Front;
+	// Negative Front now erodes inside the mask and positive dilates outside it, both with a
+	// real gradient, because SDF is signed on both sides instead of pinned flat within.
+	const float D = SDF + M * MacroWarp + U * MicroWarp - Front;
 	const float X = D / max(Width, 1.0e-6f);
 
 	float Coverage = 0.0f;
@@ -346,8 +432,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			+ U * DetailStrength * (Edge + Flap);
 	}
 
-	// A carries arrival, the two variation fields, and the signed distance kept raw: there
-	// is no 8-bit round trip here, so none of the authored decode ranges apply.
-	OutputFieldA[Pixel] = float4(T, MaskHere, saturate(U * 0.5f + 0.5f), D);
+	// A carries the signed distance, the mask, the micro term, and the shaped distance, all
+	// raw: there is no 8-bit round trip here, so none of the authored decode ranges apply.
+	OutputFieldA[Pixel] = float4(SDF, MaskHere, saturate(U * 0.5f + 0.5f), D);
 	OutputFieldB[Pixel] = float4(saturate(Coverage), saturate(Edge), saturate(Detail), H);
 }

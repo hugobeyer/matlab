@@ -1,5 +1,7 @@
 #include "Style/MixtormatStyle.h"
 
+#include "Style/MixtormatDesignTokens.h"
+
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 
@@ -19,6 +21,16 @@ namespace MixtormatStylePrivate
 	{
 		Color.A = Opacity;
 		return Color;
+	}
+
+	// The component exploration specified colours as sRGB hex. Converting here keeps the source
+	// values legible and identical to what was designed, instead of hand-derived linear floats.
+	FLinearColor Hex(const uint32 RGB)
+	{
+		return FLinearColor::FromSRGBColor(FColor(
+			static_cast<uint8>((RGB >> 16) & 0xFF),
+			static_cast<uint8>((RGB >> 8) & 0xFF),
+			static_cast<uint8>(RGB & 0xFF)));
 	}
 
 	FLinearColor Shade(FLinearColor Color, const float Amount)
@@ -69,6 +81,23 @@ void FMixtormatStyle::Initialize()
 	const FLinearColor Icon = AppColor(TEXT("Colors.Foreground"));
 	const FLinearColor Danger = AppColor(TEXT("Colors.AccentRed"));
 
+	// Design palette, as specified. The inspector group's content sits on PanelSurface and the
+	// slider trough on TroughSurface: they must differ, which is what went wrong when both
+	// resolved to the same shade and the bars vanished into the panel.
+	const FLinearColor PanelSurface = Hex(0x212121);
+	const FLinearColor TroughSurface = Hex(0x1B1B1B);
+	const FLinearColor TroughLine = Hex(0x2E2E2E);
+	const FLinearColor HeaderSurface = Hex(0x1A1A1A);
+	const FLinearColor HeaderLine = Hex(0x2A2A2A);
+	const FLinearColor HeaderText = Hex(0xA8A8A8);
+	const FLinearColor CaptionText = Hex(0x6E6E6E);
+	const FLinearColor RowText = Hex(0xC0C0C0);
+	// Between the accent and flat steel. Saturation, not lightness, was what made the fills
+	// shout: a saturated blue reads as lit at any value. This keeps enough hue to say "set"
+	// while sitting behind the label printed on top of it.
+	const FLinearColor FillTop = Hex(0x224970);
+	const FLinearColor FillBottom = Hex(0x18334E);
+
 	StyleInstance = MakeShared<FSlateStyleSet>(GetStyleSetName());
 	// Resolved through the plugin rather than assembled from a folder name: a plugin's
 	// name comes from its .uplugin, which need not match the directory containing it, and
@@ -100,10 +129,13 @@ void FMixtormatStyle::Initialize()
 		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.3f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.InspectorGroup"),
-		new FSlateRoundedBoxBrush(Inset, 5.0f, BorderStrong, 0.55f));
+		new FSlateColorBrush(PanelSurface));
 	StyleInstance->Set(
 		TEXT("Mixtormat.InspectorGroupHeader"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 4.0f, Border, 0.35f));
+		new FSlateColorBrush(HeaderSurface));
+	StyleInstance->Set(
+		TEXT("Mixtormat.InspectorGroupHeaderHovered"),
+		new FSlateColorBrush(Hex(0x242424)));
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhost"),
 		new FSlateRoundedBoxBrush(RaisedPanel, 6.0f, BorderStrong, 0.8f));
@@ -145,10 +177,13 @@ void FMixtormatStyle::Initialize()
 		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, 0.65f));
 
 	FTextBlockStyle SectionHeader = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-		.SetColorAndOpacity(Text)
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontGroupHeader))
+		.SetColorAndOpacity(HeaderText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo SectionHeaderFont = SectionHeader.Font;
+	SectionHeaderFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
+	SectionHeader.SetFont(SectionHeaderFont);
 	StyleInstance->Set(TEXT("Mixtormat.SectionHeader"), SectionHeader);
 
 	FTextBlockStyle Muted = FTextBlockStyle()
@@ -171,17 +206,19 @@ void FMixtormatStyle::Initialize()
 		.SetPressedPadding(FMargin(2.0f, 3.0f, 2.0f, 1.0f));
 	StyleInstance->Set(TEXT("Mixtormat.AssetCard"), AssetCard);
 
+	// Invisible in every state. It exists to catch the click and nothing else; the header bar
+	// behind it draws the normal and hovered surfaces.
 	FButtonStyle InspectorHeaderButton = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(FLinearColor::Transparent, 3.0f))
-		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 3.0f))
-		.SetPressed(FSlateRoundedBoxBrush(FocusFill, 3.0f))
-		.SetDisabled(FSlateRoundedBoxBrush(FLinearColor::Transparent, 3.0f))
-		.SetNormalForeground(FSlateColor(Text))
+		.SetNormal(FSlateNoResource())
+		.SetHovered(FSlateNoResource())
+		.SetPressed(FSlateNoResource())
+		.SetDisabled(FSlateNoResource())
+		.SetNormalForeground(FSlateColor(HeaderText))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(2.0f, 1.0f))
-		.SetPressedPadding(FMargin(2.0f, 2.0f, 2.0f, 0.0f));
+		.SetNormalPadding(FMargin(0.0f))
+		.SetPressedPadding(FMargin(0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.InspectorHeaderButton"), InspectorHeaderButton);
 
 	StyleInstance->Set(
@@ -276,14 +313,26 @@ void FMixtormatStyle::Initialize()
 		.SetPadding(FMargin(8.0f, 5.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabToggle"), TabToggle);
 
+	// Icon-only toggle: the glyph carries the state through its colour, so there is no plate
+	// behind it in any state. A filled background on a 16px eye reads as a button and competes
+	// with the header title next to it.
 	FCheckBoxStyle ViewportOverlayToggle = FCheckBoxStyle()
 		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
-		.SetUncheckedImage(FSlateRoundedBoxBrush(FLinearColor::Transparent, 2.0f))
-		.SetUncheckedHoveredImage(FSlateRoundedBoxBrush(RaisedPanelHover, 2.0f))
-		.SetUncheckedPressedImage(FSlateRoundedBoxBrush(FocusFill, 2.0f))
-		.SetCheckedImage(FSlateRoundedBoxBrush(SelectionFill, 2.0f, Accent, 0.55f))
-		.SetCheckedHoveredImage(FSlateRoundedBoxBrush(FocusFill, 2.0f, AccentHover, 0.65f))
-		.SetCheckedPressedImage(FSlateRoundedBoxBrush(FocusFill, 2.0f, AccentPressed, 0.65f))
+		.SetUncheckedImage(FSlateNoResource())
+		.SetUncheckedHoveredImage(FSlateNoResource())
+		.SetUncheckedPressedImage(FSlateNoResource())
+		.SetCheckedImage(FSlateNoResource())
+		.SetCheckedHoveredImage(FSlateNoResource())
+		.SetCheckedPressedImage(FSlateNoResource())
+		.SetUndeterminedImage(FSlateNoResource())
+		.SetUndeterminedHoveredImage(FSlateNoResource())
+		.SetUndeterminedPressedImage(FSlateNoResource())
+		.SetForegroundColor(FSlateColor(WithOpacity(Text, 0.55f)))
+		.SetHoveredForegroundColor(FSlateColor(Text))
+		.SetPressedForegroundColor(FSlateColor(Text))
+		.SetCheckedForegroundColor(FSlateColor(Hex(0x0E86FF)))
+		.SetCheckedHoveredForegroundColor(FSlateColor(Hex(0x4DA3FF)))
+		.SetCheckedPressedForegroundColor(FSlateColor(Hex(0x0E86FF)))
 		.SetPadding(FMargin(2.0f));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
@@ -331,6 +380,153 @@ void FMixtormatStyle::Initialize()
 		.SetForegroundColor(FSlateColor(Text))
 		.SetTextPadding(FMargin(3.0f, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.ScrubControl"), ScrubControl);
+
+	// ---------------------------------------------------------------------------------------
+	// Design system. Geometry lives in MixtormatDesignTokens.h; the colours have to resolve
+	// against FAppStyle at runtime, so they live here. Widgets read both and hard-code neither.
+	// ---------------------------------------------------------------------------------------
+
+	// Two corrections to the palette above, both found by resolving it rather than eyeballing it:
+	//
+	// `Colors.SelectHover` is aliased to `Panel` by Unreal (#242424) -- it is not a brighter
+	// selection blue. Anything built on it as an "accent, but hovered" goes grey on hover instead
+	// of brightening, which is the opposite of the intent.
+	//
+	// `Colors.Secondary` is #383838, an outline grey. As a text colour on the #212121 panel it is
+	// nearly invisible, so subdued text derives from Foreground instead.
+	const FLinearColor AccentBright = AppColor(TEXT("Colors.PrimaryHover"));
+	const FLinearColor SubduedText = WithOpacity(Text, 0.62f);
+
+	// The one non-theme hue in the system: marks a value that differs from its default. Chosen to
+	// read against both the trough and the blue fill without competing with either.
+	const FLinearColor ModifiedMarker(0.5647f, 0.3255f, 0.1216f, 1.0f);
+
+	// Blender-style value slider: one bar carrying label, fill and value. Kept as loose keys
+	// rather than a widget style so SMixtormatSlider can paint the fill clipped to the value
+	// fraction, which no stock Slate style expresses.
+	//
+	// The trough gets its own colour rather than reusing one of the panel shades. It first used
+	// `Colors.Input` raw, which a small spin box gets away with but a full-width bar does not --
+	// a column of them read as pale slabs. Correcting that to `Inset` overshot in the other
+	// direction: `Mixtormat.InspectorGroup` is also `Inset`, so every bar was exactly the colour
+	// of the panel it sat on and the control vanished entirely. It needs to contrast with the
+	// group background, which means darker than any panel shade, with an outline to define it.
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.Background"),
+		new FSlateRoundedBoxBrush(TroughSurface, MixtormatTokens::CornerRadius, TroughLine, MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.BackgroundHovered"),
+		new FSlateRoundedBoxBrush(Hex(0x1E1E1E), MixtormatTokens::CornerRadius, Hex(0x3A3A3A), MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.BackgroundActive"),
+		new FSlateRoundedBoxBrush(Hex(0x1E1E1E), MixtormatTokens::CornerRadius, Hex(0x0070E0), MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.BackgroundEntry"),
+		new FSlateRoundedBoxBrush(Hex(0x0E0E0E), MixtormatTokens::CornerRadius, Hex(0x0070E0), MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.BackgroundDisabled"),
+		new FSlateRoundedBoxBrush(Hex(0x191919), MixtormatTokens::CornerRadius, Hex(0x242424), MixtormatTokens::OutlineWidth));
+
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.Fill"),
+		new FSlateRoundedBoxBrush(FillTop, MixtormatTokens::CornerRadius));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.FillHovered"),
+		new FSlateRoundedBoxBrush(Hex(0x285586), MixtormatTokens::CornerRadius));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.FillActive"),
+		new FSlateRoundedBoxBrush(Hex(0x2A5C93), MixtormatTokens::CornerRadius));
+	StyleInstance->Set(
+		TEXT("Mixtormat.ValueSlider.FillDisabled"),
+		new FSlateRoundedBoxBrush(WithOpacity(FillBottom, 0.45f), MixtormatTokens::CornerRadius));
+
+	// Centre tick on a signed range, and the modified-from-default stripe.
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.FillBottom"), new FSlateColorBrush(FillBottom));
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(Hex(0x4A4A4A)));
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
+
+	FTextBlockStyle SliderLabel = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
+		.SetColorAndOpacity(RowText)
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Label"), SliderLabel);
+
+	// The value is drawn in the same face forced to a uniform advance, which is what makes a
+	// column of numbers line up on the decimal point. Slate exposes no OpenType feature switch,
+	// but bForceMonospaced does the same job -- and it is safe here precisely because this style
+	// is only ever used for digits, never for the label.
+	FTextBlockStyle SliderValue = SliderLabel;
+	FSlateFontInfo ValueFont = SliderValue.Font;
+	ValueFont.bForceMonospaced = true;
+	ValueFont.MonospacedWidth = 0.52f;
+	SliderValue.SetFont(ValueFont);
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Value"), SliderValue);
+
+	FTextBlockStyle SliderLabelDisabled = SliderLabel;
+	SliderLabelDisabled.SetColorAndOpacity(DisabledText);
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.LabelDisabled"), SliderLabelDisabled);
+
+	FEditableTextBoxStyle SliderEntry =
+		AppStyle.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
+	SliderEntry
+		.SetBackgroundImageNormal(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
+		.SetBackgroundImageHovered(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
+		.SetBackgroundImageFocused(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
+		.SetForegroundColor(FSlateColor(Text))
+		.SetPadding(FMargin(MixtormatTokens::RowTextInset - 1.0f, 0.0f));
+	SliderEntry.TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody));
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);
+
+	// ---- Row furniture ----------------------------------------------------------------------
+	// Sub-group caption, and the hairline that separates two runs of rows without naming them.
+	FTextBlockStyle RowCaption = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
+		.SetColorAndOpacity(CaptionText)
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo CaptionFont = RowCaption.Font;
+	CaptionFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
+	RowCaption.SetFont(CaptionFont);
+	StyleInstance->Set(TEXT("Mixtormat.RowCaption"), RowCaption);
+
+	FTextBlockStyle RowLabel = SliderLabel;
+	RowLabel.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	StyleInstance->Set(TEXT("Mixtormat.RowLabel"), RowLabel);
+
+	StyleInstance->Set(TEXT("Mixtormat.Hairline"), new FSlateColorBrush(Border));
+
+	// ---- Thumbnail tiles --------------------------------------------------------------------
+	// One tile serves the library, the mask replacement grid and the mask picker. The name strip
+	// is an overlay on the image, so showing it costs picture rather than layout height.
+	StyleInstance->Set(
+		TEXT("Mixtormat.Tile.Normal"),
+		new FSlateRoundedBoxBrush(ThumbnailBackground, MixtormatTokens::CornerRadius, Border, MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.Tile.Hovered"),
+		new FSlateRoundedBoxBrush(ThumbnailBackground, MixtormatTokens::CornerRadius, WithOpacity(Text, 0.42f), MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.Tile.Selected"),
+		new FSlateRoundedBoxBrush(ThumbnailBackground, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth));
+	StyleInstance->Set(
+		TEXT("Mixtormat.Tile.NameStrip"),
+		new FSlateColorBrush(FLinearColor(0.016f, 0.016f, 0.016f, 0.90f)));
+
+	FTextBlockStyle TileName = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontTile))
+		.SetColorAndOpacity(FLinearColor(0.855f, 0.855f, 0.855f, 1.0f))
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent)
+		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	StyleInstance->Set(TEXT("Mixtormat.Tile.Name"), TileName);
+
+	// ---- Drag and drop ----------------------------------------------------------------------
+	// A line in the gutter means "between"; a tinted row means "into". They have to look
+	// different, or dropping an effect beside a layer versus into it is a coin flip.
+	StyleInstance->Set(TEXT("Mixtormat.DropLine"), new FSlateColorBrush(AccentBright));
+	StyleInstance->Set(
+		TEXT("Mixtormat.DropInto"),
+		new FSlateRoundedBoxBrush(WithOpacity(AccentBright, 0.16f), MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth));
 
 	const auto SetIcon = [&Icon](
 		const FName Key,

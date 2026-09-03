@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "MixtormatMaterial.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
+#include "UI/Rows/SMixtormatRow.h"
+#include "UI/Controls/SMixtormatSlider.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -140,10 +142,230 @@ private:
 		const TArray<FMixtormatLayer>& B);
 	void RefreshLayeredPreview(bool bMarkDirty = true);
 	EActiveTimerReturnType FlushPendingPreviewRefresh(double CurrentTime, float DeltaTime);
+
+	// True while a Slate control has the mouse captured with the left button down, which is
+	// what a spin box scrub looks like from outside. Read globally rather than wired through
+	// each control's OnBeginSliderMovement: there are dozens of spin boxes, and this survives
+	// replacing them.
+	bool IsInteractiveEdit() const;
 	bool ConfirmDiscardUnsavedChanges();
-	TSharedRef<SWidget> MakeResettableNumeric(
-		const TSharedRef<SWidget>& NumericWidget,
-		const FSimpleDelegate& ResetDelegate);
+
+	// One inspector row: label, fill and value in a single bar of fixed height. Every numeric
+	// control in the inspector goes through here, which is what makes the rows uniform.
+	// Registers itself for hover + Backspace reset like the spin boxes it replaces.
+	TSharedRef<SWidget> MakeSlider(
+		const FText& Label,
+		const TAttribute<double>& Value,
+		double MinValue,
+		double MaxValue,
+		double DefaultValue,
+		double SnapDelta,
+		bool bInteger,
+		const FMixtormatOnSliderValueChanged& OnValueChanged,
+		const FSimpleDelegate& ResetDelegate,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	void AddSliderRow(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const TSharedRef<SWidget>& Row);
+
+	// One binding for every parameter row in the inspector, whatever owns it.
+	//
+	// A panel supplies a resolver for its own selection and a pointer to the member; the row, its
+	// reset to default and its preview refresh all come from here. Peel, erosion, generated masks,
+	// mask children and layers differ only in the resolver, so without this each grows its own
+	// near-identical copy -- which is exactly what had started to happen.
+	template <typename TOwner>
+	TSharedRef<SWidget> MakeMemberSlider(
+		const FText& Label,
+		TFunction<TOwner*()> Resolve,
+		float TOwner::* Member,
+		const double MinValue,
+		const double MaxValue,
+		const double DefaultValue,
+		const double SnapDelta,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>())
+	{
+		return MakeSlider(
+			Label,
+			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue]() -> double
+			{
+				const TOwner* Owner = Resolve();
+				return Owner ? static_cast<double>(Owner->*Member) : DefaultValue;
+			}),
+			MinValue,
+			MaxValue,
+			DefaultValue,
+			SnapDelta,
+			false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member](const double Value)
+			{
+				if (TOwner* Owner = Resolve())
+				{
+					Owner->*Member = static_cast<float>(Value);
+					RefreshLayeredPreview();
+				}
+			}),
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue]()
+			{
+				TOwner* Owner = Resolve();
+				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, static_cast<float>(DefaultValue)))
+				{
+					Owner->*Member = static_cast<float>(DefaultValue);
+					RefreshLayeredPreview();
+				}
+			}),
+			ToolTip);
+	}
+
+	template <typename TOwner>
+	TSharedRef<SWidget> MakeMemberSliderInt(
+		const FText& Label,
+		TFunction<TOwner*()> Resolve,
+		int32 TOwner::* Member,
+		const double MinValue,
+		const double MaxValue,
+		const int32 DefaultValue,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>())
+	{
+		return MakeSlider(
+			Label,
+			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue]() -> double
+			{
+				const TOwner* Owner = Resolve();
+				return static_cast<double>(Owner ? Owner->*Member : DefaultValue);
+			}),
+			MinValue,
+			MaxValue,
+			static_cast<double>(DefaultValue),
+			1.0,
+			true,
+			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member](const double Value)
+			{
+				if (TOwner* Owner = Resolve())
+				{
+					Owner->*Member = FMath::RoundToInt(Value);
+					RefreshLayeredPreview();
+				}
+			}),
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue]()
+			{
+				TOwner* Owner = Resolve();
+				if (Owner && Owner->*Member != DefaultValue)
+				{
+					Owner->*Member = DefaultValue;
+					RefreshLayeredPreview();
+				}
+			}),
+			ToolTip);
+	}
+
+	// The toggle equivalent, so a checkbox row is declared the same way a value row is instead of
+	// being hand-assembled per panel.
+	template <typename TOwner>
+	TSharedRef<SWidget> MakeMemberToggle(
+		const FText& Label,
+		TFunction<TOwner*()> Resolve,
+		bool TOwner::* Member,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>())
+	{
+		return MixtormatRow::Make(
+			Label,
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Resolve, Member]()
+				{
+					const TOwner* Owner = Resolve();
+					return Owner && Owner->*Member ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Resolve, Member](const ECheckBoxState State)
+				{
+					if (TOwner* Owner = Resolve())
+					{
+						Owner->*Member = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			ToolTip);
+	}
+
+	// Procedural peel and erosion rows all read and write one member of the selected effect, so
+	// they collapse to a single call each.
+	//
+	// Each comes in two forms: Make* returns the row so it can be composed -- paired with another
+	// row, wrapped, or placed under a caption -- and Add* appends it directly, which is what most
+	// call sites want.
+	TSharedRef<SWidget> MakePeelSlider(
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		double DefaultValue,
+		double SnapDelta,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	TSharedRef<SWidget> MakePeelSliderInt(
+		const FText& Label,
+		int32 FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		int32 DefaultValue,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	TSharedRef<SWidget> MakeErosionSlider(
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		double DefaultValue,
+		double SnapDelta,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	TSharedRef<SWidget> MakeErosionSliderInt(
+		const FText& Label,
+		int32 FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		int32 DefaultValue,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	void AddPeelSlider(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		double DefaultValue,
+		double SnapDelta,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	void AddPeelSliderInt(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const FText& Label,
+		int32 FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		int32 DefaultValue,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	void AddErosionSlider(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		double DefaultValue,
+		double SnapDelta,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	void AddErosionSliderInt(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const FText& Label,
+		int32 FMixtormatLayerEffect::* Member,
+		double MinValue,
+		double MaxValue,
+		int32 DefaultValue,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
 	bool ResetHoveredNumericControl();
 	void PreviewSurfaceScalarParameter(FName ParameterName, float Value);
 	void HandleSearchChanged(const FText& SearchTextValue);
@@ -239,6 +461,11 @@ private:
 	bool bHistoryInitialized = false;
 	bool bApplyingHistory = false;
 	bool bPreviewRefreshPending = false;
+
+	// Drag state. While scrubbing, the preview composites at a reduced resolution and the
+	// undo history is not written; both are settled once on the frame the drag ends.
+	bool bInteractiveEdit = false;
+	bool bInteractiveHistoryPending = false;
 	bool bShowCompositionBefore = false;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = false;

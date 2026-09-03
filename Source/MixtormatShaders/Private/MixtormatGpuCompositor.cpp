@@ -1257,6 +1257,20 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					GraphBuilder.CreateTexture(TinyRGDesc, TEXT("Mixtormat.PeelNoiseDummy"));
 				FRDGTextureRef PeelFieldDummy =
 					GraphBuilder.CreateTexture(TinyRGBADesc, TEXT("Mixtormat.PeelFieldDummy"));
+
+				// Bound wherever a peel input is absent -- the peel's own mask when the layer
+				// uses its child mask, and the authored map slots on the procedural path. RDG
+				// rejects a pass that reads a transient texture nothing has written, which the
+				// log reported as an error on every procedural peel composite, so it is cleared
+				// once here rather than left undefined.
+				AddClearUAVPass(
+					GraphBuilder,
+					GraphBuilder.CreateUAV(PeelFieldDummy),
+					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
+				AddClearUAVPass(
+					GraphBuilder,
+					GraphBuilder.CreateUAV(PeelNoiseDummy),
+					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
 				TShaderMapRef<FMixtormatStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TSet<int32> RequiredHeightSnapshots;
@@ -1467,10 +1481,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							continue;
 						}
 
-						// A procedural peel builds its field first: seed, then a halving
-						// chain of jump-flood steps, then one resolve into the same channel
-						// layout the authored maps carry. The peel pass below is identical
-						// either way apart from which source it reads.
+						// A procedural peel builds its field first: seed the mask's threshold
+						// contour, then a chain of eikonal solve steps, then one resolve into
+						// the same channel layout the authored maps carry. The peel pass below
+						// is identical either way apart from which source it reads.
 						FRDGTextureRef PeelFieldA = PeelFieldDummy;
 						FRDGTextureRef PeelFieldB = PeelFieldDummy;
 						if (Effect.bProceduralPeel)
@@ -1482,7 +1496,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							// The solve dominates cost, and halving the side both quarters
 							// the texels and halves the passes the front needs to cross
 							// them. Arrival is smooth enough to filter back up afterwards.
-							const int32 SolveDivisor = FMath::Clamp(Effect.PeelSolveDivisor, 1, 8);
+							const int32 SolveDivisor = FMath::Clamp(Effect.PeelSolveDivisor, 1, 32);
 							const FIntPoint SolveRes(
 								FMath::Max(Request.Resolution.X / SolveDivisor, 64),
 								FMath::Max(Request.Resolution.Y / SolveDivisor, 64));
@@ -1581,7 +1595,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 							// The front only has to travel Front plus a few transition
 							// widths, and advances about one texel per pass, so the count
-							// is bounded by reach at the solve resolution.
+							// is bounded by reach at the solve resolution. Seeding the
+							// contour rather than the interior does not raise it: inward
+							// and outward propagation leave the same band on the same pass,
+							// and the reach each side needs is still the same.
 							int32 Ping = 0;
 							const float Reach =
 								FMath::Abs(Effect.Front) + 4.0f * FMath::Abs(Effect.Width);

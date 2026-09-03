@@ -240,7 +240,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Strength = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	// Negative erodes inside the mask contour, positive dilates outside it. The procedural
+	// field is a signed distance, so both directions are meaningful; the lower bound used to
+	// be 0 because the field could only ever dilate. Widening a clamp changes no serialized
+	// value, so the authored path still resolves identically for any input it already held.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
 	float Front = 0.08f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.000001"))
