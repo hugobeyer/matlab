@@ -6,11 +6,22 @@
 
 class UTexture2D;
 
+// Surface effects write coverage, normal and AO through the effect data target.
+// Filter effects transform one composited channel in place and are the identity at zero
+// amount. Erosion is the first Filter; height blur and slope limiting would join it.
+UENUM(BlueprintType)
+enum class EMaterialLabEffectClass : uint8
+{
+	Surface = 0 UMETA(DisplayName = "Surface"),
+	Filter = 1 UMETA(DisplayName = "Filter")
+};
+
 UENUM(BlueprintType)
 enum class EMaterialLabEffectType : uint8
 {
 	Peeling = 0 UMETA(DisplayName = "Peeling"),
-	Stain = 1 UMETA(DisplayName = "Stain")
+	Stain = 1 UMETA(DisplayName = "Stain"),
+	Erosion = 2 UMETA(DisplayName = "Erosion")
 };
 
 UCLASS(BlueprintType)

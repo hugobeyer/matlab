@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "UObject/SoftObjectPtr.h"
+#include "MaterialLabEffect.h"
 #include "MaterialLabMaterial.generated.h"
 
 class UMaterialInterface;
@@ -115,31 +116,38 @@ struct MATERIALLABRUNTIME_API FMaterialLabGeneratedMask
 	bool bEnabled = true;
 
 	// Signal weights. All default to zero so a new node is neutral until authored.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float CurvatureWeight = 0.0f;
 
 	// 0 = cavity, 1 = convex.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float CurvatureBias = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	// Raw curvature is a normal difference over 2 x radius, so it is small. Strength is gain.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0"))
+	float CurvatureStrength = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.001"))
+	float CurvaturePower = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float DirectionWeight = 0.0f;
 
 	// Tangent-space direction in degrees. 90 is +Y.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "360.0"))
 	float DirectionAngle = 90.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.001", ClampMax = "64.0"))
 	float DirectionBroadness = 1.0f;
 
 	// Positive weight uses inverted AO, concentrating in occluded areas.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float AOWeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float HeightWeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float HeightBias = 0.0f;
 
 	// Shaping.
@@ -149,10 +157,14 @@ struct MATERIALLABRUNTIME_API FMaterialLabGeneratedMask
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "32"))
 	int32 Broadness = 2;
 
+	// Averages curvature over this many widening rings. 1 is a single kernel.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 Smoothing = 2;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.001", ClampMax = "0.999"))
 	float Bias = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "0.25"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "4.0"))
 	float WarpAmount = 0.0f;
 
 	// Flow source: 0 samples the accumulated normal slope, 1 the accumulated height
@@ -168,19 +180,19 @@ struct MATERIALLABRUNTIME_API FMaterialLabGeneratedMask
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
 	EMaterialLabMaskBlendMode BlendMode = EMaterialLabMaskBlendMode::Multiply;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "8.0"))
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
 	bool bInvert = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "16.0"))
 	float Balance = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "10.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", ClampMax = "100.0"))
 	float Contrast = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
 	float Offset = 0.0f;
 
 	bool HasAnySignal() const
@@ -190,6 +202,22 @@ struct MATERIALLABRUNTIME_API FMaterialLabGeneratedMask
 			|| !FMath::IsNearlyZero(AOWeight)
 			|| !FMath::IsNearlyZero(HeightWeight);
 	}
+};
+
+UENUM(BlueprintType)
+enum class EMaterialLabErosionDirectionMode : uint8
+{
+	Weight = 0 UMETA(DisplayName = "Weight"),
+	Lerp = 1 UMETA(DisplayName = "Lerp")
+};
+
+// Peel edge profile. Flat is the chip the authored maps ship. Curled lifts a flap ahead of
+// the front and folds it back behind, and exists only on the procedural path.
+UENUM(BlueprintType)
+enum class EMaterialLabPeelType : uint8
+{
+	Flat = 0 UMETA(DisplayName = "Flat"),
+	Curled = 1 UMETA(DisplayName = "Curled")
 };
 
 USTRUCT(BlueprintType)
@@ -202,6 +230,12 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
 	TSoftObjectPtr<UMaterialLabEffect> Effect;
+
+	// Procedural effects reference no asset, so the type cannot be read from one.
+	// Ignored whenever Effect resolves; asset-backed effects keep taking their type
+	// from the asset exactly as before.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
+	EMaterialLabEffectType ProceduralType = EMaterialLabEffectType::Peeling;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Strength = 1.0f;
@@ -230,6 +264,55 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
 	float DetailStrength = 0.02f;
 
+	// Procedural peeling. Active when the child references no effect asset, matching the
+	// way Erosion identifies itself. The peel field is then generated from noise and from
+	// the surface composited below instead of an imported PDM/MSK/H/SDF set; Front, Width,
+	// Thickness, Lift and Detail Strength above keep their meanings either way.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	EMaterialLabPeelType PeelType = EMaterialLabPeelType::Flat;
+
+	// Cells across one UV repeat. Integral, so the generated peel tiles.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	int32 PeelMacroPeriod = 8;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	int32 PeelMicroPeriod = 32;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	int32 PeelRandomSeed = 1;
+
+	// How much of the surface begins peeling. The mixed seed signal is thresholded here,
+	// then the peel grows outward from whatever survives.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedThreshold = 0.62f;
+
+	// Seed weights. Each signal is read from the surface accumulated below the owning
+	// layer, so peeling follows whatever it sits on.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedNoiseWeight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedCurvatureWeight = 0.0f;
+
+	// 0 seeds cavities, 1 seeds convex ridges.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedCurvatureBias = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedAOWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedHeightWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	float PeelSeedMaskWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	bool bPeelNormalizeSeedWeights = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
+	int32 PeelCurvatureRadius = 2;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
 	FLinearColor StainColor = FLinearColor(0.22f, 0.09f, 0.035f, 1.0f);
 
@@ -247,6 +330,81 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain", meta = (ClampMin = "0.01"))
 	float StainHeightContrast = 1.0f;
+
+	// Erosion. Carves the height accumulated below the owning layer.
+	//
+	// None of these carry ClampMin/ClampMax. The inspector constrains each scrub range
+	// visually, but a typed value outside that range reaches the shader intact; the shader
+	// keeps epsilon guards at its own division sites. Widening a range is therefore a UI
+	// edit, not a schema change.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionAmount = 1.0f;
+
+	// Compatibility only. The pass count is fixed at 8 and the period at 32 cells in the
+	// compositor; these remain serialized so recipes written before that still load.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	int32 ErosionIterations = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	int32 ErosionPeriod = 8;
+
+	// Critical slope. Nothing carves below it. Units are height per UV, so the useful
+	// value depends entirely on the composited height range.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionRepose = 0.30f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionReposeSoftness = 0.25f;
+
+	// Radius in pixels of the local slope measurement. Small values keep the carve
+	// following real surface detail rather than a block-quantised average.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	int32 ErosionSlopeRadius = 2;
+
+	// Low-passes a guidance copy of the height before measuring slope, so surface grain
+	// does not steer the flow. 0 measures slope on the raw height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionSlopeBlur = 2.0f;
+
+	// Signed. Positive concentrates carving in concave regions, negative inverts it onto
+	// convex ridges. Past 1 it acts as contrast expansion rather than a blend.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionCavityBias = 0.0f;
+
+	// Smoothstep contrast on the concavity signal. Drives how sharply concave separates
+	// from convex before the gate; high values approach a hard edge.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionCavityScale = 1.0f;
+
+	// Signed. Positive erodes raised ground first, negative erodes low ground.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionHeightInfluence = 0.0f;
+
+	// Smoothstep contrast on the height signal, centred on mid height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionHeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionGullyWeight = 2.0f;
+
+	// Authored flow direction blended against downhill. Weight adds it to the slope vector
+	// so it competes with steepness; Lerp blends the directions evenly. 0 amount is pure
+	// slope flow under either mode.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	EMaterialLabErosionDirectionMode ErosionDirectionMode = EMaterialLabErosionDirectionMode::Weight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionDirectionAngle = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionDirectionAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionBlendSoftness = 0.0f;
+
+	// How strongly the carve perturbs the layer normal. 0 changes height only.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionNormalStrength = 8.0f;
 };
 
 UENUM(BlueprintType)
@@ -468,6 +626,10 @@ struct MATERIALLABRUNTIME_API FMaterialLabLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.001"))
 	float CurvaturePower = 1.0f;
+
+	// Averages curvature over this many widening rings. 1 is a single kernel.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 CurvatureSmoothing = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bFlipNormalY = false;

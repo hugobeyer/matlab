@@ -18,52 +18,74 @@ float3 MaterialLabLoadNormal(
 	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
 }
 
+float3 MaterialLabSampleNormal(
+	Texture2D<float4> NormalTexture,
+	SamplerState LinearSampler,
+	float2 UV,
+	uint FlipY)
+{
+	float2 XY = NormalTexture.SampleLevel(LinearSampler, UV, 0.0f).xy * 2.0f - 1.0f;
+	XY.y *= FlipY != 0 ? -1.0f : 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+// Curvature is div(N.xy). A 4-tap central difference is the noisiest possible
+// estimator and is axis-biased, and integer Load() taps quantise to texels, so
+// compressed normal blocks come through as visible steps. This uses a Sobel
+// kernel on bilinear samples instead: the 3x3 weighting averages across the
+// diagonal neighbours and the filtered fetches resolve sub-texel, which removes
+// most of the stepping at the same order of cost.
 void MaterialLabEvaluateCurvature(
 	Texture2D<float4> NormalTexture,
-	int2 Pixel,
+	SamplerState LinearSampler,
+	float2 UV,
 	int2 Dimensions,
 	int Radius,
-	uint Iteration,
+	int Smoothing,
 	float Strength,
 	float Power,
 	uint FlipY,
-	float Blend,
-	float BlendBias,
-	float PreviousCurvature,
 	out float Curvature,
 	out float Cavity,
 	out float Convex)
 {
-	const int SampleRadius = clamp(Radius + int(Iteration), 1, 32);
-	const int2 MaxPixel = Dimensions - 1;
-	const int2 LeftPixel = int2(clamp(Pixel.x - SampleRadius, 0, MaxPixel.x), Pixel.y);
-	const int2 RightPixel = int2(clamp(Pixel.x + SampleRadius, 0, MaxPixel.x), Pixel.y);
-	const int2 UpPixel = int2(Pixel.x, clamp(Pixel.y - SampleRadius, 0, MaxPixel.y));
-	const int2 DownPixel = int2(Pixel.x, clamp(Pixel.y + SampleRadius, 0, MaxPixel.y));
+	const float2 TexelSize = 1.0f / max(float2(Dimensions), 1.0f);
+	const int Rings = clamp(Smoothing, 1, 4);
 
-	const float3 LeftNormal = MaterialLabLoadNormal(NormalTexture, LeftPixel, FlipY);
-	const float3 RightNormal = MaterialLabLoadNormal(NormalTexture, RightPixel, FlipY);
-	const float3 UpNormal = MaterialLabLoadNormal(NormalTexture, UpPixel, FlipY);
-	const float3 DownNormal = MaterialLabLoadNormal(NormalTexture, DownPixel, FlipY);
+	float SignedCurvature = 0.0f;
+	float TotalWeight = 0.0f;
 
-	const float InverseDiameter = 1.0f / (2.0f * float(SampleRadius));
-	const float Dx = (RightNormal.x - LeftNormal.x) * InverseDiameter;
-	// Curvature is div(N.xy) = dNx/dx + dNy/dy. Both partials must use the same
-	// forward-minus-backward convention in pixel space, or a vertical ridge reads
-	// as the opposite of a horizontal one. Normal-map Y convention is handled at
-	// decode by FlipY, not here.
-	const float Dy = (DownNormal.y - UpNormal.y) * InverseDiameter;
-	float SignedCurvature = clamp((Dx + Dy) * Strength, -1.0f, 1.0f);
+	[unroll(4)]
+	for (int Ring = 0; Ring < Rings; ++Ring)
+	{
+		// Successive rings widen the kernel; averaging them suppresses the ringing a
+		// single radius produces on noisy normals.
+		const float RingRadius = float(clamp(Radius, 1, 32)) * (1.0f + float(Ring));
+		const float2 Step = TexelSize * RingRadius;
+
+		const float3 TL = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x, -Step.y), FlipY);
+		const float3 T  = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2( 0.0f,   -Step.y), FlipY);
+		const float3 TR = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x, -Step.y), FlipY);
+		const float3 L  = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x,  0.0f  ), FlipY);
+		const float3 R  = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x,  0.0f  ), FlipY);
+		const float3 BL = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2(-Step.x,  Step.y), FlipY);
+		const float3 B  = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2( 0.0f,    Step.y), FlipY);
+		const float3 BR = MaterialLabSampleNormal(NormalTexture, LinearSampler, UV + float2( Step.x,  Step.y), FlipY);
+
+		// Sobel. Both partials use the same forward-minus-backward convention, so a
+		// vertical ridge and a horizontal one read the same way.
+		const float Dx = ((TR.x + 2.0f * R.x + BR.x) - (TL.x + 2.0f * L.x + BL.x)) / (8.0f * RingRadius);
+		const float Dy = ((BL.y + 2.0f * B.y + BR.y) - (TL.y + 2.0f * T.y + TR.y)) / (8.0f * RingRadius);
+
+		const float RingWeight = 1.0f / (1.0f + float(Ring));
+		SignedCurvature += (Dx + Dy) * RingWeight;
+		TotalWeight += RingWeight;
+	}
+
+	SignedCurvature = clamp(SignedCurvature / max(TotalWeight, 1.0e-6f) * Strength, -1.0f, 1.0f);
 
 	const float ShapedMagnitude = pow(abs(SignedCurvature), max(Power, 0.001f));
 	SignedCurvature = SignedCurvature < 0.0f ? -ShapedMagnitude : ShapedMagnitude;
-
-	if (Iteration > 0)
-	{
-		const float PreviousSignedCurvature = PreviousCurvature * 2.0f - 1.0f;
-		const float BlendWeight = MaterialLabBias01(saturate(Blend), BlendBias);
-		SignedCurvature = lerp(PreviousSignedCurvature, SignedCurvature, BlendWeight);
-	}
 
 	Curvature = saturate(0.5f + SignedCurvature * 0.5f);
 	Cavity = saturate(-SignedCurvature);

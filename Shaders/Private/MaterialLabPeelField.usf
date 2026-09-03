@@ -1,0 +1,270 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MaterialLabGully.ush"
+#include "/Plugin/MaterialLab/Private/MaterialLabCurvature.ush"
+
+// Procedural peel field. Replaces the authored PDM/MSK/H/SDF texture set with generated
+// data, so peeling can be driven by noise and by the surface composited underneath rather
+// than by a baked map.
+//
+// Three modes, dispatched in sequence by the compositor:
+//
+//   Seed     evaluate noise and the surface signals, threshold them, and write the jump
+//            flood's initial state: this pixel's own coordinate where it is a seed.
+//   Flood    one jump flooding step. Repeated with a halving step size, this resolves the
+//            distance to the nearest seed in log2(N) passes rather than the one-texel-per-
+//            iteration crawl an eikonal sweep would need.
+//   Resolve  turn that distance into the same channel layout the authored maps carry, so
+//            MaterialLabPeeling.usf consumes either source through one code path.
+//
+// Everything wraps. Seeds, noise and the flood all operate on a torus, so the peel tiles.
+
+Texture2D<float4> SurfaceNormal;
+Texture2D<float4> SurfaceRAM;
+Texture2D<float> SurfaceHeight;
+Texture2D<float> ChildMask;
+Texture2D<float2> PreviousJump;
+Texture2D<float2> NoiseField;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float2> OutputJump;
+RWTexture2D<float2> OutputNoise;
+RWTexture2D<float4> OutputFieldA;
+RWTexture2D<float4> OutputFieldB;
+
+int2 OutputSize;
+int Mode;
+int StepSize;
+uint SurfaceValid;
+uint FlipNormalY;
+
+// Seeding.
+int MacroPeriod;
+int MicroPeriod;
+uint Seed;
+float NoiseWeight;
+float CurvatureWeight;
+float CurvatureBias;
+float AOWeight;
+float HeightWeight;
+float MaskWeight;
+float SeedThreshold;
+uint NormalizeWeights;
+int CurvatureRadius;
+int CurvatureSmoothing;
+
+// Peel shaping. Same meanings as the authored path.
+int PeelType;
+float Front;
+float Width;
+float MacroWarp;
+float MicroWarp;
+float MicroMorph;
+float Thickness;
+float Lift;
+float DetailStrength;
+
+#define ML_PEEL_NO_SEED -1.0f
+
+float Smooth01(float Value)
+{
+	Value = saturate(Value);
+	return Value * Value * (3.0f - 2.0f * Value);
+}
+
+// Shortest separation on a torus. Without this the flood measures across the tile instead
+// of around it and a seam appears down the UV boundary.
+float2 ToroidalDelta(float2 A, float2 B, float2 Res)
+{
+	float2 D = abs(A - B);
+	return min(D, Res - D);
+}
+
+int2 WrapPixel(int2 P, int2 Res)
+{
+	P.x = P.x % Res.x;
+	P.y = P.y % Res.y;
+	P.x = P.x < 0 ? P.x + Res.x : P.x;
+	P.y = P.y < 0 ? P.y + Res.y : P.y;
+	return P;
+}
+
+// Periodic value noise in 0..1, built on the wrapped gully lattice so it tiles on Period.
+float PeriodicNoise01(float2 UV, int Period, uint NoiseSeed)
+{
+	const float N = MaterialLabPeriodicNoiseD(UV * (float)max(Period, 1), max(Period, 1), NoiseSeed).x;
+	return saturate(N * 0.5f + 0.5f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Resf = float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+
+	if (Mode == 0)
+	{
+		const float Macro = PeriodicNoise01(UV, MacroPeriod, Seed);
+		const float Micro = PeriodicNoise01(UV, MicroPeriod, Seed + 7919u);
+		OutputNoise[Pixel] = float2(Macro, Micro);
+
+		// Weighted mix of noise and the surface below. Same signal set the generated mask
+		// node uses, so a peel can be steered by cavity, occlusion, height or an ordered
+		// mask exactly the way a generated mask is.
+		float Raw = 0.0f;
+		float Total = 0.0f;
+
+		Raw += NoiseWeight * Macro;
+		Total += abs(NoiseWeight);
+
+		if (abs(CurvatureWeight) > 0.0f && SurfaceValid != 0)
+		{
+			float Curvature;
+			float Cavity;
+			float Convex;
+			MaterialLabEvaluateCurvature(
+				SurfaceNormal,
+				LinearWrapSampler,
+				UV,
+				OutputSize,
+				max(CurvatureRadius, 1),
+				max(CurvatureSmoothing, 1),
+				1.0f,
+				1.0f,
+				FlipNormalY,
+				Curvature,
+				Cavity,
+				Convex);
+			Raw += CurvatureWeight * lerp(Cavity, Convex, saturate(CurvatureBias));
+			Total += abs(CurvatureWeight);
+		}
+
+		if (abs(AOWeight) > 0.0f && SurfaceValid != 0)
+		{
+			Raw += AOWeight * (1.0f - SurfaceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
+			Total += abs(AOWeight);
+		}
+
+		if (abs(HeightWeight) > 0.0f && SurfaceValid != 0)
+		{
+			Raw += HeightWeight * SurfaceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+			Total += abs(HeightWeight);
+		}
+
+		if (abs(MaskWeight) > 0.0f)
+		{
+			Raw += MaskWeight * ChildMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+			Total += abs(MaskWeight);
+		}
+
+		const float Mixed = (NormalizeWeights != 0 && Total > 1.0e-6f) ? Raw / Total : Raw;
+
+		// A seed stores its own coordinate; everything else starts empty and is filled by
+		// the flood.
+		OutputJump[Pixel] = saturate(Mixed) > SeedThreshold
+			? float2(Pixel)
+			: float2(ML_PEEL_NO_SEED, ML_PEEL_NO_SEED);
+
+		OutputFieldA[Pixel] = 0.0f;
+		OutputFieldB[Pixel] = 0.0f;
+		return;
+	}
+
+	if (Mode == 1)
+	{
+		float2 Best = PreviousJump.Load(int3(Pixel, 0));
+		float BestDist = Best.x >= 0.0f
+			? length(ToroidalDelta(Best, float2(Pixel), Resf))
+			: 1.0e18f;
+
+		[unroll]
+		for (int dy = -1; dy <= 1; ++dy)
+		{
+			[unroll]
+			for (int dx = -1; dx <= 1; ++dx)
+			{
+				const int2 Tap = WrapPixel(Pixel + int2(dx, dy) * max(StepSize, 1), OutputSize);
+				const float2 Cand = PreviousJump.Load(int3(Tap, 0));
+				if (Cand.x >= 0.0f)
+				{
+					const float D = length(ToroidalDelta(Cand, float2(Pixel), Resf));
+					if (D < BestDist)
+					{
+						BestDist = D;
+						Best = Cand;
+					}
+				}
+			}
+		}
+
+		OutputJump[Pixel] = Best;
+		return;
+	}
+
+	// Resolve. Distance becomes the peel front, then the authored channel layout.
+	const float2 SeedPos = PreviousJump.Load(int3(Pixel, 0));
+	const float2 Noise = NoiseField.Load(int3(Pixel, 0));
+	const float Macro = Noise.x;
+	const float Micro = Noise.y;
+
+	// Arrival in UV units, so Front and Width keep the same meaning they have against the
+	// authored maps regardless of composition resolution. No seed anywhere means nothing
+	// has peeled, which is a large distance rather than zero.
+	const float T = SeedPos.x >= 0.0f
+		? length(ToroidalDelta(SeedPos, float2(Pixel), Resf)) / Resf.x
+		: 1.0e6f;
+
+	const float M = Macro * 2.0f - 1.0f;
+	const float U = (Micro * 2.0f - 1.0f) * saturate(MicroMorph);
+	const float D = T + M * MacroWarp + U * MicroWarp - Front;
+	const float X = D / max(Width, 1.0e-6f);
+
+	float Coverage = 0.0f;
+	float Edge = 0.0f;
+	float Detail = 0.0f;
+	float H = 0.0f;
+
+	if (PeelType == 0)
+	{
+		Coverage = 1.0f - Smooth01(X * 0.5f + 0.5f);
+		Edge = exp(-2.0f * X * X);
+		Detail = saturate(-U * 0.75f - M * 0.25f);
+		Detail *= Detail;
+
+		H = Coverage
+			* (Thickness
+				+ (M + U * 0.35f) * DetailStrength
+				+ Edge * Lift
+				- Detail * DetailStrength * 0.75f);
+	}
+	else
+	{
+		// Curled variant: the sheet lifts into a flap ahead of the front and folds back
+		// behind it. Ported from the Houdini generator's mode 1, which never reached HLSL.
+		const float Intact = Smooth01(X * 0.5f + 0.5f);
+		const float Fx = (X + 0.80f) / 0.55f;
+		const float Flap = exp(-2.0f * Fx * Fx);
+		const float Bx = (X - 0.75f) / 0.65f;
+		const float Fold = exp(-2.0f * Bx * Bx);
+
+		Coverage = 1.0f - Intact;
+		Edge = exp(-2.0f * X * X);
+		Detail = saturate(Flap + Fold);
+
+		H = Intact * Thickness
+			+ Edge * Lift
+			+ Flap * Lift * 0.45f
+			- Fold * Lift * 0.15f
+			+ U * DetailStrength * (Edge + Flap);
+	}
+
+	// A carries arrival, the two noise fields, and the signed distance kept raw: there is
+	// no 8-bit round trip here, so none of the authored decode ranges apply.
+	OutputFieldA[Pixel] = float4(T, Macro, Micro, D);
+	OutputFieldB[Pixel] = float4(saturate(Coverage), saturate(Edge), saturate(Detail), H);
+}

@@ -15,6 +15,8 @@ uint FlipNormalY;
 
 float CurvatureWeight;
 float CurvatureBias;
+float CurvatureStrength;
+float CurvaturePower;
 float DirectionWeight;
 float DirectionAngle;
 float DirectionBroadness;
@@ -24,6 +26,7 @@ float HeightBias;
 
 uint NormalizeWeights;
 int Broadness;
+int Smoothing;
 float Bias;
 float WarpAmount;
 float WarpSource;
@@ -103,7 +106,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const int R = clamp(WarpRadius, 1, 16);
 
 		// Tangent-space normal XY is the surface slope at this point, pointing downhill.
-		const float2 NormalFlow = MaterialLabLoadNormal(SurfaceNormal, Pixel, FlipNormalY).xy;
+		const float2 NormalFlow = MaterialLabSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY).xy;
 
 		// Height gradient points uphill, so negate it to match.
 		const int2 L = int2(clamp(Pixel.x - R, 0, MaxPixel.x), Pixel.y);
@@ -116,12 +119,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		HeightGradient.y = (SurfaceHeight.Load(int3(D, 0)) - SurfaceHeight.Load(int3(U, 0))) * InverseDiameter;
 		const float2 HeightFlow = -HeightGradient;
 
-		float2 Flow = lerp(NormalFlow, HeightFlow, saturate(WarpSource));
-		const float FlowLength = length(Flow);
-		Flow = FlowLength > 1.0e-5f ? Flow / FlowLength : float2(0.0f, 0.0f);
+		const float2 Flow = lerp(NormalFlow, HeightFlow, saturate(WarpSource));
 
-		SampleUV = UV + Flow * WarpAmount;
-		Pixel = int2(clamp(SampleUV * float2(OutputSize), float2(0.0f, 0.0f), float2(MaxPixel)));
+		// Soft magnitude rather than a unit vector. Displacement stays proportional to
+		// slope on gentle ground and rolls off asymptotically on steep ground, so the
+		// warp feathers out across flat regions instead of shoving every pixel the same
+		// distance. Direction is preserved exactly.
+		const float FlowLength = length(Flow);
+		const float2 SoftFlow = Flow / (1.0f + FlowLength);
+
+		SampleUV = UV + SoftFlow * WarpAmount;
 	}
 
 
@@ -135,16 +142,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float Convex;
 		MaterialLabEvaluateCurvature(
 			SurfaceNormal,
-			Pixel,
+			LinearWrapSampler,
+			SampleUV,
 			OutputSize,
 			Broadness,
-			0u,
-			1.0f,
-			1.0f,
+			Smoothing,
+			CurvatureStrength,
+			max(CurvaturePower, 0.001f),
 			FlipNormalY,
-			1.0f,
-			0.5f,
-			0.5f,
 			Curvature,
 			Cavity,
 			Convex);
@@ -154,7 +159,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (abs(DirectionWeight) > 0.0f)
 	{
-		const float3 Normal = MaterialLabLoadNormal(SurfaceNormal, Pixel, FlipNormalY);
+		const float3 Normal = MaterialLabSampleNormal(SurfaceNormal, LinearWrapSampler, SampleUV, FlipNormalY);
 		const float Radians = DirectionAngle * (3.14159265f / 180.0f);
 		const float2 Direction = float2(cos(Radians), sin(Radians));
 		const float Slope = dot(Normal.xy, Direction);

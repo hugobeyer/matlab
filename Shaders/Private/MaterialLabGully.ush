@@ -1,0 +1,113 @@
+#ifndef MATERIAL_LAB_GULLY_USH
+#define MATERIAL_LAB_GULLY_USH
+
+// Periodic directional field used by the erosion filter.
+//
+// The lattice closes on an integer period so the result tiles exactly. Direction comes
+// from smearing isotropic periodic noise along a vector rather than rotating the domain:
+// rotating a periodic lattice destroys its periodicity, whereas every tap here is a plain
+// translation and still lands on the wrapped lattice.
+
+int MaterialLabWrapI(int x, int m)
+{
+	m = max(m, 1);
+	x = x % m;
+	return x < 0 ? x + m : x;
+}
+
+uint MaterialLabHashU(uint x)
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+// Unit gradient for a lattice cell, wrapped to the period so the field repeats.
+float2 MaterialLabCellGradient(int2 c, int Period, uint Seed)
+{
+	uint hx = (uint)MaterialLabWrapI(c.x, Period);
+	uint hy = (uint)MaterialLabWrapI(c.y, Period);
+	uint h = MaterialLabHashU(hx * 0x27d4eb2du ^ hy * 0x165667b1u ^ Seed * 0x9e3779b9u);
+	float a = (float)(h & 0x00FFFFFFu) * (6.28318530718f / 16777216.0f);
+	return float2(cos(a), sin(a));
+}
+
+// Periodic gradient noise with analytic derivatives, returned as (value, ddx, ddy).
+float3 MaterialLabPeriodicNoiseD(float2 p, int Period, uint Seed)
+{
+	int2 i = (int2)floor(p);
+	float2 f = p - (float2)i;
+
+	float2 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	float2 du = 30.0f * f * f * (f * (f - 2.0f) + 1.0f);
+
+	float2 ga = MaterialLabCellGradient(i + int2(0, 0), Period, Seed);
+	float2 gb = MaterialLabCellGradient(i + int2(1, 0), Period, Seed);
+	float2 gc = MaterialLabCellGradient(i + int2(0, 1), Period, Seed);
+	float2 gd = MaterialLabCellGradient(i + int2(1, 1), Period, Seed);
+
+	float va = dot(ga, f - float2(0.0f, 0.0f));
+	float vb = dot(gb, f - float2(1.0f, 0.0f));
+	float vc = dot(gc, f - float2(0.0f, 1.0f));
+	float vd = dot(gd, f - float2(1.0f, 1.0f));
+
+	float k = va - vb - vc + vd;
+	float value = va + u.x * (vb - va) + u.y * (vc - va) + u.x * u.y * k;
+
+	float2 d = ga
+		+ u.x * (gb - ga)
+		+ u.y * (gc - ga)
+		+ u.x * u.y * (ga - gb - gc + gd)
+		+ du * (float2(u.y, u.x) * k + float2(vb, vc) - va);
+
+	return float3(value, d.x, d.y);
+}
+
+// Smears the noise along Dir to produce elongated gullies. Each tap is a translation, so
+// the derivative of the sum is the sum of the derivatives and no extra sampling is needed.
+float3 MaterialLabGullyField(
+	float2 p,
+	float2 Dir,
+	int Period,
+	uint Seed,
+	int Steps,
+	float Length)
+{
+	float3 acc = 0.0f;
+	float wsum = 0.0f;
+
+	const int n = clamp(Steps, 1, 16);
+	[unroll(16)]
+	for (int s = -n; s <= n; ++s)
+	{
+		float t = (float)s / (float)n;
+		float w = 1.0f - abs(t);
+		acc += MaterialLabPeriodicNoiseD(p + Dir * (t * Length), Period, Seed) * w;
+		wsum += w;
+	}
+
+	return acc / max(wsum, 1.0e-6f);
+}
+
+// One-sided soft subtraction. Erosion only removes material, so this returns exactly the
+// incoming height when nothing is carved and eases into the removal when it is.
+//
+// A symmetric smooth minimum is wrong here: smin(a, a, k) = a - k/4, so it lowers the
+// whole field by a constant even when the filter removes nothing. That reads as the
+// softness control dropping the height rather than rounding the crossover.
+float MaterialLabSoftSubtract(float Height, float Carved, float k)
+{
+	const float d = Height - Carved;
+	if (k <= 1.0e-6f)
+	{
+		return Height - max(d, 0.0f);
+	}
+	// 0 at d <= 0, approaches d for large d, C1 throughout.
+	const float soft = 0.5f * (d + sqrt(d * d + k * k)) - 0.5f * k;
+	return Height - soft;
+}
+
+#endif

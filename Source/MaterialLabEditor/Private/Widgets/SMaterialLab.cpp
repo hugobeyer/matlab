@@ -4785,11 +4785,33 @@ TSharedRef<SWidget> SMaterialLab::BuildLayerRow(const int32 LayerIndex)
 				{
 					ChildName = LOCTEXT("StainEffectName", "Stain");
 				}
+				else if (Child.Effect.Effect.IsNull()
+					&& Child.Effect.ProceduralType == EMaterialLabEffectType::Erosion)
+				{
+					ChildName = LOCTEXT("ErosionEffectName", "Erosion");
+				}
+				else if (Child.Effect.Effect.IsNull()
+					&& Child.Effect.ProceduralType == EMaterialLabEffectType::Peeling)
+				{
+					ChildName = LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
+				}
 				else
 				{
 					ChildName = FText::FromString(Child.Effect.Effect.ToSoftObjectPath().GetAssetName());
 				}
-				ChildSummary = FText::FromString(FString::Printf(TEXT("Effect · %.2f"), Child.Effect.Strength));
+				if (Child.Effect.Effect.IsNull()
+					&& Child.Effect.ProceduralType == EMaterialLabEffectType::Erosion)
+				{
+					// The pass count is fixed now, so it says nothing about this child.
+					// Amount is what distinguishes one erosion child from another.
+					ChildSummary = FText::FromString(FString::Printf(
+						TEXT("Filter · Height · %.2f"),
+						Child.Effect.ErosionAmount));
+				}
+				else
+				{
+					ChildSummary = FText::FromString(FString::Printf(TEXT("Effect · %.2f"), Child.Effect.Strength));
+				}
 			}
 			else if (bGenerated)
 			{
@@ -5053,6 +5075,23 @@ TSharedRef<SWidget> SMaterialLab::BuildAddChildMenu(const int32 LayerIndex)
 						AddEffectToLayer(LayerIndex, EffectPath);
 					})));
 			}
+			// Procedural, so it is not discovered from an imported asset set.
+			EffectMenu.AddMenuEntry(
+				LOCTEXT("AddErosionEffect", "Erosion"),
+				LOCTEXT("AddErosionEffectHint", "Carve the height accumulated below this layer."),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
+				{
+					AddErosionToLayer(LayerIndex);
+				})));
+			EffectMenu.AddMenuEntry(
+				LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
+				LOCTEXT("AddProceduralPeelEffectHint", "Grow a peel from noise and the surface below. Needs no imported maps."),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
+				{
+					AddProceduralPeelingToLayer(LayerIndex);
+				})));
 			if (Effects.IsEmpty())
 			{
 				EffectMenu.AddMenuEntry(
@@ -5963,13 +6002,551 @@ TSharedRef<SWidget> SMaterialLab::BuildGeneratedBlendModeMenu(
 	return MenuBuilder.MakeWidget();
 }
 
+FReply SMaterialLab::AddErosionToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMaterialLabLayer& Layer = WorkingLayers[LayerIndex];
+	FMaterialLabLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMaterialLabLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMaterialLabEffectType::Erosion;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMaterialLab::AddProceduralPeelingToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMaterialLabLayer& Layer = WorkingLayers[LayerIndex];
+	FMaterialLabLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMaterialLabLayerChildType::Effect;
+	// Null effect asset plus a Peeling procedural type is what selects the generated field.
+	Child.Effect.ProceduralType = EMaterialLabEffectType::Peeling;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMaterialLabLayerEffect* SMaterialLab::GetSelectedProceduralPeel()
+{
+	FMaterialLabLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMaterialLabEffectType::Peeling)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMaterialLabLayerEffect* SMaterialLab::GetSelectedProceduralPeel() const
+{
+	const FMaterialLabLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMaterialLabEffectType::Peeling)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+FMaterialLabLayerEffect* SMaterialLab::GetSelectedErosion()
+{
+	FMaterialLabLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMaterialLabEffectType::Erosion)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMaterialLabLayerEffect* SMaterialLab::GetSelectedErosion() const
+{
+	const FMaterialLabLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMaterialLabEffectType::Erosion)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+
+TSharedRef<SWidget> SMaterialLab::BuildProceduralPeelControls()
+{
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedProceduralPeel() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMaterialLabInspectorGroup)
+			.Title(LOCTEXT("ProcPeelHeading", "PEEL SEEDING"))
+			.InitiallyExpanded(true)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("ProcPeelHint", "Seeds the peel from noise and from the surface below, then grows it outward. Front, Width, Thickness and Lift shape it in the Peeling section."))
+					.AutoWrapText(true)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelType", "Curled"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SCheckBox)
+						.ToolTipText(LOCTEXT("PPeelTypeHint", "Checked lifts a flap ahead of the front and folds it back behind. Unchecked is the flat chip."))
+						.IsChecked_Lambda([this]() { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E && E->PeelType == EMaterialLabPeelType::Curled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+						.OnCheckStateChanged_Lambda([this](const ECheckBoxState S) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelType = S == ECheckBoxState::Checked ? EMaterialLabPeelType::Curled : EMaterialLabPeelType::Flat; RefreshLayeredPreview(); } })
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelNormalize", "Normalize Weights"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SCheckBox)
+						.IsChecked_Lambda([this]() { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E && E->bPeelNormalizeSeedWeights ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+						.OnCheckStateChanged_Lambda([this](const ECheckBoxState S) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->bPeelNormalizeSeedWeights = S == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelMacroPeriod", "Frequency (Macro)"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(1).MaxSliderValue(64).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelMacroPeriod : 8; })
+							.OnValueChanged_Lambda([this](const int32 V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelMacroPeriod = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && E->PeelMacroPeriod != 8) { E->PeelMacroPeriod = 8; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelMicroPeriod", "Frequency (Micro)"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(1).MaxSliderValue(128).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelMicroPeriod : 32; })
+							.OnValueChanged_Lambda([this](const int32 V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelMicroPeriod = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && E->PeelMicroPeriod != 32) { E->PeelMicroPeriod = 32; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelSeed", "Random Seed"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(1).MaxSliderValue(999).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelRandomSeed : 1; })
+							.OnValueChanged_Lambda([this](const int32 V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelRandomSeed = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && E->PeelRandomSeed != 1) { E->PeelRandomSeed = 1; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelThreshold", "Amount (Seed Threshold)"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.005f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedThreshold : 0.62f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedThreshold = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedThreshold, 0.62f)) { E->PeelSeedThreshold = 0.62f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelNoiseW", "Weight · Noise"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-2.0f).MaxSliderValue(2.0f).Delta(0.02f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedNoiseWeight : 1.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedNoiseWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedNoiseWeight, 1.0f)) { E->PeelSeedNoiseWeight = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelCurvW", "Weight · Convexity"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-2.0f).MaxSliderValue(2.0f).Delta(0.02f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedCurvatureWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedCurvatureWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedCurvatureWeight, 0.0f)) { E->PeelSeedCurvatureWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelCurvBias", "Convex Bias"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedCurvatureBias : 1.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedCurvatureBias = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedCurvatureBias, 1.0f)) { E->PeelSeedCurvatureBias = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelAOW", "Weight · Occlusion"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-2.0f).MaxSliderValue(2.0f).Delta(0.02f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedAOWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedAOWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedAOWeight, 0.0f)) { E->PeelSeedAOWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelHeightW", "Weight · Height"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-2.0f).MaxSliderValue(2.0f).Delta(0.02f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedHeightWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedHeightWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedHeightWeight, 0.0f)) { E->PeelSeedHeightWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelMaskW", "Weight · Mask"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-2.0f).MaxSliderValue(2.0f).Delta(0.02f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelSeedMaskWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelSeedMaskWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && !FMath::IsNearlyEqual(E->PeelSeedMaskWeight, 0.0f)) { E->PeelSeedMaskWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("PPeelCurvRadius", "Convexity Radius"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(1).MaxSliderValue(32).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); return E ? E->PeelCurvatureRadius : 2; })
+							.OnValueChanged_Lambda([this](const int32 V) { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel()) { E->PeelCurvatureRadius = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedProceduralPeel(); E && E->PeelCurvatureRadius != 2) { E->PeelCurvatureRadius = 2; RefreshLayeredPreview(); } }))
+					]
+				]
+			]
+		];
+}
+
+TSharedRef<SWidget> SMaterialLab::BuildErosionControls()
+{
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedErosion() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMaterialLabInspectorGroup)
+			.Title(LOCTEXT("ErosionHeading", "EROSION"))
+			.InitiallyExpanded(true)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("ErosionHint", "Carves the height accumulated below this layer. Subtractive: it only removes material."))
+					.AutoWrapText(true)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroDirMode", "Direction Mode"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SCheckBox)
+						.ToolTipText(LOCTEXT("EroDirModeHint", "Checked blends directions evenly (Lerp). Unchecked adds the angle to the slope vector (Weight), so steep ground still runs downhill."))
+						.IsChecked_Lambda([this]() { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E && E->ErosionDirectionMode == EMaterialLabErosionDirectionMode::Lerp ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+						.OnCheckStateChanged_Lambda([this](const ECheckBoxState S) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionDirectionMode = S == ECheckBoxState::Checked ? EMaterialLabErosionDirectionMode::Lerp : EMaterialLabErosionDirectionMode::Weight; RefreshLayeredPreview(); } })
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroAmount", "Amount"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionAmount : 1.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionAmount = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionAmount, 1.0f)) { E->ErosionAmount = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroRepose", "Repose"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionRepose : 0.30f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionRepose = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionRepose, 0.30f)) { E->ErosionRepose = 0.30f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroReposeSoft", "Repose Softness"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionReposeSoftness : 0.25f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionReposeSoftness = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionReposeSoftness, 0.25f)) { E->ErosionReposeSoftness = 0.25f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroSlopeRadius", "Slope Radius"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(1).MaxSliderValue(32).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionSlopeRadius : 2; })
+							.OnValueChanged_Lambda([this](const int32 V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionSlopeRadius = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && E->ErosionSlopeRadius != 2) { E->ErosionSlopeRadius = 2; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroSlopeBlur", "Slope Blur"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(16.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionSlopeBlur : 2.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionSlopeBlur = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionSlopeBlur, 2.0f)) { E->ErosionSlopeBlur = 2.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroCavityBias", "Cavity Bias"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-16.0f).MaxSliderValue(16.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionCavityBias : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionCavityBias = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionCavityBias, 0.0f)) { E->ErosionCavityBias = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroCavityScale", "Cavity Contrast"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.1f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionCavityScale : 1.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionCavityScale = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionCavityScale, 1.0f)) { E->ErosionCavityScale = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroHeightInfluence", "Height Influence"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(-16.0f).MaxSliderValue(16.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionHeightInfluence : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionHeightInfluence = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionHeightInfluence, 0.0f)) { E->ErosionHeightInfluence = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroHeightScale", "Height Contrast"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.1f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionHeightScale : 1.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionHeightScale = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionHeightScale, 1.0f)) { E->ErosionHeightScale = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroGullyWeight", "Gully Weight"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(8.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionGullyWeight : 2.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionGullyWeight = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionGullyWeight, 2.0f)) { E->ErosionGullyWeight = 2.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroNormalStrength", "Normal Strength"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.1f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionNormalStrength : 8.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionNormalStrength = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionNormalStrength, 8.0f)) { E->ErosionNormalStrength = 8.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroBlendSoftness", "Blend Softness"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(8.0f).Delta(0.005f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionBlendSoftness : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionBlendSoftness = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionBlendSoftness, 0.0f)) { E->ErosionBlendSoftness = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroDirAngle", "Direction Angle"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(360.0f).Delta(90.0f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionDirectionAngle : 90.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionDirectionAngle = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionDirectionAngle, 90.0f)) { E->ErosionDirectionAngle = 90.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("EroDirAmount", "Direction Amount"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabLayerEffect* E = GetSelectedErosion(); return E ? E->ErosionDirectionAmount : 0.0f; })
+							.OnValueChanged_Lambda([this](const float V) { if (FMaterialLabLayerEffect* E = GetSelectedErosion()) { E->ErosionDirectionAmount = V; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabLayerEffect* E = GetSelectedErosion(); E && !FMath::IsNearlyEqual(E->ErosionDirectionAmount, 0.0f)) { E->ErosionDirectionAmount = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+			]
+		];
+}
+
+
 TSharedRef<SWidget> SMaterialLab::BuildGeneratedMaskControls()
 {
 	return SNew(SBox)
-		.Visibility_Lambda([this]()
-		{
-			return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed;
-		})
+		.Visibility_Lambda([this]() { return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMaterialLabInspectorGroup)
 			.Title(LOCTEXT("GeneratedMaskHeading", "GENERATED MASK"))
@@ -5986,15 +6563,15 @@ TSharedRef<SWidget> SMaterialLab::BuildGeneratedMaskControls()
 				[
 					SNew(SCheckBox)
 					.ToolTipText(LOCTEXT("GeneratedEnabledHint", "Enable this generated mask"))
-				.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } })
+					.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } })
 				])
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
 				[
 					SNew(STextBlock)
-					.Text(LOCTEXT("GeneratedMaskHint", "Derives a mask from the surface accumulated below this layer. All weights start at zero."))
+					.Text(LOCTEXT("GeneratedMaskHint", "Derives a mask from the surface accumulated below this layer. Sliders show a useful range; type past them for more."))
 					.AutoWrapText(true)
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
@@ -6009,274 +6586,171 @@ TSharedRef<SWidget> SMaterialLab::BuildGeneratedMaskControls()
 						.OnGetMenuContent_Lambda([this]() { return BuildGeneratedBlendModeMenu(SelectedLayerIndex, SelectedMaskIndex); })
 					]
 				]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
-			[SNew(STextBlock).Text(LOCTEXT("GenHdrSignals", "SIGNALS")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureWeight", "Cavity / Curvature"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+				[SNew(STextBlock).Text(LOCTEXT("GenHdrSignals", "SIGNALS")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureWeight : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureWeight = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureWeight, 0.0f)) { Gen->CurvatureWeight = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureWeight", "Cavity / Curvature"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureWeight = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureWeight, 0.0f)) { Gen->CurvatureWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureBias", "Cavity to Convex"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureBias : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureBias = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureBias, 0.0f)) { Gen->CurvatureBias = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureBias", "Cavity to Convex"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureBias : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureBias = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureBias, 0.0f)) { Gen->CurvatureBias = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionWeight", "Direction (Tangent Y)"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionWeight : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionWeight = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionWeight, 0.0f)) { Gen->DirectionWeight = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvatureStrength", "Curvature Strength"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(512.0f).MinSliderValue(0.0f).MaxSliderValue(32.0f).Delta(0.1f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvatureStrength : 4.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvatureStrength = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvatureStrength, 4.0f)) { Gen->CurvatureStrength = 4.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionAngle", "Direction Angle"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(360.0f).MinSliderValue(0.0f).MaxSliderValue(360.0f).Delta(1.0f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionAngle : 90.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionAngle = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionAngle, 90.0f)) { Gen->DirectionAngle = 90.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenCurvaturePower", "Curvature Power"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.001f).MaxValue(16.0f).MinSliderValue(0.05f).MaxSliderValue(4.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->CurvaturePower : 1.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->CurvaturePower = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->CurvaturePower, 1.0f)) { Gen->CurvaturePower = 1.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionBroadness", "Direction Falloff"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.05f).MaxValue(8.0f).MinSliderValue(0.05f).MaxSliderValue(8.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionBroadness : 1.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionBroadness = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionBroadness, 1.0f)) { Gen->DirectionBroadness = 1.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionWeight", "Direction (Tangent Y)"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionWeight = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionWeight, 0.0f)) { Gen->DirectionWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenAOWeight", "Inverted AO"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->AOWeight : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->AOWeight = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->AOWeight, 0.0f)) { Gen->AOWeight = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionAngle", "Direction Angle"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-720.0f).MaxValue(720.0f).MinSliderValue(0.0f).MaxSliderValue(360.0f).Delta(1.0f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionAngle : 90.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionAngle = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionAngle, 90.0f)) { Gen->DirectionAngle = 90.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightWeight", "Height"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightWeight : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightWeight = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightWeight, 0.0f)) { Gen->HeightWeight = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenDirectionBroadness", "Direction Falloff"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.001f).MaxValue(64.0f).MinSliderValue(0.05f).MaxSliderValue(8.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->DirectionBroadness : 1.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->DirectionBroadness = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->DirectionBroadness, 1.0f)) { Gen->DirectionBroadness = 1.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightBiasCtl", "Height Bias"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightBias : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightBias = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightBias, 0.0f)) { Gen->HeightBias = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenAOWeight", "Inverted AO"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->AOWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->AOWeight = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->AOWeight, 0.0f)) { Gen->AOWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
-			[SNew(STextBlock).Text(LOCTEXT("GenHdrShaping", "SHAPING")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenNormalizeWeights", "Normalize Weights"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					SNew(SCheckBox)
-					.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bNormalizeWeights ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bNormalizeWeights = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightWeight", "Height"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightWeight : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightWeight = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightWeight, 0.0f)) { Gen->HeightWeight = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenBiasCtl", "Bias"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.001f).MaxValue(0.999f).MinSliderValue(0.001f).MaxSliderValue(0.999f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Bias : 0.5f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Bias = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Bias, 0.5f)) { Gen->Bias = 0.5f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenHeightBiasCtl", "Height Bias"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->HeightBias : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->HeightBias = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->HeightBias, 0.0f)) { Gen->HeightBias = 0.0f; RefreshLayeredPreview(); } }))
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpAmount", "Warp Amount"))]
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+				[SNew(STextBlock).Text(LOCTEXT("GenHdrShaping", "SHAPING")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(0.25f).MinSliderValue(0.0f).MaxSliderValue(0.25f).Delta(0.005f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpAmount : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpAmount = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpAmount, 0.0f)) { Gen->WarpAmount = 0.0f; RefreshLayeredPreview(); } }))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenNormalizeWeights", "Normalize Weights"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SCheckBox)
+						.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bNormalizeWeights ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+						.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bNormalizeWeights = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+					]
 				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpSource", "Warp Flow (Normal to Height)"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpSource : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpSource = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpSource, 0.0f)) { Gen->WarpSource = 0.0f; RefreshLayeredPreview(); } }))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpRadius", "Warp Radius"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<int32>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(1).MaxValue(16).MinSliderValue(1).MaxSliderValue(16).Delta(1).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpRadius : 1; })
-						.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpRadius = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->WarpRadius != 1) { Gen->WarpRadius = 1; RefreshLayeredPreview(); } }))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
-			[SNew(STextBlock).Text(LOCTEXT("GenHdrBlend", "BLEND")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenWeight", "Weight"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Weight : 1.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Weight = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Weight, 1.0f)) { Gen->Weight = 1.0f; RefreshLayeredPreview(); } }))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenInvert", "Invert"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SNew(SCheckBox)
-					.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bInvert = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenBalance", "Balance"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(2.0f).MinSliderValue(0.0f).MaxSliderValue(2.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Balance : 0.5f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Balance = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Balance, 0.5f)) { Gen->Balance = 0.5f; RefreshLayeredPreview(); } }))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenContrast", "Contrast"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(0.0f).MaxValue(10.0f).MinSliderValue(0.0f).MaxSliderValue(10.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Contrast : 1.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Contrast = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Contrast, 1.0f)) { Gen->Contrast = 1.0f; RefreshLayeredPreview(); } }))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenOffset", "Offset"))]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					MakeResettableNumeric(
-						SNew(SNumericEntryBox<float>)
-						.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-						.AllowSpin(true).MinValue(-1.0f).MaxValue(1.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
-						.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Offset : 0.0f; })
-						.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Offset = Value; RefreshLayeredPreview(); } }),
-						FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Offset, 0.0f)) { Gen->Offset = 0.0f; RefreshLayeredPreview(); } }))
-				]
-			]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 				[
 					SNew(SHorizontalBox)
@@ -6286,10 +6760,158 @@ TSharedRef<SWidget> SMaterialLab::BuildGeneratedMaskControls()
 						MakeResettableNumeric(
 							SNew(SNumericEntryBox<int32>)
 							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
-							.AllowSpin(true).MinValue(1).MaxValue(32).MinSliderValue(1).MaxSliderValue(32).Delta(1).MinDesiredValueWidth(96.0f)
+							.AllowSpin(true).MinValue(1).MaxValue(256).MinSliderValue(1).MaxSliderValue(32).Delta(1).MinDesiredValueWidth(96.0f)
 							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Broadness : 2; })
 							.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Broadness = Value; RefreshLayeredPreview(); } }),
 							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->Broadness != 2) { Gen->Broadness = 2; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenSmoothing", "Smoothing"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(1).MaxValue(4).MinSliderValue(1).MaxSliderValue(4).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Smoothing : 2; })
+							.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Smoothing = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->Smoothing != 2) { Gen->Smoothing = 2; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenBiasCtl", "Bias"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.001f).MaxValue(0.999f).MinSliderValue(0.001f).MaxSliderValue(0.999f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Bias : 0.5f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Bias = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Bias, 0.5f)) { Gen->Bias = 0.5f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpAmount", "Warp Amount"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(0.05f).Delta(0.0005f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpAmount : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpAmount = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpAmount, 0.0f)) { Gen->WarpAmount = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpSource", "Warp Flow (Normal to Height)"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(1.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpSource : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpSource = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->WarpSource, 0.0f)) { Gen->WarpSource = 0.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenWarpRadius", "Warp Radius"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<int32>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(1).MaxValue(256).MinSliderValue(1).MaxSliderValue(16).Delta(1).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<int32> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->WarpRadius : 1; })
+							.OnValueChanged_Lambda([this](const int32 Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->WarpRadius = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && Gen->WarpRadius != 1) { Gen->WarpRadius = 1; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 3.0f)
+				[SNew(STextBlock).Text(LOCTEXT("GenHdrBlend", "BLEND")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8)).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenWeight", "Weight"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(8.0f).MinSliderValue(0.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Weight : 1.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Weight = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Weight, 1.0f)) { Gen->Weight = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenInvert", "Invert"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SCheckBox)
+						.IsChecked_Lambda([this]() { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen && Gen->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+						.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->bInvert = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenBalance", "Balance"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(16.0f).MinSliderValue(0.0f).MaxSliderValue(2.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Balance : 0.5f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Balance = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Balance, 0.5f)) { Gen->Balance = 0.5f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenContrast", "Contrast"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(0.0f).MaxValue(100.0f).MinSliderValue(0.0f).MaxSliderValue(10.0f).Delta(0.05f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Contrast : 1.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Contrast = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Contrast, 1.0f)) { Gen->Contrast = 1.0f; RefreshLayeredPreview(); } }))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("GenGenOffset", "Offset"))]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						MakeResettableNumeric(
+							SNew(SNumericEntryBox<float>)
+							.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+							.AllowSpin(true).MinValue(-8.0f).MaxValue(8.0f).MinSliderValue(-1.0f).MaxSliderValue(1.0f).Delta(0.01f).MinDesiredValueWidth(96.0f)
+							.Value_Lambda([this]() -> TOptional<float> { const FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); return Gen ? Gen->Offset : 0.0f; })
+							.OnValueChanged_Lambda([this](const float Value) { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask()) { Gen->Offset = Value; RefreshLayeredPreview(); } }),
+							FSimpleDelegate::CreateLambda([this]() { if (FMaterialLabGeneratedMask* Gen = GetSelectedGeneratedMask(); Gen && !FMath::IsNearlyEqual(Gen->Offset, 0.0f)) { Gen->Offset = 0.0f; RefreshLayeredPreview(); } }))
 					]
 				]
 			]
@@ -7169,7 +7791,9 @@ TSharedRef<SWidget> SMaterialLab::BuildEffectInspectorControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
 		.Visibility_Lambda([this]()
 		{
-			return GetSelectedLayerEffect() ? EVisibility::Visible : EVisibility::Collapsed;
+				// Erosion is procedural and has no asset-authored maps or ranges to show here.
+			return GetSelectedLayerEffect() && !GetSelectedErosion()
+				? EVisibility::Visible : EVisibility::Collapsed;
 		});
 
 
@@ -7390,6 +8014,8 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 					SNew(SScrollBox)
 					.Visibility_Lambda([this]() { return GetSelectedLayerEffect() ? EVisibility::Visible : EVisibility::Collapsed; })
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
+					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
+					+ SScrollBox::Slot()[BuildErosionControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
@@ -7829,6 +8455,21 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
 							[
 								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("CurvatureSmoothingLabel", "Smoothing"))]
+								+ SHorizontalBox::Slot().AutoWidth()
+								[
+									MakeResettableNumeric(
+										SNew(SNumericEntryBox<int32>)
+										.SpinBoxStyle(&FMaterialLabStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("MaterialLab.ScrubControl")))
+										.AllowSpin(true).MinValue(1).MaxValue(4).MinSliderValue(1).MaxSliderValue(4).MinDesiredValueWidth(96.0f)
+										.Value_Lambda([this]() -> TOptional<int32> { return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? WorkingLayers[SelectedLayerIndex].CurvatureSmoothing : 2; })
+										.OnValueChanged_Lambda([this](const int32 Value) { if (WorkingLayers.IsValidIndex(SelectedLayerIndex)) { WorkingLayers[SelectedLayerIndex].CurvatureSmoothing = Value; RefreshLayeredPreview(); } }),
+										FSimpleDelegate::CreateLambda([this]() { if (WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].CurvatureSmoothing != 2) { WorkingLayers[SelectedLayerIndex].CurvatureSmoothing = 2; RefreshLayeredPreview(); } }))
+								]
+							]
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+							[
+								SNew(SHorizontalBox)
 								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("CurvatureStrengthLabel", "Strength"))]
 								+ SHorizontalBox::Slot().AutoWidth()
 								[
@@ -7872,7 +8513,7 @@ TSharedRef<SWidget> SMaterialLab::BuildInspectorPanel()
 						[
 							BuildHeightBlendControls()
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							BuildGeneratedMaskControls()
 						]

@@ -1,8 +1,14 @@
 # Material Lab — Peeling Effect
 
-Last updated: 2026-08-29
+Last updated: 2026-09-02
 
 This document is the crash-safe implementation handoff for the first Material Lab effect.
+It describes the authored-texture path, which is the only one implemented.
+
+A second, procedural source for the same peeling shader is designed in
+`ProceduralPeelingPlan.md`: generated noise plus surface signals (convexity, cavity, AO, height,
+ordered child masks) replace the imported PDM/MSK/H/SDF set. That plan generates the maps and
+leaves the peeling math below unchanged, so nothing in this document is superseded by it.
 
 ## Product rule
 

@@ -1,6 +1,6 @@
 # Material Lab — Erosion Effect Plan
 
-Status: Design only. Not implemented. Independent implementation from a referenced technique.
+Status: Implemented and building. Not visually verified in the editor.
 
 ## Goal
 
@@ -180,43 +180,60 @@ and it is the path every later filter reuses.
 
 ## Exposed controls
 
-Settled against the Houdini prototype (`Handoff/Houdini/OpenCl/gullyerosion.cl`). Six controls
-reach the artist. Everything else is internal, fixed at the prototype values.
+Ranges below are the inspector's scrub range only. No erosion control carries a hard clamp:
+`ClampMin`/`ClampMax` are absent from the recipe struct and the compositor passes every value
+through raw, so a typed value outside the scrub range reaches the shader intact. The shader
+keeps epsilon guards at its own division sites; those are not UI limits and stay.
 
 ```text
 Amount            0..1        blend against the unmodified height; 0 is the identity
-Iterations        1..8        carving passes
-Cavity Bias      -16..16      signed. positive concentrates carving in concave regions,
-                              negative inverts it onto convex ridges. 0 ignores curvature.
-Cavity Scale      0..1        how sharply concave and convex are told apart
-Gully Weight      0..8        how strongly each pass steers the next and how deep it cuts
-Blend Softness    0..         crossover width of the subtractive height blend
+Repose            0..32       critical slope. nothing carves below it
+Repose Softness   0..32       width of the transition above the critical slope
+Slope Radius      1..32       pixel radius of the local slope measurement
+Slope Blur        0..16       low-pass on the guidance height before measuring slope
+Cavity Bias      -16..16      signed. positive favours concave, negative convex, 0 ignores
+Cavity Contrast   0..32       smoothstep contrast separating concave from convex
+Height Influence -16..16      signed. positive erodes raised ground first, negative low ground
+Height Contrast   0..32       smoothstep contrast separating high ground from low
+Gully Weight      0..8        how deep each pass cuts and how strongly it steers the next
+Blend Softness    0..8        crossover width of the subtractive height blend
+Normal Strength   0..32       how strongly the carve perturbs the layer normal; 0 is height only
+Direction Mode    Weight|Lerp Weight competes with slope magnitude, Lerp blends evenly
+Direction Angle   0..360      authored flow direction, 90 is +Y
+Direction Amount  0..1        how much the authored direction displaces the downhill flow
 ```
 
-Cavity Bias is deliberately wide and signed. Past 1 it stops being a blend and becomes a
-contrast expansion on the concavity signal, which is where it does its most useful work;
-the negative half carves ridges instead of channels. Clamp the result, not the input.
+Internal, not exposed: Iterations 8, Period 32, Strength 1.0, Gully Length 1.5, Lic Steps 5,
+Gain 0.5, Deriv Scale 0.6, Deriv Min 1, Seed 1.
 
-Internal, not exposed:
+`Iterations` and `Period` were exposed and are now fixed. Their recipe fields
+(`ErosionIterations`, `ErosionPeriod`) remain serialized so existing recipes load, but nothing
+reads them. `Cavity Contrast` and `Height Contrast` are relabels of the former `Cavity Scale`
+and `Height Scale`; the underlying fields keep their old names for the same reason. The
+smoothstep was already in the shader — widening the range from `0..1` to `0..32` is what makes
+it usable as a contrast.
 
-```text
-Strength         1.0     Repose            0.30    Deriv Scale   0.6
-Period           8       Repose Softness   0.25    Deriv Min     1
-Gully Length     1.5     Gain              0.5     Ridge Sharp   2.0
-Lic Steps        5       Passes Per Octave 1       Limit Nyquist 1
-Mode             0       Subtractive       1       Seed          1
-```
+Repose is exposed because its units are height per UV, so the useful value depends entirely
+on the composited height range and cannot be fixed at a prototype value.
 
-Subtractive stays on and is not exposed. Erosion removes material and never deposits; a
-signed field added to the height builds the surface up half the time, which reads as noise
-laid over the height rather than as something cut into it. The blend is a smooth minimum
-rather than a hard one, because a hard min leaves a derivative discontinuity along every
-crossover and those stamp crease lines into the normals derived downstream. Blend Softness
-is that rounding width.
+## Internal resolution
 
-Mode 0 keeps the directional gullies. If the isotropic mode proves indistinguishable at
-texture scale, the effect collapses to a single pass with no ping-pong and this plan should
-be revised down accordingly.
+Erosion runs at `min(2 x composition, 4096)` and resamples back to composition resolution.
+Carving is high-frequency work: at composition resolution the octave loop reaches its
+two-pixels-per-cell floor with passes still to run, so the finest gullies have nowhere to cut.
+At 4096 composition the cap makes this a no-op and the pass falls back to a plain copy.
+
+Resampling is one dispatch that moves height and normal together, in either direction. At 2:1
+a bilinear tap at the destination texel centre lands on the 2x2 centroid, so the downsample is
+an exact four-texel average. Normals are decoded, renormalised and re-encoded; renormalising
+the 0..1 encoded value would aim at the corner of the unit cube rather than the surface.
+
+Known consequence: `Concave = -Lap * CavityScale * Resf.x` is half-normalised. A second
+derivative converted to UV units needs `Resf.x` squared, and it carries one factor, so cavity
+gating weakens as resolution rises. Doubling the internal resolution therefore changes how
+`Cavity Bias` bites on recipes authored before this change. Left uncorrected deliberately, so
+that a visual regression here is attributable to the resolution change rather than to a
+simultaneous maths fix.
 
 ## Ridge map
 
@@ -229,9 +246,17 @@ means one additional full-resolution channel when any erosion effect is present.
 
 ## Ordering
 
-Erosion runs while preparing its owning layer, before that layer's height composites forward. The
-reshaped height therefore drives the height blend mask, contact AO and border normals, so the
-whole transition softens coherently rather than only the displacement output.
+Erosion is a post-layer filter. It runs after the owning layer composites, reads the height
+and normal that layer just produced, carves the height, and writes both back.
+
+The plan originally specified running it before the layer composited, on the accumulated
+height underneath. That was wrong in practice: the layer then paints its own height straight
+back over the carve, so the effect only appeared if the layer was hidden. Erosion belongs on
+the layer whose height you want carved, and must therefore run after it.
+
+Normals are derived from what was removed. The gradient of `source - carved` becomes a tangent
+normal and is combined with the layer normal by RNM, the same construction border lift uses.
+Without this the surface displaces but shades flat.
 
 ## Limitations
 
@@ -255,3 +280,40 @@ whole transition softens coherently rather than only the displacement output.
 10. No third-party licensed source is present in the plugin.
 
 Do not run builds, Unreal, or tests without explicit permission.
+
+## Current state
+
+Built and linking. Never confirmed to produce a visible result in the editor.
+
+Implemented:
+
+```text
+EMaterialLabEffectType::Erosion          appended as 2
+EMaterialLabEffectClass                  Surface / Filter split
+FMaterialLabLayerEffect::ProceduralType  type for effects with no asset
+Shaders/Private/MaterialLabGully.ush     hash, periodic noise with derivatives, LIC, soft subtract
+Shaders/Private/MaterialLabErosion.usf   carving passes plus a final normal pass
+MaterialLabGpuCompositor.cpp             shader class, render data, post-layer dispatch
+SMaterialLab.cpp                         Add Child > Effect > Erosion, inspector section
+```
+
+Open, in the order worth attacking:
+
+1. Nothing has been seen working. The last report was that erosion only took effect when the
+   owning layer was hidden, and that normals did not follow. Both were addressed by the
+   post-layer restructure, which has not been tested.
+2. Repose scale is unknown for Material Lab height. Set Repose to 0 first: the gate is then
+   fully open and carving should be violent and obvious. If 0 still does nothing, the gate is
+   not the problem and the next step is a debug view of the height and slope erosion actually
+   receives, rather than more parameter guessing.
+3. Normal Strength scale is unknown for the same reason. Try well above 1 before concluding
+   it does nothing.
+4. The ridge map is computed and written but consumed by nothing. It was meant to become a
+   weighted signal on the generated mask node.
+5. The isotropic mode from the Houdini prototype was never ported. Only the directional LIC
+   path exists in HLSL, so the cheap single-pass alternative has never been compared.
+6. The erosion child row in the layer stack has a blank name, because the row derives its
+   label from the effect asset path and a procedural effect has none.
+
+The Houdini prototype at `Handoff/Houdini/OpenCl/gullyerosion.cl` is the reference for what
+the filter should look like, and is the faster place to try changes to the kernel itself.

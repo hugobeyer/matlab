@@ -88,6 +88,7 @@ public:
 		SHADER_PARAMETER(int32, CurvatureRadius)
 		SHADER_PARAMETER(float, CurvatureStrength)
 		SHADER_PARAMETER(float, CurvaturePower)
+		SHADER_PARAMETER(int32, CurvatureSmoothing)
 		SHADER_PARAMETER(FVector4f, FillColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousBC)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousN)
@@ -168,6 +169,8 @@ public:
 		SHADER_PARAMETER(uint32, FlipNormalY)
 		SHADER_PARAMETER(float, CurvatureWeight)
 		SHADER_PARAMETER(float, CurvatureBias)
+		SHADER_PARAMETER(float, CurvatureStrength)
+		SHADER_PARAMETER(float, CurvaturePower)
 		SHADER_PARAMETER(float, DirectionWeight)
 		SHADER_PARAMETER(float, DirectionAngle)
 		SHADER_PARAMETER(float, DirectionBroadness)
@@ -176,6 +179,7 @@ public:
 		SHADER_PARAMETER(float, HeightBias)
 		SHADER_PARAMETER(uint32, NormalizeWeights)
 		SHADER_PARAMETER(int32, Broadness)
+		SHADER_PARAMETER(int32, Smoothing)
 		SHADER_PARAMETER(float, Bias)
 		SHADER_PARAMETER(float, WarpAmount)
 		SHADER_PARAMETER(float, WarpSource)
@@ -203,6 +207,62 @@ public:
 IMPLEMENT_GLOBAL_SHADER(
 	FMaterialLabGeneratedMaskCS,
 	"/Plugin/MaterialLab/Private/MaterialLabGeneratedMask.usf",
+	"MainCS",
+	SF_Compute);
+
+class FMaterialLabErosionCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMaterialLabErosionCS);
+	SHADER_USE_PARAMETER_STRUCT(FMaterialLabErosionCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Pass)
+		SHADER_PARAMETER(int32, NormalPass)
+		SHADER_PARAMETER(int32, BlurPass)
+		SHADER_PARAMETER(int32, ResamplePass)
+		SHADER_PARAMETER(float, BlurRadius)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(int32, Period)
+		SHADER_PARAMETER(float, GullyLength)
+		SHADER_PARAMETER(int32, LicSteps)
+		SHADER_PARAMETER(float, Repose)
+		SHADER_PARAMETER(float, ReposeSoftness)
+		SHADER_PARAMETER(float, CavityBias)
+		SHADER_PARAMETER(float, CavityScale)
+		SHADER_PARAMETER(float, HeightInfluence)
+		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(float, GullyWeight)
+		SHADER_PARAMETER(float, BlendSoftness)
+		SHADER_PARAMETER(float, Gain)
+		SHADER_PARAMETER(float, DerivScale)
+		SHADER_PARAMETER(int32, DerivMin)
+		SHADER_PARAMETER(int32, DirectionMode)
+		SHADER_PARAMETER(float, DirectionAngle)
+		SHADER_PARAMETER(float, DirectionAmount)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRidge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMaterialLabErosionCS,
+	"/Plugin/MaterialLab/Private/MaterialLabErosion.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -234,6 +294,9 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelSDF)
+		SHADER_PARAMETER(uint32, ProceduralSource)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelFieldA)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelFieldB)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputEffectData)
@@ -248,6 +311,67 @@ public:
 IMPLEMENT_GLOBAL_SHADER(
 	FMaterialLabPeelingCS,
 	"/Plugin/MaterialLab/Private/MaterialLabPeeling.usf",
+	"MainCS",
+	SF_Compute);
+
+// Generates a peel field from noise and the surface below, replacing the authored
+// PDM/MSK/H/SDF set. Dispatched as Seed, then a halving chain of Flood steps, then Resolve.
+class FMaterialLabPeelFieldCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMaterialLabPeelFieldCS);
+	SHADER_USE_PARAMETER_STRUCT(FMaterialLabPeelFieldCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Mode)
+		SHADER_PARAMETER(int32, StepSize)
+		SHADER_PARAMETER(uint32, SurfaceValid)
+		SHADER_PARAMETER(uint32, FlipNormalY)
+		SHADER_PARAMETER(int32, MacroPeriod)
+		SHADER_PARAMETER(int32, MicroPeriod)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, NoiseWeight)
+		SHADER_PARAMETER(float, CurvatureWeight)
+		SHADER_PARAMETER(float, CurvatureBias)
+		SHADER_PARAMETER(float, AOWeight)
+		SHADER_PARAMETER(float, HeightWeight)
+		SHADER_PARAMETER(float, MaskWeight)
+		SHADER_PARAMETER(float, SeedThreshold)
+		SHADER_PARAMETER(uint32, NormalizeWeights)
+		SHADER_PARAMETER(int32, CurvatureRadius)
+		SHADER_PARAMETER(int32, CurvatureSmoothing)
+		SHADER_PARAMETER(int32, PeelType)
+		SHADER_PARAMETER(float, Front)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, MacroWarp)
+		SHADER_PARAMETER(float, MicroWarp)
+		SHADER_PARAMETER(float, MicroMorph)
+		SHADER_PARAMETER(float, Thickness)
+		SHADER_PARAMETER(float, Lift)
+		SHADER_PARAMETER(float, DetailStrength)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousJump)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, NoiseField)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputJump)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputNoise)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFieldA)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFieldB)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMaterialLabPeelFieldCS,
+	"/Plugin/MaterialLab/Private/MaterialLabPeelField.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -326,12 +450,46 @@ namespace MaterialLabGpuCompositor
 		float StainHeightWarp = 0.0f;
 		float StainHeightBias = -1.0f;
 		float StainHeightContrast = 1.0f;
+		// Procedural peeling. bProceduralPeel selects the generated field over the
+		// authored maps; the shaping values above are shared by both paths.
+		bool bProceduralPeel = false;
+		int32 PeelType = 0;
+		int32 PeelMacroPeriod = 8;
+		int32 PeelMicroPeriod = 32;
+		uint32 PeelRandomSeed = 1;
+		float PeelSeedThreshold = 0.62f;
+		float PeelSeedNoiseWeight = 1.0f;
+		float PeelSeedCurvatureWeight = 0.0f;
+		float PeelSeedCurvatureBias = 1.0f;
+		float PeelSeedAOWeight = 0.0f;
+		float PeelSeedHeightWeight = 0.0f;
+		float PeelSeedMaskWeight = 0.0f;
+		bool bPeelNormalizeSeedWeights = true;
+		int32 PeelCurvatureRadius = 2;
+
+		float ErosionAmount = 1.0f;
+		float ErosionRepose = 0.30f;
+		float ErosionReposeSoftness = 0.25f;
+		float ErosionNormalStrength = 8.0f;
+		int32 ErosionSlopeRadius = 2;
+		float ErosionSlopeBlur = 2.0f;
+		float ErosionCavityBias = 0.0f;
+		float ErosionCavityScale = 1.0f;
+		float ErosionHeightInfluence = 0.0f;
+		float ErosionHeightScale = 1.0f;
+		float ErosionGullyWeight = 2.0f;
+		float ErosionBlendSoftness = 0.0f;
+		int32 ErosionDirectionMode = 0;
+		float ErosionDirectionAngle = 90.0f;
+		float ErosionDirectionAmount = 0.0f;
 	};
 
 	struct FGeneratedMaskRenderData
 	{
 		float CurvatureWeight = 0.0f;
 		float CurvatureBias = 0.0f;
+		float CurvatureStrength = 4.0f;
+		float CurvaturePower = 1.0f;
 		float DirectionWeight = 0.0f;
 		float DirectionAngle = 90.0f;
 		float DirectionBroadness = 1.0f;
@@ -340,6 +498,7 @@ namespace MaterialLabGpuCompositor
 		float HeightBias = 0.0f;
 		bool bNormalizeWeights = true;
 		int32 Broadness = 2;
+		int32 Smoothing = 2;
 		float Bias = 0.5f;
 		float WarpAmount = 0.0f;
 		float WarpSource = 0.0f;
@@ -407,6 +566,7 @@ namespace MaterialLabGpuCompositor
 		float AOFeatureInfluence = 0.0f;
 		float CurvatureStrength = 1.0f;
 		float CurvaturePower = 1.0f;
+		int32 CurvatureSmoothing = 2;
 		int32 CurvatureRadius = 1;
 		bool bEnabled = true;
 		bool bHasMask = false;
@@ -657,25 +817,28 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				ChildData.Type = EMaterialLabLayerChildType::Generated;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
-				GeneratedData.CurvatureWeight = FMath::Clamp(GeneratedMask.CurvatureWeight, -1.0f, 1.0f);
+				GeneratedData.CurvatureWeight = GeneratedMask.CurvatureWeight;
 				GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
-				GeneratedData.DirectionWeight = FMath::Clamp(GeneratedMask.DirectionWeight, -1.0f, 1.0f);
+				GeneratedData.CurvatureStrength = FMath::Max(GeneratedMask.CurvatureStrength, 0.0f);
+				GeneratedData.CurvaturePower = FMath::Max(GeneratedMask.CurvaturePower, 0.001f);
+				GeneratedData.DirectionWeight = GeneratedMask.DirectionWeight;
 				GeneratedData.DirectionAngle = GeneratedMask.DirectionAngle;
-				GeneratedData.DirectionBroadness = FMath::Clamp(GeneratedMask.DirectionBroadness, 0.05f, 8.0f);
-				GeneratedData.AOWeight = FMath::Clamp(GeneratedMask.AOWeight, -1.0f, 1.0f);
-				GeneratedData.HeightWeight = FMath::Clamp(GeneratedMask.HeightWeight, -1.0f, 1.0f);
-				GeneratedData.HeightBias = FMath::Clamp(GeneratedMask.HeightBias, -1.0f, 1.0f);
+				GeneratedData.DirectionBroadness = FMath::Max(GeneratedMask.DirectionBroadness, 0.001f);
+				GeneratedData.AOWeight = GeneratedMask.AOWeight;
+				GeneratedData.HeightWeight = GeneratedMask.HeightWeight;
+				GeneratedData.HeightBias = GeneratedMask.HeightBias;
 				GeneratedData.bNormalizeWeights = GeneratedMask.bNormalizeWeights;
 				GeneratedData.Broadness = FMath::Clamp(GeneratedMask.Broadness, 1, 32);
+				GeneratedData.Smoothing = FMath::Clamp(GeneratedMask.Smoothing, 1, 4);
 				GeneratedData.Bias = FMath::Clamp(GeneratedMask.Bias, 0.001f, 0.999f);
-				GeneratedData.WarpAmount = FMath::Clamp(GeneratedMask.WarpAmount, 0.0f, 0.25f);
+				GeneratedData.WarpAmount = FMath::Max(GeneratedMask.WarpAmount, 0.0f);
 				GeneratedData.WarpSource = FMath::Clamp(GeneratedMask.WarpSource, 0.0f, 1.0f);
 				GeneratedData.WarpRadius = FMath::Clamp(GeneratedMask.WarpRadius, 1, 16);
 				GeneratedData.BlendMode = GeneratedMask.BlendMode;
-				GeneratedData.Weight = FMath::Clamp(GeneratedMask.Weight, 0.0f, 1.0f);
-				GeneratedData.Balance = FMath::Clamp(GeneratedMask.Balance, 0.0f, 2.0f);
-				GeneratedData.Contrast = FMath::Clamp(GeneratedMask.Contrast, 0.0f, 10.0f);
-				GeneratedData.Offset = FMath::Clamp(GeneratedMask.Offset, -1.0f, 1.0f);
+				GeneratedData.Weight = FMath::Max(GeneratedMask.Weight, 0.0f);
+				GeneratedData.Balance = FMath::Max(GeneratedMask.Balance, 0.0f);
+				GeneratedData.Contrast = FMath::Max(GeneratedMask.Contrast, 0.0f);
+				GeneratedData.Offset = GeneratedMask.Offset;
 				GeneratedData.bInvert = GeneratedMask.bInvert;
 				Data.bHasMask = true;
 				continue;
@@ -688,11 +851,20 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			}
 
 			const UMaterialLabEffect* EffectAsset = LayerEffect.Effect.LoadSynchronous();
-			if (!EffectAsset)
+
+			// Procedural effects carry no source maps and so have no asset to read a type
+			// from. Asset-backed effects are unchanged.
+			const bool bProcedural =
+				!EffectAsset
+				&& (LayerEffect.ProceduralType == EMaterialLabEffectType::Erosion
+					|| LayerEffect.ProceduralType == EMaterialLabEffectType::Peeling);
+			if (!EffectAsset && !bProcedural)
 			{
 				continue;
 			}
-			if (EffectAsset->EffectType == EMaterialLabEffectType::Peeling
+			const EMaterialLabEffectType ResolvedType =
+				EffectAsset ? EffectAsset->EffectType : LayerEffect.ProceduralType;
+			if (ResolvedType == EMaterialLabEffectType::Peeling && EffectAsset
 				&& (!EffectAsset->PeelData
 					|| !EffectAsset->Mask
 					|| !EffectAsset->Height
@@ -705,9 +877,73 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 			ChildData.Type = EMaterialLabLayerChildType::Effect;
 			ChildData.SourceChildIndex = SourceChildIndex;
 			FEffectRenderData& EffectData = ChildData.Effect;
-			EffectData.Type = EffectAsset->EffectType;
+			EffectData.Type = ResolvedType;
 			EffectData.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
 			EffectData.Strength = FMath::Clamp(LayerEffect.Strength, 0.0f, 1.0f);
+			if (ResolvedType == EMaterialLabEffectType::Erosion)
+			{
+				// Values pass through unclamped. The inspector constrains the scrub range
+				// visually, but a typed value outside it stays intact all the way to the
+				// shader, which keeps its own epsilon guards at the division sites.
+				EffectData.ErosionAmount = LayerEffect.ErosionAmount;
+				EffectData.ErosionRepose = LayerEffect.ErosionRepose;
+				EffectData.ErosionReposeSoftness = LayerEffect.ErosionReposeSoftness;
+				EffectData.ErosionNormalStrength = LayerEffect.ErosionNormalStrength;
+				EffectData.ErosionSlopeRadius = LayerEffect.ErosionSlopeRadius;
+				EffectData.ErosionSlopeBlur = LayerEffect.ErosionSlopeBlur;
+				EffectData.ErosionCavityBias = LayerEffect.ErosionCavityBias;
+				EffectData.ErosionCavityScale = LayerEffect.ErosionCavityScale;
+				EffectData.ErosionHeightInfluence = LayerEffect.ErosionHeightInfluence;
+				EffectData.ErosionHeightScale = LayerEffect.ErosionHeightScale;
+				EffectData.ErosionGullyWeight = LayerEffect.ErosionGullyWeight;
+				EffectData.ErosionBlendSoftness = LayerEffect.ErosionBlendSoftness;
+				EffectData.ErosionDirectionMode =
+					LayerEffect.ErosionDirectionMode == EMaterialLabErosionDirectionMode::Lerp ? 1 : 0;
+				EffectData.ErosionDirectionAngle = LayerEffect.ErosionDirectionAngle;
+				EffectData.ErosionDirectionAmount = LayerEffect.ErosionDirectionAmount;
+			}
+
+			// Erosion is a Filter and has nothing further to gather. bHasEffects is
+			// deliberately not set for it: a Filter never writes the effect data target,
+			// so flagging it would make the composite sample a buffer nothing wrote.
+			if (!EffectAsset && LayerEffect.ProceduralType == EMaterialLabEffectType::Erosion)
+			{
+				continue;
+			}
+
+			// A procedural peel does write effect data, so it is gathered here — before the
+			// asset-backed branches below, all of which dereference EffectAsset.
+			if (!EffectAsset)
+			{
+				EffectData.bProceduralPeel = true;
+				EffectData.PeelType = static_cast<int32>(LayerEffect.PeelType);
+				EffectData.PeelMacroPeriod = LayerEffect.PeelMacroPeriod;
+				EffectData.PeelMicroPeriod = LayerEffect.PeelMicroPeriod;
+				EffectData.PeelRandomSeed = static_cast<uint32>(FMath::Max(LayerEffect.PeelRandomSeed, 1));
+				EffectData.PeelSeedThreshold = LayerEffect.PeelSeedThreshold;
+				EffectData.PeelSeedNoiseWeight = LayerEffect.PeelSeedNoiseWeight;
+				EffectData.PeelSeedCurvatureWeight = LayerEffect.PeelSeedCurvatureWeight;
+				EffectData.PeelSeedCurvatureBias = LayerEffect.PeelSeedCurvatureBias;
+				EffectData.PeelSeedAOWeight = LayerEffect.PeelSeedAOWeight;
+				EffectData.PeelSeedHeightWeight = LayerEffect.PeelSeedHeightWeight;
+				EffectData.PeelSeedMaskWeight = LayerEffect.PeelSeedMaskWeight;
+				EffectData.bPeelNormalizeSeedWeights = LayerEffect.bPeelNormalizeSeedWeights;
+				EffectData.PeelCurvatureRadius = LayerEffect.PeelCurvatureRadius;
+				EffectData.Front = LayerEffect.Front;
+				EffectData.Width = FMath::Max(LayerEffect.Width, 1.0e-6f);
+				EffectData.MacroWarp = LayerEffect.MacroWarp;
+				EffectData.MicroWarp = LayerEffect.MicroWarp;
+				EffectData.MicroMorph = FMath::Clamp(LayerEffect.MicroMorph, 0.0f, 1.0f);
+				EffectData.Thickness = FMath::Max(LayerEffect.Thickness, 0.0f);
+				EffectData.Lift = FMath::Max(LayerEffect.Lift, 0.0f);
+				EffectData.DetailStrength = FMath::Max(LayerEffect.DetailStrength, 0.0f);
+				// No 8-bit round trip on a transient float target, so nothing to decode.
+				EffectData.DistanceRange = 1.0f;
+				EffectData.SDFRange = 1.0f;
+				EffectData.HeightRange = 1.0f;
+				Data.bHasEffects = true;
+				continue;
+			}
 			if (EffectAsset->EffectType == EMaterialLabEffectType::Stain)
 			{
 				EffectData.StainColor = LayerEffect.StainColor;
@@ -719,6 +955,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				Data.bHasStain = true;
 				continue;
 			}
+
 
 			EffectData.PeelData = GetTextureRHI(EffectAsset->PeelData.Get());
 			EffectData.Mask = GetTextureRHI(EffectAsset->Mask.Get());
@@ -786,6 +1023,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 		Data.HeightFeatureInfluence = FMath::Clamp(Layer.HeightFeatureInfluence, 0.0f, 1.0f);
 		Data.AOFeatureInfluence = FMath::Clamp(Layer.AOFeatureInfluence, 0.0f, 1.0f);
 		Data.CurvatureRadius = Layer.CurvatureRadius;
+		Data.CurvatureSmoothing = FMath::Clamp(Layer.CurvatureSmoothing, 1, 4);
 		Data.CurvatureStrength = Layer.CurvatureStrength;
 		Data.CurvaturePower = Layer.CurvaturePower;
 		Data.bEnabled = Layer.bEnabled;
@@ -929,7 +1167,23 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[1]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
 				TShaderMapRef<FMaterialLabMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMaterialLabErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMaterialLabPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+				// Placeholders so the peel and peel-field parameter structs always have a
+				// bound resource in slots the active mode does not use. Never read, never
+				// written; a 1x1 keeps them free.
+				const FRDGTextureDesc TinyRGDesc = FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1), PF_G16R16F, FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV);
+				const FRDGTextureDesc TinyRGBADesc = FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV);
+				FRDGTextureRef PeelNoiseDummy =
+					GraphBuilder.CreateTexture(TinyRGDesc, TEXT("MaterialLab.PeelNoiseDummy"));
+				FRDGTextureRef PeelFieldDummy =
+					GraphBuilder.CreateTexture(TinyRGBADesc, TEXT("MaterialLab.PeelFieldDummy"));
 				TShaderMapRef<FMaterialLabStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMaterialLabCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TSet<int32> RequiredHeightSnapshots;
@@ -961,6 +1215,10 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 						Layer.BaseColor,
 						TEXT("MaterialLab.DefaultStainData"));
 					FRDGTextureRef DebugMask = CombinedMask;
+					// Height the owning layer composites against. An erosion filter replaces it
+					// with its carved result so the reshaped height also drives the blend mask,
+					// contact AO and border normals rather than only the displacement output.
+					const FEffectRenderData* PendingErosion = nullptr;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
 					int32 StainPassIndex = 0;
@@ -983,6 +1241,8 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 							GeneratedParameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 							GeneratedParameters->CurvatureWeight = Generated.CurvatureWeight;
 							GeneratedParameters->CurvatureBias = Generated.CurvatureBias;
+							GeneratedParameters->CurvatureStrength = Generated.CurvatureStrength;
+							GeneratedParameters->CurvaturePower = Generated.CurvaturePower;
 							GeneratedParameters->DirectionWeight = Generated.DirectionWeight;
 							GeneratedParameters->DirectionAngle = Generated.DirectionAngle;
 							GeneratedParameters->DirectionBroadness = Generated.DirectionBroadness;
@@ -991,6 +1251,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 							GeneratedParameters->HeightBias = Generated.HeightBias;
 							GeneratedParameters->NormalizeWeights = Generated.bNormalizeWeights ? 1u : 0u;
 							GeneratedParameters->Broadness = Generated.Broadness;
+							GeneratedParameters->Smoothing = Generated.Smoothing;
 							GeneratedParameters->Bias = Generated.Bias;
 							GeneratedParameters->WarpAmount = Generated.WarpAmount;
 							GeneratedParameters->WarpSource = Generated.WarpSource;
@@ -1084,6 +1345,15 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 						}
 
 						const FEffectRenderData& Effect = Child.Effect;
+						if (Effect.Type == EMaterialLabEffectType::Erosion)
+						{
+							// Erosion is a post-layer filter: it carves what this layer actually
+							// composited, not the height underneath it. Running it here would let
+							// the layer paint straight back over the carve.
+							PendingErosion = &Effect;
+							continue;
+						}
+
 						if (Effect.Type == EMaterialLabEffectType::Stain)
 						{
 							const int32 StainWriteIndex = StainPassIndex & 1;
@@ -1123,6 +1393,119 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 							continue;
 						}
 
+						// A procedural peel builds its field first: seed, then a halving
+						// chain of jump-flood steps, then one resolve into the same channel
+						// layout the authored maps carry. The peel pass below is identical
+						// either way apart from which source it reads.
+						FRDGTextureRef PeelFieldA = PeelFieldDummy;
+						FRDGTextureRef PeelFieldB = PeelFieldDummy;
+						if (Effect.bProceduralPeel)
+						{
+							// Same accumulated state the generated mask reads: the surface
+							// composited below this layer.
+							const int32 PeelSurfaceIndex = 1 - (LayerIndex & 1);
+							const FRDGTextureDesc JumpDesc = FRDGTextureDesc::Create2D(
+								Request.Resolution, PF_G32R32F, FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+							const FRDGTextureDesc NoiseDesc = FRDGTextureDesc::Create2D(
+								Request.Resolution, PF_G16R16F, FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+							const FRDGTextureDesc FieldDesc = FRDGTextureDesc::Create2D(
+								Request.Resolution, PF_FloatRGBA, FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+
+							FRDGTextureRef Jump[2] = {
+								GraphBuilder.CreateTexture(JumpDesc, TEXT("MaterialLab.PeelJumpA")),
+								GraphBuilder.CreateTexture(JumpDesc, TEXT("MaterialLab.PeelJumpB"))};
+							FRDGTextureRef PeelNoise =
+								GraphBuilder.CreateTexture(NoiseDesc, TEXT("MaterialLab.PeelNoise"));
+							FRDGTextureRef FieldA =
+								GraphBuilder.CreateTexture(FieldDesc, TEXT("MaterialLab.PeelFieldA"));
+							FRDGTextureRef FieldB =
+								GraphBuilder.CreateTexture(FieldDesc, TEXT("MaterialLab.PeelFieldB"));
+
+							auto AddPeelFieldPass = [&](
+								const int32 ModeIndex,
+								const int32 StepSize,
+								FRDGTextureRef InJump,
+								FRDGTextureRef OutJump,
+								FRDGTextureRef OutNoise,
+								const TCHAR* DebugName)
+							{
+								FMaterialLabPeelFieldCS::FParameters* FP =
+									GraphBuilder.AllocParameters<FMaterialLabPeelFieldCS::FParameters>();
+								FP->OutputSize = Request.Resolution;
+								FP->Mode = ModeIndex;
+								FP->StepSize = StepSize;
+								FP->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
+								FP->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
+								FP->MacroPeriod = Effect.PeelMacroPeriod;
+								FP->MicroPeriod = Effect.PeelMicroPeriod;
+								FP->Seed = Effect.PeelRandomSeed;
+								FP->NoiseWeight = Effect.PeelSeedNoiseWeight;
+								FP->CurvatureWeight = Effect.PeelSeedCurvatureWeight;
+								FP->CurvatureBias = Effect.PeelSeedCurvatureBias;
+								FP->AOWeight = Effect.PeelSeedAOWeight;
+								FP->HeightWeight = Effect.PeelSeedHeightWeight;
+								FP->MaskWeight = Effect.PeelSeedMaskWeight;
+								FP->SeedThreshold = Effect.PeelSeedThreshold;
+								FP->NormalizeWeights = Effect.bPeelNormalizeSeedWeights ? 1u : 0u;
+								FP->CurvatureRadius = Effect.PeelCurvatureRadius;
+								FP->CurvatureSmoothing = 1;
+								FP->PeelType = Effect.PeelType;
+								FP->Front = Effect.Front;
+								FP->Width = Effect.Width;
+								FP->MacroWarp = Effect.MacroWarp;
+								FP->MicroWarp = Effect.MicroWarp;
+								FP->MicroMorph = Effect.MicroMorph;
+								FP->Thickness = Effect.Thickness;
+								FP->Lift = Effect.Lift;
+								FP->DetailStrength = Effect.DetailStrength;
+								FP->SurfaceNormal = OutputN[PeelSurfaceIndex];
+								FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
+								FP->SurfaceHeight = HeightTargets[PeelSurfaceIndex];
+								FP->ChildMask = CombinedMask;
+								FP->PreviousJump = InJump;
+								FP->NoiseField = PeelNoise;
+								FP->LinearWrapSampler =
+									TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+								FP->OutputJump = GraphBuilder.CreateUAV(OutJump);
+								FP->OutputNoise = GraphBuilder.CreateUAV(OutNoise);
+								FP->OutputFieldA = GraphBuilder.CreateUAV(FieldA);
+								FP->OutputFieldB = GraphBuilder.CreateUAV(FieldB);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME(
+										"MaterialLab.PeelField.L%d.C%d.%s",
+										LayerIndex, ChildIndex, DebugName),
+									PeelFieldShader,
+									FP,
+									FIntVector(
+										FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+										FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+										1));
+							};
+
+							// Seed reads no jump state, so its input slot takes the dummy.
+							AddPeelFieldPass(0, 0, Jump[1], Jump[0], PeelNoise, TEXT("Seed"));
+
+							int32 Ping = 0;
+							const int32 LongestSide =
+								FMath::Max(Request.Resolution.X, Request.Resolution.Y);
+							for (int32 Step = LongestSide / 2; Step >= 1; Step /= 2)
+							{
+								AddPeelFieldPass(
+									1, Step, Jump[Ping], Jump[1 - Ping], PeelNoiseDummy, TEXT("Flood"));
+								Ping = 1 - Ping;
+							}
+
+							AddPeelFieldPass(
+								2, 0, Jump[Ping], Jump[1 - Ping], PeelNoiseDummy, TEXT("Resolve"));
+
+							PeelFieldA = FieldA;
+							PeelFieldB = FieldB;
+						}
+
 						const int32 EffectWriteIndex = EffectPassIndex & 1;
 						const int32 EffectReadIndex = 1 - EffectWriteIndex;
 						FMaterialLabPeelingCS::FParameters* EffectParameters =
@@ -1144,10 +1527,26 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 						EffectParameters->HeightRange = Effect.HeightRange;
 						EffectParameters->PreviousEffectData = EffectTargets[EffectReadIndex];
 						EffectParameters->ChildMask = CombinedMask;
-						EffectParameters->PeelData = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.PeelData, TEXT("MaterialLab.PeelData"));
-						EffectParameters->PeelMask = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Mask, TEXT("MaterialLab.PeelMask"));
-						EffectParameters->PeelHeight = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Height, TEXT("MaterialLab.PeelHeight"));
-						EffectParameters->PeelSDF = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.SDF, TEXT("MaterialLab.PeelSDF"));
+						// A procedural peel has no source maps at all, and RegisterTexture
+						// asserts on a null RHI texture, so those four slots take the
+						// placeholder. The shader ignores them under ProceduralSource.
+						if (Effect.bProceduralPeel)
+						{
+							EffectParameters->PeelData = PeelFieldDummy;
+							EffectParameters->PeelMask = PeelFieldDummy;
+							EffectParameters->PeelHeight = PeelFieldDummy;
+							EffectParameters->PeelSDF = PeelFieldDummy;
+						}
+						else
+						{
+							EffectParameters->PeelData = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.PeelData, TEXT("MaterialLab.PeelData"));
+							EffectParameters->PeelMask = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Mask, TEXT("MaterialLab.PeelMask"));
+							EffectParameters->PeelHeight = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Height, TEXT("MaterialLab.PeelHeight"));
+							EffectParameters->PeelSDF = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.SDF, TEXT("MaterialLab.PeelSDF"));
+						}
+						EffectParameters->ProceduralSource = Effect.bProceduralPeel ? 1u : 0u;
+						EffectParameters->PeelFieldA = PeelFieldA;
+						EffectParameters->PeelFieldB = PeelFieldB;
 						EffectParameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 						EffectParameters->PointWrapSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 						EffectParameters->OutputEffectData = GraphBuilder.CreateUAV(EffectTargets[EffectWriteIndex]);
@@ -1234,6 +1633,7 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 					Parameters->CurvatureRadius = Layer.CurvatureRadius;
 					Parameters->CurvatureStrength = Layer.CurvatureStrength;
 					Parameters->CurvaturePower = Layer.CurvaturePower;
+					Parameters->CurvatureSmoothing = Layer.CurvatureSmoothing;
 					Parameters->FillColor = Layer.FillColor;
 					Parameters->PreviousBC = OutputBC[ReadIndex];
 					Parameters->PreviousN = OutputN[ReadIndex];
@@ -1279,6 +1679,236 @@ bool FMaterialLabGpuCompositor::RequestCompose(
 							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 							1));
+
+					// Erosion filters the layer output: it reads the height and normal this
+					// layer just composited, carves the height, derives the normal change from
+					// what it removed, and writes both back.
+					if (PendingErosion)
+					{
+						const FEffectRenderData& Ero = *PendingErosion;
+
+						// Erosion runs at twice the composition resolution, capped at 4096,
+						// then resamples back. Carving is high-frequency work: at composition
+						// resolution the octave loop hits the two-pixels-per-cell floor with
+						// passes still to run, so the finest gullies have nowhere to cut.
+						// Above 4096 the cost stops buying visible detail.
+						const FIntPoint EroRes(
+							FMath::Min(Request.Resolution.X * 2, 4096),
+							FMath::Min(Request.Resolution.Y * 2, 4096));
+						const bool bResample = EroRes != Request.Resolution;
+
+						const FRDGTextureDesc EroDesc = FRDGTextureDesc::Create2D(
+							EroRes,
+							PF_R16F,
+							FClearValueBinding::White,
+							TexCreate_ShaderResource | TexCreate_UAV);
+						FRDGTextureDesc EroNormalDesc = OutputN[WriteIndex]->Desc;
+						EroNormalDesc.Extent = EroRes;
+
+						FRDGTextureRef SourceH = GraphBuilder.CreateTexture(EroDesc, TEXT("MaterialLab.ErosionSrc"));
+						FRDGTextureRef EroH[2] = {
+							GraphBuilder.CreateTexture(EroDesc, TEXT("MaterialLab.ErosionA")),
+							GraphBuilder.CreateTexture(EroDesc, TEXT("MaterialLab.ErosionB"))};
+						FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroDesc, TEXT("MaterialLab.ErosionRidge"));
+						FRDGTextureRef EroGuide = GraphBuilder.CreateTexture(EroDesc, TEXT("MaterialLab.ErosionGuide"));
+						FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("MaterialLab.ErosionN"));
+						// The layer normal every carving pass reads, lifted to erosion resolution.
+						FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("MaterialLab.ErosionSrcN"));
+
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroRidge), FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
+
+						// The resample path never writes a ridge, but the parameter struct still
+						// needs a bound UAV. Binding EroRidge would size-mismatch the downsample
+						// dispatch, so give it a 1x1 target that is never written.
+						FRDGTextureRef ResampleRidgeDummy = GraphBuilder.CreateTexture(
+							FRDGTextureDesc::Create2D(
+								FIntPoint(1, 1),
+								PF_R16F,
+								FClearValueBinding::White,
+								TexCreate_ShaderResource | TexCreate_UAV),
+							TEXT("MaterialLab.ErosionResampleRidgeDummy"));
+
+						// One dispatch moves height and normal together, in either direction.
+						auto AddErosionResample = [&](
+							FRDGTextureRef InH,
+							FRDGTextureRef InN,
+							FRDGTextureRef OutH,
+							FRDGTextureRef OutN,
+							const FIntPoint DestRes,
+							const TCHAR* DebugName)
+						{
+							FMaterialLabErosionCS::FParameters* RP =
+								GraphBuilder.AllocParameters<FMaterialLabErosionCS::FParameters>();
+							RP->OutputSize = DestRes;
+							RP->ResamplePass = 1;
+							RP->PreviousHeight = InH;
+							RP->SourceHeight = InH;
+							RP->GuideHeight = InH;
+							RP->PreviousNormal = InN;
+							RP->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
+							RP->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
+							RP->OutputNormal = GraphBuilder.CreateUAV(OutN);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("MaterialLab.Erosion.L%d.%s", LayerIndex, DebugName),
+								ErosionShader,
+								RP,
+								FIntVector(
+									FMath::DivideAndRoundUp(DestRes.X, 8),
+									FMath::DivideAndRoundUp(DestRes.Y, 8),
+									1));
+						};
+
+						if (bResample)
+						{
+							AddErosionResample(
+								HeightTargets[WriteIndex], OutputN[WriteIndex],
+								SourceH, EroSrcN, EroRes, TEXT("Up"));
+						}
+						else
+						{
+							AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], SourceH);
+							AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
+						}
+
+						// Fixed pass count. Eight is where the octave loop stops adding shape
+						// on the surfaces this filter is aimed at.
+						const int32 Iterations = 8;
+
+						// Cells across one UV repeat at the coarsest pass. Fixed so the field
+						// always resolves to a whole number of cells and therefore tiles; it
+						// doubles per octave, so it must stay integral.
+						const int32 ErosionPeriodCells = 32;
+						FRDGTextureRef Src = SourceH;
+						FRDGTextureRef Result = SourceH;
+						for (int32 PassIndex = 0; PassIndex <= Iterations; ++PassIndex)
+						{
+							const bool bNormalPass = PassIndex == Iterations;
+
+							// Guidance blur before each carving pass, so the flow follows surface
+							// shape rather than grain. Skipped entirely at zero.
+							if (!bNormalPass && Ero.ErosionSlopeBlur > 0.0f)
+							{
+								FMaterialLabErosionCS::FParameters* BP =
+									GraphBuilder.AllocParameters<FMaterialLabErosionCS::FParameters>();
+								BP->OutputSize = EroRes;
+								BP->Pass = PassIndex;
+								BP->NormalPass = 0;
+								BP->BlurPass = 1;
+								BP->ResamplePass = 0;
+								BP->BlurRadius = Ero.ErosionSlopeBlur;
+								BP->NormalStrength = Ero.ErosionNormalStrength;
+								BP->Amount = Ero.ErosionAmount;
+								BP->Strength = 1.0f;
+								BP->Period = ErosionPeriodCells;
+								BP->GullyLength = 1.5f;
+								BP->LicSteps = 5;
+								BP->Repose = Ero.ErosionRepose;
+								BP->ReposeSoftness = Ero.ErosionReposeSoftness;
+								BP->CavityBias = Ero.ErosionCavityBias;
+								BP->CavityScale = Ero.ErosionCavityScale;
+								BP->HeightInfluence = Ero.ErosionHeightInfluence;
+								BP->HeightScale = Ero.ErosionHeightScale;
+								BP->GullyWeight = Ero.ErosionGullyWeight;
+								BP->BlendSoftness = Ero.ErosionBlendSoftness;
+								BP->Gain = 0.5f;
+								BP->DerivScale = 0.6f;
+								BP->DerivMin = Ero.ErosionSlopeRadius;
+								BP->DirectionMode = Ero.ErosionDirectionMode;
+								BP->DirectionAngle = Ero.ErosionDirectionAngle;
+								BP->DirectionAmount = Ero.ErosionDirectionAmount;
+								BP->Seed = 1u;
+								BP->PreviousHeight = Src;
+								BP->SourceHeight = SourceH;
+								BP->GuideHeight = Src;
+								BP->PreviousNormal = EroSrcN;
+								BP->LinearWrapSampler =
+									TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+								BP->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
+								BP->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
+								BP->OutputNormal = GraphBuilder.CreateUAV(EroN);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("MaterialLab.Erosion.L%d.Blur%d", LayerIndex, PassIndex),
+									ErosionShader,
+									BP,
+									FIntVector(
+										FMath::DivideAndRoundUp(EroRes.X, 8),
+										FMath::DivideAndRoundUp(EroRes.Y, 8),
+										1));
+							}
+
+							const int32 Slot = PassIndex & 1;
+							FMaterialLabErosionCS::FParameters* EP =
+								GraphBuilder.AllocParameters<FMaterialLabErosionCS::FParameters>();
+							EP->OutputSize = EroRes;
+							EP->Pass = PassIndex;
+							EP->NormalPass = bNormalPass ? 1 : 0;
+							EP->BlurPass = 0;
+							EP->ResamplePass = 0;
+							EP->BlurRadius = Ero.ErosionSlopeBlur;
+							EP->NormalStrength = Ero.ErosionNormalStrength;
+							EP->Amount = Ero.ErosionAmount;
+							EP->Strength = 1.0f;
+							EP->Period = ErosionPeriodCells;
+							EP->GullyLength = 1.5f;
+							EP->LicSteps = 5;
+							EP->Repose = Ero.ErosionRepose;
+							EP->ReposeSoftness = Ero.ErosionReposeSoftness;
+							EP->CavityBias = Ero.ErosionCavityBias;
+							EP->CavityScale = Ero.ErosionCavityScale;
+							EP->HeightInfluence = Ero.ErosionHeightInfluence;
+							EP->HeightScale = Ero.ErosionHeightScale;
+							EP->GullyWeight = Ero.ErosionGullyWeight;
+							EP->BlendSoftness = Ero.ErosionBlendSoftness;
+							EP->Gain = 0.5f;
+							EP->DerivScale = 0.6f;
+							EP->DerivMin = Ero.ErosionSlopeRadius;
+							EP->DirectionMode = Ero.ErosionDirectionMode;
+							EP->DirectionAngle = Ero.ErosionDirectionAngle;
+							EP->DirectionAmount = Ero.ErosionDirectionAmount;
+							EP->Seed = 1u;
+							EP->PreviousHeight = Src;
+							EP->SourceHeight = SourceH;
+							EP->PreviousNormal = EroSrcN;
+							EP->GuideHeight = Ero.ErosionSlopeBlur > 0.0f ? EroGuide : Src;
+							EP->LinearWrapSampler =
+								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+							EP->OutputHeight = GraphBuilder.CreateUAV(EroH[Slot]);
+							EP->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
+							EP->OutputNormal = GraphBuilder.CreateUAV(EroN);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("MaterialLab.Erosion.L%d.P%d", LayerIndex, PassIndex),
+								ErosionShader,
+								EP,
+								FIntVector(
+									FMath::DivideAndRoundUp(EroRes.X, 8),
+									FMath::DivideAndRoundUp(EroRes.Y, 8),
+									1));
+							if (!bNormalPass)
+							{
+								Src = EroH[Slot];
+								Result = EroH[Slot];
+							}
+						}
+
+						if (bResample)
+						{
+							AddErosionResample(
+								Result, EroN,
+								HeightTargets[WriteIndex], OutputN[WriteIndex],
+								Request.Resolution, TEXT("Down"));
+						}
+						else
+						{
+							AddCopyTexturePass(GraphBuilder, Result, HeightTargets[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, EroN, OutputN[WriteIndex]);
+						}
+					}
 
 					if (RequiredHeightSnapshots.Contains(LayerIndex))
 					{

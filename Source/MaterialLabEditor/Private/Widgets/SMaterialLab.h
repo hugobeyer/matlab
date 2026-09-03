@@ -93,6 +93,13 @@ private:
 	FReply SetLayerNormalDetail(int32 LayerIndex, bool bNormalDetail);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
+	FReply AddErosionToLayer(int32 LayerIndex);
+	FReply AddProceduralPeelingToLayer(int32 LayerIndex);
+	FMaterialLabLayerEffect* GetSelectedProceduralPeel();
+	const FMaterialLabLayerEffect* GetSelectedProceduralPeel() const;
+	FMaterialLabLayerEffect* GetSelectedErosion();
+	const FMaterialLabLayerEffect* GetSelectedErosion() const;
+
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);
@@ -187,6 +194,8 @@ private:
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
+	TSharedRef<SWidget> BuildErosionControls();
+	TSharedRef<SWidget> BuildProceduralPeelControls();
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
 

@@ -86,6 +86,7 @@ float AOFeatureInfluence;
 int CurvatureRadius;
 float CurvatureStrength;
 float CurvaturePower;
+int CurvatureSmoothing;
 float4 FillColor;
 
 float3 DecodeNormal(float4 EncodedNormal, float Intensity, uint InvertY)
@@ -295,22 +296,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float FeatureWeight = 1.0f;
 	if ((FeatureInfluence > 0.0f || (WriteDebug != 0 && DebugMode == 1)) && Initialize == 0)
 	{
-		const int2 FeaturePixel = int2(DispatchThreadId.xy);
 		float Curvature;
 		float Cavity;
 		float Convex;
 		MaterialLabEvaluateCurvature(
 			PreviousN,
-			FeaturePixel,
+			LinearWrapSampler,
+			UV,
 			OutputSize,
 			CurvatureRadius,
-			0,
+			CurvatureSmoothing,
 			CurvatureStrength,
 			CurvaturePower,
 			FlipNormalY,
-			1.0f,
-			0.5f,
-			0.5f,
 			Curvature,
 			Cavity,
 			Convex);
