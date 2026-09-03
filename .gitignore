@@ -34,3 +34,6 @@ Content/
 *.user
 .DS_Store
 Thumbs.db
+
+# Third-party reference (MPL-2.0). Kept locally, never shipped or committed.
+Docs/shadertoyerosion.md
