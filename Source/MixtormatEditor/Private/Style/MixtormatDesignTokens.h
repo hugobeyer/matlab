@@ -51,6 +51,17 @@ namespace MixtormatTokens
 	constexpr float TickInsetY = 3.0f;
 	constexpr float TickWidth = 1.0f;
 
+	// ---- Segmented control ------------------------------------------------------------------
+	constexpr float SegmentHeight = 16.0f;
+	constexpr float StatusDotSize = 9.0f;
+	constexpr float IconButtonSize = 11.0f;
+
+	// ---- Badge ------------------------------------------------------------------------------
+	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
+	// word changes without the column moving.
+	constexpr float BadgeWidth = 32.0f;
+	constexpr float BadgeHeight = 12.0f;
+
 	// ---- Thumbnails -------------------------------------------------------------------------
 	// One tile widget serves the library, the mask replacement grid and the mask picker; only the
 	// size differs. The name strip is an overlay, so it costs image rather than layout height.

@@ -53,6 +53,8 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "UI/Containers/SMixtormatInspectorGroup.h"
+#include "UI/Containers/SMixtormatInspectorWell.h"
 #include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Input/SSlider.h"
@@ -678,116 +680,6 @@ inline EMixtormatBakeResultAction ShowMixtormatBakeResultDialog(
 	return Dialog->GetAction();
 }
 
-class SMixtormatInspectorGroup final : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SMixtormatInspectorGroup)
-		: _InitiallyExpanded(false)
-	{}
-		SLATE_ARGUMENT(FText, Title)
-		SLATE_ARGUMENT(bool, InitiallyExpanded)
-		SLATE_ARGUMENT(TSharedPtr<SWidget>, HeaderAction)
-		SLATE_DEFAULT_SLOT(FArguments, Content)
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& InArgs)
-	{
-		bExpanded = InArgs._InitiallyExpanded;
-		TSharedRef<SHorizontalBox> Header = SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f)
-			[
-				// Fully transparent in every state: the highlight belongs to the header bar
-				// behind it, so hovering anywhere on the bar reads as one surface rather than
-				// lighting a button-shaped patch inside it.
-				SNew(SButton)
-				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
-				.ContentPadding(FMargin(0.0f))
-				.OnClicked(this, &SMixtormatInspectorGroup::ToggleExpanded)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
-					[
-						SNew(SBox)
-						.WidthOverride(10.0f)
-						.HeightOverride(10.0f)
-						[
-							SNew(SImage)
-							.Image_Lambda([this]()
-							{
-								return FAppStyle::GetBrush(bExpanded
-									? TEXT("Icons.ChevronDown")
-									: TEXT("Icons.ChevronRight"));
-							})
-						]
-					]
-					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(InArgs._Title)
-						.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
-					]
-				]
-			];
-		if (InArgs._HeaderAction.IsValid())
-		{
-			Header->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 2.0f, 0.0f)
-			[
-				InArgs._HeaderAction.ToSharedRef()
-			];
-		}
-
-		ChildSlot
-		.Padding(FMargin(0.0f))
-		[
-			SNew(SBorder)
-			.Padding(0.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InspectorGroup")))
-			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					// Fixed-height bar, rounded on its top corners only so it meets the body
-					// square. Padding matches the inspector gutter, so the title lines up with
-					// the row labels underneath it.
-					SNew(SBox)
-					.HeightOverride(MixtormatTokens::GroupHeaderHeight)
-					[
-						SNew(SBorder)
-						.Padding(FMargin(MixtormatTokens::PanelGutter, 0.0f))
-						.VAlign(VAlign_Center)
-						.BorderImage_Lambda([this]()
-						{
-							return FMixtormatStyle::Get().GetBrush(IsHovered()
-								? TEXT("Mixtormat.InspectorGroupHeaderHovered")
-								: TEXT("Mixtormat.InspectorGroupHeader"));
-						})
-						[Header]
-					]
-				]
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(SBox)
-					.Visibility_Lambda([this]() { return bExpanded ? EVisibility::Visible : EVisibility::Collapsed; })
-					.Padding(FMargin(
-						MixtormatTokens::PanelGutter,
-						6.0f,
-						MixtormatTokens::PanelGutter,
-						MixtormatTokens::PanelGutter))
-					[InArgs._Content.Widget]
-				]
-			]
-		];
-	}
-
-private:
-	FReply ToggleExpanded()
-	{
-		bExpanded = !bExpanded;
-		return FReply::Handled();
-	}
-
-	bool bExpanded = false;
-};
 
 
 class SMixtormatTextureTile final : public SCompoundWidget

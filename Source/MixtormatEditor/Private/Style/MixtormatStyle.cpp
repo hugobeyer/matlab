@@ -1,6 +1,7 @@
 #include "Style/MixtormatStyle.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatPalette.h"
 
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -442,6 +443,60 @@ void FMixtormatStyle::Initialize()
 
 	// Centre tick on a signed range, and the modified-from-default stripe.
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.FillBottom"), new FSlateColorBrush(FillBottom));
+	// The badge: fixed-size mark carrying a row's composite mode.
+	StyleInstance->Set(
+		TEXT("Mixtormat.Badge"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::BadgeSurface(), 1.0f));
+	FTextBlockStyle BadgeText = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontGroupHeader))
+		.SetColorAndOpacity(MixtormatPalette::BadgeText())
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo BadgeFont = BadgeText.Font;
+	BadgeFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
+	BadgeText.SetFont(BadgeFont);
+	StyleInstance->Set(TEXT("Mixtormat.BadgeText"), BadgeText);
+
+	// A circle is a rounded box whose radius is half its size.
+	StyleInstance->Set(
+		TEXT("Mixtormat.StatusDot.Filled"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::Accent(), MixtormatTokens::StatusDotSize * 0.5f));
+	StyleInstance->Set(
+		TEXT("Mixtormat.StatusDot.Hollow"),
+		new FSlateRoundedBoxBrush(
+			FLinearColor::Transparent,
+			MixtormatTokens::StatusDotSize * 0.5f,
+			MixtormatPalette::HeaderText(),
+			1.0f));
+	// Container shell and group body. The header's lip is painted by the gradient box, not
+	// brushed, so only these two are flat fills.
+	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::Shell()));
+	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Panel()));
+
+	// Layer stack: the enclosing edge, and the two type styles its rows use.
+	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));
+
+	FTextBlockStyle LayerName = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontBody))
+		.SetColorAndOpacity(MixtormatPalette::LayerName())
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent)
+		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	StyleInstance->Set(TEXT("Mixtormat.LayerName"), LayerName);
+
+	FTextBlockStyle LayerSource = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontGroupHeader))
+		.SetColorAndOpacity(MixtormatPalette::LayerSource())
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent)
+		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	FSlateFontInfo LayerSourceFont = LayerSource.Font;
+	LayerSourceFont.LetterSpacing = 60;
+	LayerSource.SetFont(LayerSourceFont);
+	StyleInstance->Set(TEXT("Mixtormat.LayerSource"), LayerSource);
+
+	StyleInstance->Set(TEXT("Mixtormat.SegmentSeam"), new FSlateColorBrush(MixtormatPalette::SegmentSeam()));
+
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(Hex(0x4A4A4A)));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
