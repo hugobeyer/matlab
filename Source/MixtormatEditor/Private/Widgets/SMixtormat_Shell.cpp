@@ -57,57 +57,64 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.TopBar")))
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 6.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 8.0f, 0.0f)
 				[
 					SNew(SImage)
 					.Image(Style.GetBrush(TEXT("Mixtormat.Brand.Logo")))
 					.ToolTipText(LOCTEXT("BrandTooltip", "Mixtormat"))
 				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.OnClicked_Lambda([this]() { return ShowPage(0); })
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
-						{
-							return FText::FromString(
-								bIsWorkingMaterialDirty
-									? WorkingMaterialName + TEXT("  •")
-									: WorkingMaterialName);
-						})
-						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return !UndoHistory.IsEmpty(); })
-					.Text(LOCTEXT("UndoMaterialEdit", "Undo"))
+					.Text(LOCTEXT("UndoMaterialEditCompact", "Undo"))
 					.ToolTipText(LOCTEXT("UndoMaterialEditHint", "Undo the last Mixtormat recipe edit (Ctrl+Z)."))
 					.OnClicked(this, &SMixtormat::UndoMaterialEdit)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.IsEnabled_Lambda([this]() { return !RedoHistory.IsEmpty(); })
+					.Text(LOCTEXT("RedoMaterialEditCompact", "Redo"))
+					.ToolTipText(LOCTEXT("RedoMaterialEditHint", "Redo the last Mixtormat recipe edit (Ctrl+Y or Ctrl+Shift+Z)."))
+					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]() { return FText::FromString(WorkingMaterialName); })
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Visibility_Lambda([this]() { return bIsWorkingMaterialDirty ? EVisibility::Visible : EVisibility::Collapsed; })
+					.Text(LOCTEXT("WorkingMaterialEdited", "EDITED"))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.ColorAndOpacity(FSlateColor(MixtormatPalette::Modified()))
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(SSpacer)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled_Lambda([this]() { return !RedoHistory.IsEmpty(); })
-					.Text(LOCTEXT("RedoMaterialEdit", "Redo"))
-					.ToolTipText(LOCTEXT("RedoMaterialEditHint", "Redo the last Mixtormat recipe edit (Ctrl+Y or Ctrl+Shift+Z)."))
-					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
-				[
-					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
 					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 					.OnClicked(this, &SMixtormat::SaveWorkingMaterial)
 					[
 						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "Save Material"))]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "SAVE"))
+						]
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
@@ -118,34 +125,22 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.OnClicked(this, &SMixtormat::SaveWorkingMaterialAs)
 					[
 						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "Save As..."))]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "SAVE AS..."))
+						]
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
-				[
-					SNew(SComboButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
-					.ToolTipText(LOCTEXT("CompositionResolutionHint", "Choose the shared preview and bake texture resolution."))
-					.OnGetMenuContent(this, &SMixtormat::BuildCompositionResolutionMenu)
-					.ButtonContent()
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
-						{
-							return FText::Format(
-								LOCTEXT("CurrentCompositionResolution", "{0}K"),
-								FText::AsNumber(CompositionResolution / 1024));
-						})
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f)
 				[
 					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
 					.IsEnabled_Lambda([this]() { return WorkingMaterialAsset.IsValid() && bHasWorkingMaterial; })
-					.Text(LOCTEXT("BakeMaterialTop", "Bake"))
+					.Text(LOCTEXT("BakeMaterialTop", "BAKE"))
 					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
 					.OnClicked(this, &SMixtormat::BakeWorkingMaterial)
 				]
@@ -275,7 +270,20 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)[SNew(STextBlock).Text(LOCTEXT("RealtimeStatus", "●  Real-time Preview     Quality: High     Shader Model: SM6")).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
+				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
+							? LOCTEXT("StatusQualityHigh", "High · Lumen")
+							: PreviewQuality == EMixtormatPreviewQuality::Medium
+								? LOCTEXT("StatusQualityMedium", "Medium")
+								: LOCTEXT("StatusQualityLow", "Low");
+						return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
+					})
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
+				]
 				+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
 			]
 		];

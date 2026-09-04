@@ -162,7 +162,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 	SelectedLayerIndex = 0;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	bHasSelectedLayer = WorkingLayers[0].bEnabled;
+	bHasSelectedLayer = true;
 
 	if (const UMixtormatSurface* BaseSurface = WorkingLayers[0].SourceSurface.LoadSynchronous())
 	{

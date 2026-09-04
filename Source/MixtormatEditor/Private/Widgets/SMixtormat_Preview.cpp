@@ -202,52 +202,105 @@ void SMixtormat::PreviewSurfaceScalarParameter(const FName ParameterName, const 
 	RefreshLayeredPreview();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildPreviewSettingsControls()
+{
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	const TArray<FText> QualityOptions = {
+		LOCTEXT("PreviewQualityLow", "LOW"),
+		LOCTEXT("PreviewQualityMedium", "MEDIUM"),
+		LOCTEXT("PreviewQualityHigh", "HIGH")};
+	const TArray<FText> QualityToolTips = {
+		LOCTEXT("PreviewQualityLowHint", "Direct light only. No AO, SSR, or Lumen."),
+		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
+		LOCTEXT("PreviewQualityHighHint", "Lumen quality. Uses project ray tracing when supported.")};
+
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		SNew(SMixtormatSegmentedControl)
+		.Options(QualityOptions)
+		.ToolTips(QualityToolTips)
+		.ActiveIndex_Lambda([this]()
+		{
+			switch (PreviewQuality)
+			{
+			case EMixtormatPreviewQuality::Low: return 0;
+			case EMixtormatPreviewQuality::Medium: return 1;
+			default: return 2;
+			}
+		})
+		.OnChosen_Lambda([this](const int32 Index)
+		{
+			SetPreviewQuality(Index == 0
+				? EMixtormatPreviewQuality::Low
+				: Index == 1
+					? EMixtormatPreviewQuality::Medium
+					: EMixtormatPreviewQuality::High);
+		})
+	];
+
+	AddSliderRow(Panel, MakeSlider(
+		LOCTEXT("PreviewFovInspector", "FOV"),
+		TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
+		20.0, 90.0, 50.0, 0.5, false,
+		FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+		{
+			SetPreviewFov(static_cast<float>(Value));
+		}),
+		FSimpleDelegate::CreateLambda([this]() { SetPreviewFov(50.0f); }),
+		LOCTEXT("PreviewFovInspectorHint", "Preview camera field of view.")));
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("PreviewDisplacementInspector", "Displacement"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				return bPreviewDisplacementEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				SetPreviewDisplacementEnabled(State == ECheckBoxState::Checked);
+			}),
+			LOCTEXT("PreviewDisplacementInspectorHint", "Preview the composited Height through the protected master's authored displacement path."))));
+
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([this]() { return bPreviewDisplacementEnabled; })
+		[
+			MakeSlider(
+				LOCTEXT("PreviewDisplacementAmountInspector", "Displacement Amount"),
+				TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewDisplacementAmount); }),
+				0.0, 4.0, 1.0, 0.05, false,
+				FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+				{
+					SetPreviewDisplacementAmount(static_cast<float>(Value));
+				}),
+				FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
+				LOCTEXT("PreviewDisplacementAmountInspectorHint", "Scale the centered composited Height used by the authored displacement path."))
+		]
+	];
+
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+		.Text(LOCTEXT("ResetPreviewInspector", "Reset Preview Camera & Lighting"))
+		.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
+	];
+
+	return SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("PreviewSettingsHeading", "PREVIEW"))
+		.InitiallyExpanded(false)
+		[Panel];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
 	TSharedPtr<SMixtormatPreviewViewport> PreviewViewport;
-	TSharedRef<SHorizontalBox> MeshControls = SNew(SHorizontalBox);
-	TSharedRef<SHorizontalBox> LightingControls = SNew(SHorizontalBox);
-	TSharedRef<SHorizontalBox> QualityControls = SNew(SHorizontalBox);
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const FCheckBoxStyle* OverlayToggle = &Style.GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.ViewportOverlayToggle"));
+
 	TSharedRef<SHorizontalBox> ComparisonControls = SNew(SHorizontalBox);
-	TSharedRef<SHorizontalBox> FovControls = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().Padding(3.0f, 0.0f, 6.0f, 0.0f).VAlign(VAlign_Center)
-		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("PreviewFovLabel", "FOV"))
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-		]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f).VAlign(VAlign_Center)
-		[
-			SNew(SBox)
-			.WidthOverride(210.0f)
-			[
-				MakeSlider(
-					LOCTEXT("PreviewFovLabel", "FOV"),
-					TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
-					20.0, 90.0, 50.0, 0.5, false,
-					FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-					{
-						SetPreviewFov(static_cast<float>(Value));
-					}),
-					FSimpleDelegate::CreateLambda([this]() { SetPreviewFov(50.0f); }))
-			]
-		]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(2.0f)
-			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
-			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
-			[
-				SNew(SBox).WidthOverride(16.0f).HeightOverride(16.0f)
-				[
-					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Refresh")))
-				]
-			]
-		];
-	const FCheckBoxStyle* OverlayToggle = &FMixtormatStyle::Get().GetWidgetStyle<FCheckBoxStyle>(
-		TEXT("Mixtormat.ViewportOverlayToggle"));
 	const auto AddComparisonButton = [this, &ComparisonControls, OverlayToggle](
 		const bool bBefore,
 		const FText& Label,
@@ -288,11 +341,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	};
 	AddComparisonButton(
 		true,
-		LOCTEXT("PreviewCompositionBefore", "Before"),
+		LOCTEXT("PreviewCompositionBefore", "BEFORE"),
 		LOCTEXT("PreviewCompositionBeforeHint", "Preview the base layer before added layers are composed"));
 	AddComparisonButton(
 		false,
-		LOCTEXT("PreviewCompositionAfter", "After"),
+		LOCTEXT("PreviewCompositionAfter", "AFTER"),
 		LOCTEXT("PreviewCompositionAfterHint", "Preview the complete layer stack"));
 	ComparisonControls->AddSlot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
 	[
@@ -300,7 +353,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		.Style(OverlayToggle)
 		.ToolTipText(LOCTEXT(
 			"PreviewBypassSelectedChildHint",
-			"Temporarily disable the selected Mask or Effect in the preview only"))
+			"Temporarily disable the selected Mask, Generated Mask, or Effect in the preview only"))
 		.IsEnabled_Lambda([this]() { return GetSelectedChildIndex() != INDEX_NONE; })
 		.IsChecked_Lambda([this]()
 		{
@@ -316,79 +369,18 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		})
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass Child"))
+			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
 			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-		]
-	];
-	ComparisonControls->AddSlot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
-	[
-		SNew(SCheckBox)
-		.Style(OverlayToggle)
-		.ToolTipText(LOCTEXT(
-			"PreviewDisplacementHint",
-			"Preview the composited Height through the protected master's authored ML_UseHeight displacement path"))
-		.IsEnabled_Lambda([this]()
-		{
-			return bHasWorkingMaterial
-				? !WorkingLayers.IsEmpty()
-				: SelectedPreviewMaterial.IsValid();
-		})
-		.IsChecked_Lambda([this]()
-		{
-			return bPreviewDisplacementEnabled
-				? ECheckBoxState::Checked
-				: ECheckBoxState::Unchecked;
-		})
-		.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-		{
-			SetPreviewDisplacementEnabled(State == ECheckBoxState::Checked);
-		})
-		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("PreviewDisplacement", "Displacement"))
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-		]
-	];
-	ComparisonControls->AddSlot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
-	[
-		SNew(SHorizontalBox)
-		.Visibility_Lambda([this]()
-		{
-			return bPreviewDisplacementEnabled
-				? EVisibility::Visible
-				: EVisibility::Collapsed;
-		})
-		+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 5.0f, 0.0f).VAlign(VAlign_Center)
-		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("PreviewDisplacementAmountLabel", "Amount"))
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
-		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-		[
-			SNew(SBox)
-			.WidthOverride(150.0f)
-			[
-				MakeSlider(
-					LOCTEXT("PreviewDisplacementAmountLabel", "Amount"),
-					TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewDisplacementAmount); }),
-					0.0, 4.0, 1.0, 0.05, false,
-					FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-					{
-						SetPreviewDisplacementAmount(static_cast<float>(Value));
-					}),
-					FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
-					LOCTEXT("PreviewDisplacementAmountHint", "Scale the centered composited Height used by the authored displacement path"))
-			]
 		]
 	];
 
-	const auto AddMeshButton = [this, &MeshControls, OverlayToggle](
+	TSharedRef<SVerticalBox> SubjectAndLight = SNew(SVerticalBox);
+	const auto AddMeshButton = [this, &SubjectAndLight, OverlayToggle](
 		const EMixtormatPreviewMesh MeshType,
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		MeshControls->AddSlot().AutoWidth()
+		SubjectAndLight->AddSlot().AutoHeight()
 		[
 			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
 			[
@@ -400,7 +392,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					return PreviewMesh == MeshType ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 				})
 				.OnCheckStateChanged_Lambda([this, MeshType](ECheckBoxState) { SetPreviewMesh(MeshType); })
-				[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))]
+				[
+					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+				]
 			]
 		];
 	};
@@ -408,46 +402,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
 	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), TEXT("Mixtormat.Icon.Cube"));
 
-	const auto AddQualityButton = [this, &QualityControls, OverlayToggle](
-		const EMixtormatPreviewQuality Quality,
-		const FText& ToolTip,
-		const FName IconName)
-	{
-		QualityControls->AddSlot().AutoWidth()
-		[
-			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
-			[
-				SNew(SCheckBox)
-				.Style(OverlayToggle)
-				.ToolTipText(ToolTip)
-				.IsChecked_Lambda([this, Quality]()
-				{
-					return PreviewQuality == Quality ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-				})
-				.OnCheckStateChanged_Lambda([this, Quality](ECheckBoxState) { SetPreviewQuality(Quality); })
-				[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))]
-			]
-		];
-	};
-	AddQualityButton(
-		EMixtormatPreviewQuality::Low,
-		LOCTEXT("LowPreviewQuality", "Low · Direct light only · No AO, SSR, or Lumen"),
-		TEXT("Mixtormat.Icon.QualityLow"));
-	AddQualityButton(
-		EMixtormatPreviewQuality::Medium,
-		LOCTEXT("MediumPreviewQuality", "Medium · Stable shadows, AO, and SSR · No Lumen"),
-		TEXT("Mixtormat.Icon.QualityMedium"));
-	AddQualityButton(
-		EMixtormatPreviewQuality::High,
-		LOCTEXT("HighPreviewQuality", "High · Lumen · Uses project ray tracing when supported"),
-		TEXT("Mixtormat.Icon.QualityHigh"));
-
-	const auto AddPresetButton = [this, &LightingControls, OverlayToggle](
+	const auto AddPresetButton = [this, &SubjectAndLight, OverlayToggle](
 		const EMixtormatStudioLighting Preset,
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		LightingControls->AddSlot().AutoWidth()
+		SubjectAndLight->AddSlot().AutoHeight()
 		[
 			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
 			[
@@ -461,7 +421,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 						: ECheckBoxState::Unchecked;
 				})
 				.OnCheckStateChanged_Lambda([this, Preset](ECheckBoxState) { SetStudioLighting(Preset); })
-				[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))]
+				[
+					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+				]
 			]
 		];
 	};
@@ -470,91 +432,139 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), TEXT("Mixtormat.Icon.LightDramatic"));
 	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), TEXT("Mixtormat.Icon.LightRim"));
 
-	FAssetRegistryModule& AssetRegistryModule =
-		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	FARFilter HdriFilter;
-	HdriFilter.ClassPaths.Add(UTextureCube::StaticClass()->GetClassPathName());
-	HdriFilter.PackagePaths.Add(FName(TEXT("/MaterialLab/Lighting")));
-	HdriFilter.bRecursiveClasses = true;
-	HdriFilter.bRecursivePaths = true;
-	TArray<FAssetData> HdriAssets;
-	AssetRegistryModule.Get().GetAssets(HdriFilter, HdriAssets);
-	HdriAssets.Sort([](const FAssetData& A, const FAssetData& B)
-	{
-		return A.AssetName.ToString() < B.AssetName.ToString();
-	});
-
-	for (const FAssetData& HdriAsset : HdriAssets)
-	{
-		const FSoftObjectPath HdriPath = HdriAsset.GetSoftObjectPath();
-		TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(HdriAsset, 20, 20, ThumbnailPool);
-		HdriThumbnails.Add(Thumbnail);
-		LightingControls->AddSlot().AutoWidth()
+	SubjectAndLight->AddSlot().AutoHeight()
+	[
+		SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
 		[
-			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+			SNew(SComboButton)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.HasDownArrow(false)
+			.ToolTipText(LOCTEXT("PreviewHdriMenuHint", "Choose an HDRI or studio lighting preset"))
+			.OnGetMenuContent(this, &SMixtormat::BuildStudioLightingMenu)
+			.ButtonContent()
 			[
-				SNew(SCheckBox)
-				.Style(OverlayToggle)
-				.ToolTipText(FText::FromName(HdriAsset.AssetName))
-				.IsChecked_Lambda([this, HdriPath]()
+				SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Globe")))
+			]
+		]
+	];
+	SubjectAndLight->AddSlot().AutoHeight()
+	[
+		SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+		[
+			SNew(SButton)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.ContentPadding(2.0f)
+			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
+			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
+			[
+				SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+			]
+		]
+	];
+
+	const TArray<FText> ResolutionOptions = {
+		LOCTEXT("Resolution1K", "1K"),
+		LOCTEXT("Resolution2K", "2K"),
+		LOCTEXT("Resolution4K", "4K")};
+	TSharedRef<SHorizontalBox> OutputControls = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SButton)
+			.Visibility_Lambda([this]()
+			{
+				return DebugPreviewMode == EMixtormatDebugPreviewMode::None
+					? EVisibility::Collapsed
+					: EVisibility::Visible;
+			})
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.ToolTipText(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
+			.OnClicked_Lambda([this]()
+			{
+				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+				RefreshLayeredPreview(false);
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this]()
 				{
-					return SelectedHdriPath == HdriPath ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					switch (DebugPreviewMode)
+					{
+					case EMixtormatDebugPreviewMode::GeneratedFeature: return LOCTEXT("DebugGeneratedFeature", "Feature ×");
+					case EMixtormatDebugPreviewMode::HeightBlend: return LOCTEXT("DebugHeightBlend", "Height blend ×");
+					case EMixtormatDebugPreviewMode::ContactAO: return LOCTEXT("DebugContactAO", "Contact AO ×");
+					case EMixtormatDebugPreviewMode::BorderNormal: return LOCTEXT("DebugBorderNormal", "Border normal ×");
+					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
+					default: return FText::GetEmpty();
+					}
 				})
-				.OnCheckStateChanged_Lambda([this, HdriPath](ECheckBoxState) { SetHdriLighting(HdriPath); })
-				[
-					SNew(SBox).WidthOverride(20.0f).HeightOverride(20.0f)
-					[Thumbnail->MakeThumbnailWidget()]
-				]
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+		[
+			SNew(SBox).WidthOverride(92.0f)
+			[
+				SNew(SMixtormatSegmentedControl)
+				.Options(ResolutionOptions)
+				.ActiveIndex_Lambda([this]()
+				{
+					return CompositionResolution >= 4096 ? 2 : CompositionResolution >= 2048 ? 1 : 0;
+				})
+				.OnChosen_Lambda([this](const int32 Index)
+				{
+					SetCompositionResolution(Index == 2 ? 4096 : Index == 1 ? 2048 : 1024);
+				})
 			]
 		];
-	}
 
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
 			SAssignNew(PreviewViewport, SMixtormatPreviewViewport)
 		]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(8.0f)
-		[
-			SNew(SBorder)
-			.Padding(2.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
-			[QualityControls]
-		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(8.0f)
 		[
 			SNew(SBorder)
 			.Padding(2.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
-			[FovControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(8.0f)
-		[
-			SNew(SBorder)
-			.Padding(2.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
-			[MeshControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(8.0f)
-		[
-			SNew(SBorder)
-			.Padding(2.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
 			[ComparisonControls]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(8.0f)
+		[
+			SNew(SBorder)
+			.Padding(2.0f)
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
+			[SubjectAndLight]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(10.0f)
+		[
+			SNew(STextBlock)
+			.Visibility(EVisibility::HitTestInvisible)
+			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
+			.Text_Lambda([this]()
+			{
+				const FText LightingText = PreviewQuality == EMixtormatPreviewQuality::High
+					? LOCTEXT("PreviewStatusLumen", "Lumen")
+					: PreviewQuality == EMixtormatPreviewQuality::Medium
+						? LOCTEXT("PreviewStatusMedium", "Medium")
+						: LOCTEXT("PreviewStatusLow", "Low");
+				return FText::Format(
+					LOCTEXT("PreviewStatusText", "Real-time · {0} · SM6 · {1} layers"),
+					LightingText,
+					FText::AsNumber(WorkingLayers.Num()));
+			})
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(8.0f)
 		[
 			SNew(SBorder)
 			.Padding(2.0f)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
-			[LightingControls]
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
+			[OutputControls]
 		]
-		// Bottom centre is the only corner the control groups do not already occupy.
-		// Hit-test invisible so it never steals a drag from the viewport underneath it.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.0f)
 		[
 			SNew(SImage)
-			.Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Brand.Watermark")))
+			.Image(Style.GetBrush(TEXT("Mixtormat.Brand.Watermark")))
 			.Visibility(EVisibility::HitTestInvisible)
 		];
 
@@ -583,7 +593,52 @@ TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
 			.OnClicked_Lambda([this, Lighting = Preset.Key]() { return SetStudioLighting(Lighting); })
 		];
 	}
-	return SNew(SBorder).Padding(4.0f).BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))[Menu];
+
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	FARFilter HdriFilter;
+	HdriFilter.ClassPaths.Add(UTextureCube::StaticClass()->GetClassPathName());
+	HdriFilter.PackagePaths.Add(FName(TEXT("/MaterialLab/Lighting")));
+	HdriFilter.bRecursiveClasses = true;
+	HdriFilter.bRecursivePaths = true;
+	TArray<FAssetData> HdriAssets;
+	AssetRegistryModule.Get().GetAssets(HdriFilter, HdriAssets);
+	HdriAssets.Sort([](const FAssetData& A, const FAssetData& B)
+	{
+		return A.AssetName.ToString() < B.AssetName.ToString();
+	});
+
+	if (!HdriAssets.IsEmpty())
+	{
+		Menu->AddSlot().AutoHeight().Padding(0.0f, 3.0f)
+		[
+			SNew(SSeparator)
+		];
+	}
+	for (const FAssetData& HdriAsset : HdriAssets)
+	{
+		const FSoftObjectPath HdriPath = HdriAsset.GetSoftObjectPath();
+		Menu->AddSlot().AutoHeight()
+		[
+			SNew(SButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+			.Text(FText::FromName(HdriAsset.AssetName))
+			.OnClicked_Lambda([this, HdriPath]() { return SetHdriLighting(HdriPath); })
+		];
+	}
+
+	return SNew(SBox)
+		.WidthOverride(220.0f)
+		.MaxDesiredHeight(420.0f)
+		[
+			SNew(SBorder)
+			.Padding(4.0f)
+			.BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))
+			[
+				SNew(SScrollBox)
+				+ SScrollBox::Slot()[Menu]
+			]
+		];
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -91,6 +91,7 @@ private:
 	FReply ClearLayerMask(int32 LayerIndex);
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
+	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
 	FReply ToggleLayerExpanded(int32 LayerIndex);
 	FReply SetLayerNormalDetail(int32 LayerIndex, bool bNormalDetail);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
@@ -408,6 +409,7 @@ private:
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset);
 	TSharedRef<SWidget> BuildPreviewPanel();
+	TSharedRef<SWidget> BuildPreviewSettingsControls();
 	TSharedRef<SWidget> BuildStudioLightingMenu();
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();

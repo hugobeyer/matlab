@@ -409,7 +409,7 @@ void FMixtormatStyle::Initialize()
 			TEXT("Menu.Background"),
 			new FSlateRoundedBoxBrush(MixtormatPalette::MenuGround(), MixtormatTokens::MenuCornerRadius));
 		StyleInstance->Set(TEXT("Menu.Separator"), new FSlateColorBrush(MixtormatPalette::Divider()));
-		StyleInstance->Set(TEXT("Menu.SubMenuIndicator"), App.GetBrush(TEXT("Menu.SubMenuIndicator")));
+		StyleInstance->Set(TEXT("Menu.SubMenuIndicator"), const_cast<FSlateBrush*>(App.GetBrush(TEXT("Menu.SubMenuIndicator"))));
 
 		// A row: no plate at rest, the slider's own fill when hovered. The thing under the cursor
 		// looks the same wherever you are in the tool.

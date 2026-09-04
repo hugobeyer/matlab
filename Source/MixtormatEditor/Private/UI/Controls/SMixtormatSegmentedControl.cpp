@@ -125,6 +125,7 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 		[
 			SNew(SMixtormatSegment)
 			.Text(InArgs._Options[Index])
+			.ToolTipText(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
 			.bActive_Lambda([this, Index]() { return ActiveIndex.Get(0) == Index; })
 			.OnChosen(FSimpleDelegate::CreateLambda([Chosen, Index]()
 			{

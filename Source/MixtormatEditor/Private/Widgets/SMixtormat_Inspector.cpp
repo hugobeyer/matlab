@@ -1267,6 +1267,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						]
 					]
 				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					BuildPreviewSettingsControls()
+				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SScrollBox)

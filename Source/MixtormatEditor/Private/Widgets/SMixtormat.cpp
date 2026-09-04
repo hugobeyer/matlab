@@ -166,8 +166,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 		: FMath::Clamp(SelectedLayerIndex, 0, WorkingLayers.Num() - 1);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		&& WorkingLayers[SelectedLayerIndex].bEnabled;
+	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 
