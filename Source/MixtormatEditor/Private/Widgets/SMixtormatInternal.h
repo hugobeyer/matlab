@@ -246,6 +246,17 @@ namespace MixtormatUI
 		}
 	}
 
+	inline FText UVRotationText(const EMixtormatUVRotation Rotation)
+	{
+		switch (Rotation)
+		{
+		case EMixtormatUVRotation::Quarter: return LOCTEXT("UVRot90", "90°");
+		case EMixtormatUVRotation::Half: return LOCTEXT("UVRot180", "180°");
+		case EMixtormatUVRotation::ThreeQuarter: return LOCTEXT("UVRot270", "270°");
+		default: return LOCTEXT("UVRot0", "0°");
+		}
+	}
+
 	inline FText GradeTonemapText(const EMixtormatGradeTonemap Mode)
 	{
 		switch (Mode)
@@ -257,15 +268,6 @@ namespace MixtormatUI
 		}
 	}
 
-	inline FText ErosionDirectionModeText(const EMixtormatErosionDirectionMode Mode)
-	{
-		switch (Mode)
-		{
-		case EMixtormatErosionDirectionMode::Lerp: return LOCTEXT("EroDirLerp", "Lerp");
-		case EMixtormatErosionDirectionMode::Flow: return LOCTEXT("EroDirFlow", "Flow");
-		default: return LOCTEXT("EroDirWeight", "Weight");
-		}
-	}
 
 	inline FText ErosionCurvatureModeText(const EMixtormatErosionCurvatureMode Mode)
 	{

@@ -71,6 +71,18 @@ enum class EMixtormatMaskBlendMode : uint8
 	Overlay UMETA(DisplayName = "Overlay")
 };
 
+// Quarter turns only. The compositor wraps every source read in a frac(), so a transform has
+// to map the unit square onto itself or it seams at the repeat; an arbitrary angle drags the
+// corners of the tile outside the domain. Same reason per-axis scale is an integer.
+UENUM(BlueprintType)
+enum class EMixtormatUVRotation : uint8
+{
+	None UMETA(DisplayName = "0"),
+	Quarter UMETA(DisplayName = "90"),
+	Half UMETA(DisplayName = "180"),
+	ThreeQuarter UMETA(DisplayName = "270")
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 {
@@ -94,8 +106,33 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	bool bInvert = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1", ClampMax = "16"))
-	int32 Tiling = 1;
+	// Source placement. Integer per axis, because a fractional scale lands mid-cell at the UV
+	// wrap and seams.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1"))
+	int32 TilingX = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1"))
+	int32 TilingY = 1;
+
+	// In UV, and unrelated to Offset below, which lifts the mask value rather than moving
+	// where it is read from. Safe at any value: translating a periodic function leaves it
+	// periodic.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	float UVOffsetX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	float UVOffsetY = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	bool bFlipU = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	bool bFlipV = false;
+
+	// Applied before the tiling, so the mask turns and the lattice replicates the turned
+	// result. Rotating afterwards would turn each cell instead of the pattern.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float Balance = 0.5f;
@@ -212,19 +249,6 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratedMask
 	}
 };
 
-// How the gully direction is decided.
-//
-// Weight and Lerp both start from the downhill gradient, which is a per-pixel quantity and
-// wanders wherever the height has grain. Flow replaces it with the surface's coherent tangent
-// -- an orientation agreed over a neighbourhood -- oriented downhill, so a gully follows a
-// channel that already exists instead of the local steepest step.
-UENUM(BlueprintType)
-enum class EMixtormatErosionDirectionMode : uint8
-{
-	Weight = 0 UMETA(DisplayName = "Weight"),
-	Lerp = 1 UMETA(DisplayName = "Lerp"),
-	Flow = 2 UMETA(DisplayName = "Flow")
-};
 
 // Which curvature the erosion cavity gate measures, all in the raw height-field
 // convention where positive is the named feature.
@@ -483,132 +507,106 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
 	int32 StainFlowSmoothing = 3;
 
-	// Erosion. Carves the height accumulated below the owning layer.
-	//
-	// None of these carry ClampMin/ClampMax. The inspector constrains each scrub range
-	// visually, but a typed value outside that range reaches the shader intact; the shader
-	// keeps epsilon guards at its own division sites. Widening a range is therefore a UI
-	// edit, not a schema change.
+	// Erosion. A tileable, stacked directional-stripe filter evaluated in one dispatch.
+	// The initial downhill vector is the steepest sampled direction around each texel, which
+	// keeps mortar joints, cut stone edges and other hard material features from averaging away.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionAmount = 1.0f;
 
-	// Carving passes. Each one re-differentiates the height the previous pass wrote and
-	// holds one octave finer, so this is detail depth rather than strength. The compositor
-	// clamps it: unlike every other control here it is a GPU dispatch count, so an
-	// out-of-range value costs frames rather than producing an odd-looking surface.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionIterations = 8;
+	float ErosionStrength = 0.08f;
 
-	// Gully cells across one UV repeat at the coarsest pass, doubling each pass. Any
-	// integer tiles -- the lattice wraps on it -- so this sets gully scale directly.
+	// Detail bands. The compositor clamps this to the shader's fixed loop bound.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionPeriod = 32;
+	int32 ErosionOctaves = 5;
 
-	// Critical slope. Nothing carves below it. Units are height per UV, so the useful
-	// value depends entirely on the composited height range.
+	// Stripe cells across one UV repeat at the coarsest octave. It remains integral so every
+	// octave tiles after its frequency doubles.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionRepose = 0.30f;
+	int32 ErosionPeriod = 12;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionReposeSoftness = 0.25f;
+	float ErosionGain = 0.5f;
 
-	// Radius in pixels of the local slope measurement. Small values keep the carve
-	// following real surface detail rather than a block-quantised average.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionDetail = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionGullyWeight = 0.65f;
+
+	// Partial phase normalization. 0 preserves blended amplitudes; 1 fully normalizes them.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionNormalization = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionRidgeRounding = 0.10f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionCreaseRounding = 0.0f;
+
+	// Controls how far from the input flats and generated ridge/crease flats new gullies act.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionSlopeOnset = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionFeatureOnset = 1.25f;
+
+	// Magnitude used for internal straight-gully steering. Direction always comes from the
+	// measured maximum slope; this only prevents rounded source profiles from weakening it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionAssumedSlope = 0.7f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	float ErosionAssumedSlopeAmount = 1.0f;
+
+	// Pixel radius of the sixteen-direction maximum-slope search.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	int32 ErosionSlopeRadius = 2;
 
-	// Low-passes a guidance copy of the height before measuring slope, so surface grain
-	// does not steer the flow. 0 measures slope on the raw height.
+	// Optional low-pass for noisy stone. Zero retains sharp brick and masonry boundaries.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionSlopeBlur = 2.0f;
+	float ErosionSlopeBlur = 0.0f;
 
-	// Which curvature the cavity gate measures.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	EMixtormatErosionCurvatureMode ErosionCurvatureMode = EMixtormatErosionCurvatureMode::Valley;
 
-	// How much the curvature gate participates. 0 opens it fully and is the identity, 1 is
-	// the remapped curvature alone. Past 1 or below 0 it extrapolates, which expands the
-	// gate's contrast rather than blending it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionCavityInfluence = 0.0f;
 
-	// Added to the curvature before the remap, so the window can be moved without
-	// respecifying both its ends.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionCavityOffset = 0.0f;
 
-	// The curvature window mapped to 0..1. Units are height per UV, the same units as
-	// Repose, so the two gates scrub over comparable numbers. Setting Min above Max inverts
-	// the gate, which is how a Valley measurement is pointed at the flats beside a channel.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionCavityRemapMin = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionCavityRemapMax = 1.0f;
 
-	// Signed. Positive erodes raised ground first, negative erodes low ground.
+	// The height signal supplies the valley-to-peak fade target. Influence also gates where
+	// the final carve is allowed, independently of the layer mask and cavity gate.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionHeightInfluence = 0.0f;
 
-	// Smoothstep contrast on the height signal, centred on mid height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionHeightScale = 1.0f;
 
+	// Erosion consumes the same authored/generated mask stack as the owning layer. Inversion
+	// permits weathering outside the painted region without introducing a separate mask system.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionGullyWeight = 2.0f;
+	bool bErosionInvertMask = false;
 
-	// Authored flow direction blended against downhill. Weight adds it to the slope vector
-	// so it competes with steepness; Lerp blends the directions evenly. 0 amount is pure
-	// slope flow under either mode.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	EMixtormatErosionDirectionMode ErosionDirectionMode = EMixtormatErosionDirectionMode::Weight;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionDirectionAngle = 90.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionDirectionAmount = 0.0f;
-
-	// Flow mode only. Pixel radius of the gradient the orientation field is built from --
-	// the feature size the gullies are asked to follow.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionFlowRadius = 4;
-
-	// Flow mode only. How many times the orientation field is smoothed. This is what turns a
-	// noisy per-pixel tangent into a coherent one, so it is the control that decides how far
-	// a gully will hold its line.
-	//
-	// Floors at 1 in the compositor. The field is built from unit vectors, so before any
-	// smoothing its length is 1 everywhere and coherency reports total agreement over what is
-	// still per-pixel noise -- the opposite of a safe minimum.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionFlowSmoothing = 3;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionBlendSoftness = 0.0f;
-
-	// How strongly the carve perturbs the layer normal. 0 changes height only.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionNormalStrength = 8.0f;
 
-	// What the carve exposes. Applied after the layer composites, over the base colour and
-	// roughness it wrote, in proportion to how deeply each pixel was cut.
-	//
-	// Blended toward rather than multiplied, unlike a stain: a stain sits on what is under it
-	// and can only darken, while erosion cuts down to something else and has to be able to
-	// reach it. Both amounts are zero by default, and at zero the shade pass does not run.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionColorAmount = 0.0f;
 
-	// Signed offset on the composited roughness, positive toward rough.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionRoughnessAmount = 0.0f;
 
-	// The carve depth that reads as fully eroded, in height units. Coverage is the carve
-	// divided by this, so it is what stops both amounts being all or nothing.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionCarveDepth = 0.05f;
 
@@ -886,7 +884,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	//
 	// There is deliberately no rotation. It breaks the repeat at every angle that is not a
 	// multiple of 90 degrees, and a control that seams across most of its range is worse than
-	// no control; it needs a 90-degree snap or stochastic sampling first.
+	// no control, so rotation is offered as quarter turns only -- see Rotation below.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "1", ClampMax = "16"))
 	int32 UVScaleX = 1;
 
@@ -904,6 +902,13 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
 	bool bFlipV = false;
+
+	// The piece the layer transform was missing. Excluded originally because arbitrary rotation
+	// breaks the frac() wrap, which quarter turns do not -- they are permutations of the unit
+	// square. Applied before the tiling, so the surface turns and the lattice replicates the
+	// turned result rather than each cell turning in place.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
+	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RoughnessBias = 0.5f;

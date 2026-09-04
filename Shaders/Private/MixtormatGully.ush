@@ -66,48 +66,61 @@ float3 MixtormatPeriodicNoiseD(float2 p, int Period, uint Seed)
 	return float3(value, d.x, d.y);
 }
 
-// Smears the noise along Dir to produce elongated gullies. Each tap is a translation, so
-// the derivative of the sum is the sum of the derivatives and no extra sampling is needed.
-float3 MixtormatGullyField(
-	float2 p,
-	float2 Dir,
-	int Period,
-	uint Seed,
-	int Steps,
-	float Length)
+// Two repeatable random values for a lattice point. The point is wrapped before hashing,
+// while its unwrapped position is retained by the caller for continuous seam-relative math.
+float2 MixtormatCellOffset(int2 Cell, int Period, uint Seed)
 {
-	float3 acc = 0.0f;
-	float wsum = 0.0f;
-
-	const int n = clamp(Steps, 1, 16);
-	[unroll(16)]
-	for (int s = -n; s <= n; ++s)
-	{
-		float t = (float)s / (float)n;
-		float w = 1.0f - abs(t);
-		acc += MixtormatPeriodicNoiseD(p + Dir * (t * Length), Period, Seed) * w;
-		wsum += w;
-	}
-
-	return acc / max(wsum, 1.0e-6f);
+	const uint X = (uint)MixtormatWrapI(Cell.x, Period);
+	const uint Y = (uint)MixtormatWrapI(Cell.y, Period);
+	const uint H0 = MixtormatHashU(X * 0x27d4eb2du ^ Y * 0x165667b1u ^ Seed * 0x9e3779b9u);
+	const uint H1 = MixtormatHashU(H0 ^ 0x68bc21ebu);
+	return float2(H0 & 0x00ffffffu, H1 & 0x00ffffffu) * (1.0f / 16777216.0f) - 0.5f;
 }
 
-// One-sided soft subtraction. Erosion only removes material, so this returns exactly the
-// incoming height when nothing is carved and eases into the removal when it is.
-//
-// A symmetric smooth minimum is wrong here: smin(a, a, k) = a - k/4, so it lowers the
-// whole field by a constant even when the filter removes nothing. That reads as the
-// softness control dropping the height rather than rounding the crossover.
-float MixtormatSoftSubtract(float Height, float Carved, float k)
+// Periodic phase stripes blended from nearby cell pivots. The stripe direction is Along;
+// its phase changes across the perpendicular Side vector. Returning cosine and sine together
+// lets the erosion driver partially normalize their shared amplitude without destroying phase.
+// ZW is dPhase/dP; multiply it by the octave cell count for a UV-space derivative.
+float4 MixtormatPeriodicStripeField(
+	float2 P,
+	float2 Along,
+	int Period,
+	uint Seed,
+	float Normalization)
 {
-	const float d = Height - Carved;
-	if (k <= 1.0e-6f)
+	const float Tau = 6.28318530718f;
+	const float2 Side = float2(-Along.y, Along.x) * Tau;
+	const int2 BaseCell = (int2)floor(P);
+	const float2 Local = P - (float2)BaseCell;
+
+	float2 Phase = 0.0f;
+	float WeightSum = 0.0f;
+
+	[unroll]
+	for (int Y = -1; Y <= 2; ++Y)
 	{
-		return Height - max(d, 0.0f);
+		[unroll]
+		for (int X = -1; X <= 2; ++X)
+		{
+			const int2 CellOffset = int2(X, Y);
+			const float2 PivotJitter = MixtormatCellOffset(BaseCell + CellOffset, Period, Seed) * 0.9f;
+			const float2 FromPivot = Local - (float2)CellOffset - PivotJitter;
+			const float Distance2 = dot(FromPivot, FromPivot);
+
+			// Compact Gaussian support reaches zero before any cell outside this 4x4 window can
+			// contribute, avoiding both grid seams and unnecessary dynamic neighbourhoods.
+			const float Weight = max(exp(-2.0f * Distance2) - 0.011f, 0.0f);
+			const float Wave = dot(FromPivot, Side);
+			Phase += float2(cos(Wave), sin(Wave)) * Weight;
+			WeightSum += Weight;
+		}
 	}
-	// 0 at d <= 0, approaches d for large d, C1 throughout.
-	const float soft = 0.5f * (d + sqrt(d * d + k * k)) - 0.5f * k;
-	return Height - soft;
+
+	float2 Waves = Phase / max(WeightSum, 1.0e-6f);
+	const float Magnitude = length(Waves);
+	const float FloorMagnitude = max(1.0f - saturate(Normalization), 1.0e-4f);
+	Waves /= max(Magnitude, FloorMagnitude);
+	return float4(Waves, Side);
 }
 
 #endif

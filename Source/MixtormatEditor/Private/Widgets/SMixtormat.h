@@ -125,6 +125,8 @@ private:
 	const FMixtormatCraquelure* GetSelectedCraquelure() const;
 	TSharedRef<SWidget> BuildCraquelureControls();
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
+	TSharedRef<SWidget> BuildMaskRotationMenu();
+	TSharedRef<SWidget> BuildLayerRotationMenu();
 
 	FMixtormatLayerEffect* GetSelectedLayerEffect();
 	const FMixtormatLayerEffect* GetSelectedLayerEffect() const;
@@ -455,7 +457,6 @@ private:
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildErosionCurvatureModeMenu();
-	TSharedRef<SWidget> BuildErosionDirectionModeMenu();
 	TSharedRef<SWidget> BuildGradeControls();
 	TSharedRef<SWidget> BuildChippingControls();
 	TSharedRef<SWidget> BuildGradeTonemapMenu();

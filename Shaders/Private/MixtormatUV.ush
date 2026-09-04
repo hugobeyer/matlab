@@ -1,0 +1,60 @@
+#ifndef MATERIAL_LAB_UV_USH
+#define MATERIAL_LAB_UV_USH
+
+// Source UV placement, shared by anything that reads an authored texture through a frac().
+//
+// Every transform here maps the unit square onto itself, which is the whole constraint: the
+// compositor wraps each source read in a frac(), so a transform that does not preserve [0,1)
+// seams at the repeat. That is why rotation is in 90 degree steps and scale is an integer --
+// an arbitrary angle drags the corners of the tile outside the domain, and a fractional scale
+// lands mid-cell at the wrap. Offset and flip are safe at any value: translating a periodic
+// function leaves it periodic, and a mirror maps the square onto itself exactly.
+
+// 0, 90, 180, 270. Each case is a permutation of the unit square, so the result still tiles.
+float2 MixtormatRotateUV90(float2 UV, int Steps)
+{
+	const int S = ((Steps % 4) + 4) % 4;
+	if (S == 1)
+	{
+		return float2(UV.y, 1.0f - UV.x);
+	}
+	if (S == 2)
+	{
+		return float2(1.0f - UV.x, 1.0f - UV.y);
+	}
+	if (S == 3)
+	{
+		return float2(1.0f - UV.y, UV.x);
+	}
+	return UV;
+}
+
+// Flip and rotate first, in the unit square, then tile and offset.
+//
+// The order matters and is not the obvious one. Rotating after the tiling would rotate each
+// cell of the lattice rather than the pattern, and with a non-square tiling it would swap
+// which axis carries which repeat count. Rotating first means the texture turns and the
+// lattice then replicates the turned result, which is what "rotate the mask" means to anyone
+// looking at it.
+float2 MixtormatSourceUV(
+	float2 UV,
+	float2 Tiling,
+	float2 Offset,
+	uint FlipU,
+	uint FlipV,
+	int Rotation)
+{
+	float2 P = UV;
+
+	// Mirrored about the centre of the tile rather than about zero. Scaling by -1 and letting
+	// frac() wrap is the same picture shifted by a texel, which is a seam on a mask whose
+	// edges are supposed to meet.
+	P.x = FlipU != 0 ? 1.0f - P.x : P.x;
+	P.y = FlipV != 0 ? 1.0f - P.y : P.y;
+
+	P = MixtormatRotateUV90(P, Rotation);
+
+	return frac(P * Tiling + Offset);
+}
+
+#endif

@@ -1,4 +1,6 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IncomingMask;
@@ -10,45 +12,17 @@ uint Initialize;
 uint BlendMode;
 uint Invert;
 float Weight;
-float Tiling;
 float Balance;
 float Contrast;
 float Offset;
 
-float ApplyMaskOperation(float Previous, float Incoming)
-{
-	if (BlendMode == 0)
-	{
-		return Incoming;
-	}
-	if (BlendMode == 1)
-	{
-		return Previous + Incoming;
-	}
-	if (BlendMode == 2)
-	{
-		return Previous - Incoming;
-	}
-	if (BlendMode == 3)
-	{
-		return Previous * Incoming;
-	}
-	if (BlendMode == 4)
-	{
-		return min(Previous, Incoming);
-	}
-	if (BlendMode == 5)
-	{
-		return max(Previous, Incoming);
-	}
-	if (BlendMode == 6)
-	{
-		return Previous + (Incoming - 0.5f) * 2.0f;
-	}
-	return Previous < 0.5f
-		? 2.0f * Previous * Incoming
-		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
-}
+// Source placement. Offset is in UV and unrelated to the Offset above, which lifts the mask
+// value rather than moving where it is read from.
+float2 Tiling;
+float2 UVOffset;
+uint FlipU;
+uint FlipV;
+int Rotation;
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -62,22 +36,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Previous = Initialize != 0
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float Incoming = IncomingMask.SampleLevel(
-		LinearWrapSampler,
-		frac(UV * max(Tiling, 1.0f)),
-		0.0f).r;
-	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
+	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
+	float Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
 
-	float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
-	float BalanceStrength = abs(SignedBalance);
-	float BalanceExponent = exp2(BalanceStrength * 6.0f);
-	float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
-	float Balanced = SignedBalance < 0.0f
-		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
-		: pow(Incoming, BalanceExponent);
-	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
-	Incoming = Invert != 0 ? 1.0f - Incoming : Incoming;
+	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
 
-	float OperationResult = ApplyMaskOperation(Previous, Incoming);
+	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
 }

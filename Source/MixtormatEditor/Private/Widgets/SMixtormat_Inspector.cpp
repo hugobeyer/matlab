@@ -569,31 +569,65 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildErosionDirectionModeMenu()
+
+// Quarter turns, shared shape between the mask and the layer. Rotation is offered at all only
+// because 90 degree steps are permutations of the unit square: the compositor wraps every source
+// read in a frac(), so an arbitrary angle would drag the tile corners outside the domain.
+namespace
+{
+	const EMixtormatUVRotation GMixtormatUVRotations[] = {
+		EMixtormatUVRotation::None,
+		EMixtormatUVRotation::Quarter,
+		EMixtormatUVRotation::Half,
+		EMixtormatUVRotation::ThreeQuarter
+	};
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskRotationMenu()
 {
 	MixtormatMenu::FBuilder Menu;
-	const EMixtormatErosionDirectionMode Modes[] = {
-		EMixtormatErosionDirectionMode::Weight,
-		EMixtormatErosionDirectionMode::Lerp,
-		EMixtormatErosionDirectionMode::Flow
-	};
-	for (const EMixtormatErosionDirectionMode Mode : Modes)
+	for (const EMixtormatUVRotation Rotation : GMixtormatUVRotations)
 	{
 		Menu.Item(
-			MixtormatUI::ErosionDirectionModeText(Mode),
+			MixtormatUI::UVRotationText(Rotation),
 			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
+			FSimpleDelegate::CreateLambda([this, Rotation]()
 			{
-				if (FMixtormatLayerEffect* E = GetSelectedErosion())
+				if (FMixtormatMaskLayer* M = GetSelectedLayerMask())
 				{
-					E->ErosionDirectionMode = Mode;
+					M->Rotation = Rotation;
 					RefreshLayeredPreview();
 				}
 			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			.Checked(TAttribute<bool>::CreateLambda([this, Rotation]()
 			{
-				const FMixtormatLayerEffect* E = GetSelectedErosion();
-				return E && E->ErosionDirectionMode == Mode;
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M && M->Rotation == Rotation;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerRotationMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	for (const EMixtormatUVRotation Rotation : GMixtormatUVRotations)
+	{
+		Menu.Item(
+			MixtormatUI::UVRotationText(Rotation),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Rotation]()
+			{
+				if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+				{
+					WorkingLayers[SelectedLayerIndex].Rotation = Rotation;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Rotation]()
+			{
+				return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					&& WorkingLayers[SelectedLayerIndex].Rotation == Rotation;
 			}));
 	}
 	return Menu.Build();
@@ -634,35 +668,46 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("EroDirMode", "Direction Mode"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedErosion();
-				return E ? MixtormatUI::ErosionDirectionModeText(E->ErosionDirectionMode) : FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildErosionDirectionModeMenu)),
-		LOCTEXT("EroDirModeHint", "Weight adds the angle to the slope vector, so steep ground still runs downhill. Lerp blends the directions evenly. Flow replaces downhill with the surface's coherent tangent, so gullies follow channels that already exist instead of the local steepest step.")));
+	const auto Ero = [this]() { return GetSelectedErosion(); };
 
-	AddErosionSlider(Panel, LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 1.0, 1.0, 0.01);
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpField", "Field")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpFilter", "Filter")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroIterations", "Passes"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 8.0, 8,
-			LOCTEXT("EroIterationsHint", "Carving passes. Each one holds an octave finer and re-reads the height the last wrote, so this is detail depth rather than strength. It is a dispatch count, so it costs. The slider spans the band that still adds detail; the value itself goes to 32 if you type one, but the octave loop bottoms out well before that and the extra passes only re-run the finest band.")),
-		MakeErosionSliderInt(LOCTEXT("EroPeriod", "Period"), &FMixtormatLayerEffect::ErosionPeriod, 1.0, 16.0, 32,
-			LOCTEXT("EroPeriodHint", "Gully cells across one UV repeat at the coarsest pass, doubling each pass. Any integer tiles, so this sets gully scale directly."))));
+		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 1.0, 1.0, 0.01),
+		MakeErosionSlider(LOCTEXT("EroStrength", "Depth"), &FMixtormatLayerEffect::ErosionStrength, 0.0, 0.5, 0.08, 0.005,
+			LOCTEXT("EroStrengthHint", "Total height removed by the largest erosion band. The result remains subtractive."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpRepose", "Repose")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpField", "Gullies")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroRepose", "Angle"), &FMixtormatLayerEffect::ErosionRepose, 0.0, 32.0, 0.30, 0.01),
-		MakeErosionSlider(LOCTEXT("EroReposeSoft", "Softness"), &FMixtormatLayerEffect::ErosionReposeSoftness, 0.0, 32.0, 0.25, 0.01)));
+		MakeErosionSliderInt(LOCTEXT("EroOctaves", "Octaves"), &FMixtormatLayerEffect::ErosionOctaves, 1.0, 12.0, 5,
+			LOCTEXT("EroOctavesHint", "Stacked detail bands evaluated together. Later bands branch from the straightened slope created by earlier gullies.")),
+		MakeErosionSliderInt(LOCTEXT("EroPeriod", "Period"), &FMixtormatLayerEffect::ErosionPeriod, 1.0, 128.0, 12,
+			LOCTEXT("EroPeriodHint", "Cells across one UV repeat at the coarsest octave. Integral periods preserve seamless tiling."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroGain", "Gain"), &FMixtormatLayerEffect::ErosionGain, 0.0, 1.0, 0.5, 0.01),
+		MakeErosionSlider(LOCTEXT("EroDetail", "Detail"), &FMixtormatLayerEffect::ErosionDetail, 0.1, 4.0, 1.5, 0.05,
+			LOCTEXT("EroDetailHint", "Controls how strongly existing ridges and creases suppress finer gullies."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroGullyWeight", "Gully Weight"), &FMixtormatLayerEffect::ErosionGullyWeight, 0.0, 1.5, 0.65, 0.01),
+		MakeErosionSlider(LOCTEXT("EroNormalization", "Normalization"), &FMixtormatLayerEffect::ErosionNormalization, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("EroNormalizationHint", "Restores weak blended stripes without fully normalizing cancellation points into spikes."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpSlope", "Slope")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpSlope", "Directional Max Slope")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroSlopeRadius", "Radius"), &FMixtormatLayerEffect::ErosionSlopeRadius, 1.0, 32.0, 2),
-		MakeErosionSlider(LOCTEXT("EroSlopeBlur", "Blur"), &FMixtormatLayerEffect::ErosionSlopeBlur, 0.0, 16.0, 2.0, 0.05)));
+		MakeErosionSliderInt(LOCTEXT("EroSlopeRadius", "Radius"), &FMixtormatLayerEffect::ErosionSlopeRadius, 1.0, 32.0, 2,
+			LOCTEXT("EroSlopeRadiusHint", "Search radius for the steepest downhill direction across sixteen rays. Small values retain brick and stone edges.")),
+		MakeErosionSlider(LOCTEXT("EroSlopeBlur", "Blur"), &FMixtormatLayerEffect::ErosionSlopeBlur, 0.0, 16.0, 0.0, 0.05,
+			LOCTEXT("EroSlopeBlurHint", "Optional guidance blur for noisy stone. Leave at zero for masonry and sharp joints."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroAssumedSlope", "Assumed"), &FMixtormatLayerEffect::ErosionAssumedSlope, 0.0, 4.0, 0.7, 0.01),
+		MakeErosionSlider(LOCTEXT("EroAssumedSlopeMix", "Assume Mix"), &FMixtormatLayerEffect::ErosionAssumedSlopeAmount, 0.0, 1.0, 1.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroSlopeOnset", "Surface Onset"), &FMixtormatLayerEffect::ErosionSlopeOnset, 0.0, 8.0, 1.0, 0.05),
+		MakeErosionSlider(LOCTEXT("EroFeatureOnset", "Feature Onset"), &FMixtormatLayerEffect::ErosionFeatureOnset, 0.0, 8.0, 1.25, 0.05)));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpRounding", "Rounding")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroRidgeRound", "Ridges"), &FMixtormatLayerEffect::ErosionRidgeRounding, 0.0, 1.0, 0.10, 0.01),
+		MakeErosionSlider(LOCTEXT("EroCreaseRound", "Creases"), &FMixtormatLayerEffect::ErosionCreaseRounding, 0.0, 1.0, 0.0, 0.01)));
 
 	// Cavity is an offset and a window, not a bias and a contrast. Contrast around a fixed
 	// centre could only widen or narrow the transition; it could not say which curvatures
@@ -685,14 +730,20 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroCavityOffsetHint", "Added to the curvature before the remap, so the window moves without respecifying both ends."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroCavityRemapMin", "In Low"), &FMixtormatLayerEffect::ErosionCavityRemapMin, -4.0, 4.0, 0.0, 0.01,
-			LOCTEXT("EroCavityRemapHint", "The curvature window mapped to 0..1, in height per UV -- the same units as Repose. Setting Low above High inverts the gate.")),
+			LOCTEXT("EroCavityRemapHint", "Curvature mapped to 0..1. Setting Low above High inverts the gate.")),
 		MakeErosionSlider(LOCTEXT("EroCavityRemapMax", "In High"), &FMixtormatLayerEffect::ErosionCavityRemapMax, -4.0, 4.0, 1.0, 0.01,
-			LOCTEXT("EroCavityRemapHint", "The curvature window mapped to 0..1, in height per UV -- the same units as Repose. Setting Low above High inverts the gate."))));
+			LOCTEXT("EroCavityRemapHint", "Curvature mapped to 0..1. Setting Low above High inverts the gate."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpHeight", "Height")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroHeightInfluence", "Influence"), &FMixtormatLayerEffect::ErosionHeightInfluence, -1.0, 1.0, 0.0, 0.05),
-		MakeErosionSlider(LOCTEXT("EroHeightScale", "Contrast"), &FMixtormatLayerEffect::ErosionHeightScale, -1.0, 1.0, 1.0, 0.05)));
+		MakeErosionSlider(LOCTEXT("EroHeightScale", "Peak / Valley"), &FMixtormatLayerEffect::ErosionHeightScale, 0.0, 8.0, 1.0, 0.05,
+			LOCTEXT("EroHeightScaleHint", "Shapes the fade target: low material becomes a crease and high material becomes a ridge."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpMask", "Placement Mask")));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatLayerEffect>(
+		LOCTEXT("EroInvertMask", "Invert Layer Mask"), Ero, &FMixtormatLayerEffect::bErosionInvertMask,
+		LOCTEXT("EroInvertMaskHint", "Uses the same authored, generated, and craquelure mask children as the layer, inverted for erosion only.")));
 
 	// What the carve exposes. Applied over the base colour and roughness the layer already
 	// composited, in proportion to how deeply each pixel was cut.
@@ -731,24 +782,8 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	AddErosionSlider(Panel, LOCTEXT("EroCarveDepth", "Full At Depth"), &FMixtormatLayerEffect::ErosionCarveDepth, 0.001, 1.0, 0.05, 0.001,
 		LOCTEXT("EroCarveDepthHint", "The carve depth that reads as fully eroded, in height units. Coverage is the carve divided by this, so it is what stops both amounts being all or nothing."));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpShape", "Shaping")));
-	AddErosionSlider(Panel, LOCTEXT("EroGullyWeight", "Gully Weight"), &FMixtormatLayerEffect::ErosionGullyWeight, 0.0, 4.0, 2.0, 0.05);
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpOutput", "Output")));
 	AddErosionSlider(Panel, LOCTEXT("EroNormalStrength", "Normal Strength"), &FMixtormatLayerEffect::ErosionNormalStrength, 0.0, 32.0, 8.0, 0.05);
-	AddErosionSlider(Panel, LOCTEXT("EroBlendSoftness", "Blend Softness"), &FMixtormatLayerEffect::ErosionBlendSoftness, 0.0, 8.0, 0.0, 0.05);
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpDir", "Direction")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroDirAngle", "Angle"), &FMixtormatLayerEffect::ErosionDirectionAngle, 0.0, 360.0, 90.0, 1.0),
-		MakeErosionSlider(LOCTEXT("EroDirAmount", "Amount"), &FMixtormatLayerEffect::ErosionDirectionAmount, 0.0, 1.0, 0.0, 0.01)));
-
-	// Flow's two controls. Left visible in every mode rather than hidden behind the chip:
-	// the panel's rows are a fixed grid, and a group that appears and disappears moves every
-	// row below it.
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroFlowRadius", "Flow Radius"), &FMixtormatLayerEffect::ErosionFlowRadius, 1.0, 64.0, 4,
-			LOCTEXT("EroFlowRadiusHint", "Flow mode only. Pixel radius of the gradient the orientation field is built from, which is the feature size the gullies are asked to follow.")),
-		MakeErosionSliderInt(LOCTEXT("EroFlowSmooth", "Flow Smooth"), &FMixtormatLayerEffect::ErosionFlowSmoothing, 1.0, 16.0, 3,
-			LOCTEXT("EroFlowSmoothHint", "Flow mode only. How many times the orientation field is smoothed, which is what turns a noisy per-pixel tangent into a coherent one. This decides how far a gully holds its line. 1 is the minimum: an unsmoothed field reports full coherency over what is still per-pixel noise."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedErosion() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -935,12 +970,42 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatMaskLayer>(
 		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
+	// Source placement. Every transform here maps the unit square onto itself, which is the
+	// constraint: the read is wrapped in a frac(), so anything else seams at the repeat.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpPlacement", "Placement")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatMaskLayer>(
-			LOCTEXT("MaskTilingLabel", "Tiling"), Mask, &FMixtormatMaskLayer::Tiling, 1.0, 16.0, 1),
+			LOCTEXT("MaskTilingXLabel", "Tiling X"), Mask, &FMixtormatMaskLayer::TilingX, 1.0, 16.0, 1,
+			LOCTEXT("MaskTilingHint", "Repeats across the axis. Integer only: a fractional scale lands mid-cell at the UV wrap and seams.")),
+		MakeMemberSliderInt<FMixtormatMaskLayer>(
+			LOCTEXT("MaskTilingYLabel", "Tiling Y"), Mask, &FMixtormatMaskLayer::TilingY, 1.0, 16.0, 1,
+			LOCTEXT("MaskTilingHint", "Repeats across the axis. Integer only: a fractional scale lands mid-cell at the UV wrap and seams."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskLayer>(
+			LOCTEXT("MaskUVOffsetXLabel", "Offset X"), Mask, &FMixtormatMaskLayer::UVOffsetX, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("MaskUVOffsetHint", "Shifts where the mask is read from. Safe at any value: translating a periodic function leaves it periodic. Unrelated to Offset under Shaping, which lifts the mask value instead.")),
+		MakeMemberSlider<FMixtormatMaskLayer>(
+			LOCTEXT("MaskUVOffsetYLabel", "Offset Y"), Mask, &FMixtormatMaskLayer::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("MaskUVOffsetHint", "Shifts where the mask is read from. Safe at any value: translating a periodic function leaves it periodic. Unrelated to Offset under Shaping, which lifts the mask value instead."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberToggle<FMixtormatMaskLayer>(
-			LOCTEXT("MaskInvertLabel", "Invert"), Mask, &FMixtormatMaskLayer::bInvert)));
+			LOCTEXT("MaskFlipULabel", "Flip U"), Mask, &FMixtormatMaskLayer::bFlipU),
+		MakeMemberToggle<FMixtormatMaskLayer>(
+			LOCTEXT("MaskFlipVLabel", "Flip V"), Mask, &FMixtormatMaskLayer::bFlipV)));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("MaskRotationLabel", "Rotate"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M ? MixtormatUI::UVRotationText(M->Rotation) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu)),
+		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatMaskLayer>(
+		LOCTEXT("MaskInvertLabel", "Invert"), Mask, &FMixtormatMaskLayer::bInvert));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskLayer>(
 			LOCTEXT("MaskBalanceLabel", "Balance"), Mask, &FMixtormatMaskLayer::Balance, 0.0, 2.0, 0.5, 0.01),
@@ -2010,6 +2075,20 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										MakeMemberSlider<FMixtormatLayer>(
 											LOCTEXT("UVOffsetYLabel", "Offset Y"), LayerForRows(), &FMixtormatLayer::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
 											LOCTEXT("UVOffsetHint", "Shifts where the source is read from. Safe at any value: translating a periodic function leaves it periodic.")))
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+								[
+									MixtormatRow::Make(
+										LOCTEXT("UVRotationLabel", "Rotate"),
+										MixtormatRow::MakeChip(
+											TAttribute<FText>::CreateLambda([this]()
+											{
+												return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+													? MixtormatUI::UVRotationText(WorkingLayers[SelectedLayerIndex].Rotation)
+													: FText::GetEmpty();
+											}),
+											FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerRotationMenu)),
+										LOCTEXT("UVRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable."))
 								]
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
 								[

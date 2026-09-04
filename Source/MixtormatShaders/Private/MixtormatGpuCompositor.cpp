@@ -56,6 +56,7 @@ public:
 		SHADER_PARAMETER(uint32, FlipU)
 		SHADER_PARAMETER(uint32, FlipV)
 		SHADER_PARAMETER(FVector2f, UVOffset)
+		SHADER_PARAMETER(int32, Rotation)
 		SHADER_PARAMETER(float, NormalIntensity)
 		SHADER_PARAMETER(float, HueShift)
 		SHADER_PARAMETER(float, Saturation)
@@ -140,7 +141,11 @@ public:
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(uint32, Invert)
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Tiling)
+		SHADER_PARAMETER(FVector2f, Tiling)
+		SHADER_PARAMETER(FVector2f, UVOffset)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(int32, Rotation)
 		SHADER_PARAMETER(float, Balance)
 		SHADER_PARAMETER(float, Contrast)
 		SHADER_PARAMETER(float, Offset)
@@ -272,7 +277,6 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Pass)
 		SHADER_PARAMETER(int32, NormalPass)
 		SHADER_PARAMETER(int32, BlurPass)
 		SHADER_PARAMETER(int32, BlurAxis)
@@ -282,11 +286,19 @@ public:
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(int32, Octaves)
 		SHADER_PARAMETER(int32, Period)
-		SHADER_PARAMETER(float, GullyLength)
-		SHADER_PARAMETER(int32, LicSteps)
-		SHADER_PARAMETER(float, Repose)
-		SHADER_PARAMETER(float, ReposeSoftness)
+		SHADER_PARAMETER(float, Gain)
+		SHADER_PARAMETER(float, Detail)
+		SHADER_PARAMETER(float, GullyWeight)
+		SHADER_PARAMETER(float, Normalization)
+		SHADER_PARAMETER(float, RidgeRounding)
+		SHADER_PARAMETER(float, CreaseRounding)
+		SHADER_PARAMETER(float, SlopeOnset)
+		SHADER_PARAMETER(float, FeatureOnset)
+		SHADER_PARAMETER(float, AssumedSlope)
+		SHADER_PARAMETER(float, AssumedSlopeAmount)
+		SHADER_PARAMETER(int32, SlopeRadius)
 		SHADER_PARAMETER(int32, CurvatureMode)
 		SHADER_PARAMETER(float, CavityInfluence)
 		SHADER_PARAMETER(float, CavityOffset)
@@ -294,20 +306,13 @@ public:
 		SHADER_PARAMETER(float, CavityRemapMax)
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER(float, HeightScale)
-		SHADER_PARAMETER(float, GullyWeight)
-		SHADER_PARAMETER(float, BlendSoftness)
-		SHADER_PARAMETER(float, Gain)
-		SHADER_PARAMETER(float, DerivScale)
-		SHADER_PARAMETER(int32, DerivMin)
-		SHADER_PARAMETER(int32, DirectionMode)
-		SHADER_PARAMETER(float, DirectionAngle)
-		SHADER_PARAMETER(float, DirectionAmount)
+		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, FlowField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousRidge)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
@@ -647,7 +652,11 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef Texture;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
-		float Tiling = 1.0f;
+		FVector2f Tiling = FVector2f(1.0f, 1.0f);
+		FVector2f UVOffset = FVector2f::ZeroVector;
+		bool bFlipU = false;
+		bool bFlipV = false;
+		int32 Rotation = 0;
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
 		float Offset = 0.0f;
@@ -718,13 +727,21 @@ namespace MixtormatGpuCompositor
 		bool bPeelHeightInvert = false;
 
 		float ErosionAmount = 1.0f;
-		int32 ErosionIterations = 8;
-		int32 ErosionPeriod = 32;
-		float ErosionRepose = 0.30f;
-		float ErosionReposeSoftness = 0.25f;
-		float ErosionNormalStrength = 8.0f;
+		float ErosionStrength = 0.08f;
+		int32 ErosionOctaves = 5;
+		int32 ErosionPeriod = 12;
+		float ErosionGain = 0.5f;
+		float ErosionDetail = 1.5f;
+		float ErosionGullyWeight = 0.65f;
+		float ErosionNormalization = 0.5f;
+		float ErosionRidgeRounding = 0.10f;
+		float ErosionCreaseRounding = 0.0f;
+		float ErosionSlopeOnset = 1.0f;
+		float ErosionFeatureOnset = 1.25f;
+		float ErosionAssumedSlope = 0.7f;
+		float ErosionAssumedSlopeAmount = 1.0f;
 		int32 ErosionSlopeRadius = 2;
-		float ErosionSlopeBlur = 2.0f;
+		float ErosionSlopeBlur = 0.0f;
 		int32 ErosionCurvatureMode = 1;
 		float ErosionCavityInfluence = 0.0f;
 		float ErosionCavityOffset = 0.0f;
@@ -732,13 +749,7 @@ namespace MixtormatGpuCompositor
 		float ErosionCavityRemapMax = 1.0f;
 		float ErosionHeightInfluence = 0.0f;
 		float ErosionHeightScale = 1.0f;
-		float ErosionGullyWeight = 2.0f;
-		float ErosionBlendSoftness = 0.0f;
-		int32 ErosionDirectionMode = 0;
-		float ErosionDirectionAngle = 90.0f;
-		float ErosionDirectionAmount = 0.0f;
-		int32 ErosionFlowRadius = 4;
-		int32 ErosionFlowSmoothing = 3;
+		bool bErosionInvertMask = false;
 		FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
 		float ErosionColorAmount = 0.0f;
 		float ErosionRoughnessAmount = 0.0f;
@@ -842,6 +853,7 @@ namespace MixtormatGpuCompositor
 		FVector2f UVOffset = FVector2f::ZeroVector;
 		bool bFlipU = false;
 		bool bFlipV = false;
+		int32 Rotation = 0;
 		float NormalIntensity = 1.0f;
 		float HueShift = 0.0f;
 		float Saturation = 1.0f;
@@ -1108,7 +1120,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				}
 				MaskData.BlendMode = MaskLayer.BlendMode;
 				MaskData.Weight = FMath::Clamp(MaskLayer.Weight, 0.0f, 1.0f);
-				MaskData.Tiling = FMath::Max(1.0f, static_cast<float>(MaskLayer.Tiling));
+				// Integer per axis: the shader wraps the read in a frac(), and a fractional
+				// scale lands mid-cell at that wrap.
+				MaskData.Tiling = FVector2f(
+					static_cast<float>(FMath::Max(MaskLayer.TilingX, 1)),
+					static_cast<float>(FMath::Max(MaskLayer.TilingY, 1)));
+				MaskData.UVOffset = FVector2f(MaskLayer.UVOffsetX, MaskLayer.UVOffsetY);
+				MaskData.bFlipU = MaskLayer.bFlipU;
+				MaskData.bFlipV = MaskLayer.bFlipV;
+				MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
 				MaskData.Balance = FMath::Clamp(MaskLayer.Balance, 0.0f, 2.0f);
 				MaskData.Contrast = FMath::Clamp(MaskLayer.Contrast, 0.0f, 10.0f);
 				MaskData.Offset = FMath::Clamp(MaskLayer.Offset, -1.0f, 1.0f);
@@ -1237,23 +1257,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				// visually, but a typed value outside it stays intact all the way to the
 				// shader, which keeps its own epsilon guards at the division sites.
 				EffectData.ErosionAmount = LayerEffect.ErosionAmount;
-
-				// The two exceptions. Iterations is a GPU dispatch count and Period lays out
-				// the noise lattice, so an out-of-range value here costs frames or resolves to
-				// sub-pixel cells rather than producing an odd-looking surface. These clamps
-				// match their inspector ranges exactly, so unlike every other control here the
-				// scrub range is the real limit.
-				// The clamps that remain in this block guard invariants rather than taste: a
-				// dispatch count, a loop bound, a shift width. Everything a slider merely has
-				// an opinion about passes through, because a typed value above the slider's
-				// range is the user overriding that opinion on purpose.
-				EffectData.ErosionIterations = FMath::Clamp(LayerEffect.ErosionIterations, 1, 64);
+				EffectData.ErosionStrength = LayerEffect.ErosionStrength;
+				EffectData.ErosionOctaves = FMath::Clamp(LayerEffect.ErosionOctaves, 1, 12);
 				EffectData.ErosionPeriod = FMath::Clamp(LayerEffect.ErosionPeriod, 1, 1024);
-
-				EffectData.ErosionRepose = LayerEffect.ErosionRepose;
-				EffectData.ErosionReposeSoftness = LayerEffect.ErosionReposeSoftness;
+				EffectData.ErosionGain = LayerEffect.ErosionGain;
+				EffectData.ErosionDetail = LayerEffect.ErosionDetail;
+				EffectData.ErosionGullyWeight = LayerEffect.ErosionGullyWeight;
+				EffectData.ErosionNormalization = LayerEffect.ErosionNormalization;
+				EffectData.ErosionRidgeRounding = LayerEffect.ErosionRidgeRounding;
+				EffectData.ErosionCreaseRounding = LayerEffect.ErosionCreaseRounding;
+				EffectData.ErosionSlopeOnset = LayerEffect.ErosionSlopeOnset;
+				EffectData.ErosionFeatureOnset = LayerEffect.ErosionFeatureOnset;
+				EffectData.ErosionAssumedSlope = LayerEffect.ErosionAssumedSlope;
+				EffectData.ErosionAssumedSlopeAmount = LayerEffect.ErosionAssumedSlopeAmount;
 				EffectData.ErosionNormalStrength = LayerEffect.ErosionNormalStrength;
-				EffectData.ErosionSlopeRadius = LayerEffect.ErosionSlopeRadius;
+				EffectData.ErosionSlopeRadius = FMath::Clamp(LayerEffect.ErosionSlopeRadius, 1, 32);
 				EffectData.ErosionSlopeBlur = LayerEffect.ErosionSlopeBlur;
 				EffectData.ErosionCurvatureMode = static_cast<int32>(LayerEffect.ErosionCurvatureMode);
 				EffectData.ErosionCavityInfluence = LayerEffect.ErosionCavityInfluence;
@@ -1262,22 +1280,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ErosionCavityRemapMax = LayerEffect.ErosionCavityRemapMax;
 				EffectData.ErosionHeightInfluence = LayerEffect.ErosionHeightInfluence;
 				EffectData.ErosionHeightScale = LayerEffect.ErosionHeightScale;
-				EffectData.ErosionGullyWeight = LayerEffect.ErosionGullyWeight;
-				EffectData.ErosionBlendSoftness = LayerEffect.ErosionBlendSoftness;
-				EffectData.ErosionDirectionMode = static_cast<int32>(LayerEffect.ErosionDirectionMode);
-				EffectData.ErosionDirectionAngle = LayerEffect.ErosionDirectionAngle;
-				EffectData.ErosionDirectionAmount = LayerEffect.ErosionDirectionAmount;
-
-				// Both bound the work the flow field costs, so both clamp for the same reason
-				// Passes does: smoothing is a dispatch count.
-				//
-				// Smoothing floors at 1, not 0. The build stores unit vectors, so an
-				// unsmoothed field has length exactly 1 everywhere a gradient exists:
-				// coherency reads as total agreement over what is still pure per-pixel
-				// noise, and the blend hands the carve straight to it. One blur is the
-				// minimum that makes the length mean anything.
-				EffectData.ErosionFlowRadius = FMath::Clamp(LayerEffect.ErosionFlowRadius, 1, 64);
-				EffectData.ErosionFlowSmoothing = FMath::Clamp(LayerEffect.ErosionFlowSmoothing, 1, 16);
+				EffectData.bErosionInvertMask = LayerEffect.bErosionInvertMask;
 
 				EffectData.ErosionColor = LayerEffect.ErosionColor;
 				EffectData.ErosionColorAmount = LayerEffect.ErosionColorAmount;
@@ -1445,6 +1448,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.UVScaleX = FMath::Clamp(Layer.UVScaleX, 1, 16);
 		Data.UVScaleY = FMath::Clamp(Layer.UVScaleY, 1, 16);
 		Data.UVOffset = FVector2f(Layer.UVOffsetX, Layer.UVOffsetY);
+		Data.Rotation = static_cast<int32>(Layer.Rotation);
 		Data.bFlipU = Layer.bFlipU;
 		Data.bFlipV = Layer.bFlipV;
 		Data.NormalIntensity = Layer.NormalIntensity;
@@ -1953,6 +1957,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							MaskParameters->Invert = Mask.bInvert ? 1u : 0u;
 							MaskParameters->Weight = Mask.Weight;
 							MaskParameters->Tiling = Mask.Tiling;
+							MaskParameters->UVOffset = Mask.UVOffset;
+							MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
+							MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
+							MaskParameters->Rotation = Mask.Rotation;
 							MaskParameters->Balance = Mask.Balance;
 							MaskParameters->Contrast = Mask.Contrast;
 							MaskParameters->Offset = Mask.Offset;
@@ -2313,6 +2321,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
 					Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
 					Parameters->UVOffset = Layer.UVOffset;
+					Parameters->Rotation = Layer.Rotation;
 					Parameters->NormalIntensity = Layer.NormalIntensity;
 					Parameters->HueShift = Layer.HueShift;
 					Parameters->Saturation = Layer.Saturation;
@@ -2526,8 +2535,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							RP->PreviousHeight = InH;
 							RP->SourceHeight = InH;
 							RP->GuideHeight = InH;
+							RP->LayerMask = CombinedMask;
 							RP->PreviousNormal = InN;
-							RP->FlowField = FlowDummy;
 							RP->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 							RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
@@ -2559,179 +2568,113 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 						}
 
-						// Carving passes, then one normal pass. Eight is where the octave loop
-						// stopped adding shape on the surfaces this filter was first aimed at,
-						// which is the default rather than a limit.
-						// Flow direction. Built once, from the height before any carving, and
-						// held for every pass.
-						//
-						// Rebuilding it per pass from the carved height was the alternative and
-						// is worse on both counts. It costs the build and its smoothing eight
-						// times over, and it makes the field chase the channels this filter has
-						// just cut -- the same positive feedback the Valley curvature mode
-						// already risks, with nothing to brake it. What the field is for is the
-						// drainage structure the surface arrived with, which does not change as
-						// the carve deepens it.
-						FRDGTextureRef EroFlow = FlowDummy;
-						if (Ero.ErosionDirectionMode == 2)
+						// All octaves are evaluated together, so steering is analytical and no pass
+						// can feed a masked boundary or quantized intermediate back into the next band.
+						auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
 						{
-							EroFlow = AddFlowField(
-								SourceH, EroRes,
-								Ero.ErosionFlowRadius, Ero.ErosionFlowSmoothing,
-								TEXT("Erosion"));
-						}
-
-						const int32 Iterations = Ero.ErosionIterations;
-
-						// Cells across one UV repeat at the coarsest pass. Any integer tiles:
-						// the lattice wraps on it, and it doubles per octave, so all it has to
-						// be is whole.
-						const int32 ErosionPeriodCells = Ero.ErosionPeriod;
-						FRDGTextureRef Src = SourceH;
-						FRDGTextureRef Result = SourceH;
-						for (int32 PassIndex = 0; PassIndex <= Iterations; ++PassIndex)
-						{
-							const bool bNormalPass = PassIndex == Iterations;
-
-							// Guidance blur before each carving pass, so the flow follows surface
-							// shape rather than grain. Skipped entirely at zero.
-							if (!bNormalPass && Ero.ErosionSlopeBlur > 0.0f)
-							{
-								FMixtormatErosionCS::FParameters* BP =
-									GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-								BP->OutputSize = EroRes;
-								BP->Pass = PassIndex;
-								BP->NormalPass = 0;
-								BP->BlurPass = 1;
-								BP->ResamplePass = 0;
-								BP->BlurRadius = Ero.ErosionSlopeBlur;
-								BP->NormalStrength = Ero.ErosionNormalStrength;
-								BP->Amount = Ero.ErosionAmount;
-								BP->Strength = 1.0f;
-								BP->Period = ErosionPeriodCells;
-								BP->GullyLength = 1.5f;
-								BP->LicSteps = 5;
-								BP->Repose = Ero.ErosionRepose;
-								BP->ReposeSoftness = Ero.ErosionReposeSoftness;
-								BP->CurvatureMode = Ero.ErosionCurvatureMode;
-								BP->CavityInfluence = Ero.ErosionCavityInfluence;
-								BP->CavityOffset = Ero.ErosionCavityOffset;
-								BP->CavityRemapMin = Ero.ErosionCavityRemapMin;
-								BP->CavityRemapMax = Ero.ErosionCavityRemapMax;
-								BP->HeightInfluence = Ero.ErosionHeightInfluence;
-								BP->HeightScale = Ero.ErosionHeightScale;
-								BP->GullyWeight = Ero.ErosionGullyWeight;
-								BP->BlendSoftness = Ero.ErosionBlendSoftness;
-								BP->Gain = 0.5f;
-								BP->DerivScale = 0.6f;
-								BP->DerivMin = Ero.ErosionSlopeRadius;
-								BP->DirectionMode = Ero.ErosionDirectionMode;
-								BP->DirectionAngle = Ero.ErosionDirectionAngle;
-								BP->DirectionAmount = Ero.ErosionDirectionAmount;
-								BP->Seed = 1u;
-								BP->PreviousHeight = Src;
-								BP->SourceHeight = SourceH;
-								BP->GuideHeight = Src;
-								BP->PreviousNormal = EroSrcN;
-								BP->FlowField = EroFlow;
-								BP->PreviousRidge = ResampleRidgeDummy;
-								BP->LinearWrapSampler =
-									TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-								BP->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
-								BP->OutputNormal = GraphBuilder.CreateUAV(EroN);
-
-								// Separable: X into scratch, then Y out of it into the guide.
-								// A single 2D pass would be 33x33 taps at the slider maximum.
-								const FIntVector BlurGroups(
-									FMath::DivideAndRoundUp(EroRes.X, 8),
-									FMath::DivideAndRoundUp(EroRes.Y, 8),
-									1);
-
-								BP->BlurAxis = 0;
-								BP->PreviousHeight = Src;
-								BP->OutputHeight = GraphBuilder.CreateUAV(EroGuideX);
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurX%d", LayerIndex, PassIndex),
-									ErosionShader,
-									BP,
-									BlurGroups);
-
-								FMixtormatErosionCS::FParameters* BPY =
-									GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-								*BPY = *BP;
-								BPY->BlurAxis = 1;
-								BPY->PreviousHeight = EroGuideX;
-								BPY->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurY%d", LayerIndex, PassIndex),
-									ErosionShader,
-									BPY,
-									BlurGroups);
-							}
-
-							const int32 Slot = PassIndex & 1;
-							FMixtormatErosionCS::FParameters* EP =
-								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-							EP->OutputSize = EroRes;
-							EP->Pass = PassIndex;
-							EP->NormalPass = bNormalPass ? 1 : 0;
-							EP->BlurPass = 0;
-							EP->BlurAxis = 0;
-							EP->ResamplePass = 0;
-							EP->BlurRadius = Ero.ErosionSlopeBlur;
-							EP->NormalStrength = Ero.ErosionNormalStrength;
-							EP->Amount = Ero.ErosionAmount;
-							EP->Strength = 1.0f;
-							EP->Period = ErosionPeriodCells;
-							EP->GullyLength = 1.5f;
-							EP->LicSteps = 5;
-							EP->Repose = Ero.ErosionRepose;
-							EP->ReposeSoftness = Ero.ErosionReposeSoftness;
-							EP->CurvatureMode = Ero.ErosionCurvatureMode;
-							EP->CavityInfluence = Ero.ErosionCavityInfluence;
-							EP->CavityOffset = Ero.ErosionCavityOffset;
-							EP->CavityRemapMin = Ero.ErosionCavityRemapMin;
-							EP->CavityRemapMax = Ero.ErosionCavityRemapMax;
-							EP->HeightInfluence = Ero.ErosionHeightInfluence;
-							EP->HeightScale = Ero.ErosionHeightScale;
-							EP->GullyWeight = Ero.ErosionGullyWeight;
-							EP->BlendSoftness = Ero.ErosionBlendSoftness;
-							EP->Gain = 0.5f;
-							EP->DerivScale = 0.6f;
-							EP->DerivMin = Ero.ErosionSlopeRadius;
-							EP->DirectionMode = Ero.ErosionDirectionMode;
-							EP->DirectionAngle = Ero.ErosionDirectionAngle;
-							EP->DirectionAmount = Ero.ErosionDirectionAmount;
-							EP->Seed = 1u;
-							EP->PreviousHeight = Src;
-							EP->SourceHeight = SourceH;
-							EP->PreviousNormal = EroSrcN;
-							EP->GuideHeight = Ero.ErosionSlopeBlur > 0.0f ? EroGuide : Src;
-							EP->FlowField = EroFlow;
-							EP->PreviousRidge = ResampleRidgeDummy;
-							EP->LinearWrapSampler =
+							Parameters->OutputSize = EroRes;
+							Parameters->BlurRadius = Ero.ErosionSlopeBlur;
+							Parameters->NormalStrength = Ero.ErosionNormalStrength;
+							Parameters->Amount = Ero.ErosionAmount;
+							Parameters->Strength = Ero.ErosionStrength;
+							Parameters->Octaves = Ero.ErosionOctaves;
+							Parameters->Period = Ero.ErosionPeriod;
+							Parameters->Gain = Ero.ErosionGain;
+							Parameters->Detail = Ero.ErosionDetail;
+							Parameters->GullyWeight = Ero.ErosionGullyWeight;
+							Parameters->Normalization = Ero.ErosionNormalization;
+							Parameters->RidgeRounding = Ero.ErosionRidgeRounding;
+							Parameters->CreaseRounding = Ero.ErosionCreaseRounding;
+							Parameters->SlopeOnset = Ero.ErosionSlopeOnset;
+							Parameters->FeatureOnset = Ero.ErosionFeatureOnset;
+							Parameters->AssumedSlope = Ero.ErosionAssumedSlope;
+							Parameters->AssumedSlopeAmount = Ero.ErosionAssumedSlopeAmount;
+							Parameters->SlopeRadius = Ero.ErosionSlopeRadius;
+							Parameters->CurvatureMode = Ero.ErosionCurvatureMode;
+							Parameters->CavityInfluence = Ero.ErosionCavityInfluence;
+							Parameters->CavityOffset = Ero.ErosionCavityOffset;
+							Parameters->CavityRemapMin = Ero.ErosionCavityRemapMin;
+							Parameters->CavityRemapMax = Ero.ErosionCavityRemapMax;
+							Parameters->HeightInfluence = Ero.ErosionHeightInfluence;
+							Parameters->HeightScale = Ero.ErosionHeightScale;
+							Parameters->InvertMask = Ero.bErosionInvertMask ? 1u : 0u;
+							Parameters->Seed = 1u;
+							Parameters->SourceHeight = SourceH;
+							Parameters->PreviousNormal = EroSrcN;
+							Parameters->LayerMask = CombinedMask;
+							Parameters->PreviousRidge = ResampleRidgeDummy;
+							Parameters->LinearWrapSampler =
 								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							EP->OutputHeight = GraphBuilder.CreateUAV(EroH[Slot]);
-							EP->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
-							EP->OutputNormal = GraphBuilder.CreateUAV(EroN);
+							Parameters->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
+							Parameters->OutputNormal = GraphBuilder.CreateUAV(EroN);
+						};
 
+						const FIntVector ErosionGroups(
+							FMath::DivideAndRoundUp(EroRes.X, 8),
+							FMath::DivideAndRoundUp(EroRes.Y, 8),
+							1);
+
+						FRDGTextureRef Guidance = SourceH;
+						if (Ero.ErosionSlopeBlur > 0.0f)
+						{
+							FMixtormatErosionCS::FParameters* BlurX =
+								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+							SetErosionParameters(BlurX);
+							BlurX->BlurPass = 1;
+							BlurX->BlurAxis = 0;
+							BlurX->PreviousHeight = SourceH;
+							BlurX->GuideHeight = SourceH;
+							BlurX->OutputHeight = GraphBuilder.CreateUAV(EroGuideX);
 							FComputeShaderUtils::AddPass(
 								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.P%d", LayerIndex, PassIndex),
+								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurX", LayerIndex),
 								ErosionShader,
-								EP,
-								FIntVector(
-									FMath::DivideAndRoundUp(EroRes.X, 8),
-									FMath::DivideAndRoundUp(EroRes.Y, 8),
-									1));
-							if (!bNormalPass)
-							{
-								Src = EroH[Slot];
-								Result = EroH[Slot];
-							}
+								BlurX,
+								ErosionGroups);
+
+							FMixtormatErosionCS::FParameters* BlurY =
+								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+							*BlurY = *BlurX;
+							BlurY->BlurAxis = 1;
+							BlurY->PreviousHeight = EroGuideX;
+							BlurY->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurY", LayerIndex),
+								ErosionShader,
+								BlurY,
+								ErosionGroups);
+							Guidance = EroGuide;
 						}
+
+						FMixtormatErosionCS::FParameters* ErosionParameters =
+							GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+						SetErosionParameters(ErosionParameters);
+						ErosionParameters->PreviousHeight = SourceH;
+						ErosionParameters->GuideHeight = Guidance;
+						ErosionParameters->OutputHeight = GraphBuilder.CreateUAV(EroH[0]);
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Filter", LayerIndex),
+							ErosionShader,
+							ErosionParameters,
+							ErosionGroups);
+
+						FMixtormatErosionCS::FParameters* NormalParameters =
+							GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+						SetErosionParameters(NormalParameters);
+						NormalParameters->NormalPass = 1;
+						NormalParameters->PreviousHeight = EroH[0];
+						NormalParameters->GuideHeight = Guidance;
+						NormalParameters->OutputHeight = GraphBuilder.CreateUAV(EroH[1]);
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Normal", LayerIndex),
+							ErosionShader,
+							NormalParameters,
+							ErosionGroups);
+
+						FRDGTextureRef Result = EroH[1];
 
 						if (bResample)
 						{
