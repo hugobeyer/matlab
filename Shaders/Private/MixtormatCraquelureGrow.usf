@@ -16,7 +16,6 @@
 // pixel and runs N times against a ping-ponged state; Resolve turns the one-pixel skeleton
 // into a width and hands it to the same mask tail every other mask node uses.
 
-#define CRAQ_TAU 6.28318530717958648f
 
 int2 OutputSize;
 uint Seed;
@@ -144,12 +143,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 FieldUV = UV;
 	if (abs(Warp) > 0.0f)
 	{
-		const int WarpCells = max(WarpPeriod, 1);
-		const float2 WarpP = UV * (float)WarpCells;
-		const float2 Displacement = float2(
-			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed).x,
-			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed + 8191u).x);
-		FieldUV = UV + Displacement * Warp * (1.0f / (float)WarpCells);
+		FieldUV = MixtormatPeriodicCurlWarp(UV, WarpPeriod, WarpSeed, Warp);
 	}
 
 	const int Cells = max(SeedCells, 1);
@@ -170,18 +164,17 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float N0 = CraqFbm(FieldUV, NoiseCells, Seed + 151u);
 	const float N1 = CraqFbm(FieldUV, NoiseCells + 2, Seed + 313u);
-	const float NF = CraqFbm(FieldUV, max(NoiseCells / 2, 1), Seed + 719u);
 
 	// Stress drives cracking on, toughness holds it back. Both floored well above zero so the
 	// score stays finite where the variation would otherwise cancel the field entirely.
 	const float Stress    = max(0.001f, 1.0f + (N0 - 0.5f) * 2.0f * StressVariation);
 	const float Toughness = max(0.001f, 1.0f + (N1 - 0.5f) * 2.0f * ToughnessVariation);
 
-	// The direction cracks prefer to run. A smooth angle field rather than one value per pixel:
-	// cracks following a coherent direction read as a material under load, where a per-pixel
-	// direction would be noise the alignment term averages away.
-	const float Angle = NF * CRAQ_TAU;
-	const float2 Flow = float2(cos(Angle), sin(Angle));
+	// A divergence-free curl field gives the material a coherent grain without the circular
+	// angle wrapping and combed bands produced by mapping scalar noise directly to 0..2pi.
+	const float2 Flow = CraqNormalize(
+		MixtormatPeriodicCurlField(FieldUV, max(NoiseCells / 2, 1), Seed + 719u),
+		float2(1.0f, 0.0f));
 
 	OutputField[Pixel] = float4(Stress, Toughness, Flow);
 

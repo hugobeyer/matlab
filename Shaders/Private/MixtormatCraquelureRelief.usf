@@ -1,0 +1,65 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> SourceHeight;
+Texture2D<float4> PreviousNormal;
+Texture2D<float> CrackMask;
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+float Depth;
+float NormalStrength;
+
+int CraqReliefWrap(int X, int Size)
+{
+	X = X % max(Size, 1);
+	return X < 0 ? X + Size : X;
+}
+
+float CraqReliefMask(int X, int Y)
+{
+	return CrackMask.Load(int3(
+		CraqReliefWrap(X, OutputSize.x),
+		CraqReliefWrap(Y, OutputSize.y),
+		0));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const int Xm = P.x - 1;
+	const int Xp = P.x + 1;
+	const int Ym = P.y - 1;
+	const int Yp = P.y + 1;
+
+	const float Cmm = CraqReliefMask(Xm, Ym);
+	const float C0m = CraqReliefMask(P.x, Ym);
+	const float Cpm = CraqReliefMask(Xp, Ym);
+	const float Cm0 = CraqReliefMask(Xm, P.y);
+	const float Cp0 = CraqReliefMask(Xp, P.y);
+	const float Cmp = CraqReliefMask(Xm, Yp);
+	const float C0p = CraqReliefMask(P.x, Yp);
+	const float Cpp = CraqReliefMask(Xp, Yp);
+	const float Crack = saturate(CraqReliefMask(P.x, P.y));
+
+	const float SafeDepth = max(Depth, 0.0f);
+	OutputHeight[P] = saturate(SourceHeight.Load(int3(P, 0)) - Crack * SafeDepth);
+
+	const float2 Gradient = float2(
+		(Cpm + 2.0f * Cp0 + Cpp) - (Cmm + 2.0f * Cm0 + Cmp),
+		(Cmp + 2.0f * C0p + Cpp) - (Cmm + 2.0f * Cm0 + Cpm))
+		* (SafeDepth * NormalStrength / 8.0f);
+	const float3 CrackNormal = normalize(float3(Gradient, 1.0f));
+	const float4 EncodedBase = PreviousNormal.Load(int3(P, 0));
+	const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);
+	const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+	const float3 U = CrackNormal * float3(-1.0f, -1.0f, 1.0f);
+	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
+}

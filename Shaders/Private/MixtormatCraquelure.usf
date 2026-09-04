@@ -54,28 +54,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int Cells = max(Period, 1);
 	float2 SampleUV = UV;
 
-	// Domain warp on the lattice itself, so cracks wander instead of following a visibly
-	// regular network.
-	//
-	// Periodic gradient noise, not a second cellular field. The cellular result carries a
-	// displacement already -- the offset from the pixel to its feature point -- but that
-	// quantity jumps wherever the nearest feature point changes, so warping with it would tear
-	// the crack network along every Voronoi boundary. Gradient noise is continuous, and this
-	// one wraps on its own period, so the result still tiles.
+	// Curl warp follows coherent, divergence-free arcs. The old two-noise X/Y displacement
+	// compressed cells into diagonal smears and changed character whenever Scale moved.
 	if (abs(Warp) > 0.0f)
 	{
-		const int WarpCells = max(WarpPeriod, 1);
-		const float2 WarpP = UV * (float)WarpCells;
-
-		// Two decorrelated lookups for the two axes. The seeds are far apart so the field is
-		// not visibly diagonal.
-		const float2 Displacement = float2(
-			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed).x,
-			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed + 8191u).x);
-
-		// Divided by the warp cell count so the displacement is in UV rather than in warp
-		// cells, which keeps Amount meaning the same thing as Scale changes.
-		SampleUV = UV + Displacement * Warp * (1.0f / (float)WarpCells);
+		SampleUV = MixtormatPeriodicCurlWarp(UV, WarpPeriod, WarpSeed, Warp);
 	}
 
 	// Scale and period are the same number here, unlike MixtormatGullyField where the period is

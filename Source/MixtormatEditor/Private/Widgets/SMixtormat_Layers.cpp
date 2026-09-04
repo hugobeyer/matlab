@@ -1505,10 +1505,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		MixtormatIcons::Effect(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
 	Menu.Item(
-		LOCTEXT("AddCraquelureChild", "Craquelure"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCraquelureToLayer(LayerIndex); }));
-	Menu.Item(
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGeneratedMaskToLayer(LayerIndex); }));
@@ -1620,6 +1616,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 	{
 		Menu.Separator();
 	}
+	Menu.Item(
+		LOCTEXT("AddCraquelureChild", "Craquelure"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCraquelureToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddErosionEffect", "Erosion"),
 		MixtormatIcons::Effect(),

@@ -11,6 +11,7 @@ Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
 Texture2D<float> GuideHeight;
 Texture2D<float> LayerMask;
+Texture2D<float4> PlacementMaskTexture;
 Texture2D<float> PreviousRidge;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputHeight;
@@ -47,6 +48,8 @@ float CavityRemapMin;
 float CavityRemapMax;
 float HeightInfluence;
 float HeightScale;
+uint UsePlacementMask;
+float PlacementMaskTiling;
 uint InvertMask;
 uint Seed;
 
@@ -243,7 +246,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		-1.0f, 1.0f, (Height - 0.5f) * HeightScale * 2.0f);
 	const float HeightGate = saturate(lerp(1.0f, HeightWeight, HeightInfluence));
 
-	float PlacementMask = LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float PlacementMask = UsePlacementMask != 0
+		? PlacementMaskTexture.SampleLevel(
+			LinearWrapSampler, frac(UV * max(PlacementMaskTiling, 1.0f)), 0.0f).r
+		: LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	PlacementMask = InvertMask != 0 ? 1.0f - PlacementMask : PlacementMask;
 	const float Placement = saturate(Amount) * saturate(PlacementMask) * CavityGate * HeightGate;
 

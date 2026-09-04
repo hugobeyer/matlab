@@ -590,9 +590,18 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionHeightScale = 1.0f;
 
-	// Erosion consumes the same authored/generated mask stack as the owning layer. Inversion
-	// permits weathering outside the painted region without introducing a separate mask system.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	// Optional placement mask owned by Erosion. When unset, the filter keeps using the layer's
+	// accumulated authored, generated, and craquelure mask children.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
+	TSoftObjectPtr<UMixtormatMask> ErosionMask;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
+	TSoftObjectPtr<UTexture2D> ErosionMaskTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement", meta = (ClampMin = "1"))
+	int32 ErosionMaskTiling = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
 	bool bErosionInvertMask = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
@@ -662,7 +671,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// The height that separates raised material from recess. Everything the filter does is a
 	// difference of the mask this produces.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipGroutLevel = 0.15f;
+	float ChipGroutLevel = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
 	float ChipGroutSoftness = 0.08f;
@@ -734,7 +743,14 @@ enum class EMixtormatCraquelureMode : uint8
 	Propagated UMETA(DisplayName = "Propagated")
 };
 
-// Craquelure. A crack network blended into the layer mask.
+UENUM(BlueprintType)
+enum class EMixtormatCraquelureOutputMode : uint8
+{
+	Mask UMETA(DisplayName = "Mask"),
+	HeightNormal UMETA(DisplayName = "Height + Normal")
+};
+
+// Craquelure. A generated crack network used as a mask or carved into height and normals.
 //
 // Its own node rather than a signal on the generated mask. Everything that node produces is
 // derived from the surface beneath it and it early-returns when there is none; craquelure is
@@ -751,7 +767,10 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	bool bEnabled = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
-	EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Lattice;
+	EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
+	EMixtormatCraquelureOutputMode OutputMode = EMixtormatCraquelureOutputMode::Mask;
 
 	// Cells across one UV repeat. Any integer tiles, because the lattice wraps on it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "1"))
@@ -796,12 +815,12 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// How far a crack can reach, in pixels at a 1024 reference. Scaled by the render resolution
 	// so a preview and an export grow the same network rather than the same pixel count; the
 	// dispatch count scales with it, so this is the control that costs.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "128"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "512"))
 	int32 Iterations = 48;
 
 	// Nuclei are placed one per cell of this lattice, jittered inside it and admitted by
 	// chance. Fewer, longer cracks come from a coarse lattice; crazing from a fine one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "128"))
 	int32 SeedCells = 4;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -828,7 +847,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 
 	// How strongly a tip keeps its heading. This is what makes a crack a line rather than a
 	// blob: drop it and the front spreads in every direction at once.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1024.0"))
 	float Persistence = 1.65f;
 
 	// How much the flow field bends a running crack. At 1 cracks follow the field and come out
@@ -836,13 +855,13 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FlowStrength = 0.18f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "32.0"))
 	float StressGain = 0.75f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
 	float ToughnessCost = 0.95f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "32.0"))
 	float Irregularity = 0.32f;
 
 	// The score a step has to beat to happen at all. Raising it starves growth, which is the
@@ -861,7 +880,15 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 CollisionLimit = 2;
 
-	// The same tail every mask-producing node has.
+	// Height + Normal output carves the generated signal after the layer is composited.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0"))
+	float ReliefDepth = 0.04f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0"))
+	float ReliefNormalStrength = 8.0f;
+
+	// The same shaping tail every mask-producing node has. In relief mode Weight shapes how much
+	// of the generated crack signal reaches both height and normal.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
 

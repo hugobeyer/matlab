@@ -357,7 +357,7 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 	// The brick/grout split, and the reason chipping needs no cell lattice: raised material is
 	// wherever the composited height clears this threshold.
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipGroutLevel", "Grout Level"), &FMixtormatLayerEffect::ChipGroutLevel, 0.0, 1.0, 0.15, 0.005,
+		Slider(LOCTEXT("ChipGroutLevel", "Grout Level"), &FMixtormatLayerEffect::ChipGroutLevel, 0.0, 1.0, 0.5, 0.005,
 			LOCTEXT("ChipGroutLevelHint", "The height that separates raised material from recess. Chips only live above it, so this is what tells the filter where the bricks, planks or tiles are -- it reads the height you actually composited rather than a lattice of its own.")),
 		Slider(LOCTEXT("ChipGroutSoft", "Softness"), &FMixtormatLayerEffect::ChipGroutSoftness, 0.001, 0.5, 0.08, 0.001,
 			LOCTEXT("ChipGroutSoftHint", "Width of the transition around Grout Level. Wider softens where a chip is allowed to start and lets it fade out near a recess rather than stopping on a hard line."))));
@@ -503,6 +503,39 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildCraquelureOutputModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatCraquelureOutputMode Modes[] = {
+		EMixtormatCraquelureOutputMode::Mask,
+		EMixtormatCraquelureOutputMode::HeightNormal
+	};
+	for (const EMixtormatCraquelureOutputMode Mode : Modes)
+	{
+		const FText Label = Mode == EMixtormatCraquelureOutputMode::HeightNormal
+			? LOCTEXT("CraqOutputHeightNormal", "Height + Normal")
+			: LOCTEXT("CraqOutputMask", "Mask");
+		Menu.Item(
+			Label,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatCraquelure* C = GetSelectedCraquelure())
+				{
+					C->OutputMode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatCraquelure* C = GetSelectedCraquelure();
+				return C && C->OutputMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 {
 	const auto Craq = [this]() { return GetSelectedCraquelure(); };
@@ -533,6 +566,12 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		return C && C->Mode == EMixtormatCraquelureMode::Propagated
 			? EVisibility::Visible : EVisibility::Collapsed;
 	});
+	const auto ReliefOnly = TAttribute<EVisibility>::CreateLambda([this]()
+	{
+		const FMixtormatCraquelure* C = GetSelectedCraquelure();
+		return C && C->OutputMode == EMixtormatCraquelureOutputMode::HeightNormal
+			? EVisibility::Visible : EVisibility::Collapsed;
+	});
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
@@ -548,7 +587,19 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 					: LOCTEXT("CraqModeLattice", "Lattice");
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureModeMenu)),
-		LOCTEXT("CraqModeHint", "Lattice measures distance to a Voronoi cell wall: junctions meet three ways at about 120 degrees, and Jitter 0 gives a regular grid, which is grout. Propagated grows cracks from nuclei and stops them where they meet, which puts junctions at right angles -- what a drying film actually does, and what a bisector diagram cannot produce.")));
+		LOCTEXT("CraqModeHint", "Lattice measures distance to a Voronoi cell wall. Propagated grows cracks through stress, toughness, and curl-flow fields.")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("CraqOutput", "Output"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatCraquelure* C = GetSelectedCraquelure();
+				return C && C->OutputMode == EMixtormatCraquelureOutputMode::HeightNormal
+					? LOCTEXT("CraqOutputHeightNormal", "Height + Normal")
+					: LOCTEXT("CraqOutputMask", "Mask");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureOutputModeMenu)),
+		LOCTEXT("CraqOutputHint", "Mask combines the cracks with the layer mask. Height + Normal carves the composited surface without masking its color.")));
 
 	TSharedRef<SVerticalBox> LatticeGroup = SNew(SVerticalBox);
 	LatticeGroup->SetVisibility(LatticeOnly);
@@ -568,7 +619,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpSeed", "Nucleation")));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatCraquelure>(
-			LOCTEXT("CraqSeedCells", "Seed Cells"), Craq, &FMixtormatCraquelure::SeedCells, 1.0, 32.0, 4,
+			LOCTEXT("CraqSeedCells", "Seed Cells"), Craq, &FMixtormatCraquelure::SeedCells, 1.0, 128.0, 4,
 			LOCTEXT("CraqSeedCellsHint", "Nuclei are placed one per cell of this lattice. Fewer, longer cracks come from a coarse lattice; crazing from a fine one.")),
 		Slider(LOCTEXT("CraqSeedChance", "Density"), &FMixtormatCraquelure::SeedChance, 0.0, 1.0, 0.35, 0.01,
 			LOCTEXT("CraqSeedChanceHint", "Fraction of cells that actually get a nucleus. This is how many separate cracks there are, as opposed to how long they run."))));
@@ -576,7 +627,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		Slider(LOCTEXT("CraqSeedJitter", "Seed Jitter"), &FMixtormatCraquelure::SeedJitter, 0.0, 1.0, 0.85, 0.01,
 			LOCTEXT("CraqSeedJitterHint", "0 puts every nucleus at its cell centre, which the grown network still shows as a grid. 1 hides the seeding lattice entirely.")),
 		MakeMemberSliderInt<FMixtormatCraquelure>(
-			LOCTEXT("CraqIterations", "Reach"), Craq, &FMixtormatCraquelure::Iterations, 1.0, 128.0, 48,
+			LOCTEXT("CraqIterations", "Reach"), Craq, &FMixtormatCraquelure::Iterations, 1.0, 512.0, 48,
 			LOCTEXT("CraqIterationsHint", "How far a crack can travel, in pixels at a 1024 reference and scaled by the render resolution so a preview and an export grow the same network. One dispatch per step, so this is the control that costs."))));
 
 	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpField", "Material")));
@@ -594,17 +645,17 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpGrowth", "Growth")));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
-		Slider(LOCTEXT("CraqPersistence", "Persistence"), &FMixtormatCraquelure::Persistence, 0.0, 4.0, 1.65, 0.01,
+		Slider(LOCTEXT("CraqPersistence", "Persistence"), &FMixtormatCraquelure::Persistence, 0.0, 1024.0, 1.65, 0.1,
 			LOCTEXT("CraqPersistenceHint", "How strongly a tip keeps its heading. This is what makes a crack a line rather than a blob: drop it and the front spreads in every direction at once.")),
 		Slider(LOCTEXT("CraqThreshold", "Threshold"), &FMixtormatCraquelure::GrowthThreshold, -1.0, 3.0, 0.55, 0.01,
 			LOCTEXT("CraqThresholdHint", "The score a step has to beat to happen at all. Raising it starves growth, which is what decides how much of the surface ends up cracked."))));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
-		Slider(LOCTEXT("CraqIrregularity", "Irregularity"), &FMixtormatCraquelure::Irregularity, 0.0, 2.0, 0.32, 0.01,
+		Slider(LOCTEXT("CraqIrregularity", "Irregularity"), &FMixtormatCraquelure::Irregularity, 0.0, 32.0, 0.32, 0.01,
 			LOCTEXT("CraqIrregularityHint", "Per-step randomness in the scoring. Low values give clean arcs, high values give a wandering, brittle line.")),
 		Slider(LOCTEXT("CraqTurnResponse", "Turn"), &FMixtormatCraquelure::TurnResponse, 0.0, 1.0, 0.72, 0.01,
 			LOCTEXT("CraqTurnResponseHint", "How fast a tip turns toward the step it just took. Low values curve; high values snap to the eight-way lattice and show the staircase."))));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
-		Slider(LOCTEXT("CraqStressGain", "Stress Gain"), &FMixtormatCraquelure::StressGain, 0.0, 4.0, 0.75, 0.01,
+		Slider(LOCTEXT("CraqStressGain", "Stress Gain"), &FMixtormatCraquelure::StressGain, 0.0, 32.0, 0.75, 0.01,
 			LOCTEXT("CraqStressGainHint", "How much the stress field is worth against persistence when a step is scored.")),
 		Slider(LOCTEXT("CraqToughCost", "Tough Cost"), &FMixtormatCraquelure::ToughnessCost, 0.0, 4.0, 0.95, 0.01,
 			LOCTEXT("CraqToughCostHint", "How much toughness counts against a step. Raise it past Stress Gain and cracks will detour a long way to avoid hard material."))));
@@ -613,6 +664,16 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		LOCTEXT("CraqCollisionHint", "Cracked neighbours a pixel may already have and still be grown into. This is the T-junction: at 2 a crack reaching an older one stops, because the older crack has already released the stress driving it. Raise it and cracks cross instead, which reads as scratches rather than fracture.")));
 
 	Panel->AddSlot().AutoHeight()[GrowGroup];
+
+	TSharedRef<SVerticalBox> ReliefGroup = SNew(SVerticalBox);
+	ReliefGroup->SetVisibility(ReliefOnly);
+	AddSliderRow(ReliefGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpRelief", "Relief")));
+	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqReliefDepth", "Depth"), &FMixtormatCraquelure::ReliefDepth, 0.0, 0.5, 0.04, 0.001,
+			LOCTEXT("CraqReliefDepthHint", "Depth removed from the composited height along the crack signal.")),
+		Slider(LOCTEXT("CraqReliefNormal", "Normal"), &FMixtormatCraquelure::ReliefNormalStrength, 0.0, 64.0, 8.0, 0.05,
+			LOCTEXT("CraqReliefNormalHint", "Normal strength derived from the carved crack edges."))));
+	Panel->AddSlot().AutoHeight()[ReliefGroup];
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqWidth", "Width"), &FMixtormatCraquelure::Width, 0.002, 0.5, 0.04, 0.001,
@@ -860,9 +921,105 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroHeightScaleHint", "Shapes the fade target: low material becomes a crease and high material becomes a ridge."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpMask", "Placement Mask")));
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatLayerEffect>(
-		LOCTEXT("EroInvertMask", "Invert Layer Mask"), Ero, &FMixtormatLayerEffect::bErosionInvertMask,
-		LOCTEXT("EroInvertMaskHint", "Uses the same authored, generated, and craquelure mask children as the layer, inverted for erosion only.")));
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+	[
+		SNew(SBox).HeightOverride(18.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[SNew(STextBlock).Text(LOCTEXT("EroMaskSlot", "Mask"))]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SComboButton)
+				.ToolTipText(LOCTEXT("EroMaskSlotHint", "Mask used to place erosion. Unset uses the layer's accumulated mask children."))
+				.ButtonContent()
+				[
+					SNew(SBox).MinDesiredWidth(120.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							const FMixtormatLayerEffect* E = GetSelectedErosion();
+							if (!E)
+							{
+								return LOCTEXT("EroMaskNone", "Child Mask");
+							}
+							if (!E->ErosionMask.IsNull())
+							{
+								return FText::FromString(E->ErosionMask.ToSoftObjectPath().GetAssetName());
+							}
+							if (!E->ErosionMaskTexture.IsNull())
+							{
+								return FText::FromString(E->ErosionMaskTexture.ToSoftObjectPath().GetAssetName());
+							}
+							return LOCTEXT("EroMaskNone", "Child Mask");
+						})
+					]
+				]
+				.OnGetMenuContent_Lambda([this]()
+				{
+					return SNew(SBox)
+						.WidthOverride(MixtormatTokens::MaskPickerWidth)
+						.Padding(MixtormatTokens::TileGap)
+						[
+							SNew(SVerticalBox)
+							+ SVerticalBox::Slot().AutoHeight().MaxHeight(420.0f)
+							[
+								SNew(SScrollBox) + SScrollBox::Slot()
+								[
+									BuildMaskGallery([this](const FSoftObjectPath& Path)
+									{
+										FMixtormatLayerEffect* E = GetSelectedErosion();
+										if (!E)
+										{
+											return;
+										}
+										UObject* MaskObject = Path.TryLoad();
+										if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
+										{
+											E->ErosionMask = TSoftObjectPtr<UMixtormatMask>(Path);
+											E->ErosionMaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
+										}
+										else if (Cast<UTexture2D>(MaskObject))
+										{
+											E->ErosionMask.Reset();
+											E->ErosionMaskTexture = TSoftObjectPtr<UTexture2D>(Path);
+										}
+										else
+										{
+											return;
+										}
+										RefreshLayeredPreview();
+									})
+								]
+							]
+							+ SVerticalBox::Slot().AutoHeight()
+							.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
+							[
+								SNew(SButton)
+								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+								.Text(LOCTEXT("EroMaskClear", "Use the layer's child mask"))
+								.OnClicked_Lambda([this]()
+								{
+									if (FMixtormatLayerEffect* E = GetSelectedErosion())
+									{
+										E->ErosionMask.Reset();
+										E->ErosionMaskTexture.Reset();
+										RefreshLayeredPreview();
+									}
+									return FReply::Handled();
+								})
+							]
+						];
+				})
+			]
+		]
+	];
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSliderInt(LOCTEXT("EroMaskTiling", "Tiling"), &FMixtormatLayerEffect::ErosionMaskTiling, 1.0, 16.0, 1),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("EroInvertMask", "Invert"), Ero, &FMixtormatLayerEffect::bErosionInvertMask,
+			LOCTEXT("EroInvertMaskHint", "Inverts the selected placement mask, or the layer child mask when no mask is selected."))));
 
 	// What the carve exposes. Applied over the base colour and roughness the layer already
 	// composited, in proportion to how deeply each pixel was cut.
@@ -1983,7 +2140,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SScrollBox)
-					.Visibility_Lambda([this]() { return GetSelectedLayerEffect() ? EVisibility::Visible : EVisibility::Collapsed; })
+					.Visibility_Lambda([this]()
+					{
+						return GetSelectedLayerEffect() || GetSelectedCraquelure()
+							? EVisibility::Visible : EVisibility::Collapsed;
+					})
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildErosionControls()]
@@ -1998,7 +2159,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					// within one is handed unbounded height and never scrolls -- the layer
 					// inspector simply ran off the bottom of the panel.
 					SNew(SScrollBox)
-					.Visibility_Lambda([this]() { return GetSelectedLayerEffect() ? EVisibility::Collapsed : EVisibility::Visible; })
+					.Visibility_Lambda([this]()
+					{
+						return GetSelectedLayerEffect() || GetSelectedCraquelure()
+							? EVisibility::Collapsed : EVisibility::Visible;
+					})
 					+ SScrollBox::Slot()
 					[
 						// No wrapping LAYER group. Selecting a layer shows its sections --

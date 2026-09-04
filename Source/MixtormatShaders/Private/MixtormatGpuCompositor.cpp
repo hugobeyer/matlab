@@ -383,6 +383,35 @@ IMPLEMENT_GLOBAL_SHADER(
 	"ResolveCS",
 	SF_Compute);
 
+class FMixtormatCraquelureReliefCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureReliefCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureReliefCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCraquelureReliefCS,
+	"/Plugin/MaterialLab/Private/MixtormatCraquelureRelief.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMixtormatErosionCS final : public FGlobalShader
 {
 public:
@@ -420,6 +449,8 @@ public:
 		SHADER_PARAMETER(float, CavityRemapMax)
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(uint32, UsePlacementMask)
+		SHADER_PARAMETER(float, PlacementMaskTiling)
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
@@ -427,6 +458,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PlacementMaskTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousRidge)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
@@ -864,6 +896,8 @@ namespace MixtormatGpuCompositor
 		float ErosionCavityRemapMax = 1.0f;
 		float ErosionHeightInfluence = 0.0f;
 		float ErosionHeightScale = 1.0f;
+		FTextureRHIRef ErosionPlacementMask;
+		float ErosionMaskTiling = 1.0f;
 		bool bErosionInvertMask = false;
 		FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
 		float ErosionColorAmount = 0.0f;
@@ -879,7 +913,7 @@ namespace MixtormatGpuCompositor
 		float GradeGamma = 1.0f;
 
 		float ChipAmount = 0.45f;
-		float ChipGroutLevel = 0.15f;
+		float ChipGroutLevel = 0.5f;
 		float ChipGroutSoftness = 0.08f;
 		float ChipSize = 0.6f;
 		float ChipDepth = 0.035f;
@@ -927,7 +961,10 @@ namespace MixtormatGpuCompositor
 	struct FCraquelureRenderData
 	{
 		bool bEnabled = true;
-		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Lattice;
+		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
+		EMixtormatCraquelureOutputMode OutputMode = EMixtormatCraquelureOutputMode::Mask;
+		float ReliefDepth = 0.04f;
+		float ReliefNormalStrength = 8.0f;
 		int32 Period = 16;
 		float Jitter = 1.0f;
 		float Width = 0.04f;
@@ -1344,7 +1381,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				CrackData.Offset = Craquelure.Offset;
 
 				CrackData.Mode = Craquelure.Mode;
-				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 128);
+				CrackData.OutputMode = Craquelure.OutputMode;
+				CrackData.ReliefDepth = FMath::Max(Craquelure.ReliefDepth, 0.0f);
+				CrackData.ReliefNormalStrength = FMath::Max(Craquelure.ReliefNormalStrength, 0.0f);
+				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 512);
 				CrackData.SeedCells = FMath::Max(Craquelure.SeedCells, 1);
 				CrackData.SeedChance = FMath::Clamp(Craquelure.SeedChance, 0.0f, 1.0f);
 				CrackData.SeedJitter = FMath::Clamp(Craquelure.SeedJitter, 0.0f, 1.0f);
@@ -1359,7 +1399,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				CrackData.GrowthThreshold = Craquelure.GrowthThreshold;
 				CrackData.TurnResponse = FMath::Clamp(Craquelure.TurnResponse, 0.0f, 1.0f);
 				CrackData.CollisionLimit = FMath::Clamp(Craquelure.CollisionLimit, 1, 8);
-				Data.bHasMask = true;
+				if (Craquelure.OutputMode == EMixtormatCraquelureOutputMode::Mask)
+				{
+					Data.bHasMask = true;
+				}
 				continue;
 			}
 
@@ -1430,7 +1473,22 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ErosionCavityRemapMax = LayerEffect.ErosionCavityRemapMax;
 				EffectData.ErosionHeightInfluence = LayerEffect.ErosionHeightInfluence;
 				EffectData.ErosionHeightScale = LayerEffect.ErosionHeightScale;
+				EffectData.ErosionMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.ErosionMaskTiling));
 				EffectData.bErosionInvertMask = LayerEffect.bErosionInvertMask;
+				{
+					UTexture2D* PlacementMask = LayerEffect.ErosionMaskTexture.LoadSynchronous();
+					if (!PlacementMask)
+					{
+						if (const UMixtormatMask* MaskAsset = LayerEffect.ErosionMask.LoadSynchronous())
+						{
+							PlacementMask = MaskAsset->MaskTexture.Get();
+						}
+					}
+					if (PlacementMask)
+					{
+						EffectData.ErosionPlacementMask = GetTextureRHI(PlacementMask);
+					}
+				}
 
 				EffectData.ErosionColor = LayerEffect.ErosionColor;
 				EffectData.ErosionColorAmount = LayerEffect.ErosionColorAmount;
@@ -1821,6 +1879,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCraquelureReliefCS> CraquelureReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -2754,6 +2813,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					if (PendingErosion)
 					{
 						const FEffectRenderData& Ero = *PendingErosion;
+						FRDGTextureRef ErosionPlacementMask = Ero.ErosionPlacementMask.IsValid()
+							? RegisterTexture(
+								GraphBuilder,
+								RegisteredTextures,
+								Ero.ErosionPlacementMask,
+								TEXT("Mixtormat.ErosionPlacementMask"))
+							: PeelFieldDummy;
 
 						// Erosion runs at twice the composition resolution, capped at 4096,
 						// then resamples back. Carving is high-frequency work: at composition
@@ -2858,6 +2924,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FMixtormatErosionCS::FParameters* RP =
 								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 							RP->OutputSize = DestRes;
+							RP->NormalPass = 0;
+							RP->BlurPass = 0;
+							RP->BlurAxis = 0;
 							RP->ResamplePass = 1;
 							RP->ResampleRidge = bCarryRidge ? 1 : 0;
 							RP->PreviousRidge = InRidge;
@@ -2865,6 +2934,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							RP->SourceHeight = InH;
 							RP->GuideHeight = InH;
 							RP->LayerMask = CombinedMask;
+							RP->UsePlacementMask = Ero.ErosionPlacementMask.IsValid() ? 1u : 0u;
+							RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
+							RP->PlacementMaskTexture = ErosionPlacementMask;
 							RP->PreviousNormal = InN;
 							RP->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -2902,6 +2974,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
 						{
 							Parameters->OutputSize = EroRes;
+							Parameters->NormalPass = 0;
+							Parameters->BlurPass = 0;
+							Parameters->BlurAxis = 0;
+							Parameters->ResamplePass = 0;
+							Parameters->ResampleRidge = 0;
 							Parameters->BlurRadius = Ero.ErosionSlopeBlur;
 							Parameters->NormalStrength = Ero.ErosionNormalStrength;
 							Parameters->Amount = Ero.ErosionAmount;
@@ -2926,11 +3003,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							Parameters->CavityRemapMax = Ero.ErosionCavityRemapMax;
 							Parameters->HeightInfluence = Ero.ErosionHeightInfluence;
 							Parameters->HeightScale = Ero.ErosionHeightScale;
+							Parameters->UsePlacementMask = Ero.ErosionPlacementMask.IsValid() ? 1u : 0u;
+							Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
 							Parameters->InvertMask = Ero.bErosionInvertMask ? 1u : 0u;
 							Parameters->Seed = 1u;
 							Parameters->SourceHeight = SourceH;
 							Parameters->PreviousNormal = EroSrcN;
 							Parameters->LayerMask = CombinedMask;
+							Parameters->PlacementMaskTexture = ErosionPlacementMask;
 							Parameters->PreviousRidge = ResampleRidgeDummy;
 							Parameters->LinearWrapSampler =
 								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();

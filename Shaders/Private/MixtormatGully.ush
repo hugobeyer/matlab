@@ -66,6 +66,23 @@ float3 MixtormatPeriodicNoiseD(float2 p, int Period, uint Seed)
 	return float3(value, d.x, d.y);
 }
 
+// Smooth, tileable curl field built from analytic noise derivatives. Unlike using two unrelated
+// noise values as X/Y offsets, this produces coherent arcs without diagonal drift or compression.
+float2 MixtormatPeriodicCurlField(float2 UV, int Period, uint Seed)
+{
+	const int P = max(Period, 1);
+	const float3 Coarse = MixtormatPeriodicNoiseD(UV * (float)P, P, Seed);
+	const float3 Fine = MixtormatPeriodicNoiseD(UV * (float)(P * 2), P * 2, Seed + 4051u);
+	float2 Curl = float2(Coarse.z, -Coarse.y) + float2(Fine.z, -Fine.y) * 0.35f;
+	return Curl / max(1.0f, length(Curl));
+}
+
+float2 MixtormatPeriodicCurlWarp(float2 UV, int Period, uint Seed, float Amount)
+{
+	const int P = max(Period, 1);
+	return UV + MixtormatPeriodicCurlField(UV, P, Seed) * Amount * (0.5f / (float)P);
+}
+
 // Two repeatable random values for a lattice point. The point is wrapped before hashing,
 // while its unwrapped position is retained by the caller for continuous seam-relative math.
 float2 MixtormatCellOffset(int2 Cell, int Period, uint Seed)
