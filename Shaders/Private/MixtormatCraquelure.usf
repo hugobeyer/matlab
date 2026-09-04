@@ -1,0 +1,105 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+
+// Craquelure. A crack network on a cellular lattice, blended into the layer mask.
+//
+// Its own node rather than a signal on the generated mask. Everything that node produces is
+// derived from the surface accumulated beneath it, and it early-returns when there is none;
+// craquelure is generated from a lattice and means something on the bottom layer where the
+// others have nothing to read. Living there forced that early return to be picked apart into a
+// per-signal guard, which made the node's contract conditional on which weights happened to be
+// non-zero. Pulling it out restores the plain test and gives cracks their own controls.
+//
+// A mask rather than a filter, so it can drive anything downstream -- chipping placement, a
+// stain, a peel -- rather than only cutting the surface itself.
+
+Texture2D<float> PreviousMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+uint Initialize;
+
+int Period;
+float Jitter;
+float Width;
+float Variation;
+uint Seed;
+
+float Warp;
+int WarpPeriod;
+uint WarpSeed;
+
+uint BlendMode;
+uint Invert;
+float Weight;
+float Balance;
+float Contrast;
+float Offset;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	const int Cells = max(Period, 1);
+	float2 SampleUV = UV;
+
+	// Domain warp on the lattice itself, so cracks wander instead of following a visibly
+	// regular network.
+	//
+	// Periodic gradient noise, not a second cellular field. The cellular result carries a
+	// displacement already -- the offset from the pixel to its feature point -- but that
+	// quantity jumps wherever the nearest feature point changes, so warping with it would tear
+	// the crack network along every Voronoi boundary. Gradient noise is continuous, and this
+	// one wraps on its own period, so the result still tiles.
+	if (abs(Warp) > 0.0f)
+	{
+		const int WarpCells = max(WarpPeriod, 1);
+		const float2 WarpP = UV * (float)WarpCells;
+
+		// Two decorrelated lookups for the two axes. The seeds are far apart so the field is
+		// not visibly diagonal.
+		const float2 Displacement = float2(
+			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed).x,
+			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed + 8191u).x);
+
+		// Divided by the warp cell count so the displacement is in UV rather than in warp
+		// cells, which keeps Amount meaning the same thing as Scale changes.
+		SampleUV = UV + Displacement * Warp * (1.0f / (float)WarpCells);
+	}
+
+	// Scale and period are the same number here, unlike MixtormatGullyField where the period is
+	// the base period shifted by the octave. There is one octave in a crack network, so the
+	// lattice the UV is scaled onto is the lattice that wraps.
+	const FMixtormatCellularResult Cell = MixtormatCellular(
+		SampleUV * (float)Cells, Cells, Seed, Jitter);
+
+	// Distance to the cell boundary, not F2 - F1. The point-difference form varies its width
+	// with cell size, so a network built from it comes out heavy in the large cells and
+	// hairline in the small ones; the boundary distance holds an even width, which is what
+	// reads as cracking rather than as noise.
+	//
+	// Width is in cell units, so it means the same thing at any Period. Floored well above
+	// zero: as the window closes the smoothstep becomes a step at the cell boundary, which
+	// aliases into a dashed line rather than fading out. Weight is the off switch.
+	float Crack = 1.0f - smoothstep(0.0f, max(Width, 0.002f), Cell.EdgeDistance);
+
+	// Per-cell variation breaks the network up, so it reads as cracks that opened at different
+	// times rather than as a uniform lattice. Applied to the crack rather than to the cell, so
+	// it thins lines instead of tinting regions.
+	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.CellId), saturate(Variation));
+
+	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
+	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+}

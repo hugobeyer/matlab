@@ -1,0 +1,129 @@
+#include "/Engine/Public/Platform.ush"
+
+// Colour grade. A Filter, like erosion: it reads a channel that already exists and returns a
+// transformed version of it, and at zero amount it is the identity.
+//
+// It runs after its owning layer composites, so it grades the surface accumulated up to that
+// point in the stack rather than one layer's source texture. Masked, that makes it an
+// adjustment layer -- the grade applies where the mask says and the stack carries on.
+//
+// Base colour only. Roughness and metallic are not colours and do not want a tonemap; a
+// roughness adjustment is a different filter with different controls.
+
+Texture2D<float4> SourceColor;
+Texture2D<float> LayerMask;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float4> OutputColor;
+
+int2 OutputSize;
+uint HasMask;
+uint InvertMask;
+int TonemapMode;
+float TonemapStrength;
+float Brightness;
+float Contrast;
+float ContrastPivot;
+float Gamma;
+float Amount;
+
+// c / (1 + c). Cheapest of the three and never clips, but it desaturates highlights and
+// reaches white only at infinity, so bright areas go pale rather than bright.
+float3 TonemapReinhard(float3 c)
+{
+	return c / (1.0f + c);
+}
+
+// Narkowicz's fit to the ACES RRT/ODT. Contrastier than Reinhard with a filmic toe, and the
+// closest of the three to what a renderer will do to this surface later.
+float3 TonemapACES(float3 c)
+{
+	const float a = 2.51f;
+	const float b = 0.03f;
+	const float d = 2.43f;
+	const float e = 0.59f;
+	const float f = 0.14f;
+	return saturate((c * (a * c + b)) / (c * (d * c + e) + f));
+}
+
+float3 HableCurve(float3 x)
+{
+	const float A = 0.15f;
+	const float B = 0.50f;
+	const float C = 0.10f;
+	const float D = 0.20f;
+	const float E = 0.02f;
+	const float F = 0.30f;
+	return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+// Hable's Uncharted 2 curve, divided by its own value at the white point. Without that
+// normalisation the curve maps 1.0 to about 0.79 and the whole image reads dark.
+float3 TonemapFilmic(float3 c)
+{
+	const float W = 11.2f;
+	return HableCurve(c) / HableCurve(float3(W, W, W));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	const float4 Source = SourceColor.Load(int3(Pixel, 0));
+
+	// Negatives would come back as NaN out of pow and are not meaningful base colour, so the
+	// working value is clamped at zero on the way in. The blend at the end still returns the
+	// untouched source, so a negative pixel survives an Amount of 0 intact.
+	float3 c = max(Source.rgb, 0.0f);
+
+	// Brightness is a gain, not an offset. These are linear values, so scaling is what
+	// behaves like exposure and it leaves channel ratios -- and therefore hue -- alone,
+	// where adding a constant washes saturation out of the darks.
+	c *= Brightness;
+
+	// Contrast about a pivot. 0.18 is linear mid grey and is the right default for this
+	// data; 0.5 is what gets reached for out of habit with display-referred images, which is
+	// why the pivot is a control rather than a constant.
+	c = (c - ContrastPivot) * Contrast + ContrastPivot;
+	c = max(c, 0.0f);
+
+	// Tonemap after the linear adjustments. It is the map from scene values to displayable
+	// ones, and grading above it rather than below is the whole point of a grade: brightness
+	// and contrast applied after a tonemap fight a curve that has already decided where the
+	// highlights went.
+	if (TonemapMode > 0)
+	{
+		const float3 Mapped = TonemapMode == 1
+			? TonemapReinhard(c)
+			: (TonemapMode == 2 ? TonemapACES(c) : TonemapFilmic(c));
+		c = lerp(c, Mapped, saturate(TonemapStrength));
+	}
+
+	// Gamma last, and as pow(c, 1/g), so a value above 1 lifts the midtones. That is the
+	// convention every grading UI uses; the reciprocal is easy to get backwards.
+	c = pow(max(c, 0.0f), 1.0f / max(Gamma, 1.0e-3f));
+
+	// Sampled by UV where the colour above is loaded by pixel, and the asymmetry is
+	// deliberate. The colour target is always at composition resolution, so a load is exact.
+	// The mask is only that size once a mask child has written it; with no children it is the
+	// layer's own authored mask texture, registered at whatever resolution the asset happens
+	// to be. Loading it would read the wrong texel there.
+	float Mask = HasMask != 0
+		? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		: 1.0f;
+	Mask = InvertMask != 0 ? 1.0f - Mask : Mask;
+
+	// The Filter contract: at Amount 0 this returns exactly what it read.
+	// Amount is not saturated: past 1 it extrapolates away from the source colour, which is a
+	// legitimate thing to ask a grade for. Mask still is, because that is sampled data rather
+	// than an authored number.
+	const float Weight = Amount * saturate(Mask);
+	OutputColor[Pixel] = float4(lerp(Source.rgb, c, Weight), Source.a);
+}

@@ -1,0 +1,45 @@
+#ifndef MATERIAL_LAB_FLOW_USH
+#define MATERIAL_LAB_FLOW_USH
+
+// Decoding side of the coherent tangent flow field. MixtormatFlow.usf builds and smooths
+// it; this is what the effects that consume it include.
+//
+// The field is a structure tensor reduced to its angle. A tangent taken from a gradient is
+// undirected -- the two sides of a ridge point opposite ways -- so averaging tangent vectors
+// cancels them along exactly the features worth following. Doubling the angle removes that
+// cancellation: a direction and its opposite map to the same point on the double-angle
+// circle, so a plain componentwise average of (cos2t, sin2t) is a correct average of
+// orientations. Halving the angle back afterwards recovers the dominant one.
+//
+// Encoded is that pair after smoothing. Its length is the coherency: the build stores unit
+// vectors, so a pixel whose neighbours agreed keeps length near 1 and one whose neighbours
+// disagreed averages towards 0. Flat ground contributes a zero vector rather than a random
+// direction, so it lowers coherency instead of voting.
+
+// Dominant tangent, plus how much to trust it. The returned vector is undirected; orient it
+// with MixtormatOrientAlong before use.
+float2 MixtormatFlowTangent(float2 Encoded, out float Coherency)
+{
+	Coherency = saturate(length(Encoded));
+	if (Coherency < 1.0e-5f)
+	{
+		return float2(0.0f, 1.0f);
+	}
+
+	// Encoded holds the dominant *gradient* orientation. The tangent runs along the feature,
+	// across the gradient, which is that angle turned a quarter turn.
+	const float Phi = 0.5f * atan2(Encoded.y, Encoded.x);
+	return float2(-sin(Phi), cos(Phi));
+}
+
+// Points an undirected tangent along a reference vector.
+//
+// sign() is wrong here. It returns zero exactly where the tangent is perpendicular to the
+// reference, which is not a measure-zero case: it is every pixel along a crest or a valley
+// floor, precisely where a direction matters most, and it would collapse the vector there.
+float2 MixtormatOrientAlong(float2 Tangent, float2 Reference)
+{
+	return dot(Tangent, Reference) >= 0.0f ? Tangent : -Tangent;
+}
+
+#endif

@@ -50,6 +50,11 @@ uint DebugMode;
 uint WriteDebug;
 float Opacity;
 float Tiling;
+int UVScaleX;
+int UVScaleY;
+uint FlipU;
+uint FlipV;
+float2 UVOffset;
 float NormalIntensity;
 float HueShift;
 float Saturation;
@@ -157,9 +162,32 @@ float SamplePlacementMask(float2 UV)
 	return HasMask != 0 ? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
 }
 
+// Where the layer's source is read from.
+//
+// Everything here is chosen to survive the frac(): the repeat has to close on the UV square or
+// the surface seams, which is the constraint the whole compositor is written under.
+//
+//   Scale   integer, per axis, on top of the layer's Tiling. A non-integer factor does not
+//           tile -- frac(UV * 2 * 1.3) lands mid-cell at the wrap -- so this is deliberately
+//           not a float. Tiling stays the uniform base; these two scale it per axis.
+//   Offset  any value. A pure translation of a periodic function is still periodic.
+//   Flip    any value. A sign change, and frac() wraps the negative side correctly.
+//
+// Rotation is absent on purpose. Rotating a tiled UV breaks the repeat at every angle that is
+// not a multiple of 90 degrees, and a control that seams at most of its range is worse than no
+// control. It needs either a 90-degree snap or stochastic sampling to remove the requirement.
+float2 LayerSourceUV(float2 UV)
+{
+	const float2 Scale = float2(
+		max(Tiling, 0.0001f) * (float)max(UVScaleX, 1),
+		max(Tiling, 0.0001f) * (float)max(UVScaleY, 1));
+	const float2 Flip = float2(FlipU != 0 ? -1.0f : 1.0f, FlipV != 0 ? -1.0f : 1.0f);
+	return frac(UV * Scale * Flip + UVOffset);
+}
+
 float SampleIncomingHeight(float2 UV)
 {
-	float2 SampleLayerUV = frac(UV * max(Tiling, 0.0001f));
+	float2 SampleLayerUV = LayerSourceUV(UV);
 	float PlacementMask = SamplePlacementMask(UV);
 	float SourceHeight = DirectHeightComparison != 0
 		? (HasPackedHeight != 0
@@ -239,7 +267,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
-	float2 LayerUV = frac(UV * max(Tiling, 0.0001f));
+	float2 LayerUV = LayerSourceUV(UV);
 
 	float4 PreviousBaseColor = Initialize != 0
 		? float4(0.0f, 0.0f, 0.0f, 1.0f)

@@ -8,7 +8,8 @@ class UTexture2D;
 
 // Surface effects write coverage, normal and AO through the effect data target.
 // Filter effects transform one composited channel in place and are the identity at zero
-// amount. Erosion is the first Filter; height blur and slope limiting would join it.
+// amount. Erosion and Chipping carve the composited height and Grade transforms the base
+// colour; height blur and slope limiting would join them.
 UENUM(BlueprintType)
 enum class EMixtormatEffectClass : uint8
 {
@@ -21,8 +22,27 @@ enum class EMixtormatEffectType : uint8
 {
 	Peeling = 0 UMETA(DisplayName = "Peeling"),
 	Stain = 1 UMETA(DisplayName = "Stain"),
-	Erosion = 2 UMETA(DisplayName = "Erosion")
+	Erosion = 2 UMETA(DisplayName = "Erosion"),
+	Grade = 3 UMETA(DisplayName = "Grade"),
+	Chipping = 4 UMETA(DisplayName = "Chipping")
 };
+
+// The one place the Surface/Filter split is decided. It used to be declared and never called,
+// so the taxonomy was a comment while every dispatch site tested effect types by hand -- and
+// each new Filter meant finding all of them again. A Filter is deferred out of the child loop
+// and run over the layer's composited output; a Surface writes the effect data target.
+inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType Type)
+{
+	switch (Type)
+	{
+	case EMixtormatEffectType::Erosion:
+	case EMixtormatEffectType::Grade:
+	case EMixtormatEffectType::Chipping:
+		return EMixtormatEffectClass::Filter;
+	default:
+		return EMixtormatEffectClass::Surface;
+	}
+}
 
 UCLASS(BlueprintType)
 class MIXTORMATRUNTIME_API UMixtormatEffect final : public UPrimaryDataAsset

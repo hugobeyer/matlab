@@ -106,6 +106,8 @@ namespace MixtormatLayerBadges
 		{
 		case EMixtormatEffectType::Stain:   return LOCTEXT("EffectBadgeStain", "STAIN");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("EffectBadgeErosion", "ERODE");
+		case EMixtormatEffectType::Grade:   return LOCTEXT("EffectBadgeGrade", "GRADE");
+		case EMixtormatEffectType::Chipping: return LOCTEXT("EffectBadgeChipping", "CHIP");
 		default:                            return LOCTEXT("EffectBadgePeel", "PEEL");
 		}
 	}
@@ -123,6 +125,10 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.Generated.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::Craquelure)
+		{
+			return ForMaskBlendMode(Child.Craquelure.BlendMode);
+		}
 		return ForMaskBlendMode(Child.Mask.BlendMode);
 	}
 
@@ -132,6 +138,7 @@ namespace MixtormatLayerBadges
 		{
 		case EMixtormatLayerChildType::Effect:    return LOCTEXT("ChildKindEffect", "FX");
 		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GEN");
+		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

@@ -1,0 +1,92 @@
+#include "/Engine/Public/Platform.ush"
+
+// Colour and roughness for what a carving filter removed. Shared by Erosion and Chipping.
+//
+// Both are post-layer filters: by the time either runs, the layer has already composited its
+// base colour and RAM. Rather than route a coverage signal back through the composite, this
+// reads what the composite wrote and blends in place -- the same shape the height and normal
+// writes already have, and the reason a filter can shade at all without being reordered.
+//
+// Its own shader rather than another mode on the carving shaders. Those parameter structs are
+// already large, and four more texture slots would have to be bound, and dummied at the right
+// size, on every carving, blur and resample dispatch that has no use for them.
+//
+// Two ways in, because the two filters know their coverage differently:
+//
+//   UseCoverageTexture 0 -- erosion. Coverage is the carve depth, still available as the
+//     difference of the two height textures the filter has been ping-ponging. Nothing has to
+//     be copied aside for it.
+//   UseCoverageTexture 1 -- chipping. Coverage is read directly, because chipping already
+//     computes it. Reconstructing it from the height pair would be worse: at chip depths
+//     around 0.035 that difference is small enough to reintroduce the cancellation the R32F
+//     work removed, and it would go to zero with Depth even though the chip is still there.
+
+Texture2D<float> SourceHeight;
+Texture2D<float> CarvedHeight;
+Texture2D<float> CoverageTexture;
+Texture2D<float4> SourceColor;
+Texture2D<float4> SourceRAM;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float4> OutputColor;
+RWTexture2D<float4> OutputRAM;
+
+int2 OutputSize;
+float4 ErodedColor;
+float ColorAmount;
+float RoughnessAmount;
+float CarveDepth;
+uint UseCoverageTexture;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	float Coverage;
+	if (UseCoverageTexture != 0)
+	{
+		// Already at this resolution and already normalised, so it is loaded rather than
+		// sampled and needs no CarveDepth.
+		Coverage = saturate(CoverageTexture.Load(int3(Pixel, 0)));
+	}
+	else
+	{
+		// Sampled, not loaded: the carve pair lives at the internal erosion resolution, which
+		// is twice this one unless the cap bit. At 2:1 a bilinear tap at this texel centre
+		// lands on the 2x2 centroid, so the coverage is filtered rather than point-decimated
+		// -- the same argument the height and normal resample rests on.
+		const float Src = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		const float Carved = CarvedHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+		// Erosion only ever removes, so this is non-negative by construction. The max is
+		// against rounding, not against the filter adding material.
+		const float Carve = max(Src - Carved, 0.0f);
+
+		// The depth that reads as fully carved. Without it coverage would be in raw height
+		// units, where every usable carve saturates instantly and both controls are all or
+		// nothing.
+		Coverage = saturate(Carve / max(CarveDepth, 1.0e-5f));
+	}
+
+	float4 BC = SourceColor.Load(int3(Pixel, 0));
+	float4 RAM = SourceRAM.Load(int3(Pixel, 0));
+
+	// A lerp, not the multiply a stain uses. A stain sits on top of what is under it and can
+	// only darken; a carve cuts down to something else, so the authored colour has to be
+	// reachable rather than permanently tinted by whatever it replaced.
+	BC.rgb = lerp(BC.rgb, ErodedColor.rgb, saturate(Coverage * ColorAmount));
+
+	// Roughness is a signed offset, which is the vocabulary stains already use for it, and
+	// R is the roughness channel the composite reads.
+	RAM.r = saturate(RAM.r + RoughnessAmount * Coverage);
+
+	OutputColor[Pixel] = BC;
+	OutputRAM[Pixel] = RAM;
+}

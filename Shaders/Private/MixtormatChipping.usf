@@ -1,0 +1,419 @@
+#include "/Engine/Public/Platform.ush"
+
+// Chipping. Chips are seeded where a raised region meets a recess and grown inward over N
+// iterations, carving the composited height.
+//
+// Ported from Handoff/Houdini/OpenCl/brickschips.cl. The audit filed this as blocked on the
+// cellular primitive; it is not. Bricks come from thresholding the height the layer already
+// composited, so this works on whatever the user actually built rather than only on a lattice
+// we generate. See Docs/ChippingEffectPlan.md.
+
+// Constant across every iteration, matching the prototype's read-only @height bind. Only the
+// state ping-pongs. Keeping the height fixed means a chip cannot carve deep enough to turn its
+// own brick into grout and stop itself.
+Texture2D<float> SourceHeight;
+Texture2D<float4> PreviousState;
+Texture2D<float> LayerMask;
+
+// Normal pass only: the finished chip mask, and the normal the layer composited.
+Texture2D<float> ChipsTexture;
+Texture2D<float4> PreviousNormal;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputState;
+RWTexture2D<float> OutputChips;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+int Iteration;
+int NormalPass;
+float NormalStrength;
+
+float GroutLevel;
+float GroutSoftness;
+float ChipAmount;
+float ChipSize;
+float ChipDepth;
+float Irregularity;
+float MaskEdge;
+uint Seed;
+
+int WrapI(int x, int m)
+{
+	const int r = x % m;
+	return r < 0 ? r + m : r;
+}
+
+int2 WrapPixel(int2 p)
+{
+	return int2(WrapI(p.x, OutputSize.x), WrapI(p.y, OutputSize.y));
+}
+
+float SmoothF(float x)
+{
+	return x * x * (3.0f - 2.0f * x);
+}
+
+float SmoothRange(float a, float b, float x)
+{
+	return SmoothF(saturate((x - a) / max(b - a, 1.0e-5f)));
+}
+
+uint HashU(uint x)
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+float Hash01(uint x)
+{
+	return (float)(HashU(x) & 0x00ffffffu) * (1.0f / 16777216.0f);
+}
+
+// Value noise on a wrapped lattice, so the field tiles with the texture.
+float LatticeValue(int x, int y, int Period, uint s)
+{
+	x = WrapI(x, Period);
+	y = WrapI(y, Period);
+	return Hash01((uint)x * 0x9e3779b9u ^ (uint)y * 0x85ebca6bu ^ s * 0xc2b2ae35u);
+}
+
+float TileNoise(float2 UV, int Period, uint s)
+{
+	const float2 q = UV * (float)Period;
+	const int x = (int)floor(q.x);
+	const int y = (int)floor(q.y);
+	float2 f = q - float2((float)x, (float)y);
+	f = float2(SmoothF(f.x), SmoothF(f.y));
+
+	const float a = LatticeValue(x, y, Period, s);
+	const float b = LatticeValue(x + 1, y, Period, s);
+	const float c = LatticeValue(x, y + 1, Period, s);
+	const float d = LatticeValue(x + 1, y + 1, Period, s);
+
+	const float x0 = lerp(a, b, f.x);
+	const float x1 = lerp(c, d, f.x);
+	return lerp(x0, x1, f.y);
+}
+
+float2 SafeNormalize(float2 v)
+{
+	const float l = length(v);
+	return l > 1.0e-7f ? v / l : float2(0.0f, 0.0f);
+}
+
+// The whole brick/grout split. Everything downstream is a difference of these.
+float BrickMask(float h)
+{
+	return SmoothRange(GroutLevel, GroutLevel + max(GroutSoftness, 1.0e-5f), h);
+}
+
+float LoadHeight(int2 p)
+{
+	return SourceHeight.Load(int3(WrapPixel(p), 0));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Resf = float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+
+	// One dispatch after the loop, turning the finished chip mask into a normal. Without it
+	// chips exist only in the height and are invisible under lighting.
+	//
+	// The Sobel is on the chip mask rather than on a height difference, which is the one place
+	// this differs from the erosion normal pass and is strictly better: the mask is the carve
+	// shape already, at full range, so nothing has to be recovered by differencing two nearly
+	// equal heights. Depth then scales it, so the normal tracks the control.
+	if (NormalPass != 0)
+	{
+		const int ax = WrapI(Pixel.x - 1, OutputSize.x);
+		const int bx = WrapI(Pixel.x + 1, OutputSize.x);
+		const int ay = WrapI(Pixel.y - 1, OutputSize.y);
+		const int by = WrapI(Pixel.y + 1, OutputSize.y);
+
+		#define ML_CHIP(px, py) (ChipsTexture.Load(int3(px, py, 0)))
+		const float c_mm = ML_CHIP(ax, ay);
+		const float c_0m = ML_CHIP(Pixel.x, ay);
+		const float c_pm = ML_CHIP(bx, ay);
+		const float c_m0 = ML_CHIP(ax, Pixel.y);
+		const float c_p0 = ML_CHIP(bx, Pixel.y);
+		const float c_mp = ML_CHIP(ax, by);
+		const float c_0p = ML_CHIP(Pixel.x, by);
+		const float c_pp = ML_CHIP(bx, by);
+		#undef ML_CHIP
+
+		// Sobel with the same 1/8 normalisation the erosion normal pass uses, so
+		// NormalStrength means the same thing in both filters.
+		const float Scale = max(ChipDepth, 0.0f) * (NormalStrength / 8.0f);
+		const float2 dD = float2(
+			(c_pm + 2.0f * c_p0 + c_pp) - (c_mm + 2.0f * c_m0 + c_mp),
+			(c_mp + 2.0f * c_0p + c_pp) - (c_mm + 2.0f * c_0m + c_pm)) * Scale;
+		const float3 ChipN = normalize(float3(dD.x, dD.y, 1.0f));
+
+		float3 BaseN = PreviousNormal.Load(int3(Pixel, 0)).xyz * 2.0f - 1.0f;
+		BaseN = normalize(BaseN);
+
+		// Reoriented normal mapping, matching the erosion normal pass.
+		const float3 T = BaseN + float3(0.0f, 0.0f, 1.0f);
+		const float3 Uu = ChipN * float3(-1.0f, -1.0f, 1.0f);
+		const float3 Combined = normalize(T * dot(T, Uu) / max(T.z, 1.0e-5f) - Uu);
+
+		OutputNormal[Pixel] = float4(Combined * 0.5f + 0.5f, 1.0f);
+		return;
+	}
+
+	const int2 L = int2(Pixel.x - 1, Pixel.y);
+	const int2 R = int2(Pixel.x + 1, Pixel.y);
+	const int2 D = int2(Pixel.x, Pixel.y - 1);
+	const int2 U = int2(Pixel.x, Pixel.y + 1);
+
+	const float hc = LoadHeight(Pixel);
+	const float hl = LoadHeight(L);
+	const float hr = LoadHeight(R);
+	const float hd = LoadHeight(D);
+	const float hu = LoadHeight(U);
+
+	const float bm = BrickMask(hc);
+	const float bl = BrickMask(hl);
+	const float br = BrickMask(hr);
+	const float bd = BrickMask(hd);
+	const float bu = BrickMask(hu);
+
+	// Into the brick, away from the grout.
+	//
+	// Its own floor rather than SafeNormalize's 1e-7, because the composited height is R16F.
+	// Near a grout level of 0.15 a half ULP is about 1.2e-4, and BrickMask amplifies it by
+	// 1/GroutSoftness -- 12.5 at the default -- so the mask carries roughly 1.5e-3 of noise.
+	// In a flat brick interior the true gradient is zero, so the generic floor would pass that
+	// noise through as a random unit vector at weight 1.30 in Field, and Irregularity would
+	// stop meaning what it means: the interior direction would already be noise at 0. The
+	// gradient at a real edge is around 0.5 per pixel, so this separates them by two orders
+	// and leaves the interior to the coherent Downhill and Curl terms.
+	//
+	// Widening the height chain cannot fix this. The quantisation happened upstream, in the
+	// target the composite writes.
+	const float2 MaskGradient2 = float2((br - bl) * 0.5f, (bu - bd) * 0.5f);
+	const float2 Inward = length(MaskGradient2) > 5.0e-3f
+		? normalize(MaskGradient2)
+		: float2(0.0f, 0.0f);
+
+	// A brick pixel with grout next to it. Where chips can start.
+	const float Edge = bm * saturate((bm - bl) + (bm - br) + (bm - bd) + (bm - bu));
+
+	const float2 HeightGradient = float2((hr - hl) * 0.5f, (hu - hd) * 0.5f);
+	const float2 Downhill = SafeNormalize(-HeightGradient);
+
+	// The layer mask stands in for the prototype's material-id input: its gradient marks the
+	// boundary of where this material was painted, which is the same idea as a boundary between
+	// two painted materials. Inert when the layer has no mask, because a uniform mask has no
+	// gradient. Scaled by MaskEdge so the port's behaviour is opt-in rather than assumed.
+	// Placement. Chips are seeded only where this layer's own mask is, which is the same
+	// handle Grade uses and gives chipping the whole mask vocabulary -- painted, generated,
+	// curvature, craquelure -- as a placement control. A layer with no mask has a white one,
+	// so this is the identity there and the effect is unmasked as before.
+	const float MaskValue = saturate(LayerMask.Load(int3(Pixel, 0)));
+
+	float MaskEdgeTerm = 0.0f;
+	if (MaskEdge > 0.0f)
+	{
+		const float ml = LayerMask.Load(int3(WrapPixel(L), 0));
+		const float mr = LayerMask.Load(int3(WrapPixel(R), 0));
+		const float md = LayerMask.Load(int3(WrapPixel(D), 0));
+		const float mu = LayerMask.Load(int3(WrapPixel(U), 0));
+		const float2 MaskGradient = float2((mr - ml) * 0.5f, (mu - md) * 0.5f);
+		MaskEdgeTerm = saturate(length(MaskGradient) * 5.0f) * MaskEdge;
+	}
+
+	const float Laplacian = (hl + hr + hd + hu) * 0.25f - hc;
+	const float Convex = saturate(-Laplacian * 12.0f);
+
+	const float n0 = TileNoise(UV, 24, Seed * 0x12345u + 11u);
+	const float n1 = TileNoise(UV, 53, Seed * 0x23456u + 29u);
+
+	// Curl of a scalar noise: divergence free, so it swirls rather than converging on sinks.
+	// This is what makes a chip wander instead of running straight in from the edge.
+	const float2 Px = float2(1.0f / Resf.x, 0.0f);
+	const float2 Py = float2(0.0f, 1.0f / Resf.y);
+	const uint CurlSeed = Seed * 0x34567u + 41u;
+	const float nx0 = TileNoise(UV - Px, 17, CurlSeed);
+	const float nx1 = TileNoise(UV + Px, 17, CurlSeed);
+	const float ny0 = TileNoise(UV - Py, 17, CurlSeed);
+	const float ny1 = TileNoise(UV + Py, 17, CurlSeed);
+	const float2 Curl = SafeNormalize(float2(ny1 - ny0, -(nx1 - nx0)));
+
+	const float2 Field = SafeNormalize(
+		Inward * 1.30f +
+		Downhill * 0.15f +
+		Curl * (0.15f + Irregularity * 0.75f));
+
+	// Iteration 0 is genuinely a different dispatch, not the same one with a flag. It seeds and
+	// does not gather; every later pass gathers and does not seed; and the direction fallthrough
+	// differs between them. See the KeepDir comment at the bottom -- getting that wrong leaves
+	// every chip with a zero direction on iteration 1 and nothing propagates.
+	const bool bSeedPass = Iteration == 0;
+
+	const float4 Old = bSeedPass
+		? float4(0.0f, 0.0f, 0.0f, 0.0f)
+		: PreviousState.Load(int3(Pixel, 0));
+
+	// Anchored at 1.0 rather than at the prototype's 0.985, so Amount 0 seeds nothing: the
+	// noise is in [0,1), so a threshold of exactly 1 is unreachable, DepthMod stays 0 and the
+	// height comes back bit-identical. That is the Filter contract the other two keep, and at
+	// 0.985 a fraction of pixels seeded at Amount 0 and quietly broke it. The span is widened
+	// to compensate, so the default sits where it did.
+	const float Threshold = 1.0f - ChipAmount * 0.315f;
+
+	// Per-pixel variation on the seed. This used to multiply the propagating tip instead,
+	// where it compounded: see the Tip comment below.
+	const float SeedWeak = 0.72f + n1 * 0.18f + MaskEdgeTerm * 0.10f;
+
+	const float SeedTip = bSeedPass
+		? Edge * SmoothRange(Threshold, 1.0f, n0)
+			* (0.45f + MaskEdgeTerm * 0.35f + Convex * 0.20f)
+			* SeedWeak * MaskValue
+		: 0.0f;
+
+	// Gather: find the neighbour whose stored chip direction points at this pixel, and inherit
+	// from the strongest one. This is what grows a chip as a connected front rather than as
+	// isolated speckle.
+	// Two quantities, deliberately. BestScore picks which neighbour a pixel inherits from and
+	// carries every shaping term; Best is the amplitude that actually propagates and carries
+	// none of them. Folding the shaping into the amplitude is what made Size do nothing --
+	// see the Tip comment below.
+	float BestScore = 0.0f;
+	float Best = 0.0f;
+	float2 Parent = float2(0.0f, 0.0f);
+	float2 Travel = float2(0.0f, 0.0f);
+
+	if (!bSeedPass && bm > 0.15f && Old.x < 0.98f)
+	{
+		for (int yy = -1; yy <= 1; ++yy)
+		{
+			for (int xx = -1; xx <= 1; ++xx)
+			{
+				if (xx == 0 && yy == 0)
+				{
+					continue;
+				}
+
+				const int2 q = WrapPixel(Pixel + int2(xx, yy));
+				const float nb = BrickMask(SourceHeight.Load(int3(q, 0)));
+				if (nb < 0.15f)
+				{
+					continue;
+				}
+
+				const float4 s = PreviousState.Load(int3(q, 0));
+				if (s.y <= 0.001f)
+				{
+					continue;
+				}
+
+				const float2 ParentDir = SafeNormalize(s.zw);
+				const float2 Toward = SafeNormalize(float2(-(float)xx, -(float)yy));
+				const float Alignment = dot(ParentDir, Toward);
+
+				if (Alignment > -0.10f)
+				{
+					float w = saturate((Alignment + 0.10f) / 1.10f);
+					// The exponent is floored rather than Irregularity clamped: past 1 it
+					// would go negative and pow(0, negative) is infinite. Nothing else here
+					// minds a value outside 0..1.
+					w = pow(w, max(1.5f + 2.0f * (1.0f - Irregularity), 0.05f));
+
+					const uint hh =
+						(uint)Pixel.x * 0x9e3779b9u ^
+						(uint)Pixel.y * 0x85ebca6bu ^
+						(uint)(xx + 2) * 0xc2b2ae35u ^
+						(uint)(yy + 2) * 0x27d4eb2du ^
+						Seed;
+
+					w *= 0.70f + 0.30f * Hash01(hh);
+
+					// Alignment and hash decide which neighbour wins. They do not scale what it
+					// hands over: there are only eight neighbour directions, so even a perfectly
+					// followed chip front can do no better than cos(22.5) = 0.924 alignment,
+					// which this curve turns into a 0.848 multiplier. Charging that every pass,
+					// on top of the hash, is a 15% toll on a quantity that is already decaying.
+					const float Score = s.y * w * nb * bm;
+					if (Score > BestScore)
+					{
+						BestScore = Score;
+						Best = s.y * nb * bm;
+						Parent = ParentDir;
+						Travel = Toward;
+					}
+				}
+			}
+		}
+	}
+
+	// Capped just under 1 rather than Size clamped to 1. This is a genuine invariant: at a
+	// retention of 1 or more a tip stops decaying and every chip grows until it meets the
+	// iteration cap, so the whole surface goes to full core.
+	const float Decay = min(0.82f + ChipSize * 0.175f, 0.999f);
+
+	// Decay is the only thing that attenuates a propagating tip, which is what makes Size mean
+	// something. It used to be Best * Decay * Weak with Best already carrying the alignment
+	// weight and a per-neighbour hash, so the recurrence was
+	//
+	//     Tip[n] = Tip[n-1] * alignment * hash * Weak * Decay
+	//
+	// Three variation terms inside a geometric decay. They compounded to about 0.85^n and
+	// swamped the one control that was supposed to own reach: across its entire range Size
+	// moved a chip from 2 pixels to 3. With them moved out -- hash and alignment to choosing
+	// the parent, Weak to the seed -- Size spans roughly 7 to 240 pixels and Iterations is
+	// what caps it, which is what both tooltips already claimed.
+	const float Tip = max(SeedTip, Best * Decay) * bm * (1.0f - Old.x);
+
+	const float Rnd = Hash01(
+		(uint)Pixel.x * 0x165667b1u ^
+		(uint)Pixel.y * 0xd3a2646cu ^
+		Seed * 0xfd7046c5u);
+
+	// Rotate the inherited direction a little per pixel, so a chip outline breaks up as it grows
+	// rather than fanning out symmetrically.
+	const float Angle = (Rnd - 0.5f) * Irregularity * 1.2f;
+	const float ca = cos(Angle);
+	const float sa = sin(Angle);
+	const float2 Rotated = float2(Parent.x * ca - Parent.y * sa, Parent.x * sa + Parent.y * ca);
+
+	float2 NewDir = SeedTip > Best
+		? Field
+		: SafeNormalize(Rotated * 0.58f + Travel * 0.22f + Field * 0.20f);
+
+	if (length(NewDir) < 1.0e-7f)
+	{
+		NewDir = Field;
+	}
+
+	const float Core = max(Old.x, SmoothRange(0.025f, 0.30f, Tip)) * bm;
+
+	const float DepthMod = Core * (0.55f + n1 * 0.45f) * (0.70f + MaskEdgeTerm * 0.30f);
+
+	// A live tip keeps the direction it just chose; a dead pixel keeps what it had, so a chip
+	// that stalls behind a slower neighbour can still be inherited from later. On the seed pass
+	// Old.zw is zero, which is why NewDir has to be unconditional there.
+	const float2 KeepDir = (bSeedPass || Tip > 0.001f) ? NewDir : Old.zw;
+
+	OutputState[Pixel] = float4(Core, Tip, KeepDir.x, KeepDir.y);
+	OutputChips[Pixel] = saturate(DepthMod);
+
+	// The carve is always measured from the unmodified layer height, not from the previous
+	// iteration. Core only grows, so subtracting from the source each pass converges on one
+	// depth instead of compounding N times into a hole.
+	OutputHeight[Pixel] = SourceHeight.Load(int3(Pixel, 0)) - max(ChipDepth, 0.0f) * DepthMod;
+}

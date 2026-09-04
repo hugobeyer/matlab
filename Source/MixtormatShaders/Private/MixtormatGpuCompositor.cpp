@@ -51,6 +51,11 @@ public:
 		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(float, Opacity)
 		SHADER_PARAMETER(float, Tiling)
+		SHADER_PARAMETER(int32, UVScaleX)
+		SHADER_PARAMETER(int32, UVScaleY)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(FVector2f, UVOffset)
 		SHADER_PARAMETER(float, NormalIntensity)
 		SHADER_PARAMETER(float, HueShift)
 		SHADER_PARAMETER(float, Saturation)
@@ -178,6 +183,7 @@ public:
 		SHADER_PARAMETER(float, AOWeight)
 		SHADER_PARAMETER(float, HeightWeight)
 		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(float, RidgeWeight)
 		SHADER_PARAMETER(uint32, NormalizeWeights)
 		SHADER_PARAMETER(int32, Broadness)
 		SHADER_PARAMETER(int32, Smoothing)
@@ -195,6 +201,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceRidge)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
 	END_SHADER_PARAMETER_STRUCT()
@@ -211,6 +218,52 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Craquelure. A crack network on a cellular lattice, blended into the layer mask.
+//
+// Its own node rather than a signal on the generated mask: that node reads the surface below
+// and early-returns when there is none, while this is generated from a lattice and means
+// something on the bottom layer. The mask tail is shared through MixtormatMaskOps.ush rather
+// than through a shared parameter struct, so this one carries no surface textures at all.
+class FMixtormatCraquelureCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(int32, Period)
+		SHADER_PARAMETER(float, Jitter)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, Variation)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, Warp)
+		SHADER_PARAMETER(int32, WarpPeriod)
+		SHADER_PARAMETER(uint32, WarpSeed)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCraquelureCS,
+	"/Plugin/MaterialLab/Private/MixtormatCraquelure.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMixtormatErosionCS final : public FGlobalShader
 {
 public:
@@ -222,7 +275,9 @@ public:
 		SHADER_PARAMETER(int32, Pass)
 		SHADER_PARAMETER(int32, NormalPass)
 		SHADER_PARAMETER(int32, BlurPass)
+		SHADER_PARAMETER(int32, BlurAxis)
 		SHADER_PARAMETER(int32, ResamplePass)
+		SHADER_PARAMETER(int32, ResampleRidge)
 		SHADER_PARAMETER(float, BlurRadius)
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, Amount)
@@ -232,8 +287,11 @@ public:
 		SHADER_PARAMETER(int32, LicSteps)
 		SHADER_PARAMETER(float, Repose)
 		SHADER_PARAMETER(float, ReposeSoftness)
-		SHADER_PARAMETER(float, CavityBias)
-		SHADER_PARAMETER(float, CavityScale)
+		SHADER_PARAMETER(int32, CurvatureMode)
+		SHADER_PARAMETER(float, CavityInfluence)
+		SHADER_PARAMETER(float, CavityOffset)
+		SHADER_PARAMETER(float, CavityRemapMin)
+		SHADER_PARAMETER(float, CavityRemapMax)
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(float, GullyWeight)
@@ -249,6 +307,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, FlowField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousRidge)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRidge)
@@ -264,6 +324,161 @@ public:
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatErosionCS,
 	"/Plugin/MaterialLab/Private/MixtormatErosion.usf",
+	"MainCS",
+	SF_Compute);
+
+// Colour grade. The second Filter: it transforms the base colour composited up to its owning
+// layer and is the identity at zero amount.
+class FMixtormatGradeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGradeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGradeCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER(uint32, InvertMask)
+		SHADER_PARAMETER(int32, TonemapMode)
+		SHADER_PARAMETER(float, TonemapStrength)
+		SHADER_PARAMETER(float, Brightness)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, ContrastPivot)
+		SHADER_PARAMETER(float, Gamma)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputColor)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatGradeCS,
+	"/Plugin/MaterialLab/Private/MixtormatGrade.usf",
+	"MainCS",
+	SF_Compute);
+
+// Colour and roughness for what erosion removed, blended into what the layer composite has
+// already written. Kept separate from FMixtormatErosionCS so its four texture slots are not
+// bound, and dummied, on every carving and resample dispatch that has no use for them.
+class FMixtormatCarveShadeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCarveShadeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCarveShadeCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FVector4f, ErodedColor)
+		SHADER_PARAMETER(float, ColorAmount)
+		SHADER_PARAMETER(float, RoughnessAmount)
+		SHADER_PARAMETER(float, CarveDepth)
+		SHADER_PARAMETER(uint32, UseCoverageTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CarvedHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CoverageTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCarveShadeCS,
+	"/Plugin/MaterialLab/Private/MixtormatCarveShade.usf",
+	"MainCS",
+	SF_Compute);
+
+// Chipping. Chips are seeded where a raised region meets a recess and grown inward over N
+// iterations. One dispatch per iteration, ping-ponging a float4 state of (core, tip, dirX,
+// dirY); the height is a read-only input throughout, so bricks stay defined by the height the
+// layer composited rather than by the height chipping is producing.
+class FMixtormatChippingCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatChippingCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatChippingCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Iteration)
+		SHADER_PARAMETER(int32, NormalPass)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(float, GroutLevel)
+		SHADER_PARAMETER(float, GroutSoftness)
+		SHADER_PARAMETER(float, ChipAmount)
+		SHADER_PARAMETER(float, ChipSize)
+		SHADER_PARAMETER(float, ChipDepth)
+		SHADER_PARAMETER(float, Irregularity)
+		SHADER_PARAMETER(float, MaskEdge)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChipsTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputChips)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatChippingCS,
+	"/Plugin/MaterialLab/Private/MixtormatChipping.usf",
+	"MainCS",
+	SF_Compute);
+
+// Coherent tangent flow. Built from a height texture, consumed by any effect wanting a
+// direction that follows the surface rather than the per-pixel gradient. Deliberately its
+// own shader rather than another mode on the effects that use it: the two call sites differ
+// in resolution, in which height they read and in where they sit in the graph, so the thing
+// worth sharing is the construction, not a texture.
+class FMixtormatFlowCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFlowCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Mode)
+		SHADER_PARAMETER(int32, Radius)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousFlow)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputFlow)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFlowCS,
+	"/Plugin/MaterialLab/Private/MixtormatFlow.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -403,9 +618,12 @@ public:
 		SHADER_PARAMETER(float, HeightWarp)
 		SHADER_PARAMETER(float, HeightBias)
 		SHADER_PARAMETER(float, HeightContrast)
+		SHADER_PARAMETER(float, FlowAmount)
+		SHADER_PARAMETER(float, Gravity)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStainData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, AccumulatedHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, FlowField)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStainData)
 	END_SHADER_PARAMETER_STRUCT()
@@ -462,6 +680,10 @@ namespace MixtormatGpuCompositor
 		float StainHeightWarp = 0.0f;
 		float StainHeightBias = -1.0f;
 		float StainHeightContrast = 1.0f;
+		float StainFlowAmount = 0.0f;
+		float StainGravity = 1.0f;
+		int32 StainFlowRadius = 4;
+		int32 StainFlowSmoothing = 3;
 		// Procedural peeling. bProceduralPeel selects the generated field over the
 		// authored maps; the shaping values above are shared by both paths.
 		bool bProceduralPeel = false;
@@ -496,13 +718,18 @@ namespace MixtormatGpuCompositor
 		bool bPeelHeightInvert = false;
 
 		float ErosionAmount = 1.0f;
+		int32 ErosionIterations = 8;
+		int32 ErosionPeriod = 32;
 		float ErosionRepose = 0.30f;
 		float ErosionReposeSoftness = 0.25f;
 		float ErosionNormalStrength = 8.0f;
 		int32 ErosionSlopeRadius = 2;
 		float ErosionSlopeBlur = 2.0f;
-		float ErosionCavityBias = 0.0f;
-		float ErosionCavityScale = 1.0f;
+		int32 ErosionCurvatureMode = 1;
+		float ErosionCavityInfluence = 0.0f;
+		float ErosionCavityOffset = 0.0f;
+		float ErosionCavityRemapMin = 0.0f;
+		float ErosionCavityRemapMax = 1.0f;
 		float ErosionHeightInfluence = 0.0f;
 		float ErosionHeightScale = 1.0f;
 		float ErosionGullyWeight = 2.0f;
@@ -510,6 +737,35 @@ namespace MixtormatGpuCompositor
 		int32 ErosionDirectionMode = 0;
 		float ErosionDirectionAngle = 90.0f;
 		float ErosionDirectionAmount = 0.0f;
+		int32 ErosionFlowRadius = 4;
+		int32 ErosionFlowSmoothing = 3;
+		FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
+		float ErosionColorAmount = 0.0f;
+		float ErosionRoughnessAmount = 0.0f;
+		float ErosionCarveDepth = 0.05f;
+
+		float GradeAmount = 1.0f;
+		int32 GradeTonemap = 0;
+		float GradeTonemapStrength = 1.0f;
+		float GradeBrightness = 1.0f;
+		float GradeContrast = 1.0f;
+		float GradeContrastPivot = 0.18f;
+		float GradeGamma = 1.0f;
+
+		float ChipAmount = 0.45f;
+		float ChipGroutLevel = 0.15f;
+		float ChipGroutSoftness = 0.08f;
+		float ChipSize = 0.6f;
+		float ChipDepth = 0.035f;
+		float ChipIrregularity = 0.6f;
+		int32 ChipIterations = 16;
+		float ChipNormalStrength = 8.0f;
+		float ChipMaskEdge = 0.0f;
+		uint32 ChipSeed = 1;
+		FLinearColor ChipColor = FLinearColor(0.34f, 0.30f, 0.27f, 1.0f);
+		float ChipColorAmount = 0.0f;
+		float ChipRoughnessAmount = 0.0f;
+		bool bGradeInvertMask = false;
 	};
 
 	struct FGeneratedMaskRenderData
@@ -524,6 +780,7 @@ namespace MixtormatGpuCompositor
 		float AOWeight = 0.0f;
 		float HeightWeight = 0.0f;
 		float HeightBias = 0.0f;
+		float RidgeWeight = 0.0f;
 		bool bNormalizeWeights = true;
 		int32 Broadness = 2;
 		int32 Smoothing = 2;
@@ -539,6 +796,27 @@ namespace MixtormatGpuCompositor
 		bool bInvert = false;
 	};
 
+	// Craquelure. No surface inputs at all -- that is the whole reason it left the generated
+	// mask, whose every signal is derived from the surface accumulated below it.
+	struct FCraquelureRenderData
+	{
+		bool bEnabled = true;
+		int32 Period = 16;
+		float Jitter = 1.0f;
+		float Width = 0.04f;
+		float Variation = 0.0f;
+		uint32 Seed = 1;
+		float Warp = 0.0f;
+		int32 WarpPeriod = 4;
+		uint32 WarpSeed = 7;
+		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
+		bool bInvert = false;
+		float Weight = 1.0f;
+		float Balance = 0.5f;
+		float Contrast = 1.0f;
+		float Offset = 0.0f;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -546,6 +824,7 @@ namespace MixtormatGpuCompositor
 		FMaskRenderData Mask;
 		FEffectRenderData Effect;
 		FGeneratedMaskRenderData Generated;
+		FCraquelureRenderData Craquelure;
 	};
 
 	struct FLayerRenderData
@@ -558,6 +837,11 @@ namespace MixtormatGpuCompositor
 		FVector4f FillColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
 		float Opacity = 1.0f;
 		float Tiling = 1.0f;
+		int32 UVScaleX = 1;
+		int32 UVScaleY = 1;
+		FVector2f UVOffset = FVector2f::ZeroVector;
+		bool bFlipU = false;
+		bool bFlipV = false;
 		float NormalIntensity = 1.0f;
 		float HueShift = 0.0f;
 		float Saturation = 1.0f;
@@ -868,6 +1152,43 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				GeneratedData.Contrast = FMath::Max(GeneratedMask.Contrast, 0.0f);
 				GeneratedData.Offset = GeneratedMask.Offset;
 				GeneratedData.bInvert = GeneratedMask.bInvert;
+				GeneratedData.RidgeWeight = GeneratedMask.RidgeWeight;
+				Data.bHasMask = true;
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::Craquelure)
+			{
+				const FMixtormatCraquelure& Craquelure = LayerChild.Craquelure;
+
+				// No HasAnySignal() equivalent: this node has one signal and it is always on.
+				// Weight 0 is how a craquelure node is muted, the same as any other mask.
+				if (!Craquelure.bEnabled)
+				{
+					continue;
+				}
+
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::Craquelure;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FCraquelureRenderData& CrackData = ChildData.Craquelure;
+
+				// The clamps here guard the lattice, not taste: the period is a wrap modulus
+				// and a non-positive one would divide the hash by zero.
+				CrackData.Period = FMath::Max(Craquelure.Period, 1);
+				CrackData.WarpPeriod = FMath::Max(Craquelure.WarpPeriod, 1);
+				CrackData.Seed = static_cast<uint32>(FMath::Max(Craquelure.Seed, 0));
+				CrackData.WarpSeed = static_cast<uint32>(FMath::Max(Craquelure.WarpSeed, 0));
+				CrackData.Jitter = Craquelure.Jitter;
+				CrackData.Width = Craquelure.Width;
+				CrackData.Variation = Craquelure.Variation;
+				CrackData.Warp = Craquelure.Warp;
+				CrackData.BlendMode = Craquelure.BlendMode;
+				CrackData.bInvert = Craquelure.bInvert;
+				CrackData.Weight = Craquelure.Weight;
+				CrackData.Balance = Craquelure.Balance;
+				CrackData.Contrast = Craquelure.Contrast;
+				CrackData.Offset = Craquelure.Offset;
 				Data.bHasMask = true;
 				continue;
 			}
@@ -882,9 +1203,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 			// Procedural effects carry no source maps and so have no asset to read a type
 			// from. Asset-backed effects are unchanged.
+			// Every Filter is procedural -- none of them read source maps -- and Peeling is
+			// the one Surface effect with a procedural path.
 			const bool bProcedural =
 				!EffectAsset
-				&& (LayerEffect.ProceduralType == EMixtormatEffectType::Erosion
+				&& (MixtormatEffectClassOf(LayerEffect.ProceduralType) == EMixtormatEffectClass::Filter
 					|| LayerEffect.ProceduralType == EMixtormatEffectType::Peeling);
 			if (!EffectAsset && !bProcedural)
 			{
@@ -914,27 +1237,93 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				// visually, but a typed value outside it stays intact all the way to the
 				// shader, which keeps its own epsilon guards at the division sites.
 				EffectData.ErosionAmount = LayerEffect.ErosionAmount;
+
+				// The two exceptions. Iterations is a GPU dispatch count and Period lays out
+				// the noise lattice, so an out-of-range value here costs frames or resolves to
+				// sub-pixel cells rather than producing an odd-looking surface. These clamps
+				// match their inspector ranges exactly, so unlike every other control here the
+				// scrub range is the real limit.
+				// The clamps that remain in this block guard invariants rather than taste: a
+				// dispatch count, a loop bound, a shift width. Everything a slider merely has
+				// an opinion about passes through, because a typed value above the slider's
+				// range is the user overriding that opinion on purpose.
+				EffectData.ErosionIterations = FMath::Clamp(LayerEffect.ErosionIterations, 1, 64);
+				EffectData.ErosionPeriod = FMath::Clamp(LayerEffect.ErosionPeriod, 1, 1024);
+
 				EffectData.ErosionRepose = LayerEffect.ErosionRepose;
 				EffectData.ErosionReposeSoftness = LayerEffect.ErosionReposeSoftness;
 				EffectData.ErosionNormalStrength = LayerEffect.ErosionNormalStrength;
 				EffectData.ErosionSlopeRadius = LayerEffect.ErosionSlopeRadius;
 				EffectData.ErosionSlopeBlur = LayerEffect.ErosionSlopeBlur;
-				EffectData.ErosionCavityBias = LayerEffect.ErosionCavityBias;
-				EffectData.ErosionCavityScale = LayerEffect.ErosionCavityScale;
+				EffectData.ErosionCurvatureMode = static_cast<int32>(LayerEffect.ErosionCurvatureMode);
+				EffectData.ErosionCavityInfluence = LayerEffect.ErosionCavityInfluence;
+				EffectData.ErosionCavityOffset = LayerEffect.ErosionCavityOffset;
+				EffectData.ErosionCavityRemapMin = LayerEffect.ErosionCavityRemapMin;
+				EffectData.ErosionCavityRemapMax = LayerEffect.ErosionCavityRemapMax;
 				EffectData.ErosionHeightInfluence = LayerEffect.ErosionHeightInfluence;
 				EffectData.ErosionHeightScale = LayerEffect.ErosionHeightScale;
 				EffectData.ErosionGullyWeight = LayerEffect.ErosionGullyWeight;
 				EffectData.ErosionBlendSoftness = LayerEffect.ErosionBlendSoftness;
-				EffectData.ErosionDirectionMode =
-					LayerEffect.ErosionDirectionMode == EMixtormatErosionDirectionMode::Lerp ? 1 : 0;
+				EffectData.ErosionDirectionMode = static_cast<int32>(LayerEffect.ErosionDirectionMode);
 				EffectData.ErosionDirectionAngle = LayerEffect.ErosionDirectionAngle;
 				EffectData.ErosionDirectionAmount = LayerEffect.ErosionDirectionAmount;
+
+				// Both bound the work the flow field costs, so both clamp for the same reason
+				// Passes does: smoothing is a dispatch count.
+				//
+				// Smoothing floors at 1, not 0. The build stores unit vectors, so an
+				// unsmoothed field has length exactly 1 everywhere a gradient exists:
+				// coherency reads as total agreement over what is still pure per-pixel
+				// noise, and the blend hands the carve straight to it. One blur is the
+				// minimum that makes the length mean anything.
+				EffectData.ErosionFlowRadius = FMath::Clamp(LayerEffect.ErosionFlowRadius, 1, 64);
+				EffectData.ErosionFlowSmoothing = FMath::Clamp(LayerEffect.ErosionFlowSmoothing, 1, 16);
+
+				EffectData.ErosionColor = LayerEffect.ErosionColor;
+				EffectData.ErosionColorAmount = LayerEffect.ErosionColorAmount;
+				EffectData.ErosionRoughnessAmount = LayerEffect.ErosionRoughnessAmount;
+				EffectData.ErosionCarveDepth = LayerEffect.ErosionCarveDepth;
 			}
 
-			// Erosion is a Filter and has nothing further to gather. bHasEffects is
-			// deliberately not set for it: a Filter never writes the effect data target,
-			// so flagging it would make the composite sample a buffer nothing wrote.
-			if (!EffectAsset && LayerEffect.ProceduralType == EMixtormatEffectType::Erosion)
+			if (ResolvedType == EMixtormatEffectType::Grade)
+			{
+				EffectData.GradeAmount = LayerEffect.GradeAmount;
+				EffectData.GradeTonemap = static_cast<int32>(LayerEffect.GradeTonemap);
+				EffectData.GradeTonemapStrength =
+					FMath::Clamp(LayerEffect.GradeTonemapStrength, 0.0f, 1.0f);
+				EffectData.GradeBrightness = LayerEffect.GradeBrightness;
+				EffectData.GradeContrast = LayerEffect.GradeContrast;
+				EffectData.GradeContrastPivot = LayerEffect.GradeContrastPivot;
+				EffectData.GradeGamma = LayerEffect.GradeGamma;
+				EffectData.bGradeInvertMask = LayerEffect.bGradeInvertMask;
+			}
+
+			if (ResolvedType == EMixtormatEffectType::Chipping)
+			{
+				EffectData.ChipAmount = LayerEffect.ChipAmount;
+				EffectData.ChipGroutLevel = LayerEffect.ChipGroutLevel;
+				EffectData.ChipGroutSoftness = LayerEffect.ChipGroutSoftness;
+				EffectData.ChipSize = LayerEffect.ChipSize;
+				EffectData.ChipDepth = LayerEffect.ChipDepth;
+				EffectData.ChipIrregularity = LayerEffect.ChipIrregularity;
+				EffectData.ChipIterations = FMath::Clamp(LayerEffect.ChipIterations, 1, 32);
+				EffectData.ChipMaskEdge = LayerEffect.ChipMaskEdge;
+				EffectData.ChipNormalStrength = LayerEffect.ChipNormalStrength;
+				EffectData.ChipSeed = static_cast<uint32>(FMath::Max(LayerEffect.ChipSeed, 0));
+				EffectData.ChipColor = LayerEffect.ChipColor;
+				EffectData.ChipColorAmount = LayerEffect.ChipColorAmount;
+				EffectData.ChipRoughnessAmount = LayerEffect.ChipRoughnessAmount;
+			}
+
+			// Filters have nothing further to gather. bHasEffects is deliberately not set for
+			// them: a Filter never writes the effect data target, so flagging it would make
+			// the composite sample a buffer nothing wrote.
+			//
+			// Gated on the class, not on the absence of an asset. Erosion got away with the
+			// narrower test because nothing creates Erosion assets, but Grade is a valid
+			// EffectType on UMixtormatEffect, so an authored Grade asset would fall through
+			// into the peel branches below and trip exactly the failure above.
+			if (MixtormatEffectClassOf(ResolvedType) == EMixtormatEffectClass::Filter)
 			{
 				continue;
 			}
@@ -1005,11 +1394,16 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			if (EffectAsset->EffectType == EMixtormatEffectType::Stain)
 			{
 				EffectData.StainColor = LayerEffect.StainColor;
-				EffectData.StainRoughness = FMath::Clamp(LayerEffect.StainRoughness, -1.0f, 1.0f);
-				EffectData.StainHeightInfluence = FMath::Clamp(LayerEffect.StainHeightInfluence, 0.0f, 1.0f);
-				EffectData.StainHeightWarp = FMath::Clamp(LayerEffect.StainHeightWarp, 0.0f, 1.0f);
-				EffectData.StainHeightBias = FMath::Clamp(LayerEffect.StainHeightBias, -1.0f, 1.0f);
+				EffectData.StainRoughness = LayerEffect.StainRoughness;
+				EffectData.StainHeightInfluence = LayerEffect.StainHeightInfluence;
+				EffectData.StainHeightWarp = LayerEffect.StainHeightWarp;
+				EffectData.StainHeightBias = LayerEffect.StainHeightBias;
 				EffectData.StainHeightContrast = FMath::Max(LayerEffect.StainHeightContrast, 0.01f);
+				EffectData.StainFlowAmount = LayerEffect.StainFlowAmount;
+				EffectData.StainGravity = LayerEffect.StainGravity;
+				EffectData.StainFlowRadius = FMath::Clamp(LayerEffect.StainFlowRadius, 1, 64);
+				// Floors at 1 for the same reason the erosion pair does.
+				EffectData.StainFlowSmoothing = FMath::Clamp(LayerEffect.StainFlowSmoothing, 1, 16);
 				Data.bHasStain = true;
 				continue;
 			}
@@ -1044,6 +1438,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 		Data.Opacity = Layer.Opacity;
 		Data.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
+
+		// Integer, because the compositor wraps every source read in a frac() and a
+		// fractional scale lands mid-cell at the wrap. Offset and flip are unclamped:
+		// translating and mirroring a periodic function leave it periodic.
+		Data.UVScaleX = FMath::Clamp(Layer.UVScaleX, 1, 16);
+		Data.UVScaleY = FMath::Clamp(Layer.UVScaleY, 1, 16);
+		Data.UVOffset = FVector2f(Layer.UVOffsetX, Layer.UVOffsetY);
+		Data.bFlipU = Layer.bFlipU;
+		Data.bFlipV = Layer.bFlipV;
 		Data.NormalIntensity = Layer.NormalIntensity;
 		Data.HueShift = FMath::Clamp(Layer.HueShift, -180.0f, 180.0f);
 		Data.Saturation = FMath::Clamp(Layer.Saturation, 0.0f, 2.0f);
@@ -1208,6 +1611,26 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					GraphBuilder.CreateUAV(HeightTargets[1]),
 					FVector4f(0.5f, 0.0f, 0.0f, 0.0f));
 
+				// Drainage and crest lines, produced by the erosion filter and consumed by
+				// generated masks on later layers.
+				//
+				// Ping-ponged on the layer index like every other surface input a generated
+				// mask reads, so a mask on layer N sees what was accumulated below layer N.
+				// A single shared target would be read-after-write across layers with no
+				// versioning, and a mask would see its own layer's ridge on some layers and
+				// not others depending on child order.
+				//
+				// That means every layer has to write it, not only eroding ones: a layer that
+				// left its slot alone would hand the next layer the ridge from two layers
+				// back. Layers without erosion copy read to write below.
+				FRDGTextureRef RidgeTargets[2] =
+				{
+					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeA")),
+					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeB"))
+				};
+				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RidgeTargets[0]), FVector4f(0.0f));
+				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RidgeTargets[1]), FVector4f(0.0f));
+
 				const FRDGTextureDesc EffectDesc = FRDGTextureDesc::Create2D(
 					Request.Resolution,
 					PF_FloatRGBA,
@@ -1240,7 +1663,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[1]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
 				TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatGradeCS> GradeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
@@ -1272,6 +1699,74 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					GraphBuilder.CreateUAV(PeelNoiseDummy),
 					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
 				TShaderMapRef<FMixtormatStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatFlowCS> FlowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+				// Bound on every erosion and stain dispatch that is not using flow. The slot
+				// is an SRV sampled by UV, so a 1x1 costs nothing and does not have to match
+				// the dispatch size the way the resample UAV does. Cleared for the same reason
+				// PeelFieldDummy is: RDG rejects a read of a transient texture nothing wrote.
+				FRDGTextureRef FlowDummy = GraphBuilder.CreateTexture(
+					FRDGTextureDesc::Create2D(
+						FIntPoint(1, 1), PF_G16R16F, FClearValueBinding::Black,
+						TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.FlowDummy"));
+				AddClearUAVPass(
+					GraphBuilder,
+					GraphBuilder.CreateUAV(FlowDummy),
+					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
+
+				// Builds an orientation field from a height texture and smooths it into a
+				// coherent one. Shared by erosion and stain: they differ in resolution, in
+				// which height they read and in where they sit in the graph, so what is worth
+				// sharing is this construction rather than a texture.
+				auto AddFlowField = [&GraphBuilder, FlowShader, FlowDummy](
+					FRDGTextureRef Height,
+					const FIntPoint Res,
+					const int32 FlowRadius,
+					const int32 Smoothing,
+					const TCHAR* DebugName) -> FRDGTextureRef
+				{
+					const FRDGTextureDesc FlowDesc = FRDGTextureDesc::Create2D(
+						Res, PF_G16R16F, FClearValueBinding::Black,
+						TexCreate_ShaderResource | TexCreate_UAV);
+					FRDGTextureRef Flow[2] = {
+						GraphBuilder.CreateTexture(FlowDesc, TEXT("Mixtormat.FlowA")),
+						GraphBuilder.CreateTexture(FlowDesc, TEXT("Mixtormat.FlowB"))};
+
+					const FIntVector Groups(
+						FMath::DivideAndRoundUp(Res.X, 8),
+						FMath::DivideAndRoundUp(Res.Y, 8),
+						1);
+
+					int32 Slot = 0;
+					for (int32 Step = 0; Step <= Smoothing; ++Step)
+					{
+						const bool bBuild = Step == 0;
+						FMixtormatFlowCS::FParameters* FP =
+							GraphBuilder.AllocParameters<FMixtormatFlowCS::FParameters>();
+						FP->OutputSize = Res;
+						FP->Mode = bBuild ? 0 : 1;
+						FP->Radius = FlowRadius;
+						FP->SourceHeight = Height;
+						// The build pass never reads PreviousFlow, but the slot still has to
+						// carry a texture something wrote. The cleared 1x1 serves: it is an
+						// SRV, so it does not have to match the dispatch size, and binding the
+						// unwritten ping-pong half here is exactly what RDG rejects.
+						FP->PreviousFlow = bBuild ? FlowDummy : Flow[Slot];
+						FP->LinearWrapSampler =
+							TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+						FP->OutputFlow = GraphBuilder.CreateUAV(Flow[bBuild ? 0 : 1 - Slot]);
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.Flow.%s.%s%d", DebugName, bBuild ? TEXT("Build") : TEXT("Smooth"), Step),
+							FlowShader,
+							FP,
+							Groups);
+						Slot = bBuild ? 0 : 1 - Slot;
+					}
+					return Flow[Slot];
+				};
+
 				TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TSet<int32> RequiredHeightSnapshots;
 				for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
@@ -1307,6 +1802,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// with its carved result so the reshaped height also drives the blend mask,
 					// contact AO and border normals rather than only the displacement output.
 					const FEffectRenderData* PendingErosion = nullptr;
+					const FEffectRenderData* PendingChipping = nullptr;
+
+					// An array where erosion keeps a single pointer. Two erosions on one layer
+					// is nonsense, but a brightness grade and a separate tonemap grade is an
+					// ordinary way to use an adjustment layer, and dropping all but the last
+					// would read as a bug rather than as a contract.
+					TArray<const FEffectRenderData*, TInlineAllocator<2>> PendingGrades;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
 					int32 StainPassIndex = 0;
@@ -1337,6 +1839,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							GeneratedParameters->AOWeight = Generated.AOWeight;
 							GeneratedParameters->HeightWeight = Generated.HeightWeight;
 							GeneratedParameters->HeightBias = Generated.HeightBias;
+							GeneratedParameters->RidgeWeight = Generated.RidgeWeight;
 							GeneratedParameters->NormalizeWeights = Generated.bNormalizeWeights ? 1u : 0u;
 							GeneratedParameters->Broadness = Generated.Broadness;
 							GeneratedParameters->Smoothing = Generated.Smoothing;
@@ -1354,6 +1857,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
 							GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
 							GeneratedParameters->SurfaceHeight = HeightTargets[LayerReadIndex];
+							GeneratedParameters->SurfaceRidge = RidgeTargets[LayerReadIndex];
 							GeneratedParameters->LinearWrapSampler =
 								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 							GeneratedParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
@@ -1377,6 +1881,60 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									TEXT("Mixtormat.DebugGeneratedSnapshot"));
 								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugGeneratedSnapshot);
 								DebugMask = DebugGeneratedSnapshot;
+							}
+							++MaskPassIndex;
+							continue;
+						}
+
+						if (Child.Type == EMixtormatLayerChildType::Craquelure)
+						{
+							const FCraquelureRenderData& Crack = Child.Craquelure;
+							const int32 MaskWriteIndex = MaskPassIndex & 1;
+							const int32 MaskReadIndex = 1 - MaskWriteIndex;
+
+							FMixtormatCraquelureCS::FParameters* CrackParameters =
+								GraphBuilder.AllocParameters<FMixtormatCraquelureCS::FParameters>();
+							CrackParameters->OutputSize = Request.Resolution;
+							CrackParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+							CrackParameters->Period = Crack.Period;
+							CrackParameters->Jitter = Crack.Jitter;
+							CrackParameters->Width = Crack.Width;
+							CrackParameters->Variation = Crack.Variation;
+							CrackParameters->Seed = Crack.Seed;
+							CrackParameters->Warp = Crack.Warp;
+							CrackParameters->WarpPeriod = Crack.WarpPeriod;
+							CrackParameters->WarpSeed = Crack.WarpSeed;
+							CrackParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
+							CrackParameters->Invert = Crack.bInvert ? 1u : 0u;
+							CrackParameters->Weight = Crack.Weight;
+							CrackParameters->Balance = Crack.Balance;
+							CrackParameters->Contrast = Crack.Contrast;
+							CrackParameters->Offset = Crack.Offset;
+							CrackParameters->PreviousMask = MaskTargets[MaskReadIndex];
+							CrackParameters->LinearWrapSampler =
+								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+							CrackParameters->OutputMask =
+								GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Craquelure.Layer%d.Child%d", LayerIndex, ChildIndex),
+								CraquelureShader,
+								CrackParameters,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+							CombinedMask = MaskTargets[MaskWriteIndex];
+							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+							{
+								FRDGTextureRef DebugCrackSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc,
+									TEXT("Mixtormat.DebugCraquelureSnapshot"));
+								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugCrackSnapshot);
+								DebugMask = DebugCrackSnapshot;
 							}
 							++MaskPassIndex;
 							continue;
@@ -1442,6 +2000,25 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							continue;
 						}
 
+						if (Effect.Type == EMixtormatEffectType::Chipping)
+						{
+							// Also a post-layer filter. It runs after erosion rather than before:
+							// chipping a surface that has already weathered is the order that
+							// makes sense, and the reverse would have erosion smoothing chips it
+							// never saw.
+							PendingChipping = &Effect;
+							continue;
+						}
+
+						if (Effect.Type == EMixtormatEffectType::Grade)
+						{
+							// Also a post-layer filter, for the same reason: it grades what the
+							// stack has accumulated at this point, and running it inside the
+							// child loop would grade a base colour the layer then overwrites.
+							PendingGrades.Add(&Effect);
+							continue;
+						}
+
 						if (Effect.Type == EMixtormatEffectType::Stain)
 						{
 							const int32 StainWriteIndex = StainPassIndex & 1;
@@ -1461,6 +2038,25 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							StainParameters->HeightWarp = Effect.StainHeightWarp;
 							StainParameters->HeightBias = Effect.StainHeightBias;
 							StainParameters->HeightContrast = Effect.StainHeightContrast;
+
+							// The same orientation field erosion uses, over the surface this
+							// stain runs down. Built per stain rather than hoisted per layer:
+							// each carries its own radius and smoothing, most layers have one
+							// stain at most, and a stain that does not ask for flow builds
+							// nothing. The warp is skipped wholesale at zero, so a field built
+							// here would always be read.
+							StainParameters->FlowAmount = Effect.StainFlowAmount;
+							StainParameters->Gravity = Effect.StainGravity;
+							StainParameters->FlowField =
+								(Effect.StainFlowAmount > 0.0f && Effect.StainHeightWarp > 0.0f)
+									? AddFlowField(
+										HeightTargets[1 - (LayerIndex & 1)],
+										Request.Resolution,
+										Effect.StainFlowRadius,
+										Effect.StainFlowSmoothing,
+										TEXT("Stain"))
+									: FlowDummy;
+
 							StainParameters->PreviousStainData = StainTargets[StainReadIndex];
 							StainParameters->ChildMask = CombinedMask;
 							StainParameters->AccumulatedHeight = HeightTargets[1 - (LayerIndex & 1)];
@@ -1712,6 +2308,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 					Parameters->Opacity = Layer.Opacity;
 					Parameters->Tiling = Layer.Tiling;
+					Parameters->UVScaleX = Layer.UVScaleX;
+					Parameters->UVScaleY = Layer.UVScaleY;
+					Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
+					Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
+					Parameters->UVOffset = Layer.UVOffset;
 					Parameters->NormalIntensity = Layer.NormalIntensity;
 					Parameters->HueShift = Layer.HueShift;
 					Parameters->Saturation = Layer.Saturation;
@@ -1797,6 +2398,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 							1));
 
+					// Every layer hands the next one a ridge, whether or not it erodes. A layer
+					// that left the slot alone would pass on the ridge from two layers back,
+					// which reads as the mask signal being correct on some layers and stale on
+					// others. Eroding layers overwrite this below.
+					if (!PendingErosion)
+					{
+						AddCopyTexturePass(
+							GraphBuilder,
+							RidgeTargets[1 - WriteIndex],
+							RidgeTargets[WriteIndex]);
+					}
+
 					// Erosion filters the layer output: it reads the height and normal this
 					// layer just composited, carves the height, derives the normal change from
 					// what it removed, and writes both back.
@@ -1814,7 +2427,37 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FMath::Min(Request.Resolution.Y * 2, 4096));
 						const bool bResample = EroRes != Request.Resolution;
 
+						// The height chain is R32F, not R16F like the rest of the compositor.
+						// Every quantity this filter derives is a difference of two nearly
+						// equal heights, and half floats do not survive that.
+						//
+						// A half around mid height has a ULP of 2^-11, about 4.9e-4. The slope
+						// Sobel sums six taps and scales by Res/(8R) -- 128 at 2K with radius 2
+						// -- so quantisation alone puts roughly 0.25 of noise on a slope the
+						// repose gate thresholds at 0.30 with a 0.25 transition. The gate is
+						// then close to a coin flip per pixel and it multiplies the carve, so
+						// the height comes out dithered before the normal pass amplifies
+						// anything. Slope Blur cannot help: the blur averages correctly and the
+						// R16F write throws the result straight back to one ULP.
+						//
+						// The normal pass is the second victim: it differences the carve depth
+						// between neighbours, and those differences are far smaller than the
+						// carve itself, so they land on nought, one or two ULP -- a handful of
+						// distinct slopes over the whole carve. The Hessian is the third, since
+						// a second difference divided by StepUV squared multiplies its error by
+						// about a million.
+						//
+						// EroGuide has to be R32F for the same reason as the rest: it is what
+						// the slope and curvature stencils actually read.
 						const FRDGTextureDesc EroDesc = FRDGTextureDesc::Create2D(
+							EroRes,
+							PF_R32_FLOAT,
+							FClearValueBinding::White,
+							TexCreate_ShaderResource | TexCreate_UAV);
+
+						// The ridge map is a 0..1 signal that is never differenced, so it keeps
+						// the cheaper format.
+						const FRDGTextureDesc EroRidgeDesc = FRDGTextureDesc::Create2D(
 							EroRes,
 							PF_R16F,
 							FClearValueBinding::White,
@@ -1826,24 +2469,36 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FRDGTextureRef EroH[2] = {
 							GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionA")),
 							GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionB"))};
-						FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionRidge"));
+						FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroRidgeDesc, TEXT("Mixtormat.ErosionRidge"));
 						FRDGTextureRef EroGuide = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionGuide"));
+
+						// The horizontal half of the separable slope blur. Allocated here with
+						// the rest rather than per pass: it is another full erosion-resolution
+						// R32F transient, 64MB at the 4096 cap.
+						FRDGTextureRef EroGuideX = GraphBuilder.CreateTexture(
+							EroDesc, TEXT("Mixtormat.ErosionGuideX"));
 						FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionN"));
 						// The layer normal every carving pass reads, lifted to erosion resolution.
 						FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
 
 						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroRidge), FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
 
-						// The resample path never writes a ridge, but the parameter struct still
-						// needs a bound UAV. Binding EroRidge would size-mismatch the downsample
-						// dispatch, so give it a 1x1 target that is never written.
+						// Stands in at both ends of the ridge plumbing: the UAV slot on the
+						// upsample, which must not be aimed at a composition-res target from an
+						// erosion-res dispatch, and the SRV slot on every carving and blur pass,
+						// which cannot read EroRidge because those passes write it.
+						//
+						// Cleared rather than left alone: RDG rejects a read of a transient
+						// texture nothing has written, and it is now read as well as bound.
 						FRDGTextureRef ResampleRidgeDummy = GraphBuilder.CreateTexture(
 							FRDGTextureDesc::Create2D(
 								FIntPoint(1, 1),
 								PF_R16F,
 								FClearValueBinding::White,
 								TexCreate_ShaderResource | TexCreate_UAV),
-							TEXT("Mixtormat.ErosionResampleRidgeDummy"));
+							TEXT("Mixtormat.ErosionRidgeDummy"));
+						AddClearUAVPass(
+							GraphBuilder, GraphBuilder.CreateUAV(ResampleRidgeDummy), FVector4f(0.0f));
 
 						// One dispatch moves height and normal together, in either direction.
 						auto AddErosionResample = [&](
@@ -1851,21 +2506,33 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FRDGTextureRef InN,
 							FRDGTextureRef OutH,
 							FRDGTextureRef OutN,
+							FRDGTextureRef InRidge,
+							FRDGTextureRef OutRidgeTarget,
 							const FIntPoint DestRes,
 							const TCHAR* DebugName)
 						{
+							// A ridge target only on the way down. On the way up the dispatch
+							// runs at erosion resolution and the ridge slot holds the 1x1
+							// dummy, so the shader's write is gated off rather than aimed at
+							// a target it would overrun.
+							const bool bCarryRidge = OutRidgeTarget != nullptr;
+
 							FMixtormatErosionCS::FParameters* RP =
 								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 							RP->OutputSize = DestRes;
 							RP->ResamplePass = 1;
+							RP->ResampleRidge = bCarryRidge ? 1 : 0;
+							RP->PreviousRidge = InRidge;
 							RP->PreviousHeight = InH;
 							RP->SourceHeight = InH;
 							RP->GuideHeight = InH;
 							RP->PreviousNormal = InN;
+							RP->FlowField = FlowDummy;
 							RP->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 							RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
-							RP->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
+							RP->OutputRidge = GraphBuilder.CreateUAV(
+								bCarryRidge ? OutRidgeTarget : ResampleRidgeDummy);
 							RP->OutputNormal = GraphBuilder.CreateUAV(OutN);
 							FComputeShaderUtils::AddPass(
 								GraphBuilder,
@@ -1882,7 +2549,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						{
 							AddErosionResample(
 								HeightTargets[WriteIndex], OutputN[WriteIndex],
-								SourceH, EroSrcN, EroRes, TEXT("Up"));
+								SourceH, EroSrcN,
+								EroRidge, nullptr,
+								EroRes, TEXT("Up"));
 						}
 						else
 						{
@@ -1890,14 +2559,34 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 						}
 
-						// Fixed pass count. Eight is where the octave loop stops adding shape
-						// on the surfaces this filter is aimed at.
-						const int32 Iterations = 8;
+						// Carving passes, then one normal pass. Eight is where the octave loop
+						// stopped adding shape on the surfaces this filter was first aimed at,
+						// which is the default rather than a limit.
+						// Flow direction. Built once, from the height before any carving, and
+						// held for every pass.
+						//
+						// Rebuilding it per pass from the carved height was the alternative and
+						// is worse on both counts. It costs the build and its smoothing eight
+						// times over, and it makes the field chase the channels this filter has
+						// just cut -- the same positive feedback the Valley curvature mode
+						// already risks, with nothing to brake it. What the field is for is the
+						// drainage structure the surface arrived with, which does not change as
+						// the carve deepens it.
+						FRDGTextureRef EroFlow = FlowDummy;
+						if (Ero.ErosionDirectionMode == 2)
+						{
+							EroFlow = AddFlowField(
+								SourceH, EroRes,
+								Ero.ErosionFlowRadius, Ero.ErosionFlowSmoothing,
+								TEXT("Erosion"));
+						}
 
-						// Cells across one UV repeat at the coarsest pass. Fixed so the field
-						// always resolves to a whole number of cells and therefore tiles; it
-						// doubles per octave, so it must stay integral.
-						const int32 ErosionPeriodCells = 32;
+						const int32 Iterations = Ero.ErosionIterations;
+
+						// Cells across one UV repeat at the coarsest pass. Any integer tiles:
+						// the lattice wraps on it, and it doubles per octave, so all it has to
+						// be is whole.
+						const int32 ErosionPeriodCells = Ero.ErosionPeriod;
 						FRDGTextureRef Src = SourceH;
 						FRDGTextureRef Result = SourceH;
 						for (int32 PassIndex = 0; PassIndex <= Iterations; ++PassIndex)
@@ -1924,8 +2613,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								BP->LicSteps = 5;
 								BP->Repose = Ero.ErosionRepose;
 								BP->ReposeSoftness = Ero.ErosionReposeSoftness;
-								BP->CavityBias = Ero.ErosionCavityBias;
-								BP->CavityScale = Ero.ErosionCavityScale;
+								BP->CurvatureMode = Ero.ErosionCurvatureMode;
+								BP->CavityInfluence = Ero.ErosionCavityInfluence;
+								BP->CavityOffset = Ero.ErosionCavityOffset;
+								BP->CavityRemapMin = Ero.ErosionCavityRemapMin;
+								BP->CavityRemapMax = Ero.ErosionCavityRemapMax;
 								BP->HeightInfluence = Ero.ErosionHeightInfluence;
 								BP->HeightScale = Ero.ErosionHeightScale;
 								BP->GullyWeight = Ero.ErosionGullyWeight;
@@ -1941,20 +2633,42 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								BP->SourceHeight = SourceH;
 								BP->GuideHeight = Src;
 								BP->PreviousNormal = EroSrcN;
+								BP->FlowField = EroFlow;
+								BP->PreviousRidge = ResampleRidgeDummy;
 								BP->LinearWrapSampler =
 									TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-								BP->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
 								BP->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
 								BP->OutputNormal = GraphBuilder.CreateUAV(EroN);
+
+								// Separable: X into scratch, then Y out of it into the guide.
+								// A single 2D pass would be 33x33 taps at the slider maximum.
+								const FIntVector BlurGroups(
+									FMath::DivideAndRoundUp(EroRes.X, 8),
+									FMath::DivideAndRoundUp(EroRes.Y, 8),
+									1);
+
+								BP->BlurAxis = 0;
+								BP->PreviousHeight = Src;
+								BP->OutputHeight = GraphBuilder.CreateUAV(EroGuideX);
 								FComputeShaderUtils::AddPass(
 									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Blur%d", LayerIndex, PassIndex),
+									RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurX%d", LayerIndex, PassIndex),
 									ErosionShader,
 									BP,
-									FIntVector(
-										FMath::DivideAndRoundUp(EroRes.X, 8),
-										FMath::DivideAndRoundUp(EroRes.Y, 8),
-										1));
+									BlurGroups);
+
+								FMixtormatErosionCS::FParameters* BPY =
+									GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+								*BPY = *BP;
+								BPY->BlurAxis = 1;
+								BPY->PreviousHeight = EroGuideX;
+								BPY->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurY%d", LayerIndex, PassIndex),
+									ErosionShader,
+									BPY,
+									BlurGroups);
 							}
 
 							const int32 Slot = PassIndex & 1;
@@ -1964,6 +2678,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							EP->Pass = PassIndex;
 							EP->NormalPass = bNormalPass ? 1 : 0;
 							EP->BlurPass = 0;
+							EP->BlurAxis = 0;
 							EP->ResamplePass = 0;
 							EP->BlurRadius = Ero.ErosionSlopeBlur;
 							EP->NormalStrength = Ero.ErosionNormalStrength;
@@ -1974,8 +2689,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							EP->LicSteps = 5;
 							EP->Repose = Ero.ErosionRepose;
 							EP->ReposeSoftness = Ero.ErosionReposeSoftness;
-							EP->CavityBias = Ero.ErosionCavityBias;
-							EP->CavityScale = Ero.ErosionCavityScale;
+							EP->CurvatureMode = Ero.ErosionCurvatureMode;
+							EP->CavityInfluence = Ero.ErosionCavityInfluence;
+							EP->CavityOffset = Ero.ErosionCavityOffset;
+							EP->CavityRemapMin = Ero.ErosionCavityRemapMin;
+							EP->CavityRemapMax = Ero.ErosionCavityRemapMax;
 							EP->HeightInfluence = Ero.ErosionHeightInfluence;
 							EP->HeightScale = Ero.ErosionHeightScale;
 							EP->GullyWeight = Ero.ErosionGullyWeight;
@@ -1991,6 +2709,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							EP->SourceHeight = SourceH;
 							EP->PreviousNormal = EroSrcN;
 							EP->GuideHeight = Ero.ErosionSlopeBlur > 0.0f ? EroGuide : Src;
+							EP->FlowField = EroFlow;
+							EP->PreviousRidge = ResampleRidgeDummy;
 							EP->LinearWrapSampler =
 								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 							EP->OutputHeight = GraphBuilder.CreateUAV(EroH[Slot]);
@@ -2018,13 +2738,346 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							AddErosionResample(
 								Result, EroN,
 								HeightTargets[WriteIndex], OutputN[WriteIndex],
+								EroRidge, RidgeTargets[WriteIndex],
 								Request.Resolution, TEXT("Down"));
 						}
 						else
 						{
 							AddCopyTexturePass(GraphBuilder, Result, HeightTargets[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, EroN, OutputN[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, EroRidge, RidgeTargets[WriteIndex]);
 						}
+
+						// Colour and roughness for what was carved. Skipped when neither amount
+						// asks for anything, so the common case pays nothing.
+						if (Ero.ErosionColorAmount != 0.0f || Ero.ErosionRoughnessAmount != 0.0f)
+						{
+							// Through scratch and back rather than in place: the pass reads the
+							// base colour and RAM the composite just wrote and writes the same
+							// two targets, which cannot be bound as SRV and UAV at once. The
+							// other ping-pong slot is dead at this point and could be borrowed,
+							// but that is a bet on the slot arithmetic staying as it is, and a
+							// wrong bet would only show on some layers.
+							FRDGTextureRef ShadeBC = GraphBuilder.CreateTexture(
+								OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.ErosionShadeBC"));
+							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
+								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ErosionShadeRAM"));
+
+							FMixtormatCarveShadeCS::FParameters* SP =
+								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
+							SP->OutputSize = Request.Resolution;
+							SP->ErodedColor = FVector4f(
+								Ero.ErosionColor.R,
+								Ero.ErosionColor.G,
+								Ero.ErosionColor.B,
+								Ero.ErosionColor.A);
+							SP->ColorAmount = Ero.ErosionColorAmount;
+							SP->RoughnessAmount = Ero.ErosionRoughnessAmount;
+							SP->CarveDepth = Ero.ErosionCarveDepth;
+
+							// Erosion recovers coverage from the height pair, so the coverage
+							// slot is unread here. Bound to SourceH because it is already a
+							// valid single-channel texture in this scope: a dedicated dummy
+							// would be another resource to create, clear and keep correct for
+							// a slot the shader never touches on this path.
+							SP->UseCoverageTexture = 0;
+							SP->CoverageTexture = SourceH;
+
+							// The carve is still the difference of these two, at erosion
+							// resolution, and the pass samples them by UV. Nothing had to be
+							// copied aside before the resample overwrote the composited height.
+							SP->SourceHeight = SourceH;
+							SP->CarvedHeight = Result;
+							SP->SourceColor = OutputBC[WriteIndex];
+							SP->SourceRAM = OutputRAM[WriteIndex];
+							SP->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							SP->OutputColor = GraphBuilder.CreateUAV(ShadeBC);
+							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Shade", LayerIndex),
+								CarveShadeShader,
+								SP,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+
+							AddCopyTexturePass(GraphBuilder, ShadeBC, OutputBC[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+						}
+					}
+
+					// Chipping filters the layer output the same way erosion does, and runs
+					// after it: chipping a surface that has already weathered is the order that
+					// makes sense, and the reverse would have erosion smoothing chips it never
+					// saw.
+					// Amount 0 seeds nothing, so it should also cost nothing rather than run
+					// the iteration loop to produce an unchanged height.
+					if (PendingChipping && PendingChipping->ChipAmount > 0.0f)
+					{
+						const FEffectRenderData& Chip = *PendingChipping;
+
+						// A chip advances one pixel per iteration, so the authored count is a
+						// reach in pixels. Scaled against a 1024 reference so a 512 preview and
+						// a 2048 export show the same chip size rather than the same pixel
+						// count -- otherwise the preview lies about the result.
+						//
+						// The obvious alternative, a dilated 3x3 gather at stride N, is cheaper
+						// and wrong: at stride 2 the four pixel-parity classes never read each
+						// other, so it produces four interleaved chip networks instead of one.
+						//
+						// This is the one filter whose dispatch count scales with output size.
+						// At 4K with Iterations 24 the clamp binds at 96 full-resolution passes,
+						// which is where a slow export will be coming from.
+						const int32 ChipIterations = FMath::Clamp(
+							FMath::RoundToInt(
+								Chip.ChipIterations *
+								FMath::Max(Request.Resolution.X, Request.Resolution.Y) / 1024.0f),
+							1,
+							96);
+
+						// The state is (core, tip, dirX, dirY) at full float, not half, for the
+						// reason the erosion height chain is R32F. Tip is a geometric decay --
+						// multiplied by 0.72..0.99 every iteration, read back, re-multiplied --
+						// and tested against a hard 0.001 cutoff, so half-float quantisation
+						// near that cutoff turns a chip stopping into a per-pixel coin flip.
+						// The stored direction is worse: it is renormalised every pass and fed
+						// to a hard alignment test at dot > -0.10.
+						const FRDGTextureDesc ChipStateDesc = FRDGTextureDesc::Create2D(
+							Request.Resolution,
+							PF_A32B32G32R32F,
+							FClearValueBinding::Black,
+							TexCreate_ShaderResource | TexCreate_UAV);
+						const FRDGTextureDesc ChipMaskDesc = FRDGTextureDesc::Create2D(
+							Request.Resolution,
+							PF_R16F,
+							FClearValueBinding::Black,
+							TexCreate_ShaderResource | TexCreate_UAV);
+
+						FRDGTextureRef ChipState[2] = {
+							GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateA")),
+							GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateB"))};
+
+						// The chip mask ping-pongs for the same reason the state does: the
+						// normal pass and the shade pass both read it, and a pass cannot write
+						// the texture it is reading.
+						FRDGTextureRef ChipMask[2] = {
+							GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskA")),
+							GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskB"))};
+
+						// The height the layer composited, held aside. Every iteration reads
+						// this rather than its own output, matching the read-only height bind in
+						// the prototype: a chip must not be able to carve its own brick down
+						// into grout and so stop itself.
+						FRDGTextureRef ChipSourceH = GraphBuilder.CreateTexture(
+							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.ChipSourceH"));
+						AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], ChipSourceH);
+
+						// Scratch for the normal pass, which reads the composited normal and
+						// writes the same target.
+						FRDGTextureRef ChipNormalScratch = GraphBuilder.CreateTexture(
+							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.ChipNormalScratch"));
+
+						AddClearUAVPass(
+							GraphBuilder, GraphBuilder.CreateUAV(ChipState[0]), FVector4f(0.0f));
+						AddClearUAVPass(
+							GraphBuilder, GraphBuilder.CreateUAV(ChipState[1]), FVector4f(0.0f));
+						AddClearUAVPass(
+							GraphBuilder, GraphBuilder.CreateUAV(ChipMask[0]), FVector4f(0.0f));
+						AddClearUAVPass(
+							GraphBuilder, GraphBuilder.CreateUAV(ChipMask[1]), FVector4f(0.0f));
+
+						const FIntVector ChipGroups(
+							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+							1);
+
+						auto FillChipParameters = [&](FMixtormatChippingCS::FParameters* P)
+						{
+							P->OutputSize = Request.Resolution;
+							P->GroutLevel = Chip.ChipGroutLevel;
+							P->GroutSoftness = Chip.ChipGroutSoftness;
+							P->ChipAmount = Chip.ChipAmount;
+							P->ChipSize = Chip.ChipSize;
+							P->ChipDepth = Chip.ChipDepth;
+							P->Irregularity = Chip.ChipIrregularity;
+							P->MaskEdge = Chip.ChipMaskEdge;
+							P->NormalStrength = Chip.ChipNormalStrength;
+							P->Seed = Chip.ChipSeed;
+							P->SourceHeight = ChipSourceH;
+							P->LayerMask = CombinedMask;
+							P->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+						};
+
+						int32 ChipWrite = 0;
+						for (int32 PassIndex = 0; PassIndex < ChipIterations; ++PassIndex)
+						{
+							ChipWrite = PassIndex & 1;
+							const int32 ChipRead = 1 - ChipWrite;
+
+							FMixtormatChippingCS::FParameters* CP =
+								GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
+							FillChipParameters(CP);
+							CP->Iteration = PassIndex;
+							CP->NormalPass = 0;
+							CP->PreviousState = ChipState[ChipRead];
+							CP->ChipsTexture = ChipMask[ChipRead];
+							CP->PreviousNormal = OutputN[WriteIndex];
+							CP->OutputState = GraphBuilder.CreateUAV(ChipState[ChipWrite]);
+							CP->OutputChips = GraphBuilder.CreateUAV(ChipMask[ChipWrite]);
+							CP->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
+							CP->OutputNormal = GraphBuilder.CreateUAV(ChipNormalScratch);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.P%d", LayerIndex, PassIndex),
+								ChippingShader,
+								CP,
+								ChipGroups);
+						}
+
+						FRDGTextureRef FinalChips = ChipMask[ChipWrite];
+						FRDGTextureRef SpareChips = ChipMask[1 - ChipWrite];
+
+						// Normal from the finished chip mask. Through scratch and back because
+						// the pass reads the composited normal and writes the same target, which
+						// cannot be SRV and UAV in one dispatch.
+						{
+							FMixtormatChippingCS::FParameters* NP =
+								GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
+							FillChipParameters(NP);
+							NP->Iteration = ChipIterations;
+							NP->NormalPass = 1;
+							NP->PreviousState = ChipState[ChipWrite];
+							NP->ChipsTexture = FinalChips;
+							NP->PreviousNormal = OutputN[WriteIndex];
+
+							// Bound and unwritten on this path: the normal pass returns before it
+							// touches state, chips or height. State and chips are aimed at the
+							// spare ping-pong slots so a future edit that stops returning early
+							// cannot corrupt what the loop just produced.
+							//
+							// Height goes to the live target rather than to a spare, because
+							// the alternative -- ChipSourceH -- is bound as SourceHeight on
+							// this same dispatch, and RDG will not take one texture as SRV and
+							// UAV at once. It is safe under the same hypothetical: an edit that
+							// removed the early return would write the value the last loop pass
+							// already wrote there.
+							NP->OutputState = GraphBuilder.CreateUAV(ChipState[1 - ChipWrite]);
+							NP->OutputChips = GraphBuilder.CreateUAV(SpareChips);
+							NP->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
+							NP->OutputNormal = GraphBuilder.CreateUAV(ChipNormalScratch);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Normal", LayerIndex),
+								ChippingShader,
+								NP,
+								ChipGroups);
+
+							AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
+						}
+
+						// Colour and roughness for what was chipped. Coverage is the chip mask
+						// itself rather than a height difference, so it still reads correctly at
+						// Depth 0, where a difference would be nothing.
+						if (Chip.ChipColorAmount != 0.0f || Chip.ChipRoughnessAmount != 0.0f)
+						{
+							FRDGTextureRef ShadeBC = GraphBuilder.CreateTexture(
+								OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeBC"));
+							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
+								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeRAM"));
+
+							FMixtormatCarveShadeCS::FParameters* SP =
+								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
+							SP->OutputSize = Request.Resolution;
+							SP->ErodedColor = FVector4f(
+								Chip.ChipColor.R,
+								Chip.ChipColor.G,
+								Chip.ChipColor.B,
+								Chip.ChipColor.A);
+							SP->ColorAmount = Chip.ChipColorAmount;
+							SP->RoughnessAmount = Chip.ChipRoughnessAmount;
+
+							// Unused on the coverage-texture path, which needs no normalising
+							// divisor because the chip mask is already 0..1.
+							SP->CarveDepth = 1.0f;
+							SP->UseCoverageTexture = 1;
+							SP->CoverageTexture = FinalChips;
+
+							// Bound because the struct requires them, unread on this path.
+							SP->SourceHeight = ChipSourceH;
+							SP->CarvedHeight = ChipSourceH;
+
+							SP->SourceColor = OutputBC[WriteIndex];
+							SP->SourceRAM = OutputRAM[WriteIndex];
+							SP->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							SP->OutputColor = GraphBuilder.CreateUAV(ShadeBC);
+							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Shade", LayerIndex),
+								CarveShadeShader,
+								SP,
+								ChipGroups);
+
+							AddCopyTexturePass(GraphBuilder, ShadeBC, OutputBC[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+						}
+					}
+
+					// Grade runs after erosion, so on a layer carrying both it grades the
+					// surface erosion has already shaded rather than the one it was about to.
+					// That is the order the panel lists them in and the order a grade wants:
+					// last, over the finished result.
+					for (int32 GradeIndex = 0; GradeIndex < PendingGrades.Num(); ++GradeIndex)
+					{
+						const FEffectRenderData& Grade = *PendingGrades[GradeIndex];
+
+						// Through scratch and back, for the same reason the erosion shade pass
+						// is: one texture cannot be SRV and UAV in the same dispatch. Stacked
+						// grades chain through it, each reading what the last wrote.
+						FRDGTextureRef GradedBC = GraphBuilder.CreateTexture(
+							OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.GradeBC"));
+
+						FMixtormatGradeCS::FParameters* GP =
+							GraphBuilder.AllocParameters<FMixtormatGradeCS::FParameters>();
+						GP->OutputSize = Request.Resolution;
+						GP->HasMask = Layer.bHasMask ? 1u : 0u;
+						GP->InvertMask = Grade.bGradeInvertMask ? 1u : 0u;
+						GP->TonemapMode = Grade.GradeTonemap;
+						GP->TonemapStrength = Grade.GradeTonemapStrength;
+						GP->Brightness = Grade.GradeBrightness;
+						GP->Contrast = Grade.GradeContrast;
+						GP->ContrastPivot = Grade.GradeContrastPivot;
+						GP->Gamma = Grade.GradeGamma;
+						GP->Amount = Grade.GradeAmount;
+						GP->SourceColor = OutputBC[WriteIndex];
+
+						// The layer's own accumulated child mask, which is what makes this an
+						// adjustment layer rather than a whole-surface grade.
+						GP->LayerMask = CombinedMask;
+						GP->LinearWrapSampler =
+							TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+						GP->OutputColor = GraphBuilder.CreateUAV(GradedBC);
+
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.Grade.Layer%d.%d", LayerIndex, GradeIndex),
+							GradeShader,
+							GP,
+							FIntVector(
+								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+								1));
+
+						AddCopyTexturePass(GraphBuilder, GradedBC, OutputBC[WriteIndex]);
 					}
 
 					if (RequiredHeightSnapshots.Contains(LayerIndex))

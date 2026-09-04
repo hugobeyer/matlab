@@ -104,14 +104,27 @@ private:
 	const FMixtormatLayerEffect* GetSelectedProceduralPeel() const;
 	FMixtormatLayerEffect* GetSelectedErosion();
 	const FMixtormatLayerEffect* GetSelectedErosion() const;
+	FReply AddGradeToLayer(int32 LayerIndex);
+	FMixtormatLayerEffect* GetSelectedGrade();
+	const FMixtormatLayerEffect* GetSelectedGrade() const;
+
+	FMixtormatLayerEffect* GetSelectedChipping();
+	const FMixtormatLayerEffect* GetSelectedChipping() const;
+	FReply AddChippingToLayer(int32 LayerIndex);
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);
+	FReply AddCraquelureToLayer(int32 LayerIndex);
 	FReply RemoveGeneratedFromLayer(int32 LayerIndex, int32 ChildIndex);
 	void SetGeneratedEnabled(ECheckBoxState CheckState, int32 LayerIndex, int32 ChildIndex);
 	FMixtormatGeneratedMask* GetSelectedGeneratedMask();
 	const FMixtormatGeneratedMask* GetSelectedGeneratedMask() const;
+
+	FMixtormatCraquelure* GetSelectedCraquelure();
+	const FMixtormatCraquelure* GetSelectedCraquelure() const;
+	TSharedRef<SWidget> BuildCraquelureControls();
+	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
 
 	FMixtormatLayerEffect* GetSelectedLayerEffect();
 	const FMixtormatLayerEffect* GetSelectedLayerEffect() const;
@@ -128,6 +141,13 @@ private:
 	FReply OpenStainColorPicker(int32 LayerIndex, int32 ChildIndex);
 	void SetStainColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
 	void RestoreStainColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
+	FReply OpenErosionColorPicker(int32 LayerIndex, int32 ChildIndex);
+	void SetErosionColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
+	void RestoreErosionColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
+
+	FReply OpenChipColorPicker(int32 LayerIndex, int32 ChildIndex);
+	void SetChipColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
+	void RestoreChipColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
 	void SetWorkingLayerEnabled(ECheckBoxState CheckState, int32 LayerIndex);
 	FReply ToggleLayerSolo(int32 LayerIndex);
 	bool IsLayerChildEnabled(int32 LayerIndex, int32 ChildIndex) const;
@@ -434,6 +454,11 @@ private:
 	TSharedRef<SWidget> BuildProceduralPeelControls();
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
+	TSharedRef<SWidget> BuildErosionCurvatureModeMenu();
+	TSharedRef<SWidget> BuildErosionDirectionModeMenu();
+	TSharedRef<SWidget> BuildGradeControls();
+	TSharedRef<SWidget> BuildChippingControls();
+	TSharedRef<SWidget> BuildGradeTonemapMenu();
 
 
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;

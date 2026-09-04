@@ -262,7 +262,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 	}
 	if (Layer.Children.IsValidIndex(SelectedMaskIndex)
 		&& (Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Mask
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generated))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generated
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Craquelure))
 	{
 		return SelectedMaskIndex;
 	}
@@ -372,7 +373,9 @@ void SMixtormat::SyncSelectedLayerControls()
 				? LOCTEXT("SelectedEffectMaps", "FX")
 				: Child.Type == EMixtormatLayerChildType::Generated
 					? LOCTEXT("SelectedGeneratedMaps", "GENERATED MASK")
-					: LOCTEXT("SelectedMaskMaps", "MASK"));
+					: Child.Type == EMixtormatLayerChildType::Craquelure
+						? LOCTEXT("SelectedCraquelureMaps", "CRAQUELURE")
+						: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
 }
@@ -852,6 +855,128 @@ void SMixtormat::RestoreStainColor(
 	}
 }
 
+// What the carve exposes. Same three-call shape as the stain colour: commit live so the
+// preview follows the wheel, and put the original back if the picker is cancelled.
+FReply SMixtormat::OpenErosionColorPicker(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Effect)
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+	LastHistoryRecordTime = 0.0;
+	FColorPickerArgs PickerArgs;
+	PickerArgs.bUseAlpha = false;
+	PickerArgs.bOnlyRefreshOnMouseUp = false;
+	PickerArgs.InitialColor = Effect.ErosionColor;
+	PickerArgs.OnColorCommitted = FOnLinearColorValueChanged::CreateSP(
+		this,
+		&SMixtormat::SetErosionColor,
+		LayerIndex,
+		ChildIndex);
+	PickerArgs.OnColorPickerCancelled = FOnColorPickerCancelled::CreateSP(
+		this,
+		&SMixtormat::RestoreErosionColor,
+		LayerIndex,
+		ChildIndex);
+	OpenColorPicker(PickerArgs);
+	return FReply::Handled();
+}
+
+void SMixtormat::SetErosionColor(
+	FLinearColor NewColor,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+		NewColor.A = Effect.ErosionColor.A;
+		Effect.ErosionColor = NewColor;
+		RefreshLayeredPreview();
+	}
+}
+
+void SMixtormat::RestoreErosionColor(
+	FLinearColor OriginalColor,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+		OriginalColor.A = Effect.ErosionColor.A;
+		Effect.ErosionColor = OriginalColor;
+		SynchronizeHistoryAfterCancelledEdit();
+		RefreshLayeredPreview(false);
+	}
+}
+
+FReply SMixtormat::OpenChipColorPicker(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Effect)
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+	LastHistoryRecordTime = 0.0;
+	FColorPickerArgs PickerArgs;
+	PickerArgs.bUseAlpha = false;
+	PickerArgs.bOnlyRefreshOnMouseUp = false;
+	PickerArgs.InitialColor = Effect.ChipColor;
+	PickerArgs.OnColorCommitted = FOnLinearColorValueChanged::CreateSP(
+		this,
+		&SMixtormat::SetChipColor,
+		LayerIndex,
+		ChildIndex);
+	PickerArgs.OnColorPickerCancelled = FOnColorPickerCancelled::CreateSP(
+		this,
+		&SMixtormat::RestoreChipColor,
+		LayerIndex,
+		ChildIndex);
+	OpenColorPicker(PickerArgs);
+	return FReply::Handled();
+}
+
+void SMixtormat::SetChipColor(
+	FLinearColor NewColor,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+		NewColor.A = Effect.ChipColor.A;
+		Effect.ChipColor = NewColor;
+		RefreshLayeredPreview();
+	}
+}
+
+void SMixtormat::RestoreChipColor(
+	FLinearColor OriginalColor,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
+		OriginalColor.A = Effect.ChipColor.A;
+		Effect.ChipColor = OriginalColor;
+		SynchronizeHistoryAfterCancelledEdit();
+		RefreshLayeredPreview(false);
+	}
+}
+
 void SMixtormat::RebuildLayerList()
 {
 	if (!LayerListBox.IsValid())
@@ -1088,19 +1213,30 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
 		if (Asset)
 		{
-			return Asset->EffectType == EMixtormatEffectType::Peeling
-				? LOCTEXT("PeelingEffectName", "Peeling")
-				: Asset->EffectType == EMixtormatEffectType::Stain
-					? LOCTEXT("StainEffectName", "Stain")
-					: LOCTEXT("ErosionEffectName", "Erosion");
+			switch (Asset->EffectType)
+			{
+			case EMixtormatEffectType::Peeling: return LOCTEXT("PeelingEffectName", "Peeling");
+			case EMixtormatEffectType::Stain:   return LOCTEXT("StainEffectName", "Stain");
+			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
+			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
+			}
 		}
-		return Child.Effect.ProceduralType == EMixtormatEffectType::Erosion
-			? LOCTEXT("ErosionEffectName", "Erosion")
-			: LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
+		switch (Child.Effect.ProceduralType)
+		{
+		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
+		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
+		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
+		}
 	}
 	if (Child.Type == EMixtormatLayerChildType::Generated)
 	{
 		return LOCTEXT("GeneratedChildName", "Generated Mask");
+	}
+	if (Child.Type == EMixtormatLayerChildType::Craquelure)
+	{
+		return LOCTEXT("CraquelureChildName", "Craquelure");
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
@@ -1118,7 +1254,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 	return SNew(SImage)
 		.Image(Child.Type == EMixtormatLayerChildType::Effect
 			? MixtormatIcons::Effect()
-			: Child.Type == EMixtormatLayerChildType::Generated
+			: (Child.Type == EMixtormatLayerChildType::Generated
+					|| Child.Type == EMixtormatLayerChildType::Craquelure)
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()));
@@ -1241,7 +1378,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 	{
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
-		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated;
+		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
+			|| Child.Type == EMixtormatLayerChildType::Craquelure;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Group->AddChild(
@@ -1328,6 +1466,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	{
 	case EMixtormatLayerChildType::Effect:    return Child.Effect.bEnabled;
 	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
+	case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -1363,6 +1502,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
+	Menu.Item(
+		LOCTEXT("AddCraquelureChild", "Craquelure"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCraquelureToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
@@ -1479,6 +1622,14 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddErosionEffect", "Erosion"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddErosionToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddGradeEffect", "Grade"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGradeToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddChippingEffect", "Chipping"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddChippingToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
 		MixtormatIcons::Effect(),
@@ -1834,6 +1985,48 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 		];
 }
 
+FReply SMixtormat::AddCraquelureToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Craquelure;
+	SelectedLayerIndex = LayerIndex;
+	SelectedMaskIndex = Layer.Children.Num() - 1;
+	SelectedEffectIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatCraquelure* SMixtormat::GetSelectedCraquelure()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Craquelure ? &Child.Craquelure : nullptr;
+}
+
+const FMixtormatCraquelure* SMixtormat::GetSelectedCraquelure() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Craquelure ? &Child.Craquelure : nullptr;
+}
+
 FReply SMixtormat::AddGeneratedMaskToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -1976,6 +2169,92 @@ FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();
+}
+
+FReply SMixtormat::AddChippingToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::Chipping;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedGrade()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::Grade)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedGrade() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::Grade)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedChipping()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::Chipping)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedChipping() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::Chipping)
+	{
+		return nullptr;
+	}
+	return Effect;
 }
 
 FReply SMixtormat::AddProceduralPeelingToLayer(const int32 LayerIndex)

@@ -1,8 +1,10 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatFlow.ush"
 
 Texture2D<float4> PreviousStainData;
 Texture2D<float> ChildMask;
 Texture2D<float> AccumulatedHeight;
+Texture2D<float2> FlowField;
 SamplerState LinearWrapSampler;
 RWTexture2D<float4> OutputStainData;
 
@@ -15,6 +17,8 @@ float HeightInfluence;
 float HeightWarp;
 float HeightBias;
 float HeightContrast;
+float FlowAmount;
+float Gravity;
 
 float2 WarpStainUV(float2 UV)
 {
@@ -40,10 +44,79 @@ float2 WarpStainUV(float2 UV)
 			? Gradient / GradientLength
 			: float2(0.0f, 0.0f);
 
+		// Follow the surface's coherent structure instead of the raw local gradient. The
+		// two-texel gradient above turns wherever the height has grain, so a run streaks in
+		// a slightly different direction at every step and reads as fraying rather than as
+		// running water. The flow tangent is agreed over a neighbourhood, so a run holds its
+		// line and follows a channel that already exists.
+		//
+		// Oriented uphill, like the term it replaces: the source is traced uphill so the
+		// visible stain is displaced downhill.
+		if (FlowAmount > 1.0e-4f)
+		{
+			float Coherency;
+			const float2 Tangent = MixtormatFlowTangent(
+				FlowField.SampleLevel(LinearWrapSampler, SourceUV, 0.0f), Coherency);
+			const float2 Along = MixtormatOrientAlong(Tangent, UphillDirection);
+			const float2 Mixed = lerp(UphillDirection, Along, FlowAmount * Coherency);
+			const float MixedLength = length(Mixed);
+			UphillDirection = MixedLength > 1.0e-5f ? Mixed / MixedLength : UphillDirection;
+		}
+
 		// Trace the source uphill so the visible stain is displaced downhill.
 		SourceUV = frac(SourceUV + UphillDirection * HeightWarp * Slope * 0.0125f);
 	}
 	return SourceUV;
+}
+
+// Gravity. Liquid on a wall runs down and leaves a trail behind it, so a pixel takes the
+// strongest source found along the path back up rather than one displaced sample.
+// Displacement moves a stain; this lengthens it into a run, which is the difference between
+// a smeared blob and a drip.
+//
+// Deliberately not gated by slope, unlike the warp above. That term multiplies by Slope, so
+// on a flat wall it does nothing -- and a flat wall is exactly the surface this is named for.
+// Gravity has to bypass that gate or the feature does not exist where it is wanted.
+//
+// The direction is signed rather than derived from FlipNormalY: that flag is about normal-map
+// green-channel encoding, and the V direction of the mesh UVs is independent of it. Coupling
+// them would flip every drip when someone re-imported a normal map in the other convention.
+float GatherStainMask(float2 StainUV)
+{
+	float Mask = ChildMask.SampleLevel(LinearWrapSampler, StainUV, 0.0f);
+	if (abs(Gravity) <= 1.0e-4f)
+	{
+		return Mask;
+	}
+
+	// Against gravity: each pixel looks back up the path liquid would have taken to reach it.
+	const float2 Against = float2(0.0f, Gravity > 0.0f ? -1.0f : 1.0f);
+
+	// A fifth of the texture at full Warp. Warp bought at most 0.025 UV of displacement before
+	// this, so the same slider now reaches roughly twenty times further -- the control changes
+	// meaning, which the plan doc records.
+	const float Reach = max(HeightWarp, 0.0f) * abs(Gravity) * 0.20f;
+
+	// One step per pixel of reach, capped. A fixed step count would space the taps by the
+	// reach itself, so a long run would sample every Nth pixel and come out dashed: a mask
+	// feature falling between two taps is never seen. At the cap the spacing grows again,
+	// about six pixels at 2K with Warp at 1, still below any stain feature worth a drip.
+	const float ResolutionScale = max(float(OutputSize.x), float(OutputSize.y));
+	const int Steps = clamp((int)ceil(Reach * ResolutionScale), 1, 64);
+	const float StepLength = Reach / (float)Steps;
+
+	[loop]
+	for (int i = 1; i <= Steps; ++i)
+	{
+		const float2 P = frac(StainUV + Against * (StepLength * (float)i));
+		const float t = (float)i / (float)Steps;
+
+		// Squared falloff, so a run thins as it descends rather than ending square.
+		const float Falloff = (1.0f - t) * (1.0f - t);
+		Mask = max(Mask, ChildMask.SampleLevel(LinearWrapSampler, P, 0.0f) * Falloff);
+	}
+
+	return Mask;
 }
 
 [numthreads(8, 8, 1)]
@@ -56,11 +129,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
 	float2 StainUV = HeightWarp > 1.0e-4f ? WarpStainUV(UV) : UV;
-	float Mask = ChildMask.SampleLevel(LinearWrapSampler, StainUV, 0.0f);
+
+	// Gathered along the run, but shaded by where the pixel is rather than where the liquid
+	// came from: the height mask below reads this pixel's own UV, which is what settles a
+	// drip into the crevices it is currently sitting in.
+	float Mask = GatherStainMask(StainUV);
 	float Height = AccumulatedHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float ValleyRidge = lerp(1.0f - Height, Height, saturate(HeightBias * 0.5f + 0.5f));
 	float HeightMask = saturate((ValleyRidge - 0.5f) * max(HeightContrast, 0.01f) + 0.5f);
-	float Coverage = saturate(Mask * Strength * lerp(1.0f, HeightMask, saturate(HeightInfluence)));
+	float Coverage = saturate(Mask * Strength * lerp(1.0f, HeightMask, HeightInfluence));
 
 	float4 Previous = Initialize != 0
 		? float4(1.0f, 1.0f, 1.0f, 0.0f)

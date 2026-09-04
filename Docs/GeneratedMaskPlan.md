@@ -216,3 +216,22 @@ direction-only node costs one tap.
 12. Baked output matches the preview.
 
 Do not run builds, Unreal, or tests without explicit permission.
+
+
+## Craquelure moved out
+
+Craquelure briefly lived here as a signal, and the fit was wrong. Every signal on this node is
+derived from the surface accumulated beneath the layer, which is why the node early-returns when
+there is none. Craquelure is generated from a cellular lattice and means something on the bottom
+layer, so accommodating it meant replacing that single early return with a per-signal
+`SurfaceValid` guard -- the node's contract then depended on which weights a given recipe
+happened to set.
+
+It is now its own child type, `EMixtormatLayerChildType::Craquelure`, and the test here is a
+single condition again.
+
+What both nodes still share -- the eight blend modes and the bias / contrast / balance / invert
+tail -- lives in `MixtormatMaskOps.ush`. That is the seam to reuse for any further
+mask-producing node: add a node that includes the header, rather than a signal on this one. The
+question to ask is whether the thing is derived from the surface below. If it is not, it does
+not belong here.

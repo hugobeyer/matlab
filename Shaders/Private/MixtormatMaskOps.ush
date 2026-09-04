@@ -1,0 +1,71 @@
+#ifndef MATERIAL_LAB_MASK_OPS_USH
+#define MATERIAL_LAB_MASK_OPS_USH
+
+// The tail every mask-producing node shares: shape the signal it generated, then blend it into
+// the mask accumulated so far.
+//
+// Extracted when craquelure moved out of the generated mask into its own node. Both nodes want
+// the same blend modes and the same bias / contrast / balance / invert chain, and a second copy
+// of it would have drifted -- the balance curve in particular is not something anyone would
+// reproduce identically from memory.
+
+float MixtormatApplyMaskOperation(uint BlendMode, float Previous, float Incoming)
+{
+	if (BlendMode == 0)
+	{
+		return Incoming;
+	}
+	if (BlendMode == 1)
+	{
+		return Previous + Incoming;
+	}
+	if (BlendMode == 2)
+	{
+		return Previous - Incoming;
+	}
+	if (BlendMode == 3)
+	{
+		return Previous * Incoming;
+	}
+	if (BlendMode == 4)
+	{
+		return min(Previous, Incoming);
+	}
+	if (BlendMode == 5)
+	{
+		return max(Previous, Incoming);
+	}
+	if (BlendMode == 6)
+	{
+		return Previous + (Incoming - 0.5f) * 2.0f;
+	}
+	return Previous < 0.5f
+		? 2.0f * Previous * Incoming
+		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
+}
+
+// Contrast about the midpoint, then a signed balance that pushes the mask toward black or white
+// without moving its midpoint, then invert. Balance is a power curve rather than a lerp so that
+// it thins or thickens what is already there instead of fading it out.
+float MixtormatShapeMask(
+	float Incoming,
+	float Contrast,
+	float Offset,
+	float Balance,
+	uint Invert)
+{
+	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
+
+	const float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
+	const float BalanceStrength = abs(SignedBalance);
+	const float BalanceExponent = exp2(BalanceStrength * 6.0f);
+	const float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
+	const float Balanced = SignedBalance < 0.0f
+		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
+		: pow(Incoming, BalanceExponent);
+
+	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
+	return Invert != 0 ? 1.0f - Incoming : Incoming;
+}
+
+#endif

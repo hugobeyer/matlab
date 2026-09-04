@@ -1,0 +1,146 @@
+#ifndef MATERIAL_LAB_CELLULAR_USH
+#define MATERIAL_LAB_CELLULAR_USH
+
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+
+// Periodic cellular noise. The shared foundation for craquelure, chipping, per-cell colour
+// and per-cell placement -- everything that needs to know which cell a pixel belongs to.
+//
+// Periodic by construction, like the gully lattice and for the same reason: the cell
+// coordinate is wrapped to an integer period *before* it is hashed, so opposite edges of the
+// UV square agree about which cell they are in. A lattice that closes on a period is a
+// different construction from one with a wrapped input, and it cannot be retrofitted -- see
+// ErosionEffectPlan.md, which learned that the expensive way.
+//
+// Jitter is what makes one primitive serve two very different jobs. At 0 the feature points
+// sit on the lattice and the result is a regular grid: brick, tile, plank. At 1 they move
+// anywhere in their cell and the result is full Voronoi: stone, cracked paint, cell walls.
+//
+// Two distance measures are returned because they are not interchangeable and the difference
+// is visible:
+//
+//   F2 - F1        distance between the two nearest feature *points*. Cheap, but the width
+//                  it implies varies with cell size, so cracks come out thick in large cells
+//                  and thin in small ones.
+//   EdgeDistance   distance to the nearest cell *boundary*, the perpendicular to the bisector
+//                  between this cell's point and its neighbour's. Even width regardless of
+//                  cell size, which is what actually reads as craquelure or grout.
+//
+// Craquelure and chipping both use EdgeDistance. Anything wanting blobs or a size gradient
+// uses F1 or F2 - F1.
+
+struct FMixtormatCellularResult
+{
+	float F1;            // distance to the nearest feature point
+	float F2;            // distance to the second nearest
+	float EdgeDistance;  // distance to the nearest cell boundary
+	uint CellId;         // hash of the owning cell, stable under the period
+	float2 CellOffset;   // this pixel relative to its feature point
+};
+
+// Feature point for a cell, wrapped to the period so the field repeats.
+float2 MixtormatCellPoint(int2 Cell, int Period, uint Seed, float Jitter)
+{
+	const uint hx = (uint)MixtormatWrapI(Cell.x, Period);
+	const uint hy = (uint)MixtormatWrapI(Cell.y, Period);
+	const uint h = MixtormatHashU(hx * 0x27d4eb2du ^ hy * 0x165667b1u ^ Seed * 0x9e3779b9u);
+
+	// Two independent values out of one hash. Reusing the same bits for x and y would put
+	// every feature point on the cell diagonal.
+	const float jx = (float)(h & 0x0000FFFFu) * (1.0f / 65535.0f);
+	const float jy = (float)((h >> 16) & 0x0000FFFFu) * (1.0f / 65535.0f);
+
+	return (float2)Cell + 0.5f + (float2(jx, jy) - 0.5f) * saturate(Jitter);
+}
+
+uint MixtormatCellHash(int2 Cell, int Period, uint Seed)
+{
+	const uint hx = (uint)MixtormatWrapI(Cell.x, Period);
+	const uint hy = (uint)MixtormatWrapI(Cell.y, Period);
+	return MixtormatHashU(hx * 0x85ebca6bu ^ hy * 0xc2b2ae35u ^ (Seed + 1u) * 0x27d4eb2du);
+}
+
+// 0..1 from a cell hash. For per-cell colour, size and placement variation.
+float MixtormatCellRandom01(uint CellId)
+{
+	return (float)(CellId & 0x00FFFFFFu) * (1.0f / 16777215.0f);
+}
+
+FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, float Jitter)
+{
+	const int2 Base = (int2)floor(p);
+
+	// Pass one: the nearest feature point, and which cell owns it.
+	float2 NearestOffset = 0.0f;
+	int2 NearestCell = Base;
+	float BestSq = 1.0e30f;
+	float SecondSq = 1.0e30f;
+
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Cell = Base + int2(x, y);
+			const float2 Offset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
+			const float DistSq = dot(Offset, Offset);
+
+			if (DistSq < BestSq)
+			{
+				SecondSq = BestSq;
+				BestSq = DistSq;
+				NearestOffset = Offset;
+				NearestCell = Cell;
+			}
+			else if (DistSq < SecondSq)
+			{
+				SecondSq = DistSq;
+			}
+		}
+	}
+
+	// Pass two: distance to the boundary rather than to a point.
+	//
+	// For each neighbouring feature point, the boundary with this cell is the perpendicular
+	// bisector of the segment between the two. The distance to it is the projection of the
+	// midpoint onto the unit vector joining them. The minimum over all neighbours is the
+	// distance to the cell wall.
+	//
+	// The scan is centred on the *nearest* cell, not on the pixel's own lattice cell. Once
+	// jitter moves points around, the owning cell is often not the one the pixel sits in, and
+	// scanning the wrong neighbourhood misses the true nearest wall along one edge -- which
+	// shows up as a crack that thins and vanishes rather than closing.
+	float Edge = 1.0e30f;
+
+	[unroll]
+	for (int ey = -1; ey <= 1; ++ey)
+	{
+		[unroll]
+		for (int ex = -1; ex <= 1; ++ex)
+		{
+			const int2 Cell = NearestCell + int2(ex, ey);
+			const float2 Offset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
+			const float2 Delta = Offset - NearestOffset;
+			const float DeltaLenSq = dot(Delta, Delta);
+
+			// Skips the nearest point itself, which would divide by zero.
+			if (DeltaLenSq > 1.0e-9f)
+			{
+				const float Distance =
+					dot(0.5f * (NearestOffset + Offset), Delta * rsqrt(DeltaLenSq));
+				Edge = min(Edge, Distance);
+			}
+		}
+	}
+
+	FMixtormatCellularResult Result;
+	Result.F1 = sqrt(BestSq);
+	Result.F2 = sqrt(SecondSq);
+	Result.EdgeDistance = max(Edge, 0.0f);
+	Result.CellId = MixtormatCellHash(NearestCell, Period, Seed);
+	Result.CellOffset = -NearestOffset;
+	return Result;
+}
+
+#endif

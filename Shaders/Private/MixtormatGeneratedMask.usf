@@ -1,10 +1,12 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> SurfaceNormal;
 Texture2D<float4> SurfaceRAM;
 Texture2D<float> SurfaceHeight;
+Texture2D<float> SurfaceRidge;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputMask;
 
@@ -23,6 +25,7 @@ float DirectionBroadness;
 float AOWeight;
 float HeightWeight;
 float HeightBias;
+float RidgeWeight;
 
 uint NormalizeWeights;
 int Broadness;
@@ -39,41 +42,6 @@ float Balance;
 float Contrast;
 float Offset;
 
-float ApplyMaskOperation(float Previous, float Incoming)
-{
-	if (BlendMode == 0)
-	{
-		return Incoming;
-	}
-	if (BlendMode == 1)
-	{
-		return Previous + Incoming;
-	}
-	if (BlendMode == 2)
-	{
-		return Previous - Incoming;
-	}
-	if (BlendMode == 3)
-	{
-		return Previous * Incoming;
-	}
-	if (BlendMode == 4)
-	{
-		return min(Previous, Incoming);
-	}
-	if (BlendMode == 5)
-	{
-		return max(Previous, Incoming);
-	}
-	if (BlendMode == 6)
-	{
-		return Previous + (Incoming - 0.5f) * 2.0f;
-	}
-	return Previous < 0.5f
-		? 2.0f * Previous * Incoming
-		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
-}
-
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -87,8 +55,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	// No accumulated surface beneath this layer: the node has nothing to read, so
-	// leave the accumulated mask untouched.
+	// No accumulated surface beneath this layer: every signal this node produces is derived
+	// from one, so there is nothing to read and the accumulated mask is left untouched.
+	//
+	// A plain test again. It was briefly picked apart into a per-signal guard to accommodate
+	// craquelure, which is generated from a lattice rather than derived and so meant something
+	// on the bottom layer -- that made this node's contract depend on which weights happened
+	// to be non-zero. Craquelure has its own node now and this is a single condition again.
 	if (SurfaceValid == 0)
 	{
 		OutputMask[DispatchThreadId.xy] = saturate(Previous);
@@ -153,7 +126,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			Curvature,
 			Cavity,
 			Convex);
-		Raw += CurvatureWeight * lerp(Cavity, Convex, saturate(CurvatureBias));
+		Raw += CurvatureWeight * lerp(Cavity, Convex, CurvatureBias);
 		Total += abs(CurvatureWeight);
 	}
 
@@ -181,21 +154,24 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Total += abs(HeightWeight);
 	}
 
+	// Drainage and crest lines from the erosion filter, accumulated below this layer. Unlike
+	// the other signals this one is not derived here: erosion already computed where its
+	// passes agreed on a crest, and this is the first consumer of that output.
+	//
+	// Zero everywhere when no layer below carries an erosion filter, so a weight on it is
+	// simply inert rather than wrong.
+	if (abs(RidgeWeight) > 0.0f)
+	{
+		const float Ridge = SurfaceRidge.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
+		Raw += RidgeWeight * saturate(Ridge);
+		Total += abs(RidgeWeight);
+	}
+
 	float Mixed = (NormalizeWeights != 0 && Total > 1.0e-5f) ? Raw / Total : Raw;
 	float Incoming = MixtormatBias01(saturate(Mixed), Bias);
 
-	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
+	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
 
-	const float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
-	const float BalanceStrength = abs(SignedBalance);
-	const float BalanceExponent = exp2(BalanceStrength * 6.0f);
-	const float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
-	const float Balanced = SignedBalance < 0.0f
-		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
-		: pow(Incoming, BalanceExponent);
-	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
-	Incoming = Invert != 0 ? 1.0f - Incoming : Incoming;
-
-	const float OperationResult = ApplyMaskOperation(Previous, Incoming);
+	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
 }

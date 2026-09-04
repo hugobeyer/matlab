@@ -245,6 +245,37 @@ namespace MixtormatUI
 		default: return LOCTEXT("MaskModeReplace", "Replace");
 		}
 	}
+
+	inline FText GradeTonemapText(const EMixtormatGradeTonemap Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatGradeTonemap::Reinhard: return LOCTEXT("GradeTmReinhard", "Reinhard");
+		case EMixtormatGradeTonemap::ACES: return LOCTEXT("GradeTmACES", "ACES");
+		case EMixtormatGradeTonemap::Filmic: return LOCTEXT("GradeTmFilmic", "Filmic");
+		default: return LOCTEXT("GradeTmNone", "None");
+		}
+	}
+
+	inline FText ErosionDirectionModeText(const EMixtormatErosionDirectionMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatErosionDirectionMode::Lerp: return LOCTEXT("EroDirLerp", "Lerp");
+		case EMixtormatErosionDirectionMode::Flow: return LOCTEXT("EroDirFlow", "Flow");
+		default: return LOCTEXT("EroDirWeight", "Weight");
+		}
+	}
+
+	inline FText ErosionCurvatureModeText(const EMixtormatErosionCurvatureMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatErosionCurvatureMode::Valley: return LOCTEXT("EroCurvValley", "Valley");
+		case EMixtormatErosionCurvatureMode::Ridge: return LOCTEXT("EroCurvRidge", "Ridge");
+		default: return LOCTEXT("EroCurvMean", "Mean");
+		}
+	}
 }
 
 class SMixtormatBakeSettingsDialog final : public SCompoundWidget

@@ -1,0 +1,103 @@
+#include "/Engine/Public/Platform.ush"
+
+// Coherent tangent flow field, built from a height texture and consumed by any effect that
+// wants a direction following the surface's own structure rather than the per-pixel gradient.
+//
+// A local gradient wanders texel to texel on a composited height, which is why every consumer
+// so far has had to blur the height first and still ended up with a direction that changes
+// under the smallest grain. This solves it at the level above: build the orientation field
+// once, smooth the *orientations* rather than the height, and read a direction that is stable
+// over a region because the region agreed on it.
+//
+// Two modes, dispatched in sequence:
+//
+//   Build   Sobel gradient at Radius, stored as a unit double-angle vector.
+//   Smooth  componentwise blur of that vector. Repeated; each pass widens the agreement.
+//
+// The double angle is what makes the smooth legal. See MixtormatFlow.ush for why, and for
+// the decode every consumer shares.
+
+Texture2D<float> SourceHeight;
+Texture2D<float2> PreviousFlow;
+SamplerState LinearWrapSampler;
+RWTexture2D<float2> OutputFlow;
+
+int2 OutputSize;
+int Mode;
+int Radius;
+
+int MixtormatFlowWrapI(int x, int m)
+{
+	m = max(m, 1);
+	x = x % m;
+	return x < 0 ? x + m : x;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Resf = float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+	const int R = max(Radius, 1);
+
+	if (Mode == 0)
+	{
+		// Neighbour taps wrap, so the field tiles with the surface it was built from.
+		const int xm = MixtormatFlowWrapI(Pixel.x - R, OutputSize.x);
+		const int xp = MixtormatFlowWrapI(Pixel.x + R, OutputSize.x);
+		const int ym = MixtormatFlowWrapI(Pixel.y - R, OutputSize.y);
+		const int yp = MixtormatFlowWrapI(Pixel.y + R, OutputSize.y);
+
+		const float h_mm = SourceHeight.Load(int3(xm, ym, 0));
+		const float h_0m = SourceHeight.Load(int3(Pixel.x, ym, 0));
+		const float h_pm = SourceHeight.Load(int3(xp, ym, 0));
+		const float h_m0 = SourceHeight.Load(int3(xm, Pixel.y, 0));
+		const float h_p0 = SourceHeight.Load(int3(xp, Pixel.y, 0));
+		const float h_mp = SourceHeight.Load(int3(xm, yp, 0));
+		const float h_0p = SourceHeight.Load(int3(Pixel.x, yp, 0));
+		const float h_pp = SourceHeight.Load(int3(xp, yp, 0));
+
+		// Same Sobel convention as the erosion slope, so the two agree about which way is up.
+		const float2 G = float2(
+			(h_pm + 2.0f * h_p0 + h_pp) - (h_mm + 2.0f * h_m0 + h_mp),
+			(h_mp + 2.0f * h_0p + h_pp) - (h_mm + 2.0f * h_0m + h_pm));
+
+		const float L2 = dot(G, G);
+
+		// Unit double-angle vector, or zero where there is no gradient to speak of. Storing
+		// it unweighted is what makes the smoothed length a coherency in 0..1 with no
+		// reference magnitude to choose: every pixel with a gradient casts one equal vote,
+		// and flat ground casts none rather than a random one. Weighting by |G| would
+		// distinguish a strong edge from a weak one but reintroduces a scale to normalise
+		// against, which needs a third channel to carry.
+		//
+		// (Gx^2 - Gy^2, 2 Gx Gy) is |G|^2 (cos 2t, sin 2t), so dividing by |G|^2 leaves the
+		// unit vector without ever calling atan2 here.
+		OutputFlow[Pixel] = L2 > 1.0e-12f
+			? float2(G.x * G.x - G.y * G.y, 2.0f * G.x * G.y) / L2
+			: float2(0.0f, 0.0f);
+		return;
+	}
+
+	// Componentwise blur. Filtered UV sampling so Radius moves continuously in pixel units,
+	// and so each repeat of this pass widens the neighbourhood that has to agree.
+	const float2 D = (float)R / Resf;
+	const float2 b =
+		  1.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2(-D.x, -D.y), 0.0f)
+		+ 2.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2( 0.0f, -D.y), 0.0f)
+		+ 1.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2( D.x, -D.y), 0.0f)
+		+ 2.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  0.0f), 0.0f)
+		+ 4.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		+ 2.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2( D.x,  0.0f), 0.0f)
+		+ 1.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  D.y), 0.0f)
+		+ 2.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2( 0.0f,  D.y), 0.0f)
+		+ 1.0f * PreviousFlow.SampleLevel(LinearWrapSampler, UV + float2( D.x,  D.y), 0.0f);
+
+	OutputFlow[Pixel] = b * (1.0f / 16.0f);
+}

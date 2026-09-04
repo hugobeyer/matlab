@@ -1,5 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatFlow.ush"
 
 // Erosion filter. One dispatch is one carving pass; the compositor runs several, each
 // re-differentiating the height the previous pass wrote so channels propagate and merge
@@ -12,6 +13,8 @@ Texture2D<float> PreviousHeight;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
 Texture2D<float> GuideHeight;
+Texture2D<float2> FlowField;
+Texture2D<float> PreviousRidge;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputHeight;
 RWTexture2D<float> OutputRidge;
@@ -21,7 +24,9 @@ int2 OutputSize;
 int Pass;
 int NormalPass;
 int BlurPass;
+int BlurAxis;
 int ResamplePass;
+int ResampleRidge;
 float BlurRadius;
 float NormalStrength;
 float Amount;
@@ -31,8 +36,11 @@ float GullyLength;
 int LicSteps;
 float Repose;
 float ReposeSoftness;
-float CavityBias;
-float CavityScale;
+int CurvatureMode;
+float CavityInfluence;
+float CavityOffset;
+float CavityRemapMin;
+float CavityRemapMax;
 float HeightInfluence;
 float HeightScale;
 float GullyWeight;
@@ -55,6 +63,19 @@ int WrapI(int x, int m)
 float SmoothStepF(float a, float b, float x)
 {
 	float t = saturate((x - a) / max(b - a, 1.0e-6f));
+	return t * t * (3.0f - 2.0f * t);
+}
+
+// An input window mapped to 0..1 and eased. Unlike SmoothStepF this accepts a descending
+// window: Lo > Hi inverts the result, which is how the cavity gate is aimed at ridges
+// instead of channels without a second sign control. SmoothStepF cannot express that,
+// because its max(b - a, eps) collapses a descending window to a step at a.
+float RemapSmooth(float Lo, float Hi, float x)
+{
+	const float Range = Hi - Lo;
+	const float t = abs(Range) > 1.0e-6f
+		? saturate((x - Lo) / Range)
+		: (x >= Lo ? 1.0f : 0.0f);
 	return t * t * (3.0f - 2.0f * t);
 }
 
@@ -86,30 +107,68 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float4 N = PreviousNormal.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		const float3 Decoded = normalize(N.xyz * 2.0f - 1.0f);
 		OutputNormal[Pixel] = float4(Decoded * 0.5f + 0.5f, N.w);
+
+		// The ridge rides the downsample so it reaches composition resolution in the same
+		// dispatch as the height and normal. Gated rather than always written: the upsample
+		// runs at erosion resolution against the 1x1 dummy, and writing there would put
+		// thousands of threads out of bounds.
+		if (ResampleRidge != 0)
+		{
+			OutputRidge[Pixel] = PreviousRidge.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		}
 		return;
 	}
 
 	const float H0 = SourceHeight.Load(int3(Pixel, 0));
 	const float H = PreviousHeight.Load(int3(Pixel, 0));
 
-	// Guidance pre-pass. Filtered UV sampling lets BlurRadius move continuously in pixel
-	// units, so values below one pixel and fractional radii do not quantise to integer taps.
+	// Guidance pre-pass. Separable Gaussian, one axis per dispatch.
+	//
+	// This was a fixed nine-tap kernel whose taps sat at exactly +/-BlurRadius texels, and
+	// that is where the dithering came from. Widening the radius moved the taps apart without
+	// adding any, so past one texel a pixel and its neighbour sampled disjoint sets: at the
+	// default radius of 2, pixel x read {x-2, x, x+2} and pixel x+1 read {x-1, x+1, x+3},
+	// sharing nothing. The output then decomposed into independent interleaved lattices --
+	// a gridded field, not a blurred one. Raising the slider made it worse rather than
+	// better, which is why no blur amount helped.
+	//
+	// Integer radii are the worst case, because bilinear pickup gives neighbours partial
+	// overlap at fractional ones. The old comment claimed fractional radii were the point
+	// while the default sat exactly on an integer.
+	//
+	// The fix is that the tap count scales with the radius, not only the spacing. Taps are
+	// one texel apart regardless of radius, so neighbouring pixels always share all but two
+	// of them. Separable because a 2D kernel this wide is 33x33 at the slider maximum.
+	//
+	// Three things downstream read this, which is why one gridded guide reads so strongly:
+	// the repose gate multiplies the whole carve, the flow direction steers the gully LIC so
+	// each pixel integrates along a different line, and the Hessian divides by StepUV squared.
 	if (BlurPass != 0)
 	{
-		const float2 D = (max(BlurRadius, 0.0f) / Resf);
-		const float b =
-			  1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x, -D.y), 0.0f)
-			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( 0.0f, -D.y), 0.0f)
-			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x, -D.y), 0.0f)
-			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  0.0f), 0.0f)
-			+ 4.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
-			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x,  0.0f), 0.0f)
-			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-D.x,  D.y), 0.0f)
-			+ 2.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( 0.0f,  D.y), 0.0f)
-			+ 1.0f * PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2( D.x,  D.y), 0.0f);
+		const float2 Texel = (BlurAxis == 0 ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f)) / Resf;
 
-		OutputHeight[Pixel] = b * (1.0f / 16.0f);
-		OutputNormal[Pixel] = PreviousNormal.Load(int3(Pixel, 0));
+		// Radius is the extent, sigma half of it, so two sigma lands on the authored radius.
+		const float Sigma = max(BlurRadius, 1.0e-4f) * 0.5f;
+		const int Taps = clamp((int)ceil(BlurRadius), 1, 16);
+
+		float Sum = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		float WeightSum = 1.0f;
+
+		[unroll(16)]
+		for (int k = 1; k <= Taps; ++k)
+		{
+			const float t = (float)k / Sigma;
+			const float w = exp(-0.5f * t * t);
+			const float2 Offset = Texel * (float)k;
+			Sum += w * PreviousHeight.SampleLevel(LinearWrapSampler, UV + Offset, 0.0f);
+			Sum += w * PreviousHeight.SampleLevel(LinearWrapSampler, UV - Offset, 0.0f);
+			WeightSum += 2.0f * w;
+		}
+
+		// No normal write. It used to copy PreviousNormal straight through, which was dead:
+		// the final normal pass writes every pixel of the same target before anything reads
+		// it. With two blur dispatches it would also have run twice.
+		OutputHeight[Pixel] = Sum / WeightSum;
 		return;
 	}
 
@@ -126,14 +185,31 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const int by = WrapI(Pixel.y + 1, OutputSize.y);
 
 		// D is what erosion removed, always >= 0.
-		const float d_m0 = SourceHeight.Load(int3(ax, Pixel.y, 0)) - PreviousHeight.Load(int3(ax, Pixel.y, 0));
-		const float d_p0 = SourceHeight.Load(int3(bx, Pixel.y, 0)) - PreviousHeight.Load(int3(bx, Pixel.y, 0));
-		const float d_0m = SourceHeight.Load(int3(Pixel.x, ay, 0)) - PreviousHeight.Load(int3(Pixel.x, ay, 0));
-		const float d_0p = SourceHeight.Load(int3(Pixel.x, by, 0)) - PreviousHeight.Load(int3(Pixel.x, by, 0));
+		#define ML_CARVE(px, py) (SourceHeight.Load(int3(px, py, 0)) - PreviousHeight.Load(int3(px, py, 0)))
+		const float d_mm = ML_CARVE(ax, ay);
+		const float d_0m = ML_CARVE(Pixel.x, ay);
+		const float d_pm = ML_CARVE(bx, ay);
+		const float d_m0 = ML_CARVE(ax, Pixel.y);
+		const float d_p0 = ML_CARVE(bx, Pixel.y);
+		const float d_mp = ML_CARVE(ax, by);
+		const float d_0p = ML_CARVE(Pixel.x, by);
+		const float d_pp = ML_CARVE(bx, by);
+		#undef ML_CARVE
 
+		// Sobel, matching the slope stencil above. A four-tap central difference is the
+		// noisiest estimator available and is axis-biased, which is the same reason
+		// MixtormatCurvature.ush moved off one; here it mattered more, because the carve
+		// depth is a difference of two nearly equal heights and NormalStrength then
+		// multiplies whatever noise survives.
+		//
+		// The 1/8 keeps the scale a central difference had, so NormalStrength means what it
+		// meant before: on a linear ramp both estimators return the per-pixel slope.
+		//
 		// Height per pixel times a plain gain. Multiplying by resolution here made any
 		// visible carve read as a near-vertical normal.
-		const float2 dD = float2((d_p0 - d_m0) * 0.5f, (d_0p - d_0m) * 0.5f) * NormalStrength;
+		const float2 dD = float2(
+			(d_pm + 2.0f * d_p0 + d_pp) - (d_mm + 2.0f * d_m0 + d_mp),
+			(d_mp + 2.0f * d_0p + d_pp) - (d_mm + 2.0f * d_0m + d_pm)) * (NormalStrength / 8.0f);
 		const float3 CarveN = normalize(float3(dD.x, dD.y, 1.0f));
 
 		float3 BaseN = PreviousNormal.Load(int3(Pixel, 0)).xyz * 2.0f - 1.0f;
@@ -198,11 +274,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Authored direction blended against downhill. Weight adds it to the raw slope vector
 	// so it competes with steepness; Lerp blends the directions evenly.
+	//
+	// Flow replaces the downhill term with the coherent tangent of the surface below,
+	// oriented downhill. A gully then runs along whatever channel already exists rather
+	// than straight down the local gradient, and crosses a noisy patch without wandering,
+	// because the direction was agreed over a neighbourhood rather than measured at a
+	// pixel. Coherency does the falling back on its own: where the field has no dominant
+	// orientation it decays to 0 and this returns plain downhill, so flat and isotropic
+	// ground behaves exactly as it did before.
 	const float Rad = DirectionAngle * (3.14159265358979f / 180.0f);
 	const float2 FixedDir = float2(cos(Rad), sin(Rad));
+
+	float2 Downhill = SlopeDir;
+	if (DirectionMode == 2)
+	{
+		float Coherency;
+		const float2 Tangent = MixtormatFlowTangent(
+			FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f), Coherency);
+		Downhill = normalize(lerp(SlopeDir, MixtormatOrientAlong(Tangent, SlopeDir), Coherency));
+	}
+
 	const float2 V = DirectionMode == 0
 		? (-Slope + FixedDir * DirectionAmount)
-		: lerp(SlopeDir, FixedDir, DirectionAmount);
+		: lerp(Downhill, FixedDir, DirectionAmount);
 	const float VLen = length(V);
 	const float2 Dir = VLen > 1.0e-6f ? V / VLen : FixedDir;
 
@@ -210,13 +304,51 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// carving scales with the excess.
 	const float SlopeGate = SmoothStepF(Repose, Repose + max(ReposeSoftness, 1.0e-4f), SLen);
 
-	// Concavity restriction. Material collects in channels and creases rather than
-	// spreading evenly over every steep face. Laplacian at the same radius, so it is free.
-	const float Lap = (h_p0 + h_m0 + h_0p + h_0m - 4.0f * GuideHeight.Load(int3(Pixel, 0)))
-		/ ((float)R * (float)R);
-	const float Concave = -Lap * CavityScale * Resf.x;
-	const float CavityWeight = SmoothStepF(-1.0f, 1.0f, Concave);
-	const float CavityGate = lerp(1.0f, CavityWeight, CavityBias);
+	// Curvature restriction. Material collects in channels and creases rather than spreading
+	// evenly over every steep face.
+	//
+	// The full Hessian, not just its trace. The eight taps above are exactly the stencil a
+	// mixed second derivative needs, so the principal curvatures cost no extra fetches, and
+	// the trace is the wrong measure for a channel: an elongated one has Hxx = k, Hyy = 0,
+	// so the trace reports half its depth, and on a saddle Hxx = -Hyy cancels it outright.
+	// Saddles are exactly where drainage starts. The larger principal curvature reads both
+	// at full strength, and a channel crossing a broad convex form -- the common case on a
+	// composited height -- survives it where the trace nearly cancels.
+	//
+	// Signs are the raw height-field convention: a channel is concave up, so its second
+	// derivative is positive, and positive is the named feature in every mode.
+	// MixtormatCurvature.ush negates because it differentiates the normal, which already
+	// points against the gradient. That negation was carried here in error and is gone:
+	// Cavity Influence used to suppress carving in channels and promote it on bumps, the
+	// opposite of what it is named for.
+	const float h_00 = GuideHeight.Load(int3(Pixel, 0));
+	const float2 StepUV = (float)R / Resf;
+
+	const float Hxx = (h_p0 - 2.0f * h_00 + h_m0) / (StepUV.x * StepUV.x);
+	const float Hyy = (h_0p - 2.0f * h_00 + h_0m) / (StepUV.y * StepUV.y);
+	const float Hxy = (h_pp - h_pm - h_mp + h_mm) / (4.0f * StepUV.x * StepUV.y);
+
+	// Closed-form eigenvalues of the symmetric 2x2.
+	const float HalfTrace = 0.5f * (Hxx + Hyy);
+	const float Spread = 0.5f * (Hxx - Hyy);
+	const float Disc = sqrt(max(Spread * Spread + Hxy * Hxy, 0.0f));
+
+	//   0 Mean    half the trace: the average of the two principal curvatures.
+	//   1 Valley  the larger principal curvature: how concave the most concave direction is.
+	//   2 Ridge   the negated smaller one: how convex the most convex direction is.
+	float Curvature = CurvatureMode == 1
+		? HalfTrace + Disc
+		: (CurvatureMode == 2 ? -(HalfTrace - Disc) : HalfTrace);
+
+	// Into the units Repose is authored in. The Hessian above is height per UV squared;
+	// multiplying by one stencil length gives height per UV, the same quantity the slope
+	// gate thresholds. Without this the remap window would have to be scrubbed in the
+	// thousands, and it would move by a factor of four every time the internal resolution
+	// doubled -- the half-normalisation the plan recorded as a known consequence.
+	Curvature *= 0.5f * (StepUV.x + StepUV.y);
+
+	const float CavityWeight = RemapSmooth(CavityRemapMin, CavityRemapMax, Curvature + CavityOffset);
+	const float CavityGate = lerp(1.0f, CavityWeight, CavityInfluence);
 
 	// Height restriction. Raised ground is exposed and weathers first, so positive
 	// influence concentrates carving where the composited height is high. Negative
