@@ -2,6 +2,10 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+#include "Engine/TextureCube.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -283,15 +287,18 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		]
 	];
 
-	TSharedRef<SVerticalBox> SubjectAndLight = SNew(SVerticalBox);
-	const auto AddMeshButton = [this, &SubjectAndLight, OverlayToggle](
+	TSharedRef<SVerticalBox> GeometryControls = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> LightingControls = SNew(SVerticalBox);
+	const auto AddMeshButton = [this, &GeometryControls, OverlayToggle](
 		const EMixtormatPreviewMesh MeshType,
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		SubjectAndLight->AddSlot().AutoHeight()
+		GeometryControls->AddSlot().AutoHeight()
 		[
-			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+			SNew(SBox)
+			.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
+			.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 			[
 				SNew(SCheckBox)
 				.Style(OverlayToggle)
@@ -311,14 +318,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
 	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), TEXT("Mixtormat.Icon.Cube"));
 
-	const auto AddPresetButton = [this, &SubjectAndLight, OverlayToggle](
+	const auto AddPresetButton = [this, &LightingControls, OverlayToggle](
 		const EMixtormatStudioLighting Preset,
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		SubjectAndLight->AddSlot().AutoHeight()
+		LightingControls->AddSlot().AutoHeight()
 		[
-			SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+			SNew(SBox)
+			.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
+			.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 			[
 				SNew(SCheckBox)
 				.Style(OverlayToggle)
@@ -341,9 +350,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), TEXT("Mixtormat.Icon.LightDramatic"));
 	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), TEXT("Mixtormat.Icon.LightRim"));
 
-	SubjectAndLight->AddSlot().AutoHeight()
+	LightingControls->AddSlot().AutoHeight()
 	[
-		SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
+		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		[
 			SNew(SComboButton)
 			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -356,9 +367,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			]
 		]
 	];
-	SubjectAndLight->AddSlot().AutoHeight()
+	LightingControls->AddSlot().AutoHeight()
 	[
-		SNew(SBox).WidthOverride(24.0f).HeightOverride(24.0f)
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
+		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		[
 			SNew(SButton)
 			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -538,6 +551,15 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.Padding(2.0f)
 			[ComparisonControls]
 		]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(8.0f)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::WellTop())
+			.EndColor(MixtormatPalette::WellBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(2.0f)
+			[LightingControls]
+		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(8.0f)
 		[
 			SNew(SMixtormatGradientBox)
@@ -545,7 +567,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.EndColor(MixtormatPalette::WellBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(2.0f)
-			[SubjectAndLight]
+			[GeometryControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(10.0f)
 		[
@@ -621,6 +643,14 @@ TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
 	HdriFilter.bRecursivePaths = true;
 	TArray<FAssetData> HdriAssets;
 	AssetRegistryModule.Get().GetAssets(HdriFilter, HdriAssets);
+	HdriAssets.Sort([](const FAssetData& A, const FAssetData& B)
+	{
+		return A.AssetName.LexicalLess(B.AssetName);
+	});
+	if (HdriAssets.Num() > MixtormatTokens::PreviewHdriPresetLimit)
+	{
+		HdriAssets.SetNum(MixtormatTokens::PreviewHdriPresetLimit);
+	}
 
 	if (!HdriAssets.IsEmpty())
 	{

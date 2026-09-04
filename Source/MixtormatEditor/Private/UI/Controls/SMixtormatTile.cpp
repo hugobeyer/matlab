@@ -44,7 +44,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		// from the inspector's internals, so this widget depends on nothing but the style.
 		FAssetThumbnailConfig Config;
 		Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
-		Config.bAllowAssetSpecificThumbnailOverlay = false;
+		Config.AllowAssetSpecificThumbnailOverlay = false;
 		Image = Thumbnail->MakeThumbnailWidget(Config);
 	}
 

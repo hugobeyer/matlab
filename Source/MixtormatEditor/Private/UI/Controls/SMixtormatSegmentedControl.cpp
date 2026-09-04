@@ -81,13 +81,13 @@ namespace
 		FLinearColor GetMultiply() const
 		{
 			// A segment is only 16px wide, so it takes a lighter darkening pass than a full row.
-			return IsActive() ? MixtormatPalette::Hex(0x000000, MixtormatTokens::SegmentShadeAlpha) : FLinearColor::Transparent;
+			return IsActive() ? MixtormatPalette::SegmentShade() : FLinearColor::Transparent;
 		}
 		FSlateColor GetTextColor() const
 		{
 			if (IsActive())
 			{
-				return FSlateColor(MixtormatPalette::Hex(0xE8F0F8));
+				return FSlateColor(MixtormatPalette::SegmentActiveText());
 			}
 			return FSlateColor(IsHovered() ? MixtormatPalette::RowText() : MixtormatPalette::BadgeText());
 		}
@@ -138,7 +138,7 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 	[
 		SNew(SMixtormatGradientBox)
 		.StartColor(MixtormatPalette::WellTop())
-		.EndColor(MixtormatPalette::Hex(0x000000, 0.0f))
+		.EndColor(FLinearColor::Transparent)
 		.Orientation(Orient_Vertical)
 		.CornerRadius(MixtormatTokens::CornerRadius)
 		.Padding(FMargin(MixtormatTokens::SegmentSeamWidth))

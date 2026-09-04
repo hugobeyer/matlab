@@ -1187,11 +1187,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 	const FText DisplayName = Layer.DisplayName;
 	// The base layer is the material itself: it cannot be hidden, moved or dragged onto.
 	const bool bIsBase = LayerIndex == 0;
+	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
 
 	TSharedRef<SMixtormatLayerGroup> Group = SNew(SMixtormatLayerGroup)
-		.bExpanded_Lambda([this, LayerIndex]()
+		.bExpanded_Lambda([WeakOwner, LayerIndex]()
 		{
-			return ExpandedLayerIndices.Contains(LayerIndex);
+			const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+			return Owner.IsValid() && Owner->ExpandedLayerIndices.Contains(LayerIndex);
 		})
 		.Header()
 		[
@@ -1205,9 +1207,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].bEnabled;
 			})
-			.bExpanded_Lambda([this, LayerIndex]()
+			.bExpanded_Lambda([WeakOwner, LayerIndex]()
 			{
-				return ExpandedLayerIndices.Contains(LayerIndex);
+				const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+				return Owner.IsValid() && Owner->ExpandedLayerIndices.Contains(LayerIndex);
 			})
 			.bSelected_Lambda([this, LayerIndex]() { return SelectedLayerIndex == LayerIndex; })
 			.bSolo_Lambda([this, LayerIndex]() { return SoloLayerIndex == LayerIndex; })

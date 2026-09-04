@@ -171,8 +171,10 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			// The bar itself is the click target and the hover surface. A button on top of it would
 			// light a button-shaped patch inside the header instead of the header.
 			SNew(SMixtormatGradientBox)
-			.StartColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
-			.EndColor(MixtormatPalette::PanelBottom())
+			// Slate's vertical gradient stop order is inverted relative to the reference.
+			// Keep the blue-grey tint on the visual top and shade the header toward its base.
+			.StartColor(MixtormatPalette::PanelBottom())
+			.EndColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
 			.Orientation(Orient_Vertical)
 			[
 				// The lip sits over the header's top edge and spans its full width, so it is

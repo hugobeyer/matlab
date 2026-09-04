@@ -8,12 +8,15 @@
 #include "EditorViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Engine/TextureCube.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "InputCoreTypes.h"
 #include "Engine/Engine.h"
 #include "RenderingThread.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
+#include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -79,7 +82,7 @@ public:
 
 	virtual FLinearColor GetBackgroundColor() const override
 	{
-		return FLinearColor(0.018f, 0.022f, 0.028f, 1.0f);
+		return MixtormatPalette::PreviewBackground();
 	}
 
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
@@ -169,7 +172,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	StudioFogComponent = NewObject<UExponentialHeightFogComponent>();
 	StudioFogComponent->SetFogHeightFalloff(0.01f);
 	StudioFogComponent->SetFogMaxOpacity(1.0f);
-	StudioFogComponent->SetFogInscatteringColor(FLinearColor(0.006f, 0.008f, 0.012f));
+	StudioFogComponent->SetFogInscatteringColor(MixtormatPalette::PreviewFog());
 	PreviewScene.AddComponent(StudioFogComponent, FTransform::Identity);
 
 	PreviewScene.SetFloorVisibility(true);

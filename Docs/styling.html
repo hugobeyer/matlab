@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MixtorMat UI Palette Tuner</title>
+<style>
+:root{
+  --shell:#111213;
+  --panel:#191b1d;
+  --panel-bottom:#141617;
+  --header-tint:#25282b;
+  --header-tint-a:.72;
+  --header-hover:#2e3236;
+  --header-hover-a:.82;
+  --hairline:#6f7d82;
+  --hairline-a:.16;
+  --divider:#242729;
+  --well-top:#070808;
+  --well-bottom:#0c0e0f;
+  --well-top-hover:#0a0b0c;
+  --well-bottom-hover:#121416;
+  --fill-top:#303438;
+  --fill-bottom:#24282b;
+  --fill-top-hover:#383d41;
+  --fill-bottom-hover:#2a2f32;
+  --fill-active-top:#41484d;
+  --fill-active-bottom:#30363a;
+  --segment-top:#33383c;
+  --segment-bottom:#25292c;
+  --accent:#4d8fa8;
+  --accent-bright:#6ca8bf;
+  --modified:var(--accent);
+  --destructive:#c46a6a;
+  --row-text:#c0c0c0;
+  --header-text:#a8a8a8;
+  --caption:#6e6e6e;
+  --badge-surface:#0d0d0d;
+  --layer-name:#a2a2a2;
+  --layer-source:rgba(168,168,168,.50);
+  --layer-edge:#0c6f95;
+  --row-height:18px;
+  --row-gap:3px;
+  --row-gap-tight:2px;
+  --group-header-height:25px;
+  --group-top-inset:4px;
+  --group-bottom-inset:4px;
+  --control-inset-x:5px;
+  --button-height:20px;
+  --corner:3px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#0f0f0f;color:var(--row-text);font-family:"Segoe UI",Inter,Arial,sans-serif;font-size:12px;height:100%}
+body{min-width:1080px}
+button,input{font:inherit}
+.app{height:100vh;display:grid;grid-template-rows:36px 1fr;overflow:hidden;background:#111}
+.topbar{display:flex;align-items:center;gap:7px;padding:0 8px;background:#171819;border-bottom:1px solid #292929;color:#aaa}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;letter-spacing:.16em;color:#c6c6c6;margin-right:8px}.logo{width:18px;height:18px;border-radius:3px;background:linear-gradient(145deg,#08b0f0,#0d465b);box-shadow:inset 0 0 0 1px #ffffff12}
+.tb{border:0;background:transparent;color:#919191;padding:5px 7px;border-radius:3px}.tb:hover{background:#262626;color:#e6e6e6}.doc{margin-left:10px;color:#b9b9b9}.edited{color:#a7651c;font-size:9px;letter-spacing:.08em}.spacer{flex:1}.bake{background:var(--segment-bottom);color:#dff6ff;border:1px solid #3197bd;padding:5px 12px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.08em}
+.workspace{display:grid;grid-template-columns:300px minmax(360px,1fr) 450px;grid-template-rows:minmax(0,1fr) 250px;gap:1px;background:#070707;min-height:0}
+.panel{background:var(--panel);min-height:0;overflow:hidden}.layers{grid-row:1;grid-column:1}.blank{grid-column:2;grid-row:1;background:#111;display:flex;align-items:center;justify-content:center;color:#454545;letter-spacing:.18em}.blank:after{content:"VIEWPORT OMITTED"}.inspector{grid-column:3;grid-row:1 / span 2;background:var(--shell);border-left:1px solid #292929;overflow:auto}.library{grid-column:1 / span 2;grid-row:2;background:#181818;border-top:1px solid #292929;display:grid;grid-template-columns:160px 1fr 290px;min-height:0}
+.tabs{display:flex;height:25px;align-items:end;padding:2px 4px 2px;background:#1b1b1b;border-bottom:1px solid #262626}.tab{width:88px;height:28px;border:0;background:#171717;color:#777;font-size:9px;letter-spacing:.13em;border-bottom:1px solid transparent}.tab.active{background:#202020;color:#bfbfbf;border-bottom-color:var(--accent)}
+.layer-toolbar{height:28px;display:flex;align-items:center;gap:4px;padding:4px;background:#171717;border-bottom:1px solid #252525}.add{height:25px;border:1px solid #2c4852;background:#173b49;color:#c6e0ea;border-radius:2px;padding:0 10px;font-size:9px;font-weight:700;letter-spacing:.08em}.count{margin-left:auto;color:#666;font-size:9px;letter-spacing:.08em}.layer-list{padding:4px;background:#151515;height:calc(100% - 67px)}
+.layer-group{margin-bottom:2px;background:#101010;border-left:1px solid var(--layer-edge)}.layer-row{height:28px;display:grid;grid-template-columns:16px 24px minmax(0,1fr) auto 52px 16px;align-items:center;gap:7px;padding:0 6px;background:color-mix(in srgb,var(--header-tint) 10%,var(--panel));border-top:1px solid color-mix(in srgb,var(--hairline) 18%,transparent);color:var(--layer-name)}.layer-row.selected{background:color-mix(in srgb,var(--accent) 12%,#1b1e20)}.eye{font-size:10px;color:#d8dadd}.thumb{width:24px;height:24px;border-radius:2px;background:linear-gradient(135deg,#795937,#292014)}.thumb.rust{background:linear-gradient(135deg,#9c5129,#25170f)}.thumb.fill{background:#dbd5c7}.lname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.source{font-size:8px;letter-spacing:.07em;color:var(--layer-source)}.badge{height:16px;min-width:52px;padding:2px 5px;text-align:center;background:var(--badge-surface);color:#ffffff99;font-size:7px;letter-spacing:.12em;border-radius:2px}.chev{color:#c7c9cc}.child{height:22px;display:grid;grid-template-columns:12px minmax(0,1fr) auto 52px;align-items:center;gap:7px;padding:0 6px 0 34px;background:#141617;color:#999;font-size:9px}.child.selected{background:#1b1f21}.child .badge{height:15px}
+.lib-left{padding:7px;border-right:1px solid #282828;background:#191919}.lib-title{height:24px;font-weight:700;font-size:9px;letter-spacing:.13em;color:#a2a2a2}.search{width:100%;height:25px;background:#101010;border:1px solid #333;color:#aaa;border-radius:2px;padding:0 7px;margin-bottom:8px}.cat{padding:5px 6px;color:#777;border-radius:2px;margin-bottom:2px}.cat.active{background:#222;color:#bbb}.tiles-wrap{min-width:0;overflow:auto;padding:7px}.tiles-title{height:20px;font-size:9px;font-weight:700;letter-spacing:.12em;color:#999}.tiles{display:grid;grid-template-columns:repeat(auto-fill,90px);gap:4px}.tile{height:90px;position:relative;border-radius:3px;overflow:hidden;background:linear-gradient(135deg,#4b4b4b,#222);box-shadow:inset 0 0 0 1px #ffffff0b}.tile:nth-child(2){background:linear-gradient(135deg,#5f554a,#24211d)}.tile:nth-child(3){background:linear-gradient(135deg,#6a6259,#2a2927)}.tile:nth-child(4){background:linear-gradient(135deg,#444c4e,#202425)}.tile:nth-child(5){background:linear-gradient(135deg,#805b42,#28201b)}.tile:nth-child(6){background:linear-gradient(135deg,#2f3435,#16191a)}.tile span{position:absolute;left:0;right:0;bottom:0;padding:3px 4px;background:#080808b8;color:#ccc;font-size:8px}.mask-col{border-left:1px solid #282828;padding:7px;background:#171717}.mask-grid{display:grid;grid-template-columns:repeat(3,76px);gap:4px}.mask{height:76px;background:radial-gradient(circle at 35% 35%,#aaa,#333 28%,#111 60%);position:relative}.mask:nth-child(2){background:repeating-linear-gradient(45deg,#777 0 4px,#1c1c1c 4px 11px)}.mask:nth-child(3){background:radial-gradient(ellipse,#bbb 0 10%,#222 12% 35%,#0c0c0c 45%)}
+.identity{height:30px;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:7px;align-items:center;padding:0 8px;background:#1a1d1f;border-bottom:1px solid #2b2b2b}.identity .thumb{width:18px;height:18px}.identity .name{font-size:10px}.identity .source{font-size:8px}.inspector-inner{padding:0 4px 12px}
+.group{background:var(--panel);overflow:hidden;border-radius:var(--corner)}.group+.group{margin-top:0}.group-header{height:var(--group-header-height);display:flex;align-items:center;gap:5px;padding:0 8px;background:color-mix(in srgb,var(--header-tint) 8%,var(--panel));border-top:1px solid color-mix(in srgb,var(--hairline) 26%,transparent);border-bottom:1px solid rgba(255,255,255,.025);color:var(--header-text);font-size:7px;font-weight:700;letter-spacing:.16em;cursor:pointer}.group-header:hover{background:color-mix(in srgb,var(--header-hover) 12%,var(--panel))}.group-header .arrow{font-size:9px;color:#c7c9cc}.group-header .action{margin-left:auto;color:#4e5960}.group-body{padding-top:var(--group-top-inset);background:var(--panel)}.group.collapsed .group-body{display:none}.group.collapsed .group-header{border-bottom:0}.group.nested{margin:4px 0 0;border-radius:1px;background:#171a1d}.group.nested .group-header{height:24px;background:#1b1d1f}.group.nested .group-body{background:#171a1d;padding-top:3px;padding-bottom:3px}
+.row{height:var(--row-height);margin:0 0 var(--row-gap) 0;position:relative;background:var(--well-bottom);border-radius:1px;overflow:hidden;color:var(--row-text);font-size:9px;font-weight:600;cursor:ew-resize;user-select:none}.row.tight{margin-bottom:var(--row-gap-tight)}.row:hover{background:var(--well-bottom-hover)}.row .fill{position:absolute;left:0;top:0;bottom:0;width:var(--v,50%);background:var(--fill-bottom)}.row:hover .fill{background:var(--fill-bottom-hover)}.row.modified:before{content:"";position:absolute;z-index:3;left:0;top:0;bottom:0;width:1px;background:var(--modified)}.row .shade{position:absolute;inset:0;background:transparent;pointer-events:none}.row .label,.row .value{position:absolute;z-index:2;top:0;height:100%;display:flex;align-items:center}.row .label{left:10px}.row.modified .label{left:12px}.row .value{right:8px;font-variant-numeric:tabular-nums}.pair{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:var(--row-gap)}.pair .row{margin:0}.plain-row{min-height:18px;margin-bottom:var(--row-gap-tight);display:flex;align-items:center;padding:0 8px;color:#9c9c9c;font-size:9px}.plain-row .right{margin-left:auto}.check{width:12px;height:12px;border:0;background:var(--well-bottom);border-radius:2px}.segments{height:18px;margin-bottom:var(--row-gap);display:flex;background:var(--well-bottom);border-radius:2px;overflow:hidden}.segment{flex:1;display:flex;align-items:center;justify-content:center;font-size:8px;color:#777;border-right:1px solid #ffffff14}.segment.active{background:var(--segment-bottom);color:#d6eff8}.caption{height:16px;display:flex;align-items:end;padding:0 7px 3px;color:var(--caption);font-size:8px;letter-spacing:.12em;text-transform:uppercase}
+.tuner{position:fixed;right:16px;top:52px;width:286px;max-height:calc(100vh - 68px);overflow:auto;background:#101010f5;border:1px solid #383838;border-radius:6px;box-shadow:0 16px 48px #000a;z-index:20}.tuner-head{position:sticky;top:0;background:#141414;padding:9px 10px;border-bottom:1px solid #333;display:flex;align-items:center;z-index:2}.tuner-head b{font-size:10px;letter-spacing:.1em}.close-tuner{margin-left:auto;background:#222;border:1px solid #333;color:#aaa;border-radius:3px}.tuner-body{padding:9px}.control{display:grid;grid-template-columns:1fr 78px;gap:8px;align-items:center;margin-bottom:7px}.control label{font-size:10px;color:#aaa}.control input[type=color]{width:78px;height:24px;border:1px solid #333;background:#111;padding:1px}.control input[type=range]{width:78px}.num{width:78px;height:23px;background:#171717;border:1px solid #333;color:#bbb;padding:0 5px}.preset-row{display:flex;gap:5px;margin:8px 0}.preset{flex:1;background:#1e1e1e;border:1px solid #373737;color:#aaa;padding:5px 4px;border-radius:3px;font-size:9px}.copy{width:100%;margin-top:4px;background:#1e4858;border:1px solid #316a80;color:#caf0ff;padding:7px;border-radius:3px}.tuner-hidden{display:none}.tuner-toggle{position:fixed;right:15px;top:43px;z-index:19;border:1px solid #3c5761;background:#162e37;color:#b9e0ef;border-radius:3px;padding:6px 8px;font-size:9px;letter-spacing:.08em}
+@media (max-width:1250px){.workspace{grid-template-columns:260px minmax(260px,1fr) 420px}.tuner{width:250px}.library{grid-template-columns:145px 1fr 250px}}
+
+.ico{width:13px;height:13px;display:block;flex:0 0 auto;color:currentColor}
+.brand .ico{width:16px;height:17px;color:#e7e7e7}
+.tb .ico,.bake .ico,.add .ico{width:12px;height:12px}
+.icon-only{width:24px;justify-content:center;padding:0!important}
+.eye .ico{width:13px;height:13px}
+.chev .ico{width:12px;height:12px}
+.child-icon .ico{width:11px;height:11px}
+.group-header .ico{width:10px;height:10px}
+.group-header .action{display:flex;align-items:center;justify-content:center;margin-left:auto}
+.search-wrap{position:relative;margin-bottom:8px}
+.search-wrap>.ico{position:absolute;left:7px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:#666;pointer-events:none}
+.search-wrap .search{margin-bottom:0;padding-left:25px}
+.brand{display:flex;align-items:center;gap:7px}
+.layer-toolbar .add{display:inline-flex;align-items:center;gap:5px}
+.tb,.bake{display:inline-flex;align-items:center;gap:5px}
+.layer-row .eye,.layer-row .chev,.child-icon{display:flex;align-items:center;justify-content:center}
+
+
+/* ---- Unified compact button sizing -------------------------------------------------------- */
+button,
+.tab,
+.tb,
+.bake,
+.add,
+.preset,
+.copy,
+.tuner-toggle,
+.close-tuner{
+	height:var(--button-height);
+	min-height:var(--button-height);
+	box-sizing:border-box;
+	display:inline-flex;
+	align-items:center;
+	justify-content:center;
+	line-height:1;
+}
+
+.tab{
+	width:82px;
+	padding:0 8px;
+}
+
+.tb{
+	padding:0 7px;
+}
+
+.bake{
+	padding:0 10px;
+}
+
+.add{
+	padding:0 8px;
+}
+
+.icon-only{
+	width:var(--button-height);
+	min-width:var(--button-height);
+	height:var(--button-height);
+}
+
+.preset,
+.copy,
+.tuner-toggle,
+.close-tuner{
+	padding-top:0;
+	padding-bottom:0;
+}
+
+.close-tuner{
+	width:var(--button-height);
+	min-width:var(--button-height);
+	padding-left:0;
+	padding-right:0;
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><svg class="ico" aria-hidden="true"
+   width="53.461239mm"
+   height="58.072926mm"
+   viewBox="0 0 53.461239 58.072926"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><defs
+     id="defs1" /><g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-87.342195,-125.6797)"><path
+       style="fill:#f9f9f9"
+       d="m 113.40408,183.75263 c -8.61373,-5.27659 -17.168246,-10.65011 -25.818746,-15.86639 l 6.54131,-3.95461 19.708516,12.30256 20.35832,-12.22551 6.15858,3.70944 z m -25.478796,-28.08518 7.8676,-5.28481 -8.45069,-5.24299 0.14,-15.6277 6.08056,-3.83225 20.485186,12.92898 20.54692,-12.92142 6.06857,3.82469 0.14,15.64798 -8.53359,5.45115 c 2.61189,1.76303 5.34565,3.35695 8.02932,5.0118 -8.74885,5.37114 -17.53019,10.69301 -26.29937,16.03202 z m 43.477726,-6.11656 0.1434,-10.41304 h -0.26721 l -17.16228,11.10049 -17.271136,-11.10049 -0.23555,10.27921 17.330206,11.0679 c 5.92252,-3.45824 11.66294,-7.26453 17.46257,-10.93407 z"
+       id="path1"
+       sodipodi:nodetypes="cccccccccccccccccccccccccccc" /></g></svg><span>MIXTORMAT</span></div>
+    <button class="tb">Undo</button><button class="tb">Redo</button>
+    <span class="doc">Chrome · Raw</span><span class="edited">EDITED</span>
+    <span class="spacer"></span>
+    <button class="tb"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+</svg><span>LOAD</span></button><button class="tb"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+  <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+  <path d="M7 3v4a1 1 0 0 0 1 1h7" />
+</svg><span>SAVE</span></button><button class="tb"><svg class="ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M4 3h12l3 3v5M4 3v18h7M8 3v6h7V3M8 21v-7h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="m14 19 5.6-5.6 2 2L16 21l-3 .7 1-2.7Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+</svg><span>SAVE AS...</span></button><button class="bake"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" />
+</svg><span>BAKE</span></button><button class="tb icon-only" title="More"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="1" />
+  <circle cx="19" cy="12" r="1" />
+  <circle cx="5" cy="12" r="1" />
+</svg></button>
+  </div>
+
+  <div class="workspace">
+    <section class="panel layers">
+      <div class="tabs"><button class="tab active">LAYERS</button><button class="tab">LIBRARY</button></div>
+      <div class="layer-toolbar"><button class="add"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 3a2 2 0 0 0-2 2" />
+  <path d="M19 3a2 2 0 0 1 2 2" />
+  <path d="M21 19a2 2 0 0 1-2 2" />
+  <path d="M5 21a2 2 0 0 1-2-2" />
+  <path d="M9 3h1" />
+  <path d="M9 21h1" />
+  <path d="M14 3h1" />
+  <path d="M14 21h1" />
+  <path d="M3 9v1" />
+  <path d="M21 9v1" />
+  <path d="M3 14v1" />
+  <path d="M21 14v1" />
+</svg><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="M12 5v14" />
+</svg><span>MATERIAL</span></button><button class="add"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+</svg><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="M12 5v14" />
+</svg><span>FILL</span></button><span class="count">3 LAYERS</span></div>
+      <div class="layer-list">
+        <div class="layer-group">
+          <div class="layer-row"><span class="eye"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+  <circle cx="12" cy="12" r="3" />
+</svg></span><span class="thumb"></span><span class="lname">Chrome · Raw</span><span class="source">METAL</span><span class="badge">BLEND</span><span class="chev"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span></div>
+        </div>
+        <div class="layer-group">
+          <div class="layer-row selected"><span class="eye"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+  <circle cx="12" cy="12" r="3" />
+</svg></span><span class="thumb rust"></span><span class="lname">Rust Orange</span><span class="source">RUST</span><span class="badge">OVER</span><span class="chev"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span></div>
+          <div class="child selected"><span class="child-icon"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" />
+</svg></span><span>Coat Peel</span><span class="source">FX</span><span class="badge">PEEL</span></div>
+          <div class="child"><span class="child-icon"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+</svg></span><span>Grunge Fine</span><span class="source">MASK</span><span class="badge">MULT</span></div>
+        </div>
+        <div class="layer-group">
+          <div class="layer-row"><span class="eye"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+  <circle cx="12" cy="12" r="3" />
+</svg></span><span class="thumb fill"></span><span class="lname">Dust Fill</span><span class="source">FILL</span><span class="badge">COAT</span><span class="chev"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m9 18 6-6-6-6" />
+</svg></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="blank"></section>
+
+    <aside class="inspector">
+      <div class="identity"><span class="thumb"></span><span class="name">Chrome · Raw</span><span class="source">Metal</span><span class="badge">BLEND</span></div>
+      <div class="inspector-inner">
+        <div class="group">
+          <div class="group-header"><span class="arrow"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span>CHANNEL INFLUENCE<span class="action" title="Reset"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+  <path d="M21 3v5h-5" />
+  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+  <path d="M8 16H3v5" />
+</svg></span></div>
+          <div class="group-body">
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">Base Color</span><span class="value">1.000</span></div>
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">Roughness</span><span class="value">1.000</span></div>
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">Ambient Occlusion</span><span class="value">1.000</span></div>
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">Metallic</span><span class="value">1.000</span></div>
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">IOR / F0</span><span class="value">1.000</span></div>
+            <div class="row modified" style="--v:73%"><span class="fill"></span><span class="shade"></span><span class="label">Normal</span><span class="value">0.730</span></div>
+            <div class="row" style="--v:100%"><span class="fill"></span><span class="shade"></span><span class="label">Height</span><span class="value">1.000</span></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-header"><span class="arrow"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span>SURFACE ADJUSTMENTS</div>
+          <div class="group-body">
+            <div class="row modified" style="--v:28%"><span class="fill"></span><span class="shade"></span><span class="label">Tiling</span><span class="value">3.000</span></div>
+            <div class="row" style="--v:50%"><span class="fill"></span><span class="shade"></span><span class="label">Roughness Bias</span><span class="value">0.500</span></div>
+            <div class="row" style="--v:50%"><span class="fill"></span><span class="shade"></span><span class="label">Roughness Contrast</span><span class="value">1.000</span></div>
+            <div class="row" style="--v:50%"><span class="fill"></span><span class="shade"></span><span class="label">Roughness Offset</span><span class="value">0.000</span></div>
+            <div class="row" style="--v:50%"><span class="fill"></span><span class="shade"></span><span class="label">Normal Intensity</span><span class="value">1.000</span></div>
+
+            <div class="group nested">
+              <div class="group-header"><span class="arrow"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span>NORMAL / HEIGHT / AO INFLUENCE<span class="action" title="Visibility / bypass"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+  <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+  <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+  <path d="m2 2 20 20" />
+</svg></span></div>
+              <div class="group-body">
+                <div class="row" style="--v:0%"><span class="fill"></span><span class="shade"></span><span class="label">Normal Influence</span><span class="value">0.000</span></div>
+                <div class="row" style="--v:0%"><span class="fill"></span><span class="shade"></span><span class="label">Cavity to Convex</span><span class="value">0.000</span></div>
+                <div class="plain-row"><span>Invert Feature</span><span class="right check"></span></div>
+                <div class="row" style="--v:13%"><span class="fill"></span><span class="shade"></span><span class="label">Radius</span><span class="value">2</span></div>
+                <div class="row" style="--v:33%"><span class="fill"></span><span class="shade"></span><span class="label">Smoothing</span><span class="value">2</span></div>
+                <div class="row" style="--v:25%"><span class="fill"></span><span class="shade"></span><span class="label">Strength</span><span class="value">1.000</span></div>
+                <div class="row modified" style="--v:18%"><span class="fill"></span><span class="shade"></span><span class="label">Power</span><span class="value">1.502</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-header"><span class="arrow"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg></span>COLOR ADJUSTMENTS<span class="action" title="Reset"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+  <path d="M21 3v5h-5" />
+  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+  <path d="M8 16H3v5" />
+</svg></span></div>
+          <div class="group-body">
+            <div class="row" style="--v:0%"><span class="fill"></span><span class="shade"></span><span class="label">Hue Shift</span><span class="value">0.000</span></div>
+            <div class="pair">
+              <div class="row" style="--v:48%"><span class="fill"></span><span class="shade"></span><span class="label">Saturation</span><span class="value">1.000</span></div>
+              <div class="row" style="--v:50%"><span class="fill"></span><span class="shade"></span><span class="label">Value</span><span class="value">1.000</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group collapsed">
+          <div class="group-header"><span class="arrow"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m9 18 6-6-6-6" />
+</svg></span>HEIGHT MASK BLENDING<span class="action" title="Visibility / bypass"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+  <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+  <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+  <path d="m2 2 20 20" />
+</svg></span></div>
+          <div class="group-body"><div class="row"><span class="label">Height</span><span class="value">0.000</span></div></div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="library">
+      <div class="lib-left"><div class="lib-title">MATERIALS</div><div class="search-wrap"><svg class="ico" aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg><input class="search" placeholder="Search materials..."></div><div class="cat active">All Materials</div><div class="cat">Metal</div><div class="cat">Concrete</div><div class="cat">Stone</div><div class="cat">Wood</div><div class="cat">Plaster</div></div>
+      <div class="tiles-wrap"><div class="tiles-title">SURFACES</div><div class="tiles"><div class="tile"><span>Chrome Raw</span></div><div class="tile"><span>Brass Raw</span></div><div class="tile"><span>Concrete Smooth</span></div><div class="tile"><span>Steel Raw</span></div><div class="tile"><span>Rust Orange</span></div><div class="tile"><span>Iron Raw</span></div></div></div>
+      <div class="mask-col"><div class="tiles-title">MASKS</div><div class="mask-grid"><div class="mask"></div><div class="mask"></div><div class="mask"></div></div></div>
+    </section>
+  </div>
+</div>
+
+<button id="openTuner" class="tuner-toggle tuner-hidden">THEME TUNER</button>
+<div id="tuner" class="tuner">
+  <div class="tuner-head"><b>THEME TUNER</b><button id="closeTuner" class="close-tuner">×</button></div>
+  <div class="tuner-body">
+    <div class="preset-row"><button class="preset" data-preset="graphite">Dark graphite</button><button class="preset" data-preset="contrast">More contrast</button><button class="preset" data-preset="neutral">Neutral steel</button><button class="preset" data-preset="current">Current</button></div>
+    <div id="controls"></div>
+    <button id="copyVars" class="copy">COPY CSS VARIABLES</button>
+  </div>
+</div>
+<script>
+const root=document.documentElement;
+const defs=[
+ ['Panel','--panel','color'],['Panel Bottom','--panel-bottom','color'],['Shell','--shell','color'],
+ ['Well Top','--well-top','color'],['Well Bottom','--well-bottom','color'],['Well Top Hover','--well-top-hover','color'],['Well Bottom Hover','--well-bottom-hover','color'],
+ ['Header Tint','--header-tint','color'],['Header Hover','--header-hover','color'],['Hairline','--hairline','color'],
+ ['Fill Top','--fill-top','color'],['Fill Bottom','--fill-bottom','color'],['Accent','--accent','color'],
+ ['Row Height','--row-height','px',12,28],['Row Gap','--row-gap','px',0,10],['Tight Row Gap','--row-gap-tight','px',0,8],['Header Height','--group-header-height','px',18,38],['Body Top Inset','--group-top-inset','px',0,12]
+];
+const controls=document.getElementById('controls');
+for(const [label,key,type,min,max] of defs){
+ const d=document.createElement('div');d.className='control';const l=document.createElement('label');l.textContent=label;d.appendChild(l);
+ const i=document.createElement('input');
+ if(type==='color'){i.type='color';i.value=getComputedStyle(root).getPropertyValue(key).trim();i.oninput=()=>root.style.setProperty(key,i.value)}
+ else{ i.type='number';i.className='num';i.min=min;i.max=max;i.step=1;i.value=parseFloat(getComputedStyle(root).getPropertyValue(key));i.oninput=()=>root.style.setProperty(key,i.value+'px') }
+ d.appendChild(i);controls.appendChild(d);
+}
+document.querySelectorAll('.group-header').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
+document.querySelectorAll('.row').forEach(r=>{
+ let down=false,start=0,base=0;
+ r.addEventListener('pointerdown',e=>{down=true;start=e.clientX;base=parseFloat(getComputedStyle(r).getPropertyValue('--v'))||0;r.setPointerCapture(e.pointerId)});
+ r.addEventListener('pointermove',e=>{if(!down)return;let v=Math.max(0,Math.min(100,base+(e.clientX-start)/r.clientWidth*100));r.style.setProperty('--v',v+'%')});
+ r.addEventListener('pointerup',()=>down=false);
+});
+const presets={
+ graphite:{
+  '--shell':'#111213','--panel':'#191b1d','--panel-bottom':'#141617',
+  '--well-top':'#070808','--well-bottom':'#0c0e0f','--well-top-hover':'#0a0b0c','--well-bottom-hover':'#121416',
+  '--header-tint':'#25282b','--header-hover':'#2e3236','--hairline':'#6f7d82',
+  '--fill-top':'#303438','--fill-bottom':'#24282b','--accent':'#4d8fa8',
+  '--row-height':'18px','--row-gap':'3px','--row-gap-tight':'2px','--group-header-height':'25px','--group-top-inset':'4px','--group-bottom-inset':'4px'
+ },
+ contrast:{
+  '--shell':'#141414','--panel':'#202326','--panel-bottom':'#181b1d',
+  '--well-top':'#08090a','--well-bottom':'#111315','--well-top-hover':'#0d1112','--well-bottom-hover':'#171c1e',
+  '--header-tint':'#383d42','--header-hover':'#434a50','--hairline':'#58b5d8',
+  '--fill-top':'#425055','--fill-bottom':'#313d41','--accent':'#4ab6df',
+  '--row-height':'18px','--row-gap':'3px','--row-gap-tight':'2px','--group-header-height':'25px','--group-top-inset':'4px','--group-bottom-inset':'4px'
+ },
+ neutral:{
+  '--shell':'#141414','--panel':'#1d1f20','--panel-bottom':'#171819',
+  '--well-top':'#0d0e0f','--well-bottom':'#17191a','--well-top-hover':'#151718','--well-bottom-hover':'#1d2022',
+  '--header-tint':'#2a2f33','--header-hover':'#333a3f','--hairline':'#4da5c7',
+  '--fill-top':'#3a4a50','--fill-bottom':'#29363b','--accent':'#3aa6cf',
+  '--row-height':'18px','--row-gap':'3px','--row-gap-tight':'2px','--group-header-height':'25px','--group-top-inset':'4px','--group-bottom-inset':'4px'
+ },
+ recommended:{
+  '--shell':'#131516','--panel':'#1d2023','--panel-bottom':'#151b1d',
+  '--well-top':'#0b0e0f','--well-bottom':'#151b1d','--well-top-hover':'#11181a','--well-bottom-hover':'#1b2428',
+  '--header-tint':'#00739e','--header-hover':'#088bbd','--hairline':'#5abbe0',
+  '--fill-top':'#23667f','--fill-bottom':'#174455','--accent':'#16aee8',
+  '--row-height':'18px','--row-gap':'3px','--row-gap-tight':'2px','--group-header-height':'25px','--group-top-inset':'4px','--group-bottom-inset':'4px'
+ },
+ current:{
+  '--shell':'#161616','--panel':'#262626','--panel-bottom':'#1a1a1a',
+  '--well-top':'#0d0d0d','--well-bottom':'#262626','--well-top-hover':'#1b1b1b','--well-bottom-hover':'#202020',
+  '--header-tint':'#00648a','--header-hover':'#0085b8','--hairline':'#74d2f6',
+  '--fill-top':'#225b70','--fill-bottom':'#183f4e','--accent':'#00a2e0',
+  '--row-height':'18px','--row-gap':'6px','--row-gap-tight':'3px','--group-header-height':'28px','--group-top-inset':'4px'
+ },
+ dark:{
+  '--shell':'#151515','--panel':'#202020','--panel-bottom':'#181818',
+  '--well-top':'#0d0d0d','--well-bottom':'#191919','--well-top-hover':'#151515','--well-bottom-hover':'#1d1d1d',
+  '--header-tint':'#00648a','--header-hover':'#0085b8','--hairline':'#5aa9c7'
+ },
+ blue:{
+  '--shell':'#141719','--panel':'#202226','--panel-bottom':'#161d1f',
+  '--well-top':'#0b0f10','--well-bottom':'#171e20','--well-top-hover':'#121a1d','--well-bottom-hover':'#1b2529',
+  '--header-tint':'#007aa8','--header-hover':'#0894c9','--hairline':'#72d0f4',
+  '--fill-top':'#23718e','--fill-bottom':'#174d61','--accent':'#17b0ea'
+ }
+};
+document.querySelectorAll('.preset').forEach(b=>b.onclick=()=>{for(const [k,v] of Object.entries(presets[b.dataset.preset]))root.style.setProperty(k,v);document.querySelectorAll('#controls input').forEach((i,idx)=>{const [,key,type]=defs[idx];const v=getComputedStyle(root).getPropertyValue(key).trim();i.value=type==='color'?v:parseFloat(v)})});
+document.getElementById('closeTuner').onclick=()=>{document.getElementById('tuner').classList.add('tuner-hidden');document.getElementById('openTuner').classList.remove('tuner-hidden')};
+document.getElementById('openTuner').onclick=()=>{document.getElementById('tuner').classList.remove('tuner-hidden');document.getElementById('openTuner').classList.add('tuner-hidden')};
+document.getElementById('copyVars').onclick=async()=>{const s=defs.map(([,k])=>`${k}: ${getComputedStyle(root).getPropertyValue(k).trim()};`).join('\n');await navigator.clipboard.writeText(s);document.getElementById('copyVars').textContent='COPIED';setTimeout(()=>document.getElementById('copyVars').textContent='COPY CSS VARIABLES',900)};
+</script>
+</body>
+</html>

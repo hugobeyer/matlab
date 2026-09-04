@@ -20,7 +20,7 @@
 #include "DragAndDrop/DecoratedDragDropOp.h"
 #include "InputCoreTypes.h"
 #include "Engine/Texture2D.h"
-#include "Engine/TextureCube.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "IContentBrowserSingleton.h"
@@ -104,15 +104,13 @@ namespace MixtormatUI
 	constexpr float InspectorWidth = 300.0f;
 	constexpr float TopBarHeight = 32.0f;
 	constexpr float StatusBarHeight = 18.0f;
-	constexpr float MaterialTileSize = 90.0f;
-	constexpr float MaterialThumbnailSize = 64.0f;
 	constexpr float MaskTileSize = 62.0f;
 
 	inline FAssetThumbnailConfig CleanThumbnailConfig()
 	{
 		FAssetThumbnailConfig Config;
 		Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
-		Config.bAllowAssetSpecificThumbnailOverlay = false;
+		Config.AllowAssetSpecificThumbnailOverlay = false;
 		return Config;
 	}
 
@@ -346,7 +344,7 @@ public:
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return ValidationText; })
-					.ColorAndOpacity(FLinearColor(0.9f, 0.2f, 0.2f))
+					.ColorAndOpacity(MixtormatPalette::ErrorText())
 					.AutoWrapText(true)
 				]
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
@@ -723,6 +721,7 @@ DECLARE_DELEGATE_RetVal_TwoParams(
 	FOnMixtormatSurfaceSelected,
 	FText,
 	FSoftObjectPath);
+DECLARE_DELEGATE_OneParam(FOnMixtormatSurfaceGalleryZoom, int32);
 
 class SMixtormatSurfaceCard final : public SCompoundWidget
 {
@@ -735,6 +734,7 @@ public:
 		SLATE_ARGUMENT(FAssetData, ThumbnailAsset)
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
 		SLATE_EVENT(FOnMixtormatSurfaceSelected, OnSelected)
+		SLATE_EVENT(FOnMixtormatSurfaceGalleryZoom, OnGalleryZoom)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -744,6 +744,7 @@ public:
 		ThumbnailAsset = InArgs._ThumbnailAsset;
 		ThumbnailPool = InArgs._ThumbnailPool;
 		OnSelected = InArgs._OnSelected;
+		OnGalleryZoom = InArgs._OnGalleryZoom;
 		ChildSlot
 		[
 			SNew(SOverlay)
@@ -784,6 +785,17 @@ public:
 		return SCompoundWidget::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
 	}
 
+	virtual FReply OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
+	{
+		const int32 Direction = FMath::Sign(MouseEvent.GetWheelDelta());
+		if (Direction != 0 && OnGalleryZoom.IsBound())
+		{
+			OnGalleryZoom.Execute(Direction);
+			return FReply::Handled();
+		}
+		return SCompoundWidget::OnMouseWheel(MyGeometry, MouseEvent);
+	}
+
 	virtual FReply OnDragDetected(
 		const FGeometry& MyGeometry,
 		const FPointerEvent& MouseEvent) override
@@ -802,6 +814,7 @@ private:
 	FAssetData ThumbnailAsset;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FOnMixtormatSurfaceSelected OnSelected;
+	FOnMixtormatSurfaceGalleryZoom OnGalleryZoom;
 };
 
 DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatMaskSelected, int32, FSoftObjectPath);

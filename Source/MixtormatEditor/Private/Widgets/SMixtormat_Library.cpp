@@ -13,6 +13,15 @@ FReply SMixtormat::RefreshSurfaceList()
 	return FReply::Handled();
 }
 
+void SMixtormat::ZoomMaterialGallery(const int32 Direction)
+{
+	MaterialGalleryTileSize = FMath::Clamp(
+		MaterialGalleryTileSize + Direction * MixtormatTokens::MaterialGalleryTileStep,
+		MixtormatTokens::MaterialGalleryTileMinimum,
+		MixtormatTokens::MaterialGalleryTileMaximum);
+	RebuildSurfaceList();
+}
+
 FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 {
 	SelectedSurfacePath = AssetPath;
@@ -220,7 +229,11 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f)
-				[SNew(STextBlock).Text(LOCTEXT("MaterialsColumn", "MATERIALS")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))]
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
+				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SHorizontalBox)
@@ -261,24 +274,34 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(5.0f)
+					.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT("ChooseTextureFolderHint", "Choose Texture Folder..."))
 					.OnClicked(this, &SMixtormat::ImportSurfaces)
 					[
-						SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::ToolbarIconSize)
+						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+						]
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(5.0f)
+					.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT(
 						"ReimportShippedHint",
 						"Reimport Shipped Library from Plugins/MaterialLab/Content/Textures."))
 					.OnClicked(this, &SMixtormat::ReimportShippedLibrary)
 					[
-						SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::ToolbarIconSize)
+						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+						]
 					]
 				]
 			]
@@ -293,7 +316,9 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceList()
 		[
 			SAssignNew(SurfaceListBox, SWrapBox)
 			.UseAllottedSize(true)
-			.InnerSlotPadding(FVector2D(2.0f, 2.0f))
+			.InnerSlotPadding(FVector2D(
+				MixtormatTokens::MaterialGalleryTileGap,
+				MixtormatTokens::MaterialGalleryTileGap))
 		];
 }
 
@@ -308,8 +333,8 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 	{
 		TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
 			ThumbnailAsset,
-			MixtormatUI::MaterialThumbnailSize,
-			MixtormatUI::MaterialThumbnailSize,
+			static_cast<uint32>(MaterialGalleryTileSize),
+			static_cast<uint32>(MaterialGalleryTileSize),
 			ThumbnailPool);
 		SurfaceThumbnails.Add(Thumbnail);
 		ThumbnailWidget = Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
@@ -321,40 +346,23 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 		.ThumbnailAsset(ThumbnailAsset)
 		.ThumbnailPool(ThumbnailPool)
 		.OnSelected(this, &SMixtormat::SelectSurface)
-		.HoverContent()
+		.OnGalleryZoom(this, &SMixtormat::ZoomMaterialGallery)
 		[
 			SNew(SBox)
-			.VAlign(VAlign_Bottom)
-			[
-				SNew(SBorder)
-				.Padding(FMargin(3.0f, 2.0f))
-				.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-				.BorderBackgroundColor(FLinearColor(0.015f, 0.015f, 0.015f, 0.9f))
-				[
-					SNew(STextBlock)
-					.Text(Name)
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 8))
-					.Justification(ETextJustify::Center)
-					.AutoWrapText(true)
-				]
-			]
-		]
-		[
-			SNew(SBox)
-			.WidthOverride(MixtormatUI::MaterialTileSize)
-			.HeightOverride(MixtormatUI::MaterialTileSize)
+			.WidthOverride(MaterialGalleryTileSize)
+			.HeightOverride(MaterialGalleryTileSize)
 			[
 				SNew(SButton)
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ThumbnailCard")))
-				.ContentPadding(3.0f)
+				.ContentPadding(MixtormatTokens::MaterialGalleryTilePadding)
 				.ToolTipText(LOCTEXT("DragMaterialToLayers", "Drag to Layers"))
 				.OnClicked_Lambda([this, Name, AssetPath]() { return SelectSurface(Name, AssetPath); })
 				[
 					SNew(SBox)
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
-					.WidthOverride(MixtormatUI::MaterialThumbnailSize)
-					.HeightOverride(MixtormatUI::MaterialThumbnailSize)
+					.WidthOverride(MaterialGalleryTileSize - MixtormatTokens::MaterialGalleryTilePadding * 2.0f)
+					.HeightOverride(MaterialGalleryTileSize - MixtormatTokens::MaterialGalleryTilePadding * 2.0f)
 					[
 						ThumbnailWidget
 					]

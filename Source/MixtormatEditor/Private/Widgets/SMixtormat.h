@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "MixtormatMaterial.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatSlider.h"
@@ -51,6 +52,7 @@ private:
 	FReply ImportSurfaces();
 	FReply ReimportShippedLibrary();
 	FReply RefreshSurfaceList();
+	void ZoomMaterialGallery(int32 Direction);
 	FReply SelectSurface(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply HandleSurfaceDropped(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply SetCategoryFilter(FName Family);
@@ -449,6 +451,7 @@ private:
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	TArray<TSharedPtr<FAssetThumbnail>> SurfaceThumbnails;
+	float MaterialGalleryTileSize = MixtormatTokens::MaterialGalleryTileDefault;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
 	// The inspector strip's own thumbnail. Kept apart from LayerThumbnails because the strip is
 	// re-made on every selection while that array is only cleared when the whole stack rebuilds --

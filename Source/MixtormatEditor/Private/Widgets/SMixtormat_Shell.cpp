@@ -57,12 +57,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.TopBar")))
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 8.0f, 0.0f)
-				[
-					SNew(SImage)
-					.Image(Style.GetBrush(TEXT("Mixtormat.Brand.Logo")))
-					.ToolTipText(LOCTEXT("BrandTooltip", "Mixtormat"))
-				]
+
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
 					SNew(SButton)
@@ -108,7 +103,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
 						[
@@ -126,7 +126,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))
+							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
 						[
@@ -144,7 +149,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))
+							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
 						[
@@ -217,7 +227,8 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SNew(SBox)
-					.WidthOverride(88.0f)
+					.WidthOverride(MixtormatTokens::TabWidth)
+					.HeightOverride(MixtormatTokens::TabHeight)
 					[
 						SNew(SBorder)
 						.Padding(0.0f)
@@ -229,9 +240,20 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 					.OnCheckStateChanged_Lambda([this](ECheckBoxState) { ShowLeftPage(0); })
 					[
 						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(STextBlock).Text(LOCTEXT("LayersLeftTab", "LAYERS")).Justification(ETextJustify::Center)]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
-						[SNew(SBox).HeightOverride(2.0f)[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 0 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]]
+						+ SVerticalBox::Slot().FillHeight(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TabLabelBottomInset)
+						[
+							SNew(STextBlock)
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+							.Text(LOCTEXT("LayersLeftTab", "LAYERS"))
+							.Justification(ETextJustify::Center)
+						]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(SBox)
+							.HeightOverride(MixtormatTokens::TabUnderlineThickness)
+							[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 0 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]
+						]
 					]
 				]
 				]
@@ -239,7 +261,8 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
 				SNew(SBox)
-				.WidthOverride(88.0f)
+				.WidthOverride(MixtormatTokens::TabWidth)
+				.HeightOverride(MixtormatTokens::TabHeight)
 				[
 					SNew(SBorder)
 					.Padding(0.0f)
@@ -251,9 +274,20 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 					.OnCheckStateChanged_Lambda([this](ECheckBoxState) { ShowLeftPage(1); })
 					[
 						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(STextBlock).Text(LOCTEXT("LibraryLeftTab", "LIBRARY")).Justification(ETextJustify::Center)]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
-						[SNew(SBox).HeightOverride(2.0f)[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 1 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]]
+						+ SVerticalBox::Slot().FillHeight(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TabLabelBottomInset)
+						[
+							SNew(STextBlock)
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+							.Text(LOCTEXT("LibraryLeftTab", "LIBRARY"))
+							.Justification(ETextJustify::Center)
+						]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(SBox)
+							.HeightOverride(MixtormatTokens::TabUnderlineThickness)
+							[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 1 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]
+						]
 					]
 				]
 				]
@@ -261,7 +295,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Bottom)
 			[
 				SNew(SBox)
-				.HeightOverride(1.0f)
+				.HeightOverride(MixtormatTokens::TabUnderlineThickness)
 				[SNew(SBorder).BorderImage(Style.GetBrush(TEXT("Mixtormat.TabUnderline")))]
 			]
 		]

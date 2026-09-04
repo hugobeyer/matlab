@@ -30,11 +30,12 @@ namespace MixtormatTokens
 	// Every inspector control is one of these tall, whatever it edits. Uniformity across row
 	// types is what makes a panel of mixed controls read as a single column.
 	constexpr float RowHeight = 18.0f;
-	constexpr float RowGap = 6.0f;
+	constexpr float RowGap = 3.0f;
+	constexpr float RowGapTight = 2.0f;
 
 	// Text inset from the row's leading and trailing edges. Shared by the slider's painted text
 	// and by the label of every composed row, so they line up down the column.
-	constexpr float RowTextInset = 10.0f;
+	constexpr float RowTextInset = 5.0f;
 
 	// Gap between a row's label and the control it labels, and the width a paired value field
 	// asks for before anything competes with it.
@@ -57,10 +58,23 @@ namespace MixtormatTokens
 	// radius, so the two curves read as concentric rather than as two unrelated roundings.
 	constexpr float CornerRadiusInner = CornerRadius * 0.5f;
 	constexpr float OutlineWidth = 1.0f;
-	constexpr float PanelGutter = 9.0f;
-	constexpr float GroupHeaderHeight = 24.0f;
+	constexpr float PanelGutter = 4.0f;
+	constexpr float GroupHeaderHeight = 25.0f;
+	constexpr float ButtonHeight = 20.0f;
+	constexpr float ButtonPaddingCompact = 7.0f;
+	constexpr float ButtonPaddingPrimary = 10.0f;
+	constexpr float ButtonPaddingTab = 8.0f;
+	constexpr float ButtonPressedOffset = 1.0f;
+	constexpr float TabHeight = ButtonHeight;
+	constexpr float TabWidth = 88.0f;
+	constexpr float TabUnderlineThickness = OutlineWidth;
+	constexpr float TabLabelBottomInset = 2.0f;
+	constexpr float ToolbarIconSize = 12.0f;
+	constexpr float ViewportOverlayInset = 8.0f;
+	constexpr float PreviewToolbarButtonSize = 24.0f;
+	constexpr int32 PreviewHdriPresetLimit = 2;
 	// Breathing room under a group header before its first row.
-	constexpr float GroupBodyTopInset = 8.0f;
+	constexpr float GroupBodyTopInset = 4.0f;
 	// Gap between a header's chevron, its title, and the controls trailing it.
 	constexpr float GroupHeaderItemGap = 5.0f;
 
@@ -70,7 +84,7 @@ namespace MixtormatTokens
 	constexpr float CaptionHeightAbove = 6.0f;
 	constexpr float CaptionHeightBelow = 2.0f;
 	constexpr float HairlineThickness = 1.0f;
-	constexpr float HairlineMargin = 4.0f;
+	constexpr float HairlineMargin = 2.0f;
 
 	// ---- Slider -----------------------------------------------------------------------------
 	// Leading stripe marking a value that differs from its default.
@@ -89,7 +103,7 @@ namespace MixtormatTokens
 	constexpr float MinPaintedFill = 0.5f;
 
 	// ---- Segmented control ------------------------------------------------------------------
-	constexpr float SegmentHeight = 12.0f;
+	constexpr float SegmentHeight = RowHeight;
 	// Hairline *between* cells -- the one border the design allows, because it divides rather
 	// than encloses.
 	constexpr float SegmentSeamWidth = 1.0f;
@@ -124,7 +138,7 @@ namespace MixtormatTokens
 	// surface besides the drag ghost that carries a drop shadow. Dimensions follow the authored
 	// context-menu component directly.
 	constexpr float MenuWidth = 190.0f;
-	constexpr float MenuItemHeight = 20.0f;
+	constexpr float MenuItemHeight = ButtonHeight;
 	constexpr float MenuItemInset = 8.0f;
 	constexpr float MenuItemGap = 6.0f;
 	constexpr float MenuPanelPadding = 3.0f;
@@ -171,6 +185,13 @@ namespace MixtormatTokens
 	constexpr float MaskPickerTileSize = 76.0f;
 	constexpr float MaskPickerTileSizeDense = 52.0f;
 	constexpr float TileGap = 4.0f;
+	constexpr float MaterialGalleryTileDefault = 96.0f;
+	constexpr float MaterialGalleryTileMinimum = 72.0f;
+	constexpr float MaterialGalleryTileMaximum = 144.0f;
+	constexpr float MaterialGalleryTileStep = 12.0f;
+	constexpr float MaterialGalleryTileGap = 1.0f;
+	constexpr float MaterialGalleryTilePadding = 2.0f;
+	constexpr float MaterialGalleryHeaderGap = 2.0f;
 	constexpr float TileNameStripHeight = 13.0f;
 	constexpr float TileBadgeHeight = 16.0f;
 	// Two different insets: one sits on the picture, the other outside it between the image and
