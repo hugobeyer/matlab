@@ -58,6 +58,8 @@ private:
 	FReply SetCategoryFilter(FName Family);
 	FReply SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	FReply SetPreviewQuality(EMixtormatPreviewQuality Quality);
+	FReply SetPreviewAntiAliasing(EMixtormatPreviewAntiAliasing AntiAliasing);
+	void SetPreviewScreenPercentage(int32 Percentage);
 	void SetPreviewFov(float FovDegrees);
 	FReply ResetPreviewCameraAndLighting();
 	void SetPreviewDisplacementEnabled(bool bEnabled);
@@ -125,6 +127,7 @@ private:
 	const FMixtormatCraquelure* GetSelectedCraquelure() const;
 	TSharedRef<SWidget> BuildCraquelureControls();
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
+	TSharedRef<SWidget> BuildCraquelureModeMenu();
 	TSharedRef<SWidget> BuildMaskRotationMenu();
 	TSharedRef<SWidget> BuildLayerRotationMenu();
 
@@ -527,7 +530,9 @@ private:
 	EMixtormatStudioLighting StudioLighting = EMixtormatStudioLighting::Neutral;
 	EMixtormatPreviewMesh PreviewMesh = EMixtormatPreviewMesh::Sphere;
 	EMixtormatPreviewQuality PreviewQuality = EMixtormatPreviewQuality::Medium;
-	float PreviewFov = 50.0f;
+	EMixtormatPreviewAntiAliasing PreviewAntiAliasing = EMixtormatPreviewAntiAliasing::Temporal;
+	int32 PreviewScreenPercentage = MixtormatPreviewScreenPercentage::Default;
+	float PreviewFov = MixtormatPreviewCamera::FovDefault;
 	float PreviewDisplacementAmount = 1.0f;
 	FSoftObjectPath SelectedHdriPath;
 	FSoftObjectPath BakeSettingsRecipePath;

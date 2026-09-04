@@ -46,9 +46,40 @@ FReply SMixtormat::SetPreviewQuality(const EMixtormatPreviewQuality Quality)
 	return FReply::Handled();
 }
 
+FReply SMixtormat::SetPreviewAntiAliasing(const EMixtormatPreviewAntiAliasing AntiAliasing)
+{
+	PreviewAntiAliasing = AntiAliasing;
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetPreviewAntiAliasing(AntiAliasing);
+		}
+	}
+	return FReply::Handled();
+}
+
+void SMixtormat::SetPreviewScreenPercentage(const int32 Percentage)
+{
+	PreviewScreenPercentage = FMath::Clamp(
+		Percentage,
+		MixtormatPreviewScreenPercentage::Minimum,
+		MixtormatPreviewScreenPercentage::Maximum);
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetPreviewScreenPercentage(PreviewScreenPercentage);
+		}
+	}
+}
+
 void SMixtormat::SetPreviewFov(const float FovDegrees)
 {
-	PreviewFov = FMath::Clamp(FovDegrees, 20.0f, 90.0f);
+	PreviewFov = FMath::Clamp(
+		FovDegrees,
+		MixtormatPreviewCamera::FovMinimum,
+		MixtormatPreviewCamera::FovMaximum);
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -60,7 +91,7 @@ void SMixtormat::SetPreviewFov(const float FovDegrees)
 
 FReply SMixtormat::ResetPreviewCameraAndLighting()
 {
-	PreviewFov = 50.0f;
+	PreviewFov = MixtormatPreviewCamera::FovDefault;
 	StudioLighting = EMixtormatStudioLighting::Neutral;
 	SelectedHdriPath.Reset();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
@@ -294,7 +325,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		GeometryControls->AddSlot().AutoHeight()
+		GeometryControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
@@ -309,7 +340,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				})
 				.OnCheckStateChanged_Lambda([this, MeshType](ECheckBoxState) { SetPreviewMesh(MeshType); })
 				[
-					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
+					.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+					]
 				]
 			]
 		];
@@ -323,7 +361,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		const FText& ToolTip,
 		const FName IconName)
 	{
-		LightingControls->AddSlot().AutoHeight()
+		LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
@@ -340,7 +378,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				})
 				.OnCheckStateChanged_Lambda([this, Preset](ECheckBoxState) { SetStudioLighting(Preset); })
 				[
-					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
+					.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+					]
 				]
 			]
 		];
@@ -350,36 +395,59 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), TEXT("Mixtormat.Icon.LightDramatic"));
 	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), TEXT("Mixtormat.Icon.LightRim"));
 
-	LightingControls->AddSlot().AutoHeight()
+	LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 	[
 		SNew(SBox)
 		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		[
 			SNew(SComboButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
 			.HasDownArrow(false)
 			.ToolTipText(LOCTEXT("PreviewHdriMenuHint", "Choose an HDRI or studio lighting preset"))
 			.OnGetMenuContent(this, &SMixtormat::BuildStudioLightingMenu)
 			.ButtonContent()
 			[
-				SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Globe")))
+				// Square box around the glyph rather than letting it fill the button.
+				//
+				// The four toggles above draw undistorted by coincidence: the overlay toggle
+				// style insets by 2 a side, which leaves exactly the 20px their brushes are
+				// registered at. This one is a combo button, so it carries its own padding and
+				// reserves arrow space even with HasDownArrow off, and Globe is registered at
+				// the large 28px besides -- a non-square remainder, which is what stretched it.
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
+				.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Globe")))
+				]
 			]
 		]
 	];
-	LightingControls->AddSlot().AutoHeight()
+	LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 	[
 		SNew(SBox)
 		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
 		[
 			SNew(SButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-			.ContentPadding(2.0f)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
+			.ContentPadding(MixtormatTokens::ViewportOverlayTogglePadding)
 			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
 			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
 			[
-				SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+				// Same fix as the combo above: this content padding stacks on top of the button
+				// style's own asymmetric padding, so the remainder was not square either.
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
+				.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+				]
 			]
 		]
 	];
@@ -422,9 +490,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				})
 			]
 		]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ViewportOverlayItemGap, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
 		[
-			SNew(SBox).WidthOverride(92.0f)
+			SNew(SBox).WidthOverride(MixtormatTokens::PreviewResolutionControlWidth)
 			[
 				SNew(SMixtormatSegmentedControl)
 				.Options(ResolutionOptions)
@@ -454,8 +522,57 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
 		LOCTEXT("PreviewQualityHighHint", "Lumen quality. Uses project ray tracing when supported.")};
 
-	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
-	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	// Two clusters, split by what the control belongs to rather than by where there was room.
+	//
+	// Render settings -- how the frame is resolved -- stay top left. Scene settings the user
+	// reaches for while looking at the surface, quality and displacement, moved to the bottom
+	// left, and FOV to the bottom centre where the watermark used to sit.
+	const TArray<FText> AntiAliasingOptions = {
+		LOCTEXT("PreviewAaFxaa", "FXAA"),
+		LOCTEXT("PreviewAaTsr", "TSR")};
+	const TArray<FText> AntiAliasingToolTips = {
+		LOCTEXT("PreviewAaFxaaHint", "Single frame, no history. Softer, but a hairline crack stays put instead of swimming -- which is what you want while judging a mask."),
+		LOCTEXT("PreviewAaTsrHint", "Temporal Super-Resolution, the project default. Resolves thin detail best on a still image, but it accumulates over frames, so hairlines shimmer while the history reconverges after a camera move or a recomposite.")};
+
+	TSharedRef<SVerticalBox> RenderControls = SNew(SVerticalBox);
+	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		SNew(SMixtormatSegmentedControl)
+		.Options(AntiAliasingOptions)
+		.ToolTips(AntiAliasingToolTips)
+		.ActiveIndex_Lambda([this]()
+		{
+			return PreviewAntiAliasing == EMixtormatPreviewAntiAliasing::Fxaa ? 0 : 1;
+		})
+		.OnChosen_Lambda([this](const int32 Index)
+		{
+			SetPreviewAntiAliasing(Index == 0
+				? EMixtormatPreviewAntiAliasing::Fxaa
+				: EMixtormatPreviewAntiAliasing::Temporal);
+		})
+	];
+	RenderControls->AddSlot().AutoHeight()
+	[
+		MakeSlider(
+			LOCTEXT("PreviewScaleLabel", "Scale"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewScreenPercentage); }),
+			static_cast<double>(MixtormatPreviewScreenPercentage::Minimum),
+			static_cast<double>(MixtormatPreviewScreenPercentage::Maximum),
+			static_cast<double>(MixtormatPreviewScreenPercentage::Default),
+			1.0, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewScreenPercentage(FMath::RoundToInt(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]()
+			{
+				SetPreviewScreenPercentage(MixtormatPreviewScreenPercentage::Default);
+			}),
+			LOCTEXT("PreviewScaleHint", "Render resolution as a percentage of the viewport. Above 100 the extra samples are real, so it fixes shading aliasing rather than hiding it -- 150 with FXAA is the sharpest stable option here, at 2.25x the fill rate. Below 100 it buys back frame time on an expensive graph."))
+	];
+
+	TSharedRef<SVerticalBox> SceneControls = SNew(SVerticalBox);
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
 		.Options(QualityOptions)
@@ -478,20 +595,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					: EMixtormatPreviewQuality::High);
 		})
 	];
-	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
-	[
-		MakeSlider(
-			LOCTEXT("PreviewFovLabel", "FOV"),
-			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
-			20.0, 90.0, 50.0, 0.5, false,
-			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-			{
-				SetPreviewFov(static_cast<float>(Value));
-			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewFov(50.0f); }),
-			LOCTEXT("PreviewFovHint", "Preview camera field of view."))
-	];
-	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		MixtormatRow::Make(
 			LOCTEXT("PreviewDisplacement", "Displacement"),
@@ -506,7 +610,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				}),
 				LOCTEXT("PreviewDisplacementHint", "Preview the composited Height through the protected master's authored displacement path.")))
 	];
-	CameraControls->AddSlot().AutoHeight()
+	SceneControls->AddSlot().AutoHeight()
 	[
 		SNew(SBox)
 		.IsEnabled_Lambda([this]() { return bPreviewDisplacementEnabled; })
@@ -524,87 +628,112 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		]
 	];
 
+	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
+	CameraControls->AddSlot().AutoHeight()
+	[
+		MakeSlider(
+			LOCTEXT("PreviewFovLabel", "FOV"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
+			static_cast<double>(MixtormatPreviewCamera::FovMinimum),
+			static_cast<double>(MixtormatPreviewCamera::FovMaximum),
+			static_cast<double>(MixtormatPreviewCamera::FovDefault),
+			0.5, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewFov(static_cast<float>(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]()
+			{
+				SetPreviewFov(MixtormatPreviewCamera::FovDefault);
+			}),
+			LOCTEXT("PreviewFovHint", "Preview camera field of view."))
+	];
+
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
 			SAssignNew(PreviewViewport, SMixtormatPreviewViewport)
 		]
-		// Top left, which is where quality already was, and the only edge the newer clusters
-		// have not taken.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(8.0f)
+		// Render settings top left -- how the frame is resolved, which is the one cluster that
+		// says nothing about the material.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(2.0f)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[
+				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[RenderControls]
+			]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[ComparisonControls]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[LightingControls]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[GeometryControls]
+		]
+		// Quality and displacement bottom left, where the status readout was. That line said
+		// Real-time, SM6 and a layer count, none of which changes in response to anything the
+		// user can do here, so it was three constants and a number already on screen.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[
+				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[SceneControls]
+			]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+			[OutputControls]
+		]
+		// FOV bottom centre, in the slot the watermark held.
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::OverlayPlateTop())
+			.EndColor(MixtormatPalette::OverlayPlateBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[
 				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[CameraControls]
 			]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(8.0f)
-		[
-			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(2.0f)
-			[ComparisonControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(8.0f)
-		[
-			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(2.0f)
-			[LightingControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(8.0f)
-		[
-			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(2.0f)
-			[GeometryControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(10.0f)
-		[
-			SNew(STextBlock)
-			.Visibility(EVisibility::HitTestInvisible)
-			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
-			.Text_Lambda([this]()
-			{
-				const FText LightingText = PreviewQuality == EMixtormatPreviewQuality::High
-					? LOCTEXT("PreviewStatusLumen", "Lumen")
-					: PreviewQuality == EMixtormatPreviewQuality::Medium
-						? LOCTEXT("PreviewStatusMedium", "Medium")
-						: LOCTEXT("PreviewStatusLow", "Low");
-				return FText::Format(
-					LOCTEXT("PreviewStatusText", "Real-time · {0} · SM6 · {1} layers"),
-					LightingText,
-					FText::AsNumber(WorkingLayers.Num()));
-			})
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(8.0f)
-		[
-			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(2.0f)
-			[OutputControls]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.0f)
-		[
-			SNew(SImage)
-			.Image(Style.GetBrush(TEXT("Mixtormat.Brand.Watermark")))
-			.Visibility(EVisibility::HitTestInvisible)
 		];
 
 	PreviewViewports.Add(PreviewViewport);
 	PreviewViewport->SetPreviewQuality(PreviewQuality);
+	PreviewViewport->SetPreviewAntiAliasing(PreviewAntiAliasing);
+	PreviewViewport->SetPreviewScreenPercentage(PreviewScreenPercentage);
 	PreviewViewport->SetCameraFov(PreviewFov);
 	PreviewViewport->SetStudioLighting(StudioLighting);
 	return PreviewPanel;

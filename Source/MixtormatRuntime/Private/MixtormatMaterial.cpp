@@ -24,7 +24,8 @@ void FMixtormatLayer::MigrateLegacyChildren()
 			LegacyMask.BlendMode = EMixtormatMaskBlendMode::Replace;
 			LegacyMask.Weight = 1.0f;
 			LegacyMask.bInvert = bInvertMask;
-			LegacyMask.Tiling = FMath::Clamp(FMath::RoundToInt(MaskTiling), 1, 16);
+			LegacyMask.TilingX = FMath::Clamp(FMath::RoundToInt(MaskTiling), 1, 16);
+			LegacyMask.TilingY = LegacyMask.TilingX;
 			LegacyMask.Balance = MaskBalance;
 			LegacyMask.Contrast = MaskContrast;
 		}

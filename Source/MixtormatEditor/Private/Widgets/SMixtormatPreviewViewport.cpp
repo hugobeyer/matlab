@@ -53,8 +53,25 @@ namespace MixtormatPreview
 		return Material;
 	}
 
+	// The studio floor.
+	//
+	// Set on the profile rather than on the floor component, because FAdvancedPreviewScene
+	// reassigns every floor material slot from Profile.GetEnvironmentFloorMaterial() on each
+	// UpdateScene -- and Mixtormat calls that whenever lighting changes or an HDRI is rotated.
+	// A material pushed onto the component would survive until the first light change and then
+	// silently revert to the engine grid.
+	const TCHAR* const StudioFloorMaterialPath =
+		TEXT("/MaterialLab/Materials/MI_ML_Studio_Floor.MI_ML_Studio_Floor");
+
 	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile)
 	{
+		// Both the pointer and the path, the way the engine's own defaults are declared: the
+		// getter falls back to loading the path when the pointer is unset, so setting only one
+		// works until something resets the other.
+		Profile.EnvironmentFloorMaterialPath = StudioFloorMaterialPath;
+		Profile.EnvironmentFloorMaterial =
+			TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(StudioFloorMaterialPath));
+
 		Profile.bPostProcessingEnabled = true;
 		Profile.bEnableToneMapping = true;
 		Profile.PostProcessingSettings.bOverride_AutoExposureMinBrightness = true;
@@ -87,6 +104,15 @@ public:
 
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
 	{
+		// F frames the mesh, the way it does everywhere else in the editor. Handled here rather
+		// than through the viewport's command list because this client deliberately does not run
+		// the standard editor camera -- there is no selection to focus, and the orbit is the
+		// widget's own state -- so the engine's own F binding has nothing to act on.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::F)
+		{
+			Owner.FocusCamera();
+			return true;
+		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
 		{
 			Owner.ZoomCamera(1.0f);
@@ -605,6 +631,39 @@ void SMixtormatPreviewViewport::SetPreviewQuality(const EMixtormatPreviewQuality
 	PreviewViewportClient->Invalidate();
 }
 
+void SMixtormatPreviewViewport::SetPreviewAntiAliasing(const EMixtormatPreviewAntiAliasing AntiAliasing)
+{
+	if (!PreviewViewportClient.IsValid())
+	{
+		return;
+	}
+
+	// TemporalAA is the whole switch. The project default is TSR, and SetupAntiAliasingMethod
+	// turns TSR into FXAA when this flag is clear -- so there is nothing to set for FXAA beyond
+	// taking the history away, and no console variable is involved.
+	PreviewViewportClient->EngineShowFlags.SetTemporalAA(
+		AntiAliasing == EMixtormatPreviewAntiAliasing::Temporal);
+	PreviewViewportClient->Invalidate();
+}
+
+void SMixtormatPreviewViewport::SetPreviewScreenPercentage(const int32 Percentage)
+{
+	if (!PreviewViewportClient.IsValid())
+	{
+		return;
+	}
+
+	// Editor viewports ignore r.ScreenPercentage and the post-process volume by design, so the
+	// preview fraction is the only way in. FEditorViewportClient clamps it to 25..200 itself.
+	//
+	// The previewing flag has to track the value rather than a mode: leave it false and anything
+	// off 100 is silently ignored, which is how a scale control ends up appearing to do nothing.
+	PreviewViewportClient->SetPreviewingScreenPercentage(
+		Percentage != MixtormatPreviewScreenPercentage::Default);
+	PreviewViewportClient->SetPreviewScreenPercentage(Percentage);
+	PreviewViewportClient->Invalidate();
+}
+
 void SMixtormatPreviewViewport::OrbitCamera(const float YawDelta, const float PitchDelta)
 {
 	CameraYaw = FMath::Fmod(CameraYaw + YawDelta * 0.35f, 360.0f);
@@ -635,25 +694,64 @@ void SMixtormatPreviewViewport::RotateLighting(const float YawDelta)
 
 void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)
 {
-	CameraDistance = FMath::Clamp(CameraDistance - ZoomDelta * 6.0f, 75.0f, 400.0f);
+	CameraDistance = FMath::Clamp(
+		CameraDistance - ZoomDelta * 6.0f,
+		MixtormatPreviewCamera::DistanceMinimum,
+		MixtormatPreviewCamera::DistanceMaximum);
 	UpdateStudioFog();
 	UpdateCamera();
 }
 
 void SMixtormatPreviewViewport::SetCameraFov(const float FovDegrees)
 {
-	CameraFov = FMath::Clamp(FovDegrees, 20.0f, 90.0f);
+	CameraFov = FMath::Clamp(
+		FovDegrees,
+		MixtormatPreviewCamera::FovMinimum,
+		MixtormatPreviewCamera::FovMaximum);
 	UpdateCamera();
 }
 
 void SMixtormatPreviewViewport::ResetCameraAndLighting()
 {
-	CameraDistance = 225.0f;
-	CameraYaw = 195.0f;
-	CameraPitch = -8.0f;
-	CameraFov = 50.0f;
+	CameraDistance = MixtormatPreviewCamera::DistanceDefault;
+	CameraYaw = MixtormatPreviewCamera::YawDefault;
+	CameraPitch = MixtormatPreviewCamera::PitchDefault;
+	CameraFov = MixtormatPreviewCamera::FovDefault;
 	HdriYaw = 0.0f;
 	SetStudioLighting(EMixtormatStudioLighting::Neutral);
+	UpdateStudioFog();
+	UpdateCamera();
+}
+
+void SMixtormatPreviewViewport::FocusCamera()
+{
+	if (!PreviewMeshComponent || !PreviewMeshComponent->GetStaticMesh())
+	{
+		return;
+	}
+
+	// Frame the mesh without touching the orbit. F answers "I have lost the object" or "I want
+	// to see all of it", and re-aiming the camera as well would throw away the angle the user
+	// chose to look at the surface from -- which is the whole point of a look-dev view. Reset
+	// is the control that puts the orbit back.
+	const FBoxSphereBounds Bounds = PreviewMeshComponent->Bounds;
+	PreviewTarget = Bounds.Origin;
+
+	const float Radius = FMath::Max(static_cast<float>(Bounds.SphereRadius), KINDA_SMALL_NUMBER);
+
+	// Distance that puts a sphere of this radius exactly inside the vertical field of view.
+	// Sine rather than tangent: the frustum plane is tangent to the sphere, so the radius is the
+	// opposite side of the half-angle against the distance as hypotenuse. Tangent would fit the
+	// sphere's equatorial disc instead and crop the near cap at wide angles.
+	const float HalfFovRadians = FMath::DegreesToRadians(CameraFov) * 0.5f;
+	const float FitDistance = Radius / FMath::Max(FMath::Sin(HalfFovRadians), KINDA_SMALL_NUMBER);
+
+	CameraDistance = FMath::Clamp(
+		FitDistance * MixtormatPreviewCamera::FocusMargin,
+		MixtormatPreviewCamera::DistanceMinimum,
+		MixtormatPreviewCamera::DistanceMaximum);
+
+	// The fog trails the camera, and it is keyed off distance.
 	UpdateStudioFog();
 	UpdateCamera();
 }
@@ -681,6 +779,13 @@ TSharedRef<FEditorViewportClient> SMixtormatPreviewViewport::MakeEditorViewportC
 	PreviewViewportClient->SetRealtime(true);
 	PreviewViewportClient->EngineShowFlags.SetGrid(false);
 	PreviewViewportClient->EngineShowFlags.SetSelectionOutline(false);
+
+	// Motion blur off. It defaults on in an editor viewport, and the engine only forces it off
+	// for the bones debug view, so a preview inherits it. Every camera move here is an orbit or
+	// a zoom the user made in order to look at the surface, and blurring the frame along that
+	// movement smears exactly the high-frequency detail -- crack width, chip edges, grain --
+	// that the move was made to inspect.
+	PreviewViewportClient->EngineShowFlags.SetMotionBlur(false);
 	SetPreviewQuality(EMixtormatPreviewQuality::Medium);
 	PreviewScene.SetLightDirection(FRotator(-35.0f, LightingYaw, 0.0f));
 	UpdateCamera();

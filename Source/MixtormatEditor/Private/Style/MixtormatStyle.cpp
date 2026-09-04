@@ -265,6 +265,27 @@ void FMixtormatStyle::Initialize()
 		.SetPadding(FMargin(2.0f));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
+	// The plain-button twin of the toggle above, for the combo and push buttons that share a rail
+	// with it.
+	//
+	// Those were on Mixtormat.TopButton, which is a panel button: it draws a rounded plate when
+	// hovered and pressed, and pads 7 horizontal against 0 vertical. In a square overlay button
+	// that read as a border the toggles beside it did not have, and the asymmetric padding left a
+	// 10x24 hole that stretched the glyph. Every state here is resourceless like the toggle, so
+	// the rail responds in foreground colour only, and the padding is square.
+	FButtonStyle ViewportOverlayButton = FButtonStyle()
+		.SetNormal(FSlateNoResource())
+		.SetHovered(FSlateNoResource())
+		.SetPressed(FSlateNoResource())
+		.SetDisabled(FSlateNoResource())
+		.SetNormalForeground(FSlateColor(WithOpacity(Text, 0.55f)))
+		.SetHoveredForeground(FSlateColor(Text))
+		.SetPressedForeground(FSlateColor(MixtormatPalette::AccentBright()))
+		.SetDisabledForeground(FSlateColor(DisabledText))
+		.SetNormalPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding))
+		.SetPressedPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
+	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayButton"), ViewportOverlayButton);
+
 	FButtonStyle CompactRowButton = FButtonStyle()
 		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.25f))
 		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.35f))

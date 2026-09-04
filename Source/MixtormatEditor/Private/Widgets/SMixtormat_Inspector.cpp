@@ -470,6 +470,39 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureBlendModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildCraquelureModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatCraquelureMode Modes[] = {
+		EMixtormatCraquelureMode::Lattice,
+		EMixtormatCraquelureMode::Propagated
+	};
+	for (const EMixtormatCraquelureMode Mode : Modes)
+	{
+		const FText Label = Mode == EMixtormatCraquelureMode::Propagated
+			? LOCTEXT("CraqModeMenuPropagated", "Propagated")
+			: LOCTEXT("CraqModeMenuLattice", "Lattice");
+		Menu.Item(
+			Label,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatCraquelure* C = GetSelectedCraquelure())
+				{
+					C->Mode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatCraquelure* C = GetSelectedCraquelure();
+				return C && C->Mode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 {
 	const auto Craq = [this]() { return GetSelectedCraquelure(); };
@@ -486,25 +519,111 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		return MakeMemberSlider<FMixtormatCraquelure>(Label, Craq, Member, Min, Max, Default, Snap, Hint);
 	};
 
+	// Visibility for the two mode-specific groups, so the panel only ever shows the controls
+	// that do anything. Both read the same selection, so a null selection collapses both.
+	const auto LatticeOnly = TAttribute<EVisibility>::CreateLambda([this]()
+	{
+		const FMixtormatCraquelure* C = GetSelectedCraquelure();
+		return C && C->Mode == EMixtormatCraquelureMode::Lattice
+			? EVisibility::Visible : EVisibility::Collapsed;
+	});
+	const auto PropagatedOnly = TAttribute<EVisibility>::CreateLambda([this]()
+	{
+		const FMixtormatCraquelure* C = GetSelectedCraquelure();
+		return C && C->Mode == EMixtormatCraquelureMode::Propagated
+			? EVisibility::Visible : EVisibility::Collapsed;
+	});
+
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("CraqMode", "Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatCraquelure* C = GetSelectedCraquelure();
+				if (!C) { return FText::GetEmpty(); }
+				return C->Mode == EMixtormatCraquelureMode::Propagated
+					? LOCTEXT("CraqModePropagated", "Propagated")
+					: LOCTEXT("CraqModeLattice", "Lattice");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureModeMenu)),
+		LOCTEXT("CraqModeHint", "Lattice measures distance to a Voronoi cell wall: junctions meet three ways at about 120 degrees, and Jitter 0 gives a regular grid, which is grout. Propagated grows cracks from nuclei and stops them where they meet, which puts junctions at right angles -- what a drying film actually does, and what a bisector diagram cannot produce.")));
+
+	TSharedRef<SVerticalBox> LatticeGroup = SNew(SVerticalBox);
+	LatticeGroup->SetVisibility(LatticeOnly);
+
+	AddSliderRow(LatticeGroup, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatCraquelure>(
 			LOCTEXT("CraqPeriod", "Cells"), Craq, &FMixtormatCraquelure::Period, 1.0, 64.0, 16,
 			LOCTEXT("CraqPeriodHint", "Cells across one UV repeat. Any integer tiles, because the lattice wraps on it.")),
 		Slider(LOCTEXT("CraqJitter", "Jitter"), &FMixtormatCraquelure::Jitter, 0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("CraqJitterHint", "0 puts the cells on a regular lattice and gives grout: brick, tile, plank. 1 gives organic crazing. This one control spans tile seams to cracked paint."))));
 
+	Panel->AddSlot().AutoHeight()[LatticeGroup];
+
+	TSharedRef<SVerticalBox> GrowGroup = SNew(SVerticalBox);
+	GrowGroup->SetVisibility(PropagatedOnly);
+
+	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpSeed", "Nucleation")));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatCraquelure>(
+			LOCTEXT("CraqSeedCells", "Seed Cells"), Craq, &FMixtormatCraquelure::SeedCells, 1.0, 32.0, 4,
+			LOCTEXT("CraqSeedCellsHint", "Nuclei are placed one per cell of this lattice. Fewer, longer cracks come from a coarse lattice; crazing from a fine one.")),
+		Slider(LOCTEXT("CraqSeedChance", "Density"), &FMixtormatCraquelure::SeedChance, 0.0, 1.0, 0.35, 0.01,
+			LOCTEXT("CraqSeedChanceHint", "Fraction of cells that actually get a nucleus. This is how many separate cracks there are, as opposed to how long they run."))));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqSeedJitter", "Seed Jitter"), &FMixtormatCraquelure::SeedJitter, 0.0, 1.0, 0.85, 0.01,
+			LOCTEXT("CraqSeedJitterHint", "0 puts every nucleus at its cell centre, which the grown network still shows as a grid. 1 hides the seeding lattice entirely.")),
+		MakeMemberSliderInt<FMixtormatCraquelure>(
+			LOCTEXT("CraqIterations", "Reach"), Craq, &FMixtormatCraquelure::Iterations, 1.0, 128.0, 48,
+			LOCTEXT("CraqIterationsHint", "How far a crack can travel, in pixels at a 1024 reference and scaled by the render resolution so a preview and an export grow the same network. One dispatch per step, so this is the control that costs."))));
+
+	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpField", "Material")));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatCraquelure>(
+			LOCTEXT("CraqNoiseCells", "Field Scale"), Craq, &FMixtormatCraquelure::NoiseCells, 1.0, 32.0, 5,
+			LOCTEXT("CraqNoiseCellsHint", "Scale of the stress, toughness and direction fields. Below the seed lattice it steers whole regions; above it, it roughens individual cracks.")),
+		Slider(LOCTEXT("CraqStressVar", "Stress Var"), &FMixtormatCraquelure::StressVariation, 0.0, 1.0, 0.35, 0.01,
+			LOCTEXT("CraqStressVarHint", "How unevenly the driving stress is distributed. Cracks run toward high stress."))));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqToughVar", "Tough Var"), &FMixtormatCraquelure::ToughnessVariation, 0.0, 1.0, 0.45, 0.01,
+			LOCTEXT("CraqToughVarHint", "How unevenly the material resists. Cracks route around tough patches, which is what stops the network looking uniform.")),
+		Slider(LOCTEXT("CraqFlowStrength", "Alignment"), &FMixtormatCraquelure::FlowStrength, 0.0, 1.0, 0.18, 0.01,
+			LOCTEXT("CraqFlowStrengthHint", "How strongly the direction field bends a running crack. At 1 cracks follow the field and come out combed; the default lets the field suggest without dictating."))));
+
+	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpGrowth", "Growth")));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqPersistence", "Persistence"), &FMixtormatCraquelure::Persistence, 0.0, 4.0, 1.65, 0.01,
+			LOCTEXT("CraqPersistenceHint", "How strongly a tip keeps its heading. This is what makes a crack a line rather than a blob: drop it and the front spreads in every direction at once.")),
+		Slider(LOCTEXT("CraqThreshold", "Threshold"), &FMixtormatCraquelure::GrowthThreshold, -1.0, 3.0, 0.55, 0.01,
+			LOCTEXT("CraqThresholdHint", "The score a step has to beat to happen at all. Raising it starves growth, which is what decides how much of the surface ends up cracked."))));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqIrregularity", "Irregularity"), &FMixtormatCraquelure::Irregularity, 0.0, 2.0, 0.32, 0.01,
+			LOCTEXT("CraqIrregularityHint", "Per-step randomness in the scoring. Low values give clean arcs, high values give a wandering, brittle line.")),
+		Slider(LOCTEXT("CraqTurnResponse", "Turn"), &FMixtormatCraquelure::TurnResponse, 0.0, 1.0, 0.72, 0.01,
+			LOCTEXT("CraqTurnResponseHint", "How fast a tip turns toward the step it just took. Low values curve; high values snap to the eight-way lattice and show the staircase."))));
+	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqStressGain", "Stress Gain"), &FMixtormatCraquelure::StressGain, 0.0, 4.0, 0.75, 0.01,
+			LOCTEXT("CraqStressGainHint", "How much the stress field is worth against persistence when a step is scored.")),
+		Slider(LOCTEXT("CraqToughCost", "Tough Cost"), &FMixtormatCraquelure::ToughnessCost, 0.0, 4.0, 0.95, 0.01,
+			LOCTEXT("CraqToughCostHint", "How much toughness counts against a step. Raise it past Stress Gain and cracks will detour a long way to avoid hard material."))));
+	AddSliderRow(GrowGroup, MakeMemberSliderInt<FMixtormatCraquelure>(
+		LOCTEXT("CraqCollision", "Collision Limit"), Craq, &FMixtormatCraquelure::CollisionLimit, 1.0, 8.0, 2,
+		LOCTEXT("CraqCollisionHint", "Cracked neighbours a pixel may already have and still be grown into. This is the T-junction: at 2 a crack reaching an older one stops, because the older crack has already released the stress driving it. Raise it and cracks cross instead, which reads as scratches rather than fracture.")));
+
+	Panel->AddSlot().AutoHeight()[GrowGroup];
+
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqWidth", "Width"), &FMixtormatCraquelure::Width, 0.002, 0.5, 0.04, 0.001,
 			LOCTEXT("CraqWidthHint", "In cell units, so it means the same thing at any cell count. Built on distance to the cell boundary rather than the difference of the two nearest feature points, which is what holds the width even instead of going heavy in large cells and hairline in small ones. The floor is a hairline rather than zero: at zero the falloff collapses to a hard one-pixel line, which aliases.")),
 		Slider(LOCTEXT("CraqVariation", "Variation"), &FMixtormatCraquelure::Variation, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("CraqVariationHint", "Thins cracks per cell, so the network reads as breaks that opened at different times rather than a uniform lattice."))));
+			LOCTEXT("CraqVariationHint", "Thins individual cracks, so the network reads as breaks that opened at different times rather than a uniform lattice. Keyed on the wall between two cells rather than on either cell, so a crack varies as one thing instead of splitting down its centre."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpWarp", "Warp")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqWarp", "Amount"), &FMixtormatCraquelure::Warp, 0.0, 2.0, 0.0, 0.01,
-			LOCTEXT("CraqWarpHint", "Displaces the lattice so cracks wander instead of following a visibly regular network. Driven by a second cellular field rather than a noise, so the displacement wraps on the same period and the result still tiles.")),
+			LOCTEXT("CraqWarpHint", "Displaces the lattice so cracks wander instead of following a visibly regular network. Driven by periodic gradient noise rather than a second cellular field: a cellular displacement jumps wherever the nearest feature point changes and tears the network along every cell boundary, while gradient noise is continuous. It wraps on its own period, so the result still tiles.")),
 		MakeMemberSliderInt<FMixtormatCraquelure>(
 			LOCTEXT("CraqWarpPeriod", "Scale"), Craq, &FMixtormatCraquelure::WarpPeriod, 1.0, 32.0, 4,
 			LOCTEXT("CraqWarpPeriodHint", "Cells in the field doing the displacing. Below the crack cell count it bends whole regions; above it, it roughens individual cracks."))));

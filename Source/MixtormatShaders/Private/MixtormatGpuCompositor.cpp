@@ -269,6 +269,120 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Propagated craquelure. Three entry points in one file, one shader class each.
+//
+// Each class binds only the parameters its own entry point uses, rather than a shared struct
+// covering all three. That is not tidiness: RDG rejects a pass that binds a transient nothing
+// has written, so a seed pass carrying a PreviousState slot would fail on the first dispatch.
+class FMixtormatCraquelureSeedCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureSeedCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureSeedCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(int32, SeedCells)
+		SHADER_PARAMETER(float, SeedChance)
+		SHADER_PARAMETER(float, SeedJitter)
+		SHADER_PARAMETER(int32, NoiseCells)
+		SHADER_PARAMETER(float, StressVariation)
+		SHADER_PARAMETER(float, ToughnessVariation)
+		SHADER_PARAMETER(float, Warp)
+		SHADER_PARAMETER(int32, WarpPeriod)
+		SHADER_PARAMETER(uint32, WarpSeed)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDirection)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputField)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCraquelureSeedCS,
+	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"SeedCS",
+	SF_Compute);
+
+class FMixtormatCraquelureGrowCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureGrowCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureGrowCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, Persistence)
+		SHADER_PARAMETER(float, FlowStrength)
+		SHADER_PARAMETER(float, StressGain)
+		SHADER_PARAMETER(float, ToughnessCost)
+		SHADER_PARAMETER(float, Irregularity)
+		SHADER_PARAMETER(float, GrowthThreshold)
+		SHADER_PARAMETER(float, MinAlignment)
+		SHADER_PARAMETER(float, TurnResponse)
+		SHADER_PARAMETER(int32, CollisionLimit)
+		SHADER_PARAMETER(int32, Iteration)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousDirection)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, Field)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDirection)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCraquelureGrowCS,
+	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"GrowCS",
+	SF_Compute);
+
+class FMixtormatCraquelureResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(int32, SeedCells)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, Variation)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatCraquelureResolveCS,
+	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"ResolveCS",
+	SF_Compute);
+
 class FMixtormatErosionCS final : public FGlobalShader
 {
 public:
@@ -740,6 +854,7 @@ namespace MixtormatGpuCompositor
 		float ErosionFeatureOnset = 1.25f;
 		float ErosionAssumedSlope = 0.7f;
 		float ErosionAssumedSlopeAmount = 1.0f;
+		float ErosionNormalStrength = 8.0f;
 		int32 ErosionSlopeRadius = 2;
 		float ErosionSlopeBlur = 0.0f;
 		int32 ErosionCurvatureMode = 1;
@@ -812,6 +927,7 @@ namespace MixtormatGpuCompositor
 	struct FCraquelureRenderData
 	{
 		bool bEnabled = true;
+		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Lattice;
 		int32 Period = 16;
 		float Jitter = 1.0f;
 		float Width = 0.04f;
@@ -826,6 +942,23 @@ namespace MixtormatGpuCompositor
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
 		float Offset = 0.0f;
+
+		// Propagated mode only.
+		int32 Iterations = 48;
+		int32 SeedCells = 4;
+		float SeedChance = 0.35f;
+		float SeedJitter = 0.85f;
+		int32 NoiseCells = 5;
+		float StressVariation = 0.35f;
+		float ToughnessVariation = 0.45f;
+		float Persistence = 1.65f;
+		float FlowStrength = 0.18f;
+		float StressGain = 0.75f;
+		float ToughnessCost = 0.95f;
+		float Irregularity = 0.32f;
+		float GrowthThreshold = 0.55f;
+		float TurnResponse = 0.72f;
+		int32 CollisionLimit = 2;
 	};
 
 	struct FChildRenderData
@@ -1209,6 +1342,23 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				CrackData.Balance = Craquelure.Balance;
 				CrackData.Contrast = Craquelure.Contrast;
 				CrackData.Offset = Craquelure.Offset;
+
+				CrackData.Mode = Craquelure.Mode;
+				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 128);
+				CrackData.SeedCells = FMath::Max(Craquelure.SeedCells, 1);
+				CrackData.SeedChance = FMath::Clamp(Craquelure.SeedChance, 0.0f, 1.0f);
+				CrackData.SeedJitter = FMath::Clamp(Craquelure.SeedJitter, 0.0f, 1.0f);
+				CrackData.NoiseCells = FMath::Max(Craquelure.NoiseCells, 1);
+				CrackData.StressVariation = Craquelure.StressVariation;
+				CrackData.ToughnessVariation = Craquelure.ToughnessVariation;
+				CrackData.Persistence = Craquelure.Persistence;
+				CrackData.FlowStrength = FMath::Clamp(Craquelure.FlowStrength, 0.0f, 1.0f);
+				CrackData.StressGain = Craquelure.StressGain;
+				CrackData.ToughnessCost = Craquelure.ToughnessCost;
+				CrackData.Irregularity = Craquelure.Irregularity;
+				CrackData.GrowthThreshold = Craquelure.GrowthThreshold;
+				CrackData.TurnResponse = FMath::Clamp(Craquelure.TurnResponse, 0.0f, 1.0f);
+				CrackData.CollisionLimit = FMath::Clamp(Craquelure.CollisionLimit, 1, 8);
 				Data.bHasMask = true;
 				continue;
 			}
@@ -1668,6 +1818,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1895,6 +2048,182 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							const FCraquelureRenderData& Crack = Child.Craquelure;
 							const int32 MaskWriteIndex = MaskPassIndex & 1;
 							const int32 MaskReadIndex = 1 - MaskWriteIndex;
+							const FIntVector CrackGroups(
+								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+								1);
+
+							// Propagated mode grows a network over N iterations against its own
+							// ping-ponged state, then resolves it into the layer mask. The
+							// state and direction pair are meaningless to any other mask child,
+							// so they are allocated here rather than routed through MaskTargets:
+							// the node still consumes one MaskPassIndex and writes one R16F
+							// target, exactly like every other mask child.
+							if (Crack.Mode == EMixtormatCraquelureMode::Propagated)
+							{
+								// State is (cracked, front, id, level) at full float. The id is
+								// a lineage hash up to 2^24 and has to stay exact -- a half
+								// would truncate it and silently merge unrelated cracks into
+								// one, which the per-crack Variation would then show as a
+								// single flat value across the whole network.
+								const FRDGTextureDesc CraqStateDesc = FRDGTextureDesc::Create2D(
+									Request.Resolution,
+									PF_A32B32G32R32F,
+									FClearValueBinding::Black,
+									TexCreate_ShaderResource | TexCreate_UAV);
+
+								// Direction only needs two channels and the field four, but both
+								// are four here. A two-channel typed UAV is a binding shape
+								// nothing else in this compositor uses, and it is the one thing
+								// a standalone HLSL compile cannot check -- it validates the
+								// shader in isolation, never the format against the
+								// declaration. Four bytes a pixel to delete that failure mode.
+								const FRDGTextureDesc CraqDirectionDesc = FRDGTextureDesc::Create2D(
+									Request.Resolution,
+									PF_FloatRGBA,
+									FClearValueBinding::Black,
+									TexCreate_ShaderResource | TexCreate_UAV);
+								const FRDGTextureDesc CraqFieldDesc = FRDGTextureDesc::Create2D(
+									Request.Resolution,
+									PF_FloatRGBA,
+									FClearValueBinding::Black,
+									TexCreate_ShaderResource | TexCreate_UAV);
+
+								FRDGTextureRef CraqState[2] = {
+									GraphBuilder.CreateTexture(CraqStateDesc, TEXT("Mixtormat.CraqStateA")),
+									GraphBuilder.CreateTexture(CraqStateDesc, TEXT("Mixtormat.CraqStateB"))};
+								FRDGTextureRef CraqDirection[2] = {
+									GraphBuilder.CreateTexture(CraqDirectionDesc, TEXT("Mixtormat.CraqDirA")),
+									GraphBuilder.CreateTexture(CraqDirectionDesc, TEXT("Mixtormat.CraqDirB"))};
+								FRDGTextureRef CraqField =
+									GraphBuilder.CreateTexture(CraqFieldDesc, TEXT("Mixtormat.CraqField"));
+
+								FMixtormatCraquelureSeedCS::FParameters* SeedParameters =
+									GraphBuilder.AllocParameters<FMixtormatCraquelureSeedCS::FParameters>();
+								SeedParameters->OutputSize = Request.Resolution;
+								SeedParameters->Seed = Crack.Seed;
+								SeedParameters->SeedCells = Crack.SeedCells;
+								SeedParameters->SeedChance = Crack.SeedChance;
+								SeedParameters->SeedJitter = Crack.SeedJitter;
+								SeedParameters->NoiseCells = Crack.NoiseCells;
+								SeedParameters->StressVariation = Crack.StressVariation;
+								SeedParameters->ToughnessVariation = Crack.ToughnessVariation;
+								SeedParameters->Warp = Crack.Warp;
+								SeedParameters->WarpPeriod = Crack.WarpPeriod;
+								SeedParameters->WarpSeed = Crack.WarpSeed;
+								SeedParameters->OutputState = GraphBuilder.CreateUAV(CraqState[0]);
+								SeedParameters->OutputDirection = GraphBuilder.CreateUAV(CraqDirection[0]);
+								SeedParameters->OutputField = GraphBuilder.CreateUAV(CraqField);
+
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("Mixtormat.Craquelure.Seed.Layer%d.Child%d", LayerIndex, ChildIndex),
+									CraquelureSeedShader,
+									SeedParameters,
+									CrackGroups);
+
+								// A crack advances one pixel per iteration, so the authored
+								// count is a reach in pixels. Scaled against the same 1024
+								// reference chipping uses, so a preview and an export grow the
+								// same network rather than the same pixel count.
+								//
+								// The cap is a cost bound, and it is the one place the scaling
+								// stops being honest: it holds the default Reach exact through
+								// 4K, but a Reach near the top of its range clamps there and a
+								// 4K export will then grow a shorter network than the preview
+								// promised. Left as a bound rather than removed because each
+								// step is a full-resolution pass doing roughly eighty texture
+								// loads per pixel -- this is by some way the most expensive
+								// node in the graph, and an unbounded count at 4K is minutes.
+								const int32 GrowIterations = FMath::Clamp(
+									FMath::RoundToInt(
+										Crack.Iterations *
+										FMath::Max(Request.Resolution.X, Request.Resolution.Y) / 1024.0f),
+									1,
+									192);
+
+								int32 StateIndex = 0;
+								for (int32 GrowPass = 0; GrowPass < GrowIterations; ++GrowPass)
+								{
+									const int32 ReadState = StateIndex;
+									const int32 WriteState = 1 - ReadState;
+
+									FMixtormatCraquelureGrowCS::FParameters* GrowParameters =
+										GraphBuilder.AllocParameters<FMixtormatCraquelureGrowCS::FParameters>();
+									GrowParameters->OutputSize = Request.Resolution;
+									GrowParameters->Seed = Crack.Seed;
+									GrowParameters->Persistence = Crack.Persistence;
+									GrowParameters->FlowStrength = Crack.FlowStrength;
+									GrowParameters->StressGain = Crack.StressGain;
+									GrowParameters->ToughnessCost = Crack.ToughnessCost;
+									GrowParameters->Irregularity = Crack.Irregularity;
+									GrowParameters->GrowthThreshold = Crack.GrowthThreshold;
+									// Fixed rather than exposed: it only rejects steps a tip
+									// would never take anyway, and the interesting control over
+									// how straight a crack runs is Persistence.
+									GrowParameters->MinAlignment = 0.05f;
+									GrowParameters->TurnResponse = Crack.TurnResponse;
+									GrowParameters->CollisionLimit = Crack.CollisionLimit;
+									GrowParameters->Iteration = GrowPass;
+									GrowParameters->PreviousState = CraqState[ReadState];
+									GrowParameters->PreviousDirection = CraqDirection[ReadState];
+									GrowParameters->Field = CraqField;
+									GrowParameters->OutputState = GraphBuilder.CreateUAV(CraqState[WriteState]);
+									GrowParameters->OutputDirection = GraphBuilder.CreateUAV(CraqDirection[WriteState]);
+
+									FComputeShaderUtils::AddPass(
+										GraphBuilder,
+										RDG_EVENT_NAME(
+											"Mixtormat.Craquelure.Grow%d.Layer%d.Child%d",
+											GrowPass, LayerIndex, ChildIndex),
+										CraquelureGrowShader,
+										GrowParameters,
+										CrackGroups);
+
+									StateIndex = WriteState;
+								}
+
+								FMixtormatCraquelureResolveCS::FParameters* ResolveParameters =
+									GraphBuilder.AllocParameters<FMixtormatCraquelureResolveCS::FParameters>();
+								ResolveParameters->OutputSize = Request.Resolution;
+								ResolveParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+								ResolveParameters->SeedCells = Crack.SeedCells;
+								ResolveParameters->Width = Crack.Width;
+								ResolveParameters->Variation = Crack.Variation;
+								ResolveParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
+								ResolveParameters->Invert = Crack.bInvert ? 1u : 0u;
+								ResolveParameters->Weight = Crack.Weight;
+								ResolveParameters->Balance = Crack.Balance;
+								ResolveParameters->Contrast = Crack.Contrast;
+								ResolveParameters->Offset = Crack.Offset;
+								ResolveParameters->PreviousState = CraqState[StateIndex];
+								ResolveParameters->PreviousMask = MaskTargets[MaskReadIndex];
+								ResolveParameters->LinearWrapSampler =
+									TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+								ResolveParameters->OutputMask =
+									GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("Mixtormat.Craquelure.Resolve.Layer%d.Child%d", LayerIndex, ChildIndex),
+									CraquelureResolveShader,
+									ResolveParameters,
+									CrackGroups);
+
+								CombinedMask = MaskTargets[MaskWriteIndex];
+								if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+									&& Request.DebugSettings.LayerIndex == LayerIndex
+									&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+								{
+									FRDGTextureRef DebugCrackSnapshot = GraphBuilder.CreateTexture(
+										MaskDesc,
+										TEXT("Mixtormat.DebugCraquelureSnapshot"));
+									AddCopyTexturePass(GraphBuilder, CombinedMask, DebugCrackSnapshot);
+									DebugMask = DebugCrackSnapshot;
+								}
+								++MaskPassIndex;
+								continue;
+							}
 
 							FMixtormatCraquelureCS::FParameters* CrackParameters =
 								GraphBuilder.AllocParameters<FMixtormatCraquelureCS::FParameters>();

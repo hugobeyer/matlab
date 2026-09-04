@@ -51,6 +51,15 @@ namespace MixtormatPalette
 	inline FLinearColor FocusFill()    { return Hex(0x4D8FA8, 0.10f); }
 	inline FLinearColor SelectionFill(){ return Hex(0x4D8FA8, 0.16f); }
 
+	// ---- Viewport overlay -------------------------------------------------------------------
+	// The plate behind a floating cluster of viewport controls. The well shades, but translucent:
+	// these sit on top of the thing being judged rather than in a panel, so an opaque plate takes
+	// a bite out of the render. Enough weight to keep the controls legible against a bright HDRI,
+	// not enough to read as a second window.
+	inline float OverlayPlateOpacity() { return 0.62f; }
+	inline FLinearColor OverlayPlateTop()    { return Hex(0x070808, OverlayPlateOpacity()); }
+	inline FLinearColor OverlayPlateBottom() { return Hex(0x0C0E0F, OverlayPlateOpacity()); }
+
 	// ---- Wells ------------------------------------------------------------------------------
 	inline FLinearColor WellTop()      { return Hex(0x070808); }
 	inline FLinearColor WellBottom()   { return Hex(0x0C0E0F); }

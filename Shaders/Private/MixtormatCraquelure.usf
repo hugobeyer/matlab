@@ -94,10 +94,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// aliases into a dashed line rather than fading out. Weight is the off switch.
 	float Crack = 1.0f - smoothstep(0.0f, max(Width, 0.002f), Cell.EdgeDistance);
 
-	// Per-cell variation breaks the network up, so it reads as cracks that opened at different
-	// times rather than as a uniform lattice. Applied to the crack rather than to the cell, so
-	// it thins lines instead of tinting regions.
-	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.CellId), saturate(Variation));
+	// Per-crack variation breaks the network up, so it reads as cracks that opened at
+	// different times rather than as a uniform lattice. Applied to the crack rather than to
+	// the cell, so it thins lines instead of tinting regions.
+	//
+	// Keyed on the wall id, not the cell id. A crack is the boundary between two cells and
+	// the pixels either side of it belong to different ones, so a per-cell value splits
+	// every crack down its centre -- one half dim, the other bright, with the seam running
+	// along the feature itself. The wall id is symmetric in the pair, so the whole crack
+	// takes one value. It still changes at junctions, where the nearest wall becomes a
+	// different pair; cracks do change character where they meet.
+	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.EdgeId), saturate(Variation));
 
 	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
 	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);

@@ -717,11 +717,28 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	float ChipRoughnessAmount = 0.0f;
 };
 
-// Craquelure. A crack network on a cellular lattice, blended into the layer mask.
+// Two constructions, not two presets for one.
+//
+// Lattice measures distance to a Voronoi cell wall. Its junctions are three-way at roughly 120
+// degrees, because that is what a bisector diagram is, and at Jitter 0 the cells are a regular
+// grid -- which is grout: brick, tile, plank.
+//
+// Propagated grows cracks outward from nuclei and stops them where they meet, which puts the
+// junctions at right angles. A crack reaching an older crack stops there, because the older one
+// has already released the stress driving it. That T-junction is what a drying film actually
+// does and what a bisector diagram cannot produce.
+UENUM(BlueprintType)
+enum class EMixtormatCraquelureMode : uint8
+{
+	Lattice UMETA(DisplayName = "Lattice"),
+	Propagated UMETA(DisplayName = "Propagated")
+};
+
+// Craquelure. A crack network blended into the layer mask.
 //
 // Its own node rather than a signal on the generated mask. Everything that node produces is
 // derived from the surface beneath it and it early-returns when there is none; craquelure is
-// generated from a lattice and means something on the bottom layer, so living there forced
+// generated rather than derived and means something on the bottom layer, so living there forced
 // that early return to be picked apart into a per-signal guard. It is a mask rather than a
 // filter so it can drive anything downstream -- chipping placement, a stain, a peel -- rather
 // than only cutting the surface itself.
@@ -732,6 +749,9 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
 	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
+	EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Lattice;
 
 	// Cells across one UV repeat. Any integer tiles, because the lattice wraps on it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "1"))
@@ -746,8 +766,10 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
 	float Width = 0.04f;
 
-	// Thins cracks per cell, so the network reads as breaks that opened at different times
-	// rather than as a uniform lattice.
+	// Thins individual cracks, so the network reads as breaks that opened at different
+	// times rather than as a uniform lattice. Keyed on the wall between two cells rather
+	// than on either cell, so a crack varies as one thing instead of splitting down its
+	// centre.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
 	float Variation = 0.0f;
 
@@ -755,8 +777,10 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	int32 Seed = 1;
 
 	// Displaces the lattice so cracks wander instead of following a visibly regular network.
-	// Driven by a second cellular field rather than a noise, so the displacement wraps on the
-	// same period and the result still tiles.
+	// Driven by periodic gradient noise, not by a second cellular field. A cellular
+	// displacement jumps wherever the nearest feature point changes, which tears the crack
+	// network along every Voronoi boundary; gradient noise is continuous, and this one wraps
+	// on its own period, so the result still tiles.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
 	float Warp = 0.0f;
 
@@ -765,6 +789,77 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0"))
 	int32 WarpSeed = 7;
+
+	// -- Propagated mode ---------------------------------------------------------------------
+	// Ignored in Lattice mode. Period and Jitter are the reverse: Lattice only.
+
+	// How far a crack can reach, in pixels at a 1024 reference. Scaled by the render resolution
+	// so a preview and an export grow the same network rather than the same pixel count; the
+	// dispatch count scales with it, so this is the control that costs.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "128"))
+	int32 Iterations = 48;
+
+	// Nuclei are placed one per cell of this lattice, jittered inside it and admitted by
+	// chance. Fewer, longer cracks come from a coarse lattice; crazing from a fine one.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1"))
+	int32 SeedCells = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SeedChance = 0.35f;
+
+	// 0 puts every nucleus at its cell centre, which the grown network still shows. 1 hides the
+	// lattice entirely.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SeedJitter = 0.85f;
+
+	// Scale of the stress, toughness and flow fields. Below the seed lattice it steers whole
+	// regions; above it, it roughens individual cracks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1"))
+	int32 NoiseCells = 5;
+
+	// Stress drives cracking on, toughness holds it back, and the variations are how much each
+	// field departs from uniform. With both at zero the network is steered only by flow and
+	// irregularity, which reads as combed rather than as fractured.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float StressVariation = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ToughnessVariation = 0.45f;
+
+	// How strongly a tip keeps its heading. This is what makes a crack a line rather than a
+	// blob: drop it and the front spreads in every direction at once.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
+	float Persistence = 1.65f;
+
+	// How much the flow field bends a running crack. At 1 cracks follow the field and come out
+	// combed; the default lets the field suggest a direction without dictating it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FlowStrength = 0.18f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
+	float StressGain = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0"))
+	float ToughnessCost = 0.95f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float Irregularity = 0.32f;
+
+	// The score a step has to beat to happen at all. Raising it starves growth, which is the
+	// control that decides how much of the surface ends up cracked.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated")
+	float GrowthThreshold = 0.55f;
+
+	// How fast a tip turns toward the step it just took. Low values curve, high values snap to
+	// the eight-way lattice and show the staircase.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float TurnResponse = 0.72f;
+
+	// Cracked neighbours a pixel may already have and still be grown into. This is the whole
+	// T-junction behaviour: at 2 a crack reaching an older one stops, and raising it lets them
+	// cross, which reads as scratches rather than as fracture.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 CollisionLimit = 2;
 
 	// The same tail every mask-producing node has.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")

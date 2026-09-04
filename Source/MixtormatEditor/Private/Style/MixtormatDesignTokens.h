@@ -72,6 +72,28 @@ namespace MixtormatTokens
 	constexpr float ToolbarIconSize = 12.0f;
 	constexpr float ViewportOverlayInset = 8.0f;
 	constexpr float PreviewToolbarButtonSize = 24.0f;
+	// Inner inset of a viewport overlay cluster -- the gap between its gradient plate and the
+	// controls inside it.
+	constexpr float ViewportOverlayClusterInset = 2.0f;
+	// What the overlay toggle style insets its content by on every side.
+	constexpr float ViewportOverlayTogglePadding = 2.0f;
+	// The glyph inside a viewport overlay button, stated rather than inherited.
+	//
+	// The four lighting toggles have always drawn at exactly this -- the button size less the
+	// toggle style's padding -- because their brushes happen to be registered at the same number.
+	// The combo and plain buttons beside them inherited their own styles' padding instead and came
+	// out distorted, so every glyph in that rail is now sized to this explicitly and none of them
+	// depends on what its container does.
+	constexpr float PreviewToolbarIconSize =
+		PreviewToolbarButtonSize - ViewportOverlayTogglePadding * 2.0f;
+	// Between two controls sitting side by side within one overlay cluster.
+	constexpr float ViewportOverlayItemGap = 5.0f;
+	// Between stacked buttons in an overlay rail. The buttons carry no plate of their own, so
+	// without a gap the glyphs are the only thing separating one target from the next.
+	constexpr float ViewportOverlayButtonGap = 4.0f;
+	// The composition-resolution segments. Fixed rather than hugging, so the cluster's width does
+	// not change when the active label goes from 1K to 4K.
+	constexpr float PreviewResolutionControlWidth = 92.0f;
 	constexpr int32 PreviewHdriPresetLimit = 2;
 	// Breathing room under a group header before its first row.
 	constexpr float GroupBodyTopInset = 4.0f;

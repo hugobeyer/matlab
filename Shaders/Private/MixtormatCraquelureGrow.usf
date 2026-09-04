@@ -1,0 +1,509 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+
+// Propagated craquelure. Cracks nucleate at seed points and grow outward as a cellular
+// automaton, steered by a stress/toughness/flow field and stopped where they meet each other.
+//
+// A different construction from the lattice mode, not a better-tuned one. A Voronoi network
+// meets at three-way junctions around 120 degrees, because that is what a bisector diagram is.
+// Cracking in a drying film meets at right angles: a crack that reaches an older crack stops
+// there, because the older crack has already released the stress that was driving it. That
+// termination is what CollisionLimit encodes, and it is the whole reason this mode exists --
+// the T-junction is what the eye reads as cracked paint rather than as cells.
+//
+// Three passes. Seed writes the fields and the nuclei; Growth advances every front by one
+// pixel and runs N times against a ping-ponged state; Resolve turns the one-pixel skeleton
+// into a width and hands it to the same mask tail every other mask node uses.
+
+#define CRAQ_TAU 6.28318530717958648f
+
+int2 OutputSize;
+uint Seed;
+
+// -- Seed pass ------------------------------------------------------------------------------
+int SeedCells;
+float SeedChance;
+float SeedJitter;
+int NoiseCells;
+float StressVariation;
+float ToughnessVariation;
+
+// Warp displaces the UV the *fields* are read at, not the grown network. Warping the skeleton
+// after the fact would drag cracks off the pixels they are connected through and tear it;
+// bending the stress and flow fields instead makes cracks wander while they grow, which is
+// where the wandering belongs.
+float Warp;
+int WarpPeriod;
+uint WarpSeed;
+
+// -- Growth pass ----------------------------------------------------------------------------
+float Persistence;
+float FlowStrength;
+float StressGain;
+float ToughnessCost;
+float Irregularity;
+float GrowthThreshold;
+float MinAlignment;
+float TurnResponse;
+int CollisionLimit;
+int Iteration;
+
+// -- Resolve pass ---------------------------------------------------------------------------
+uint Initialize;
+float Width;
+float Variation;
+uint BlendMode;
+uint Invert;
+float Weight;
+float Balance;
+float Contrast;
+float Offset;
+
+Texture2D<float4> PreviousState;
+Texture2D<float4> PreviousDirection;
+Texture2D<float4> Field;
+Texture2D<float> PreviousMask;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float4> OutputState;
+RWTexture2D<float4> OutputDirection;
+RWTexture2D<float4> OutputField;
+RWTexture2D<float> OutputMask;
+
+// Every neighbour read wraps on the texture, which is what makes a grown network tile. A
+// bilinear sampler with AM_Wrap is not a substitute: these are exact per-pixel states, and
+// filtering a binary front produces half-lit neighbours that read as fronts nothing seeded.
+int2 CraqWrap(int2 P)
+{
+	return int2(MixtormatWrapI(P.x, OutputSize.x), MixtormatWrapI(P.y, OutputSize.y));
+}
+
+float4 LoadState(int2 P)     { return PreviousState.Load(int3(CraqWrap(P), 0)); }
+float2 LoadDirection(int2 P) { return PreviousDirection.Load(int3(CraqWrap(P), 0)).xy; }
+float4 LoadField(int2 P)     { return Field.Load(int3(CraqWrap(P), 0)); }
+
+int2 CraqOffset(int i)
+{
+	if (i == 0) return int2( 1,  0);
+	if (i == 1) return int2( 1,  1);
+	if (i == 2) return int2( 0,  1);
+	if (i == 3) return int2(-1,  1);
+	if (i == 4) return int2(-1,  0);
+	if (i == 5) return int2(-1, -1);
+	if (i == 6) return int2( 0, -1);
+	return int2(1, -1);
+}
+
+float2 CraqStepDirection(int i)
+{
+	const float2 D = (float2)CraqOffset(i);
+	return D * rsqrt(dot(D, D));
+}
+
+float2 CraqNormalize(float2 V, float2 Fallback)
+{
+	const float L = dot(V, V);
+	return L > 1.0e-14f ? V * rsqrt(L) : Fallback;
+}
+
+float CraqRandom(int2 P, int Iter, uint S)
+{
+	const uint H = MixtormatHashU(
+		(uint)P.x * 0x9e3779b9u ^ (uint)P.y * 0x85ebca6bu ^ (uint)Iter * 0xc2b2ae35u ^ S);
+	return (float)(H & 0x00FFFFFFu) * (1.0f / 16777215.0f);
+}
+
+// Three octaves of the periodic gradient noise the gully field already provides. Periodic
+// because the fields have to tile with everything else, and the octave periods are multiples
+// of the base so all three wrap together.
+float CraqFbm(float2 UV, int Period, uint S)
+{
+	const int P = max(Period, 1);
+	const float Sum =
+		MixtormatPeriodicNoiseD(UV * (float)P,       P,     S        ).x * 0.57142857f +
+		MixtormatPeriodicNoiseD(UV * (float)(P * 2), P * 2, S + 1013u).x * 0.28571429f +
+		MixtormatPeriodicNoiseD(UV * (float)(P * 4), P * 4, S + 2069u).x * 0.14285714f;
+
+	// Gradient noise is signed and lands well inside [-1, 1]; this puts it on 0..1 without
+	// clipping the tails flat.
+	return saturate(Sum * 0.9f + 0.5f);
+}
+
+[numthreads(8, 8, 1)]
+void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	float2 FieldUV = UV;
+	if (abs(Warp) > 0.0f)
+	{
+		const int WarpCells = max(WarpPeriod, 1);
+		const float2 WarpP = UV * (float)WarpCells;
+		const float2 Displacement = float2(
+			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed).x,
+			MixtormatPeriodicNoiseD(WarpP, WarpCells, WarpSeed + 8191u).x);
+		FieldUV = UV + Displacement * Warp * (1.0f / (float)WarpCells);
+	}
+
+	const int Cells = max(SeedCells, 1);
+	const int2 Cell = (int2)floor(UV * (float)Cells);
+
+	// One nucleus per cell, jittered inside it, and only on the cells the chance admits. The
+	// jitter is what stops the network remembering the lattice it was seeded from.
+	const float2 Jitter = float2(
+		MixtormatCellRandom01(MixtormatCellHash(Cell, Cells, Seed + 17u)),
+		MixtormatCellRandom01(MixtormatCellHash(Cell, Cells, Seed + 43u)));
+	float2 SeedUV = ((float2)Cell + 0.5f + (Jitter - 0.5f) * saturate(SeedJitter)) / (float)Cells;
+	SeedUV = frac(SeedUV);
+
+	const int2 SeedPixel = (int2)floor(SeedUV * float2(OutputSize));
+	const bool bAlive =
+		MixtormatCellRandom01(MixtormatCellHash(Cell, Cells, Seed + 97u)) < SeedChance;
+	const bool bSeed = bAlive && all(SeedPixel == Pixel);
+
+	const float N0 = CraqFbm(FieldUV, NoiseCells, Seed + 151u);
+	const float N1 = CraqFbm(FieldUV, NoiseCells + 2, Seed + 313u);
+	const float NF = CraqFbm(FieldUV, max(NoiseCells / 2, 1), Seed + 719u);
+
+	// Stress drives cracking on, toughness holds it back. Both floored well above zero so the
+	// score stays finite where the variation would otherwise cancel the field entirely.
+	const float Stress    = max(0.001f, 1.0f + (N0 - 0.5f) * 2.0f * StressVariation);
+	const float Toughness = max(0.001f, 1.0f + (N1 - 0.5f) * 2.0f * ToughnessVariation);
+
+	// The direction cracks prefer to run. A smooth angle field rather than one value per pixel:
+	// cracks following a coherent direction read as a material under load, where a per-pixel
+	// direction would be noise the alignment term averages away.
+	const float Angle = NF * CRAQ_TAU;
+	const float2 Flow = float2(cos(Angle), sin(Angle));
+
+	OutputField[Pixel] = float4(Stress, Toughness, Flow);
+
+	// Level -1 marks a nucleus. The growth pass treats those differently: a nucleus has no
+	// incoming direction, so it may grow along either end of the flow axis rather than only
+	// forward, which is what makes a crack open in both directions from where it started.
+	float Id = 0.0f;
+	if (bSeed)
+	{
+		// Held under 2^24 so it stays exact in the float32 state channel. A truncated id would
+		// silently merge unrelated cracks into one lineage.
+		const uint H = MixtormatHashU(
+			(uint)Pixel.x * 0x5f356495u ^ (uint)Pixel.y * 0xe32d5799u ^ Seed);
+		Id = 1.0f + (float)(H % 16777213u);
+	}
+
+	OutputState[Pixel] = bSeed ? float4(1.0f, 1.0f, Id, -1.0f) : (float4)0.0f;
+	OutputDirection[Pixel] = float4(bSeed ? Flow : float2(0.0f, 0.0f), 0.0f, 0.0f);
+}
+
+[numthreads(8, 8, 1)]
+void GrowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	float4 Current = LoadState(Pixel);
+	const float2 CurrentDirection = LoadDirection(Pixel);
+
+	// Already cracked. Retire the front flag so a pixel advances exactly once; leaving it set
+	// would let one pixel keep seeding its neighbours every iteration and flood the plane.
+	if (Current.x > 0.5f)
+	{
+		Current.y = 0.0f;
+		OutputState[Pixel] = Current;
+		OutputDirection[Pixel] = float4(CurrentDirection, 0.0f, 0.0f);
+		return;
+	}
+
+	int CrackNeighbours = 0;
+	int FrontNeighbours = 0;
+
+	[unroll]
+	for (int i = 0; i < 8; ++i)
+	{
+		const float4 N = LoadState(Pixel + CraqOffset(i));
+		if (N.x > 0.5f) { ++CrackNeighbours; }
+		if (N.y > 0.5f) { ++FrontNeighbours; }
+	}
+
+	// Nothing is arriving, or too much already has. The second test is the T-junction: a crack
+	// running into an existing one finds its target already flanked and stops instead of
+	// crossing. Raising the limit lets cracks pass through each other, which reads as a scratch
+	// pattern rather than as a fracture.
+	if (FrontNeighbours == 0 || CrackNeighbours > CollisionLimit)
+	{
+		OutputState[Pixel] = Current;
+		OutputDirection[Pixel] = float4(CurrentDirection, 0.0f, 0.0f);
+		return;
+	}
+
+	// Gather, not scatter: this pixel asks each neighbouring front "would you step onto me"
+	// and reconstructs that decision. Every pixel writes only itself, so no two threads race
+	// and the pass needs no atomics.
+	float WinnerScore = -1.0e20f;
+	float WinnerId = 0.0f;
+	float WinnerLevel = 0.0f;
+	float2 WinnerDirection = float2(1.0f, 0.0f);
+
+	const uint HashSeed = Seed * 747796405u + 2891336453u;
+
+	for (int ni = 0; ni < 8; ++ni)
+	{
+		const int2 Q = Pixel + CraqOffset(ni);
+		const float4 ParentState = LoadState(Q);
+		if (ParentState.y <= 0.5f)
+		{
+			continue;
+		}
+
+		const float2 ParentDirection = CraqNormalize(LoadDirection(Q), float2(1.0f, 0.0f));
+		const float2 ParentFlow = CraqNormalize(LoadField(Q).zw, ParentDirection);
+		const bool bNucleus = ParentState.w < -0.5f;
+
+		// A growing tip mostly keeps going and the flow field only bends it. A nucleus has no
+		// history, so it takes the flow direction outright.
+		const float2 Desired = bNucleus
+			? ParentFlow
+			: CraqNormalize(
+				ParentDirection * (1.0f - FlowStrength) + ParentFlow * FlowStrength,
+				ParentDirection);
+
+		float BestScore = -1.0e20f;
+		float SecondScore = -1.0e20f;
+		int BestK = -1;
+		int SecondK = -1;
+
+		for (int k = 0; k < 8; ++k)
+		{
+			const int2 R = Q + CraqOffset(k);
+			if (LoadState(R).x > 0.5f)
+			{
+				continue;
+			}
+
+			const float2 StepDirection = CraqStepDirection(k);
+
+			// A nucleus scores both ends of its axis equally, so the two opposite steps come out
+			// level and the crack can open either way.
+			const float Alignment = bNucleus
+				? abs(dot(ParentFlow, StepDirection))
+				: dot(Desired, StepDirection);
+
+			if (!bNucleus && Alignment < MinAlignment)
+			{
+				continue;
+			}
+
+			const float4 TargetField = LoadField(R);
+			const float Random = CraqRandom(R, Iteration + k * 17, HashSeed + (uint)ni * 313u);
+
+			float Score =
+				Alignment * Persistence
+				+ TargetField.x * StressGain
+				- TargetField.y * ToughnessCost
+				+ (Random - 0.5f) * 2.0f * Irregularity;
+
+			// A diagonal step covers more ground than an axial one for the same iteration, so
+			// without a penalty the network drifts onto the diagonals and comes out combed.
+			const int2 O = CraqOffset(k);
+			if (O.x != 0 && O.y != 0)
+			{
+				Score -= 0.035f;
+			}
+
+			if (Score > BestScore)
+			{
+				SecondScore = BestScore;
+				SecondK = BestK;
+				BestScore = Score;
+				BestK = k;
+			}
+			else if (Score > SecondScore)
+			{
+				SecondScore = Score;
+				SecondK = k;
+			}
+		}
+
+		if (BestK < 0 || BestScore < GrowthThreshold)
+		{
+			continue;
+		}
+
+		int ChosenK = -1;
+		float ChosenScore = -1.0e20f;
+
+		if (all(Q + CraqOffset(BestK) == Pixel))
+		{
+			ChosenK = BestK;
+			ChosenScore = BestScore;
+		}
+
+		// The second arm of a nucleus, restricted to steps pointing back against the first, so
+		// a seed opens one crack through itself rather than a fan. Only nuclei do this: a
+		// growing tip splitting on its runner-up is branching, which this pass does not do.
+		if (bNucleus)
+		{
+			const float2 BestDirection = CraqStepDirection(BestK);
+			float BackScore = -1.0e20f;
+			int BackK = -1;
+
+			for (int k2 = 0; k2 < 8; ++k2)
+			{
+				if (k2 == BestK)
+				{
+					continue;
+				}
+
+				const float2 StepDirection = CraqStepDirection(k2);
+				if (dot(BestDirection, StepDirection) > -0.45f)
+				{
+					continue;
+				}
+
+				const int2 R = Q + CraqOffset(k2);
+				if (LoadState(R).x > 0.5f)
+				{
+					continue;
+				}
+
+				const float4 TargetField = LoadField(R);
+				const float Random = CraqRandom(R, Iteration + k2 * 23, HashSeed + 991u);
+
+				float Score =
+					abs(dot(ParentFlow, StepDirection)) * Persistence
+					+ TargetField.x * StressGain
+					- TargetField.y * ToughnessCost
+					+ (Random - 0.5f) * 2.0f * Irregularity;
+
+				const int2 O = CraqOffset(k2);
+				if (O.x != 0 && O.y != 0)
+				{
+					Score -= 0.035f;
+				}
+
+				if (Score > BackScore)
+				{
+					BackScore = Score;
+					BackK = k2;
+				}
+			}
+
+			if (BackK >= 0 && BackScore >= GrowthThreshold
+				&& all(Q + CraqOffset(BackK) == Pixel)
+				&& BackScore > ChosenScore)
+			{
+				ChosenK = BackK;
+				ChosenScore = BackScore;
+			}
+		}
+
+		if (ChosenK < 0)
+		{
+			continue;
+		}
+
+		if (ChosenScore > WinnerScore)
+		{
+			const float2 StepDirection = CraqStepDirection(ChosenK);
+
+			// The tip turns toward the step it took rather than snapping to it, so a crack
+			// curves through the eight-way lattice instead of showing its staircase.
+			float2 NewDirection = bNucleus
+				? StepDirection
+				: CraqNormalize(
+					ParentDirection * (1.0f - TurnResponse) + StepDirection * TurnResponse,
+					StepDirection);
+
+			const float2 LocalFlow = CraqNormalize(LoadField(Pixel).zw, NewDirection);
+			NewDirection = CraqNormalize(
+				NewDirection * (1.0f - FlowStrength * 0.35f) + LocalFlow * (FlowStrength * 0.35f),
+				NewDirection);
+
+			WinnerScore = ChosenScore;
+			WinnerId = ParentState.z;
+			WinnerLevel = bNucleus ? 0.0f : ParentState.w;
+			WinnerDirection = NewDirection;
+		}
+	}
+
+	if (WinnerScore > -1.0e19f)
+	{
+		OutputState[Pixel] = float4(1.0f, 1.0f, WinnerId, WinnerLevel);
+		OutputDirection[Pixel] = float4(WinnerDirection, 0.0f, 0.0f);
+	}
+	else
+	{
+		OutputState[Pixel] = Current;
+		OutputDirection[Pixel] = float4(CurrentDirection, 0.0f, 0.0f);
+	}
+}
+
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// The growth pass leaves a skeleton one pixel wide. Width comes from the distance to it,
+	// for the same reason the lattice mode measures distance to the cell boundary rather than
+	// thresholding a difference: a distance carries an even thickness, and thickness is what
+	// reads as a crack.
+	//
+	// Width keeps the meaning it has in lattice mode -- a fraction of one cell -- so the control
+	// behaves the same in both. In pixels that is Width/SeedCells of the texture, which also
+	// makes it resolution independent.
+	const int Cells = max(SeedCells, 1);
+	const float WidthPixels = max(Width, 0.002f) * (float)OutputSize.x / (float)Cells;
+	const int Radius = clamp((int)ceil(WidthPixels), 1, 8);
+
+	float Nearest = (float)(Radius + 1);
+	float NearestId = 0.0f;
+
+	for (int y = -Radius; y <= Radius; ++y)
+	{
+		for (int x = -Radius; x <= Radius; ++x)
+		{
+			const float4 S = LoadState(Pixel + int2(x, y));
+			if (S.x <= 0.5f)
+			{
+				continue;
+			}
+
+			const float D = sqrt((float)(x * x + y * y));
+			if (D < Nearest)
+			{
+				Nearest = D;
+				NearestId = S.z;
+			}
+		}
+	}
+
+	float Crack = 1.0f - smoothstep(0.0f, max(WidthPixels, 0.5f), Nearest);
+
+	// Per-crack variation, keyed on the lineage id the network carried out from its nucleus, so
+	// a whole crack varies as one thing. The lattice mode gets the same behaviour from its
+	// wall id.
+	Crack *= lerp(1.0f, MixtormatCellRandom01(asuint(NearestId)), saturate(Variation));
+
+	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
+	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+}

@@ -394,7 +394,8 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	{
 		NewMask.Mask = TSoftObjectPtr<UMixtormatMask>(MaskPath);
 		NewMask.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-		NewMask.Tiling = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+		NewMask.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+		NewMask.TilingY = NewMask.TilingX;
 		NewMask.Balance = Mask->DefaultBalance;
 		NewMask.Contrast = Mask->DefaultContrast;
 		NewMask.Offset = Mask->DefaultOffset;
@@ -449,7 +450,8 @@ FReply SMixtormat::ReplaceMaskInLayer(
 	{
 		Replacement.Mask = TSoftObjectPtr<UMixtormatMask>(MaskPath);
 		Replacement.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-		Replacement.Tiling = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+		Replacement.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+		Replacement.TilingY = Replacement.TilingX;
 		Replacement.Balance = Mask->DefaultBalance;
 		Replacement.Contrast = Mask->DefaultContrast;
 		Replacement.bInvert = Mask->bDefaultInvert;
