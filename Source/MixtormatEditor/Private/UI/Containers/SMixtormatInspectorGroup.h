@@ -1,8 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Framework/SlateDelegates.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+
+class SMenuAnchor;
 
 // A collapsible section: a 22px header bar over a body of rows.
 //
@@ -34,16 +37,41 @@ public:
 		// Bound: a reset control appears last and right-aligned, in the same place in every group.
 		SLATE_EVENT(FSimpleDelegate, OnReset)
 
+		// Right-clicking the group. Leave it unbound for the standard menu -- reset, and expand or
+		// collapse every group at once -- which the group can build for itself because it already
+		// holds its own reset delegate and can see the others through the registry. Bind it only
+		// when a group has actions of its own to add.
+		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
+
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 	SLATE_END_ARGS()
+
+	SMixtormatInspectorGroup();
+	virtual ~SMixtormatInspectorGroup() override;
 
 	void Construct(const FArguments& InArgs);
 
 	bool IsExpanded() const { return bExpanded; }
+	void SetExpanded(bool bInExpanded) { bExpanded = bInExpanded; }
+
+	// Every live group, so "expand all" and "collapse all" can reach them.
+	//
+	// A registry rather than a list the inspector owns: groups are created in fifteen places by
+	// plain SNew, several of them conditionally, and threading a container through all of them to
+	// implement two menu entries would put the plumbing in every call site instead of here. The
+	// entries are weak and pruned on access, so a group that has been rebuilt leaves nothing
+	// behind.
+	static TArray<TSharedRef<SMixtormatInspectorGroup>> GetLiveGroups();
+	static void SetAllExpanded(bool bInExpanded);
+
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 private:
 	FReply ToggleExpanded();
 	FLinearColor GetHeaderTint() const;
+	TSharedRef<SWidget> BuildDefaultContextMenu();
 
 	bool bExpanded = false;
+	FSimpleDelegate OnReset;
+	TSharedPtr<SMenuAnchor> ContextAnchor;
 };

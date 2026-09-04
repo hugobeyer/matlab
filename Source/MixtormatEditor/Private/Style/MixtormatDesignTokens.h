@@ -29,16 +29,16 @@ namespace MixtormatTokens
 	// ---- Rows -------------------------------------------------------------------------------
 	// Every inspector control is one of these tall, whatever it edits. Uniformity across row
 	// types is what makes a panel of mixed controls read as a single column.
-	constexpr float RowHeight = 17.0f;
-	constexpr float RowGap = 2.0f;
+	constexpr float RowHeight = 18.0f;
+	constexpr float RowGap = 6.0f;
 
 	// Text inset from the row's leading and trailing edges. Shared by the slider's painted text
 	// and by the label of every composed row, so they line up down the column.
-	constexpr float RowTextInset = 5.0f;
+	constexpr float RowTextInset = 10.0f;
 
 	// Gap between a row's label and the control it labels, and the width a paired value field
 	// asks for before anything competes with it.
-	constexpr float RowLabelGap = 4.0f;
+	constexpr float RowLabelGap = 6.0f;
 	constexpr float RowFieldMinWidth = 120.0f;
 
 	// ---- Gradients --------------------------------------------------------------------------
@@ -57,10 +57,10 @@ namespace MixtormatTokens
 	// radius, so the two curves read as concentric rather than as two unrelated roundings.
 	constexpr float CornerRadiusInner = CornerRadius * 0.5f;
 	constexpr float OutlineWidth = 1.0f;
-	constexpr float PanelGutter = 4.0f;
-	constexpr float GroupHeaderHeight = 20.0f;
+	constexpr float PanelGutter = 9.0f;
+	constexpr float GroupHeaderHeight = 24.0f;
 	// Breathing room under a group header before its first row.
-	constexpr float GroupBodyTopInset = 4.0f;
+	constexpr float GroupBodyTopInset = 8.0f;
 	// Gap between a header's chevron, its title, and the controls trailing it.
 	constexpr float GroupHeaderItemGap = 5.0f;
 
@@ -89,26 +89,26 @@ namespace MixtormatTokens
 	constexpr float MinPaintedFill = 0.5f;
 
 	// ---- Segmented control ------------------------------------------------------------------
-	constexpr float SegmentHeight = 17.0f;
+	constexpr float SegmentHeight = 12.0f;
 	// Hairline *between* cells -- the one border the design allows, because it divides rather
 	// than encloses.
 	constexpr float SegmentSeamWidth = 1.0f;
 	// Multiply pass darkening the trailing edge of an active cell.
-	constexpr float SegmentShadeAlpha = 0.28f;
+	constexpr float SegmentShadeAlpha = 0.1f;
 
 	// ---- Icons ------------------------------------------------------------------------------
 	// Sized per role, not per pixel budget: the eye is the only thing in a layer row a user aims
 	// at, so it is the largest; a disclosure chevron is read, not clicked, and stays small.
-	constexpr float IconButtonSize = 15.0f;
-	constexpr float ChevronSize = 12.0f;
-	constexpr float StatusDotSize = 12.0f;
+	constexpr float IconButtonSize = 14.0f;
+	constexpr float ChevronSize = 14.0f;
+	constexpr float StatusDotSize = 8.0f;
 
 	// The size an SVG is *registered* at, which is not the size anything displays it at -- the box
 	// holding the brush scales it down. Registering small and scaling up is what makes a glyph
 	// look soft, so these stay at or above the largest place each icon appears.
-	constexpr float IconBrushSize = 24.0f;
+	constexpr float IconBrushSize = 20.0f;
 	// Menu and toolbar glyphs, which sit alone rather than inside a dense row.
-	constexpr float IconBrushSizeLarge = 32.0f;
+	constexpr float IconBrushSizeLarge = 28.0f;
 
 	// ---- Brand ------------------------------------------------------------------------------
 	// The mark's own proportions, so none of these derive from anything else.
@@ -152,19 +152,22 @@ namespace MixtormatTokens
 	// ---- Badge ------------------------------------------------------------------------------
 	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
 	// word changes without the column moving.
-	constexpr float BadgeWidth = 40.0f;
-	constexpr float BadgeHeight = 14.0f;
+	constexpr float BadgeWidth = 52.0f;
+	constexpr float BadgeHeight = 16.0f;
 	// Longest word a badge is allowed to carry, and what BadgeWidth is sized for. The box does not
 	// grow to fit its text -- that is the point, the marks have to form a straight column -- so a
 	// longer word clips instead of widening, and the derivation tables are written against this.
 	constexpr int32 BadgeMaxCharacters = 6;
+	// Horizontal breathing room inside the fixed box, between the glyph and the edge it clips
+	// against -- text was sitting flush on the box's own bounds.
+	constexpr float BadgeTextInset = 3.0f;
 
 	// ---- Thumbnails -------------------------------------------------------------------------
 	// One tile widget serves the library, the mask replacement grid and the mask picker; only the
 	// size differs. The name strip is an overlay, so it costs image rather than layout height.
 	constexpr float SurfaceTileSize = 90.0f;
 	constexpr float SurfaceTileSizeDense = 68.0f;
-	constexpr float MaskTileSize = 62.0f;
+	constexpr float MaskTileSize = 96.0f;
 	constexpr float MaskPickerTileSize = 76.0f;
 	constexpr float MaskPickerTileSizeDense = 52.0f;
 	constexpr float TileGap = 4.0f;
@@ -185,7 +188,11 @@ namespace MixtormatTokens
 	// ---- Mask picker popover ----------------------------------------------------------------
 	// Wider than the 300px inspector on purpose: a menu is its own window and is not clipped by
 	// the panel that opened it.
-	constexpr float MaskPickerWidth = 324.0f;
+	constexpr float MaskPickerWidth = 600.0f;
+	// How tall the picker is allowed to get before it scrolls. A menu that runs past the panel it
+	// opened from is worse than one that scrolls, because the entries under the cursor move when
+	// the popup is repositioned to fit.
+	constexpr float MaskPickerMaxHeight = 800.0f;
 	constexpr int32 MaskPickerColumns = 4;
 	constexpr int32 MaskPickerColumnsDense = 5;
 
@@ -194,46 +201,50 @@ namespace MixtormatTokens
 	// rows in the tool. Each value below is a separate decision -- a layer and its children are
 	// deliberately different heights, and the indent is what carries the hierarchy now that no
 	// connector rail is drawn between them.
-	constexpr float LayerRowHeight = 26.0f;
-	constexpr float LayerChildRowHeight = 20.0f;
+	constexpr float LayerRowHeight = 28.0f;
+	constexpr float LayerChildRowHeight = 22.0f;
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
-	constexpr float LayerThumbnailSize = 18.0f;
+	constexpr float LayerThumbnailSize = 24.0f;
 	// Children sit under the parent's name, clear of its eye and thumbnail.
-	constexpr float LayerChildIndent = 27.0f;
+	constexpr float LayerChildIndent = 28.0f;
 	// Leading inset is larger than trailing: the eye needs room from the panel edge, while the
 	// chevron on the right is already inset by its own slot padding.
-	constexpr float LayerRowInsetLeading = 7.0f;
-	constexpr float LayerRowInsetTrailing = 5.0f;
+	constexpr float LayerRowInsetLeading = 6.0f;
+	constexpr float LayerRowInsetTrailing = 6.0f;
 	// Between every element within a row -- eye to thumbnail, name to source, badge to chevron.
 	// One value, so the row reads as evenly spaced rather than as clusters.
-	constexpr float LayerItemGap = 5.0f;
+	constexpr float LayerItemGap = 7.0f;
 	// The name sits closer to its thumbnail than the standard gap, so the two read as one unit
 	// against the source text on the far side.
-	constexpr float LayerNameInset = 3.0f;
+	constexpr float LayerNameInset = 4.0f;
 	// Between stacked rows. One pixel: enough to separate, not enough to break the column.
-	constexpr float LayerRowGap = 1.0f;
-	constexpr float LayerEyeSize = 14.0f;
-	constexpr float LayerChildIconSize = 11.0f;
+	constexpr float LayerRowGap = 2.0f;
+	constexpr float LayerEyeSize = 15.0f;
+	constexpr float LayerChildIconSize = 12.0f;
 	// The accent edge enclosing an open layer's children.
 	constexpr float LayerEdgeWidth = OutlineWidth;
-	constexpr float DropLineThickness = 3.0f;
+	constexpr float DropLineThickness = 2.0f;
 
 	// ---- Type -------------------------------------------------------------------------------
 	// Type sizes follow the authored component-sheet scale so the compact rows stay visually aligned.
 	constexpr float FontBody = 10.0f;
-	// A layer's name sits one step above body: it is what the eye lands on when scanning a stack,
-	// and at body size it lost to the badge column beside it. 11px.
-	constexpr float FontLayerName = 11.0f;
+	// Shared by a layer's own name and by a mask/effect child's name -- the same role at both
+	// levels of the stack. Same tier as body rather than a step above it: at 11px it read as too
+	// large next to the 8px source and badge beside it.
+	constexpr float FontLayerName = FontBody;
+	// A value row's label and its number. One step under body and carried in a heavier face: the
+	// rows are the densest thing in the tool, and weight reads at this size where size does not.
+	constexpr float FontSliderLabel = FontBody - 1.0f;
 	constexpr float FontCaption = 8.0f;
 	constexpr float FontTile = 8.0f;
-	// Group headers: 8px, regular weight. Bold caps at this size closed up the letterforms and
-	// fought the row labels below, which are larger.
-	constexpr float FontGroupHeader = 8.0f;
+	// Group headers: small tracked caps. A header names a group rather than being read as content,
+	// so it sits under the caption tier -- the extra header height carries it instead of the type.
+	constexpr float FontGroupHeader = 7.0f;
 	// A layer's source and its badge are both 8px and both secondary to the name, but they are
 	// named apart from the group header so the stack can be retuned without touching panels.
 	constexpr float FontLayerSource = 8.0f;
-	constexpr float FontBadge = 8.0f;
+	constexpr float FontBadge = 7.0f;
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.

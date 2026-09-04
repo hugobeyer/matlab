@@ -189,7 +189,9 @@ FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
 	{
 		return MixtormatPalette::LayerHiddenEnd();
 	}
-	return MixtormatPalette::Panel();
+	// Shades down to darker than the panel it sits on, so a row reads as its own surface without an
+	// edge drawn round it -- the same fall a group header makes.
+	return MixtormatPalette::PanelBottom();
 }
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const

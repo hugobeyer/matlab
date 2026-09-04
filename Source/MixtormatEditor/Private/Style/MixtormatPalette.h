@@ -31,19 +31,22 @@ namespace MixtormatPalette
 	// The container well every inspector group stacks inside.
 	inline FLinearColor Shell()        { return Hex(0x161616); }
 	// A group body.
-	inline FLinearColor Panel()        { return Hex(0x212121); }
+	inline FLinearColor Panel()        { return Hex(0x333333); }
+	// Where a panel-coloured surface lands when it shades downward -- a layer row, a group header.
+	// The body below stays flat Panel, so the darkening is what separates the two without a border.
+	inline FLinearColor PanelBottom()  { return Hex(0x1A1A1A); }
 	// Header lip: translucent blue at the top, landing on Panel by the header's base.
 	//
 	// This is the tool's one "this is the thing you are working on" surface. An inspector group
 	// header and a selected layer row are the same statement, so they are the same tint rather
 	// than two blues that have to be kept in step by hand.
-	inline FLinearColor HeaderTint()   { return Hex(0x0080FF, 0.14f); }
-	inline FLinearColor HeaderHover()  { return Hex(0x0080FF, 0.26f); }
+	inline FLinearColor HeaderTint()   { return Hex(0x004080, 0.01f); }
+	inline FLinearColor HeaderHover()  { return Hex(0x0080FF, 0.16f); }
 	// The same hue at zero alpha, for a tint that fades out rather than landing on a known
 	// surface -- a child row runs over whatever its layer group is sitting on.
-	inline FLinearColor HeaderTintFade() { return Hex(0x0080FF, 0.0f); }
+	inline FLinearColor HeaderTintFade() { return Hex(0x212121, 1.0f); }
 	// Additive hairline along a header's top edge -- light catching an edge, not a drawn line.
-	inline FLinearColor Hairline()     { return Hex(0x6FA8DC, 0.25f); }
+	inline FLinearColor Hairline()     { return Hex(0x6FA8DC, 0.33f); }
 	inline FLinearColor Divider()      { return Hex(0x2A2A2A); }
 
 	// ---- Wells ------------------------------------------------------------------------------
@@ -99,10 +102,13 @@ namespace MixtormatPalette
 
 	// ---- Type -------------------------------------------------------------------------------
 	inline FLinearColor RowText()      { return Hex(0xC0C0C0); }
+	// A glyph on hover, brighter still than RowText -- the icon button's only other state besides
+	// Accent/AccentBright, which stay reserved for a control that is actually on.
+	inline FLinearColor IconHover()    { return Hex(0xf2f2f2); }
 	inline FLinearColor HeaderText()   { return Hex(0xA8A8A8); }
 	inline FLinearColor CaptionText()  { return Hex(0x6E6E6E); }
-	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.49f); }
-	inline FLinearColor BadgeSurface() { return Hex(0x161616); }
+	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.6f); }
+	inline FLinearColor BadgeSurface() { return Hex(0x0d0d0d); }
 	inline FLinearColor DisabledText() { return Hex(0xFFFFFF, 0.20f); }
 	inline FLinearColor ShortcutText() { return Hex(0xFFFFFF, 0.24f); }
 

@@ -103,7 +103,11 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 {
-	return bSelected.Get(false) ? MixtormatPalette::HeaderTint() : FLinearColor::Transparent;
+	// The parent layer row gets its weight from ending on an opaque Panel() stop; a child row has
+	// no such anchor (it runs over whatever its layer group is sitting on), so the same HeaderTint()
+	// alpha reads as far fainter here. HeaderHover() is the same hue, already in the palette, and
+	// strong enough to read as selected rather than merely hovered.
+	return bSelected.Get(false) ? MixtormatPalette::HeaderHover() : FLinearColor::Transparent;
 }
 
 FLinearColor SMixtormatLayerChildRow::GetTintEnd() const

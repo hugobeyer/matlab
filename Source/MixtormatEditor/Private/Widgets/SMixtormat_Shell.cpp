@@ -1,5 +1,6 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 
 // Window chrome: top bar, page routing, splitters, status bar.
 
@@ -26,24 +27,23 @@ FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 
 TSharedRef<SWidget> SMixtormat::BuildCompositionResolutionMenu()
 {
-	TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
+	MixtormatMenu::FBuilder Menu;
 	const int32 Resolutions[] = {1024, 2048, 4096};
 	for (const int32 Resolution : Resolutions)
 	{
-		Menu->AddSlot().AutoHeight()
-		[
-			SNew(SButton)
-			.Text(FText::Format(
+		Menu.Item(
+			FText::Format(
 				LOCTEXT("CompositionResolutionOption", "{0}K ({1} × {1})"),
 				FText::AsNumber(Resolution / 1024),
-				FText::AsNumber(Resolution)))
-			.OnClicked(this, &SMixtormat::SetCompositionResolution, Resolution)
-		];
+				FText::AsNumber(Resolution)),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Resolution]() { SetCompositionResolution(Resolution); }))
+			.Checked(TAttribute<bool>::CreateLambda([this, Resolution]()
+			{
+				return CompositionResolution == Resolution;
+			}));
 	}
-	return SNew(SBorder)
-		.Padding(4.0f)
-		.BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))
-		[Menu];
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildTopBar()
@@ -98,6 +98,23 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
 					SNew(SSpacer)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.OnClicked(this, &SMixtormat::OpenWorkingMaterial)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("LoadMaterialTop", "LOAD"))
+						]
+					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
 				[

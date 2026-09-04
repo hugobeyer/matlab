@@ -1,8 +1,10 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Controls/SMixtormatTile.h"
+#include "Widgets/SToolTip.h"
 
 // The layer stack: layer and child operations, selection, and the layer list UI.
 
@@ -191,7 +193,9 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
-	RebuildLayerList();
+	// No RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
+	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
+	// its context menu on, closing it before it could show.
 	if (bWasBypassingChild)
 	{
 		RefreshLayeredPreview(false);
@@ -257,11 +261,27 @@ int32 SMixtormat::GetSelectedChildIndex() const
 		return SelectedEffectIndex;
 	}
 	if (Layer.Children.IsValidIndex(SelectedMaskIndex)
-		&& Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Mask)
+		&& (Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Mask
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generated))
 	{
 		return SelectedMaskIndex;
 	}
 	return INDEX_NONE;
+}
+
+FText SMixtormat::GetSelectedBadgeText() const
+{
+	// The inspector strip mirrors the row that selected it, so it prints the same derived mark --
+	// the child's when a child is selected, the layer's otherwise.
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		return FText::GetEmpty();
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	const int32 ChildIndex = GetSelectedChildIndex();
+	return Layer.Children.IsValidIndex(ChildIndex)
+		? MixtormatLayerBadges::ForChild(Layer.Children[ChildIndex])
+		: MixtormatLayerBadges::ForLayer(Layer);
 }
 
 void SMixtormat::SetWorkingLayerEnabled(const ECheckBoxState CheckState, const int32 LayerIndex)
@@ -300,12 +320,21 @@ void SMixtormat::SyncSelectedLayerControls()
 	}
 	if (SelectedIdentityText.IsValid())
 	{
-		const FText LayerType = Layer.Type == EMixtormatLayerType::Fill
-			? LOCTEXT("FillLayerIdentity", "Fill")
-			: Layer.Type == EMixtormatLayerType::Effect
-				? LOCTEXT("EffectLayerIdentity", "Effect")
-				: LOCTEXT("MaterialLayerIdentity", "Material");
-		SelectedIdentityText->SetText(LayerType);
+		// The row's source field, not the layer's kind: "MAT - RUST ORANGE" answers what the layer
+		// is made of, which is what the stack prints in the same position.
+		SelectedIdentityText->SetText(GetLayerSourceText(SelectedLayerIndex));
+	}
+	if (SelectedThumbnailBox.IsValid())
+	{
+		const int32 RowThumbnailCount = LayerThumbnails.Num();
+		SelectedThumbnailBox->SetContent(BuildLayerThumbnail(SelectedLayerIndex));
+		// BuildLayerThumbnail parks what it made in the row list. The strip is not a row and is
+		// remade on every selection, so its thumbnail moves to its own slot and replaces the last
+		// one instead of piling up until the stack next rebuilds.
+		if (LayerThumbnails.Num() > RowThumbnailCount)
+		{
+			SelectedStripThumbnail = LayerThumbnails.Pop();
+		}
 	}
 	if (SelectedMapsText.IsValid())
 	{
@@ -334,11 +363,8 @@ void SMixtormat::SyncSelectedLayerControls()
 		}
 		if (SelectedIdentityText.IsValid())
 		{
-			SelectedIdentityText->SetText(Child.Type == EMixtormatLayerChildType::Effect
-				? LOCTEXT("SelectedEffectIdentity", "Effect")
-				: Child.Type == EMixtormatLayerChildType::Generated
-					? LOCTEXT("SelectedGeneratedIdentity", "Generated")
-					: LOCTEXT("SelectedMaskIdentity", "Mask"));
+			// MASK / FX / GEN -- the same word the child row prints in this position.
+			SelectedIdentityText->SetText(MixtormatLayerBadges::KindForChild(Child));
 		}
 		if (SelectedMapsText.IsValid())
 		{
@@ -580,20 +606,6 @@ FReply SMixtormat::ToggleLayerExpanded(const int32 LayerIndex)
 		ExpandedLayerIndices.Add(LayerIndex);
 	}
 	RebuildLayerList();
-	return FReply::Handled();
-}
-
-FReply SMixtormat::SetLayerNormalDetail(const int32 LayerIndex, const bool bNormalDetail)
-{
-	if (WorkingLayers.IsValidIndex(LayerIndex) && LayerIndex > 0)
-	{
-		WorkingLayers[LayerIndex].ChannelMode = bNormalDetail
-			? EMixtormatLayerChannelMode::NormalDetail
-			: EMixtormatLayerChannelMode::CompleteSurface;
-		RefreshLayeredPreview();
-		RebuildLayerList();
-		SyncSelectedLayerControls();
-	}
 	return FReply::Handled();
 }
 
@@ -944,49 +956,29 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					[
 						SNew(SHorizontalBox)
 						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+						// Two creations, two glyphs: a square for a material, a circle for a fill. The
+						// same icon button the eye and the chevrons are, so the bar costs one row and
+						// no plate.
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SMixtormatIconButton)
+							.Icon(MixtormatIcons::LayerMaterial())
+							.ToolTip(LOCTEXT("AddMaterialLayerHintCompact", "Add a material layer from the selected library surface."))
+							.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); })
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(SMixtormatIconButton)
+							.Icon(MixtormatIcons::LayerFill())
+							.ToolTip(LOCTEXT("AddFillLayerHintCompact", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
+							.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); })
+						]
+						// The count sits on the far edge, so the glyphs read as a pair rather than as
+						// three things in a row.
 						+ SHorizontalBox::Slot().FillWidth(1.0f)
-						[
-							SNew(SButton)
-							.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
-							.IsEnabled_Lambda([this]() { return !SelectedSurfacePath.IsNull(); })
-							.ToolTipText(TAttribute<FText>::CreateLambda([this]()
-							{
-								return SelectedLibrarySurfaceName.IsEmpty()
-									? LOCTEXT("AddMaterialLayerNoSelectionHint", "Select a material in the Library first.")
-									: FText::Format(LOCTEXT("AddMaterialLayerSelectedHint", "Add material layer from {0}."), SelectedLibrarySurfaceName);
-							}))
-							.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-								[
-									SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Add")))
-								]
-								+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
-								[
-									SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerCompact", "MATERIAL"))
-								]
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.0f, 0.0f, 0.0f, 0.0f)
-						[
-							SNew(SButton)
-							.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-							.ToolTipText(LOCTEXT("AddFillLayerHintCompact", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
-							.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-								[
-									SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Add")))
-								]
-								+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
-								[
-									SNew(STextBlock).Text(LOCTEXT("AddFillLayerCompact", "FILL"))
-								]
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
+						.HAlign(HAlign_Right).VAlign(VAlign_Center)
+						.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
 						[
 							SNew(STextBlock)
 							.Text_Lambda([this]()
@@ -1120,31 +1112,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 {
 	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
 
-	// A mask shows itself. Everything else shows what kind of thing it is, because an effect has
-	// no image to show and a glyph is more legible at this size than a rendered swatch would be.
-	if (Child.Type == EMixtormatLayerChildType::Mask)
-	{
-		const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
-			? Child.Mask.Mask.ToSoftObjectPath()
-			: Child.Mask.MaskTexture.ToSoftObjectPath();
-		if (UObject* MaskObject = MaskPath.TryLoad())
-		{
-			UTexture2D* Texture = Cast<UTexture2D>(MaskObject);
-			if (const UMixtormatMask* MaskAsset = Cast<UMixtormatMask>(MaskObject))
-			{
-				Texture = MaskAsset->Thumbnail ? MaskAsset->Thumbnail.Get() : MaskAsset->MaskTexture.Get();
-			}
-			if (Texture)
-			{
-				const int32 Size = static_cast<int32>(MixtormatTokens::LayerChildIconSize);
-				TSharedPtr<FAssetThumbnail> Thumbnail =
-					MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
-				LayerThumbnails.Add(Thumbnail);
-				return Thumbnail->MakeThumbnailWidget();
-			}
-		}
-	}
-
+	// Every child shows what kind of thing it is, masks included. An 11px thumbnail of a mask is a
+	// grey smudge that says less than the glyph does, and it cost a pooled thumbnail per row; which
+	// mask it actually is now answers on hover, at a size worth looking at.
 	return SNew(SImage)
 		.Image(Child.Type == EMixtormatLayerChildType::Effect
 			? MixtormatIcons::Effect()
@@ -1152,6 +1122,63 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()));
+}
+
+TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex, const int32 ChildIndex)
+{
+	// Which mask this row is carrying, answered by showing it. The row itself only has room for a
+	// glyph, so the picture is what hovering buys -- at the size the picker draws one, since the
+	// question being asked is the same question the picker answers.
+	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	if (Child.Type != EMixtormatLayerChildType::Mask)
+	{
+		return nullptr;
+	}
+
+	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
+		? Child.Mask.Mask.ToSoftObjectPath()
+		: Child.Mask.MaskTexture.ToSoftObjectPath();
+	UObject* MaskObject = MaskPath.TryLoad();
+	if (!MaskObject)
+	{
+		return nullptr;
+	}
+
+	UTexture2D* Texture = Cast<UTexture2D>(MaskObject);
+	if (const UMixtormatMask* MaskAsset = Cast<UMixtormatMask>(MaskObject))
+	{
+		Texture = MaskAsset->Thumbnail ? MaskAsset->Thumbnail.Get() : MaskAsset->MaskTexture.Get();
+	}
+	if (!Texture)
+	{
+		return nullptr;
+	}
+
+	const int32 Size = static_cast<int32>(MixtormatTokens::MaskTileSize);
+	TSharedPtr<FAssetThumbnail> Thumbnail =
+		MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
+	LayerThumbnails.Add(Thumbnail);
+
+	return SNew(SToolTip)
+		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel")))
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::MaskTileSize)
+				.HeightOverride(MixtormatTokens::MaskTileSize)
+				[
+					Thumbnail->MakeThumbnailWidget()
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+				.Text(FText::FromString(MaskPath.GetAssetName()))
+			]
+		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
@@ -1221,6 +1248,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
 			[
 				SNew(SMixtormatLayerChildRow)
+				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
 				.Name(ChildName)
 				.Kind(MixtormatLayerBadges::KindForChild(Child))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
@@ -1317,192 +1345,355 @@ FReply SMixtormat::ToggleLayerSolo(const int32 LayerIndex)
 
 TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 {
-	FMenuBuilder MenuBuilder(true, nullptr);
+	MixtormatMenu::FBuilder Menu;
+	const bool bIsBase = LayerIndex == 0;
 
 	// Creation lives here and nowhere else. The stack used to carry an "Add Child" button at the
 	// bottom of every expanded layer, which cost a row of height per layer to say something the
 	// right button already implies.
-	MenuBuilder.BeginSection(TEXT("MixtormatLayerAdd"), LOCTEXT("LayerAddSection", "Add"));
-	MenuBuilder.AddSubMenu(
-		LOCTEXT("AddLayerChild", "Add"),
-		LOCTEXT("AddLayerChildHint", "Append a mask, an effect or a generated mask to this layer."),
-		FNewMenuDelegate::CreateLambda([this, LayerIndex](FMenuBuilder& AddMenu)
-		{
-			FillAddChildMenu(AddMenu, LayerIndex);
-		}),
-		false,
-		FSlateIcon());
-	MenuBuilder.EndSection();
+	Menu.Caption(LOCTEXT("LayerAddSection", "Add"));
+	Menu.SubMenu(
+		LOCTEXT("AddMaskChild", "Mask"),
+		MixtormatIcons::Mask(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMaskMenu, LayerIndex));
+	Menu.SubMenu(
+		LOCTEXT("AddEffectChild", "Effect"),
+		MixtormatIcons::Effect(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
+	Menu.Item(
+		LOCTEXT("AddGeneratedChild", "Generated Mask"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGeneratedMaskToLayer(LayerIndex); }));
 
-	MenuBuilder.BeginSection(TEXT("MixtormatLayerActions"), LOCTEXT("LayerActionsSection", "Layer"));
+	Menu.Separator();
 
 	// Solo is reachable two ways on purpose: ctrl or alt on the eye for someone who knows, and
 	// here for someone who does not. A modifier that exists nowhere in the UI is a secret.
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("SoloLayerContext", "Solo Layer"),
-		LOCTEXT("SoloLayerContextHint", "Preview only this layer. Ctrl or Alt click the eye does the same."),
-		FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateLambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); }),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateLambda([this, LayerIndex]() { return SoloLayerIndex == LayerIndex; })),
-		NAME_None,
-		EUserInterfaceActionType::ToggleButton);
+	Menu.Item(
+		LOCTEXT("SoloLayerContext", "Solo"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); }))
+		.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
+		{
+			return SoloLayerIndex == LayerIndex;
+		}));
+	Menu.Item(
+		LOCTEXT("DisableLayerContext", "Disable"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			if (!WorkingLayers.IsValidIndex(LayerIndex))
+			{
+				return;
+			}
+			SetWorkingLayerEnabled(
+				WorkingLayers[LayerIndex].bEnabled ? ECheckBoxState::Unchecked : ECheckBoxState::Checked,
+				LayerIndex);
+		}))
+		.Enabled(!bIsBase)
+		.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
+		{
+			return WorkingLayers.IsValidIndex(LayerIndex) && !WorkingLayers[LayerIndex].bEnabled;
+		}));
+
+	Menu.Separator();
+
+	Menu.Item(
+		LOCTEXT("DuplicateLayerContext", "Duplicate"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }))
+		.Shortcut(LOCTEXT("DuplicateLayerShortcut", "Ctrl D"));
+
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
 		{
 			return Child.Type == EMixtormatLayerChildType::Mask;
 		}))
 	{
-		MenuBuilder.AddMenuEntry(
+		Menu.Item(
 			LOCTEXT("ClearLayerMasksContext", "Remove All Masks"),
-			LOCTEXT("ClearLayerMasksContextHint", "Remove every mask child from this layer."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]() { ClearLayerMask(LayerIndex); })));
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex]() { ClearLayerMask(LayerIndex); }));
 	}
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("DuplicateLayerContext", "Duplicate Layer"),
-		LOCTEXT("DuplicateLayerContextHint", "Duplicate this layer and its child effects and masks."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this]() { DuplicateSelectedLayer(); })));
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("DeleteLayerContext", "Delete Layer"),
-		LOCTEXT("DeleteLayerContextHint", "Delete this layer."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this]() { DeleteSelectedLayer(); })));
-	MenuBuilder.EndSection();
-	return MenuBuilder.MakeWidget();
+
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("DeleteLayerContext", "Delete"),
+		MixtormatIcons::Trash(),
+		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
+		.Enabled(!bIsBase)
+		.Destructive()
+		.Shortcut(LOCTEXT("DeleteLayerShortcut", "Del"));
+
+	return Menu.Build();
 }
 
-void SMixtormat::FillAddChildMenu(FMenuBuilder& MenuBuilder, const int32 LayerIndex)
+TSharedRef<SWidget> SMixtormat::BuildAddMaskMenu(const int32 LayerIndex)
 {
-	MenuBuilder.AddSubMenu(
-		LOCTEXT("AddMaskChild", "Mask"),
-		LOCTEXT("AddMaskChildHint", "Append a reusable mask child."),
-		FNewMenuDelegate::CreateLambda([this, LayerIndex](FMenuBuilder& MaskMenu)
-		{
-			const TArray<FMixtormatMaskEntry> Masks = FMixtormatRegistry::GetMasks();
-			for (const FMixtormatMaskEntry& Entry : Masks)
+	MixtormatMenu::FBuilder Menu;
+	if (FMixtormatRegistry::GetMasks().IsEmpty())
+	{
+		Menu.Item(LOCTEXT("MasksUnavailable", "No masks available"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
+
+	// The same grid the replace menu opens: a mask is picked by looking at it.
+	Menu.Widget(
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
+		[
+			BuildMaskGallery([this, LayerIndex](const FSoftObjectPath& Path)
 			{
-				MaskMenu.AddMenuEntry(
-					Entry.DisplayName,
-					FText::GetEmpty(),
-					FSlateIcon(),
-					FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, MaskPath = Entry.AssetPath]()
-					{
-						AssignMaskToLayer(LayerIndex, MaskPath);
-					})));
-			}
-			if (Masks.IsEmpty())
+				AssignMaskToLayer(LayerIndex, Path);
+			})
+		]);
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TArray<FMixtormatEffectEntry> Effects = FMixtormatRegistry::GetEffects();
+	for (const FMixtormatEffectEntry& Entry : Effects)
+	{
+		Menu.Item(
+			Entry.DisplayName,
+			MixtormatIcons::Effect(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, EffectPath = Entry.AssetPath]()
 			{
-				MaskMenu.AddMenuEntry(
-					LOCTEXT("MasksUnavailable", "No masks available"),
-					LOCTEXT("MasksUnavailableHint", "Import or reimport reusable masks first."),
-					FSlateIcon(),
-					FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([]() { return false; })));
-			}
-		}),
-		false,
-		FSlateIcon());
-	MenuBuilder.AddSubMenu(
-		LOCTEXT("AddEffectChild", "Effect"),
-		LOCTEXT("AddEffectChildHint", "Append an ordered effect child."),
-		FNewMenuDelegate::CreateLambda([this, LayerIndex](FMenuBuilder& EffectMenu)
-		{
-			const TArray<FMixtormatEffectEntry> Effects = FMixtormatRegistry::GetEffects();
-			for (const FMixtormatEffectEntry& Entry : Effects)
-			{
-				EffectMenu.AddMenuEntry(
-					Entry.DisplayName,
-					FText::FromName(Entry.Category),
-					FSlateIcon(),
-					FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, EffectPath = Entry.AssetPath]()
-					{
-						AddEffectToLayer(LayerIndex, EffectPath);
-					})));
-			}
-			// Procedural, so it is not discovered from an imported asset set.
-			EffectMenu.AddMenuEntry(
-				LOCTEXT("AddErosionEffect", "Erosion"),
-				LOCTEXT("AddErosionEffectHint", "Carve the height accumulated below this layer."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
-				{
-					AddErosionToLayer(LayerIndex);
-				})));
-			EffectMenu.AddMenuEntry(
-				LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
-				LOCTEXT("AddProceduralPeelEffectHint", "Grow a peel from noise and the surface below. Needs no imported maps."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
-				{
-					AddProceduralPeelingToLayer(LayerIndex);
-				})));
-			if (Effects.IsEmpty())
-			{
-				EffectMenu.AddMenuEntry(
-					LOCTEXT("EffectsUnavailable", "No effects available"),
-					LOCTEXT("EffectsUnavailableHint", "Reimport the shipped library to create effect assets."),
-					FSlateIcon(),
-					FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([]() { return false; })));
-			}
-		}),
-		false,
-		FSlateIcon());
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("AddGeneratedChild", "Generated Mask"),
-		LOCTEXT("AddGeneratedChildHint", "Append a mask derived from the surface below this layer."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex]()
-		{
-			AddGeneratedMaskToLayer(LayerIndex);
-		})));
+				AddEffectToLayer(LayerIndex, EffectPath);
+			}));
+	}
+
+	// Procedural, so they are not discovered from an imported asset set and always available.
+	if (!Effects.IsEmpty())
+	{
+		Menu.Separator();
+	}
+	Menu.Item(
+		LOCTEXT("AddErosionEffect", "Erosion"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddErosionToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddProceduralPeelingToLayer(LayerIndex); }));
+
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 	const int32 LayerIndex,
 	const int32 ChildIndex)
 {
-	FMenuBuilder MenuBuilder(true, nullptr);
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("DuplicateEffectChild", "Duplicate Effect"),
-		LOCTEXT("DuplicateEffectChildHint", "Duplicate this effect in the same layer."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex]()
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("DuplicateEffectChild", "Duplicate"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
 			DuplicateLayerChild(LayerIndex, ChildIndex);
-		})));
-	MenuBuilder.AddMenuEntry(
+		}))
+		.Shortcut(LOCTEXT("DuplicateChildShortcut", "Ctrl D"));
+	Menu.Separator();
+	Menu.Item(
 		LOCTEXT("RemoveEffectChild", "Remove Effect"),
-		LOCTEXT("RemoveEffectChildHint", "Remove this effect child."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex]()
+		MixtormatIcons::Trash(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
 			RemoveLayerEffect(LayerIndex, ChildIndex);
-		})));
-	return MenuBuilder.MakeWidget();
+		}))
+		.Destructive()
+		.Shortcut(LOCTEXT("RemoveChildShortcut", "Del"));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.SubMenu(
+		LOCTEXT("GeneratedBlendModeContext", "Blend Mode"),
+		nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex));
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("DuplicateGeneratedChild", "Duplicate"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			DuplicateLayerChild(LayerIndex, ChildIndex);
+		}))
+		.Shortcut(LOCTEXT("DuplicateGeneratedShortcut", "Ctrl D"));
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask"),
+		MixtormatIcons::Trash(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
+		}))
+		.Destructive()
+		.Shortcut(LOCTEXT("RemoveGeneratedShortcut", "Del"));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, const int32 MaskIndex)
+{
+	// A menu, like every other right-click in the stack. This used to open a 340px gallery titled
+	// REPLACE MASK with two buttons under it -- so right-clicking a mask did something entirely
+	// unlike right-clicking the effect directly beneath it, and the common actions were below the
+	// fold of a picker you had not asked for. Replacing is still here; it is one entry now.
+	MixtormatMenu::FBuilder Menu;
+	Menu.SubMenu(
+		LOCTEXT("MaskBlendModeContext", "Blend Mode"),
+		nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, MaskIndex));
+	Menu.SubMenu(
+		LOCTEXT("ReplaceMaskContext", "Replace Mask"),
+		MixtormatIcons::Mask(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskReplacementMenu, LayerIndex, MaskIndex));
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("DuplicateMaskContext", "Duplicate"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
+		{
+			DuplicateLayerChild(LayerIndex, MaskIndex);
+		}))
+		.Shortcut(LOCTEXT("DuplicateMaskShortcut", "Ctrl D"));
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("DeleteMaskContext", "Remove Mask"),
+		MixtormatIcons::Trash(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
+		{
+			RemoveMaskFromLayer(LayerIndex, MaskIndex);
+		}))
+		.Destructive()
+		.Shortcut(LOCTEXT("RemoveMaskShortcut", "Del"));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskReplacementMenu(const int32 LayerIndex, const int32 MaskIndex)
+{
+	// The gallery keeps its own grid and its own scrolling; the panel gives it nothing but the
+	// ground, which is why it is added as a widget rather than as rows.
+	MixtormatMenu::FBuilder Menu;
+	Menu.Widget(
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
+		[
+			BuildMaskReplacementGallery(LayerIndex, MaskIndex)
+		]);
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskBlendModeMenu(const int32 LayerIndex, const int32 MaskIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatMaskBlendMode Modes[] = {
+		EMixtormatMaskBlendMode::Replace,
+		EMixtormatMaskBlendMode::Add,
+		EMixtormatMaskBlendMode::Subtract,
+		EMixtormatMaskBlendMode::Multiply,
+		EMixtormatMaskBlendMode::Min,
+		EMixtormatMaskBlendMode::Max,
+		EMixtormatMaskBlendMode::AddSub,
+		EMixtormatMaskBlendMode::Overlay};
+	for (const EMixtormatMaskBlendMode Mode : Modes)
+	{
+		// Ticked rather than merely listed: the mode a mask is already in is the thing you most
+		// want to know when you open this.
+		Menu.Item(
+			MixtormatUI::MaskBlendModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex, Mode]()
+			{
+				SetMaskBlendMode(LayerIndex, MaskIndex, Mode);
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, MaskIndex, Mode]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(MaskIndex)
+					&& WorkingLayers[LayerIndex].Children[MaskIndex].Mask.BlendMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildNormalSourceMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (WorkingLayers.IsValidIndex(LayerIndex) && !WorkingLayers[LayerIndex].SourceSurface.IsNull())
+	{
+		Menu.Caption(LOCTEXT("NormalSourceFromLayer", "From this layer"));
+		Menu.Item(
+			LOCTEXT("UseSurfaceNormal", "Surface Normal"),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex]()
+			{
+				if (!WorkingLayers.IsValidIndex(LayerIndex))
+				{
+					return;
+				}
+				WorkingLayers[LayerIndex].NormalSourceType = EMixtormatNormalSourceType::Surface;
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].NormalSourceType == EMixtormatNormalSourceType::Surface;
+			}));
+		Menu.Separator();
+	}
+
+	const TArray<FMixtormatNormalEntry> Normals = FMixtormatRegistry::GetNormals();
+	if (!Normals.IsEmpty())
+	{
+		Menu.Caption(LOCTEXT("NormalSourceLibrary", "Library"));
+	}
+	for (const FMixtormatNormalEntry& Normal : Normals)
+	{
+		Menu.Item(
+			Normal.DisplayName,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, Path = Normal.AssetPath]()
+			{
+				AssignNormalTexture(LayerIndex, Path);
+			}));
+	}
+	if (Normals.IsEmpty())
+	{
+		Menu.Item(LOCTEXT("NormalsUnavailable", "No standalone normals available"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+	}
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildAddLayerMenu()
 {
-	FMenuBuilder MenuBuilder(true, nullptr);
-	MenuBuilder.AddMenuEntry(
+	// Two kinds of layer, since Effect stopped being one and Normal Detail became a composition.
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
 		FText::Format(
 			LOCTEXT("AddSelectedMaterialLayer", "Material · {0}"),
 			SelectedLibrarySurfaceName.IsEmpty()
 				? LOCTEXT("NoSelectedLibraryMaterial", "Select from Library")
 				: SelectedLibrarySurfaceName),
-		LOCTEXT("AddMaterialLayerHint", "Inherit the currently selected immutable library material."),
-		FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); }),
-			FCanExecuteAction::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); })));
-	MenuBuilder.AddMenuEntry(
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); }))
+		.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
+	Menu.Item(
 		LOCTEXT("AddFillLayer", "Fill"),
-		LOCTEXT("AddFillLayerHint", "Create a constant Base Color, Roughness, IOR, and Metallic surface."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); })));
-	return MenuBuilder.MakeWidget();
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); }));
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildMaskBar()
@@ -1535,68 +1726,11 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildMaskBlendModeMenu(const int32 LayerIndex, const int32 MaskIndex)
+TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen)
 {
-	TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
-	const EMixtormatMaskBlendMode Modes[] = {
-		EMixtormatMaskBlendMode::Replace,
-		EMixtormatMaskBlendMode::Add,
-		EMixtormatMaskBlendMode::Subtract,
-		EMixtormatMaskBlendMode::Multiply,
-		EMixtormatMaskBlendMode::Min,
-		EMixtormatMaskBlendMode::Max,
-		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay};
-	for (const EMixtormatMaskBlendMode Mode : Modes)
-	{
-		Menu->AddSlot().AutoHeight()
-		[
-			SNew(SButton)
-			.Text(MixtormatUI::MaskBlendModeText(Mode))
-			.OnClicked_Lambda([this, LayerIndex, MaskIndex, Mode]()
-			{
-				SetMaskBlendMode(LayerIndex, MaskIndex, Mode);
-				return FReply::Handled();
-			})
-		];
-	}
-	return SNew(SBorder).Padding(4.0f).BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))[Menu];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, const int32 MaskIndex)
-{
-	return SNew(SBox)
-		.WidthOverride(340.0f)
-		.MaxDesiredHeight(460.0f)
-		[
-			SNew(SBorder)
-			.Padding(6.0f)
-			.BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))
-			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, 0.0f, 2.0f, 4.0f)
-				[SNew(STextBlock).Text(LOCTEXT("ReplaceMaskHeading", "REPLACE MASK")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
-				+ SVerticalBox::Slot().FillHeight(1.0f)[BuildMaskReplacementGallery(LayerIndex, MaskIndex)]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-					.Text(LOCTEXT("DuplicateMaskContext", "Duplicate Mask"))
-					.OnClicked(this, &SMixtormat::DuplicateLayerChild, LayerIndex, MaskIndex)
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-					.Text(LOCTEXT("DeleteMaskContext", "Remove This Mask"))
-					.OnClicked(this, &SMixtormat::RemoveMaskFromLayer, LayerIndex, MaskIndex)
-				]
-			]
-		];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerIndex, const int32 MaskIndex)
-{
+	// One grid, whether the mask is being added or replaced. Picking a mask is the same question
+	// both times, and it was answered two ways: a gallery for replacing, a list of names for
+	// adding -- so the choice you made blind was the one that created the thing.
 	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
 		.UseAllottedSize(true)
 		.InnerSlotPadding(FVector2D(MixtormatTokens::TileGap, MixtormatTokens::TileGap));
@@ -1611,43 +1745,21 @@ TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerInd
 			.DisplayName(Mask.DisplayName)
 			.ThumbnailAsset(Mask.ThumbnailAsset)
 			.ThumbnailPool(ThumbnailPool)
-			.OnActivated(FMixtormatOnTileActivated::CreateLambda([this, LayerIndex, MaskIndex, Path]()
+			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
 			{
-				ReplaceMaskInLayer(LayerIndex, MaskIndex, Path);
+				OnChosen(Path);
 			}))
 		];
 	}
 	return Grid;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildNormalSourceMenu(const int32 LayerIndex)
+TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerIndex, const int32 MaskIndex)
 {
-	TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
-	if (WorkingLayers.IsValidIndex(LayerIndex) && !WorkingLayers[LayerIndex].SourceSurface.IsNull())
+	return BuildMaskGallery([this, LayerIndex, MaskIndex](const FSoftObjectPath& Path)
 	{
-		Menu->AddSlot().AutoHeight()
-		[
-			SNew(SButton)
-			.Text(LOCTEXT("UseSurfaceNormal", "Use Surface Normal"))
-			.OnClicked_Lambda([this, LayerIndex]()
-			{
-				if (WorkingLayers.IsValidIndex(LayerIndex))
-				{
-					WorkingLayers[LayerIndex].NormalSourceType = EMixtormatNormalSourceType::Surface;
-					RefreshLayeredPreview();
-					RebuildLayerList();
-				}
-				return FReply::Handled();
-			})
-		];
-	}
-	for (const FMixtormatNormalEntry& Normal : FMixtormatRegistry::GetNormals())
-	{
-		Menu->AddSlot().AutoHeight()
-		[SNew(SButton).Text(Normal.DisplayName).OnClicked_Lambda([this, LayerIndex, Path = Normal.AssetPath]() { return AssignNormalTexture(LayerIndex, Path); })];
-	}
-	return SNew(SBox).WidthOverride(240.0f).MaxDesiredHeight(420.0f)
-		[SNew(SBorder).Padding(4.0f).BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))[SNew(SScrollBox) + SScrollBox::Slot()[Menu]]];
+		ReplaceMaskInLayer(LayerIndex, MaskIndex, Path);
+	});
 }
 
 TSharedRef<SWidget> SMixtormat::BuildMaskCard(
@@ -1799,35 +1911,11 @@ const FMixtormatGeneratedMask* SMixtormat::GetSelectedGeneratedMask() const
 	return Child.Type == EMixtormatLayerChildType::Generated ? &Child.Generated : nullptr;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
-	const int32 LayerIndex,
-	const int32 ChildIndex)
-{
-	FMenuBuilder MenuBuilder(true, nullptr);
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("DuplicateGeneratedChild", "Duplicate Generated Mask"),
-		LOCTEXT("DuplicateGeneratedChildHint", "Duplicate this generated mask in the same layer."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex]()
-		{
-			DuplicateLayerChild(LayerIndex, ChildIndex);
-		})));
-	MenuBuilder.AddMenuEntry(
-		LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask"),
-		LOCTEXT("RemoveGeneratedChildHint", "Remove this generated mask from the layer."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex]()
-		{
-			RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
-		})));
-	return MenuBuilder.MakeWidget();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 	const int32 LayerIndex,
 	const int32 ChildIndex)
 {
-	FMenuBuilder MenuBuilder(true, nullptr);
+	MixtormatMenu::FBuilder Menu;
 	const EMixtormatMaskBlendMode Modes[] = {
 		EMixtormatMaskBlendMode::Replace,
 		EMixtormatMaskBlendMode::Add,
@@ -1840,24 +1928,30 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
-		MenuBuilder.AddMenuEntry(
+		Menu.Item(
 			MixtormatUI::MaskBlendModeText(Mode),
-			FText::GetEmpty(),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
 			{
-				if (WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-					&& WorkingLayers[LayerIndex].Children[ChildIndex].Type
-						== EMixtormatLayerChildType::Generated)
+				if (!WorkingLayers.IsValidIndex(LayerIndex)
+					|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+					|| WorkingLayers[LayerIndex].Children[ChildIndex].Type
+						!= EMixtormatLayerChildType::Generated)
 				{
-					WorkingLayers[LayerIndex].Children[ChildIndex].Generated.BlendMode = Mode;
-					RefreshLayeredPreview();
-					RebuildLayerList();
+					return;
 				}
-			})));
+				WorkingLayers[LayerIndex].Children[ChildIndex].Generated.BlendMode = Mode;
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+					&& WorkingLayers[LayerIndex].Children[ChildIndex].Generated.BlendMode == Mode;
+			}));
 	}
-	return MenuBuilder.MakeWidget();
+	return Menu.Build();
 }
 
 FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)

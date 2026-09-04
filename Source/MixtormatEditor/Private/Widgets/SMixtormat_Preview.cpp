@@ -1,5 +1,6 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
 
@@ -200,98 +201,6 @@ void SMixtormat::PreviewSurfaceScalarParameter(const FName ParameterName, const 
 	(void)ParameterName;
 	(void)Value;
 	RefreshLayeredPreview();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildPreviewSettingsControls()
-{
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	const TArray<FText> QualityOptions = {
-		LOCTEXT("PreviewQualityLow", "LOW"),
-		LOCTEXT("PreviewQualityMedium", "MEDIUM"),
-		LOCTEXT("PreviewQualityHigh", "HIGH")};
-	const TArray<FText> QualityToolTips = {
-		LOCTEXT("PreviewQualityLowHint", "Direct light only. No AO, SSR, or Lumen."),
-		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
-		LOCTEXT("PreviewQualityHighHint", "Lumen quality. Uses project ray tracing when supported.")};
-
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
-	[
-		SNew(SMixtormatSegmentedControl)
-		.Options(QualityOptions)
-		.ToolTips(QualityToolTips)
-		.ActiveIndex_Lambda([this]()
-		{
-			switch (PreviewQuality)
-			{
-			case EMixtormatPreviewQuality::Low: return 0;
-			case EMixtormatPreviewQuality::Medium: return 1;
-			default: return 2;
-			}
-		})
-		.OnChosen_Lambda([this](const int32 Index)
-		{
-			SetPreviewQuality(Index == 0
-				? EMixtormatPreviewQuality::Low
-				: Index == 1
-					? EMixtormatPreviewQuality::Medium
-					: EMixtormatPreviewQuality::High);
-		})
-	];
-
-	AddSliderRow(Panel, MakeSlider(
-		LOCTEXT("PreviewFovInspector", "FOV"),
-		TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
-		20.0, 90.0, 50.0, 0.5, false,
-		FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-		{
-			SetPreviewFov(static_cast<float>(Value));
-		}),
-		FSimpleDelegate::CreateLambda([this]() { SetPreviewFov(50.0f); }),
-		LOCTEXT("PreviewFovInspectorHint", "Preview camera field of view.")));
-
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("PreviewDisplacementInspector", "Displacement"),
-		MixtormatRow::MakeCheckbox(
-			TAttribute<ECheckBoxState>::CreateLambda([this]()
-			{
-				return bPreviewDisplacementEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-			}),
-			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-			{
-				SetPreviewDisplacementEnabled(State == ECheckBoxState::Checked);
-			}),
-			LOCTEXT("PreviewDisplacementInspectorHint", "Preview the composited Height through the protected master's authored displacement path."))));
-
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
-	[
-		SNew(SBox)
-		.IsEnabled_Lambda([this]() { return bPreviewDisplacementEnabled; })
-		[
-			MakeSlider(
-				LOCTEXT("PreviewDisplacementAmountInspector", "Displacement Amount"),
-				TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewDisplacementAmount); }),
-				0.0, 4.0, 1.0, 0.05, false,
-				FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-				{
-					SetPreviewDisplacementAmount(static_cast<float>(Value));
-				}),
-				FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
-				LOCTEXT("PreviewDisplacementAmountInspectorHint", "Scale the centered composited Height used by the authored displacement path."))
-		]
-	];
-
-	Panel->AddSlot().AutoHeight()
-	[
-		SNew(SButton)
-		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-		.Text(LOCTEXT("ResetPreviewInspector", "Reset Preview Camera & Lighting"))
-		.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
-	];
-
-	return SNew(SMixtormatInspectorGroup)
-		.Title(LOCTEXT("PreviewSettingsHeading", "PREVIEW"))
-		.InitiallyExpanded(false)
-		[Panel];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
@@ -517,23 +426,125 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			]
 		];
 
+	// Camera and render settings, on the viewport rather than in the inspector.
+	//
+	// These belong to what you are looking at, not to the layer you are editing: FOV and
+	// displacement change nothing about the material, and preview quality is a property of the
+	// render. Put in the inspector they scroll away with the selection and change meaning
+	// depending on what happens to be selected, which is what sent them back here.
+	const TArray<FText> QualityOptions = {
+		LOCTEXT("PreviewQualityLow", "LOW"),
+		LOCTEXT("PreviewQualityMedium", "MED"),
+		LOCTEXT("PreviewQualityHigh", "HIGH")};
+	const TArray<FText> QualityToolTips = {
+		LOCTEXT("PreviewQualityLowHint", "Direct light only. No AO, SSR, or Lumen."),
+		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
+		LOCTEXT("PreviewQualityHighHint", "Lumen quality. Uses project ray tracing when supported.")};
+
+	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
+	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		SNew(SMixtormatSegmentedControl)
+		.Options(QualityOptions)
+		.ToolTips(QualityToolTips)
+		.ActiveIndex_Lambda([this]()
+		{
+			switch (PreviewQuality)
+			{
+			case EMixtormatPreviewQuality::Low: return 0;
+			case EMixtormatPreviewQuality::Medium: return 1;
+			default: return 2;
+			}
+		})
+		.OnChosen_Lambda([this](const int32 Index)
+		{
+			SetPreviewQuality(Index == 0
+				? EMixtormatPreviewQuality::Low
+				: Index == 1
+					? EMixtormatPreviewQuality::Medium
+					: EMixtormatPreviewQuality::High);
+		})
+	];
+	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		MakeSlider(
+			LOCTEXT("PreviewFovLabel", "FOV"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
+			20.0, 90.0, 50.0, 0.5, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewFov(static_cast<float>(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewFov(50.0f); }),
+			LOCTEXT("PreviewFovHint", "Preview camera field of view."))
+	];
+	CameraControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	[
+		MixtormatRow::Make(
+			LOCTEXT("PreviewDisplacement", "Displacement"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					return bPreviewDisplacementEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					SetPreviewDisplacementEnabled(State == ECheckBoxState::Checked);
+				}),
+				LOCTEXT("PreviewDisplacementHint", "Preview the composited Height through the protected master's authored displacement path.")))
+	];
+	CameraControls->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([this]() { return bPreviewDisplacementEnabled; })
+		[
+			MakeSlider(
+				LOCTEXT("PreviewDisplacementAmountLabel", "Amount"),
+				TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewDisplacementAmount); }),
+				0.0, 4.0, 1.0, 0.05, false,
+				FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+				{
+					SetPreviewDisplacementAmount(static_cast<float>(Value));
+				}),
+				FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
+				LOCTEXT("PreviewDisplacementAmountHint", "Scale the centered composited Height used by the authored displacement path."))
+		]
+	];
+
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
 			SAssignNew(PreviewViewport, SMixtormatPreviewViewport)
 		]
+		// Top left, which is where quality already was, and the only edge the newer clusters
+		// have not taken.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(8.0f)
+		[
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::WellTop())
+			.EndColor(MixtormatPalette::WellBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
+			.Padding(2.0f)
+			[
+				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[CameraControls]
+			]
+		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(8.0f)
 		[
-			SNew(SBorder)
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::WellTop())
+			.EndColor(MixtormatPalette::WellBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(2.0f)
-			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
 			[ComparisonControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(8.0f)
 		[
-			SNew(SBorder)
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::WellTop())
+			.EndColor(MixtormatPalette::WellBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(2.0f)
-			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
 			[SubjectAndLight]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(10.0f)
@@ -556,9 +567,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(8.0f)
 		[
-			SNew(SBorder)
+			SNew(SMixtormatGradientBox)
+			.StartColor(MixtormatPalette::WellTop())
+			.EndColor(MixtormatPalette::WellBottom())
+			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(2.0f)
-			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ViewportOverlayGroup")))
 			[OutputControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.0f)
@@ -577,21 +590,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 
 TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
 {
-	TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
+	MixtormatMenu::FBuilder Menu;
 	const TPair<EMixtormatStudioLighting, FText> Presets[] = {
 		{EMixtormatStudioLighting::Neutral, LOCTEXT("NeutralStudioMenu", "Neutral Studio")},
 		{EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioMenu", "Soft Studio")},
 		{EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioMenu", "Dramatic")},
 		{EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioMenu", "Rim Light")}};
+
+	Menu.Caption(LOCTEXT("StudioLightingCaption", "Studio"));
 	for (const TPair<EMixtormatStudioLighting, FText>& Preset : Presets)
 	{
-		Menu->AddSlot().AutoHeight()
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.Text(Preset.Value)
-			.OnClicked_Lambda([this, Lighting = Preset.Key]() { return SetStudioLighting(Lighting); })
-		];
+		// Ticked only while no HDRI is overriding it -- a preset and a cubemap cannot both be
+		// what the viewport is lit by, and showing two ticks would say they can.
+		Menu.Item(
+			Preset.Value,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Lighting = Preset.Key]() { SetStudioLighting(Lighting); }))
+			.Checked(TAttribute<bool>::CreateLambda([this, Lighting = Preset.Key]()
+			{
+				return SelectedHdriPath.IsNull() && StudioLighting == Lighting;
+			}));
 	}
 
 	FAssetRegistryModule& AssetRegistryModule =
@@ -603,42 +621,25 @@ TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
 	HdriFilter.bRecursivePaths = true;
 	TArray<FAssetData> HdriAssets;
 	AssetRegistryModule.Get().GetAssets(HdriFilter, HdriAssets);
-	HdriAssets.Sort([](const FAssetData& A, const FAssetData& B)
-	{
-		return A.AssetName.ToString() < B.AssetName.ToString();
-	});
 
 	if (!HdriAssets.IsEmpty())
 	{
-		Menu->AddSlot().AutoHeight().Padding(0.0f, 3.0f)
-		[
-			SNew(SSeparator)
-		];
+		Menu.Caption(LOCTEXT("HdriLightingCaption", "HDRI"));
 	}
 	for (const FAssetData& HdriAsset : HdriAssets)
 	{
 		const FSoftObjectPath HdriPath = HdriAsset.GetSoftObjectPath();
-		Menu->AddSlot().AutoHeight()
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.Text(FText::FromName(HdriAsset.AssetName))
-			.OnClicked_Lambda([this, HdriPath]() { return SetHdriLighting(HdriPath); })
-		];
+		Menu.Item(
+			FText::FromName(HdriAsset.AssetName),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, HdriPath]() { SetHdriLighting(HdriPath); }))
+			.Checked(TAttribute<bool>::CreateLambda([this, HdriPath]()
+			{
+				return SelectedHdriPath == HdriPath;
+			}));
 	}
 
-	return SNew(SBox)
-		.WidthOverride(220.0f)
-		.MaxDesiredHeight(420.0f)
-		[
-			SNew(SBorder)
-			.Padding(4.0f)
-			.BorderImage(FAppStyle::GetBrush(TEXT("Menu.Background")))
-			[
-				SNew(SScrollBox)
-				+ SScrollBox::Slot()[Menu]
-			]
-		];
+	return Menu.Build();
 }
 
 #undef LOCTEXT_NAMESPACE

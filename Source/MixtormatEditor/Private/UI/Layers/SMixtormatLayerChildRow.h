@@ -23,8 +23,8 @@ public:
 		: _bActive(true)
 		, _bSelected(false)
 	{}
-		// A widget rather than a brush: a mask child shows the mask's own thumbnail, which comes
-		// from FAssetThumbnail and has no FSlateBrush* to pass.
+		// A glyph saying what kind of child this is. A slot rather than a brush so the row does not
+		// have to know how the glyph is tinted -- which mask it is, is a hover away, not in here.
 		SLATE_NAMED_SLOT(FArguments, Icon)
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Kind)

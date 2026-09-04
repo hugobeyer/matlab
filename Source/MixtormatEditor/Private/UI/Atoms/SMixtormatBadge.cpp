@@ -21,7 +21,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 		[
 			SNew(SBorder)
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Badge")))
-			.Padding(FMargin(0.0f))
+			.Padding(FMargin(MixtormatTokens::BadgeTextInset, 0.0f))
 			.HAlign(HAlign_Center)
 			.VAlign(VAlign_Center)
 			[

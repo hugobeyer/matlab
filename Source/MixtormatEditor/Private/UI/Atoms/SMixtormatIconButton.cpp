@@ -34,7 +34,7 @@ FSlateColor SMixtormatIconButton::GetGlyphColor() const
 	{
 		return IsHovered() ? MixtormatPalette::AccentBright() : MixtormatPalette::Accent();
 	}
-	return IsHovered() ? MixtormatPalette::RowText() : MixtormatPalette::CaptionText();
+	return IsHovered() ? MixtormatPalette::IconHover() : MixtormatPalette::RowText();
 }
 
 FCursorReply SMixtormatIconButton::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

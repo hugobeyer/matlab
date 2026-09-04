@@ -1240,18 +1240,43 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						// Thumbnail, name, source, badge -- the same four fields in the same order as
+						// the row in the stack that selected it, so moving from one to the other
+						// re-reads nothing.
+						SNew(SBox)
+						.HeightOverride(MixtormatTokens::LayerRowHeight)
+						.Padding(FMargin(
+							MixtormatTokens::LayerRowInsetLeading,
+							0.0f,
+							MixtormatTokens::LayerRowInsetTrailing,
+							0.0f))
 						[
-							SAssignNew(SelectedSurfaceText, STextBlock)
-							.Text(LOCTEXT("NoSelectedSurface", "No layer selected"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[
-							SAssignNew(SelectedIdentityText, STextBlock)
-							.Text(LOCTEXT("NoIdentity", "—"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SAssignNew(SelectedThumbnailBox, SBox)
+								.WidthOverride(MixtormatTokens::LayerThumbnailSize)
+								.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+							]
+							+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
+							[
+								SAssignNew(SelectedSurfaceText, STextBlock)
+								.Text(LOCTEXT("NoSelectedSurface", "No layer selected"))
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+							[
+								SAssignNew(SelectedIdentityText, STextBlock)
+								.Text(LOCTEXT("NoIdentity", "—"))
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(SMixtormatBadge)
+								.Text_Lambda([this]() { return GetSelectedBadgeText(); })
+							]
 						]
 					]
 					// The channel-availability line ("BC · N · RAMH Authored") is gone: it restated
@@ -1266,10 +1291,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							SAssignNew(SelectedMapsText, STextBlock)
 						]
 					]
-				]
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					BuildPreviewSettingsControls()
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
@@ -1299,24 +1320,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						{
 							return bHasSelectedLayer ? EVisibility::Visible : EVisibility::Collapsed;
 						})
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 3.0f)
-						[
-							SNew(SCheckBox)
-							.Visibility_Lambda([this]()
-							{
-								return SelectedLayerIndex > 0
-									&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Fill
-									? EVisibility::Visible
-									: EVisibility::Collapsed;
-							})
-							.ToolTipText(LOCTEXT("NormalOnlyModeHint", "Compose only this layer's normal and preserve Base Color and RAM below."))
-							.IsChecked_Lambda([this]() { return WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].ChannelMode == EMixtormatLayerChannelMode::NormalDetail ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-							.OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { SetLayerNormalDetail(SelectedLayerIndex, State == ECheckBoxState::Checked); })
-							[
-								SNew(STextBlock).Text(LOCTEXT("NormalOnlyMode", "Normal Detail Only"))
-							]
-						]
+						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
+						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
+						// meant the segment could say BLEND while the box said the layer was detail.
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
 						[
 							SNew(SComboButton)

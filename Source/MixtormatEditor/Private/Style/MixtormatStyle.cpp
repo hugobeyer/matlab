@@ -88,7 +88,7 @@ void FMixtormatStyle::Initialize()
 	const FLinearColor PanelSurface = Hex(0x212121);
 	const FLinearColor TroughSurface = Hex(0x1B1B1B);
 	const FLinearColor TroughLine = Hex(0x2E2E2E);
-	const FLinearColor HeaderSurface = Hex(0x1A1A1A);
+	const FLinearColor HeaderSurface = Hex(0x212121);
 	const FLinearColor HeaderLine = Hex(0x2A2A2A);
 	const FLinearColor HeaderText = Hex(0xA8A8A8);
 	const FLinearColor CaptionText = Hex(0x6E6E6E);
@@ -134,9 +134,6 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhostAccent"),
 		new FSlateRoundedBoxBrush(SelectionFill, 6.0f, AccentHover, 1.0f));
-	StyleInstance->Set(
-		TEXT("Mixtormat.ViewportOverlayGroup"),
-		new FSlateRoundedBoxBrush(WithOpacity(RaisedPanel, 0.82f), 4.0f, BorderStrong, 0.45f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderline"),
 		new FSlateColorBrush(FLinearColor::Transparent));
@@ -380,88 +377,32 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::Shell()));
 	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Panel()));
 
-	// ---- Menus -----------------------------------------------------------------------------
-	// FMenuBuilder takes a style set and reads a fixed family of "Menu.*" keys off it -- twenty of
-	// them, and a missing one renders as the checkerboard rather than falling back. So every key is
-	// seeded from FAppStyle's own menu family first and only the ones the design speaks to are
-	// replaced. Ours live under the same names in our own style set, which is why there is no
-	// collision with the editor's.
+	// Our own popovers, which are widgets rather than multibox rows: a label, the shortcut printed
+	// quietly beside it, and the section caption above a run of them.
 	{
-		const ISlateStyle& App = FAppStyle::Get();
-		const auto Inherit = [&](const TCHAR* Key) { return ISlateStyle::Join(TEXT("Menu"), TCHAR_TO_ANSI(Key)); };
-
-		// Padding and metrics, inherited then overridden where the design specifies one.
-		StyleInstance->Set(TEXT("Menu.Block.IndentedPadding"), FMargin(MixtormatTokens::MenuItemInset, 0.0f, 0.0f, 0.0f));
-		StyleInstance->Set(TEXT("Menu.Block.Padding"), FMargin(0.0f));
-		StyleInstance->Set(TEXT("Menu.MenuBar.Padding"), FMargin(MixtormatTokens::MenuItemGap, 0.0f));
-		StyleInstance->Set(TEXT("Menu.Heading.Padding"), FMargin(
-			MixtormatTokens::MenuItemInset,
-			MixtormatTokens::MenuCaptionInsetAbove,
-			MixtormatTokens::MenuItemInset,
-			MixtormatTokens::MenuCaptionInsetBelow));
-		StyleInstance->Set(TEXT("Menu.Separator.Padding"), FMargin(0.0f, MixtormatTokens::MenuSeparatorMargin));
-		StyleInstance->Set(TEXT("Menu.MenuIconSize"), MixtormatTokens::MenuIconSize);
-
-		// The ground. A brush cannot hold the canvas's three-stop tint, so a menu built by
-		// FMenuBuilder gets the flat shade and only our own popovers -- which wrap
-		// SMixtormatMenuPanel -- carry the lip.
-		StyleInstance->Set(
-			TEXT("Menu.Background"),
-			new FSlateRoundedBoxBrush(MixtormatPalette::MenuGround(), MixtormatTokens::MenuCornerRadius));
-		StyleInstance->Set(TEXT("Menu.Separator"), new FSlateColorBrush(MixtormatPalette::Divider()));
-		StyleInstance->Set(TEXT("Menu.SubMenuIndicator"), const_cast<FSlateBrush*>(App.GetBrush(TEXT("Menu.SubMenuIndicator"))));
-
-		// A row: no plate at rest, the slider's own fill when hovered. The thing under the cursor
-		// looks the same wherever you are in the tool.
-		FSlateRoundedBoxBrush* const RowHover = new FSlateRoundedBoxBrush(
-			MixtormatPalette::FillTop(), MixtormatTokens::CornerRadius);
-		FSlateRoundedBoxBrush* const RowPressed = new FSlateRoundedBoxBrush(
-			MixtormatPalette::FillBottom(), MixtormatTokens::CornerRadius);
-		FButtonStyle MenuButton = FButtonStyle()
-			.SetNormal(FSlateNoResource())
-			.SetHovered(*RowHover)
-			.SetPressed(*RowPressed)
-			.SetDisabled(FSlateNoResource())
-			.SetNormalForeground(FSlateColor(MixtormatPalette::RowText()))
-			.SetHoveredForeground(FSlateColor(FLinearColor::White))
-			.SetPressedForeground(FSlateColor(FLinearColor::White))
-			.SetDisabledForeground(FSlateColor(MixtormatPalette::DisabledText()))
-			.SetNormalPadding(FMargin(MixtormatTokens::MenuItemInset, 0.0f))
-			.SetPressedPadding(FMargin(MixtormatTokens::MenuItemInset, 0.0f));
-		StyleInstance->Set(TEXT("Menu.Button"), MenuButton);
-		StyleInstance->Set(TEXT("Menu.SplitComboButton"), App.GetWidgetStyle<FComboButtonStyle>(TEXT("Menu.SplitComboButton")));
-
-		// Ticks, radios and toggles all keep the row's own hover; only the mark differs.
-		FCheckBoxStyle MenuCheck = App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.CheckBox"));
-		MenuCheck.SetPadding(FMargin(0.0f));
-		StyleInstance->Set(TEXT("Menu.CheckBox"), MenuCheck);
-		StyleInstance->Set(TEXT("Menu.Check"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.Check")));
-		StyleInstance->Set(TEXT("Menu.RadioButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.RadioButton")));
-		StyleInstance->Set(TEXT("Menu.ToggleButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.ToggleButton")));
-		StyleInstance->Set(TEXT("Menu.SplitToggleButton"), App.GetWidgetStyle<FCheckBoxStyle>(TEXT("Menu.SplitToggleButton")));
-		StyleInstance->Set(TEXT("Menu.EditableText"), App.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Menu.EditableText")));
-
-		// Type. The label is body text, the shortcut is quiet enough to ignore until wanted, and
-		// the section heading is the caption used everywhere else.
 		FTextBlockStyle MenuLabel = FTextBlockStyle()
 			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
 			.SetColorAndOpacity(MixtormatPalette::RowText())
 			.SetShadowOffset(FVector2D::ZeroVector)
 			.SetShadowColorAndOpacity(FLinearColor::Transparent);
-		StyleInstance->Set(TEXT("Menu.Label"), MenuLabel);
+		StyleInstance->Set(TEXT("Mixtormat.MenuLabel"), MenuLabel);
 
-		FTextBlockStyle MenuKeybinding = FTextBlockStyle(MenuLabel)
+		FTextBlockStyle MenuShortcut = FTextBlockStyle(MenuLabel)
 			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
 			.SetColorAndOpacity(MixtormatPalette::ShortcutText());
-		StyleInstance->Set(TEXT("Menu.Keybinding"), MenuKeybinding);
+		StyleInstance->Set(TEXT("Mixtormat.MenuShortcut"), MenuShortcut);
 
-		FTextBlockStyle MenuHeading = FTextBlockStyle(MenuLabel)
+		FTextBlockStyle MenuCaption = FTextBlockStyle(MenuLabel)
 			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontGroupHeader))
 			.SetColorAndOpacity(MixtormatPalette::CaptionText());
-		FSlateFontInfo MenuHeadingFont = MenuHeading.Font;
-		MenuHeadingFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
-		MenuHeading.SetFont(MenuHeadingFont);
-		StyleInstance->Set(TEXT("Menu.Heading"), MenuHeading);
+		FSlateFontInfo MenuCaptionFont = MenuCaption.Font;
+		MenuCaptionFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
+		MenuCaption.SetFont(MenuCaptionFont);
+		StyleInstance->Set(TEXT("Mixtormat.MenuCaption"), MenuCaption);
+
+		StyleInstance->Set(
+			TEXT("Mixtormat.MenuSeparator"),
+			new FSlateColorBrush(MixtormatPalette::Divider()));
 	}
 
 	// The lip along the top edge of a header. A flat colour brush, because it is drawn into a
@@ -475,7 +416,7 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));
 
 	FTextBlockStyle LayerName = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontLayerName))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontLayerName))
 		.SetColorAndOpacity(MixtormatPalette::LayerName())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
@@ -483,7 +424,7 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.LayerName"), LayerName);
 
 	FTextBlockStyle LayerSource = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Light"), MixtormatTokens::FontLayerSource))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontLayerSource))
 		.SetColorAndOpacity(MixtormatPalette::LayerSource())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
@@ -499,7 +440,7 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
 	FTextBlockStyle SliderLabel = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
 		.SetColorAndOpacity(RowText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -528,7 +469,8 @@ void FMixtormatStyle::Initialize()
 		.SetBackgroundImageFocused(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
 		.SetForegroundColor(FSlateColor(Text))
 		.SetPadding(FMargin(MixtormatTokens::RowTextInset - 1.0f, 0.0f));
-	SliderEntry.TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody));
+	// The entry replaces the value in place, so it matches the face it is typing over.
+	SliderEntry.TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);
 
 	// ---- Row furniture ----------------------------------------------------------------------
@@ -627,11 +569,15 @@ void FMixtormatStyle::Initialize()
 	SetIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/square-dashed"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/zap"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/sprout"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	// Layer kinds. A square for a material, a circle for a fill -- the shapes the add bar uses.
+	SetIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/box"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/circle"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 
 	// Disclosure. These were being borrowed from FAppStyle, which meant the one glyph in the stack
 	// that is not ours changed weight whenever the editor theme did.
 	SetIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the
 	// logo, so every size below holds those ratios rather than squashing the glyph.

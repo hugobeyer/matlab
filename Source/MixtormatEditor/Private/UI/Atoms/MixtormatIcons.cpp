@@ -24,4 +24,9 @@ namespace MixtormatIcons
 	const FSlateBrush* Mask()         { return Get(TEXT("Mixtormat.Icon.Mask")); }
 	const FSlateBrush* Effect()       { return Get(TEXT("Mixtormat.Icon.Effect")); }
 	const FSlateBrush* Generated()    { return Get(TEXT("Mixtormat.Icon.Generated")); }
+
+	const FSlateBrush* LayerMaterial() { return Get(TEXT("Mixtormat.Icon.LayerMaterial")); }
+	const FSlateBrush* LayerFill()     { return Get(TEXT("Mixtormat.Icon.LayerFill")); }
+	const FSlateBrush* Check()        { return Get(TEXT("Mixtormat.Icon.Check")); }
+	const FSlateBrush* Trash()        { return Get(TEXT("Mixtormat.Icon.Trash")); }
 }

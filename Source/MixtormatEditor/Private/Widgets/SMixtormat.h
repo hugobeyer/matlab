@@ -12,6 +12,7 @@
 class FAssetThumbnail;
 class FAssetThumbnailPool;
 class UMaterialInterface;
+class IToolTip;
 class SBox;
 class SHorizontalBox;
 class SMenuAnchor;
@@ -93,7 +94,6 @@ private:
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
 	FReply ToggleLayerExpanded(int32 LayerIndex);
-	FReply SetLayerNormalDetail(int32 LayerIndex, bool bNormalDetail);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
 	FReply AddErosionToLayer(int32 LayerIndex);
@@ -116,6 +116,8 @@ private:
 	FMixtormatMaskLayer* GetSelectedLayerMask();
 	const FMixtormatMaskLayer* GetSelectedLayerMask() const;
 	int32 GetSelectedChildIndex() const;
+	// The derived mark the inspector strip prints -- the selected child's, or the layer's.
+	FText GetSelectedBadgeText() const;
 	void SetMaskEnabled(ECheckBoxState CheckState, int32 LayerIndex, int32 ChildIndex);
 	void SetMaskBlendMode(int32 LayerIndex, int32 ChildIndex, EMixtormatMaskBlendMode BlendMode);
 	FReply OpenFillColorPicker(int32 LayerIndex);
@@ -387,16 +389,23 @@ private:
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerThumbnail(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerChildIcon(int32 LayerIndex, int32 ChildIndex);
+	// The mask a child row is carrying, shown on hover -- the row only has room for a glyph.
+	// Null for effects and generated masks, which have no picture to show.
+	TSharedPtr<IToolTip> BuildMaskPreviewTooltip(int32 LayerIndex, int32 ChildIndex);
 	FText GetLayerSourceText(int32 LayerIndex) const;
 	FText GetLayerChildName(const FMixtormatLayerChild& Child) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddLayerMenu();
-	void FillAddChildMenu(class FMenuBuilder& MenuBuilder, int32 LayerIndex);
+	TSharedRef<SWidget> BuildAddMaskMenu(int32 LayerIndex);
+	TSharedRef<SWidget> BuildAddEffectMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
+	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
+	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
 	TSharedRef<SWidget> BuildMaskReplacementGallery(int32 LayerIndex, int32 MaskIndex);
+	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildNormalSourceMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskCard(
 		int32 LayerIndex,
@@ -409,7 +418,6 @@ private:
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset);
 	TSharedRef<SWidget> BuildPreviewPanel();
-	TSharedRef<SWidget> BuildPreviewSettingsControls();
 	TSharedRef<SWidget> BuildStudioLightingMenu();
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();
@@ -435,10 +443,17 @@ private:
 	TSharedPtr<STextBlock> SelectedSurfaceText;
 	TSharedPtr<STextBlock> SelectedIdentityText;
 	TSharedPtr<STextBlock> SelectedMapsText;
+	// The strip mirrors a layer row, so it carries the row's thumbnail too. Swapped on selection
+	// rather than bound, because a thumbnail is a widget from the pool and not a brush.
+	TSharedPtr<SBox> SelectedThumbnailBox;
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	TArray<TSharedPtr<FAssetThumbnail>> SurfaceThumbnails;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
+	// The inspector strip's own thumbnail. Kept apart from LayerThumbnails because the strip is
+	// re-made on every selection while that array is only cleared when the whole stack rebuilds --
+	// pooled thumbnails accumulating there would eat the pool's budget.
+	TSharedPtr<FAssetThumbnail> SelectedStripThumbnail;
 	TArray<TSharedPtr<FAssetThumbnail>> MaskThumbnails;
 	TArray<TSharedPtr<FAssetThumbnail>> HdriThumbnails;
 	TArray<TSharedPtr<SMixtormatPreviewViewport>> PreviewViewports;

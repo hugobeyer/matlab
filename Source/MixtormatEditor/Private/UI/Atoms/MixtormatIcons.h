@@ -26,4 +26,13 @@ namespace MixtormatIcons
 	const FSlateBrush* Mask();
 	const FSlateBrush* Effect();
 	const FSlateBrush* Generated();
+
+	// A layer, by what kind of thing it is: a square for a material, a circle for a fill -- the
+	// same two shapes the add bar and the rows use, so one glyph teaches both.
+	const FSlateBrush* LayerMaterial();
+	const FSlateBrush* LayerFill();
+
+	// The tick in a menu's icon gutter.
+	const FSlateBrush* Check();
+	const FSlateBrush* Trash();
 }

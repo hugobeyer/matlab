@@ -5,9 +5,11 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -15,6 +17,62 @@
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
+
+namespace
+{
+	// Weak, so a group that is torn down and rebuilt on the next selection leaves nothing behind.
+	TArray<TWeakPtr<SMixtormatInspectorGroup>> LiveInspectorGroups;
+}
+
+TArray<TSharedRef<SMixtormatInspectorGroup>> SMixtormatInspectorGroup::GetLiveGroups()
+{
+	TArray<TSharedRef<SMixtormatInspectorGroup>> Alive;
+	for (int32 Index = LiveInspectorGroups.Num() - 1; Index >= 0; --Index)
+	{
+		const TSharedPtr<SMixtormatInspectorGroup> Group = LiveInspectorGroups[Index].Pin();
+		if (Group.IsValid())
+		{
+			Alive.Add(Group.ToSharedRef());
+		}
+		else
+		{
+			LiveInspectorGroups.RemoveAtSwap(Index);
+		}
+	}
+	return Alive;
+}
+
+void SMixtormatInspectorGroup::SetAllExpanded(const bool bInExpanded)
+{
+	for (const TSharedRef<SMixtormatInspectorGroup>& Group : GetLiveGroups())
+	{
+		Group->SetExpanded(bInExpanded);
+	}
+}
+
+SMixtormatInspectorGroup::SMixtormatInspectorGroup() = default;
+
+SMixtormatInspectorGroup::~SMixtormatInspectorGroup()
+{
+	// Pruned here as well as on access, so a long session does not accumulate dead entries for
+	// every selection change.
+	LiveInspectorGroups.RemoveAll([](const TWeakPtr<SMixtormatInspectorGroup>& Entry)
+	{
+		return !Entry.IsValid();
+	});
+}
+
+FReply SMixtormatInspectorGroup::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)
+{
+	// Right button only. Left is the header button's, and a press in the body must reach the row
+	// the user is aiming at rather than the group around it.
+	if (MouseEvent.GetEffectingButton() != EKeys::RightMouseButton || !ContextAnchor.IsValid())
+	{
+		return FReply::Unhandled();
+	}
+	ContextAnchor->SetIsOpen(true);
+	return FReply::Handled();
+}
 
 void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 {
@@ -95,8 +153,17 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		];
 	}
 
+	LiveInspectorGroups.Add(SharedThis(this));
+	OnReset = InArgs._OnReset;
+
 	ChildSlot
 	[
+		SAssignNew(ContextAnchor, SMenuAnchor)
+		.Placement(MenuPlacement_MenuRight)
+		.OnGetMenuContent(InArgs._OnGetContextMenu.IsBound()
+			? InArgs._OnGetContextMenu
+			: FOnGetContent::CreateSP(this, &SMixtormatInspectorGroup::BuildDefaultContextMenu))
+		[
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -105,7 +172,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			// light a button-shaped patch inside the header instead of the header.
 			SNew(SMixtormatGradientBox)
 			.StartColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
-			.EndColor(MixtormatPalette::Panel())
+			.EndColor(MixtormatPalette::PanelBottom())
 			.Orientation(Orient_Vertical)
 			[
 				// The lip sits over the header's top edge and spans its full width, so it is
@@ -159,12 +226,41 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				InArgs._Content.Widget
 			]
 		]
+		]
 	];
 }
 
 FLinearColor SMixtormatInspectorGroup::GetHeaderTint() const
 {
 	return IsHovered() ? MixtormatPalette::HeaderHover() : MixtormatPalette::HeaderTint();
+}
+
+TSharedRef<SWidget> SMixtormatInspectorGroup::BuildDefaultContextMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+
+	// Reset first, because it is the one entry that acts on this group rather than all of them --
+	// and it is hidden when the group has no defaults to return to, rather than shown greyed,
+	// since a permanently disabled entry teaches nothing.
+	if (OnReset.IsBound())
+	{
+		Menu.Item(
+			LOCTEXT("ResetGroupContext", "Reset Group"),
+			MixtormatIcons::Refresh(),
+			FSimpleDelegate::CreateLambda([Reset = OnReset]() { Reset.ExecuteIfBound(); }));
+		Menu.Separator();
+	}
+
+	Menu.Item(
+		LOCTEXT("ExpandAllGroups", "Expand All"),
+		MixtormatIcons::ChevronDown(),
+		FSimpleDelegate::CreateLambda([]() { SetAllExpanded(true); }));
+	Menu.Item(
+		LOCTEXT("CollapseAllGroups", "Collapse All"),
+		MixtormatIcons::ChevronRight(),
+		FSimpleDelegate::CreateLambda([]() { SetAllExpanded(false); }));
+
+	return Menu.Build();
 }
 
 FReply SMixtormatInspectorGroup::ToggleExpanded()
