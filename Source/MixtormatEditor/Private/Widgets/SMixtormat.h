@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "MixtormatMaterial.h"
@@ -93,6 +93,7 @@ private:
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceMaskInLayer(int32 LayerIndex, int32 MaskIndex, FSoftObjectPath MaskPath);
+	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
 	FReply ClearLayerMask(int32 LayerIndex);
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
@@ -204,6 +205,13 @@ private:
 		const FSimpleDelegate& ResetDelegate,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>());
 
+	// Appends a titled card to a panel and hands back the box its rows go in, so a run of
+	// values is one extra line at the top rather than a nested SNew tree around every row.
+	TSharedRef<SVerticalBox> AddCard(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		const FText& Title,
+		const TSharedPtr<SWidget>& HeaderAction = nullptr);
+
 	void AddSliderRow(
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		const TSharedRef<SWidget>& Row);
@@ -308,7 +316,11 @@ private:
 		bool TOwner::* Member,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>())
 	{
-		return MixtormatRow::Make(
+		// Trailing rather than Make: a toggle's label travels with its toggle. The shared label
+		// column exists so a run of values scans down one edge, and a toggle has no value in it
+		// to scan -- paired beside a slider, a far-left label left "Invert" sitting against the
+		// slider's right edge, closer to the value it did not belong to than to its own control.
+		return MixtormatRow::MakeTrailing(
 			Label,
 			MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([Resolve, Member]()
@@ -442,6 +454,8 @@ private:
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
+	TSharedRef<SWidget> BuildSurfaceGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
+	TSharedRef<SWidget> BuildSurfaceReplacementMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskReplacementGallery(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildNormalSourceMenu(int32 LayerIndex);
@@ -461,8 +475,16 @@ private:
 	TSharedRef<SWidget> BuildInspectorPanel();
 	TSharedRef<SWidget> BuildEffectInspectorControls();
 	TSharedRef<SWidget> BuildChannelInfluenceControls();
-	TSharedRef<SWidget> BuildColorAdjustmentControls();
-	TSharedRef<SWidget> BuildSurfaceMaskInfluenceControls();
+	// A card rather than a group: colour adjustment is part of how a layer composites, so it
+	// lives inside Composition next to the blend mode and opacity that decide the same thing.
+	TSharedRef<SWidget> BuildColorAdjustmentCard();
+	// The Surface Adjustments body, as titled cards. Extracted from the inline tree it used to
+	// be: one column of thirteen sliders with no structure, which is what the cards are for.
+	TSharedRef<SWidget> BuildSurfaceAdjustmentCards();
+
+	// Appends the Feature, Curvature and Surface Mask cards. Appends rather than returns,
+	// because these are siblings of the cards above them now rather than a group of their own.
+	void AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel);
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();

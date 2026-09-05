@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 
@@ -46,6 +46,12 @@ namespace MixtormatPalette
 	inline FLinearColor HeaderTint()   { return Hex(0x25282B, 0.72f); }
 	inline FLinearColor HeaderHover()  { return Hex(0x2E3236, 0.82f); }
 	inline FLinearColor HeaderTintFade() { return Hex(0x25282B); }
+	// A hovered header's top edge. The accent at the tint's own weight, so hover reads as the
+	// same lip catching light rather than as a differently-coloured bar.
+	inline FLinearColor HeaderTintHoverAccent() { return Hex(0x35525E, 0.85f); }
+	// The hairline over that edge, lit. Bright enough to read as a glow against the accent
+	// beneath it, which the flat divider grey does not.
+	inline FLinearColor HairlineGlow() { return Hex(0x7FC4DB, 0.85f); }
 	inline FLinearColor Hairline()     { return Hex(0x6F7D82, 0.16f); }
 	inline FLinearColor Divider()      { return Hex(0x242729); }
 	inline FLinearColor FocusFill()    { return Hex(0x4D8FA8, 0.10f); }
@@ -59,6 +65,10 @@ namespace MixtormatPalette
 	inline float OverlayPlateOpacity() { return 0.62f; }
 	inline FLinearColor OverlayPlateTop()    { return Hex(0x070808, OverlayPlateOpacity()); }
 	inline FLinearColor OverlayPlateBottom() { return Hex(0x0C0E0F, OverlayPlateOpacity()); }
+
+	// The ground a group sits on inside the well. A step darker than Shell so a group reads as a
+	// raised block with a margin around it rather than as a sheet flush with its container.
+	inline FLinearColor GroupSurround() { return Hex(0x0C0D0E); }
 
 	// ---- Wells ------------------------------------------------------------------------------
 	inline FLinearColor WellTop()      { return Hex(0x070808); }

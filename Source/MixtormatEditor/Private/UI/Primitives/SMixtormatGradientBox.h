@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -38,6 +38,7 @@ public:
 		, _MultiplyEnd(FLinearColor::Transparent)
 		, _Orientation(Orient_Vertical)
 		, _CornerRadius(0.0f)
+		, _CornerRadii(FVector4f(-1.0f))
 		, _Padding(FMargin(0.0f))
 	{}
 		SLATE_ATTRIBUTE(FLinearColor, StartColor)
@@ -59,6 +60,10 @@ public:
 
 		SLATE_ARGUMENT(EOrientation, Orientation)
 		SLATE_ARGUMENT(float, CornerRadius)
+
+		// Per-corner override, in Slate's order: top-left, top-right, bottom-right, bottom-left.
+		// Leave it negative to round every corner by CornerRadius instead.
+		SLATE_ARGUMENT(FVector4f, CornerRadii)
 		SLATE_ARGUMENT(FMargin, Padding)
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 	SLATE_END_ARGS()
@@ -82,5 +87,5 @@ private:
 	TAttribute<FLinearColor> MultiplyEnd;
 	float MultiplyMidPosition = -1.0f;
 	EOrientation Orientation = Orient_Vertical;
-	float CornerRadius = 0.0f;
+	FVector4f CornerRadii = FVector4f(0.0f);
 };

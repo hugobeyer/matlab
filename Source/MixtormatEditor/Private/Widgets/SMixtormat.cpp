@@ -1,5 +1,6 @@
-#include "Widgets/SMixtormat.h"
+﻿#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Containers/SMixtormatInspectorCard.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -262,11 +263,34 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 	return Slider;
 }
 
+TSharedRef<SVerticalBox> SMixtormat::AddCard(
+	const TSharedRef<SVerticalBox>& TargetPanel,
+	const FText& Title,
+	const TSharedPtr<SWidget>& HeaderAction)
+{
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	TargetPanel->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::CardGap)
+		[
+			SNew(SMixtormatInspectorCard)
+			.Title(Title)
+			.HeaderAction(HeaderAction)
+			[
+				Rows
+			]
+		];
+	return Rows;
+}
+
 void SMixtormat::AddSliderRow(
 	const TSharedRef<SVerticalBox>& TargetPanel,
 	const TSharedRef<SWidget>& Row)
 {
-	TargetPanel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)[Row];
+	TargetPanel->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+		[Row];
 }
 
 // The four conveniences below exist only so the panels read as one call per row; every one of
@@ -541,9 +565,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		&& bShowCompositionBefore
 		&& !WorkingLayers.IsEmpty())
 	{
-		FMixtormatLayer BaseLayer = (*PreviewLayers)[0];
+		FMixtormatLayer BottomLayer = (*PreviewLayers)[0];
 		PreviewOverrideLayers.Reset();
-		PreviewOverrideLayers.Add(MoveTemp(BaseLayer));
+		PreviewOverrideLayers.Add(MoveTemp(BottomLayer));
 		PreviewOverrideLayers[0].bEnabled = true;
 		PreviewOverrideLayers[0].HeightReferenceLayerIndex = INDEX_NONE;
 		PreviewLayers = &PreviewOverrideLayers;

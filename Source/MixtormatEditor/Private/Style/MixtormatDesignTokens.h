@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 
@@ -33,6 +33,11 @@ namespace MixtormatTokens
 	constexpr float RowGap = 3.0f;
 	constexpr float RowGapTight = 2.0f;
 
+	// Vertical gap between two stacked value rows. Every slider in a panel is spaced by this and
+	// nothing else -- it was a literal 2 in AddSliderRow and in forty inline slot paddings, which
+	// is why a panel's rows never quite lined up with each other's spacing.
+	constexpr float SliderRowGap = 4.0f;
+
 	// Text inset from the row's leading and trailing edges. Shared by the slider's painted text
 	// and by the label of every composed row, so they line up down the column.
 	constexpr float RowTextInset = 5.0f;
@@ -41,6 +46,8 @@ namespace MixtormatTokens
 	// asks for before anything competes with it.
 	constexpr float RowLabelGap = 6.0f;
 	constexpr float RowFieldMinWidth = 120.0f;
+	// For a chip that shares its row with other controls rather than owning the trailing slot.
+	constexpr float RowFieldMinWidthCompact = 64.0f;
 
 	// ---- Gradients --------------------------------------------------------------------------
 	// Samples emitted per span. Slate interpolates its vertex colours in linear space, so the only
@@ -58,7 +65,10 @@ namespace MixtormatTokens
 	// radius, so the two curves read as concentric rather than as two unrelated roundings.
 	constexpr float CornerRadiusInner = CornerRadius * 0.5f;
 	constexpr float OutlineWidth = 1.0f;
-	constexpr float PanelGutter = 4.0f;
+	// Left and right inset of a group's contents from its edges. Wider than the old 4: a slider
+	// runs the full width of the body, so this is the only thing between the trough and the edge
+	// of the panel.
+	constexpr float PanelGutter = 7.0f;
 	constexpr float GroupHeaderHeight = 25.0f;
 	constexpr float ButtonHeight = 20.0f;
 	constexpr float ButtonPaddingCompact = 7.0f;
@@ -97,6 +107,10 @@ namespace MixtormatTokens
 	constexpr int32 PreviewHdriPresetLimit = 2;
 	// Breathing room under a group header before its first row.
 	constexpr float GroupBodyTopInset = 4.0f;
+	// Gap around a group inside the well, so the darker surround reads as a margin and the
+	// group's rounded corners have something to be rounded against. Groups used to stack flush
+	// and the column read as one undifferentiated sheet.
+	constexpr float GroupOuterGap = 3.0f;
 	// Gap between a header's chevron, its title, and the controls trailing it.
 	constexpr float GroupHeaderItemGap = 5.0f;
 
@@ -221,6 +235,42 @@ namespace MixtormatTokens
 	constexpr float TileTextInset = 4.0f;
 	constexpr float TileImageInset = 3.0f;
 
+	// ---- Card -------------------------------------------------------------------------------
+	// A titled sub-panel inside a group body: one run of related values, on its own sheet.
+	//
+	// The group body is the same colour as the column it sits in now, so the card is what
+	// separates one run of rows from the next -- the body is ground, the cards are the things
+	// standing on it.
+	//
+	// Padding is deliberately smaller than PanelGutter. The body has already inset by that much,
+	// and a card's own gutter stacks on top of it; matching the two would indent every slider
+	// twice and leave the column looking margin-heavy at the inspector's width.
+	constexpr float CardPadding = 4.0f;
+	constexpr float CardGap = 4.0f;
+	// Between a card's title and the sheet under it.
+	constexpr float CardTitleGap = 3.0f;
+
+	// The breathing room under any heading -- a card title, a group header -- and again at the
+	// bottom of what it heads. Small on purpose: it is there so a run of rows is not flush
+	// against the edge of the thing containing it, not to space the rows out.
+	constexpr float HeaderContentGap = 2.0f;
+
+	// The column's own top margin, above the first group. The panel header sits directly over
+	// it and without this the first group reads as attached to that bar rather than as the
+	// first thing in the column.
+	constexpr float InspectorTopMargin = 8.0f;
+
+	// ---- Toggle -----------------------------------------------------------------------------
+	// A square well that fills rather than marking itself with a glyph. A check or a cross is a
+	// second shape to read at 14px and neither survives the size; a filled box is legible as a
+	// state at a glance, and it is the same well-and-fill vocabulary the sliders and chips use.
+	constexpr float ToggleSize = 14.0f;
+	// Inset of the fill from the well that holds it, on every side. One pixel: enough for the
+	// well's edge to stay visible around the fill, which is what makes it read as filled rather
+	// than as a lighter square.
+	constexpr float ToggleFillInset = 1.0f;
+	constexpr float ToggleFillSize = ToggleSize - ToggleFillInset * 2.0f;
+
 	// A chip's inline thumbnail -- enough to confirm which asset is bound without opening the
 	// picker, since the row already carries the name.
 	constexpr float ChipThumbnailSize = 16.0f;
@@ -236,6 +286,11 @@ namespace MixtormatTokens
 	// opened from is worse than one that scrolls, because the entries under the cursor move when
 	// the popup is repositioned to fit.
 	constexpr float MaskPickerMaxHeight = 800.0f;
+	// The plain option lists -- height source, height reference. Narrow next to the mask grid
+	// because they are lines of text rather than thumbnails, and wide enough that the longest
+	// option does not wrap.
+	constexpr float OptionMenuWidth = 260.0f;
+
 	constexpr int32 MaskPickerColumns = 4;
 	constexpr int32 MaskPickerColumnsDense = 5;
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Framework/SlateDelegates.h"
@@ -21,9 +21,16 @@ class SMixtormatInspectorGroup final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatInspectorGroup)
 		: _InitiallyExpanded(false)
+		, _Collapsible(true)
 	{}
 		SLATE_ARGUMENT(FText, Title)
 		SLATE_ARGUMENT(bool, InitiallyExpanded)
+
+		// False for a group that only exists to title a run of rows. It keeps the header bar and
+		// loses the chevron, the click target and the collapsed state -- a group whose contents
+		// are the point of the panel should not be one click away from being invisible, and a
+		// chevron that never does anything is worse than no chevron.
+		SLATE_ARGUMENT(bool, Collapsible)
 
 		// Short state shown before the actions -- a changed count, a badge. Empty hides it, so a
 		// collapsed group still reports itself without being opened.
@@ -51,8 +58,16 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
-	bool IsExpanded() const { return bExpanded; }
-	void SetExpanded(bool bInExpanded) { bExpanded = bInExpanded; }
+	bool IsExpanded() const { return bExpanded || !bCollapsible; }
+
+	// Ignored on a non-collapsible group, so "collapse all" cannot hide one.
+	void SetExpanded(const bool bInExpanded)
+	{
+		if (bCollapsible)
+		{
+			bExpanded = bInExpanded;
+		}
+	}
 
 	// Every live group, so "expand all" and "collapse all" can reach them.
 	//
@@ -68,6 +83,8 @@ public:
 
 private:
 	FReply ToggleExpanded();
+
+	bool bCollapsible = true;
 	FLinearColor GetHeaderTint() const;
 	TSharedRef<SWidget> BuildDefaultContextMenu();
 

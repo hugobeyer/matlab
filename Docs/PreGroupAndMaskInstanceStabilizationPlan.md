@@ -32,6 +32,9 @@ These are no longer blockers:
 - Texture and generated mask children now use the child inspector.
 - Mask selection no longer exposes layer composition and surface controls.
 - Layer height blending and normal / height / AO influence remain layer-only.
+- The base layer is gone. Every layer is an ordinary layer at an ordinary position.
+- A layer can be dragged, moved, hidden, deleted and given children at any position, index 0 included.
+- Material and Effect layers can have their surface swapped in place via `Replace Material`.
 
 ## Blockers at a glance
 
@@ -40,7 +43,7 @@ These are no longer blockers:
 | 1 | Filter order is not the displayed child order | The stack promises ordering that the compositor does not execute |
 | 2 | Child selection/removal uses fragile split indices | `MaskInstance` would add another missed-case risk |
 | 3 | Child-type dispatch relies on mask defaults | A new child type can silently read or mutate the wrong payload |
-| 4 | Base-layer child policy is contradictory | Group-specific capability rules need one source of truth |
+| ~~4~~ | ~~Base-layer child policy is contradictory~~ | Resolved: there is no base layer. See section 4 |
 | 5 | Mask types are split across unrelated menus | A group must expose masks while excluding effects |
 | 6 | “Remove All Masks” removes texture masks only | It would leave most of a group mask chain behind |
 | 7 | Expanded rows are tracked by array index | Group block insert/delete/move would expand unrelated rows |
@@ -279,42 +282,63 @@ Extend that table when `MaskInstance` is added.
 
 ## 4. Define one child-capability policy
 
-### Current contradiction
+### Decision: there is no base layer
 
-The base-layer rules differ by creation path:
+Resolved 2026-09-05. The alternative the original plan flagged -- "if base-layer children are
+desired product behavior, decide that explicitly" -- was chosen, and taken further: the base
+layer is not a layer with permissions, it does not exist.
 
-- `AssignMaskToLayer` rejects layer index `0`.
-- Asset-backed `AddEffectToLayer` rejects layer index `0`.
-- Procedural generated masks can currently be added to index `0`.
-- Craquelure and Color ID can currently be added to index `0`.
-- Procedural erosion, chipping, grade, and peeling can currently be added to index `0`.
-- The base layer's context menu still offers actions that some handlers silently reject.
+The stack now composites onto an **invisible substrate**: a neutral gray fill with no height and
+no features, seeded into the accumulation buffers before the first layer runs. It has no row, no
+selection, no children and no inspector. It is not addressable and cannot be edited.
 
-This is both a UI bug and a data-model bug.
+Consequences:
 
-### Recommended policy
+- Every layer is an ordinary layer. Position 0 carries no meaning beyond being the bottom.
+- Any layer can be dragged or moved to any position, the bottom included.
+- Any layer can be hidden, deleted, or given mask and effect children.
+- Deleting the last layer is now reachable; the stack renders as the bare substrate.
+- A layer renders identically wherever it sits. That was the point: previously the bottom layer
+  seeded the buffers by replacing them, which made it ignore its own mask, feature influence and
+  height blend, so dragging a layer to the bottom silently changed what it did.
 
-Preserve the apparent existing intent:
+This is a behavior change for existing saved recipes, not only a refactor. A recipe whose bottom
+layer carries a mask, feature influence, or height blending will render differently, because
+those now apply where they were previously discarded.
 
-- The base layer is the immutable composition seed.
-- It cannot receive layer children.
-- Material and Fill layers can receive mask-like and effect children.
-- Group layers can receive mask-like children only.
-- Group layers cannot receive effect children.
+### Implementation status
 
-If base-layer children are desired product behavior, decide that explicitly before implementation and make every path support them. Do not keep the current mixed policy.
+Done:
+
+- `MixtormatSubstrate` constants and the substrate seed in `MixtormatGpuCompositor.cpp`.
+- `Initialize` removed from `FMixtormatCompositeCS` and `MixtormatComposite.usf`, along with
+  the five branches that gated behavior on it. It was the base-layer mechanism.
+- Every `LayerIndex == 0` / `> 0` policy guard removed from the editor: delete, move, drag/drop
+  targets, enable/disable, mask assignment, normal assignment, effect assignment, bulk mask
+  removal, the row's `bIsBase` treatment, the `BASE` source label, the context menu, the mask
+  gallery, and the four inspector sections that were hidden on the bottom layer.
+- `ReplaceSurfaceInLayer` plus its picker, wired to `Replace Material` in the layer context menu.
+
+Deliberately kept, because it is positional rather than policy:
+
+- `SurfaceValid = LayerIndex > 0` in the generated-mask and peel-field passes. Its shader
+  contract is "there is accumulated surface beneath this layer to derive from", and the
+  substrate is featureless: curvature, AO and height read off it are constants, so a derived
+  mask on the bottom layer would produce a flat value rather than the documented no-op. The
+  guard is still literally true at position 0.
+- `PreviewOverrideLayers[0]` in the solo and composition-before paths, which indexes the single
+  layer just pushed into an emptied array.
+- `MixtormatLayerPreview.cpp`, the unused legacy preview service, which stays out of scope.
 
 ### Required API
 
-Centralize capability checks:
+Capability checks stay centralized, but they no longer need a layer index -- the layer's own
+type is the whole answer, which is a real simplification for the group phase:
 
 ```cpp
-bool CanLayerAcceptMaskChild(const FMixtormatLayer& Layer, int32 LayerIndex);
-bool CanLayerAcceptEffectChild(const FMixtormatLayer& Layer, int32 LayerIndex);
-bool CanLayerAcceptChildType(
-    const FMixtormatLayer& Layer,
-    int32 LayerIndex,
-    EMixtormatLayerChildType ChildType);
+bool CanLayerAcceptMaskChild(const FMixtormatLayer& Layer);
+bool CanLayerAcceptEffectChild(const FMixtormatLayer& Layer);
+bool CanLayerAcceptChildType(const FMixtormatLayer& Layer, EMixtormatLayerChildType ChildType);
 ```
 
 Use the same checks in:
@@ -326,20 +350,30 @@ Use the same checks in:
 - duplication into another owner, if added later;
 - load validation and defensive flattening.
 
-Unavailable actions should be disabled with a reason, not displayed as actions that silently do nothing.
+Unavailable actions should be disabled with a reason, not displayed as actions that silently do
+nothing.
 
 ### Acceptance tests
 
-Verify each layer type against each child category:
+Verify each layer type against each child category. Position is not a column, and that is the
+point:
 
 | Owner | Texture mask | Generated | Craquelure | Color ID | Effect |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Base | No | No | No | No | No |
 | Material | Yes | Yes | Yes | Yes | Yes |
 | Fill | Yes | Yes | Yes | Yes | Yes |
 | Group | Yes | Yes | Yes | Yes | No |
 
 Add `MaskInstance = Yes` for Material, Fill, and Group when implemented.
+
+Add substrate and position-independence coverage:
+
+- a layer renders identically at the bottom and above another layer;
+- a mask on the bottom layer gates that layer against the substrate;
+- height blending on the bottom layer blends against substrate height, not against itself;
+- an empty stack renders as the bare substrate;
+- deleting the last layer empties the stack without invalid selection;
+- `Replace Material` preserves children, transform, overrides, position and selection.
 
 ## 5. Put every mask type under one UI taxonomy
 
@@ -544,7 +578,7 @@ After stabilization, implement the existing group cases:
 2. Replace split effect/mask selection with one selected child index.
 3. Route every child removal/reorder through shared selection repair.
 4. Fix stale headers, bypass state, and debug child targeting.
-5. Define and enforce the shared layer child-capability policy.
+5. ~~Define and enforce the shared layer child-capability policy.~~ Decided and applied: no base layer, see section 4. The typed `CanLayerAccept*` helpers remain to be written.
 6. Consolidate mask creation and mask-child context menus.
 7. Fix Craquelure and Color ID Blend Mode context actions.
 8. Correct or rename `Remove All Masks`.
@@ -562,7 +596,7 @@ Group and Mask Instance work can begin when:
 - mask state is captured at the correct child position;
 - one selected-child path serves every child type;
 - all child-type switches are exhaustive;
-- base, ordinary, and group child capabilities have one source of truth;
+- ordinary and group child capabilities have one source of truth, keyed on layer type alone;
 - every mask-like child uses one menu and inspector taxonomy;
 - bulk mask removal has unambiguous semantics;
 - expanded state survives structural layer edits;

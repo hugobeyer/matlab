@@ -1,4 +1,4 @@
-#include "UI/Layers/SMixtormatLayerRow.h"
+﻿#include "UI/Layers/SMixtormatLayerRow.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -41,7 +41,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 		})
 		.ToolTipText(bCanDisable
 			? LOCTEXT("LayerEyeHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
-			: LOCTEXT("BaseLayerEyeHint", "The base layer is always visible."))
+			: LOCTEXT("LayerEyeLockedHint", "This layer's visibility is locked."))
 		.OnClickedWithModifiers(bCanDisable
 			? FOnMixtormatIconClicked::CreateSP(this, &SMixtormatLayerRow::HandleEyeClicked)
 			: FOnMixtormatIconClicked());

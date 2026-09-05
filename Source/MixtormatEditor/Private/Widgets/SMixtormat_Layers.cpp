@@ -437,6 +437,49 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	return FReply::Handled();
 }
 
+// Swap the material under a layer and keep everything the layer says about it.
+//
+// The difference from deleting the layer and adding a new one -- which was the only way to do
+// this -- is everything that is not the surface: the children stacked on it, the UV transform,
+// the roughness shaping, the overrides, the layer's position in the stack and its selection.
+// Re-authoring all of that to try a different material is the reason this exists.
+//
+// The name follows the surface, because nothing else sets it: layer names are derived at
+// creation and there is no rename, so a row still reading "Rusted Iron" over polished steel
+// would be wrong with no way to correct it.
+FReply SMixtormat::ReplaceSurfaceInLayer(const int32 LayerIndex, const FSoftObjectPath SurfacePath)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	if (Layer.Type != EMixtormatLayerType::Material && Layer.Type != EMixtormatLayerType::Effect)
+	{
+		return FReply::Handled();
+	}
+	if (!Cast<UMixtormatSurface>(SurfacePath.TryLoad()))
+	{
+		return FReply::Handled();
+	}
+
+	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SurfacePath);
+	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
+	{
+		if (Surface.AssetPath == SurfacePath)
+		{
+			Layer.DisplayName = Surface.DisplayName;
+			break;
+		}
+	}
+
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
 FReply SMixtormat::ReplaceMaskInLayer(
 	const int32 LayerIndex,
 	const int32 ChildIndex,
@@ -1555,6 +1598,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 
 	Menu.Separator();
 
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& (WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Material
+			|| WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Effect))
+	{
+		Menu.SubMenu(
+			LOCTEXT("ReplaceSurfaceContext", "Replace Material"),
+			MixtormatIcons::LayerMaterial(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildSurfaceReplacementMenu, LayerIndex));
+	}
+
 	Menu.Item(
 		LOCTEXT("DuplicateLayerContext", "Duplicate"),
 		MixtormatIcons::Duplicate(),
@@ -1940,6 +1993,56 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 		];
 	}
 	return Grid;
+}
+
+// The surface picker, shared by every path that needs one. Same grid as the mask gallery: a
+// surface is chosen by looking at it, not by reading a list of names.
+TSharedRef<SWidget> SMixtormat::BuildSurfaceGallery(TFunction<void(const FSoftObjectPath&)> OnChosen)
+{
+	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
+		.UseAllottedSize(true)
+		.InnerSlotPadding(FVector2D(MixtormatTokens::TileGap, MixtormatTokens::TileGap));
+
+	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
+	{
+		const FSoftObjectPath Path = Surface.AssetPath;
+		Grid->AddSlot()
+		[
+			SNew(SMixtormatTile)
+			.TileSize(MixtormatTokens::SurfaceTileSize)
+			.DisplayName(Surface.DisplayName)
+			.ThumbnailAsset(Surface.ThumbnailAsset)
+			.ThumbnailPool(ThumbnailPool)
+			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
+			{
+				OnChosen(Path);
+			}))
+		];
+	}
+	return Grid;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildSurfaceReplacementMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (FMixtormatRegistry::GetSurfaces().IsEmpty())
+	{
+		Menu.Item(LOCTEXT("SurfacesUnavailable", "No materials available"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
+
+	Menu.Widget(
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
+		[
+			BuildSurfaceGallery([this, LayerIndex](const FSoftObjectPath& Path)
+			{
+				ReplaceSurfaceInLayer(LayerIndex, Path);
+			})
+		]);
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerIndex, const int32 MaskIndex)

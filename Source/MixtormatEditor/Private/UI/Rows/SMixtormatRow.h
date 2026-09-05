@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Framework/SlateDelegates.h"
@@ -24,6 +24,14 @@ namespace MixtormatRow
 		const TSharedRef<SWidget>& TrailingContent,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>());
 
+	// A label that sits beside its control rather than across the row from it. The label column
+	// exists so a run of values scans down one edge; a lone toggle has no value to line up with,
+	// and stranding its label at the far left leaves the row reading as two unrelated halves.
+	TSharedRef<SWidget> MakeTrailing(
+		const FText& Label,
+		const TSharedRef<SWidget>& TrailingContent,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
 	// Two rows side by side. For values whose labels are one short word -- at the inspector's
 	// width each half is about 139px, so anything longer will clip.
 	TSharedRef<SWidget> MakePair(
@@ -37,7 +45,7 @@ namespace MixtormatRow
 	// Separates two runs without naming them. The cheap option.
 	TSharedRef<SWidget> MakeHairline();
 
-	// A checkbox sized for a row's trailing slot.
+	// The inspector's boolean, sized for a row's trailing slot. See SMixtormatToggle.
 	TSharedRef<SWidget> MakeCheckbox(
 		const TAttribute<ECheckBoxState>& IsChecked,
 		const FOnCheckStateChanged& OnStateChanged,

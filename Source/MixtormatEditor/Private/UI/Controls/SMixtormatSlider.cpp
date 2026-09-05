@@ -1,4 +1,4 @@
-#include "UI/Controls/SMixtormatSlider.h"
+﻿#include "UI/Controls/SMixtormatSlider.h"
 
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
@@ -308,7 +308,7 @@ int32 SMixtormatSlider::OnPaint(
 		};
 		MixtormatGradient::Paint(
 			OutDrawElements, LayerId + 1, FillGeometry, FillSize,
-			Orient_Vertical, Body, MixtormatTokens::CornerRadius);
+			Orient_Vertical, Body, FVector4f(MixtormatTokens::CornerRadius));
 
 		const MixtormatGradient::FStop Shade[] = {
 			{ 0.0f, MixtormatPalette::MultiplyStart() },
@@ -317,7 +317,7 @@ int32 SMixtormatSlider::OnPaint(
 		};
 		MixtormatGradient::Paint(
 			OutDrawElements, LayerId + 2, FillGeometry, FillSize,
-			Orient_Horizontal, Shade, MixtormatTokens::CornerRadius);
+			Orient_Horizontal, Shade, FVector4f(MixtormatTokens::CornerRadius));
 	}
 
 	// Centre tick, so zero is still locatable when the fill is empty.

@@ -1,4 +1,4 @@
-#include "Widgets/SMixtormat.h"
+﻿#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 
 // Material lifecycle: new/open/save, import, composition resolution, and baking.
@@ -49,15 +49,16 @@ FReply SMixtormat::StartNewMaterial()
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
 
-	FMixtormatLayer& BaseLayer = WorkingLayers.AddDefaulted_GetRef();
-	BaseLayer.DisplayName = SelectedLibrarySurfaceName;
-	BaseLayer.Type = EMixtormatLayerType::Material;
-	BaseLayer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
-	BaseLayer.Tiling = CurrentTiling;
-	BaseLayer.RoughnessBias = CurrentRoughnessBias;
-	BaseLayer.RoughnessContrast = CurrentRoughnessContrast;
-	BaseLayer.RoughnessOffset = CurrentRoughnessOffset;
-	BaseLayer.NormalIntensity = CurrentNormalIntensity;
+	// The first layer of a new recipe -- an ordinary Material layer, not a privileged base.
+	FMixtormatLayer& FirstLayer = WorkingLayers.AddDefaulted_GetRef();
+	FirstLayer.DisplayName = SelectedLibrarySurfaceName;
+	FirstLayer.Type = EMixtormatLayerType::Material;
+	FirstLayer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
+	FirstLayer.Tiling = CurrentTiling;
+	FirstLayer.RoughnessBias = CurrentRoughnessBias;
+	FirstLayer.RoughnessContrast = CurrentRoughnessContrast;
+	FirstLayer.RoughnessOffset = CurrentRoughnessOffset;
+	FirstLayer.NormalIntensity = CurrentNormalIntensity;
 
 	SelectedLayerIndex = 0;
 	SelectedEffectIndex = INDEX_NONE;
@@ -145,13 +146,12 @@ FReply SMixtormat::OpenWorkingMaterial()
 	{
 		FMessageDialog::Open(
 			EAppMsgType::Ok,
-			LOCTEXT("InvalidMixtormatMaterial", "The selected recipe has no base layer."));
+			LOCTEXT("InvalidMixtormatMaterial", "The selected recipe has no layers."));
 		return FReply::Handled();
 	}
 
 	WorkingMaterialAsset.Reset(MaterialAsset);
 	WorkingLayers = MaterialAsset->Layers;
-	WorkingLayers[0].bEnabled = true;
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
@@ -164,11 +164,11 @@ FReply SMixtormat::OpenWorkingMaterial()
 	SelectedMaskIndex = INDEX_NONE;
 	bHasSelectedLayer = true;
 
-	if (const UMixtormatSurface* BaseSurface = WorkingLayers[0].SourceSurface.LoadSynchronous())
+	if (const UMixtormatSurface* FirstSurface = WorkingLayers[0].SourceSurface.LoadSynchronous())
 	{
 		SelectedSurfacePath = WorkingLayers[0].SourceSurface.ToSoftObjectPath();
 		SelectedLibrarySurfaceName = WorkingLayers[0].DisplayName;
-		SelectedPreviewMaterial.Reset(Cast<UMaterialInstanceConstant>(BaseSurface->PreviewMaterial.Get()));
+		SelectedPreviewMaterial.Reset(Cast<UMaterialInstanceConstant>(FirstSurface->PreviewMaterial.Get()));
 	}
 
 	SyncSelectedLayerControls();

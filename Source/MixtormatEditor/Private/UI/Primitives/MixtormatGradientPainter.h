@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 
@@ -38,6 +38,10 @@ namespace MixtormatGradient
 	//
 	// Stops must be ordered by position. Fewer than two draws nothing -- a one-stop gradient is a
 	// flat fill, and the caller has a brush for that.
+	// CornerRadii is Slate's own order: top-left, top-right, bottom-right, bottom-left. A group
+	// header rounds its top pair and its body rounds its bottom pair, so the two stack into one
+	// rounded block with a flat seam; a single uniform radius cannot express that and left a
+	// notch where the header met the body.
 	void Paint(
 		FSlateWindowElementList& OutDrawElements,
 		int32 LayerId,
@@ -45,5 +49,5 @@ namespace MixtormatGradient
 		const FVector2f& Size,
 		EOrientation CssOrientation,
 		TArrayView<const FStop> Stops,
-		float CornerRadius);
+		const FVector4f& CornerRadii);
 }

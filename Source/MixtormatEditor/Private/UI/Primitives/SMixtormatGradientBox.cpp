@@ -1,4 +1,4 @@
-#include "UI/Primitives/SMixtormatGradientBox.h"
+﻿#include "UI/Primitives/SMixtormatGradientBox.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Primitives/MixtormatGradientPainter.h"
@@ -8,7 +8,9 @@ void SMixtormatGradientBox::Construct(const FArguments& InArgs)
 	StartColor = InArgs._StartColor;
 	EndColor = InArgs._EndColor;
 	Orientation = InArgs._Orientation;
-	CornerRadius = InArgs._CornerRadius;
+	CornerRadii = InArgs._CornerRadii.X >= 0.0f
+		? InArgs._CornerRadii
+		: FVector4f(InArgs._CornerRadius);
 	MultiplyStart = InArgs._MultiplyStart;
 	MultiplyMid = InArgs._MultiplyMid;
 	MultiplyEnd = InArgs._MultiplyEnd;
@@ -44,7 +46,7 @@ int32 SMixtormatGradientBox::OnPaint(
 		Size,
 		Orientation,
 		BaseStops,
-		CornerRadius);
+		CornerRadii);
 
 	int32 Layer = LayerId;
 
@@ -71,7 +73,7 @@ int32 SMixtormatGradientBox::OnPaint(
 		++Layer;
 		MixtormatGradient::Paint(
 			OutDrawElements, Layer, AllottedGeometry.ToPaintGeometry(),
-			Size, CrossAxis, MulStops, CornerRadius);
+			Size, CrossAxis, MulStops, CornerRadii);
 	}
 
 	return SCompoundWidget::OnPaint(

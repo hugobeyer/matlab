@@ -1,4 +1,4 @@
-#include "UI/Containers/SMixtormatInspectorWell.h"
+﻿#include "UI/Containers/SMixtormatInspectorWell.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -12,7 +12,7 @@ void SMixtormatInspectorWell::Construct(const FArguments& InArgs)
 	[
 		SNew(SBorder)
 		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InspectorWell")))
-		.Padding(FMargin(0.0f))
+		.Padding(FMargin(0.0f, MixtormatTokens::InspectorTopMargin, 0.0f, 0.0f))
 		[
 			SAssignNew(Stack, SVerticalBox)
 		]
@@ -23,8 +23,17 @@ void SMixtormatInspectorWell::AddGroup(const TSharedRef<SWidget>& Group)
 {
 	if (Stack.IsValid())
 	{
-		// No padding between groups: flush stacking is the whole point of the well.
-		Stack->AddSlot().AutoHeight()[Group];
+		// Groups used to stack flush, which is why the column read as one sheet. They are rounded
+		// blocks now, and a rounded corner needs something to be rounded against: this gap is
+		// where the darker surround shows through.
+		Stack->AddSlot()
+			.AutoHeight()
+			.Padding(
+				MixtormatTokens::GroupOuterGap,
+				0.0f,
+				MixtormatTokens::GroupOuterGap,
+				MixtormatTokens::GroupOuterGap)
+			[Group];
 	}
 }
 

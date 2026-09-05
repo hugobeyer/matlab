@@ -1,8 +1,11 @@
-#include "Widgets/SMixtormat.h"
+﻿#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Atoms/SMixtormatChip.h"
+#include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Atoms/SMixtormatToggle.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatTile.h"
 
@@ -31,23 +34,18 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpSource", "Source")));
 
 	// The peel's own seed mask. Kept as a bespoke row because it picks an asset, not a value.
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
-		SNew(SBox).HeightOverride(18.0f)
+		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[SNew(STextBlock).Text(LOCTEXT("PPeelMaskSlot", "Peel Mask"))]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SComboButton)
-				.ToolTipText(LOCTEXT("PPeelMaskSlotHint", "The mask that seeds this peel. Independent of the layer's mask children; unset falls back to the accumulated child mask."))
-				.ButtonContent()
-				[
-					SNew(SBox).MinDesiredWidth(120.0f)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
+				SNew(SMixtormatChip)
+				.ToolTip(LOCTEXT("PPeelMaskSlotHint", "The mask that seeds this peel. Independent of the layer's mask children; unset falls back to the accumulated child mask."))
+				.Text_Lambda([this]()
 						{
 							const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
 							if (!E)
@@ -64,8 +62,6 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 							}
 							return LOCTEXT("PPeelMaskNone", "Child Mask");
 						})
-					]
-				]
 				.OnGetMenuContent_Lambda([this]()
 				{
 					// A grid, not a list. Masks are images, and picking "Grunge_Fine" over
@@ -395,23 +391,18 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 			LOCTEXT("ChipHeightScaleHint", "Shapes the smooth height selection before it is mixed with cavity."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpMask", "Placement Mask")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
-		SNew(SBox).HeightOverride(18.0f)
+		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[SNew(STextBlock).Text(LOCTEXT("ChipMaskSlot", "Mask"))]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SComboButton)
-				.ToolTipText(LOCTEXT("ChipMaskSlotHint", "Mask used to place chipping. Unset uses the layer's accumulated mask children."))
-				.ButtonContent()
-				[
-					SNew(SBox).MinDesiredWidth(120.0f)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
+				SNew(SMixtormatChip)
+				.ToolTip(LOCTEXT("ChipMaskSlotHint", "Mask used to place chipping. Unset uses the layer's accumulated mask children."))
+				.Text_Lambda([this]()
 						{
 							const FMixtormatLayerEffect* C = GetSelectedChipping();
 							if (!C)
@@ -428,8 +419,6 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 							}
 							return LOCTEXT("ChipMaskNone", "Child Mask");
 						})
-					]
-				]
 				.OnGetMenuContent_Lambda([this]()
 				{
 					return SNew(SBox)
@@ -525,7 +514,7 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 	// Colour and roughness for the substrate a chip exposes. Same shader as the erosion shade
 	// pass, but fed the chip mask directly rather than a height difference.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpShade", "Exposed")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -1338,23 +1327,18 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroHeightScaleHint", "Shapes the fade target: low material becomes a crease and high material becomes a ridge."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpMask", "Placement Mask")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
-		SNew(SBox).HeightOverride(18.0f)
+		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[SNew(STextBlock).Text(LOCTEXT("EroMaskSlot", "Mask"))]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SComboButton)
-				.ToolTipText(LOCTEXT("EroMaskSlotHint", "Mask used to place erosion. Unset uses the layer's accumulated mask children."))
-				.ButtonContent()
-				[
-					SNew(SBox).MinDesiredWidth(120.0f)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
+				SNew(SMixtormatChip)
+				.ToolTip(LOCTEXT("EroMaskSlotHint", "Mask used to place erosion. Unset uses the layer's accumulated mask children."))
+				.Text_Lambda([this]()
 						{
 							const FMixtormatLayerEffect* E = GetSelectedErosion();
 							if (!E)
@@ -1371,8 +1355,6 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 							}
 							return LOCTEXT("EroMaskNone", "Child Mask");
 						})
-					]
-				]
 				.OnGetMenuContent_Lambda([this]()
 				{
 					return SNew(SBox)
@@ -1441,7 +1423,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	// What the carve exposes. Applied over the base colour and roughness the layer already
 	// composited, in proportion to how deeply each pixel was cut.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpShade", "Exposed")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -1627,7 +1609,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
 		.Visibility_Lambda([this]() { return GetSelectedLayerMask() ? EVisibility::Visible : EVisibility::Collapsed; });
 
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		SNew(STextBlock)
 		.Text_Lambda([this]()
@@ -1710,7 +1692,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	return SNew(SBox)
 		.Visibility_Lambda([this]()
 		{
-			return WorkingLayers.IsValidIndex(SelectedLayerIndex) && SelectedLayerIndex > 0
+			return WorkingLayers.IsValidIndex(SelectedLayerIndex)
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
@@ -1760,49 +1742,157 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildSurfaceMaskInfluenceControls()
+TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 {
-	const auto Layer = [this]() -> FMixtormatLayer*
+	const auto Layer = [this]()
 	{
-		return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+		return TFunction<FMixtormatLayer*()>([this]() -> FMixtormatLayer*
+		{
+			return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+		});
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	// Each influence pairs with its own invert, which is exactly the case paired rows exist for.
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+
+	// Labels lose the prefix their card now carries: "Roughness Bias" inside a card headed
+	// ROUGHNESS said roughness twice, and spent on the label the width the value needed.
+	TSharedRef<SVerticalBox> Transform = AddCard(Panel, LOCTEXT("CardTransform", "Transform"));
+	AddSliderRow(Transform, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("TilingLabel", "Tiling"), Layer(), &FMixtormatLayer::Tiling, 1.0, 8.0, 2.0, 0.1));
+	// UV placement on top of Tiling. Integer scale and no rotation, both because the compositor
+	// wraps every source read in a frac() and anything else seams. Offset and flip are safe.
+	AddSliderRow(Transform, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayer>(
+			LOCTEXT("UVScaleXLabel", "Scale X"), Layer(), &FMixtormatLayer::UVScaleX, 1.0, 16.0, 1,
+			LOCTEXT("UVScaleHint", "Per-axis multiplier on Tiling. Integer only: a fractional scale lands mid-cell at the UV wrap and seams.")),
+		MakeMemberSliderInt<FMixtormatLayer>(
+			LOCTEXT("UVScaleYLabel", "Scale Y"), Layer(), &FMixtormatLayer::UVScaleY, 1.0, 16.0, 1,
+			LOCTEXT("UVScaleHint", "Per-axis multiplier on Tiling. Integer only: a fractional scale lands mid-cell at the UV wrap and seams."))));
+	AddSliderRow(Transform, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
-			LOCTEXT("UnderlyingHeightInfluenceLabel", "Height"), Layer,
+			LOCTEXT("UVOffsetXLabel", "Offset X"), Layer(), &FMixtormatLayer::UVOffsetX, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("UVOffsetHint", "Shifts where the source is read from. Safe at any value: translating a periodic function leaves it periodic.")),
+		MakeMemberSlider<FMixtormatLayer>(
+			LOCTEXT("UVOffsetYLabel", "Offset Y"), Layer(), &FMixtormatLayer::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("UVOffsetHint", "Shifts where the source is read from. Safe at any value: translating a periodic function leaves it periodic."))));
+	// Rotate and the two flips share one row. They are the same decision -- which way round the
+	// source is read -- and as three rows they left most of the width empty while pushing the
+	// card taller than the values above it. The chip takes the compact width so the flips fit
+	// beside it rather than under it.
+	AddSliderRow(Transform, MixtormatRow::Make(
+		LOCTEXT("UVRotationLabel", "Rotate"),
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			SNew(SMixtormatChip)
+			.MinWidth(MixtormatTokens::RowFieldMinWidthCompact)
+			.Text_Lambda([this]()
+			{
+				return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					? MixtormatUI::UVRotationText(WorkingLayers[SelectedLayerIndex].Rotation)
+					: FText::GetEmpty();
+			})
+			.OnGetMenuContent(FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerRotationMenu))
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+		[
+			MakeMemberToggle<FMixtormatLayer>(
+				LOCTEXT("UVFlipULabel", "Flip U"), Layer(), &FMixtormatLayer::bFlipU)
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+		[
+			MakeMemberToggle<FMixtormatLayer>(
+				LOCTEXT("UVFlipVLabel", "Flip V"), Layer(), &FMixtormatLayer::bFlipV)
+		],
+		LOCTEXT("UVRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable.")));
+
+	TSharedRef<SVerticalBox> Roughness = AddCard(Panel, LOCTEXT("CardRoughness", "Roughness"));
+	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("RoughnessLabel", "Bias"), Layer(), &FMixtormatLayer::RoughnessBias, 0.0, 1.0, 0.5, 0.01));
+	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("RoughnessContrastLabel", "Contrast"), Layer(), &FMixtormatLayer::RoughnessContrast, 0.0, 2.0, 1.0, 0.01));
+	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
+
+	// One value, still carded. A lone row on the bare body would be the only thing in the group
+	// without a sheet under it, which reads as an oversight rather than as emphasis.
+	TSharedRef<SVerticalBox> Normal = AddCard(Panel, LOCTEXT("CardNormal", "Normal"));
+	AddSliderRow(Normal, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("NormalLabel", "Intensity"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 2.0, 1.0, 0.01));
+
+	AddGeneratedFeatureCards(Panel);
+	return Panel;
+}
+
+// No group header of its own. These are three runs of values inside Surface Adjustments, and a
+// second header bar over them only repeated the one already above -- with a chevron that hid
+// controls the panel exists to offer. The eye that previewed the feature mask moves to the card
+// it belongs to, at the end of that card's title line.
+void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
+{
+	const auto Layer = [this]()
+	{
+		return TFunction<FMixtormatLayer*()>([this]() -> FMixtormatLayer*
+		{
+			return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+		});
+	};
+
+	TSharedRef<SVerticalBox> Feature = AddCard(
+		Panel,
+		LOCTEXT("CardFeature", "Feature"),
+		MakeFeaturePreviewButton(
+			EMixtormatDebugPreviewMode::GeneratedFeature,
+			LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")));
+	AddSliderRow(Feature, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("FeatureInfluenceLabel", "Normal Influence"), Layer(), &FMixtormatLayer::FeatureInfluence, 0.0, 1.0, 0.0, 0.01));
+	AddSliderRow(Feature, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("FeatureBiasLabel", "Cavity to Convex"), Layer(), &FMixtormatLayer::FeatureBias, 0.0, 1.0, 0.0, 0.01));
+	AddSliderRow(Feature, MakeMemberToggle<FMixtormatLayer>(
+		LOCTEXT("InvertGeneratedFeatureLabel", "Invert"), Layer(), &FMixtormatLayer::bInvertFeature,
+		LOCTEXT("InvertGeneratedFeatureHint", "Apply one-minus to the selected cavity-to-convex feature mask")));
+
+	// Four short labels that are read against each other, so two across.
+	TSharedRef<SVerticalBox> Curvature = AddCard(Panel, LOCTEXT("CardCurvature", "Curvature"));
+	AddSliderRow(Curvature, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayer>(
+			LOCTEXT("CurvatureRadiusLabel", "Radius"), Layer(), &FMixtormatLayer::CurvatureRadius, 1.0, 32.0, 2),
+		MakeMemberSliderInt<FMixtormatLayer>(
+			LOCTEXT("CurvatureSmoothingLabel", "Smoothing"), Layer(), &FMixtormatLayer::CurvatureSmoothing, 1.0, 4.0, 2)));
+	AddSliderRow(Curvature, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayer>(
+			LOCTEXT("CurvatureStrengthLabel", "Strength"), Layer(), &FMixtormatLayer::CurvatureStrength, 0.0, 8.0, 1.0, 0.05),
+		MakeMemberSlider<FMixtormatLayer>(
+			LOCTEXT("CurvaturePowerLabel", "Power"), Layer(), &FMixtormatLayer::CurvaturePower, 0.001, 8.0, 1.0, 0.05)));
+
+	TSharedRef<SVerticalBox> SurfaceMask = AddCard(Panel, LOCTEXT("CardSurfaceMask", "Surface Mask"));
+	// Each influence pairs with its own invert, which is what paired rows exist for.
+	AddSliderRow(SurfaceMask, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayer>(
+			LOCTEXT("UnderlyingHeightInfluenceLabel", "Height"), Layer(),
 			&FMixtormatLayer::HeightFeatureInfluence, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("UnderlyingHeightInfluenceHint", "Mask this layer using the accumulated height underneath it")),
 		MakeMemberToggle<FMixtormatLayer>(
-			LOCTEXT("InvertUnderlyingHeightLabel", "Invert"), Layer,
+			LOCTEXT("InvertUnderlyingHeightLabel", "Invert"), Layer(),
 			&FMixtormatLayer::bInvertHeightFeature,
 			LOCTEXT("InvertUnderlyingHeightHint", "Favor lower underlying height instead of higher height"))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(SurfaceMask, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
-			LOCTEXT("UnderlyingAOInfluenceLabel", "AO"), Layer,
+			LOCTEXT("UnderlyingAOInfluenceLabel", "AO"), Layer(),
 			&FMixtormatLayer::AOFeatureInfluence, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("UnderlyingAOInfluenceHint", "Mask this layer using the accumulated AO underneath it")),
 		MakeMemberToggle<FMixtormatLayer>(
-			LOCTEXT("InvertUnderlyingAOLabel", "Invert"), Layer,
+			LOCTEXT("InvertUnderlyingAOLabel", "Invert"), Layer(),
 			&FMixtormatLayer::bInvertAOFeature,
 			LOCTEXT("InvertUnderlyingAOHint", "Favor occluded areas instead of exposed areas"))));
-
-	return SNew(SBox)
-		.Visibility_Lambda([this]()
-		{
-			return WorkingLayers.IsValidIndex(SelectedLayerIndex) && SelectedLayerIndex > 0
-				? EVisibility::Visible
-				: EVisibility::Collapsed;
-		})
-		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("SurfaceMaskInfluenceHeading", "SURFACE MASK INFLUENCE"))
-			.InitiallyExpanded(false)
-			[
-				Panel
-			]
-		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
@@ -1845,7 +1935,7 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildColorAdjustmentControls()
+TSharedRef<SWidget> SMixtormat::BuildColorAdjustmentCard()
 {
 	const auto Layer = [this]() -> FMixtormatLayer*
 	{
@@ -1862,18 +1952,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorAdjustmentControls()
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("ValueLabel", "Value"), Layer, &FMixtormatLayer::Value, 0.0, 2.0, 1.0, 0.01)));
 
-	return SNew(SBox)
-		.Visibility_Lambda([this]()
-		{
-			return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? EVisibility::Visible : EVisibility::Collapsed;
-		})
+	// No visibility lambda of its own any more: the Composition group it now sits inside
+	// already collapses when there is no selected layer.
+	return SNew(SMixtormatInspectorCard)
+		.Title(LOCTEXT("CardColor", "Color"))
 		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ColorAdjustmentsHeading", "COLOR ADJUSTMENTS"))
-			.InitiallyExpanded(false)
-			[
-				Panel
-			]
+			Panel
 		];
 }
 
@@ -1932,8 +2016,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SCheckBox)
-					.ToolTipText(LOCTEXT("EnableHeightBlend", "Enable Height Blend"))
+					SNew(SMixtormatToggle)
+					.ToolTip(LOCTEXT("EnableHeightBlend", "Enable Height Blend"))
 					.IsChecked_Lambda([this]()
 					{
 						return WorkingLayers.IsValidIndex(SelectedLayerIndex)
@@ -1974,11 +2058,11 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				})
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
-				SNew(SComboButton)
+				SNew(SMixtormatChip)
 				.Visibility(EVisibility::Collapsed)
-				.ToolTipText(LOCTEXT("HeightSourceTooltip", "Compatibility-only height source selector"))
+				.ToolTip(LOCTEXT("HeightSourceTooltip", "Compatibility-only height source selector"))
 				.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
 				{
 					TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
@@ -2024,12 +2108,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						EMixtormatHeightSource::Automatic,
 						LOCTEXT("LegacyAutomaticHeightSourceOption", "Automatic (Legacy)"),
 						LOCTEXT("LegacyAutomaticHeightSourceHint", "Compatibility mode: RAMH, then mask, then Constant Height"));
-					return SNew(SBox).WidthOverride(260.0f)[Menu];
+					return SNew(SBox).WidthOverride(MixtormatTokens::OptionMenuWidth)[Menu];
 				})
-				.ButtonContent()
-				[
-					SNew(STextBlock)
-					.Text_Lambda([this]()
+				.Text_Lambda([this]()
 					{
 						if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 						{
@@ -2044,14 +2125,13 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						case EMixtormatHeightSource::LayerHeight:
 						default: return LOCTEXT("LayerHeightSource", "Current Height · Layer Height");
 						}
-					})
-				]
+				})
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
-				SNew(SComboButton)
+				SNew(SMixtormatChip)
 				.Visibility(EVisibility::Collapsed)
-				.ToolTipText(LOCTEXT("HeightReferenceTooltip", "Compatibility-only height reference selector"))
+				.ToolTip(LOCTEXT("HeightReferenceTooltip", "Compatibility-only height reference selector"))
 				.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
 				{
 					TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
@@ -2091,12 +2171,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 							})
 						];
 					}
-					return SNew(SBox).WidthOverride(220.0f)[Menu];
+					return SNew(SBox).WidthOverride(MixtormatTokens::OptionMenuWidth)[Menu];
 				})
-				.ButtonContent()
-				[
-					SNew(STextBlock)
-					.Text_Lambda([this]()
+				.Text_Lambda([this]()
 					{
 						if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 						{
@@ -2110,26 +2187,25 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						return FText::Format(
 							LOCTEXT("SelectedHeightReference", "Compare Against · {0}"),
 							WorkingLayers[ReferenceIndex].DisplayName);
-					})
-				]
+				})
 			]
 
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				NumericRow(LOCTEXT("HeightMaskStrength", "Mask Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
 					NumericRow(LOCTEXT("HeightBlendThreshold", "Threshold"), &FMixtormatLayer::HeightThreshold, 0.0f, 1.0f, 0.01f, 0.5f)
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
 					NumericRow(LOCTEXT("HeightSoftness", "Softness"), &FMixtormatLayer::HeightRange, 0.0f, 1.0f, 0.005f, 0.1f)
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
 					NumericRow(LOCTEXT("BaseHeightBias", "Base Height Bias"), &FMixtormatLayer::HeightBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
@@ -2138,7 +2214,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					NumericRow(LOCTEXT("BlendHeightBias", "Blend Height Bias"), &FMixtormatLayer::HeightOffset, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SBox)
 				.Visibility(EVisibility::Collapsed)
@@ -2151,21 +2227,21 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				SNew(SBox).Visibility(EVisibility::Collapsed)
 				[NumericRow(LOCTEXT("HeightRange", "Blend Softness"), &FMixtormatLayer::HeightRange, 0.0001f, 1.0f, 0.005f, 0.1f)]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SBox)
 				.Visibility(EVisibility::Collapsed)
 				[
 					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightContrast", "Legacy Height Contrast"), &FMixtormatLayer::HeightContrast, 0.01f, 8.0f, 0.05f, 1.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightOffset", "Legacy Height Offset"), &FMixtormatLayer::HeightOffset, -1.0f, 1.0f, 0.01f, 0.0f)]
 					+ SVerticalBox::Slot().AutoHeight()
 					[NumericRow(LOCTEXT("HeightBias", "Legacy Comparison Bias"), &FMixtormatLayer::HeightBias, -1.0f, 1.0f, 0.01f, 0.0f)]
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SBox)
 				.Visibility_Lambda([this]()
@@ -2184,7 +2260,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					NumericRow(LOCTEXT("ConstantHeight", "Layer Height (No RAMH)"), &FMixtormatLayer::ConstantHeight, 0.0f, 1.0f, 0.01f, 0.5f)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SBox)
 				.Visibility(EVisibility::Collapsed)
@@ -2192,14 +2268,14 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					NumericRow(LOCTEXT("MaskHeightInfluence", "Mask Modulation (Compatibility)"), &FMixtormatLayer::MaskHeightInfluence, 0.0f, 1.0f, 0.01f, 0.0f)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 3.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SMixtormatInspectorGroup)
 				.Title(LOCTEXT("HeightContactBorders", "CONTACT BORDERS"))
 				.InitiallyExpanded(true)
 				[
 					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -2207,11 +2283,11 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						+ SHorizontalBox::Slot().AutoWidth()
 						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::ContactAO, LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMixtormatLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMixtormatLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 3.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -2219,9 +2295,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						+ SHorizontalBox::Slot().AutoWidth()
 						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::BorderNormal, LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
 					+ SVerticalBox::Slot().AutoHeight()
 					[NumericRow(LOCTEXT("HeightBorderNormalStrength", "Intensity"), &FMixtormatLayer::HeightBorderNormalStrength, 0.0f, 8.0f, 0.001f, 1.0f)]
@@ -2232,35 +2308,33 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				SNew(SHorizontalBox)
 				.Visibility_Lambda([this]()
 				{
-					return SelectedLayerIndex > 0
+					return WorkingLayers.IsValidIndex(SelectedLayerIndex)
 						? EVisibility::Visible
 						: EVisibility::Collapsed;
 				})
 				.ToolTipText(LOCTEXT(
 					"InvertBaseHeightHint",
 					"Invert the accumulated height from layers below before comparing it with this layer."))
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
-					SNew(STextBlock).Text(LOCTEXT("InvertBaseHeight", "Invert Base Height"))
-				]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SNew(SCheckBox)
-					.IsChecked_Lambda([this]()
-					{
-						return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-							&& WorkingLayers[SelectedLayerIndex].bInvertHeight
-							? ECheckBoxState::Checked
-							: ECheckBoxState::Unchecked;
-					})
-					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-					{
-						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-						{
-							WorkingLayers[SelectedLayerIndex].bInvertHeight = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-						}
-					})
+					MixtormatRow::MakeTrailing(
+						LOCTEXT("InvertBaseHeight", "Invert Base Height"),
+						MixtormatRow::MakeCheckbox(
+							TAttribute<ECheckBoxState>::CreateLambda([this]()
+							{
+								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+									&& WorkingLayers[SelectedLayerIndex].bInvertHeight
+									? ECheckBoxState::Checked
+									: ECheckBoxState::Unchecked;
+							}),
+							FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+							{
+								if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+								{
+									WorkingLayers[SelectedLayerIndex].bInvertHeight = State == ECheckBoxState::Checked;
+									RefreshLayeredPreview();
+								}
+							})))
 				]
 			]
 		]
@@ -2368,7 +2442,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 	AddFloatControl(Panel, LOCTEXT("PeelingDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0f, 1.0f, 0.005f, 0.02f);
 
 	TSharedRef<SVerticalBox> StainPanel = SNew(SVerticalBox);
-	StainPanel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+	StainPanel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -2423,9 +2497,9 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 
 	const auto MakeEnabledToggle = [this](const FText& ToolTip)
 	{
-		return SNew(SCheckBox)
-			.Style(&FAppStyle::Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("ToggleSwitch")))
-			.ToolTipText(ToolTip)
+		// Was FAppStyle's ToggleSwitch -- an engine control in the middle of a Mixtormat panel.
+		return SNew(SMixtormatToggle)
+			.ToolTip(ToolTip)
 			.IsChecked_Lambda([this]()
 			{
 				const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
@@ -2607,11 +2681,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
 						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
 						// meant the segment could say BLEND while the box said the layer was detail.
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 						[
-							SNew(SComboButton)
+							SNew(SMixtormatChip)
 							.Visibility_Lambda([this]() { return WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].ChannelMode == EMixtormatLayerChannelMode::NormalDetail ? EVisibility::Visible : EVisibility::Collapsed; })
-							.ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) return LOCTEXT("NormalSource", "Choose Normal Source..."); const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex]; return Layer.NormalSourceType == EMixtormatNormalSourceType::Texture ? FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName()) : LOCTEXT("SurfaceNormal", "Surface Normal"); })]
+							.Text_Lambda([this]() { if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) return LOCTEXT("NormalSource", "Choose Normal Source..."); const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex]; return Layer.NormalSourceType == EMixtormatNormalSourceType::Texture ? FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName()) : LOCTEXT("SurfaceNormal", "Surface Normal"); })
 							.OnGetMenuContent_Lambda([this]() { return BuildNormalSourceMenu(SelectedLayerIndex); })
 						]
 						+ SVerticalBox::Slot().AutoHeight()
@@ -2628,7 +2702,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.InitiallyExpanded(false)
 							[
 								SNew(SVerticalBox)
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								SNew(SHorizontalBox)
 								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -2652,7 +2726,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									]
 								]
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillRoughness", "Roughness"),
@@ -2662,7 +2736,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::Roughness, 0.0, 1.0, 0.5, 0.01)
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillIOR", "IOR"),
@@ -2672,7 +2746,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::IOR, 1.0, 3.0, 1.5, 0.01)
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillMetallic", "Metallic"),
@@ -2693,7 +2767,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							SNew(SMixtormatInspectorGroup)
 							.Visibility_Lambda([this]()
 							{
-								return SelectedLayerIndex > 0
+								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
 									? EVisibility::Visible
 									: EVisibility::Collapsed;
 							})
@@ -2733,7 +2807,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										RebuildLayerList();
 									})
 								]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("OpacityLabel", "Opacity"),
@@ -2743,7 +2817,12 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::Opacity, 0.0, 1.0, 1.0, 0.01)
 							]
-
+								+ SVerticalBox::Slot()
+								.AutoHeight()
+								.Padding(0.0f, MixtormatTokens::CardGap, 0.0f, 0.0f)
+								[
+									BuildColorAdjustmentCard()
+								]
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight()
@@ -2759,184 +2838,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Title(LOCTEXT("SurfaceAdjustmentsHeading", "SURFACE ADJUSTMENTS"))
 							.InitiallyExpanded(false)
 							[
-								SNew(SVerticalBox)
-																+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MakeMemberSlider<FMixtormatLayer>(
-										LOCTEXT("TilingLabel", "Tiling"), LayerForRows(), &FMixtormatLayer::Tiling, 1.0, 8.0, 2.0, 0.1)
-								]
-								// UV placement on top of Tiling. Integer scale and no rotation,
-								// both because the compositor wraps every source read in a frac()
-								// and anything else seams. Offset and flip are safe at any value.
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MixtormatRow::MakePair(
-										MakeMemberSliderInt<FMixtormatLayer>(
-											LOCTEXT("UVScaleXLabel", "Scale X"), LayerForRows(), &FMixtormatLayer::UVScaleX, 1.0, 16.0, 1,
-											LOCTEXT("UVScaleHint", "Per-axis multiplier on Tiling. Integer only: a fractional scale lands mid-cell at the UV wrap and seams.")),
-										MakeMemberSliderInt<FMixtormatLayer>(
-											LOCTEXT("UVScaleYLabel", "Scale Y"), LayerForRows(), &FMixtormatLayer::UVScaleY, 1.0, 16.0, 1,
-											LOCTEXT("UVScaleHint", "Per-axis multiplier on Tiling. Integer only: a fractional scale lands mid-cell at the UV wrap and seams.")))
-								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MixtormatRow::MakePair(
-										MakeMemberSlider<FMixtormatLayer>(
-											LOCTEXT("UVOffsetXLabel", "Offset X"), LayerForRows(), &FMixtormatLayer::UVOffsetX, -1.0, 1.0, 0.0, 0.001,
-											LOCTEXT("UVOffsetHint", "Shifts where the source is read from. Safe at any value: translating a periodic function leaves it periodic.")),
-										MakeMemberSlider<FMixtormatLayer>(
-											LOCTEXT("UVOffsetYLabel", "Offset Y"), LayerForRows(), &FMixtormatLayer::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
-											LOCTEXT("UVOffsetHint", "Shifts where the source is read from. Safe at any value: translating a periodic function leaves it periodic.")))
-								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MixtormatRow::Make(
-										LOCTEXT("UVRotationLabel", "Rotate"),
-										MixtormatRow::MakeChip(
-											TAttribute<FText>::CreateLambda([this]()
-											{
-												return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-													? MixtormatUI::UVRotationText(WorkingLayers[SelectedLayerIndex].Rotation)
-													: FText::GetEmpty();
-											}),
-											FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerRotationMenu)),
-										LOCTEXT("UVRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable."))
-								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MixtormatRow::Make(
-										LOCTEXT("UVFlipULabel", "Flip U"),
-										MixtormatRow::MakeCheckbox(
-											TAttribute<ECheckBoxState>::CreateLambda([this]()
-											{
-												const FMixtormatLayer* L = WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-												return L && L->bFlipU ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-											}),
-											FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-											{
-												if (FMixtormatLayer* L = WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr)
-												{
-													L->bFlipU = State == ECheckBoxState::Checked;
-													RefreshLayeredPreview();
-												}
-											})))
-								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-								[
-									MixtormatRow::Make(
-										LOCTEXT("UVFlipVLabel", "Flip V"),
-										MixtormatRow::MakeCheckbox(
-											TAttribute<ECheckBoxState>::CreateLambda([this]()
-											{
-												const FMixtormatLayer* L = WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-												return L && L->bFlipV ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-											}),
-											FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-											{
-												if (FMixtormatLayer* L = WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr)
-												{
-													L->bFlipV = State == ECheckBoxState::Checked;
-													RefreshLayeredPreview();
-												}
-											})))
-								]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("RoughnessLabel", "Roughness Bias"), LayerForRows(), &FMixtormatLayer::RoughnessBias, 0.0, 1.0, 0.5, 0.01)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("RoughnessContrastLabel", "Roughness Contrast"), LayerForRows(), &FMixtormatLayer::RoughnessContrast, 0.0, 2.0, 1.0, 0.01)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("RoughnessOffsetLabel", "Roughness Offset"), LayerForRows(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("NormalLabel", "Normal Intensity"), LayerForRows(), &FMixtormatLayer::NormalIntensity, 0.0, 2.0, 1.0, 0.01)
-							]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f, 0.0f)
-							[
-								SNew(SMixtormatInspectorGroup)
-								.Title(LOCTEXT("GeneratedFeaturesHeading", "NORMAL / HEIGHT / AO INFLUENCE"))
-								.InitiallyExpanded(false)
-								.HeaderAction(MakeFeaturePreviewButton(
-									EMixtormatDebugPreviewMode::GeneratedFeature,
-									LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")))
-								[
-									SNew(SVerticalBox)
-																		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-									[
-										MakeMemberSlider<FMixtormatLayer>(
-											LOCTEXT("FeatureInfluenceLabel", "Normal Influence"), LayerForRows(), &FMixtormatLayer::FeatureInfluence, 0.0, 1.0, 0.0, 0.01)
-									]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("FeatureBiasLabel", "Cavity to Convex"), LayerForRows(), &FMixtormatLayer::FeatureBias, 0.0, 1.0, 0.0, 0.01)
-							]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 3.0f)
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-								[SNew(STextBlock).Text(LOCTEXT("InvertGeneratedFeatureLabel", "Invert Feature"))]
-								+ SHorizontalBox::Slot().AutoWidth()
-								[
-									SNew(SCheckBox)
-									.ToolTipText(LOCTEXT("InvertGeneratedFeatureHint", "Apply one-minus to the selected cavity-to-convex feature mask"))
-									.IsChecked_Lambda([this]()
-									{
-										return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-											&& WorkingLayers[SelectedLayerIndex].bInvertFeature
-											? ECheckBoxState::Checked
-											: ECheckBoxState::Unchecked;
-									})
-									.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-									{
-										if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-										{
-											WorkingLayers[SelectedLayerIndex].bInvertFeature = State == ECheckBoxState::Checked;
-											RefreshLayeredPreview();
-										}
-									})
-								]
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSliderInt<FMixtormatLayer>(
-									LOCTEXT("CurvatureRadiusLabel", "Radius"), LayerForRows(), &FMixtormatLayer::CurvatureRadius, 1.0, 32.0, 2)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSliderInt<FMixtormatLayer>(
-									LOCTEXT("CurvatureSmoothingLabel", "Smoothing"), LayerForRows(), &FMixtormatLayer::CurvatureSmoothing, 1.0, 4.0, 2)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("CurvatureStrengthLabel", "Strength"), LayerForRows(), &FMixtormatLayer::CurvatureStrength, 0.0, 8.0, 1.0, 0.05)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("CurvaturePowerLabel", "Power"), LayerForRows(), &FMixtormatLayer::CurvaturePower, 0.001, 8.0, 1.0, 0.05)
-							]
-							+ SVerticalBox::Slot().AutoHeight()
-							[
-								BuildSurfaceMaskInfluenceControls()
-							]
-								]
-							]
+								BuildSurfaceAdjustmentCards()
 						]
-						]
-						+ SVerticalBox::Slot().AutoHeight()
-						[
-							BuildColorAdjustmentControls()
 						]
 						+ SVerticalBox::Slot().AutoHeight()
 						[

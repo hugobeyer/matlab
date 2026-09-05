@@ -1,4 +1,4 @@
-#include "UI/Containers/SMixtormatInspectorGroup.h"
+﻿#include "UI/Containers/SMixtormatInspectorGroup.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -76,10 +76,13 @@ FReply SMixtormatInspectorGroup::OnMouseButtonDown(const FGeometry&, const FPoin
 
 void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 {
+	bCollapsible = InArgs._Collapsible;
 	bExpanded = InArgs._InitiallyExpanded;
 
-	TSharedRef<SHorizontalBox> Header = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
+	TSharedRef<SHorizontalBox> Header = SNew(SHorizontalBox);
+	if (bCollapsible)
+	{
+		Header->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		.Padding(0.0f, 0.0f, MixtormatTokens::GroupHeaderItemGap, 0.0f)
@@ -95,15 +98,16 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				})
 				.ColorAndOpacity(FSlateColor(MixtormatPalette::HeaderText()))
 			]
-		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.0f)
-		.VAlign(VAlign_Center)
-		[
-			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
-			.Text(InArgs._Title)
 		];
+	}
+	Header->AddSlot()
+	.FillWidth(1.0f)
+	.VAlign(VAlign_Center)
+	[
+		SNew(STextBlock)
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+		.Text(InArgs._Title)
+	];
 
 	// State, when the group has any. Hidden rather than blank so it takes no width when empty.
 	if (InArgs._StateText.IsSet())
@@ -171,11 +175,20 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			// The bar itself is the click target and the hover surface. A button on top of it would
 			// light a button-shaped patch inside the header instead of the header.
 			SNew(SMixtormatGradientBox)
-			// Slate's vertical gradient stop order is inverted relative to the reference.
-			// Keep the blue-grey tint on the visual top and shade the header toward its base.
-			.StartColor(MixtormatPalette::PanelBottom())
-			.EndColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
+			// Start is the visual top: the painter maps stop 0 to Y 0. A comment here used to
+			// claim Slate inverted the order and the two colours were assigned accordingly,
+			// which is why the tint sat along the bottom edge and hover lit the wrong side.
+			//
+			// The bottom is the body's own colour, by token rather than by a matching hex, so
+			// the header dissolves into the body it opens and stays that way if either moves.
+			.StartColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
+			.EndColor(MixtormatPalette::GroupSurround())
 			.Orientation(Orient_Vertical)
+			.CornerRadii(FVector4f(
+				MixtormatTokens::CornerRadius,
+				MixtormatTokens::CornerRadius,
+				0.0f,
+				0.0f))
 			[
 				// The lip sits over the header's top edge and spans its full width, so it is
 				// outside the gutter padding -- inside it, the line would stop short of both ends
@@ -188,7 +201,14 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 					.HeightOverride(MixtormatTokens::HairlineThickness)
 					[
 						SNew(SImage)
-						.Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.HeaderHairline")))
+						.Image_Lambda([this]()
+						{
+							// Swapped rather than tinted: the glow is a different colour, not a
+							// brighter one, and a gradient cannot draw a one-pixel edge.
+							return FMixtormatStyle::Get().GetBrush(IsHovered()
+								? TEXT("Mixtormat.HeaderHairlineGlow")
+								: TEXT("Mixtormat.HeaderHairline"));
+						})
 					]
 				]
 				+ SOverlay::Slot()
@@ -196,20 +216,30 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 					// The whole bar is the click target. An invisible button rather than a mouse
 					// handler on the group, because the group also contains the body and a press
 					// down there must not collapse what the user is reaching into.
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(
-						TEXT("Mixtormat.InspectorHeaderButton")))
-					.ContentPadding(FMargin(0.0f))
-					.OnClicked(this, &SMixtormatInspectorGroup::ToggleExpanded)
-					[
+					bCollapsible
+					? StaticCastSharedRef<SWidget>(
+						SNew(SButton)
+						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(
+							TEXT("Mixtormat.InspectorHeaderButton")))
+						.ContentPadding(FMargin(0.0f))
+						.OnClicked(this, &SMixtormatInspectorGroup::ToggleExpanded)
+						[
+							SNew(SBox)
+							.HeightOverride(MixtormatTokens::GroupHeaderHeight)
+							.Padding(FMargin(MixtormatTokens::PanelGutter, 0.0f))
+							.VAlign(VAlign_Center)
+							[
+								Header
+							]
+						])
+					: StaticCastSharedRef<SWidget>(
 						SNew(SBox)
 						.HeightOverride(MixtormatTokens::GroupHeaderHeight)
 						.Padding(FMargin(MixtormatTokens::PanelGutter, 0.0f))
 						.VAlign(VAlign_Center)
 						[
 							Header
-						]
-					]
+						])
 				]
 			]
 		]
@@ -217,13 +247,13 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		.AutoHeight()
 		[
 			SNew(SBorder)
-			.Visibility_Lambda([this]() { return bExpanded ? EVisibility::Visible : EVisibility::Collapsed; })
+			.Visibility_Lambda([this]() { return IsExpanded() ? EVisibility::Visible : EVisibility::Collapsed; })
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.GroupBody")))
 			.Padding(FMargin(
 				MixtormatTokens::PanelGutter,
-				MixtormatTokens::GroupBodyTopInset,
+				MixtormatTokens::HeaderContentGap,
 				MixtormatTokens::PanelGutter,
-				MixtormatTokens::PanelGutter))
+				MixtormatTokens::HeaderContentGap))
 			[
 				InArgs._Content.Widget
 			]
@@ -234,7 +264,12 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatInspectorGroup::GetHeaderTint() const
 {
-	return IsHovered() ? MixtormatPalette::HeaderHover() : MixtormatPalette::HeaderTint();
+	// Hover carries the accent, at the tint's own weight, along the top edge only -- the bottom
+	// stop is the body colour either way, so the accent falls off within the bar instead of
+	// washing the whole header.
+	return IsHovered()
+		? MixtormatPalette::HeaderTintHoverAccent()
+		: MixtormatPalette::HeaderTint();
 }
 
 TSharedRef<SWidget> SMixtormatInspectorGroup::BuildDefaultContextMenu()

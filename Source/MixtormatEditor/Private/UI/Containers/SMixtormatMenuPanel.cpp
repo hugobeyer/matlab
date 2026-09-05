@@ -1,4 +1,4 @@
-#include "UI/Containers/SMixtormatMenuPanel.h"
+﻿#include "UI/Containers/SMixtormatMenuPanel.h"
 
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
@@ -68,7 +68,7 @@ int32 SMixtormatMenuPanel::OnPaint(
 		Size,
 		Orient_Vertical,
 		Ground,
-		MixtormatTokens::MenuCornerRadius);
+		FVector4f(MixtormatTokens::MenuCornerRadius));
 
 	return SCompoundWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);

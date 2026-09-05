@@ -1,4 +1,4 @@
-#include "Style/MixtormatStyle.h"
+﻿#include "Style/MixtormatStyle.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -265,6 +265,31 @@ void FMixtormatStyle::Initialize()
 		.SetPadding(FMargin(2.0f));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
+	// The inspector's boolean. Every image is empty on purpose: SMixtormatToggle paints the well
+	// and its fill as gradients, which no brush can express, so the checkbox underneath is left
+	// as pure behaviour -- hit testing, keyboard, the toggled callback -- with nothing of its own
+	// on screen. Zero padding for the same reason: the toggle sizes itself.
+	//
+	// Note this is a CheckBox, not a ToggleButton like the two above. Those are pressed-button
+	// chrome for the tab bar and the viewport overlay; this is a checkbox that happens not to
+	// draw a check.
+	FCheckBoxStyle InspectorToggle = FCheckBoxStyle()
+		.SetCheckBoxType(ESlateCheckBoxType::CheckBox)
+		.SetUncheckedImage(FSlateNoResource())
+		.SetUncheckedHoveredImage(FSlateNoResource())
+		.SetUncheckedPressedImage(FSlateNoResource())
+		.SetCheckedImage(FSlateNoResource())
+		.SetCheckedHoveredImage(FSlateNoResource())
+		.SetCheckedPressedImage(FSlateNoResource())
+		.SetUndeterminedImage(FSlateNoResource())
+		.SetUndeterminedHoveredImage(FSlateNoResource())
+		.SetUndeterminedPressedImage(FSlateNoResource())
+		.SetBackgroundImage(FSlateNoResource())
+		.SetBackgroundHoveredImage(FSlateNoResource())
+		.SetBackgroundPressedImage(FSlateNoResource())
+		.SetPadding(FMargin(0.0f));
+	StyleInstance->Set(TEXT("Mixtormat.Toggle"), InspectorToggle);
+
 	// The plain-button twin of the toggle above, for the combo and push buttons that share a rail
 	// with it.
 	//
@@ -379,8 +404,26 @@ void FMixtormatStyle::Initialize()
 			1.0f));
 	// Container shell and group body. The header's lip is painted by the gradient box, not
 	// brushed, so only these two are flat fills.
-	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::Shell()));
-	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Panel()));
+	//
+	// The well is a step darker than the panel shade so each group reads as a raised block with a
+	// margin around it. The body rounds its bottom two corners only -- the header rounds the top
+	// two -- so the pair stacks into one rounded rectangle with a flat seam where they meet,
+	// rather than two separately rounded slabs. No outline on either: the surround does the
+	// separating, which is what a border would otherwise be there to do twice.
+	// The body is the same colour as the well it sits in, on purpose: a group is no longer a
+	// sheet laid on the column, it is a region of the column with a header over it. What
+	// separates one run of rows from the next is the cards inside, which are lighter than both.
+	//
+	// The body is not rounded for the same reason -- it is the same colour as what is behind it,
+	// so a rounded corner there is a shape nobody can see. Only the header rounds, along its top
+	// edge, where it does have a colour of its own to be shaped.
+	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::GroupSurround()));
+	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::GroupSurround()));
+
+	// A card: one titled run of rows, raised off the body.
+	StyleInstance->Set(
+		TEXT("Mixtormat.Card"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::Panel(), MixtormatTokens::CornerRadius));
 
 	// Our own popovers, which are widgets rather than multibox rows: a label, the shortcut printed
 	// quietly beside it, and the section caption above a run of them.
@@ -416,6 +459,9 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(
 		TEXT("Mixtormat.HeaderHairline"),
 		new FSlateColorBrush(MixtormatPalette::Hairline()));
+	StyleInstance->Set(
+		TEXT("Mixtormat.HeaderHairlineGlow"),
+		new FSlateColorBrush(MixtormatPalette::HairlineGlow()));
 
 	// Layer stack: the enclosing edge, and the two type styles its rows use.
 	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));

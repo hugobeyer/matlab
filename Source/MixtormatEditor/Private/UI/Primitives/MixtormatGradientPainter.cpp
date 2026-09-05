@@ -1,4 +1,4 @@
-#include "UI/Primitives/MixtormatGradientPainter.h"
+﻿#include "UI/Primitives/MixtormatGradientPainter.h"
 
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatDesignTokens.h"
@@ -56,7 +56,7 @@ namespace MixtormatGradient
 		const FVector2f& Size,
 		const EOrientation CssOrientation,
 		const TArrayView<const FStop> Stops,
-		const float CornerRadius)
+		const FVector4f& CornerRadii)
 	{
 		if (Stops.Num() < 2)
 		{
@@ -90,6 +90,6 @@ namespace MixtormatGradient
 			Sampled,
 			SlateAxis(CssOrientation),
 			ESlateDrawEffect::None,
-			FVector4f(CornerRadius));
+			CornerRadii);
 	}
 }
