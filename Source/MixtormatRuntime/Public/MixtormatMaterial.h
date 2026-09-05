@@ -743,13 +743,6 @@ enum class EMixtormatCraquelureMode : uint8
 	Propagated UMETA(DisplayName = "Propagated")
 };
 
-UENUM(BlueprintType)
-enum class EMixtormatCraquelureOutputMode : uint8
-{
-	Mask UMETA(DisplayName = "Mask"),
-	HeightNormal UMETA(DisplayName = "Height + Normal")
-};
-
 // Craquelure. A generated crack network used as a mask or carved into height and normals.
 //
 // Its own node rather than a signal on the generated mask. Everything that node produces is
@@ -768,9 +761,6 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
 	EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure")
-	EMixtormatCraquelureOutputMode OutputMode = EMixtormatCraquelureOutputMode::Mask;
 
 	// Cells across one UV repeat. Any integer tiles, because the lattice wraps on it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "1"))
@@ -815,7 +805,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// How far a crack can reach, in pixels at a 1024 reference. Scaled by the render resolution
 	// so a preview and an export grow the same network rather than the same pixel count; the
 	// dispatch count scales with it, so this is the control that costs.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "512"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "1024"))
 	int32 Iterations = 48;
 
 	// Nuclei are placed one per cell of this lattice, jittered inside it and admitted by
@@ -880,15 +870,44 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Propagated", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 CollisionLimit = 2;
 
-	// Height + Normal output carves the generated signal after the layer is composited.
+	// Relief. Three independent weights on one generated network, rather than a mode that picks
+	// between them: a crack usually wants to mask, carve and catch light at once, and an
+	// either/or made that impossible to author. Weight below is the mask weight; these two are
+	// the height and normal weights, and each is its own off switch at zero.
+	//
+	// Carved after the layer composites, from the distance field rather than from the shaped
+	// mask. Both modes produce that field -- the lattice knows its cell-boundary distance
+	// analytically, the propagated mode floods one out of its grown skeleton.
+	// Both default on. Every craquelure node already saved carries these values, because the
+	// output mode that used to gate them never dispatched anything -- so defaulting them to zero
+	// would have made a new node behave differently from an old one for no reason a user could
+	// see. A crack that does not cut is also the wrong default for the thing it is named after.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0"))
 	float ReliefDepth = 0.04f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0"))
 	float ReliefNormalStrength = 8.0f;
 
-	// The same shaping tail every mask-producing node has. In relief mode Weight shapes how much
-	// of the generated crack signal reaches both height and normal.
+	// Half-width of the groove, in cell units like Width. Independent of Width because the two
+	// describe different things: Width is the hairline the mask draws, this is the mouth of the
+	// depression around it, and a crack that reads as a fine dark line usually sits in a much
+	// wider dish.
+	//
+	// Defaulted at twice Width rather than higher. Past roughly half a cell the grooves of
+	// neighbouring cracks overlap everywhere and the surface sinks by a constant instead of
+	// showing cracks -- the profile is still correct, there is simply nothing left above it to
+	// read against.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.002"))
+	float ReliefWidth = 0.08f;
+
+	// Shape of the groove wall. 1 is the straight cone the distance field gives directly, which
+	// is the constant-slope fracture case; below 1 it flares to a dish, above it draws in to a
+	// narrow V with a broad flat shoulder.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float ReliefProfile = 1.0f;
+
+	// The same shaping tail every mask-producing node has. Weight is the mask weight only; the
+	// height and normal weights live in Relief above.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
 

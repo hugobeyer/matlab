@@ -128,7 +128,6 @@ private:
 	TSharedRef<SWidget> BuildCraquelureControls();
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
 	TSharedRef<SWidget> BuildCraquelureModeMenu();
-	TSharedRef<SWidget> BuildCraquelureOutputModeMenu();
 	TSharedRef<SWidget> BuildMaskRotationMenu();
 	TSharedRef<SWidget> BuildLayerRotationMenu();
 

@@ -1,27 +1,68 @@
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
 
+// Craquelure relief. Turns the crack distance field into a groove in the composited height and a
+// matching perturbation of the composited normal.
+//
+// A post-layer filter, run where erosion and chipping run. The mask children that build the crack
+// network run before the layer composites, so carving there would be painted straight back over.
+//
+// The profile is a cone on the distance to the crack, not a scaling of the crack mask. Distance
+// from a source set is the solution of the eikonal equation |grad d| = 1, so a cone raised on it
+// has constant slope everywhere and meets the surface at a fixed angle -- which is what a
+// fracture groove is, and what the mask could never give: the mask has already been through
+// contrast, offset, a blend mode and a weight lerp by the time anything downstream sees it, and
+// the distance that shaped it is gone.
+
+// (distance to the nearest crack in pixels, crack id).
+Texture2D<float4> CrackDistance;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
-Texture2D<float> CrackMask;
+
 RWTexture2D<float> OutputHeight;
 RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
-float Depth;
-float NormalStrength;
+
+// Both are weights on the same generated signal: how far the groove cuts, and how strongly the
+// normal follows it. Either at zero switches off that half without touching the other.
+float HeightWeight;
+float NormalWeight;
+
+// Half-width of the groove in pixels. The mouth of the cone, not the hairline the mask draws.
+float ReliefWidthPixels;
+
+float Variation;
+float Profile;
 
 int CraqReliefWrap(int X, int Size)
 {
-	X = X % max(Size, 1);
-	return X < 0 ? X + Size : X;
+	const int R = X % max(Size, 1);
+	return R < 0 ? R + Size : R;
 }
 
-float CraqReliefMask(int X, int Y)
+int2 CraqReliefWrapPixel(int2 P)
 {
-	return CrackMask.Load(int3(
-		CraqReliefWrap(X, OutputSize.x),
-		CraqReliefWrap(Y, OutputSize.y),
-		0));
+	return int2(CraqReliefWrap(P.x, OutputSize.x), CraqReliefWrap(P.y, OutputSize.y));
+}
+
+// How far the crack cuts the height at one pixel, on 0..1. Zero at the mouth of the groove and
+// one along the crack itself.
+//
+// Profile shapes the wall between a straight V and a rounded U without changing the depth at the
+// centre or the width at the mouth: the linear cone is the eikonal solution, and the exponent
+// bends it either side of that. At 1 the slope is constant, which is the fracture case.
+float CraqReliefOffset(int2 P)
+{
+	const float2 Nearby = CrackDistance.Load(int3(CraqReliefWrapPixel(P), 0)).xy;
+	const float Width = max(ReliefWidthPixels, 0.5f);
+	const float T = saturate(Nearby.x / Width);
+
+	// Per-crack variation, keyed on the same lineage id the mask varies on, so a crack that reads
+	// as faint in the mask is also shallow in the height instead of the two disagreeing.
+	const float Vary = lerp(1.0f, MixtormatCellRandom01(asuint(Nearby.y)), saturate(Variation));
+
+	return pow(saturate(1.0f - T), max(Profile, 0.05f)) * Vary;
 }
 
 [numthreads(8, 8, 1)]
@@ -33,33 +74,49 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const int2 P = int2(DispatchThreadId.xy);
+
+	const float Source = SourceHeight.Load(int3(P, 0));
+	const float Offset = CraqReliefOffset(P);
+
+	// Subtracted, then held at or below the surface. The minimum is an invariant rather than a
+	// second effect: a crack is material that has parted, so this filter may only ever lower the
+	// height. Nothing in the profile is negative today, so the two forms agree -- the guard is
+	// what keeps them agreeing if a signed term is ever added to it.
+	OutputHeight[P] = saturate(min(Source, Source - HeightWeight * Offset));
+
+	// Sobel over the same offset field the height was carved from, so the normal and the
+	// displacement describe one surface. Scaled by the height weight as well as its own, because
+	// a groove that is not cut has no walls to catch light.
 	const int Xm = P.x - 1;
 	const int Xp = P.x + 1;
 	const int Ym = P.y - 1;
 	const int Yp = P.y + 1;
 
-	const float Cmm = CraqReliefMask(Xm, Ym);
-	const float C0m = CraqReliefMask(P.x, Ym);
-	const float Cpm = CraqReliefMask(Xp, Ym);
-	const float Cm0 = CraqReliefMask(Xm, P.y);
-	const float Cp0 = CraqReliefMask(Xp, P.y);
-	const float Cmp = CraqReliefMask(Xm, Yp);
-	const float C0p = CraqReliefMask(P.x, Yp);
-	const float Cpp = CraqReliefMask(Xp, Yp);
-	const float Crack = saturate(CraqReliefMask(P.x, P.y));
+	const float Omm = CraqReliefOffset(int2(Xm, Ym));
+	const float O0m = CraqReliefOffset(int2(P.x, Ym));
+	const float Opm = CraqReliefOffset(int2(Xp, Ym));
+	const float Om0 = CraqReliefOffset(int2(Xm, P.y));
+	const float Op0 = CraqReliefOffset(int2(Xp, P.y));
+	const float Omp = CraqReliefOffset(int2(Xm, Yp));
+	const float O0p = CraqReliefOffset(int2(P.x, Yp));
+	const float Opp = CraqReliefOffset(int2(Xp, Yp));
 
-	const float SafeDepth = max(Depth, 0.0f);
-	OutputHeight[P] = saturate(SourceHeight.Load(int3(P, 0)) - Crack * SafeDepth);
-
+	// The same 1/8 normalisation the erosion and chipping normal passes use, so Normal means the
+	// same thing across all three.
+	const float Scale = NormalWeight / 8.0f;
 	const float2 Gradient = float2(
-		(Cpm + 2.0f * Cp0 + Cpp) - (Cmm + 2.0f * Cm0 + Cmp),
-		(Cmp + 2.0f * C0p + Cpp) - (Cmm + 2.0f * Cm0 + Cpm))
-		* (SafeDepth * NormalStrength / 8.0f);
+		(Opm + 2.0f * Op0 + Opp) - (Omm + 2.0f * Om0 + Omp),
+		(Omp + 2.0f * O0p + Opp) - (Omm + 2.0f * O0m + Opm)) * Scale;
+
 	const float3 CrackNormal = normalize(float3(Gradient, 1.0f));
+
 	const float4 EncodedBase = PreviousNormal.Load(int3(P, 0));
 	const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);
+
+	// Reoriented normal mapping, matching the erosion and chipping normal passes.
 	const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
 	const float3 U = CrackNormal * float3(-1.0f, -1.0f, 1.0f);
 	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+
 	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
 }

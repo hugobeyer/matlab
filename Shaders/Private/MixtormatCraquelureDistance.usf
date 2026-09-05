@@ -1,0 +1,129 @@
+#include "/Engine/Public/Platform.ush"
+
+// Distance to the nearest crack, by jump flooding.
+//
+// Both consumers want the same thing and neither can get it from the mask. The mask has already
+// been through MixtormatShapeMask, the blend mode and the weight lerp by the time anything
+// downstream sees it, so the distance is gone; and relief needs it at a radius the resolve pass
+// could never afford. Resolve used to brute force a box of radius ceil(WidthPixels) clamped to 8,
+// which is both quadratic in the width and a hard cap on it -- a groove wider than 8 pixels was
+// simply not expressible. Jump flooding costs log2(N) passes for any width at all.
+//
+// This is the eikonal solve the relief profile is built from: distance from a source set is the
+// viscosity solution of |grad d| = 1, and jump flooding converges to it for a set of isolated
+// seeds. A cone raised on that distance is the surface whose slope is constant everywhere, which
+// is what a fracture groove is.
+//
+// Every distance here is toroidal, because the network tiles. A record stores its seed in
+// absolute pixel coordinates and the wrap is taken at comparison time; storing unwrapped
+// representatives instead would need a different representative per reader.
+
+Texture2D<float4> CrackState;
+Texture2D<float4> PreviousRecord;
+
+RWTexture2D<float4> OutputRecord;
+RWTexture2D<float4> OutputDistance;
+
+int2 OutputSize;
+int StepSize;
+
+int CraqDistWrap(int X, int Size)
+{
+	const int R = X % max(Size, 1);
+	return R < 0 ? R + Size : R;
+}
+
+int2 CraqDistWrapPixel(int2 P)
+{
+	return int2(CraqDistWrap(P.x, OutputSize.x), CraqDistWrap(P.y, OutputSize.y));
+}
+
+// Shortest separation on the torus. Both axes wrap independently, so each one takes whichever of
+// the two ways round is shorter.
+float CraqToroidalDistance(int2 A, int2 B)
+{
+	float2 D = abs(float2(A - B));
+	D = min(D, float2(OutputSize) - D);
+	return length(D);
+}
+
+// w is 1 on a record that has found a seed and 0 on one that has not. An empty record is never
+// compared on distance, so it needs no sentinel.
+[numthreads(8, 8, 1)]
+void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float4 State = CrackState.Load(int3(Pixel, 0));
+	const bool bCracked = State.x > 0.5f;
+
+	OutputRecord[Pixel] = bCracked
+		? float4((float)Pixel.x, (float)Pixel.y, State.z, 1.0f)
+		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+[numthreads(8, 8, 1)]
+void StepCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+
+	float4 Best = PreviousRecord.Load(int3(Pixel, 0));
+	float BestDistance = Best.w > 0.5f
+		? CraqToroidalDistance(Pixel, int2((int)Best.x, (int)Best.y))
+		: 1.0e20f;
+
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Q = CraqDistWrapPixel(Pixel + int2(x, y) * StepSize);
+			const float4 Candidate = PreviousRecord.Load(int3(Q, 0));
+			if (Candidate.w <= 0.5f)
+			{
+				continue;
+			}
+
+			const float D = CraqToroidalDistance(Pixel, int2((int)Candidate.x, (int)Candidate.y));
+			if (D < BestDistance)
+			{
+				BestDistance = D;
+				Best = Candidate;
+			}
+		}
+	}
+
+	OutputRecord[Pixel] = Best;
+}
+
+// Record to (distance in pixels, crack id). A pixel that never found a seed -- no nuclei at all,
+// or a growth threshold that starved every one of them -- reports a distance past any width the
+// consumers can ask for, so it reads as uncracked rather than as adjacent to a crack at the
+// origin.
+[numthreads(8, 8, 1)]
+void ResolveDistanceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float4 Record = PreviousRecord.Load(int3(Pixel, 0));
+
+	const float Distance = Record.w > 0.5f
+		? CraqToroidalDistance(Pixel, int2((int)Record.x, (int)Record.y))
+		: (float)(OutputSize.x + OutputSize.y);
+
+	OutputDistance[Pixel] = float4(Distance, Record.z, 0.0f, 0.0f);
+}

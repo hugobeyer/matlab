@@ -503,39 +503,6 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureModeMenu()
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildCraquelureOutputModeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatCraquelureOutputMode Modes[] = {
-		EMixtormatCraquelureOutputMode::Mask,
-		EMixtormatCraquelureOutputMode::HeightNormal
-	};
-	for (const EMixtormatCraquelureOutputMode Mode : Modes)
-	{
-		const FText Label = Mode == EMixtormatCraquelureOutputMode::HeightNormal
-			? LOCTEXT("CraqOutputHeightNormal", "Height + Normal")
-			: LOCTEXT("CraqOutputMask", "Mask");
-		Menu.Item(
-			Label,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
-			{
-				if (FMixtormatCraquelure* C = GetSelectedCraquelure())
-				{
-					C->OutputMode = Mode;
-					RefreshLayeredPreview();
-					RebuildLayerList();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
-			{
-				const FMixtormatCraquelure* C = GetSelectedCraquelure();
-				return C && C->OutputMode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 {
 	const auto Craq = [this]() { return GetSelectedCraquelure(); };
@@ -566,12 +533,6 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		return C && C->Mode == EMixtormatCraquelureMode::Propagated
 			? EVisibility::Visible : EVisibility::Collapsed;
 	});
-	const auto ReliefOnly = TAttribute<EVisibility>::CreateLambda([this]()
-	{
-		const FMixtormatCraquelure* C = GetSelectedCraquelure();
-		return C && C->OutputMode == EMixtormatCraquelureOutputMode::HeightNormal
-			? EVisibility::Visible : EVisibility::Collapsed;
-	});
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
@@ -588,18 +549,6 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureModeMenu)),
 		LOCTEXT("CraqModeHint", "Lattice measures distance to a Voronoi cell wall. Propagated grows cracks through stress, toughness, and curl-flow fields.")));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("CraqOutput", "Output"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatCraquelure* C = GetSelectedCraquelure();
-				return C && C->OutputMode == EMixtormatCraquelureOutputMode::HeightNormal
-					? LOCTEXT("CraqOutputHeightNormal", "Height + Normal")
-					: LOCTEXT("CraqOutputMask", "Mask");
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureOutputModeMenu)),
-		LOCTEXT("CraqOutputHint", "Mask combines the cracks with the layer mask. Height + Normal carves the composited surface without masking its color.")));
 
 	TSharedRef<SVerticalBox> LatticeGroup = SNew(SVerticalBox);
 	LatticeGroup->SetVisibility(LatticeOnly);
@@ -627,8 +576,8 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		Slider(LOCTEXT("CraqSeedJitter", "Seed Jitter"), &FMixtormatCraquelure::SeedJitter, 0.0, 1.0, 0.85, 0.01,
 			LOCTEXT("CraqSeedJitterHint", "0 puts every nucleus at its cell centre, which the grown network still shows as a grid. 1 hides the seeding lattice entirely.")),
 		MakeMemberSliderInt<FMixtormatCraquelure>(
-			LOCTEXT("CraqIterations", "Reach"), Craq, &FMixtormatCraquelure::Iterations, 1.0, 512.0, 48,
-			LOCTEXT("CraqIterationsHint", "How far a crack can travel, in pixels at a 1024 reference and scaled by the render resolution so a preview and an export grow the same network. One dispatch per step, so this is the control that costs."))));
+			LOCTEXT("CraqIterations", "Reach"), Craq, &FMixtormatCraquelure::Iterations, 1.0, 1024.0, 48,
+			LOCTEXT("CraqIterationsHint", "How far a crack can travel, in pixels at a 1024 reference and scaled by the render resolution so a preview and an export grow the same network. One dispatch per step and by some way the most expensive node here, so this is the control that costs -- at the top of the range it is around a thousand full-resolution passes."))));
 
 	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpField", "Material")));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
@@ -665,14 +614,22 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	Panel->AddSlot().AutoHeight()[GrowGroup];
 
+	// Always shown, rather than behind an output mode. A crack normally wants to mask, cut and
+	// catch light at the same time, and the three weights say how much of each -- Height and
+	// Normal here, Weight in Blend below. Each is its own off switch at zero, so nothing has to
+	// be chosen between.
 	TSharedRef<SVerticalBox> ReliefGroup = SNew(SVerticalBox);
-	ReliefGroup->SetVisibility(ReliefOnly);
 	AddSliderRow(ReliefGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpRelief", "Relief")));
 	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
-		Slider(LOCTEXT("CraqReliefDepth", "Depth"), &FMixtormatCraquelure::ReliefDepth, 0.0, 0.5, 0.04, 0.001,
-			LOCTEXT("CraqReliefDepthHint", "Depth removed from the composited height along the crack signal.")),
+		Slider(LOCTEXT("CraqReliefDepth", "Height"), &FMixtormatCraquelure::ReliefDepth, 0.0, 0.5, 0.04, 0.001,
+			LOCTEXT("CraqReliefDepthHint", "How deep the crack cuts into the composited height, at the crack itself. The groove is a cone on the distance to the crack -- the solution of the eikonal equation, so its wall has one constant slope -- and it is subtracted from the surface under a minimum, so this filter can only ever lower the height. 0 leaves the height untouched and skips the pass.")),
 		Slider(LOCTEXT("CraqReliefNormal", "Normal"), &FMixtormatCraquelure::ReliefNormalStrength, 0.0, 64.0, 8.0, 0.05,
-			LOCTEXT("CraqReliefNormalHint", "Normal strength derived from the carved crack edges."))));
+			LOCTEXT("CraqReliefNormalHint", "Gain on the normal derived from the groove wall. Same meaning and normalisation as the erosion and chipping controls. Independent of Height, so a crack can catch light without displacing, or displace without being relit."))));
+	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqReliefWidth", "Groove"), &FMixtormatCraquelure::ReliefWidth, 0.002, 1.0, 0.08, 0.001,
+			LOCTEXT("CraqReliefWidthHint", "Half-width of the groove, in cell units like Width. Separate from Width because they describe different things: Width is the hairline the mask draws, this is the mouth of the dish around it, and a fine dark crack usually sits in a much wider depression. Past about half a cell the dishes of neighbouring cracks overlap everywhere and the surface just sinks by a constant, so this is the one relief control that stops reading as cracks if you push it.")),
+		Slider(LOCTEXT("CraqReliefProfile", "Profile"), &FMixtormatCraquelure::ReliefProfile, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("CraqReliefProfileHint", "Shape of the groove wall. 1 is the straight cone the distance field gives directly, which is the constant-slope fracture case; below 1 flares it to a dish, above draws it into a narrow V with a broad flat shoulder."))));
 	Panel->AddSlot().AutoHeight()[ReliefGroup];
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(

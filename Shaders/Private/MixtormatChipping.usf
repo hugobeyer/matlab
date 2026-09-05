@@ -15,6 +15,11 @@ Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousState;
 Texture2D<float> LayerMask;
 
+// (min, max) of SourceHeight over the whole image, folded down to 1x1 by MixtormatReduceMinMax.
+// Every brick/grout decision is taken on the height remapped through this rather than on the
+// composited value itself. See NormalizedHeight.
+Texture2D<float4> HeightRange;
+
 // Normal pass only: the finished chip mask, and the normal the layer composited.
 Texture2D<float> ChipsTexture;
 Texture2D<float4> PreviousNormal;
@@ -113,9 +118,33 @@ float BrickMask(float h)
 	return SmoothRange(GroutLevel, GroutLevel + max(GroutSoftness, 1.0e-5f), h);
 }
 
+// The composited height on 0..1 against its own extent, not against the range of the format.
+//
+// This is what makes Grout Level mean anything. The height target is cleared to 0.5 and a layer
+// usually occupies only a slice of the range, so an absolute threshold lands wherever the
+// content happens to sit -- and at the default it lands on exactly 0.5, where BrickMask is
+// identically zero. Every quantity below is multiplied by that mask, so the whole filter came
+// out bit-identical to its input: no edge, no seed, no carve. Remapping first ties the control
+// to the content instead of to the clear value.
+//
+// A degenerate range collapses to zero rather than dividing by it, which leaves a flat layer
+// entirely grout and so uncarved. That is the right answer for a surface with no relief to chip.
+float HeightSpan()
+{
+	const float2 Range = HeightRange.Load(int3(0, 0, 0)).xy;
+	return Range.y - Range.x;
+}
+
+float NormalizedHeight(float h)
+{
+	const float2 Range = HeightRange.Load(int3(0, 0, 0)).xy;
+	const float Span = Range.y - Range.x;
+	return Span > 1.0e-4f ? saturate((h - Range.x) / Span) : 0.0f;
+}
+
 float LoadHeight(int2 p)
 {
-	return SourceHeight.Load(int3(WrapPixel(p), 0));
+	return NormalizedHeight(SourceHeight.Load(int3(WrapPixel(p), 0)));
 }
 
 [numthreads(8, 8, 1)]
@@ -205,8 +234,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	//
 	// Widening the height chain cannot fix this. The quantisation happened upstream, in the
 	// target the composite writes.
+	//
+	// The floor tracks the normalisation rather than sitting at a constant. Remapping the height
+	// onto its own extent divides the quantisation step by the span as well, so a layer occupying
+	// a fifth of the range carries five times the mask noise a full-range one does -- enough to
+	// clear a fixed 5e-3 and put a random unit vector back in every flat interior. A half ULP
+	// near mid height is about 5e-4; BrickMask amplifies noise by 1/GroutSoftness; the 3.5 keeps
+	// the same margin over it the constant had, and the constant stays as the lower bound so a
+	// full-range layer behaves exactly as before.
+	const float MaskNoise =
+		5.0e-4f / (max(HeightSpan(), 1.0e-4f) * max(GroutSoftness, 1.0e-5f));
+	const float GradientFloor = max(5.0e-3f, 3.5f * MaskNoise);
+
 	const float2 MaskGradient2 = float2((br - bl) * 0.5f, (bu - bd) * 0.5f);
-	const float2 Inward = length(MaskGradient2) > 5.0e-3f
+	const float2 Inward = length(MaskGradient2) > GradientFloor
 		? normalize(MaskGradient2)
 		: float2(0.0f, 0.0f);
 
@@ -310,7 +351,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				}
 
 				const int2 q = WrapPixel(Pixel + int2(xx, yy));
-				const float nb = BrickMask(SourceHeight.Load(int3(q, 0)));
+				const float nb = BrickMask(NormalizedHeight(SourceHeight.Load(int3(q, 0))));
 				if (nb < 0.15f)
 				{
 					continue;
@@ -402,7 +443,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float Core = max(Old.x, SmoothRange(0.025f, 0.30f, Tip)) * bm;
 
-	const float DepthMod = Core * (0.55f + n1 * 0.45f) * (0.70f + MaskEdgeTerm * 0.30f);
+	// The mask-edge bias is anchored at 1 rather than at 0.70, so Mask Edge 0 -- the default --
+	// costs nothing. It used to multiply every chip by 0.70 whether or not the control was in
+	// use, which is 30% off the depth of a filter already reported as too faint to see, and it
+	// meant the neutral setting of an opt-in control was not neutral.
+	const float DepthEdgeBias = 1.0f - MaskEdge * 0.30f + MaskEdgeTerm * 0.30f;
+
+	const float DepthMod = Core * (0.55f + n1 * 0.45f) * DepthEdgeBias;
 
 	// A live tip keeps the direction it just chose; a dead pixel keeps what it had, so a chip
 	// that stalls behind a slower neighbour can still be inherited from later. On the seed pass

@@ -1,0 +1,86 @@
+#include "/Engine/Public/Platform.ush"
+
+// Min/max reduction over a scalar texture, down to a 1x1 (min, max) pair.
+//
+// Chipping needs the actual range of the height it is about to threshold, not the nominal 0..1
+// of the target format. The composited height is cleared to 0.5 and a real layer usually only
+// occupies a slice of the range, so a Grout Level authored in absolute units lands wherever the
+// content happens to sit -- at the default it lands exactly on the clear value, where the brick
+// mask is identically zero and nothing seeds. Normalising against this pair makes Grout Level a
+// position inside the range that is actually there.
+//
+// Read back on the GPU rather than passed as a shader parameter: the reduction is part of the
+// same graph as the effect that consumes it, and a CPU readback would stall the frame.
+//
+// A tree rather than atomics. Each pass folds a MIXTORMAT_REDUCE_FACTOR square into one texel,
+// so an output of any size converges in ceil(log_factor(N)) passes -- four at 4K. The
+// alternative, InterlockedMin on a uint-encoded float, needs a buffer rather than a texture and
+// orders its writes arbitrarily, which is a lot of machinery for a fold that is this shallow.
+#define MIXTORMAT_REDUCE_FACTOR 16
+
+// Bound on every pass, read on the first. The chain cannot start from SourceRange because the
+// height is R16F and single channel, while every later pass reads the pair this one writes.
+Texture2D<float> SourceHeight;
+Texture2D<float4> SourceRange;
+
+RWTexture2D<float4> OutputRange;
+
+int2 InputSize;
+int2 OutputSize;
+int FirstPass;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Base = int2(DispatchThreadId.xy) * MIXTORMAT_REDUCE_FACTOR;
+
+	// Seeded from the block's own first texel rather than from +/-FLT_MAX. The block is clamped
+	// to the input, so it always contains at least this one sample, and seeding from a real value
+	// means a partial block at the right or bottom edge cannot leave a sentinel in the result.
+	const int2 Origin = min(Base, InputSize - 1);
+	float MinValue;
+	float MaxValue;
+	if (FirstPass != 0)
+	{
+		MinValue = SourceHeight.Load(int3(Origin, 0));
+		MaxValue = MinValue;
+	}
+	else
+	{
+		const float2 Seed = SourceRange.Load(int3(Origin, 0)).xy;
+		MinValue = Seed.x;
+		MaxValue = Seed.y;
+	}
+
+	for (int y = 0; y < MIXTORMAT_REDUCE_FACTOR; ++y)
+	{
+		for (int x = 0; x < MIXTORMAT_REDUCE_FACTOR; ++x)
+		{
+			const int2 P = Base + int2(x, y);
+			if (any(P >= InputSize))
+			{
+				continue;
+			}
+
+			if (FirstPass != 0)
+			{
+				const float H = SourceHeight.Load(int3(P, 0));
+				MinValue = min(MinValue, H);
+				MaxValue = max(MaxValue, H);
+			}
+			else
+			{
+				const float2 R = SourceRange.Load(int3(P, 0)).xy;
+				MinValue = min(MinValue, R.x);
+				MaxValue = max(MaxValue, R.y);
+			}
+		}
+	}
+
+	OutputRange[DispatchThreadId.xy] = float4(MinValue, MaxValue, 0.0f, 0.0f);
+}

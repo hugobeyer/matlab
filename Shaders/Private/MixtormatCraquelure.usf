@@ -18,6 +18,11 @@ Texture2D<float> PreviousMask;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputMask;
 
+// (distance to the nearest crack in pixels, crack id), the same pair the propagated mode's jump
+// flood produces. Relief reads one field and never learns which mode built it: the lattice knows
+// its own boundary distance analytically, so it needs no flood to say the same thing.
+RWTexture2D<float4> OutputDistance;
+
 int2 OutputSize;
 uint Initialize;
 
@@ -88,6 +93,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// takes one value. It still changes at junctions, where the nearest wall becomes a
 	// different pair; cracks do change character where they meet.
 	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.EdgeId), saturate(Variation));
+
+	// EdgeDistance is in cell units, because the UV handed to the lattice was scaled by the cell
+	// count. One cell spans OutputSize.x / Cells pixels, so this is the same quantity the flood
+	// reports and Width means the same fraction of a cell in both.
+	const float DistancePixels =
+		Cell.EdgeDistance * (float)OutputSize.x / (float)Cells;
+	//
+	// The id is carried as a small whole number rather than as the hash reinterpreted through
+	// asfloat. A raw hash lands on NaN and denormal bit patterns about as often as not, and those
+	// are the two things a float32 texture write is allowed not to hand back unchanged. Held
+	// under 2^24 it is exact, which is the same reason the propagated mode's lineage id is.
+	OutputDistance[DispatchThreadId.xy] =
+		float4(DistancePixels, (float)(Cell.EdgeId % 16777213u), 0.0f, 0.0f);
 
 	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
 	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
