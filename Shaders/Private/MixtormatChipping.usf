@@ -14,6 +14,7 @@
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousState;
 Texture2D<float> LayerMask;
+Texture2D<float> PlacementMaskTexture;
 
 // (min, max) of SourceHeight over the whole image, folded down to 1x1 by MixtormatReduceMinMax.
 // Every brick/grout decision is taken on the height remapped through this rather than on the
@@ -42,6 +43,15 @@ float ChipSize;
 float ChipDepth;
 float Irregularity;
 float MaskEdge;
+float CavityInfluence;
+float CavityOffset;
+float CavityRemapMin;
+float CavityRemapMax;
+float HeightInfluence;
+float HeightScale;
+uint UsePlacementMask;
+float PlacementMaskTiling;
+uint InvertMask;
 uint Seed;
 
 int WrapI(int x, int m)
@@ -63,6 +73,15 @@ float SmoothF(float x)
 float SmoothRange(float a, float b, float x)
 {
 	return SmoothF(saturate((x - a) / max(b - a, 1.0e-5f)));
+}
+
+float RemapSmooth(float Lo, float Hi, float Value)
+{
+	const float Range = Hi - Lo;
+	const float T = abs(Range) > 1.0e-6f
+		? saturate((Value - Lo) / Range)
+		: (Value >= Lo ? 1.0f : 0.0f);
+	return SmoothF(T);
 }
 
 uint HashU(uint x)
@@ -145,6 +164,17 @@ float NormalizedHeight(float h)
 float LoadHeight(int2 p)
 {
 	return NormalizedHeight(SourceHeight.Load(int3(WrapPixel(p), 0)));
+}
+
+float SamplePlacementMask(float2 UV)
+{
+	float Value = UsePlacementMask != 0
+		? PlacementMaskTexture.SampleLevel(
+			LinearWrapSampler,
+			frac(UV * max(PlacementMaskTiling, 1.0f)),
+			0.0f)
+		: LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return InvertMask != 0 ? 1.0f - Value : Value;
 }
 
 [numthreads(8, 8, 1)]
@@ -257,29 +287,37 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 HeightGradient = float2((hr - hl) * 0.5f, (hu - hd) * 0.5f);
 	const float2 Downhill = SafeNormalize(-HeightGradient);
 
-	// The layer mask stands in for the prototype's material-id input: its gradient marks the
-	// boundary of where this material was painted, which is the same idea as a boundary between
-	// two painted materials. Inert when the layer has no mask, because a uniform mask has no
-	// gradient. Scaled by MaskEdge so the port's behaviour is opt-in rather than assumed.
-	// Placement. Chips are seeded only where this layer's own mask is, which is the same
-	// handle Grade uses and gives chipping the whole mask vocabulary -- painted, generated,
-	// curvature, craquelure -- as a placement control. A layer with no mask has a white one,
-	// so this is the identity there and the effect is unmasked as before.
-	const float MaskValue = saturate(LayerMask.Load(int3(Pixel, 0)));
+	// Placement uses Chipping's own mask when configured, otherwise the layer's accumulated
+	// child mask. Its value gates seeds and its gradient optionally biases them toward the mask
+	// boundary. A layer with no mask has a white child mask, so the fallback remains unmasked.
+	const float MaskValue = saturate(SamplePlacementMask(UV));
 
 	float MaskEdgeTerm = 0.0f;
 	if (MaskEdge > 0.0f)
 	{
-		const float ml = LayerMask.Load(int3(WrapPixel(L), 0));
-		const float mr = LayerMask.Load(int3(WrapPixel(R), 0));
-		const float md = LayerMask.Load(int3(WrapPixel(D), 0));
-		const float mu = LayerMask.Load(int3(WrapPixel(U), 0));
+		const float2 Texel = 1.0f / Resf;
+		const float ml = SamplePlacementMask(UV - float2(Texel.x, 0.0f));
+		const float mr = SamplePlacementMask(UV + float2(Texel.x, 0.0f));
+		const float md = SamplePlacementMask(UV - float2(0.0f, Texel.y));
+		const float mu = SamplePlacementMask(UV + float2(0.0f, Texel.y));
 		const float2 MaskGradient = float2((mr - ml) * 0.5f, (mu - md) * 0.5f);
 		MaskEdgeTerm = saturate(length(MaskGradient) * 5.0f) * MaskEdge;
 	}
 
+	// Pick raised material with the same smooth height split used for propagation, then mix
+	// cavity into it. Requiring a hard brick/grout edge made smooth height fields produce no
+	// seeds at all; cavity now concentrates chips in recesses while the height term keeps them
+	// confined to material above the grout transition.
 	const float Laplacian = (hl + hr + hd + hu) * 0.25f - hc;
-	const float Convex = saturate(-Laplacian * 12.0f);
+	const float Cavity = RemapSmooth(
+		CavityRemapMin,
+		CavityRemapMax,
+		Laplacian + CavityOffset);
+	const float CavityGate = saturate(lerp(1.0f, Cavity, CavityInfluence));
+	const float HeightWeight = pow(saturate(bm), max(HeightScale, 1.0e-3f));
+	const float HeightGate = saturate(lerp(1.0f, HeightWeight, HeightInfluence));
+	const float HeightCavityPick = bm * HeightGate * CavityGate;
+	const float SeedRegion = max(Edge, HeightCavityPick);
 
 	const float n0 = TileNoise(UV, 24, Seed * 0x12345u + 11u);
 	const float n1 = TileNoise(UV, 53, Seed * 0x23456u + 29u);
@@ -322,8 +360,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float SeedWeak = 0.72f + n1 * 0.18f + MaskEdgeTerm * 0.10f;
 
 	const float SeedTip = bSeedPass
-		? Edge * SmoothRange(Threshold, 1.0f, n0)
-			* (0.45f + MaskEdgeTerm * 0.35f + Convex * 0.20f)
+		? SeedRegion * SmoothRange(Threshold, 1.0f, n0)
+			* (0.45f + MaskEdgeTerm * 0.35f + Cavity * 0.20f)
 			* SeedWeak * MaskValue
 		: 0.0f;
 

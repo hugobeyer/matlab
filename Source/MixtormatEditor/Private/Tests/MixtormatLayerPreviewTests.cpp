@@ -30,18 +30,25 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		TArray<FColor> Pixels;
-		FReadSurfaceDataFlags ReadFlags(RCM_UNorm);
-		ReadFlags.SetLinearToGamma(false);
-		const bool bRead = Target->GameThread_GetRenderTargetResource()->ReadPixels(
-			Pixels,
-			ReadFlags);
+		// Linear, then quantised here. ReadPixels asks the RHI for a colour conversion it does
+		// not have for every format this test is pointed at: the height target is R16F, and D3D12
+		// answers that with an outright "Unsupported surface format!" assert rather than a failed
+		// read -- so the test did not fail, it took the editor down with it. It only ever passed
+		// under a null RHI, which is what its flags ask for and not what a full automation run
+		// gives it.
+		TArray<FLinearColor> Pixels;
+		const bool bRead =
+			Target->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(Pixels);
 		TestTrue(Label, bRead && !Pixels.IsEmpty());
 		if (!bRead || Pixels.IsEmpty())
 		{
 			return false;
 		}
-		OutPixel = Pixels[0];
+
+		// The assertions below are all written against 0-255 channels, so the conversion happens
+		// here rather than at every call site. No gamma: the targets hold linear data and the
+		// old read explicitly asked for none.
+		OutPixel = Pixels[0].ToFColor(false);
 		return true;
 	};
 
@@ -267,6 +274,18 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("A disabled layer preserves the previous result"), Pixel.R > Pixel.B);
 	}
+
+	FMixtormatLayerChild& DisabledGradeChild = Layers[1].Children.AddDefaulted_GetRef();
+	DisabledGradeChild.Type = EMixtormatLayerChildType::Effect;
+	DisabledGradeChild.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	DisabledGradeChild.Effect.GradeBrightness = 0.0f;
+	TestTrue(TEXT("Compositor accepts a disabled layer with a filter"), Compositor.RequestCompose(Layers));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Disabled-filter output can be read"), Pixel))
+	{
+		TestTrue(TEXT("A disabled layer skips its post-composite filters"), Pixel.R > Pixel.G && Pixel.R > Pixel.B);
+	}
+	Layers[1].Children.Reset();
 
 	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
 		nullptr,

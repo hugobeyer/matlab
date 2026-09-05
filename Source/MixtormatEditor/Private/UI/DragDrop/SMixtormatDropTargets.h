@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Where a drag can be released, and what happens when it is.
 //
@@ -71,7 +71,7 @@ public:
 
 	virtual void OnDragEnter(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
-		if (TargetLayerIndex > 0)
+		if (TargetLayerIndex != INDEX_NONE)
 		{
 			if (const TSharedPtr<FMixtormatMaskDragDropOp> Operation = Event.GetOperationAs<FMixtormatMaskDragDropOp>())
 			{
@@ -98,10 +98,14 @@ public:
 	{
 		if (DragDropEvent.GetOperationAs<FMixtormatMaskDragDropOp>().IsValid())
 		{
-			return TargetLayerIndex > 0 ? FReply::Handled() : FReply::Unhandled();
+			return TargetLayerIndex != INDEX_NONE ? FReply::Handled() : FReply::Unhandled();
 		}
 		const TSharedPtr<FMixtormatLayerDragDropOp> Operation = DragDropEvent.GetOperationAs<FMixtormatLayerDragDropOp>();
-		return Operation.IsValid() && Operation->SourceLayerIndex > 0 && TargetLayerIndex > 0
+		// Any layer may be dragged to any position, the bottom included. These tests are
+		// validity only -- both indices default to INDEX_NONE -- and no longer refuse row 0.
+		return Operation.IsValid()
+			&& Operation->SourceLayerIndex != INDEX_NONE
+			&& TargetLayerIndex != INDEX_NONE
 			&& Operation->SourceLayerIndex != TargetLayerIndex ? FReply::Handled() : FReply::Unhandled();
 	}
 
@@ -113,15 +117,15 @@ public:
 		{
 			bMaskDragOver = false;
 			MaskOperation->ResetToDefaultToolTip();
-			return TargetLayerIndex > 0 && OnMaskDropped.IsBound()
+			return TargetLayerIndex != INDEX_NONE && OnMaskDropped.IsBound()
 				? OnMaskDropped.Execute(TargetLayerIndex, MaskOperation->MaskPath)
 				: FReply::Unhandled();
 		}
 
 		const TSharedPtr<FMixtormatLayerDragDropOp> Operation = DragDropEvent.GetOperationAs<FMixtormatLayerDragDropOp>();
 		if (!Operation.IsValid()
-			|| Operation->SourceLayerIndex <= 0
-			|| TargetLayerIndex <= 0
+			|| Operation->SourceLayerIndex == INDEX_NONE
+			|| TargetLayerIndex == INDEX_NONE
 			|| !OnLayerDropped.IsBound())
 		{
 			return FReply::Unhandled();

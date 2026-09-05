@@ -129,6 +129,10 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.Craquelure.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::ColorId)
+		{
+			return ForMaskBlendMode(Child.ColorId.BlendMode);
+		}
 		return ForMaskBlendMode(Child.Mask.BlendMode);
 	}
 
@@ -139,6 +143,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Effect:    return LOCTEXT("ChildKindEffect", "FX");
 		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GEN");
 		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
+		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

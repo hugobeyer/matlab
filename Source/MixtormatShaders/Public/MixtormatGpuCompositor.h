@@ -7,6 +7,12 @@
 class UMaterialInstanceDynamic;
 struct FMixtormatLayer;
 
+// Cache of generated networks that survive between composites. Defined in the compositor
+// translation unit and only ever touched on the render thread; the compositor holds it so that
+// the lifetime is tied to the panel rather than to the module, and hands a shared reference to
+// each render command so a composite still in flight keeps it alive.
+struct FMixtormatNetworkCache;
+
 enum class EMixtormatDebugPreviewMode : uint8
 {
 	None,
@@ -27,8 +33,8 @@ struct FMixtormatDebugPreviewSettings
 class MIXTORMATSHADERS_API FMixtormatGpuCompositor final
 {
 public:
-	FMixtormatGpuCompositor() = default;
-	~FMixtormatGpuCompositor() = default;
+	FMixtormatGpuCompositor();
+	~FMixtormatGpuCompositor();
 
 	bool Initialize(FIntPoint InResolution = FIntPoint(1024, 1024));
 	bool RequestCompose(
@@ -56,6 +62,12 @@ private:
 	};
 
 	FTargetSet Targets[2];
+
+	// Craquelure networks keyed on the parameters that shape them. Growing one is by a wide
+	// margin the most expensive thing in the graph, and almost nothing a user touches while
+	// tuning actually changes it, so it is kept rather than regrown every frame of a drag.
+	TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;
+
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	int32 PublishedTargetIndex = 0;
 	bool bInitialized = false;

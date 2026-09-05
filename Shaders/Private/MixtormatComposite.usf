@@ -1,4 +1,4 @@
-#include "/Engine/Public/Platform.ush"
+﻿#include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
 
@@ -24,7 +24,6 @@ RWTexture2D<float> OutputHeight;
 RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
-uint Initialize;
 uint Enabled;
 uint HasMask;
 uint HasEffects;
@@ -274,18 +273,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
 	float2 LayerUV = LayerSourceUV(UV);
 
-	float4 PreviousBaseColor = Initialize != 0
-		? float4(0.0f, 0.0f, 0.0f, 1.0f)
-		: PreviousBC.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float3 PreviousNormal = Initialize != 0
-		? float3(0.0f, 0.0f, 1.0f)
-		: DecodeNormal(PreviousN.SampleLevel(LinearWrapSampler, UV, 0.0f), 1.0f, 0);
-	float4 PreviousPacked = Initialize != 0
-		? float4(0.5f, 1.0f, 0.0f, 0.04f)
-		: PreviousRAM.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float PreviousHeightValue = Initialize != 0
-		? 0.5f
-		: PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	// Read unconditionally. These used to fall back to inline constants when Initialize was
+	// set, which is how the bottom layer seeded the stack; the compositor now clears the
+	// substrate into these buffers before the first layer runs, so there is always something
+	// real beneath and every layer reads it the same way.
+	float4 PreviousBaseColor = PreviousBC.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float3 PreviousNormal =
+		DecodeNormal(PreviousN.SampleLevel(LinearWrapSampler, UV, 0.0f), 1.0f, 0);
+	float4 PreviousPacked = PreviousRAM.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float PreviousHeightValue = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
 	float4 SampledBaseColor = HasSurface != 0
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
@@ -328,7 +324,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float GeneratedFeatureMask = 1.0f;
 	float FeatureWeight = 1.0f;
-	if ((FeatureInfluence > 0.0f || (WriteDebug != 0 && DebugMode == 1)) && Initialize == 0)
+	if (FeatureInfluence > 0.0f || (WriteDebug != 0 && DebugMode == 1))
 	{
 		float Curvature;
 		float Cavity;
@@ -364,7 +360,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* lerp(1.0f, saturate(UnderlyingAOMask), saturate(AOFeatureInfluence));
 	uint UseHeightBlendMask = HeightBlendEnabled != 0
 		&& DirectHeightComparison != 0
-		&& Initialize == 0
 		&& NormalOnly == 0;
 	float PlacementCoverage = UseHeightBlendMask != 0 ? 1.0f : PlacementMask;
 	float ExistingCoverage = Enabled != 0
@@ -372,7 +367,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: 0.0f;
 	float HeightWeight = 1.0f;
 	if ((HeightBlendEnabled != 0 || (WriteDebug != 0 && DebugMode == 2))
-		&& Initialize == 0
 		&& NormalOnly == 0)
 	{
 		HeightWeight = SampleHeightBlendField(UV, HeightRange);
@@ -421,7 +415,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	ResultAO *= lerp(1.0f, EffectAO, EffectVisibility * saturate(AOInfluence));
 
 	float HeightDetailVisibility = HeightBlendEnabled != 0
-		&& Initialize == 0
 		&& NormalOnly == 0
 		&& Enabled != 0
 		? saturate(Opacity * SurfaceMaskWeight * HeightInfluence)
@@ -470,11 +463,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (Enabled != 0 && NormalOnly == 0)
 	{
 		float LayerResultHeight = PreviousHeightValue;
-		if (Initialize != 0)
-		{
-			LayerResultHeight = IncomingHeight;
-		}
-		else if (UseHeightBlendMask != 0)
+		if (UseHeightBlendMask != 0)
 		{
 			float BaseHeight = InvertHeight != 0
 				? 1.0f - PreviousHeightValue

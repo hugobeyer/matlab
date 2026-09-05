@@ -517,6 +517,10 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		{
 			Child.Craquelure.bEnabled = false;
 		}
+		else if (Child.Type == EMixtormatLayerChildType::ColorId)
+		{
+			Child.ColorId.bEnabled = false;
+		}
 		else
 		{
 			Child.Mask.bEnabled = false;

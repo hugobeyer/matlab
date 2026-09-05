@@ -1,4 +1,4 @@
-#include "Widgets/SMixtormat.h"
+﻿#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
@@ -83,7 +83,7 @@ FReply SMixtormat::DuplicateSelectedLayer()
 
 FReply SMixtormat::DeleteSelectedLayer()
 {
-	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex) || SelectedLayerIndex == 0)
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		return FReply::Handled();
 	}
@@ -92,7 +92,12 @@ FReply SMixtormat::DeleteSelectedLayer()
 	const int32 DeletedLayerIndex = SelectedLayerIndex;
 	WorkingLayers.RemoveAt(DeletedLayerIndex);
 	MixtormatUI::RemapHeightReferencesAfterDelete(WorkingLayers, DeletedLayerIndex);
-	SelectedLayerIndex = FMath::Clamp(DeletedLayerIndex - 1, 0, WorkingLayers.Num() - 1);
+	// The bottom layer is deletable now, so the stack can empty. Clamping into an empty array
+	// would land on -1 by arithmetic accident; say INDEX_NONE outright instead. The compositor
+	// already renders an empty stack as the bare substrate.
+	SelectedLayerIndex = WorkingLayers.IsEmpty()
+		? INDEX_NONE
+		: FMath::Clamp(DeletedLayerIndex - 1, 0, WorkingLayers.Num() - 1);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
 	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
@@ -105,14 +110,15 @@ FReply SMixtormat::DeleteSelectedLayer()
 
 FReply SMixtormat::MoveSelectedLayer(const int32 Direction)
 {
-	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex) || SelectedLayerIndex == 0)
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		return FReply::Handled();
 	}
 
+	// Clamped to 0, not 1. Position 0 is an ordinary position a layer may be moved into.
 	const int32 TargetIndex = FMath::Clamp(
 		SelectedLayerIndex + Direction,
-		1,
+		0,
 		WorkingLayers.Num() - 1);
 	if (TargetIndex != SelectedLayerIndex)
 	{
@@ -133,8 +139,6 @@ FReply SMixtormat::HandleLayerDropped(
 {
 	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
 		|| !WorkingLayers.IsValidIndex(TargetLayerIndex)
-		|| SourceLayerIndex <= 0
-		|| TargetLayerIndex <= 0
 		|| SourceLayerIndex == TargetLayerIndex)
 	{
 		return FReply::Unhandled();
@@ -263,7 +267,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 	if (Layer.Children.IsValidIndex(SelectedMaskIndex)
 		&& (Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Mask
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generated
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Craquelure))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Craquelure
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ColorId))
 	{
 		return SelectedMaskIndex;
 	}
@@ -287,7 +292,7 @@ FText SMixtormat::GetSelectedBadgeText() const
 
 void SMixtormat::SetWorkingLayerEnabled(const ECheckBoxState CheckState, const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex) || LayerIndex == 0)
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		return;
 	}
@@ -375,14 +380,16 @@ void SMixtormat::SyncSelectedLayerControls()
 					? LOCTEXT("SelectedGeneratedMaps", "GENERATED MASK")
 					: Child.Type == EMixtormatLayerChildType::Craquelure
 						? LOCTEXT("SelectedCraquelureMaps", "CRAQUELURE")
-						: LOCTEXT("SelectedMaskMaps", "MASK"));
+						: Child.Type == EMixtormatLayerChildType::ColorId
+							? LOCTEXT("SelectedColorIdMaps", "COLOR ID")
+							: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
 }
 
 FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPath MaskPath)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex) || LayerIndex == 0)
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		return FReply::Handled();
 	}
@@ -473,7 +480,7 @@ FReply SMixtormat::ReplaceMaskInLayer(
 
 FReply SMixtormat::ClearLayerMask(const int32 LayerIndex)
 {
-	if (WorkingLayers.IsValidIndex(LayerIndex) && LayerIndex > 0)
+	if (WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 		if (SelectedLayerIndex == LayerIndex)
@@ -616,7 +623,7 @@ FReply SMixtormat::ToggleLayerExpanded(const int32 LayerIndex)
 
 FReply SMixtormat::AssignNormalTexture(const int32 LayerIndex, const FSoftObjectPath NormalPath)
 {
-	if (WorkingLayers.IsValidIndex(LayerIndex) && LayerIndex > 0 && Cast<UTexture2D>(NormalPath.TryLoad()))
+	if (WorkingLayers.IsValidIndex(LayerIndex) && Cast<UTexture2D>(NormalPath.TryLoad()))
 	{
 		FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 		Layer.ChannelMode = EMixtormatLayerChannelMode::NormalDetail;
@@ -631,7 +638,7 @@ FReply SMixtormat::AssignNormalTexture(const int32 LayerIndex, const FSoftObject
 
 FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPath EffectPath)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex) || LayerIndex == 0)
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		return FReply::Handled();
 	}
@@ -1182,10 +1189,6 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 	// What the layer is made of, which is a different question from what it is called. A surface
 	// name when there is one, because that is the answer a user is scanning for; the layer's kind
 	// only when there is no asset behind it to name.
-	if (LayerIndex == 0)
-	{
-		return LOCTEXT("BaseLayerSource", "BASE");
-	}
 	if (Layer.Type == EMixtormatLayerType::Fill)
 	{
 		return LOCTEXT("FillLayerSource", "FILL");
@@ -1239,6 +1242,16 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	if (Child.Type == EMixtormatLayerChildType::Craquelure)
 	{
 		return LOCTEXT("CraquelureChildName", "Craquelure");
+	}
+	if (Child.Type == EMixtormatLayerChildType::ColorId)
+	{
+		// Named after its map rather than after itself, the way a painted mask row is: two id
+		// nodes on one layer are two selections out of the same map, and "Color ID" twice says
+		// nothing about which is which.
+		const FSoftObjectPath IdPath = Child.ColorId.IdTexture.ToSoftObjectPath();
+		return IdPath.IsNull()
+			? LOCTEXT("ColorIdChildName", "Color ID")
+			: FText::FromString(IdPath.GetAssetName());
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
@@ -1324,8 +1337,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 {
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FText DisplayName = Layer.DisplayName;
-	// The base layer is the material itself: it cannot be hidden, moved or dragged onto.
-	const bool bIsBase = LayerIndex == 0;
 	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
 
 	TSharedRef<SMixtormatLayerGroup> Group = SNew(SMixtormatLayerGroup)
@@ -1340,7 +1351,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.Name(DisplayName)
 			.Source(GetLayerSourceText(LayerIndex))
 			.Badge(MixtormatLayerBadges::ForLayer(Layer))
-			.bCanDisable(!bIsBase)
+			.bCanDisable(true)
 			.Thumbnail()[BuildLayerThumbnail(LayerIndex)]
 			.bEnabled_Lambda([this, LayerIndex]()
 			{
@@ -1369,10 +1380,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.OnGetContextMenu(this, &SMixtormat::BuildLayerContextMenu, LayerIndex)
 			.OnDragDetected_Lambda([this, LayerIndex, DisplayName](const FGeometry&, const FPointerEvent&)
 			{
-				return LayerIndex > 0
-					? FReply::Handled().BeginDragDrop(
-						FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName))
-					: FReply::Unhandled();
+				return FReply::Handled().BeginDragDrop(
+					FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName));
 			})
 		];
 
@@ -1381,7 +1390,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
 		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
-			|| Child.Type == EMixtormatLayerChildType::Craquelure;
+			|| Child.Type == EMixtormatLayerChildType::Craquelure
+			|| Child.Type == EMixtormatLayerChildType::ColorId;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Group->AddChild(
@@ -1469,6 +1479,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::Effect:    return Child.Effect.bEnabled;
 	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
 	case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
+	case EMixtormatLayerChildType::ColorId:   return Child.ColorId.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -1490,7 +1501,6 @@ FReply SMixtormat::ToggleLayerSolo(const int32 LayerIndex)
 TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
-	const bool bIsBase = LayerIndex == 0;
 
 	// Creation lives here and nowhere else. The stack used to carry an "Add Child" button at the
 	// bottom of every expanded layer, which cost a row of height per layer to say something the
@@ -1508,6 +1518,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGeneratedMaskToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddColorIdChild", "Color ID Mask"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddColorIdMaskToLayer(LayerIndex); }));
 
 	Menu.Separator();
 
@@ -1534,7 +1548,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 				WorkingLayers[LayerIndex].bEnabled ? ECheckBoxState::Unchecked : ECheckBoxState::Checked,
 				LayerIndex);
 		}))
-		.Enabled(!bIsBase)
 		.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
 		{
 			return WorkingLayers.IsValidIndex(LayerIndex) && !WorkingLayers[LayerIndex].bEnabled;
@@ -1565,7 +1578,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("DeleteLayerContext", "Delete"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
-		.Enabled(!bIsBase)
 		.Destructive()
 		.Shortcut(LOCTEXT("DeleteLayerShortcut", "Del"));
 
@@ -1685,8 +1697,28 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		}))
 		.Shortcut(LOCTEXT("DuplicateGeneratedShortcut", "Ctrl D"));
 	Menu.Separator();
+	// Named after the row it is on. This menu serves generated masks, craquelure and colour id
+	// nodes, and "Remove Generated Mask" on a craquelure row reads like the wrong entry. Resolved
+	// here rather than bound, because the menu is rebuilt on every right-click.
+	FText RemoveLabel = LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask");
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		switch (WorkingLayers[LayerIndex].Children[ChildIndex].Type)
+		{
+		case EMixtormatLayerChildType::Craquelure:
+			RemoveLabel = LOCTEXT("RemoveCraquelureChild", "Remove Craquelure");
+			break;
+		case EMixtormatLayerChildType::ColorId:
+			RemoveLabel = LOCTEXT("RemoveColorIdChild", "Remove Color ID Mask");
+			break;
+		default:
+			break;
+		}
+	}
+
 	Menu.Item(
-		LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask"),
+		RemoveLabel,
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
@@ -1964,7 +1996,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					.ToolTipText(Name)
 					.IsEnabled_Lambda([this, LayerIndex]()
 					{
-						return WorkingLayers.IsValidIndex(LayerIndex) && LayerIndex > 0 && WorkingLayers[LayerIndex].bEnabled;
+						return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].bEnabled;
 					})
 					[SNew(SBox).WidthOverride(ThumbnailSize).HeightOverride(ThumbnailSize)[ThumbnailWidget]]
 				]
@@ -1985,6 +2017,54 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 				SNew(STextBlock).Text(Name)
 			]
 		];
+}
+
+FReply SMixtormat::AddColorIdMaskToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::ColorId;
+
+	// One entry to start. An id mask with an empty set selects nothing and is dropped before it
+	// reaches the graph, so a new node would otherwise sit in the stack looking broken until the
+	// first colour was added by hand.
+	Child.ColorId.Colors.Add(FLinearColor::Red);
+
+	SelectedLayerIndex = LayerIndex;
+	SelectedMaskIndex = Layer.Children.Num() - 1;
+	SelectedEffectIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatColorIdMask* SMixtormat::GetSelectedColorId()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::ColorId ? &Child.ColorId : nullptr;
+}
+
+const FMixtormatColorIdMask* SMixtormat::GetSelectedColorId() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::ColorId ? &Child.ColorId : nullptr;
 }
 
 FReply SMixtormat::AddCraquelureToLayer(const int32 LayerIndex)
@@ -2052,8 +2132,19 @@ FReply SMixtormat::AddGeneratedMaskToLayer(const int32 LayerIndex)
 FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 ChildIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Generated)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return FReply::Handled();
+	}
+
+	// Every generated mask child, for the same reason the enable toggle takes all three: the
+	// stack hands craquelure and colour id rows this menu too. The guard used to insist on
+	// Generated exactly, so Remove was present on a craquelure row and silently did nothing --
+	// a node that could be added and never deleted.
+	const EMixtormatLayerChildType ChildType = WorkingLayers[LayerIndex].Children[ChildIndex].Type;
+	if (ChildType != EMixtormatLayerChildType::Generated
+		&& ChildType != EMixtormatLayerChildType::Craquelure
+		&& ChildType != EMixtormatLayerChildType::ColorId)
 	{
 		return FReply::Handled();
 	}
@@ -2075,14 +2166,32 @@ void SMixtormat::SetGeneratedEnabled(
 	const int32 ChildIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Generated)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
 		return;
 	}
 
-	WorkingLayers[LayerIndex].Children[ChildIndex].Generated.bEnabled =
-		CheckState == ECheckBoxState::Checked;
+	// Every generated mask child, not only the Generated one. The stack routes craquelure and
+	// colour id rows here too -- they share the "generated" branch that decides which toggle to
+	// call -- and this used to reject anything that was not literally Generated, so their eye
+	// icons did nothing at all.
+	const bool bEnabled = CheckState == ECheckBoxState::Checked;
+	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Generated:
+		Child.Generated.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::Craquelure:
+		Child.Craquelure.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::ColorId:
+		Child.ColorId.bEnabled = bEnabled;
+		break;
+	default:
+		return;
+	}
+
 	RefreshLayeredPreview();
 	RebuildLayerList();
 }

@@ -659,12 +659,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
 	bool bGradeInvertMask = false;
 
-	// Chipping. Chips are seeded where a raised region meets a recess and grown inward over
-	// N iterations, carving the composited height.
+	// Chipping. A smooth height selection mixed with local cavity seeds chips, which grow
+	// inward over N iterations and carve the composited height.
 	//
-	// Bricks come from thresholding that height at Grout Level, not from a generated lattice,
-	// so this works on whatever was actually built -- a tiled brick texture, a plank height
-	// map, or the craquelure signal's own output.
+	// Raised material comes from thresholding that height at Grout Level, not from a generated
+	// lattice, so this works on whatever was actually built -- a tiled brick texture, a plank
+	// height map, or craquelure relief.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
 	float ChipAmount = 0.45f;
 
@@ -675,6 +675,40 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
 	float ChipGroutSoftness = 0.08f;
+
+	// Optional seed gates, matching erosion's height and cavity controls. Grout Level still
+	// bounds propagation; these decide where inside that material chips are allowed to begin.
+	// Defaults preserve the height/cavity mix used before these controls were exposed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
+	float ChipCavityInfluence = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
+	float ChipCavityOffset = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
+	float ChipCavityRemapMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
+	float ChipCavityRemapMax = 0.04f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Height")
+	float ChipHeightInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Height")
+	float ChipHeightScale = 1.0f;
+
+	// Optional mask owned by Chipping. When unset, the layer's accumulated mask children are used.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
+	TSoftObjectPtr<UMixtormatMask> ChipMask;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
+	TSoftObjectPtr<UTexture2D> ChipMaskTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement", meta = (ClampMin = "1"))
+	int32 ChipMaskTiling = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
+	bool bChipInvertMask = false;
 
 	// How slowly a chip loses strength as it grows, and the only thing that attenuates a
 	// propagating tip. Spans roughly 7 pixels of reach at 0 to 240 at 1, so Iterations is what
@@ -927,13 +961,100 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	float Offset = 0.0f;
 };
 
+// Colour ID mask. Selects the parts of an ID map that carry one of a set of chosen colours.
+//
+// This is the one placement control that comes from outside the tool. A painted mask, a generated
+// one and a curvature mask all describe where something is in the abstract; an ID map describes
+// where something is by name, because the person who built the mesh already decided which
+// polygons were the handle and which were the panel. Being able to say "the bolts" and have it
+// mean the bolts is a different kind of control from anything else in the stack.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
+{
+	GENERATED_BODY()
+
+	// The cap on the selection, and the one place it is stated. The shader holds the colours in a
+	// fixed constant array and the inspector lays out a fixed set of rows, so both have to agree
+	// with this or one of them silently ignores what the other allows.
+	static constexpr int32 MaxColors = 8;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	bool bEnabled = true;
+
+	// Import this with sRGB off and no compression. Both settings move the colours the map
+	// stores, and a selection is a comparison against a colour the artist chose in a picker: DXT
+	// invents intermediate values along every id boundary and shifts flat regions by more than a
+	// tight tolerance allows, and an sRGB decode moves every value at once.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	TSoftObjectPtr<UTexture2D> IdTexture;
+
+	// The colours to select, unioned. Several per node because selecting a set is the common
+	// case, and one node per colour would be a stack whose blend modes all have to agree just to
+	// express an OR.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	TArray<FLinearColor> Colors;
+
+	// How far from a chosen colour still counts, as a distance in RGB. The diagonal of the cube
+	// is about 1.73, so this is small by nature: the default admits the compression wobble in a
+	// flat region without reaching a neighbouring id.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "1.732"))
+	float Tolerance = 0.10f;
+
+	// Width of the transition either side of Tolerance. The map is point sampled, so the
+	// selection edge is a hard pixel boundary; this is what feathers it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float Softness = 0.02f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Weight = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	bool bInvert = false;
+
+	// Source placement, matching the painted mask. Integer tiling per axis, because a fractional
+	// scale lands mid-texel at the UV wrap and seams.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "1"))
+	int32 TilingX = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "1"))
+	int32 TilingY = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	float UVOffsetX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	float UVOffsetY = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	bool bFlipU = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	bool bFlipV = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float Balance = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "10.0"))
+	float Contrast = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Offset = 0.0f;
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatLayerChildType : uint8
 {
 	Mask UMETA(DisplayName = "Mask"),
 	Effect UMETA(DisplayName = "Effect"),
 	Generated UMETA(DisplayName = "Generated Mask"),
-	Craquelure UMETA(DisplayName = "Craquelure")
+	Craquelure UMETA(DisplayName = "Craquelure"),
+	ColorId UMETA(DisplayName = "Color ID")
 };
 
 USTRUCT(BlueprintType)
@@ -955,6 +1076,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Craquelure"))
 	FMixtormatCraquelure Craquelure;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::ColorId"))
+	FMixtormatColorIdMask ColorId;
 };
 
 USTRUCT(BlueprintType)

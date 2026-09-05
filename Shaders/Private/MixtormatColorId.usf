@@ -1,0 +1,94 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+
+// Colour ID mask. Isolates the regions of an ID map that carry one of a set of chosen colours.
+//
+// An ID map is how a mesh arrives from a modelling package already divided into parts, and until
+// now none of that division could reach this tool: a layer could be placed by a painted mask, by
+// something generated, or by what the surface beneath it happened to look like, but never by
+// "the handles" or "the panel seams" as the artist had already labelled them.
+//
+// Several colours per node rather than one. Selecting a set is the common case -- every bolt, or
+// the three parts that share a material -- and one node per colour would mean a stack of nodes
+// whose blend modes all have to agree just to express an OR.
+
+Texture2D<float> PreviousMask;
+Texture2D<float4> IdTexture;
+
+// Point, not linear. Filtering an ID map is meaningless: halfway between two ids is a third
+// colour that names neither of them, and at a tolerance wide enough to keep the boundary it
+// would claim pixels from whichever neighbour happened to be closer in RGB. Point sampling makes
+// the boundary hard, which is what an id boundary is; Softness feathers the match instead.
+SamplerState PointSampler;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+uint Initialize;
+
+#define MIXTORMAT_MAX_COLOR_IDS 8
+float4 TargetColors[MIXTORMAT_MAX_COLOR_IDS];
+int ColorCount;
+
+float Tolerance;
+float Softness;
+
+uint BlendMode;
+uint Invert;
+float Weight;
+float Balance;
+float Contrast;
+float Offset;
+
+float2 Tiling;
+float2 UVOffset;
+uint FlipU;
+uint FlipV;
+int Rotation;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
+	const float3 Id = IdTexture.SampleLevel(PointSampler, SourceUV, 0.0f).rgb;
+
+	// Euclidean distance in RGB, and the union over the set: a pixel belongs to this mask if it
+	// matches any chosen colour. Taking the maximum rather than summing means overlapping
+	// tolerances cannot push a partial match above one and produce a hard edge where two
+	// selections happen to sit near each other in colour.
+	//
+	// The window is centred on Tolerance so Softness widens it symmetrically. Floored just above
+	// zero because a zero-width smoothstep is a step, which aliases along every id boundary --
+	// and an id boundary is exactly where this mask spends its edges.
+	const float Inner = max(Tolerance - Softness, 0.0f);
+	const float Outer = max(Tolerance + Softness, Inner + 1.0e-4f);
+
+	float Incoming = 0.0f;
+	for (int Index = 0; Index < MIXTORMAT_MAX_COLOR_IDS; ++Index)
+	{
+		if (Index >= ColorCount)
+		{
+			break;
+		}
+
+		const float Distance = length(Id - TargetColors[Index].rgb);
+		Incoming = max(Incoming, 1.0f - smoothstep(Inner, Outer, Distance));
+	}
+
+	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+
+	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+}

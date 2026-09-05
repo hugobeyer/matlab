@@ -128,6 +128,17 @@ private:
 	TSharedRef<SWidget> BuildCraquelureControls();
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
 	TSharedRef<SWidget> BuildCraquelureModeMenu();
+
+	FReply AddColorIdMaskToLayer(int32 LayerIndex);
+	FMixtormatColorIdMask* GetSelectedColorId();
+	const FMixtormatColorIdMask* GetSelectedColorId() const;
+	TSharedRef<SWidget> BuildColorIdControls();
+	TSharedRef<SWidget> BuildColorIdBlendModeMenu();
+	TSharedRef<SWidget> BuildColorIdRotationMenu();
+	FReply AddColorIdEntry();
+	FReply RemoveColorIdEntry(int32 ColorIndex);
+	FReply OpenColorIdPicker(int32 ColorIndex);
+	void SetColorIdColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
 	TSharedRef<SWidget> BuildMaskRotationMenu();
 	TSharedRef<SWidget> BuildLayerRotationMenu();
 

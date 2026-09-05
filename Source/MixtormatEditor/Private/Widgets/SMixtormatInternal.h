@@ -33,6 +33,7 @@
 #include "Modules/ModuleManager.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/PackageName.h"
+#include "PropertyCustomizationHelpers.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Rendering/DrawElements.h"
 #include "ScopedTransaction.h"

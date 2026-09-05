@@ -1,8 +1,8 @@
 # Chipping
 
 Port of `Handoff/Houdini/OpenCl/brickschips.cl`, a working 229-line prototype. Chips are seeded
-at the edges of raised regions and grown inward over N iterations, carving the composited height
-and exposing a substrate colour underneath.
+from a smooth height selection mixed with local cavity, then grown inward over N iterations,
+carving the composited height and exposing a substrate colour underneath.
 
 ## The audit was wrong about the blocker
 
@@ -32,7 +32,7 @@ order that makes sense, and the reverse would have erosion smoothing chips it ne
 | Prototype | Here | Note |
 |---|---|---|
 | `brickmask(h, level, soft)` | same | `smoothstep(level, level+soft, h)` on the composited height. This is the whole brick/grout split. |
-| `edge` | same | Brick pixel adjacent to grout. Where chips start. |
+| `edge` | seed boost | Brick pixels adjacent to grout remain preferred, but smooth height mixed with cavity can seed away from a hard boundary. |
 | `inward` | same | Gradient of the brick mask, pointing into the brick. Chips travel inward from the edge. |
 | `downhill`, `curl` | same | Height gradient and a divergence-free noise field. `irregularity` weights curl against inward. |
 | `@state` float4 | `PF_A32B32G32R32F` | See precision, below. |
@@ -149,9 +149,9 @@ the threshold, so chips came out as isolated specks with nothing the user could 
 mask was bound but only its *gradient* was read, under `Mask Edge`, which defaults to 0 -- so
 painting a mask did nothing.
 
-`SeedTip` is now gated by the mask value. That is the handle Grade already uses, it hands
-chipping the entire mask vocabulary as a placement control -- painted, generated, curvature,
-craquelure -- and it is the identity on a layer with no mask, whose mask is white.
+`SeedTip` is gated by a placement mask. Chipping can own a mask selected in its inspector;
+when unset it falls back to the layer's accumulated child mask. This hands chipping the entire
+mask vocabulary without forcing it to share placement with the layer itself.
 
 Deliberately not done in the same pass: exposing the hidden noise periods (24 placement, 53
 depth, 17 curl) as one scatter control. Worth having, but the reach fix changes what the field
@@ -161,9 +161,13 @@ looks like enough that its default should be chosen afterward rather than guesse
 
 | Control | Range | Default |
 |---|---|---|
-| Amount | 0..1 | 0.45 | 
-| Grout Level | 0..1 | 0.15 |
+| Amount | 0..1 | 0.45 |
+| Grout Level | 0..1 | 0.5 |
 | Grout Softness | 0..0.5 | 0.08 |
+| Cavity Influence / Offset | 0..1 / -1..1 | 0.5 / 0.0 |
+| Cavity In Low / In High | -1..1 | 0.0 / 0.04 |
+| Height Influence / Contrast | 0..1 / 0.1..8 | 1.0 / 1.0 |
+| Placement Mask / Tiling / Invert | — / 1..16 / bool | Child Mask / 1 / false |
 | Size | 0..1 | 0.6 | (~7px to ~240px of reach)
 | Depth | 0..0.25 | 0.035 |
 | Irregularity | 0..1 | 0.6 |
@@ -191,13 +195,16 @@ normal tracks the control rather than the height chain's precision.
 ## Verification
 
 1. `Amount = 0` -- height must come out bit-identical to the input.
-2. Grout Level swept across a brick height: chips confined to bricks, never crossing grout.
-3. `Irregularity 0` vs `1` -- straight inward chips vs wandering ones.
-4. Iterations 1 -- seeds only, no propagation. Iterations 24 -- chips reach far but stay bounded.
-5. Same recipe at 512 and 2048: chip size relative to the texture must match.
-6. Chipped colour at Amount 1 with Depth 0 -- colour must still appear, since coverage is the
+2. Grout Level swept across a height field: chips follow the smooth height selection and cavity,
+   never propagating below the grout transition.
+3. `Amount = 1` over craquelure relief with an owned white placement mask -- some pixels
+   must be carved.
+4. `Irregularity 0` vs `1` -- straight inward chips vs wandering ones.
+5. Iterations 1 -- seeds only, no propagation. Iterations 24 -- chips reach far but stay bounded.
+6. Same recipe at 512 and 2048: chip size relative to the texture must match.
+7. Chipped colour at Amount 1 with Depth 0 -- colour must still appear, since coverage is the
    chip mask and not a height difference.
-7. Erosion's shade unchanged after the rename: an eroding layer with a colour set must look the
+8. Erosion's shade unchanged after the rename: an eroding layer with a colour set must look the
    same as before.
-8. A grade with an asset-backed effect still hides the asset panel -- the visibility test moved
+9. A grade with an asset-backed effect still hides the asset panel -- the visibility test moved
    from naming Erosion to testing the effect class, which fixes a latent gap on Grade.

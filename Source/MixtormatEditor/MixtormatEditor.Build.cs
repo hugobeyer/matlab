@@ -30,6 +30,7 @@ public class MixtormatEditor : ModuleRules
 			"MixtormatRuntime",
 			"MixtormatShaders",
 			"Projects",
+			"PropertyEditor",
 			"RenderCore",
 			"RHI",
 			"ToolMenus",
