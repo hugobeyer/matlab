@@ -192,14 +192,6 @@ TArray<FMixtormatEffectEntry> FMixtormatRegistry::GetEffects()
 
 		FMixtormatEffectEntry& Entry = Entries.AddDefaulted_GetRef();
 		Entry.AssetPath = Asset.GetSoftObjectPath();
-		if (Effect->Mask)
-		{
-			Entry.ThumbnailAsset = FAssetData(Effect->Mask.Get());
-		}
-		else if (Effect->PeelData)
-		{
-			Entry.ThumbnailAsset = FAssetData(Effect->PeelData.Get());
-		}
 		Entry.DisplayName = Effect->DisplayName.IsEmpty()
 			? FText::FromName(Asset.AssetName)
 			: Effect->DisplayName;

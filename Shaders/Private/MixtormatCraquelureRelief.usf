@@ -1,5 +1,6 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
 
 // Craquelure relief. Turns the crack distance field into a groove in the composited height and a
 // matching perturbation of the composited normal.
@@ -29,6 +30,12 @@ int2 OutputSize;
 float HeightWeight;
 float NormalWeight;
 
+// The same warp the mask resolve applies, and it has to be the same or the groove ends up
+// somewhere the crack is not -- this pass and the mask read one distance field between them.
+float Warp;
+int WarpPeriod;
+uint WarpSeed;
+
 // Half-width of the groove in pixels. The mouth of the cone, not the hairline the mask draws.
 float ReliefWidthPixels;
 
@@ -54,7 +61,15 @@ int2 CraqReliefWrapPixel(int2 P)
 // bends it either side of that. At 1 the slope is constant, which is the fracture case.
 float CraqReliefOffset(int2 P)
 {
-	const float2 Nearby = CrackDistance.Load(int3(CraqReliefWrapPixel(P), 0)).xy;
+	int2 SampleP = P;
+	if (abs(Warp) > 0.0f)
+	{
+		const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+		const float2 WarpedUV = frac(MixtormatPeriodicCurlWarp(UV, WarpPeriod, WarpSeed, Warp));
+		SampleP = (int2)floor(WarpedUV * (float2)OutputSize);
+	}
+
+	const float2 Nearby = CrackDistance.Load(int3(CraqReliefWrapPixel(SampleP), 0)).xy;
 	const float Width = max(ReliefWidthPixels, 0.5f);
 	const float T = saturate(Nearby.x / Width);
 

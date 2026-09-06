@@ -45,24 +45,6 @@ namespace MixtormatImporter
 		}
 	};
 
-	struct FEffectTextureSet
-	{
-		FString BaseName;
-		FString PeelDataFile;
-		FString MaskFile;
-		FString HeightFile;
-		FString SdfFile;
-		FString BentNormalFile;
-
-		bool IsComplete() const
-		{
-			return !PeelDataFile.IsEmpty()
-				&& !MaskFile.IsEmpty()
-				&& !HeightFile.IsEmpty()
-				&& !SdfFile.IsEmpty();
-		}
-	};
-
 	enum class EMapType : uint8
 	{
 		BaseColor,
@@ -948,99 +930,9 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedEffects()
 		true,
 		false);
 
-	TMap<FString, FEffectTextureSet> TextureSets;
-	for (const FString& EffectFile : EffectFiles)
-	{
-		const FString Stem = FPaths::GetBaseFilename(EffectFile);
-		FString BaseName;
-		FString Suffix;
-		if (!ParseEffectMapName(Stem, BaseName, Suffix))
-		{
-			continue;
-		}
-
-		FEffectTextureSet& Set = TextureSets.FindOrAdd(BaseName);
-		Set.BaseName = BaseName;
-		if (Suffix == TEXT("_PDM")) Set.PeelDataFile = EffectFile;
-		else if (Suffix == TEXT("_MSK")) Set.MaskFile = EffectFile;
-		else if (Suffix == TEXT("_H")) Set.HeightFile = EffectFile;
-		else if (Suffix == TEXT("_SDF")) Set.SdfFile = EffectFile;
-		else if (Suffix == TEXT("_BN")) Set.BentNormalFile = EffectFile;
-	}
-
-	IAssetTools& AssetTools =
-		FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get();
-	for (const TPair<FString, FEffectTextureSet>& Pair : TextureSets)
-	{
-		const FEffectTextureSet& Set = Pair.Value;
-		if (!Set.IsComplete())
-		{
-			Result.Errors.Add(FString::Printf(
-				TEXT("%s requires matching _PDM, _MSK, _H, and _SDF maps."),
-				*Set.BaseName));
-			continue;
-		}
-
-		FString Identity = Set.BaseName;
-		Identity.RemoveFromStart(TEXT("TX_Effect_"));
-		TArray<FString> Parts;
-		Identity.ParseIntoArray(Parts, TEXT("_"), true);
-		const FString Category = Parts.IsEmpty() ? TEXT("General") : Parts[0];
-		const FString TexturePath = FString::Printf(
-			TEXT("/MaterialLab/Textures/Effects/%s/Raw"), *Category);
-		const FString EffectPath = FString::Printf(TEXT("/MaterialLab/Effects/%s"), *Category);
-
-		UTexture2D* PeelData = ImportTexture(AssetTools, Set.PeelDataFile, TexturePath, EMapType::EffectData, Result);
-		UTexture2D* Mask = ImportTexture(AssetTools, Set.MaskFile, TexturePath, EMapType::EffectData, Result);
-		UTexture2D* Height = ImportTexture(AssetTools, Set.HeightFile, TexturePath, EMapType::EffectData, Result);
-		UTexture2D* Sdf = ImportTexture(AssetTools, Set.SdfFile, TexturePath, EMapType::EffectData, Result);
-		UTexture2D* BentNormal = Set.BentNormalFile.IsEmpty()
-			? nullptr
-			: ImportTexture(AssetTools, Set.BentNormalFile, TexturePath, EMapType::EffectNormal, Result);
-		if (!PeelData || !Mask || !Height || !Sdf
-			|| (!Set.BentNormalFile.IsEmpty() && !BentNormal))
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Failed to import the peeling texture set for %s."), *Set.BaseName));
-			continue;
-		}
-
-		const int32 SizeX = PeelData->GetSizeX();
-		const int32 SizeY = PeelData->GetSizeY();
-		const auto MatchesSize = [SizeX, SizeY](const UTexture2D* Texture)
-		{
-			return !Texture || (Texture->GetSizeX() == SizeX && Texture->GetSizeY() == SizeY);
-		};
-		if (!MatchesSize(Mask) || !MatchesSize(Height) || !MatchesSize(Sdf) || !MatchesSize(BentNormal))
-		{
-			Result.Errors.Add(FString::Printf(
-				TEXT("Effect texture dimensions do not match for %s."),
-				*Set.BaseName));
-			continue;
-		}
-
-		FString EffectAssetName = Identity;
-		EffectAssetName = TEXT("MLFX_") + EffectAssetName;
-		UMixtormatEffect* Effect = CreateOrLoadEffect(
-			AssetTools,
-			EffectAssetName,
-			EffectPath);
-		if (!Effect)
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Failed to create effect asset %s."), *EffectAssetName));
-			continue;
-		}
-
-		Effect->Modify();
-		SetEffectIdentity(*Effect, Set.BaseName);
-		Effect->PeelData = PeelData;
-		Effect->Mask = Mask;
-		Effect->Height = Height;
-		Effect->SDF = Sdf;
-		Effect->BentNormal = BentNormal;
-		Effect->MarkPackageDirty();
-		SavePluginAsset(*Effect, TEXT("Mixtormat effect"), Result.Errors);
-		++Result.ImportedEffectCount;
-	}
+	// The _PDM / _MSK / _H / _SDF / _BN map sets that used to be scanned and imported here fed
+	// the asset-backed peeling path, which is gone -- peeling generates its field now. Nothing
+	// else consumed them, so the whole effect-texture import went with it.
 
 	// Stains are procedural filters and no longer need a generated placeholder asset.
 

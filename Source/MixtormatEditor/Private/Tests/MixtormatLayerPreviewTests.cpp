@@ -52,19 +52,6 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		return true;
 	};
 
-	FMixtormatLayer LegacyLayer;
-	LegacyLayer.Masks.AddDefaulted();
-	LegacyLayer.Effects.AddDefaulted();
-	LegacyLayer.MigrateLegacyChildren();
-	TestEqual(TEXT("Legacy child arrays migrate once"), LegacyLayer.Children.Num(), 2);
-	TestTrue(
-		TEXT("Legacy masks migrate before effects"),
-		LegacyLayer.Children[0].Type == EMixtormatLayerChildType::Mask
-			&& LegacyLayer.Children[1].Type == EMixtormatLayerChildType::Effect);
-	TestTrue(
-		TEXT("Legacy arrays are cleared after migration"),
-		LegacyLayer.Masks.IsEmpty() && LegacyLayer.Effects.IsEmpty());
-
 	FMixtormatLayer BaseLayer;
 	BaseLayer.Type = EMixtormatLayerType::Fill;
 	BaseLayer.DisplayName = FText::FromString(TEXT("Red Fill"));
@@ -227,10 +214,8 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Transient peeling asset exists"), PeelingAsset);
 	if (PeelTexture && PeelingAsset)
 	{
-		PeelingAsset->PeelData = PeelTexture;
-		PeelingAsset->Mask = PeelTexture;
-		PeelingAsset->Height = PeelTexture;
-		PeelingAsset->SDF = PeelTexture;
+		// The asset carries no maps any more -- peeling generates its field -- so it is here only
+		// to name the effect type. The peel itself is procedural either way.
 		FMixtormatLayerChild& PeelingChild = Layers[1].Children.AddDefaulted_GetRef();
 		PeelingChild.Type = EMixtormatLayerChildType::Effect;
 		FMixtormatLayerEffect& Peeling = PeelingChild.Effect;
@@ -352,7 +337,7 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 
 		Layers[1].Children.Reset();
 
-		if (PeelingAsset && PeelingAsset->PeelData)
+		if (PeelingAsset)
 		{
 			FMixtormatLayerChild& EffectFirst = Layers[1].Children.AddDefaulted_GetRef();
 			EffectFirst.Type = EMixtormatLayerChildType::Effect;

@@ -68,29 +68,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Identity")
 	FString SourceTextureBaseName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures", meta = (DisplayName = "Peel Data Map"))
-	TObjectPtr<UTexture2D> PeelData;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures", meta = (DisplayName = "Coverage / Edge / Detail Mask"))
-	TObjectPtr<UTexture2D> Mask;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures")
-	TObjectPtr<UTexture2D> Height;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures", meta = (DisplayName = "Signed Distance Field"))
-	TObjectPtr<UTexture2D> SDF;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures", meta = (DisplayName = "Bent Normal"))
-	TObjectPtr<UTexture2D> BentNormal;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Decode", meta = (ClampMin = "0.000001"))
-	float DistanceRange = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Decode", meta = (ClampMin = "0.000001"))
-	float SDFRange = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Decode", meta = (ClampMin = "0.000001"))
-	float HeightRange = 0.1f;
+	// The authored map set -- peel data, coverage mask, height, SDF, bent normal and the decode
+	// ranges that went with them -- lived here. Peeling is generated now, so an effect asset
+	// names a type and carries defaults; it no longer ships textures.
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float DefaultFront = 0.08f;

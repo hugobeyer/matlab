@@ -604,6 +604,12 @@ public:
 		SHADER_PARAMETER(float, Balance)
 		SHADER_PARAMETER(float, Contrast)
 		SHADER_PARAMETER(float, Offset)
+		// The warp is read here now rather than during growth, and the uniforms are declared at
+		// file scope in a shader with three entry points -- so every struct that compiles
+		// MixtormatCraquelureGrow.usf has to declare them, not just the pass that grows.
+		SHADER_PARAMETER(float, Warp)
+		SHADER_PARAMETER(int32, WarpPeriod)
+		SHADER_PARAMETER(uint32, WarpSeed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -714,6 +720,9 @@ public:
 		SHADER_PARAMETER(float, ReliefWidthPixels)
 		SHADER_PARAMETER(float, Variation)
 		SHADER_PARAMETER(float, Profile)
+		SHADER_PARAMETER(float, Warp)
+		SHADER_PARAMETER(int32, WarpPeriod)
+		SHADER_PARAMETER(uint32, WarpSeed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
@@ -981,16 +990,8 @@ public:
 		SHADER_PARAMETER(float, Thickness)
 		SHADER_PARAMETER(float, Lift)
 		SHADER_PARAMETER(float, DetailStrength)
-		SHADER_PARAMETER(float, DistanceRange)
-		SHADER_PARAMETER(float, SDFRange)
-		SHADER_PARAMETER(float, HeightRange)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousEffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelData)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelSDF)
-		SHADER_PARAMETER(uint32, ProceduralSource)
 		SHADER_PARAMETER(float, ProceduralAOStrength)
 		SHADER_PARAMETER(float, HeightAmount)
 		SHADER_PARAMETER(float, HeightInvert)
@@ -1216,10 +1217,6 @@ namespace MixtormatGpuCompositor
 	struct FEffectRenderData
 	{
 		EMixtormatEffectType Type = EMixtormatEffectType::Peeling;
-		FTextureRHIRef PeelData;
-		FTextureRHIRef Mask;
-		FTextureRHIRef Height;
-		FTextureRHIRef SDF;
 		float Tiling = 1.0f;
 		float Strength = 1.0f;
 		float Front = 0.08f;
@@ -1230,9 +1227,6 @@ namespace MixtormatGpuCompositor
 		float Thickness = 0.04f;
 		float Lift = 0.04f;
 		float DetailStrength = 0.02f;
-		float DistanceRange = 1.0f;
-		float SDFRange = 0.1f;
-		float HeightRange = 0.1f;
 		int32 StainMode = 0;
 		FTextureRHIRef StainSourceMask;
 		FTextureRHIRef StainDirtMask;
@@ -1918,22 +1912,37 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FCraquelureRenderData& CrackData = ChildData.Craquelure;
 
-				// The clamps here guard the lattice, not taste: the period is a wrap modulus
-				// and a non-positive one would divide the hash by zero.
-				CrackData.Period = FMath::Max(Craquelure.Period, 1);
-				CrackData.WarpPeriod = FMath::Max(Craquelure.WarpPeriod, 1);
+				// The authored parameters are the ones a user thinks in; the growth kernel wants
+				// the ones it was written against. This is where the one becomes the other, so the
+				// shaders keep the maths they were tuned with and the consolidation costs nothing
+				// at runtime.
+				//
+				// The clamps guard the lattice rather than taste: a period is a wrap modulus and a
+				// non-positive one divides the hash by zero.
+				const int32 CrackScale = FMath::Clamp(Craquelure.Scale, 1, 128);
+				const float CrackJitter = FMath::Clamp(Craquelure.Jitter, 0.0f, 1.0f);
+
+				// One Scale, read as the cell count by whichever mode is running.
+				CrackData.Period = CrackScale;
+				CrackData.SeedCells = CrackScale;
+				CrackData.Jitter = CrackJitter;
+				CrackData.SeedJitter = CrackJitter;
+
 				CrackData.Seed = static_cast<uint32>(FMath::Max(Craquelure.Seed, 0));
-				CrackData.WarpSeed = static_cast<uint32>(FMath::Max(Craquelure.WarpSeed, 0));
-				CrackData.Jitter = Craquelure.Jitter;
+				// The warp rides the network's seed rather than carrying its own. An offset, not the
+				// same value, so reseeding moves both without the two fields ever sharing a hash.
+				CrackData.WarpSeed = CrackData.Seed + 7919u;
+				CrackData.WarpPeriod = FMath::Clamp(Craquelure.WarpScale, 1, 32);
+				CrackData.Warp = FMath::Clamp(Craquelure.Warp, 0.0f, 1.0f);
+
 				CrackData.Width = Craquelure.Width;
 				CrackData.Variation = Craquelure.Variation;
-				CrackData.Warp = Craquelure.Warp;
 				CrackData.BlendMode = Craquelure.BlendMode;
-				CrackData.bInvert = Craquelure.bInvert;
 				CrackData.Weight = Craquelure.Weight;
-				CrackData.Balance = Craquelure.Balance;
-				CrackData.Contrast = Craquelure.Contrast;
-				CrackData.Offset = Craquelure.Offset;
+				CrackData.bInvert = Craquelure.Shaping.bInvert;
+				CrackData.Balance = FMath::Clamp(Craquelure.Shaping.Balance, 0.0f, 1.0f);
+				CrackData.Contrast = Craquelure.Shaping.Contrast;
+				CrackData.Offset = Craquelure.Shaping.Offset;
 
 				CrackData.Mode = Craquelure.Mode;
 				CrackData.ReliefDepth = FMath::Max(Craquelure.ReliefDepth, 0.0f);
@@ -1941,19 +1950,38 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				CrackData.ReliefWidth = FMath::Max(Craquelure.ReliefWidth, 0.002f);
 				CrackData.ReliefProfile = FMath::Clamp(Craquelure.ReliefProfile, 0.05f, 8.0f);
 				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 1024);
-				CrackData.SeedCells = FMath::Max(Craquelure.SeedCells, 1);
-				CrackData.SeedChance = FMath::Clamp(Craquelure.SeedChance, 0.0f, 1.0f);
-				CrackData.SeedJitter = FMath::Clamp(Craquelure.SeedJitter, 0.0f, 1.0f);
-				CrackData.NoiseCells = FMath::Max(Craquelure.NoiseCells, 1);
-				CrackData.StressVariation = Craquelure.StressVariation;
-				CrackData.ToughnessVariation = Craquelure.ToughnessVariation;
-				CrackData.Persistence = Craquelure.Persistence;
-				CrackData.FlowStrength = FMath::Clamp(Craquelure.FlowStrength, 0.0f, 1.0f);
-				CrackData.StressGain = Craquelure.StressGain;
-				CrackData.ToughnessCost = Craquelure.ToughnessCost;
-				CrackData.Irregularity = Craquelure.Irregularity;
+				CrackData.SeedChance = FMath::Clamp(Craquelure.Density, 0.0f, 1.0f);
+
+				// Detail is a multiple of Scale, so the fields keep their size relative to the
+				// pieces when Scale moves. As an absolute cell count it fought Scale on every drag.
+				CrackData.NoiseCells = FMath::Clamp(
+					FMath::RoundToInt(CrackScale * FMath::Clamp(Craquelure.Detail, 0.1f, 8.0f)),
+					1,
+					256);
+
+				// Stress and toughness vary by the same amount, from independent noise. They were two
+				// dials for the two ends of one balance.
+				const float FieldContrast = FMath::Clamp(Craquelure.FieldContrast, 0.0f, 1.0f);
+				CrackData.StressVariation = FieldContrast;
+				CrackData.ToughnessVariation = FieldContrast;
+
+				// Likewise the two weights on opposite signs of the same comparison.
+				const float FractureBias = FMath::Clamp(Craquelure.FractureBias, 0.0f, 8.0f);
+				CrackData.StressGain = FractureBias;
+				CrackData.ToughnessCost = FractureBias;
+
+				// Straightness drives both halves of holding a heading: how much alignment counts in
+				// the score, and how fast the stored direction follows the step actually taken. They
+				// run opposite ways -- a straighter crack weights alignment more and turns slower --
+				// which is exactly why two dials for it were easy to set against each other. The
+				// constants put the old defaults near 0.35.
+				const float Straightness = FMath::Clamp(Craquelure.Straightness, 0.0f, 1.0f);
+				CrackData.Persistence = Straightness * 6.0f;
+				CrackData.TurnResponse = FMath::Clamp(1.0f - Straightness * 0.8f, 0.0f, 1.0f);
+
+				CrackData.FlowStrength = FMath::Clamp(Craquelure.Flow, 0.0f, 1.0f);
+				CrackData.Irregularity = FMath::Clamp(Craquelure.Roughness, 0.0f, 8.0f);
 				CrackData.GrowthThreshold = Craquelure.GrowthThreshold;
-				CrackData.TurnResponse = FMath::Clamp(Craquelure.TurnResponse, 0.0f, 1.0f);
 				CrackData.CollisionLimit = FMath::Clamp(Craquelure.CollisionLimit, 1, 8);
 
 				// Built from the clamped values rather than the authored ones, so two settings
@@ -1969,9 +1997,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					const uint8 ModeByte = static_cast<uint8>(CrackData.Mode);
 					Key = MixtormatNetworkKey::Add(Key, ModeByte);
 					Key = MixtormatNetworkKey::Add(Key, CrackData.Seed);
-					Key = MixtormatNetworkKey::Add(Key, CrackData.Warp);
-					Key = MixtormatNetworkKey::Add(Key, CrackData.WarpPeriod);
-					Key = MixtormatNetworkKey::Add(Key, CrackData.WarpSeed);
+					// Warp is deliberately absent. It bends where the finished network is read
+					// from rather than how it grows, so the cached distance field stays valid
+					// across a warp change -- which turns dragging the dial from a full regrow of
+					// the most expensive node in the graph into one resolve pass.
 					if (CrackData.Mode == EMixtormatCraquelureMode::Propagated)
 					{
 						Key = MixtormatNetworkKey::Add(Key, CrackData.Iterations);
@@ -2026,15 +2055,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			}
 			const EMixtormatEffectType ResolvedType =
 				EffectAsset ? EffectAsset->EffectType : LayerEffect.ProceduralType;
-			if (ResolvedType == EMixtormatEffectType::Peeling && EffectAsset
-				&& (!EffectAsset->PeelData
-					|| !EffectAsset->Mask
-					|| !EffectAsset->Height
-					|| !EffectAsset->SDF))
-			{
-				continue;
-			}
-
 			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMixtormatLayerChildType::Effect;
 			ChildData.SourceChildIndex = SourceChildIndex;
@@ -2207,9 +2227,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				continue;
 			}
 
-			// A procedural peel does write effect data, so it is gathered here — before the
-			// asset-backed branches below, all of which dereference EffectAsset.
-			if (!EffectAsset)
+			// Peeling is procedural, full stop. It used to have a second path driven by an
+			// authored map set on the effect asset -- a PDM plus coverage mask, height and SDF --
+			// and that is gone; an effect asset now names a type and carries defaults, nothing
+			// more. The bare scope is what is left of the branch that chose between them.
 			{
 				EffectData.bProceduralPeel = true;
 				EffectData.PeelType = static_cast<int32>(LayerEffect.PeelType);
@@ -2263,39 +2284,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.DetailStrength = FMath::Max(LayerEffect.DetailStrength, 0.0f);
 				EffectData.PeelHeightAmount = LayerEffect.PeelHeightAmount;
 				EffectData.bPeelHeightInvert = LayerEffect.bPeelHeightInvert;
-				// No 8-bit round trip on a transient float target, so nothing to decode.
-				EffectData.DistanceRange = 1.0f;
-				EffectData.SDFRange = 1.0f;
-				EffectData.HeightRange = 1.0f;
 				Data.bHasEffects = true;
 				continue;
 			}
 
-			EffectData.PeelData = GetTextureRHI(EffectAsset->PeelData.Get());
-			EffectData.Mask = GetTextureRHI(EffectAsset->Mask.Get());
-			EffectData.Height = GetTextureRHI(EffectAsset->Height.Get());
-			EffectData.SDF = GetTextureRHI(EffectAsset->SDF.Get());
-			if (!EffectData.PeelData.IsValid()
-				|| !EffectData.Mask.IsValid()
-				|| !EffectData.Height.IsValid()
-				|| !EffectData.SDF.IsValid())
-			{
-				return false;
-			}
-			EffectData.Front = LayerEffect.Front;
-			EffectData.Width = FMath::Max(LayerEffect.Width, 1.0e-6f);
-			EffectData.MacroWarp = LayerEffect.MacroWarp;
-			EffectData.MicroWarp = LayerEffect.MicroWarp;
-			EffectData.MicroMorph = FMath::Clamp(LayerEffect.MicroMorph, 0.0f, 1.0f);
-			EffectData.Thickness = FMath::Max(LayerEffect.Thickness, 0.0f);
-			EffectData.Lift = FMath::Max(LayerEffect.Lift, 0.0f);
-			EffectData.DetailStrength = FMath::Max(LayerEffect.DetailStrength, 0.0f);
-			EffectData.PeelHeightAmount = LayerEffect.PeelHeightAmount;
-			EffectData.bPeelHeightInvert = LayerEffect.bPeelHeightInvert;
-			EffectData.DistanceRange = FMath::Max(EffectAsset->DistanceRange, 1.0e-6f);
-			EffectData.SDFRange = FMath::Max(EffectAsset->SDFRange, 1.0e-6f);
-			EffectData.HeightRange = FMath::Max(EffectAsset->HeightRange, 1.0e-6f);
-			Data.bHasEffects = true;
 		}
 
 		Data.Opacity = Layer.Opacity;
@@ -2650,6 +2642,12 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						float WidthPixels = 0.0f;
 						float Variation = 0.0f;
 						float Profile = 1.0f;
+						// Carried so the groove is read through the same displacement as the
+						// mask. The two passes share one distance field; warp only one and the
+						// height ends up beside the crack instead of under it.
+						float Warp = 0.0f;
+						int32 WarpPeriod = 4;
+						uint32 WarpSeed = 7;
 					};
 					TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 
@@ -2846,6 +2844,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								Relief.NormalWeight = Crack.ReliefNormalStrength;
 								Relief.WidthPixels = CraqReliefWidthPixels;
 								Relief.Variation = Crack.Variation;
+								Relief.Warp = Crack.Warp;
+								Relief.WarpPeriod = Crack.WarpPeriod;
+								Relief.WarpSeed = Crack.WarpSeed;
 								Relief.Profile = Crack.ReliefProfile;
 							};
 
@@ -3120,6 +3121,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								ResolveParameters->Balance = Crack.Balance;
 								ResolveParameters->Contrast = Crack.Contrast;
 								ResolveParameters->Offset = Crack.Offset;
+								ResolveParameters->Warp = Crack.Warp;
+								ResolveParameters->WarpPeriod = Crack.WarpPeriod;
+								ResolveParameters->WarpSeed = Crack.WarpSeed;
 								ResolveParameters->CrackDistance = CraqDistance;
 								ResolveParameters->PreviousMask = MaskTargets[MaskReadIndex];
 								ResolveParameters->LinearWrapSampler =
@@ -3760,29 +3764,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						EffectParameters->Thickness = Effect.Thickness;
 						EffectParameters->Lift = Effect.Lift;
 						EffectParameters->DetailStrength = Effect.DetailStrength;
-						EffectParameters->DistanceRange = Effect.DistanceRange;
-						EffectParameters->SDFRange = Effect.SDFRange;
-						EffectParameters->HeightRange = Effect.HeightRange;
 						EffectParameters->PreviousEffectData = EffectTargets[EffectReadIndex];
 						EffectParameters->ChildMask = CombinedMask;
-						// A procedural peel has no source maps at all, and RegisterTexture
-						// asserts on a null RHI texture, so those four slots take the
-						// placeholder. The shader ignores them under ProceduralSource.
-						if (Effect.bProceduralPeel)
-						{
-							EffectParameters->PeelData = PeelFieldDummy;
-							EffectParameters->PeelMask = PeelFieldDummy;
-							EffectParameters->PeelHeight = PeelFieldDummy;
-							EffectParameters->PeelSDF = PeelFieldDummy;
-						}
-						else
-						{
-							EffectParameters->PeelData = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.PeelData, TEXT("Mixtormat.PeelData"));
-							EffectParameters->PeelMask = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Mask, TEXT("Mixtormat.PeelMask"));
-							EffectParameters->PeelHeight = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.Height, TEXT("Mixtormat.PeelHeight"));
-							EffectParameters->PeelSDF = RegisterTexture(GraphBuilder, RegisteredTextures, Effect.SDF, TEXT("Mixtormat.PeelSDF"));
-						}
-						EffectParameters->ProceduralSource = Effect.bProceduralPeel ? 1u : 0u;
 						EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
 						EffectParameters->HeightAmount = Effect.PeelHeightAmount;
 						EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;
@@ -4437,6 +4420,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						RelP->ReliefWidthPixels = Relief.WidthPixels;
 						RelP->Variation = Relief.Variation;
 						RelP->Profile = Relief.Profile;
+						RelP->Warp = Relief.Warp;
+						RelP->WarpPeriod = Relief.WarpPeriod;
+						RelP->WarpSeed = Relief.WarpSeed;
 						RelP->CrackDistance = Relief.Distance;
 						RelP->SourceHeight = HeightTargets[WriteIndex];
 						RelP->PreviousNormal = OutputN[WriteIndex];

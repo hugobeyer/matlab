@@ -539,16 +539,12 @@ void FMixtormatLayerPreview::ApplyLayers(
 		const float F0 = FMath::Square((IOR - 1.0f) / (IOR + 1.0f));
 		SetScalar(MaterialInstance, LayerIndex, TEXT("FillSpecular"), FMath::Clamp(F0 / 0.08f, 0.0f, 1.0f));
 
-		UTexture2D* MaskTexture = Layer ? Layer->MaskTexture.LoadSynchronous() : nullptr;
-		SetScalar(MaterialInstance, LayerIndex, TEXT("HasMask"), MaskTexture ? 1.0f : 0.0f);
-		SetScalar(
-			MaterialInstance,
-			LayerIndex,
-			TEXT("MaskTiling"),
-			Layer ? FMath::Max(1.0f, FMath::RoundToFloat(Layer->MaskTiling)) : 1.0f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("MaskBalance"), Layer ? Layer->MaskBalance : 0.5f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("MaskContrast"), Layer ? Layer->MaskContrast : 1.0f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("MaskInvert"), Layer && Layer->bInvertMask ? 1.0f : 0.0f);
+		// The single-mask fields these used to read are gone; masks are ordered children now and
+		// composite on the GPU. The graph's own mask parameters stay declared and fall to their
+		// defaults -- HasMask 0, so FinalMask passes through -- rather than being torn out here,
+		// which would mean re-wiring what consumes it.
+		UTexture2D* MaskTexture = nullptr;
+		SetScalar(MaterialInstance, LayerIndex, TEXT("HasMask"), 0.0f);
 
 		SetTexture(MaterialInstance, LayerIndex, TEXT("BaseColor"), Surface && Surface->BaseColor ? Surface->BaseColor.Get() : WhiteTexture);
 		SetTexture(MaterialInstance, LayerIndex, TEXT("Normal"), Surface && Surface->Normal ? Surface->Normal.Get() : NormalTexture);

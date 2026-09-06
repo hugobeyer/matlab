@@ -166,8 +166,8 @@ bool FMixtormatCraquelureNetworkTest::RunTest(const FString& Parameters)
 	FMixtormatLayerChild Child;
 	Child.Type = EMixtormatLayerChildType::Craquelure;
 	Child.Craquelure.Mode = EMixtormatCraquelureMode::Propagated;
-	Child.Craquelure.SeedCells = 6;
-	Child.Craquelure.SeedChance = 1.0f;
+	Child.Craquelure.Scale = 6;
+	Child.Craquelure.Density = 1.0f;
 	Child.Craquelure.Iterations = 64;
 	Child.Craquelure.Width = 0.08f;
 
@@ -244,8 +244,8 @@ bool FMixtormatCraquelureReliefTest::RunTest(const FString& Parameters)
 	FMixtormatLayerChild Child;
 	Child.Type = EMixtormatLayerChildType::Craquelure;
 	Child.Craquelure.Mode = EMixtormatCraquelureMode::Propagated;
-	Child.Craquelure.SeedCells = 6;
-	Child.Craquelure.SeedChance = 1.0f;
+	Child.Craquelure.Scale = 6;
+	Child.Craquelure.Density = 1.0f;
 	Child.Craquelure.Iterations = 64;
 
 	// Mask muted, relief on. The two halves are independent weights now, and this is the
@@ -407,7 +407,7 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	FMixtormatLayerChild CrackChild;
 	CrackChild.Type = EMixtormatLayerChildType::Craquelure;
 	CrackChild.Craquelure.Mode = EMixtormatCraquelureMode::Lattice;
-	CrackChild.Craquelure.Period = 8;
+	CrackChild.Craquelure.Scale = 8;
 	CrackChild.Craquelure.Jitter = 0.0f;
 	CrackChild.Craquelure.Weight = 0.0f;
 	CrackChild.Craquelure.ReliefDepth = 0.30f;

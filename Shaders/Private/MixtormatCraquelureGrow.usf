@@ -1,6 +1,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
 
 // Propagated craquelure. Cracks nucleate at seed points and grow outward as a cellular
 // automaton, steered by a stress/toughness/flow field and stopped where they meet each other.
@@ -28,10 +29,23 @@ int NoiseCells;
 float StressVariation;
 float ToughnessVariation;
 
-// Warp displaces the UV the *fields* are read at, not the grown network. Warping the skeleton
-// after the fact would drag cracks off the pixels they are connected through and tear it;
-// bending the stress and flow fields instead makes cracks wander while they grow, which is
-// where the wandering belongs.
+// Warp bends the finished network, in the resolve pass, by displacing the coordinate the crack
+// distance is read at.
+//
+// It used to displace the UV the stress and flow *fields* were read at instead, so cracks
+// wandered while they grew but an existing network never bent -- turning the dial rebuilt a
+// different network rather than warping the one on screen.
+//
+// The objection that stood in the way was that warping "the skeleton" tears it, and that is true
+// of the skeleton buffer: those are discrete lit pixels carrying lineage ids, and displacing them
+// breaks the 8-connectivity the flood depends on. The distance field is not that. It is a
+// continuous scalar with connectivity already resolved into it, so resampling it point-wise bends
+// the cracks and tears nothing.
+//
+// Two consequences. The width follows the warp's Jacobian, because the distance read is the
+// distance at the source location -- lattice mode has always done exactly this when it warps its
+// cellular lookup, so the two modes now agree. And warp leaves the network cache key, so dragging
+// it is a resolve pass instead of a full regrow.
 float Warp;
 int WarpPeriod;
 uint WarpSeed;
@@ -143,11 +157,8 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Pixel = int2(DispatchThreadId.xy);
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 
-	float2 FieldUV = UV;
-	if (abs(Warp) > 0.0f)
-	{
-		FieldUV = MixtormatPeriodicCurlWarp(UV, WarpPeriod, WarpSeed, Warp);
-	}
+	// The fields are read unwarped now; warp is applied to the finished network in ResolveCS.
+	const float2 FieldUV = UV;
 
 	const int Cells = max(SeedCells, 1);
 	const int2 Cell = (int2)floor(UV * (float)Cells);
@@ -444,6 +455,21 @@ void GrowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 }
 
+// Where to read the crack distance for a pixel, once the warp has bent it.
+int2 CraqWarpPixel(float2 UV, int2 Pixel)
+{
+	if (abs(Warp) <= 0.0f)
+	{
+		return Pixel;
+	}
+
+	const float2 WarpedUV = frac(MixtormatPeriodicCurlWarp(UV, WarpPeriod, WarpSeed, Warp));
+	return (int2)clamp(
+		WarpedUV * (float2)OutputSize,
+		float2(0.0f, 0.0f),
+		(float2)OutputSize - 1.0f);
+}
+
 [numthreads(8, 8, 1)]
 void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -474,7 +500,11 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int Cells = max(SeedCells, 1);
 	const float WidthPixels = max(Width, 0.002f) * (float)OutputSize.x / (float)Cells;
 
-	const float2 Nearby = CrackDistance.Load(int3(Pixel, 0)).xy;
+	// Warp lands here: bend where the network is read from, leaving the network itself alone.
+	// frac() because the curl warp is periodic but is free to step outside the unit square, and
+	// the field wraps. Load rather than a filtered sample so the lineage id in .y stays an exact
+	// integer -- Variation keys on it, and an interpolated id is a different crack.
+	const float2 Nearby = CrackDistance.Load(int3(CraqWarpPixel(UV, Pixel), 0)).xy;
 	const float Nearest = Nearby.x;
 	const float NearestId = Nearby.y;
 
