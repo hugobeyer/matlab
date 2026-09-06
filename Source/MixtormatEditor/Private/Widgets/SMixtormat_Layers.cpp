@@ -702,16 +702,11 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	Child.Type = EMixtormatLayerChildType::Effect;
 	FMixtormatLayerEffect& LayerEffect = Child.Effect;
 	LayerEffect.Effect = TSoftObjectPtr<UMixtormatEffect>(EffectPath);
-	if (Effect->EffectType == EMixtormatEffectType::Stain)
-	{
-		LayerEffect.StainColor = Effect->DefaultStainColor;
-		LayerEffect.StainRoughness = Effect->DefaultStainRoughness;
-		LayerEffect.StainHeightInfluence = Effect->DefaultStainHeightInfluence;
-		LayerEffect.StainHeightWarp = Effect->DefaultStainHeightWarp;
-		LayerEffect.StainHeightBias = Effect->DefaultStainHeightBias;
-		LayerEffect.StainHeightContrast = Effect->DefaultStainHeightContrast;
-	}
-	else
+	// Compatibility for an older recipe or external caller that still supplies MLFX_Stain: the
+	// child resolves as Stain and runs the transport solve on its own defaults. The asset's stain
+	// colour and roughness are dropped, because the effect resolves a layer mask and shades
+	// nothing.
+	if (Effect->EffectType != EMixtormatEffectType::Stain)
 	{
 		LayerEffect.Front = Effect->DefaultFront;
 		LayerEffect.Width = Effect->DefaultWidth;
@@ -847,68 +842,8 @@ void SMixtormat::RestoreFillBaseColor(FLinearColor OriginalColor, const int32 La
 	}
 }
 
-FReply SMixtormat::OpenStainColorPicker(const int32 LayerIndex, const int32 ChildIndex)
-{
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Effect)
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
-	LastHistoryRecordTime = 0.0;
-	FColorPickerArgs PickerArgs;
-	PickerArgs.bUseAlpha = false;
-	PickerArgs.bOnlyRefreshOnMouseUp = false;
-	PickerArgs.InitialColor = Effect.StainColor;
-	PickerArgs.OnColorCommitted = FOnLinearColorValueChanged::CreateSP(
-		this,
-		&SMixtormat::SetStainColor,
-		LayerIndex,
-		ChildIndex);
-	PickerArgs.OnColorPickerCancelled = FOnColorPickerCancelled::CreateSP(
-		this,
-		&SMixtormat::RestoreStainColor,
-		LayerIndex,
-		ChildIndex);
-	OpenColorPicker(PickerArgs);
-	return FReply::Handled();
-}
-
-void SMixtormat::SetStainColor(
-	FLinearColor NewColor,
-	const int32 LayerIndex,
-	const int32 ChildIndex)
-{
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-	{
-		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
-		NewColor.A = Effect.StainColor.A;
-		Effect.StainColor = NewColor;
-		RefreshLayeredPreview();
-	}
-}
-
-void SMixtormat::RestoreStainColor(
-	FLinearColor OriginalColor,
-	const int32 LayerIndex,
-	const int32 ChildIndex)
-{
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-	{
-		FMixtormatLayerEffect& Effect = WorkingLayers[LayerIndex].Children[ChildIndex].Effect;
-		OriginalColor.A = Effect.StainColor.A;
-		Effect.StainColor = OriginalColor;
-		SynchronizeHistoryAfterCancelledEdit();
-		RefreshLayeredPreview(false);
-	}
-}
-
-// What the carve exposes. Same three-call shape as the stain colour: commit live so the
-// preview follows the wheel, and put the original back if the picker is cancelled.
+// What the carve exposes. Commit live so the preview follows the wheel, and put the original
+// back if the picker is cancelled.
 FReply SMixtormat::OpenErosionColorPicker(const int32 LayerIndex, const int32 ChildIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex)
@@ -1264,7 +1199,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			switch (Asset->EffectType)
 			{
 			case EMixtormatEffectType::Peeling: return LOCTEXT("PeelingEffectName", "Peeling");
-			case EMixtormatEffectType::Stain:   return LOCTEXT("StainEffectName", "Stain");
+			case EMixtormatEffectType::Stain:
+				return Child.Effect.StainMode == EMixtormatStainMode::Deposit
+					? LOCTEXT("DepositStainEffectName", "Stain Deposit")
+					: LOCTEXT("WetStainEffectName", "Wet Stain");
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
@@ -1272,6 +1210,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		}
 		switch (Child.Effect.ProceduralType)
 		{
+		case EMixtormatEffectType::Stain:
+			return Child.Effect.StainMode == EMixtormatStainMode::Deposit
+				? LOCTEXT("DepositStainEffectName", "Stain Deposit")
+				: LOCTEXT("WetStainEffectName", "Wet Stain");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
@@ -1685,6 +1627,20 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddCraquelureChild", "Craquelure"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCraquelureToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddWetStainEffect", "Wet Stain"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			AddStainToLayer(LayerIndex, EMixtormatStainMode::Wet);
+		}));
+	Menu.Item(
+		LOCTEXT("AddDepositStainEffect", "Stain Deposit"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			AddStainToLayer(LayerIndex, EMixtormatStainMode::Deposit);
+		}));
 	Menu.Item(
 		LOCTEXT("AddErosionEffect", "Erosion"),
 		MixtormatIcons::Effect(),
@@ -2362,6 +2318,56 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 			}));
 	}
 	return Menu.Build();
+}
+
+FReply SMixtormat::AddStainToLayer(
+	const int32 LayerIndex,
+	const EMixtormatStainMode Mode)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::Stain;
+	Child.Effect.StainMode = Mode;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedStain()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	const UMixtormatEffect* Asset = Effect ? Effect->Effect.LoadSynchronous() : nullptr;
+	if (!Effect || (Asset
+		? Asset->EffectType != EMixtormatEffectType::Stain
+		: Effect->ProceduralType != EMixtormatEffectType::Stain))
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedStain() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	const UMixtormatEffect* Asset = Effect ? Effect->Effect.LoadSynchronous() : nullptr;
+	if (!Effect || (Asset
+		? Asset->EffectType != EMixtormatEffectType::Stain
+		: Effect->ProceduralType != EMixtormatEffectType::Stain))
+	{
+		return nullptr;
+	}
+	return Effect;
 }
 
 FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)

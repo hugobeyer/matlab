@@ -1,0 +1,57 @@
+#include "/Engine/Public/Platform.ush"
+
+// Separable Gaussian over a single-channel mask.
+//
+// One axis per dispatch, run twice. A 2D kernel of radius R costs R^2 taps; two 1D passes cost
+// 2R for the same result, and at the radii this is useful at -- tens of texels, wide enough to
+// round the inside of a shape rather than just soften its edge -- that difference is the whole
+// feasibility of the feature.
+//
+// Every sample wraps. This is the one place in the compositor where a naive kernel would seam a
+// tileable material: a clamped tap at the edge of the domain pulls in a value that does not
+// belong to the neighbourhood, and the surface stops meeting itself. Offsets are in UV so the
+// wrap is the sampler's job rather than arithmetic here.
+
+Texture2D<float> SourceMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+int Axis;
+float Radius;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	const float2 Direction = Axis == 0 ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f);
+	const float2 Texel = Direction / max(float2(OutputSize), 1.0f);
+
+	// Same convention as the erosion blur: sigma is half the radius, so the kernel has decayed to
+	// roughly 13% by the last tap and the truncation does not show as a ring.
+	const float Sigma = max(Radius * 0.5f, 1.0e-4f);
+	const int Taps = clamp((int)ceil(Radius), 1, 32);
+
+	float Sum = SourceMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float WeightSum = 1.0f;
+
+	[unroll(32)]
+	for (int Tap = 1; Tap <= Taps; ++Tap)
+	{
+		const float NormalizedDistance = (float)Tap / Sigma;
+		const float Weight = exp(-0.5f * NormalizedDistance * NormalizedDistance);
+		const float2 Offset = Texel * (float)Tap;
+		Sum += SourceMask.SampleLevel(LinearWrapSampler, UV + Offset, 0.0f) * Weight;
+		Sum += SourceMask.SampleLevel(LinearWrapSampler, UV - Offset, 0.0f) * Weight;
+		WeightSum += 2.0f * Weight;
+	}
+
+	OutputMask[Pixel] = saturate(Sum / WeightSum);
+}

@@ -212,7 +212,6 @@ public:
 		SHADER_PARAMETER(uint32, Enabled)
 		SHADER_PARAMETER(uint32, HasMask)
 		SHADER_PARAMETER(uint32, HasEffects)
-		SHADER_PARAMETER(uint32, HasStain)
 		SHADER_PARAMETER(uint32, OverrideBaseColor)
 		SHADER_PARAMETER(uint32, OverrideRoughness)
 		SHADER_PARAMETER(uint32, OverrideMetallic)
@@ -291,7 +290,10 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, EffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EffectHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, StainData)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerHeightMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BorderBaseHeight)
+		SHADER_PARAMETER(float, HeightSmoothAmount)
+		SHADER_PARAMETER(uint32, BorderSmoothValid)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -964,38 +966,6 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Coherent tangent flow. Built from a height texture, consumed by any effect wanting a
-// direction that follows the surface rather than the per-pixel gradient. Deliberately its
-// own shader rather than another mode on the effects that use it: the two call sites differ
-// in resolution, in which height they read and in where they sit in the graph, so the thing
-// worth sharing is the construction, not a texture.
-class FMixtormatFlowCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatFlowCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Mode)
-		SHADER_PARAMETER(int32, Radius)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousFlow)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputFlow)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatFlowCS,
-	"/Plugin/MaterialLab/Private/MixtormatFlow.usf",
-	"MainCS",
-	SF_Compute);
 
 class FMixtormatPeelingCS final : public FGlobalShader
 {
@@ -1117,6 +1087,34 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Separable Gaussian over a layer mask. Two dispatches, one per axis.
+class FMixtormatMaskBlurCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMaskBlurCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskBlurCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Axis)
+		SHADER_PARAMETER(float, Radius)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatMaskBlurCS,
+	"/Plugin/MaterialLab/Private/MixtormatMaskBlur.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMixtormatStainCS final : public FGlobalShader
 {
 public:
@@ -1125,22 +1123,50 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, SurfaceSize)
+		SHADER_PARAMETER(int32, Mode)
+		SHADER_PARAMETER(int32, StainMode)
+		SHADER_PARAMETER(int32, Iteration)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(uint32, UseSourceMask)
+		SHADER_PARAMETER(uint32, UseLayerMask)
+		SHADER_PARAMETER(uint32, UseDirtMask)
+		SHADER_PARAMETER(uint32, InvertSourceMask)
+		SHADER_PARAMETER(uint32, InvertDirtMask)
+		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(uint32, SurfaceValid)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, SourceMaskTiling)
+		SHADER_PARAMETER(float, DirtMaskTiling)
 		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(FVector4f, StainColor)
-		SHADER_PARAMETER(float, RoughnessInfluence)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER(float, HeightWarp)
-		SHADER_PARAMETER(float, HeightBias)
-		SHADER_PARAMETER(float, HeightContrast)
-		SHADER_PARAMETER(float, FlowAmount)
+		SHADER_PARAMETER(float, SourceAmount)
 		SHADER_PARAMETER(float, Gravity)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStainData)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, AccumulatedHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, FlowField)
+		SHADER_PARAMETER(float, SurfaceFollow)
+		SHADER_PARAMETER(float, Spread)
+		SHADER_PARAMETER(float, Absorption)
+		SHADER_PARAMETER(float, Drying)
+		SHADER_PARAMETER(float, DirtAmount)
+		SHADER_PARAMETER(float, ConcavityWeight)
+		SHADER_PARAMETER(float, ConvexityWeight)
+		SHADER_PARAMETER(float, OcclusionWeight)
+		SHADER_PARAMETER(float, HeightWeight)
+		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(float, SlopeWeight)
+		SHADER_PARAMETER(float, SurfaceResponse)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateA)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateB)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DirtMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStainData)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateA)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateB)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1212,16 +1238,29 @@ namespace MixtormatGpuCompositor
 		float DistanceRange = 1.0f;
 		float SDFRange = 0.1f;
 		float HeightRange = 0.1f;
-		FLinearColor StainColor = FLinearColor(0.22f, 0.09f, 0.035f, 1.0f);
-		float StainRoughness = 0.2f;
-		float StainHeightInfluence = 0.5f;
-		float StainHeightWarp = 0.0f;
-		float StainHeightBias = -1.0f;
-		float StainHeightContrast = 1.0f;
-		float StainFlowAmount = 0.0f;
+		int32 StainMode = 0;
+		FTextureRHIRef StainSourceMask;
+		FTextureRHIRef StainDirtMask;
+		float StainSourceMaskTiling = 1.0f;
+		float StainDirtMaskTiling = 1.0f;
+		bool bStainSourceMaskInvert = false;
+		bool bStainDirtMaskInvert = false;
+		int32 StainIterations = 20;
+		uint32 StainSeed = 1;
+		float StainSourceAmount = 0.12f;
 		float StainGravity = 1.0f;
-		int32 StainFlowRadius = 4;
-		int32 StainFlowSmoothing = 3;
+		float StainSurfaceFollow = 1.0f;
+		float StainSpread = 0.12f;
+		float StainAbsorption = 0.35f;
+		float StainDrying = 0.20f;
+		float StainDirtAmount = 0.35f;
+		float StainConcavityWeight = 0.35f;
+		float StainConvexityWeight = 0.15f;
+		float StainOcclusionWeight = 0.0f;
+		float StainHeightWeight = 0.0f;
+		float StainSourceHeightBias = 0.0f;
+		float StainSlopeWeight = 0.0f;
+		float StainSurfaceResponse = 1.0f;
 		// Procedural peeling. bProceduralPeel selects the generated field over the
 		// authored maps; the shaping values above are shared by both paths.
 		bool bProceduralPeel = false;
@@ -1454,6 +1493,9 @@ namespace MixtormatGpuCompositor
 		float HeightBorderLift = 0.0f;
 		float HeightBorderWidth = 0.05f;
 		float HeightBorderNormalStrength = 1.0f;
+		float HeightSmoothRadius = 0.0f;
+		float HeightSmoothAmount = 1.0f;
+		float HeightBorderSmoothing = 1.0f;
 		float FeatureInfluence = 0.0f;
 		float FeatureBias = 0.0f;
 		float HeightFeatureInfluence = 0.0f;
@@ -1465,7 +1507,6 @@ namespace MixtormatGpuCompositor
 		bool bEnabled = true;
 		bool bHasMask = false;
 		bool bHasEffects = false;
-		bool bHasStain = false;
 		bool bOverrideBaseColor = false;
 		bool bOverrideRoughness = false;
 		bool bOverrideMetallic = false;
@@ -2114,6 +2155,58 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ChipRoughnessAmount = LayerEffect.ChipRoughnessAmount;
 			}
 
+			if (ResolvedType == EMixtormatEffectType::Stain)
+			{
+				EffectData.StainMode = static_cast<int32>(LayerEffect.StainMode);
+				EffectData.StainSourceMaskTiling = FMath::Max(
+					1.0f, static_cast<float>(LayerEffect.StainSourceMaskTiling));
+				EffectData.StainDirtMaskTiling = FMath::Max(
+					1.0f, static_cast<float>(LayerEffect.StainDirtMaskTiling));
+				EffectData.bStainSourceMaskInvert = LayerEffect.bStainSourceMaskInvert;
+				EffectData.bStainDirtMaskInvert = LayerEffect.bStainDirtMaskInvert;
+				EffectData.StainIterations = FMath::Clamp(LayerEffect.StainIterations, 4, 64);
+				EffectData.StainSeed = static_cast<uint32>(FMath::Max(LayerEffect.StainSeed, 1));
+				EffectData.StainSourceAmount = LayerEffect.StainSourceAmount;
+				EffectData.StainGravity = LayerEffect.StainGravity;
+				EffectData.StainSurfaceFollow = LayerEffect.StainSurfaceFollow;
+				EffectData.StainSpread = LayerEffect.StainSpread;
+				EffectData.StainAbsorption = LayerEffect.StainAbsorption;
+				EffectData.StainDrying = LayerEffect.StainDrying;
+				EffectData.StainDirtAmount = LayerEffect.StainDirtAmount;
+				EffectData.StainConcavityWeight = LayerEffect.StainConcavityWeight;
+				EffectData.StainConvexityWeight = LayerEffect.StainConvexityWeight;
+				EffectData.StainOcclusionWeight = LayerEffect.StainOcclusionWeight;
+				EffectData.StainHeightWeight = LayerEffect.StainHeightWeight;
+				EffectData.StainSourceHeightBias = LayerEffect.StainSourceHeightBias;
+				EffectData.StainSlopeWeight = LayerEffect.StainSlopeWeight;
+				EffectData.StainSurfaceResponse = LayerEffect.StainSurfaceResponse;
+
+				const auto ResolveStainMask = [](const TSoftObjectPtr<UMixtormatMask>& MaskAssetRef,
+					const TSoftObjectPtr<UTexture2D>& TextureRef) -> FTextureRHIRef
+				{
+					UTexture2D* Texture = TextureRef.LoadSynchronous();
+					if (!Texture)
+					{
+						if (const UMixtormatMask* MaskAsset = MaskAssetRef.LoadSynchronous())
+						{
+							Texture = MaskAsset->MaskTexture.Get();
+						}
+					}
+					return Texture ? GetTextureRHI(Texture) : FTextureRHIRef();
+				};
+				EffectData.StainSourceMask = ResolveStainMask(
+					LayerEffect.StainSourceMask, LayerEffect.StainSourceMaskTexture);
+				EffectData.StainDirtMask = ResolveStainMask(
+					LayerEffect.StainDirtMask, LayerEffect.StainDirtMaskTexture);
+
+				// Stain resolves into the layer's mask chain, so it makes the layer masked in
+				// exactly the way an authored, generated, craquelure or colour-ID child does.
+				// Without this the composite took HasMask 0, ignored the chain the stain had
+				// just written, and the layer covered fully -- which is why a stain only
+				// appeared to work once some other mask child was added in front of it.
+				Data.bHasMask = true;
+			}
+
 			// Filters have nothing further to gather. bHasEffects is deliberately not set for
 			// them: a Filter never writes the effect data target, so flagging it would make
 			// the composite sample a buffer nothing wrote.
@@ -2190,23 +2283,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				Data.bHasEffects = true;
 				continue;
 			}
-			if (EffectAsset->EffectType == EMixtormatEffectType::Stain)
-			{
-				EffectData.StainColor = LayerEffect.StainColor;
-				EffectData.StainRoughness = LayerEffect.StainRoughness;
-				EffectData.StainHeightInfluence = LayerEffect.StainHeightInfluence;
-				EffectData.StainHeightWarp = LayerEffect.StainHeightWarp;
-				EffectData.StainHeightBias = LayerEffect.StainHeightBias;
-				EffectData.StainHeightContrast = FMath::Max(LayerEffect.StainHeightContrast, 0.01f);
-				EffectData.StainFlowAmount = LayerEffect.StainFlowAmount;
-				EffectData.StainGravity = LayerEffect.StainGravity;
-				EffectData.StainFlowRadius = FMath::Clamp(LayerEffect.StainFlowRadius, 1, 64);
-				// Floors at 1 for the same reason the erosion pair does.
-				EffectData.StainFlowSmoothing = FMath::Clamp(LayerEffect.StainFlowSmoothing, 1, 16);
-				Data.bHasStain = true;
-				continue;
-			}
-
 
 			EffectData.PeelData = GetTextureRHI(EffectAsset->PeelData.Get());
 			EffectData.Mask = GetTextureRHI(EffectAsset->Mask.Get());
@@ -2281,6 +2357,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.HeightBorderLift = FMath::Clamp(Layer.HeightBorderLift, -1.0f, 1.0f);
 		Data.HeightBorderWidth = FMath::Max(Layer.HeightBorderWidth, 1.0e-4f);
 		Data.HeightBorderNormalStrength = FMath::Max(Layer.HeightBorderNormalStrength, 0.0f);
+		Data.HeightSmoothRadius = FMath::Clamp(Layer.HeightSmoothRadius, 0.0f, 32.0f);
+		Data.HeightSmoothAmount = FMath::Clamp(Layer.HeightSmoothAmount, 0.0f, 1.0f);
+		Data.HeightBorderSmoothing = FMath::Clamp(Layer.HeightBorderSmoothing, 1.0f, 32.0f);
 		Data.FeatureInfluence = FMath::Clamp(Layer.FeatureInfluence, 0.0f, 1.0f);
 		Data.FeatureBias = FMath::Clamp(Layer.FeatureBias, 0.0f, 1.0f);
 		Data.HeightFeatureInfluence = FMath::Clamp(Layer.HeightFeatureInfluence, 0.0f, 1.0f);
@@ -2486,13 +2565,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				};
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[0]), FVector4f(0.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[1]), FVector4f(0.0f));
-				FRDGTextureRef StainTargets[2] =
-				{
-					GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.StainA")),
-					GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.StainB"))
-				};
-				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[0]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
-				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(StainTargets[1]), FVector4f(1.0f, 1.0f, 1.0f, 0.0f));
+
 				TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -2540,73 +2613,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					GraphBuilder.CreateUAV(PeelNoiseDummy),
 					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
 				TShaderMapRef<FMixtormatStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatFlowCS> FlowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-
-				// Bound on every erosion and stain dispatch that is not using flow. The slot
-				// is an SRV sampled by UV, so a 1x1 costs nothing and does not have to match
-				// the dispatch size the way the resample UAV does. Cleared for the same reason
-				// PeelFieldDummy is: RDG rejects a read of a transient texture nothing wrote.
-				FRDGTextureRef FlowDummy = GraphBuilder.CreateTexture(
-					FRDGTextureDesc::Create2D(
-						FIntPoint(1, 1), PF_G16R16F, FClearValueBinding::Black,
-						TexCreate_ShaderResource | TexCreate_UAV),
-					TEXT("Mixtormat.FlowDummy"));
-				AddClearUAVPass(
-					GraphBuilder,
-					GraphBuilder.CreateUAV(FlowDummy),
-					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
-
-				// Builds an orientation field from a height texture and smooths it into a
-				// coherent one. Shared by erosion and stain: they differ in resolution, in
-				// which height they read and in where they sit in the graph, so what is worth
-				// sharing is this construction rather than a texture.
-				auto AddFlowField = [&GraphBuilder, FlowShader, FlowDummy](
-					FRDGTextureRef Height,
-					const FIntPoint Res,
-					const int32 FlowRadius,
-					const int32 Smoothing,
-					const TCHAR* DebugName) -> FRDGTextureRef
-				{
-					const FRDGTextureDesc FlowDesc = FRDGTextureDesc::Create2D(
-						Res, PF_G16R16F, FClearValueBinding::Black,
-						TexCreate_ShaderResource | TexCreate_UAV);
-					FRDGTextureRef Flow[2] = {
-						GraphBuilder.CreateTexture(FlowDesc, TEXT("Mixtormat.FlowA")),
-						GraphBuilder.CreateTexture(FlowDesc, TEXT("Mixtormat.FlowB"))};
-
-					const FIntVector Groups(
-						FMath::DivideAndRoundUp(Res.X, 8),
-						FMath::DivideAndRoundUp(Res.Y, 8),
-						1);
-
-					int32 Slot = 0;
-					for (int32 Step = 0; Step <= Smoothing; ++Step)
-					{
-						const bool bBuild = Step == 0;
-						FMixtormatFlowCS::FParameters* FP =
-							GraphBuilder.AllocParameters<FMixtormatFlowCS::FParameters>();
-						FP->OutputSize = Res;
-						FP->Mode = bBuild ? 0 : 1;
-						FP->Radius = FlowRadius;
-						FP->SourceHeight = Height;
-						// The build pass never reads PreviousFlow, but the slot still has to
-						// carry a texture something wrote. The cleared 1x1 serves: it is an
-						// SRV, so it does not have to match the dispatch size, and binding the
-						// unwritten ping-pong half here is exactly what RDG rejects.
-						FP->PreviousFlow = bBuild ? FlowDummy : Flow[Slot];
-						FP->LinearWrapSampler =
-							TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-						FP->OutputFlow = GraphBuilder.CreateUAV(Flow[bBuild ? 0 : 1 - Slot]);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.Flow.%s.%s%d", DebugName, bBuild ? TEXT("Build") : TEXT("Smooth"), Step),
-							FlowShader,
-							FP,
-							Groups);
-						Slot = bBuild ? 0 : 1 - Slot;
-					}
-					return Flow[Slot];
-				};
+				TShaderMapRef<FMixtormatMaskBlurCS> MaskBlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
 				TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TSet<int32> RequiredHeightSnapshots;
@@ -2633,11 +2640,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						Layer.BaseColor,
 						TEXT("Mixtormat.DefaultEffectData"));
 					FRDGTextureRef CombinedEffectHeight = EffectHeightTargets[0];
-					FRDGTextureRef CombinedStainData = RegisterTexture(
-						GraphBuilder,
-						RegisteredTextures,
-						Layer.BaseColor,
-						TEXT("Mixtormat.DefaultStainData"));
 					FRDGTextureRef DebugMask = CombinedMask;
 					// Height the owning layer composites against. An erosion filter replaces it
 					// with its carved result so the reshaped height also drives the blend mask,
@@ -2671,7 +2673,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					TArray<const FEffectRenderData*, TInlineAllocator<2>> PendingGrades;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
-					int32 StainPassIndex = 0;
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
@@ -3395,59 +3396,229 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 						if (Effect.Type == EMixtormatEffectType::Stain)
 						{
-							const int32 StainWriteIndex = StainPassIndex & 1;
-							const int32 StainReadIndex = 1 - StainWriteIndex;
-							FMixtormatStainCS::FParameters* StainParameters =
+							// A mask child, not a post-layer filter. Stain resolves the shape of
+							// where liquid ran into the layer's accumulated mask, and the layer it
+							// masks supplies every channel -- a rust streak is a rust material
+							// masked by a stain, not a tint the filter paints on afterwards.
+							//
+							// That is also why it belongs here rather than after the composite:
+							// the surface it reads is the one accumulated underneath the layer,
+							// which is the surface the liquid would actually run over.
+
+							// Weight 0 is the identity from the second mask child onward, the same
+							// rule every other mask node follows. The first child cannot skip: it
+							// establishes the chain with Initialize, where Previous is zero rather
+							// than the half's white clear, and skipping would leave the layer
+							// fully visible instead of unstained.
+							if (MaskPassIndex > 0
+								&& (Effect.Strength <= 0.0f || Effect.StainSourceAmount <= 0.0f))
+							{
+								continue;
+							}
+
+							const int32 MaskWriteIndex = MaskPassIndex & 1;
+							const int32 MaskReadIndex = 1 - MaskWriteIndex;
+							const int32 LayerReadIndex = 1 - (LayerIndex & 1);
+
+							const FRDGTextureDesc StateDesc = FRDGTextureDesc::Create2D(
+								Request.Resolution,
+								PF_FloatRGBA,
+								FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+							FRDGTextureRef StateA[2] = {
+								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateA0")),
+								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateA1"))};
+							FRDGTextureRef StateB[2] = {
+								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB0")),
+								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB1"))};
+
+							// One-by-one stand-ins for the slots a given pass does not write. RDG
+							// validates every binding whether or not the shader stores through it.
+							const FRDGTextureDesc TinyStateDesc = FRDGTextureDesc::Create2D(
+								FIntPoint(1, 1),
+								PF_FloatRGBA,
+								FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+							const FRDGTextureDesc TinyMaskDesc = FRDGTextureDesc::Create2D(
+								FIntPoint(1, 1),
+								PF_R16F,
+								FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV);
+							FRDGTextureRef StateReadDummy = GraphBuilder.CreateTexture(
+								TinyStateDesc, TEXT("Mixtormat.StainReadDummy"));
+							FRDGTextureRef StateWriteDummyA = GraphBuilder.CreateTexture(
+								TinyStateDesc, TEXT("Mixtormat.StainWriteDummyA"));
+							FRDGTextureRef StateWriteDummyB = GraphBuilder.CreateTexture(
+								TinyStateDesc, TEXT("Mixtormat.StainWriteDummyB"));
+							FRDGTextureRef StainMaskDummy = GraphBuilder.CreateTexture(
+								TinyMaskDesc, TEXT("Mixtormat.StainMaskDummy"));
+							AddClearUAVPass(
+								GraphBuilder, GraphBuilder.CreateUAV(StateReadDummy), FVector4f(0.0f));
+							AddClearUAVPass(
+								GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyA), FVector4f(0.0f));
+							AddClearUAVPass(
+								GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyB), FVector4f(0.0f));
+							AddClearUAVPass(
+								GraphBuilder, GraphBuilder.CreateUAV(StainMaskDummy), FVector4f(0.0f));
+
+							// The feature-preview eye on the Stain group. Gated on the selected
+							// layer the way the composite gates its own debug write, so two stains
+							// on different layers cannot fight over one target. Only the resolve
+							// binds the shared debug target; the solve passes take a dummy.
+							const bool bWriteStainDebug =
+								Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::Stain
+								&& Request.DebugSettings.LayerIndex == LayerIndex;
+
+							FRDGTextureRef StainSourceMask = Effect.StainSourceMask.IsValid()
+								? RegisterTexture(
+									GraphBuilder,
+									RegisteredTextures,
+									Effect.StainSourceMask,
+									TEXT("Mixtormat.StainSourceMask"))
+								: MaskTargets[MaskReadIndex];
+							FRDGTextureRef StainDirtMask = Effect.StainDirtMask.IsValid()
+								? RegisterTexture(
+									GraphBuilder,
+									RegisteredTextures,
+									Effect.StainDirtMask,
+									TEXT("Mixtormat.StainDirtMask"))
+								: StainSourceMask;
+
+							auto FillStainParameters = [&](FMixtormatStainCS::FParameters* P)
+							{
+								P->OutputSize = Request.Resolution;
+								P->SurfaceSize = Request.Resolution;
+								P->StainMode = Effect.StainMode;
+								P->Seed = Effect.StainSeed;
+								P->UseSourceMask = Effect.StainSourceMask.IsValid() ? 1u : 0u;
+
+								// Only from the second mask child onward. The read half is cleared
+								// to white, so trusting it on the first child would source liquid
+								// over the whole surface instead of falling back to curvature.
+								P->UseLayerMask = MaskPassIndex > 0 ? 1u : 0u;
+								P->UseDirtMask = Effect.StainDirtMask.IsValid() ? 1u : 0u;
+								P->InvertSourceMask = Effect.bStainSourceMaskInvert ? 1u : 0u;
+								P->InvertDirtMask = Effect.bStainDirtMaskInvert ? 1u : 0u;
+								P->WriteDebug = 0u;
+								P->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+								P->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
+
+								// Replace. Stain exposes no blend mode of its own: it is the shape
+								// of a run, and a run either covers a texel or it does not.
+								P->BlendMode = static_cast<uint32>(EMixtormatMaskBlendMode::Replace);
+								P->SourceMaskTiling = Effect.StainSourceMaskTiling;
+								P->DirtMaskTiling = Effect.StainDirtMaskTiling;
+								P->Strength = Effect.Strength;
+								P->SourceAmount = Effect.StainSourceAmount;
+								P->Gravity = Effect.StainGravity;
+								P->SurfaceFollow = Effect.StainSurfaceFollow;
+								P->Spread = Effect.StainSpread;
+								P->Absorption = Effect.StainAbsorption;
+								P->Drying = Effect.StainDrying;
+								P->DirtAmount = Effect.StainDirtAmount;
+								P->ConcavityWeight = Effect.StainConcavityWeight;
+								P->ConvexityWeight = Effect.StainConvexityWeight;
+								P->OcclusionWeight = Effect.StainOcclusionWeight;
+								P->HeightWeight = Effect.StainHeightWeight;
+								P->HeightBias = Effect.StainSourceHeightBias;
+								P->SlopeWeight = Effect.StainSlopeWeight;
+								P->SurfaceResponse = Effect.StainSurfaceResponse;
+
+								// The surface accumulated below this layer, the same one the
+								// generated mask reads.
+								P->SourceNormal = OutputN[LayerReadIndex];
+								P->SourceRAM = OutputRAM[LayerReadIndex];
+								P->SourceHeight = HeightTargets[LayerReadIndex];
+								P->PreviousMask = MaskTargets[MaskReadIndex];
+								P->SourceMask = StainSourceMask;
+								P->DirtMask = StainDirtMask;
+								P->LinearWrapSampler =
+									TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							};
+
+							const FIntVector StainGroups(
+								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+								1);
+							FMixtormatStainCS::FParameters* Init =
 								GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-							StainParameters->OutputSize = Request.Resolution;
-							StainParameters->Initialize = StainPassIndex == 0 ? 1u : 0u;
-							StainParameters->Strength = Effect.Strength;
-							StainParameters->StainColor = FVector4f(
-															Effect.StainColor.R,
-															Effect.StainColor.G,
-															Effect.StainColor.B,
-															Effect.StainColor.A);
-							StainParameters->RoughnessInfluence = Effect.StainRoughness;
-							StainParameters->HeightInfluence = Effect.StainHeightInfluence;
-							StainParameters->HeightWarp = Effect.StainHeightWarp;
-							StainParameters->HeightBias = Effect.StainHeightBias;
-							StainParameters->HeightContrast = Effect.StainHeightContrast;
-
-							// The same orientation field erosion uses, over the surface this
-							// stain runs down. Built per stain rather than hoisted per layer:
-							// each carries its own radius and smoothing, most layers have one
-							// stain at most, and a stain that does not ask for flow builds
-							// nothing. The warp is skipped wholesale at zero, so a field built
-							// here would always be read.
-							StainParameters->FlowAmount = Effect.StainFlowAmount;
-							StainParameters->Gravity = Effect.StainGravity;
-							StainParameters->FlowField =
-								(Effect.StainFlowAmount > 0.0f && Effect.StainHeightWarp > 0.0f)
-									? AddFlowField(
-										HeightTargets[1 - (LayerIndex & 1)],
-										Request.Resolution,
-										Effect.StainFlowRadius,
-										Effect.StainFlowSmoothing,
-										TEXT("Stain"))
-									: FlowDummy;
-
-							StainParameters->PreviousStainData = StainTargets[StainReadIndex];
-							StainParameters->ChildMask = CombinedMask;
-							StainParameters->AccumulatedHeight = HeightTargets[1 - (LayerIndex & 1)];
-							StainParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							StainParameters->OutputStainData = GraphBuilder.CreateUAV(StainTargets[StainWriteIndex]);
+							FillStainParameters(Init);
+							Init->Mode = 0;
+							Init->Iteration = 0;
+							Init->PreviousStateA = StateReadDummy;
+							Init->PreviousStateB = StateReadDummy;
+							Init->OutputStateA = GraphBuilder.CreateUAV(StateA[0]);
+							Init->OutputStateB = GraphBuilder.CreateUAV(StateB[0]);
+							Init->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
+							Init->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
 							FComputeShaderUtils::AddPass(
 								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Stain.Layer%d.Child%d", LayerIndex, ChildIndex),
+								RDG_EVENT_NAME(
+									"Mixtormat.Stain.L%d.C%d.Initialize", LayerIndex, ChildIndex),
 								StainShader,
-								StainParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							CombinedStainData = StainTargets[StainWriteIndex];
-							++StainPassIndex;
+								Init,
+								StainGroups);
+
+							int32 StateReadIndex = 0;
+							for (int32 Iteration = 0; Iteration < Effect.StainIterations; ++Iteration)
+							{
+								const int32 StateWriteIndex = 1 - StateReadIndex;
+								FMixtormatStainCS::FParameters* Step =
+									GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
+								FillStainParameters(Step);
+								Step->Mode = 1;
+								Step->Iteration = Iteration + 1;
+								Step->PreviousStateA = StateA[StateReadIndex];
+								Step->PreviousStateB = StateB[StateReadIndex];
+								Step->OutputStateA = GraphBuilder.CreateUAV(StateA[StateWriteIndex]);
+								Step->OutputStateB = GraphBuilder.CreateUAV(StateB[StateWriteIndex]);
+								Step->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
+								Step->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME(
+										"Mixtormat.Stain.L%d.C%d.Step%d",
+										LayerIndex,
+										ChildIndex,
+										Iteration),
+									StainShader,
+									Step,
+									StainGroups);
+								StateReadIndex = StateWriteIndex;
+							}
+
+							FMixtormatStainCS::FParameters* Resolve =
+								GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
+							FillStainParameters(Resolve);
+							Resolve->Mode = 2;
+							Resolve->Iteration = Effect.StainIterations;
+							Resolve->WriteDebug = bWriteStainDebug ? 1u : 0u;
+							Resolve->PreviousStateA = StateA[StateReadIndex];
+							Resolve->PreviousStateB = StateB[StateReadIndex];
+							Resolve->OutputStateA = GraphBuilder.CreateUAV(StateWriteDummyA);
+							Resolve->OutputStateB = GraphBuilder.CreateUAV(StateWriteDummyB);
+							Resolve->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+							Resolve->OutputDebug = GraphBuilder.CreateUAV(
+								OutputDebug[Request.PublishedTargetIndex]);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME(
+									"Mixtormat.Stain.L%d.C%d.Resolve", LayerIndex, ChildIndex),
+								StainShader,
+								Resolve,
+								StainGroups);
+
+							CombinedMask = MaskTargets[MaskWriteIndex];
+							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+							{
+								FRDGTextureRef DebugStainSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc, TEXT("Mixtormat.DebugStainSnapshot"));
+								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugStainSnapshot);
+								DebugMask = DebugStainSnapshot;
+							}
+							++MaskPassIndex;
 							continue;
 						}
 
@@ -3657,7 +3828,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->Enabled = Layer.bEnabled ? 1u : 0u;
 					Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
 					Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
-					Parameters->HasStain = Layer.bHasStain ? 1u : 0u;
 					Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
 					Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
 					Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
@@ -3677,7 +3847,16 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->InvertAOFeature = Layer.bInvertAOFeature ? 1u : 0u;
 					Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
 					Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
-					Parameters->WriteDebug = Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
+
+					// Stain is excluded, and the exclusion is load-bearing. Every other preview
+					// mode is a signal the composite derives, so the composite writes it. Stain
+					// resolves a mask inside the child loop, which now runs *before* this pass --
+					// so with Stain selected the composite has no case for that mode, falls
+					// through to DebugValue 0, and paints flat DebugLow straight over the view the
+					// stain just wrote. This pass has nothing to say about a stain; it stays out.
+					Parameters->WriteDebug =
+						Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
+						&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
 						&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 					Parameters->Opacity = Layer.Opacity;
 					Parameters->Tiling = Layer.Tiling;
@@ -3717,6 +3896,68 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->HeightBorderLift = Layer.HeightBorderLift;
 					Parameters->HeightBorderWidth = Layer.HeightBorderWidth;
 					Parameters->HeightBorderNormalStrength = Layer.HeightBorderNormalStrength;
+
+					// Contact and border smoothing. The same separable Gaussian the mask smoothing
+					// uses, run over the accumulated height the two fields are built from.
+					//
+					// It has to happen here rather than inside the composite, because a blur wants
+					// the field already in a texture: evaluating the field per tap would cost four
+					// texture reads each, and a kernel wide enough to matter would be dozens of
+					// taps per pixel. Two separable passes over one texture is the same result for
+					// a fraction of the work.
+					//
+					// Blurring the *source* rather than widening the derivative is the whole
+					// point. A central difference taken further apart reaches further into the
+					// noise instead of averaging it, which is why widening the measurement made
+					// the stipple coarser rather than removing it.
+					const bool bBorderActive =
+						Layer.bHeightBlendEnabled
+						&& !Layer.bNormalOnly
+						&& ((Layer.HeightContactAOAmount > 0.0f)
+							|| (FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f
+								&& Layer.HeightBorderNormalStrength > 0.0f));
+					const bool bSmoothBorderField =
+						bBorderActive && Layer.HeightBorderSmoothing > 1.0f;
+					FRDGTextureRef BorderBaseHeight = HeightTargets[ReadIndex];
+					if (bSmoothBorderField)
+					{
+						FRDGTextureRef BorderBlur[2] = {
+							GraphBuilder.CreateTexture(
+								HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurX")),
+							GraphBuilder.CreateTexture(
+								HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurY"))};
+						const FIntVector BorderGroups(
+							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+							1);
+						for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
+						{
+							FMixtormatMaskBlurCS::FParameters* BorderBlurParameters =
+								GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
+							BorderBlurParameters->OutputSize = Request.Resolution;
+							BorderBlurParameters->Axis = BlurAxis;
+							BorderBlurParameters->Radius = Layer.HeightBorderSmoothing;
+							BorderBlurParameters->SourceMask = BlurAxis == 0
+								? HeightTargets[ReadIndex]
+								: BorderBlur[0];
+							BorderBlurParameters->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							BorderBlurParameters->OutputMask =
+								GraphBuilder.CreateUAV(BorderBlur[BlurAxis]);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME(
+									"Mixtormat.BorderHeightBlur.Layer%d.Axis%d",
+									LayerIndex,
+									BlurAxis),
+								MaskBlurShader,
+								BorderBlurParameters,
+								BorderGroups);
+						}
+						BorderBaseHeight = BorderBlur[1];
+					}
+					Parameters->BorderBaseHeight = BorderBaseHeight;
+					Parameters->BorderSmoothValid = bSmoothBorderField ? 1u : 0u;
 					Parameters->FeatureInfluence = Layer.FeatureInfluence;
 					Parameters->FeatureBias = Layer.FeatureBias;
 					Parameters->HeightFeatureInfluence = Layer.HeightFeatureInfluence;
@@ -3751,9 +3992,59 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						Layer.RAM,
 						TEXT("Mixtormat.LayerRAM"));
 					Parameters->LayerMask = CombinedMask;
+
+					// Rounding for the height field. A placement mask is a step, so the layer's
+					// height falls from full to nothing across one texel and the layer reads as a
+					// decal sitting on the surface. Blurring the mask and taking the height from
+					// the blurred copy replaces that step with a ramp, and at a wide enough radius
+					// the interior domes rather than merely softening at the rim.
+					//
+					// Its own pair of scratch targets, not the mask ping-pong halves: those are
+					// the chain the next layer's mask children read and write, and blurring into
+					// them would hand a later layer a mask nobody asked to smooth.
+					FRDGTextureRef LayerHeightMask = CombinedMask;
+					const bool bSmoothHeightMask =
+						Layer.HeightSmoothRadius > 0.0f
+						&& Layer.HeightSmoothAmount > 0.0f
+						&& Layer.bHasMask
+						&& !Layer.bNormalOnly;
+					if (bSmoothHeightMask)
+					{
+						FRDGTextureRef BlurTargets[2] = {
+							GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurX")),
+							GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurY"))};
+						const FIntVector BlurGroups(
+							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+							1);
+						for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
+						{
+							FMixtormatMaskBlurCS::FParameters* BlurParameters =
+								GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
+							BlurParameters->OutputSize = Request.Resolution;
+							BlurParameters->Axis = BlurAxis;
+							BlurParameters->Radius = Layer.HeightSmoothRadius;
+							BlurParameters->SourceMask =
+								BlurAxis == 0 ? CombinedMask : BlurTargets[0];
+							BlurParameters->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							BlurParameters->OutputMask =
+								GraphBuilder.CreateUAV(BlurTargets[BlurAxis]);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME(
+									"Mixtormat.HeightMaskBlur.Layer%d.Axis%d", LayerIndex, BlurAxis),
+								MaskBlurShader,
+								BlurParameters,
+								BlurGroups);
+						}
+						LayerHeightMask = BlurTargets[1];
+					}
+					Parameters->LayerHeightMask = LayerHeightMask;
+					Parameters->HeightSmoothAmount =
+						bSmoothHeightMask ? Layer.HeightSmoothAmount : 0.0f;
 					Parameters->EffectData = CombinedEffectData;
 					Parameters->EffectHeight = CombinedEffectHeight;
-					Parameters->StainData = CombinedStainData;
 					Parameters->DebugMask = DebugMask;
 					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
@@ -4523,11 +4814,12 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						}
 					}
 
-
-					// Grade runs after erosion, so on a layer carrying both it grades the
-					// surface erosion has already shaded rather than the one it was about to.
+					// Grade runs after erosion and chipping, so it grades the final weathered
+					// surface rather than the one either filter was about to change.
 					// That is the order the panel lists them in and the order a grade wants:
-					// last, over the finished result.
+					// last, over the finished result. Stain is no longer in this list at all --
+					// it resolves a mask inside the child loop, so the layer it masks has already
+					// composited by the time a grade runs.
 					for (int32 GradeIndex = 0; GradeIndex < PendingGrades.Num(); ++GradeIndex)
 					{
 						const FEffectRenderData& Grade = *PendingGrades[GradeIndex];

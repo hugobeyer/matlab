@@ -7,9 +7,12 @@
 class UTexture2D;
 
 // Surface effects write coverage, normal and AO through the effect data target.
-// Filter effects transform one composited channel in place and are the identity at zero
-// amount. Erosion and Chipping carve the composited height and Grade transforms the base
-// colour; height blur and slope limiting would join them.
+// Filter effects write no effect data. Erosion and Chipping carve height and Grade transforms
+// colour, all three after the layer composites and all three the identity at zero amount.
+// Stain is the exception inside this class: it writes no effect data either, but it resolves a
+// layer mask inside the child loop rather than transforming composited channels afterwards.
+// The class exists to answer one question -- does this effect write the effect data target --
+// and the answer for Stain is still no.
 UENUM(BlueprintType)
 enum class EMixtormatEffectClass : uint8
 {
@@ -35,6 +38,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 {
 	switch (Type)
 	{
+	case EMixtormatEffectType::Stain:
 	case EMixtormatEffectType::Erosion:
 	case EMixtormatEffectType::Grade:
 	case EMixtormatEffectType::Chipping:
@@ -112,21 +116,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (ClampMin = "0.0"))
 	float DefaultDetailStrength = 0.02f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults")
+	// Gather-era stain defaults. Nothing reads any of them: a Stain child runs the transport
+	// solve on its own defaults, and the solve shades nothing, so an authored colour and
+	// roughness have nowhere to go.
+	//
+	// Deprecated rather than deleted, and deliberately no longer EditAnywhere. Left editable they
+	// were worse than dead code -- a "Stain Defaults" category on MLFX_Stain that a person could
+	// open, tune, and save, with no effect anywhere. The fields stay so the existing asset loads
+	// without dropping them.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
 	FLinearColor DefaultStainColor = FLinearColor(0.22f, 0.09f, 0.035f, 1.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
 	float DefaultStainRoughness = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by the stain transport solve."))
 	float DefaultStainHeightInfluence = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by the stain transport solve."))
 	float DefaultStainHeightWarp = 0.35f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by the stain auto-source weights."))
 	float DefaultStainHeightBias = -1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stain Defaults", meta = (ClampMin = "0.01"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by the stain auto-source weights."))
 	float DefaultStainHeightContrast = 1.0f;
 };

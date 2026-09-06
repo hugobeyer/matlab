@@ -48,6 +48,9 @@ namespace MixtormatTokens
 	constexpr float RowFieldMinWidth = 120.0f;
 	// For a chip that shares its row with other controls rather than owning the trailing slot.
 	constexpr float RowFieldMinWidthCompact = 64.0f;
+	constexpr float ColorSwatchWidth = 76.0f;
+	constexpr float ColorSwatchHeight = 16.0f;
+	constexpr float ColorSwatchPadding = 2.0f;
 
 	// ---- Gradients --------------------------------------------------------------------------
 	// Samples emitted per span. Slate interpolates its vertex colours in linear space, so the only

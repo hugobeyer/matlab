@@ -119,7 +119,14 @@ namespace MixtormatLayerBadges
 			// An asset-backed effect takes its type from the asset; a procedural one has no asset
 			// to load and carries the type on the child itself.
 			const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-			return ForEffectType(Asset ? Asset->EffectType : Child.Effect.ProceduralType);
+			const EMixtormatEffectType Type = Asset ? Asset->EffectType : Child.Effect.ProceduralType;
+			if (Type == EMixtormatEffectType::Stain)
+			{
+				return Child.Effect.StainMode == EMixtormatStainMode::Deposit
+					? LOCTEXT("EffectBadgeDeposit", "DEPOSIT")
+					: LOCTEXT("EffectBadgeWet", "WET");
+			}
+			return ForEffectType(Type);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Generated)
 		{

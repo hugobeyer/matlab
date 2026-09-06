@@ -279,6 +279,13 @@ namespace MixtormatUI
 		default: return LOCTEXT("EroCurvMean", "Mean");
 		}
 	}
+
+	inline FText StainModeText(const EMixtormatStainMode Mode)
+	{
+		return Mode == EMixtormatStainMode::Deposit
+			? LOCTEXT("StainModeDeposit", "Deposit")
+			: LOCTEXT("StainModeWet", "Wet");
+	}
 }
 
 class SMixtormatBakeSettingsDialog final : public SCompoundWidget

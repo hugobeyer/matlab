@@ -1042,26 +1042,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedEffects()
 		++Result.ImportedEffectCount;
 	}
 
-	UMixtormatEffect* StainEffect = CreateOrLoadEffect(
-		AssetTools,
-		TEXT("MLFX_Stain"),
-		TEXT("/MaterialLab/Effects/Stain"));
-	if (!StainEffect)
-	{
-		Result.Errors.Add(TEXT("Failed to create the built-in Stain effect asset."));
-	}
-	else
-	{
-		StainEffect->Modify();
-		StainEffect->DisplayName = NSLOCTEXT("MixtormatImporter", "StainEffectName", "Stain");
-		StainEffect->Category = TEXT("Stain");
-		StainEffect->EffectType = EMixtormatEffectType::Stain;
-		StainEffect->SourceTextureBaseName = TEXT("BuiltIn_Stain");
-		StainEffect->DefaultStainHeightWarp = 0.35f;
-		StainEffect->MarkPackageDirty();
-		SavePluginAsset(*StainEffect, TEXT("Mixtormat effect"), Result.Errors);
-		++Result.ImportedEffectCount;
-	}
+	// Stains are procedural filters and no longer need a generated placeholder asset.
 
 	return Result;
 }

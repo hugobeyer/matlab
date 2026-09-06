@@ -236,6 +236,285 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildStainModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatStainMode Modes[] = {
+		EMixtormatStainMode::Wet,
+		EMixtormatStainMode::Deposit
+	};
+	for (const EMixtormatStainMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::StainModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatLayerEffect* E = GetSelectedStain())
+				{
+					E->StainMode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatLayerEffect* E = GetSelectedStain();
+				return E && E->StainMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildStainControls()
+{
+	const auto Stain = [this]() { return GetSelectedStain(); };
+	const auto Slider = [this, Stain](
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatLayerEffect>(
+			Label, Stain, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	const auto MakeMaskRow = [this](
+		const FText& Label,
+		const FText& Fallback,
+		const FText& Hint,
+		TSoftObjectPtr<UMixtormatMask> FMixtormatLayerEffect::* MaskMember,
+		TSoftObjectPtr<UTexture2D> FMixtormatLayerEffect::* TextureMember)
+	{
+		return SNew(SBox)
+			.HeightOverride(MixtormatTokens::RowHeight)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock).Text(Label)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatChip)
+					.ToolTip(Hint)
+					.Text_Lambda([this, MaskMember, TextureMember, Fallback]()
+					{
+						const FMixtormatLayerEffect* E = GetSelectedStain();
+						if (!E)
+						{
+							return Fallback;
+						}
+						if (!(E->*MaskMember).IsNull())
+						{
+							return FText::FromString((E->*MaskMember).ToSoftObjectPath().GetAssetName());
+						}
+						if (!(E->*TextureMember).IsNull())
+						{
+							return FText::FromString((E->*TextureMember).ToSoftObjectPath().GetAssetName());
+						}
+						return Fallback;
+					})
+					.OnGetMenuContent_Lambda([this, MaskMember, TextureMember, Fallback]()
+					{
+						return SNew(SBox)
+							.WidthOverride(MixtormatTokens::MaskPickerWidth)
+							.Padding(MixtormatTokens::TileGap)
+							[
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight()
+								.MaxHeight(MixtormatTokens::MaskPickerMaxHeight)
+								[
+									SNew(SScrollBox) + SScrollBox::Slot()
+									[
+										BuildMaskGallery([this, MaskMember, TextureMember](const FSoftObjectPath& Path)
+										{
+											FMixtormatLayerEffect* E = GetSelectedStain();
+											if (!E)
+											{
+												return;
+											}
+											UObject* MaskObject = Path.TryLoad();
+											if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
+											{
+												E->*MaskMember = TSoftObjectPtr<UMixtormatMask>(Path);
+												E->*TextureMember = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
+											}
+											else if (Cast<UTexture2D>(MaskObject))
+											{
+												(E->*MaskMember).Reset();
+												E->*TextureMember = TSoftObjectPtr<UTexture2D>(Path);
+											}
+											else
+											{
+												return;
+											}
+											RefreshLayeredPreview();
+										})
+									]
+								]
+								+ SVerticalBox::Slot().AutoHeight()
+								.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
+								[
+									SNew(SButton)
+									.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+									.Text(Fallback)
+									.OnClicked_Lambda([this, MaskMember, TextureMember]()
+									{
+										if (FMixtormatLayerEffect* E = GetSelectedStain())
+										{
+											(E->*MaskMember).Reset();
+											(E->*TextureMember).Reset();
+											RefreshLayeredPreview();
+										}
+										return FReply::Handled();
+									})
+								]
+							];
+					})
+				]
+			];
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("StainMode", "Output Mask"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatLayerEffect* E = GetSelectedStain();
+				return E ? MixtormatUI::StainModeText(E->StainMode) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildStainModeMenu)),
+		LOCTEXT("StainModeHint", "Wet shades absorbed liquid. Deposit shades dried dirt and mineral residue. Both come from the same transport solve.")));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainStrength", "Amount"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("StainStrengthHint", "Final blend of the selected wet or deposit mask. At 0 the solver and shade pass are skipped.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpSource", "Source")));
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+	[
+		MakeMaskRow(
+			LOCTEXT("StainSourceMask", "Liquid Mask"),
+			LOCTEXT("StainSourceFallback", "Child / Auto"),
+			LOCTEXT("StainSourceMaskHint", "Where liquid enters the solve. Unset uses preceding child masks; with none, concavity and convexity generate the source."),
+			&FMixtormatLayerEffect::StainSourceMask,
+			&FMixtormatLayerEffect::StainSourceMaskTexture)
+	];
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("StainSourceTiling", "Tiling"), Stain,
+			&FMixtormatLayerEffect::StainSourceMaskTiling, 1.0, 16.0, 1),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("StainSourceInvert", "Invert"), Stain,
+			&FMixtormatLayerEffect::bStainSourceMaskInvert)));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainSourceAmount", "Liquid Amount"), &FMixtormatLayerEffect::StainSourceAmount,
+		0.0, 1.0, 0.12, 0.005,
+		LOCTEXT("StainSourceAmountHint", "Liquid injected from the mask and from enabled curvature sources each iteration.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpDirt", "Dirt / Minerals")));
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+	[
+		MakeMaskRow(
+			LOCTEXT("StainDirtMask", "Dirt Mask"),
+			LOCTEXT("StainDirtFallback", "Use Source Mask"),
+			LOCTEXT("StainDirtMaskHint", "Material dissolved and redeposited by the liquid. Unset reuses the liquid source."),
+			&FMixtormatLayerEffect::StainDirtMask,
+			&FMixtormatLayerEffect::StainDirtMaskTexture)
+	];
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("StainDirtTiling", "Tiling"), Stain,
+			&FMixtormatLayerEffect::StainDirtMaskTiling, 1.0, 16.0, 1),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("StainDirtInvert", "Invert"), Stain,
+			&FMixtormatLayerEffect::bStainDirtMaskInvert)));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainDirtAmount", "Dirt Amount"), &FMixtormatLayerEffect::StainDirtAmount,
+		0.0, 1.0, 0.35, 0.01,
+		LOCTEXT("StainDirtAmountHint", "How much soluble material is available to become a dry deposit.")));
+
+	// Where liquid comes from when nothing authored says. Four weights over the surface
+	// accumulated below the layer, so a stain can be driven entirely by geometry -- the Liquid
+	// Mask above is an option, not a requirement.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpSurface", "Auto Source")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StainConcavity", "Concavity"), &FMixtormatLayerEffect::StainConcavityWeight, 0.0, 2.0, 0.35, 0.01,
+			LOCTEXT("StainConcavityHint", "Adds source in cavities, using the compositor's existing curvature analysis.")),
+		Slider(LOCTEXT("StainConvexity", "Convexity"), &FMixtormatLayerEffect::StainConvexityWeight, 0.0, 2.0, 0.15, 0.01,
+			LOCTEXT("StainConvexityHint", "Adds source on exposed convex detail, where runoff commonly begins."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StainOcclusion", "Occlusion"), &FMixtormatLayerEffect::StainOcclusionWeight, -2.0, 2.0, 0.0, 0.01,
+			LOCTEXT("StainOcclusionHint", "Adds source in occluded areas, read from the accumulated AO beneath the layer. Unlike Concavity this includes contact AO between layers, so it sees shelter the normal alone cannot show.")),
+		Slider(LOCTEXT("StainSlope", "Slope"), &FMixtormatLayerEffect::StainSlopeWeight, -2.0, 2.0, 0.0, 0.01,
+			LOCTEXT("StainSlopeHint", "Adds source on faces tilted into the flow, which catch liquid, and removes it from faces tilted away, which shed it. A different question from Surface Follow: this is where liquid lands, not where it goes."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StainHeightWeight", "Height"), &FMixtormatLayerEffect::StainHeightWeight, -2.0, 2.0, 0.0, 0.01,
+			LOCTEXT("StainHeightWeightHint", "Signed. Positive sources runoff from high ground; negative pools liquid in the low.")),
+		Slider(LOCTEXT("StainHeightBias", "Height Bias"), &FMixtormatLayerEffect::StainSourceHeightBias, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("StainHeightBiasHint", "Shifts the height the weight measures against, so the split between high and low lands where the surface actually sits."))));
+
+	// One control where there were two. Roughness and Porosity read the same channel, so on any
+	// dielectric they were the same number -- and Porosity duplicated Absorption, which already
+	// scales how much the material takes up.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpMaterial", "Material Response")));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainSurfaceResponse", "Surface Response"), &FMixtormatLayerEffect::StainSurfaceResponse, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("StainSurfaceResponseHint", "How much of the solve comes from the material beneath the layer. Its roughness drives drag, wandering and lateral spread; its roughness against one-minus-metallic drives absorption, so a rough dielectric drinks and polished or metallic surfaces do not. 1 uses the surface directly, 0 solves against a neutral middle. Absorption is the separate control for how much this particular material takes up.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpTransport", "Transport")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StainGravity", "Gravity"), &FMixtormatLayerEffect::StainGravity, -2.0, 2.0, 1.0, 0.01,
+			LOCTEXT("StainGravityHint", "Signed V-axis gravity. Negate it when the material's UVs run the other way.")),
+		Slider(LOCTEXT("StainSurfaceFollow", "Surface Follow"), &FMixtormatLayerEffect::StainSurfaceFollow, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("StainSurfaceFollowHint", "Blends height and normal downhill directions into gravity."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StainSpread", "Spread"), &FMixtormatLayerEffect::StainSpread, 0.0, 1.0, 0.12, 0.01,
+			LOCTEXT("StainSpreadHint", "Lateral pressure and rough-surface dispersion.")),
+		Slider(LOCTEXT("StainAbsorption", "Absorption"), &FMixtormatLayerEffect::StainAbsorption, 0.0, 1.0, 0.35, 0.01,
+			LOCTEXT("StainAbsorptionHint", "Rate liquid enters porous material and becomes the wet mask."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainDrying", "Drying"), &FMixtormatLayerEffect::StainDrying,
+		0.0, 1.0, 0.20, 0.01,
+		LOCTEXT("StainDryingHint", "Evaporation and residue deposition rate. More drying shifts coverage from wet to deposit.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpQuality", "Quality")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("StainIterations", "Iterations"), Stain,
+			&FMixtormatLayerEffect::StainIterations, 4.0, 64.0, 20,
+			LOCTEXT("StainIterationsHint", "Transport steps, solved at composition resolution. Each step advects two texels, so a run reaches the same distance in half the steps it used to need.")),
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("StainSeed", "Seed"), Stain,
+			&FMixtormatLayerEffect::StainSeed, 1.0, 999.0, 1)));
+
+	// No Shade group. Stain resolves a layer mask and shades nothing: the layer it masks supplies
+	// colour, roughness, normal and height, which is what a layer is for. The colour multiplier
+	// and the roughness target were both this filter arguing with the stack over channels the
+	// stack had already resolved.
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedStain() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("StainHeading", "STAIN TRANSPORT"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeFeaturePreviewButton(
+					EMixtormatDebugPreviewMode::Stain,
+					LOCTEXT("PreviewStain", "Preview the resolved stain coverage in unlit dark red and cyan")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildGradeTonemapMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -2209,9 +2488,28 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				[
 					NumericRow(LOCTEXT("BaseHeightBias", "Base Height Bias"), &FMixtormatLayer::HeightBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
-				+ SVerticalBox::Slot().AutoHeight()
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
 					NumericRow(LOCTEXT("BlendHeightBias", "Blend Height Bias"), &FMixtormatLayer::HeightOffset, -1.0f, 1.0f, 0.01f, 0.0f)
+				]
+
+				// Rounds the height field itself, which is why it sits here rather than under
+				// Contact Borders: Contact AO and Border Normal are both consumers of that field,
+				// and this shapes it before either reads it.
+				//
+				// Radius is the control that matters. A placement mask is a step, so a layer's
+				// height drops from full to nothing across one texel and the layer reads as a
+				// decal laid on the surface. Blurring the mask and taking the height from the
+				// blurred copy makes that a ramp, and once the radius is wide enough for a shape's
+				// two blurred edges to overlap, its interior domes -- a fillet rather than a
+				// softened edge. At 0 the two blur passes are skipped entirely.
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				[
+					NumericRow(LOCTEXT("HeightSmoothRadius", "Smooth Radius"), &FMixtormatLayer::HeightSmoothRadius, 0.0f, 32.0f, 0.5f, 0.0f)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					NumericRow(LOCTEXT("HeightSmoothAmount", "Smooth Amount"), &FMixtormatLayer::HeightSmoothAmount, 0.0f, 1.0f, 0.01f, 1.0f)
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
@@ -2299,8 +2597,21 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					[NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f)]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
-					+ SVerticalBox::Slot().AutoHeight()
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightBorderNormalStrength", "Intensity"), &FMixtormatLayer::HeightBorderNormalStrength, 0.0f, 8.0f, 0.001f, 1.0f)]
+
+					// Shared by both effects above, because both are built from the same field and
+					// both stipple for the same reason: the height underneath carries detail at
+					// every scale, and the field is differentiated at one texel and scaled by
+					// OutputSize. Width cannot fix that -- Width is a softness in the height
+					// domain, so it widens the band without changing what the band is made of.
+					//
+					// This blurs the height the field is derived from, with the same separable
+					// Gaussian the mask smoothing uses. Only these two effects read the blurred
+					// copy, and both fields are flat outside the band, so the smoothing is
+					// confined to the contact width by construction rather than by a mask.
+					+ SVerticalBox::Slot().AutoHeight()
+					[NumericRow(LOCTEXT("HeightBorderSmoothing", "Smoothing"), &FMixtormatLayer::HeightBorderSmoothing, 1.0f, 32.0f, 0.25f, 1.0f)]
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()
@@ -2415,11 +2726,6 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 						else if (Member == &FMixtormatLayerEffect::Thickness) ResetValue = EffectAsset->DefaultThickness;
 						else if (Member == &FMixtormatLayerEffect::Lift) ResetValue = EffectAsset->DefaultLift;
 						else if (Member == &FMixtormatLayerEffect::DetailStrength) ResetValue = EffectAsset->DefaultDetailStrength;
-						else if (Member == &FMixtormatLayerEffect::StainRoughness) ResetValue = EffectAsset->DefaultStainRoughness;
-						else if (Member == &FMixtormatLayerEffect::StainHeightInfluence) ResetValue = EffectAsset->DefaultStainHeightInfluence;
-						else if (Member == &FMixtormatLayerEffect::StainHeightWarp) ResetValue = EffectAsset->DefaultStainHeightWarp;
-						else if (Member == &FMixtormatLayerEffect::StainHeightBias) ResetValue = EffectAsset->DefaultStainHeightBias;
-						else if (Member == &FMixtormatLayerEffect::StainHeightContrast) ResetValue = EffectAsset->DefaultStainHeightContrast;
 					}
 					if (!FMath::IsNearlyEqual(Effect->*Member, ResetValue))
 					{
@@ -2441,59 +2747,6 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 	AddFloatControl(Panel, LOCTEXT("PeelingLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0f, 1.0f, 0.005f, 0.04f);
 	AddFloatControl(Panel, LOCTEXT("PeelingDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0f, 1.0f, 0.005f, 0.02f);
 
-	TSharedRef<SVerticalBox> StainPanel = SNew(SVerticalBox);
-	StainPanel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-		[SNew(STextBlock).Text(LOCTEXT("StainColorLabel", "Stain Color"))]
-		+ SHorizontalBox::Slot().AutoWidth()
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(2.0f)
-			.ToolTipText(LOCTEXT("OpenStainColorPicker", "Open the stain color picker"))
-			.OnClicked_Lambda([this]()
-			{
-				return OpenStainColorPicker(SelectedLayerIndex, SelectedEffectIndex);
-			})
-			[
-				SNew(SColorBlock)
-				.Color_Lambda([this]()
-				{
-					const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-					return Effect ? Effect->StainColor : FLinearColor::White;
-				})
-				.Size(FVector2D(76.0f, 16.0f))
-			]
-		]
-	];
-	AddFloatControl(StainPanel, LOCTEXT("StainIntensity", "Intensity / Strength"), &FMixtormatLayerEffect::Strength, 0.0f, 1.0f, 0.01f, 1.0f);
-	AddFloatControl(StainPanel, LOCTEXT("StainRoughness", "Roughness Influence"), &FMixtormatLayerEffect::StainRoughness, -1.0f, 1.0f, 0.01f, 0.2f);
-	AddFloatControl(StainPanel, LOCTEXT("StainHeightInfluence", "Height Influence"), &FMixtormatLayerEffect::StainHeightInfluence, 0.0f, 1.0f, 0.01f, 0.5f);
-	AddFloatControl(StainPanel, LOCTEXT("StainHeightWarp", "Height Warp"), &FMixtormatLayerEffect::StainHeightWarp, 0.0f, 1.0f, 0.01f, 0.35f);
-	AddFloatControl(StainPanel, LOCTEXT("StainGravity", "Gravity"), &FMixtormatLayerEffect::StainGravity, -1.0f, 1.0f, 0.01f, 1.0f);
-	AddFloatControl(StainPanel, LOCTEXT("StainHeightBias", "Valley / Ridge Bias"), &FMixtormatLayerEffect::StainHeightBias, -1.0f, 1.0f, 0.01f, -1.0f);
-	AddFloatControl(StainPanel, LOCTEXT("StainHeightContrast", "Height Contrast"), &FMixtormatLayerEffect::StainHeightContrast, 0.01f, 8.0f, 0.05f, 1.0f);
-
-	// The same orientation field the erosion filter uses, over the surface the stain runs
-	// down. Height Warp traces the source uphill on a two-texel gradient, which turns
-	// wherever the height has grain and frays the run; this makes it follow structure the
-	// surface actually has. Amount 0 skips the field entirely, so a stain that does not ask
-	// for flow costs nothing.
-	AddSliderRow(StainPanel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpFlow", "Flow")));
-	AddFloatControl(StainPanel, LOCTEXT("StainFlowAmount", "Flow Amount"), &FMixtormatLayerEffect::StainFlowAmount, 0.0f, 1.0f, 0.01f, 0.0f);
-	AddSliderRow(StainPanel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("StainFlowRadius", "Radius"),
-			[this]() { return GetSelectedLayerEffect(); },
-			&FMixtormatLayerEffect::StainFlowRadius, 1.0, 64.0, 4,
-			LOCTEXT("StainFlowRadiusHint", "Pixel radius of the gradient the orientation field is built from: the feature size the run is asked to follow.")),
-		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("StainFlowSmooth", "Smooth"),
-			[this]() { return GetSelectedLayerEffect(); },
-			&FMixtormatLayerEffect::StainFlowSmoothing, 1.0, 16.0, 3,
-			LOCTEXT("StainFlowSmoothHint", "How many times the orientation field is smoothed. This is what decides how far a run holds its line. 1 is the minimum: an unsmoothed field reports full coherency over what is still per-pixel noise."))));
 
 	const auto MakeEnabledToggle = [this](const FText& ToolTip)
 	{
@@ -2532,22 +2785,6 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 			.InitiallyExpanded(false)
 			.HeaderAction(MakeEnabledToggle(LOCTEXT("PeelingEnabled", "Enable Peeling")))
 			[Panel]
-		]
-		+ SVerticalBox::Slot().AutoHeight()
-		[
-			SNew(SMixtormatInspectorGroup)
-			.Visibility_Lambda([this]()
-			{
-				const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-				const UMixtormatEffect* Asset = Effect ? Effect->Effect.LoadSynchronous() : nullptr;
-				return Asset && Asset->EffectType == EMixtormatEffectType::Stain
-					? EVisibility::Visible
-					: EVisibility::Collapsed;
-			})
-			.Title(LOCTEXT("StainSettingsHeading", "STAIN SETTINGS"))
-			.InitiallyExpanded(true)
-			.HeaderAction(MakeEnabledToggle(LOCTEXT("StainEnabled", "Enable Stain")))
-			[StainPanel]
 		];
 }
 
@@ -2642,6 +2879,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					})
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
+					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildChippingControls()]

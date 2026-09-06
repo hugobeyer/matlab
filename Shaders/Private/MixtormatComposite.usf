@@ -11,9 +11,18 @@ Texture2D<float4> LayerBC;
 Texture2D<float4> LayerN;
 Texture2D<float4> LayerRAM;
 Texture2D<float> LayerMask;
+
+// The same mask, separably blurred. Bound to the unblurred mask when the layer asks for no
+// smoothing, so this is always a valid SRV and the shader needs no branch on whether the passes
+// ran.
+Texture2D<float> LayerHeightMask;
+
+// The accumulated height beneath this layer, separably blurred -- the same Gaussian the mask
+// smoothing uses, run over the height instead. Bound to the unblurred height when the layer asks
+// for none, with BorderSmoothValid saying which it is.
+Texture2D<float> BorderBaseHeight;
 Texture2D<float4> EffectData;
 Texture2D<float> EffectHeight;
-Texture2D<float4> StainData;
 Texture2D<float> DebugMask;
 SamplerState LinearWrapSampler;
 
@@ -27,7 +36,6 @@ int2 OutputSize;
 uint Enabled;
 uint HasMask;
 uint HasEffects;
-uint HasStain;
 uint OverrideBaseColor;
 uint OverrideRoughness;
 uint OverrideMetallic;
@@ -46,6 +54,8 @@ uint DirectHeightComparison;
 uint InvertHeightFeature;
 uint InvertAOFeature;
 uint InvertFeature;
+float HeightSmoothAmount;
+uint BorderSmoothValid;
 uint DebugMode;
 uint WriteDebug;
 float Opacity;
@@ -163,6 +173,37 @@ float SamplePlacementMask(float2 UV)
 	return HasMask != 0 ? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
 }
 
+// The mask as the height field should see it.
+//
+// A placement mask is a step: inside is 1, outside is 0, and the layer's height goes from full to
+// nothing across one texel. That is a cliff, and it reads as one -- the layer sits on the surface
+// like a decal rather than settling into it. Blurring the mask and taking the height from the
+// blurred copy turns that step into a ramp, so the height falls away from the interior toward the
+// boundary and the layer meets what is underneath with a fillet.
+//
+// Wide radii round rather than merely soften: past the point where the two blurred edges of a
+// shape start to overlap, the interior itself domes. That is the "smooth fill" case, and it is
+// why the radius runs to tens of texels rather than the two or three an anti-aliasing blur wants.
+//
+// Only the height path calls this. What that means for coverage depends on the comparison mode,
+// and the difference is worth knowing:
+//
+//   DirectHeightComparison != 0   coverage comes from the height field, so smoothing the height
+//                                 smooths coverage with it. This is the mode the feature is for,
+//                                 and the softened boundary is the point.
+//   DirectHeightComparison == 0   coverage is the sharp mask and only the height is rounded, so
+//                                 the layer keeps a crisp outline over a filleted profile.
+float SamplePlacementHeightMask(float2 UV)
+{
+	const float Sharp = SamplePlacementMask(UV);
+	if (HasMask == 0 || HeightSmoothAmount <= 0.0f)
+	{
+		return Sharp;
+	}
+	const float Smoothed = LayerHeightMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return lerp(Sharp, Smoothed, saturate(HeightSmoothAmount));
+}
+
 // Where the layer's source is read from.
 //
 // Everything here is chosen to survive the frac(): the repeat has to close on the UV square or
@@ -192,7 +233,7 @@ float2 LayerSourceUV(float2 UV)
 float SampleIncomingHeight(float2 UV)
 {
 	float2 SampleLayerUV = LayerSourceUV(UV);
-	float PlacementMask = SamplePlacementMask(UV);
+	float PlacementMask = SamplePlacementHeightMask(UV);
 	float SourceHeight = DirectHeightComparison != 0
 		? (HasPackedHeight != 0
 			? LayerRAM.SampleLevel(LinearWrapSampler, SampleLayerUV, 0.0f).a
@@ -224,11 +265,21 @@ float CalculateHeightDifference(float IncomingHeight, float ComparisonHeight)
 	return IncomingHeight - ComparisonHeight + HeightBias;
 }
 
-float SampleHeightBlendField(float2 UV, float Softness)
+// SmoothBase selects the blurred height, and only the contact and border fields pass it.
+//
+// That is the masking. Both fields are flat outside the band -- the contact field is
+// 4*M*(1-M), which is zero once M has saturated, and the border height is a constant Lift times
+// the same saturated field -- so a smoother base changes nothing outside the width and everything
+// inside it. Coverage, the height the layer composites, and the blend weight all keep reading the
+// sharp height, so nothing beyond these two effects moves.
+float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
 {
-	float BaseHeight = DirectHeightComparison != 0
-		? PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
-		: ReferenceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const bool bSmooth = SmoothBase != 0 && BorderSmoothValid != 0;
+	float BaseHeight = bSmooth
+		? BorderBaseHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		: (DirectHeightComparison != 0
+			? PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
+			: ReferenceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f));
 	if (DirectHeightComparison != 0 && InvertHeight != 0)
 	{
 		BaseHeight = 1.0f - BaseHeight;
@@ -240,7 +291,7 @@ float SampleHeightBlendField(float2 UV, float Softness)
 		// One height-derived mask must drive every composited surface channel.
 		float A = BaseHeight + HeightBias;
 		float B = BlendHeight + HeightOffset;
-		float M = saturate(SamplePlacementMask(UV) * HeightBlendAmount);
+		float M = saturate(SamplePlacementHeightMask(UV) * HeightBlendAmount);
 		return smoothstep(
 			HeightThreshold - SafeSoftness,
 			HeightThreshold + SafeSoftness,
@@ -251,15 +302,42 @@ float SampleHeightBlendField(float2 UV, float Softness)
 	return smoothstep(-SafeSoftness, SafeSoftness, Difference);
 }
 
+float SampleHeightBlendField(float2 UV, float Softness)
+{
+	return SampleHeightBlendFieldEx(UV, Softness, 0);
+}
+
 float SampleContactField(float2 UV)
 {
-	float BlendMask = SampleHeightBlendField(UV, HeightContactAOWidth);
+	float BlendMask = SampleHeightBlendFieldEx(UV, HeightContactAOWidth, 1);
 	return 4.0f * BlendMask * (1.0f - BlendMask);
 }
 
 float SampleBorderHeight(float2 UV)
 {
-	return HeightBorderLift * SampleHeightBlendField(UV, HeightBorderWidth);
+	return HeightBorderLift * SampleHeightBlendFieldEx(UV, HeightBorderWidth, 1);
+}
+
+float SampleBorderField(float2 UV, uint Contact)
+{
+	return Contact != 0 ? SampleContactField(UV) : SampleBorderHeight(UV);
+}
+
+// Plain central difference, one texel, exactly as it always was.
+//
+// This was briefly a Sobel measured across a radius, on the theory that differentiating over a
+// wider baseline would low-pass the field. It does not: a derivative taken further apart reaches
+// further into the noise rather than averaging it away, so widening it made the stipple coarser
+// and more visible instead of removing it. The field has to be smooth *before* it is
+// differentiated, which is what BorderBaseHeight is for.
+float2 SampleBorderGradient(float2 UV, uint Contact)
+{
+	const float2 Texel = 1.0f / float2(OutputSize);
+	const float L = SampleBorderField(UV - float2(Texel.x, 0.0f), Contact);
+	const float Rt = SampleBorderField(UV + float2(Texel.x, 0.0f), Contact);
+	const float D = SampleBorderField(UV - float2(0.0f, Texel.y), Contact);
+	const float U = SampleBorderField(UV + float2(0.0f, Texel.y), Contact);
+	return float2(Rt - L, U - D) * float2(OutputSize) * 0.5f;
 }
 
 [numthreads(8, 8, 1)]
@@ -298,12 +376,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float3 LayerBaseColor = AdjustHSV(lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor));
 	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
-	if (HasStain != 0)
-	{
-		float4 SampledStain = StainData.SampleLevel(LinearWrapSampler, UV, 0.0f);
-		LayerBaseColor = saturate(LayerBaseColor * SampledStain.rgb);
-		LayerRoughness = saturate(LayerRoughness + SampledStain.a);
-	}
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
 	SampledNormal = lerp(SampledNormal, float3(0.0f, 0.0f, 1.0f), IsFill);
@@ -423,15 +495,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float BorderNormalVisibility = HeightDetailVisibility * saturate(NormalInfluence);
 	if (ContactAOVisibility > 0.0f && HeightContactAOAmount > 0.0f)
 	{
-		float2 Texel = 1.0f / float2(OutputSize);
 		float ContactCenter = SampleContactField(UV);
-		float ContactLeft = SampleContactField(UV - float2(Texel.x, 0.0f));
-		float ContactRight = SampleContactField(UV + float2(Texel.x, 0.0f));
-		float ContactDown = SampleContactField(UV - float2(0.0f, Texel.y));
-		float ContactUp = SampleContactField(UV + float2(0.0f, Texel.y));
-		float2 ContactGradient = float2(
-			ContactRight - ContactLeft,
-			ContactUp - ContactDown) * float2(OutputSize) * 0.5f;
+		float2 ContactGradient = SampleBorderGradient(UV, 1);
 		float Contact = saturate(max(
 			ContactCenter,
 			length(ContactGradient) * max(HeightContactAOWidth, 1.0e-4f)));
@@ -442,14 +507,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		&& abs(HeightBorderLift) > 1.0e-4f
 		&& HeightBorderNormalStrength > 0.0f)
 	{
-		float2 Texel = 1.0f / float2(OutputSize);
-		float HeightLeft = SampleBorderHeight(UV - float2(Texel.x, 0.0f));
-		float HeightRight = SampleBorderHeight(UV + float2(Texel.x, 0.0f));
-		float HeightDown = SampleBorderHeight(UV - float2(0.0f, Texel.y));
-		float HeightUp = SampleBorderHeight(UV + float2(0.0f, Texel.y));
-		float2 BorderGradient = float2(
-			HeightRight - HeightLeft,
-			HeightUp - HeightDown) * float2(OutputSize) * 0.5f;
+		float2 BorderGradient = SampleBorderGradient(UV, 0);
 		float3 BorderNormal = normalize(float3(
 			-BorderGradient * HeightBorderNormalStrength,
 			1.0f));
@@ -496,14 +554,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 		else if (DebugMode == 4)
 		{
-			float2 Texel = 1.0f / float2(OutputSize);
-			float HeightLeft = SampleBorderHeight(UV - float2(Texel.x, 0.0f));
-			float HeightRight = SampleBorderHeight(UV + float2(Texel.x, 0.0f));
-			float HeightDown = SampleBorderHeight(UV - float2(0.0f, Texel.y));
-			float HeightUp = SampleBorderHeight(UV + float2(0.0f, Texel.y));
-			float2 BorderGradient = float2(
-				HeightRight - HeightLeft,
-				HeightUp - HeightDown) * float2(OutputSize) * 0.5f;
+			const float2 BorderGradient = SampleBorderGradient(UV, 0);
 			DebugValue = saturate(length(BorderGradient) * max(HeightBorderWidth, 1.0e-4f));
 		}
 		else if (DebugMode == 5)

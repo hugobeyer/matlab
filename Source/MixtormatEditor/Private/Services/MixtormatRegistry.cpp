@@ -183,7 +183,9 @@ TArray<FMixtormatEffectEntry> FMixtormatRegistry::GetEffects()
 	for (const FAssetData& Asset : Assets)
 	{
 		const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(Asset.GetAsset());
-		if (!Effect)
+		// Stain is procedural now. Ignore the old generated asset if it is still present in a
+		// project so the library offers only the two explicit procedural stain modes.
+		if (!Effect || Effect->EffectType == EMixtormatEffectType::Stain)
 		{
 			continue;
 		}

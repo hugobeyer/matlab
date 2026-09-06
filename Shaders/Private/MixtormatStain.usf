@@ -1,122 +1,532 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatFlow.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
 
-Texture2D<float4> PreviousStainData;
-Texture2D<float> ChildMask;
-Texture2D<float> AccumulatedHeight;
-Texture2D<float2> FlowField;
+// Full-resolution stain transport, resolved into a layer mask.
+//
+// Mode 0 initializes liquid and a static surface-following direction.
+// Mode 1 advects water and dissolved dirt, absorbs, dries and deposits it.
+// Mode 2 resolves either the wet or deposit mask into the layer's accumulated mask.
+//
+// Stain writes a mask and nothing else. It used to shade -- a colour multiplier over the
+// composited albedo, then an absolute roughness target -- which meant a stain could only ever be
+// a tint and a gloss change, and every channel it did not write was left arguing with the layer
+// stack for the same texel. As a mask it is the shape of where liquid ran, and the layer it masks
+// supplies colour, roughness, normal and height like any other layer. A rust streak is a rust
+// material masked by a stain; a wet patch is a smoother material masked by the same solve.
+//
+// Because it is a mask child it runs inside the layer's child loop, before the layer composites.
+// The surface it reads is therefore the one accumulated underneath, which is the surface liquid
+// would actually run over -- and every material property the solve needs comes from there.
+// One Surface Response control decides how much of that is used. Roughness drives drag and
+// dispersion; roughness against metallic drives absorption, so how much a surface drinks is a
+// fact about the surface rather than a slider on the stain. That surface is also where liquid comes from when nothing authored
+// says otherwise: EvaluateSurfaceSource weighs curvature, occlusion, height and slope into a source
+// field, so a stain can be driven entirely by the geometry it sits on and a Liquid Mask is an
+// option rather than a requirement. On the bottom layer there is no surface below, so the auto
+// source is unavailable there and a Liquid Mask is the only way to place liquid.
+//
+// The solve runs at composition resolution. To keep a run reaching as far as the old
+// reduced-resolution solve did, advection steps a StainStepScale multiple of a texel instead of
+// one, which buys the same travel for half the iterations.
+//
+// State A: water, saturation, dissolved dirt, deposit.
+// State B: velocity.xy, flow direction as an angle, source field.
+//
+// The flow direction is stored as an angle rather than as a vector so the fourth channel can
+// carry the source field. That matters: the per-iteration top-up needs the same combined source
+// the initial injection used, and re-deriving it would mean running the curvature analysis on
+// every step instead of once.
+
+// Texels advected per iteration. Only the transport offset is scaled; the water gradient and the
+// lateral spread taps stay at one texel because they estimate derivatives, not travel.
+static const float StainStepScale = 2.0f;
+
+Texture2D<float4> PreviousStateA;
+Texture2D<float4> PreviousStateB;
+Texture2D<float4> SourceNormal;
+Texture2D<float4> SourceRAM;
+Texture2D<float> SourceHeight;
+Texture2D<float> PreviousMask;
+Texture2D<float> SourceMask;
+Texture2D<float> DirtMask;
 SamplerState LinearWrapSampler;
-RWTexture2D<float4> OutputStainData;
+
+RWTexture2D<float4> OutputStateA;
+RWTexture2D<float4> OutputStateB;
+RWTexture2D<float> OutputMask;
+RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
+int2 SurfaceSize;
+int Mode;
+int StainMode;
+int Iteration;
+uint Seed;
+uint UseSourceMask;
+uint UseLayerMask;
+uint UseDirtMask;
+uint InvertSourceMask;
+uint InvertDirtMask;
+uint WriteDebug;
 uint Initialize;
+uint SurfaceValid;
+uint BlendMode;
+
+float SourceMaskTiling;
+float DirtMaskTiling;
 float Strength;
-float4 StainColor;
-float RoughnessInfluence;
-float HeightInfluence;
-float HeightWarp;
-float HeightBias;
-float HeightContrast;
-float FlowAmount;
+float SourceAmount;
 float Gravity;
+float SurfaceFollow;
+float Spread;
+float Absorption;
+float Drying;
+float DirtAmount;
+float ConcavityWeight;
+float ConvexityWeight;
+float OcclusionWeight;
+float HeightWeight;
+float HeightBias;
+float SlopeWeight;
+float SurfaceResponse;
 
-float2 WarpStainUV(float2 UV)
+uint StainHash(uint Value)
 {
-	float2 SourceUV = UV;
-	float2 Texel = 1.0f / float2(OutputSize);
-	float ResolutionScale = max(float(OutputSize.x), float(OutputSize.y));
-
-	[unroll]
-	for (uint Step = 0; Step < 2; ++Step)
-	{
-		float HeightLeft = AccumulatedHeight.SampleLevel(
-			LinearWrapSampler, frac(SourceUV - float2(Texel.x, 0.0f)), 0.0f);
-		float HeightRight = AccumulatedHeight.SampleLevel(
-			LinearWrapSampler, frac(SourceUV + float2(Texel.x, 0.0f)), 0.0f);
-		float HeightDown = AccumulatedHeight.SampleLevel(
-			LinearWrapSampler, frac(SourceUV - float2(0.0f, Texel.y)), 0.0f);
-		float HeightUp = AccumulatedHeight.SampleLevel(
-			LinearWrapSampler, frac(SourceUV + float2(0.0f, Texel.y)), 0.0f);
-		float2 Gradient = float2(HeightRight - HeightLeft, HeightUp - HeightDown);
-		float GradientLength = length(Gradient);
-		float Slope = saturate(GradientLength * ResolutionScale * 0.25f);
-		float2 UphillDirection = GradientLength > 1.0e-5f
-			? Gradient / GradientLength
-			: float2(0.0f, 0.0f);
-
-		// Follow the surface's coherent structure instead of the raw local gradient. The
-		// two-texel gradient above turns wherever the height has grain, so a run streaks in
-		// a slightly different direction at every step and reads as fraying rather than as
-		// running water. The flow tangent is agreed over a neighbourhood, so a run holds its
-		// line and follows a channel that already exists.
-		//
-		// Oriented uphill, like the term it replaces: the source is traced uphill so the
-		// visible stain is displaced downhill.
-		if (FlowAmount > 1.0e-4f)
-		{
-			float Coherency;
-			const float2 Tangent = MixtormatFlowTangent(
-				FlowField.SampleLevel(LinearWrapSampler, SourceUV, 0.0f), Coherency);
-			const float2 Along = MixtormatOrientAlong(Tangent, UphillDirection);
-			const float2 Mixed = lerp(UphillDirection, Along, FlowAmount * Coherency);
-			const float MixedLength = length(Mixed);
-			UphillDirection = MixedLength > 1.0e-5f ? Mixed / MixedLength : UphillDirection;
-		}
-
-		// Trace the source uphill so the visible stain is displaced downhill.
-		SourceUV = frac(SourceUV + UphillDirection * HeightWarp * Slope * 0.0125f);
-	}
-	return SourceUV;
+	Value ^= Value >> 16;
+	Value *= 0x7feb352dU;
+	Value ^= Value >> 15;
+	Value *= 0x846ca68bU;
+	Value ^= Value >> 16;
+	return Value;
 }
 
-// Gravity. Liquid on a wall runs down and leaves a trail behind it, so a pixel takes the
-// strongest source found along the path back up rather than one displaced sample.
-// Displacement moves a stain; this lengthens it into a run, which is the difference between
-// a smeared blob and a drip.
-//
-// Deliberately not gated by slope, unlike the warp above. That term multiplies by Slope, so
-// on a flat wall it does nothing -- and a flat wall is exactly the surface this is named for.
-// Gravity has to bypass that gate or the feature does not exist where it is wanted.
-//
-// The direction is signed rather than derived from FlipNormalY: that flag is about normal-map
-// green-channel encoding, and the V direction of the mesh UVs is independent of it. Coupling
-// them would flip every drip when someone re-imported a normal map in the other convention.
-float GatherStainMask(float2 StainUV)
+float StainRandom01(int2 Pixel, uint Salt)
 {
-	float Mask = ChildMask.SampleLevel(LinearWrapSampler, StainUV, 0.0f);
-	if (abs(Gravity) <= 1.0e-4f)
+	const uint Value =
+		(uint)Pixel.x * 0x9e3779b1U
+		^ (uint)Pixel.y * 0x85ebca6bU
+		^ Salt * 0xc2b2ae35U;
+	return (float)(StainHash(Value) & 0x00ffffffU) * (1.0f / 16777216.0f);
+}
+
+float2 StainSafeDirection(float2 Value, float2 Fallback)
+{
+	const float LengthSquared = dot(Value, Value);
+	return LengthSquared > 1.0e-10f ? Value * rsqrt(LengthSquared) : Fallback;
+}
+
+float SampleSource(float2 UV)
+{
+	float Value = 0.0f;
+	if (UseSourceMask != 0)
 	{
-		return Mask;
+		Value = SourceMask.SampleLevel(
+			LinearWrapSampler, frac(UV * max(SourceMaskTiling, 1.0f)), 0.0f);
+	}
+	else if (UseLayerMask != 0)
+	{
+		Value = PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	}
+	return InvertSourceMask != 0 ? 1.0f - saturate(Value) : saturate(Value);
+}
+
+float SampleDirt(float2 UV)
+{
+	if (UseDirtMask == 0)
+	{
+		const float Value = (UseSourceMask != 0 || UseLayerMask != 0)
+			? SampleSource(UV)
+			: 1.0f;
+		return InvertDirtMask != 0 ? 1.0f - Value : Value;
+	}
+	float Value = DirtMask.SampleLevel(
+		LinearWrapSampler,
+		frac(UV * max(DirtMaskTiling, 1.0f)),
+		0.0f);
+	return InvertDirtMask != 0 ? 1.0f - saturate(Value) : saturate(Value);
+}
+
+float2 SurfaceFlow(float2 UV)
+{
+	const float DirectionSignOnly = Gravity < 0.0f ? 1.0f : -1.0f;
+	if (SurfaceValid == 0)
+	{
+		// Nothing composited below to run over. Gravity alone is a complete answer, and the
+		// height and normal reads below would be sampling cleared targets.
+		return float2(0.0f, DirectionSignOnly);
 	}
 
-	// Against gravity: each pixel looks back up the path liquid would have taken to reach it.
-	const float2 Against = float2(0.0f, Gravity > 0.0f ? -1.0f : 1.0f);
+	const float2 Texel = 1.0f / max(float2(SurfaceSize), 1.0f);
+	const float HeightL = SourceHeight.SampleLevel(LinearWrapSampler, UV - float2(Texel.x, 0.0f), 0.0f);
+	const float HeightR = SourceHeight.SampleLevel(LinearWrapSampler, UV + float2(Texel.x, 0.0f), 0.0f);
+	const float HeightD = SourceHeight.SampleLevel(LinearWrapSampler, UV - float2(0.0f, Texel.y), 0.0f);
+	const float HeightU = SourceHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, Texel.y), 0.0f);
+	const float2 HeightDownhill = -0.5f * float2(HeightR - HeightL, HeightU - HeightD);
+	const float2 NormalDownhill = MixtormatSampleNormal(
+		SourceNormal, LinearWrapSampler, UV, 0).xy;
 
-	// A fifth of the texture at full Warp. Warp bought at most 0.025 UV of displacement before
-	// this, so the same slider now reaches roughly twenty times further -- the control changes
-	// meaning, which the plan doc records.
-	const float Reach = max(HeightWarp, 0.0f) * abs(Gravity) * 0.20f;
+	const float DirectionSign = Gravity < 0.0f ? 1.0f : -1.0f;
+	const float2 GravityDirection = float2(0.0f, DirectionSign);
+	float2 Direction = GravityDirection;
+	Direction += HeightDownhill * (6.0f * SurfaceFollow);
+	Direction += NormalDownhill * SurfaceFollow;
 
-	// One step per pixel of reach, capped. A fixed step count would space the taps by the
-	// reach itself, so a long run would sample every Nth pixel and come out dashed: a mask
-	// feature falling between two taps is never seen. At the cap the spacing grows again,
-	// about six pixels at 2K with Warp at 1, still below any stain feature worth a drip.
-	const float ResolutionScale = max(float(OutputSize.x), float(OutputSize.y));
-	const int Steps = clamp((int)ceil(Reach * ResolutionScale), 1, 64);
-	const float StepLength = Reach / (float)Steps;
+	// Surface following may bend a run, but it cannot reverse authored gravity.
+	Direction.y = Gravity < 0.0f
+		? max(Direction.y, 0.12f)
+		: min(Direction.y, -0.12f);
+	return StainSafeDirection(Direction, GravityDirection);
+}
 
-	[loop]
-	for (int i = 1; i <= Steps; ++i)
+// Where liquid enters the solve when nothing authored says. Every signal is read from the
+// surface accumulated below the layer -- the surface the liquid would land on -- and each is a
+// weight over that signal, the same vocabulary the generated mask node uses. All weights at zero
+// means the stain is driven purely by its Liquid Mask.
+//
+// Weighted sum rather than a max chain: signals are meant to reinforce. A cavity that is also
+// occluded and also low should collect more liquid than either on its own, and a max would throw
+// half the authoring away.
+float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
+{
+	// Every signal here derives from the surface accumulated below the layer. On the bottom layer
+	// there is none, so the auto source is simply unavailable and an authored Liquid Mask is the
+	// only way to place liquid.
+	if (SurfaceValid == 0)
 	{
-		const float2 P = frac(StainUV + Against * (StepLength * (float)i));
-		const float t = (float)i / (float)Steps;
-
-		// Squared falloff, so a run thins as it descends rather than ending square.
-		const float Falloff = (1.0f - t) * (1.0f - t);
-		Mask = max(Mask, ChildMask.SampleLevel(LinearWrapSampler, P, 0.0f) * Falloff);
+		return 0.0f;
 	}
 
-	return Mask;
+	float Raw = 0.0f;
+
+	// Curvature. Cavities collect, convex detail sheds -- and is where a runoff commonly starts,
+	// which is why both are exposed rather than one signed control.
+	const float Concavity = max(ConcavityWeight, 0.0f);
+	const float Convexity = max(ConvexityWeight, 0.0f);
+	if (Concavity > 0.0f || Convexity > 0.0f)
+	{
+		float Curvature;
+		float Cavity;
+		float Convex;
+		MixtormatEvaluateCurvature(
+			SourceNormal,
+			LinearWrapSampler,
+			UV,
+			SurfaceSize,
+			2,
+			1,
+			6.0f,
+			1.0f,
+			0,
+			Curvature,
+			Cavity,
+			Convex);
+		Raw += Cavity * Concavity + Convex * Convexity;
+	}
+
+	// Occlusion, from the accumulated AO channel. Distinct from concavity: AO is what the stack
+	// below actually resolved, including contact AO between layers, where curvature is measured
+	// here from the normal alone. Sheltered geometry both collects liquid and keeps it.
+	if (abs(OcclusionWeight) > 0.0f)
+	{
+		const float AO = saturate(SourceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
+		Raw += OcclusionWeight * saturate(1.0f - AO);
+	}
+
+	// Height, biased. Positive weight sources from high ground -- runoff starting at a crest --
+	// and a negative one sources from low ground, which is water pooling in the recesses.
+	if (abs(HeightWeight) > 0.0f)
+	{
+		const float Height = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		Raw += HeightWeight * saturate(Height + HeightBias);
+	}
+
+	// Slope, from the normal, measured against the flow direction. A face tilted into the flow is
+	// a ledge that catches liquid; a face tilted away sheds it. This is a different question from
+	// SurfaceFollow, which decides where liquid goes rather than where it lands, and it is the
+	// term that makes an upward-facing sill wet without any mask at all.
+	//
+	// The normal XY is used at its own magnitude rather than normalized, so a steeper face
+	// catches more -- which is the behaviour worth having. The cost is that the response scales
+	// with how strong the normals underneath are: raising a lower layer's Normal Intensity also
+	// raises this term. Normalizing would trade that for a slope response that is identical on a
+	// 5-degree ledge and a 60-degree wall, which is worse.
+	if (abs(SlopeWeight) > 0.0f)
+	{
+		const float2 Tilt = MixtormatSampleNormal(
+			SourceNormal, LinearWrapSampler, UV, 0).xy;
+		Raw += SlopeWeight * saturate(-dot(Tilt, FlowDirection));
+	}
+
+	return saturate(Raw);
+}
+
+// The one place the two source paths combine.
+//
+// An authored source multiplies rather than maxes. Max meant a mask could not actually gate
+// anything: with the default Concavity of 0.35, a stain with a carefully painted Liquid Mask
+// still sourced liquid at 0.35 everywhere the mask was black, which reads as the mask being
+// ignored. Multiplication gives the three cases people expect -- mask alone confines liquid to
+// the mask, auto alone places it by geometry, and both together restrict the geometric source to
+// where the mask allows it.
+//
+// Each half falls back to 1 when it is not in use, so an unused half is transparent rather than
+// zeroing the other. With neither in use there is nothing asking for liquid at all.
+float LiquidSource(float2 UV, float2 FlowDirection)
+{
+	const bool bAutoActive =
+		max(ConcavityWeight, 0.0f) > 0.0f
+		|| max(ConvexityWeight, 0.0f) > 0.0f
+		|| abs(OcclusionWeight) > 0.0f
+		|| abs(HeightWeight) > 0.0f
+		|| abs(SlopeWeight) > 0.0f;
+	const bool bAuthoredActive = UseSourceMask != 0 || UseLayerMask != 0;
+	if (!bAutoActive && !bAuthoredActive)
+	{
+		return 0.0f;
+	}
+
+	const float Auto = bAutoActive ? EvaluateSurfaceSource(UV, FlowDirection) : 1.0f;
+	const float Authored = bAuthoredActive ? SampleSource(UV) : 1.0f;
+	return saturate(Auto * Authored);
+}
+
+void InitializeState(int2 Pixel, float2 UV)
+{
+	const float2 Flow = SurfaceFlow(UV);
+	const float SourceField = LiquidSource(UV, Flow);
+	const float Breakup = 0.55f + 0.45f * StainRandom01(Pixel, Seed);
+	const float Source = SourceField * max(SourceAmount, 0.0f) * Breakup;
+	const float InitialSpeed = 0.20f + abs(Gravity) * 0.25f;
+
+	OutputStateA[Pixel] = float4(Source, 0.0f, 0.0f, 0.0f);
+	OutputStateB[Pixel] = float4(Flow * InitialSpeed, atan2(Flow.y, Flow.x), SourceField);
+}
+
+void SimulateState(int2 Pixel, float2 UV)
+{
+	const float2 SimTexel = 1.0f / max(float2(OutputSize), 1.0f);
+	const float4 OldA = PreviousStateA.Load(int3(Pixel, 0));
+	const float4 OldB = PreviousStateB.Load(int3(Pixel, 0));
+	float2 FlowSinCos;
+	sincos(OldB.z, FlowSinCos.x, FlowSinCos.y);
+	const float2 BaseDirection = StainSafeDirection(
+		float2(FlowSinCos.y, FlowSinCos.x), float2(0.0f, -1.0f));
+	const float SourceField = max(OldB.w, 0.0f);
+
+	const float WaterL = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f).x;
+	const float WaterR = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f).x;
+	const float WaterD = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f).x;
+	const float WaterU = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f).x;
+	const float2 WaterGradient = 0.5f * float2(WaterR - WaterL, WaterU - WaterD);
+
+	// The packed channels accumulated below the layer, sampled once and used for two different
+	// questions: how the run moves, and how much the surface drinks. Both are properties of the
+	// material the liquid is on, so both are read rather than typed.
+	const float4 SurfacePacked = SurfaceValid != 0
+		? SourceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		: float4(0.5f, 1.0f, 0.0f, 0.5f);
+
+	// One control, one question: how much of this solve comes from the material below. It drives
+	// two couplings, because a rough surface genuinely does two things -- it drags a run, and it
+	// drinks.
+	//
+	// These were two sliders, Roughness and Porosity, and they were redundant twice over. They
+	// read the same channel, so on any dielectric they were the same number. And Porosity
+	// duplicated Absorption, which already scales how much the material takes up. Nothing an
+	// artist wanted needed both: a glazed brick -- rough, but sealed -- is full Surface Response
+	// with Absorption at zero, and that always worked.
+	const float Response = saturate(SurfaceResponse);
+
+	// R is the physical roughness channel. Smooth surfaces retain momentum; rough surfaces slow,
+	// wander and spread laterally.
+	const float CompositeRoughness = saturate(SurfacePacked.r);
+	const float LocalRoughness = lerp(0.5f, CompositeRoughness, Response);
+
+	const float Inertia = lerp(0.95f, 0.80f, LocalRoughness);
+	const float TargetSpeed = 0.45f + abs(Gravity) * 1.25f;
+	float2 Velocity = lerp(BaseDirection * TargetSpeed, OldB.xy, Inertia);
+	Velocity -= WaterGradient * (0.16f + saturate(Spread) * 0.32f);
+
+	const float2 Side = float2(-BaseDirection.y, BaseDirection.x);
+	const float Wander = StainRandom01(Pixel, Seed + (uint)Iteration * 1664525U) * 2.0f - 1.0f;
+	Velocity += Side * Wander * LocalRoughness * 0.11f;
+	Velocity.y = Gravity < 0.0f
+		? max(Velocity.y, 0.03f + 0.07f * saturate(abs(Gravity)))
+		: min(Velocity.y, -0.03f - 0.07f * saturate(abs(Gravity)));
+
+	const float MaxSpeed = 1.25f + abs(Gravity) * 1.75f;
+	const float Speed = length(Velocity);
+	if (Speed > MaxSpeed)
+	{
+		Velocity *= MaxSpeed / Speed;
+	}
+
+	const float2 BackUV = frac(UV - Velocity * SimTexel * StainStepScale);
+	float4 AdvectedA = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV, 0.0f);
+	const float2 AdvectedVelocity = PreviousStateB.SampleLevel(LinearWrapSampler, BackUV, 0.0f).xy;
+	Velocity = lerp(AdvectedVelocity, Velocity, 0.80f);
+
+	const float SpreadAmount = saturate(Spread) * (0.35f + 0.65f * LocalRoughness);
+	if (SpreadAmount > 1.0e-5f)
+	{
+		const float2 Direction = StainSafeDirection(Velocity, BaseDirection);
+		const float2 Lateral = float2(-Direction.y, Direction.x);
+		const float2 LateralOffset = Lateral * SimTexel * (1.0f + LocalRoughness * 1.5f);
+		const float4 SideA = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV + LateralOffset, 0.0f);
+		const float4 SideB = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV - LateralOffset, 0.0f);
+		AdvectedA.xz = lerp(AdvectedA.xz, 0.5f * (SideA.xz + SideB.xz), SpreadAmount);
+	}
+
+	// The same combined source the initial injection used, read back rather than recomputed. It
+	// used to be the authored mask alone, which left an auto-sourced stain with one injection at
+	// init and no top-up at all -- so auto mode read as much weaker than mask mode for reasons
+	// that had nothing to do with either.
+	const float ContinuousSource = SourceField * max(SourceAmount, 0.0f) * 0.06f;
+	float Water = min(max(AdvectedA.x + ContinuousSource, 0.0f), 4.0f);
+	float Saturation = max(OldA.y, 0.0f);
+	float Dissolved = max(AdvectedA.z, 0.0f);
+	float Deposit = max(OldA.w, 0.0f);
+
+	const float Dry = saturate(Drying);
+	const float EvaporationRate = 0.0005f + Dry * 0.018f;
+	const float Evaporated = Water * (1.0f - exp(-EvaporationRate));
+	Water -= Evaporated;
+
+	// The absorption side of the same signal. Rough dielectrics drink -- concrete, brick,
+	// unglazed stone, cloth. Smooth or metallic surfaces do not: water beads on polished steel
+	// and runs off rather than soaking in.
+	//
+	// The metallic term is what makes this a different number from LocalRoughness rather than a
+	// copy of it, and it is the right shape: either term at its extreme shuts absorption off,
+	// which is what both materials actually do. Metal still drags a run normally -- only the
+	// drinking stops.
+	const float SurfacePorosity = saturate(
+		CompositeRoughness * (1.0f - saturate(SurfacePacked.b)));
+	const float LocalPorosity = lerp(0.5f, SurfacePorosity, Response);
+	const float Capacity = 0.55f + 0.65f * LocalPorosity;
+	const float Saturation01 = saturate(Saturation / max(Capacity, 1.0e-6f));
+	const float AbsorptionRate =
+		(0.002f + saturate(Absorption) * 0.055f)
+		* LocalPorosity
+		* (1.0f - Saturation01);
+	const float Absorbed = min(Water, min(AbsorptionRate, max(Capacity - Saturation, 0.0f)));
+	Water -= Absorbed;
+	Saturation = clamp(
+		(Saturation + Absorbed) * exp(-EvaporationRate * 0.23f),
+		0.0f,
+		Capacity);
+
+	const float LocalDirt = saturate(DirtAmount) * SampleDirt(UV);
+	Dissolved += Water * LocalDirt * (0.004f + LocalDirt * 0.018f) * (1.0f - saturate(Deposit));
+
+	const float ThinWater = rcp(1.0f + Water * 10.0f);
+	const float DepositionRate =
+		(0.003f + Dry * 0.040f)
+		* (0.65f + ThinWater * 1.75f + Evaporated * 5.0f);
+	const float Deposited = min(Dissolved, Dissolved * DepositionRate);
+	Dissolved -= Deposited;
+	Deposit += Deposited;
+
+	OutputStateA[Pixel] = float4(
+		max(Water, 0.0f),
+		Saturation,
+		max(Dissolved, 0.0f),
+		max(Deposit, 0.0f));
+	OutputStateB[Pixel] = float4(Velocity, OldB.z, SourceField);
+}
+
+// The same unlit ramp every other feature preview writes, so the stain reads as one more channel
+// view rather than as its own kind of display.
+float3 StainDebugColor(float Value)
+{
+	const float3 DebugLow = float3(0.08f, 0.02f, 0.12f);
+	const float3 DebugHigh = float3(0.04f, 0.25f, 0.08f);
+	return lerp(DebugLow, DebugHigh, saturate(Value));
+}
+
+void ResolveStain(int2 Pixel, float2 UV)
+{
+	// Initialize is the first mask child on the layer: there is no accumulated mask yet, and the
+	// half bound here is cleared to white rather than to what the layer had. Every mask node
+	// treats Previous as zero in that case.
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// No accumulated surface beneath this layer *and* nothing authored to source from. The auto
+	// source is the only remaining input and it derives entirely from that surface, so there is
+	// nothing to run and the accumulated mask is left untouched.
+	//
+	// Narrower than the generated mask node's guard, deliberately. Every signal that node produces
+	// is derived from the surface below, so with none it has nothing to say. A stain can still be
+	// placed by its own Liquid Mask, and refusing to run one on the bottom layer would make the
+	// mask dropdown silently do nothing there.
+	if (SurfaceValid == 0 && UseSourceMask == 0 && UseLayerMask == 0)
+	{
+		// The identity for whichever position this child holds. As a later child that is the
+		// chain unchanged; as the first it is a fully visible layer, because Previous is forced
+		// to zero there and passing it through would hide the layer completely rather than
+		// leaving it unmasked.
+		OutputMask[Pixel] = Initialize != 0 ? 1.0f : saturate(Previous);
+
+		// Still write the preview. An empty view is the honest answer -- there is genuinely no
+		// coverage here -- and it is a different answer from leaving the target untouched, which
+		// shows whatever the last composite happened to leave and reads as the eye being broken.
+		if (WriteDebug != 0)
+		{
+			OutputDebug[Pixel] = float4(StainDebugColor(0.0f), 1.0f);
+		}
+		return;
+	}
+
+	const float4 State = PreviousStateA.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// Both masks normalize against what this solve actually put into the surface, not against an
+	// absolute physical scale.
+	//
+	// This is the difference between shading and masking, and getting it wrong made the effect
+	// look broken. The old normalization divided saturation by Capacity and ran the deposit
+	// through 1 - exp(-Deposit * 2.5). Those are honest physical ratios, and at the default
+	// parameters they resolve to roughly 0.18 and 0.004. As a roughness lerp that was a visible
+	// sheen and a faint residue. As a *mask* it means the layer is 18% visible, or not visible at
+	// all -- so a fill layer with metallic and zero roughness masked by a stain showed almost
+	// none of either, and read as the stain overriding channels it does not even write.
+	//
+	// A mask has to reach 1 where the effect is fully present. Referencing the injected liquid
+	// gets that without hand-tuned gain, and makes the mask scale-free: Liquid Amount then
+	// controls where liquid reaches rather than how visible the result is, which is what an
+	// amount on a source ought to mean.
+
+	// Liquid delivered per texel over the whole run, at full source: one injection at
+	// initialization plus the per-iteration top-up. Mirrors InitializeState and SimulateState, so
+	// changing either rate carries the reference with it.
+	const float Injected = max(SourceAmount, 0.0f) * (1.0f + (float)Iteration * 0.06f);
+
+	// Absorbed liquid plus a fraction of what is still on the surface. Half the injected volume
+	// is the reference rather than all of it, because evaporation and runoff mean a texel never
+	// absorbs everything that passes over it.
+	const float WetMask = saturate(
+		(State.y + State.x * 0.20f) / max(Injected * 0.5f, 1.0e-4f));
+
+	// Dirt that settled, against the dirt that much liquid could dissolve. The dissolve rate is
+	// the same expression SimulateState uses, so the reference tracks Dirt Amount instead of
+	// drifting away from it as that slider moves.
+	const float LocalDirt = saturate(DirtAmount);
+	const float Carried = Injected * LocalDirt * (0.004f + LocalDirt * 0.018f);
+	const float DepositMask = saturate(State.w / max(Carried * 0.25f, 1.0e-6f));
+
+	const float Incoming = StainMode == 0 ? WetMask : DepositMask;
+
+	const float Blended = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));
+
+	// It shows the solve itself, before Strength blends it into the accumulated mask, which is
+	// what the other previews show too.
+	if (WriteDebug != 0)
+	{
+		OutputDebug[Pixel] = float4(StainDebugColor(Incoming), 1.0f);
+	}
 }
 
 [numthreads(8, 8, 1)]
@@ -127,23 +537,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
-	float2 StainUV = HeightWarp > 1.0e-4f ? WarpStainUV(UV) : UV;
-
-	// Gathered along the run, but shaded by where the pixel is rather than where the liquid
-	// came from: the height mask below reads this pixel's own UV, which is what settles a
-	// drip into the crevices it is currently sitting in.
-	float Mask = GatherStainMask(StainUV);
-	float Height = AccumulatedHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float ValleyRidge = lerp(1.0f - Height, Height, saturate(HeightBias * 0.5f + 0.5f));
-	float HeightMask = saturate((ValleyRidge - 0.5f) * max(HeightContrast, 0.01f) + 0.5f);
-	float Coverage = saturate(Mask * Strength * lerp(1.0f, HeightMask, HeightInfluence));
-
-	float4 Previous = Initialize != 0
-		? float4(1.0f, 1.0f, 1.0f, 0.0f)
-		: PreviousStainData.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float3 ColorMultiplier = lerp(float3(1.0f, 1.0f, 1.0f), StainColor.rgb, Coverage);
-	OutputStainData[DispatchThreadId.xy] = float4(
-		Previous.rgb * ColorMultiplier,
-		clamp(Previous.a + RoughnessInfluence * Coverage, -1.0f, 1.0f));
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	if (Mode == 0)
+	{
+		InitializeState(Pixel, UV);
+	}
+	else if (Mode == 1)
+	{
+		SimulateState(Pixel, UV);
+	}
+	else
+	{
+		ResolveStain(Pixel, UV);
+	}
 }

@@ -280,6 +280,15 @@ enum class EMixtormatErosionCurvatureMode : uint8
 	Ridge = 2 UMETA(DisplayName = "Ridge")
 };
 
+// Both stain looks use the same transport solve. Wet exposes absorbed liquid; Deposit exposes
+// the dried dirt/mineral residue left behind by that liquid.
+UENUM(BlueprintType)
+enum class EMixtormatStainMode : uint8
+{
+	Wet = 0 UMETA(DisplayName = "Wet"),
+	Deposit = 1 UMETA(DisplayName = "Deposit")
+};
+
 // Peel edge profile. Flat is the chip the authored maps ship. Curled lifts a flap ahead of
 // the front and folds it back behind, and exists only on the procedural path.
 UENUM(BlueprintType)
@@ -461,50 +470,140 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling")
 	bool bPeelHeightInvert = false;
 
+	// Stain is a post-layer filter. It reads the height, normal and real packed roughness that
+	// the layer produced, solves transport at reduced resolution, then shades the finished layer.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
-	FLinearColor StainColor = FLinearColor(0.22f, 0.09f, 0.035f, 1.0f);
+	EMixtormatStainMode StainMode = EMixtormatStainMode::Wet;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
-	float StainRoughness = 0.2f;
+	// Optional source mask. Unset uses the accumulated mask children at the stain's position.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Source")
+	TSoftObjectPtr<UMixtormatMask> StainSourceMask;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
-	float StainHeightInfluence = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Source")
+	TSoftObjectPtr<UTexture2D> StainSourceMaskTexture;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
-	float StainHeightWarp = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Source")
+	int32 StainSourceMaskTiling = 1;
 
-	// Runs the stain along the V axis the way liquid runs down a wall, over a distance Warp
-	// sets. Signed, because whether +V is down depends on how the mesh was unwrapped and not
-	// on anything the material can know -- negate it if the drips run the wrong way.
-	//
-	// Not derived from FlipNormalY: that flag is about normal-map green-channel encoding, and
-	// coupling the two would flip every drip on a normal map re-import.
-	//
-	// Unlike the height warp this is not gated by slope, so it still runs on a flat wall --
-	// which is the surface it is named for. Inert while Warp is 0, which is its default, so a
-	// stain only gravitates once there is a distance for it to travel.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Source")
+	bool bStainSourceMaskInvert = false;
+
+	// Optional dirt/mineral map. Unset reuses the source mask, so a single mask remains useful.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Dirt")
+	TSoftObjectPtr<UMixtormatMask> StainDirtMask;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Dirt")
+	TSoftObjectPtr<UTexture2D> StainDirtMaskTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Dirt")
+	int32 StainDirtMaskTiling = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Dirt")
+	bool bStainDirtMaskInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	int32 StainIterations = 20;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	int32 StainSeed = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainSourceAmount = 0.12f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
 	float StainGravity = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainSurfaceFollow = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainSpread = 0.12f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainAbsorption = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainDrying = 0.20f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
+	float StainDirtAmount = 0.35f;
+
+	// Existing surface analysis participates directly in source placement. Positive values add
+	// liquid/dirt at concave or convex detail; zero leaves placement entirely mask-driven.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainConcavityWeight = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainConvexityWeight = 0.15f;
+
+	// Occlusion, height and slope complete the auto source. All four surface weights read the
+	// surface accumulated below the layer, so a stain can be driven entirely by geometry with no
+	// Liquid Mask at all. Zero by default: curvature alone is the conservative starting point.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainOcclusionWeight = 0.0f;
+
+	// Signed. Positive sources runoff from high ground, negative pools liquid in the low.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainHeightWeight = 0.0f;
+
+	// SourceHeightBias, not HeightBias: StainHeightBias is taken by the deprecated gather-era
+	// control further down, and UHT rejects the shadow rather than resolving it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainSourceHeightBias = 0.0f;
+
+	// Faces tilted into the flow catch liquid; faces tilted away shed it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainSlopeWeight = 0.0f;
+
+	// How much of the solve comes from the material accumulated below the layer. 1 uses it
+	// directly -- roughness for drag and dispersion, roughness against metallic for absorption.
+	// 0 makes both neutral.
+	//
+	// Replaces the separate Roughness and Porosity responses, which read the same channel and so
+	// were the same number on any dielectric. Porosity also duplicated Absorption, which already
+	// scales how much the material takes up.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
+	float StainSurfaceResponse = 1.0f;
+
+	// Kept only so older recipes deserialize without losing fields. The solver resolves a layer
+	// mask and shades nothing, so none of the shading controls are read any more.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
+	FLinearColor StainColor = FLinearColor(0.45f, 0.45f, 0.45f, 1.0f);
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
+	float StainColorAmount = 0.75f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
+	float StainRoughness = 0.12f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "The stain solve is full resolution."))
+	int32 StainSolveDivisor = 4;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Merged into StainSurfaceResponse; use Absorption to control how much the material takes up."))
+	float StainPorosity = 1.0f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Renamed to StainSurfaceResponse, which now drives absorption as well."))
+	float StainRoughnessResponse = 1.0f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain transport controls."))
+	float StainHeightInfluence = 0.5f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain transport controls."))
+	float StainHeightWarp = 0.0f;
+
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain surface weights."))
 	float StainHeightBias = -1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain", meta = (ClampMin = "0.01"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain surface weights."))
 	float StainHeightContrast = 1.0f;
 
-	// How much the run follows the surface's coherent flow rather than the local uphill
-	// gradient. 0 is the original two-texel gradient trace and skips the field entirely, so
-	// a stain that does not ask for flow costs nothing extra.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
 	float StainFlowAmount = 0.0f;
 
-	// Pixel radius of the gradient the orientation field is built from, and how many times
-	// it is smoothed. Same meaning as the erosion pair; separate fields because a stain runs
-	// over a different height, at a different resolution, in a different place in the graph.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
 	int32 StainFlowRadius = 4;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
 	int32 StainFlowSmoothing = 3;
 
 	// Erosion. A tileable, stacked directional-stripe filter evaluated in one dispatch.
@@ -1246,6 +1345,25 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "8.0"))
 	float HeightBorderNormalStrength = 1.0f;
+
+	// Gaussian radius, in texels, applied to the accumulated height that Contact AO and Border
+	// Normal are built from. 1 skips the two blur passes entirely.
+	//
+	// Width is a softness in the height domain: it widens the band without changing how the field
+	// is sampled, so raising it gave a wider band that was just as noisy. This smooths the height
+	// before the field is derived from it, and only those two effects read the smoothed copy --
+	// coverage, layer height and blend weight all keep the sharp one.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "1.0", ClampMax = "32.0"))
+	float HeightBorderSmoothing = 1.0f;
+
+	// Rounds the height the placement mask produces, in texels. 0 skips the two blur passes
+	// entirely. Wide enough and the interior of a shape domes rather than only its rim softening,
+	// which is the difference between an anti-aliased edge and a filleted one.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "32.0"))
+	float HeightSmoothRadius = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	float HeightSmoothAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
 	int32 HeightReferenceLayerIndex = INDEX_NONE;

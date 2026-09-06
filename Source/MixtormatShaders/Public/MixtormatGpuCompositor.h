@@ -20,7 +20,10 @@ enum class EMixtormatDebugPreviewMode : uint8
 	HeightBlend,
 	ContactAO,
 	BorderNormal,
-	LayerMask
+	LayerMask,
+	// Written by the stain resolve rather than by the composite, because stain is a post-layer
+	// filter and runs after the composite has already published the layer.
+	Stain
 };
 
 struct FMixtormatDebugPreviewSettings

@@ -140,16 +140,16 @@ amount at zero it is the identity.
 This is a different kind of thing from the effects that exist today:
 
 ```text
-Peeling, Stain    consume the mask, modify the owning layer's coverage, normal and AO
-Erosion           reads a composited channel, returns a filtered version of that channel
+Peeling           consumes the mask and writes owning-layer effect data
+Stain, Erosion    read composited channels and return filtered channels
 ```
 
 Model it as an explicit category so the distinction survives contact with later work:
 
 ```text
 EMaterialLabEffectClass
-    Surface     writes coverage / normal / AO through EffectData   (Peeling, Stain)
-    Filter      transforms one composited channel in place         (Erosion)
+    Surface     writes coverage / normal / AO through EffectData   (Peeling)
+    Filter      transforms composited channels in place            (Stain, Erosion)
 ```
 
 Filters share one contract. Each declares the channel it filters, is the identity at zero
@@ -162,7 +162,7 @@ three effects reads as what it does rather than as three opaque entries.
 
 ## Integration
 
-An ordered effect child, alongside Peeling and Stain:
+An ordered filter child, alongside Peeling and the later stain transport filter:
 
 ```text
 EMaterialLabEffectType::Erosion
@@ -327,8 +327,8 @@ resolution rose. That is corrected — see *Cavity: curvature measure, offset an
 
 ## Tangent flow direction
 
-`Direction Mode = Flow`, and the same field is reused by the stain effect. Built in
-`MixtormatFlow.usf`, decoded through `MixtormatFlow.ush`.
+The original direction-mode prototype used `MixtormatFlow.usf` and `MixtormatFlow.ush`. The
+current erosion shader derives its guidance internally, and stain transport stores its own flow.
 
 Weight and Lerp both start from the downhill gradient, which is a per-pixel quantity: on a
 composited height it wanders texel to texel, which is the whole reason `Slope Blur` exists.
@@ -377,11 +377,9 @@ voting, which covers the case that actually mattered.
 
 ### Orienting it
 
-The tangent stays undirected after decoding, so it is pointed along a reference — downhill for
-erosion, uphill for a stain's source trace. `sign()` is wrong for this: it returns zero exactly
-where the tangent is perpendicular to the reference, which is not a measure-zero case but every
-pixel along a crest or valley floor, precisely where a direction matters most. `MixtormatOrientAlong`
-uses `dot >= 0` instead.
+The historical tangent stayed undirected after decoding, so it was pointed along a downhill
+reference. `sign()` was avoided because it returns zero at perpendicular alignment; the helper
+used `dot >= 0` instead.
 
 ### Built once, pre-carve
 
@@ -395,30 +393,16 @@ with, and that does not change as the carve deepens it.
 The consequence to know: the field therefore disagrees slightly with the slope gate, which does
 read the progressively carved guide. That is deliberate, and it is what keeps Flow stable.
 
-### Reuse in stain
+### Historical stain reuse
 
-`MixtormatStain.usf` traces the source UV uphill so the visible stain is displaced downhill. That
-trace used a two-texel gradient, which turns wherever the height has grain, so a run frayed
-instead of holding a line. `Stain Flow Amount` blends that gradient toward the coherent tangent
-oriented *uphill* — same field, same header, same orientation helper.
-
-The two call sites differ in resolution, in which height they read, and in where they sit in the
-graph, so what is shared is the construction — a `.ush` decode plus an `AddFlowField` lambda in
-the compositor returning an `FRDGTextureRef` — not a texture. A stain builds its own field, and
-only when `Flow Amount` and `Height Warp` are both non-zero; otherwise it binds the same cleared
-1x1 dummy the non-flow erosion paths use, and costs nothing.
+The legacy stain gather reused this field. The stain transport replacement now computes and stores
+its static downhill direction during the reduced-resolution initialization pass; see
+`StainEffectPlan.md`. The erosion flow construction remains documented here for its own filter.
 
 ### Cost
 
-One build plus `Flow Smooth` blur dispatches, over a ping-pong pair of RG16F targets at the
-consumer's resolution: 64MB each at 4096 internal, 16MB each at composition 2048. Paid once per
-erosion effect in Flow mode and once per flow-using stain, never per pass.
-
-Several flow-using stains in one layer build a field each, since each carries its own radius and
-smoothing. Their lifetimes do not overlap — a field is referenced only by its own build, its
-blurs and the one stain dispatch that reads it — so RDG can free or alias each before the next
-is built. Worth re-checking in a graph capture if a heavily stained recipe shows a memory spike,
-because that reuse is an RDG behaviour rather than something this code enforces.
+The separate full-resolution flow build is no longer dispatched. Stain transport derives flow
+once during its reduced-resolution initialization pass; erosion keeps guidance in its own filter.
 
 ## Precision: why the height chain is R32F
 

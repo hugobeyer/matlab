@@ -485,6 +485,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					case EMixtormatDebugPreviewMode::ContactAO: return LOCTEXT("DebugContactAO", "Contact AO ×");
 					case EMixtormatDebugPreviewMode::BorderNormal: return LOCTEXT("DebugBorderNormal", "Border normal ×");
 					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
+					case EMixtormatDebugPreviewMode::Stain: return LOCTEXT("DebugStain", "Stain ×");
 					default: return FText::GetEmpty();
 					}
 				})

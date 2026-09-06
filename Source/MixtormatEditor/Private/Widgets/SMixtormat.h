@@ -101,6 +101,9 @@ private:
 	FReply ToggleLayerExpanded(int32 LayerIndex);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
+	FReply AddStainToLayer(int32 LayerIndex, EMixtormatStainMode Mode);
+	FMixtormatLayerEffect* GetSelectedStain();
+	const FMixtormatLayerEffect* GetSelectedStain() const;
 	FReply AddErosionToLayer(int32 LayerIndex);
 	FReply AddProceduralPeelingToLayer(int32 LayerIndex);
 	FMixtormatLayerEffect* GetSelectedProceduralPeel();
@@ -155,9 +158,6 @@ private:
 	FReply OpenFillColorPicker(int32 LayerIndex);
 	void SetFillBaseColor(FLinearColor NewColor, int32 LayerIndex);
 	void RestoreFillBaseColor(FLinearColor OriginalColor, int32 LayerIndex);
-	FReply OpenStainColorPicker(int32 LayerIndex, int32 ChildIndex);
-	void SetStainColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
-	void RestoreStainColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
 	FReply OpenErosionColorPicker(int32 LayerIndex, int32 ChildIndex);
 	void SetErosionColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
 	void RestoreErosionColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
@@ -488,6 +488,8 @@ private:
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
+	TSharedRef<SWidget> BuildStainControls();
+	TSharedRef<SWidget> BuildStainModeMenu();
 	TSharedRef<SWidget> BuildErosionControls();
 	TSharedRef<SWidget> BuildProceduralPeelControls();
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
