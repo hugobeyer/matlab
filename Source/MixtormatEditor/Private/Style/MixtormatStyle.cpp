@@ -1,4 +1,6 @@
 ﻿#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatLiveTheme.h"
+#include "Style/MixtormatMutableStyleSet.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -43,15 +45,22 @@ namespace MixtormatStylePrivate
 	}
 }
 
-TSharedPtr<FSlateStyleSet> FMixtormatStyle::StyleInstance;
+TSharedPtr<FMixtormatMutableStyleSet> FMixtormatStyle::StyleInstance;
 
 void FMixtormatStyle::Initialize()
 {
-	if (StyleInstance.IsValid())
+	if (!StyleInstance.IsValid())
 	{
-		return;
+		FMixtormatLiveTheme::Initialize();
+		Refresh();
 	}
+}
 
+void FMixtormatStyle::Refresh()
+{
+	check(IsInGameThread());
+	MixtormatTokens::RecomputeDerived();
+	const bool bFirstRegistration = !StyleInstance.IsValid();
 	using namespace MixtormatStylePrivate;
 
 	const ISlateStyle& AppStyle = FAppStyle::Get();
@@ -84,7 +93,10 @@ void FMixtormatStyle::Initialize()
 	const FLinearColor TroughSurface = MixtormatPalette::WellBottom();
 	const FLinearColor TroughLine = MixtormatPalette::WellOutline();
 
-	StyleInstance = MakeShared<FSlateStyleSet>(GetStyleSetName());
+	if (bFirstRegistration)
+	{
+		StyleInstance = MakeShared<FMixtormatMutableStyleSet>(GetStyleSetName());
+	}
 	// Resolved through the plugin rather than assembled from a folder name: a plugin's
 	// name comes from its .uplugin, which need not match the directory containing it, and
 	// assuming they match is what silently emptied the icon set during the rename.
@@ -100,7 +112,7 @@ void FMixtormatStyle::Initialize()
 		new FSlateColorBrush(TopBar));
 	StyleInstance->Set(
 		TEXT("Mixtormat.PanelShadow"),
-		new FSlateRoundedBoxBrush(Shadow, 7.0f));
+		new FSlateRoundedBoxBrush(Shadow, MixtormatTokens::PanelShadowCornerRadius));
 	// The ground both columns sit on. Darker than the rows and groups stacked in it, so those
 	// read as raised sheets -- and with no outline, because contrast here comes from the shade
 	// difference rather than from a drawn edge.
@@ -109,16 +121,16 @@ void FMixtormatStyle::Initialize()
 		new FSlateRoundedBoxBrush(MixtormatPalette::Shell(), MixtormatTokens::CornerRadius));
 	StyleInstance->Set(
 		TEXT("Mixtormat.InsetPanel"),
-		new FSlateRoundedBoxBrush(Inset, 4.0f, Shadow, 0.45f));
+		new FSlateRoundedBoxBrush(Inset, MixtormatTokens::InsetPanelCornerRadius, Shadow, MixtormatTokens::InsetPanelOutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.SectionBar"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.3f));
+		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, MixtormatTokens::SectionBarOutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhost"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 6.0f, BorderStrong, 0.8f));
+		new FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::DragGhostCornerRadius, BorderStrong, MixtormatTokens::DragGhostOutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhostAccent"),
-		new FSlateRoundedBoxBrush(SelectionFill, 6.0f, AccentHover, 1.0f));
+		new FSlateRoundedBoxBrush(SelectionFill, MixtormatTokens::DragGhostCornerRadius, AccentHover, MixtormatTokens::OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderline"),
 		new FSlateColorBrush(MixtormatPalette::Divider()));
@@ -127,10 +139,10 @@ void FMixtormatStyle::Initialize()
 		new FSlateColorBrush(Accent));
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRow"),
-		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.25f));
+		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, MixtormatTokens::CompactRowOutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRowValidDrop"),
-		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, 0.65f));
+		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, MixtormatTokens::CompactRowValidDropOutlineWidth));
 
 	FTextBlockStyle SectionHeader = FTextBlockStyle()
 		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontGroupHeader))
@@ -166,7 +178,7 @@ void FMixtormatStyle::Initialize()
 
 	StyleInstance->Set(
 		TEXT("Mixtormat.ThumbnailBackground"),
-		new FSlateRoundedBoxBrush(ThumbnailBackground, 2.0f));
+		new FSlateRoundedBoxBrush(ThumbnailBackground, MixtormatTokens::ThumbnailBackgroundCornerRadius));
 
 	FButtonStyle ThumbnailCard = FButtonStyle()
 		// Material cards have no outline: the image must read as edge-to-edge, without the
@@ -179,8 +191,12 @@ void FMixtormatStyle::Initialize()
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(2.0f))
-		.SetPressedPadding(FMargin(2.0f, 3.0f, 2.0f, 1.0f));
+		.SetNormalPadding(FMargin(MixtormatTokens::ThumbnailCardPadding))
+		.SetPressedPadding(FMargin(
+			MixtormatTokens::ThumbnailCardPadding,
+			MixtormatTokens::ThumbnailCardPadding + MixtormatTokens::ButtonPressedOffset,
+			MixtormatTokens::ThumbnailCardPadding,
+			MixtormatTokens::ThumbnailCardPadding - MixtormatTokens::ButtonPressedOffset));
 	StyleInstance->Set(TEXT("Mixtormat.ThumbnailCard"), ThumbnailCard);
 
 	FButtonStyle TopButton = FButtonStyle()
@@ -197,10 +213,10 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.TopButton"), TopButton);
 
 	FButtonStyle PrimaryButton = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, BorderStrong, 0.35f))
-		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, MixtormatTokens::CornerRadius, BorderStrong, 0.5f))
-		.SetPressed(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentPressed, 0.65f))
-		.SetDisabled(FSlateRoundedBoxBrush(Panel, MixtormatTokens::CornerRadius, Border, 0.25f))
+		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, BorderStrong, MixtormatTokens::PrimaryButtonOutlineWidth))
+		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, MixtormatTokens::CornerRadius, BorderStrong, MixtormatTokens::PrimaryButtonHoverOutlineWidth))
+		.SetPressed(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentPressed, MixtormatTokens::PrimaryButtonPressedOutlineWidth))
+		.SetDisabled(FSlateRoundedBoxBrush(Panel, MixtormatTokens::CornerRadius, Border, MixtormatTokens::PrimaryButtonDisabledOutlineWidth))
 		.SetNormalForeground(FSlateColor(Text))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
@@ -221,9 +237,9 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.TabButton"), TabButton);
 
 	FButtonStyle TabButtonActive = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(SelectionFill, MixtormatTokens::CornerRadius, Accent, 0.45f))
-		.SetHovered(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentHover, 0.55f))
-		.SetPressed(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentPressed, 0.65f))
+		.SetNormal(FSlateRoundedBoxBrush(SelectionFill, MixtormatTokens::CornerRadius, Accent, MixtormatTokens::ActiveTabOutlineWidth))
+		.SetHovered(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentHover, MixtormatTokens::ActiveTabHoverOutlineWidth))
+		.SetPressed(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius, AccentPressed, MixtormatTokens::ActiveTabPressedOutlineWidth))
 		.SetNormalForeground(FSlateColor(Text))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
@@ -262,7 +278,7 @@ void FMixtormatStyle::Initialize()
 		.SetCheckedForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
 		.SetCheckedHoveredForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
 		.SetCheckedPressedForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
-		.SetPadding(FMargin(2.0f));
+		.SetPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
 	// The inspector's boolean. Every image is empty on purpose: SMixtormatToggle paints the well
@@ -312,26 +328,30 @@ void FMixtormatStyle::Initialize()
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayButton"), ViewportOverlayButton);
 
 	FButtonStyle CompactRowButton = FButtonStyle()
-		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, 0.25f))
-		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.35f))
-		.SetPressed(FSlateRoundedBoxBrush(FocusFill, 1.0f, Accent, 0.5f))
-		.SetDisabled(FSlateRoundedBoxBrush(Panel, 1.0f, Border, 0.2f))
+		.SetNormal(FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, MixtormatTokens::CompactRowOutlineWidth))
+		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, MixtormatTokens::CompactRowHoverOutlineWidth))
+		.SetPressed(FSlateRoundedBoxBrush(FocusFill, 1.0f, Accent, MixtormatTokens::CompactRowPressedOutlineWidth))
+		.SetDisabled(FSlateRoundedBoxBrush(Panel, 1.0f, Border, MixtormatTokens::CompactRowDisabledOutlineWidth))
 		.SetNormalForeground(FSlateColor(Text))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(4.0f, 1.0f))
-		.SetPressedPadding(FMargin(4.0f, 2.0f, 4.0f, 0.0f));
+		.SetNormalPadding(FMargin(MixtormatTokens::CompactRowButtonPaddingHorizontal, MixtormatTokens::CompactRowButtonPaddingVertical))
+		.SetPressedPadding(FMargin(
+			MixtormatTokens::CompactRowButtonPaddingHorizontal,
+			MixtormatTokens::CompactRowButtonPaddingVertical + MixtormatTokens::ButtonPressedOffset,
+			MixtormatTokens::CompactRowButtonPaddingHorizontal,
+			MixtormatTokens::CompactRowButtonPaddingVertical - MixtormatTokens::ButtonPressedOffset));
 	StyleInstance->Set(TEXT("Mixtormat.CompactRowButton"), CompactRowButton);
 
 	FSpinBoxStyle ScrubControl = AppStyle.GetWidgetStyle<FSpinBoxStyle>(TEXT("NumericEntrySpinBox"));
 	ScrubControl
-		.SetBackgroundBrush(FSlateRoundedBoxBrush(MixtormatPalette::WellBottom(), MixtormatTokens::CornerRadiusInner, Border, 0.25f))
-		.SetHoveredBackgroundBrush(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, 0.35f))
-		.SetActiveFillBrush(FSlateRoundedBoxBrush(FocusFill, 1.0f, Accent, 0.4f))
+		.SetBackgroundBrush(FSlateRoundedBoxBrush(MixtormatPalette::WellBottom(), MixtormatTokens::CornerRadiusInner, Border, MixtormatTokens::ScrubControlOutlineWidth))
+		.SetHoveredBackgroundBrush(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, MixtormatTokens::ScrubControlHoverOutlineWidth))
+		.SetActiveFillBrush(FSlateRoundedBoxBrush(FocusFill, 1.0f, Accent, MixtormatTokens::ScrubControlActiveOutlineWidth))
 		.SetInactiveFillBrush(FSlateRoundedBoxBrush(FLinearColor::Transparent, 1.0f))
 		.SetForegroundColor(FSlateColor(Text))
-		.SetTextPadding(FMargin(3.0f, 0.0f));
+		.SetTextPadding(FMargin(MixtormatTokens::ScrubControlTextInset, 0.0f));
 
 	// ---------------------------------------------------------------------------------------
 	// Design system. Geometry lives in MixtormatDesignTokens.h; the colours have to resolve
@@ -401,7 +421,7 @@ void FMixtormatStyle::Initialize()
 			FLinearColor::Transparent,
 			MixtormatTokens::StatusDotSize * 0.5f,
 			MixtormatPalette::HeaderText(),
-			1.0f));
+			MixtormatTokens::OutlineWidth));
 	// Container shell and group body. The header's lip is painted by the gradient box, not
 	// brushed, so only these two are flat fills.
 	//
@@ -644,7 +664,10 @@ void FMixtormatStyle::Initialize()
 			FVector2D(MixtormatTokens::BrandWatermarkWidth, MixtormatTokens::BrandWatermarkHeight),
 			FSlateColor(MixtormatPalette::Watermark())));
 
-	FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
+	if (bFirstRegistration)
+	{
+		FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
+	}
 }
 
 void FMixtormatStyle::Shutdown()

@@ -25,6 +25,7 @@ public class MixtormatEditor : ModuleRules
 			"DesktopPlatform",
 			"InputCore",
 			"ImageCore",
+			"Json",
 			"LevelEditor",
 			"MaterialEditor",
 			"MixtormatRuntime",

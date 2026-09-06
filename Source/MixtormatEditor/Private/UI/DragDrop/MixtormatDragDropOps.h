@@ -54,8 +54,8 @@ public:
 		{
 			Operation->DragThumbnail = MakeShared<FAssetThumbnail>(
 				ThumbnailAsset,
-				40,
-				40,
+				MixtormatTokens::DragGhostThumbnailResolution,
+				MixtormatTokens::DragGhostThumbnailResolution,
 				ThumbnailPool);
 			ThumbnailWidget = Operation->DragThumbnail->MakeThumbnailWidget();
 		}
@@ -80,7 +80,7 @@ public:
 					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(MixtormatTokens::DragGhostTextGap, 0.0f).VAlign(VAlign_Center)
 					[
 						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(InDisplayName).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))]
+						+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(InDisplayName).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDragGhostLabel))]
 						+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(LOCTEXT("CreateLayerGhost", "Create material layer")).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
 					]
 				]
@@ -125,7 +125,11 @@ public:
 				MixtormatTokens::DragGhostThumbnailSize));
 		if (ThumbnailAsset.IsValid() && ThumbnailPool.IsValid())
 		{
-			Operation->DragThumbnail = MakeShared<FAssetThumbnail>(ThumbnailAsset, 40, 40, ThumbnailPool);
+			Operation->DragThumbnail = MakeShared<FAssetThumbnail>(
+				ThumbnailAsset,
+				MixtormatTokens::DragGhostThumbnailResolution,
+				MixtormatTokens::DragGhostThumbnailResolution,
+				ThumbnailPool);
 			ThumbnailWidget = Operation->DragThumbnail->MakeThumbnailWidget();
 		}
 		Operation->DecoratorWidget = SNew(SBorder)
@@ -234,7 +238,7 @@ public:
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Grip")))]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DragGhostTextGap, 0.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(DisplayName).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DragGhostTextGap, 0.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(DisplayName).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDragGhostLabel))]
 				]
 			];
 		Operation->Construct();

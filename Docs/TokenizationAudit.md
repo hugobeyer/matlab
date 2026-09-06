@@ -3,9 +3,41 @@
 Scope: `Source/MixtormatEditor/Private/{Style,UI,Widgets}`. Only values that are **repeated,
 duplicated, or drifting**.
 
-**Re-audited after the last round of edits.** Status column reflects current state.
-Most remaining literals are in `Widgets/**` and `Style/MixtormatStyle.cpp`. `UI/**` is not fully
-clean: `UI/DragDrop/MixtormatDragDropOps.h` still hard-codes thumbnail and font sizes.
+## Implementation status
+
+The concrete repeated-literal fixes below are implemented with the existing visual defaults preserved:
+
+- Layout constants now live in `MixtormatTokens`; `MixtormatUI` retains its non-layout helpers.
+  The 62px mask-bar size is `MaskBarTileSize`, distinct from the 96px `MaskTileSize`.
+- The audited bold 8/9 font sizes, inspector swatch dimensions, mask-gallery height limits,
+  action-dialog dimensions, and drag-thumbnail resolution now use tokens.
+- Repeated dialog padding, action spacing, toolbar spacing, and inspector feature-button gaps
+  now use role-specific tokens. Library and preview gaps remain independently tunable.
+- Style corner radii and outline widths retain their authored values through role-specific tokens.
+  The two literal 1px outlines use `OutlineWidth`; fractional widths were not normalized.
+- Thumbnail/compact-row pressed padding uses `ButtonPressedOffset`; overlay toggle padding
+  uses `ViewportOverlayTogglePadding`.
+- `SegmentShade()` reads `SegmentShadeAlpha`, removing its duplicated literal.
+
+**Deferred deliberately:** the other 12 originally listed unused tokens and `WellTopHover()` remain
+intact. They need a usage/design decision before removal or wiring; no new hover state or palette
+merging was introduced. Equal defaults for distinct semantic roles remain independent.
+
+**Not implemented here:** the runtime token panel, live refresh, or persistence described in
+[LiveTokenEditor.md](LiveTokenEditor.md). Tokens are still compile-time constants. This pass fixes
+the audit's concrete repeated-literal sites, not every remaining one-off layout literal.
+
+**Validation:** searches found no remaining old layout-namespace references or audited bold 8/9,
+108×18 swatch, 420px maximum-height, or 560×320 client-size literals. Editor diagnostics cannot
+validate compilation because Unreal/project include paths are unresolved (`CoreMinimal.h` and
+`Style/MixtormatStyle.h`, among others). No build or runtime visual test was run.
+
+## Historical audit snapshot
+
+All counts, line numbers, and “NEW”/“UNCHANGED” labels below describe the audit **before these
+implementation changes**, not the current tree. They are retained as the baseline; use the
+implementation status above for resolved/deferred items. Padding totals have not been recounted
+after this pass or the intervening user edits.
 
 ## Churn since the first pass
 
@@ -20,10 +52,9 @@ clean: `UI/DragDrop/MixtormatDragDropOps.h` still hard-codes thumbnail and font 
 Token refs 534 → 531, palette refs 147 → 147, alignment sites 140 → 137,
 `GetDefaultFontStyle` 26 → 26.
 
-The current values above are verified against the present source. The “Then” values and deltas are
-historical baseline notes and cannot be reconstructed from the current tree alone. The style file
-was not touched, but its findings have still been corrected below where the original interpretation
-was wrong.
+The “Now” values were checked at audit time and are no longer current. “Then” values and deltas
+are historical baseline notes and cannot be reconstructed from the current tree alone. Original
+interpretation errors were corrected before the implementation pass.
 
 ---
 

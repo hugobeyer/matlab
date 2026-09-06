@@ -2,6 +2,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
+
 // Window chrome: top bar, page routing, splitters, status bar.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -50,7 +51,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBox)
-		.HeightOverride(MixtormatUI::TopBarHeight)
+		.HeightOverride(MixtormatTokens::TopBarHeight)
 		[
 			SNew(SBorder)
 			.Padding(FMargin(8.0f, 3.0f))
@@ -94,7 +95,16 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				[
 					SNew(SSpacer)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.Text(LOCTEXT("NewMaterialTop", "NEW"))
+					.ToolTipText(LOCTEXT("NewMaterialTopHint", "Start a new material workspace, confirming unsaved changes first."))
+					.IsEnabled_Lambda([this]() { return !bIsBaking; })
+					.OnClicked(this, &SMixtormat::NewWorkingMaterial)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -110,13 +120,13 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("LoadMaterialTop", "LOAD"))
 						]
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -133,13 +143,13 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "SAVE"))
 						]
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -156,11 +166,20 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "SAVE AS..."))
 						]
 					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.Text(LOCTEXT("OpenLiveTheme", "UI STYLE"))
+					.ToolTipText(LOCTEXT("OpenLiveThemeHint", "Developer popup: edit shared UI spacing, sizes, typography and colors live."))
+					.IsEnabled_Lambda([this]() { return !bIsBaking; })
+					.OnClicked(this, &SMixtormat::OpenLiveThemePanel)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f)
 				[
@@ -171,7 +190,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
 					.OnClicked(this, &SMixtormat::BakeWorkingMaterial)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SComboButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -179,6 +198,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ButtonContent()[SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Overflow")))]
 					.OnGetMenuContent(this, &SMixtormat::BuildWorkflowMenu)
 				]
+
 			]
 		];
 }
@@ -191,22 +211,34 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Window")))
 		[
 			SNew(SSplitter)
-			.PhysicalSplitterHandleSize(MixtormatUI::SplitterHandleSize)
-			.HitDetectionSplitterHandleSize(MixtormatUI::SplitterHitSize)
-			+ SSplitter::Slot().Value(0.19f)
+			.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
+			.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]() { return ShellLeftFraction; })
+						.OnSlotResized_Lambda([this](float Value) { ShellLeftFraction = Value; })
 			[
 				BuildLeftPanel()
 			]
-			+ SSplitter::Slot().Value(0.60f)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]() { return ShellCenterFraction; })
+						.OnSlotResized_Lambda([this](float Value) { ShellCenterFraction = Value; })
 			[
 				SNew(SSplitter)
 				.Orientation(Orient_Vertical)
-				.PhysicalSplitterHandleSize(MixtormatUI::SplitterHandleSize)
-				.HitDetectionSplitterHandleSize(MixtormatUI::SplitterHitSize)
-				+ SSplitter::Slot().Value(0.64f)[BuildPreviewPanel()]
-				+ SSplitter::Slot().Value(0.36f)[BuildBottomLibrary()]
+				.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
+				.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+				+ SSplitter::Slot()
+								.Value_Lambda([this]() { return PreviewHeightFraction; })
+								.OnSlotResized_Lambda([this](float Value) { PreviewHeightFraction = Value; })
+								[BuildPreviewPanel()]
+				+ SSplitter::Slot()
+								.Value_Lambda([this]() { return LibraryHeightFraction; })
+								.OnSlotResized_Lambda([this](float Value) { LibraryHeightFraction = Value; })
+								[BuildBottomLibrary()]
 			]
-			+ SSplitter::Slot().Value(0.21f)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]() { return ShellRightFraction; })
+						.OnSlotResized_Lambda([this](float Value) { ShellRightFraction = Value; })
 			[
 				BuildInspectorPanel()
 			]
@@ -302,7 +334,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 		+ SVerticalBox::Slot().FillHeight(1.0f)
 		[
 			SAssignNew(LeftSwitcher, SWidgetSwitcher)
-				.WidgetIndex(0)
+				.WidgetIndex(LeftTabIndex)
 				+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
 				+ SWidgetSwitcher::Slot()[BuildLibraryPage()]
 			]
@@ -313,7 +345,7 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBox)
-		.HeightOverride(MixtormatUI::StatusBarHeight)
+		.HeightOverride(MixtormatTokens::StatusBarHeight)
 		[
 			SNew(SBorder)
 			.Padding(FMargin(6.0f, 2.0f))
@@ -379,7 +411,7 @@ TSharedRef<SWidget> SMixtormat::BuildNavButton(const FText& Label, const int32 P
 TSharedRef<SWidget> SMixtormat::BuildWorkspacePage(const FText& Heading, const FText& Description)
 {
 	return SNew(SBorder)
-		.Padding(MixtormatUI::PanelPadding)
+		.Padding(MixtormatTokens::PanelPadding)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(Heading).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 12))]

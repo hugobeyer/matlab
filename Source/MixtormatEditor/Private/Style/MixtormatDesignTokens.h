@@ -29,23 +29,23 @@ namespace MixtormatTokens
 	// ---- Rows -------------------------------------------------------------------------------
 	// Every inspector control is one of these tall, whatever it edits. Uniformity across row
 	// types is what makes a panel of mixed controls read as a single column.
-	constexpr float RowHeight = 18.0f;
-	constexpr float RowGap = 3.0f;
+	inline float RowHeight = 18.0f;
+	inline float RowGap = 3.0f;
 	constexpr float RowGapTight = 2.0f;
 
 	// Vertical gap between two stacked value rows. Every slider in a panel is spaced by this and
 	// nothing else -- it was a literal 2 in AddSliderRow and in forty inline slot paddings, which
 	// is why a panel's rows never quite lined up with each other's spacing.
-	constexpr float SliderRowGap = 4.0f;
+	inline float SliderRowGap = 4.0f;
 
 	// Text inset from the row's leading and trailing edges. Shared by the slider's painted text
 	// and by the label of every composed row, so they line up down the column.
-	constexpr float RowTextInset = 5.0f;
+	inline float RowTextInset = 5.0f;
 
 	// Gap between a row's label and the control it labels, and the width a paired value field
 	// asks for before anything competes with it.
-	constexpr float RowLabelGap = 6.0f;
-	constexpr float RowFieldMinWidth = 120.0f;
+	inline float RowLabelGap = 6.0f;
+	inline float RowFieldMinWidth = 120.0f;
 	// For a chip that shares its row with other controls rather than owning the trailing slot.
 	constexpr float RowFieldMinWidthCompact = 64.0f;
 	constexpr float ColorSwatchWidth = 76.0f;
@@ -63,31 +63,59 @@ namespace MixtormatTokens
 	constexpr float MultiplyMidPosition = 0.62f;
 
 	// ---- Surfaces ---------------------------------------------------------------------------
-	constexpr float CornerRadius = 3.0f;
+	inline float CornerRadius = 3.0f;
 	// Inner corners -- a segment cell inside a control that is itself rounded. Half the outer
 	// radius, so the two curves read as concentric rather than as two unrelated roundings.
-	constexpr float CornerRadiusInner = CornerRadius * 0.5f;
-	constexpr float OutlineWidth = 1.0f;
+	inline float CornerRadiusInner = 1.5f;
+	inline float OutlineWidth = 1.0f;
+
+	// Preserve each surface's authored rounding and outline weight independently.
+	constexpr float PanelShadowCornerRadius = 7.0f;
+	constexpr float InsetPanelCornerRadius = 4.0f;
+	constexpr float DragGhostCornerRadius = 6.0f;
+	constexpr float ThumbnailBackgroundCornerRadius = 2.0f;
+	constexpr float InsetPanelOutlineWidth = 0.45f;
+	constexpr float SectionBarOutlineWidth = 0.3f;
+	constexpr float DragGhostOutlineWidth = 0.8f;
+	constexpr float CompactRowOutlineWidth = 0.25f;
+	constexpr float CompactRowValidDropOutlineWidth = 0.65f;
+	constexpr float CompactRowHoverOutlineWidth = 0.35f;
+	constexpr float CompactRowPressedOutlineWidth = 0.5f;
+	constexpr float CompactRowDisabledOutlineWidth = 0.2f;
+	constexpr float PrimaryButtonOutlineWidth = 0.35f;
+	constexpr float PrimaryButtonHoverOutlineWidth = 0.5f;
+	constexpr float PrimaryButtonPressedOutlineWidth = 0.65f;
+	constexpr float PrimaryButtonDisabledOutlineWidth = 0.25f;
+	constexpr float ActiveTabOutlineWidth = 0.45f;
+	constexpr float ActiveTabHoverOutlineWidth = 0.55f;
+	constexpr float ActiveTabPressedOutlineWidth = 0.65f;
+	constexpr float ScrubControlOutlineWidth = 0.25f;
+	constexpr float ScrubControlHoverOutlineWidth = 0.35f;
+	constexpr float ScrubControlActiveOutlineWidth = 0.4f;
 	// Left and right inset of a group's contents from its edges. Wider than the old 4: a slider
 	// runs the full width of the body, so this is the only thing between the trough and the edge
 	// of the panel.
-	constexpr float PanelGutter = 7.0f;
-	constexpr float GroupHeaderHeight = 25.0f;
-	constexpr float ButtonHeight = 20.0f;
-	constexpr float ButtonPaddingCompact = 7.0f;
-	constexpr float ButtonPaddingPrimary = 10.0f;
-	constexpr float ButtonPaddingTab = 8.0f;
+	inline float PanelGutter = 7.0f;
+	inline float GroupHeaderHeight = 25.0f;
+	inline float ButtonHeight = 20.0f;
+	inline float ButtonPaddingCompact = 7.0f;
+	inline float ButtonPaddingPrimary = 10.0f;
+	inline float ButtonPaddingTab = 8.0f;
 	constexpr float ButtonPressedOffset = 1.0f;
-	constexpr float TabHeight = ButtonHeight;
-	constexpr float TabWidth = 88.0f;
-	constexpr float TabUnderlineThickness = OutlineWidth;
+	constexpr float ThumbnailCardPadding = 2.0f;
+	constexpr float CompactRowButtonPaddingHorizontal = 4.0f;
+	constexpr float CompactRowButtonPaddingVertical = 1.0f;
+	constexpr float ScrubControlTextInset = 3.0f;
+	inline float TabHeight = 20.0f;
+	inline float TabWidth = 88.0f;
+	inline float TabUnderlineThickness = 1.0f;
 	constexpr float TabLabelBottomInset = 2.0f;
-	constexpr float ToolbarIconSize = 12.0f;
-	constexpr float ViewportOverlayInset = 8.0f;
+	inline float ToolbarIconSize = 12.0f;
+	inline float ViewportOverlayInset = 8.0f;
 	constexpr float PreviewToolbarButtonSize = 24.0f;
 	// Inner inset of a viewport overlay cluster -- the gap between its gradient plate and the
 	// controls inside it.
-	constexpr float ViewportOverlayClusterInset = 2.0f;
+	inline float ViewportOverlayClusterInset = 2.0f;
 	// What the overlay toggle style insets its content by on every side.
 	constexpr float ViewportOverlayTogglePadding = 2.0f;
 	// The glyph inside a viewport overlay button, stated rather than inherited.
@@ -100,10 +128,10 @@ namespace MixtormatTokens
 	constexpr float PreviewToolbarIconSize =
 		PreviewToolbarButtonSize - ViewportOverlayTogglePadding * 2.0f;
 	// Between two controls sitting side by side within one overlay cluster.
-	constexpr float ViewportOverlayItemGap = 5.0f;
+	inline float ViewportOverlayItemGap = 5.0f;
 	// Between stacked buttons in an overlay rail. The buttons carry no plate of their own, so
 	// without a gap the glyphs are the only thing separating one target from the next.
-	constexpr float ViewportOverlayButtonGap = 4.0f;
+	inline float ViewportOverlayButtonGap = 4.0f;
 	// The composition-resolution segments. Fixed rather than hugging, so the cluster's width does
 	// not change when the active label goes from 1K to 4K.
 	constexpr float PreviewResolutionControlWidth = 92.0f;
@@ -113,9 +141,9 @@ namespace MixtormatTokens
 	// Gap around a group inside the well, so the darker surround reads as a margin and the
 	// group's rounded corners have something to be rounded against. Groups used to stack flush
 	// and the column read as one undifferentiated sheet.
-	constexpr float GroupOuterGap = 3.0f;
+	inline float GroupOuterGap = 3.0f;
 	// Gap between a header's chevron, its title, and the controls trailing it.
-	constexpr float GroupHeaderItemGap = 5.0f;
+	inline float GroupHeaderItemGap = 5.0f;
 
 	// ---- Sub-grouping -----------------------------------------------------------------------
 	// A caption names a run of rows; a hairline separates two runs without naming them. The
@@ -142,7 +170,7 @@ namespace MixtormatTokens
 	constexpr float MinPaintedFill = 0.5f;
 
 	// ---- Segmented control ------------------------------------------------------------------
-	constexpr float SegmentHeight = RowHeight;
+	inline float SegmentHeight = 18.0f;
 	// Hairline *between* cells -- the one border the design allows, because it divides rather
 	// than encloses.
 	constexpr float SegmentSeamWidth = 1.0f;
@@ -176,11 +204,11 @@ namespace MixtormatTokens
 	// A menu is its own window: it is not clipped by the panel that opened it, and it is the only
 	// surface besides the drag ghost that carries a drop shadow. Dimensions follow the authored
 	// context-menu component directly.
-	constexpr float MenuWidth = 190.0f;
-	constexpr float MenuItemHeight = ButtonHeight;
+	inline float MenuWidth = 190.0f;
+	inline float MenuItemHeight = 20.0f;
 	constexpr float MenuItemInset = 8.0f;
 	constexpr float MenuItemGap = 6.0f;
-	constexpr float MenuPanelPadding = 3.0f;
+	inline float MenuPanelPadding = 3.0f;
 	constexpr float MenuCaptionInsetAbove = 6.0f;
 	constexpr float MenuCaptionInsetBelow = 3.0f;
 	constexpr float MenuSeparatorMargin = 4.0f;
@@ -188,7 +216,7 @@ namespace MixtormatTokens
 	constexpr float MenuCornerRadius = 3.0f;
 	// Where the menu's tint has landed on its ground. The canvas puts this at a fixed 22px rather
 	// than a fraction, so a tall menu and a short one have the same lip rather than the same ramp.
-	constexpr float MenuLipHeight = GroupHeaderHeight;
+	inline float MenuLipHeight = 25.0f;
 
 	// ---- Drag ghost -------------------------------------------------------------------------
 	// The card that follows the cursor during a drag. It floats over the whole editor rather than
@@ -196,6 +224,8 @@ namespace MixtormatTokens
 	// the shadow is offset down and right, which is what reads as "lifted" rather than "outlined".
 	constexpr float DragGhostOpacity = 0.93f;
 	constexpr float DragGhostThumbnailSize = 56.0f;
+	// Render resolution is separate from the decorator's displayed thumbnail size.
+	constexpr int32 DragGhostThumbnailResolution = 40;
 	constexpr float DragGhostPadding = 7.0f;
 	constexpr float DragGhostTextGap = 9.0f;
 	constexpr float DragGhostShadowInset = 4.0f;
@@ -248,20 +278,47 @@ namespace MixtormatTokens
 	// Padding is deliberately smaller than PanelGutter. The body has already inset by that much,
 	// and a card's own gutter stacks on top of it; matching the two would indent every slider
 	// twice and leave the column looking margin-heavy at the inspector's width.
-	constexpr float CardPadding = 4.0f;
-	constexpr float CardGap = 4.0f;
+	inline float CardPadding = 4.0f;
+	inline float CardGap = 4.0f;
 	// Between a card's title and the sheet under it.
-	constexpr float CardTitleGap = 3.0f;
+	inline float CardTitleGap = 3.0f;
 
 	// The breathing room under any heading -- a card title, a group header -- and again at the
 	// bottom of what it heads. Small on purpose: it is there so a run of rows is not flush
 	// against the edge of the thing containing it, not to space the rows out.
-	constexpr float HeaderContentGap = 2.0f;
+	inline float HeaderContentGap = 2.0f;
 
 	// The column's own top margin, above the first group. The panel header sits directly over
 	// it and without this the first group reads as attached to that bar rather than as the
 	// first thing in the column.
-	constexpr float InspectorTopMargin = 8.0f;
+	inline float InspectorTopMargin = 8.0f;
+	inline float InspectorMaskGalleryMaxHeight = 420.0f;
+	inline float InspectorFeatureButtonGap = 3.0f;
+	inline float InspectorColorSwatchWidth = 108.0f;
+	inline float InspectorColorSwatchHeight = 18.0f;
+
+	// ---- Shell and dialogs ------------------------------------------------------------------
+	inline float PanelPadding = 4.0f;
+	constexpr float SplitterHandleSize = 1.0f;
+	constexpr float SplitterHitSize = 5.0f;
+	inline float LayerStackWidth = 240.0f;
+	inline float InspectorWidth = 300.0f;
+	inline float TopBarHeight = 32.0f;
+	inline float StatusBarHeight = 18.0f;
+	inline float MaskBarTileSize = 62.0f;
+	inline float ToolbarButtonMargin = 2.0f;
+	inline float ToolbarLabelPadding = 5.0f;
+	constexpr float LibraryBrowseButtonGap = 4.0f;
+	constexpr float PreviewComparisonToggleGap = 4.0f;
+	inline float DialogPadding = 12.0f;
+	inline float DialogButtonGap = 6.0f;
+	inline float DialogActionsTopMargin = 10.0f;
+	constexpr float ActionDialogWidth = 560.0f;
+	constexpr float ActionDialogHeight = 320.0f;
+	constexpr float BakeDialogBrowseButtonGap = 4.0f;
+	constexpr float BakeDialogFieldTopMargin = 4.0f;
+	constexpr float BakeDialogFieldBottomMargin = 10.0f;
+	constexpr float BakeDialogSectionGap = 8.0f;
 
 	// ---- Toggle -----------------------------------------------------------------------------
 	// A square well that fills rather than marking itself with a glyph. A check or a cross is a
@@ -302,50 +359,53 @@ namespace MixtormatTokens
 	// rows in the tool. Each value below is a separate decision -- a layer and its children are
 	// deliberately different heights, and the indent is what carries the hierarchy now that no
 	// connector rail is drawn between them.
-	constexpr float LayerRowHeight = 28.0f;
-	constexpr float LayerChildRowHeight = 22.0f;
+	inline float LayerRowHeight = 28.0f;
+	inline float LayerChildRowHeight = 22.0f;
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
-	constexpr float LayerThumbnailSize = 24.0f;
+	inline float LayerThumbnailSize = 24.0f;
 	// Children sit under the parent's name, clear of its eye and thumbnail.
-	constexpr float LayerChildIndent = 28.0f;
+	inline float LayerChildIndent = 28.0f;
 	// Leading inset is larger than trailing: the eye needs room from the panel edge, while the
 	// chevron on the right is already inset by its own slot padding.
-	constexpr float LayerRowInsetLeading = 6.0f;
-	constexpr float LayerRowInsetTrailing = 6.0f;
+	inline float LayerRowInsetLeading = 6.0f;
+	inline float LayerRowInsetTrailing = 6.0f;
 	// Between every element within a row -- eye to thumbnail, name to source, badge to chevron.
 	// One value, so the row reads as evenly spaced rather than as clusters.
-	constexpr float LayerItemGap = 7.0f;
+	inline float LayerItemGap = 7.0f;
 	// The name sits closer to its thumbnail than the standard gap, so the two read as one unit
 	// against the source text on the far side.
 	constexpr float LayerNameInset = 4.0f;
 	// Between stacked rows. One pixel: enough to separate, not enough to break the column.
-	constexpr float LayerRowGap = 2.0f;
+	inline float LayerRowGap = 2.0f;
 	constexpr float LayerEyeSize = 15.0f;
 	constexpr float LayerChildIconSize = 12.0f;
 	// The accent edge enclosing an open layer's children.
-	constexpr float LayerEdgeWidth = OutlineWidth;
+	inline float LayerEdgeWidth = 1.0f;
 	constexpr float DropLineThickness = 2.0f;
 
 	// ---- Type -------------------------------------------------------------------------------
 	// Type sizes follow the authored component-sheet scale so the compact rows stay visually aligned.
-	constexpr float FontBody = 10.0f;
+	inline float FontBody = 10.0f;
 	// Shared by a layer's own name and by a mask/effect child's name -- the same role at both
 	// levels of the stack. Same tier as body rather than a step above it: at 11px it read as too
 	// large next to the 8px source and badge beside it.
-	constexpr float FontLayerName = FontBody;
+	inline float FontLayerName = 10.0f;
 	// A value row's label and its number. One step under body and carried in a heavier face: the
 	// rows are the densest thing in the tool, and weight reads at this size where size does not.
-	constexpr float FontSliderLabel = FontBody - 1.0f;
-	constexpr float FontCaption = 8.0f;
-	constexpr float FontTile = 8.0f;
+	inline float FontSliderLabel = 9.0f;
+	inline float FontCaption = 8.0f;
+	inline float FontTile = 8.0f;
 	// Group headers: small tracked caps. A header names a group rather than being read as content,
 	// so it sits under the caption tier -- the extra header height carries it instead of the type.
-	constexpr float FontGroupHeader = 7.0f;
+	inline float FontGroupHeader = 7.0f;
 	// A layer's source and its badge are both 8px and both secondary to the name, but they are
 	// named apart from the group header so the stack can be retuned without touching panels.
-	constexpr float FontLayerSource = 8.0f;
-	constexpr float FontBadge = 7.0f;
+	inline float FontLayerSource = 8.0f;
+	inline float FontBadge = 7.0f;
+	inline float FontDialogLabel = 9.0f;
+	inline float FontMaskBarHeading = 9.0f;
+	inline float FontDragGhostLabel = 9.0f;
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.
@@ -354,4 +414,18 @@ namespace MixtormatTokens
 	// The layer source is caps too, but it runs alongside a mixed-case name rather than standing
 	// alone, so it is opened up less -- full caption spacing made it the loudest thing in the row.
 	constexpr int32 LayerSourceLetterSpacing = 60;
+
+	// Called after every live edit/load/reset; derived dimensions are not independent knobs.
+	inline void RecomputeDerived()
+	{
+		CornerRadiusInner = CornerRadius * 0.5f;
+		TabHeight = ButtonHeight;
+		TabUnderlineThickness = OutlineWidth;
+		SegmentHeight = RowHeight;
+		MenuItemHeight = ButtonHeight;
+		MenuLipHeight = GroupHeaderHeight;
+		LayerEdgeWidth = OutlineWidth;
+		FontLayerName = FontBody;
+		FontSliderLabel = FontBody - 1.0f;
+	}
 }

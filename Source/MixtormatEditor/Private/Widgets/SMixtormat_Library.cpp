@@ -223,9 +223,11 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 		[
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
-			.PhysicalSplitterHandleSize(MixtormatUI::SplitterHandleSize)
-			.HitDetectionSplitterHandleSize(MixtormatUI::SplitterHitSize)
-			+ SSplitter::Slot().Value(0.72f)
+			.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
+			.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]() { return MaterialLibraryFraction; })
+						.OnSlotResized_Lambda([this](float Value) { MaterialLibraryFraction = Value; })
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f)
@@ -241,7 +243,9 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(4.0f, 0.0f)[BuildSurfaceList()]
 				]
 			]
-			+ SSplitter::Slot().Value(0.28f)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]() { return MaskLibraryFraction; })
+						.OnSlotResized_Lambda([this](float Value) { MaskLibraryFraction = Value; })
 			[
 				BuildMaskBar()
 			]
@@ -251,16 +255,25 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const TSharedRef<SSearchBox> SearchBox = SNew(SSearchBox)
+		.HintText(LOCTEXT("SearchHint", "Search materials..."))
+		.OnTextChanged_Lambda([this](const FText& Text)
+		{
+			// Restoring the text during a style rebuild must not rebuild the old surface list.
+			if (SearchText != Text.ToString())
+			{
+				HandleSearchChanged(Text);
+			}
+		});
+	SearchBox->SetText(FText::FromString(SearchText));
 	return SNew(SBorder)
-		.Padding(MixtormatUI::PanelPadding)
+		.Padding(MixtormatTokens::PanelPadding)
 		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
 			[
-				SNew(SSearchBox)
-				.HintText(LOCTEXT("SearchHint", "Search materials..."))
-				.OnTextChanged(this, &SMixtormat::HandleSearchChanged)
+				SearchBox
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -286,7 +299,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						]
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::LibraryBrowseButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))

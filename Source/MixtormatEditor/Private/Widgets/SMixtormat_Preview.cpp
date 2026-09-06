@@ -240,7 +240,7 @@ void SMixtormat::PreviewSurfaceScalarParameter(const FName ParameterName, const 
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
-	TSharedPtr<SMixtormatPreviewViewport> PreviewViewport;
+	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const FCheckBoxStyle* OverlayToggle = &Style.GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.ViewportOverlayToggle"));
 
@@ -279,7 +279,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[
 				SNew(STextBlock)
 				.Text(Label)
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
 			]
 		];
 	};
@@ -291,7 +291,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		false,
 		LOCTEXT("PreviewCompositionAfter", "AFTER"),
 		LOCTEXT("PreviewCompositionAfterHint", "Preview the complete layer stack"));
-	ComparisonControls->AddSlot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
+	ComparisonControls->AddSlot().AutoWidth().Padding(MixtormatTokens::PreviewComparisonToggleGap, 0.0f, 0.0f, 0.0f)
 	[
 		SNew(SCheckBox)
 		.Style(OverlayToggle)
@@ -314,7 +314,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(STextBlock)
 			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))
+			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
 		]
 	];
 
@@ -650,10 +650,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			LOCTEXT("PreviewFovHint", "Preview camera field of view."))
 	];
 
+	const TSharedRef<SMixtormatPreviewViewport> PreviewViewport = bReusingViewport
+		? PreviewViewports[0].ToSharedRef()
+		: SNew(SMixtormatPreviewViewport);
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
-			SAssignNew(PreviewViewport, SMixtormatPreviewViewport)
+			PreviewViewport
 		]
 		// Render settings top left -- how the frame is resolved, which is the one cluster that
 		// says nothing about the material.
@@ -665,7 +668,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[
-				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[RenderControls]
+				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[RenderControls]
 			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
@@ -706,7 +709,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[
-				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[SceneControls]
+				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[SceneControls]
 			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
@@ -727,16 +730,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[
-				SNew(SBox).WidthOverride(MixtormatUI::InspectorWidth * 0.5f)[CameraControls]
+				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[CameraControls]
 			]
 		];
 
-	PreviewViewports.Add(PreviewViewport);
-	PreviewViewport->SetPreviewQuality(PreviewQuality);
-	PreviewViewport->SetPreviewAntiAliasing(PreviewAntiAliasing);
-	PreviewViewport->SetPreviewScreenPercentage(PreviewScreenPercentage);
-	PreviewViewport->SetCameraFov(PreviewFov);
-	PreviewViewport->SetStudioLighting(StudioLighting);
+	if (!bReusingViewport)
+	{
+		PreviewViewports.Add(PreviewViewport);
+		PreviewViewport->SetPreviewQuality(PreviewQuality);
+		PreviewViewport->SetPreviewAntiAliasing(PreviewAntiAliasing);
+		PreviewViewport->SetPreviewScreenPercentage(PreviewScreenPercentage);
+		PreviewViewport->SetCameraFov(PreviewFov);
+		PreviewViewport->SetStudioLighting(StudioLighting);
+	}
 	return PreviewPanel;
 }
 

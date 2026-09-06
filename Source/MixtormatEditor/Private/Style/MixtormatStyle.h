@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 
-class FSlateStyleSet;
+class FMixtormatMutableStyleSet;
 class ISlateStyle;
 
 /** Premium dark Slate visual system for the Mixtormat editor. */
@@ -11,10 +11,11 @@ class FMixtormatStyle final
 public:
 	static void Initialize();
 	static void Shutdown();
+	static void Refresh();
 
 	static const ISlateStyle& Get();
 	static FName GetStyleSetName();
 
 private:
-	static TSharedPtr<FSlateStyleSet> StyleInstance;
+	static TSharedPtr<FMixtormatMutableStyleSet> StyleInstance;
 };

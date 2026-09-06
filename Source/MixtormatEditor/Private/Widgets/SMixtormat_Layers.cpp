@@ -905,10 +905,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 		.OnSurfaceDropped(this, &SMixtormat::HandleSurfaceDropped)
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatUI::LayerStackWidth)
+			.WidthOverride(MixtormatTokens::LayerStackWidth)
 			[
 				SNew(SBorder)
-				.Padding(MixtormatUI::PanelPadding)
+				.Padding(MixtormatTokens::PanelPadding)
 				.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 				[
 					SNew(SVerticalBox)
@@ -1789,7 +1789,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 			[
 				SNew(STextBlock)
 				.Text(LOCTEXT("MaskBarHeading", "MASKS · DRAG ONTO A LAYER"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontMaskBarHeading))
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
@@ -1919,8 +1919,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 	if (bCompact)
 	{
 		return SNew(SBox)
-			.WidthOverride(MixtormatUI::MaskTileSize)
-			.HeightOverride(MixtormatUI::MaskTileSize)
+			.WidthOverride(MixtormatTokens::MaskBarTileSize)
+			.HeightOverride(MixtormatTokens::MaskBarTileSize)
 			[
 				SNew(SMixtormatMaskCard)
 				.LayerIndex(LayerIndex)

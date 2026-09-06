@@ -20,6 +20,12 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		FMixtormatSurfaceImporter::ImportDefaultLibrary();
 	}
 
+	BuildWorkspaceUI();
+	ResetEditHistory(true);
+}
+
+void SMixtormat::BuildWorkspaceUI()
+{
 	ChildSlot
 	[
 		SNew(SBorder)
@@ -48,7 +54,6 @@ void SMixtormat::Construct(const FArguments& InArgs)
 	RebuildSurfaceList();
 	RebuildLayerList();
 	RebuildMaskList();
-	ResetEditHistory(true);
 }
 
 bool SMixtormat::AreLayerStacksEqual(

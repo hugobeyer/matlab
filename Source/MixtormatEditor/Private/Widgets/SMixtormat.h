@@ -21,6 +21,7 @@ class STextBlock;
 class SVerticalBox;
 class SWrapBox;
 class SWidgetSwitcher;
+class SWindow;
 struct FAssetData;
 struct FMixtormatBakeSettings;
 
@@ -31,6 +32,7 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	virtual ~SMixtormat() override;
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
@@ -47,6 +49,10 @@ private:
 		TWeakPtr<SWidget> Widget;
 		FSimpleDelegate Reset;
 	};
+	void BuildWorkspaceUI();
+	FReply OpenLiveThemePanel();
+	void RequestThemeRefresh();
+	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
 	FReply ShowPage(int32 PageIndex);
 	FReply ShowLeftPage(int32 PageIndex);
 	FReply ImportSurfaces();
@@ -512,6 +518,15 @@ private:
 	TSharedRef<SWidget> BuildGradeTonemapMenu();
 
 
+	TWeakPtr<SWindow> LiveThemeWindow;
+	bool bThemeRefreshPending = false;
+	float ShellLeftFraction = 0.19f;
+	float ShellCenterFraction = 0.60f;
+	float ShellRightFraction = 0.21f;
+	float PreviewHeightFraction = 0.64f;
+	float LibraryHeightFraction = 0.36f;
+	float MaterialLibraryFraction = 0.72f;
+	float MaskLibraryFraction = 0.28f;
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
 	TSharedPtr<SVerticalBox> CategoryListBox;

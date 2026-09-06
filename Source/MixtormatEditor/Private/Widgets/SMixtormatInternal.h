@@ -98,14 +98,6 @@
 
 namespace MixtormatUI
 {
-	constexpr float PanelPadding = 4.0f;
-	constexpr float SplitterHandleSize = 1.0f;
-	constexpr float SplitterHitSize = 5.0f;
-	constexpr float LayerStackWidth = 240.0f;
-	constexpr float InspectorWidth = 300.0f;
-	constexpr float TopBarHeight = 32.0f;
-	constexpr float StatusBarHeight = 18.0f;
-	constexpr float MaskTileSize = 62.0f;
 
 	inline FAssetThumbnailConfig CleanThumbnailConfig()
 	{
@@ -303,7 +295,7 @@ public:
 		ChildSlot
 		[
 			SNew(SBorder)
-			.Padding(12.0f)
+			.Padding(MixtormatTokens::DialogPadding)
 			.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 			[
 				SNew(SVerticalBox)
@@ -311,9 +303,9 @@ public:
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("BakeDestinationLabel", "Destination Folder"))
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 10.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().FillWidth(1.0f)
@@ -326,7 +318,7 @@ public:
 							ValidationText = FText::GetEmpty();
 						})
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SComboButton)
 						.OnGetMenuContent(this, &SMixtormatBakeSettingsDialog::BuildPathPicker)
@@ -340,9 +332,9 @@ public:
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("BakeBaseNameLabel", "Output Base Name"))
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 10.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
 				[
 					SNew(SEditableTextBox)
 					.Text(FText::FromString(Settings.BaseName))
@@ -352,7 +344,7 @@ public:
 						ValidationText = FText::GetEmpty();
 					})
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
@@ -368,9 +360,9 @@ public:
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("BakeOutputPreviewLabel", "Generated Asset Names"))
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 9))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 8.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
@@ -381,7 +373,7 @@ public:
 					})
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return ValidationText; })
@@ -397,7 +389,7 @@ public:
 						.Text(LOCTEXT("CancelBakeSettings", "Cancel"))
 						.OnClicked(this, &SMixtormatBakeSettingsDialog::Cancel)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SButton)
 						.Text(LOCTEXT("AcceptBakeSettings", "Bake"))
@@ -494,7 +486,7 @@ public:
 		ChildSlot
 		[
 			SNew(SBorder)
-			.Padding(12.0f)
+			.Padding(MixtormatTokens::DialogPadding)
 			.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 			[
 				SNew(SVerticalBox)
@@ -508,7 +500,7 @@ public:
 						.AutoWrapText(true)
 					]
 				]
-				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.0f, 10.0f, 0.0f, 0.0f)
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.0f, MixtormatTokens::DialogActionsTopMargin, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth()
@@ -517,14 +509,14 @@ public:
 						.Text(InArgs._CancelLabel)
 						.OnClicked(this, &SMixtormatActionDialog::Cancel)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SButton)
 						.Visibility(InArgs._AlternateLabel.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
 						.Text(InArgs._AlternateLabel)
 						.OnClicked(this, &SMixtormatActionDialog::Alternate)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SButton)
 						.Text(InArgs._ConfirmLabel)
@@ -580,7 +572,7 @@ inline bool ShowMixtormatActionDialog(
 	TSharedPtr<SMixtormatActionDialog> Dialog;
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(Title)
-		.ClientSize(FVector2D(560.0f, 320.0f))
+		.ClientSize(FVector2D(MixtormatTokens::ActionDialogWidth, MixtormatTokens::ActionDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[
@@ -607,7 +599,7 @@ inline EMixtormatActionDialogResult ShowMixtormatThreeActionDialog(
 	TSharedPtr<SMixtormatActionDialog> Dialog;
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(Title)
-		.ClientSize(FVector2D(560.0f, 320.0f))
+		.ClientSize(FVector2D(MixtormatTokens::ActionDialogWidth, MixtormatTokens::ActionDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[
@@ -645,7 +637,7 @@ public:
 		ChildSlot
 		[
 			SNew(SBorder)
-			.Padding(12.0f)
+			.Padding(MixtormatTokens::DialogPadding)
 			.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 			[
 				SNew(SVerticalBox)
@@ -659,26 +651,26 @@ public:
 						.AutoWrapText(true)
 					]
 				]
-				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.0f, 10.0f, 0.0f, 0.0f)
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.0f, MixtormatTokens::DialogActionsTopMargin, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
 						MakeActionButton(LOCTEXT("CloseBakeResult", "Close"), EMixtormatBakeResultAction::Close)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						MakeActionButton(LOCTEXT("RebakeBakeResult", "Re-bake"), EMixtormatBakeResultAction::Rebake)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						MakeActionButton(LOCTEXT("ApplyBakeResult", "Apply to Selected Actors"), EMixtormatBakeResultAction::Apply)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						MakeActionButton(LOCTEXT("OpenBakeResult", "Open Material Instance"), EMixtormatBakeResultAction::Open)
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						MakeActionButton(LOCTEXT("RevealBakeResult", "Reveal Outputs"), EMixtormatBakeResultAction::Reveal)
 					]

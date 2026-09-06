@@ -131,7 +131,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 							SNew(SVerticalBox)
 							+ SVerticalBox::Slot()
 							.AutoHeight()
-							.MaxHeight(420.0f)
+							.MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
 							[
 								SNew(SScrollBox) + SScrollBox::Slot()[Grid]
 							]
@@ -705,7 +705,7 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 						.Padding(MixtormatTokens::TileGap)
 						[
 							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight().MaxHeight(420.0f)
+							+ SVerticalBox::Slot().AutoHeight().MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
 							[
 								SNew(SScrollBox) + SScrollBox::Slot()
 								[
@@ -1573,7 +1573,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 						.Padding(MixtormatTokens::TileGap)
 						[
 							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight().MaxHeight(420.0f)
+							+ SVerticalBox::Slot().AutoHeight().MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
 							[
 								SNew(SScrollBox) + SScrollBox::Slot()
 								[
@@ -1749,7 +1749,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::LayerMask,
@@ -1877,7 +1877,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			.InitiallyExpanded(false)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::LayerMask,
@@ -2190,7 +2190,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 3.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::HeightBlend,
@@ -2480,7 +2480,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[SNew(STextBlock).Text(LOCTEXT("HeightContactAOGroup", "CONTACT AO")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+						[SNew(STextBlock).Text(LOCTEXT("HeightContactAOGroup", "CONTACT AO")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))]
 						+ SHorizontalBox::Slot().AutoWidth()
 						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::ContactAO, LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))]
 					]
@@ -2492,7 +2492,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[SNew(STextBlock).Text(LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 8))]
+						[SNew(STextBlock).Text(LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))]
 						+ SHorizontalBox::Slot().AutoWidth()
 						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::BorderNormal, LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))]
 					]
@@ -2704,7 +2704,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 	};
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBox)
-		.WidthOverride(MixtormatUI::InspectorWidth)
+		.WidthOverride(MixtormatTokens::InspectorWidth)
 		[
 			SNew(SBorder)
 			.Padding(FMargin(0.0f))
@@ -2863,7 +2863,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 												? WorkingLayers[SelectedLayerIndex].BaseColor
 												: FLinearColor::White;
 										})
-										.Size(FVector2D(108.0f, 18.0f))
+										.Size(FVector2D(MixtormatTokens::InspectorColorSwatchWidth, MixtormatTokens::InspectorColorSwatchHeight))
 									]
 								]
 							]

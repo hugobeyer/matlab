@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatLiveTheme.h"
 
 // The design palette, as sRGB hex, exactly as the component exploration specified it.
 //
@@ -30,20 +32,20 @@ namespace MixtormatPalette
 	// ---- Surfaces ---------------------------------------------------------------------------
 	// Every colour below is sampled from the approved graphite reference. Widgets use semantic
 	// roles only, so the visual system can be retuned here without hunting through Slate code.
-	inline FLinearColor Window()       { return Hex(0x0F0F0F); }
-	inline FLinearColor TopBar()       { return Hex(0x171819); }
-	inline FLinearColor Shell()        { return Hex(0x111213); }
-	inline FLinearColor Panel()        { return Hex(0x191B1D); }
+	inline FLinearColor Window()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Window"), Hex(0x0F0F0F)); }
+	inline FLinearColor TopBar()       { return FMixtormatLiveTheme::ResolveColor(TEXT("TopBar"), Hex(0x171819)); }
+	inline FLinearColor Shell()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Shell"), Hex(0x111213)); }
+	inline FLinearColor Panel()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Panel"), Hex(0x191B1D)); }
 	inline FLinearColor PanelBottom()  { return Hex(0x141617); }
-	inline FLinearColor RaisedPanel()  { return Hex(0x202224); }
-	inline FLinearColor RaisedPanelHover() { return Hex(0x26292B); }
+	inline FLinearColor RaisedPanel()  { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanel"), Hex(0x202224)); }
+	inline FLinearColor RaisedPanelHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanelHover"), Hex(0x26292B)); }
 	inline FLinearColor Viewport()     { return Hex(0x161719); }
 	inline FLinearColor ThumbnailBackground() { return Hex(0x101112); }
 	inline FLinearColor Inset()        { return Hex(0x101112); }
-	inline FLinearColor Border()       { return Hex(0x292C2E); }
-	inline FLinearColor BorderStrong() { return Hex(0x383C3E); }
+	inline FLinearColor Border()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Border"), Hex(0x292C2E)); }
+	inline FLinearColor BorderStrong() { return FMixtormatLiveTheme::ResolveColor(TEXT("BorderStrong"), Hex(0x383C3E)); }
 	inline FLinearColor Shadow()       { return Hex(0x000000, 0.52f); }
-	inline FLinearColor HeaderTint()   { return Hex(0x25282B, 0.72f); }
+	inline FLinearColor HeaderTint()   { return FMixtormatLiveTheme::ResolveColor(TEXT("HeaderTint"), Hex(0x25282B, 0.72f)); }
 	inline FLinearColor HeaderHover()  { return Hex(0x2E3236, 0.82f); }
 	inline FLinearColor HeaderTintFade() { return Hex(0x25282B); }
 	// A hovered header's top edge. The accent at the tint's own weight, so hover reads as the
@@ -54,8 +56,8 @@ namespace MixtormatPalette
 	inline FLinearColor HairlineGlow() { return Hex(0x7FC4DB, 0.85f); }
 	inline FLinearColor Hairline()     { return Hex(0x6F7D82, 0.16f); }
 	inline FLinearColor Divider()      { return Hex(0x242729); }
-	inline FLinearColor FocusFill()    { return Hex(0x4D8FA8, 0.10f); }
-	inline FLinearColor SelectionFill(){ return Hex(0x4D8FA8, 0.16f); }
+	inline FLinearColor FocusFill()    { return FMixtormatLiveTheme::ResolveColor(TEXT("FocusFill"), Hex(0x4D8FA8, 0.10f)); }
+	inline FLinearColor SelectionFill(){ return FMixtormatLiveTheme::ResolveColor(TEXT("SelectionFill"), Hex(0x4D8FA8, 0.16f)); }
 
 	// ---- Viewport overlay -------------------------------------------------------------------
 	// The plate behind a floating cluster of viewport controls. The well shades, but translucent:
@@ -68,11 +70,11 @@ namespace MixtormatPalette
 
 	// The ground a group sits on inside the well. A step darker than Shell so a group reads as a
 	// raised block with a margin around it rather than as a sheet flush with its container.
-	inline FLinearColor GroupSurround() { return Hex(0x0C0D0E); }
+	inline FLinearColor GroupSurround() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupSurround"), Hex(0x0C0D0E)); }
 
 	// ---- Wells ------------------------------------------------------------------------------
-	inline FLinearColor WellTop()      { return Hex(0x070808); }
-	inline FLinearColor WellBottom()   { return Hex(0x0C0E0F); }
+	inline FLinearColor WellTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTop"), Hex(0x070808)); }
+	inline FLinearColor WellBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottom"), Hex(0x0C0E0F)); }
 	inline FLinearColor WellTopHover() { return Hex(0x0A0B0C); }
 	inline FLinearColor WellBottomHover() { return Hex(0x121416); }
 	inline FLinearColor WellOutline()  { return Hex(0x242729); }
@@ -80,10 +82,10 @@ namespace MixtormatPalette
 	inline FLinearColor WellEntry()    { return Hex(0x070808); }
 
 	// ---- Active -----------------------------------------------------------------------------
-	inline FLinearColor FillTop()      { return Hex(0x303438); }
-	inline FLinearColor FillBottom()   { return Hex(0x24282B); }
-	inline FLinearColor FillTopHover() { return Hex(0x383D41); }
-	inline FLinearColor FillBottomHover() { return Hex(0x2A2F32); }
+	inline FLinearColor FillTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTop"), Hex(0x303438)); }
+	inline FLinearColor FillBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottom"), Hex(0x24282B)); }
+	inline FLinearColor FillTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTopHover"), Hex(0x383D41)); }
+	inline FLinearColor FillBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottomHover"), Hex(0x2A2F32)); }
 	inline FLinearColor FillTopActive() { return Hex(0x41484D); }
 	inline FLinearColor FillBottomActive() { return Hex(0x30363A); }
 	inline FLinearColor FillDisabled() { return Hex(0x24282B, 0.45f); }
@@ -102,29 +104,29 @@ namespace MixtormatPalette
 
 	// ---- Menus ------------------------------------------------------------------------------
 	// The popover ground: tinted at the top lip, settling to flat by the first item's base.
-	inline FLinearColor MenuTint()     { return Hex(0x4D8FA8, 0.10f); }
+	inline FLinearColor MenuTint()     { return FMixtormatLiveTheme::ResolveColor(TEXT("MenuTint"), Hex(0x4D8FA8, 0.10f)); }
 	inline FLinearColor MenuGroundTop(){ return Hex(0x1A1C1E); }
-	inline FLinearColor MenuGround()   { return Hex(0x151617); }
+	inline FLinearColor MenuGround()   { return FMixtormatLiveTheme::ResolveColor(TEXT("MenuGround"), Hex(0x151617)); }
 	// A destructive row keeps the same shape as a normal hover and only changes hue, so the
 	// gesture reads the same and the consequence does not.
 	inline FLinearColor DestructiveTop()   { return Hex(0x5E2A2A); }
 	inline FLinearColor DestructiveBottom(){ return Hex(0x3A1C1C); }
 
 	// ---- Marks ------------------------------------------------------------------------------
-	inline FLinearColor Accent()       { return Hex(0x4D8FA8); }
-	inline FLinearColor AccentBright() { return Hex(0x6CA8BF); }
-	inline FLinearColor Modified()     { return Hex(0xC28A3D); }
+	inline FLinearColor Accent()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Accent"), Hex(0x4D8FA8)); }
+	inline FLinearColor AccentBright() { return FMixtormatLiveTheme::ResolveColor(TEXT("AccentBright"), Hex(0x6CA8BF)); }
+	inline FLinearColor Modified()     { return FMixtormatLiveTheme::ResolveColor(TEXT("Modified"), Hex(0xC28A3D)); }
 	inline FLinearColor Destructive()  { return Hex(0xC46A6A); }
 	inline FLinearColor Tick()         { return Hex(0x4A4D4F); }
 	inline FLinearColor SegmentSeam()  { return Hex(0xFFFFFF, 0.08f); }
 
 	// ---- Type -------------------------------------------------------------------------------
-	inline FLinearColor RowText()      { return Hex(0xC0C0C0); }
+	inline FLinearColor RowText()      { return FMixtormatLiveTheme::ResolveColor(TEXT("RowText"), Hex(0xC0C0C0)); }
 	// A glyph on hover, brighter still than RowText -- the icon button's only other state besides
 	// Accent/AccentBright, which stay reserved for a control that is actually on.
 	inline FLinearColor IconHover()    { return Hex(0xE6E6E6); }
-	inline FLinearColor HeaderText()   { return Hex(0xA8A8A8); }
-	inline FLinearColor CaptionText()  { return Hex(0x6E6E6E); }
+	inline FLinearColor HeaderText()   { return FMixtormatLiveTheme::ResolveColor(TEXT("HeaderText"), Hex(0xA8A8A8)); }
+	inline FLinearColor CaptionText()  { return FMixtormatLiveTheme::ResolveColor(TEXT("CaptionText"), Hex(0x6E6E6E)); }
 	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.6f); }
 	inline FLinearColor BadgeSurface() { return Hex(0x0d0d0d); }
 	inline FLinearColor DisabledText() { return Hex(0xFFFFFF, 0.20f); }
@@ -143,12 +145,12 @@ namespace MixtormatPalette
 	inline FLinearColor PreviewFog() { return Hex(0x020203); }
 	inline FLinearColor ErrorText() { return Hex(0xE63333); }
 	inline FLinearColor SegmentActiveText() { return Hex(0xE8F0F8); }
-	inline FLinearColor SegmentShade() { return Hex(0x000000, 0.10f); }
+	inline FLinearColor SegmentShade() { return Hex(0x000000, MixtormatTokens::SegmentShadeAlpha); }
 
 	// ---- Layer stack ------------------------------------------------------------------------
-	inline FLinearColor LayerName()    { return Hex(0xA2A2A2); }
-	inline FLinearColor LayerSource()  { return Hex(0xA8A8A8, 0.50f); }
-	inline FLinearColor LayerEdge()    { return Hex(0x0C6F95); }
+	inline FLinearColor LayerName()    { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerName"), Hex(0xA2A2A2)); }
+	inline FLinearColor LayerSource()  { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerSource"), Hex(0xA8A8A8, 0.50f)); }
+	inline FLinearColor LayerEdge()    { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerEdge"), Hex(0x0C6F95)); }
 	inline FLinearColor LayerHiddenTop()   { return Hex(0x191B1D); }
 	inline FLinearColor LayerHiddenEnd()   { return Hex(0x101112); }
 }
