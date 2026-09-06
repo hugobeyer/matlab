@@ -389,10 +389,10 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 				return E ? MixtormatUI::StainModeText(E->StainMode) : FText::GetEmpty();
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildStainModeMenu)),
-		LOCTEXT("StainModeHint", "Wet shades absorbed liquid. Deposit shades dried dirt and mineral residue. Both come from the same transport solve.")));
+		LOCTEXT("StainModeHint", "Wet outputs absorbed liquid. Deposit outputs dried dirt and mineral residue. Both come from the same transport solve.")));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("StainStrength", "Amount"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("StainStrengthHint", "Final blend of the selected wet or deposit mask. At 0 the solver and shade pass are skipped.")));
+		LOCTEXT("StainStrengthHint", "Final blend of the selected wet or deposit mask. At 0 the transport solve is skipped.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpSource", "Source")));
 	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
@@ -790,40 +790,12 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 		Slider(LOCTEXT("ChipMaskEdge", "Mask Edge"), &FMixtormatLayerEffect::ChipMaskEdge, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("ChipMaskEdgeHint", "Biases chips toward the edge of this layer's own mask -- where they start, how long they survive and how deep they cut. Inert on a layer whose mask is uniform, and zero by default."))));
 
-	// Colour and roughness for the substrate a chip exposes. Same shader as the erosion shade
-	// pass, but fed the chip mask directly rather than a height difference.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpShade", "Exposed")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-		[SNew(STextBlock).Text(LOCTEXT("ChipColorLabel", "Color"))]
-		+ SHorizontalBox::Slot().AutoWidth()
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(2.0f)
-			.ToolTipText(LOCTEXT("OpenChipColorPicker", "The color a chip exposes. Blended toward rather than multiplied, so it can reach a color lighter than the surface it broke off."))
-			.OnClicked_Lambda([this]()
-			{
-				return OpenChipColorPicker(SelectedLayerIndex, SelectedEffectIndex);
-			})
-			[
-				SNew(SColorBlock)
-				.Color_Lambda([this]()
-				{
-					const FMixtormatLayerEffect* E = GetSelectedChipping();
-					return E ? E->ChipColor : FLinearColor::White;
-				})
-				.Size(FVector2D(76.0f, 16.0f))
-			]
-		]
-	];
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipColorAmount", "Color"), &FMixtormatLayerEffect::ChipColorAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("ChipColorAmountHint", "How far a chip blends toward the exposed color. 0 leaves the composited base color alone and skips the pass entirely. Unlike erosion this stays correct at Depth 0, because coverage is the chip mask rather than a height difference.")),
-		Slider(LOCTEXT("ChipRoughAmount", "Roughness"), &FMixtormatLayerEffect::ChipRoughnessAmount, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("ChipRoughAmountHint", "Signed offset on the composited roughness inside a chip, positive toward rough."))));
+	// Chipping contributes no base colour. Its resolved mask only weights surface channels.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpOutput", "Output")));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("ChipRoughAmount", "Roughness"), &FMixtormatLayerEffect::ChipRoughnessAmount,
+		-1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("ChipRoughAmountHint", "Signed, mask-weighted offset on composited roughness; positive moves toward rough.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedChipping() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1699,44 +1671,13 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroInvertMask", "Invert"), Ero, &FMixtormatLayerEffect::bErosionInvertMask,
 			LOCTEXT("EroInvertMaskHint", "Inverts the selected placement mask, or the layer child mask when no mask is selected."))));
 
-	// What the carve exposes. Applied over the base colour and roughness the layer already
-	// composited, in proportion to how deeply each pixel was cut.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpShade", "Exposed")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-		[SNew(STextBlock).Text(LOCTEXT("EroColorLabel", "Color"))]
-		+ SHorizontalBox::Slot().AutoWidth()
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(2.0f)
-			.ToolTipText(LOCTEXT("OpenErosionColorPicker", "The color the carve exposes. Blended toward rather than multiplied, unlike a stain, so it can reach a color lighter than what it replaced."))
-			.OnClicked_Lambda([this]()
-			{
-				return OpenErosionColorPicker(SelectedLayerIndex, SelectedEffectIndex);
-			})
-			[
-				SNew(SColorBlock)
-				.Color_Lambda([this]()
-				{
-					const FMixtormatLayerEffect* E = GetSelectedErosion();
-					return E ? E->ErosionColor : FLinearColor::White;
-				})
-				.Size(FVector2D(76.0f, 16.0f))
-			]
-		]
-	];
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroColorAmount", "Color"), &FMixtormatLayerEffect::ErosionColorAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("EroColorAmountHint", "How far the carve blends toward the exposed color. 0 leaves the composited base color alone and skips the pass entirely.")),
-		MakeErosionSlider(LOCTEXT("EroRoughAmount", "Roughness"), &FMixtormatLayerEffect::ErosionRoughnessAmount, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("EroRoughAmountHint", "Signed offset on the composited roughness where the carve bit, positive toward rough."))));
-	AddErosionSlider(Panel, LOCTEXT("EroCarveDepth", "Full At Depth"), &FMixtormatLayerEffect::ErosionCarveDepth, 0.001, 1.0, 0.05, 0.001,
-		LOCTEXT("EroCarveDepthHint", "The carve depth that reads as fully eroded, in height units. Coverage is the carve divided by this, so it is what stops both amounts being all or nothing."));
-
+	// Erosion contributes no base colour. Its resolved mask only weights surface channels.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpOutput", "Output")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroRoughAmount", "Roughness"), &FMixtormatLayerEffect::ErosionRoughnessAmount, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("EroRoughAmountHint", "Signed, mask-weighted offset on composited roughness; positive moves toward rough.")),
+		MakeErosionSlider(LOCTEXT("EroCarveDepth", "Full At Depth"), &FMixtormatLayerEffect::ErosionCarveDepth, 0.001, 1.0, 0.05, 0.001,
+			LOCTEXT("EroCarveDepthHint", "Carve depth that reaches the full roughness weight."))));
 	AddErosionSlider(Panel, LOCTEXT("EroNormalStrength", "Normal Strength"), &FMixtormatLayerEffect::ErosionNormalStrength, 0.0, 32.0, 8.0, 0.05);
 
 	return SNew(SBox)

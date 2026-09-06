@@ -2,7 +2,7 @@
 
 Port of `Handoff/Houdini/OpenCl/brickschips.cl`, a working 229-line prototype. Chips are seeded
 from a smooth height selection mixed with local cavity, then grown inward over N iterations,
-carving the composited height and exposing a substrate colour underneath.
+carving the composited height and producing mask-weighted normal and roughness changes.
 
 ## The audit was wrong about the blocker
 
@@ -23,8 +23,8 @@ never blocked behind it.
 ## Class
 
 `Filter`, alongside Erosion and Grade. It reads the height the layer just composited, modifies
-it in place, and derives its colour and normal change from what it removed. Same slot in the
-graph as erosion, and it runs after it -- carving a surface that has already weathered is the
+it in place, and derives its normal and roughness weights from the resolved chip mask. Same slot
+in the graph as erosion, and it runs after it -- carving a surface that has already weathered is the
 order that makes sense, and the reverse would have erosion smoothing chips it never saw.
 
 ## What the prototype does, and what each piece becomes
@@ -39,7 +39,7 @@ order that makes sense, and the reverse would have erosion smoothing chips it ne
 | `@Iteration == 0` | `Iteration` uniform | Load-bearing branch, not an optimisation. See below. |
 | `@WRITEBACK` scratch -> state | RDG ping-pong on parity | Same shape as `EroH[2]`. |
 | `@layers` | the layer's `CombinedMask` | See below. |
-| `@chips` output | drives the shade pass | Coverage, directly. Not reconstructed from a height difference. |
+| `@chips` output | drives roughness | Coverage, directly. Not reconstructed from a height difference. |
 
 ## Three decisions
 
@@ -80,11 +80,10 @@ Get that last one wrong and every chip inherits a zero direction on iteration 1,
 test fails everywhere, and nothing propagates. It is a uniform rather than a permutation because
 the divergence is uniform across the dispatch.
 
-## Shade
+## Roughness
 
-`MixtormatErosionShade.usf` already solved "carve depth drives colour and roughness", so it is
-renamed `MixtormatCarveShade.usf` and generalised rather than duplicated. It grows a coverage
-texture input and a `UseCoverageTexture` switch:
+`MixtormatCarveShade.usf` applies the same mask-weighted roughness contract to erosion and
+chipping. It accepts either reconstructed carve coverage or a direct coverage texture:
 
 - Erosion binds a dummy and 0, keeping `Coverage = saturate((Src - Carved) / CarveDepth)`
 - Chipping binds its chip mask and 1
@@ -175,10 +174,10 @@ looks like enough that its default should be chosen afterward rather than guesse
 | Normal Strength | 0..32 | 8.0 |
 | Mask Edge | 0..1 | 0.0 |
 | Seed | 0..64 | 1 |
-| Colour / Colour Amount / Roughness | — | grey, 0.0, 0.0 |
+| Roughness | -1..1 | 0.0 |
 
-Both shade amounts default to 0, matching erosion: at zero the shade pass is skipped entirely,
-so the common case pays nothing for a feature it is not using.
+At zero the roughness pass is skipped entirely, so the common case pays nothing for a feature it
+is not using.
 
 ## The normal pass
 
@@ -202,9 +201,8 @@ normal tracks the control rather than the height chain's precision.
 4. `Irregularity 0` vs `1` -- straight inward chips vs wandering ones.
 5. Iterations 1 -- seeds only, no propagation. Iterations 24 -- chips reach far but stay bounded.
 6. Same recipe at 512 and 2048: chip size relative to the texture must match.
-7. Chipped colour at Amount 1 with Depth 0 -- colour must still appear, since coverage is the
-   chip mask and not a height difference.
-8. Erosion's shade unchanged after the rename: an eroding layer with a colour set must look the
-   same as before.
+7. Chipped roughness at Amount 1 with Depth 0 -- roughness must still change, since coverage is
+   the chip mask and not a height difference.
+8. Erosion and chipping leave base colour byte-identical.
 9. A grade with an asset-backed effect still hides the asset panel -- the visibility test moved
    from naming Erosion to testing the effect class, which fixes a latent gap on Grade.

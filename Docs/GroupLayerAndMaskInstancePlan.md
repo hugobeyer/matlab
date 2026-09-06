@@ -43,9 +43,9 @@ float SamplePlacementMask(float2 UV)
 }
 ```
 
-That one function gates coverage, height blending, contact AO and border normals. Anything
-multiplied in there applies to all of them consistently — which is exactly what a group mask
-must do.
+That one function gates coverage, height blending, contact AO and border normals owned by the
+composite. Multiplying the group mask there handles the layer itself consistently, but not the
+post-composite channel writes called out below.
 
 ### A no-op composite that is already exact
 
@@ -209,7 +209,37 @@ Multiplying into the funnel rather than injecting an extra mask child into the m
 - Zero extra dispatches per member. An injected child would cost one full-resolution compute pass
   on every layer in the group.
 
-### 4. `Initialize` follows the first *compositing* layer
+### 4. Group masks gate post-composite channel weights
+
+`GroupMask` on the composite is necessary but not sufficient. Erosion, Chipping, Grade and
+Craquelure relief run after the layer composite. Today they read the layer's `CombinedMask`, an
+owned placement mask, or their own generated coverage. Without another binding, a black group
+would hide the member's surface and those later passes could still carve, perturb normals, change
+roughness, grade colour, or publish erosion ridges outside the group.
+
+Build one resolved surface gate per member:
+
+```text
+ResolvedLayerMask = CombinedMask * ParentGroupSnapshot
+```
+
+Use it as follows:
+
+- The composite samples `ResolvedLayerMask` through the existing placement funnel.
+- Grade uses `ResolvedLayerMask` as its `LayerMask`.
+- Erosion and Chipping multiply `ResolvedLayerMask` with an owned placement mask rather than
+  choosing one or the other. Their height, normal and roughness outputs therefore remain mask
+  weights, including when an explicit mask is selected.
+- Craquelure relief multiplies its height and normal weights by the parent group snapshot. Its own
+  mask `Weight` remains independent, as designed.
+- Erosion gates its published ridge output too, so a grouped erosion cannot influence generated
+  masks above the group through an otherwise hidden signal.
+- Stain needs no special post pass: it already resolves into `CombinedMask` before the composite.
+
+Do not bake the parent group into each child's editable mask chain. Keep the child's mask debug
+view local and apply the inherited gate only at surface-output boundaries.
+
+### 5. `Initialize` follows the first *compositing* layer
 
 ```cpp
 // MixtormatGpuCompositor.cpp:3567, today
@@ -238,7 +268,7 @@ empty (`:2311`), so a read there is the RDG ensure this plan is trying to avoid.
 In a saved recipe index 0 is never a group, so this is identical to today's behaviour. It fires
 only in the preview override arrays — which is exactly what makes solo work, below.
 
-### 5. `MixtormatMaskInstance.usf`
+### 6. `MixtormatMaskInstance.usf`
 
 `MixtormatMask.usf` minus the UV block: read `Texture2D<float> SourceMask` at the pixel's own UV,
 `MixtormatShapeMask`, `MixtormatApplyMaskOperation`, same `saturate(lerp(Previous, Result,
@@ -346,6 +376,8 @@ Run `MixtormatCompositorTests` headless. New cases:
 - A group with no mask children is a pass-through: its members composite identically to the same
   stack with the group removed.
 - A group whose mask is black hides its members exactly.
+- A black group also suppresses Erosion, Chipping, Grade and Craquelure relief, including an effect
+  with its own white placement mask, and publishes no erosion ridge outside the group.
 - Nested groups multiply.
 - A stack containing a group produces byte-identical output for the layers *below* the group,
   proving ping-pong parity survived.
@@ -359,8 +391,9 @@ Run `MixtormatCompositorTests` headless. New cases:
 
 1. Data model, `ValidateGroupStructure`, GUID assignment and migration (existing recipes get fresh
    `LayerId`s and no parents).
-2. `MixtormatMaskSnapshot.usf`, `MaskSnapshots`, `bMaskOnly`, `GroupMask` and the `Initialize`
-   rule in the composite. **This is a test-only milestone, not a shippable one** — with
+2. `MixtormatMaskSnapshot.usf`, `MaskSnapshots`, `bMaskOnly`, resolved group gating for the
+   composite and every post-composite channel writer, plus the `Initialize` rule. **This is a
+   test-only milestone, not a shippable one** — with
    `RebuildLayerList` still a flat loop, a group draws as an ordinary row and its members as
    siblings, so there is nothing to look at. The compositor tests above are what proves it.
 3. Nested stack rendering and the group inspector section. First point the feature is visible.

@@ -1,21 +1,73 @@
 # Tokenization audit — repeated hardcoded values
 
 Scope: `Source/MixtormatEditor/Private/{Style,UI,Widgets}`. Only values that are **repeated,
-duplicated, or drifting** — one-off numbers are left out deliberately.
+duplicated, or drifting**.
 
-Snapshot note: `MixtormatDesignTokens.h` was edited on disk mid-audit (the `ColorSwatch*` tokens
-appeared). This list reflects the file as it stands now.
+**Re-audited after the last round of edits.** Status column reflects current state.
+`UI/**` remains clean — the literals are in `Widgets/**` and `Style/MixtormatStyle.cpp`.
 
-Health: `UI/**` is effectively clean — the literals are all in `Widgets/**` and `Style/MixtormatStyle.cpp`.
+## Churn since the first pass
+
+| File | Then | Now |
+|---|---|---|
+| `SMixtormat_Inspector.cpp` | 2854 | **3033** |
+| `SMixtormat_Layers.cpp` | 2540 | **2425** |
+| `SMixtormatInternal.h` | 914 | 921 |
+| `MixtormatDesignTokens.h` | 354 | 357 |
+| `MixtormatStyle.cpp` | 671 | 671 (untouched) |
+
+Token refs 534 → 531, palette refs 147 → 147, alignment sites 140 → 137,
+`GetDefaultFontStyle` 26 → 26.
+
+**Net: one item fixed, three new ones.** The style file was not touched at all, so every
+style-side finding stands.
 
 ---
 
-## 1. Root cause: two competing layout namespaces
+## NEW — 14 orphaned tokens
 
-`Widgets/SMixtormatInternal.h:99` declares a second constant namespace, `MixtormatUI`, alongside
-`MixtormatTokens`:
+Defined in `MixtormatDesignTokens.h`, referenced **nowhere**. The reverse of the original problem:
+not a literal without a token, but a token without a call site. Each is either a feature that got
+reworked and left its token behind, or a value that quietly moved elsewhere.
 
-| `MixtormatUI` constant | Value | Used in |
+```
+RowGapTight              ButtonPressedOffset      MaskPickerColumns
+ColorSwatchWidth         GroupBodyTopInset        MaskPickerColumnsDense
+ColorSwatchHeight        SegmentShadeAlpha        DropLineThickness
+ColorSwatchPadding       SurfaceTileSizeDense     TileBadgeHeight
+                         MaskPickerTileSizeDense  MaterialGalleryHeaderGap
+```
+
+Two worth calling out:
+
+- **`ColorSwatchWidth/Height/Padding`** were added *during* the first audit to fix the
+  `FVector2D(76,16)` swatches — then the swatches were reworked to be size-free or to use
+  `LayerThumbnailSize`, and the new tokens were never wired up. Born orphaned.
+- **`SegmentShadeAlpha = 0.1f`** is dead because the value moved into
+  `MixtormatPalette::SegmentShade() = Hex(0x000000, 0.10f)`. The `0.10` now lives in two places,
+  one of which nothing reads.
+
+These matter more than usual given the live-tweaker plan: **an orphaned token is a knob in the
+panel that visibly does nothing.** Either wire each up or delete it.
+
+## NEW — orphaned palette colour, and a hover state that never lightens
+
+`MixtormatPalette::WellTopHover()` has no callers.
+
+`WellTop`/`WellBottom` are used as a **gradient pair** by `SMixtormatChip`, `SMixtormatToggle` and
+`SMixtormatSegmentedControl`. `WellTopHover`/`WellBottomHover` were evidently the hover pair — but
+only `WellBottomHover` is referenced, twice, as a flat brush colour in `MixtormatStyle.cpp:368,371`.
+
+So those gradient wells have **no lightened hover gradient**; the top stop is dead. Probably a
+dropped hover state rather than a naming slip. Worth a look before deciding which way to fix it.
+
+---
+
+## 1. Root cause: two competing layout namespaces — UNCHANGED
+
+`Widgets/SMixtormatInternal.h:99` still declares `MixtormatUI` alongside `MixtormatTokens`:
+
+| Constant | Value | Used in |
 |---|---|---|
 | `PanelPadding` | 4.0f | Shell, Library, Layers |
 | `SplitterHandleSize` / `SplitterHitSize` | 1.0f / 5.0f | Shell, Library |
@@ -24,32 +76,26 @@ Health: `UI/**` is effectively clean — the literals are all in `Widgets/**` an
 | `TopBarHeight` / `StatusBarHeight` | 32.0f / 18.0f | Shell |
 | `MaskTileSize` | 62.0f | Layers (×2) |
 
-**Name collision:** `MixtormatUI::MaskTileSize = 62.0f` vs `MixtormatTokens::MaskTileSize = 96.0f`.
-Two different sizes under one name, resolved by which header a file happens to include.
-Everything below is downstream of this split — these six belong in `MixtormatTokens`.
+**Name collision stands:** `MixtormatUI::MaskTileSize = 62.0f` vs
+`MixtormatTokens::MaskTileSize = 96.0f`. Two sizes, one name, resolved by which header a file
+includes. Still the root cause of the rest.
 
----
+## 2. Tokens that exist but are not applied
 
-## 2. Tokens that already exist but are not applied
-
-| Literal | Count | Where | Existing token |
+| Literal | Then | Now | Where |
 |---|---|---|---|
-| `FVector2D(76.0f, 16.0f)` on `SColorBlock` | 3 | Inspector:539, 1448, 2467 | `ColorSwatchWidth` / `ColorSwatchHeight` (added, still unused) |
-| `FVector2D(108.0f, 18.0f)` — the fill-colour swatch | 1 | Inspector:2725 | same family, wide variant — needs one more token, not a literal |
-| `GetDefaultFontStyle("Bold", 8)` | 4 | Inspector:2282, 2294; Preview:282, 317 | `FontCaption = 8.0f` |
-| Outline width `1.0f` in `FSlateRoundedBoxBrush` | 12 | MixtormatStyle.cpp | `OutlineWidth` |
-| Corner radius `2.0f` / `4.0f` / `6.0f` / `7.0f` | 5 | MixtormatStyle.cpp:103,112,118,121,169 | `CornerRadius = 3.0f` exists and none of them use it |
+| `FVector2D(76, 16)` colour swatch | 3 | **0 — fixed** | reworked; left `ColorSwatch*` orphaned |
+| `FVector2D(108, 18)` colour swatch | 1 | 1 | Inspector:2904 |
+| `GetDefaultFontStyle("Bold", 8)` → `FontCaption` | 4 | 4 | Inspector:2521, 2533; Preview:282, 317 |
+| `GetDefaultFontStyle("Bold", 9)` | 4 | **6** | Internal.h:314, 343, 371; Layers:1790; **DragDropOps.h:83, 237** |
+| Outline `1.0f` → `OutlineWidth` | 12 | 12 | MixtormatStyle.cpp |
+| Corner radius `2/4/6/7` vs `CornerRadius = 3` | 5 | 5 | MixtormatStyle.cpp:103, 112, 118, 121, 169 |
 
----
-
-## 3. Duplicate / near-duplicate colours in the palette
-
-Same hex under multiple semantic names — fine as aliases, but they are written as independent
-literals, so retuning one silently desyncs the set:
+## 3. Duplicate / near-duplicate palette colours — UNCHANGED
 
 | Hex | Names sharing it |
 |---|---|
-| `0x4D8FA8` | `Accent`, `FocusFill`, `SelectionFill`, `MenuTint` (4×) |
+| `0x4D8FA8` | `Accent`, `FocusFill`, `SelectionFill`, `MenuTint` |
 | `0x070808` | `WellTop`, `WellEntry`, `OverlayPlateTop` |
 | `0x101112` | `Inset`, `ThumbnailBackground`, `LayerHiddenEnd` |
 | `0x0C0E0F` | `WellBottom`, `OverlayPlateBottom` |
@@ -60,68 +106,59 @@ literals, so retuning one silently desyncs the set:
 | `0x191B1D` | `Panel`, `LayerHiddenTop` |
 | `0xA8A8A8` | `HeaderText`, `LayerSource` |
 
-**Drift, not aliasing — the strongest finding here:** `BorderStrong = 0x383C3E` vs
-`WellOutlineHover / FillTopHover = 0x383D41`. One digit apart, same visual role. Almost certainly
-meant to be one value.
+**Still the sharpest finding:** `BorderStrong = 0x383C3E` (line 44) vs
+`WellOutlineHover = 0x383D41` (line 79) and `FillTopHover = 0x383D41` (line 85). One digit apart,
+same visual role.
 
-## 4. Outline-alpha drift in the style file
+## 4. Outline-alpha drift — UNCHANGED
 
-`FSlateRoundedBoxBrush` outline alphas across `MixtormatStyle.cpp`, all hand-picked:
-
-`0.2 · 0.25 · 0.3 · 0.35 · 0.4 · 0.42 · 0.45 · 0.5 · 0.55 · 0.65 · 0.8`
-
-Eleven distinct values for what is really three states (rest / hover / focus). Treat as **one**
-item: a small alpha scale, not eleven tokens.
-
----
+`0.2 · 0.25 · 0.3 · 0.35 · 0.4 · 0.42 · 0.45 · 0.5 · 0.55 · 0.65 · 0.8` — eleven values for what
+is really three states. **One** item: a small alpha scale, not eleven tokens.
 
 ## 5. Repeated layout literals with no token
 
-Ordered by how often they repeat.
-
-| Literal | Count | Where | Role |
+| Literal | Then | Now | Where |
 |---|---|---|---|
-| `Padding(6.0f, 0, 0, 0)` | 7 | SMixtormatInternal.h:400, 520, 527, 669, 673, 677, 681 | gap between dialog footer buttons |
-| `Padding(5.0f, 0.0f)` | 5 | Shell:85, 113, 136, 159, 398 | top-bar item gap |
-| `Padding(2.0f, 0.0f)` | 4 | Shell:97, 119, 142, 174 | top-bar group gap |
-| `Padding(12.0f)` | 3 | SMixtormatInternal.h:306, 497, 648 | modal dialog body inset |
-| `Padding(0, 4.0f, 0, 10.0f)` / `(0,0,0,8.0f)` | 4 | SMixtormatInternal.h:316, 345, 373, 355, 384 | dialog section gaps |
-| `Padding(0, 10.0f, 0, 0)` | 2 | SMixtormatInternal.h:511, 662 | gap above dialog footer |
-| `GetDefaultFontStyle("Bold", 9)` | 4 | SMixtormatInternal.h:314, 343, 371; Layers:1955 | dialog section heading |
-| `Padding(0, 0, 3.0f, 0)` | 3 | Inspector:1572, 1705, 2011 | trailing gap before inline control |
-| `MaxHeight(420.0f)` | 3 | Inspector:134, 429, 1365 | scroll cap on option lists |
-| `Padding(4.0f, 0, 0, 0)` | 3 | Library:289; Preview:294; SMixtormatInternal.h:329 | leading gap before trailing control |
-| `FAssetThumbnail(..., 40, 40, ...)` | 3 | MixtormatDragDropOps.h:57, 58, 128 | drag-ghost thumbnail resolution |
-| `ClientSize(FVector2D(560.0f, 320.0f))` | 2 | SMixtormatInternal.h:583, 610 | standard modal size |
+| `Padding(6, 0, 0, 0)` | 7 | 7 | SMixtormatInternal.h:400, 520, 527, 669, 673, 677, 681 |
+| `Padding(5, 0)` | 5 | **4** | Shell |
+| `Padding(2, 0)` | 4 | 4 | Shell:97, 119, 142, 174 |
+| `Padding(12)` | 3 | 3 | SMixtormatInternal.h:306, 497, 648 |
+| `Padding(0, 0, 3, 0)` | 3 | 3 | Inspector |
+| `MaxHeight(420)` | 3 | 3 | Inspector |
+| `Padding(4, 0, 0, 0)` | 3 | 3 | Library, Preview, Internal.h |
+| `Padding(0, 4, 0, 10)` | 2 | 2 | Internal.h:316, 345 |
+| `Padding(0, 0, 0, 8)` | 2 | 2 | Internal.h:355, 384 |
+| `Padding(0, 10, 0, 0)` | 2 | 2 | Internal.h:511, 662 |
+| `ClientSize(560, 320)` | 2 | 2 | Internal.h:583, 610 |
+| `FAssetThumbnail(…, 40, 40, …)` | 3 | 3 | MixtormatDragDropOps.h:57, 58, 128 |
 
-Sibling one-offs in the same family, worth folding into whichever token covers the above rather
-than left as literals: `ClientSize(760, 320)` (Internal.h:725), `ClientSize(480, 410)`
-(Document.cpp:317), `WidthOverride(360)/HeightOverride(420)` (Internal.h:425), `WidthOverride(150)`
-(Library:240).
+## 6. Style-file paddings bypassing the button tokens — UNCHANGED
 
----
+- `MixtormatStyle.cpp:182` `FMargin(2.0f)` / `:183` `(2, 3, 2, 1)`
+- `:323` `(4.0f, 1.0f)` / `:324` `(4, 2, 4, 0)`
+- `:265` `SetPadding(FMargin(2.0f))`
+- `:334` `SetTextPadding(FMargin(3.0f, 0.0f))`
 
-## 6. Style-file paddings that bypass the button-padding tokens
-
-`ButtonPaddingCompact/Primary/Tab` are used correctly for most styles, but four remain literal:
-
-- `MixtormatStyle.cpp:182` `SetNormalPadding(FMargin(2.0f))` / `:183` `(2, 3, 2, 1)`
-- `MixtormatStyle.cpp:323` `(4.0f, 1.0f)` / `:324` `(4, 2, 4, 0)`
-- `MixtormatStyle.cpp:265` `SetPadding(FMargin(2.0f))`
-- `MixtormatStyle.cpp:334` `SetTextPadding(FMargin(3.0f, 0.0f))`
-
-The `(x, y)` → `(x, y+1, x, y-1)` pressed-offset pattern repeats and is what
-`ButtonPressedOffset = 1.0f` exists for; neither site uses it.
+The `(x, y)` → `(x, y+1, x, y−1)` pressed-offset pattern repeats and is exactly what
+`ButtonPressedOffset` is for — which is itself one of the 14 orphans above.
 
 ---
+
+## Headline number
+
+**Padding sites: 136 token-driven, 65 still literal.** Unchanged.
+
+That ratio is the one to watch for the live tweaker — those 65 are knobs that will not exist in
+the panel.
 
 ## Deliberately excluded
 
-- **Interaction values, per the header's own rule:** `FineDragScale`, `DragThreshold`,
-  one-pixel hairlines, `FillWidth(1.0f)` / `FillHeight(1.0f)` weights, zero margins.
+- **Interaction values, per the header's own rule:** `FineDragScale`, `DragThreshold`, one-pixel
+  hairlines, `FillWidth(1.0f)` weights, zero margins.
 - **3D / camera constants** in `SMixtormatPreviewViewport.cpp` (`-35.0f` light pitch, `360.0f`
-  wrap, `0.35f` yaw rate) — scene maths, not design values.
-- **Placeholder UI** in `SMixtormat_Shell.cpp:380–413` (the "Saved Mixtormat looks will appear
-  here" tab, `IsEnabled(false)`, fonts at 9/12/14, paddings 24/16/14/10). Unbuilt screens;
-  tokenizing them would lock in numbers nobody chose.
-- **Resolution constants** (`1024/2048/4096` in Preview.cpp) — data values, not layout.
+  wrap, `0.35f` yaw rate).
+- **Placeholder UI** in `SMixtormat_Shell.cpp:380–413` — unbuilt screens; tokenizing them locks in
+  numbers nobody chose.
+- **Resolution constants** (`1024/2048/4096`, Preview.cpp) — data, not layout.
+- **Alignment sites** (137) — 93 are `VAlign_Center`, structural rather than designed. See
+  [LiveTokenEditor.md](LiveTokenEditor.md).

@@ -836,9 +836,8 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Colour and roughness for what erosion removed, blended into what the layer composite has
-// already written. Kept separate from FMixtormatErosionCS so its four texture slots are not
-// bound, and dummied, on every carving and resample dispatch that has no use for them.
+// Mask-weighted roughness for what erosion or chipping removed. Kept separate from the carving
+// shaders so its texture slots are not bound on every dispatch that has no use for them.
 class FMixtormatCarveShadeCS final : public FGlobalShader
 {
 public:
@@ -847,18 +846,14 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(FVector4f, ErodedColor)
-		SHADER_PARAMETER(float, ColorAmount)
 		SHADER_PARAMETER(float, RoughnessAmount)
 		SHADER_PARAMETER(float, CarveDepth)
 		SHADER_PARAMETER(uint32, UseCoverageTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CarvedHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CoverageTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputColor)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -1321,8 +1316,6 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef ErosionPlacementMask;
 		float ErosionMaskTiling = 1.0f;
 		bool bErosionInvertMask = false;
-		FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
-		float ErosionColorAmount = 0.0f;
 		float ErosionRoughnessAmount = 0.0f;
 		float ErosionCarveDepth = 0.05f;
 
@@ -1353,8 +1346,6 @@ namespace MixtormatGpuCompositor
 		float ChipMaskTiling = 1.0f;
 		bool bChipInvertMask = false;
 		uint32 ChipSeed = 1;
-		FLinearColor ChipColor = FLinearColor(0.34f, 0.30f, 0.27f, 1.0f);
-		float ChipColorAmount = 0.0f;
 		float ChipRoughnessAmount = 0.0f;
 		bool bGradeInvertMask = false;
 	};
@@ -2097,8 +2088,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					}
 				}
 
-				EffectData.ErosionColor = LayerEffect.ErosionColor;
-				EffectData.ErosionColorAmount = LayerEffect.ErosionColorAmount;
 				EffectData.ErosionRoughnessAmount = LayerEffect.ErosionRoughnessAmount;
 				EffectData.ErosionCarveDepth = LayerEffect.ErosionCarveDepth;
 			}
@@ -2150,8 +2139,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					}
 				}
 				EffectData.ChipSeed = static_cast<uint32>(FMath::Max(LayerEffect.ChipSeed, 0));
-				EffectData.ChipColor = LayerEffect.ChipColor;
-				EffectData.ChipColorAmount = LayerEffect.ChipColorAmount;
 				EffectData.ChipRoughnessAmount = LayerEffect.ChipRoughnessAmount;
 			}
 
@@ -4390,56 +4377,36 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							AddCopyTexturePass(GraphBuilder, EroRidge, RidgeTargets[WriteIndex]);
 						}
 
-						// Colour and roughness for what was carved. Skipped when neither amount
-						// asks for anything, so the common case pays nothing.
-						if (Ero.ErosionColorAmount != 0.0f || Ero.ErosionRoughnessAmount != 0.0f)
+						// Roughness is the only packed surface channel erosion changes. Skip the
+						// full-resolution pass when its mask weight is neutral.
+						if (Ero.ErosionRoughnessAmount != 0.0f)
 						{
-							// Through scratch and back rather than in place: the pass reads the
-							// base colour and RAM the composite just wrote and writes the same
-							// two targets, which cannot be bound as SRV and UAV at once. The
-							// other ping-pong slot is dead at this point and could be borrowed,
-							// but that is a bet on the slot arithmetic staying as it is, and a
-							// wrong bet would only show on some layers.
-							FRDGTextureRef ShadeBC = GraphBuilder.CreateTexture(
-								OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.ErosionShadeBC"));
+							// Through scratch and back rather than in place: RAM cannot be bound as
+							// both SRV and UAV on the same dispatch.
 							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
 								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ErosionShadeRAM"));
 
 							FMixtormatCarveShadeCS::FParameters* SP =
 								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
 							SP->OutputSize = Request.Resolution;
-							SP->ErodedColor = FVector4f(
-								Ero.ErosionColor.R,
-								Ero.ErosionColor.G,
-								Ero.ErosionColor.B,
-								Ero.ErosionColor.A);
-							SP->ColorAmount = Ero.ErosionColorAmount;
 							SP->RoughnessAmount = Ero.ErosionRoughnessAmount;
 							SP->CarveDepth = Ero.ErosionCarveDepth;
 
 							// Erosion recovers coverage from the height pair, so the coverage
-							// slot is unread here. Bound to SourceH because it is already a
-							// valid single-channel texture in this scope: a dedicated dummy
-							// would be another resource to create, clear and keep correct for
-							// a slot the shader never touches on this path.
+							// slot is unread here. Bind an existing valid scalar texture.
 							SP->UseCoverageTexture = 0;
 							SP->CoverageTexture = SourceH;
 
-							// The carve is still the difference of these two, at erosion
-							// resolution, and the pass samples them by UV. Nothing had to be
-							// copied aside before the resample overwrote the composited height.
 							SP->SourceHeight = SourceH;
 							SP->CarvedHeight = Result;
-							SP->SourceColor = OutputBC[WriteIndex];
 							SP->SourceRAM = OutputRAM[WriteIndex];
 							SP->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							SP->OutputColor = GraphBuilder.CreateUAV(ShadeBC);
 							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
 
 							FComputeShaderUtils::AddPass(
 								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Shade", LayerIndex),
+								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Roughness", LayerIndex),
 								CarveShadeShader,
 								SP,
 								FIntVector(
@@ -4447,7 +4414,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 									1));
 
-							AddCopyTexturePass(GraphBuilder, ShadeBC, OutputBC[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
 						}
 					}
@@ -4764,52 +4730,39 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
 						}
 
-						// Colour and roughness for what was chipped. Coverage is the chip mask
-						// itself rather than a height difference, so it still reads correctly at
-						// Depth 0, where a difference would be nothing.
-						if (Chip.ChipColorAmount != 0.0f || Chip.ChipRoughnessAmount != 0.0f)
+						// Roughness is weighted by the resolved chip mask directly, so it remains
+						// independent of chip depth and never touches base colour.
+						if (Chip.ChipRoughnessAmount != 0.0f)
 						{
-							FRDGTextureRef ShadeBC = GraphBuilder.CreateTexture(
-								OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeBC"));
 							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
 								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeRAM"));
 
 							FMixtormatCarveShadeCS::FParameters* SP =
 								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
 							SP->OutputSize = Request.Resolution;
-							SP->ErodedColor = FVector4f(
-								Chip.ChipColor.R,
-								Chip.ChipColor.G,
-								Chip.ChipColor.B,
-								Chip.ChipColor.A);
-							SP->ColorAmount = Chip.ChipColorAmount;
 							SP->RoughnessAmount = Chip.ChipRoughnessAmount;
 
-							// Unused on the coverage-texture path, which needs no normalising
-							// divisor because the chip mask is already 0..1.
+							// The chip mask is already normalized coverage, so no depth divisor is used.
 							SP->CarveDepth = 1.0f;
 							SP->UseCoverageTexture = 1;
 							SP->CoverageTexture = FinalChips;
 
-							// Bound because the struct requires them, unread on this path.
+							// Required by the erosion path, unread when coverage comes from a texture.
 							SP->SourceHeight = ChipSourceH;
 							SP->CarvedHeight = ChipSourceH;
 
-							SP->SourceColor = OutputBC[WriteIndex];
 							SP->SourceRAM = OutputRAM[WriteIndex];
 							SP->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							SP->OutputColor = GraphBuilder.CreateUAV(ShadeBC);
 							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
 
 							FComputeShaderUtils::AddPass(
 								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Shade", LayerIndex),
+								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Roughness", LayerIndex),
 								CarveShadeShader,
 								SP,
 								ChipGroups);
 
-							AddCopyTexturePass(GraphBuilder, ShadeBC, OutputBC[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
 						}
 					}

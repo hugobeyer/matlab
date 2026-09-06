@@ -158,13 +158,7 @@ private:
 	FReply OpenFillColorPicker(int32 LayerIndex);
 	void SetFillBaseColor(FLinearColor NewColor, int32 LayerIndex);
 	void RestoreFillBaseColor(FLinearColor OriginalColor, int32 LayerIndex);
-	FReply OpenErosionColorPicker(int32 LayerIndex, int32 ChildIndex);
-	void SetErosionColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
-	void RestoreErosionColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
 
-	FReply OpenChipColorPicker(int32 LayerIndex, int32 ChildIndex);
-	void SetChipColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex);
-	void RestoreChipColor(FLinearColor OriginalColor, int32 LayerIndex, int32 ChildIndex);
 	void SetWorkingLayerEnabled(ECheckBoxState CheckState, int32 LayerIndex);
 	FReply ToggleLayerSolo(int32 LayerIndex);
 	bool IsLayerChildEnabled(int32 LayerIndex, int32 ChildIndex) const;

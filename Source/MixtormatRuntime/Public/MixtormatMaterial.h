@@ -470,8 +470,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling")
 	bool bPeelHeightInvert = false;
 
-	// Stain is a post-layer filter. It reads the height, normal and real packed roughness that
-	// the layer produced, solves transport at reduced resolution, then shades the finished layer.
+	// Stain solves transport from the accumulated surface and resolves the selected wet or deposit
+	// result into the layer's mask chain. It does not author any surface channel directly.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain")
 	EMixtormatStainMode StainMode = EMixtormatStainMode::Wet;
 
@@ -706,10 +706,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionNormalStrength = 8.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	// Kept only so older recipes deserialize without losing fields. Erosion resolves coverage
+	// for height, normal and roughness and no longer authors base colour.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion no longer authors base colour."))
 	FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion no longer authors base colour."))
 	float ErosionColorAmount = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
@@ -846,13 +848,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping", meta = (ClampMin = "0"))
 	int32 ChipSeed = 1;
 
-	// What the chip exposes. Same shape as the erosion shade controls and the same shader,
-	// but the coverage is read from the chip mask rather than reconstructed from a height
-	// difference -- so colour still appears at Depth 0, where a difference would be nothing.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
+	// Kept only so older recipes deserialize without losing fields. Chipping resolves coverage
+	// for height, normal and roughness and no longer authors base colour.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chipping no longer authors base colour."))
 	FLinearColor ChipColor = FLinearColor(0.34f, 0.30f, 0.27f, 1.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chipping no longer authors base colour."))
 	float ChipColorAmount = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")

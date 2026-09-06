@@ -203,10 +203,8 @@ Height Contrast   0..32         smoothstep contrast separating high ground from 
 Gully Weight      0..8          how deep each pass cuts and how strongly it steers the next
 Blend Softness    0..8          crossover width of the subtractive height blend
 Normal Strength   0..32         how strongly the carve perturbs the layer normal; 0 is height only
-Exposed Color     swatch        the color the carve exposes
-Color             0..1          how far the carve blends toward it; 0 skips the shade pass
-Roughness        -1..1          signed offset on the composited roughness where the carve bit
-Full At Depth     0.001..1      the carve depth that reads as fully eroded
+Roughness        -1..1          signed, mask-weighted offset on composited roughness
+Full At Depth     0.001..1      carve depth that reaches the full roughness weight
 Direction Mode    Weight|Lerp|Flow    see Tangent flow direction below
 Direction Angle   0..360        authored flow direction, 90 is +Y
 Direction Amount  0..1          how much the authored direction displaces the downhill flow
@@ -444,42 +442,34 @@ means what it meant before.
 no threshold to dither around. If the dithering largely goes, the slope gate was dominant; if it
 persists, the normal pass was.
 
-## Exposed colour and roughness
+## Mask-weighted roughness
 
-`MixtormatErosionShade.usf`. Erosion is a post-layer filter, so by the time it runs the layer has
-already composited its base colour and RAM. Rather than route a coverage signal back through the
-composite and reorder the filter, the shade pass reads what the composite wrote and blends in
-place — the same shape the height and normal writes already have.
+`MixtormatCarveShade.usf`. Erosion is a post-layer filter, so by the time it runs the layer has
+already composited RAM. The effect contributes no base colour; its resolved coverage only weights
+height, normal and roughness.
 
 ```text
 Carve    = max(SourceH - Result, 0)          sampled by UV from the erosion-res pair
 Coverage = saturate(Carve / Full At Depth)
-BC.rgb   = lerp(BC.rgb, Exposed Color, Coverage * Color)
 RAM.r    = saturate(RAM.r + Roughness * Coverage)
 ```
 
-A lerp, not the multiply a stain uses. A stain sits on top of what is under it and can only
-darken; erosion cuts down to something else, so the authored colour has to be reachable.
-
 `Full At Depth` exists because the carve is in raw height units. Without it every usable carve
-saturates instantly and both amounts are all or nothing.
+saturates instantly and the roughness weight is all or nothing.
 
 Three implementation notes:
 
-- **Its own shader.** Four more texture slots on `FMixtormatErosionCS` would have to be bound,
-  and dummied at the right size, on every carving, blur and resample dispatch with no use for
-  them.
-- **Through scratch and back.** The pass reads and writes the same two targets, which cannot be
-  bound as SRV and UAV at once. The other ping-pong slot is dead at that point and could be
-  borrowed, but that is a bet on the slot arithmetic staying as it is, and a wrong bet would only
-  show on some layers.
+- **Its own shader.** Extra texture slots on `FMixtormatErosionCS` would have to be bound and
+  dummied on every carving, blur and resample dispatch with no use for them.
+- **Through scratch and back.** The pass reads and writes RAM, which cannot be bound as SRV and UAV
+  at once. The other ping-pong slot is dead at that point and could be borrowed, but that is a bet
+  on the slot arithmetic staying as it is, and a wrong bet would only show on some layers.
 - **No pre-erosion copy.** The carve is still the difference of the two textures the filter has
   been ping-ponging, so the pass samples those by UV rather than keeping a copy of the composited
   height aside before the resample overwrites it.
 
-AO is deliberately not written. Carved channels arguably want to darken, but that is a separate
-signal from what the carve *exposes*, and the ridge map already exists as the input a generated
-mask would use for it.
+Base colour and AO are deliberately not written. The ridge map remains available as input to a
+generated mask when a separate surface treatment is needed.
 
 ## Ridge map
 

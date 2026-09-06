@@ -466,6 +466,13 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	TArray<FLinearColor> ReferenceBaseColor;
+	if (!TestTrue(TEXT("Reference base color reads back"),
+		ReadTarget(Compositor.GetBaseColorOutput(), ReferenceBaseColor)))
+	{
+		return false;
+	}
+
 	if (!TestEqual(TEXT("Both reads are the same size"),
 		WithChipping.Num(), WithoutChipping.Num()))
 	{
@@ -490,6 +497,11 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Chipping at Amount 0 is the identity"), Differences, 0);
 
 	ChipChild.Effect.ChipAmount = 1.0f;
+
+	// Legacy recipes may still deserialize these deprecated fields. They must be ignored: effects
+	// resolve masks for surface-channel weights and never author base colour.
+	ChipChild.Effect.ChipColor = FLinearColor(1.0f, 0.0f, 1.0f, 1.0f);
+	ChipChild.Effect.ChipColorAmount = 1.0f;
 	Layers[0].Children.Add(ChipChild);
 	if (!TestTrue(TEXT("Active chipping composes"),
 		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
@@ -503,6 +515,20 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	TArray<FLinearColor> ActiveBaseColor;
+	if (!TestTrue(TEXT("Active chipping base color reads back"),
+		ReadTarget(Compositor.GetBaseColorOutput(), ActiveBaseColor)))
+	{
+		return false;
+	}
+
+	int32 BaseColorDifferences = 0;
+	for (int32 Index = 0; Index < ActiveBaseColor.Num(); ++Index)
+	{
+		BaseColorDifferences += ActiveBaseColor[Index] == ReferenceBaseColor[Index] ? 0 : 1;
+	}
+	TestEqual(TEXT("Chipping leaves base color unchanged"), BaseColorDifferences, 0);
 
 	int32 CarvedPixels = 0;
 	for (int32 Index = 0; Index < ActiveChipping.Num(); ++Index)
