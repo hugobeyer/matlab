@@ -1854,10 +1854,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				MaskData.bFlipU = MaskLayer.bFlipU;
 				MaskData.bFlipV = MaskLayer.bFlipV;
 				MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
-				MaskData.Balance = FMath::Clamp(MaskLayer.Balance, 0.0f, 2.0f);
-				MaskData.Contrast = FMath::Clamp(MaskLayer.Contrast, 0.0f, 10.0f);
-				MaskData.Offset = FMath::Clamp(MaskLayer.Offset, -1.0f, 1.0f);
-				MaskData.bInvert = MaskLayer.bInvert;
+				MaskData.Balance = FMath::Clamp(MaskLayer.Shaping.Balance, 0.0f, 1.0f);
+				MaskData.Contrast = FMath::Clamp(MaskLayer.Shaping.Contrast, 0.0f, 10.0f);
+				MaskData.Offset = FMath::Clamp(MaskLayer.Shaping.Offset, -1.0f, 1.0f);
+				MaskData.bInvert = MaskLayer.Shaping.bInvert;
 				Data.bHasMask = true;
 				continue;
 			}

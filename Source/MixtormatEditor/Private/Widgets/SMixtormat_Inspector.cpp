@@ -1898,16 +1898,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu)),
 		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatMaskLayer>(
-		LOCTEXT("MaskInvertLabel", "Invert"), Mask, &FMixtormatMaskLayer::bInvert));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatMaskLayer>(
-			LOCTEXT("MaskBalanceLabel", "Balance"), Mask, &FMixtormatMaskLayer::Balance, 0.0, 2.0, 0.5, 0.01),
-		MakeMemberSlider<FMixtormatMaskLayer>(
-			LOCTEXT("MaskContrastLabel", "Contrast"), Mask, &FMixtormatMaskLayer::Contrast, 0.0, 10.0, 1.0, 0.01)));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatMaskLayer>(
-		LOCTEXT("MaskOffsetLabel", "Offset"), Mask, &FMixtormatMaskLayer::Offset, -1.0, 1.0, 0.0, 0.01));
+	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatMaskLayer* M = GetSelectedLayerMask();
+		return M ? &M->Shaping : nullptr;
+	});
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()
@@ -2164,8 +2159,15 @@ TSharedRef<SWidget> SMixtormat::BuildColorAdjustmentCard()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	// Hue Shift is signed, so it fills from the centre and reads as untouched at zero.
+	//
+	// The row is normalised -1..1 while FMixtormatLayer::HueShift is in degrees, which is what the
+	// composite pass divides by 360. Hence the scale: a full deflection is half the hue circle in
+	// either direction, so every hue is reachable and the two ends meet. Without it the slider ran
+	// from -1 to 1 *degree* and the control did nothing visible.
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("HueShiftLabel", "Hue Shift"), Layer, &FMixtormatLayer::HueShift, -1.0, 1.0, 0.0, 0.01));
+		LOCTEXT("HueShiftLabel", "Hue Shift"), Layer, &FMixtormatLayer::HueShift, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("HueShiftHint", "Rotates the layer's colour around the hue circle, leaving saturation and value alone. Full deflection either way is a half turn, so the two ends meet on the same hue."),
+		MixtormatHue::DegreesPerUnit));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("SaturationLabel", "Saturation"), Layer, &FMixtormatLayer::Saturation, 0.0, 2.0, 1.0, 0.01),
@@ -3028,6 +3030,30 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				]
 			]
 		];
+}
+
+void SMixtormat::AddMaskShapingRows(
+	const TSharedRef<SVerticalBox>& TargetPanel,
+	TFunction<FMixtormatMaskShaping*()> Resolve)
+{
+	using namespace MixtormatMaskShapingRange;
+
+	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
+	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
+		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
+	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskShaping>(
+			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,
+			BalanceMin, BalanceMax, BalanceDefault, SnapDelta,
+			LOCTEXT("MaskBalanceHint", "Thins the mask toward black above the middle and thickens it toward white below, as a power curve -- so it erodes what is there rather than fading it out. The ends are aggressive but never flatten the mask.")),
+		MakeMemberSlider<FMixtormatMaskShaping>(
+			LOCTEXT("MaskContrastLabel", "Contrast"), Resolve, &FMixtormatMaskShaping::Contrast,
+			ContrastMin, ContrastMax, ContrastDefault, SnapDelta,
+			LOCTEXT("MaskContrastHint", "Hardens the transition about the mask's midpoint. Masks are stored raw rather than sRGB, so that midpoint really is the 50% grey you painted."))));
+	AddSliderRow(TargetPanel, MakeMemberSlider<FMixtormatMaskShaping>(
+		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
+		OffsetMin, OffsetMax, OffsetDefault, SnapDelta,
+		LOCTEXT("MaskOffsetHint", "Lifts the whole mask after contrast. Plus one reaches full white and minus one full black from any input, whatever the contrast is set to.")));
 }
 
 #undef LOCTEXT_NAMESPACE

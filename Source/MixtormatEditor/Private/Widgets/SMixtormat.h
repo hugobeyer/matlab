@@ -210,6 +210,15 @@ private:
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		const TSharedRef<SWidget>& Row);
 
+	// The Invert / Balance / Contrast / Offset block, from one place.
+	//
+	// Four nodes run the same MixtormatShapeMask and used to write these rows out four times, with
+	// four different slider ranges for the same parameter. The panel supplies a resolver for
+	// whichever FMixtormatMaskShaping it owns and gets the block, the ranges and the tooltips.
+	void AddMaskShapingRows(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		TFunction<FMixtormatMaskShaping*()> Resolve);
+
 	// One binding for every parameter row in the inspector, whatever owns it.
 	//
 	// A panel supplies a resolver for its own selection and a pointer to the member; the row, its
@@ -225,34 +234,43 @@ private:
 		const double MaxValue,
 		const double DefaultValue,
 		const double SnapDelta,
-		const TAttribute<FText>& ToolTip = TAttribute<FText>())
+		const TAttribute<FText>& ToolTip = TAttribute<FText>(),
+		const double ValueScale = 1.0)
 	{
+		// The slider always works in the units its Min/Max/Default are written in. ValueScale is
+		// what the member is stored in, per one of those units -- so a row can read -1..1 while the
+		// data underneath stays in whatever the shader expects. Hue Shift is the case that needs it:
+		// the pass is in degrees, but a signed -1..1 is what fills from the centre and reads as
+		// untouched at zero.
+		checkSlow(ValueScale != 0.0);
 		return MakeSlider(
 			Label,
-			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue]() -> double
+			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue, ValueScale]() -> double
 			{
 				const TOwner* Owner = Resolve();
-				return Owner ? static_cast<double>(Owner->*Member) : DefaultValue;
+				return Owner ? static_cast<double>(Owner->*Member) / ValueScale : DefaultValue;
 			}),
 			MinValue,
 			MaxValue,
 			DefaultValue,
 			SnapDelta,
 			false,
-			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member](const double Value)
+			FMixtormatOnSliderValueChanged::CreateLambda(
+				[this, Resolve, Member, ValueScale](const double Value)
 			{
 				if (TOwner* Owner = Resolve())
 				{
-					Owner->*Member = static_cast<float>(Value);
+					Owner->*Member = static_cast<float>(Value * ValueScale);
 					RefreshLayeredPreview();
 				}
 			}),
-			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue]()
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale]()
 			{
 				TOwner* Owner = Resolve();
-				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, static_cast<float>(DefaultValue)))
+				const float StoredDefault = static_cast<float>(DefaultValue * ValueScale);
+				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, StoredDefault))
 				{
-					Owner->*Member = static_cast<float>(DefaultValue);
+					Owner->*Member = StoredDefault;
 					RefreshLayeredPreview();
 				}
 			}),

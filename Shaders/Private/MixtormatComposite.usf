@@ -449,6 +449,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Alpha = saturate(ExistingCoverage * HeightCoverage);
 	float Coat = CompositionMode != 0 ? 1.0f : 0.0f;
 	float ReplaceWeight = Alpha * (1.0f - Coat);
+	// Base colour is the one channel a coat only tints: the film is thin, so what is under it
+	// still reads through. Every other channel comes across at full Alpha, coat or not -- a
+	// coat layer is a surface sitting on top, and it brings its own metallic, AO, roughness and
+	// F0 with it. Metallic in particular is not the film's property to deny: a clear coat over
+	// metal is car paint, and MSM_ClearCoat carries the substrate and the film separately.
 	float ColorWeight = saturate(ReplaceWeight + Alpha * Coat * 0.35f);
 	float NormalWeight = Alpha * saturate(NormalInfluence);
 
@@ -460,10 +465,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(RoughnessInfluence));
 	float ResultAO = NormalOnly != 0
 		? PreviousPacked.g
-		: lerp(PreviousPacked.g, LayerAO, ReplaceWeight * saturate(AOInfluence));
+		: lerp(PreviousPacked.g, LayerAO, Alpha * saturate(AOInfluence));
 	float ResultMetallic = NormalOnly != 0
 		? PreviousPacked.b
-		: lerp(PreviousPacked.b, LayerMetallic, ReplaceWeight * saturate(MetallicInfluence));
+		: lerp(PreviousPacked.b, LayerMetallic, Alpha * saturate(MetallicInfluence));
 	float ResultF0 = NormalOnly != 0
 		? PreviousPacked.a
 		: lerp(PreviousPacked.a, LayerF0, Alpha * saturate(F0Influence));

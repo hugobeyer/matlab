@@ -403,10 +403,10 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 		NewMask.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
 		NewMask.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
 		NewMask.TilingY = NewMask.TilingX;
-		NewMask.Balance = Mask->DefaultBalance;
-		NewMask.Contrast = Mask->DefaultContrast;
-		NewMask.Offset = Mask->DefaultOffset;
-		NewMask.bInvert = Mask->bDefaultInvert;
+		NewMask.Shaping.Balance = FMath::Clamp(Mask->DefaultBalance, 0.0f, 1.0f);
+		NewMask.Shaping.Contrast = Mask->DefaultContrast;
+		NewMask.Shaping.Offset = Mask->DefaultOffset;
+		NewMask.Shaping.bInvert = Mask->bDefaultInvert;
 	}
 	else if (Cast<UTexture2D>(MaskObject))
 	{
@@ -502,9 +502,11 @@ FReply SMixtormat::ReplaceMaskInLayer(
 		Replacement.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
 		Replacement.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
 		Replacement.TilingY = Replacement.TilingX;
-		Replacement.Balance = Mask->DefaultBalance;
-		Replacement.Contrast = Mask->DefaultContrast;
-		Replacement.bInvert = Mask->bDefaultInvert;
+		// Offset is deliberately not carried here, unlike when a mask is first added: replacing
+		// the picture under an existing mask keeps the offset the user dialled against it.
+		Replacement.Shaping.Balance = FMath::Clamp(Mask->DefaultBalance, 0.0f, 1.0f);
+		Replacement.Shaping.Contrast = Mask->DefaultContrast;
+		Replacement.Shaping.bInvert = Mask->bDefaultInvert;
 	}
 	else if (Cast<UTexture2D>(MaskObject))
 	{

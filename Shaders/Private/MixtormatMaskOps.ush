@@ -47,6 +47,14 @@ float MixtormatApplyMaskOperation(uint BlendMode, float Previous, float Incoming
 // Contrast about the midpoint, then a signed balance that pushes the mask toward black or white
 // without moving its midpoint, then invert. Balance is a power curve rather than a lerp so that
 // it thins or thickens what is already there instead of fading it out.
+//
+// The curve is the whole of it. There used to be a second stage on top -- a lerp from the curved
+// result toward a flat 0 or 1, weighted by the balance strength squared -- and it undid the point
+// of the curve: at Balance 0.75 a quarter of the mask was already gone to flat, and at 1.0 the
+// lerp reached its target and the mask was uniform black whatever went in. Every value past 1.0
+// saturated to that same flat result, so the top half of the slider was dead. The pow alone thins
+// hard at the extreme and still keeps the brightest part of the signal, which is what "balance"
+// is supposed to mean.
 float MixtormatShapeMask(
 	float Incoming,
 	float Contrast,
@@ -56,15 +64,13 @@ float MixtormatShapeMask(
 {
 	Incoming = saturate((Incoming - 0.5f) * Contrast + 0.5f + Offset);
 
+	// 0.5 is neutral; the ends reach an exponent of 64, aggressive but never destructive.
 	const float SignedBalance = (saturate(Balance) - 0.5f) * 2.0f;
-	const float BalanceStrength = abs(SignedBalance);
-	const float BalanceExponent = exp2(BalanceStrength * 6.0f);
-	const float BalanceTarget = SignedBalance < 0.0f ? 1.0f : 0.0f;
-	const float Balanced = SignedBalance < 0.0f
+	const float BalanceExponent = exp2(abs(SignedBalance) * 6.0f);
+	Incoming = SignedBalance < 0.0f
 		? 1.0f - pow(1.0f - Incoming, BalanceExponent)
 		: pow(Incoming, BalanceExponent);
 
-	Incoming = lerp(Balanced, BalanceTarget, BalanceStrength * BalanceStrength);
 	return Invert != 0 ? 1.0f - Incoming : Incoming;
 }
 

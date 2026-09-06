@@ -459,11 +459,16 @@ UMaterial* FMixtormatLayerPreview::CreateMaterial()
 				ReplaceWeight,
 				Multiply(*Material, Layer.CoatWeight, Constant(*Material, 0.35f))));
 
+		// Base colour is the only channel a coat merely tints -- SurfaceWeight folds in the 0.35
+		// the compositor uses. The rest come across at full Alpha whatever the composition mode,
+		// because a coat layer is a surface on top and brings its own metallic, AO, roughness and
+		// specular. The film's own dielectric response is ClearCoat below, not a metallic of zero
+		// forced onto the substrate; that is what lets a coat sit over metal at all.
 		BaseColor = Lerp(*Material, BaseColor, Layer.BaseColor, SurfaceWeight);
 		Roughness = Lerp(*Material, Roughness, Layer.Roughness, Layer.Alpha);
-		Metallic = Lerp(*Material, Metallic, Layer.Metallic, ReplaceWeight);
+		Metallic = Lerp(*Material, Metallic, Layer.Metallic, Layer.Alpha);
 		Specular = Lerp(*Material, Specular, Layer.Specular, Layer.Alpha);
-		AmbientOcclusion = Lerp(*Material, AmbientOcclusion, Layer.AmbientOcclusion, ReplaceWeight);
+		AmbientOcclusion = Lerp(*Material, AmbientOcclusion, Layer.AmbientOcclusion, Layer.Alpha);
 
 		UMaterialExpression* BlendedNormal = Lerp(*Material, Normal, Layer.Normal, Layer.Alpha);
 		UMaterialExpressionNormalize* NormalizedNormal = AddExpression<UMaterialExpressionNormalize>(*Material);

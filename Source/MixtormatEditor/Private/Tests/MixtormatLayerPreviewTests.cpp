@@ -246,15 +246,26 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		Layers[1].Children.Reset();
 	}
 
+	// A coat carries its own metallic, both ways round. The layer under this one is metal, so
+	// each case has to be asserted separately: reading back 1 would otherwise prove nothing but
+	// that the substrate leaked through, which is exactly the bug this pair replaces.
 	Layers[1].Metallic = 0.0f;
 	Layers[1].CompositionMode = EMixtormatCompositionMode::Coat;
 	TestTrue(TEXT("Compositor accepts a dielectric coat"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
-	if (ReadFirstPixel(Compositor.GetRAMOutput(), TEXT("Coat metallic output can be read"), Pixel))
+	if (ReadFirstPixel(Compositor.GetRAMOutput(), TEXT("Dielectric coat metallic can be read"), Pixel))
 	{
-		TestTrue(TEXT("A coat preserves the substrate metallic value"), Pixel.B >= 253);
+		TestTrue(TEXT("A dielectric coat reads as dielectric over metal"), Pixel.B <= 2);
 	}
+
 	Layers[1].Metallic = 1.0f;
+	TestTrue(TEXT("Compositor accepts a metallic coat"), Compositor.RequestCompose(Layers));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetRAMOutput(), TEXT("Metallic coat metallic can be read"), Pixel))
+	{
+		TestTrue(TEXT("A metallic coat keeps its own metallic"), Pixel.B >= 253);
+	}
+
 	Layers[1].CompositionMode = EMixtormatCompositionMode::Replace;
 	Layers[1].bOverrideIOR = true;
 	Layers[1].IOR = 2.0f;
@@ -297,41 +308,47 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		FMixtormatLayerChild& MaskChild = Layers[1].Children.AddDefaulted_GetRef();
 		MaskChild.Type = EMixtormatLayerChildType::Mask;
 		FMixtormatMaskLayer& Mask = MaskChild.Mask;
-		TestEqual(TEXT("Mask offset defaults neutral"), Mask.Offset, 0.0f);
+		TestEqual(TEXT("Mask offset defaults neutral"), Mask.Shaping.Offset, 0.0f);
 		Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
-		Mask.bInvert = true;
+		Mask.Shaping.bInvert = true;
 		TestTrue(TEXT("Compositor accepts a texture mask"), Compositor.RequestCompose(Layers));
 		FlushRenderingCommands();
 		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Masked output can be read"), Pixel))
 		{
 			TestTrue(TEXT("An inverted white mask rejects the upper layer"), Pixel.R > Pixel.B);
 		}
-		Mask.bInvert = false;
-		Mask.Balance = 1.0f;
+		Mask.Shaping.bInvert = false;
+
+		// Balance is a power curve over what the mask already holds, so on a fully white mask it
+		// has nothing to erode and both extremes have to leave it alone. This pair is the
+		// regression: balance used to lerp toward a flat constant on top of the curve, so 1.0
+		// blanked the mask to black and rejected the layer no matter what was in it -- and every
+		// value above 1.0 did the same, because the shader saturates it.
+		Mask.Shaping.Balance = 1.0f;
 		TestTrue(TEXT("Compositor accepts full dark mask balance"), Compositor.RequestCompose(Layers));
 		FlushRenderingCommands();
 		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Dark-balanced mask output can be read"), Pixel))
 		{
-			TestTrue(TEXT("Maximum mask balance rejects the upper layer"), Pixel.R > Pixel.B);
+			TestTrue(TEXT("Maximum mask balance leaves a white mask intact"), Pixel.B > Pixel.R);
 		}
 
-		Mask.Balance = 0.0f;
+		Mask.Shaping.Balance = 0.0f;
 		TestTrue(TEXT("Compositor accepts full light mask balance"), Compositor.RequestCompose(Layers));
 		FlushRenderingCommands();
 		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Light-balanced mask output can be read"), Pixel))
 		{
-			TestTrue(TEXT("Minimum mask balance restores the upper layer"), Pixel.B > Pixel.R);
+			TestTrue(TEXT("Minimum mask balance leaves a white mask intact"), Pixel.B > Pixel.R);
 		}
 
-		Mask.Balance = 0.5f;
-		Mask.Offset = -1.0f;
+		Mask.Shaping.Balance = 0.5f;
+		Mask.Shaping.Offset = -1.0f;
 		TestTrue(TEXT("Compositor accepts mask offset"), Compositor.RequestCompose(Layers));
 		FlushRenderingCommands();
 		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Offset mask output can be read"), Pixel))
 		{
 			TestTrue(TEXT("Negative mask offset rejects the upper layer"), Pixel.R > Pixel.B);
 		}
-		Mask.Offset = 0.0f;
+		Mask.Shaping.Offset = 0.0f;
 
 		Layers[1].Children.Reset();
 

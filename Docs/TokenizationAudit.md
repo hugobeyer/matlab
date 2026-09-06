@@ -4,7 +4,8 @@ Scope: `Source/MixtormatEditor/Private/{Style,UI,Widgets}`. Only values that are
 duplicated, or drifting**.
 
 **Re-audited after the last round of edits.** Status column reflects current state.
-`UI/**` remains clean — the literals are in `Widgets/**` and `Style/MixtormatStyle.cpp`.
+Most remaining literals are in `Widgets/**` and `Style/MixtormatStyle.cpp`. `UI/**` is not fully
+clean: `UI/DragDrop/MixtormatDragDropOps.h` still hard-codes thumbnail and font sizes.
 
 ## Churn since the first pass
 
@@ -19,8 +20,10 @@ duplicated, or drifting**.
 Token refs 534 → 531, palette refs 147 → 147, alignment sites 140 → 137,
 `GetDefaultFontStyle` 26 → 26.
 
-**Net: one item fixed, three new ones.** The style file was not touched at all, so every
-style-side finding stands.
+The current values above are verified against the present source. The “Then” values and deltas are
+historical baseline notes and cannot be reconstructed from the current tree alone. The style file
+was not touched, but its findings have still been corrected below where the original interpretation
+was wrong.
 
 ---
 
@@ -50,20 +53,23 @@ Two worth calling out:
 These matter more than usual given the live-tweaker plan: **an orphaned token is a knob in the
 panel that visibly does nothing.** Either wire each up or delete it.
 
-## NEW — orphaned palette colour, and a hover state that never lightens
+## NEW — orphaned palette colour; hover behaviour needs a design decision
 
 `MixtormatPalette::WellTopHover()` has no callers.
 
-`WellTop`/`WellBottom` are used as a **gradient pair** by `SMixtormatChip`, `SMixtormatToggle` and
-`SMixtormatSegmentedControl`. `WellTopHover`/`WellBottomHover` were evidently the hover pair — but
-only `WellBottomHover` is referenced, twice, as a flat brush colour in `MixtormatStyle.cpp:368,371`.
+`WellTop`/`WellBottom` are used as a gradient pair by `SMixtormatChip` and `SMixtormatToggle`.
+`SMixtormatSegmentedControl` instead fades from `WellTop()` to transparent. `WellBottomHover()` is
+referenced twice as a flat brush colour in `MixtormatStyle.cpp:368,371` for slider hover/active
+backgrounds.
 
-So those gradient wells have **no lightened hover gradient**; the top stop is dead. Probably a
-dropped hover state rather than a naming slip. Worth a look before deciding which way to fix it.
+This proves the hover palette is asymmetric, but not that all three controls accidentally lost the
+same hover gradient. The chip and toggle gradients are static, while the segmented control has no
+bottom stop. Decide whether each control should gain an explicit hover treatment before wiring up
+or deleting `WellTopHover()`.
 
 ---
 
-## 1. Root cause: two competing layout namespaces — UNCHANGED
+## 1. Duplicate layout ownership: two namespaces need consolidation — UNCHANGED
 
 `Widgets/SMixtormatInternal.h:99` still declares `MixtormatUI` alongside `MixtormatTokens`:
 
@@ -77,8 +83,11 @@ dropped hover state rather than a naming slip. Worth a look before deciding whic
 | `MaskTileSize` | 62.0f | Layers (×2) |
 
 **Name collision stands:** `MixtormatUI::MaskTileSize = 62.0f` vs
-`MixtormatTokens::MaskTileSize = 96.0f`. Two sizes, one name, resolved by which header a file
-includes. Still the root cause of the rest.
+`MixtormatTokens::MaskTileSize = 96.0f`. Both namespaces are available because
+`SMixtormatInternal.h` includes `MixtormatDesignTokens.h`; callers resolve the values through
+explicit namespace qualification, not through header selection. This is therefore not the proven
+root cause of every remaining literal, but it does create duplicate semantic ownership and two
+potential live-panel controls with the same short name. Consolidate them or rename them by role.
 
 ## 2. Tokens that exist but are not applied
 
@@ -88,10 +97,10 @@ includes. Still the root cause of the rest.
 | `FVector2D(108, 18)` colour swatch | 1 | 1 | Inspector:2904 |
 | `GetDefaultFontStyle("Bold", 8)` → `FontCaption` | 4 | 4 | Inspector:2521, 2533; Preview:282, 317 |
 | `GetDefaultFontStyle("Bold", 9)` | 4 | **6** | Internal.h:314, 343, 371; Layers:1790; **DragDropOps.h:83, 237** |
-| Outline `1.0f` → `OutlineWidth` | 12 | 12 | MixtormatStyle.cpp |
+| Outline `1.0f` → `OutlineWidth` | 12 | **2** | MixtormatStyle.cpp:121, 404 |
 | Corner radius `2/4/6/7` vs `CornerRadius = 3` | 5 | 5 | MixtormatStyle.cpp:103, 112, 118, 121, 169 |
 
-## 3. Duplicate / near-duplicate palette colours — UNCHANGED
+## 3. Duplicate / near-duplicate palette colours — REVIEW, DO NOT AUTO-MERGE
 
 | Hex | Names sharing it |
 |---|---|
@@ -106,14 +115,23 @@ includes. Still the root cause of the rest.
 | `0x191B1D` | `Panel`, `LayerHiddenTop` |
 | `0xA8A8A8` | `HeaderText`, `LayerSource` |
 
-**Still the sharpest finding:** `BorderStrong = 0x383C3E` (line 44) vs
-`WellOutlineHover = 0x383D41` (line 79) and `FillTopHover = 0x383D41` (line 85). One digit apart,
-same visual role.
+These rows share RGB values, but several have different alpha values and therefore are not identical
+`FLinearColor`s. Equal defaults are also valid for semantic tokens when roles may be tuned
+independently. Do not merge them solely because their current hex matches.
 
-## 4. Outline-alpha drift — UNCHANGED
+The near-match still deserves a design review: `BorderStrong = 0x383C3E` (line 44) vs
+`WellOutlineHover = 0x383D41` (line 79) and `FillTopHover = 0x383D41` (line 85). They are one digit
+apart, but should only be aliased if their semantic roles are intentionally linked.
 
-`0.2 · 0.25 · 0.3 · 0.35 · 0.4 · 0.42 · 0.45 · 0.5 · 0.55 · 0.65 · 0.8` — eleven values for what
-is really three states. **One** item: a small alpha scale, not eleven tokens.
+## 4. Outline-width drift — UNCHANGED
+
+Most fractional values passed as the final argument to `FSlateRoundedBoxBrush` are **outline
+widths**, not alpha values. The style currently uses
+`0.2 · 0.25 · 0.3 · 0.35 · 0.4 · 0.45 · 0.5 · 0.55 · 0.65 · 0.8 · 1.0` across different roles.
+`0.42` in `WithOpacity(Text, 0.42f)` is opacity and must not be grouped with them.
+
+This is still a tokenization candidate, but first classify the intended visual roles. Do not replace
+these values with an alpha scale.
 
 ## 5. Repeated layout literals with no token
 
@@ -130,7 +148,7 @@ is really three states. **One** item: a small alpha scale, not eleven tokens.
 | `Padding(0, 0, 0, 8)` | 2 | 2 | Internal.h:355, 384 |
 | `Padding(0, 10, 0, 0)` | 2 | 2 | Internal.h:511, 662 |
 | `ClientSize(560, 320)` | 2 | 2 | Internal.h:583, 610 |
-| `FAssetThumbnail(…, 40, 40, …)` | 3 | 3 | MixtormatDragDropOps.h:57, 58, 128 |
+| `FAssetThumbnail(…, 40, 40, …)` | 3 | **2 constructor sites** | MixtormatDragDropOps.h:55–59, 128 |
 
 ## 6. Style-file paddings bypassing the button tokens — UNCHANGED
 
@@ -146,10 +164,12 @@ The `(x, y)` → `(x, y+1, x, y−1)` pressed-offset pattern repeats and is exac
 
 ## Headline number
 
-**Padding sites: 136 token-driven, 65 still literal.** Unchanged.
+**Raw padding sites: 136 token-driven, 65 still literal.** Applying the placeholder exclusion below
+removes one token-driven and seven literal sites, leaving **135 token-driven, 58 still literal** in
+scope.
 
-That ratio is the one to watch for the live tweaker — those 65 are knobs that will not exist in
-the panel.
+The in-scope ratio is the one to watch for the live tweaker — those 58 literal sites cannot be
+controlled from the panel until they are classified and tokenized.
 
 ## Deliberately excluded
 

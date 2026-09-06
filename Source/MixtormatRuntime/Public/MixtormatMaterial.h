@@ -4,6 +4,7 @@
 #include "Engine/DataAsset.h"
 #include "UObject/SoftObjectPtr.h"
 #include "MixtormatEffect.h"
+#include "MixtormatMaskShaping.h"
 #include "MixtormatMaterial.generated.h"
 
 class UMaterialInterface;
@@ -104,7 +105,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
-	bool bInvert = false;
+	FMixtormatMaskShaping Shaping;
 
 	// Source placement. Integer per axis, because a fractional scale lands mid-cell at the UV
 	// wrap and seams.
@@ -134,14 +135,32 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	// Serialized only to migrate masks authored before the shaping fields moved into
+	// FMixtormatMaskShaping.
+	//
+	// The old Contrast doubles as the discriminator, which is why it defaults out of range. It
+	// keeps its original name deliberately: a renamed property no longer matches what the archive
+	// holds, and the values these lines exist to rescue would be dropped on load. A plain
+	// "migrated" bool cannot work here: a mask built in memory today would serialize it as false
+	// and be re-migrated on the next load, overwriting real shaping with the legacy defaults --
+	// and flipping the default to true would instead stop old assets migrating at all, since a
+	// property absent from an archive takes the C++ default either way. A negative contrast is
+	// not reachable through the clamp, so it means "nothing legacy here" without ambiguity, and
+	// MigrateLegacyShaping writes it back after consuming the values.
+	UPROPERTY()
+	bool bInvert = false;
+
+	UPROPERTY()
 	float Balance = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "10.0"))
-	float Contrast = 1.0f;
+	UPROPERTY()
+	float Contrast = -1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY()
 	float Offset = 0.0f;
+
+	// Folds any pre-Shaping values into Shaping, once. Safe to call on every load.
+	void MigrateLegacyShaping();
 };
 
 USTRUCT(BlueprintType)
@@ -1181,6 +1200,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	FMixtormatColorIdMask ColorId;
 };
 
+namespace MixtormatHue
+{
+	// Degrees of hue rotation per unit of a normalised -1..1 editor slider.
+	//
+	// Half the circle, so full deflection either way reaches every hue and the two ends of the
+	// slider land on the same colour. This is the number that ties the UI's range to the degrees
+	// FMixtormatLayer::HueShift is stored in and the shader's own /360 -- change it and the row
+	// stops covering the wheel.
+	constexpr double DegreesPerUnit = 180.0;
+}
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatLayer
 {
@@ -1287,6 +1317,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "2.0"))
 	float NormalIntensity = 1.0f;
 
+	// Degrees. The composite pass divides by 360 and wraps, so the clamp is a half turn either
+	// way -- past that a shift is indistinguishable from the shorter rotation the other side.
+	// Editor rows are normalised -1..1 and scale by MixtormatHue::DegreesPerUnit to get here.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
 	float HueShift = 0.0f;
 
