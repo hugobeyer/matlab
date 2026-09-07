@@ -85,6 +85,35 @@ namespace MixtormatLayerBadges
 		}
 	}
 
+	FText ForColorBlendMode(const EMixtormatColorBlendMode Mode)
+	{
+		// Six characters, like every other badge: MixtormatTokens::BadgeMaxCharacters is what the
+		// fixed box is sized for, and a longer word clips rather than widening it.
+		switch (Mode)
+		{
+		case EMixtormatColorBlendMode::Add:        return LOCTEXT("ColorBadgeAdd", "ADD");
+		case EMixtormatColorBlendMode::Subtract:   return LOCTEXT("ColorBadgeSub", "SUB");
+		case EMixtormatColorBlendMode::Multiply:   return LOCTEXT("ColorBadgeMult", "MULT");
+		case EMixtormatColorBlendMode::Divide:     return LOCTEXT("ColorBadgeDiv", "DIV");
+		case EMixtormatColorBlendMode::Screen:     return LOCTEXT("ColorBadgeScreen", "SCREEN");
+		case EMixtormatColorBlendMode::Overlay:    return LOCTEXT("ColorBadgeOverlay", "OVRLAY");
+		case EMixtormatColorBlendMode::HardLight:  return LOCTEXT("ColorBadgeHard", "HARD");
+		case EMixtormatColorBlendMode::SoftLight:  return LOCTEXT("ColorBadgeSoft", "SOFT");
+		case EMixtormatColorBlendMode::ColorDodge: return LOCTEXT("ColorBadgeDodge", "DODGE");
+		case EMixtormatColorBlendMode::ColorBurn:  return LOCTEXT("ColorBadgeBurn", "BURN");
+		case EMixtormatColorBlendMode::AddSub:     return LOCTEXT("ColorBadgeAddSub", "ADDSUB");
+		case EMixtormatColorBlendMode::Difference: return LOCTEXT("ColorBadgeDiff", "DIFF");
+		case EMixtormatColorBlendMode::Exclusion:  return LOCTEXT("ColorBadgeExcl", "EXCL");
+		case EMixtormatColorBlendMode::Min:        return LOCTEXT("ColorBadgeMin", "MIN");
+		case EMixtormatColorBlendMode::Max:        return LOCTEXT("ColorBadgeMax", "MAX");
+		case EMixtormatColorBlendMode::Hue:        return LOCTEXT("ColorBadgeHue", "HUE");
+		case EMixtormatColorBlendMode::Saturation: return LOCTEXT("ColorBadgeSat", "SAT");
+		case EMixtormatColorBlendMode::Color:      return LOCTEXT("ColorBadgeColor", "COLOR");
+		case EMixtormatColorBlendMode::Luminosity: return LOCTEXT("ColorBadgeLum", "LUM");
+		default:                                   return FText::GetEmpty();
+		}
+	}
+
 	FText ForMaskBlendMode(const EMixtormatMaskBlendMode Mode)
 	{
 		switch (Mode)

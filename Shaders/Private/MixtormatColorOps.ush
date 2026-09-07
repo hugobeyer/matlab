@@ -1,0 +1,171 @@
+#ifndef MIXTORMAT_COLOR_OPS_USH
+#define MIXTORMAT_COLOR_OPS_USH
+
+// Colour blend modes for a layer's base colour.
+//
+// Deliberately not MixtormatApplyMaskOperation. That one is scalar coverage with its own mode
+// numbering, and half of what is here -- Screen, Soft Light, the dodge/burn pair, the four
+// non-separable HSL transfers -- has no meaning on coverage at all. Two enums that both say
+// "Multiply" at different indices is a trap, so these are separate functions with a separate
+// enum and the numbering below is the only place the two orders are allowed to differ.
+//
+// Indices match EMixtormatColorBlendMode. Append only: the enum is serialised by value, so a
+// reorder silently re-blends every layer in every saved material.
+#define MIXTORMAT_CB_NORMAL      0
+#define MIXTORMAT_CB_ADD         1
+#define MIXTORMAT_CB_SUBTRACT    2
+#define MIXTORMAT_CB_MULTIPLY    3
+#define MIXTORMAT_CB_DIVIDE      4
+#define MIXTORMAT_CB_SCREEN      5
+#define MIXTORMAT_CB_OVERLAY     6
+#define MIXTORMAT_CB_HARDLIGHT   7
+#define MIXTORMAT_CB_SOFTLIGHT   8
+#define MIXTORMAT_CB_COLORDODGE  9
+#define MIXTORMAT_CB_COLORBURN   10
+#define MIXTORMAT_CB_ADDSUB      11
+#define MIXTORMAT_CB_DIFFERENCE  12
+#define MIXTORMAT_CB_EXCLUSION   13
+#define MIXTORMAT_CB_MIN         14
+#define MIXTORMAT_CB_MAX         15
+#define MIXTORMAT_CB_HUE         16
+#define MIXTORMAT_CB_SATURATION  17
+#define MIXTORMAT_CB_COLOR       18
+#define MIXTORMAT_CB_LUMINOSITY  19
+
+// Per-component branches are written as lerp over a step mask throughout this file. A ternary
+// only short-circuits on a scalar condition, so `Base < 0.5f ? A : B` on a float3 does not
+// compile at all -- and select() is HLSL 2021, which is not something to depend on here.
+float3 MixtormatCbOverlay(float3 Base, float3 Blend)
+{
+	const float3 Low = 2.0f * Base * Blend;
+	const float3 High = 1.0f - 2.0f * (1.0f - Base) * (1.0f - Blend);
+	// The two branches agree exactly at 0.5, so which side the boundary falls on does not matter.
+	return lerp(High, Low, step(Base, 0.5f));
+}
+
+// The W3C / PDF soft light, not the cheap lerp approximation. The cubic below 0.25 is what keeps
+// the curve continuous where the square root would otherwise kink, which shows on a smooth
+// gradient as a visible band.
+float3 MixtormatCbSoftLight(float3 Base, float3 Blend)
+{
+	const float3 Cubic = ((16.0f * Base - 12.0f) * Base + 4.0f) * Base;
+	const float3 D = lerp(sqrt(max(Base, 0.0f)), Cubic, step(Base, 0.25f));
+	const float3 Darken = Base - (1.0f - 2.0f * Blend) * Base * (1.0f - Base);
+	const float3 Lighten = Base + (2.0f * Blend - 1.0f) * (D - Base);
+	return lerp(Lighten, Darken, step(Blend, 0.5f));
+}
+
+// -- The non-separable four ---------------------------------------------------------------------
+// Hue, Saturation, Color and Luminosity work on the colour as a whole rather than per channel,
+// which is why they cannot be written as an arithmetic expression. These are the standard PDF
+// definitions, and the luma weights are the ones that specification fixes -- not Rec.709 -- so
+// the modes behave the way they do in every other tool that implements them.
+
+float MixtormatCbLum(float3 C)
+{
+	return dot(C, float3(0.3f, 0.59f, 0.11f));
+}
+
+// Pulls a colour back inside the cube by desaturating it toward its own luminance rather than by
+// clamping the channels. Clamping would shift the hue on anything that overshoots.
+float3 MixtormatCbClipColor(float3 C)
+{
+	const float L = MixtormatCbLum(C);
+	const float N = min(C.r, min(C.g, C.b));
+	const float X = max(C.r, max(C.g, C.b));
+	if (N < 0.0f)
+	{
+		C = L + (C - L) * L / max(L - N, 1.0e-6f);
+	}
+	if (X > 1.0f)
+	{
+		C = L + (C - L) * (1.0f - L) / max(X - L, 1.0e-6f);
+	}
+	return C;
+}
+
+float3 MixtormatCbSetLum(float3 C, float L)
+{
+	return MixtormatCbClipColor(C + (L - MixtormatCbLum(C)));
+}
+
+float MixtormatCbSat(float3 C)
+{
+	return max(C.r, max(C.g, C.b)) - min(C.r, min(C.g, C.b));
+}
+
+// Rescales the mid channel between the min and max, then stretches the range to S. Written on the
+// sorted triple rather than branching on which channel is which, so there is one path.
+float3 MixtormatCbSetSat(float3 C, float S)
+{
+	const float Cmin = min(C.r, min(C.g, C.b));
+	const float Cmax = max(C.r, max(C.g, C.b));
+	const float Range = Cmax - Cmin;
+	// A fully desaturated colour has no mid to place, so it stays flat rather than dividing by
+	// zero and painting whatever the numerator happened to be.
+	return Range > 1.0e-6f ? (C - Cmin) * S / Range : float3(0.0f, 0.0f, 0.0f);
+}
+
+// Previous is what is already composited below; Incoming is this layer's colour.
+float3 MixtormatBlendColor(uint Mode, float3 Previous, float3 Incoming)
+{
+	switch (Mode)
+	{
+	case MIXTORMAT_CB_ADD:
+		return Previous + Incoming;
+	case MIXTORMAT_CB_SUBTRACT:
+		return Previous - Incoming;
+	case MIXTORMAT_CB_MULTIPLY:
+		return Previous * Incoming;
+	case MIXTORMAT_CB_DIVIDE:
+		// The only mode here that can produce a non-finite value, and a NaN in base colour
+		// propagates up through every layer above it -- so the floor is load-bearing rather
+		// than defensive.
+		return Previous / max(Incoming, 1.0e-4f);
+	case MIXTORMAT_CB_SCREEN:
+		return 1.0f - (1.0f - Previous) * (1.0f - Incoming);
+	case MIXTORMAT_CB_OVERLAY:
+		return MixtormatCbOverlay(Previous, Incoming);
+	case MIXTORMAT_CB_HARDLIGHT:
+		// Overlay with the operands swapped, which is the whole of the difference: Overlay
+		// tests what is underneath, Hard Light tests the layer.
+		return MixtormatCbOverlay(Incoming, Previous);
+	case MIXTORMAT_CB_SOFTLIGHT:
+		return MixtormatCbSoftLight(Previous, Incoming);
+	case MIXTORMAT_CB_COLORDODGE:
+		// No explicit guard for Incoming == 1. The floor already produces it: the divide goes
+		// large, the min clamps to 1, and a black backdrop still divides to 0 -- which is the
+		// standard behaviour those two special cases exist to spell out.
+		return min(1.0f, Previous / max(1.0f - Incoming, 1.0e-4f));
+	case MIXTORMAT_CB_COLORBURN:
+		// Likewise at Incoming == 0: the quotient saturates the min and the subtraction lands on
+		// 0, so the case is already covered by the floor.
+		return 1.0f - min(1.0f, (1.0f - Previous) / max(Incoming, 1.0e-4f));
+	case MIXTORMAT_CB_ADDSUB:
+		// Signed about the midpoint, matching the mask operation of the same name: grey leaves
+		// the surface alone, darker subtracts, lighter adds.
+		return Previous + (Incoming - 0.5f) * 2.0f;
+	case MIXTORMAT_CB_DIFFERENCE:
+		return abs(Previous - Incoming);
+	case MIXTORMAT_CB_EXCLUSION:
+		return Previous + Incoming - 2.0f * Previous * Incoming;
+	case MIXTORMAT_CB_MIN:
+		return min(Previous, Incoming);
+	case MIXTORMAT_CB_MAX:
+		return max(Previous, Incoming);
+	case MIXTORMAT_CB_HUE:
+		return MixtormatCbSetLum(
+			MixtormatCbSetSat(Incoming, MixtormatCbSat(Previous)), MixtormatCbLum(Previous));
+	case MIXTORMAT_CB_SATURATION:
+		return MixtormatCbSetLum(
+			MixtormatCbSetSat(Previous, MixtormatCbSat(Incoming)), MixtormatCbLum(Previous));
+	case MIXTORMAT_CB_COLOR:
+		return MixtormatCbSetLum(Incoming, MixtormatCbLum(Previous));
+	case MIXTORMAT_CB_LUMINOSITY:
+		return MixtormatCbSetLum(Previous, MixtormatCbLum(Incoming));
+	default:
+		return Incoming;
+	}
+}
+
+#endif

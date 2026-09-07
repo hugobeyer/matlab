@@ -1,6 +1,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
 
 // Full-resolution stain transport, resolved into a layer mask.
 //
@@ -440,9 +441,7 @@ void SimulateState(int2 Pixel, float2 UV)
 // view rather than as its own kind of display.
 float3 StainDebugColor(float Value)
 {
-	const float3 DebugLow = float3(0.08f, 0.02f, 0.12f);
-	const float3 DebugHigh = float3(0.04f, 0.25f, 0.08f);
-	return lerp(DebugLow, DebugHigh, saturate(Value));
+	return MixtormatDebugRamp(Value);
 }
 
 void ResolveStain(int2 Pixel, float2 UV)

@@ -1210,6 +1210,10 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("ColorIdHeading", "COLOR ID"))
 			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeFeaturePreviewButton(
+					EMixtormatDebugPreviewMode::LayerMask,
+					LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan")))
 			[
 				Panel
 			]
@@ -1442,6 +1446,32 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 				Panel
 			]
 		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildBaseColorBlendModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	for (const EMixtormatColorBlendMode Mode : MixtormatUI::ColorBlendModes())
+	{
+		Menu.Item(
+			MixtormatUI::ColorBlendModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+				{
+					WorkingLayers[SelectedLayerIndex].BaseColorBlendMode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					&& WorkingLayers[SelectedLayerIndex].BaseColorBlendMode == Mode;
+			}));
+	}
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
@@ -1684,6 +1714,37 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildClusterSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatClusterSource Sources[] = {
+		EMixtormatClusterSource::LayerSurface,
+		EMixtormatClusterSource::CompositeBelow
+	};
+	for (const EMixtormatClusterSource Source : Sources)
+	{
+		Menu.Item(
+			Source == EMixtormatClusterSource::CompositeBelow
+				? LOCTEXT("ClusterSourceComposite", "Composite Below")
+				: LOCTEXT("ClusterSourceLayer", "Layer Surface"),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Source]()
+			{
+				if (FMixtormatClusterFilter* C = GetSelectedFilter())
+				{
+					C->Source = Source;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Source]()
+			{
+				const FMixtormatClusterFilter* C = GetSelectedFilter();
+				return C && C->Source == Source;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 {
 	const auto Filter = [this]() { return GetSelectedFilter(); };
@@ -1692,6 +1753,20 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 	// emits integer region labels rather than coverage -- there is nothing meaningful to contrast
 	// or invert about a label. The eye on the header is the only consumer that exists so far.
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("ClusterSource", "Source"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatClusterFilter* C = GetSelectedFilter();
+				if (!C) { return FText::GetEmpty(); }
+				return C->Source == EMixtormatClusterSource::CompositeBelow
+					? LOCTEXT("ClusterSourceCompositeChip", "Composite Below")
+					: LOCTEXT("ClusterSourceLayerChip", "Layer Surface");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildClusterSourceMenu)),
+		LOCTEXT("ClusterSourceHint", "What gets segmented. Layer Surface reads this layer's own packed map -- the bricks in the brick texture -- through its UV transform. Composite Below reads the surface already accumulated underneath, at full resolution and untiled, so the regions follow what is actually visible there. Composite Below is usually the calmer of the two: a raw scan can be busy enough to shatter into far more regions than the eye reads as pieces, while the surface below has been through blending and grading already. On the bottom layer there is nothing below, so it falls back to the layer's own map.")));
 
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
 		LOCTEXT("ClusterThreshold", "Threshold"), Filter, &FMixtormatClusterFilter::Threshold,
@@ -1904,6 +1979,10 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("CraquelureHeading", "CRAQUELURE"))
 			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeFeaturePreviewButton(
+					EMixtormatDebugPreviewMode::LayerMask,
+					LOCTEXT("PreviewCraquelure", "Preview this crack network in unlit dark red and cyan")))
 			[
 				Panel
 			]
@@ -2528,11 +2607,16 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
-	// One value, still carded. A lone row on the bare body would be the only thing in the group
-	// without a sheet under it, which reads as an oversight rather than as emphasis.
-	TSharedRef<SVerticalBox> Normal = AddCard(Panel, LOCTEXT("CardNormal", "Normal"));
-	AddSliderRow(Normal, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("NormalLabel", "Intensity"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 2.0, 1.0, 0.01));
+	// Relief, not Normal: the card holds both halves of how strongly this layer's own detail
+	// reads -- how hard the light follows it and how deep it actually is -- and those are always
+	// reached for together. Same word craquelure and the ramp filter use for the same pair.
+	TSharedRef<SVerticalBox> Relief = AddCard(Panel, LOCTEXT("CardRelief", "Relief"));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("NormalLabel", "Normal Intensity"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 2.0, 1.0, 0.01,
+		LOCTEXT("NormalIntensityHint", "Gain on this layer's normal map. Independent of Height Booster, so the surface can catch light as though deeper without actually displacing further.")));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("HeightBoostHint", "Gain on this layer's height, signed about the flat midpoint: peaks rise and pits sink by the same factor, so the surface exaggerates without floating. 1 is untouched, 0 is flat. Applied before anything reads the height, so displacement, the height blend and the derived normals all agree. Not Height Influence, which is coverage -- how much of this layer's height reaches the composite rather than how deep it is.")));
 
 	AddGeneratedFeatureCards(Panel);
 	return Panel;
@@ -3496,6 +3580,34 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										RebuildLayerList();
 									})
 								]
+								// The mode and how far it is taken, on one row. Base colour only:
+								// a mode that suits colour rarely suits roughness, and roughness
+								// already has Bias, Contrast and Offset of its own.
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+								[
+									MixtormatRow::MakePair(
+										MixtormatRow::Make(
+											LOCTEXT("BaseColorBlendLabel", "Color Blend"),
+											MixtormatRow::MakeChip(
+												TAttribute<FText>::CreateLambda([this]()
+												{
+													return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+														? MixtormatUI::ColorBlendModeText(
+															WorkingLayers[SelectedLayerIndex].BaseColorBlendMode)
+														: FText::GetEmpty();
+												}),
+												FOnGetContent::CreateSP(this, &SMixtormat::BuildBaseColorBlendModeMenu)),
+											LOCTEXT("BaseColorBlendHint", "How this layer's base colour combines with what is composited below it. Normal replaces, which is what every layer did before this control existed. Affects base colour only.")),
+										MakeMemberSlider<FMixtormatLayer>(
+											LOCTEXT("BaseColorBlendAmountLabel", "Amount"),
+											[this]() -> FMixtormatLayer*
+											{
+												return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+											},
+											&FMixtormatLayer::BaseColorBlendAmount, 0.0, 1.0, 1.0, 0.01,
+											LOCTEXT("BaseColorBlendAmountHint", "How much of the blend mode happens -- it lerps between this layer's plain colour and the blended result. Not a fourth opacity: Opacity, the mask chain and Base Color Influence all decide coverage, this decides mode strength. At Normal there is nothing to fade and it does nothing.")))
+								]
+
 														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(

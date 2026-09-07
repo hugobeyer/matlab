@@ -135,6 +135,23 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 							.Text(InArgs._Source)
 						]
 
+						// Colour blend first, composition second, so the composition badge stays
+						// flush against the disclosure and the column down the right edge holds
+						// its line whether or not a layer carries a colour mode.
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+						[
+							SNew(SMixtormatBadge)
+							.Text(InArgs._ColorBadge)
+							.Visibility_Lambda([ColorBadge = InArgs._ColorBadge]()
+							{
+								return ColorBadge.Get(FText::GetEmpty()).IsEmpty()
+									? EVisibility::Collapsed : EVisibility::Visible;
+							})
+						]
+
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)

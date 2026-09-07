@@ -15,6 +15,7 @@ class SMenuAnchor;
 //   Name     what the user called it
 //   Source   what it is made of      -- "Mat - Rust Orange", "FILL"
 //   Badge    how it composites       -- BLEND / OVER / COAT / DETAIL
+//   ColorBadge  how it blends colour -- MULT / SCREEN / ... , absent at Normal
 //
 // The badge is the only derived field: it is not typed, it is read from the layer's composition
 // mode, and it is fixed-width so the badges form a scannable column down the right edge.
@@ -36,6 +37,9 @@ public:
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Source)
 		SLATE_ATTRIBUTE(FText, Badge)
+		// A second, optional mark for a layer that also blends its colour. Collapsed when empty,
+		// which is the usual case -- see MixtormatLayerBadges::ForColorBlendMode.
+		SLATE_ATTRIBUTE(FText, ColorBadge)
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bExpanded)
 		SLATE_ATTRIBUTE(bool, bSelected)

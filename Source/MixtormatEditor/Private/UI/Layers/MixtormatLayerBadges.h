@@ -55,6 +55,13 @@ namespace MixtormatLayerBadges
 	//   Replace + Combine normals   -> BLEND    reoriented onto the normal below
 	FText ForLayer(const FMixtormatLayer& Layer);
 
+	// The colour blend mark, and empty when the mode is Normal.
+	//
+	// Empty on purpose rather than printing "NORM": a badge that is always there stops carrying
+	// information, and Normal is what almost every layer is. This one appears only when a layer
+	// is doing something to the colour below it, which is exactly when the stack needs to say so.
+	FText ForColorBlendMode(EMixtormatColorBlendMode Mode);
+
 	// Mask marks. The blend mode abbreviated, since that is what a mask does to the accumulated
 	// coverage under it.
 	FText ForMaskBlendMode(EMixtormatMaskBlendMode Mode);

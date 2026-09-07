@@ -38,13 +38,6 @@ void SMixtormat::BuildWorkspaceUI()
 			[
 				SAssignNew(MainSwitcher, SWidgetSwitcher)
 				+ SWidgetSwitcher::Slot()[BuildAuthoringPage()]
-				+ SWidgetSwitcher::Slot()
-				[
-					BuildWorkspacePage(
-						LOCTEXT("MixerHeading", "Material Mixer"),
-						LOCTEXT("MixerDescription", "Legacy mixer scaffold. Ordered material layers are the primary workflow."))
-				]
-				+ SWidgetSwitcher::Slot()[BuildPresetsPage()]
 			]
 			+ SVerticalBox::Slot().AutoHeight()[BuildStatusBar()]
 		]

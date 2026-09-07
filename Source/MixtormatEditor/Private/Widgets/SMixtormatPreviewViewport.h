@@ -121,6 +121,15 @@ public:
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
+
+	// Multipliers on whatever the current lighting mode chose, not absolute brightnesses.
+	//
+	// A preset or an HDRI already decided how bright the scene is, and those numbers differ by a
+	// factor of eight between Dramatic and an HDRI fill. An absolute slider would mean the same
+	// value looked different in every mode and switching preset would silently override the
+	// user's setting; a multiplier keeps 1.0 meaning "what this mode intended" everywhere.
+	void SetPreviewLightIntensity(float Scale);
+	void SetPreviewSkylightIntensity(float Scale);
 	void SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	void SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void SetHdriLighting(UTextureCube* Cubemap);
@@ -175,6 +184,15 @@ private:
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;
 	float CameraFov = MixtormatPreviewCamera::FovDefault;
 	float LightingYaw = -45.0f;
+
+	// What the current mode asked for, before the user's multipliers. Held so a change to either
+	// slider can be re-applied without re-running the whole preset, and so switching preset
+	// keeps the multipliers rather than resetting them.
+	float BaseLightBrightness = 2.0f;
+	float BaseSkyBrightness = 0.45f;
+	float LightIntensityScale = 1.0f;
+	float SkylightIntensityScale = 1.0f;
+	void ApplyLightIntensities();
 	float HdriYaw = 0.0f;
 	FVector PreviewTarget = FVector(0.0f, 0.0f, 50.0f);
 };

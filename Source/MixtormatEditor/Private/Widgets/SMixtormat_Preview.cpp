@@ -120,6 +120,30 @@ void SMixtormat::SetPreviewDisplacementEnabled(const bool bEnabled)
 	}
 }
 
+void SMixtormat::SetPreviewLightIntensity(const float Scale)
+{
+	PreviewLightIntensity = FMath::Clamp(Scale, 0.0f, 2.0f);
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetPreviewLightIntensity(PreviewLightIntensity);
+		}
+	}
+}
+
+void SMixtormat::SetPreviewSkylightIntensity(const float Scale)
+{
+	PreviewSkylightIntensity = FMath::Clamp(Scale, 0.0f, 2.0f);
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetPreviewSkylightIntensity(PreviewSkylightIntensity);
+		}
+	}
+}
+
 void SMixtormat::SetPreviewDisplacementAmount(const float Amount)
 {
 	PreviewDisplacementAmount = FMath::Clamp(Amount, 0.0f, 4.0f);
@@ -639,6 +663,36 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
 				LOCTEXT("PreviewDisplacementAmountHint", "Scale the centered composited Height used by the authored displacement path."))
 		]
+	];
+
+	// Light and skylight, under the displacement amount and above the camera block: they change
+	// how the surface reads without changing what the surface is, which is the same class of
+	// control as displacement preview.
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+	[
+		MakeSlider(
+			LOCTEXT("PreviewLightIntensityLabel", "Light"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewLightIntensity); }),
+			0.0, 2.0, 1.0, 0.01, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewLightIntensity(static_cast<float>(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(1.0f); }),
+			LOCTEXT("PreviewLightIntensityHint", "Scales the key light. A multiplier on whatever the current preset or HDRI chose, so 1 is that mode's own brightness and switching mode keeps this setting rather than overriding it."))
+	];
+	SceneControls->AddSlot().AutoHeight()
+	[
+		MakeSlider(
+			LOCTEXT("PreviewSkylightIntensityLabel", "Skylight"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewSkylightIntensity); }),
+			0.0, 2.0, 1.0, 0.01, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewSkylightIntensity(static_cast<float>(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
+			LOCTEXT("PreviewSkylightIntensityHint", "Scales the ambient fill, the same way. Dropping it is how a surface's height reads: the key light alone throws the shadows that show relief, and the skylight is what fills them back in."))
 	];
 
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);

@@ -239,6 +239,61 @@ namespace MixtormatUI
 		}
 	}
 
+	inline FText ColorBlendModeText(const EMixtormatColorBlendMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatColorBlendMode::Add: return LOCTEXT("ColorModeAdd", "Add");
+		case EMixtormatColorBlendMode::Subtract: return LOCTEXT("ColorModeSubtract", "Subtract");
+		case EMixtormatColorBlendMode::Multiply: return LOCTEXT("ColorModeMultiply", "Multiply");
+		case EMixtormatColorBlendMode::Divide: return LOCTEXT("ColorModeDivide", "Divide");
+		case EMixtormatColorBlendMode::Screen: return LOCTEXT("ColorModeScreen", "Screen");
+		case EMixtormatColorBlendMode::Overlay: return LOCTEXT("ColorModeOverlay", "Overlay");
+		case EMixtormatColorBlendMode::HardLight: return LOCTEXT("ColorModeHardLight", "Hard Light");
+		case EMixtormatColorBlendMode::SoftLight: return LOCTEXT("ColorModeSoftLight", "Soft Light");
+		case EMixtormatColorBlendMode::ColorDodge: return LOCTEXT("ColorModeDodge", "Color Dodge");
+		case EMixtormatColorBlendMode::ColorBurn: return LOCTEXT("ColorModeBurn", "Color Burn");
+		case EMixtormatColorBlendMode::AddSub: return LOCTEXT("ColorModeAddSub", "Add/Sub");
+		case EMixtormatColorBlendMode::Difference: return LOCTEXT("ColorModeDifference", "Difference");
+		case EMixtormatColorBlendMode::Exclusion: return LOCTEXT("ColorModeExclusion", "Exclusion");
+		case EMixtormatColorBlendMode::Min: return LOCTEXT("ColorModeMin", "Min");
+		case EMixtormatColorBlendMode::Max: return LOCTEXT("ColorModeMax", "Max");
+		case EMixtormatColorBlendMode::Hue: return LOCTEXT("ColorModeHue", "Hue");
+		case EMixtormatColorBlendMode::Saturation: return LOCTEXT("ColorModeSaturation", "Saturation");
+		case EMixtormatColorBlendMode::Color: return LOCTEXT("ColorModeColor", "Color");
+		case EMixtormatColorBlendMode::Luminosity: return LOCTEXT("ColorModeLuminosity", "Luminosity");
+		default: return LOCTEXT("ColorModeNormal", "Normal");
+		}
+	}
+
+	// Every colour blend mode, in enum order, for the chip's menu.
+	inline const TArray<EMixtormatColorBlendMode>& ColorBlendModes()
+	{
+		static const TArray<EMixtormatColorBlendMode> Modes = {
+			EMixtormatColorBlendMode::Normal,
+			EMixtormatColorBlendMode::Add,
+			EMixtormatColorBlendMode::Subtract,
+			EMixtormatColorBlendMode::Multiply,
+			EMixtormatColorBlendMode::Divide,
+			EMixtormatColorBlendMode::Screen,
+			EMixtormatColorBlendMode::Overlay,
+			EMixtormatColorBlendMode::HardLight,
+			EMixtormatColorBlendMode::SoftLight,
+			EMixtormatColorBlendMode::ColorDodge,
+			EMixtormatColorBlendMode::ColorBurn,
+			EMixtormatColorBlendMode::AddSub,
+			EMixtormatColorBlendMode::Difference,
+			EMixtormatColorBlendMode::Exclusion,
+			EMixtormatColorBlendMode::Min,
+			EMixtormatColorBlendMode::Max,
+			EMixtormatColorBlendMode::Hue,
+			EMixtormatColorBlendMode::Saturation,
+			EMixtormatColorBlendMode::Color,
+			EMixtormatColorBlendMode::Luminosity
+		};
+		return Modes;
+	}
+
 	inline FText UVRotationText(const EMixtormatUVRotation Rotation)
 	{
 		switch (Rotation)

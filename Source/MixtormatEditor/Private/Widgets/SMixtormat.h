@@ -53,7 +53,6 @@ private:
 	FReply OpenLiveThemePanel();
 	void RequestThemeRefresh();
 	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
-	FReply ShowPage(int32 PageIndex);
 	FReply ShowLeftPage(int32 PageIndex);
 	FReply ImportSurfaces();
 	FReply ReimportShippedLibrary();
@@ -70,6 +69,8 @@ private:
 	FReply ResetPreviewCameraAndLighting();
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
+	void SetPreviewLightIntensity(float Scale);
+	void SetPreviewSkylightIntensity(float Scale);
 	void PreviewSelectedSurfaceWithDisplacement();
 	FReply ToggleFeaturePreview(EMixtormatDebugPreviewMode Mode);
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
@@ -143,6 +144,7 @@ private:
 	FMixtormatClusterFilter* GetSelectedFilter();
 	const FMixtormatClusterFilter* GetSelectedFilter() const;
 	TSharedRef<SWidget> BuildFilterControls();
+	TSharedRef<SWidget> BuildClusterSourceMenu();
 	TSharedRef<SWidget> BuildAddFilterMenu(int32 LayerIndex);
 	bool CanPreviewSelectedFilter() const;
 
@@ -170,6 +172,7 @@ private:
 	FMixtormatColorIdMask* GetSelectedColorId();
 	const FMixtormatColorIdMask* GetSelectedColorId() const;
 	TSharedRef<SWidget> BuildColorIdControls();
+	TSharedRef<SWidget> BuildBaseColorBlendModeMenu();
 	TSharedRef<SWidget> BuildColorIdBlendModeMenu();
 	TSharedRef<SWidget> BuildColorIdRotationMenu();
 	FReply AddColorIdEntry();
@@ -475,10 +478,7 @@ private:
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	TSharedRef<SWidget> BuildWorkflowMenu();
-	TSharedRef<SWidget> BuildNavButton(const FText& Label, int32 PageIndex);
 	TSharedRef<SWidget> BuildLibraryPage();
-	TSharedRef<SWidget> BuildWorkspacePage(const FText& Heading, const FText& Description);
-	TSharedRef<SWidget> BuildPresetsPage();
 	TSharedRef<SWidget> BuildSurfaceList();
 	TSharedRef<SWidget> BuildLayerStackPanel();
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
@@ -554,6 +554,9 @@ private:
 	float LibraryHeightFraction = 0.36f;
 	float MaterialLibraryFraction = 0.72f;
 	float MaskLibraryFraction = 0.28f;
+	// One page since the mixer and presets mock-ups were removed. Kept as a switcher rather than
+	// unwound to a bare widget because the live-theme rebuild tears the tree down and re-parents
+	// through it, and the settings window will want the second slot.
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
 	TSharedPtr<SVerticalBox> CategoryListBox;
@@ -623,6 +626,9 @@ private:
 	int32 PreviewScreenPercentage = MixtormatPreviewScreenPercentage::Default;
 	float PreviewFov = MixtormatPreviewCamera::FovDefault;
 	float PreviewDisplacementAmount = 1.0f;
+	// Multipliers on the active lighting mode's own brightness; 1 is what that mode intended.
+	float PreviewLightIntensity = 1.0f;
+	float PreviewSkylightIntensity = 1.0f;
 	FSoftObjectPath SelectedHdriPath;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;

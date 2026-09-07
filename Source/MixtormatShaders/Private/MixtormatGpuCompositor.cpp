@@ -255,6 +255,8 @@ public:
 		SHADER_PARAMETER(float, FillRoughness)
 		SHADER_PARAMETER(float, FillMetallic)
 		SHADER_PARAMETER(float, LayerF0)
+		SHADER_PARAMETER(uint32, BaseColorBlendMode)
+		SHADER_PARAMETER(float, BaseColorBlendAmount)
 		SHADER_PARAMETER(float, BaseColorInfluence)
 		SHADER_PARAMETER(float, RoughnessInfluence)
 		SHADER_PARAMETER(float, AOInfluence)
@@ -262,6 +264,7 @@ public:
 		SHADER_PARAMETER(float, F0Influence)
 		SHADER_PARAMETER(float, NormalInfluence)
 		SHADER_PARAMETER(float, HeightInfluence)
+		SHADER_PARAMETER(float, HeightBoost)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
@@ -1213,6 +1216,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Stage)
+		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(uint32, SourceMode)
 		SHADER_PARAMETER(FVector2f, SourceTiling)
 		SHADER_PARAMETER(FVector2f, SourceOffset)
 		SHADER_PARAMETER(uint32, FlipU)
@@ -1222,6 +1227,8 @@ public:
 		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Statistics)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, GuideSignal)
@@ -1599,6 +1606,7 @@ namespace MixtormatGpuCompositor
 
 	struct FClusterFilterRenderData
 	{
+		EMixtormatClusterSource Source = EMixtormatClusterSource::LayerSurface;
 		float Threshold = 0.33f;
 		float Offset = 0.0f;
 		float HeightInfluence = 1.0f;
@@ -1689,6 +1697,8 @@ namespace MixtormatGpuCompositor
 		float FillRoughness = 0.5f;
 		float FillMetallic = 0.0f;
 		float LayerF0 = 0.04f;
+		EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
+		float BaseColorBlendAmount = 1.0f;
 		float BaseColorInfluence = 1.0f;
 		float RoughnessInfluence = 1.0f;
 		float AOInfluence = 1.0f;
@@ -1696,6 +1706,7 @@ namespace MixtormatGpuCompositor
 		float F0Influence = 1.0f;
 		float NormalInfluence = 1.0f;
 		float HeightInfluence = 1.0f;
+		float HeightBoost = 1.0f;
 		float HeightBlendAmount = 1.0f;
 		float HeightThreshold = 0.5f;
 		float HeightRange = 0.1f;
@@ -1769,6 +1780,23 @@ namespace MixtormatGpuCompositor
 			: FTextureRHIRef();
 	}
 
+	// The debug clear, in the same space the shaders write.
+	//
+	// The palette lives in MixtormatDebugColor.ush and is authored in sRGB. These two clears are
+	// the only copies outside it, and they have to be converted the same way or an untouched
+	// region of the preview sits at a different brightness from the ramp drawn over it -- which
+	// reads as the debug view having two backgrounds.
+	FLinearColor DebugClearColor()
+	{
+		// FLinearColor::FromSRGBColor would quantise through 8-bit first; these are authored as
+		// floats and the low channel is small enough for that to round visibly.
+		const auto ToLinear = [](const float C)
+		{
+			return C <= 0.04045f ? C / 12.92f : FMath::Pow((C + 0.055f) / 1.055f, 2.4f);
+		};
+		return FLinearColor(ToLinear(0.08f), ToLinear(0.02f), ToLinear(0.12f), 1.0f);
+	}
+
 	UTextureRenderTarget2D* CreateTarget(
 		const FIntPoint Resolution,
 		const FLinearColor ClearColor,
@@ -1822,12 +1850,21 @@ namespace MixtormatGpuCompositor
 	FRDGTextureRef AddClusterIdPasses(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceRAMH,
+		FRDGTextureRef SurfaceRAM,
+		FRDGTextureRef SurfaceHeight,
+		bool bHasSurfaceBelow,
+		bool bWriteDebug,
 		FRDGTextureRef OutputDebug,
 		FIntPoint OutputSize,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		int32 LayerIndex)
 	{
+		// The bottom layer has nothing composited below it -- the substrate is flat, and
+		// segmenting a flat surface returns one region covering everything. Fall back to the
+		// layer's own map rather than hand back a map with no regions in it.
+		const bool bFromComposite =
+			Child.Filter.Source == EMixtormatClusterSource::CompositeBelow && bHasSurfaceBelow;
 		// Deliberately graph-local. An RHI identity (even held strongly) cannot detect in-place
 		// texture edits, reimports or streaming updates. Until the source exposes a content
 		// revision, recompute selected previews each request rather than cache stale regions.
@@ -1868,6 +1905,8 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.AllocParameters<FMixtormatClusterIdsCS::FParameters>();
 			Parameters->OutputSize = OutputSize;
 			Parameters->Stage = Stage;
+			Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
+			Parameters->SourceMode = bFromComposite ? 1u : 0u;
 			Parameters->SourceTiling = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
 			Parameters->SourceOffset = Layer.UVOffset;
 			Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
@@ -1877,6 +1916,8 @@ namespace MixtormatGpuCompositor
 			Parameters->Offset = Child.Filter.Offset;
 			Parameters->HeightInfluence = Child.Filter.HeightInfluence;
 			Parameters->SourceRAMH = SourceRAMH;
+			Parameters->SurfaceRAM = SurfaceRAM;
+			Parameters->SurfaceHeight = SurfaceHeight;
 			Parameters->LinearWrapSampler =
 				TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 			Parameters->Statistics = StatisticsUAV;
@@ -2020,7 +2061,7 @@ bool FMixtormatGpuCompositor::Initialize(const FIntPoint InResolution)
 		Set.Normal.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.5f, 1.0f, 1.0f)));
 		Set.RAM.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 1.0f, 0.0f, 0.04f)));
 		Set.Height.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.0f, 0.0f, 0.0f), PF_R16F));
-		Set.Debug.Reset(CreateTarget(Resolution, FLinearColor(0.08f, 0.02f, 0.12f, 1.0f)));
+		Set.Debug.Reset(CreateTarget(Resolution, DebugClearColor()));
 	}
 	if (NetworkCache.IsValid())
 	{
@@ -2239,6 +2280,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::Filter;
 				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.Filter.Source = Filter.Source;
 				ChildData.Filter.Threshold = FMath::IsFinite(Filter.Threshold)
 					? FMath::Clamp(Filter.Threshold, 0.0f, 1.0f) : 0.33f;
 				ChildData.Filter.Offset = FMath::IsFinite(Filter.Offset) ? Filter.Offset : 0.0f;
@@ -2815,6 +2857,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			1.0f,
 			Layer.bOverrideIOR ? Layer.IOR : SourceIOR);
 		Data.LayerF0 = FMath::Square((LayerIOR - 1.0f) / (LayerIOR + 1.0f));
+		Data.HeightBoost = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
+		Data.BaseColorBlendMode = Layer.BaseColorBlendMode;
+		Data.BaseColorBlendAmount = FMath::Clamp(Layer.BaseColorBlendAmount, 0.0f, 1.0f);
 		Data.BaseColorInfluence = FMath::Clamp(Layer.BaseColorInfluence, 0.0f, 1.0f);
 		Data.RoughnessInfluence = FMath::Clamp(Layer.RoughnessInfluence, 0.0f, 1.0f);
 		Data.AOInfluence = FMath::Clamp(Layer.AOInfluence, 0.0f, 1.0f);
@@ -2938,7 +2983,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			AddClearUAVPass(
 				GraphBuilder,
 				GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]),
-				FVector4f(0.08f, 0.02f, 0.12f, 1.0f));
+				FVector4f(DebugClearColor()));
 
 			// Stand-in for the composite's RegionIds slot on every layer without a cluster
 			// filter. RDG validates a binding whether the shader branches on it or not, so the
@@ -3145,8 +3190,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							{
 								continue;
 							}
-							bool bWanted = bPreviewingThisLayer
+							// Gated separately from whether the pass runs at all: consumers make it
+							// run in ordinary use, and a pass that also painted the debug target
+							// would overwrite whichever preview the composite had published for
+							// another layer.
+							const bool bIsSelectedPreview = bPreviewingThisLayer
 								&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
+							bool bWanted = bIsSelectedPreview;
 							if (!bWanted)
 							{
 								// Any consumer below this filter and above the next one. The
@@ -3175,11 +3225,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							{
 								continue;
 							}
+							// The same ping-pong slot the layer composite and the generated masks
+							// read: what every layer below this one has already accumulated.
+							const int32 SurfaceReadIndex = 1 - (LayerIndex & 1);
 							RegionIdMaps.Emplace(
 								Child.SourceChildIndex,
 								AddClusterIdPasses(
 									GraphBuilder,
 									RegisterTexture(GraphBuilder, RegisteredTextures, Layer.RAM, TEXT("Mixtormat.Cluster.SourceRAMH")),
+									OutputRAM[SurfaceReadIndex],
+									HeightTargets[SurfaceReadIndex],
+									LayerIndex > 0,
+									bIsSelectedPreview,
 									OutputDebug[Request.PublishedTargetIndex], Request.Resolution, Layer, Child, LayerIndex));
 						}
 					}
@@ -4543,6 +4600,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->FillRoughness = Layer.FillRoughness;
 					Parameters->FillMetallic = Layer.FillMetallic;
 					Parameters->LayerF0 = Layer.LayerF0;
+					Parameters->HeightBoost = Layer.HeightBoost;
+					Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
+					Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
 					Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
 					Parameters->RoughnessInfluence = Layer.RoughnessInfluence;
 					Parameters->AOInfluence = Layer.AOInfluence;

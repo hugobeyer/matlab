@@ -1,0 +1,53 @@
+#ifndef MIXTORMAT_DEBUG_COLOR_USH
+#define MIXTORMAT_DEBUG_COLOR_USH
+
+// The one debug palette, and the one place it is converted.
+//
+// Four copies of these two constants had drifted into the composite, the stain resolve, the
+// cluster preview and two C++ clears. They were the same numbers, but nothing held them together,
+// and a debug view whose colours disagree with the next one is worse than no debug view.
+//
+// The constants are authored in **sRGB** -- they are the colours meant to appear on screen -- and
+// the preview surface is unlit emissive into a tonemapped, post-processed viewport. Writing them
+// raw put linear 0.25 through an sRGB encode and produced roughly 0.54 on screen, which is why
+// every preview read as fluorescent rather than as the dark plum and dark green intended.
+//
+// Converting here gets the displayed colour close to the authored one. Not exact: the viewport
+// still runs the tonemapper with an exposure bias, so there is a filmic curve between this and
+// the pixel. Matching exactly would mean bypassing post-processing for the debug view, which is a
+// bigger change than the brightness is worth.
+
+float MixtormatSrgbToLinearChannel(float C)
+{
+	return C <= 0.04045f ? C / 12.92f : pow((C + 0.055f) / 1.055f, 2.4f);
+}
+
+float3 MixtormatSrgbToLinear(float3 C)
+{
+	return float3(
+		MixtormatSrgbToLinearChannel(C.r),
+		MixtormatSrgbToLinearChannel(C.g),
+		MixtormatSrgbToLinearChannel(C.b));
+}
+
+// Dark plum at 0, dark green at 1. Deliberately dark and deliberately low-contrast in luminance:
+// a debug view is read for *where* a signal is, and a full black-to-white ramp makes the bright
+// end bloom into the dark end at a glance.
+#define MIXTORMAT_DEBUG_LOW  float3(0.08f, 0.02f, 0.12f)
+#define MIXTORMAT_DEBUG_HIGH float3(0.04f, 0.25f, 0.08f)
+
+// A 0..1 signal as the palette colour, ready to write into the debug target.
+float3 MixtormatDebugRamp(float Value)
+{
+	return MixtormatSrgbToLinear(
+		lerp(MIXTORMAT_DEBUG_LOW, MIXTORMAT_DEBUG_HIGH, saturate(Value)));
+}
+
+// An arbitrary colour -- a hashed region id, say -- brought into the same space as the ramp above,
+// so the data previews and the coverage previews read at one brightness.
+float3 MixtormatDebugColor(float3 SrgbColor)
+{
+	return MixtormatSrgbToLinear(saturate(SrgbColor));
+}
+
+#endif

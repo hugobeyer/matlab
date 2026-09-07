@@ -1130,6 +1130,25 @@ struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
 // Regions come out of the image: there is no cell size, no cluster count and no compactness,
 // because the sizes are whatever the height and roughness say they are. Two scales is a second
 // instance at a wider Threshold, not a second algorithm.
+// What a cluster filter segments.
+//
+// Two genuinely different questions, and which one is right depends on what the regions are for.
+// Layer Surface finds the structure in this layer's own scan -- the bricks in the brick texture --
+// regardless of what is under it. Composite Below finds the structure in the surface actually
+// accumulated beneath this layer, so the regions follow what is visible there, including whatever
+// every layer under this one contributed.
+//
+// It is also the noise control. A raw scan can be busy enough that the segmentation shatters into
+// far more regions than the eye reads as pieces; the composited surface below has usually been
+// through blending, height and grading and comes out calmer. Neither is the right answer in
+// general, which is why this is a switch and not a default.
+UENUM(BlueprintType)
+enum class EMixtormatClusterSource : uint8
+{
+	LayerSurface UMETA(DisplayName = "Layer Surface"),
+	CompositeBelow UMETA(DisplayName = "Composite Below")
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 {
@@ -1137,6 +1156,12 @@ struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs")
 	bool bEnabled = true;
+
+	// On the bottom layer there is nothing composited below, so Composite Below has only the flat
+	// substrate to look at and would return a single region covering everything. It falls back to
+	// the layer's own surface there rather than silently producing nothing.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs")
+	EMixtormatClusterSource Source = EMixtormatClusterSource::LayerSurface;
 
 	// Band width, and so region granularity: the scale control, and the only one there is.
 	//
@@ -1378,6 +1403,42 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs", meta = (ClampMin = "0"))
 	int32 Seed = 1;
+};
+
+// How a layer's base colour combines with what is composited below it.
+//
+// Separate from EMixtormatMaskBlendMode, and it has to be. That one operates on 0..1 coverage in
+// the mask chain; this operates on colour at the composite. Half of what is here -- Screen, Soft
+// Light, the dodge/burn pair, the four non-separable HSL transfers -- means nothing on coverage,
+// and the two lists have different orders. Sharing one enum would put "Multiply" at two indices
+// and invite exactly the mix-up that costs an afternoon.
+//
+// Grouped by what they do: arithmetic, then the contrast pairs, then the comparative ones, then
+// the four that work on the colour as a whole. Serialised by value, so this order is fixed --
+// anything new goes on the end.
+UENUM(BlueprintType)
+enum class EMixtormatColorBlendMode : uint8
+{
+	Normal UMETA(DisplayName = "Normal"),
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Divide UMETA(DisplayName = "Divide"),
+	Screen UMETA(DisplayName = "Screen"),
+	Overlay UMETA(DisplayName = "Overlay"),
+	HardLight UMETA(DisplayName = "Hard Light"),
+	SoftLight UMETA(DisplayName = "Soft Light"),
+	ColorDodge UMETA(DisplayName = "Color Dodge"),
+	ColorBurn UMETA(DisplayName = "Color Burn"),
+	AddSub UMETA(DisplayName = "Add/Sub"),
+	Difference UMETA(DisplayName = "Difference"),
+	Exclusion UMETA(DisplayName = "Exclusion"),
+	Min UMETA(DisplayName = "Min"),
+	Max UMETA(DisplayName = "Max"),
+	Hue UMETA(DisplayName = "Hue"),
+	Saturation UMETA(DisplayName = "Saturation"),
+	Color UMETA(DisplayName = "Color"),
+	Luminosity UMETA(DisplayName = "Luminosity")
 };
 
 UENUM(BlueprintType)
@@ -1676,6 +1737,36 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bFlipNormalY = false;
+
+	// How this layer's base colour combines with what is composited below it, and how far that
+	// combination is taken.
+	//
+	// Base colour only. A mode that suits colour rarely suits roughness -- Screen on a roughness
+	// map is not a thing anyone reached for -- and roughness already carries its own Bias,
+	// Contrast and Offset.
+	// Gain on this layer's own height, about the 0.5 midpoint that is flat.
+	//
+	// A signed multiply, not a scale: height is stored centred, so this amplifies the deviation
+	// from flat in both directions at once -- peaks rise and pits sink by the same factor, and
+	// the surface's average level does not move. Scaling the raw 0..1 instead would lift the
+	// whole layer as it exaggerated it, which reads as the layer floating rather than as relief.
+	//
+	// Applied to the source height before anything reads it, so displacement, the height blend
+	// and the derived normals all agree. 1 is untouched, 0 is flat, and above 1 exaggerates.
+	// Not the same thing as HeightInfluence, which is coverage -- how much of this layer's height
+	// reaches the composite, rather than how deep that height is.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", ClampMax = "8.0"))
+	float HeightBoost = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
+	EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
+
+	// Mode strength, not opacity, and the distinction matters because there are already three
+	// controls doing coverage: Opacity, the mask chain, and BaseColorInfluence. This one lerps
+	// between the layer's plain colour and the blended result, so it says how much of the *mode*
+	// happens -- and at Normal there is nothing to fade, so it does nothing at all.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BaseColorBlendAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float BaseColorInfluence = 1.0f;

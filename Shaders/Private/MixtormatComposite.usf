@@ -2,6 +2,8 @@
 #include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatColorOps.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
@@ -95,6 +97,8 @@ float RoughnessOffset;
 float FillRoughness;
 float FillMetallic;
 float LayerF0;
+uint BaseColorBlendMode;
+float BaseColorBlendAmount;
 float BaseColorInfluence;
 float RoughnessInfluence;
 float AOInfluence;
@@ -102,6 +106,7 @@ float MetallicInfluence;
 float F0Influence;
 float NormalInfluence;
 float HeightInfluence;
+float HeightBoost;
 float HeightBlendAmount;
 float HeightThreshold;
 float HeightRange;
@@ -319,6 +324,12 @@ float SampleIncomingHeight(float2 UV)
 	{
 		SourceHeight = 1.0f - SourceHeight;
 	}
+
+	// Signed about the midpoint, and here rather than further down so every reader of this
+	// layer's height sees the same boosted value -- the displacement, the blend comparison and
+	// the normals derived from it. Height is stored centred on 0.5, so scaling the deviation
+	// deepens pits exactly as much as it raises peaks and leaves the average level alone.
+	SourceHeight = saturate((SourceHeight - 0.5f) * HeightBoost + 0.5f);
 	if (DirectHeightComparison != 0)
 	{
 		return SourceHeight;
@@ -535,9 +546,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float ColorWeight = saturate(ReplaceWeight + Alpha * Coat * 0.35f);
 	float NormalWeight = Alpha * saturate(NormalInfluence);
 
+	// The blend mode first, then coverage on top of it. The mode decides what colour this layer
+	// *is* against what is under it; ColorWeight and BaseColorInfluence decide how much of that
+	// lands, which is a different question and already has three controls answering it.
+	//
+	// At Normal the blend returns Incoming unchanged, so BlendAmount has nothing to fade between
+	// and this line is bit-identical to what it was before the mode existed. That is what makes
+	// the default safe on every material already saved.
+	float3 BlendedBaseColor = MixtormatBlendColor(
+		BaseColorBlendMode, PreviousBaseColor.rgb, LayerBaseColor);
+	float3 IncomingBaseColor = saturate(
+		lerp(LayerBaseColor, BlendedBaseColor, saturate(BaseColorBlendAmount)));
+
 	float3 ResultBaseColor = NormalOnly != 0
 		? PreviousBaseColor.rgb
-		: lerp(PreviousBaseColor.rgb, LayerBaseColor, ColorWeight * saturate(BaseColorInfluence));
+		: lerp(PreviousBaseColor.rgb, IncomingBaseColor, ColorWeight * saturate(BaseColorInfluence));
 	float ResultRoughness = NormalOnly != 0
 		? PreviousPacked.r
 		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(RoughnessInfluence));
@@ -644,9 +667,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			DebugValue = DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		}
-		const float3 DebugLow = float3(0.08f, 0.02f, 0.12f);
-		const float3 DebugHigh = float3(0.04f, 0.25f, 0.08f);
-		OutputDebug[DispatchThreadId.xy] = float4(lerp(DebugLow, DebugHigh, saturate(DebugValue)), 1.0f);
+		OutputDebug[DispatchThreadId.xy] = float4(MixtormatDebugRamp(DebugValue), 1.0f);
 	}
 
 	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);

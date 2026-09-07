@@ -1249,6 +1249,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.Name(DisplayName)
 			.Source(GetLayerSourceText(LayerIndex))
 			.Badge(MixtormatLayerBadges::ForLayer(Layer))
+			.ColorBadge_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					? MixtormatLayerBadges::ForColorBlendMode(
+						WorkingLayers[LayerIndex].BaseColorBlendMode)
+					: FText::GetEmpty();
+			})
 			.bCanDisable(true)
 			.Thumbnail()[BuildLayerThumbnail(LayerIndex)]
 			.bEnabled_Lambda([this, LayerIndex]()

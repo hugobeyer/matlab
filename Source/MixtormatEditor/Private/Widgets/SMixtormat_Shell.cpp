@@ -1,20 +1,12 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Controls/SMixtormatTabStrip.h"
 
 
 // Window chrome: top bar, page routing, splitters, status bar.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
-
-FReply SMixtormat::ShowPage(const int32 PageIndex)
-{
-	if (MainSwitcher.IsValid())
-	{
-		MainSwitcher->SetActiveWidgetIndex(PageIndex);
-	}
-	return FReply::Handled();
-}
 
 FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 {
@@ -181,14 +173,33 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::OpenLiveThemePanel)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f)
+				// Keeps PrimaryButton -- it is the one committing action up here and the accent is
+				// deliberate -- but everything else about it now matches its neighbours: the
+				// toolbar margin token rather than a hand-written 6/2, and the same icon-then-
+				// label body that LOAD, SAVE and SAVE AS use, so the row scans as one set.
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
 					.IsEnabled_Lambda([this]() { return WorkingMaterialAsset.IsValid() && bHasWorkingMaterial; })
-					.Text(LOCTEXT("BakeMaterialTop", "BAKE"))
 					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
 					.OnClicked(this, &SMixtormat::BakeWorkingMaterial)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Cube")))
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("BakeMaterialTop", "BAKE"))
+						]
+					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
@@ -253,84 +264,16 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 4.0f, 4.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(MixtormatTokens::PanelPadding, MixtormatTokens::PanelPadding, MixtormatTokens::PanelPadding, 0.0f)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SNew(SBox)
-					.WidthOverride(MixtormatTokens::TabWidth)
-					.HeightOverride(MixtormatTokens::TabHeight)
-					[
-						SNew(SBorder)
-						.Padding(0.0f)
-						.BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 0 ? TEXT("Mixtormat.InsetPanel") : TEXT("Mixtormat.SectionBar")); })
-						[
-					SNew(SCheckBox)
-					.Style(&Style.GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.TabToggle")))
-					.IsChecked_Lambda([this]() { return LeftTabIndex == 0 ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-					.OnCheckStateChanged_Lambda([this](ECheckBoxState) { ShowLeftPage(0); })
-					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().FillHeight(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TabLabelBottomInset)
-						[
-							SNew(STextBlock)
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
-							.Text(LOCTEXT("LayersLeftTab", "LAYERS"))
-							.Justification(ETextJustify::Center)
-						]
-						+ SVerticalBox::Slot().AutoHeight()
-						[
-							SNew(SBox)
-							.HeightOverride(MixtormatTokens::TabUnderlineThickness)
-							[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 0 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]
-						]
-					]
-				]
-				]
+				SNew(SMixtormatTabStrip)
+				.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY") })
+				.ToolTips({
+					LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
+					LOCTEXT("LibraryLeftTabHint", "Search and filter the surface library by category.") })
+				.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
+				.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 			]
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::TabWidth)
-				.HeightOverride(MixtormatTokens::TabHeight)
-				[
-					SNew(SBorder)
-					.Padding(0.0f)
-					.BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 1 ? TEXT("Mixtormat.InsetPanel") : TEXT("Mixtormat.SectionBar")); })
-					[
-					SNew(SCheckBox)
-					.Style(&Style.GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.TabToggle")))
-					.IsChecked_Lambda([this]() { return LeftTabIndex == 1 ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-					.OnCheckStateChanged_Lambda([this](ECheckBoxState) { ShowLeftPage(1); })
-					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().FillHeight(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TabLabelBottomInset)
-						[
-							SNew(STextBlock)
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
-							.Text(LOCTEXT("LibraryLeftTab", "LIBRARY"))
-							.Justification(ETextJustify::Center)
-						]
-						+ SVerticalBox::Slot().AutoHeight()
-						[
-							SNew(SBox)
-							.HeightOverride(MixtormatTokens::TabUnderlineThickness)
-							[SNew(SBorder).BorderImage_Lambda([this]() { return FMixtormatStyle::Get().GetBrush(LeftTabIndex == 1 ? TEXT("Mixtormat.TabUnderlineSelected") : TEXT("Mixtormat.TabUnderline")); })]
-						]
-					]
-				]
-				]
-			]
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Bottom)
-			[
-				SNew(SBox)
-				.HeightOverride(MixtormatTokens::TabUnderlineThickness)
-				[SNew(SBorder).BorderImage(Style.GetBrush(TEXT("Mixtormat.TabUnderline")))]
-			]
-		]
 		+ SVerticalBox::Slot().FillHeight(1.0f)
 		[
 			SAssignNew(LeftSwitcher, SWidgetSwitcher)
@@ -393,56 +336,6 @@ TSharedRef<SWidget> SMixtormat::BuildWorkflowMenu()
 				.Text(LOCTEXT("OpenMaterialMenu", "Open Material..."))
 				.OnClicked(this, &SMixtormat::OpenWorkingMaterial)
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
-			+ SVerticalBox::Slot().AutoHeight()[BuildNavButton(LOCTEXT("AuthoringMenu", "Material Authoring"), 0)]
-			+ SVerticalBox::Slot().AutoHeight()[BuildNavButton(LOCTEXT("MixerMenu", "Mixer (Legacy)"), 1)]
-			+ SVerticalBox::Slot().AutoHeight()[BuildNavButton(LOCTEXT("PresetsMenu", "Presets"), 2)]
-		];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildNavButton(const FText& Label, const int32 PageIndex)
-{
-	return SNew(SButton)
-		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-		.OnClicked_Lambda([this, PageIndex]() { return ShowPage(PageIndex); })
-		[SNew(STextBlock).Text(Label)];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildWorkspacePage(const FText& Heading, const FText& Description)
-{
-	return SNew(SBorder)
-		.Padding(MixtormatTokens::PanelPadding)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(Heading).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 12))]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 14.0f)[SNew(STextBlock).Text(Description).AutoWrapText(true).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
-			+ SVerticalBox::Slot().AutoHeight()[SNew(SButton).Text(LOCTEXT("WetnessLayer", "Wetness · 100%"))]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f)[SNew(SButton).Text(LOCTEXT("RustLayer", "Rust · 72%"))]
-			+ SVerticalBox::Slot().AutoHeight()[SNew(SButton).Text(LOCTEXT("BaseLayer", "Base Steel · 100%"))]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 10.0f)
-						[
-							SNew(SButton)
-							.IsEnabled(false)
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-								[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")))]
-								+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f).VAlign(VAlign_Center)
-								[SNew(STextBlock).Text(LOCTEXT("AddLayer", "Add Layer"))]
-							]
-						]
-		];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildPresetsPage()
-{
-	return SNew(SBorder)
-		.Padding(24.0f)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(LOCTEXT("PresetsHeading", "LOOK PRESETS")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 14))]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f)[SNew(STextBlock).Text(LOCTEXT("PresetsDescription", "Saved Mixtormat looks will appear here for editor and runtime use.")).ColorAndOpacity(FSlateColor::UseSubduedForeground())]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 16.0f)[SNew(SButton).Text(LOCTEXT("CreatePreset", "Create Preset from Current Look")).IsEnabled(false)]
 		];
 }
 

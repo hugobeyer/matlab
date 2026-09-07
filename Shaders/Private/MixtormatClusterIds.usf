@@ -1,10 +1,16 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
 
 // Keep all file-scope bindings in FMixtormatClusterIdsCS::FParameters. A single MainCS
 // uses Stage for every dispatch, so no entry point has a partial parameter layout.
 Texture2D<float4> SourceRAMH;
+// The surface accumulated below this layer, for SourceMode 1. Two textures rather than one
+// because the composite keeps height in its own R16F target rather than in the packed map's
+// alpha, which is only true of an authored RAMH.
+Texture2D<float4> SurfaceRAM;
+Texture2D<float> SurfaceHeight;
 SamplerState LinearWrapSampler;
 RWStructuredBuffer<uint> Statistics;
 RWStructuredBuffer<float2> GuideSignal;
@@ -20,6 +26,16 @@ int2 OutputSize;
 uint Stage;
 float2 SourceTiling;
 float2 SourceOffset;
+// 0 reads this layer's own packed map through its UV transform; 1 reads what is composited
+// below, which is already in this pass's pixel space.
+// Whether this dispatch owns the debug target.
+//
+// The pass runs whenever anything consumes its ID map, not only when its own preview is selected,
+// so the debug write has to be gated separately from the pass existing. Without this a cluster
+// filter on any layer overwrites whatever preview the composite had already published -- which
+// looks like the height-blend eye showing a region map.
+uint WriteDebug;
+uint SourceMode;
 uint FlipU;
 uint FlipV;
 int Rotation;
@@ -112,11 +128,27 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (Stage == 1)
 	{
-		float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
-		float2 SourceUV = MixtormatSourceUV(UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
-		float4 RAMH = SourceRAMH.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
-		// Raw layer height (alpha) and roughness (red), not the accumulated substrate,
-		// mask, height-source selector, overrides, grading or other material controls.
+		float Height;
+		float Roughness;
+		if (SourceMode == 0)
+		{
+			float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+			float2 SourceUV = MixtormatSourceUV(UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
+			float4 RAMH = SourceRAMH.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
+			// Raw layer height (alpha) and roughness (red), not the accumulated substrate,
+			// mask, height-source selector, overrides, grading or other material controls.
+			Height = RAMH.a;
+			Roughness = RAMH.r;
+		}
+		else
+		{
+			// No UV transform and no sampler here, deliberately. The composited surface is
+			// already at this resolution in this pass's own pixel space -- putting the layer's
+			// tiling on top of it would read the substrate through a lens it was never behind.
+			Height = SurfaceHeight.Load(int3(Pixel, 0));
+			Roughness = SurfaceRAM.Load(int3(Pixel, 0)).r;
+		}
+		float4 RAMH = float4(Roughness, 0.0f, 0.0f, Height);
 		GuideSignal[Index] = float2(RAMH.a, RAMH.r);
 		if (isfinite(RAMH.a))
 		{
@@ -191,11 +223,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// downstream indexes an array by ID, they all hash it, and the raw root carries its own
 		// pixel position for free -- which is what a per-region local frame will need later.
 		OutputIds[Pixel] = Root;
-		// Visualization only, and written every time so the preview cannot go stale against the
-		// map above it. Hashing is why sparse IDs look like regions rather than like a gradient.
+		if (WriteDebug == 0)
+		{
+			return;
+		}
+		// Visualization only. Hashing is why sparse IDs look like regions rather than like a
+		// gradient, and it goes through the same conversion the coverage previews use so a region
+		// map and a mask preview sit at one brightness.
 		OutputDebug[Pixel] = float4(
-			MixtormatRegionRandom(Root * 3u + 1u),
-			MixtormatRegionRandom(Root * 3u + 2u),
-			MixtormatRegionRandom(Root * 3u + 3u), 1.0f);
+			MixtormatDebugColor(float3(
+				MixtormatRegionRandom(Root * 3u + 1u),
+				MixtormatRegionRandom(Root * 3u + 2u),
+				MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
 	}
 }

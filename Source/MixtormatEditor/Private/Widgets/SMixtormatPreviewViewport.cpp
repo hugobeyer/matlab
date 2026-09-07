@@ -517,8 +517,9 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 	}
 
 	LightingYaw = LightRotation.Yaw;
-	PreviewScene.SetLightBrightness(LightBrightness);
-	PreviewScene.SetSkyBrightness(SkyBrightness);
+	BaseLightBrightness = LightBrightness;
+	BaseSkyBrightness = SkyBrightness;
+	ApplyLightIntensities();
 	PreviewScene.SetLightDirection(LightRotation);
 	if (PreviewScene.DirectionalLight)
 	{
@@ -567,7 +568,11 @@ void SMixtormatPreviewViewport::SetHdriLighting(UTextureCube* Cubemap)
 
 void SMixtormatPreviewViewport::UpdateHdriFillLight()
 {
-	PreviewScene.SetLightBrightness(0.35f);
+	// The same two numbers the HDRI profile is built with, kept here as the base so the user's
+	// multipliers apply in HDRI mode exactly as they do to a studio preset.
+	BaseLightBrightness = 0.35f;
+	BaseSkyBrightness = 0.55f;
+	ApplyLightIntensities();
 	if (PreviewScene.DirectionalLight)
 	{
 		PreviewScene.DirectionalLight->SetLightSourceAngle(24.0f);
@@ -579,6 +584,32 @@ void SMixtormatPreviewViewport::UpdateHdriFillLight()
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
 	UpdateDebugLightVisibility();
+}
+
+void SMixtormatPreviewViewport::ApplyLightIntensities()
+{
+	PreviewScene.SetLightBrightness(BaseLightBrightness * LightIntensityScale);
+	PreviewScene.SetSkyBrightness(BaseSkyBrightness * SkylightIntensityScale);
+}
+
+void SMixtormatPreviewViewport::SetPreviewLightIntensity(const float Scale)
+{
+	LightIntensityScale = FMath::Clamp(Scale, 0.0f, 2.0f);
+	ApplyLightIntensities();
+	if (PreviewViewportClient.IsValid())
+	{
+		PreviewViewportClient->Invalidate();
+	}
+}
+
+void SMixtormatPreviewViewport::SetPreviewSkylightIntensity(const float Scale)
+{
+	SkylightIntensityScale = FMath::Clamp(Scale, 0.0f, 2.0f);
+	ApplyLightIntensities();
+	if (PreviewViewportClient.IsValid())
+	{
+		PreviewViewportClient->Invalidate();
+	}
 }
 
 void SMixtormatPreviewViewport::UpdateDebugLightVisibility()
