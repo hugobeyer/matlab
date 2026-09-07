@@ -1,66 +1,114 @@
 // Step 4 -- group the micro clusters into macro clusters of deliberately uneven size.
 //
-// Runs over the CENTRES layer, so this is a few thousand elements, not millions of pixels. The
-// expensive pass already happened; this one is free.
+// Runs over the CENTRES layer, so this is a few thousand elements, not millions of pixels.
 //
-// Uniform macro regions are the tell that SLIC was involved, so the sizes are drawn at random
-// between a minimum and a maximum instead. Some macro groups end up two micro cells, some
-// fifteen.
+// Each micro cluster joins whichever macro seed is nearest *to its centroid*, under a
+// multiplicatively weighted distance. That last part is what makes the sizes uneven: a seed with
+// a big weight reaches further and swallows more micro cells, a small one keeps only its
+// immediate neighbours. Uniform macro regions are the tell that SLIC was involved, so the weights
+// are drawn at random per seed.
 //
-// Every macro group is a union of whole micro cells, so a macro boundary can never cut through
-// the middle of a micro cluster. Two independent SLIC runs at different grid spacings would not
-// give you that, and the mismatched double edge is visible under a hue shift.
+// Weighted Voronoi rather than region-growing because it is O(9) per cell with no iteration and
+// no dependency between cells -- the same bounded 3x3 search that makes step 02 linear.
 //
-// Deterministic in @seed: the grouping has to survive a re-cook, or the variation you dialled in
-// at preview is not the variation that renders.
+// Every macro group is a union of whole micro cells, because the decision is made per micro
+// cluster and never per pixel. So a macro boundary can never cut through the middle of a micro
+// cluster. Two independent SLIC runs at different grid spacings would not give you that, and the
+// mismatched double edge is visible under a hue shift.
 //
+// Deterministic in @seed: the grouping has to survive a re-cook, or the variation dialled in at
+// preview is not the variation that renders.
+//
+// This replaces an earlier version that walked a serpentine path over the grid and cut it into
+// random-length runs. That was wrong twice over: a run along a space-filling walk is a one-cell
+// ribbon, so the groups came out as snakes rather than patches; and it keyed off grid indices,
+// which stop matching spatial adjacency the moment the centres move during iteration.
 
 #runover layer
-#bind layer macro noread write
+#bind layer macro float noread write
 #bind layer centre_pos float3
-#bind parm grid int2
-#bind parm min_cells int val=2
-#bind parm max_cells int val=12
+#bind parm src_res_x int val=1024
+#bind parm src_res_y int val=1024
+#bind parm macro_grid_x int val=6
+#bind parm macro_grid_y int val=6
+#bind parm size_variation float val=0.6
+#bind parm jitter float val=0.8
+#bind parm tiling int val=1
 #bind parm seed int val=1
 
-static float hash11(uint n)
+#import <random.h>
+
+// Houdini's own RNG rather than a hand-rolled hash: SYSwang_inthash to decorrelate the id,
+// SYSfastRandom to draw from it. Same pair the shipped SideFX kernels use.
+static float randFromId(uint id, uint salt)
 {
-    n = (n ^ 61u) ^ (n >> 16u);
-    n *= 9u; n = n ^ (n >> 4u); n *= 0x27d4eb2du; n = n ^ (n >> 15u);
-    return (float)(n & 0x00FFFFFFu) / (float)0x01000000;
+    uint seed = SYSwang_inthash(id ^ salt);
+    return SYSfastRandom(&seed);
+}
+
+static int wrapi(int v, int n) { return ((v % n) + n) % n; }
+
+static float wrapd(float d, float n, int tiling)
+{
+    if (!tiling) return d;
+    if (d >  n * 0.5f) d -= n;
+    if (d < -n * 0.5f) d += n;
+    return d;
 }
 
 @KERNEL
 {
-    int2 cell = @ixy;
-    int2 grid = @grid;
+    int2 mgrid = (int2)(max(@macro_grid_x, 1), max(@macro_grid_y, 1));
+    float2 res = (float2)((float)@src_res_x, (float)@src_res_y);
     uint s = (uint)@seed;
 
-    // A macro group is a run of micro cells on a space-filling walk of the grid, with a random
-    // length per group. Boustrophedon order -- serpentine, reversing every row -- so a run that
-    // crosses a row boundary stays adjacent on the image instead of teleporting across it.
-    //
-    // A proper adjacency-graph flood would be better and is what the Unreal port should do. This
-    // is the version that fits in one dependency-free kernel and is enough to judge the look.
-    int row = cell.y;
-    int col = (row & 1) ? (grid.x - 1 - cell.x) : cell.x;
-    int walk = row * grid.x + col;
+    // This micro cluster's centroid, in source pixels -- written by step 03, so it is where the
+    // cluster actually ended up rather than where its cell started.
+    float3 c = @centre_pos;
+    float2 p = (float2)(c.x, c.y);
 
-    int lo = max(@min_cells, 1);
-    int hi = max(@max_cells, lo);
+    float2 MS = res / (float2)((float)mgrid.x, (float)mgrid.y);
+    int2 home = (int2)((int)(p.x / MS.x), (int)(p.y / MS.y));
 
-    // March group boundaries from the start of the walk. Cheap because the walk index is small,
-    // and it keeps every cell's answer independent of every other cell's.
-    int at = 0;
-    int group = 0;
-    while (at <= walk)
+    float best  = 1e30f;
+    int   bestI = 0;
+
+    for (int dy = -1; dy <= 1; ++dy)
+    for (int dx = -1; dx <= 1; ++dx)
     {
-        float r = hash11((uint)group * 2654435761u + s);
-        int len = lo + (int)(r * (float)(hi - lo + 1));
-        len = clamp(len, lo, hi);
-        at += len;
-        if (at <= walk) group++;
+        int sx = home.x + dx;
+        int sy = home.y + dy;
+
+        if (@tiling) { sx = wrapi(sx, mgrid.x); sy = wrapi(sy, mgrid.y); }
+        else if (sx < 0 || sy < 0 || sx >= mgrid.x || sy >= mgrid.y) continue;
+
+        uint sid = (uint)(sy * mgrid.x + sx);
+
+        // Seed position: centre of its macro cell plus scatter, so the macro lattice does not
+        // read as a grid of its own.
+        float jx = randFromId(sid * 3u + 1u + s, 0u) - 0.5f;
+        float jy = randFromId(sid * 3u + 2u + s, 0u) - 0.5f;
+        float2 sp = ((float2)((float)sx, (float)sy) + (float2)(0.5f, 0.5f)) * MS
+                  + (float2)(jx, jy) * MS * clamp(@jitter, 0.0f, 1.0f);
+
+        float ddx = wrapd(p.x - sp.x, res.x, @tiling);
+        float ddy = wrapd(p.y - sp.y, res.y, @tiling);
+        float d = sqrt(ddx * ddx + ddy * ddy);
+
+        // The uneven-size term. Dividing the distance by a per-seed weight is a multiplicatively
+        // weighted Voronoi: weight > 1 reaches further and takes more micro cells, weight < 1
+        // keeps fewer. At size_variation 0 every weight is 1 and the macro cells come out even.
+        //
+        // Bounded well away from zero -- a tiny weight makes a seed unreachable, which leaves a
+        // macro id that no micro cluster carries and a gap in the hue distribution.
+        float v = clamp(@size_variation, 0.0f, 1.0f);
+        float w = 1.0f + (randFromId(sid * 3u + 3u + s, 0u) - 0.5f) * 2.0f * v * 0.8f;
+        w = max(w, 0.2f);
+
+        float dw = d / w;
+
+        if (dw < best) { best = dw; bestI = (int)sid; }
     }
 
-    @macro.set((float)group);
+    @macro.set((float)bestI);
 }

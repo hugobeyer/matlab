@@ -14,18 +14,24 @@
 #runover layer
 #bind layer out float3 noread write
 #bind layer albedo float3
-#bind layer label
-#bind layer macro_id
+#bind layer label float
+#bind layer macro_id float
+#bind layer centre_feat float3
+#bind parm grid_x int val=32
+#bind parm stat_mix float val=0
 #bind parm hue_var float val=0.02
 #bind parm sat_var float val=0.05
 #bind parm val_var float val=0.05
 #bind parm macro_mix float val=0.5
 
-static float hash11(uint n)
+#import <random.h>
+
+// Houdini's own RNG rather than a hand-rolled hash: SYSwang_inthash to decorrelate the id,
+// SYSfastRandom to draw from it. Same pair the shipped SideFX kernels use.
+static float randFromId(uint id, uint salt)
 {
-    n = (n ^ 61u) ^ (n >> 16u);
-    n *= 9u; n = n ^ (n >> 4u); n *= 0x27d4eb2du; n = n ^ (n >> 15u);
-    return (float)(n & 0x00FFFFFFu) / (float)0x01000000;
+    uint seed = SYSwang_inthash(id ^ salt);
+    return SYSfastRandom(&seed);
 }
 
 static float3 rgb2hsv(float3 c)
@@ -57,7 +63,7 @@ static float3 hsv2rgb(float3 c)
 // Signed, zero-mean. A one-sided offset would tint the whole surface rather than vary it.
 static float signedHash(uint id, uint salt)
 {
-    return hash11(id * 7919u + salt) * 2.0f - 1.0f;
+    return randFromId(id * 7919u + salt, 0u) * 2.0f - 1.0f;
 }
 
 @KERNEL
@@ -72,6 +78,27 @@ static float signedHash(uint id, uint salt)
     float dh = (signedHash(mi, 11u) * wMicro + signedHash(ma, 101u) * wMacro) * @hue_var;
     float ds = (signedHash(mi, 23u) * wMicro + signedHash(ma, 211u) * wMacro) * @sat_var;
     float dv = (signedHash(mi, 37u) * wMicro + signedHash(ma, 307u) * wMacro) * @val_var;
+
+    // Statistics by id, blended in against the pure hash. centre_feat carries (mean, min, max)
+    // of the cluster's height, written by step 03.
+    //
+    // At stat_mix 0 the variation is pure noise. Turned up, it follows the surface: value tracks
+    // how high the cluster sits, saturation tracks how busy it is. That is the difference between
+    // variation that reads as material and variation that reads as dirt on the lens.
+    float sm = clamp(@stat_mix, 0.0f, 1.0f);
+    if (sm > 0.0f)
+    {
+        int gx = max(@grid_x, 1);
+        int2 mc = (int2)((int)(mi % (uint)gx), (int)(mi / (uint)gx));
+        float3 st = @centre_feat.bufferIndex(mc);
+
+        // Recentred on 0.5 so the stats push both ways rather than only brightening.
+        float lift  = (st.x - 0.5f) * 2.0f;
+        float range = clamp((st.z - st.y) * 2.0f, 0.0f, 1.0f);
+
+        dv = mix(dv, lift  * @val_var, sm);
+        ds = mix(ds, range * @sat_var, sm);
+    }
 
     float3 hsv = rgb2hsv(@albedo);
     hsv.x = fmod(hsv.x + dh + 1.0f, 1.0f);

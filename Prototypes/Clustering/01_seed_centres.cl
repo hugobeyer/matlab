@@ -10,20 +10,21 @@
 //
 
 #runover layer
-#bind layer height
+#bind layer height float
 #bind layer centre_pos float3 noread write
 #bind layer centre_feat float3 noread write
-#bind parm src_res int2
+#bind parm src_res_x int val=1024
+#bind parm src_res_y int val=1024
 #bind parm jitter float val=1
 
-static float hash11(uint n)
+#import <random.h>
+
+// Houdini's own RNG rather than a hand-rolled hash: SYSwang_inthash to decorrelate the id,
+// SYSfastRandom to draw from it. Same pair the shipped SideFX kernels use.
+static float randFromId(uint id, uint salt)
 {
-    n = (n ^ 61u) ^ (n >> 16u);
-    n *= 9u;
-    n = n ^ (n >> 4u);
-    n *= 0x27d4eb2du;
-    n = n ^ (n >> 15u);
-    return (float)(n & 0x00FFFFFFu) / (float)0x01000000;
+    uint seed = SYSwang_inthash(id ^ salt);
+    return SYSfastRandom(&seed);
 }
 
 @KERNEL
@@ -33,24 +34,24 @@ static float hash11(uint n)
 
     // Cell size in source pixels. Non-integer is fine and expected -- the assign pass works in
     // source pixels throughout, so nothing depends on the grid dividing the image evenly.
-    float2 S = (float2)((float)@src_res.x / (float)grid.x,
-                        (float)@src_res.y / (float)grid.y);
+    float2 S = (float2)((float)@src_res_x / (float)grid.x,
+                        (float)@src_res_y / (float)grid.y);
 
     // Centre of the cell, plus optional scatter. Jitter breaks the "everything on a lattice"
     // read that uniform SLIC otherwise gives, before a single iteration has run.
     float2 pos = ((float2)((float)cell.x, (float)cell.y) + (float2)(0.5f, 0.5f)) * S;
 
     uint seed = (uint)(cell.y * grid.x + cell.x);
-    float jx = hash11(seed * 2u + 1u) - 0.5f;
-    float jy = hash11(seed * 2u + 7919u) - 0.5f;
+    float jx = randFromId(seed * 2u + 1u, 0u) - 0.5f;
+    float jy = randFromId(seed * 2u + 7919u, 0u) - 0.5f;
     pos += (float2)(jx, jy) * S * @jitter;
 
     @centre_pos.set((float3)(pos.x, pos.y, 0.0f));
 
     // Feature seeded from the pixel under the centre. One sample is enough: the update pass
     // replaces it with the true mean after the first iteration.
-    int2 p = (int2)(clamp((int)pos.x, 0, @src_res.x - 1),
-                    clamp((int)pos.y, 0, @src_res.y - 1));
+    int2 p = (int2)(clamp((int)pos.x, 0, @src_res_x - 1),
+                    clamp((int)pos.y, 0, @src_res_y - 1));
     float h = @height.bufferIndex(p);
     @centre_feat.set((float3)(h, 0.0f, 0.0f));
 }

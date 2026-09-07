@@ -17,13 +17,14 @@
 //
 
 #runover layer
-#bind layer height
+#bind layer height float
 #bind layer normal float3
 #bind layer albedo float3
 #bind layer centre_pos float3
 #bind layer centre_feat float3
-#bind layer label noread write
-#bind parm grid int2
+#bind layer label float noread write
+#bind parm grid_x int val=32
+#bind parm grid_y int val=32
 #bind parm compactness float val=10
 #bind parm w_height float val=1
 #bind parm w_normal float val=1
@@ -46,7 +47,7 @@ static float wrapd(float d, float n, int tiling)
 {
     int2 p    = @ixy;
     int2 res  = @res;
-    int2 grid = @grid;
+    int2 grid = (int2)(@grid_x, @grid_y);
 
     float2 S = (float2)((float)res.x / (float)grid.x,
                         (float)res.y / (float)grid.y);

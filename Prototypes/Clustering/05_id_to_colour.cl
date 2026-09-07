@@ -10,14 +10,17 @@
 
 #runover layer
 #bind layer colour float3 noread write
-#bind layer id
+#bind layer id float
 #bind parm mode int val=0
 
-static float hash11(uint n)
+#import <random.h>
+
+// Houdini's own RNG rather than a hand-rolled hash: SYSwang_inthash to decorrelate the id,
+// SYSfastRandom to draw from it. Same pair the shipped SideFX kernels use.
+static float randFromId(uint id, uint salt)
 {
-    n = (n ^ 61u) ^ (n >> 16u);
-    n *= 9u; n = n ^ (n >> 4u); n *= 0x27d4eb2du; n = n ^ (n >> 15u);
-    return (float)(n & 0x00FFFFFFu) / (float)0x01000000;
+    uint seed = SYSwang_inthash(id ^ salt);
+    return SYSfastRandom(&seed);
 }
 
 @KERNEL
@@ -26,12 +29,12 @@ static float hash11(uint n)
 
     if (@mode == 1)
     {
-        float g = hash11(id);
+        float g = randFromId(id, 0u);
         @colour.set((float3)(g, g, g));
         return;
     }
 
-    @colour.set((float3)(hash11(id * 3u + 1u),
-                         hash11(id * 3u + 2u),
-                         hash11(id * 3u + 3u)));
+    @colour.set((float3)(randFromId(id * 3u + 1u, 0u),
+                         randFromId(id * 3u + 2u, 0u),
+                         randFromId(id * 3u + 3u, 0u)));
 }
