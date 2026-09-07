@@ -1,4 +1,4 @@
-#ifndef MATERIAL_LAB_MASK_OPS_USH
+﻿#ifndef MATERIAL_LAB_MASK_OPS_USH
 #define MATERIAL_LAB_MASK_OPS_USH
 
 // The tail every mask-producing node shares: shape the signal it generated, then blend it into
@@ -39,9 +39,18 @@ float MixtormatApplyMaskOperation(uint BlendMode, float Previous, float Incoming
 	{
 		return Previous + (Incoming - 0.5f) * 2.0f;
 	}
-	return Previous < 0.5f
-		? 2.0f * Previous * Incoming
-		: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
+	if (BlendMode == 7)
+	{
+		return Previous < 0.5f
+			? 2.0f * Previous * Incoming
+			: 1.0f - 2.0f * (1.0f - Previous) * (1.0f - Incoming);
+	}
+	if (BlendMode == 8)
+	{
+		return abs(Previous - Incoming);
+	}
+	// Exclusion: difference's softer relative -- the same endpoints, no hard crease at the match.
+	return Previous + Incoming - 2.0f * Previous * Incoming;
 }
 
 // Contrast about the midpoint, then a signed balance that pushes the mask toward black or white

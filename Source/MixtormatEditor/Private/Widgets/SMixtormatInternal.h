@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Shared internals for the SMixtormat implementation files.
 //
@@ -235,6 +235,8 @@ namespace MixtormatUI
 		case EMixtormatMaskBlendMode::Max: return LOCTEXT("MaskModeMax", "Max");
 		case EMixtormatMaskBlendMode::AddSub: return LOCTEXT("MaskModeAddSub", "Add/Sub");
 		case EMixtormatMaskBlendMode::Overlay: return LOCTEXT("MaskModeOverlay", "Overlay");
+		case EMixtormatMaskBlendMode::Difference: return LOCTEXT("MaskModeDifference", "Difference");
+		case EMixtormatMaskBlendMode::Exclusion: return LOCTEXT("MaskModeExclusion", "Exclusion");
 		default: return LOCTEXT("MaskModeReplace", "Replace");
 		}
 	}

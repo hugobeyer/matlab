@@ -1,0 +1,34 @@
+#ifndef MIXTORMAT_EDGE_SHADING_USH
+#define MIXTORMAT_EDGE_SHADING_USH
+
+void MixtormatEdgeFactors(
+	float EdgeDistancePixels,
+	float BaseWidthPixels,
+	float WidthVariation,
+	float RegionRandom,
+	float AOSpread,
+	out float Bevel,
+	out float Crease)
+{
+	const float Variation = saturate(WidthVariation);
+	const float Width = max(
+		BaseWidthPixels * lerp(1.0f - Variation, 1.0f + Variation, saturate(RegionRandom)),
+		1.0e-4f);
+	Bevel = 1.0f - saturate(EdgeDistancePixels / Width);
+	Crease = 1.0f - saturate(EdgeDistancePixels / max(Width * max(AOSpread, 1.0f), 1.0e-4f));
+}
+
+float4 MixtormatApplyEdgeShading(
+	float4 RAM,
+	float Bevel,
+	float Crease,
+	float EdgeRoughness,
+	float EdgeRoughnessAmount,
+	float AOAmount)
+{
+	RAM.r = lerp(RAM.r, saturate(EdgeRoughness), saturate(Bevel * EdgeRoughnessAmount));
+	RAM.g *= 1.0f - saturate(Crease * AOAmount);
+	return RAM;
+}
+
+#endif

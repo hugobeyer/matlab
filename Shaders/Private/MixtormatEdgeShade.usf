@@ -1,0 +1,48 @@
+﻿#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatEdgeShading.ush"
+
+Texture2D<float2> EdgeField;
+Texture2D<float4> SourceRAM;
+RWTexture2D<float4> OutputRAM;
+
+int2 OutputSize;
+float BevelWidthPixels;
+float BevelVariation;
+float AOSpread;
+float EdgeRoughness;
+float EdgeRoughnessAmount;
+float AOAmount;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 Edge = EdgeField.Load(int3(Pixel, 0));
+	float Bevel;
+	float Crease;
+	// Edge.x is signed now -- negative inside the gap. Edge shading only ever wanted the cell
+	// side, so it is clamped here. MixtormatEdgeFactors would saturate a negative to the same
+	// result today, but that is its arithmetic and not its contract; edge wear is coming as its
+	// own effect and this keeps the current look pinned while that lands.
+	MixtormatEdgeFactors(
+		max(Edge.x, 0.0f),
+		BevelWidthPixels,
+		BevelVariation,
+		Edge.y,
+		AOSpread,
+		Bevel,
+		Crease);
+
+	OutputRAM[Pixel] = MixtormatApplyEdgeShading(
+		SourceRAM.Load(int3(Pixel, 0)),
+		Bevel,
+		Crease,
+		EdgeRoughness,
+		EdgeRoughnessAmount,
+		AOAmount);
+}

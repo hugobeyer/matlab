@@ -1,4 +1,4 @@
-#ifndef MIXTORMAT_REGION_ID_USH
+﻿#ifndef MIXTORMAT_REGION_ID_USH
 #define MIXTORMAT_REGION_ID_USH
 
 // Everything shared by the cluster filter and the nodes that read its ID map: the hash the IDs
@@ -54,5 +54,19 @@ float MixtormatRegionRandomSalted(uint RegionSeed, uint Salt)
 #define MIXTORMAT_SALT_SAT   0xc8013ea4u
 #define MIXTORMAT_SALT_VAL   0xad90777du
 #define MIXTORMAT_SALT_VALUE 0x2545f491u
+
+// Pattern relief: how far this cell sits off the base, and the two independent draws that
+// vary its chamfer. Height, width and profile each get their own salt so a cell that happens
+// to be tall is not also always the widest-chamfered one.
+#define MIXTORMAT_SALT_PATTERN_HEIGHT        0x51ed270bu
+#define MIXTORMAT_SALT_PATTERN_FEATHER       0xd8163841u
+#define MIXTORMAT_SALT_PATTERN_BEVEL         0xcb1ab31fu
+#define MIXTORMAT_SALT_PATTERN_BEVEL_PROFILE 0x8da6b343u
+#define MIXTORMAT_SALT_PATTERN_UV_ROT      0x165667b1u
+#define MIXTORMAT_SALT_PATTERN_UV_SCALE    0x27d4eb2du
+#define MIXTORMAT_SALT_PATTERN_UV_OFF_U    0x94d049bbu
+#define MIXTORMAT_SALT_PATTERN_UV_OFF_V    0x369dea0fu
+#define MIXTORMAT_SALT_PATTERN_UV_FLIP_U   0x9e3779b9u
+#define MIXTORMAT_SALT_PATTERN_UV_FLIP_V   0x7f4a7c15u
 
 #endif

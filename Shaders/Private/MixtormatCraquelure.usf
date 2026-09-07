@@ -1,4 +1,4 @@
-#include "/Engine/Public/Platform.ush"
+﻿#include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
 
@@ -69,6 +69,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Scale and period are the same number here, unlike MixtormatGullyField where the period is
 	// the base period shifted by the octave. There is one octave in a crack network, so the
 	// lattice the UV is scaled onto is the lattice that wraps.
+	// Rounding 0: craquelure wants the true Voronoi corner, since a crack meeting a crack is a
+	// junction and not a fillet.
 	const FMixtormatCellularResult Cell = MixtormatCellular(
 		SampleUV * (float)Cells, Cells, Seed, Jitter);
 

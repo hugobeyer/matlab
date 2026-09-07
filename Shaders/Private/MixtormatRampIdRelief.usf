@@ -1,4 +1,6 @@
-#include "/Engine/Public/Platform.ush"
+﻿#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
 
 // Per-region tilt. Takes the gradient field the ramp filter produced and uses it to lift one side
 // of every region and sink the other, in the composited height and the matching normal.
@@ -15,6 +17,9 @@
 
 // (gradient 0..1, edge feather 0..1).
 Texture2D<float2> RampField;
+// Optional Pattern-ID edge field: x is distance from the region interior edge in output pixels,
+// y is the producer's per-region random draw. Bound on every dispatch; UseEdge gates it.
+Texture2D<float2> EdgeField;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
 
@@ -28,10 +33,29 @@ int2 OutputSize;
 float HeightAmount;
 float NormalStrength;
 
-// Shapes the ramp between a straight slope and an eased one, without moving its ends. At 1 the
-// slope is constant across the region -- the same constant-gradient case craquelure's cone is,
-// and the reason that number means the same thing in both nodes.
-float Profile;
+// How the region's ramp meets the height already there. AddSub is the centred case the node used
+// to hard-code -- a region rises on one side exactly as much as it falls on the other -- and the
+// rest are the mask vocabulary, so Min carves, Multiply darkens and so on.
+uint BlendMode;
+
+// Pattern IDs only. UseEdge selects the whole pattern model: per-cell elevation plus a chamfer,
+// in place of the Ramp From IDs tilt above.
+uint UseEdge;
+float CellHeightAmount;
+float CellHeightRandom;
+float BevelHeight;
+// Whichever of these matches the unit the edge field was published in. Two values and not one,
+// because a pixel width and a cell fraction need different ranges to be draggable, and reusing a
+// 0.25..64 pixel slider against a 0..1 relative distance squashes the whole chamfer into the
+// first few percent of its curve -- which is what made Profile look like it did nothing.
+float BevelWidthPixels;
+float BevelWidthCells;
+uint BevelRelative;
+float BevelVariation;
+float BevelRoundness;
+float BevelRoundnessRandom;
+float BevelInsetPixels;
+float GapHeight;
 
 int RampWrap(int X, int Size)
 {
@@ -44,17 +68,228 @@ int2 RampWrapPixel(int2 P)
 	return int2(RampWrap(P.x, OutputSize.x), RampWrap(P.y, OutputSize.y));
 }
 
-// The signed tilt at one pixel, on -0.5..0.5 before weighting.
+// The region ramp's contribution at one pixel, as a signed height delta.
 //
-// Centred rather than clamped to one side. A crack is parted material and may only ever lower the
-// height, which is why the relief pass floors itself at the surface; a tilt is not that -- a
-// region rises on one side exactly as much as it falls on the other, and flooring it would throw
-// away half the effect and leave every region sitting lower than its neighbours.
-float RampTilt(int2 P)
+// The blend happens against the height already under the pixel and the delta is what comes back,
+// so whatever mode is chosen, the Sobel below differentiates the surface that is actually
+// written. That matters more than it looks: under Add the delta and the composited result move
+// together and any formulation would pass, but under Min or Multiply they diverge, and a normal
+// derived from the unblended ramp would describe a surface the height does not have.
+//
+// Field.x is the ramp, fitted to the region's bounding box by the producer. Field.y is that
+// region's own strength draw. Intensity multiplies both as a blend weight, which is what keeps
+// this mode-agnostic -- at 0 the surface is untouched under every mode, not just the additive
+// ones.
+float RampDelta(int2 P)
 {
+	const int2 W = RampWrapPixel(P);
+	const float2 Field = RampField.Load(int3(W, 0)).xy;
+	const float Source = SourceHeight.Load(int3(W, 0));
+	const float Weight = saturate(HeightAmount * Field.y);
+	const float Blended = MixtormatApplyMaskOperation(BlendMode, Source, saturate(Field.x));
+	return (Blended - Source) * Weight;
+}
+
+// The cell face's elevation across the chamfer band, from the grout line (T = 0, down at the
+// base) up to the flat of the cell (T = 1, full height).
+//
+// This runs uphill, and that is the fix. It used to run the other way -- full height at the edge
+// falling to nothing in the interior -- which built a raised lip around a flat face and drove the
+// whole gap to full depth, so a positive Bevel Height dug in instead of standing the cell out.
+// A chamfered tile is the opposite shape: the face is proud, and the chamfer is the ramp down to
+// the grout. Running it uphill also decouples this from Gap Height, because the gap now sits at
+// T = 0 and takes no bevel contribution at all; before, the two fought over the same pixels.
+//
+// Roundness bends the curve between two ends that stay pinned for every value, so it changes the
+// chamfer's shape and never its width or its height:
+//
+//   -1   a cove -- hugs the grout, then sweeps up into the face
+//    0   a straight, flat chamfer
+//   +1   a bullnose -- lifts away from the grout and rounds over onto the face
+//
+// The extremes are quarter circles, which is what a real chamfer tool leaves, and the blend
+// through zero is continuous from both sides.
+float MixtormatChamferProfile(float T, float Roundness)
+{
+	const float Linear = T;
+	if (Roundness >= 0.0f)
+	{
+		const float Inverse = 1.0f - T;
+		const float Bullnose = sqrt(saturate(1.0f - Inverse * Inverse));
+		return lerp(Linear, Bullnose, saturate(Roundness));
+	}
+	const float Cove = 1.0f - sqrt(saturate(1.0f - T * T));
+	return lerp(Linear, Cove, saturate(-Roundness));
+}
+
+// The chamfer, as a signed height.
+//
+// Edge.x is signed: negative in the gap, zero on the gap's inner wall, positive into the cell.
+// BevelInsetPixels slides the band along that axis, which is what puts the chamfer inside the
+// cell or out in the grout -- one continuous control rather than a toggle that pops when flipped.
+// Negative inset walks the ramp out into the gap, positive pulls it up onto the cell face, zero
+// starts it exactly at the wall.
+//
+// BevelHeight is signed and lifts the cell *face*: positive stands the cell proud of the grout
+// with the chamfer ramping down to it, negative sinks the face below the grout instead. The gap
+// itself is untouched either way -- that is Gap Height's job. Both directions are bounded against
+// the surface in BoundedDelta below.
+//
+// Width and profile take independent per-cell draws. Sharing one would tie a wide chamfer to a
+// soft one and the variation would read as a single axis instead of two.
+float PatternBevelDelta(int2 P)
+{
+	if (UseEdge == 0 || BevelHeight == 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const int2 W = RampWrapPixel(P);
+	const float2 Edge = EdgeField.Load(int3(W, 0));
+	const float WidthRandom = saturate(Edge.y);
+	// A second, independent draw off the first. The edge field carries one random per cell and
+	// has no room for another, so the width draw is quantised back to the integer it came from
+	// and pushed through the same salted hash every other per-region draw uses. That is a real
+	// decorrelation, not a reshuffle of the same bits: a cell with a wide chamfer is no more
+	// likely to have a soft one than a sharp one.
+	const float ProfileRandom = MixtormatRegionRandomSalted(
+		uint(WidthRandom * 16777215.0f + 0.5f),
+		MIXTORMAT_SALT_PATTERN_BEVEL_PROFILE);
+
+	// One-sided, like the cell height: the draw only ever narrows a chamfer from the authored
+	// width, never widens it past what was asked for. Straddling the value the way this used to
+	// meant half the cells came out wider than the control said, so the control read as a centre
+	// point rather than as the width.
+	const float WidthVariation = saturate(BevelVariation);
+	const float BaseWidth = BevelRelative != 0 ? BevelWidthCells : BevelWidthPixels;
+	const float Width = max(
+		BaseWidth * lerp(1.0f - WidthVariation, 1.0f, WidthRandom),
+		1.0e-4f);
+
+	// Additive rather than multiplicative, unlike width and feather. Roundness is signed and
+	// centred on zero, so scaling it could only ever make a round chamfer rounder -- it could
+	// never turn one cell's bullnose into its neighbour's cove. Offsetting it can, which is the
+	// variation worth having on a control whose two halves are different shapes.
+	const float Roundness = clamp(
+		BevelRoundness + saturate(BevelRoundnessRandom) * (ProfileRandom * 2.0f - 1.0f),
+		-1.0f,
+		1.0f);
+
+	const float T = saturate((Edge.x - BevelInsetPixels) / Width);
+	return BevelHeight * MixtormatChamferProfile(T, Roundness);
+}
+
+// Where the grout sits, relative to the cells.
+//
+// The gap is the region-less band between cells -- no ID, nothing for the per-cell draws to key
+// off -- so it needs its own height rather than inheriting one. Signed: negative sinks it into a
+// trench, positive stands it proud as a raised mortar line.
+//
+// It costs no new binding. EdgeField.x is the signed distance from the gap's inner wall, negative
+// inside the gap and positive into the cell, so the sign of that one channel already says which
+// side of the grout line a pixel is on.
+//
+// Resolved across a single texel rather than switched hard. The transition is a real step in the
+// surface and is meant to look like one, but a bare comparison would alias along every grout line
+// in the image; one texel of smoothstep is the narrowest ramp that samples cleanly, and the bevel
+// is what softens it further when that is the look wanted.
+//
+// Inert without a gap: GapPixels 0 means every pixel belongs to a region, so there is nothing
+// outside the IDs for this to move.
+float PatternGapHeight(int2 P)
+{
+	if (UseEdge == 0 || GapHeight == 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Edge = EdgeField.Load(int3(RampWrapPixel(P), 0)).x;
+	return GapHeight * (1.0f - smoothstep(-0.5f, 0.5f, Edge));
+}
+
+// The cell's own elevation: one constant per cell, eased out at its boundary by the feather the
+// producer wrote.
+//
+// One-sided, and that is the fix. This used to remap the draw to a signed -1..1 and add it, so
+// about half the cells came out *below* the base. A sunk cell still feathers back to base at its
+// own wall, which lifts its rim above its middle -- so every other tile read as a recessed panel
+// inside a raised frame. That is the picture-frame look, and it was the signed encoding, not the
+// chamfer.
+//
+// Height Random multiplies instead. The draw is remapped to 1 - Random .. 1, so a cell is always
+// somewhere between the base and full Height and never under it: at Random 0 every cell sits at
+// full Height, at 1 they spread the whole way down to the base. Nothing can go negative, so the
+// feather only ever ramps a cell *down* to meet its neighbour and cannot invert a face.
+float PatternCellHeight(int2 P)
+{
+	if (UseEdge == 0 || CellHeightAmount == 0.0f)
+	{
+		return 0.0f;
+	}
 	const float2 Field = RampField.Load(int3(RampWrapPixel(P), 0)).xy;
-	const float Shaped = pow(saturate(Field.x), max(Profile, 0.05f));
-	return (Shaped - 0.5f) * Field.y;
+	const float Multiplier = lerp(1.0f - saturate(CellHeightRandom), 1.0f, saturate(Field.x));
+	return CellHeightAmount * Multiplier * Field.y;
+}
+
+// How far a relief delta is allowed to move the surface, given the room actually available.
+//
+// The bevel used to be added raw and the sum saturated at the write. Where it ran past whatever
+// height was left under it the surface went flat at zero across a band, and the edge of that band
+// was a crease. Worse, the Sobel below reads the delta and not the written height, so the normal
+// went on reporting a slope across ground the height had already flattened -- geometry and
+// lighting describing two different surfaces, which is what makes a clip read as a hard edge
+// rather than as a merely flat spot.
+//
+// So the move is eased into the limit instead of being cut off at it. Below Knee * Headroom this
+// is exactly the requested amount -- anything that never clipped is untouched, to the bit -- and
+// past that it bends over and approaches Headroom without ever reaching it. The join is C1, so no
+// derivative discontinuity is introduced either, and as Headroom falls to zero the whole curve
+// falls to zero with it rather than snapping off.
+float BoundedMove(float Amount, float Headroom)
+{
+	const float Knee = 0.8f;
+	const float Linear = Knee * Headroom;
+	if (Amount <= Linear)
+	{
+		return Amount;
+	}
+	// Headroom - Slack^2 / (Amount - Linear + Slack): equals Linear at the join with unit slope,
+	// and rises asymptotically to Headroom after it.
+	const float Slack = Headroom - Linear;
+	return Headroom - (Slack * Slack) / max(Amount - Linear + Slack, 1.0e-6f);
+}
+
+// Both directions, because the pattern relief is signed now. A raised lip clipping at 1 is the
+// same crease as a cut one clipping at 0, and having removed it at the floor it would walk
+// straight back in at the roof if only one end were bounded.
+float BoundedDelta(float Delta, float Source)
+{
+	if (Delta < 0.0f)
+	{
+		return -BoundedMove(-Delta, max(Source, 0.0f));
+	}
+	return BoundedMove(Delta, max(1.0f - Source, 0.0f));
+}
+
+// Position-only, and deliberately so: the Sobel below evaluates this at eight neighbours, and a
+// bound computed once at the centre pixel would put the taps back on a surface the centre is not
+// on -- reintroducing exactly the height/normal disagreement this is here to remove.
+float ReliefDelta(int2 P)
+{
+	if (UseEdge == 0)
+	{
+		// Ramp From IDs. Left unbounded, with the saturate at the write as its only guard: the
+		// blend modes are already defined on 0..1 against a 0..1 surface, so the result cannot
+		// run away the way an unbounded chamfer could.
+		return RampDelta(P);
+	}
+
+	// Pattern IDs: grout, elevation and chamfer, bounded together. Together and not separately,
+	// because they stack -- a cell already sunk near the floor, over a sunk gap, with a chamfer
+	// cutting further, is the case that clips, and bounding each in isolation would miss it.
+	const float Source = SourceHeight.Load(int3(RampWrapPixel(P), 0));
+	return BoundedDelta(
+		PatternGapHeight(P) + PatternCellHeight(P) + PatternBevelDelta(P),
+		Source);
 }
 
 [numthreads(8, 8, 1)]
@@ -68,7 +303,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(DispatchThreadId.xy);
 	const float Source = SourceHeight.Load(int3(P, 0));
 
-	OutputHeight[P] = saturate(Source + HeightAmount * RampTilt(P));
+	OutputHeight[P] = saturate(Source + ReliefDelta(P));
 
 	// Sobel over the same tilt field the height was moved by, so the normal and the displacement
 	// describe one surface. Scaled by the height amount as well as its own weight: a region that
@@ -78,23 +313,34 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int Ym = P.y - 1;
 	const int Yp = P.y + 1;
 
-	const float Tmm = RampTilt(int2(Xm, Ym));
-	const float T0m = RampTilt(int2(P.x, Ym));
-	const float Tpm = RampTilt(int2(Xp, Ym));
-	const float Tm0 = RampTilt(int2(Xm, P.y));
-	const float Tp0 = RampTilt(int2(Xp, P.y));
-	const float Tmp = RampTilt(int2(Xm, Yp));
-	const float T0p = RampTilt(int2(P.x, Yp));
-	const float Tpp = RampTilt(int2(Xp, Yp));
+	const float Tmm = ReliefDelta(int2(Xm, Ym));
+	const float T0m = ReliefDelta(int2(P.x, Ym));
+	const float Tpm = ReliefDelta(int2(Xp, Ym));
+	const float Tm0 = ReliefDelta(int2(Xm, P.y));
+	const float Tp0 = ReliefDelta(int2(Xp, P.y));
+	const float Tmp = ReliefDelta(int2(Xm, Yp));
+	const float T0p = ReliefDelta(int2(P.x, Yp));
+	const float Tpp = ReliefDelta(int2(Xp, Yp));
 
 	// The same 1/8 normalisation the erosion, chipping and craquelure normal passes use, so
 	// Normal means the same thing across all four.
-	const float Scale = NormalStrength * HeightAmount / 8.0f;
+	const float Scale = NormalStrength / 8.0f;
 	const float2 Gradient = float2(
 		(Tpm + 2.0f * Tp0 + Tpp) - (Tmm + 2.0f * Tm0 + Tmp),
 		(Tmp + 2.0f * T0p + Tpp) - (Tmm + 2.0f * T0m + Tpm)) * Scale;
 
-	const float3 TiltNormal = normalize(float3(Gradient, 1.0f));
+	// Negated, and that is the fix for relief that reads inside-out.
+	//
+	// The surface written above is Source + Delta, and the normal of a height field h is
+	// (-dh/dx, -dh/dy, 1). This pass had the gradient positive, so every raised feature lit as
+	// though it were sunk: a proud cell face read as a dish, a chamfer standing out read as one
+	// cut in, and feathering a cell up from the grout looked like feathering it down. The height
+	// was right the whole time -- only the light disagreed with it, which is exactly the failure
+	// that is hard to see in a heightmap preview and obvious the moment it is lit.
+	//
+	// MixtormatComposite's border normal is the reference: it differentiates its field the same
+	// way and negates, and it is the one that has always looked correct.
+	const float3 TiltNormal = normalize(float3(-Gradient, 1.0f));
 
 	const float4 EncodedBase = PreviousNormal.Load(int3(P, 0));
 	const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);

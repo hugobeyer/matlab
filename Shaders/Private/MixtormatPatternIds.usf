@@ -1,0 +1,209 @@
+﻿#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
+
+// One periodic lattice solve publishes four views of the same regions:
+// - sparse pixel-index IDs for the existing region consumers,
+// - the feature-point UV for per-region source transforms,
+// - a float2 relief field: how far this cell sits off the base, plus its edge feather,
+// - signed edge distance in output pixels plus one per-region draw for bevel variation.
+RWTexture2D<uint> OutputIds;
+RWTexture2D<float2> OutputUV;
+RWTexture2D<float2> OutputRamp;
+RWTexture2D<float2> OutputEdge;
+RWTexture2D<float4> OutputDebug;
+
+int2 OutputSize;
+uint WriteDebug;
+int Rows;
+int Columns;
+float RowOffset;
+float Jitter;
+uint SwapAxes;
+float GapPixels;
+uint Seed;
+
+// Relief is per-cell elevation, not per-cell slope. A cell is a flat face that sits somewhere
+// between -Height and +Height off the base, scaled by how much of that range Height Random uses, and the tilt vocabulary that used to live
+// here belongs to Ramp From IDs -- that filter runs a gradient across each region and composites
+// over this, which is the division of labour the two nodes are for.
+float Feather;
+float FeatherRandom;
+// Rounds the cell corners by blending the two nearest walls instead of taking a hard minimum.
+// In cell units, so it means the same thing on a large lattice and a small one.
+float Rounding;
+
+// Which unit the published edge distance is in.
+//
+//   0  output pixels -- an even visual width everywhere, so a chamfer looks the same on a long
+//      brick as on a small tile, but it does not scale with the lattice.
+//   1  a fraction of the cell -- 0 at the wall, 1 at the point furthest inside. The chamfer then
+//      frames every cell the same way whatever its size or aspect, which is what a bevel that is
+//      meant to belong to the cell wants.
+uint EdgeRelative;
+
+float2 PatternWorkUV(float2 UV)
+{
+	return SwapAxes != 0 ? UV.yx : UV;
+}
+
+float2 PatternUnworkUV(float2 UV)
+{
+	return SwapAxes != 0 ? UV.yx : UV;
+}
+
+float PatternPeriodicRowOffset(int SafeRows)
+{
+	// The top seam only closes when the accumulated row shift is an integer number of cells.
+	// Quantising to 1/Rows keeps the authored value as close as possible while guaranteeing that.
+	return round(saturate(RowOffset) * float(SafeRows)) / float(SafeRows);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int SafeRows = max(Rows, 1);
+	const int SafeColumns = max(Columns, 1);
+	const float EffectiveRowOffset = PatternPeriodicRowOffset(SafeRows);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 WorkUV = PatternWorkUV(UV);
+
+	float2 P = float2(WorkUV.x * float(SafeColumns), WorkUV.y * float(SafeRows));
+	// Shear the whole metric, not only the current row. The cellular helper then sees the query
+	// and every neighbouring feature point in one consistent space; shifting only floor(P.y)
+	// makes adjacent-row feature points disagree about where the boundary is.
+	P.x -= P.y * EffectiveRowOffset;
+
+	const FMixtormatCellularResult Cell =
+		MixtormatCellular(P, int2(SafeColumns, SafeRows), Seed, saturate(Jitter), max(Rounding, 0.0f));
+
+	// Recover the feature point and apply the inverse shear before turning it into the centre UV.
+	float2 FeatureP = P - Cell.CellOffset;
+	FeatureP.x += FeatureP.y * EffectiveRowOffset;
+	float2 CentreWorkUV = frac(float2(
+		FeatureP.x / float(SafeColumns),
+		FeatureP.y / float(SafeRows)) + 1.0f);
+	const float2 CentreUV = PatternUnworkUV(CentreWorkUV);
+
+	const int2 CentrePixel = clamp(
+		(int2)floor(CentreUV * float2(OutputSize)),
+		int2(0, 0),
+		OutputSize - int2(1, 1));
+	const uint RegionId = uint(CentrePixel.x + CentrePixel.y * OutputSize.x);
+
+	const float2 AxisPixels = SwapAxes != 0
+		? float2(OutputSize.y, OutputSize.x)
+		: float2(OutputSize.x, OutputSize.y);
+	const float MinCellPixels = max(min(
+		AxisPixels.x / float(SafeColumns),
+		AxisPixels.y / float(SafeRows)), 1.0e-4f);
+	// Absolute: lattice distance scaled to pixels by one scalar. This is the same single-scalar
+	// conversion the reference implementation makes -- it multiplies by length(featuresize) where
+	// this uses the smaller cell pitch -- and it carries the same caveat, that neither is
+	// direction-correct once the cells stop being square.
+	//
+	// Relative: normalised by the largest edge distance a cell can have, which is what makes the
+	// aspect drop out entirely. In lattice space every cell is a unit square by construction, so
+	// a fraction of the way to the middle means the same thing on any lattice at any resolution.
+	// The cell size cancels for the same reason it cancels in the reference graph, where the
+	// distance is multiplied by length(featuresize) and then divided straight back out again.
+	//
+	// The maximum is not simply half a cell: jitter moves feature points apart and the deepest
+	// interior point moves with them. 0.5 * sqrt(1 + j + j*j/2) is the reference's estimate of
+	// that growth, and it is exactly 0.5 at zero jitter -- so an unjittered cell centre lands on
+	// 1.0 and nothing has to be renormalised by hand.
+	const float SafeJitter = saturate(Jitter);
+	const float MaxEdgeCell =
+		0.5f * sqrt(1.0f + SafeJitter + 0.5f * SafeJitter * SafeJitter);
+	const float RawEdgePixels = EdgeRelative != 0
+		? Cell.EdgeDistance / MaxEdgeCell
+		: Cell.EdgeDistance * MinCellPixels;
+	// Converted into whatever unit the edge is published in, or the subtraction below compares
+	// pixels against cell fractions and the grout comes out either invisible or the whole tile.
+	const float HalfGapPixels = EdgeRelative != 0
+		? (max(GapPixels, 0.0f) * 0.5f / MinCellPixels) / MaxEdgeCell
+		: max(GapPixels, 0.0f) * 0.5f;
+	const bool bValidRegion = RawEdgePixels >= HalfGapPixels;
+
+	// Signed, and that is the change that lets a chamfer sit on either side of the grout: negative
+	// inside the gap, zero on the gap's inner wall, positive into the cell face. Clamping it to
+	// zero here -- which is what this used to do -- threw away the half of the axis the gap
+	// occupies, so a bevel could only ever eat into the cell. Consumers that only want the cell
+	// side take max(x, 0); MixtormatEdgeShade does exactly that.
+	const float EdgeSignedPixels = RawEdgePixels - HalfGapPixels;
+
+	const uint Seeded = MixtormatRegionSeed(RegionId, Seed);
+	const float BevelRandom =
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_BEVEL);
+
+	OutputIds[Pixel] = bValidRegion ? RegionId : MIXTORMAT_INVALID_REGION;
+	OutputUV[Pixel] = CentreUV;
+	OutputEdge[Pixel] = float2(EdgeSignedPixels, BevelRandom);
+
+	if (!bValidRegion)
+	{
+		// Grout sits at the base height. 0.5 is the neutral point of the signed encoding below,
+		// and a zero feather keeps it there whatever the cell either side is doing.
+		OutputRamp[Pixel] = float2(0.5f, 0.0f);
+	}
+	else
+	{
+		// One draw per cell, constant across the cell. The face stays flat -- no gradient, no
+		// bias, nothing measured off CellOffset -- because a flat face at a random elevation is
+		// exactly what a laid cobble or tile is, and a face that also tips is Ramp From IDs
+		// composited over the top.
+		//
+		// Normalised and stored 0..1: the field is a pure "which cell is this" signal, and the
+		// range and amount are applied once in the relief pass so the two cannot drift apart.
+		const float HeightDraw =
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_HEIGHT);
+
+		// Eases the elevation out at the cell's own boundary so neighbouring cells at different
+		// heights meet through a ramp rather than a one-texel cliff. Measured from the inner wall
+		// of the gap, so the grout is unaffected.
+		//
+		// Varied per cell on its own draw, multiplicatively: feather is a width, so scaling it is
+		// what "vary it" means -- a cell with twice the feather has twice the run-out, and one at
+		// zero variation keeps exactly the authored value.
+		// One-sided, like the cell height and the chamfer width: the draw only narrows the
+		// run-out from the authored value, never stretches it past what was asked for.
+		const float FeatherJitter = lerp(
+			1.0f - saturate(FeatherRandom),
+			1.0f,
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_FEATHER));
+		const float CellFeather = Feather * FeatherJitter;
+
+		// Feather works off the raw lattice distance, so the gap has to come back into lattice
+		// units here rather than reusing HalfGapPixels -- that one is in whatever unit the edge
+		// field is published in, which is no longer always pixels.
+		const float GapCell = max(GapPixels, 0.0f) * 0.5f / MinCellPixels;
+		const float InteriorEdgeCell = max(Cell.EdgeDistance - GapCell, 0.0f);
+		const float FeatherWeight = CellFeather > 0.0f
+			? saturate(InteriorEdgeCell / CellFeather)
+			: 1.0f;
+		OutputRamp[Pixel] = float2(HeightDraw, FeatherWeight);
+	}
+
+	if (WriteDebug != 0)
+	{
+		if (!bValidRegion)
+		{
+			OutputDebug[Pixel] = float4(MixtormatDebugRamp(0.0f), 1.0f);
+		}
+		else
+		{
+			OutputDebug[Pixel] = float4(
+				MixtormatDebugColor(float3(
+					MixtormatRegionRandom(RegionId * 3u + 1u),
+					MixtormatRegionRandom(RegionId * 3u + 2u),
+					MixtormatRegionRandom(RegionId * 3u + 3u))), 1.0f);
+		}
+	}
+}

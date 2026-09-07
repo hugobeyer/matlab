@@ -318,6 +318,18 @@ public:
 		SHADER_PARAMETER(float, RegionValMin)
 		SHADER_PARAMETER(float, RegionValMax)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER(uint32, PatternUVEnabled)
+		SHADER_PARAMETER(uint32, PatternUVSeed)
+		SHADER_PARAMETER(uint32, PatternUVOrthogonal)
+		SHADER_PARAMETER(float, PatternUVRotationMin)
+		SHADER_PARAMETER(float, PatternUVRotationMax)
+		SHADER_PARAMETER(float, PatternUVScaleMin)
+		SHADER_PARAMETER(float, PatternUVScaleMax)
+		SHADER_PARAMETER(float, PatternUVOffset)
+		SHADER_PARAMETER(uint32, PatternUVFlipU)
+		SHADER_PARAMETER(uint32, PatternUVFlipV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PatternUVField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -1289,6 +1301,78 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Procedural lattice/Voronoi region producer. One dispatch writes IDs, feature-point UV,
+// the shared ramp field, and an edge-distance field for bevel/shading.
+class FMixtormatPatternIdsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatPatternIdsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatPatternIdsCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(int32, Rows)
+		SHADER_PARAMETER(int32, Columns)
+		SHADER_PARAMETER(float, RowOffset)
+		SHADER_PARAMETER(float, Jitter)
+		SHADER_PARAMETER(uint32, SwapAxes)
+		SHADER_PARAMETER(float, GapPixels)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(float, FeatherRandom)
+		SHADER_PARAMETER(float, Rounding)
+		SHADER_PARAMETER(uint32, EdgeRelative)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputUV)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatPatternIdsCS,
+	"/Plugin/MaterialLab/Private/MixtormatPatternIds.usf",
+	"MainCS",
+	SF_Compute);
+
+class FMixtormatEdgeShadeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatEdgeShadeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatEdgeShadeCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, BevelWidthPixels)
+		SHADER_PARAMETER(float, BevelVariation)
+		SHADER_PARAMETER(float, AOSpread)
+		SHADER_PARAMETER(float, EdgeRoughness)
+		SHADER_PARAMETER(float, EdgeRoughnessAmount)
+		SHADER_PARAMETER(float, AOAmount)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatEdgeShadeCS,
+	"/Plugin/MaterialLab/Private/MixtormatEdgeShade.usf",
+	"MainCS",
+	SF_Compute);
+
 // Per-region gradient. One entry point staged by Stage, so -- as with the cluster filter --
 // every file-scope uniform is declared here whether a given stage reads it or not.
 class FMixtormatRampIdsCS final : public FGlobalShader
@@ -1306,12 +1390,9 @@ public:
 		SHADER_PARAMETER(uint32, Stage)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(uint32, RotateRandom)
-		SHADER_PARAMETER(float, ScaleMin)
-		SHADER_PARAMETER(float, ScaleMax)
-		SHADER_PARAMETER(float, BiasMin)
-		SHADER_PARAMETER(float, BiasMax)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(uint32, AngleStepping)
+		SHADER_PARAMETER(float, AngleStepDegrees)
+		SHADER_PARAMETER(float, IntensityRandom)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
@@ -1340,8 +1421,21 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, HeightAmount)
 		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, Profile)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(uint32, UseEdge)
+		SHADER_PARAMETER(float, CellHeightAmount)
+		SHADER_PARAMETER(float, CellHeightRandom)
+		SHADER_PARAMETER(float, BevelHeight)
+		SHADER_PARAMETER(float, BevelWidthPixels)
+		SHADER_PARAMETER(float, BevelWidthCells)
+		SHADER_PARAMETER(uint32, BevelRelative)
+		SHADER_PARAMETER(float, BevelVariation)
+		SHADER_PARAMETER(float, BevelRoundness)
+		SHADER_PARAMETER(float, BevelRoundnessRandom)
+		SHADER_PARAMETER(float, BevelInsetPixels)
+		SHADER_PARAMETER(float, GapHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RampField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
@@ -1612,6 +1706,47 @@ namespace MixtormatGpuCompositor
 		float HeightInfluence = 1.0f;
 	};
 
+	struct FPatternIdRenderData
+	{
+		int32 Rows = 8;
+		int32 Columns = 8;
+		float RowOffset = 0.0f;
+		float Jitter = 0.0f;
+		float Rounding = 0.0f;
+		bool bRelativeEdgeWidth = false;
+		bool bSwapAxes = false;
+		float GapPixels = 0.0f;
+		uint32 Seed = 1;
+
+		bool bUVVariation = false;
+		bool bOrthogonalUV = true;
+		float UVRotationMin = 0.0f;
+		float UVRotationMax = 360.0f;
+		float UVScaleMin = 1.0f;
+		float UVScaleMax = 1.0f;
+		float UVOffset = 0.0f;
+		bool bRandomFlipU = false;
+		bool bRandomFlipV = false;
+
+		float HeightAmount = 0.0f;
+		float NormalStrength = 8.0f;
+		float Feather = 0.15f;
+		float BevelHeight = 0.0f;
+		float BevelWidthPixels = 4.0f;
+		float BevelWidthCells = 0.25f;
+		float BevelVariation = 0.0f;
+		float BevelRoundness = 0.0f;
+		float BevelRoundnessRandom = 0.0f;
+		float BevelInsetPixels = 0.0f;
+		float GapHeight = 0.0f;
+		float HeightRandom = 1.0f;
+		float FeatherRandom = 0.0f;
+		float EdgeRoughness = 0.65f;
+		float EdgeRoughnessAmount = 0.0f;
+		float AOAmount = 0.0f;
+		float AOSpread = 2.0f;
+	};
+
 	// Reads a cluster filter's ID map and rewrites the layer's albedo. No blend mode and no
 	// weight: this is applied at the composite's albedo sample, not in the mask chain.
 	struct FHsvIdFilterRenderData
@@ -1645,14 +1780,11 @@ namespace MixtormatGpuCompositor
 	{
 		float HeightAmount = 0.05f;
 		float NormalStrength = 8.0f;
-		float Profile = 1.0f;
-		float Feather = 0.15f;
+		float IntensityRandom = 0.0f;
+		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
 		bool bRotateRandom = true;
-		float ScaleMin = 1.0f;
-		float ScaleMax = 1.0f;
-		float BiasMin = 0.0f;
-		float BiasMax = 0.0f;
-		bool bInvert = false;
+		bool bAngleStepping = false;
+		float AngleStepDegrees = 5.0f;
 		uint32 Seed = 1;
 	};
 
@@ -1666,6 +1798,7 @@ namespace MixtormatGpuCompositor
 		FCraquelureRenderData Craquelure;
 		FColorIdRenderData ColorId;
 		FClusterFilterRenderData Filter;
+		FPatternIdRenderData PatternId;
 		FHsvIdFilterRenderData HsvFilter;
 		FRandomIdRenderData RandomId;
 		FRampIdRenderData RampId;
@@ -1936,6 +2069,69 @@ namespace MixtormatGpuCompositor
 		return RegionIds;
 	}
 
+	FRDGTextureRef AddPatternIdPasses(
+		FRDGBuilder& GraphBuilder,
+		bool bWriteDebug,
+		FRDGTextureRef OutputDebug,
+		FIntPoint OutputSize,
+		const FChildRenderData& Child,
+		int32 LayerIndex,
+		FRDGTextureRef& OutUV,
+		FRDGTextureRef& OutRamp,
+		FRDGTextureRef& OutEdge)
+	{
+		const FRDGTextureDesc IdDesc = FRDGTextureDesc::Create2D(
+			OutputSize,
+			PF_R32_UINT,
+			FClearValueBinding::None,
+			TexCreate_ShaderResource | TexCreate_UAV);
+		const FRDGTextureDesc Float2Desc = FRDGTextureDesc::Create2D(
+			OutputSize,
+			PF_G16R16F,
+			FClearValueBinding::None,
+			TexCreate_ShaderResource | TexCreate_UAV);
+
+		FRDGTextureRef RegionIds =
+			GraphBuilder.CreateTexture(IdDesc, TEXT("Mixtormat.Pattern.RegionIds"));
+		OutUV = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.FeatureUV"));
+		OutRamp = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Ramp"));
+		OutEdge = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Edge"));
+
+		FMixtormatPatternIdsCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatPatternIdsCS::FParameters>();
+		Parameters->OutputSize = OutputSize;
+		Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
+		Parameters->Rows = Child.PatternId.Rows;
+		Parameters->Columns = Child.PatternId.Columns;
+		Parameters->RowOffset = Child.PatternId.RowOffset;
+		Parameters->Jitter = Child.PatternId.Jitter;
+		Parameters->SwapAxes = Child.PatternId.bSwapAxes ? 1u : 0u;
+		Parameters->GapPixels = Child.PatternId.GapPixels;
+		Parameters->Seed = Child.PatternId.Seed;
+		Parameters->FeatherRandom = Child.PatternId.FeatherRandom;
+		Parameters->Rounding = Child.PatternId.Rounding;
+		Parameters->EdgeRelative = Child.PatternId.bRelativeEdgeWidth ? 1u : 0u;
+		Parameters->Feather = Child.PatternId.Feather;
+		Parameters->OutputIds = GraphBuilder.CreateUAV(RegionIds);
+		Parameters->OutputUV = GraphBuilder.CreateUAV(OutUV);
+		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);
+		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
+		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
+
+		TShaderMapRef<FMixtormatPatternIdsCS> PatternShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8),
+			FMath::DivideAndRoundUp(OutputSize.Y, 8),
+			1);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.PatternIds.Layer%d.Child%d", LayerIndex, Child.SourceChildIndex),
+			PatternShader,
+			Parameters,
+			Groups);
+		return RegionIds;
+	}
+
 	// Builds one ramp filter's gradient field from an ID map.
 	//
 	// Three dispatches and one full-resolution int4 scratch buffer, so it is demand-culled the
@@ -1979,12 +2175,9 @@ namespace MixtormatGpuCompositor
 			Parameters->Stage = Stage;
 			Parameters->Seed = Ramp.Seed;
 			Parameters->RotateRandom = Ramp.bRotateRandom ? 1u : 0u;
-			Parameters->ScaleMin = Ramp.ScaleMin;
-			Parameters->ScaleMax = Ramp.ScaleMax;
-			Parameters->BiasMin = Ramp.BiasMin;
-			Parameters->BiasMax = Ramp.BiasMax;
-			Parameters->Invert = Ramp.bInvert ? 1u : 0u;
-			Parameters->Feather = Ramp.Feather;
+			Parameters->AngleStepping = Ramp.bAngleStepping ? 1u : 0u;
+			Parameters->AngleStepDegrees = Ramp.AngleStepDegrees;
+			Parameters->IntensityRandom = Ramp.IntensityRandom;
 			Parameters->RegionIds = RegionIds;
 			Parameters->RegionBounds = RegionBoundsUAV;
 			Parameters->OutputRamp = RampFieldUAV;
@@ -2232,16 +2425,16 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				ChildData.Type = EMixtormatLayerChildType::RampId;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FRampIdRenderData& RampData = ChildData.RampId;
-				RampData.HeightAmount = FMath::Clamp(Ramp.HeightAmount, 0.0f, 1.0f);
-				RampData.NormalStrength = FMath::Clamp(Ramp.NormalStrength, 0.0f, 32.0f);
-				RampData.Profile = FMath::Clamp(Ramp.Profile, 0.05f, 8.0f);
-				RampData.Feather = FMath::Clamp(Ramp.Feather, 0.0f, 0.5f);
+				RampData.HeightAmount = FMath::IsFinite(Ramp.HeightAmount)
+					? FMath::Max(Ramp.HeightAmount, 0.0f) : 0.05f;
+				RampData.NormalStrength = FMath::IsFinite(Ramp.NormalStrength)
+					? FMath::Max(Ramp.NormalStrength, 0.0f) : 8.0f;
+				RampData.IntensityRandom = FMath::Clamp(Ramp.IntensityRandom, 0.0f, 1.0f);
+				RampData.BlendMode = Ramp.BlendMode;
 				RampData.bRotateRandom = Ramp.bRotateRandom;
-				RampData.ScaleMin = FMath::Clamp(Ramp.ScaleMin, 0.01f, 4.0f);
-				RampData.ScaleMax = FMath::Clamp(Ramp.ScaleMax, 0.01f, 4.0f);
-				RampData.BiasMin = FMath::Clamp(Ramp.BiasMin, -1.0f, 1.0f);
-				RampData.BiasMax = FMath::Clamp(Ramp.BiasMax, -1.0f, 1.0f);
-				RampData.bInvert = Ramp.bInvert;
+				RampData.bAngleStepping = Ramp.bAngleStepping;
+				RampData.AngleStepDegrees = FMath::IsFinite(Ramp.AngleStepDegrees)
+					? FMath::Max(Ramp.AngleStepDegrees, 0.01f) : 5.0f;
 				RampData.Seed = static_cast<uint32>(FMath::Max(Ramp.Seed, 0));
 				continue;
 			}
@@ -2266,6 +2459,90 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				RandomData.Balance = FMath::Clamp(RandomId.Shaping.Balance, 0.0f, 1.0f);
 				RandomData.Contrast = FMath::Clamp(RandomId.Shaping.Contrast, 0.0f, 10.0f);
 				RandomData.Offset = FMath::Clamp(RandomId.Shaping.Offset, -1.0f, 1.0f);
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::PatternId)
+			{
+				const FMixtormatPatternFilter& Pattern = LayerChild.PatternId;
+				if (!Layer.bEnabled || !Pattern.bEnabled)
+				{
+					continue;
+				}
+
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::PatternId;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FPatternIdRenderData& PatternData = ChildData.PatternId;
+
+				PatternData.Rows = FMath::Clamp(Pattern.Rows, 1, 256);
+				PatternData.Columns = FMath::Clamp(Pattern.Columns, 1, 256);
+				PatternData.RowOffset = FMath::IsFinite(Pattern.RowOffset)
+					? FMath::Clamp(Pattern.RowOffset, 0.0f, 1.0f) : 0.0f;
+				PatternData.Jitter = FMath::IsFinite(Pattern.Jitter)
+					? FMath::Clamp(Pattern.Jitter, 0.0f, 1.0f) : 0.0f;
+				PatternData.Rounding = FMath::IsFinite(Pattern.Rounding)
+					? FMath::Max(Pattern.Rounding, 0.0f) : 0.0f;
+				PatternData.bRelativeEdgeWidth = Pattern.bRelativeEdgeWidth;
+				PatternData.bSwapAxes = Pattern.bSwapAxes;
+				PatternData.GapPixels = FMath::IsFinite(Pattern.GapPixels)
+					? FMath::Max(Pattern.GapPixels, 0.0f) : 0.0f;
+				PatternData.Seed = static_cast<uint32>(FMath::Max(Pattern.Seed, 0));
+
+				PatternData.bUVVariation = Pattern.bUVVariation;
+				PatternData.bOrthogonalUV = Pattern.bOrthogonalUV;
+				PatternData.UVRotationMin = FMath::IsFinite(Pattern.UVRotationMin)
+					? FMath::Clamp(Pattern.UVRotationMin, -360.0f, 360.0f) : 0.0f;
+				PatternData.UVRotationMax = FMath::IsFinite(Pattern.UVRotationMax)
+					? FMath::Clamp(Pattern.UVRotationMax, -360.0f, 360.0f) : 360.0f;
+				PatternData.UVScaleMin = FMath::IsFinite(Pattern.UVScaleMin)
+					? FMath::Clamp(Pattern.UVScaleMin, 0.05f, 8.0f) : 1.0f;
+				PatternData.UVScaleMax = FMath::IsFinite(Pattern.UVScaleMax)
+					? FMath::Clamp(Pattern.UVScaleMax, 0.05f, 8.0f) : 1.0f;
+				PatternData.UVOffset = FMath::IsFinite(Pattern.UVOffset)
+					? FMath::Clamp(Pattern.UVOffset, 0.0f, 1.0f) : 0.0f;
+				PatternData.bRandomFlipU = Pattern.bRandomFlipU;
+				PatternData.bRandomFlipV = Pattern.bRandomFlipV;
+
+				PatternData.HeightAmount = FMath::IsFinite(Pattern.HeightAmount)
+					? FMath::Max(Pattern.HeightAmount, 0.0f) : 0.0f;
+				PatternData.NormalStrength = FMath::IsFinite(Pattern.NormalStrength)
+					? FMath::Max(Pattern.NormalStrength, 0.0f) : 8.0f;
+				PatternData.Feather = FMath::IsFinite(Pattern.Feather)
+					? FMath::Max(Pattern.Feather, 0.0f) : 0.15f;
+				// Finite-guarded, not range-clamped. The editor sliders bound the drag; a typed
+				// value goes through, because these are artistic amounts and the shader is what
+				// actually has to be safe -- BoundedDelta stops any height clipping the surface,
+				// and every divisor below is floored in the shader. A non-finite value is the one
+				// thing that cannot pass: a NaN here poisons the whole composited height.
+				PatternData.BevelHeight = FMath::IsFinite(Pattern.BevelHeight)
+					? Pattern.BevelHeight : 0.0f;
+				PatternData.BevelWidthPixels = FMath::IsFinite(Pattern.BevelWidthPixels)
+					? FMath::Max(Pattern.BevelWidthPixels, 0.0001f) : 4.0f;
+				PatternData.BevelWidthCells = FMath::IsFinite(Pattern.BevelWidthCells)
+					? FMath::Max(Pattern.BevelWidthCells, 0.0001f) : 0.25f;
+				PatternData.BevelVariation = FMath::IsFinite(Pattern.BevelVariation)
+					? FMath::Clamp(Pattern.BevelVariation, 0.0f, 1.0f) : 0.0f;
+				PatternData.BevelRoundness = FMath::IsFinite(Pattern.Profile)
+					? FMath::Clamp(Pattern.Profile, -1.0f, 1.0f) : 0.0f;
+				PatternData.BevelRoundnessRandom = FMath::IsFinite(Pattern.ProfileRandom)
+					? FMath::Clamp(Pattern.ProfileRandom, 0.0f, 1.0f) : 0.0f;
+				PatternData.HeightRandom = FMath::IsFinite(Pattern.HeightRandom)
+					? FMath::Clamp(Pattern.HeightRandom, 0.0f, 1.0f) : 1.0f;
+				PatternData.FeatherRandom = FMath::IsFinite(Pattern.FeatherRandom)
+					? FMath::Clamp(Pattern.FeatherRandom, 0.0f, 1.0f) : 0.0f;
+				PatternData.BevelInsetPixels = FMath::IsFinite(Pattern.BevelInsetPixels)
+					? Pattern.BevelInsetPixels : 0.0f;
+				PatternData.GapHeight = FMath::IsFinite(Pattern.GapHeight)
+					? Pattern.GapHeight : 0.0f;
+				PatternData.EdgeRoughness = FMath::IsFinite(Pattern.EdgeRoughness)
+					? FMath::Clamp(Pattern.EdgeRoughness, 0.0f, 1.0f) : 0.65f;
+				PatternData.EdgeRoughnessAmount = FMath::IsFinite(Pattern.EdgeRoughnessAmount)
+					? FMath::Clamp(Pattern.EdgeRoughnessAmount, 0.0f, 1.0f) : 0.0f;
+				PatternData.AOAmount = FMath::IsFinite(Pattern.AOAmount)
+					? FMath::Clamp(Pattern.AOAmount, 0.0f, 1.0f) : 0.0f;
+				PatternData.AOSpread = FMath::IsFinite(Pattern.AOSpread)
+					? FMath::Clamp(Pattern.AOSpread, 1.0f, 8.0f) : 2.0f;
 				continue;
 			}
 
@@ -3000,6 +3277,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TEXT("Mixtormat.EmptyRegionIds"));
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyRegionIds), 0xffffffffu);
 
+			FRDGTextureRef EmptyPatternUV = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_G16R16F,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.EmptyPatternUV"));
+			AddClearUAVPass(
+				GraphBuilder,
+				GraphBuilder.CreateUAV(EmptyPatternUV),
+				FVector4f(0.5f, 0.5f, 0.0f, 0.0f));
+
 			if (Request.Layers.IsEmpty())
 			{
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputBC[0]), MixtormatSubstrate::BaseColor);
@@ -3110,6 +3399,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatRandomIdCS> RandomIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatEdgeShadeCS> EdgeShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -3170,15 +3460,20 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				{
 					const FLayerRenderData& Layer = Request.Layers[LayerIndex];
 
-					// Cluster filters run before the whole mask/effect chain regardless of their
-					// row order, because a mask child and the composite's colour stage both read
-					// what they publish. Keyed by SourceChildIndex so a consumer can find the
-					// nearest one *above* itself.
-					//
-					// Demand-culled, and worth culling: the segmentation is seventeen dispatches
-					// and four full-resolution buffers. A cluster filter with nothing reading it
-					// and no preview selected is not worth a single one of them.
+					// Region producers run before the whole mask/effect chain regardless of row
+					// order, because masks, composite colour and deferred relief can all read them.
+					// Keyed by SourceChildIndex so a consumer finds the nearest producer above it.
+					struct FPatternIdPassOutput
+					{
+						int32 SourceChildIndex = INDEX_NONE;
+						FRDGTextureRef Ids = nullptr;
+						FRDGTextureRef UV = nullptr;
+						FRDGTextureRef Ramp = nullptr;
+						FRDGTextureRef Edge = nullptr;
+						const FPatternIdRenderData* Settings = nullptr;
+					};
 					TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
+					TArray<FPatternIdPassOutput, TInlineAllocator<2>> PatternOutputs;
 					if (Layer.bEnabled)
 					{
 						const bool bPreviewingThisLayer =
@@ -3186,29 +3481,43 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							&& Request.DebugSettings.LayerIndex == LayerIndex;
 						for (const FChildRenderData& Child : Layer.Children)
 						{
-							if (Child.Type != EMixtormatLayerChildType::Filter)
+							const bool bClusterProducer =
+								Child.Type == EMixtormatLayerChildType::Filter;
+							const bool bPatternProducer =
+								Child.Type == EMixtormatLayerChildType::PatternId;
+							if (!bClusterProducer && !bPatternProducer)
 							{
 								continue;
 							}
-							// Gated separately from whether the pass runs at all: consumers make it
-							// run in ordinary use, and a pass that also painted the debug target
-							// would overwrite whichever preview the composite had published for
-							// another layer.
+
+							// Gated separately from whether the producer runs at all: ordinary
+							// consumers must not overwrite a debug target owned by another layer.
 							const bool bIsSelectedPreview = bPreviewingThisLayer
 								&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
 							bool bWanted = bIsSelectedPreview;
+							if (bPatternProducer)
+							{
+								const FPatternIdRenderData& Pattern = Child.PatternId;
+								bWanted = bWanted
+									|| Pattern.bUVVariation
+									|| Pattern.HeightAmount > 0.0f
+									|| Pattern.BevelHeight > 0.0f
+									|| Pattern.EdgeRoughnessAmount > 0.0f
+									|| Pattern.AOAmount > 0.0f;
+							}
+
 							if (!bWanted)
 							{
-								// Any consumer below this filter and above the next one. The
-								// scan stops at the next cluster because that one would shadow
-								// this map for everything past it.
+								// Any ID consumer below this producer and above the next producer.
+								// The next producer shadows this one for every later consumer.
 								for (const FChildRenderData& Other : Layer.Children)
 								{
 									if (Other.SourceChildIndex <= Child.SourceChildIndex)
 									{
 										continue;
 									}
-									if (Other.Type == EMixtormatLayerChildType::Filter)
+									if (Other.Type == EMixtormatLayerChildType::Filter
+										|| Other.Type == EMixtormatLayerChildType::PatternId)
 									{
 										break;
 									}
@@ -3225,21 +3534,53 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							{
 								continue;
 							}
-							// The same ping-pong slot the layer composite and the generated masks
-							// read: what every layer below this one has already accumulated.
-							const int32 SurfaceReadIndex = 1 - (LayerIndex & 1);
-							RegionIdMaps.Emplace(
-								Child.SourceChildIndex,
-								AddClusterIdPasses(
+
+							FRDGTextureRef RegionIds = nullptr;
+							if (bClusterProducer)
+							{
+								// The same ping-pong slot the layer composite and generated masks
+								// read: what every layer below this one has accumulated.
+								const int32 SurfaceReadIndex = 1 - (LayerIndex & 1);
+								RegionIds = AddClusterIdPasses(
 									GraphBuilder,
-									RegisterTexture(GraphBuilder, RegisteredTextures, Layer.RAM, TEXT("Mixtormat.Cluster.SourceRAMH")),
+									RegisterTexture(
+										GraphBuilder,
+										RegisteredTextures,
+										Layer.RAM,
+										TEXT("Mixtormat.Cluster.SourceRAMH")),
 									OutputRAM[SurfaceReadIndex],
 									HeightTargets[SurfaceReadIndex],
 									LayerIndex > 0,
 									bIsSelectedPreview,
-									OutputDebug[Request.PublishedTargetIndex], Request.Resolution, Layer, Child, LayerIndex));
+									OutputDebug[Request.PublishedTargetIndex],
+									Request.Resolution,
+									Layer,
+									Child,
+									LayerIndex);
+							}
+							else
+							{
+								FPatternIdPassOutput& PatternOutput =
+									PatternOutputs.AddDefaulted_GetRef();
+								PatternOutput.SourceChildIndex = Child.SourceChildIndex;
+								PatternOutput.Settings = &Child.PatternId;
+								RegionIds = AddPatternIdPasses(
+									GraphBuilder,
+									bIsSelectedPreview,
+									OutputDebug[Request.PublishedTargetIndex],
+									Request.Resolution,
+									Child,
+									LayerIndex,
+									PatternOutput.UV,
+									PatternOutput.Ramp,
+									PatternOutput.Edge);
+								PatternOutput.Ids = RegionIds;
+							}
+
+							RegionIdMaps.Emplace(Child.SourceChildIndex, RegionIds);
 						}
 					}
+
 					FRDGTextureRef CombinedMask = RegisterTexture(
 						GraphBuilder,
 						RegisteredTextures,
@@ -3283,26 +3624,100 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					};
 					TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 
-					// The ramp tilt, deferred for exactly the reason craquelure's relief is: the
-					// gradient is built from an ID map that exists before the composite, but the
-					// height it moves does not exist until after it.
+					// Region relief and edge shading are deferred for exactly the reason
+					// craquelure relief is: their fields exist before the composite, but the
+					// surface they modify does not exist until after it.
 					struct FPendingRampTilt
 					{
 						FRDGTextureRef Field = nullptr;
+						FRDGTextureRef EdgeField = nullptr;
 						float HeightAmount = 0.0f;
+						float CellHeightAmount = 0.0f;
+						float CellHeightRandom = 0.0f;
 						float NormalStrength = 0.0f;
-						float Profile = 1.0f;
+						uint32 BlendMode = 0;
+						bool bUseEdge = false;
+						float BevelHeight = 0.0f;
+						float BevelWidthPixels = 4.0f;
+						float BevelWidthCells = 0.25f;
+						bool bBevelRelative = false;
+						float BevelVariation = 0.0f;
+						float BevelRoundness = 0.0f;
+						float BevelRoundnessRandom = 0.0f;
+						float BevelInsetPixels = 0.0f;
+						float GapHeight = 0.0f;
+						float EdgeRoughness = 0.65f;
+						float EdgeRoughnessAmount = 0.0f;
+						float AOAmount = 0.0f;
+						float AOSpread = 2.0f;
 					};
 					TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
 					for (const FChildRenderData& Child : Layer.Children)
 					{
+						if (Child.Type == EMixtormatLayerChildType::PatternId)
+						{
+							const FPatternIdPassOutput* PatternOutput = nullptr;
+							for (const FPatternIdPassOutput& Candidate : PatternOutputs)
+							{
+								if (Candidate.SourceChildIndex == Child.SourceChildIndex)
+								{
+									PatternOutput = &Candidate;
+									break;
+								}
+							}
+							if (!PatternOutput)
+							{
+								continue;
+							}
+
+							const FPatternIdRenderData& Pattern = Child.PatternId;
+							const bool bNeedsRelief = Pattern.HeightAmount > 0.0f
+								|| Pattern.BevelHeight != 0.0f
+								|| Pattern.GapHeight != 0.0f;
+							const bool bNeedsShade =
+								Pattern.EdgeRoughnessAmount > 0.0f || Pattern.AOAmount > 0.0f;
+							if (!bNeedsRelief && !bNeedsShade)
+							{
+								continue;
+							}
+
+							FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
+							Tilt.Field = PatternOutput->Ramp;
+							Tilt.EdgeField = PatternOutput->Edge;
+							// Pattern has no tilt term: HeightAmount is its per-cell elevation
+							// range and rides CellHeightAmount, leaving the relief pass's tilt
+							// path -- which is Ramp From IDs' -- switched off.
+							Tilt.HeightAmount = 0.0f;
+							// Height is the elevation every cell gets; Height Random is how far
+							// below it a cell may be drawn. Multiplied in the shader, not folded
+							// together here, or Random 0 would zero the whole term instead of
+							// leaving every cell at full Height.
+							Tilt.CellHeightAmount = Pattern.HeightAmount;
+							Tilt.CellHeightRandom = Pattern.HeightRandom;
+							Tilt.NormalStrength = Pattern.NormalStrength;
+
+							Tilt.bUseEdge = true;
+							Tilt.BevelHeight = Pattern.BevelHeight;
+							Tilt.BevelWidthPixels = Pattern.BevelWidthPixels;
+							Tilt.BevelWidthCells = Pattern.BevelWidthCells;
+							Tilt.bBevelRelative = Pattern.bRelativeEdgeWidth;
+							Tilt.BevelVariation = Pattern.BevelVariation;
+							Tilt.BevelRoundness = Pattern.BevelRoundness;
+							Tilt.BevelRoundnessRandom = Pattern.BevelRoundnessRandom;
+							Tilt.BevelInsetPixels = Pattern.BevelInsetPixels;
+							Tilt.GapHeight = Pattern.GapHeight;
+							Tilt.EdgeRoughness = Pattern.EdgeRoughness;
+							Tilt.EdgeRoughnessAmount = Pattern.EdgeRoughnessAmount;
+							Tilt.AOAmount = Pattern.AOAmount;
+							Tilt.AOSpread = Pattern.AOSpread;
+							continue;
+						}
+
 						if (Child.Type != EMixtormatLayerChildType::RampId)
 						{
 							continue;
 						}
-						// Culled rather than defaulted with no cluster above it: there are no
-						// regions to tip, and a flat field would move the whole layer by half an
-						// amount instead of doing nothing.
+
 						FRDGTextureRef RegionIds =
 							FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
 						if (!RegionIds)
@@ -3310,21 +3725,23 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							continue;
 						}
 						const FRampIdRenderData& Ramp = Child.RampId;
-						// Three dispatches and a full-resolution scratch buffer buy nothing at
-						// zero height. Height alone is the whole test: the normal is scaled by it
-						// too, because a region that is not tipped has no slope to light, so
-						// there is no "normal only" case to keep alive here.
 						if (Ramp.HeightAmount <= 0.0f)
 						{
 							continue;
 						}
+
 						FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
 						Tilt.Field = AddRampIdPasses(
-							GraphBuilder, RegionIds, Request.Resolution, Ramp,
-							LayerIndex, Child.SourceChildIndex);
+							GraphBuilder,
+							RegionIds,
+							Request.Resolution,
+							Ramp,
+							LayerIndex,
+							Child.SourceChildIndex);
+						Tilt.EdgeField = Tilt.Field;
 						Tilt.HeightAmount = Ramp.HeightAmount;
 						Tilt.NormalStrength = Ramp.NormalStrength;
-						Tilt.Profile = Ramp.Profile;
+						Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
 					}
 
 					// An array where erosion keeps a single pointer. Two erosions on one layer
@@ -3338,6 +3755,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
 						if (Child.Type == EMixtormatLayerChildType::Filter
+							|| Child.Type == EMixtormatLayerChildType::PatternId
 							|| Child.Type == EMixtormatLayerChildType::HsvFilter
 							|| Child.Type == EMixtormatLayerChildType::RampId)
 						{
@@ -4822,6 +5240,42 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
 					Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
 
+					// Pattern source-UV variation is Pattern-only in this pass because this producer
+					// owns an exact analytic feature centre. The last enabled Pattern row wins, just
+					// like the last HSV row wins its whole-channel rewrite.
+					const FPatternIdPassOutput* ActivePatternUV = nullptr;
+					for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
+					{
+						if (PatternOutput.Settings && PatternOutput.Settings->bUVVariation)
+						{
+							ActivePatternUV = &PatternOutput;
+						}
+					}
+					const FPatternIdRenderData* PatternUVSettings =
+						ActivePatternUV ? ActivePatternUV->Settings : nullptr;
+					Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
+					Parameters->PatternUVSeed = PatternUVSettings ? PatternUVSettings->Seed : 0u;
+					Parameters->PatternUVOrthogonal =
+						PatternUVSettings && PatternUVSettings->bOrthogonalUV ? 1u : 0u;
+					Parameters->PatternUVRotationMin =
+						PatternUVSettings ? PatternUVSettings->UVRotationMin : 0.0f;
+					Parameters->PatternUVRotationMax =
+						PatternUVSettings ? PatternUVSettings->UVRotationMax : 0.0f;
+					Parameters->PatternUVScaleMin =
+						PatternUVSettings ? PatternUVSettings->UVScaleMin : 1.0f;
+					Parameters->PatternUVScaleMax =
+						PatternUVSettings ? PatternUVSettings->UVScaleMax : 1.0f;
+					Parameters->PatternUVOffset =
+						PatternUVSettings ? PatternUVSettings->UVOffset : 0.0f;
+					Parameters->PatternUVFlipU =
+						PatternUVSettings && PatternUVSettings->bRandomFlipU ? 1u : 0u;
+					Parameters->PatternUVFlipV =
+						PatternUVSettings && PatternUVSettings->bRandomFlipV ? 1u : 0u;
+					Parameters->PatternRegionIds =
+						ActivePatternUV ? ActivePatternUV->Ids : EmptyRegionIds;
+					Parameters->PatternUVField =
+						ActivePatternUV ? ActivePatternUV->UV : EmptyPatternUV;
+
 					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
 					Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);
@@ -5214,35 +5668,87 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					for (int32 TiltIndex = 0; TiltIndex < PendingRampTilts.Num(); ++TiltIndex)
 					{
 						const FPendingRampTilt& Tilt = PendingRampTilts[TiltIndex];
-						FRDGTextureRef TiltH = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltH"));
-						FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
-							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
+						const bool bNeedsRelief =
+							Tilt.HeightAmount > 0.0f
+							|| (Tilt.bUseEdge
+								&& (Tilt.CellHeightAmount > 0.0f
+									|| Tilt.BevelHeight != 0.0f
+									|| Tilt.GapHeight != 0.0f));
+						if (bNeedsRelief)
+						{
+							FRDGTextureRef TiltH = GraphBuilder.CreateTexture(
+								HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltH"));
+							FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
+								OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
 
-						FMixtormatRampIdReliefCS::FParameters* TiltP =
-							GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
-						TiltP->OutputSize = Request.Resolution;
-						TiltP->HeightAmount = Tilt.HeightAmount;
-						TiltP->NormalStrength = Tilt.NormalStrength;
-						TiltP->Profile = Tilt.Profile;
-						TiltP->RampField = Tilt.Field;
-						TiltP->SourceHeight = HeightTargets[WriteIndex];
-						TiltP->PreviousNormal = OutputN[WriteIndex];
-						TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
-						TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
+							FMixtormatRampIdReliefCS::FParameters* TiltP =
+								GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
+							TiltP->OutputSize = Request.Resolution;
+							TiltP->HeightAmount = Tilt.HeightAmount;
+							TiltP->NormalStrength = Tilt.NormalStrength;
+							TiltP->BlendMode = Tilt.BlendMode;
+							TiltP->UseEdge = Tilt.bUseEdge ? 1u : 0u;
+							TiltP->CellHeightAmount = Tilt.CellHeightAmount;
+							TiltP->CellHeightRandom = Tilt.CellHeightRandom;
+							TiltP->BevelHeight = Tilt.BevelHeight;
+							TiltP->BevelWidthPixels = Tilt.BevelWidthPixels;
+							TiltP->BevelWidthCells = Tilt.BevelWidthCells;
+							TiltP->BevelRelative = Tilt.bBevelRelative ? 1u : 0u;
+							TiltP->BevelVariation = Tilt.BevelVariation;
+							TiltP->BevelRoundness = Tilt.BevelRoundness;
+							TiltP->BevelRoundnessRandom = Tilt.BevelRoundnessRandom;
+							TiltP->BevelInsetPixels = Tilt.BevelInsetPixels;
+							TiltP->GapHeight = Tilt.GapHeight;
+							TiltP->RampField = Tilt.Field;
+							TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
+							TiltP->SourceHeight = HeightTargets[WriteIndex];
+							TiltP->PreviousNormal = OutputN[WriteIndex];
+							TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
+							TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
 
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.RampId.Tilt.L%d.%d", LayerIndex, TiltIndex),
-							RampIdReliefShader,
-							TiltP,
-							FIntVector(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1));
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.RegionRelief.L%d.%d", LayerIndex, TiltIndex),
+								RampIdReliefShader,
+								TiltP,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
 
-						AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
+							AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
+						}
+
+						if (Tilt.bUseEdge
+							&& (Tilt.EdgeRoughnessAmount > 0.0f || Tilt.AOAmount > 0.0f))
+						{
+							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
+								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.PatternEdgeRAM"));
+							FMixtormatEdgeShadeCS::FParameters* EdgeP =
+								GraphBuilder.AllocParameters<FMixtormatEdgeShadeCS::FParameters>();
+							EdgeP->OutputSize = Request.Resolution;
+							EdgeP->BevelWidthPixels = Tilt.BevelWidthPixels;
+							EdgeP->BevelVariation = Tilt.BevelVariation;
+							EdgeP->AOSpread = Tilt.AOSpread;
+							EdgeP->EdgeRoughness = Tilt.EdgeRoughness;
+							EdgeP->EdgeRoughnessAmount = Tilt.EdgeRoughnessAmount;
+							EdgeP->AOAmount = Tilt.AOAmount;
+							EdgeP->EdgeField = Tilt.EdgeField;
+							EdgeP->SourceRAM = OutputRAM[WriteIndex];
+							EdgeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.PatternEdgeShade.L%d.%d", LayerIndex, TiltIndex),
+								EdgeShadeShader,
+								EdgeP,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+						}
 					}
 
 					// Craquelure relief runs after erosion but before chipping. Chipping selects

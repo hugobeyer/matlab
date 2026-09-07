@@ -47,6 +47,19 @@ float RegionSatMax;
 float RegionValMin;
 float RegionValMax;
 
+Texture2D<uint> PatternRegionIds;
+Texture2D<float2> PatternUVField;
+uint PatternUVEnabled;
+uint PatternUVSeed;
+uint PatternUVOrthogonal;
+float PatternUVRotationMin;
+float PatternUVRotationMax;
+float PatternUVScaleMin;
+float PatternUVScaleMax;
+float PatternUVOffset;
+uint PatternUVFlipU;
+uint PatternUVFlipV;
+
 RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
 RWTexture2D<float4> OutputRAM;
@@ -301,12 +314,108 @@ float SamplePlacementHeightMask(float2 UV)
 // changed hands here: it used to scale by -1 and let frac() wrap, which is the same picture
 // shifted by a texel -- a seam on a surface whose edges are supposed to meet. The helper
 // mirrors about the centre of the tile instead.
-float2 LayerSourceUV(float2 UV)
+int PatternWrap(int X, int Size)
+{
+	const int R = X % max(Size, 1);
+	return R < 0 ? R + Size : R;
+}
+
+int2 PatternPixel(float2 UV)
+{
+	const float2 Wrapped = frac(UV + 1.0f);
+	return int2(
+		PatternWrap((int)floor(Wrapped.x * float(OutputSize.x)), OutputSize.x),
+		PatternWrap((int)floor(Wrapped.y * float(OutputSize.y)), OutputSize.y));
+}
+
+// The source read for this pixel, and the orientation that read imposes.
+//
+// Orientation is the rigid part of the same transform -- flips and rotations, no scale and no
+// offset -- and it comes out of here rather than being rebuilt at the sample site so that a
+// normal can never disagree with the coordinate it was fetched at. Every early return sets it,
+// including the two that fall back to the base placement.
+//
+// The layer's per-axis scale sits between the base rotation and the pattern rotation in the
+// coordinate transform, and is dropped from the orientation: it changes the texture's frequency,
+// not the direction of its tangent frame. See MixtormatTransformTangentVector.
+float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 {
 	const float2 Scale = float2(
 		max(Tiling, 0.0001f) * (float)max(UVScaleX, 1),
 		max(Tiling, 0.0001f) * (float)max(UVScaleY, 1));
-	return MixtormatSourceUV(UV, Scale, UVOffset, FlipU, FlipV, Rotation);
+	Orientation = MixtormatSourceOrientation(FlipU, FlipV, Rotation);
+	const float2 SourceUV = MixtormatSourceUV(UV, Scale, UVOffset, FlipU, FlipV, Rotation);
+	if (PatternUVEnabled == 0)
+	{
+		return SourceUV;
+	}
+
+	const int2 Pixel = PatternPixel(UV);
+	const uint RegionId = PatternRegionIds.Load(int3(Pixel, 0));
+	if (RegionId == MIXTORMAT_INVALID_REGION)
+	{
+		return SourceUV;
+	}
+
+	const float2 CentreUV = PatternUVField.Load(int3(Pixel, 0));
+	const float2 CentreSourceUV =
+		MixtormatSourceUV(CentreUV, Scale, UVOffset, FlipU, FlipV, Rotation);
+	float2 Delta = SourceUV - CentreSourceUV;
+	Delta -= floor(Delta + 0.5f);
+
+	const uint Seeded = MixtormatRegionSeed(RegionId, PatternUVSeed);
+	float AngleDegrees = lerp(
+		PatternUVRotationMin,
+		PatternUVRotationMax,
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_ROT));
+	if (PatternUVOrthogonal != 0)
+	{
+		AngleDegrees = round(AngleDegrees / 90.0f) * 90.0f;
+	}
+	const float Angle = radians(AngleDegrees);
+	const float UVScale = max(lerp(
+		PatternUVScaleMin,
+		PatternUVScaleMax,
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_SCALE)), 1.0e-4f);
+
+	float2 P = Delta * UVScale;
+	const bool bPatternFlipU = PatternUVFlipU != 0
+		&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_U) < 0.5f;
+	const bool bPatternFlipV = PatternUVFlipV != 0
+		&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_V) < 0.5f;
+	if (bPatternFlipU)
+	{
+		P.x = -P.x;
+	}
+	if (bPatternFlipV)
+	{
+		P.y = -P.y;
+	}
+
+	const float CosA = cos(Angle);
+	const float SinA = sin(Angle);
+	P = float2(P.x * CosA - P.y * SinA, P.x * SinA + P.y * CosA);
+
+	// The region's own flip and rotation, from the draws that just placed P -- the same seeded
+	// randoms and the same post-orthogonal-snap Angle, not a second roll -- composed onto the
+	// base orientation in the order the coordinate saw them: flip, then rotate, on the left of
+	// what the base placement already did.
+	const float2x2 PatternFlip = MixtormatFlipMatrix(
+		bPatternFlipU ? 1u : 0u,
+		bPatternFlipV ? 1u : 0u);
+	const float2x2 PatternRotation = float2x2(CosA, -SinA, SinA, CosA);
+	Orientation = mul(mul(PatternRotation, PatternFlip), Orientation);
+	const float2 RandomOffset = (float2(
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_U),
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_V)) - 0.5f)
+		* PatternUVOffset;
+	return frac(CentreSourceUV + P + RandomOffset + 1.0f);
+}
+
+float2 LayerSourceUV(float2 UV)
+{
+	float2x2 Orientation;
+	return LayerSourceUVAndOrientation(UV, Orientation);
 }
 
 float SampleIncomingHeight(float2 UV)
@@ -434,7 +543,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
-	float2 LayerUV = LayerSourceUV(UV);
+	float2x2 LayerOrientation;
+	float2 LayerUV = LayerSourceUVAndOrientation(UV, LayerOrientation);
 
 	// Read unconditionally. These used to fall back to inline constants when Initialize was
 	// set, which is how the bottom layer seeded the stack; the compositor now clears the
@@ -458,6 +568,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			NormalIntensity,
 			FlipNormalY)
 		: float3(0.0f, 0.0f, 1.0f);
+
+	// The decode leaves the normal in the *source* tangent basis; everything downstream -- the
+	// reoriented blend, the effect normal, the border gradient -- works in the destination basis.
+	// Rotating the sampling coordinate without rotating this vector is what left a bump pointing
+	// the same way no matter how the layer was turned.
+	//
+	// After the decode so FlipNormalY keeps its meaning: that flag is the source map's green
+	// convention and belongs in source space, ahead of the basis change. Before any blending so
+	// BlendReorientedNormals sees two normals in one basis. A mirrored region needs no extra sign
+	// here -- det(LayerOrientation) is already -1 and the transpose carries the mirror through.
+	//
+	// Z is untouched and the length of XY is preserved: LayerOrientation is orthonormal, so this
+	// cannot change the normal's slope, only where it points.
+	SampledNormal.xy = MixtormatTransformTangentVector(LayerOrientation, SampledNormal.xy);
 
 	// Region variation before the layer grade, not after: the jitter says how this brick
 	// differs from that one, the grade says what the whole layer is. Reversing them makes

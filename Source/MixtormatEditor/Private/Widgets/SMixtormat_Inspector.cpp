@@ -845,6 +845,45 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureBlendModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildRampIdBlendModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	// The set Ramp From IDs offers, which is deliberately not the whole enum: Replace would
+	// discard the height under the region rather than meeting it, which is never what a ramp is
+	// for.
+	const EMixtormatMaskBlendMode Modes[] = {
+		EMixtormatMaskBlendMode::AddSub,
+		EMixtormatMaskBlendMode::Add,
+		EMixtormatMaskBlendMode::Subtract,
+		EMixtormatMaskBlendMode::Multiply,
+		EMixtormatMaskBlendMode::Min,
+		EMixtormatMaskBlendMode::Max,
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion
+	};
+	for (const EMixtormatMaskBlendMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::MaskBlendModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatRampIdFilter* R = GetSelectedRampId())
+				{
+					R->BlendMode = Mode;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatRampIdFilter* R = GetSelectedRampId();
+				return R && R->BlendMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCraquelureModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -1474,6 +1513,193 @@ TSharedRef<SWidget> SMixtormat::BuildBaseColorBlendModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
+{
+	const auto Pattern = [this]() { return GetSelectedPatternId(); };
+	const auto Slider = [this, Pattern](
+		const FText& Label,
+		float FMixtormatPatternFilter::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatPatternFilter>(
+			Label, Pattern, Member, Min, Max, Default, Snap, Hint);
+	};
+	const auto Toggle = [this](
+		const FText& Label,
+		bool FMixtormatPatternFilter::* Member,
+		const FText& Hint) -> TSharedRef<SWidget>
+	{
+		return MixtormatRow::Make(
+			Label,
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this, Member]()
+				{
+					const FMixtormatPatternFilter* P = GetSelectedPatternId();
+					return P && P->*Member ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Member](const ECheckBoxState State)
+				{
+					if (FMixtormatPatternFilter* P = GetSelectedPatternId())
+					{
+						P->*Member = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpLattice", "Lattice")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatPatternFilter>(
+			LOCTEXT("PatternRows", "Rows"), Pattern, &FMixtormatPatternFilter::Rows, 1.0, 256.0, 8,
+			LOCTEXT("PatternRowsHint", "Rows across one UV repeat. Together with Columns this defines the periodic cell lattice.")),
+		MakeMemberSliderInt<FMixtormatPatternFilter>(
+			LOCTEXT("PatternColumns", "Columns"), Pattern, &FMixtormatPatternFilter::Columns, 1.0, 256.0, 8,
+			LOCTEXT("PatternColumnsHint", "Columns across one UV repeat. Set Columns to 1 for stripe-like regions."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternRowOffset", "Row Offset"), &FMixtormatPatternFilter::RowOffset, 0.0, 1.0, 0.0, 0.005,
+			LOCTEXT("PatternRowOffsetHint", "Horizontal shift per row in cell units. 0 is a grid; 0.5 gives running-bond brick when the row count closes periodically.")),
+		Slider(LOCTEXT("PatternJitter", "Jitter"), &FMixtormatPatternFilter::Jitter, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternJitterHint", "Moves each feature point away from its cell centre. 0 is regular tile/brick; 1 reaches the periodic Voronoi end of the same solver."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Toggle(LOCTEXT("PatternSwapAxes", "Swap Axes"), &FMixtormatPatternFilter::bSwapAxes,
+			LOCTEXT("PatternSwapAxesHint", "Swaps the lattice axes without changing the ID contract; useful for bars and directional patterns.")),
+		Slider(LOCTEXT("PatternGap", "Gap"), &FMixtormatPatternFilter::GapPixels, 0.0, 64.0, 0.0, 0.25,
+			LOCTEXT("PatternGapHint", "Region-less grout width in output pixels. Gap pixels emit the invalid-region sentinel, so HSV/Random/Ramp From IDs pass through there."))));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("PatternRounding", "Rounding"), &FMixtormatPatternFilter::Rounding, 0.0, 1.0, 0.0, 0.005,
+			LOCTEXT("PatternRoundingHint", "Rounds the cell corners by blending the two nearest walls instead of taking a hard minimum, so a chamfer fillets into the corner rather than creasing. In cell fractions. 0 is the true Voronoi corner.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpUV", "UV Variation")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Toggle(LOCTEXT("PatternUVEnable", "Enable"), &FMixtormatPatternFilter::bUVVariation,
+			LOCTEXT("PatternUVEnableHint", "Transforms the layer source independently around each pattern region centre.")),
+		Toggle(LOCTEXT("PatternUVOrthogonal", "90° Only"), &FMixtormatPatternFilter::bOrthogonalUV,
+			LOCTEXT("PatternUVOrthogonalHint", "Snaps random region rotation to 90-degree steps, preserving the source tile's periodic orientation."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternUVRotMin", "Rot Min"), &FMixtormatPatternFilter::UVRotationMin, -360.0, 360.0, 0.0, 1.0,
+			LOCTEXT("PatternUVRotMinHint", "Low end of the per-region source rotation range in degrees.")),
+		Slider(LOCTEXT("PatternUVRotMax", "Rot Max"), &FMixtormatPatternFilter::UVRotationMax, -360.0, 360.0, 360.0, 1.0,
+			LOCTEXT("PatternUVRotMaxHint", "High end of the per-region source rotation range in degrees."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternUVScaleMin", "Scale Min"), &FMixtormatPatternFilter::UVScaleMin, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("PatternUVScaleMinHint", "Low end of the per-region source scale multiplier.")),
+		Slider(LOCTEXT("PatternUVScaleMax", "Scale Max"), &FMixtormatPatternFilter::UVScaleMax, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("PatternUVScaleMaxHint", "High end of the per-region source scale multiplier."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("PatternUVOffset", "Offset"), &FMixtormatPatternFilter::UVOffset, 0.0, 1.0, 0.0, 0.01,
+		LOCTEXT("PatternUVOffsetHint", "Maximum random source translation per region, as a fraction of one source repeat.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Toggle(LOCTEXT("PatternFlipU", "Flip U"), &FMixtormatPatternFilter::bRandomFlipU,
+			LOCTEXT("PatternFlipUHint", "Randomly mirrors the source across U per region.")),
+		Toggle(LOCTEXT("PatternFlipV", "Flip V"), &FMixtormatPatternFilter::bRandomFlipV,
+			LOCTEXT("PatternFlipVHint", "Randomly mirrors the source across V per region."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpRelief", "Relief")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternHeight", "Height"), &FMixtormatPatternFilter::HeightAmount, 0.0, 1.0, 0.0, 0.001,
+			LOCTEXT("PatternHeightHint", "How far each cell stands off the base. The face stays flat -- for a slope across each cell, stack Ramp From IDs over this.")),
+		Slider(LOCTEXT("PatternHeightRandom", "Height Random"), &FMixtormatPatternFilter::HeightRandom, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("PatternHeightRandomHint", "How far below Height a cell may be drawn, as a multiplier. At 0 every cell sits at full Height; at 1 they spread the whole way down to the base. Never negative -- a cell below the base would feather back up at its wall and read as a recessed panel in a raised frame."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternProfile", "Profile"), &FMixtormatPatternFilter::Profile, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternProfileHint", "The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove that hugs the grout then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose that lifts away and rounds over. Never changes the chamfer's width or height.")),
+		Slider(LOCTEXT("PatternProfileRandom", "Profile Random"), &FMixtormatPatternFilter::ProfileRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternProfileRandomHint", "Offsets the roundness per cell, so one cell's bullnose can be its neighbour's cove."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternFeather", "Feather"), &FMixtormatPatternFilter::Feather, 0.0, 0.5, 0.15, 0.005,
+			LOCTEXT("PatternFeatherHint", "Eases each cell's height out at its boundary so neighbouring pieces meet through a ramp rather than a one-texel cliff.")),
+		Slider(LOCTEXT("PatternFeatherRandom", "Feather Random"), &FMixtormatPatternFilter::FeatherRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternFeatherRandomHint", "Varies the feather width once per cell, so the run-out is not identical on every piece."))));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("PatternNormal", "Normal"), &FMixtormatPatternFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
+			LOCTEXT("PatternNormalHint", "Normal strength derived from the same elevation and bevel height field.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternBevelHeight", "Height"), &FMixtormatPatternFilter::BevelHeight, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("PatternBevelHeightHint", "Stands each cell proud of the grout, with the chamfer ramping down to it. Negative sinks the cell face below the grout instead. The gap itself is untouched either way -- that is Gap Height.")),
+		Slider(LOCTEXT("PatternBevelWidth", "Width"), &FMixtormatPatternFilter::BevelWidthPixels, 0.25, 64.0, 4.0, 0.25,
+			LOCTEXT("PatternBevelWidthHint", "Chamfer width, in output pixels or as a fraction of the cell depending on Relative Width below."))));
+	AddSliderRow(Panel, Toggle(
+		LOCTEXT("PatternRelativeEdge", "Relative Width"), &FMixtormatPatternFilter::bRelativeEdgeWidth,
+		LOCTEXT("PatternRelativeEdgeHint", "Measures the chamfer as a fraction of the cell instead of in output pixels: 0 at the wall, 1 at the point furthest inside. Frames every cell the same way whatever its size or aspect, and is normalised against how far jitter pushes the deepest interior point. Off keeps an even visual width across cells of different sizes. Width comes from Width (Cells) when on and Width when off.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("PatternBevelWidthCells", "Width (Cells)"), &FMixtormatPatternFilter::BevelWidthCells, 0.0, 1.0, 0.25, 0.005,
+			LOCTEXT("PatternBevelWidthCellsHint", "The chamfer width used in Relative mode, as a fraction of the way from the cell wall to its deepest interior point. 1 runs the chamfer all the way in, leaving no flat face.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternBevelVariation", "Variation"), &FMixtormatPatternFilter::BevelVariation, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternBevelVariationHint", "Varies bevel width once per region.")),
+		Slider(LOCTEXT("PatternBevelInset", "Inset"), &FMixtormatPatternFilter::BevelInsetPixels, -32.0, 32.0, 0.0, 0.25,
+			LOCTEXT("PatternBevelInsetHint", "Slides the chamfer across the grout line in output pixels. Negative puts it out in the gap, positive pulls it onto the cell face."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternEdgeRoughness", "Roughness"), &FMixtormatPatternFilter::EdgeRoughness, 0.0, 1.0, 0.65, 0.01,
+			LOCTEXT("PatternEdgeRoughnessHint", "Roughness value approached at region edges. Applied after the layer composite, so it intentionally bypasses the layer Roughness Influence control.")),
+		Slider(LOCTEXT("PatternEdgeRoughnessAmount", "Amount"), &FMixtormatPatternFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternEdgeRoughnessAmountHint", "Strength of edge roughness. 0 leaves the packed roughness channel unchanged."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternAOAmount", "AO"), &FMixtormatPatternFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternAOAmountHint", "Darkens packed AO at region creases. Applied after the layer composite, so it intentionally bypasses the layer AO Influence control.")),
+		Slider(LOCTEXT("PatternAOSpread", "Spread"), &FMixtormatPatternFilter::AOSpread, 1.0, 8.0, 2.0, 0.05,
+			LOCTEXT("PatternAOSpreadHint", "How much farther the edge AO reaches relative to the bevel width."))));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatPatternFilter>(
+		LOCTEXT("PatternSeed", "Seed"), Pattern, &FMixtormatPatternFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("PatternSeedHint", "Reshuffles feature jitter and every per-region UV, height and bevel draw while preserving the lattice.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedPatternId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("PatternIdHeading", "PATTERN IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()
+				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMixtormatDebugPreviewMode::ClusterIds,
+						LOCTEXT("PreviewPatternIds", "Preview Pattern IDs as a hashed colour per region. Gap pixels show the invalid-region colour."))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatPatternFilter* Selected = GetSelectedPatternId();
+							return Selected && Selected->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatPatternFilter* Selected = GetSelectedPatternId())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("PatternEnabledHint", "Enable this Pattern ID producer"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 {
 	const auto Ramp = [this]() { return GetSelectedRampId(); };
@@ -1493,18 +1719,26 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	// Relief first, because it is the whole point of the node. The gradient controls below shape
-	// what the tilt does; these two decide whether it does anything at all.
+	// what the ramp does; these decide whether it does anything at all.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpRelief", "Relief")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("RampHeight", "Height"), &FMixtormatRampIdFilter::HeightAmount, 0.0, 0.5, 0.05, 0.001,
-			LOCTEXT("RampHeightHint", "How far a region tips. Signed about the middle of its ramp, so a region rises on one side exactly as much as it falls on the other and the surface does not drift up or down overall. 0 skips the pass entirely.")),
-		Slider(LOCTEXT("RampNormal", "Normal"), &FMixtormatRampIdFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
-			LOCTEXT("RampNormalHint", "Gain on the normal derived from the slope. Independent of Height, so a region can catch light as though tipped without actually displacing -- but it is scaled by Height too, since a region that is not tipped has no slope to light."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("RampProfile", "Profile"), &FMixtormatRampIdFilter::Profile, 0.05, 8.0, 1.0, 0.01,
-			LOCTEXT("RampProfileHint", "Shapes the slope between straight and eased without moving its ends. At 1 the gradient is constant across the region -- the same constant-slope case craquelure's groove wall is at 1. Below 1 the fall is front-loaded, above it the region stays flat and then drops away at one edge.")),
-		Slider(LOCTEXT("RampFeather", "Feather"), &FMixtormatRampIdFilter::Feather, 0.0, 0.5, 0.15, 0.005,
-			LOCTEXT("RampFeatherHint", "Eases the tilt to nothing near a region's edge so neighbours meet instead of stepping against each other. In fractions of the region's own size, so it means the same thing on a large region and a small one. 0 leaves the step hard, which is right for tiles with real grout and wrong for almost everything else."))));
+		Slider(LOCTEXT("RampIntensity", "Intensity"), &FMixtormatRampIdFilter::HeightAmount, 0.0, 0.5, 0.05, 0.001,
+			LOCTEXT("RampIntensityHint", "How strongly each region's ramp meets the surface. A blend weight, so 0 leaves the surface untouched under every mode and skips the pass entirely.")),
+		Slider(LOCTEXT("RampIntensityRandom", "Random Intensity"), &FMixtormatRampIdFilter::IntensityRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RampIntensityRandomHint", "Per-region jitter on that strength. 0 leaves every region at full Intensity -- unlike Pattern IDs' Height pair, a uniform ramp strength is meaningful on its own, since every region still tilts in its own direction."))));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("RampBlendMode", "Blend"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatRampIdFilter* R = GetSelectedRampId();
+				return R ? MixtormatUI::MaskBlendModeText(R->BlendMode) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildRampIdBlendModeMenu)),
+		LOCTEXT("RampBlendModeHint", "How the ramp meets the height under it. Add/Sub is the centred case -- a region rises on one side exactly as much as it falls on the other -- and Min carves, Multiply darkens. The normal is derived from the blended height rather than blended separately, so it always describes the surface actually written.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("RampNormal", "Normal Intensity"), &FMixtormatRampIdFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
+			LOCTEXT("RampNormalHint", "Gain on the normal derived from the slope. Independent of Intensity, so a region can catch light as though tipped without displacing as far -- but it is scaled by Intensity too, since a region that is not tipped has no slope to light.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpGradient", "Gradient")));
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -1523,40 +1757,31 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 					RefreshLayeredPreview();
 				}
 			})),
-		LOCTEXT("RampRotateHint", "Gives every region's gradient its own direction. Off puts them all on the same axis, which reads as a comb over the whole surface rather than as pieces that settled independently.")));
-
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("RampScaleMin", "Scale Min"), &FMixtormatRampIdFilter::ScaleMin, 0.01, 4.0, 1.0, 0.01,
-			LOCTEXT("RampScaleMinHint", "How far the ramp is stretched across its region, at the low end of the per-region draw. Below 1 the full sweep fits inside the region and it tips further; above 1 the ramp runs off the edges and only its middle lands, which flattens the tilt.")),
-		Slider(LOCTEXT("RampScaleMax", "Scale Max"), &FMixtormatRampIdFilter::ScaleMax, 0.01, 4.0, 1.0, 0.01,
-			LOCTEXT("RampScaleMaxHint", "The high end of the same draw. Equal to Scale Min means every region is stretched the same."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("RampBiasMin", "Bias Min"), &FMixtormatRampIdFilter::BiasMin, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RampBiasMinHint", "Shifts a region's whole ramp before it is centred. This is what makes some pieces sit proud and others sunken rather than every region pivoting about the same middle -- widen it against Bias Max and the surface stops reading as one plane.")),
-		Slider(LOCTEXT("RampBiasMax", "Bias Max"), &FMixtormatRampIdFilter::BiasMax, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RampBiasMaxHint", "The high end of the bias draw."))));
-
+		LOCTEXT("RampRotateHint", "Gives every region's gradient its own direction. The ramp fits its region's bounding box exactly at any angle, so turning this on never clips or flattens it. Off puts every gradient on the same axis, which reads as a comb over the whole surface rather than as pieces that settled independently.")));
 	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("RampInvert", "Invert"),
+		LOCTEXT("RampAngleStep", "Angle Stepping"),
 		MixtormatRow::MakeCheckbox(
 			TAttribute<ECheckBoxState>::CreateLambda([this]()
 			{
 				const FMixtormatRampIdFilter* R = GetSelectedRampId();
-				return R && R->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				return R && R->bAngleStepping ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 			}),
 			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
 			{
 				if (FMixtormatRampIdFilter* R = GetSelectedRampId())
 				{
-					R->bInvert = State == ECheckBoxState::Checked;
+					R->bAngleStepping = State == ECheckBoxState::Checked;
 					RefreshLayeredPreview();
 				}
 			})),
-		LOCTEXT("RampInvertHint", "Flips every region's gradient end for end. With random rotation on this changes little; with it off it reverses the direction the whole surface leans.")));
+		LOCTEXT("RampAngleStepHint", "Snaps every region's angle to a multiple of the step below, so a lattice reads as deliberately laid rather than scattered.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("RampAngleStepDegrees", "Step"), &FMixtormatRampIdFilter::AngleStepDegrees, 1.0, 90.0, 5.0, 0.5,
+			LOCTEXT("RampAngleStepDegreesHint", "The snap interval in degrees. Applied to the true screen-space angle, so on a long brick 45 degrees is 45 degrees on screen and the steps stay visually even.")));
 
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatRampIdFilter>(
 		LOCTEXT("RampSeed", "Seed"), Ramp, &FMixtormatRampIdFilter::Seed, 0.0, 64.0, 1,
-		LOCTEXT("RampSeedHint", "Reshuffles which region gets which angle, stretch and bias without changing any of the ranges. Independent of the cluster filter's controls, so reseeding here does not re-segment.")));
+		LOCTEXT("RampSeedHint", "Reshuffles which region gets which angle and strength without changing any of the ranges. Independent of the cluster filter's controls, so reseeding here does not re-segment.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRampId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3394,6 +3619,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
 							|| GetSelectedFilter()
+							|| GetSelectedPatternId()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
@@ -3410,6 +3636,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildCraquelureControls()]
 					+ SScrollBox::Slot()[BuildColorIdControls()]
 					+ SScrollBox::Slot()[BuildFilterControls()]
+					+ SScrollBox::Slot()[BuildPatternIdControls()]
 					+ SScrollBox::Slot()[BuildHsvFilterControls()]
 					+ SScrollBox::Slot()[BuildRandomIdControls()]
 					+ SScrollBox::Slot()[BuildRampIdControls()]
@@ -3434,6 +3661,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
 							|| GetSelectedFilter()
+							|| GetSelectedPatternId()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()

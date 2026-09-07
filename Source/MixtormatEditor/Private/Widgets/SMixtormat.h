@@ -138,6 +138,7 @@ private:
 	const FMixtormatCraquelure* GetSelectedCraquelure() const;
 	TSharedRef<SWidget> BuildCraquelureControls();
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
+	TSharedRef<SWidget> BuildRampIdBlendModeMenu();
 	TSharedRef<SWidget> BuildCraquelureModeMenu();
 
 	FReply AddFilterToLayer(int32 LayerIndex);
@@ -156,6 +157,11 @@ private:
 	FReply RemoveHsvPaletteEntry(int32 ColorIndex);
 	FReply OpenHsvPalettePicker(int32 ColorIndex);
 	void SetHsvPaletteColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
+
+	FReply AddPatternIdToLayer(int32 LayerIndex);
+	FMixtormatPatternFilter* GetSelectedPatternId();
+	const FMixtormatPatternFilter* GetSelectedPatternId() const;
+	TSharedRef<SWidget> BuildPatternIdControls();
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 	FMixtormatRampIdFilter* GetSelectedRampId();

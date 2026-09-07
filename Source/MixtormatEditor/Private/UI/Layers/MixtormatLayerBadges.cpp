@@ -170,6 +170,7 @@ namespace MixtormatLayerBadges
 			return ForMaskBlendMode(Child.ColorId.BlendMode);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Filter
+			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
 			|| Child.Type == EMixtormatLayerChildType::RampId)
 		{
@@ -193,6 +194,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
 		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
 		case EMixtormatLayerChildType::Filter:    return LOCTEXT("ChildKindFilter", "FILT");
+		case EMixtormatLayerChildType::PatternId: return LOCTEXT("ChildKindPatternId", "PAT");
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");

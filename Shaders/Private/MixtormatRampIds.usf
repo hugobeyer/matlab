@@ -1,4 +1,4 @@
-#include "/Engine/Public/Platform.ush"
+﻿#include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
 
 // Per-region gradient. Gives every region its own local frame and runs a linear ramp across it,
@@ -23,12 +23,12 @@ uint Stage;
 
 uint Seed;
 uint RotateRandom;
-float ScaleMin;
-float ScaleMax;
-float BiasMin;
-float BiasMax;
-uint Invert;
-float Feather;
+// Quantises each region's angle so a lattice reads as deliberately laid rather than scattered.
+// The step is in degrees and applied to the true screen-space angle, which is the only place it
+// means what it says -- see the fit below.
+uint AngleStepping;
+float AngleStepDegrees;
+float IntensityRandom;
 
 #define RAMP_STAGE_INIT 0
 #define RAMP_STAGE_BOUNDS 1
@@ -96,8 +96,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	// A pixel in no region gets the neutral ramp and no feather, so the tilt pass leaves it flat
-	// rather than lifting it by half an amount.
+	// A pixel in no region gets the neutral ramp and zero strength, so the relief pass leaves it
+	// flat rather than lifting it by half an amount.
 	if (!bValid)
 	{
 		OutputRamp[Pixel] = float2(0.5f, 0.0f);
@@ -111,43 +111,51 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float SpanX = max(float(MaxX - MinX), 1.0f);
 	const float SpanY = max(float(MaxY - MinY), 1.0f);
-	const float2 Local = saturate(float2(
-		float(DeltaX - MinX) / SpanX,
-		float(DeltaY - MinY) / SpanY));
-
-	// Distance to the region's own edge, before any rotation, on 0..0.5.
-	//
-	// Measured against the bounding box rather than the region outline: exact for rectangular
-	// regions -- bricks, tiles, planks, which is what this is for -- and approximate for blobby
-	// ones, where the box sits outside the region and the falloff starts late. A true edge
-	// distance wants a jump flood over the ID map, which is the same machinery the craquelure
-	// distance field already uses and is the upgrade path if the approximation shows.
-	const float EdgeDistance = min(
-		min(Local.x, 1.0f - Local.x),
-		min(Local.y, 1.0f - Local.y));
-	const float FeatherWeight = Feather > 0.0f ? saturate(EdgeDistance / Feather) : 1.0f;
 
 	const uint Seeded = MixtormatRegionSeed(RootId, Seed);
-	const float Angle = RotateRandom != 0
+	float Angle = RotateRandom != 0
 		? MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_HUE) * 6.28318530718f
 		: 0.0f;
-	const float Scale = max(
-		lerp(ScaleMin, ScaleMax, MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_SAT)),
-		1.0e-6f);
-	const float Bias = lerp(BiasMin, BiasMax, MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_VAL));
-
-	// Scale about the region's centre, then rotate about it, so neither operation slides the
-	// gradient off the region it belongs to.
-	const float CosA = cos(Angle);
-	const float SinA = sin(Angle);
-	const float2 Centred = (Local - 0.5f) * Scale;
-	const float Rotated = Centred.x * CosA - Centred.y * SinA + 0.5f;
-
-	float Gray = saturate(Rotated + Bias);
-	if (Invert != 0)
+	if (AngleStepping != 0)
 	{
-		Gray = 1.0f - Gray;
+		const float Step = radians(max(AngleStepDegrees, 0.01f));
+		Angle = round(Angle / Step) * Step;
 	}
 
-	OutputRamp[Pixel] = float2(Gray, FeatherWeight);
+	const float CosA = cos(Angle);
+	const float SinA = sin(Angle);
+
+	// The ramp fits the cell exactly, at every angle and every aspect.
+	//
+	// This is the whole of what "fit the cell" means, and the old code got it wrong in a way that
+	// only showed off-axis. It normalised to the bounding box first, giving a unit square, then
+	// rotated that square about its centre and saturated. But rotating a unit square makes the
+	// projection onto the ramp axis span +/-(|cos| + |sin|)/2 -- at 45 degrees that is +/-0.707,
+	// so the gradient ran -0.207..1.207 and the saturate clipped two opposite corners into flat
+	// bands. The ramp overshot the cell instead of framing it.
+	//
+	// Measured in pixels from the box centre and divided by the box's true extent along the ramp
+	// direction, the projection lands on exactly -0.5..0.5 for any angle and any aspect. Nothing
+	// clips, and no scale or bias is needed to bring it back into range -- which is why both are
+	// gone.
+	//
+	// Pixel space and not the normalised square, deliberately: on a 4:1 brick a "45 degree" ramp
+	// in normalised space is not 45 degrees on screen, and the angle stepping above would land on
+	// visually uneven intervals. Here the angle means what it says.
+	const float2 Centre = float2(float(MinX + MaxX), float(MinY + MaxY)) * 0.5f;
+	const float2 Offset = float2(float(DeltaX), float(DeltaY)) - Centre;
+	const float Extent = max(SpanX * abs(CosA) + SpanY * abs(SinA), 1.0f);
+	const float Gray = saturate((Offset.x * CosA + Offset.y * SinA) / Extent + 0.5f);
+
+	// Per-cell strength, carried in .y. This channel used to be the edge feather; the relief pass
+	// multiplies by it either way, so the meaning changed and the arithmetic did not. Base plus
+	// jitter, not range times amount: unlike a per-cell height offset, a uniform ramp strength is
+	// meaningful on its own -- every cell tilts equally, each in its own direction -- so
+	// IntensityRandom 0 leaves every cell at full strength rather than switching the node off.
+	const float Jitter = lerp(
+		1.0f - saturate(IntensityRandom),
+		1.0f,
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_SAT));
+
+	OutputRamp[Pixel] = float2(Gray, Jitter);
 }

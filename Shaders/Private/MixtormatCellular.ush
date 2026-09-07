@@ -1,4 +1,4 @@
-#ifndef MATERIAL_LAB_CELLULAR_USH
+﻿#ifndef MATERIAL_LAB_CELLULAR_USH
 #define MATERIAL_LAB_CELLULAR_USH
 
 #include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
@@ -39,11 +39,12 @@ struct FMixtormatCellularResult
 	float2 CellOffset;   // this pixel relative to its feature point
 };
 
-// Feature point for a cell, wrapped to the period so the field repeats.
-float2 MixtormatCellPoint(int2 Cell, int Period, uint Seed, float Jitter)
+// Feature point for a cell, wrapped per axis so rectangular lattices close independently.
+float2 MixtormatCellPoint(int2 Cell, int2 Period, uint Seed, float Jitter)
 {
-	const uint hx = (uint)MixtormatWrapI(Cell.x, Period);
-	const uint hy = (uint)MixtormatWrapI(Cell.y, Period);
+	const int2 SafePeriod = max(Period, int2(1, 1));
+	const uint hx = (uint)MixtormatWrapI(Cell.x, SafePeriod.x);
+	const uint hy = (uint)MixtormatWrapI(Cell.y, SafePeriod.y);
 	const uint h = MixtormatHashU(hx * 0x27d4eb2du ^ hy * 0x165667b1u ^ Seed * 0x9e3779b9u);
 
 	// Two independent values out of one hash. Reusing the same bits for x and y would put
@@ -54,11 +55,22 @@ float2 MixtormatCellPoint(int2 Cell, int Period, uint Seed, float Jitter)
 	return (float2)Cell + 0.5f + (float2(jx, jy) - 0.5f) * saturate(Jitter);
 }
 
+float2 MixtormatCellPoint(int2 Cell, int Period, uint Seed, float Jitter)
+{
+	return MixtormatCellPoint(Cell, int2(Period, Period), Seed, Jitter);
+}
+
+uint MixtormatCellHash(int2 Cell, int2 Period, uint Seed)
+{
+	const int2 SafePeriod = max(Period, int2(1, 1));
+	const uint hx = (uint)MixtormatWrapI(Cell.x, SafePeriod.x);
+	const uint hy = (uint)MixtormatWrapI(Cell.y, SafePeriod.y);
+	return MixtormatHashU(hx * 0x85ebca6bu ^ hy * 0xc2b2ae35u ^ (Seed + 1u) * 0x27d4eb2du);
+}
+
 uint MixtormatCellHash(int2 Cell, int Period, uint Seed)
 {
-	const uint hx = (uint)MixtormatWrapI(Cell.x, Period);
-	const uint hy = (uint)MixtormatWrapI(Cell.y, Period);
-	return MixtormatHashU(hx * 0x85ebca6bu ^ hy * 0xc2b2ae35u ^ (Seed + 1u) * 0x27d4eb2du);
+	return MixtormatCellHash(Cell, int2(Period, Period), Seed);
 }
 
 // 0..1 from a cell hash. For per-cell colour, size and placement variation.
@@ -67,7 +79,33 @@ float MixtormatCellRandom01(uint CellId)
 	return (float)(CellId & 0x00FFFFFFu) * (1.0f / 16777215.0f);
 }
 
-FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, float Jitter)
+// Polynomial smooth minimum, and the reason cell corners can be rounded at all.
+//
+// Taking a hard min over the bisector planes gives a true Voronoi cell: flat walls meeting at a
+// knife-edge corner. A chamfer run off that distance inherits the crease, so tiles come out with
+// perfectly sharp corners no bevel width can soften -- the walls just meet sooner.
+//
+// Blending the two nearest walls instead rounds the join. h is how close the two distances are,
+// normalised by k, and the quadratic penalty pulls the result below both only where they are
+// within k of each other -- so a corner rounds and a flat wall is left exactly alone.
+//
+// k = 0 falls back to a plain min, which is what keeps craquelure bit-identical.
+float MixtormatSmoothMin(float A, float B, float K)
+{
+	if (K <= 0.0f)
+	{
+		return min(A, B);
+	}
+	const float H = max(K - abs(A - B), 0.0f) / K;
+	return min(A, B) - H * H * K * 0.25f;
+}
+
+FMixtormatCellularResult MixtormatCellular(
+	float2 p,
+	int2 Period,
+	uint Seed,
+	float Jitter,
+	float Rounding)
 {
 	const int2 Base = (int2)floor(p);
 
@@ -114,28 +152,46 @@ FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, floa
 	// shows up as a crack that thins and vanishes rather than closing.
 	float Edge = 1.0e30f;
 	int2 EdgeNeighbour = NearestCell;
+	const float SmoothK = 0.5f * max(Rounding, 0.0f);
 
+	// Two cells out, not one.
+	//
+	// A 3x3 scan is enough to find the nearest feature *point*, but not the nearest bisector.
+	// Once jitter pushes points around, the wall that actually bounds this cell can belong to a
+	// neighbour two cells away, and missing it leaves the edge distance too large -- a chamfer
+	// that runs too far in along one side of some cells and not others. This is the same 5x5 the
+	// reference implementation uses, and it is why the border pass is a separate loop from the
+	// F1/F2 pass above rather than folded into it.
 	[unroll]
-	for (int ey = -1; ey <= 1; ++ey)
+	for (int ey = -2; ey <= 2; ++ey)
 	{
 		[unroll]
-		for (int ex = -1; ex <= 1; ++ex)
+		for (int ex = -2; ex <= 2; ++ex)
 		{
+			if (ex == 0 && ey == 0)
+			{
+				continue;
+			}
+
 			const int2 Cell = NearestCell + int2(ex, ey);
 			const float2 Offset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
 			const float2 Delta = Offset - NearestOffset;
 			const float DeltaLenSq = dot(Delta, Delta);
 
-			// Skips the nearest point itself, which would divide by zero.
+			// Skips a coincident point, which would divide by zero.
 			if (DeltaLenSq > 1.0e-9f)
 			{
-				const float Distance =
-					dot(0.5f * (NearestOffset + Offset), Delta * rsqrt(DeltaLenSq));
+				// Absolute, because the wider scan reaches cells whose bisector lies behind this
+				// pixel. Those give a negative projection, and a negative would win the minimum
+				// and collapse the edge distance to zero along scattered pixels -- a stipple of
+				// full-depth chamfer in the middle of a face.
+				const float Distance = abs(
+					dot(0.5f * (NearestOffset + Offset), Delta * rsqrt(DeltaLenSq)));
 				if (Distance < Edge)
 				{
-					Edge = Distance;
 					EdgeNeighbour = Cell;
 				}
+				Edge = MixtormatSmoothMin(Edge, Distance, SmoothK);
 			}
 		}
 	}
@@ -162,6 +218,11 @@ FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, floa
 	Result.EdgeId = MixtormatHashU(
 		min(Result.CellId, NeighbourId) * 0x9e3779b9u ^ max(Result.CellId, NeighbourId) * 0x85ebca6bu);
 	return Result;
+}
+
+FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, float Jitter)
+{
+	return MixtormatCellular(p, int2(Period, Period), Seed, Jitter, 0.0f);
 }
 
 #endif

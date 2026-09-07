@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
@@ -69,7 +69,11 @@ enum class EMixtormatMaskBlendMode : uint8
 	Min UMETA(DisplayName = "Min"),
 	Max UMETA(DisplayName = "Max"),
 	AddSub UMETA(DisplayName = "Add/Sub"),
-	Overlay UMETA(DisplayName = "Overlay")
+	Overlay UMETA(DisplayName = "Overlay"),
+	// Appended, never reordered: these are serialised by value, so inserting above would
+	// silently re-map every mask layer already authored against the old ordering.
+	Difference UMETA(DisplayName = "Difference"),
+	Exclusion UMETA(DisplayName = "Exclusion")
 };
 
 // Quarter turns only. The compositor wraps every source read in a frac(), so a transform has
@@ -1315,6 +1319,168 @@ struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 	FMixtormatMaskShaping Shaping;
 };
 
+// Procedural region producer. A periodic rectangular lattice and the jittered Voronoi end of the
+// same solver publish the same sparse pixel-index IDs as Cluster IDs, so HSV/Random/Ramp From IDs
+// consume either producer without a special path.
+//
+// Rows/Columns/RowOffset/Jitter are the pattern vocabulary. The relief and UV blocks are optional
+// intrinsic consumers of the same regions: zero relief leaves height/normal/RAM untouched, and UV
+// variation off leaves the layer's source mapping untouched.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "1", ClampMax = "256"))
+	int32 Rows = 8;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "1", ClampMax = "256"))
+	int32 Columns = 8;
+
+	// Fraction of one cell shifted per row. The shader quantises this just enough for the final row
+	// to meet the first row periodically; 0.5 is running bond when the row count closes on it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RowOffset = 0.0f;
+
+	// 0 keeps feature points at cell centres; 1 gives the full periodic Voronoi solve.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Jitter = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice")
+	bool bSwapAxes = false;
+
+	// Rounds the cell corners by blending the two nearest walls instead of taking a hard minimum,
+	// so a chamfer run off the edge distance fillets into the corner instead of creasing. In cell
+	// fractions, so it means the same thing on a large lattice and a small one. 0 is the true
+	// Voronoi corner.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float Rounding = 0.0f;
+
+	// Whether Edge Width and the chamfer are measured as a fraction of the cell rather than in
+	// output pixels. Relative frames every cell the same way whatever its size or aspect;
+	// absolute keeps an even visual width across cells of different sizes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges")
+	bool bRelativeEdgeWidth = false;
+
+	// Region-less grout. Consumers already treat MIXTORMAT_INVALID_REGION as pass-through/no mask.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "64.0"))
+	float GapPixels = 0.0f;
+
+	// Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands
+	// it proud as a raised mortar line. Inert at Gap 0, since there is then nothing outside the
+	// IDs to move.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float GapHeight = 0.0f;
+
+	// Per-region source UV variation. Pattern is the first producer that knows an analytic centre,
+	// so this stays Pattern-only until Cluster IDs exposes equivalent region bounds/centres.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
+	bool bUVVariation = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
+	bool bOrthogonalUV = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	float UVRotationMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	float UVRotationMax = 360.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float UVScaleMin = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float UVScaleMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float UVOffset = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
+	bool bRandomFlipU = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
+	bool bRandomFlipV = false;
+
+	// Per-cell elevation, not per-cell tilt: every cell is a flat face sitting somewhere off the
+	// base. Tilting a region is Ramp From IDs' job, and that filter composites over this one --
+	// chamfer and settle here, slope there.
+	//
+	// Height is the elevation every cell gets; Height Random is how far below it a cell may be
+	// drawn, as a multiplier on Height. One-sided on purpose: a cell that went below the base
+	// would feather back up at its own wall and read as a recessed panel in a raised frame.
+	// At Height Random 0 every cell sits at full Height; at 1 they spread down to the base.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float HeightAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeightRandom = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
+	float NormalStrength = 8.0f;
+
+	// The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove
+	// that hugs the grout then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose
+	// that lifts away and rounds over onto the face. Both ends of the curve stay pinned, so this
+	// changes the chamfer's shape and never its width or height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Profile = 0.0f;
+
+	// Offsets the roundness per cell rather than scaling it, so one cell's bullnose can be its
+	// neighbour's cove -- which scaling a signed control could never produce.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ProfileRandom = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	float Feather = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FeatherRandom = 0.0f;
+
+	// Edge relief and shading share one edge-distance field. Width is in output pixels, so the
+	// bevel remains visually even when Rows and Columns make non-square cells.
+	//
+	// Signed, and it lifts the cell *face*: positive stands the cell proud of the grout with the
+	// chamfer ramping down to it, negative sinks the face below the grout instead. The gap itself
+	// is untouched either way -- that is Gap Height's job, so the two compose rather than fight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BevelHeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0001", UIMin = "0.25", UIMax = "64.0"))
+	float BevelWidthPixels = 4.0f;
+
+	// The same width for Relative mode, as a fraction of the way from the cell wall to its
+	// deepest interior point. Separate from the pixel value because the two need different
+	// ranges to be draggable at all.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0001", UIMin = "0.0", UIMax = "1.0"))
+	float BevelWidthCells = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BevelVariation = 0.0f;
+
+	// Slides the chamfer band across the grout line, in output pixels. Negative puts it out in
+	// the gap, positive pulls it onto the cell face, zero starts it exactly at the gap wall.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "-32.0", UIMax = "32.0"))
+	float BevelInsetPixels = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EdgeRoughness = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EdgeRoughnessAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AOAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "1.0", ClampMax = "8.0"))
+	float AOSpread = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+};
+
 // Per-region tilt from a gradient. Gives every region its own local frame, runs a linear ramp
 // across it at a random angle, and uses that to lift one side of the region and sink the other in
 // the composited height and normal.
@@ -1348,30 +1514,29 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	// moves and how hard the light follows are different questions, and either at zero switches
 	// off that half alone.
 
-	// How far a region tips, as a fraction of the height range. Signed about the middle of the
-	// ramp -- a region rises on one side exactly as much as it falls on the other, so the surface
-	// does not drift up or down overall.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	// How strongly each region's ramp meets the surface. A blend weight, not a tilt amount: at 0
+	// the surface is untouched under every blend mode, not only the additive ones.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
 	float HeightAmount = 0.05f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "32.0"))
+	// Per-region jitter on that strength. Base plus jitter rather than range times amount, unlike
+	// Pattern IDs' Height pair: a uniform ramp strength is meaningful on its own -- every region
+	// tilts equally, each in its own direction -- so 0 here leaves every region at full strength
+	// rather than switching the node off.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float IntensityRandom = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
 	float NormalStrength = 8.0f;
 
-	// Shapes the ramp between a straight slope and an eased one without moving its ends. At 1 the
-	// slope is constant across the region, which is the same constant-gradient case craquelure's
-	// groove wall is at 1 -- the number means the same thing in both nodes.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.05", ClampMax = "8.0"))
-	float Profile = 1.0f;
-
-	// Eases the tilt to nothing near a region's edge, so neighbouring regions meet instead of
-	// stepping against each other. In fractions of the region's own size, so it means the same
-	// thing on a large region and a small one. 0 leaves the step hard.
+	// How the ramp meets the height under it. AddSub is the centred case this node used to
+	// hard-code, and is the default so existing materials keep their look.
 	//
-	// Measured against the region's bounding box, which is exact for rectangular regions -- the
-	// bricks, tiles and planks this is for -- and starts late on a blobby one, where the box sits
-	// outside the shape.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "0.5"))
-	float Feather = 0.15f;
+	// The normal is derived from the blended height rather than blended separately, so it always
+	// describes the surface that was actually written -- under Min and Multiply a separately
+	// blended normal would not.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief")
+	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
 
 	// -- Gradient -------------------------------------------------------------------------------
 
@@ -1380,26 +1545,14 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient")
 	bool bRotateRandom = true;
 
-	// How far the ramp is stretched across its region, drawn per region between these. Above 1
-	// the ramp runs off the region's edges and the middle of it is what lands, which flattens the
-	// tilt; below 1 the full sweep fits inside and the region tips further.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", ClampMax = "4.0"))
-	float ScaleMin = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", ClampMax = "4.0"))
-	float ScaleMax = 1.0f;
-
-	// Shifts a region's whole ramp up or down before it is centred, drawn per region between
-	// these. This is what makes some pieces sit proud and others sunken rather than every region
-	// pivoting about the same middle.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
-	float BiasMin = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
-	float BiasMax = 0.0f;
-
+	// Quantises each region's angle, so a lattice reads as deliberately laid rather than
+	// scattered. Applied to the true screen-space angle, which is the only place a degree step
+	// means what it says.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient")
-	bool bInvert = false;
+	bool bAngleStepping = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", UIMin = "1.0", UIMax = "90.0"))
+	float AngleStepDegrees = 5.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs", meta = (ClampMin = "0"))
 	int32 Seed = 1;
@@ -1460,7 +1613,8 @@ enum class EMixtormatLayerChildType : uint8
 	Filter UMETA(DisplayName = "Cluster IDs"),
 	HsvFilter UMETA(DisplayName = "HSV From IDs"),
 	RandomId UMETA(DisplayName = "Random From IDs"),
-	RampId UMETA(DisplayName = "Ramp From IDs")
+	RampId UMETA(DisplayName = "Ramp From IDs"),
+	PatternId UMETA(DisplayName = "Pattern IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -1497,6 +1651,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::RampId"))
 	FMixtormatRampIdFilter RampId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::PatternId"))
+	FMixtormatPatternFilter PatternId;
 };
 
 namespace MixtormatHue
