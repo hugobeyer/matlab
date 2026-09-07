@@ -1,0 +1,201 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+
+// Keep all file-scope bindings in FMixtormatClusterIdsCS::FParameters. A single MainCS
+// uses Stage for every dispatch, so no entry point has a partial parameter layout.
+Texture2D<float4> SourceRAMH;
+SamplerState LinearWrapSampler;
+RWStructuredBuffer<uint> Statistics;
+RWStructuredBuffer<float2> GuideSignal;
+globallycoherent RWStructuredBuffer<uint> Parents;
+RWStructuredBuffer<uint> ClusterIds;
+// The published ID map. R32_UINT and read with Load rather than a sampler: filtering an ID
+// is meaningless -- halfway between two regions is a third number that names neither -- and
+// consumers run at this same resolution, so a pixel lookup is exact and needs no UV at all.
+RWTexture2D<uint> OutputIds;
+RWTexture2D<float4> OutputDebug;
+
+int2 OutputSize;
+uint Stage;
+float2 SourceTiling;
+float2 SourceOffset;
+uint FlipU;
+uint FlipV;
+int Rotation;
+float Threshold;
+float Offset;
+float HeightInfluence;
+
+// Must match FMixtormatClusterIdsCS. Prototype stages: statistics init/reduce,
+// normalize, parents init, twelve union passes, then a bounded root resolve.
+#define UNION_START 4
+#define UNION_PASSES 12
+#define ROOT_STAGE (UNION_START + UNION_PASSES)
+
+uint FloatToOrdered(float Value)
+{
+	uint Bits = asuint(Value);
+	return (Bits & 0x80000000u) != 0 ? ~Bits : (Bits ^ 0x80000000u);
+}
+
+float OrderedToFloat(uint Ordered)
+{
+	uint Bits = (Ordered & 0x80000000u) != 0 ? (Ordered ^ 0x80000000u) : ~Ordered;
+	return asfloat(Bits);
+}
+
+float NormalizeSignal(float Value, uint MinOrdered, uint MaxOrdered)
+{
+	// Ignore non-finite source values during reduction, and map them to zero here.
+	// Empty/constant channels also normalize to zero rather than propagating NaNs.
+	if (!isfinite(Value) || MinOrdered > MaxOrdered)
+	{
+		return 0.0f;
+	}
+	float Minimum = OrderedToFloat(MinOrdered);
+	float Maximum = OrderedToFloat(MaxOrdered);
+	return Maximum > Minimum ? saturate((Value - Minimum) / (Maximum - Minimum)) : 0.0f;
+}
+
+float QuantizedLevel(float Value, float Width)
+{
+	// Only equality is needed. Retain the integer-valued floor as a float rather
+	// than narrowing to int (large authored offsets can overflow the int cast).
+	return floor((Value - Offset) / Width);
+}
+
+uint ReadParent(uint Index)
+{
+	// Atomic loads as well as writes: concurrent hooks must never mix ordinary
+	// cached UAV reads with atomic parent updates. No groupshared/local parents.
+	uint Value;
+	InterlockedAdd(Parents[Index], 0u, Value);
+	return Value;
+}
+
+void Hook(uint A, uint B)
+{
+	uint PA = ReadParent(A);
+	uint PB = ReadParent(B);
+	PA = ReadParent(PA);
+	PB = ReadParent(PB);
+	uint High = max(PA, PB);
+	uint Low = min(PA, PB);
+	if (High != Low)
+	{
+		InterlockedMin(Parents[High], Low);
+	}
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint2 Pixel = DispatchThreadId.xy;
+	if (Stage == 0)
+	{
+		// One thread seeds all four slots, including for a 1x1 output.
+		if (all(Pixel == uint2(0, 0)))
+		{
+			Statistics[0] = 0xffffffffu;
+			Statistics[1] = 0u;
+			Statistics[2] = 0xffffffffu;
+			Statistics[3] = 0u;
+		}
+		return;
+	}
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	uint Index = Pixel.x + Pixel.y * uint(OutputSize.x);
+
+	if (Stage == 1)
+	{
+		float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+		float2 SourceUV = MixtormatSourceUV(UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
+		float4 RAMH = SourceRAMH.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
+		// Raw layer height (alpha) and roughness (red), not the accumulated substrate,
+		// mask, height-source selector, overrides, grading or other material controls.
+		GuideSignal[Index] = float2(RAMH.a, RAMH.r);
+		if (isfinite(RAMH.a))
+		{
+			uint H = FloatToOrdered(RAMH.a);
+			InterlockedMin(Statistics[0], H);
+			InterlockedMax(Statistics[1], H);
+		}
+		if (isfinite(RAMH.r))
+		{
+			uint R = FloatToOrdered(RAMH.r);
+			InterlockedMin(Statistics[2], R);
+			InterlockedMax(Statistics[3], R);
+		}
+		return;
+	}
+	if (Stage == 2)
+	{
+		float2 Raw = GuideSignal[Index];
+		GuideSignal[Index] = float2(
+			NormalizeSignal(Raw.x, Statistics[0], Statistics[1]),
+			NormalizeSignal(Raw.y, Statistics[2], Statistics[3]));
+		return;
+	}
+	if (Stage == 3)
+	{
+		Parents[Index] = Index;
+		return;
+	}
+	if (Stage >= UNION_START && Stage < ROOT_STAGE)
+	{
+		float Width = max(saturate(Threshold) * 0.25f, 1.0e-7f);
+		float HInfluence = max(HeightInfluence, 0.0f);
+		uint Left = (Pixel.x != 0 ? Pixel.x - 1 : uint(OutputSize.x) - 1) + Pixel.y * uint(OutputSize.x);
+		uint Up = Pixel.x + (Pixel.y != 0 ? Pixel.y - 1 : uint(OutputSize.y) - 1) * uint(OutputSize.x);
+		float2 Here = GuideSignal[Index];
+		float2 L = GuideSignal[Left];
+		float2 U = GuideSignal[Up];
+		float Level = QuantizedLevel(Here.y, Width);
+		if (QuantizedLevel(L.y, Width) == Level && abs(Here.x - L.x) * HInfluence <= Width)
+		{
+			Hook(Index, Left);
+		}
+		if (QuantizedLevel(U.y, Width) == Level && abs(Here.x - U.x) * HInfluence <= Width)
+		{
+			Hook(Index, Up);
+		}
+
+		uint P = ReadParent(Index);
+		P = ReadParent(P);
+		P = ReadParent(P);
+		P = ReadParent(P);
+		InterlockedMin(Parents[Index], P);
+		return;
+	}
+	if (Stage == ROOT_STAGE)
+	{
+		uint Root = Index;
+		[loop]
+		for (uint Step = 0; Step < 16; ++Step)
+		{
+			uint Next = ReadParent(Root);
+			if (Next == Root)
+			{
+				break;
+			}
+			Root = Next;
+		}
+		// Resolve into a separate buffer, without racing parent compression during the walk.
+		// As in the prototype, a still-long chain can leave a component split after this cap.
+		ClusterIds[Index] = Root;
+		// The map consumers read. Sparse root pixel indices, not a compacted 0..N-1 range: nothing
+		// downstream indexes an array by ID, they all hash it, and the raw root carries its own
+		// pixel position for free -- which is what a per-region local frame will need later.
+		OutputIds[Pixel] = Root;
+		// Visualization only, and written every time so the preview cannot go stale against the
+		// map above it. Hashing is why sparse IDs look like regions rather than like a gradient.
+		OutputDebug[Pixel] = float4(
+			MixtormatRegionRandom(Root * 3u + 1u),
+			MixtormatRegionRandom(Root * 3u + 2u),
+			MixtormatRegionRandom(Root * 3u + 3u), 1.0f);
+	}
+}

@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatSurface.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 #include "UObject/StrongObjectPtr.h"
@@ -57,6 +58,62 @@ namespace MixtormatCompositorTests
 		Texture->UpdateResource();
 		FlushRenderingCommands();
 		return Texture;
+	}
+
+	// A packed RAMH map split down the middle: two flat roughness bands with a height step
+	// between them, and nothing else. The cluster filter merges on roughness band *and* height
+	// step, so a fixture with both channels agreeing is the one that says the two-channel
+	// criterion ran rather than only half of it.
+	//
+	// The bands also have to survive the wrap. Column 0's left neighbour is column 255, which is
+	// in the other band, so a correct kernel refuses that merge and the two halves stay separate
+	// -- if wrapping were dropped or the bands compared wrongly, the whole image collapses to one
+	// region and the assertions below see one colour.
+	UTexture2D* MakeTwoBandRAMH()
+	{
+		UTexture2D* Texture = UTexture2D::CreateTransient(
+			TestResolution, TestResolution, PF_B8G8R8A8);
+		if (!Texture)
+		{
+			return nullptr;
+		}
+
+		Texture->SRGB = false;
+		Texture->CompressionSettings = TC_VectorDisplacementmap;
+		Texture->Filter = TF_Nearest;
+		Texture->MipGenSettings = TMGS_NoMipmaps;
+
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		FColor* Pixels = static_cast<FColor*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		for (int32 Y = 0; Y < TestResolution; ++Y)
+		{
+			for (int32 X = 0; X < TestResolution; ++X)
+			{
+				// R is roughness, A is height -- the two channels the segmentation reads.
+				// G and B are AO and metallic and are never sampled by this pass.
+				const bool bLeft = X < TestResolution / 2;
+				Pixels[Y * TestResolution + X] =
+					FColor(bLeft ? 51 : 204, 128, 0, bLeft ? 64 : 192);
+			}
+		}
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		FlushRenderingCommands();
+		return Texture;
+	}
+
+	// The filter reads the layer's packed map through its surface, so unlike every other fixture
+	// here it needs a surface to hang the texture on. Transient and rooted by the caller: the
+	// soft pointer resolves it by name out of the transient package for as long as it is alive.
+	UMixtormatSurface* MakeSurfaceWithRAMH(UTexture2D* RAMH)
+	{
+		UMixtormatSurface* Surface = NewObject<UMixtormatSurface>(
+			GetTransientPackage(), TEXT("MixtormatClusterIdsTestSurface"), RF_Transient);
+		if (Surface)
+		{
+			Surface->RoughnessAOMetallic = RAMH;
+		}
+		return Surface;
 	}
 
 	// One material layer with a single child, which is all any of these tests need: the child is
@@ -142,6 +199,92 @@ namespace MixtormatCompositorTests
 		Debug.ChildIndex = 0;
 		return Debug;
 	}
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatClusterIdsTest,
+	"Mixtormat.Compositor.ClusterIds",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatClusterIdsTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+
+	TStrongObjectPtr<UTexture2D> RAMH(MakeTwoBandRAMH());
+	if (!TestNotNull(TEXT("Two-band RAMH fixture exists"), RAMH.Get()))
+	{
+		return false;
+	}
+	TStrongObjectPtr<UMixtormatSurface> Surface(MakeSurfaceWithRAMH(RAMH.Get()));
+	if (!TestNotNull(TEXT("Test surface exists"), Surface.Get()))
+	{
+		return false;
+	}
+
+	FMixtormatLayerChild Child;
+	Child.Type = EMixtormatLayerChildType::Filter;
+	Child.Filter.Threshold = 0.33f;
+	Child.Filter.Offset = 0.0f;
+	Child.Filter.HeightInfluence = 1.0f;
+
+	FMixtormatLayer Layer = MakeLayerWithChild(Child);
+	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(FSoftObjectPath(Surface.Get()));
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+
+	// The filter publishes its own preview and the composite is told to leave the debug target
+	// alone for this mode, so the debug read below is the kernel's output and nothing else.
+	FMixtormatDebugPreviewSettings Debug;
+	Debug.Mode = EMixtormatDebugPreviewMode::ClusterIds;
+	Debug.LayerIndex = 0;
+	Debug.ChildIndex = 0;
+
+	if (!TestTrue(TEXT("Cluster filter composes"), ComposeAndWait(Compositor, Layers, Debug)))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> Pixels;
+	if (!TestTrue(TEXT("Debug target reads back"), ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+	{
+		return false;
+	}
+
+	// Two interior samples, one per band, well away from the boundary. Roots are pixel indices
+	// hashed to a colour, so two different regions collide only by accident of the hash.
+	const int32 LeftIndex = (TestResolution / 2) * TestResolution + TestResolution / 4;
+	const int32 RightIndex = (TestResolution / 2) * TestResolution + (3 * TestResolution) / 4;
+	TestTrue(
+		TEXT("The two bands segment into different regions"),
+		!Pixels[LeftIndex].Equals(Pixels[RightIndex], 1.0e-4f));
+
+	// The count is the binding assertion, and it brackets both failure modes at once. An unwritten
+	// or unbound output leaves the single clear colour; a parents buffer that never got hooked
+	// leaves every pixel its own root and one colour per pixel. Only a union-find that actually
+	// ran lands between the two.
+	TSet<uint32> DistinctRegions;
+	for (const FLinearColor& Pixel : Pixels)
+	{
+		DistinctRegions.Add(Pixel.ToFColor(false).ToPackedRGBA());
+	}
+	TestTrue(
+		FString::Printf(
+			TEXT("Union-find produced regions rather than a fill or a per-pixel map (%d distinct)"),
+			DistinctRegions.Num()),
+		DistinctRegions.Num() >= 2 && DistinctRegions.Num() <= TestResolution);
+
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

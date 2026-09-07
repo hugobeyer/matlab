@@ -139,6 +139,28 @@ private:
 	TSharedRef<SWidget> BuildCraquelureBlendModeMenu();
 	TSharedRef<SWidget> BuildCraquelureModeMenu();
 
+	FReply AddFilterToLayer(int32 LayerIndex);
+	FMixtormatClusterFilter* GetSelectedFilter();
+	const FMixtormatClusterFilter* GetSelectedFilter() const;
+	TSharedRef<SWidget> BuildFilterControls();
+	TSharedRef<SWidget> BuildAddFilterMenu(int32 LayerIndex);
+	bool CanPreviewSelectedFilter() const;
+
+	FReply AddHsvFilterToLayer(int32 LayerIndex);
+	FMixtormatHsvIdFilter* GetSelectedHsvFilter();
+	const FMixtormatHsvIdFilter* GetSelectedHsvFilter() const;
+	TSharedRef<SWidget> BuildHsvFilterControls();
+	FReply AddHsvPaletteEntry();
+	FReply RemoveHsvPaletteEntry(int32 ColorIndex);
+	FReply OpenHsvPalettePicker(int32 ColorIndex);
+	void SetHsvPaletteColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
+
+	FReply AddRandomIdToLayer(int32 LayerIndex);
+	FMixtormatRandomIdMask* GetSelectedRandomId();
+	const FMixtormatRandomIdMask* GetSelectedRandomId() const;
+	TSharedRef<SWidget> BuildRandomIdControls();
+	TSharedRef<SWidget> BuildRandomIdBlendModeMenu();
+
 	FReply AddColorIdMaskToLayer(int32 LayerIndex);
 	FMixtormatColorIdMask* GetSelectedColorId();
 	const FMixtormatColorIdMask* GetSelectedColorId() const;

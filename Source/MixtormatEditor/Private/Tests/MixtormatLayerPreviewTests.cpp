@@ -337,6 +337,25 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 
 		Layers[1].Children.Reset();
 
+		// A cluster filter contributes nothing to the composite, and that is the whole claim of
+		// the Filter category: it emits integer region labels, so there is no coverage for the
+		// mask chain to blend and nothing for the layer resolve to read. If it ever leaks into
+		// either, this is where it shows -- the same layer composed with and without one has to
+		// come out byte for byte the same.
+		FColor WithoutFilter;
+		if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Pre-filter output can be read"), WithoutFilter))
+		{
+			FMixtormatLayerChild& FilterChild = Layers[1].Children.AddDefaulted_GetRef();
+			FilterChild.Type = EMixtormatLayerChildType::Filter;
+			TestTrue(TEXT("Compositor accepts a cluster filter child"), Compositor.RequestCompose(Layers));
+			FlushRenderingCommands();
+			if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Filtered output can be read"), Pixel))
+			{
+				TestEqual(TEXT("A cluster filter leaves the composite untouched"), Pixel, WithoutFilter);
+			}
+			Layers[1].Children.Reset();
+		}
+
 		if (PeelingAsset)
 		{
 			FMixtormatLayerChild& EffectFirst = Layers[1].Children.AddDefaulted_GetRef();

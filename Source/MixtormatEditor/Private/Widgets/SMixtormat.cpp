@@ -525,6 +525,12 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 	}
 
+	// Selection, enable state and source replacement can invalidate a data preview.
+	if (DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds && !CanPreviewSelectedFilter())
+	{
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+	}
+
 	TArray<FMixtormatLayer> PreviewOverrideLayers;
 	const TArray<FMixtormatLayer>* PreviewLayers = &WorkingLayers;
 	const int32 BypassedChildIndex = GetSelectedChildIndex();
@@ -549,6 +555,18 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		else if (Child.Type == EMixtormatLayerChildType::ColorId)
 		{
 			Child.ColorId.bEnabled = false;
+		}
+		else if (Child.Type == EMixtormatLayerChildType::Filter)
+		{
+			Child.Filter.bEnabled = false;
+		}
+		else if (Child.Type == EMixtormatLayerChildType::HsvFilter)
+		{
+			Child.HsvFilter.bEnabled = false;
+		}
+		else if (Child.Type == EMixtormatLayerChildType::RandomId)
+		{
+			Child.RandomId.bEnabled = false;
 		}
 		else
 		{
@@ -593,8 +611,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			FMixtormatDebugPreviewSettings DebugSettings;
 			DebugSettings.Mode = DebugPreviewMode;
 			DebugSettings.LayerIndex = SelectedLayerIndex;
-			DebugSettings.ChildIndex = DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask
-				? SelectedMaskIndex
+			DebugSettings.ChildIndex = (DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask
+				|| DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds)
+				? GetSelectedChildIndex()
 				: INDEX_NONE;
 			Viewport->SetPreviewLayers(*PreviewLayers, CompositionResolution, DebugSettings);
 		}

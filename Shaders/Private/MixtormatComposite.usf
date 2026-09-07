@@ -1,6 +1,7 @@
 ﻿#include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
@@ -25,6 +26,24 @@ Texture2D<float4> EffectData;
 Texture2D<float> EffectHeight;
 Texture2D<float> DebugMask;
 SamplerState LinearWrapSampler;
+
+// The ID map published by a cluster filter in this layer, and the per-region colour
+// variation read off it. Always bound -- a 1x1 dummy when the layer has no cluster filter --
+// because RDG validates every binding whether the branch below runs or not.
+Texture2D<uint> RegionIds;
+uint RegionTintEnabled;
+uint RegionSeed;
+#define MIXTORMAT_MAX_REGION_PALETTE 8
+float4 RegionPalette[MIXTORMAT_MAX_REGION_PALETTE];
+int RegionPaletteCount;
+float RegionMixMin;
+float RegionMixMax;
+float RegionHueMin;
+float RegionHueMax;
+float RegionSatMin;
+float RegionSatMax;
+float RegionValMin;
+float RegionValMax;
 
 RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
@@ -149,6 +168,61 @@ float3 HSVToRGB(float3 HSV)
 {
 	float3 RGB = saturate(abs(frac(HSV.xxx + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
 	return HSV.z * lerp(float3(1.0f, 1.0f, 1.0f), RGB, HSV.y);
+}
+
+// Per-region colour variation, from the ID map. Two stages, and the first is the one that
+// matters: each region samples a colour out of the authored palette and blends toward it by a
+// random amount, then hue/saturation/value jitter goes on top.
+//
+// The palette is what pure jitter cannot do. Jitter can only wander from wherever the texture
+// already sits; a palette lets the variation be aimed somewhere chosen and then jittered around
+// that -- brick reds through ochres rather than a random walk away from one red.
+//
+// Five decorrelated draws come off one region seed with five salts: palette position, tint
+// amount, hue, saturation, value. One hash, five constants.
+float3 ApplyRegionVariation(float3 RGB, uint2 Pixel)
+{
+	if (RegionTintEnabled == 0)
+	{
+		return RGB;
+	}
+
+	// A pixel in no region passes through untinted rather than hashing the sentinel into a
+	// colour. This is the guard hsv_from_ids.cl is missing.
+	const uint RegionId = RegionIds.Load(int3(Pixel, 0));
+	if (RegionId == MIXTORMAT_INVALID_REGION)
+	{
+		return RGB;
+	}
+
+	const uint Seeded = MixtormatRegionSeed(RegionId, RegionSeed);
+	float3 Tinted = RGB;
+
+	if (RegionPaletteCount > 0)
+	{
+		// Evenly spaced stops. A single entry is a flat colour rather than a degenerate ramp.
+		const float RampT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_RAMP);
+		const float Position = RampT * float(max(RegionPaletteCount - 1, 0));
+		const int Lower = clamp((int)floor(Position), 0, RegionPaletteCount - 1);
+		const int Upper = min(Lower + 1, RegionPaletteCount - 1);
+		const float3 Sampled = lerp(
+			RegionPalette[Lower].rgb, RegionPalette[Upper].rgb, saturate(Position - float(Lower)));
+
+		const float MixT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_MIX);
+		Tinted = lerp(RGB, Sampled, saturate(RegionMixMin + (RegionMixMax - RegionMixMin) * MixT));
+	}
+
+	// Hue added because it is circular, saturation and value multiplied because they are
+	// magnitudes. -1..1 spans +/-180 degrees, matching HueShift's own convention above.
+	const float HueT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_HUE);
+	const float SatT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_SAT);
+	const float ValT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_VAL);
+
+	float3 HSV = RGBToHSV(max(Tinted, 0.0f));
+	HSV.x = frac(HSV.x + lerp(RegionHueMin, RegionHueMax, HueT) * 0.5f + 1.0f);
+	HSV.y = saturate(HSV.y * lerp(RegionSatMin, RegionSatMax, SatT));
+	HSV.z = max(0.0f, HSV.z * lerp(RegionValMin, RegionValMax, ValT));
+	return saturate(HSVToRGB(HSV));
 }
 
 float3 AdjustHSV(float3 RGB)
@@ -374,7 +448,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			FlipNormalY)
 		: float3(0.0f, 0.0f, 1.0f);
 
-	float3 LayerBaseColor = AdjustHSV(lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor));
+	// Region variation before the layer grade, not after: the jitter says how this brick
+	// differs from that one, the grade says what the whole layer is. Reversing them makes
+	// the global grade fight per-region offsets it cannot see.
+	float3 LayerBaseColor = AdjustHSV(ApplyRegionVariation(
+		lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor), DispatchThreadId.xy));
 	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);

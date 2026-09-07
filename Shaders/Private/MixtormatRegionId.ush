@@ -1,0 +1,58 @@
+#ifndef MIXTORMAT_REGION_ID_USH
+#define MIXTORMAT_REGION_ID_USH
+
+// Everything shared by the cluster filter and the nodes that read its ID map: the hash the IDs
+// are decorrelated through, and the sentinel for a pixel that belongs to no region.
+//
+// One file because the hash has to be identical in all of them. The cluster filter's debug
+// preview and the two consumers all colour the same region from the same root, and a second copy
+// of these constants that drifted by one salt would show a preview that does not match the
+// variation it is previewing.
+
+// No pixel carries this today -- the union-find gives every pixel a root, so every pixel is in a
+// region. It exists because the consumers have to decide *something* for a region-less pixel, and
+// deciding it once here is better than each of them inventing an answer later. The day a minimum
+// region size or an explicit exclusion lands, this is what it writes.
+#define MIXTORMAT_INVALID_REGION 0xffffffffu
+
+uint MixtormatRegionHash(uint Value)
+{
+	Value ^= Value >> 16;
+	Value *= 0x7feb352du;
+	Value ^= Value >> 15;
+	Value *= 0x846ca68bu;
+	Value ^= Value >> 16;
+	return Value;
+}
+
+float MixtormatRegionRandom(uint Value)
+{
+	return float(MixtormatRegionHash(Value) & 0x00ffffffu) * (1.0f / 16777215.0f);
+}
+
+// The seed for one region, from its ID and an authored seed.
+//
+// The multiply is what stops the two correlating. IDs are pixel indices, so neighbouring regions
+// carry numerically close IDs, and a plain xor with a small seed leaves that adjacency intact --
+// neighbouring bricks would come out in a visible gradient rather than independently.
+uint MixtormatRegionSeed(uint RegionId, uint Seed)
+{
+	return RegionId ^ (Seed * 2246822519u);
+}
+
+// Salted draws off one region seed. Five different constants give five decorrelated values from
+// one hash, which is what lets a region's colour, its tint amount and its three HSV offsets all
+// move independently under a single Seed control.
+float MixtormatRegionRandomSalted(uint RegionSeed, uint Salt)
+{
+	return MixtormatRegionRandom(RegionSeed ^ Salt);
+}
+
+#define MIXTORMAT_SALT_RAMP  0x7e95761eu
+#define MIXTORMAT_SALT_MIX   0xb5297a4du
+#define MIXTORMAT_SALT_HUE   0xa341316cu
+#define MIXTORMAT_SALT_SAT   0xc8013ea4u
+#define MIXTORMAT_SALT_VAL   0xad90777du
+#define MIXTORMAT_SALT_VALUE 0x2545f491u
+
+#endif

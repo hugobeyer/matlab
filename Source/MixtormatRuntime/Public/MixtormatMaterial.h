@@ -1112,6 +1112,184 @@ struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
 	float Offset = 0.0f;
 };
 
+// Cluster IDs. Segments the surface into regions that follow its own structure and emits an
+// integer ID per pixel -- a region label, not coverage.
+//
+// A Filter rather than a Mask because of what the output *is*. A mask child emits 0..1 coverage
+// and composes through a BlendMode and a Weight, and every one of those operations is defined on
+// coverage. Ask what Max of two ID maps means, or lerp(idA, idB, 0.5), and the answer is a third
+// integer that labels nothing. So there is no BlendMode, no Weight and no shaping chain here:
+// they would all be operations the data cannot support. FMixtormatColorIdMask is the other half
+// of this -- selecting *from* an ID map is coverage and is correctly a mask.
+//
+// A Filter rather than an Effect because of where it runs. Effects run after the layer
+// composites, which is why craquelure relief had to defer itself. This needs the surface maps as
+// input and its output has to exist before the mask chain and the colour stage can read it, so it
+// runs ahead of both.
+//
+// Regions come out of the image: there is no cell size, no cluster count and no compactness,
+// because the sizes are whatever the height and roughness say they are. Two scales is a second
+// instance at a wider Threshold, not a second algorithm.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs")
+	bool bEnabled = true;
+
+	// Band width, and so region granularity: the scale control, and the only one there is.
+	//
+	// Roughness is quantised into bands of this width and two neighbours join only if they land in
+	// the same band. Read against a 0..1 signal after the height and roughness have both been
+	// renormalised, which is what makes one number mean the same thing on every scan instead of
+	// drifting with whatever range that particular texture's height happened to occupy. Scaled by
+	// 0.25 inside the kernel, so the dial spans roughly four bands to hundreds.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Threshold = 0.33f;
+
+	// Where the band boundaries fall. Same granularity, different partition -- a reseed that moves
+	// every boundary without changing the character, which is the control Threshold cannot be.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Offset = 0.0f;
+
+	// How strongly a step in height blocks a merge that roughness would otherwise allow. The
+	// criterion is two-channel: same roughness band *and* |dHeight| * this <= Threshold, so a
+	// region has to be uniform in roughness and not step in height. At 0 it is roughness bands
+	// alone, which is the right answer on a surface whose height carries no region structure.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "0.0", ClampMax = "8.0"))
+	float HeightInfluence = 1.0f;
+};
+
+// Per-region HSV variation. Takes the layer's albedo and a cluster filter's ID map, and rewrites
+// the colour so every region is a slightly different one.
+//
+// A Filter for the same reason the cluster is: the output is albedo, not coverage. It has no
+// BlendMode and no Weight because there is no mask chain to join -- it replaces what the layer's
+// colour is, the way HueShift and Saturation on the layer already do, rather than deciding where
+// the layer lands. It is applied at the composite's own albedo sample, immediately before the
+// layer's global HueShift/Saturation/Value: per-region jitter first, then the whole-layer grade
+// on top, which is the order that reads as "one material, varied" rather than two gradings
+// fighting.
+//
+// Reads the nearest enabled cluster filter above it in the child list. With none, it passes the
+// albedo through untouched.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
+{
+	GENERATED_BODY()
+
+	// Same cap and same reason as FMixtormatColorIdMask::MaxColors: a fixed constant array in the
+	// shader and a fixed set of rows in the inspector, both of which have to agree with this.
+	static constexpr int32 MaxPaletteColors = 8;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs")
+	bool bEnabled = true;
+
+	// The palette regions draw from, sampled as a ramp: entries are evenly spaced stops and a
+	// region lands anywhere between two of them.
+	//
+	// This is the half that matters, and it is what pure HSV jitter cannot do. Jitter can only
+	// wander from wherever the texture already sits; a palette lets the variation be *aimed* --
+	// brick reds through ochres, or the green-to-grey of weathered copper -- and then jittered
+	// around that. Empty means no tint, and the jitter rows below still apply.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs")
+	TArray<FLinearColor> Palette;
+
+	// How far a region tints toward the colour it sampled, as a random amount in this range.
+	// A range rather than one number so most regions can sit near the texture's own colour with
+	// a few pulled much further toward the palette.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RampMixMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RampMixMax = 0.15f;
+
+	// -- Jitter ---------------------------------------------------------------------------------
+	// Min/max pairs rather than a single +/- amount, so variation can be *biased*: hue 0 to 0.1
+	// shifts only warm. A symmetric amount cannot express that.
+	//
+	// Hue is added because it is circular; saturation and value are multiplied because they are
+	// magnitudes. Keep all of it small -- a couple of percent of hue is already clearly visible on
+	// a flat surface, and the target is "same kiln, different firing", not a rainbow.
+
+	// -1..1 maps to +/-180 degrees, the same convention as FMixtormatLayer::HueShift.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float HueMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float HueMax = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float SaturationMin = 0.9f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float SaturationMax = 1.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float ValueMin = 0.9f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float ValueMax = 1.1f;
+
+	// Reshuffles which region gets which colour without changing the ranges. Five decorrelated
+	// randoms come off one hash of the ID and this seed -- palette position, tint amount, hue,
+	// saturation and value -- so moving it moves all five together.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+};
+
+// Random value per region. Takes a cluster filter's ID map and emits 0..1: every pixel in a
+// region gets the same value, different regions get different values.
+//
+// This one genuinely *is* coverage, which is why it is a mask and not a filter. It blends through
+// a BlendMode and a Weight like any other mask child and carries the shared shaping block, and
+// every existing consumer of a mask works with it unchanged -- stain only the recessed regions,
+// wear only the proud ones, chipping only on the large fragments. Region-aware placement for
+// effects that already exist, with no new work on their side.
+//
+// The precedent is FMixtormatColorIdMask, which is also a mask that consumes an ID map. Selecting
+// from an ID map is coverage; producing one is not.
+//
+// Reads the nearest enabled cluster filter above it in the child list. With none, it contributes
+// nothing.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs")
+	bool bEnabled = true;
+
+	// The range a region's value is drawn from, before shaping. Min above Max is not an error --
+	// it inverts the draw, which is the same picture as bInvert and costs nothing to allow.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MinValue = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MaxValue = 1.0f;
+
+	// No zeroinvalid dial, deliberately. The prototype needs one because Houdini hands it an
+	// unbound id layer as -1; here the union-find assigns every pixel a root, so there is no
+	// pixel outside every region and the control would be a dial that never fires. The shaders
+	// still carry the sentinel check, so the day something can produce a region-less pixel --
+	// a minimum region size, say -- the handling is already in place.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs")
+	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Weight = 1.0f;
+
+	// The shared block, embedded rather than redeclared. Contrast above 1 about the 0.5 midpoint
+	// is what the prototype's ramp mode was for: it pulls most regions toward the mean and leaves
+	// a few outliers, which is the distribution that reads as subtle instead of as noise.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs")
+	FMixtormatMaskShaping Shaping;
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatLayerChildType : uint8
 {
@@ -1119,7 +1297,18 @@ enum class EMixtormatLayerChildType : uint8
 	Effect UMETA(DisplayName = "Effect"),
 	Generated UMETA(DisplayName = "Generated Mask"),
 	Craquelure UMETA(DisplayName = "Craquelure"),
-	ColorId UMETA(DisplayName = "Color ID")
+	ColorId UMETA(DisplayName = "Color ID"),
+	// Appended, and they have to stay appended: Type is serialised by value, so inserting
+	// anything above this line silently retypes every child in every saved material.
+	//
+	// Three values rather than one Filter with a sub-kind. Every dispatch in the plugin
+	// switches on Type alone -- the badge, the row name, the enable toggle, the remove
+	// label, the gather loop -- and a second-level discriminator would grow a nested
+	// branch in each of them that the compiler cannot see missing. The Filter *category*
+	// lives in the add menu and the FILT badge, which is where it is actually experienced.
+	Filter UMETA(DisplayName = "Cluster IDs"),
+	HsvFilter UMETA(DisplayName = "HSV From IDs"),
+	RandomId UMETA(DisplayName = "Random From IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -1144,6 +1333,15 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::ColorId"))
 	FMixtormatColorIdMask ColorId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Filter"))
+	FMixtormatClusterFilter Filter;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HsvFilter"))
+	FMixtormatHsvIdFilter HsvFilter;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::RandomId"))
+	FMixtormatRandomIdMask RandomId;
 };
 
 namespace MixtormatHue

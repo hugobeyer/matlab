@@ -173,7 +173,7 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
 	RebuildMaskList();
-	if (bWasBypassingChild)
+	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds)
 	{
 		RefreshLayeredPreview(false);
 	}
@@ -200,7 +200,7 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 	// No RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
 	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
 	// its context menu on, closing it before it could show.
-	if (bWasBypassingChild)
+	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds)
 	{
 		RefreshLayeredPreview(false);
 	}
@@ -268,7 +268,10 @@ int32 SMixtormat::GetSelectedChildIndex() const
 		&& (Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Mask
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generated
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Craquelure
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ColorId))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ColorId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Filter
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HsvFilter
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RandomId))
 	{
 		return SelectedMaskIndex;
 	}
@@ -382,7 +385,13 @@ void SMixtormat::SyncSelectedLayerControls()
 						? LOCTEXT("SelectedCraquelureMaps", "CRAQUELURE")
 						: Child.Type == EMixtormatLayerChildType::ColorId
 							? LOCTEXT("SelectedColorIdMaps", "COLOR ID")
-							: LOCTEXT("SelectedMaskMaps", "MASK"));
+							: Child.Type == EMixtormatLayerChildType::Filter
+								? LOCTEXT("SelectedFilterMaps", "CLUSTER IDS · INTEGER DATA")
+							: Child.Type == EMixtormatLayerChildType::HsvFilter
+								? LOCTEXT("SelectedHsvFilterMaps", "HSV FROM IDS · ALBEDO")
+							: Child.Type == EMixtormatLayerChildType::RandomId
+								? LOCTEXT("SelectedRandomIdMaps", "RANDOM FROM IDS")
+								: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
 }
@@ -1109,6 +1118,18 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("CraquelureChildName", "Craquelure");
 	}
+	if (Child.Type == EMixtormatLayerChildType::Filter)
+	{
+		return LOCTEXT("ClusterFilterChildName", "Cluster IDs");
+	}
+	if (Child.Type == EMixtormatLayerChildType::HsvFilter)
+	{
+		return LOCTEXT("HsvFilterChildName", "HSV From IDs");
+	}
+	if (Child.Type == EMixtormatLayerChildType::RandomId)
+	{
+		return LOCTEXT("RandomIdChildName", "Random From IDs");
+	}
 	if (Child.Type == EMixtormatLayerChildType::ColorId)
 	{
 		// Named after its map rather than after itself, the way a painted mask row is: two id
@@ -1136,7 +1157,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 		.Image(Child.Type == EMixtormatLayerChildType::Effect
 			? MixtormatIcons::Effect()
 			: (Child.Type == EMixtormatLayerChildType::Generated
-					|| Child.Type == EMixtormatLayerChildType::Craquelure)
+					|| Child.Type == EMixtormatLayerChildType::Craquelure
+					|| Child.Type == EMixtormatLayerChildType::Filter
+					|| Child.Type == EMixtormatLayerChildType::HsvFilter
+					|| Child.Type == EMixtormatLayerChildType::RandomId)
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()));
@@ -1255,9 +1279,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 	{
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
+		// Procedural children share row actions, not mask blending semantics.
 		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
 			|| Child.Type == EMixtormatLayerChildType::Craquelure
-			|| Child.Type == EMixtormatLayerChildType::ColorId;
+			|| Child.Type == EMixtormatLayerChildType::ColorId
+			|| Child.Type == EMixtormatLayerChildType::Filter
+			|| Child.Type == EMixtormatLayerChildType::HsvFilter
+			|| Child.Type == EMixtormatLayerChildType::RandomId;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Group->AddChild(
@@ -1346,6 +1374,9 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
 	case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
 	case EMixtormatLayerChildType::ColorId:   return Child.ColorId.bEnabled;
+	case EMixtormatLayerChildType::Filter:    return Child.Filter.bEnabled;
+	case EMixtormatLayerChildType::HsvFilter: return Child.HsvFilter.bEnabled;
+	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -1380,6 +1411,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
+	Menu.SubMenu(
+		LOCTEXT("AddFilterChild", "Filter"),
+		MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFilterMenu, LayerIndex));
 	Menu.Item(
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
@@ -1388,6 +1423,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddColorIdChild", "Color ID Mask"),
 		MixtormatIcons::Mask(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddColorIdMaskToLayer(LayerIndex); }));
+	// Listed with the mask producers rather than under Filter, because that is what it is: it
+	// emits 0..1 coverage and blends like any other mask. Only what it reads is unusual.
+	Menu.Item(
+		LOCTEXT("AddRandomIdChild", "Random From IDs"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRandomIdToLayer(LayerIndex); }));
 
 	Menu.Separator();
 
@@ -1484,6 +1525,22 @@ TSharedRef<SWidget> SMixtormat::BuildAddMaskMenu(const int32 LayerIndex)
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildAddFilterMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("AddClusterFilterChild", "Cluster IDs"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFilterToLayer(LayerIndex); }))
+		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	Menu.Item(
+		LOCTEXT("AddHsvFilterChild", "HSV From IDs"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddHsvFilterToLayer(LayerIndex); }))
+		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -1573,11 +1630,23 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	const int32 ChildIndex)
 {
 	MixtormatMenu::FBuilder Menu;
-	Menu.SubMenu(
-		LOCTEXT("GeneratedBlendModeContext", "Blend Mode"),
-		nullptr,
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex));
-	Menu.Separator();
+	// Filters emit data rather than coverage, so there is nothing for a blend mode to mean on
+	// one. The random-value mask is a mask and keeps its submenu like every other mask row.
+	const EMixtormatLayerChildType RowType =
+		WorkingLayers.IsValidIndex(LayerIndex)
+			&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+			? WorkingLayers[LayerIndex].Children[ChildIndex].Type
+			: EMixtormatLayerChildType::Mask;
+	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
+		|| RowType == EMixtormatLayerChildType::HsvFilter;
+	if (!bFilter)
+	{
+		Menu.SubMenu(
+			LOCTEXT("GeneratedBlendModeContext", "Blend Mode"),
+			nullptr,
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex));
+		Menu.Separator();
+	}
 	Menu.Item(
 		LOCTEXT("DuplicateGeneratedChild", "Duplicate"),
 		MixtormatIcons::Duplicate(),
@@ -1601,6 +1670,15 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::ColorId:
 			RemoveLabel = LOCTEXT("RemoveColorIdChild", "Remove Color ID Mask");
+			break;
+		case EMixtormatLayerChildType::Filter:
+			RemoveLabel = LOCTEXT("RemoveFilterChild", "Remove Cluster IDs");
+			break;
+		case EMixtormatLayerChildType::HsvFilter:
+			RemoveLabel = LOCTEXT("RemoveHsvFilterChild", "Remove HSV From IDs");
+			break;
+		case EMixtormatLayerChildType::RandomId:
+			RemoveLabel = LOCTEXT("RemoveRandomIdChild", "Remove Random From IDs");
 			break;
 		default:
 			break;
@@ -2007,6 +2085,137 @@ const FMixtormatColorIdMask* SMixtormat::GetSelectedColorId() const
 	return Child.Type == EMixtormatLayerChildType::ColorId ? &Child.ColorId : nullptr;
 }
 
+FReply SMixtormat::AddFilterToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Filter;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatClusterFilter* SMixtormat::GetSelectedFilter()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Filter ? &Child.Filter : nullptr;
+}
+
+const FMixtormatClusterFilter* SMixtormat::GetSelectedFilter() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Filter ? &Child.Filter : nullptr;
+}
+
+bool SMixtormat::CanPreviewSelectedFilter() const
+{
+	const FMixtormatClusterFilter* Filter = GetSelectedFilter();
+	if (!Filter || !Filter->bEnabled || bBypassSelectedChild
+		|| !WorkingLayers[SelectedLayerIndex].bEnabled)
+	{
+		return false;
+	}
+
+	// Normal-detail layers remain eligible when their surface carries the packed source.
+	const UMixtormatSurface* Surface = WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous();
+	return Surface && Surface->RoughnessAOMetallic;
+}
+
+FReply SMixtormat::AddHsvFilterToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::HsvFilter;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatHsvIdFilter* SMixtormat::GetSelectedHsvFilter()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::HsvFilter ? &Child.HsvFilter : nullptr;
+}
+
+const FMixtormatHsvIdFilter* SMixtormat::GetSelectedHsvFilter() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::HsvFilter ? &Child.HsvFilter : nullptr;
+}
+
+FReply SMixtormat::AddRandomIdToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::RandomId;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatRandomIdMask* SMixtormat::GetSelectedRandomId()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::RandomId ? &Child.RandomId : nullptr;
+}
+
+const FMixtormatRandomIdMask* SMixtormat::GetSelectedRandomId() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::RandomId ? &Child.RandomId : nullptr;
+}
+
 FReply SMixtormat::AddCraquelureToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -2077,22 +2286,34 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		return FReply::Handled();
 	}
 
-	// Every generated mask child, for the same reason the enable toggle takes all three: the
-	// stack hands craquelure and colour id rows this menu too. The guard used to insist on
-	// Generated exactly, so Remove was present on a craquelure row and silently did nothing --
-	// a node that could be added and never deleted.
+	// All procedural children routed through the shared row actions, including data filters.
 	const EMixtormatLayerChildType ChildType = WorkingLayers[LayerIndex].Children[ChildIndex].Type;
 	if (ChildType != EMixtormatLayerChildType::Generated
 		&& ChildType != EMixtormatLayerChildType::Craquelure
-		&& ChildType != EMixtormatLayerChildType::ColorId)
+		&& ChildType != EMixtormatLayerChildType::ColorId
+		&& ChildType != EMixtormatLayerChildType::Filter
+		&& ChildType != EMixtormatLayerChildType::HsvFilter
+		&& ChildType != EMixtormatLayerChildType::RandomId)
 	{
 		return FReply::Handled();
 	}
 
 	WorkingLayers[LayerIndex].Children.RemoveAt(ChildIndex);
-	if (SelectedLayerIndex == LayerIndex && SelectedMaskIndex == ChildIndex)
+	if (SelectedLayerIndex == LayerIndex)
 	{
-		SelectedMaskIndex = INDEX_NONE;
+		if (SelectedMaskIndex == ChildIndex)
+		{
+			SelectedMaskIndex = INDEX_NONE;
+			bBypassSelectedChild = false;
+		}
+		else if (SelectedMaskIndex > ChildIndex)
+		{
+			--SelectedMaskIndex;
+		}
+		if (SelectedEffectIndex > ChildIndex)
+		{
+			--SelectedEffectIndex;
+		}
 	}
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
@@ -2111,10 +2332,7 @@ void SMixtormat::SetGeneratedEnabled(
 		return;
 	}
 
-	// Every generated mask child, not only the Generated one. The stack routes craquelure and
-	// colour id rows here too -- they share the "generated" branch that decides which toggle to
-	// call -- and this used to reject anything that was not literally Generated, so their eye
-	// icons did nothing at all.
+	// The shared procedural-child row routes mask producers and data filters here.
 	const bool bEnabled = CheckState == ECheckBoxState::Checked;
 	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
 	switch (Child.Type)
@@ -2127,6 +2345,15 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::ColorId:
 		Child.ColorId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::Filter:
+		Child.Filter.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::HsvFilter:
+		Child.HsvFilter.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::RandomId:
+		Child.RandomId.bEnabled = bEnabled;
 		break;
 	default:
 		return;

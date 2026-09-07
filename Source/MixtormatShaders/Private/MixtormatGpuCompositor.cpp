@@ -207,6 +207,11 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatCompositeCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatCompositeCS, FGlobalShader);
 
+	// Has to agree with MIXTORMAT_MAX_REGION_PALETTE in MixtormatComposite.usf and with
+	// FMixtormatHsvIdFilter::MaxPaletteColors. Three copies of one number, and the gather loop
+	// clamps against this one.
+	static constexpr int32 MaxRegionPalette = FMixtormatHsvIdFilter::MaxPaletteColors;
+
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Enabled)
@@ -294,6 +299,22 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BorderBaseHeight)
 		SHADER_PARAMETER(float, HeightSmoothAmount)
 		SHADER_PARAMETER(uint32, BorderSmoothValid)
+		// Per-region colour variation, read off a cluster filter's ID map in the same layer.
+		// RegionIds is bound on every dispatch -- a 1x1 dummy when the layer has no cluster --
+		// because RDG validates the binding whether RegionTintEnabled takes the branch or not.
+		SHADER_PARAMETER(uint32, RegionTintEnabled)
+		SHADER_PARAMETER(uint32, RegionSeed)
+		SHADER_PARAMETER_ARRAY(FVector4f, RegionPalette, [MaxRegionPalette])
+		SHADER_PARAMETER(int32, RegionPaletteCount)
+		SHADER_PARAMETER(float, RegionMixMin)
+		SHADER_PARAMETER(float, RegionMixMax)
+		SHADER_PARAMETER(float, RegionHueMin)
+		SHADER_PARAMETER(float, RegionHueMax)
+		SHADER_PARAMETER(float, RegionSatMin)
+		SHADER_PARAMETER(float, RegionSatMax)
+		SHADER_PARAMETER(float, RegionValMin)
+		SHADER_PARAMETER(float, RegionValMax)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -1177,6 +1198,90 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// One entry point and one complete parameter layout for every stage. In particular, do not
+// split this into partial per-entry structs: UE validates all file-scope shader uniforms.
+class FMixtormatClusterIdsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatClusterIdsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatClusterIdsCS, FGlobalShader);
+
+	static constexpr uint32 UnionStart = 4;
+	static constexpr uint32 UnionPasses = 12;
+	static constexpr uint32 ResolveStage = UnionStart + UnionPasses;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Stage)
+		SHADER_PARAMETER(FVector2f, SourceTiling)
+		SHADER_PARAMETER(FVector2f, SourceOffset)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER(float, Threshold)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER(float, HeightInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Statistics)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, GuideSignal)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Parents)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ClusterIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatClusterIdsCS,
+	"/Plugin/MaterialLab/Private/MixtormatClusterIds.usf",
+	"MainCS",
+	SF_Compute);
+
+// Random value per region. A mask, so it ends in the same PreviousMask/BlendMode/Weight tail
+// every other mask child uses -- the only thing that makes it different is where the value
+// comes from.
+class FMixtormatRandomIdCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRandomIdCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRandomIdCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, MinValue)
+		SHADER_PARAMETER(float, MaxValue)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRandomIdCS,
+	"/Plugin/MaterialLab/Private/MixtormatRandomId.usf",
+	"MainCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
 	struct FMaskRenderData
@@ -1421,6 +1526,42 @@ namespace MixtormatGpuCompositor
 		int32 CollisionLimit = 2;
 	};
 
+	struct FClusterFilterRenderData
+	{
+		float Threshold = 0.33f;
+		float Offset = 0.0f;
+		float HeightInfluence = 1.0f;
+	};
+
+	// Reads a cluster filter's ID map and rewrites the layer's albedo. No blend mode and no
+	// weight: this is applied at the composite's albedo sample, not in the mask chain.
+	struct FHsvIdFilterRenderData
+	{
+		TArray<FVector4f, TInlineAllocator<FMixtormatCompositeCS::MaxRegionPalette>> Palette;
+		float MixMin = 0.0f;
+		float MixMax = 0.15f;
+		float HueMin = 0.0f;
+		float HueMax = 0.0f;
+		float SatMin = 0.9f;
+		float SatMax = 1.1f;
+		float ValMin = 0.9f;
+		float ValMax = 1.1f;
+		uint32 Seed = 1;
+	};
+
+	struct FRandomIdRenderData
+	{
+		float MinValue = 0.0f;
+		float MaxValue = 1.0f;
+		uint32 Seed = 1;
+		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
+		float Weight = 1.0f;
+		bool bInvert = false;
+		float Balance = 0.5f;
+		float Contrast = 1.0f;
+		float Offset = 0.0f;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -1430,6 +1571,9 @@ namespace MixtormatGpuCompositor
 		FGeneratedMaskRenderData Generated;
 		FCraquelureRenderData Craquelure;
 		FColorIdRenderData ColorId;
+		FClusterFilterRenderData Filter;
+		FHsvIdFilterRenderData HsvFilter;
+		FRandomIdRenderData RandomId;
 	};
 
 	struct FLayerRenderData
@@ -1579,6 +1723,110 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.RegisterExternalTexture(CreateRenderTarget(Texture, Name));
 		RegisteredTextures.Add(TextureRHI, RegisteredTexture);
 		return RegisteredTexture;
+	}
+
+	// Produces one layer's ID map, and its debug preview alongside it.
+	//
+	// Returns the map rather than only writing the preview, because the two consumers -- the HSV
+	// filter at the composite's albedo sample and the random-value mask in the chain -- both read
+	// it, and both have to read the *same* one. Segmenting twice would cost 17 dispatches twice
+	// and, worse, could disagree: a tint landing on different regions than the stain it is
+	// supposed to share boundaries with is exactly the failure a shared map exists to prevent.
+	FRDGTextureRef AddClusterIdPasses(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceRAMH,
+		FRDGTextureRef OutputDebug,
+		FIntPoint OutputSize,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		int32 LayerIndex)
+	{
+		// Deliberately graph-local. An RHI identity (even held strongly) cannot detect in-place
+		// texture edits, reimports or streaming updates. Until the source exposes a content
+		// revision, recompute selected previews each request rather than cache stale regions.
+		// Any future persistent key must include that revision, retained source identity,
+		// resolution, UV placement and these three filter controls -- not material grading.
+		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
+		FRDGBufferRef Statistics = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4), TEXT("Mixtormat.Cluster.Statistics"));
+		FRDGBufferRef GuideSignal = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector2f), PixelCount), TEXT("Mixtormat.Cluster.GuideSignal"));
+		FRDGBufferRef Parents = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Parents"));
+		// Sparse integer root indices, not colors or a compacted label map. No consumers yet.
+		FRDGBufferRef ClusterIds = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Ids"));
+		const FRDGBufferUAVRef StatisticsUAV = GraphBuilder.CreateUAV(Statistics);
+		const FRDGBufferUAVRef GuideSignalUAV = GraphBuilder.CreateUAV(GuideSignal);
+		const FRDGBufferUAVRef ParentsUAV = GraphBuilder.CreateUAV(Parents);
+		const FRDGBufferUAVRef ClusterIdsUAV = GraphBuilder.CreateUAV(ClusterIds);
+		const FRDGTextureUAVRef DebugUAV = GraphBuilder.CreateUAV(OutputDebug);
+		// R32_UINT and read with Load, never a sampler. Filtering an ID is meaningless -- halfway
+		// between two regions is a third number naming neither -- and every consumer runs at this
+		// resolution, so a pixel lookup is exact.
+		FRDGTextureRef RegionIds = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				OutputSize,
+				PF_R32_UINT,
+				FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Cluster.RegionIds"));
+		const FRDGTextureUAVRef RegionIdsUAV = GraphBuilder.CreateUAV(RegionIds);
+		TShaderMapRef<FMixtormatClusterIdsCS> ClusterShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
+		for (uint32 Stage = 0; Stage <= FMixtormatClusterIdsCS::ResolveStage; ++Stage)
+		{
+			FMixtormatClusterIdsCS::FParameters* Parameters =
+				GraphBuilder.AllocParameters<FMixtormatClusterIdsCS::FParameters>();
+			Parameters->OutputSize = OutputSize;
+			Parameters->Stage = Stage;
+			Parameters->SourceTiling = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
+			Parameters->SourceOffset = Layer.UVOffset;
+			Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
+			Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
+			Parameters->Rotation = Layer.Rotation;
+			Parameters->Threshold = Child.Filter.Threshold;
+			Parameters->Offset = Child.Filter.Offset;
+			Parameters->HeightInfluence = Child.Filter.HeightInfluence;
+			Parameters->SourceRAMH = SourceRAMH;
+			Parameters->LinearWrapSampler =
+				TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+			Parameters->Statistics = StatisticsUAV;
+			Parameters->GuideSignal = GuideSignalUAV;
+			Parameters->Parents = ParentsUAV;
+			Parameters->ClusterIds = ClusterIdsUAV;
+			Parameters->OutputIds = RegionIdsUAV;
+			Parameters->OutputDebug = DebugUAV;
+			// Keep the default UAV barriers: each dispatch must finish before the next stage
+			// reads global statistics/parents. A group barrier cannot synchronize this algorithm.
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.ClusterIds.Layer%d.Child%d.Stage%u", LayerIndex, Child.SourceChildIndex, Stage),
+				ClusterShader, Parameters, Stage == 0 ? FIntVector(1, 1, 1) : Groups);
+		}
+		return RegionIds;
+	}
+
+	// The cluster filter a consumer reads: the nearest enabled one above it in the child list.
+	//
+	// Above rather than anywhere in the layer, so two cluster filters at different thresholds can
+	// coexist -- a coarse one with its own consumers, then a fine one with its own -- which is
+	// how the micro/macro pairing in the design note is meant to be authored. Nothing above means
+	// no map, and the consumer is culled rather than guessing.
+	FRDGTextureRef FindRegionIdsAbove(
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		int32 ChildIndex)
+	{
+		FRDGTextureRef Found = nullptr;
+		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+		{
+			if (Entry.Key < ChildIndex)
+			{
+				Found = Entry.Value;
+			}
+		}
+		return Found;
 	}
 }
 
@@ -1741,10 +1989,84 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			const FMixtormatLayerChild& LayerChild = Layer.Children[SourceChildIndex];
 
 			// Mask children still resolve on disabled layers so other layers can reference them.
-			// Effects never contribute to that mask, and filters run after the disabled composite,
+			// Effects never contribute to that mask, and effect filters run after the disabled composite,
 			// so capturing them would let a hidden layer modify the accumulated result.
 			if (!Layer.bEnabled && LayerChild.Type == EMixtormatLayerChildType::Effect)
 			{
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::HsvFilter)
+			{
+				// Rewrites albedo at the composite's own sample, so it never reaches the mask
+				// chain. An empty palette is still valid -- the jitter rows work alone.
+				const FMixtormatHsvIdFilter& Hsv = LayerChild.HsvFilter;
+				if (!Layer.bEnabled || !Hsv.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::HsvFilter;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FHsvIdFilterRenderData& HsvData = ChildData.HsvFilter;
+				const int32 PaletteCount =
+					FMath::Min(Hsv.Palette.Num(), FMixtormatCompositeCS::MaxRegionPalette);
+				HsvData.Palette.Reserve(PaletteCount);
+				for (int32 ColorIndex = 0; ColorIndex < PaletteCount; ++ColorIndex)
+				{
+					HsvData.Palette.Add(FVector4f(Hsv.Palette[ColorIndex]));
+				}
+				HsvData.MixMin = FMath::Clamp(Hsv.RampMixMin, 0.0f, 1.0f);
+				HsvData.MixMax = FMath::Clamp(Hsv.RampMixMax, 0.0f, 1.0f);
+				HsvData.HueMin = FMath::Clamp(Hsv.HueMin, -1.0f, 1.0f);
+				HsvData.HueMax = FMath::Clamp(Hsv.HueMax, -1.0f, 1.0f);
+				HsvData.SatMin = FMath::Clamp(Hsv.SaturationMin, 0.0f, 4.0f);
+				HsvData.SatMax = FMath::Clamp(Hsv.SaturationMax, 0.0f, 4.0f);
+				HsvData.ValMin = FMath::Clamp(Hsv.ValueMin, 0.0f, 4.0f);
+				HsvData.ValMax = FMath::Clamp(Hsv.ValueMax, 0.0f, 4.0f);
+				HsvData.Seed = static_cast<uint32>(FMath::Max(Hsv.Seed, 0));
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::RandomId)
+			{
+				const FMixtormatRandomIdMask& RandomId = LayerChild.RandomId;
+				if (!RandomId.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::RandomId;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FRandomIdRenderData& RandomData = ChildData.RandomId;
+				RandomData.MinValue = FMath::Clamp(RandomId.MinValue, 0.0f, 1.0f);
+				RandomData.MaxValue = FMath::Clamp(RandomId.MaxValue, 0.0f, 1.0f);
+				RandomData.Seed = static_cast<uint32>(FMath::Max(RandomId.Seed, 0));
+				RandomData.BlendMode = RandomId.BlendMode;
+				RandomData.Weight = FMath::Clamp(RandomId.Weight, 0.0f, 1.0f);
+				RandomData.bInvert = RandomId.Shaping.bInvert;
+				RandomData.Balance = FMath::Clamp(RandomId.Shaping.Balance, 0.0f, 1.0f);
+				RandomData.Contrast = FMath::Clamp(RandomId.Shaping.Contrast, 0.0f, 10.0f);
+				RandomData.Offset = FMath::Clamp(RandomId.Shaping.Offset, -1.0f, 1.0f);
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::Filter)
+			{
+				// A missing authored packed map is not a request to segment the white fallback.
+				const FMixtormatClusterFilter& Filter = LayerChild.Filter;
+				if (!Layer.bEnabled || !Filter.bEnabled || !Surface || !Surface->RoughnessAOMetallic)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::Filter;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.Filter.Threshold = FMath::IsFinite(Filter.Threshold)
+					? FMath::Clamp(Filter.Threshold, 0.0f, 1.0f) : 0.33f;
+				ChildData.Filter.Offset = FMath::IsFinite(Filter.Offset) ? Filter.Offset : 0.0f;
+				ChildData.Filter.HeightInfluence = FMath::IsFinite(Filter.HeightInfluence)
+					? FMath::Max(Filter.HeightInfluence, 0.0f) : 1.0f;
 				continue;
 			}
 
@@ -2441,6 +2763,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]),
 				FVector4f(0.08f, 0.02f, 0.12f, 1.0f));
 
+			// Stand-in for the composite's RegionIds slot on every layer without a cluster
+			// filter. RDG validates a binding whether the shader branches on it or not, so the
+			// slot has to hold something real; one 1x1 texture for the whole graph is the
+			// cheapest something there is. Cleared to the no-region sentinel, so if the tint
+			// branch were ever entered against it the result is a pass-through rather than a
+			// colour hashed out of uninitialised memory.
+			FRDGTextureRef EmptyRegionIds = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_R32_UINT,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.EmptyRegionIds"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyRegionIds), 0xffffffffu);
+
 			if (Request.Layers.IsEmpty())
 			{
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputBC[0]), MixtormatSubstrate::BaseColor);
@@ -2549,6 +2886,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatRandomIdCS> RandomIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -2608,6 +2946,64 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 				{
 					const FLayerRenderData& Layer = Request.Layers[LayerIndex];
+
+					// Cluster filters run before the whole mask/effect chain regardless of their
+					// row order, because a mask child and the composite's colour stage both read
+					// what they publish. Keyed by SourceChildIndex so a consumer can find the
+					// nearest one *above* itself.
+					//
+					// Demand-culled, and worth culling: the segmentation is seventeen dispatches
+					// and four full-resolution buffers. A cluster filter with nothing reading it
+					// and no preview selected is not worth a single one of them.
+					TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
+					if (Layer.bEnabled)
+					{
+						const bool bPreviewingThisLayer =
+							Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ClusterIds
+							&& Request.DebugSettings.LayerIndex == LayerIndex;
+						for (const FChildRenderData& Child : Layer.Children)
+						{
+							if (Child.Type != EMixtormatLayerChildType::Filter)
+							{
+								continue;
+							}
+							bool bWanted = bPreviewingThisLayer
+								&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
+							if (!bWanted)
+							{
+								// Any consumer below this filter and above the next one. The
+								// scan stops at the next cluster because that one would shadow
+								// this map for everything past it.
+								for (const FChildRenderData& Other : Layer.Children)
+								{
+									if (Other.SourceChildIndex <= Child.SourceChildIndex)
+									{
+										continue;
+									}
+									if (Other.Type == EMixtormatLayerChildType::Filter)
+									{
+										break;
+									}
+									if (Other.Type == EMixtormatLayerChildType::HsvFilter
+										|| Other.Type == EMixtormatLayerChildType::RandomId)
+									{
+										bWanted = true;
+										break;
+									}
+								}
+							}
+							if (!bWanted)
+							{
+								continue;
+							}
+							RegionIdMaps.Emplace(
+								Child.SourceChildIndex,
+								AddClusterIdPasses(
+									GraphBuilder,
+									RegisterTexture(GraphBuilder, RegisteredTextures, Layer.RAM, TEXT("Mixtormat.Cluster.SourceRAMH")),
+									OutputDebug[Request.PublishedTargetIndex], Request.Resolution, Layer, Child, LayerIndex));
+						}
+					}
 					FRDGTextureRef CombinedMask = RegisterTexture(
 						GraphBuilder,
 						RegisteredTextures,
@@ -2661,6 +3057,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
+						if (Child.Type == EMixtormatLayerChildType::Filter
+							|| Child.Type == EMixtormatLayerChildType::HsvFilter)
+						{
+							// Both are handled outside this loop -- the cluster in the pre-mask
+							// phase, the HSV filter at the composite's albedo sample. Neither may
+							// fall through to the effect branch below.
+							continue;
+						}
 						if (Child.Type == EMixtormatLayerChildType::Generated)
 						{
 							// Generated masks read the surface accumulated below this layer,
@@ -3198,6 +3602,76 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									TEXT("Mixtormat.DebugCraquelureSnapshot"));
 								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugCrackSnapshot);
 								DebugMask = DebugCrackSnapshot;
+							}
+							++MaskPassIndex;
+							continue;
+						}
+
+						if (Child.Type == EMixtormatLayerChildType::RandomId)
+						{
+							const FRandomIdRenderData& RandomId = Child.RandomId;
+
+							// Culled rather than defaulted when there is no cluster above it. A
+							// mask with no ID map has no regions to vary, and emitting a flat
+							// value would silently replace whatever the chain had accumulated.
+							FRDGTextureRef RegionIds =
+								FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
+							if (!RegionIds)
+							{
+								continue;
+							}
+
+							// The same identity as every other mask child: at Weight 0 the tail
+							// returns Previous unchanged, so skipping from the second child on
+							// leaves exactly that behind.
+							if (MaskPassIndex > 0 && RandomId.Weight == 0.0f)
+							{
+								continue;
+							}
+
+							const int32 MaskWriteIndex = MaskPassIndex & 1;
+							const int32 MaskReadIndex = 1 - MaskWriteIndex;
+
+							FMixtormatRandomIdCS::FParameters* RandomParameters =
+								GraphBuilder.AllocParameters<FMixtormatRandomIdCS::FParameters>();
+							RandomParameters->OutputSize = Request.Resolution;
+							RandomParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+							RandomParameters->Seed = RandomId.Seed;
+							RandomParameters->MinValue = RandomId.MinValue;
+							RandomParameters->MaxValue = RandomId.MaxValue;
+							RandomParameters->BlendMode = static_cast<uint32>(RandomId.BlendMode);
+							RandomParameters->Invert = RandomId.bInvert ? 1u : 0u;
+							RandomParameters->Weight = RandomId.Weight;
+							RandomParameters->Balance = RandomId.Balance;
+							RandomParameters->Contrast = RandomId.Contrast;
+							RandomParameters->Offset = RandomId.Offset;
+							RandomParameters->PreviousMask = MaskTargets[MaskReadIndex];
+							RandomParameters->RegionIds = RegionIds;
+							RandomParameters->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							RandomParameters->OutputMask =
+								GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.RandomId.Layer%d.Child%d", LayerIndex, ChildIndex),
+								RandomIdShader,
+								RandomParameters,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+
+							CombinedMask = MaskTargets[MaskWriteIndex];
+							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+							{
+								FRDGTextureRef DebugRandomSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc,
+									TEXT("Mixtormat.DebugRandomIdSnapshot"));
+								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugRandomSnapshot);
+								DebugMask = DebugRandomSnapshot;
 							}
 							++MaskPassIndex;
 							continue;
@@ -3818,15 +4292,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
 					Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
 
-					// Stain is excluded, and the exclusion is load-bearing. Every other preview
-					// mode is a signal the composite derives, so the composite writes it. Stain
-					// resolves a mask inside the child loop, which now runs *before* this pass --
-					// so with Stain selected the composite has no case for that mode, falls
-					// through to DebugValue 0, and paints flat DebugLow straight over the view the
-					// stain just wrote. This pass has nothing to say about a stain; it stays out.
+					// Stain and ClusterIds publish their own previews before this composite.
+					// Neither has a case in the composite shader: exclude both or DebugValue 0
+					// would overwrite the selected child's preview with flat DebugLow.
 					Parameters->WriteDebug =
 						Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
 						&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
+						&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ClusterIds
 						&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 					Parameters->Opacity = Layer.Opacity;
 					Parameters->Tiling = Layer.Tiling;
@@ -4016,6 +4488,55 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->EffectData = CombinedEffectData;
 					Parameters->EffectHeight = CombinedEffectHeight;
 					Parameters->DebugMask = DebugMask;
+
+					// Per-region colour variation. Applied here rather than in a pass of its own
+					// because line-for-line this is the layer's colour-rewrite site already --
+					// the same place HueShift/Saturation/Value are applied, and the ID map is
+					// already in this pass's pixel space, so there is no second transform to get
+					// wrong.
+					//
+					// One HSV filter per layer takes effect: the last enabled one that has a
+					// cluster above it. Two of them do not compose into a single colour, they
+					// each claim the whole albedo, so the later row wins rather than the two
+					// silently averaging.
+					const FHsvIdFilterRenderData* ActiveHsv = nullptr;
+					FRDGTextureRef HsvRegionIds = nullptr;
+					for (const FChildRenderData& Child : Layer.Children)
+					{
+						if (Child.Type != EMixtormatLayerChildType::HsvFilter)
+						{
+							continue;
+						}
+						if (FRDGTextureRef Ids = FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex))
+						{
+							ActiveHsv = &Child.HsvFilter;
+							HsvRegionIds = Ids;
+						}
+					}
+					Parameters->RegionTintEnabled = ActiveHsv != nullptr ? 1u : 0u;
+					Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
+					Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
+					Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
+					for (int32 ColorIndex = 0; ColorIndex < FMixtormatCompositeCS::MaxRegionPalette; ++ColorIndex)
+					{
+						// The unused tail is filled rather than left alone, for the same reason
+						// FMixtormatColorIdCS fills its own: a shader parameter array is not
+						// zero initialised, and an uninitialised constant is the kind of thing
+						// that only misbehaves on one driver.
+						Parameters->RegionPalette[ColorIndex] =
+							ActiveHsv && ActiveHsv->Palette.IsValidIndex(ColorIndex)
+								? ActiveHsv->Palette[ColorIndex]
+								: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+					}
+					Parameters->RegionMixMin = ActiveHsv ? ActiveHsv->MixMin : 0.0f;
+					Parameters->RegionMixMax = ActiveHsv ? ActiveHsv->MixMax : 0.0f;
+					Parameters->RegionHueMin = ActiveHsv ? ActiveHsv->HueMin : 0.0f;
+					Parameters->RegionHueMax = ActiveHsv ? ActiveHsv->HueMax : 0.0f;
+					Parameters->RegionSatMin = ActiveHsv ? ActiveHsv->SatMin : 1.0f;
+					Parameters->RegionSatMax = ActiveHsv ? ActiveHsv->SatMax : 1.0f;
+					Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
+					Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
+
 					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
 					Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);

@@ -143,6 +143,12 @@ FReply SMixtormat::ToggleFeaturePreview(const EMixtormatDebugPreviewMode Mode)
 		}
 	}
 
+	if (Mode == EMixtormatDebugPreviewMode::ClusterIds
+		&& DebugPreviewMode != Mode && !CanPreviewSelectedFilter())
+	{
+		return FReply::Handled();
+	}
+
 	DebugPreviewMode = DebugPreviewMode == Mode
 		? EMixtormatDebugPreviewMode::None
 		: Mode;
@@ -162,6 +168,11 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	return SNew(SMixtormatIconButton)
 		.Size(MixtormatTokens::LayerEyeSize)
 		.ToolTipText(ToolTip)
+		.IsEnabled_Lambda([this, Mode]()
+		{
+			return Mode != EMixtormatDebugPreviewMode::ClusterIds
+				|| DebugPreviewMode == Mode || CanPreviewSelectedFilter();
+		})
 		.bActive_Lambda([this, Mode]() { return DebugPreviewMode == Mode; })
 		.Icon_Lambda([this, Mode]()
 		{
@@ -486,6 +497,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					case EMixtormatDebugPreviewMode::BorderNormal: return LOCTEXT("DebugBorderNormal", "Border normal ×");
 					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
 					case EMixtormatDebugPreviewMode::Stain: return LOCTEXT("DebugStain", "Stain ×");
+					case EMixtormatDebugPreviewMode::ClusterIds: return LOCTEXT("DebugClusterIds", "Cluster IDs ×");
 					default: return FText::GetEmpty();
 					}
 				})

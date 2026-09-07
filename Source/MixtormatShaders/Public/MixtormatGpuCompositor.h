@@ -23,7 +23,10 @@ enum class EMixtormatDebugPreviewMode : uint8
 	LayerMask,
 	// Written by the stain resolve rather than by the composite, because stain is a post-layer
 	// filter and runs after the composite has already published the layer.
-	Stain
+	Stain,
+	// Pre-mask filter preview; LayerIndex/ChildIndex address the original runtime arrays.
+	// Disabled filters/layers or a missing packed source leave the cleared Debug output.
+	ClusterIds
 };
 
 struct FMixtormatDebugPreviewSettings

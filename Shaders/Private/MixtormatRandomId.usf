@@ -1,0 +1,69 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+
+// Random value per region. Reads a cluster filter's ID map and emits one 0..1 value per region,
+// the same for every pixel inside it.
+//
+// This is a mask and it joins the chain like any other: PreviousMask in, a BlendMode and a Weight
+// out, the shared MixtormatShapeMask in between. Everything that already consumes a mask -- a
+// stain, a chipping placement, a peel -- becomes region-aware for free, which is the whole point
+// of doing it here rather than inside each of them.
+//
+// No UV transform and no sampler. The ID map is produced at this exact resolution by the cluster
+// pass in the same layer, so a pixel lookup is the correct read; sampling it through a transform
+// would interpolate ids, and halfway between two ids is a third id that names neither region.
+
+Texture2D<float> PreviousMask;
+Texture2D<uint> RegionIds;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+uint Initialize;
+
+uint Seed;
+float MinValue;
+float MaxValue;
+
+uint BlendMode;
+uint Invert;
+float Weight;
+float Balance;
+float Contrast;
+float Offset;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	const uint RegionId = RegionIds.Load(int3(DispatchThreadId.xy, 0));
+
+	float Incoming = 0.0f;
+	if (RegionId != MIXTORMAT_INVALID_REGION)
+	{
+		// One draw off the region seed. MinValue above MaxValue simply runs the range backwards,
+		// which is the same picture as Invert and costs nothing to allow.
+		const uint RegionSeed = MixtormatRegionSeed(RegionId, Seed);
+		const float Draw = MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_VALUE);
+		Incoming = MinValue + (MaxValue - MinValue) * Draw;
+	}
+
+	// Shaping is what replaces the prototype's ramp mode. Contrast about the 0.5 midpoint pulls
+	// most regions toward the mean and leaves a few outliers, which is the distribution that
+	// reads as subtle -- and it is the same function every other mask node in the plugin uses.
+	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+
+	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+}

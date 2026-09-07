@@ -1216,6 +1216,419 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		];
 }
 
+// The palette rows, and the picker plumbing behind them. Resolved by index rather than through
+// GetSelectedHsvFilter for the same reason the colour ID picker is: the window is modeless, so
+// the selection can move while it is open and committing to whatever happens to be selected
+// then would edit a different node from the one the user opened.
+void SMixtormat::SetHsvPaletteColor(
+	const FLinearColor NewColor,
+	const int32 LayerIndex,
+	const int32 ChildIndex,
+	const int32 ColorIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	if (Child.Type != EMixtormatLayerChildType::HsvFilter
+		|| !Child.HsvFilter.Palette.IsValidIndex(ColorIndex))
+	{
+		return;
+	}
+	Child.HsvFilter.Palette[ColorIndex] = NewColor;
+	RefreshLayeredPreview();
+}
+
+FReply SMixtormat::OpenHsvPalettePicker(const int32 ColorIndex)
+{
+	const FMixtormatHsvIdFilter* Selected = GetSelectedHsvFilter();
+	if (!Selected || !Selected->Palette.IsValidIndex(ColorIndex))
+	{
+		return FReply::Handled();
+	}
+
+	const int32 LayerIndex = SelectedLayerIndex;
+	const int32 ChildIndex = SelectedMaskIndex;
+	const FLinearColor OriginalColor = Selected->Palette[ColorIndex];
+
+	FColorPickerArgs PickerArgs;
+	PickerArgs.bIsModal = false;
+	PickerArgs.bUseAlpha = false;
+	PickerArgs.ParentWidget = SharedThis(this);
+	PickerArgs.InitialColor = OriginalColor;
+	PickerArgs.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda(
+		[this, LayerIndex, ChildIndex, ColorIndex](const FLinearColor NewColor)
+		{
+			SetHsvPaletteColor(NewColor, LayerIndex, ChildIndex, ColorIndex);
+		});
+	PickerArgs.OnColorPickerCancelled = FOnColorPickerCancelled::CreateLambda(
+		[this, LayerIndex, ChildIndex, ColorIndex, OriginalColor](const FLinearColor)
+		{
+			SetHsvPaletteColor(OriginalColor, LayerIndex, ChildIndex, ColorIndex);
+		});
+	OpenColorPicker(PickerArgs);
+	return FReply::Handled();
+}
+
+FReply SMixtormat::AddHsvPaletteEntry()
+{
+	if (FMixtormatHsvIdFilter* Hsv = GetSelectedHsvFilter())
+	{
+		if (Hsv->Palette.Num() < FMixtormatHsvIdFilter::MaxPaletteColors)
+		{
+			// Seeded from the last entry rather than from black, so adding a stop extends a ramp
+			// the artist is already building instead of dropping a hole in the middle of it.
+			Hsv->Palette.Add(Hsv->Palette.IsEmpty() ? FLinearColor::White : Hsv->Palette.Last());
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}
+	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::RemoveHsvPaletteEntry(const int32 ColorIndex)
+{
+	if (FMixtormatHsvIdFilter* Hsv = GetSelectedHsvFilter())
+	{
+		if (Hsv->Palette.IsValidIndex(ColorIndex))
+		{
+			Hsv->Palette.RemoveAt(ColorIndex);
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}
+	}
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
+{
+	const auto Hsv = [this]() { return GetSelectedHsvFilter(); };
+
+	const auto Slider = [this, Hsv](
+		const FText& Label,
+		float FMixtormatHsvIdFilter::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatHsvIdFilter>(Label, Hsv, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	// The palette, and it is the half that matters. Jitter alone can only wander from wherever
+	// the texture already sits; a palette lets the variation be aimed at colours that were
+	// chosen. Same row shape as the colour ID selection, for the same reason: a colour is picked
+	// by looking at it.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("HsvGrpPalette", "Palette")));
+
+	// Every row that could exist is laid out once and shows itself when the data reaches it. The
+	// panel is built at construction, long before anything is selected, so a loop over the
+	// current entries would bake in whatever the count happened to be then -- which is zero.
+	for (int32 ColorIndex = 0; ColorIndex < FMixtormatHsvIdFilter::MaxPaletteColors; ++ColorIndex)
+	{
+		Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+		[
+			SNew(SHorizontalBox)
+			.Visibility_Lambda([this, ColorIndex]()
+			{
+				const FMixtormatHsvIdFilter* H = GetSelectedHsvFilter();
+				return H && H->Palette.IsValidIndex(ColorIndex)
+					? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+				.ToolTipText(LOCTEXT("HsvSwatchHint", "A stop on the palette regions draw from. Stops are evenly spaced and a region can land anywhere between two of them."))
+				.OnClicked_Lambda([this, ColorIndex]() { return OpenHsvPalettePicker(ColorIndex); })
+				[
+					SNew(SColorBlock)
+					.Color_Lambda([this, ColorIndex]()
+					{
+						const FMixtormatHsvIdFilter* H = GetSelectedHsvFilter();
+						return H && H->Palette.IsValidIndex(ColorIndex)
+							? H->Palette[ColorIndex]
+							: FLinearColor::Black;
+					})
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(MixtormatTokens::TileGap, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+				.Text(LOCTEXT("HsvRemoveColor", "Remove"))
+				.OnClicked_Lambda([this, ColorIndex]() { return RemoveHsvPaletteEntry(ColorIndex); })
+			]
+		];
+	}
+
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	[
+		SNew(SButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+		.Text(LOCTEXT("HsvAddColor", "Add Colour"))
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatHsvIdFilter* H = GetSelectedHsvFilter();
+			return H && H->Palette.Num() < FMixtormatHsvIdFilter::MaxPaletteColors;
+		})
+		.OnClicked_Lambda([this]() { return AddHsvPaletteEntry(); })
+	];
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("HsvMixMin", "Tint Min"), &FMixtormatHsvIdFilter::RampMixMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("HsvMixMinHint", "How far a region tints toward the colour it sampled, at the low end. A range rather than one number so most regions can sit near the texture's own colour with a few pulled much further.")),
+		Slider(LOCTEXT("HsvMixMax", "Tint Max"), &FMixtormatHsvIdFilter::RampMixMax, 0.0, 1.0, 0.15, 0.01,
+			LOCTEXT("HsvMixMaxHint", "The high end of the same range. At 1 a region takes the palette colour outright and loses the texture's own; the useful territory is well below that."))));
+
+	// Min/max pairs rather than a +/- amount, so variation can be biased: hue 0 to 0.1 shifts
+	// only warm, which a symmetric amount cannot express.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("HsvGrpJitter", "Jitter")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("HsvHueMin", "Hue Min"), &FMixtormatHsvIdFilter::HueMin, -1.0, 1.0, 0.0, 0.005,
+			LOCTEXT("HsvHueMinHint", "Added, because hue is circular. -1 to 1 spans a full turn either way, the same convention as the layer's own Hue Shift -- so a couple of hundredths is already clearly visible on a flat surface. Both ends at 0 switches hue jitter off.")),
+		Slider(LOCTEXT("HsvHueMax", "Hue Max"), &FMixtormatHsvIdFilter::HueMax, -1.0, 1.0, 0.0, 0.005,
+			LOCTEXT("HsvHueMaxHint", "The other end of the hue range. Set both positive to shift only warm, both negative to shift only cool."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("HsvSatMin", "Sat Min"), &FMixtormatHsvIdFilter::SaturationMin, 0.0, 2.0, 0.9, 0.01,
+			LOCTEXT("HsvSatMinHint", "A multiplier around 1, because saturation is a magnitude rather than a position on a circle. 1 on both ends leaves saturation alone.")),
+		Slider(LOCTEXT("HsvSatMax", "Sat Max"), &FMixtormatHsvIdFilter::SaturationMax, 0.0, 2.0, 1.1, 0.01,
+			LOCTEXT("HsvSatMaxHint", "The high end of the saturation multiplier."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("HsvValMin", "Value Min"), &FMixtormatHsvIdFilter::ValueMin, 0.0, 2.0, 0.9, 0.01,
+			LOCTEXT("HsvValMinHint", "A multiplier around 1, like saturation. This is the one that reads as regions being fired differently, and the one to reach for first.")),
+		Slider(LOCTEXT("HsvValMax", "Value Max"), &FMixtormatHsvIdFilter::ValueMax, 0.0, 2.0, 1.1, 0.01,
+			LOCTEXT("HsvValMaxHint", "The high end of the value multiplier."))));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatHsvIdFilter>(
+		LOCTEXT("HsvSeed", "Seed"), Hsv, &FMixtormatHsvIdFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("HsvSeedHint", "Reshuffles which region gets which colour without changing any of the ranges. All five draws -- palette position, tint amount, hue, saturation, value -- come off one hash of this and the region ID, so they move together.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedHsvFilter() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("HsvFilterHeading", "HSV FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatHsvIdFilter* Selected = GetSelectedHsvFilter();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						if (FMixtormatHsvIdFilter* Selected = GetSelectedHsvFilter())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("HsvEnabledHint", "Enable this HSV filter")))
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatMaskBlendMode Modes[] = {
+		EMixtormatMaskBlendMode::Replace,
+		EMixtormatMaskBlendMode::Add,
+		EMixtormatMaskBlendMode::Subtract,
+		EMixtormatMaskBlendMode::Multiply,
+		EMixtormatMaskBlendMode::Min,
+		EMixtormatMaskBlendMode::Max,
+		EMixtormatMaskBlendMode::AddSub,
+		EMixtormatMaskBlendMode::Overlay
+	};
+	for (const EMixtormatMaskBlendMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::MaskBlendModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatRandomIdMask* R = GetSelectedRandomId())
+				{
+					R->BlendMode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatRandomIdMask* R = GetSelectedRandomId();
+				return R && R->BlendMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
+{
+	const auto Random = [this]() { return GetSelectedRandomId(); };
+
+	const auto Slider = [this, Random](
+		const FText& Label,
+		float FMixtormatRandomIdMask::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatRandomIdMask>(Label, Random, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RandomMin", "Min"), &FMixtormatRandomIdMask::MinValue, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RandomMinHint", "The low end of the range a region's value is drawn from. Narrowing the range is how the variation is kept subtle without touching anything downstream.")),
+		Slider(LOCTEXT("RandomMax", "Max"), &FMixtormatRandomIdMask::MaxValue, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RandomMaxHint", "The high end. Setting Min above Max runs the range backwards, which is the same picture as Invert."))));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatRandomIdMask>(
+		LOCTEXT("RandomSeed", "Seed"), Random, &FMixtormatRandomIdMask::Seed, 0.0, 64.0, 1,
+		LOCTEXT("RandomSeedHint", "Reshuffles which region gets which value without changing the range. Independent of the cluster filter's own controls, so reseeding here does not re-segment -- it is the cheap dial.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RandomGrpBlend", "Blend")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("RandomBlendMode", "Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatRandomIdMask* R = GetSelectedRandomId();
+				return R ? MixtormatUI::MaskBlendModeText(R->BlendMode) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildRandomIdBlendModeMenu)),
+		LOCTEXT("RandomBlendModeHint", "How the per-region value combines with the mask accumulated above it in this layer. Multiply against a painted mask is the common one: vary only where you already wanted the layer.")));
+
+	AddSliderRow(Panel, Slider(LOCTEXT("RandomWeight", "Weight"), &FMixtormatRandomIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("RandomWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")));
+
+	// The shared shaping block, and it is doing real work here rather than being boilerplate.
+	// Contrast above 1 about the 0.5 midpoint pulls most regions toward the mean and leaves a
+	// few outliers, which is what the prototype's ramp distribution mode was for.
+	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatRandomIdMask* R = GetSelectedRandomId();
+		return R ? &R->Shaping : nullptr;
+	});
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedRandomId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("RandomIdHeading", "RANDOM FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMixtormatDebugPreviewMode::LayerMask,
+						LOCTEXT("PreviewRandomId", "Preview this mask in unlit dark red and cyan"))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatRandomIdMask* Selected = GetSelectedRandomId();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatRandomIdMask* Selected = GetSelectedRandomId())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("RandomEnabledHint", "Enable this mask"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildFilterControls()
+{
+	const auto Filter = [this]() { return GetSelectedFilter(); };
+
+	// No blend mode, no weight and no shaping block. Those are the mask vocabulary, and this node
+	// emits integer region labels rather than coverage -- there is nothing meaningful to contrast
+	// or invert about a label. The eye on the header is the only consumer that exists so far.
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+		LOCTEXT("ClusterThreshold", "Threshold"), Filter, &FMixtormatClusterFilter::Threshold,
+		0.0, 1.0, 0.33, 0.005,
+		LOCTEXT("ClusterThresholdHint", "Band width, and so how big a region is. Roughness is quantised into bands of this width and neighbours join only inside one. Read after height and roughness are both renormalised to 0-1, which is what makes one value mean the same thing on every scan instead of drifting with that texture's own range.")));
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+		LOCTEXT("ClusterOffset", "Offset"), Filter, &FMixtormatClusterFilter::Offset,
+		-1.0, 1.0, 0.0, 0.005,
+		LOCTEXT("ClusterOffsetHint", "Where the band boundaries fall. Same granularity, different partition -- a reseed that moves every boundary without changing the character of the result.")));
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+		LOCTEXT("ClusterHeightInfluence", "Height Influence"), Filter, &FMixtormatClusterFilter::HeightInfluence,
+		0.0, 8.0, 1.0, 0.01,
+		LOCTEXT("ClusterHeightInfluenceHint", "How strongly a step in height blocks a merge roughness would otherwise allow. The criterion is two-channel: same roughness band and no height step. At 0 it falls back to roughness bands alone.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedFilter() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("ClusterFilterHeading", "CLUSTER IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeFeaturePreviewButton(
+						EMixtormatDebugPreviewMode::ClusterIds,
+						LOCTEXT("PreviewClusterIds", "Preview the region ID map as a hashed colour per region. Debug only -- the IDs themselves are sparse integers and nothing consumes them yet."))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatClusterFilter* Selected = GetSelectedFilter();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatClusterFilter* Selected = GetSelectedFilter())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("ClusterEnabledHint", "Enable this cluster filter"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 {
 	const auto Craq = [this]() { return GetSelectedCraquelure(); };
@@ -2778,6 +3191,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedLayerMask()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
+							|| GetSelectedFilter()
+							|| GetSelectedHsvFilter()
+							|| GetSelectedRandomId()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
@@ -2790,6 +3206,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildLayerMaskControls()]
 					+ SScrollBox::Slot()[BuildCraquelureControls()]
 					+ SScrollBox::Slot()[BuildColorIdControls()]
+					+ SScrollBox::Slot()[BuildFilterControls()]
+					+ SScrollBox::Slot()[BuildHsvFilterControls()]
+					+ SScrollBox::Slot()[BuildRandomIdControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
