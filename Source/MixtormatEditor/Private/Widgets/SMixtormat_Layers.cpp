@@ -271,7 +271,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ColorId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Filter
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HsvFilter
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RandomId))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RandomId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RampId))
 	{
 		return SelectedMaskIndex;
 	}
@@ -391,6 +392,8 @@ void SMixtormat::SyncSelectedLayerControls()
 								? LOCTEXT("SelectedHsvFilterMaps", "HSV FROM IDS · ALBEDO")
 							: Child.Type == EMixtormatLayerChildType::RandomId
 								? LOCTEXT("SelectedRandomIdMaps", "RANDOM FROM IDS")
+							: Child.Type == EMixtormatLayerChildType::RampId
+								? LOCTEXT("SelectedRampIdMaps", "RAMP FROM IDS · HEIGHT + NORMAL")
 								: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
@@ -1130,6 +1133,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("RandomIdChildName", "Random From IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::RampId)
+	{
+		return LOCTEXT("RampIdChildName", "Ramp From IDs");
+	}
 	if (Child.Type == EMixtormatLayerChildType::ColorId)
 	{
 		// Named after its map rather than after itself, the way a painted mask row is: two id
@@ -1160,7 +1167,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 					|| Child.Type == EMixtormatLayerChildType::Craquelure
 					|| Child.Type == EMixtormatLayerChildType::Filter
 					|| Child.Type == EMixtormatLayerChildType::HsvFilter
-					|| Child.Type == EMixtormatLayerChildType::RandomId)
+					|| Child.Type == EMixtormatLayerChildType::RandomId
+					|| Child.Type == EMixtormatLayerChildType::RampId)
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()));
@@ -1285,7 +1293,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::ColorId
 			|| Child.Type == EMixtormatLayerChildType::Filter
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
-			|| Child.Type == EMixtormatLayerChildType::RandomId;
+			|| Child.Type == EMixtormatLayerChildType::RandomId
+			|| Child.Type == EMixtormatLayerChildType::RampId;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Group->AddChild(
@@ -1377,6 +1386,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::Filter:    return Child.Filter.bEnabled;
 	case EMixtormatLayerChildType::HsvFilter: return Child.HsvFilter.bEnabled;
 	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
+	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -1538,6 +1548,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddFilterMenu(const int32 LayerIndex)
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddHsvFilterToLayer(LayerIndex); }))
 		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	Menu.Item(
+		LOCTEXT("AddRampIdChild", "Ramp From IDs"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRampIdToLayer(LayerIndex); }))
+		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
 	return Menu.Build();
 }
 
@@ -1638,7 +1653,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			? WorkingLayers[LayerIndex].Children[ChildIndex].Type
 			: EMixtormatLayerChildType::Mask;
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
-		|| RowType == EMixtormatLayerChildType::HsvFilter;
+		|| RowType == EMixtormatLayerChildType::HsvFilter
+		|| RowType == EMixtormatLayerChildType::RampId;
 	if (!bFilter)
 	{
 		Menu.SubMenu(
@@ -1679,6 +1695,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::RandomId:
 			RemoveLabel = LOCTEXT("RemoveRandomIdChild", "Remove Random From IDs");
+			break;
+		case EMixtormatLayerChildType::RampId:
+			RemoveLabel = LOCTEXT("RemoveRampIdChild", "Remove Ramp From IDs");
 			break;
 		default:
 			break;
@@ -2177,6 +2196,45 @@ const FMixtormatHsvIdFilter* SMixtormat::GetSelectedHsvFilter() const
 	return Child.Type == EMixtormatLayerChildType::HsvFilter ? &Child.HsvFilter : nullptr;
 }
 
+FReply SMixtormat::AddRampIdToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::RampId;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::RampId ? &Child.RampId : nullptr;
+}
+
+const FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::RampId ? &Child.RampId : nullptr;
+}
+
 FReply SMixtormat::AddRandomIdToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -2293,7 +2351,8 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::ColorId
 		&& ChildType != EMixtormatLayerChildType::Filter
 		&& ChildType != EMixtormatLayerChildType::HsvFilter
-		&& ChildType != EMixtormatLayerChildType::RandomId)
+		&& ChildType != EMixtormatLayerChildType::RandomId
+		&& ChildType != EMixtormatLayerChildType::RampId)
 	{
 		return FReply::Handled();
 	}
@@ -2354,6 +2413,9 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::RandomId:
 		Child.RandomId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::RampId:
+		Child.RampId.bEnabled = bEnabled;
 		break;
 	default:
 		return;

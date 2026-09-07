@@ -1282,6 +1282,77 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Per-region gradient. One entry point staged by Stage, so -- as with the cluster filter --
+// every file-scope uniform is declared here whether a given stage reads it or not.
+class FMixtormatRampIdsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRampIdsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRampIdsCS, FGlobalShader);
+
+	static constexpr uint32 StageInit = 0;
+	static constexpr uint32 StageBounds = 1;
+	static constexpr uint32 StageResolve = 2;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Stage)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(uint32, RotateRandom)
+		SHADER_PARAMETER(float, ScaleMin)
+		SHADER_PARAMETER(float, ScaleMax)
+		SHADER_PARAMETER(float, BiasMin)
+		SHADER_PARAMETER(float, BiasMax)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRampIdsCS,
+	"/Plugin/MaterialLab/Private/MixtormatRampIds.usf",
+	"MainCS",
+	SF_Compute);
+
+// The post-composite half: the gradient turned into a tilt in the composited height and normal.
+class FMixtormatRampIdReliefCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRampIdReliefCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRampIdReliefCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, HeightAmount)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(float, Profile)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RampField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRampIdReliefCS,
+	"/Plugin/MaterialLab/Private/MixtormatRampIdRelief.usf",
+	"MainCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
 	struct FMaskRenderData
@@ -1562,6 +1633,21 @@ namespace MixtormatGpuCompositor
 		float Offset = 0.0f;
 	};
 
+	struct FRampIdRenderData
+	{
+		float HeightAmount = 0.05f;
+		float NormalStrength = 8.0f;
+		float Profile = 1.0f;
+		float Feather = 0.15f;
+		bool bRotateRandom = true;
+		float ScaleMin = 1.0f;
+		float ScaleMax = 1.0f;
+		float BiasMin = 0.0f;
+		float BiasMax = 0.0f;
+		bool bInvert = false;
+		uint32 Seed = 1;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -1574,6 +1660,7 @@ namespace MixtormatGpuCompositor
 		FClusterFilterRenderData Filter;
 		FHsvIdFilterRenderData HsvFilter;
 		FRandomIdRenderData RandomId;
+		FRampIdRenderData RampId;
 	};
 
 	struct FLayerRenderData
@@ -1808,6 +1895,69 @@ namespace MixtormatGpuCompositor
 		return RegionIds;
 	}
 
+	// Builds one ramp filter's gradient field from an ID map.
+	//
+	// Three dispatches and one full-resolution int4 scratch buffer, so it is demand-culled the
+	// same way the segmentation is: no tilt weight, no pass.
+	FRDGTextureRef AddRampIdPasses(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef RegionIds,
+		FIntPoint OutputSize,
+		const FRampIdRenderData& Ramp,
+		int32 LayerIndex,
+		int32 ChildIndex)
+	{
+		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
+		// Four ints per pixel -- min x, max x, min y, max y -- strided in one buffer. Sized by
+		// pixel rather than by region because an ID *is* a pixel index and nothing compacts them;
+		// most of this is never touched, which is the price of keeping the root's position.
+		FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 4u),
+			TEXT("Mixtormat.Ramp.RegionBounds"));
+		const FRDGBufferUAVRef RegionBoundsUAV = GraphBuilder.CreateUAV(RegionBounds);
+
+		FRDGTextureRef RampField = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				OutputSize,
+				PF_G16R16F,
+				FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Ramp.Field"));
+		const FRDGTextureUAVRef RampFieldUAV = GraphBuilder.CreateUAV(RampField);
+
+		TShaderMapRef<FMixtormatRampIdsCS> RampShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
+		for (uint32 Stage = FMixtormatRampIdsCS::StageInit;
+			Stage <= FMixtormatRampIdsCS::StageResolve;
+			++Stage)
+		{
+			FMixtormatRampIdsCS::FParameters* Parameters =
+				GraphBuilder.AllocParameters<FMixtormatRampIdsCS::FParameters>();
+			Parameters->OutputSize = OutputSize;
+			Parameters->Stage = Stage;
+			Parameters->Seed = Ramp.Seed;
+			Parameters->RotateRandom = Ramp.bRotateRandom ? 1u : 0u;
+			Parameters->ScaleMin = Ramp.ScaleMin;
+			Parameters->ScaleMax = Ramp.ScaleMax;
+			Parameters->BiasMin = Ramp.BiasMin;
+			Parameters->BiasMax = Ramp.BiasMax;
+			Parameters->Invert = Ramp.bInvert ? 1u : 0u;
+			Parameters->Feather = Ramp.Feather;
+			Parameters->RegionIds = RegionIds;
+			Parameters->RegionBounds = RegionBoundsUAV;
+			Parameters->OutputRamp = RampFieldUAV;
+
+			// Default UAV barriers, deliberately: the bounds reduction has to have finished for
+			// every pixel of a region before any pixel of it reads the box back.
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.RampIds.Layer%d.Child%d.Stage%u", LayerIndex, ChildIndex, Stage),
+				RampShader, Parameters, Groups);
+		}
+		return RampField;
+	}
+
 	// The cluster filter a consumer reads: the nearest enabled one above it in the child list.
 	//
 	// Above rather than anywhere in the layer, so two cluster filters at different thresholds can
@@ -2025,6 +2175,33 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				HsvData.ValMin = FMath::Clamp(Hsv.ValueMin, 0.0f, 4.0f);
 				HsvData.ValMax = FMath::Clamp(Hsv.ValueMax, 0.0f, 4.0f);
 				HsvData.Seed = static_cast<uint32>(FMath::Max(Hsv.Seed, 0));
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::RampId)
+			{
+				// Its pass runs after the composite, so a disabled layer must not gather it --
+				// the same reason effects are skipped above.
+				const FMixtormatRampIdFilter& Ramp = LayerChild.RampId;
+				if (!Layer.bEnabled || !Ramp.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::RampId;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FRampIdRenderData& RampData = ChildData.RampId;
+				RampData.HeightAmount = FMath::Clamp(Ramp.HeightAmount, 0.0f, 1.0f);
+				RampData.NormalStrength = FMath::Clamp(Ramp.NormalStrength, 0.0f, 32.0f);
+				RampData.Profile = FMath::Clamp(Ramp.Profile, 0.05f, 8.0f);
+				RampData.Feather = FMath::Clamp(Ramp.Feather, 0.0f, 0.5f);
+				RampData.bRotateRandom = Ramp.bRotateRandom;
+				RampData.ScaleMin = FMath::Clamp(Ramp.ScaleMin, 0.01f, 4.0f);
+				RampData.ScaleMax = FMath::Clamp(Ramp.ScaleMax, 0.01f, 4.0f);
+				RampData.BiasMin = FMath::Clamp(Ramp.BiasMin, -1.0f, 1.0f);
+				RampData.BiasMax = FMath::Clamp(Ramp.BiasMax, -1.0f, 1.0f);
+				RampData.bInvert = Ramp.bInvert;
+				RampData.Seed = static_cast<uint32>(FMath::Max(Ramp.Seed, 0));
 				continue;
 			}
 
@@ -2887,6 +3064,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatRandomIdCS> RandomIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -2985,7 +3163,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 										break;
 									}
 									if (Other.Type == EMixtormatLayerChildType::HsvFilter
-										|| Other.Type == EMixtormatLayerChildType::RandomId)
+										|| Other.Type == EMixtormatLayerChildType::RandomId
+										|| Other.Type == EMixtormatLayerChildType::RampId)
 									{
 										bWanted = true;
 										break;
@@ -3047,6 +3226,50 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					};
 					TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 
+					// The ramp tilt, deferred for exactly the reason craquelure's relief is: the
+					// gradient is built from an ID map that exists before the composite, but the
+					// height it moves does not exist until after it.
+					struct FPendingRampTilt
+					{
+						FRDGTextureRef Field = nullptr;
+						float HeightAmount = 0.0f;
+						float NormalStrength = 0.0f;
+						float Profile = 1.0f;
+					};
+					TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
+					for (const FChildRenderData& Child : Layer.Children)
+					{
+						if (Child.Type != EMixtormatLayerChildType::RampId)
+						{
+							continue;
+						}
+						// Culled rather than defaulted with no cluster above it: there are no
+						// regions to tip, and a flat field would move the whole layer by half an
+						// amount instead of doing nothing.
+						FRDGTextureRef RegionIds =
+							FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
+						if (!RegionIds)
+						{
+							continue;
+						}
+						const FRampIdRenderData& Ramp = Child.RampId;
+						// Three dispatches and a full-resolution scratch buffer buy nothing at
+						// zero height. Height alone is the whole test: the normal is scaled by it
+						// too, because a region that is not tipped has no slope to light, so
+						// there is no "normal only" case to keep alive here.
+						if (Ramp.HeightAmount <= 0.0f)
+						{
+							continue;
+						}
+						FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
+						Tilt.Field = AddRampIdPasses(
+							GraphBuilder, RegionIds, Request.Resolution, Ramp,
+							LayerIndex, Child.SourceChildIndex);
+						Tilt.HeightAmount = Ramp.HeightAmount;
+						Tilt.NormalStrength = Ramp.NormalStrength;
+						Tilt.Profile = Ramp.Profile;
+					}
+
 					// An array where erosion keeps a single pointer. Two erosions on one layer
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
 					// ordinary way to use an adjustment layer, and dropping all but the last
@@ -3058,11 +3281,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
 						if (Child.Type == EMixtormatLayerChildType::Filter
-							|| Child.Type == EMixtormatLayerChildType::HsvFilter)
+							|| Child.Type == EMixtormatLayerChildType::HsvFilter
+							|| Child.Type == EMixtormatLayerChildType::RampId)
 						{
-							// Both are handled outside this loop -- the cluster in the pre-mask
-							// phase, the HSV filter at the composite's albedo sample. Neither may
-							// fall through to the effect branch below.
+							// All three are handled outside this loop -- the cluster in the
+							// pre-mask phase, the HSV filter at the composite's albedo sample,
+							// the ramp tilt after the composite. None may fall through to the
+							// effect branch below.
 							continue;
 						}
 						if (Child.Type == EMixtormatLayerChildType::Generated)
@@ -4920,6 +5145,44 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
 						}
+					}
+
+					// The region tilt runs before craquelure relief, and the order is not
+					// arbitrary: a crack carved into a tile that has already settled is right,
+					// whereas tilting a tile after its crack was carved drags the groove's depth
+					// around with the slope.
+					for (int32 TiltIndex = 0; TiltIndex < PendingRampTilts.Num(); ++TiltIndex)
+					{
+						const FPendingRampTilt& Tilt = PendingRampTilts[TiltIndex];
+						FRDGTextureRef TiltH = GraphBuilder.CreateTexture(
+							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltH"));
+						FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
+							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
+
+						FMixtormatRampIdReliefCS::FParameters* TiltP =
+							GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
+						TiltP->OutputSize = Request.Resolution;
+						TiltP->HeightAmount = Tilt.HeightAmount;
+						TiltP->NormalStrength = Tilt.NormalStrength;
+						TiltP->Profile = Tilt.Profile;
+						TiltP->RampField = Tilt.Field;
+						TiltP->SourceHeight = HeightTargets[WriteIndex];
+						TiltP->PreviousNormal = OutputN[WriteIndex];
+						TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
+						TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
+
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.RampId.Tilt.L%d.%d", LayerIndex, TiltIndex),
+							RampIdReliefShader,
+							TiltP,
+							FIntVector(
+								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+								1));
+
+						AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
 					}
 
 					// Craquelure relief runs after erosion but before chipping. Chipping selects

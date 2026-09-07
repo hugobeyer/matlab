@@ -1290,6 +1290,96 @@ struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 	FMixtormatMaskShaping Shaping;
 };
 
+// Per-region tilt from a gradient. Gives every region its own local frame, runs a linear ramp
+// across it at a random angle, and uses that to lift one side of the region and sink the other in
+// the composited height and normal.
+//
+// This is what stops tiles, cobbles and shards lying in the same plane. Overlaying a noise varies
+// pixels; this varies pieces, so the surface reads as individually settled fragments rather than
+// one flat sheet with a texture on it.
+//
+// A Filter by category and by menu, but it owns a pass that runs *after* the layer composites --
+// the same shape as craquelure, which builds its network before the composite and defers its
+// relief until the height it is carving actually exists. Deliberately not an Effect: effects here
+// are asset-backed, picked from a registry, and there is no asset a per-region tilt points at.
+//
+// The local frame is recovered from the ID itself: an ID is the linear index of its region's root
+// pixel, so the root's position comes for free and every bounding box is measured relative to it.
+// That is why nothing compacts these IDs to a dense range -- doing so would destroy the one thing
+// this node needs from them.
+//
+// Reads the nearest enabled cluster filter above it in the child list. With none, it does
+// nothing.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs")
+	bool bEnabled = true;
+
+	// -- Relief ---------------------------------------------------------------------------------
+	// The same pair craquelure's relief carries, and for the same reason: how far the surface
+	// moves and how hard the light follows are different questions, and either at zero switches
+	// off that half alone.
+
+	// How far a region tips, as a fraction of the height range. Signed about the middle of the
+	// ramp -- a region rises on one side exactly as much as it falls on the other, so the surface
+	// does not drift up or down overall.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeightAmount = 0.05f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "32.0"))
+	float NormalStrength = 8.0f;
+
+	// Shapes the ramp between a straight slope and an eased one without moving its ends. At 1 the
+	// slope is constant across the region, which is the same constant-gradient case craquelure's
+	// groove wall is at 1 -- the number means the same thing in both nodes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float Profile = 1.0f;
+
+	// Eases the tilt to nothing near a region's edge, so neighbouring regions meet instead of
+	// stepping against each other. In fractions of the region's own size, so it means the same
+	// thing on a large region and a small one. 0 leaves the step hard.
+	//
+	// Measured against the region's bounding box, which is exact for rectangular regions -- the
+	// bricks, tiles and planks this is for -- and starts late on a blobby one, where the box sits
+	// outside the shape.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float Feather = 0.15f;
+
+	// -- Gradient -------------------------------------------------------------------------------
+
+	// Whether each region's gradient runs in its own random direction. Off puts every gradient on
+	// the same axis, which reads as a comb rather than as settling.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient")
+	bool bRotateRandom = true;
+
+	// How far the ramp is stretched across its region, drawn per region between these. Above 1
+	// the ramp runs off the region's edges and the middle of it is what lands, which flattens the
+	// tilt; below 1 the full sweep fits inside and the region tips further.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", ClampMax = "4.0"))
+	float ScaleMin = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", ClampMax = "4.0"))
+	float ScaleMax = 1.0f;
+
+	// Shifts a region's whole ramp up or down before it is centred, drawn per region between
+	// these. This is what makes some pieces sit proud and others sunken rather than every region
+	// pivoting about the same middle.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float BiasMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float BiasMax = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient")
+	bool bInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatLayerChildType : uint8
 {
@@ -1308,7 +1398,8 @@ enum class EMixtormatLayerChildType : uint8
 	// lives in the add menu and the FILT badge, which is where it is actually experienced.
 	Filter UMETA(DisplayName = "Cluster IDs"),
 	HsvFilter UMETA(DisplayName = "HSV From IDs"),
-	RandomId UMETA(DisplayName = "Random From IDs")
+	RandomId UMETA(DisplayName = "Random From IDs"),
+	RampId UMETA(DisplayName = "Ramp From IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -1342,6 +1433,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::RandomId"))
 	FMixtormatRandomIdMask RandomId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::RampId"))
+	FMixtormatRampIdFilter RampId;
 };
 
 namespace MixtormatHue

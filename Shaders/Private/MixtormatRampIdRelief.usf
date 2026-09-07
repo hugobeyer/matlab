@@ -1,0 +1,108 @@
+#include "/Engine/Public/Platform.ush"
+
+// Per-region tilt. Takes the gradient field the ramp filter produced and uses it to lift one side
+// of every region and sink the other, in the composited height and the matching normal.
+//
+// This is what stops tiles, cobbles and shards all lying in the same plane. Each region's
+// gradient runs along its own random direction, so the surface reads as individually settled
+// pieces rather than one flat sheet with a texture on it -- and it costs a multiply, which is why
+// it is worth doing before any of the UV work.
+//
+// A post-layer pass, run where erosion and craquelure relief run. The ramp field is built before
+// the layer composites, so tilting there would be painted straight back over. It runs *before*
+// craquelure relief in that block on purpose: a crack carved into a tilted tile is right, a tile
+// tilted after its crack was carved drags the groove around with it.
+
+// (gradient 0..1, edge feather 0..1).
+Texture2D<float2> RampField;
+Texture2D<float> SourceHeight;
+Texture2D<float4> PreviousNormal;
+
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+
+// Two weights on one signal, like craquelure's relief pair: how far the region tips, and how
+// strongly the normal follows. Either at zero switches off that half without touching the other.
+float HeightAmount;
+float NormalStrength;
+
+// Shapes the ramp between a straight slope and an eased one, without moving its ends. At 1 the
+// slope is constant across the region -- the same constant-gradient case craquelure's cone is,
+// and the reason that number means the same thing in both nodes.
+float Profile;
+
+int RampWrap(int X, int Size)
+{
+	const int R = X % max(Size, 1);
+	return R < 0 ? R + Size : R;
+}
+
+int2 RampWrapPixel(int2 P)
+{
+	return int2(RampWrap(P.x, OutputSize.x), RampWrap(P.y, OutputSize.y));
+}
+
+// The signed tilt at one pixel, on -0.5..0.5 before weighting.
+//
+// Centred rather than clamped to one side. A crack is parted material and may only ever lower the
+// height, which is why the relief pass floors itself at the surface; a tilt is not that -- a
+// region rises on one side exactly as much as it falls on the other, and flooring it would throw
+// away half the effect and leave every region sitting lower than its neighbours.
+float RampTilt(int2 P)
+{
+	const float2 Field = RampField.Load(int3(RampWrapPixel(P), 0)).xy;
+	const float Shaped = pow(saturate(Field.x), max(Profile, 0.05f));
+	return (Shaped - 0.5f) * Field.y;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float Source = SourceHeight.Load(int3(P, 0));
+
+	OutputHeight[P] = saturate(Source + HeightAmount * RampTilt(P));
+
+	// Sobel over the same tilt field the height was moved by, so the normal and the displacement
+	// describe one surface. Scaled by the height amount as well as its own weight: a region that
+	// is not tipped has no slope to catch light.
+	const int Xm = P.x - 1;
+	const int Xp = P.x + 1;
+	const int Ym = P.y - 1;
+	const int Yp = P.y + 1;
+
+	const float Tmm = RampTilt(int2(Xm, Ym));
+	const float T0m = RampTilt(int2(P.x, Ym));
+	const float Tpm = RampTilt(int2(Xp, Ym));
+	const float Tm0 = RampTilt(int2(Xm, P.y));
+	const float Tp0 = RampTilt(int2(Xp, P.y));
+	const float Tmp = RampTilt(int2(Xm, Yp));
+	const float T0p = RampTilt(int2(P.x, Yp));
+	const float Tpp = RampTilt(int2(Xp, Yp));
+
+	// The same 1/8 normalisation the erosion, chipping and craquelure normal passes use, so
+	// Normal means the same thing across all four.
+	const float Scale = NormalStrength * HeightAmount / 8.0f;
+	const float2 Gradient = float2(
+		(Tpm + 2.0f * Tp0 + Tpp) - (Tmm + 2.0f * Tm0 + Tmp),
+		(Tmp + 2.0f * T0p + Tpp) - (Tmm + 2.0f * T0m + Tpm)) * Scale;
+
+	const float3 TiltNormal = normalize(float3(Gradient, 1.0f));
+
+	const float4 EncodedBase = PreviousNormal.Load(int3(P, 0));
+	const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);
+
+	// Reoriented normal mapping, matching the erosion, chipping and craquelure normal passes.
+	const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+	const float3 U = TiltNormal * float3(-1.0f, -1.0f, 1.0f);
+	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+
+	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
+}

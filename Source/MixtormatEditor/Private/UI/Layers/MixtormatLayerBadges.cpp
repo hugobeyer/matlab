@@ -141,7 +141,8 @@ namespace MixtormatLayerBadges
 			return ForMaskBlendMode(Child.ColorId.BlendMode);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Filter
-			|| Child.Type == EMixtormatLayerChildType::HsvFilter)
+			|| Child.Type == EMixtormatLayerChildType::HsvFilter
+			|| Child.Type == EMixtormatLayerChildType::RampId)
 		{
 			// Filters have no blend mode -- they emit data and albedo, not coverage -- so the
 			// slot that would carry one names the category instead.
@@ -165,6 +166,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Filter:    return LOCTEXT("ChildKindFilter", "FILT");
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
+		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

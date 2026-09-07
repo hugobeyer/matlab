@@ -1,0 +1,153 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+
+// Per-region gradient. Gives every region its own local frame and runs a linear ramp across it,
+// oriented by a random angle drawn off the region's ID.
+//
+// This is the half of the prototype that feeds relief. The UV field it also emits -- for mapping
+// detail or a whole material through each region's own frame -- is deliberately not produced
+// here; only the gradient and the edge falloff the tilt pass needs.
+//
+// Three stages, driven by Stage exactly as the cluster filter is. Every file-scope uniform below
+// is declared in FMixtormatRampIdsCS::FParameters whether a given stage reads it or not: UE binds
+// the whole file, not the entry point's subset.
+Texture2D<uint> RegionIds;
+// Four ints per pixel -- min x, max x, min y, max y -- strided rather than four buffers or a
+// buffer of int4. Atomics on a struct member of a structured buffer are the kind of thing dxc
+// accepts and a driver disagrees about; plain strided ints are unambiguous everywhere.
+RWStructuredBuffer<int> RegionBounds;
+RWTexture2D<float2> OutputRamp;
+
+int2 OutputSize;
+uint Stage;
+
+uint Seed;
+uint RotateRandom;
+float ScaleMin;
+float ScaleMax;
+float BiasMin;
+float BiasMax;
+uint Invert;
+float Feather;
+
+#define RAMP_STAGE_INIT 0
+#define RAMP_STAGE_BOUNDS 1
+#define RAMP_STAGE_RESOLVE 2
+
+// Offset from the region's root the short way round the torus.
+//
+// This is what makes the whole thing tile, and it is why the bounding box has to be built in
+// root-relative coordinates rather than absolute ones. A region straddling the seam has pixels at
+// x=2 and x=1022; min/max over those gives a box spanning the image, and every UV derived from it
+// is wrong. Measured as deltas, the same region gets a small correct box.
+int WrapDelta(int P, int A, int Size)
+{
+	int D = P - A;
+	const int Half = Size / 2;
+	if (D > Half)
+	{
+		D -= Size;
+	}
+	if (D < -Half)
+	{
+		D += Size;
+	}
+	return D;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const uint Index = Pixel.x + Pixel.y * uint(OutputSize.x);
+
+	if (Stage == RAMP_STAGE_INIT)
+	{
+		RegionBounds[Index * 4u + 0u] = 2147483647;
+		RegionBounds[Index * 4u + 1u] = -2147483647;
+		RegionBounds[Index * 4u + 2u] = 2147483647;
+		RegionBounds[Index * 4u + 3u] = -2147483647;
+		return;
+	}
+
+	const uint RawId = RegionIds.Load(int3(Pixel, 0));
+	const bool bValid = RawId != MIXTORMAT_INVALID_REGION && RawId < uint(OutputSize.x * OutputSize.y);
+	// The ID *is* the root pixel's linear index, which is what carries the root's position for
+	// free. Nothing collapses these to a dense range; doing so would destroy exactly this.
+	const uint RootId = bValid ? RawId : Index;
+	const int RootX = int(RootId % uint(OutputSize.x));
+	const int RootY = int(RootId / uint(OutputSize.x));
+	const int DeltaX = WrapDelta(int(Pixel.x), RootX, OutputSize.x);
+	const int DeltaY = WrapDelta(int(Pixel.y), RootY, OutputSize.y);
+
+	if (Stage == RAMP_STAGE_BOUNDS)
+	{
+		if (bValid)
+		{
+			InterlockedMin(RegionBounds[RootId * 4u + 0u], DeltaX);
+			InterlockedMax(RegionBounds[RootId * 4u + 1u], DeltaX);
+			InterlockedMin(RegionBounds[RootId * 4u + 2u], DeltaY);
+			InterlockedMax(RegionBounds[RootId * 4u + 3u], DeltaY);
+		}
+		return;
+	}
+
+	// A pixel in no region gets the neutral ramp and no feather, so the tilt pass leaves it flat
+	// rather than lifting it by half an amount.
+	if (!bValid)
+	{
+		OutputRamp[Pixel] = float2(0.5f, 0.0f);
+		return;
+	}
+
+	const int MinX = RegionBounds[RootId * 4u + 0u];
+	const int MaxX = RegionBounds[RootId * 4u + 1u];
+	const int MinY = RegionBounds[RootId * 4u + 2u];
+	const int MaxY = RegionBounds[RootId * 4u + 3u];
+
+	const float SpanX = max(float(MaxX - MinX), 1.0f);
+	const float SpanY = max(float(MaxY - MinY), 1.0f);
+	const float2 Local = saturate(float2(
+		float(DeltaX - MinX) / SpanX,
+		float(DeltaY - MinY) / SpanY));
+
+	// Distance to the region's own edge, before any rotation, on 0..0.5.
+	//
+	// Measured against the bounding box rather than the region outline: exact for rectangular
+	// regions -- bricks, tiles, planks, which is what this is for -- and approximate for blobby
+	// ones, where the box sits outside the region and the falloff starts late. A true edge
+	// distance wants a jump flood over the ID map, which is the same machinery the craquelure
+	// distance field already uses and is the upgrade path if the approximation shows.
+	const float EdgeDistance = min(
+		min(Local.x, 1.0f - Local.x),
+		min(Local.y, 1.0f - Local.y));
+	const float FeatherWeight = Feather > 0.0f ? saturate(EdgeDistance / Feather) : 1.0f;
+
+	const uint Seeded = MixtormatRegionSeed(RootId, Seed);
+	const float Angle = RotateRandom != 0
+		? MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_HUE) * 6.28318530718f
+		: 0.0f;
+	const float Scale = max(
+		lerp(ScaleMin, ScaleMax, MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_SAT)),
+		1.0e-6f);
+	const float Bias = lerp(BiasMin, BiasMax, MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_VAL));
+
+	// Scale about the region's centre, then rotate about it, so neither operation slides the
+	// gradient off the region it belongs to.
+	const float CosA = cos(Angle);
+	const float SinA = sin(Angle);
+	const float2 Centred = (Local - 0.5f) * Scale;
+	const float Rotated = Centred.x * CosA - Centred.y * SinA + 0.5f;
+
+	float Gray = saturate(Rotated + Bias);
+	if (Invert != 0)
+	{
+		Gray = 1.0f - Gray;
+	}
+
+	OutputRamp[Pixel] = float2(Gray, FeatherWeight);
+}

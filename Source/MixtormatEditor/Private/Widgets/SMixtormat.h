@@ -155,6 +155,11 @@ private:
 	FReply OpenHsvPalettePicker(int32 ColorIndex);
 	void SetHsvPaletteColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
 
+	FReply AddRampIdToLayer(int32 LayerIndex);
+	FMixtormatRampIdFilter* GetSelectedRampId();
+	const FMixtormatRampIdFilter* GetSelectedRampId() const;
+	TSharedRef<SWidget> BuildRampIdControls();
+
 	FReply AddRandomIdToLayer(int32 LayerIndex);
 	FMixtormatRandomIdMask* GetSelectedRandomId();
 	const FMixtormatRandomIdMask* GetSelectedRandomId() const;

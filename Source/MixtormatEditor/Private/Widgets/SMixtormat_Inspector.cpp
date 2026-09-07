@@ -1280,7 +1280,12 @@ FReply SMixtormat::AddHsvPaletteEntry()
 		{
 			// Seeded from the last entry rather than from black, so adding a stop extends a ramp
 			// the artist is already building instead of dropping a hole in the middle of it.
-			Hsv->Palette.Add(Hsv->Palette.IsEmpty() ? FLinearColor::White : Hsv->Palette.Last());
+			//
+			// Copied to a local first, and it has to be: Add can reallocate, and TArray asserts
+			// outright on being handed a reference into the container it is growing.
+			const FLinearColor Seeded =
+				Hsv->Palette.IsEmpty() ? FLinearColor::White : Hsv->Palette.Last();
+			Hsv->Palette.Add(Seeded);
 			RefreshLayeredPreview();
 			RebuildLayerList();
 		}
@@ -1433,6 +1438,119 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 						}
 					}),
 					LOCTEXT("HsvEnabledHint", "Enable this HSV filter")))
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
+{
+	const auto Ramp = [this]() { return GetSelectedRampId(); };
+
+	const auto Slider = [this, Ramp](
+		const FText& Label,
+		float FMixtormatRampIdFilter::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatRampIdFilter>(Label, Ramp, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	// Relief first, because it is the whole point of the node. The gradient controls below shape
+	// what the tilt does; these two decide whether it does anything at all.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpRelief", "Relief")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RampHeight", "Height"), &FMixtormatRampIdFilter::HeightAmount, 0.0, 0.5, 0.05, 0.001,
+			LOCTEXT("RampHeightHint", "How far a region tips. Signed about the middle of its ramp, so a region rises on one side exactly as much as it falls on the other and the surface does not drift up or down overall. 0 skips the pass entirely.")),
+		Slider(LOCTEXT("RampNormal", "Normal"), &FMixtormatRampIdFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
+			LOCTEXT("RampNormalHint", "Gain on the normal derived from the slope. Independent of Height, so a region can catch light as though tipped without actually displacing -- but it is scaled by Height too, since a region that is not tipped has no slope to light."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RampProfile", "Profile"), &FMixtormatRampIdFilter::Profile, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("RampProfileHint", "Shapes the slope between straight and eased without moving its ends. At 1 the gradient is constant across the region -- the same constant-slope case craquelure's groove wall is at 1. Below 1 the fall is front-loaded, above it the region stays flat and then drops away at one edge.")),
+		Slider(LOCTEXT("RampFeather", "Feather"), &FMixtormatRampIdFilter::Feather, 0.0, 0.5, 0.15, 0.005,
+			LOCTEXT("RampFeatherHint", "Eases the tilt to nothing near a region's edge so neighbours meet instead of stepping against each other. In fractions of the region's own size, so it means the same thing on a large region and a small one. 0 leaves the step hard, which is right for tiles with real grout and wrong for almost everything else."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpGradient", "Gradient")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("RampRotate", "Random Rotation"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				const FMixtormatRampIdFilter* R = GetSelectedRampId();
+				return R && R->bRotateRandom ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				if (FMixtormatRampIdFilter* R = GetSelectedRampId())
+				{
+					R->bRotateRandom = State == ECheckBoxState::Checked;
+					RefreshLayeredPreview();
+				}
+			})),
+		LOCTEXT("RampRotateHint", "Gives every region's gradient its own direction. Off puts them all on the same axis, which reads as a comb over the whole surface rather than as pieces that settled independently.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RampScaleMin", "Scale Min"), &FMixtormatRampIdFilter::ScaleMin, 0.01, 4.0, 1.0, 0.01,
+			LOCTEXT("RampScaleMinHint", "How far the ramp is stretched across its region, at the low end of the per-region draw. Below 1 the full sweep fits inside the region and it tips further; above 1 the ramp runs off the edges and only its middle lands, which flattens the tilt.")),
+		Slider(LOCTEXT("RampScaleMax", "Scale Max"), &FMixtormatRampIdFilter::ScaleMax, 0.01, 4.0, 1.0, 0.01,
+			LOCTEXT("RampScaleMaxHint", "The high end of the same draw. Equal to Scale Min means every region is stretched the same."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RampBiasMin", "Bias Min"), &FMixtormatRampIdFilter::BiasMin, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RampBiasMinHint", "Shifts a region's whole ramp before it is centred. This is what makes some pieces sit proud and others sunken rather than every region pivoting about the same middle -- widen it against Bias Max and the surface stops reading as one plane.")),
+		Slider(LOCTEXT("RampBiasMax", "Bias Max"), &FMixtormatRampIdFilter::BiasMax, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RampBiasMaxHint", "The high end of the bias draw."))));
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("RampInvert", "Invert"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				const FMixtormatRampIdFilter* R = GetSelectedRampId();
+				return R && R->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				if (FMixtormatRampIdFilter* R = GetSelectedRampId())
+				{
+					R->bInvert = State == ECheckBoxState::Checked;
+					RefreshLayeredPreview();
+				}
+			})),
+		LOCTEXT("RampInvertHint", "Flips every region's gradient end for end. With random rotation on this changes little; with it off it reverses the direction the whole surface leans.")));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatRampIdFilter>(
+		LOCTEXT("RampSeed", "Seed"), Ramp, &FMixtormatRampIdFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("RampSeedHint", "Reshuffles which region gets which angle, stretch and bias without changing any of the ranges. Independent of the cluster filter's controls, so reseeding here does not re-segment.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedRampId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("RampIdHeading", "RAMP FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatRampIdFilter* Selected = GetSelectedRampId();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						if (FMixtormatRampIdFilter* Selected = GetSelectedRampId())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("RampEnabledHint", "Enable this ramp filter")))
 			[
 				Panel
 			]
@@ -3194,6 +3312,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedFilter()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
+							|| GetSelectedRampId()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
@@ -3209,6 +3328,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildFilterControls()]
 					+ SScrollBox::Slot()[BuildHsvFilterControls()]
 					+ SScrollBox::Slot()[BuildRandomIdControls()]
+					+ SScrollBox::Slot()[BuildRampIdControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
@@ -3217,6 +3337,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					// within one is handed unbounded height and never scrolls -- the layer
 					// inspector simply ran off the bottom of the panel.
 					SNew(SScrollBox)
+					// The exact inverse of the child inspector above it: a selected child owns
+					// the panel on its own, and the layer's own sections come back when nothing
+					// is selected. Both lists have to name every child type or a new one shows
+					// its controls *and* the layer's underneath -- which is what a missing entry
+					// looks like, since the default here is Visible.
 					.Visibility_Lambda([this]()
 					{
 						return GetSelectedLayerEffect()
@@ -3224,6 +3349,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedLayerMask()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
+							|| GetSelectedFilter()
+							|| GetSelectedHsvFilter()
+							|| GetSelectedRandomId()
+							|| GetSelectedRampId()
 							? EVisibility::Collapsed : EVisibility::Visible;
 					})
 					+ SScrollBox::Slot()
