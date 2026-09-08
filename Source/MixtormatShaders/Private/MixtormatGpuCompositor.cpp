@@ -212,6 +212,9 @@ public:
 	// FMixtormatHsvIdFilter::MaxPaletteColors. Three copies of one number, and the gather loop
 	// clamps against this one.
 	static constexpr int32 MaxRegionPalette = FMixtormatHsvIdFilter::MaxPaletteColors;
+	// Two driven scalars this step: slot 0 RoughnessInfluence, slot 1 HeightBlendAmount. Kept
+	// small on purpose -- every slot is a texture binding on every composite dispatch.
+	static constexpr int32 MaxScalarDrivers = 2;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -303,6 +306,16 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BorderBaseHeight)
 		SHADER_PARAMETER(float, HeightSmoothAmount)
 		SHADER_PARAMETER(uint32, BorderSmoothValid)
+		// Scalar Drivers. One slot per driven scalar, not per Driver -- and the slots hold
+		// bindings, so two scalars naming one source point at the same texture and the layer
+		// still costs at most one snapshot. Bound on every dispatch like RegionIds above.
+		SHADER_PARAMETER_ARRAY(FVector4f, DriverParamsA, [MaxScalarDrivers])
+		SHADER_PARAMETER_ARRAY(FVector4f, DriverParamsB, [MaxScalarDrivers])
+		SHADER_PARAMETER_ARRAY(FVector4f, DriverParamsC, [MaxScalarDrivers])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, DriverRegionIds0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, DriverRegionIds1)
 		// Per-region colour variation, read off a cluster filter's ID map in the same layer.
 		// RegionIds is bound on every dispatch -- a 1x1 dummy when the layer has no cluster --
 		// because RDG validates the binding whether RegionTintEnabled takes the branch or not.
@@ -1805,8 +1818,33 @@ namespace MixtormatGpuCompositor
 		FRampIdRenderData RampId;
 	};
 
+	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
+	// layer whose combined mask is the signal and says nothing about what produced that mask, so a
+	// published-output or region-ID source later fills the same slot without changing this.
+	struct FScalarDriverRenderData
+	{
+		bool bEnabled = false;
+		// A region source names the producer child as well as the layer; a mask source names the
+		// layer alone. bRegionSource picks which of the slot's two bindings the shader reads.
+		bool bRegionSource = false;
+		FGuid SourceLayerId;
+		int32 SourceChildIndex = INDEX_NONE;
+		uint32 Seed = 0;
+		float IdRandomMin = 0.0f;
+		float IdRandomMax = 1.0f;
+		bool bInvert = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
+		float OutputMin = 0.0f;
+		float OutputMax = 1.0f;
+		float Amount = 1.0f;
+		uint32 Combine = 0;
+	};
+
 	struct FLayerRenderData
 	{
+		FGuid LayerId;
+		FScalarDriverRenderData ScalarDrivers[2];
 		FTextureRHIRef BaseColor;
 		FTextureRHIRef Normal;
 		FTextureRHIRef RAM;
@@ -2364,6 +2402,53 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			|| !Data.Mask.IsValid())
 		{
 			return false;
+		}
+		Data.LayerId = Layer.LayerId;
+		// Only a layer's combined mask is a usable signal this step. A child mask lives in the
+		// rotating ping-pong pair and is gone by the composite; region IDs are not a scalar at
+		// all. Both are refused here rather than approximated -- a Driver that cannot resolve
+		// contributes nothing and the parameter keeps its authored value.
+		{
+			const FName DrivenScalars[2] = { TEXT("RoughnessInfluence"), TEXT("HeightBlendAmount") };
+			for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+			{
+				const FMixtormatParameterBinding* Binding = Layer.ParameterBindings.FindByPredicate(
+					[&DrivenScalars, SlotIndex](const FMixtormatParameterBinding& Candidate)
+					{
+						return Candidate.DestinationOwner == EMixtormatParameterOwnerType::Layer
+							&& Candidate.DestinationParameter == DrivenScalars[SlotIndex]
+							&& Candidate.Driver.bEnabled
+							&& (Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+								|| Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds)
+							&& Candidate.Driver.SourceLayerId.IsValid();
+					});
+				if (!Binding)
+				{
+					continue;
+				}
+				FScalarDriverRenderData& Driver = Data.ScalarDrivers[SlotIndex];
+				Driver.bEnabled = true;
+				Driver.bRegionSource =
+					Binding->Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds;
+				Driver.SourceLayerId = Binding->Driver.SourceLayerId;
+				Driver.SourceChildIndex = Binding->Driver.SourceChildId.IsValid()
+					? Layer.Children.IndexOfByPredicate(
+						[Binding](const FMixtormatLayerChild& Candidate)
+						{
+							return Candidate.ChildId == Binding->Driver.SourceChildId;
+						})
+					: INDEX_NONE;
+				Driver.Seed = static_cast<uint32>(Binding->Driver.Seed);
+				Driver.IdRandomMin = Binding->Driver.IdRandomMin;
+				Driver.IdRandomMax = Binding->Driver.IdRandomMax;
+				Driver.bInvert = Binding->Driver.bInvert;
+				Driver.InputMin = Binding->Driver.InputMin;
+				Driver.InputMax = Binding->Driver.InputMax;
+				Driver.OutputMin = Binding->Driver.OutputMin;
+				Driver.OutputMax = Binding->Driver.OutputMax;
+				Driver.Amount = Binding->Driver.Amount;
+				Driver.Combine = static_cast<uint32>(Binding->Driver.Combine);
+			}
 		}
 		Data.FillColor = FVector4f(
 			Layer.BaseColor.R,
@@ -3291,6 +3376,39 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				GraphBuilder.CreateUAV(EmptyPatternUV),
 				FVector4f(0.5f, 0.5f, 0.0f, 0.0f));
 
+			// No Driver on this layer, or one that could not resolve: the slot still needs a real
+			// resource. Cleared to zero, which every Combine mode turns into a no-op once Amount
+			// is applied -- and the shader's Enabled flag stops it being read at all.
+			FRDGTextureRef EmptyDriverSignal = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_R16F,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.EmptyDriverSignal"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyDriverSignal), FVector4f::Zero());
+
+			// Demand-driven: only layers some other layer's Driver actually names get a snapshot,
+			// because the mask pair is rotated across the whole graph and a layer's combined mask
+			// is overwritten by the next layer that runs. Collected before the loop so layer N
+			// already knows whether it has to be copied when its own mask is final.
+			TSet<FGuid> DriverSnapshotDemand;
+			for (const FLayerRenderData& DemandLayer : Request.Layers)
+			{
+				for (const FScalarDriverRenderData& Driver : DemandLayer.ScalarDrivers)
+				{
+					// Mask sources only. A region map is never snapshotted -- it is read in the
+					// layer that produced it, in that layer's own pixel space.
+					if (Driver.bEnabled
+						&& !Driver.bRegionSource
+						&& Driver.SourceLayerId != DemandLayer.LayerId)
+					{
+						DriverSnapshotDemand.Add(Driver.SourceLayerId);
+					}
+				}
+			}
+			TMap<FGuid, FRDGTextureRef> DriverSnapshots;
+
 			if (Request.Layers.IsEmpty())
 			{
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputBC[0]), MixtormatSubstrate::BaseColor);
@@ -3506,6 +3624,55 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									|| Pattern.BevelHeight > 0.0f
 									|| Pattern.EdgeRoughnessAmount > 0.0f
 									|| Pattern.AOAmount > 0.0f;
+							}
+
+							// A scalar Driver is an ID consumer like any other, and it consumes at
+							// the composite rather than from a row in the stack -- so it is not
+							// visible to the child scan below and has to be asked for separately.
+							// Without this a producer referenced only by a Driver is culled, and
+							// the Driver then finds no map and silently disables itself.
+							if (!bWanted)
+							{
+								for (const FScalarDriverRenderData& Driver : Layer.ScalarDrivers)
+								{
+									if (!Driver.bEnabled
+										|| !Driver.bRegionSource
+										|| Driver.SourceLayerId != Layer.LayerId)
+									{
+										continue;
+									}
+									if (Driver.SourceChildIndex != INDEX_NONE)
+									{
+										// Named producer: only that one is demanded.
+										if (Driver.SourceChildIndex == Child.SourceChildIndex)
+										{
+											bWanted = true;
+											break;
+										}
+										continue;
+									}
+									// Unnamed: the Driver reads the nearest map above the
+									// composite, which is the last producer in the layer. Demand
+									// this one only when nothing later would shadow it, so the
+									// nearest-producer rule decides here exactly as it does at
+									// resolve time.
+									bool bLaterProducer = false;
+									for (const FChildRenderData& Other : Layer.Children)
+									{
+										if (Other.SourceChildIndex > Child.SourceChildIndex
+											&& (Other.Type == EMixtormatLayerChildType::Filter
+												|| Other.Type == EMixtormatLayerChildType::PatternId))
+										{
+											bLaterProducer = true;
+											break;
+										}
+									}
+									if (!bLaterProducer)
+									{
+										bWanted = true;
+										break;
+									}
+								}
 							}
 
 							if (!bWanted)
@@ -5219,6 +5386,110 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						}
 					}
 					Parameters->RegionTintEnabled = ActiveHsv != nullptr ? 1u : 0u;
+
+					// CombinedMask is only a mask-chain texture once a mask child has written
+					// one. Before that it is still the registered white UTexture2D the chain
+					// started from -- BGRA8, at that asset's own size, not R16F at the composite
+					// resolution. LayerMask gets away with binding it because the shader gates on
+					// HasMask; a Driver signal is sampled unconditionally and a snapshot is
+					// copied, so both have to check rather than assume.
+					const bool bMaskIsSignalShaped =
+						CombinedMask->Desc.Format == MaskDesc.Format
+						&& CombinedMask->Desc.Extent == MaskDesc.Extent;
+
+					// CombinedMask is final by here -- every mask-chain reassignment for
+					// this layer has happened -- so this is the only place a snapshot can be
+					// taken without capturing a half-built chain.
+					if (bMaskIsSignalShaped
+						&& DriverSnapshotDemand.Contains(Layer.LayerId)
+						&& !DriverSnapshots.Contains(Layer.LayerId))
+					{
+						// Desc taken from the source, so the copy can never be handed two
+						// incompatible descriptors.
+						FRDGTextureDesc SnapshotDesc = CombinedMask->Desc;
+						SnapshotDesc.Flags |= TexCreate_ShaderResource;
+						FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
+							SnapshotDesc,
+							TEXT("Mixtormat.DriverSignalSnapshot"));
+						AddCopyTexturePass(GraphBuilder, CombinedMask, Snapshot);
+						DriverSnapshots.Add(Layer.LayerId, Snapshot);
+					}
+
+					// A source in this same layer reads the live mask and needs no copy at all.
+					// One earlier in the stack reads its snapshot. One that has not composited
+					// yet has none, so the Driver is switched off and the scalar keeps its value
+					// -- the same rule an instance follows, and the reason nothing here needs a
+					// dependency graph.
+					FRDGTextureRef DriverSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
+						{ EmptyDriverSignal, EmptyDriverSignal };
+					FRDGTextureRef DriverRegionSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
+						{ EmptyRegionIds, EmptyRegionIds };
+					for (int32 SlotIndex = 0; SlotIndex < FMixtormatCompositeCS::MaxScalarDrivers; ++SlotIndex)
+					{
+						const FScalarDriverRenderData& Driver = Layer.ScalarDrivers[SlotIndex];
+						FRDGTextureRef Signal = nullptr;
+						FRDGTextureRef RegionSignal = nullptr;
+						if (Driver.bEnabled && Driver.bRegionSource)
+						{
+							// The ID maps this layer produced, in this layer's own pixel space.
+							// A named producer takes that producer's map; an unnamed one takes the
+							// nearest above the composite, which is the same "nearest ID producer"
+							// rule every other consumer follows. A region source in another layer
+							// has no map here and stays unresolved rather than guessing.
+							if (Driver.SourceLayerId == Layer.LayerId)
+							{
+								if (Driver.SourceChildIndex != INDEX_NONE)
+								{
+									for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+									{
+										if (Entry.Key == Driver.SourceChildIndex)
+										{
+											RegionSignal = Entry.Value;
+										}
+									}
+								}
+								else
+								{
+									RegionSignal = FindRegionIdsAbove(RegionIdMaps, MAX_int32);
+								}
+							}
+						}
+						else if (Driver.bEnabled)
+						{
+							if (Driver.SourceLayerId == Layer.LayerId)
+							{
+								Signal = bMaskIsSignalShaped ? CombinedMask : nullptr;
+							}
+							else if (FRDGTextureRef* Found = DriverSnapshots.Find(Driver.SourceLayerId))
+							{
+								Signal = *Found;
+							}
+						}
+						const bool bResolved = Driver.bRegionSource
+							? RegionSignal != nullptr
+							: Signal != nullptr;
+						DriverSignals[SlotIndex] = Signal ? Signal : EmptyDriverSignal;
+						DriverRegionSignals[SlotIndex] = RegionSignal ? RegionSignal : EmptyRegionIds;
+						Parameters->DriverParamsC[SlotIndex] = FVector4f(
+							bResolved && Driver.bRegionSource ? 1.0f : 0.0f,
+							static_cast<float>(Driver.Seed),
+							Driver.IdRandomMin,
+							Driver.IdRandomMax);
+						Parameters->DriverParamsA[SlotIndex] = FVector4f(
+							bResolved ? 1.0f : 0.0f,
+							Driver.bInvert ? 1.0f : 0.0f,
+							Driver.InputMin,
+							Driver.InputMax);
+						Parameters->DriverParamsB[SlotIndex] = FVector4f(
+							Driver.OutputMin,
+							Driver.OutputMax,
+							Driver.Amount,
+							static_cast<float>(Driver.Combine));
+					}
+					Parameters->DriverSignal0 = DriverSignals[0];
+					Parameters->DriverSignal1 = DriverSignals[1];
+					Parameters->DriverRegionIds0 = DriverRegionSignals[0];
+					Parameters->DriverRegionIds1 = DriverRegionSignals[1];
 					Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
 					Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
 					Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;

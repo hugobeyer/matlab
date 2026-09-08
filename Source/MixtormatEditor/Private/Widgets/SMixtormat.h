@@ -109,16 +109,33 @@ private:
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
-	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex);
+	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
+
+	// Mirrors every instance's payload down from its source, so the inspector, the badges and the
+	// row names all read the resolved values without a second read path. Run on every refresh; the
+	// compositor resolves again on its own copy regardless.
+	void SyncChildInstances();
+	bool IsSelectedChildInstance() const;
+	bool IsSelectedInstanceBroken() const;
+	FText GetSelectedInstanceSourceText() const;
+	TSharedRef<SWidget> BuildInstanceBanner();
+
+	// True when the parameter belongs to a child that is a live instance. Inherited data is the
+	// source's to change, so the row refuses the write rather than breaking the instance under a
+	// user who only meant to drag a slider.
+	bool IsParameterLocked(const FMixtormatParameterAddress& Target) const;
 
 	// Copy takes the payload; Copy as Instance takes the address as well, and the paste decides
 	// which of the two it uses.
 	void CopyLayerChild(int32 LayerIndex, int32 ChildIndex, bool bAsInstance);
 	bool CanPasteLayerChild() const;
-	bool CanPasteChildInstance(int32 DestLayerIndex, int32 DestChildIndex) const;
-	FText GetChildInstancePasteReason(int32 DestLayerIndex, int32 DestChildIndex) const;
+	// Where an instance of the clipboard child may land in this layer, given the row the paste was
+	// asked from. INDEX_NONE when no position in the layer can read the source.
+	int32 ResolveInstanceInsertIndex(int32 DestLayerIndex, int32 AnchorChildIndex) const;
+	bool CanPasteChildInstance(int32 DestLayerIndex, int32 AnchorChildIndex) const;
+	FText GetChildInstancePasteReason(int32 DestLayerIndex, int32 AnchorChildIndex) const;
 	FReply PasteLayerChild(int32 LayerIndex);
-	FReply PasteChildInstanceAbove(int32 LayerIndex);
+	FReply PasteChildInstance(int32 LayerIndex, int32 AnchorChildIndex = INDEX_NONE);
 
 	FReply GoToChildInstanceSource(int32 LayerIndex, int32 ChildIndex);
 	FReply BreakChildInstanceAt(int32 LayerIndex, int32 ChildIndex);
@@ -406,6 +423,10 @@ private:
 				if (TOwner* Owner = Resolve())
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (IsParameterLocked(Address))
+					{
+						return;
+					}
 					const float Authored = static_cast<float>(Value * ValueScale);
 					if (!TryWriteLinkedFloat(Address, Authored))
 					{
@@ -425,6 +446,10 @@ private:
 				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, StoredDefault))
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (IsParameterLocked(Address))
+					{
+						return;
+					}
 					if (!TryWriteLinkedFloat(Address, StoredDefault))
 					{
 						Owner->*Member = StoredDefault;
@@ -469,6 +494,10 @@ private:
 				if (TOwner* Owner = Resolve())
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (IsParameterLocked(Address))
+					{
+						return;
+					}
 					const int32 Authored = FMath::RoundToInt(Value);
 					if (!TryWriteLinkedInt(Address, Authored))
 					{
@@ -487,6 +516,10 @@ private:
 				if (Owner && Owner->*Member != DefaultValue)
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (IsParameterLocked(Address))
+					{
+						return;
+					}
 					if (!TryWriteLinkedInt(Address, DefaultValue))
 					{
 						Owner->*Member = DefaultValue;
@@ -530,6 +563,10 @@ private:
 					if (TOwner* Owner = Resolve())
 					{
 						const FMixtormatParameterAddress Address = ResolveTarget();
+						if (IsParameterLocked(Address))
+						{
+							return;
+						}
 						const bool Authored = State == ECheckBoxState::Checked;
 						if (!TryWriteLinkedBool(Address, Authored))
 						{

@@ -3608,9 +3608,16 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						]
 					]
 				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					BuildInstanceBanner()
+				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SScrollBox)
+					// Readable, not editable. The rows keep their values and their layout; only
+					// the writing is taken away, which is what an instance means.
+					.IsEnabled_Lambda([this]() { return !IsSelectedChildInstance(); })
 					.Visibility_Lambda([this]()
 					{
 						return GetSelectedLayerEffect()

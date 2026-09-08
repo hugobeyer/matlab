@@ -40,6 +40,15 @@ DECLARE_DELEGATE_RetVal_ThreeParams(
 	int32,
 	int32,
 	int32);
+// Source layer, source child, destination layer, destination child. A cross-layer drop is a move,
+// not a reorder, so it carries the layer it came from -- which a reorder never had to.
+DECLARE_DELEGATE_RetVal_FourParams(
+	FReply,
+	FOnMixtormatChildMovedToLayer,
+	int32,
+	int32,
+	int32,
+	int32);
 
 class SMixtormatLayerRowDropTarget final : public SCompoundWidget
 {
@@ -174,9 +183,9 @@ private:
 
 // A child row's drop half.
 //
-// Only accepts a child dragged from the same layer, which is what keeps a reorder a reorder --
-// dropping a mask onto another layer is an entirely different operation and belongs to the layer
-// target that wraps the group.
+// Takes a child from its own layer as a reorder, and one from another layer as a move. Both land on
+// the row that was dropped on, so where a child ends up is where it was aimed -- nothing here
+// reorders anything the drop did not ask for.
 class SMixtormatChildDropTarget final : public SCompoundWidget
 {
 public:
@@ -185,6 +194,7 @@ public:
 		SLATE_ARGUMENT(int32, LayerIndex)
 		SLATE_ARGUMENT(int32, ChildIndex)
 		SLATE_EVENT(FOnMixtormatChildReordered, OnChildReordered)
+		SLATE_EVENT(FOnMixtormatChildMovedToLayer, OnChildMovedToLayer)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -192,6 +202,7 @@ public:
 		LayerIndex = InArgs._LayerIndex;
 		ChildIndex = InArgs._ChildIndex;
 		OnChildReordered = InArgs._OnChildReordered;
+		OnChildMovedToLayer = InArgs._OnChildMovedToLayer;
 		ChildSlot[InArgs._Content.Widget];
 	}
 
@@ -199,9 +210,12 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		return Operation.IsValid()
-			&& Operation->LayerIndex == LayerIndex
-			&& Operation->ChildIndex != ChildIndex
+		if (!Operation.IsValid())
+		{
+			return FReply::Unhandled();
+		}
+		// A drop onto the row it started from is the only one with nothing to do.
+		return Operation->LayerIndex != LayerIndex || Operation->ChildIndex != ChildIndex
 			? FReply::Handled() : FReply::Unhandled();
 	}
 
@@ -209,10 +223,18 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		return Operation.IsValid()
-			&& Operation->LayerIndex == LayerIndex
-			&& OnChildReordered.IsBound()
-			? OnChildReordered.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
+		if (!Operation.IsValid())
+		{
+			return FReply::Unhandled();
+		}
+		if (Operation->LayerIndex == LayerIndex)
+		{
+			return OnChildReordered.IsBound()
+				? OnChildReordered.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
+				: FReply::Unhandled();
+		}
+		return OnChildMovedToLayer.IsBound()
+			? OnChildMovedToLayer.Execute(Operation->LayerIndex, Operation->ChildIndex, LayerIndex, ChildIndex)
 			: FReply::Unhandled();
 	}
 
@@ -220,6 +242,7 @@ private:
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
 	FOnMixtormatChildReordered OnChildReordered;
+	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
 };
 
 #undef LOCTEXT_NAMESPACE

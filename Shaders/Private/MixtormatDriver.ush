@@ -1,0 +1,85 @@
+// Scalar Drivers: per-pixel modulation of a layer scalar by a mask-shaped signal.
+//
+// Deliberately blind to where the signal came from. A Driver here is a scalar in 0..1 sampled at
+// this pixel and a fixed chain applied to it -- nothing in this file knows about masks, patterns,
+// region IDs or any other producer, so a later published-output source plugs in by binding a
+// different texture and changes nothing below.
+//
+// A Direct Reference is the other thing entirely: it resolves to one exact value on the CPU before
+// the graph is built. This runs per pixel and never writes back.
+
+#pragma once
+
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+
+// The order is fixed and is the order the popover lists:
+//
+//   Signal -> Invert -> Remap Input -> Remap Output -> Amount -> Combine with BaseValue
+//
+// ParamsA = (Enabled, Invert, InputMin, InputMax)
+// ParamsB = (OutputMin, OutputMax, Amount, Combine)
+//
+// Combine is one of these, matching EMixtormatDriverCombineMode by value. Amount is the wet/dry
+// blend between BaseValue and the combined result in every mode, so a Driver at Amount 0 is
+// always exactly BaseValue whichever mode it is set to.
+#define MIXTORMAT_DRIVER_REPLACE  0
+#define MIXTORMAT_DRIVER_MULTIPLY 1
+#define MIXTORMAT_DRIVER_ADD      2
+#define MIXTORMAT_DRIVER_SUBTRACT 3
+#define MIXTORMAT_DRIVER_MIN      4
+#define MIXTORMAT_DRIVER_MAX      5
+#define MIXTORMAT_DRIVER_LERP     6
+
+// A region ID turned into this Driver's signal.
+//
+// Through the same hash every other region consumer uses, so a Driver and the cluster preview
+// beside it decorrelate identically -- a second hash here would drift and the preview would stop
+// describing what it previews. The raw ID is never a value: IDs are pixel indices, so neighbouring
+// regions carry numerically close ones and would come out as a gradient rather than independently.
+//
+// Nothing here knows what produced the map. A pattern's IDs and a cluster's IDs are the same
+// R32_UINT map to this function.
+float MixtormatDriverRegionSignal(uint RegionId, uint Seed, float RandomMin, float RandomMax)
+{
+	if (RegionId == MIXTORMAT_INVALID_REGION)
+	{
+		return 0.0f;
+	}
+	const float R = MixtormatRegionRandom(MixtormatRegionSeed(RegionId, Seed));
+	return lerp(RandomMin, RandomMax, R);
+}
+
+float MixtormatApplyDriver(float BaseValue, float Signal, float4 ParamsA, float4 ParamsB)
+{
+	if (ParamsA.x < 0.5f)
+	{
+		return BaseValue;
+	}
+
+	float S = saturate(Signal);
+	S = ParamsA.y > 0.5f ? 1.0f - S : S;
+
+	// A zero-width input window has no meaningful answer, so it contributes nothing rather than
+	// dividing by zero -- a NaN here would propagate through the whole composite.
+	const float InputSpan = ParamsA.w - ParamsA.z;
+	S = abs(InputSpan) > 1e-6f ? saturate((S - ParamsA.z) / InputSpan) : 0.0f;
+
+	S = lerp(ParamsB.x, ParamsB.y, S);
+
+	const uint Combine = (uint)(ParamsB.w + 0.5f);
+	float Combined = S;
+	switch (Combine)
+	{
+	case MIXTORMAT_DRIVER_MULTIPLY: Combined = BaseValue * S; break;
+	case MIXTORMAT_DRIVER_ADD:      Combined = BaseValue + S; break;
+	case MIXTORMAT_DRIVER_SUBTRACT: Combined = BaseValue - S; break;
+	case MIXTORMAT_DRIVER_MIN:      Combined = min(BaseValue, S); break;
+	case MIXTORMAT_DRIVER_MAX:      Combined = max(BaseValue, S); break;
+	// The signal is its own weight: a soft, signal-shaped replace. Distinct from Replace, where
+	// Amount alone decides how much of the signal lands and the shape does not.
+	case MIXTORMAT_DRIVER_LERP:     Combined = lerp(BaseValue, S, saturate(S)); break;
+	default:                        Combined = S; break;
+	}
+
+	return lerp(BaseValue, Combined, saturate(ParamsB.z));
+}

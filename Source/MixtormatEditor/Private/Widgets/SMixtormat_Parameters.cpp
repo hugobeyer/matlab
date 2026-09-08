@@ -839,6 +839,102 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			TAttribute<FText>::CreateLambda(OutputText),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildDriverOutputMenu, Target))));
 
+	// Only meaningful when the signal comes from a region map: they shape the value one region
+	// draws, before the chain's own remap touches it. Hidden rather than disabled for a mask
+	// source, where there is no region to draw for.
+	auto IsRegionSource = [this, Target]()
+	{
+		const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
+		return Current && Current->Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds
+			? EVisibility::Visible
+			: EVisibility::Collapsed;
+	};
+
+	auto AddRegionRow = [&AddRow, &IsRegionSource](const TSharedRef<SWidget>& Row)
+	{
+		TSharedRef<SWidget> Wrapped = SNew(SBox)
+			.Visibility_Lambda(IsRegionSource)
+			[
+				Row
+			];
+		AddRow(Wrapped);
+	};
+
+	AddRegionRow(MakeSlider(
+		LOCTEXT("DriverIdSeed", "Seed"),
+		TAttribute<double>::CreateLambda([this, Target]()
+		{
+			const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
+			return Current ? static_cast<double>(Current->Driver.Seed) : 1.0;
+		}),
+		1.0, 999.0, 1.0, 1.0, true,
+		FMixtormatOnSliderValueChanged::CreateLambda([this, Target](const double Value)
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.Seed = FMath::RoundToInt(Value);
+				RefreshLayeredPreview();
+			}
+		}),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.Seed = 1;
+				RefreshLayeredPreview();
+			}
+		})));
+
+	AddRegionRow(MakeSlider(
+		LOCTEXT("DriverIdRandomMin", "Min"),
+		TAttribute<double>::CreateLambda([this, Target]()
+		{
+			const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
+			return Current ? Current->Driver.IdRandomMin : 0.0;
+		}),
+		0.0, 1.0, 0.0, 0.01, false,
+		FMixtormatOnSliderValueChanged::CreateLambda([this, Target](const double Value)
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.IdRandomMin = static_cast<float>(Value);
+				RefreshLayeredPreview();
+			}
+		}),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.IdRandomMin = 0.0f;
+				RefreshLayeredPreview();
+			}
+		})));
+
+	AddRegionRow(MakeSlider(
+		LOCTEXT("DriverIdRandomMax", "Max"),
+		TAttribute<double>::CreateLambda([this, Target]()
+		{
+			const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
+			return Current ? Current->Driver.IdRandomMax : 1.0;
+		}),
+		0.0, 1.0, 1.0, 0.01, false,
+		FMixtormatOnSliderValueChanged::CreateLambda([this, Target](const double Value)
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.IdRandomMax = static_cast<float>(Value);
+				RefreshLayeredPreview();
+			}
+		}),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
+			{
+				Current->Driver.IdRandomMax = 1.0f;
+				RefreshLayeredPreview();
+			}
+		})));
+
 	AddRow(MixtormatRow::Make(
 		LOCTEXT("DriverCombineLabel", "Combine"),
 		MixtormatRow::MakeChip(

@@ -262,6 +262,16 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterDriver
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
 	int32 IdRangeMax = 255;
+
+	// The range one region's random draw lands in, before the Driver chain's own remap. Separate
+	// from OutputMin/OutputMax on purpose: this shapes the signal a region *produces*, the remap
+	// shapes what the chain does with any signal, and collapsing them would make the Output rows
+	// mean two different things depending on the source.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float IdRandomMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float IdRandomMax = 1.0f;
 };
 
 USTRUCT(BlueprintType)

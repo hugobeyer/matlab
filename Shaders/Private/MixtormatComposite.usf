@@ -4,6 +4,7 @@
 #include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatColorOps.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatDriver.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
@@ -121,6 +122,63 @@ float NormalInfluence;
 float HeightInfluence;
 float HeightBoost;
 float HeightBlendAmount;
+
+// Scalar Drivers. Two slots this step, one per driven scalar: slot 0 modulates RoughnessInfluence,
+// slot 1 HeightBlendAmount. Both are bound on every dispatch -- a 1x1 dummy when the layer has no
+// Driver -- because RDG validates the binding whether the shader branches on it or not, exactly as
+// RegionIds does above.
+//
+// The two slots hold texture *bindings*, not allocations: several driven scalars naming one source
+// bind the same texture, so a layer costs at most one snapshot however many scalars it drives.
+float4 DriverParamsA[2];
+float4 DriverParamsB[2];
+// (IsRegionSource, Seed, RandomMin, RandomMax). A slot reads one of its two source bindings and
+// ignores the other; both stay bound because RDG validates a binding whether the branch is taken
+// or not, and the unused one is a shared 1x1 dummy.
+float4 DriverParamsC[2];
+Texture2D<float> DriverSignal0;
+Texture2D<float> DriverSignal1;
+Texture2D<uint> DriverRegionIds0;
+Texture2D<uint> DriverRegionIds1;
+
+// The composite's own texel, which is the space the ID maps are written in. No pattern wrapping
+// and no topology of any kind, so a pattern map and a cluster map read identically.
+int2 DriverPixel(float2 UV)
+{
+	return int2(UV * float2(OutputSize));
+}
+
+float GetRoughnessInfluence(float2 UV)
+{
+	const float Signal0 = DriverParamsC[0].x > 0.5f
+		? MixtormatDriverRegionSignal(
+			DriverRegionIds0.Load(int3(DriverPixel(UV), 0)),
+			(uint)DriverParamsC[0].y,
+			DriverParamsC[0].z,
+			DriverParamsC[0].w)
+		: DriverSignal0.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return MixtormatApplyDriver(
+		RoughnessInfluence,
+		Signal0,
+		DriverParamsA[0],
+		DriverParamsB[0]);
+}
+
+float GetHeightBlendAmount(float2 UV)
+{
+	const float Signal1 = DriverParamsC[1].x > 0.5f
+		? MixtormatDriverRegionSignal(
+			DriverRegionIds1.Load(int3(DriverPixel(UV), 0)),
+			(uint)DriverParamsC[1].y,
+			DriverParamsC[1].z,
+			DriverParamsC[1].w)
+		: DriverSignal1.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return MixtormatApplyDriver(
+		HeightBlendAmount,
+		Signal1,
+		DriverParamsA[1],
+		DriverParamsB[1]);
+}
 float HeightThreshold;
 float HeightRange;
 float HeightContrast;
@@ -485,7 +543,7 @@ float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
 		// One height-derived mask must drive every composited surface channel.
 		float A = BaseHeight + HeightBias;
 		float B = BlendHeight + HeightOffset;
-		float M = saturate(SamplePlacementHeightMask(UV) * HeightBlendAmount);
+		float M = saturate(SamplePlacementHeightMask(UV) * GetHeightBlendAmount(UV));
 		return smoothstep(
 			HeightThreshold - SafeSoftness,
 			HeightThreshold + SafeSoftness,
@@ -658,7 +716,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	float HeightCoverage = DirectHeightComparison != 0
 		? HeightWeight
-		: lerp(1.0f, HeightWeight, saturate(HeightBlendAmount));
+		: lerp(1.0f, HeightWeight, saturate(GetHeightBlendAmount(UV)));
 	float Alpha = saturate(ExistingCoverage * HeightCoverage);
 	float Coat = CompositionMode != 0 ? 1.0f : 0.0f;
 	float ReplaceWeight = Alpha * (1.0f - Coat);
@@ -687,7 +745,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: lerp(PreviousBaseColor.rgb, IncomingBaseColor, ColorWeight * saturate(BaseColorInfluence));
 	float ResultRoughness = NormalOnly != 0
 		? PreviousPacked.r
-		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(RoughnessInfluence));
+		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(GetRoughnessInfluence(UV)));
 	float ResultAO = NormalOnly != 0
 		? PreviousPacked.g
 		: lerp(PreviousPacked.g, LayerAO, Alpha * saturate(AOInfluence));
@@ -705,7 +763,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float3 LayerResultNormal = OverrideNormal != 0 ? OverriddenNormal : CombinedNormal;
 	float HeightVisibility = DirectHeightComparison != 0
 		? HeightWeight
-		: lerp(1.0f, HeightWeight, saturate(HeightBlendAmount));
+		: lerp(1.0f, HeightWeight, saturate(GetHeightBlendAmount(UV)));
 	float EffectVisibility = Enabled != 0 && HasEffects != 0
 		? saturate(Opacity * FeatureWeight * HeightVisibility)
 		: 0.0f;

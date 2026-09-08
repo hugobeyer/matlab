@@ -673,7 +673,8 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 FReply SMixtormat::MoveChildToLayer(
 	const int32 SourceLayerIndex,
 	const int32 ChildIndex,
-	const int32 DestLayerIndex)
+	const int32 DestLayerIndex,
+	const int32 DestChildIndex)
 {
 	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
 		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
@@ -692,7 +693,12 @@ FReply SMixtormat::MoveChildToLayer(
 	FMixtormatLayerChild Moved = MoveTemp(WorkingLayers[SourceLayerIndex].Children[ChildIndex]);
 	const FGuid MovedChildId = Moved.ChildId;
 	WorkingLayers[SourceLayerIndex].Children.RemoveAt(ChildIndex);
-	const int32 NewChildIndex = WorkingLayers[DestLayerIndex].Children.Add(MoveTemp(Moved));
+	// A drop names the row it landed on; the menu names no position at all and appends.
+	const int32 InsertAt = WorkingLayers[DestLayerIndex].Children.IsValidIndex(DestChildIndex)
+		? DestChildIndex
+		: WorkingLayers[DestLayerIndex].Children.Num();
+	WorkingLayers[DestLayerIndex].Children.Insert(MoveTemp(Moved), InsertAt);
+	const int32 NewChildIndex = InsertAt;
 	MixtormatParameterBinding::RemapChildParent(WorkingLayers, MovedChildId, OldLayerId, NewLayerId);
 
 	// Both layers shifted, so any index taken before the move is stale. Select from where the
@@ -734,19 +740,58 @@ bool SMixtormat::CanPasteLayerChild() const
 	return ChildClipboard.IsSet();
 }
 
-bool SMixtormat::CanPasteChildInstance(const int32 DestLayerIndex, const int32 DestChildIndex) const
+int32 SMixtormat::ResolveInstanceInsertIndex(
+	const int32 DestLayerIndex,
+	const int32 AnchorChildIndex) const
 {
-	return ChildClipboard.IsSet()
-		&& WorkingLayers.IsValidIndex(DestLayerIndex)
-		&& MixtormatParameterBinding::ClassifyInstancePlacement(
-			WorkingLayers,
-			ChildClipboardSourceLayerId,
-			ChildClipboardSourceChildId,
-			WorkingLayers[DestLayerIndex].LayerId,
-			DestChildIndex) == MixtormatParameterBinding::EInstancePlacement::Valid;
+	if (!ChildClipboard.IsSet() || !WorkingLayers.IsValidIndex(DestLayerIndex))
+	{
+		return INDEX_NONE;
+	}
+	const FMixtormatLayer& DestLayer = WorkingLayers[DestLayerIndex];
+
+	// A layer header names no row and means the top; a child row means directly above that row.
+	const int32 Preferred = DestLayer.Children.IsValidIndex(AnchorChildIndex)
+		? AnchorChildIndex
+		: 0;
+
+	// A source in this same layer has to stay earlier than its instance, and the source never
+	// moves to make that true -- so the instance moves down instead, to the first slot after it.
+	// Cross-layer sources are already earlier by whole layers and keep the asked-for row.
+	int32 Insert = Preferred;
+	if (DestLayer.LayerId == ChildClipboardSourceLayerId)
+	{
+		const int32 SourceChildIndex = DestLayer.Children.IndexOfByPredicate(
+			[this](const FMixtormatLayerChild& Child)
+			{
+				return Child.ChildId == ChildClipboardSourceChildId;
+			});
+		if (SourceChildIndex == INDEX_NONE)
+		{
+			return INDEX_NONE;
+		}
+		Insert = FMath::Max(Insert, SourceChildIndex + 1);
+	}
+
+	// Still classified, never assumed. This only picks a candidate; the policy decides.
+	return MixtormatParameterBinding::ClassifyInstancePlacement(
+		WorkingLayers,
+		ChildClipboardSourceLayerId,
+		ChildClipboardSourceChildId,
+		DestLayer.LayerId,
+		Insert) == MixtormatParameterBinding::EInstancePlacement::Valid
+		? Insert
+		: INDEX_NONE;
 }
 
-FText SMixtormat::GetChildInstancePasteReason(const int32 DestLayerIndex, const int32 DestChildIndex) const
+bool SMixtormat::CanPasteChildInstance(const int32 DestLayerIndex, const int32 AnchorChildIndex) const
+{
+	return ResolveInstanceInsertIndex(DestLayerIndex, AnchorChildIndex) != INDEX_NONE;
+}
+
+FText SMixtormat::GetChildInstancePasteReason(
+	const int32 DestLayerIndex,
+	const int32 AnchorChildIndex) const
 {
 	if (!ChildClipboard.IsSet())
 	{
@@ -756,24 +801,27 @@ FText SMixtormat::GetChildInstancePasteReason(const int32 DestLayerIndex, const 
 	{
 		return FText::GetEmpty();
 	}
+	const int32 Insert = ResolveInstanceInsertIndex(DestLayerIndex, AnchorChildIndex);
+	if (Insert != INDEX_NONE)
+	{
+		return LOCTEXT("InstancePasteReady", "Place a live instance of the copied child.");
+	}
 	using EPlacement = MixtormatParameterBinding::EInstancePlacement;
 	switch (MixtormatParameterBinding::ClassifyInstancePlacement(
 		WorkingLayers,
 		ChildClipboardSourceLayerId,
 		ChildClipboardSourceChildId,
 		WorkingLayers[DestLayerIndex].LayerId,
-		DestChildIndex))
+		WorkingLayers[DestLayerIndex].Children.IsValidIndex(AnchorChildIndex) ? AnchorChildIndex : 0))
 	{
 	case EPlacement::SourceMissing:
 		return LOCTEXT("InstanceSourceGone", "The copied child no longer exists.");
 	case EPlacement::SelfReference:
 		return LOCTEXT("InstanceSelf", "A child cannot be an instance of itself.");
-	case EPlacement::SourceEvaluatesLater:
+	default:
 		return LOCTEXT(
 			"InstanceOrder",
-			"The source composites after this position. An instance can only read a child that resolves before it -- move the source layer above this one, or paste into a layer below the source.");
-	default:
-		return LOCTEXT("InstancePasteReady", "Place a live instance of the copied child.");
+			"The source composites after this layer. An instance can only read a child that resolves before it -- paste into a layer below the source.");
 	}
 }
 
@@ -797,11 +845,10 @@ FReply SMixtormat::PasteLayerChild(const int32 LayerIndex)
 	return FReply::Handled();
 }
 
-FReply SMixtormat::PasteChildInstanceAbove(const int32 LayerIndex)
+FReply SMixtormat::PasteChildInstance(const int32 LayerIndex, const int32 AnchorChildIndex)
 {
-	// Above every existing child, which is the only position a layer-level paste can mean -- and
-	// the position the placement rule is checked against.
-	if (!CanPasteChildInstance(LayerIndex, 0))
+	const int32 Insert = ResolveInstanceInsertIndex(LayerIndex, AnchorChildIndex);
+	if (Insert == INDEX_NONE)
 	{
 		return FReply::Unhandled();
 	}
@@ -809,13 +856,177 @@ FReply SMixtormat::PasteChildInstanceAbove(const int32 LayerIndex)
 	Instance.ChildId = FGuid::NewGuid();
 	Instance.SourceLayerId = ChildClipboardSourceLayerId;
 	Instance.SourceChildId = ChildClipboardSourceChildId;
-	WorkingLayers[LayerIndex].Children.Insert(MoveTemp(Instance), 0);
+	WorkingLayers[LayerIndex].Children.Insert(MoveTemp(Instance), Insert);
 	ExpandedLayerIndices.Add(LayerIndex);
-	SelectWorkingChild(LayerIndex, 0);
+	SelectWorkingChild(LayerIndex, Insert);
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();
 	return FReply::Handled();
+}
+
+void SMixtormat::SyncChildInstances()
+{
+	// Against a snapshot: an instance may name a child in a layer this loop has already rewritten,
+	// and a chain has to read authored sources rather than half-updated mirrors.
+	const TArray<FMixtormatLayer> Snapshot = WorkingLayers;
+	for (FMixtormatLayer& Layer : WorkingLayers)
+	{
+		MixtormatParameterBinding::ResolveChildInstances(Snapshot, Layer);
+	}
+}
+
+bool SMixtormat::IsSelectedChildInstance() const
+{
+	const int32 ChildIndex = GetSelectedChildIndex();
+	return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		&& WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(ChildIndex)
+		&& WorkingLayers[SelectedLayerIndex].Children[ChildIndex].IsInstance();
+}
+
+bool SMixtormat::IsSelectedInstanceBroken() const
+{
+	if (!IsSelectedChildInstance())
+	{
+		return false;
+	}
+	const FMixtormatLayerChild& Child =
+		WorkingLayers[SelectedLayerIndex].Children[GetSelectedChildIndex()];
+	return MixtormatParameterBinding::FindChild(
+		WorkingLayers, Child.SourceLayerId, Child.SourceChildId) == nullptr;
+}
+
+FText SMixtormat::GetSelectedInstanceSourceText() const
+{
+	if (!IsSelectedChildInstance())
+	{
+		return FText::GetEmpty();
+	}
+	const FMixtormatLayerChild& Child =
+		WorkingLayers[SelectedLayerIndex].Children[GetSelectedChildIndex()];
+	for (const FMixtormatLayer& Layer : WorkingLayers)
+	{
+		if (Layer.LayerId != Child.SourceLayerId)
+		{
+			continue;
+		}
+		for (const FMixtormatLayerChild& Candidate : Layer.Children)
+		{
+			if (Candidate.ChildId == Child.SourceChildId)
+			{
+				// Named whether or not the source layer is visible. Hiding a layer stops it
+				// compositing; it does not stop its children owning their data.
+				return FText::Format(
+					LOCTEXT("InstanceSourceLine", "Source: {0} / {1}"),
+					Layer.DisplayName,
+					GetLayerChildName(Candidate));
+			}
+		}
+	}
+	return LOCTEXT("InstanceSourceBroken", "Source is missing. Showing the last values it gave.");
+}
+
+bool SMixtormat::IsParameterLocked(const FMixtormatParameterAddress& Target) const
+{
+	if (!Target.IsValid() || !Target.ChildId.IsValid())
+	{
+		return false;
+	}
+	for (const FMixtormatLayer& Layer : WorkingLayers)
+	{
+		if (Layer.LayerId != Target.LayerId)
+		{
+			continue;
+		}
+		for (const FMixtormatLayerChild& Child : Layer.Children)
+		{
+			if (Child.ChildId == Target.ChildId)
+			{
+				return Child.IsInstance();
+			}
+		}
+	}
+	return false;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
+{
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	// A band above the rows rather than a wash over them: the values still have to be read, and
+	// what changes is who may write them.
+	auto Action = [this, &Style](const FText& Label, const FText& Hint, TFunction<void()> OnClick)
+	{
+		return SNew(SButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+			.ContentPadding(MixtormatTokens::RowGap)
+			.ToolTipText(Hint)
+			.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+			];
+	};
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return IsSelectedChildInstance() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.Padding(FMargin(MixtormatTokens::CardGap, 0.0f, MixtormatTokens::CardGap, MixtormatTokens::CardGap))
+		[
+			SNew(SBorder)
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+			.Padding(FMargin(MixtormatTokens::CardGap))
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]() { return GetSelectedInstanceSourceText(); })
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT(
+						"InstanceReadOnlyHint",
+						"Inherited from the source and read-only here. Break Instance to edit a copy."))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					[
+						Action(
+							LOCTEXT("InstanceGoToSource", "Go to Source"),
+							LOCTEXT("InstanceGoToSourceHint", "Select the child this instance mirrors."),
+							[this]() { GoToChildInstanceSource(SelectedLayerIndex, GetSelectedChildIndex()); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					[
+						Action(
+							LOCTEXT("InstanceBreak", "Break Instance"),
+							LOCTEXT("InstanceBreakHint", "Keep the values it is showing as this child's own and edit them here."),
+							[this]() { BreakChildInstanceAt(SelectedLayerIndex, GetSelectedChildIndex()); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SMixtormatChip)
+						.Text(LOCTEXT("InstanceReplaceSource", "Replace Source"))
+						.OnGetMenuContent_Lambda([this]()
+						{
+							return BuildReplaceInstanceSourceMenu(SelectedLayerIndex, GetSelectedChildIndex());
+						})
+					]
+				]
+			]
+		];
 }
 
 FReply SMixtormat::GoToChildInstanceSource(const int32 LayerIndex, const int32 ChildIndex)
@@ -1006,6 +1217,17 @@ void SMixtormat::AddSharedChildMenuItems(
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
 			CopyLayerChild(LayerIndex, ChildIndex, true);
+		}));
+	Menu.Item(
+		LOCTEXT("PasteChildInstanceHereContext", "Paste Instance"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			PasteChildInstance(LayerIndex, ChildIndex);
+		}))
+		.Enabled(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			return CanPasteChildInstance(LayerIndex, ChildIndex);
 		}));
 	Menu.SubMenu(
 		LOCTEXT("MoveChildToLayerContext", "Move to Layer..."),
@@ -1465,6 +1687,20 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 
 FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 {
+	// An instance is named for what it shows, marked for what it is. The arrow is the whole
+	// difference in the stack -- an instance row is otherwise the same row as its source, which is
+	// the point of it.
+	if (Child.IsInstance())
+	{
+		FMixtormatLayerChild Named = Child;
+		Named.SourceLayerId = FGuid();
+		Named.SourceChildId = FGuid();
+		return FText::Format(
+			LOCTEXT("InstanceChildName", "{0} {1}"),
+			FText::FromString(TEXT("\u2197")),
+			GetLayerChildName(Named));
+	}
+
 	if (Child.Type == EMixtormatLayerChildType::Effect)
 	{
 		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
@@ -1696,6 +1932,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.LayerIndex(LayerIndex)
 			.ChildIndex(ChildIndex)
 			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
+			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
 			[
 				SNew(SMixtormatLayerChildRow)
 				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
@@ -1883,6 +2120,23 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }))
 		.Shortcut(LOCTEXT("DuplicateLayerShortcut", "Ctrl D"));
 
+	// Paste lands a copy at the end of the layer. Paste Instance lands a live one at the top,
+	// which is what a layer header means, except that a source in this same layer pushes it to the
+	// first slot below that source. The row stays visible and disabled when nothing works.
+	Menu.Item(
+		LOCTEXT("PasteChildContext", "Paste"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { PasteLayerChild(LayerIndex); }))
+		.Enabled(TAttribute<bool>::CreateLambda([this]() { return CanPasteLayerChild(); }));
+	Menu.Item(
+		LOCTEXT("PasteChildInstanceContext", "Paste Instance"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { PasteChildInstance(LayerIndex); }))
+		.Enabled(TAttribute<bool>::CreateLambda([this, LayerIndex]()
+		{
+			return CanPasteChildInstance(LayerIndex, INDEX_NONE);
+		}));
+
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
 		{
@@ -2027,6 +2281,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 			DuplicateLayerChild(LayerIndex, ChildIndex);
 		}))
 		.Shortcut(LOCTEXT("DuplicateChildShortcut", "Ctrl D"));
+	AddSharedChildMenuItems(Menu, LayerIndex, ChildIndex);
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("RemoveEffectChild", "Remove Effect"),
@@ -2072,6 +2327,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			DuplicateLayerChild(LayerIndex, ChildIndex);
 		}))
 		.Shortcut(LOCTEXT("DuplicateGeneratedShortcut", "Ctrl D"));
+	AddSharedChildMenuItems(Menu, LayerIndex, ChildIndex);
 	Menu.Separator();
 	// Named after the row it is on. This menu serves generated masks, craquelure and colour id
 	// nodes, and "Remove Generated Mask" on a craquelure row reads like the wrong entry. Resolved
@@ -2144,6 +2400,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 			DuplicateLayerChild(LayerIndex, MaskIndex);
 		}))
 		.Shortcut(LOCTEXT("DuplicateMaskShortcut", "Ctrl D"));
+	AddSharedChildMenuItems(Menu, LayerIndex, MaskIndex);
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("DeleteMaskContext", "Remove Mask"),

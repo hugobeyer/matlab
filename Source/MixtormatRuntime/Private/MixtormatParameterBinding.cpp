@@ -478,6 +478,17 @@ namespace MixtormatParameterBinding
 			{
 				RemapBinding(Binding);
 			}
+			// An instance of a sibling has to follow the copy, exactly as a reference to one does.
+			// Left alone, a duplicated layer's instances would go on reading the original layer's
+			// children and the copy would not be independent of it.
+			if (Child.SourceLayerId == OldLayerId)
+			{
+				Child.SourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.SourceChildId))
+				{
+					Child.SourceChildId = *NewSourceChildId;
+				}
+			}
 		}
 	}
 
