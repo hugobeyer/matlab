@@ -1689,11 +1689,13 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 		.IsEnabled_Lambda([this]()
 		{
 			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
-			return Pattern && Pattern->PatternMode == EMixtormatPatternMode::RunningBond;
+			return Pattern && (Pattern->PatternMode == EMixtormatPatternMode::RunningBond
+				|| Pattern->PatternMode == EMixtormatPatternMode::Flagstone
+				|| Pattern->PatternMode == EMixtormatPatternMode::Voronoi);
 		})
 		[
 			Slider(LOCTEXT("PatternJitter", "Jitter"), &FMixtormatPatternFilter::Jitter, 0.0, 1.0, 0.0, 0.01,
-				LOCTEXT("PatternJitterHint", "Varies Running Bond row shift and brick widths while preserving the exact row period."))
+				LOCTEXT("PatternJitterHint", "Varies Running Bond bricks or the feature points used by Flagstone and Voronoi."))
 		]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternSwapAxes", "Swap Axes"), &FMixtormatPatternFilter::bSwapAxes,

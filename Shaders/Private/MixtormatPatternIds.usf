@@ -53,6 +53,10 @@ uint EdgeRelative;
 #define MIXTORMAT_PATTERN_BASKETWEAVE 3u
 #define MIXTORMAT_PATTERN_HEX 4u
 #define MIXTORMAT_PATTERN_OCTAGON_SQUARE 5u
+#define MIXTORMAT_PATTERN_FLAGSTONE 6u
+#define MIXTORMAT_PATTERN_VORONOI 7u
+#define MIXTORMAT_PATTERN_HOPSCOTCH 8u
+#define MIXTORMAT_PATTERN_FRENCH_ASHLAR 9u
 #define MIXTORMAT_GRID_STRAIGHT 0u
 #define MIXTORMAT_GRID_STAGGERED 1u
 #define MIXTORMAT_GRID_DIAMOND 2u
@@ -555,6 +559,189 @@ FMixtormatPatternCell PatternOctagonSquareCell(
 	return Result;
 }
 
+FMixtormatPatternCell PatternCellularCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows,
+	bool bFlagstone)
+{
+	const int2 Period = max(int2(AuthoredColumns, AuthoredRows), int2(1, 1));
+	const float2 P = WorkUV * float2(Period);
+	const float2 CellPixels = AxisPixels / float2(Period);
+	const float AuthoredJitter = saturate(Jitter);
+	// Flagstone keeps feature points biased toward their authored lattice cells. The non-zero floor
+	// breaks the perfect grid, while the capped range stays more laid and structured than Voronoi.
+	const float EffectiveJitter = bFlagstone
+		? lerp(0.15f, 0.75f, AuthoredJitter)
+		: AuthoredJitter;
+	const uint EffectiveSeed = bFlagstone ? Seed ^ 0x7f4a7c15u : Seed;
+	const FMixtormatCellularResult Cellular = MixtormatCellularMetric(
+		P,
+		Period,
+		EffectiveSeed,
+		EffectiveJitter,
+		max(Rounding, 0.0f),
+		CellPixels);
+	const float2 FeatureP = P - Cellular.CellOffset;
+	const float MinCellPixels = max(min(CellPixels.x, CellPixels.y), 1.0e-4f);
+	const float MaxEdgePixels = MinCellPixels * 0.5f * sqrt(
+		1.0f + EffectiveJitter + 0.5f * EffectiveJitter * EffectiveJitter);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(FeatureP / float2(Period));
+	Result.EdgePixels = Cellular.EdgeDistance;
+	Result.EdgeRelative = Cellular.EdgeDistance / max(MaxEdgePixels, 1.0e-4f);
+	Result.PixelsPerRelativeUnit = max(MaxEdgePixels, 1.0e-4f);
+	Result.MinCellPixels = MinCellPixels;
+	Result.Orientation = 0u;
+	return Result;
+}
+
+int PatternModulePeriod(int Value, int ModuleSize)
+{
+	return max(((max(Value, 1) + ModuleSize - 1) / ModuleSize) * ModuleSize, ModuleSize);
+}
+
+FMixtormatPatternCell PatternHopscotchCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int2 Period = int2(
+		PatternModulePeriod(AuthoredColumns, 3),
+		PatternModulePeriod(AuthoredRows, 3));
+	const float2 P = WorkUV * float2(Period);
+	const int2 UnitCell = (int2)floor(P);
+	const int2 Module = int2(
+		UnitCell.x / 3,
+		UnitCell.y / 3);
+	const int2 ModuleLower = Module * 3;
+	const int2 Local = UnitCell - ModuleLower;
+
+	// One exact 3x3 cover: a 2x2 large tile, a 1x2 vertical, a 2x1 horizontal,
+	// and the remaining corner as a 1x1 tile.
+	if (Local.x < 2 && Local.y < 2)
+	{
+		return PatternBoxCell(
+			P, AxisPixels, Period, float2(ModuleLower), float2(2.0f, 2.0f), 0u);
+	}
+	if (Local.x == 2 && Local.y < 2)
+	{
+		return PatternBoxCell(
+			P,
+			AxisPixels,
+			Period,
+			float2(ModuleLower + int2(2, 0)),
+			float2(1.0f, 2.0f),
+			0u);
+	}
+	if (Local.x < 2)
+	{
+		return PatternBoxCell(
+			P,
+			AxisPixels,
+			Period,
+			float2(ModuleLower + int2(0, 2)),
+			float2(2.0f, 1.0f),
+			0u);
+	}
+	return PatternBoxCell(
+		P,
+		AxisPixels,
+		Period,
+		float2(ModuleLower + int2(2, 2)),
+		float2(1.0f, 1.0f),
+		0u);
+}
+
+FMixtormatPatternCell PatternFrenchAshlarCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int2 Period = int2(
+		PatternModulePeriod(AuthoredColumns, 6),
+		PatternModulePeriod(AuthoredRows, 6));
+	const float2 P = WorkUV * float2(Period);
+	const int2 UnitCell = (int2)floor(P);
+	const int2 Module = int2(
+		UnitCell.x / 6,
+		UnitCell.y / 6);
+	const int2 ModuleLower = Module * 6;
+	const int2 Local = UnitCell - ModuleLower;
+	float2 TileLower;
+	float2 TileSize;
+
+	// Authored 6x6 cover, rows shown by tile footprint:
+	// A A B B C D    A=2x3, B=2x2, C/D=1x2
+	// A A B B C D    E/H=3x1, F/I=1x1
+	// A A E E E F    G=2x3, J=2x2, K/L=2x1
+	// H H H I G G
+	// J J K K G G
+	// J J L L G G
+	if (Local.x < 2 && Local.y < 3)
+	{
+		TileLower = float2(0.0f, 0.0f);
+		TileSize = float2(2.0f, 3.0f);
+	}
+	else if (Local.x >= 4 && Local.y >= 3)
+	{
+		TileLower = float2(4.0f, 3.0f);
+		TileSize = float2(2.0f, 3.0f);
+	}
+	else if (Local.x >= 2 && Local.x < 4 && Local.y < 2)
+	{
+		TileLower = float2(2.0f, 0.0f);
+		TileSize = float2(2.0f, 2.0f);
+	}
+	else if (Local.x < 2 && Local.y >= 4)
+	{
+		TileLower = float2(0.0f, 4.0f);
+		TileSize = float2(2.0f, 2.0f);
+	}
+	else if (Local.y < 2)
+	{
+		TileLower = float2(float(Local.x), 0.0f);
+		TileSize = float2(1.0f, 2.0f);
+	}
+	else if (Local.y == 2 && Local.x < 5)
+	{
+		TileLower = float2(2.0f, 2.0f);
+		TileSize = float2(3.0f, 1.0f);
+	}
+	else if (Local.y == 2)
+	{
+		TileLower = float2(5.0f, 2.0f);
+		TileSize = float2(1.0f, 1.0f);
+	}
+	else if (Local.y == 3 && Local.x < 3)
+	{
+		TileLower = float2(0.0f, 3.0f);
+		TileSize = float2(3.0f, 1.0f);
+	}
+	else if (Local.y == 3)
+	{
+		TileLower = float2(3.0f, 3.0f);
+		TileSize = float2(1.0f, 1.0f);
+	}
+	else
+	{
+		TileLower = float2(2.0f, float(Local.y));
+		TileSize = float2(2.0f, 1.0f);
+	}
+
+	return PatternBoxCell(
+		P,
+		AxisPixels,
+		Period,
+		float2(ModuleLower) + TileLower,
+		TileSize,
+		0u);
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -593,14 +780,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		Cell = PatternOctagonSquareCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
 	}
+	else if (PatternMode == MIXTORMAT_PATTERN_FLAGSTONE)
+	{
+		Cell = PatternCellularCell(WorkUV, AxisPixels, SafeColumns, SafeRows, true);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_VORONOI)
+	{
+		Cell = PatternCellularCell(WorkUV, AxisPixels, SafeColumns, SafeRows, false);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_HOPSCOTCH)
+	{
+		Cell = PatternHopscotchCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_FRENCH_ASHLAR)
+	{
+		Cell = PatternFrenchAshlarCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
 	else if (PatternMode == MIXTORMAT_PATTERN_GRID && GridMode == MIXTORMAT_GRID_DIAMOND)
 	{
 		Cell = PatternDiamondCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
 	}
 	else
 	{
-		// Unsupported future P1 modes intentionally retain the straight-grid fallback until their
-		// own milestone supplies an ownership solve.
+		// Invalid serialized values fall back to the stable straight-grid solve.
 		const bool bStaggered = PatternMode == MIXTORMAT_PATTERN_GRID
 			&& GridMode == MIXTORMAT_GRID_STAGGERED;
 		const int GridRows = bStaggered ? PatternEvenPeriod(SafeRows) : SafeRows;
