@@ -28,6 +28,7 @@ class SWindow;
 class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
+struct FMixtormatSurfaceEntry;
 
 class SMixtormat final : public SCompoundWidget
 {
@@ -697,7 +698,9 @@ private:
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
-	TSharedRef<SWidget> BuildSurfaceGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
+	TSharedRef<SWidget> BuildSurfaceGallery(
+		const TArray<FMixtormatSurfaceEntry>& Surfaces,
+		TFunction<void(const FSoftObjectPath&)> OnChosen);
 	TSharedRef<SWidget> BuildSurfaceReplacementMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskReplacementGallery(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);

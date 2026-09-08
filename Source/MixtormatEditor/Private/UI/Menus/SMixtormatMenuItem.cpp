@@ -5,9 +5,10 @@
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Menus/SMixtormatPopupAnchor.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "Widgets/Images/SImage.h"
-#include "Widgets/Input/SMenuAnchor.h"
+
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -109,8 +110,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 	{
 		ChildSlot
 		[
-			SAssignNew(SubMenuAnchor, SMenuAnchor)
-			.Placement(MenuPlacement_MenuRight)
+			SAssignNew(SubMenuAnchor, SMixtormatPopupAnchor)
 			.OnGetMenuContent(InArgs._OnGetSubMenu)
 			[
 				Surface
@@ -190,7 +190,7 @@ void SMixtormatMenuItem::OnMouseEnter(const FGeometry& MyGeometry, const FPointe
 	// click to descend feels stuck when you are already moving toward the thing you want.
 	if (SubMenuAnchor.IsValid() && IsRowEnabled() && !SubMenuAnchor->IsOpen())
 	{
-		SubMenuAnchor->SetIsOpen(true);
+		SubMenuAnchor->OpenAt(MouseEvent.GetScreenSpacePosition());
 	}
 }
 
@@ -205,7 +205,7 @@ FReply SMixtormatMenuItem::OnMouseButtonUp(const FGeometry&, const FPointerEvent
 	// must not take the menu down with it.
 	if (SubMenuAnchor.IsValid())
 	{
-		SubMenuAnchor->SetIsOpen(true);
+		SubMenuAnchor->OpenAt(MouseEvent.GetScreenSpacePosition());
 		return FReply::Handled();
 	}
 

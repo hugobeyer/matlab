@@ -56,7 +56,11 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 
 	Entries.Sort([](const FMixtormatSurfaceEntry& A, const FMixtormatSurfaceEntry& B)
 	{
-		return A.DisplayName.ToString() < B.DisplayName.ToString();
+		const FString AName = A.DisplayName.ToString();
+		const FString BName = B.DisplayName.ToString();
+		return AName == BName
+			? A.AssetPath.ToString() < B.AssetPath.ToString()
+			: AName < BName;
 	});
 
 	return Entries;
@@ -117,7 +121,11 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 
 	Entries.Sort([](const FMixtormatMaskEntry& A, const FMixtormatMaskEntry& B)
 	{
-		return A.DisplayName.ToString() < B.DisplayName.ToString();
+		const FString AName = A.DisplayName.ToString();
+		const FString BName = B.DisplayName.ToString();
+		return AName == BName
+			? A.AssetPath.ToString() < B.AssetPath.ToString()
+			: AName < BName;
 	});
 
 	return Entries;

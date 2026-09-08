@@ -2108,10 +2108,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		&& (WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Material
 			|| WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Effect))
 	{
+		// Construct once for this context-menu lifetime. Thumbnail invalidation can ask the submenu
+		// for content again, but it receives this same widget tree and thumbnail handles.
+		const TSharedRef<SWidget> SurfaceReplacementMenu = BuildSurfaceReplacementMenu(LayerIndex);
 		Menu.SubMenu(
 			LOCTEXT("ReplaceSurfaceContext", "Replace Material"),
 			MixtormatIcons::LayerMaterial(),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildSurfaceReplacementMenu, LayerIndex));
+			FOnGetContent::CreateLambda([SurfaceReplacementMenu]()
+			{
+				return SurfaceReplacementMenu;
+			}));
 	}
 
 	Menu.Item(
@@ -2387,10 +2393,15 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		LOCTEXT("MaskBlendModeContext", "Blend Mode"),
 		nullptr,
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, MaskIndex));
+	const TSharedRef<SWidget> MaskReplacementMenu =
+		BuildMaskReplacementMenu(LayerIndex, MaskIndex);
 	Menu.SubMenu(
 		LOCTEXT("ReplaceMaskContext", "Replace Mask"),
 		MixtormatIcons::Mask(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskReplacementMenu, LayerIndex, MaskIndex));
+		FOnGetContent::CreateLambda([MaskReplacementMenu]()
+		{
+			return MaskReplacementMenu;
+		}));
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("DuplicateMaskContext", "Duplicate"),
@@ -2424,7 +2435,11 @@ TSharedRef<SWidget> SMixtormat::BuildMaskReplacementMenu(const int32 LayerIndex,
 		.WidthOverride(MixtormatTokens::MaskPickerWidth)
 		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
 		[
-			BuildMaskReplacementGallery(LayerIndex, MaskIndex)
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				BuildMaskReplacementGallery(LayerIndex, MaskIndex)
+			]
 		]);
 	return Menu.Build();
 }
@@ -2592,13 +2607,15 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 
 // The surface picker, shared by every path that needs one. Same grid as the mask gallery: a
 // surface is chosen by looking at it, not by reading a list of names.
-TSharedRef<SWidget> SMixtormat::BuildSurfaceGallery(TFunction<void(const FSoftObjectPath&)> OnChosen)
+TSharedRef<SWidget> SMixtormat::BuildSurfaceGallery(
+	const TArray<FMixtormatSurfaceEntry>& Surfaces,
+	TFunction<void(const FSoftObjectPath&)> OnChosen)
 {
 	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
 		.UseAllottedSize(true)
 		.InnerSlotPadding(FVector2D(MixtormatTokens::TileGap, MixtormatTokens::TileGap));
 
-	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
+	for (const FMixtormatSurfaceEntry& Surface : Surfaces)
 	{
 		const FSoftObjectPath Path = Surface.AssetPath;
 		Grid->AddSlot()
@@ -2620,7 +2637,8 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceGallery(TFunction<void(const FSoftOb
 TSharedRef<SWidget> SMixtormat::BuildSurfaceReplacementMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
-	if (FMixtormatRegistry::GetSurfaces().IsEmpty())
+	const TArray<FMixtormatSurfaceEntry> Surfaces = FMixtormatRegistry::GetSurfaces();
+	if (Surfaces.IsEmpty())
 	{
 		Menu.Item(LOCTEXT("SurfacesUnavailable", "No materials available"), nullptr, FSimpleDelegate())
 			.Enabled(false);
@@ -2632,10 +2650,14 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceReplacementMenu(const int32 LayerInd
 		.WidthOverride(MixtormatTokens::MaskPickerWidth)
 		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
 		[
-			BuildSurfaceGallery([this, LayerIndex](const FSoftObjectPath& Path)
-			{
-				ReplaceSurfaceInLayer(LayerIndex, Path);
-			})
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				BuildSurfaceGallery(Surfaces, [this, LayerIndex](const FSoftObjectPath& Path)
+				{
+					ReplaceSurfaceInLayer(LayerIndex, Path);
+				})
+			]
 		]);
 	return Menu.Build();
 }

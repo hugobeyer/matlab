@@ -5,7 +5,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-class SMenuAnchor;
+class SMixtormatPopupAnchor;
 
 // Wraps an existing inspector control with the tiny procedural-state affordance used by
 // references and drivers. The existing slider/toggle remains untouched; this only adds the state
@@ -50,6 +50,6 @@ private:
 	TAttribute<bool> bReferenced;
 	TAttribute<bool> bDriven;
 	TAttribute<bool> bBroken;
-	TSharedPtr<SMenuAnchor> ContextAnchor;
-	TSharedPtr<SMenuAnchor> DriverAnchor;
+	TSharedPtr<SMixtormatPopupAnchor> ContextAnchor;
+	TSharedPtr<SMixtormatPopupAnchor> DriverAnchor;
 };

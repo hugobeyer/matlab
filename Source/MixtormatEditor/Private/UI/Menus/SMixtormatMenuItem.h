@@ -5,7 +5,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-class SMenuAnchor;
+class SMixtormatPopupAnchor;
 struct FSlateBrush;
 
 // One row in a popover.
@@ -71,5 +71,5 @@ private:
 	TAttribute<bool> bRowEnabled;
 	bool bDestructive = false;
 	FSimpleDelegate OnActivate;
-	TSharedPtr<SMenuAnchor> SubMenuAnchor;
+	TSharedPtr<SMixtormatPopupAnchor> SubMenuAnchor;
 };

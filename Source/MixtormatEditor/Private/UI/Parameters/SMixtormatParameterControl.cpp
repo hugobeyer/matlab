@@ -2,7 +2,8 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"
-#include "Widgets/Input/SMenuAnchor.h"
+#include "UI/Menus/SMixtormatPopupAnchor.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -17,8 +18,7 @@ void SMixtormatParameterControl::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SAssignNew(ContextAnchor, SMenuAnchor)
-		.Placement(MenuPlacement_MenuRight)
+		SAssignNew(ContextAnchor, SMixtormatPopupAnchor)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
 			SNew(SHorizontalBox)
@@ -43,8 +43,7 @@ void SMixtormatParameterControl::Construct(const FArguments& InArgs)
 				.Visibility(TAttribute<EVisibility>::CreateSP(
 					this, &SMixtormatParameterControl::GetStateVisibility))
 				[
-					SAssignNew(DriverAnchor, SMenuAnchor)
-					.Placement(MenuPlacement_MenuRight)
+					SAssignNew(DriverAnchor, SMixtormatPopupAnchor)
 					.OnGetMenuContent(InArgs._OnGetDriverContent)
 					[
 						SNew(SMixtormatStatusDot)
@@ -107,7 +106,7 @@ void SMixtormatParameterControl::OpenDriverPopover()
 {
 	if (DriverAnchor.IsValid())
 	{
-		DriverAnchor->SetIsOpen(true);
+		DriverAnchor->OpenAt(FSlateApplication::Get().GetCursorPos());
 	}
 }
 
@@ -119,7 +118,7 @@ FReply SMixtormatParameterControl::OnMouseButtonDown(const FGeometry&, const FPo
 		&& bHasTarget.Get(true)
 		&& ContextAnchor.IsValid())
 	{
-		ContextAnchor->SetIsOpen(true);
+		ContextAnchor->OpenAt(MouseEvent.GetScreenSpacePosition());
 		return FReply::Handled();
 	}
 	return FReply::Unhandled();
