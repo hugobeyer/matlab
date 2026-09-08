@@ -100,17 +100,20 @@ float MixtormatSmoothMin(float A, float B, float K)
 	return min(A, B) - H * H * K * 0.25f;
 }
 
-FMixtormatCellularResult MixtormatCellular(
+FMixtormatCellularResult MixtormatCellularMetric(
 	float2 p,
 	int2 Period,
 	uint Seed,
 	float Jitter,
-	float Rounding)
+	float Rounding,
+	float2 MetricScale)
 {
 	const int2 Base = (int2)floor(p);
+	const float2 SafeMetricScale = max(abs(MetricScale), float2(1.0e-6f, 1.0e-6f));
 
 	// Pass one: the nearest feature point, and which cell owns it.
 	float2 NearestOffset = 0.0f;
+	float2 NearestLatticeOffset = 0.0f;
 	int2 NearestCell = Base;
 	float BestSq = 1.0e30f;
 	float SecondSq = 1.0e30f;
@@ -122,7 +125,8 @@ FMixtormatCellularResult MixtormatCellular(
 		for (int x = -1; x <= 1; ++x)
 		{
 			const int2 Cell = Base + int2(x, y);
-			const float2 Offset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
+			const float2 LatticeOffset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
+			const float2 Offset = LatticeOffset * SafeMetricScale;
 			const float DistSq = dot(Offset, Offset);
 
 			if (DistSq < BestSq)
@@ -130,6 +134,7 @@ FMixtormatCellularResult MixtormatCellular(
 				SecondSq = BestSq;
 				BestSq = DistSq;
 				NearestOffset = Offset;
+				NearestLatticeOffset = LatticeOffset;
 				NearestCell = Cell;
 			}
 			else if (DistSq < SecondSq)
@@ -152,7 +157,8 @@ FMixtormatCellularResult MixtormatCellular(
 	// shows up as a crack that thins and vanishes rather than closing.
 	float Edge = 1.0e30f;
 	int2 EdgeNeighbour = NearestCell;
-	const float SmoothK = 0.5f * max(Rounding, 0.0f);
+	const float SmoothK =
+		0.5f * max(Rounding, 0.0f) * min(SafeMetricScale.x, SafeMetricScale.y);
 
 	// Two cells out, not one.
 	//
@@ -174,7 +180,8 @@ FMixtormatCellularResult MixtormatCellular(
 			}
 
 			const int2 Cell = NearestCell + int2(ex, ey);
-			const float2 Offset = MixtormatCellPoint(Cell, Period, Seed, Jitter) - p;
+			const float2 Offset =
+				(MixtormatCellPoint(Cell, Period, Seed, Jitter) - p) * SafeMetricScale;
 			const float2 Delta = Offset - NearestOffset;
 			const float DeltaLenSq = dot(Delta, Delta);
 
@@ -201,7 +208,7 @@ FMixtormatCellularResult MixtormatCellular(
 	Result.F2 = sqrt(SecondSq);
 	Result.EdgeDistance = max(Edge, 0.0f);
 	Result.CellId = MixtormatCellHash(NearestCell, Period, Seed);
-	Result.CellOffset = -NearestOffset;
+	Result.CellOffset = -NearestLatticeOffset;
 
 	// One id for the wall itself, symmetric in the two cells that share it.
 	//
@@ -218,6 +225,22 @@ FMixtormatCellularResult MixtormatCellular(
 	Result.EdgeId = MixtormatHashU(
 		min(Result.CellId, NeighbourId) * 0x9e3779b9u ^ max(Result.CellId, NeighbourId) * 0x85ebca6bu);
 	return Result;
+}
+
+FMixtormatCellularResult MixtormatCellular(
+	float2 p,
+	int2 Period,
+	uint Seed,
+	float Jitter,
+	float Rounding)
+{
+	return MixtormatCellularMetric(
+		p,
+		Period,
+		Seed,
+		Jitter,
+		Rounding,
+		float2(1.0f, 1.0f));
 }
 
 FMixtormatCellularResult MixtormatCellular(float2 p, int Period, uint Seed, float Jitter)

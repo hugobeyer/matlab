@@ -1658,9 +1658,17 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 				LOCTEXT("PatternGridModeHint", "Selects the straight, staggered, or diamond Grid topology."))
 		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatPatternFilter>(
-			LOCTEXT("PatternRows", "Rows"), Pattern, &FMixtormatPatternFilter::Rows, 1.0, 256.0, 8,
-			LOCTEXT("PatternRowsHint", "Rows across one UV repeat. Together with Columns this defines the periodic cell lattice.")),
+		SNew(SBox)
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+			return Pattern && Pattern->PatternMode != EMixtormatPatternMode::Hex;
+		})
+		[
+			MakeMemberSliderInt<FMixtormatPatternFilter>(
+				LOCTEXT("PatternRows", "Rows"), Pattern, &FMixtormatPatternFilter::Rows, 1.0, 256.0, 8,
+				LOCTEXT("PatternRowsHint", "Rows across one UV repeat. Hex derives this from Columns and output aspect."))
+		],
 		MakeMemberSliderInt<FMixtormatPatternFilter>(
 			LOCTEXT("PatternColumns", "Columns"), Pattern, &FMixtormatPatternFilter::Columns, 1.0, 256.0, 8,
 			LOCTEXT("PatternColumnsHint", "Columns across one UV repeat. Set Columns to 1 for stripe-like regions."))));

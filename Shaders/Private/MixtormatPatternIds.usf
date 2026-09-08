@@ -51,6 +51,8 @@ uint EdgeRelative;
 #define MIXTORMAT_PATTERN_RUNNING_BOND 1u
 #define MIXTORMAT_PATTERN_HERRINGBONE 2u
 #define MIXTORMAT_PATTERN_BASKETWEAVE 3u
+#define MIXTORMAT_PATTERN_HEX 4u
+#define MIXTORMAT_PATTERN_OCTAGON_SQUARE 5u
 #define MIXTORMAT_GRID_STRAIGHT 0u
 #define MIXTORMAT_GRID_STAGGERED 1u
 #define MIXTORMAT_GRID_DIAMOND 2u
@@ -380,6 +382,179 @@ FMixtormatPatternCell PatternBasketweaveCell(
 		0u);
 }
 
+void PatternInsertDistance(float Distance, inout float Nearest, inout float Second)
+{
+	if (Distance < Nearest)
+	{
+		Second = Nearest;
+		Nearest = Distance;
+	}
+	else if (Distance < Second)
+	{
+		Second = Distance;
+	}
+}
+
+FMixtormatPatternCell PatternHexCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns)
+{
+	const int SafeColumns = max(AuthoredColumns, 1);
+	const float DesiredRows = float(SafeColumns)
+		* (AxisPixels.y / max(AxisPixels.x, 1.0f))
+		* 1.154700538f;
+	const int SafeRows = max(2 * (int)floor(0.5f * DesiredRows + 0.5f), 2);
+	const int2 Period = int2(SafeColumns, SafeRows);
+	const float2 Pitch = AxisPixels / float2(Period);
+	const float2 Query = WorkUV * AxisPixels;
+
+	const int BaseRow = (int)floor(Query.y / Pitch.y - 0.5f);
+	float BestSq = 1.0e30f;
+	int2 Owner = int2(0, BaseRow);
+	float2 OwnerCentre = 0.0f;
+	[unroll]
+	for (int RowOffset = -1; RowOffset <= 1; ++RowOffset)
+	{
+		const int Row = BaseRow + RowOffset;
+		const float Stagger = (Row & 1) != 0 ? 0.5f : 0.0f;
+		const int BaseColumn = (int)floor(Query.x / Pitch.x - 0.5f - Stagger);
+		[unroll]
+		for (int ColumnOffset = -1; ColumnOffset <= 1; ++ColumnOffset)
+		{
+			const int Column = BaseColumn + ColumnOffset;
+			const float2 Centre = float2(
+				(float(Column) + 0.5f + Stagger) * Pitch.x,
+				(float(Row) + 0.5f) * Pitch.y);
+			const float2 Offset = Centre - Query;
+			const float DistanceSq = dot(Offset, Offset);
+			if (DistanceSq < BestSq)
+			{
+				BestSq = DistanceSq;
+				Owner = int2(Column, Row);
+				OwnerCentre = Centre;
+			}
+		}
+	}
+
+	float NearestEdge = 1.0e30f;
+	float SecondEdge = 1.0e30f;
+	const float2 OwnerOffset = OwnerCentre - Query;
+	[unroll]
+	for (int RowOffset = -2; RowOffset <= 2; ++RowOffset)
+	{
+		const int Row = Owner.y + RowOffset;
+		const float Stagger = (Row & 1) != 0 ? 0.5f : 0.0f;
+		[unroll]
+		for (int ColumnOffset = -2; ColumnOffset <= 2; ++ColumnOffset)
+		{
+			const int Column = Owner.x + ColumnOffset;
+			if (Column == Owner.x && Row == Owner.y)
+			{
+				continue;
+			}
+			const float2 Centre = float2(
+				(float(Column) + 0.5f + Stagger) * Pitch.x,
+				(float(Row) + 0.5f) * Pitch.y);
+			const float2 Offset = Centre - Query;
+			const float2 Delta = Offset - OwnerOffset;
+			const float DeltaSq = dot(Delta, Delta);
+			if (DeltaSq > 1.0e-9f)
+			{
+				const float BoundaryDistance = abs(
+					dot(0.5f * (OwnerOffset + Offset), Delta * rsqrt(DeltaSq)));
+				PatternInsertDistance(BoundaryDistance, NearestEdge, SecondEdge);
+			}
+		}
+	}
+
+	const float DiagonalSpacing = sqrt(
+		0.25f * Pitch.x * Pitch.x + Pitch.y * Pitch.y);
+	const float Inradius = 0.5f * min(Pitch.x, DiagonalSpacing);
+	const float EdgePixels = max(MixtormatSmoothMin(
+		NearestEdge,
+		SecondEdge,
+		max(Rounding, 0.0f) * Inradius), 0.0f);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(OwnerCentre / AxisPixels);
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgePixels / max(Inradius, 1.0e-4f);
+	Result.PixelsPerRelativeUnit = max(Inradius, 1.0e-4f);
+	Result.MinCellPixels = max(2.0f * Inradius, 1.0e-4f);
+	Result.Orientation = 0u;
+	return Result;
+}
+
+FMixtormatPatternCell PatternOctagonSquareCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int2 Period = max(int2(AuthoredColumns, AuthoredRows), int2(1, 1));
+	const float2 P = WorkUV * float2(Period);
+	const int2 UnitCell = (int2)floor(P);
+	const float2 Local = frac(P);
+	const float2 FromCentre = Local - 0.5f;
+	const float2 AbsCentre = abs(FromCentre);
+	const float2 Pitch = AxisPixels / float2(Period);
+	const float Cut = 0.2928932188f;
+	const float OctagonDiagonal = 1.0f - Cut;
+	const float DiagonalGradient = sqrt(
+		1.0f / (Pitch.x * Pitch.x) + 1.0f / (Pitch.y * Pitch.y));
+
+	float2 CentreP;
+	float NearestEdge = 1.0e30f;
+	float SecondEdge = 1.0e30f;
+	float Inradius;
+	if (AbsCentre.x + AbsCentre.y <= OctagonDiagonal)
+	{
+		CentreP = float2(UnitCell) + 0.5f;
+		PatternInsertDistance((0.5f - AbsCentre.x) * Pitch.x, NearestEdge, SecondEdge);
+		PatternInsertDistance((0.5f - AbsCentre.y) * Pitch.y, NearestEdge, SecondEdge);
+		PatternInsertDistance(
+			(OctagonDiagonal - AbsCentre.x - AbsCentre.y) / DiagonalGradient,
+			NearestEdge,
+			SecondEdge);
+		Inradius = min(
+			min(0.5f * Pitch.x, 0.5f * Pitch.y),
+			OctagonDiagonal / DiagonalGradient);
+	}
+	else
+	{
+		const int2 Vertex = UnitCell + int2(FromCentre.x > 0.0f, FromCentre.y > 0.0f);
+		CentreP = float2(Vertex);
+		const float2 D = P - CentreP;
+		[unroll]
+		for (int Sy = -1; Sy <= 1; Sy += 2)
+		{
+			[unroll]
+			for (int Sx = -1; Sx <= 1; Sx += 2)
+			{
+				PatternInsertDistance(
+					(Cut - float(Sx) * D.x - float(Sy) * D.y) / DiagonalGradient,
+					NearestEdge,
+					SecondEdge);
+			}
+		}
+		Inradius = Cut / DiagonalGradient;
+	}
+
+	const float EdgePixels = max(MixtormatSmoothMin(
+		NearestEdge,
+		SecondEdge,
+		max(Rounding, 0.0f) * Inradius), 0.0f);
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(CentreP / float2(Period));
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgePixels / max(Inradius, 1.0e-4f);
+	Result.PixelsPerRelativeUnit = max(Inradius, 1.0e-4f);
+	Result.MinCellPixels = max(2.0f * Inradius, 1.0e-4f);
+	Result.Orientation = 0u;
+	return Result;
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -409,6 +584,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	else if (PatternMode == MIXTORMAT_PATTERN_BASKETWEAVE)
 	{
 		Cell = PatternBasketweaveCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_HEX)
+	{
+		Cell = PatternHexCell(WorkUV, AxisPixels, SafeColumns);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_OCTAGON_SQUARE)
+	{
+		Cell = PatternOctagonSquareCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
 	}
 	else if (PatternMode == MIXTORMAT_PATTERN_GRID && GridMode == MIXTORMAT_GRID_DIAMOND)
 	{
