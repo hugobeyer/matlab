@@ -34,7 +34,7 @@ These are no longer blockers:
 - Layer height blending and normal / height / AO influence remain layer-only.
 - The base layer is gone. Every layer is an ordinary layer at an ordinary position.
 - A layer can be dragged, moved, hidden, deleted and given children at any position, index 0 included.
-- Material and Effect layers can have their surface swapped in place via `Replace Material`.
+- Material and Effect layers can use the bottom gallery selection via `Replace with {Material}`.
 
 ## Blockers at a glance
 
@@ -317,7 +317,7 @@ Done:
   targets, enable/disable, mask assignment, normal assignment, effect assignment, bulk mask
   removal, the row's `bIsBase` treatment, the `BASE` source label, the context menu, the mask
   gallery, and the four inspector sections that were hidden on the bottom layer.
-- `ReplaceSurfaceInLayer` plus its picker, wired to `Replace Material` in the layer context menu.
+- `ReplaceSurfaceInLayer`, wired to the bottom gallery's selected material in the layer context menu.
 
 Deliberately kept, because it is positional rather than policy:
 
@@ -373,7 +373,7 @@ Add substrate and position-independence coverage:
 - height blending on the bottom layer blends against substrate height, not against itself;
 - an empty stack renders as the bare substrate;
 - deleting the last layer empties the stack without invalid selection;
-- `Replace Material` preserves children, transform, overrides, position and selection.
+- `Replace with {Material}` preserves children, transform, overrides, position and selection.
 
 ## 5. Put every mask type under one UI taxonomy
 

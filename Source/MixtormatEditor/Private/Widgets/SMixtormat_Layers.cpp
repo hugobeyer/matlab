@@ -2110,16 +2110,20 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		&& (WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Material
 			|| WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Effect))
 	{
-		// Construct once for this context-menu lifetime. Thumbnail invalidation can ask the submenu
-		// for content again, but it receives this same widget tree and thumbnail handles.
-		const TSharedRef<SWidget> SurfaceReplacementMenu = BuildSurfaceReplacementMenu(LayerIndex);
-		Menu.SubMenu(
-			LOCTEXT("ReplaceSurfaceContext", "Replace Material"),
+		// Reuse the persistent bottom-library selection instead of opening a second thumbnail gallery.
+		// Capturing the path keeps the action deterministic for the lifetime of this menu.
+		const FSoftObjectPath ReplacementPath = SelectedSurfacePath;
+		const FText ReplacementName = SelectedLibrarySurfaceName.IsEmpty()
+			? LOCTEXT("SelectedMaterialFallback", "Selected Material")
+			: SelectedLibrarySurfaceName;
+		Menu.Item(
+			FText::Format(LOCTEXT("ReplaceWithSelectedSurfaceContext", "Replace with {0}"), ReplacementName),
 			MixtormatIcons::LayerMaterial(),
-			FOnGetContent::CreateLambda([SurfaceReplacementMenu]()
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ReplacementPath]()
 			{
-				return SurfaceReplacementMenu;
-			}));
+				ReplaceSurfaceInLayer(LayerIndex, ReplacementPath);
+			}))
+			.Enabled(TAttribute<bool>(!ReplacementPath.IsNull()));
 	}
 
 	Menu.Item(
@@ -2399,15 +2403,10 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		LOCTEXT("MaskBlendModeContext", "Blend Mode"),
 		nullptr,
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, MaskIndex));
-	const TSharedRef<SWidget> MaskReplacementMenu =
-		BuildMaskReplacementMenu(LayerIndex, MaskIndex);
 	Menu.SubMenu(
 		LOCTEXT("ReplaceMaskContext", "Replace Mask"),
 		MixtormatIcons::Mask(),
-		FOnGetContent::CreateLambda([MaskReplacementMenu]()
-		{
-			return MaskReplacementMenu;
-		}));
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskReplacementMenu, LayerIndex, MaskIndex));
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("DuplicateMaskContext", "Duplicate"),
@@ -2604,6 +2603,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 			.ThumbnailPool(ThumbnailPool)
 			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
 			{
+				FSlateApplication::Get().DismissAllMenus();
 				OnChosen(Path);
 			}))
 		];
@@ -2611,62 +2611,6 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 	return Grid;
 }
 
-// The surface picker, shared by every path that needs one. Same grid as the mask gallery: a
-// surface is chosen by looking at it, not by reading a list of names.
-TSharedRef<SWidget> SMixtormat::BuildSurfaceGallery(
-	const TArray<FMixtormatSurfaceEntry>& Surfaces,
-	TFunction<void(const FSoftObjectPath&)> OnChosen)
-{
-	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
-		.UseAllottedSize(true)
-		.InnerSlotPadding(FVector2D(MixtormatTokens::TileGap, MixtormatTokens::TileGap));
-
-	for (const FMixtormatSurfaceEntry& Surface : Surfaces)
-	{
-		const FSoftObjectPath Path = Surface.AssetPath;
-		Grid->AddSlot()
-		[
-			SNew(SMixtormatTile)
-			.TileSize(MixtormatTokens::SurfaceTileSize)
-			.DisplayName(Surface.DisplayName)
-			.ThumbnailAsset(Surface.ThumbnailAsset)
-			.ThumbnailPool(ThumbnailPool)
-			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
-			{
-				OnChosen(Path);
-			}))
-		];
-	}
-	return Grid;
-}
-
-TSharedRef<SWidget> SMixtormat::BuildSurfaceReplacementMenu(const int32 LayerIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	const TArray<FMixtormatSurfaceEntry> Surfaces = FMixtormatRegistry::GetSurfaces();
-	if (Surfaces.IsEmpty())
-	{
-		Menu.Item(LOCTEXT("SurfacesUnavailable", "No materials available"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
-
-	Menu.Widget(
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				BuildSurfaceGallery(Surfaces, [this, LayerIndex](const FSoftObjectPath& Path)
-				{
-					ReplaceSurfaceInLayer(LayerIndex, Path);
-				})
-			]
-		]);
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerIndex, const int32 MaskIndex)
 {

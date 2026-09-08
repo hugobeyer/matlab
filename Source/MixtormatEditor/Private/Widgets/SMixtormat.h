@@ -703,10 +703,7 @@ private:
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
-	TSharedRef<SWidget> BuildSurfaceGallery(
-		const TArray<FMixtormatSurfaceEntry>& Surfaces,
-		TFunction<void(const FSoftObjectPath&)> OnChosen);
-	TSharedRef<SWidget> BuildSurfaceReplacementMenu(int32 LayerIndex);
+
 	TSharedRef<SWidget> BuildMaskReplacementGallery(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildNormalSourceMenu(int32 LayerIndex);
@@ -777,7 +774,6 @@ private:
 	TSharedPtr<SBox> SelectedThumbnailBox;
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
-	TArray<TSharedPtr<FAssetThumbnail>> SurfaceThumbnails;
 	float MaterialGalleryTileSize = MixtormatTokens::MaterialGalleryTileDefault;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
 	// The inspector strip's own thumbnail. Kept apart from LayerThumbnails because the strip is

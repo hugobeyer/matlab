@@ -25,6 +25,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	[
 		SAssignNew(ContextAnchor, SMenuAnchor)
 		.Placement(MenuPlacement_MenuRight)
+		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
 			// Horizontal, not vertical: a selected child lights from its right edge, so it cannot

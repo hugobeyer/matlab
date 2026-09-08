@@ -50,6 +50,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	[
 		SAssignNew(ContextAnchor, SMenuAnchor)
 		.Placement(MenuPlacement_MenuRight)
+		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
 			SNew(SMixtormatGradientBox)

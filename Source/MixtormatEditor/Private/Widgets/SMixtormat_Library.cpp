@@ -177,7 +177,6 @@ void SMixtormat::RebuildSurfaceList()
 	}
 
 	SurfaceListBox->ClearChildren();
-	SurfaceThumbnails.Reset();
 	const TArray<FMixtormatSurfaceEntry> Surfaces = FMixtormatRegistry::GetSurfaces();
 	int32 VisibleSurfaceIndex = 0;
 	for (const FMixtormatSurfaceEntry& Surface : Surfaces)
@@ -340,19 +339,6 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 	const FSoftObjectPath& AssetPath,
 	const FAssetData& ThumbnailAsset)
 {
-	TSharedRef<SWidget> ThumbnailWidget = SNew(SBorder)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.ThumbnailBackground")));
-	if (ThumbnailAsset.IsValid())
-	{
-		TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
-			ThumbnailAsset,
-			static_cast<uint32>(MaterialGalleryTileSize),
-			static_cast<uint32>(MaterialGalleryTileSize),
-			ThumbnailPool);
-		SurfaceThumbnails.Add(Thumbnail);
-		ThumbnailWidget = Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
-	}
-
 	return SNew(SMixtormatSurfaceCard)
 		.DisplayName(Name)
 		.SurfacePath(AssetPath)
@@ -361,26 +347,14 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 		.OnSelected(this, &SMixtormat::SelectSurface)
 		.OnGalleryZoom(this, &SMixtormat::ZoomMaterialGallery)
 		[
-			SNew(SBox)
-			.WidthOverride(MaterialGalleryTileSize)
-			.HeightOverride(MaterialGalleryTileSize)
-			[
-				SNew(SButton)
-				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ThumbnailCard")))
-				.ContentPadding(MixtormatTokens::MaterialGalleryTilePadding)
-				.ToolTipText(LOCTEXT("DragMaterialToLayers", "Drag to Layers"))
-				.OnClicked_Lambda([this, Name, AssetPath]() { return SelectSurface(Name, AssetPath); })
-				[
-					SNew(SBox)
-					.HAlign(HAlign_Center)
-					.VAlign(VAlign_Center)
-					.WidthOverride(MaterialGalleryTileSize - MixtormatTokens::MaterialGalleryTilePadding * 2.0f)
-					.HeightOverride(MaterialGalleryTileSize - MixtormatTokens::MaterialGalleryTilePadding * 2.0f)
-					[
-						ThumbnailWidget
-					]
-				]
-			]
+			SNew(SMixtormatTile)
+			.TileSize(MaterialGalleryTileSize)
+			.DisplayName(Name)
+			.ThumbnailAsset(ThumbnailAsset)
+			.ThumbnailPool(ThumbnailPool)
+			.bShowName(false)
+			.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
+			.ToolTip(LOCTEXT("SelectMaterialForLayerActions", "Select for adding, replacing, or dragging to Layers"))
 		];
 }
 

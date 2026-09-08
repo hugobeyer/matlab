@@ -5,7 +5,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-class SMixtormatPopupAnchor;
+class SMenuAnchor;
 struct FSlateBrush;
 
 // One row in a popover.
@@ -47,15 +47,14 @@ public:
 
 		SLATE_EVENT(FSimpleDelegate, OnActivate)
 
-		// Bound for a row that opens a submenu instead of acting. The chevron appears, the row
-		// stops dismissing the menu, and hovering is enough to open it.
+		// Bound for a row that opens a submenu instead of acting. The chevron appears, and the
+		// row waits for a click before opening the child menu.
 		SLATE_EVENT(FOnGetContent, OnGetSubMenu)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 private:
@@ -71,5 +70,5 @@ private:
 	TAttribute<bool> bRowEnabled;
 	bool bDestructive = false;
 	FSimpleDelegate OnActivate;
-	TSharedPtr<SMixtormatPopupAnchor> SubMenuAnchor;
+	TSharedPtr<SMenuAnchor> SubMenuAnchor;
 };
