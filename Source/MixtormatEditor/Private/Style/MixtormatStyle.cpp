@@ -415,6 +415,16 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Filled"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::Accent(), MixtormatTokens::StatusDotSize * 0.5f));
+	// A parameter's state, in the same circle at the same size -- only the hue changes, so the
+	// three states read as one readout in three conditions rather than three different marks.
+	// Modified is already the palette's "this is not the authored value"; Destructive is already
+	// its warning. Neither needs a colour of its own here.
+	StyleInstance->Set(
+		TEXT("Mixtormat.StatusDot.Reference"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::Modified(), MixtormatTokens::StatusDotSize * 0.5f));
+	StyleInstance->Set(
+		TEXT("Mixtormat.StatusDot.Broken"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::Destructive(), MixtormatTokens::StatusDotSize * 0.5f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Hollow"),
 		new FSlateRoundedBoxBrush(

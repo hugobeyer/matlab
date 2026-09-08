@@ -1,4 +1,5 @@
 ﻿#include "Widgets/SMixtormat.h"
+#include "MixtormatParameterBinding.h"
 #include "Widgets/SMixtormatInternal.h"
 
 // Material lifecycle: new/open/save, import, composition resolution, and baking.
@@ -152,6 +153,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 
 	WorkingMaterialAsset.Reset(MaterialAsset);
 	WorkingLayers = MaterialAsset->Layers;
+	MixtormatParameterBinding::EnsureStableIds(WorkingLayers);
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;

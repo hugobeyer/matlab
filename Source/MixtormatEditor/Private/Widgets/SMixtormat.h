@@ -10,6 +10,9 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Materials/MaterialInstanceConstant.h"
 
+// Declared, not included: only a reference to the builder crosses this header.
+namespace MixtormatMenu { class FBuilder; }
+
 class FAssetThumbnail;
 class FAssetThumbnailPool;
 class UMaterialInterface;
@@ -22,6 +25,7 @@ class SVerticalBox;
 class SWrapBox;
 class SWidgetSwitcher;
 class SWindow;
+class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
 
@@ -105,6 +109,27 @@ private:
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
+	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex);
+
+	// Copy takes the payload; Copy as Instance takes the address as well, and the paste decides
+	// which of the two it uses.
+	void CopyLayerChild(int32 LayerIndex, int32 ChildIndex, bool bAsInstance);
+	bool CanPasteLayerChild() const;
+	bool CanPasteChildInstance(int32 DestLayerIndex, int32 DestChildIndex) const;
+	FText GetChildInstancePasteReason(int32 DestLayerIndex, int32 DestChildIndex) const;
+	FReply PasteLayerChild(int32 LayerIndex);
+	FReply PasteChildInstanceAbove(int32 LayerIndex);
+
+	FReply GoToChildInstanceSource(int32 LayerIndex, int32 ChildIndex);
+	FReply BreakChildInstanceAt(int32 LayerIndex, int32 ChildIndex);
+	void CopyChildInstanceReference(int32 LayerIndex, int32 ChildIndex);
+	FReply ReplaceChildInstanceSource(int32 LayerIndex, int32 ChildIndex, FGuid NewSourceLayerId, FGuid NewSourceChildId);
+	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(int32 LayerIndex, int32 ChildIndex);
+	TSharedRef<SWidget> BuildMoveChildToLayerMenu(int32 LayerIndex, int32 ChildIndex);
+
+	// The rows every child row shares, appended to whichever of the three child menus is open so
+	// the vocabulary does not drift between a mask, an effect and a filter.
+	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, int32 LayerIndex, int32 ChildIndex);
 	FReply ToggleLayerExpanded(int32 LayerIndex);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
@@ -261,6 +286,82 @@ private:
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		TFunction<FMixtormatMaskShaping*()> Resolve);
 
+	FMixtormatParameterAddress BuildParameterAddress(
+		const void* Owner,
+		UScriptStruct* OwnerStruct,
+		int32 MemberOffset) const;
+	// The address a parameter row points at, resolved on every use rather than captured once.
+	//
+	// The inspector is built once, in Construct, before anything is selected -- so a resolver
+	// called at construct time hands back nullptr and the address built from it is permanently
+	// invalid. Every other binding in the panel is already lazy for that reason; this one was the
+	// exception, which is why no row ever got a state dot or a parameter menu.
+	template <typename TOwner, typename TMember>
+	TFunction<FMixtormatParameterAddress()> MakeAddressResolver(
+		TFunction<TOwner*()> Resolve,
+		TMember TOwner::* Member)
+	{
+		return [this, Resolve, Member]() -> FMixtormatParameterAddress
+		{
+			TOwner* Owner = Resolve();
+			if (!Owner)
+			{
+				return FMixtormatParameterAddress();
+			}
+			const int32 MemberOffset = static_cast<int32>(
+				reinterpret_cast<const uint8*>(&(Owner->*Member))
+				- reinterpret_cast<const uint8*>(Owner));
+			return BuildParameterAddress(Owner, TOwner::StaticStruct(), MemberOffset);
+		};
+	}
+
+	TSharedRef<SWidget> WrapParameterControl(
+		const TSharedRef<SWidget>& Control,
+		TFunction<FMixtormatParameterAddress()> ResolveTarget);
+	TSharedRef<SWidget> BuildParameterContextMenu(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildParameterDriverPopover(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildParameterContextMenuFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
+	TSharedRef<SWidget> BuildParameterDriverPopoverFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
+	TSharedRef<SWidget> BuildDriverSourceMenu(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildDriverOutputMenu(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildDriverCombineMenu(FMixtormatParameterAddress Target);
+	FMixtormatParameterBinding* FindParameterBinding(
+		const FMixtormatParameterAddress& Target,
+		bool bCreate);
+	const FMixtormatParameterBinding* FindParameterBinding(
+		const FMixtormatParameterAddress& Target) const;
+	bool IsParameterReferenced(const FMixtormatParameterAddress& Target) const;
+	bool IsParameterDriven(const FMixtormatParameterAddress& Target) const;
+	bool IsParameterReferenceBroken(const FMixtormatParameterAddress& Target) const;
+	bool CanPasteParameterReference(const FMixtormatParameterAddress& Target) const;
+	bool WouldCreateParameterReferenceCycle(
+		const FMixtormatParameterAddress& Destination,
+		const FMixtormatParameterAddress& Source) const;
+	void CopyParameterReference(FMixtormatParameterAddress Source);
+	void PasteParameterReference(FMixtormatParameterAddress Destination);
+	void ClearParameterReference(FMixtormatParameterAddress Target);
+	void GoToParameterReferenceSource(FMixtormatParameterAddress Target);
+	void SetDriverSource(
+		FMixtormatParameterAddress Target,
+		FGuid SourceLayerId,
+		FGuid SourceChildId,
+		EMixtormatDriverSourceKind SourceKind,
+		FName SourceOutput);
+	void SetDriverCombine(FMixtormatParameterAddress Target, EMixtormatDriverCombineMode Combine);
+	void SetDriverEnabled(FMixtormatParameterAddress Target, bool bEnabled);
+	void ClearParameterDriver(FMixtormatParameterAddress Target);
+	void SetParameterReferenceMode(FMixtormatParameterAddress Target, EMixtormatReferenceMode Mode);
+	EMixtormatReferenceMode GetParameterReferenceMode(const FMixtormatParameterAddress& Target) const;
+
+	// True when a Link reference took the edit: the value went to the authoritative source and the
+	// link survives. False means the row writes its own member, which is what breaks a Follow.
+	bool TryWriteLinkedFloat(const FMixtormatParameterAddress& Target, float Value);
+	bool TryWriteLinkedInt(const FMixtormatParameterAddress& Target, int32 Value);
+	bool TryWriteLinkedBool(const FMixtormatParameterAddress& Target, bool Value);
+	double GetEffectiveFloatParameter(const FMixtormatParameterAddress& Target, double LocalValue) const;
+	int32 GetEffectiveIntParameter(const FMixtormatParameterAddress& Target, int32 LocalValue) const;
+	bool GetEffectiveBoolParameter(const FMixtormatParameterAddress& Target, bool LocalValue) const;
+
 	// One binding for every parameter row in the inspector, whatever owns it.
 	//
 	// A panel supplies a resolver for its own selection and a pointer to the member; the row, its
@@ -285,12 +386,14 @@ private:
 		// the pass is in degrees, but a signed -1..1 is what fills from the centre and reads as
 		// untouched at zero.
 		checkSlow(ValueScale != 0.0);
-		return MakeSlider(
+		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+		TSharedRef<SWidget> Slider = MakeSlider(
 			Label,
-			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue, ValueScale]() -> double
+			TAttribute<double>::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
-				return Owner ? static_cast<double>(Owner->*Member) / ValueScale : DefaultValue;
+				const double Local = Owner ? static_cast<double>(Owner->*Member) : DefaultValue * ValueScale;
+				return GetEffectiveFloatParameter(ResolveTarget(), Local) / ValueScale;
 			}),
 			MinValue,
 			MaxValue,
@@ -298,25 +401,43 @@ private:
 			SnapDelta,
 			false,
 			FMixtormatOnSliderValueChanged::CreateLambda(
-				[this, Resolve, Member, ValueScale](const double Value)
+				[this, Resolve, Member, ValueScale, ResolveTarget](const double Value)
 			{
 				if (TOwner* Owner = Resolve())
 				{
-					Owner->*Member = static_cast<float>(Value * ValueScale);
+					const FMixtormatParameterAddress Address = ResolveTarget();
+					const float Authored = static_cast<float>(Value * ValueScale);
+					if (!TryWriteLinkedFloat(Address, Authored))
+					{
+						Owner->*Member = Authored;
+						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+						{
+							Binding->Reference.bEnabled = false;
+						}
+					}
 					RefreshLayeredPreview();
 				}
 			}),
-			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale]()
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale, ResolveTarget]()
 			{
 				TOwner* Owner = Resolve();
 				const float StoredDefault = static_cast<float>(DefaultValue * ValueScale);
 				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, StoredDefault))
 				{
-					Owner->*Member = StoredDefault;
+					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (!TryWriteLinkedFloat(Address, StoredDefault))
+					{
+						Owner->*Member = StoredDefault;
+						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+						{
+							Binding->Reference.bEnabled = false;
+						}
+					}
 					RefreshLayeredPreview();
 				}
 			}),
 			ToolTip);
+		return WrapParameterControl(Slider, ResolveTarget);
 	}
 
 	template <typename TOwner>
@@ -329,36 +450,56 @@ private:
 		const int32 DefaultValue,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>())
 	{
-		return MakeSlider(
+		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+		TSharedRef<SWidget> Slider = MakeSlider(
 			Label,
-			TAttribute<double>::CreateLambda([Resolve, Member, DefaultValue]() -> double
+			TAttribute<double>::CreateLambda([this, Resolve, Member, DefaultValue, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
-				return static_cast<double>(Owner ? Owner->*Member : DefaultValue);
+				const int32 Local = Owner ? Owner->*Member : DefaultValue;
+				return static_cast<double>(GetEffectiveIntParameter(ResolveTarget(), Local));
 			}),
 			MinValue,
 			MaxValue,
 			static_cast<double>(DefaultValue),
 			1.0,
 			true,
-			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member](const double Value)
+			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member, ResolveTarget](const double Value)
 			{
 				if (TOwner* Owner = Resolve())
 				{
-					Owner->*Member = FMath::RoundToInt(Value);
+					const FMixtormatParameterAddress Address = ResolveTarget();
+					const int32 Authored = FMath::RoundToInt(Value);
+					if (!TryWriteLinkedInt(Address, Authored))
+					{
+						Owner->*Member = Authored;
+						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+						{
+							Binding->Reference.bEnabled = false;
+						}
+					}
 					RefreshLayeredPreview();
 				}
 			}),
-			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue]()
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ResolveTarget]()
 			{
 				TOwner* Owner = Resolve();
 				if (Owner && Owner->*Member != DefaultValue)
 				{
-					Owner->*Member = DefaultValue;
+					const FMixtormatParameterAddress Address = ResolveTarget();
+					if (!TryWriteLinkedInt(Address, DefaultValue))
+					{
+						Owner->*Member = DefaultValue;
+						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+						{
+							Binding->Reference.bEnabled = false;
+						}
+					}
 					RefreshLayeredPreview();
 				}
 			}),
 			ToolTip);
+		return WrapParameterControl(Slider, ResolveTarget);
 	}
 
 	// The toggle equivalent, so a checkbox row is declared the same way a value row is instead of
@@ -374,23 +515,35 @@ private:
 		// column exists so a run of values scans down one edge, and a toggle has no value in it
 		// to scan -- paired beside a slider, a far-left label left "Invert" sitting against the
 		// slider's right edge, closer to the value it did not belong to than to its own control.
-		return MixtormatRow::MakeTrailing(
+		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+		TSharedRef<SWidget> Toggle = MixtormatRow::MakeTrailing(
 			Label,
 			MixtormatRow::MakeCheckbox(
-				TAttribute<ECheckBoxState>::CreateLambda([Resolve, Member]()
+				TAttribute<ECheckBoxState>::CreateLambda([this, Resolve, Member, ResolveTarget]()
 				{
 					const TOwner* Owner = Resolve();
-					return Owner && Owner->*Member ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					const bool Local = Owner && Owner->*Member;
+					return GetEffectiveBoolParameter(ResolveTarget(), Local) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 				}),
-				FOnCheckStateChanged::CreateLambda([this, Resolve, Member](const ECheckBoxState State)
+				FOnCheckStateChanged::CreateLambda([this, Resolve, Member, ResolveTarget](const ECheckBoxState State)
 				{
 					if (TOwner* Owner = Resolve())
 					{
-						Owner->*Member = State == ECheckBoxState::Checked;
+						const FMixtormatParameterAddress Address = ResolveTarget();
+						const bool Authored = State == ECheckBoxState::Checked;
+						if (!TryWriteLinkedBool(Address, Authored))
+						{
+							Owner->*Member = Authored;
+							if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+							{
+								Binding->Reference.bEnabled = false;
+							}
+						}
 						RefreshLayeredPreview();
 					}
 				})),
 			ToolTip);
+		return WrapParameterControl(Toggle, ResolveTarget);
 	}
 
 	// Procedural peel and erosion rows all read and write one member of the selected effect, so
@@ -593,6 +746,14 @@ private:
 	TArray<FEditHistoryState> UndoHistory;
 	TArray<FEditHistoryState> RedoHistory;
 	TArray<FNumericResetBinding> NumericResetBindings;
+	TOptional<FMixtormatParameterAddress> ParameterReferenceClipboard;
+
+	// The child clipboard keeps the payload, so a Copy still pastes after its source is deleted,
+	// and separately the address it was taken from, which is all Paste Instance needs.
+	TOptional<FMixtormatLayerChild> ChildClipboard;
+	FGuid ChildClipboardSourceLayerId;
+	FGuid ChildClipboardSourceChildId;
+	bool bChildClipboardIsInstance = false;
 	FEditHistoryState CurrentHistoryState;
 	FSoftObjectPath SelectedSurfacePath;
 	FText SelectedLibrarySurfaceName;

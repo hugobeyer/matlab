@@ -7,6 +7,7 @@
 #include "MixtormatEffect.h"
 #include "MixtormatMask.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterBinding.h"
 #include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "RenderGraphBuilder.h"
@@ -2338,7 +2339,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 	for (int32 LayerIndex = 0; LayerIndex < Layers.Num(); ++LayerIndex)
 	{
-		const FMixtormatLayer& Layer = Layers[LayerIndex];
+		FMixtormatLayer Layer = Layers[LayerIndex];
+		MixtormatParameterBinding::ApplyDirectReferences(Layers, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
 		const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous();
 		const bool bNormalOnly = Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail;

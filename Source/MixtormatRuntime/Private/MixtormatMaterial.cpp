@@ -1,8 +1,10 @@
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterBinding.h"
 
 void UMixtormatMaterial::PostLoad()
 {
 	Super::PostLoad();
+	MixtormatParameterBinding::EnsureStableIds(Layers);
 }
 
 FPrimaryAssetId UMixtormatMaterial::GetPrimaryAssetId() const

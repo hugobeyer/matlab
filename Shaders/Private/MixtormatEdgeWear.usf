@@ -1,0 +1,219 @@
+﻿#include "/Engine/Public/Platform.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+
+Texture2D<float> SourceHeight;
+Texture2D<float4> SourceNormal;
+Texture2D<uint> RegionIds;
+Texture2D<float2> EdgeField;
+Texture2D<float> PlacementMaskTexture;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputNormal;
+RWTexture2D<float4> OutputDebug;
+
+int2 OutputSize;
+float EdgeWearAmount;
+float EdgeWearWidth;
+int EdgeWearSamples;
+float EdgeWearIdVariation;
+uint EdgeWearSeed;
+float EdgeWearNormalStrength;
+int EdgeWearNoiseType;
+float EdgeWearNoiseScale;
+float EdgeWearNoiseStrength;
+uint UsePlacementMask;
+float PlacementMaskTiling;
+float PlacementMaskStrength;
+uint InvertPlacementMask;
+uint PlacementMaskBlendMode;
+uint HasEdgeField;
+uint WriteDebug;
+
+float3 DecodeNormal(float4 EncodedNormal)
+{
+	float2 XY = EncodedNormal.xy * 2.0f - 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+float3 EncodeNormal(float3 Normal)
+{
+	return Normal * 0.5f + 0.5f;
+}
+
+float3 BlendReorientedNormals(float3 BaseNormal, float3 DetailNormal)
+{
+	float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+	float3 U = DetailNormal * float3(-1.0f, -1.0f, 1.0f);
+	return normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 InvSize = 1.0f / float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) * InvSize;
+	const float BaseHeight = SourceHeight.Load(int3(Pixel, 0));
+	const float4 EncodedNormal = SourceNormal.Load(int3(Pixel, 0));
+
+	if (EdgeWearAmount <= 0.0f)
+	{
+		OutputHeight[Pixel] = BaseHeight;
+		OutputNormal[Pixel] = EncodedNormal;
+		if (WriteDebug != 0)
+		{
+			OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+		}
+		return;
+	}
+
+	// 1. Edge Band Detection
+	float EdgeDistancePixels = 0.0f;
+	float EdgeMask = 0.0f;
+	uint CenterId = RegionIds.Load(int3(Pixel, 0));
+
+	if (HasEdgeField != 0)
+	{
+		const float2 Edge = EdgeField.Load(int3(Pixel, 0));
+		EdgeDistancePixels = abs(Edge.x);
+		EdgeMask = 1.0f - saturate(EdgeDistancePixels / max(EdgeWearWidth, 1.0e-3f));
+	}
+	else
+	{
+		// Cross-check neighborhood when no analytic edge field is bound
+		int DiffCount = 0;
+		const int Radius = max(1, int(ceil(EdgeWearWidth * 0.5f)));
+		const int2 Offsets[4] = { int2(-Radius, 0), int2(Radius, 0), int2(0, -Radius), int2(0, Radius) };
+		for (int k = 0; k < 4; ++k)
+		{
+			int2 NeighborPixel = (int2(Pixel) + Offsets[k]) % OutputSize;
+			if (NeighborPixel.x < 0) NeighborPixel.x += OutputSize.x;
+			if (NeighborPixel.y < 0) NeighborPixel.y += OutputSize.y;
+			uint NId = RegionIds.Load(int3(NeighborPixel, 0));
+			if (NId != CenterId)
+			{
+				DiffCount++;
+			}
+		}
+		EdgeMask = saturate(float(DiffCount) * 0.35f);
+	}
+
+	if (EdgeMask <= 1.0e-4f)
+	{
+		OutputHeight[Pixel] = BaseHeight;
+		OutputNormal[Pixel] = EncodedNormal;
+		if (WriteDebug != 0)
+		{
+			OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+		}
+		return;
+	}
+
+	// 2. Per-ID Variation
+	const uint CellSeed = MixtormatRegionSeed(CenterId, EdgeWearSeed);
+	const float CellRand = MixtormatRegionRandom(CellSeed);
+	const float VarScale = saturate(EdgeWearIdVariation);
+	const float LocalAmount = EdgeWearAmount * lerp(1.0f - VarScale * 0.6f, 1.0f + VarScale * 0.6f, CellRand);
+	const float LocalWidth = EdgeWearWidth * lerp(1.0f - VarScale * 0.4f, 1.0f + VarScale * 0.4f, CellRand);
+
+	// 3. Noise Direction Perturbation
+	const int NoiseP = max(int(EdgeWearNoiseScale), 1);
+	float2 NoiseDir = float2(0.0f, 0.0f);
+
+	if (EdgeWearNoiseType == 0) // Perlin
+	{
+		float3 N = MixtormatPeriodicNoiseD(UV * float(NoiseP), NoiseP, CellSeed);
+		NoiseDir = float2(N.y, N.z);
+	}
+	else if (EdgeWearNoiseType == 1) // Cellular
+	{
+		float2 CellPt = MixtormatCellPoint(int2(floor(UV * float(NoiseP))), NoiseP, CellSeed, 1.0f);
+		NoiseDir = normalize(frac(UV * float(NoiseP)) - frac(CellPt) + 1.0e-4f);
+	}
+	else // Curl
+	{
+		NoiseDir = MixtormatPeriodicCurlField(UV, NoiseP, CellSeed);
+	}
+
+	float3 DecodedNormal = DecodeNormal(EncodedNormal);
+	float2 SlopeDir = float2(-DecodedNormal.x, -DecodedNormal.y);
+	float SlopeLen = length(SlopeDir);
+	float2 BaseDir = SlopeLen > 1.0e-3f ? (SlopeDir / SlopeLen) : float2(1.0f, 0.0f);
+	float2 MarchDir = normalize(lerp(BaseDir, NoiseDir, saturate(EdgeWearNoiseStrength)));
+
+	// 4. Slope-Blur Ray Marching (MIN Height Erosion)
+	const int ClampedSamples = clamp(EdgeWearSamples, 4, 12);
+	const float StepUV = (LocalWidth * InvSize.x) / float(ClampedSamples);
+	float MinH = BaseHeight;
+
+	for (int i = 1; i <= ClampedSamples; ++i)
+	{
+		float2 TapUV = frac(UV + MarchDir * (float(i) * StepUV));
+		float TapHeight = SourceHeight.SampleLevel(LinearWrapSampler, TapUV, 0.0f);
+		MinH = min(MinH, TapHeight);
+	}
+
+	// 5. Optional Mask Modulation
+	if (UsePlacementMask != 0)
+	{
+		float2 MaskUV = frac(UV * max(PlacementMaskTiling, 1.0f));
+		float MaskVal = PlacementMaskTexture.SampleLevel(LinearWrapSampler, MaskUV, 0.0f);
+		if (InvertPlacementMask != 0)
+		{
+			MaskVal = 1.0f - MaskVal;
+		}
+		MaskVal = lerp(1.0f, MaskVal, saturate(PlacementMaskStrength));
+		EdgeMask = MixtormatApplyMaskOperation(PlacementMaskBlendMode, EdgeMask, MaskVal);
+	}
+
+	// 6. Height Resolve
+	float ErodedHeight = lerp(BaseHeight, MinH, saturate(LocalAmount));
+	float FinalHeight = lerp(BaseHeight, ErodedHeight, saturate(EdgeMask));
+	OutputHeight[Pixel] = FinalHeight;
+
+	// 7. Normal Update
+	const float CarveDelta = BaseHeight - FinalHeight;
+	if (CarveDelta > 1.0e-5f && EdgeWearNormalStrength > 0.0f)
+	{
+		// Local 3x3 Sobel gradient on the carved height
+		int xm = Pixel.x > 0 ? Pixel.x - 1 : OutputSize.x - 1;
+		int xp = Pixel.x + 1 < OutputSize.x ? Pixel.x + 1 : 0;
+		int ym = Pixel.y > 0 ? Pixel.y - 1 : OutputSize.y - 1;
+		int yp = Pixel.y + 1 < OutputSize.y ? Pixel.y + 1 : 0;
+
+		float h00 = SourceHeight.Load(int3(xm, ym, 0));
+		float h10 = SourceHeight.Load(int3(Pixel.x, ym, 0));
+		float h20 = SourceHeight.Load(int3(xp, ym, 0));
+		float h01 = SourceHeight.Load(int3(xm, Pixel.y, 0));
+		float h21 = SourceHeight.Load(int3(xp, Pixel.y, 0));
+		float h02 = SourceHeight.Load(int3(xm, yp, 0));
+		float h12 = SourceHeight.Load(int3(Pixel.x, yp, 0));
+		float h22 = SourceHeight.Load(int3(xp, yp, 0));
+
+		float dX = (h20 + 2.0f * h21 + h22) - (h00 + 2.0f * h01 + h02);
+		float dY = (h02 + 2.0f * h12 + h22) - (h00 + 2.0f * h10 + h20);
+
+		float3 DeltaNormal = normalize(float3(-dX * EdgeWearNormalStrength, -dY * EdgeWearNormalStrength, 1.0f));
+		float3 ResultNormal = BlendReorientedNormals(DecodedNormal, DeltaNormal);
+		OutputNormal[Pixel] = float4(EncodeNormal(ResultNormal), EncodedNormal.w);
+	}
+	else
+	{
+		OutputNormal[Pixel] = EncodedNormal;
+	}
+
+	if (WriteDebug != 0)
+	{
+		OutputDebug[Pixel] = float4(EdgeMask, saturate(CarveDelta * 10.0f), MinH, 1.0f);
+	}
+}

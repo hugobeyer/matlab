@@ -7,6 +7,7 @@
 void SMixtormatStatusDot::Construct(const FArguments& InArgs)
 {
 	bFilled = InArgs._bFilled;
+	BrushName = InArgs._BrushName;
 	OnClicked = InArgs._OnClicked;
 	if (InArgs._ToolTip.IsSet())
 	{
@@ -26,6 +27,11 @@ void SMixtormatStatusDot::Construct(const FArguments& InArgs)
 
 const FSlateBrush* SMixtormatStatusDot::GetBrush() const
 {
+	const FName Named = BrushName.Get(FName());
+	if (!Named.IsNone())
+	{
+		return FMixtormatStyle::Get().GetBrush(Named);
+	}
 	return FMixtormatStyle::Get().GetBrush(bFilled.Get(false)
 		? TEXT("Mixtormat.StatusDot.Filled")
 		: TEXT("Mixtormat.StatusDot.Hollow"));

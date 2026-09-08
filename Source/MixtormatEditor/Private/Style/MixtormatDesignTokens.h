@@ -218,6 +218,15 @@ namespace MixtormatTokens
 	// than a fraction, so a tall menu and a short one have the same lip rather than the same ramp.
 	inline float MenuLipHeight = 25.0f;
 
+	// ---- Parameter references / drivers ------------------------------------------------------
+	// The driver state button lives beside an existing inspector control rather than changing
+	// that control's own chrome. The popover uses the same MenuPanel ground as every other popup.
+	constexpr float ParameterStateGap = 4.0f;
+	constexpr float ParameterStateSlotWidth = 12.0f;
+	constexpr float DriverPopoverWidth = 224.0f;
+	constexpr float DriverPopoverInnerGap = 4.0f;
+	constexpr float DriverPopoverSectionGap = 6.0f;
+
 	// ---- Drag ghost -------------------------------------------------------------------------
 	// The card that follows the cursor during a drag. It floats over the whole editor rather than
 	// sitting in a panel, so it is the one surface in the tool that carries a drop shadow -- and

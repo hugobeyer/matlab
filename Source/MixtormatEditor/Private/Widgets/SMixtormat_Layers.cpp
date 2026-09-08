@@ -1,4 +1,5 @@
 ﻿#include "Widgets/SMixtormat.h"
+#include "MixtormatParameterBinding.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
@@ -67,6 +68,7 @@ FReply SMixtormat::DuplicateSelectedLayer()
 
 	SoloLayerIndex = INDEX_NONE;
 	FMixtormatLayer Copy = WorkingLayers[SelectedLayerIndex];
+	MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
 	Copy.DisplayName = FText::Format(
 		LOCTEXT("CopiedLayerName", "{0} Copy"),
 		Copy.DisplayName);
@@ -651,6 +653,7 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const int32 NewChildIndex = ChildIndex + 1;
 	Layer.Children.Insert(Layer.Children[ChildIndex], NewChildIndex);
+	MixtormatParameterBinding::RegenerateChildIdentity(Layer.Children[NewChildIndex]);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children[NewChildIndex].Type == EMixtormatLayerChildType::Effect
 		? NewChildIndex
@@ -665,6 +668,381 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	RebuildLayerList();
 	RebuildMaskList();
 	return FReply::Handled();
+}
+
+FReply SMixtormat::MoveChildToLayer(
+	const int32 SourceLayerIndex,
+	const int32 ChildIndex,
+	const int32 DestLayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
+		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
+		|| !WorkingLayers[SourceLayerIndex].Children.IsValidIndex(ChildIndex)
+		|| SourceLayerIndex == DestLayerIndex)
+	{
+		return FReply::Unhandled();
+	}
+
+	// The child keeps its ChildId: it is the same child under a new parent, so everything that
+	// addresses it goes on addressing it. What has to change is the LayerId half of those
+	// addresses, which is what RemapChildParent walks the whole stack to fix -- references,
+	// drivers and any instance pointing at this child alike.
+	const FGuid OldLayerId = WorkingLayers[SourceLayerIndex].LayerId;
+	const FGuid NewLayerId = WorkingLayers[DestLayerIndex].LayerId;
+	FMixtormatLayerChild Moved = MoveTemp(WorkingLayers[SourceLayerIndex].Children[ChildIndex]);
+	const FGuid MovedChildId = Moved.ChildId;
+	WorkingLayers[SourceLayerIndex].Children.RemoveAt(ChildIndex);
+	const int32 NewChildIndex = WorkingLayers[DestLayerIndex].Children.Add(MoveTemp(Moved));
+	MixtormatParameterBinding::RemapChildParent(WorkingLayers, MovedChildId, OldLayerId, NewLayerId);
+
+	// Both layers shifted, so any index taken before the move is stale. Select from where the
+	// child actually landed rather than from what was captured.
+	ExpandedLayerIndices.Add(DestLayerIndex);
+	SelectWorkingChild(DestLayerIndex, NewChildIndex);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+void SMixtormat::CopyLayerChild(const int32 LayerIndex, const int32 ChildIndex, const bool bAsInstance)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	ChildClipboard = Child;
+	bChildClipboardIsInstance = bAsInstance;
+	// Copying an instance as an instance yields its source, not the instance. Pointing at the
+	// instance would build a chain for the resolver to unwind with nothing gained by it.
+	if (Child.IsInstance())
+	{
+		ChildClipboardSourceLayerId = Child.SourceLayerId;
+		ChildClipboardSourceChildId = Child.SourceChildId;
+	}
+	else
+	{
+		ChildClipboardSourceLayerId = WorkingLayers[LayerIndex].LayerId;
+		ChildClipboardSourceChildId = Child.ChildId;
+	}
+}
+
+bool SMixtormat::CanPasteLayerChild() const
+{
+	return ChildClipboard.IsSet();
+}
+
+bool SMixtormat::CanPasteChildInstance(const int32 DestLayerIndex, const int32 DestChildIndex) const
+{
+	return ChildClipboard.IsSet()
+		&& WorkingLayers.IsValidIndex(DestLayerIndex)
+		&& MixtormatParameterBinding::ClassifyInstancePlacement(
+			WorkingLayers,
+			ChildClipboardSourceLayerId,
+			ChildClipboardSourceChildId,
+			WorkingLayers[DestLayerIndex].LayerId,
+			DestChildIndex) == MixtormatParameterBinding::EInstancePlacement::Valid;
+}
+
+FText SMixtormat::GetChildInstancePasteReason(const int32 DestLayerIndex, const int32 DestChildIndex) const
+{
+	if (!ChildClipboard.IsSet())
+	{
+		return LOCTEXT("InstanceNothingCopied", "Nothing copied. Use Copy as Instance on a child first.");
+	}
+	if (!WorkingLayers.IsValidIndex(DestLayerIndex))
+	{
+		return FText::GetEmpty();
+	}
+	using EPlacement = MixtormatParameterBinding::EInstancePlacement;
+	switch (MixtormatParameterBinding::ClassifyInstancePlacement(
+		WorkingLayers,
+		ChildClipboardSourceLayerId,
+		ChildClipboardSourceChildId,
+		WorkingLayers[DestLayerIndex].LayerId,
+		DestChildIndex))
+	{
+	case EPlacement::SourceMissing:
+		return LOCTEXT("InstanceSourceGone", "The copied child no longer exists.");
+	case EPlacement::SelfReference:
+		return LOCTEXT("InstanceSelf", "A child cannot be an instance of itself.");
+	case EPlacement::SourceEvaluatesLater:
+		return LOCTEXT(
+			"InstanceOrder",
+			"The source composites after this position. An instance can only read a child that resolves before it -- move the source layer above this one, or paste into a layer below the source.");
+	default:
+		return LOCTEXT("InstancePasteReady", "Place a live instance of the copied child.");
+	}
+}
+
+FReply SMixtormat::PasteLayerChild(const int32 LayerIndex)
+{
+	if (!ChildClipboard.IsSet() || !WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Unhandled();
+	}
+	// A plain paste is a duplicate: fresh identity, and no tie to where it came from.
+	FMixtormatLayerChild Pasted = ChildClipboard.GetValue();
+	Pasted.SourceLayerId = FGuid();
+	Pasted.SourceChildId = FGuid();
+	const int32 NewChildIndex = WorkingLayers[LayerIndex].Children.Add(MoveTemp(Pasted));
+	MixtormatParameterBinding::RegenerateChildIdentity(WorkingLayers[LayerIndex].Children[NewChildIndex]);
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, NewChildIndex);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::PasteChildInstanceAbove(const int32 LayerIndex)
+{
+	// Above every existing child, which is the only position a layer-level paste can mean -- and
+	// the position the placement rule is checked against.
+	if (!CanPasteChildInstance(LayerIndex, 0))
+	{
+		return FReply::Unhandled();
+	}
+	FMixtormatLayerChild Instance = ChildClipboard.GetValue();
+	Instance.ChildId = FGuid::NewGuid();
+	Instance.SourceLayerId = ChildClipboardSourceLayerId;
+	Instance.SourceChildId = ChildClipboardSourceChildId;
+	WorkingLayers[LayerIndex].Children.Insert(MoveTemp(Instance), 0);
+	ExpandedLayerIndices.Add(LayerIndex);
+	SelectWorkingChild(LayerIndex, 0);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::GoToChildInstanceSource(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return FReply::Unhandled();
+	}
+	const FGuid SourceLayerId = WorkingLayers[LayerIndex].Children[ChildIndex].SourceLayerId;
+	const FGuid SourceChildId = WorkingLayers[LayerIndex].Children[ChildIndex].SourceChildId;
+	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
+	{
+		if (WorkingLayers[SourceLayerIndex].LayerId != SourceLayerId)
+		{
+			continue;
+		}
+		const int32 SourceChildIndex = WorkingLayers[SourceLayerIndex].Children.IndexOfByPredicate(
+			[&SourceChildId](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.ChildId == SourceChildId;
+			});
+		if (SourceChildIndex != INDEX_NONE)
+		{
+			ExpandedLayerIndices.Add(SourceLayerIndex);
+			SelectWorkingChild(SourceLayerIndex, SourceChildIndex);
+			RebuildLayerList();
+			return FReply::Handled();
+		}
+	}
+	return FReply::Unhandled();
+}
+
+FReply SMixtormat::BreakChildInstanceAt(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return FReply::Unhandled();
+	}
+	// Resolved against a snapshot, because the child being broken lives in the same array the
+	// resolve reads from.
+	const TArray<FMixtormatLayer> Snapshot = WorkingLayers;
+	if (!MixtormatParameterBinding::BreakChildInstance(
+		Snapshot, WorkingLayers[LayerIndex].Children[ChildIndex]))
+	{
+		return FReply::Unhandled();
+	}
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	SyncSelectedLayerControls();
+	return FReply::Handled();
+}
+
+void SMixtormat::CopyChildInstanceReference(const int32 LayerIndex, const int32 ChildIndex)
+{
+	CopyLayerChild(LayerIndex, ChildIndex, true);
+}
+
+FReply SMixtormat::ReplaceChildInstanceSource(
+	const int32 LayerIndex,
+	const int32 ChildIndex,
+	const FGuid NewSourceLayerId,
+	const FGuid NewSourceChildId)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return FReply::Unhandled();
+	}
+	if (MixtormatParameterBinding::ClassifyInstancePlacement(
+		WorkingLayers,
+		NewSourceLayerId,
+		NewSourceChildId,
+		WorkingLayers[LayerIndex].LayerId,
+		ChildIndex) != MixtormatParameterBinding::EInstancePlacement::Valid)
+	{
+		return FReply::Unhandled();
+	}
+	WorkingLayers[LayerIndex].Children[ChildIndex].SourceLayerId = NewSourceLayerId;
+	WorkingLayers[LayerIndex].Children[ChildIndex].SourceChildId = NewSourceChildId;
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	SyncSelectedLayerControls();
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("MoveChildToLayerCaption", "Move To"));
+	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
+	{
+		if (DestIndex == LayerIndex)
+		{
+			continue;
+		}
+		Menu.Item(
+			WorkingLayers[DestIndex].DisplayName,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, DestIndex]()
+			{
+				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
+			}));
+	}
+	if (Menu.IsEmpty())
+	{
+		Menu.Item(LOCTEXT("MoveChildNoLayers", "No other layer"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("ReplaceInstanceSourceCaption", "Source"));
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return Menu.Build();
+	}
+	const FGuid DestLayerId = WorkingLayers[LayerIndex].LayerId;
+	// Only what this position can legally read is offered, so the menu cannot put the instance
+	// into a state the paste path would have refused.
+	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+		for (const FMixtormatLayerChild& Candidate : SourceLayer.Children)
+		{
+			if (Candidate.IsInstance())
+			{
+				continue;
+			}
+			if (MixtormatParameterBinding::ClassifyInstancePlacement(
+				WorkingLayers,
+				SourceLayer.LayerId,
+				Candidate.ChildId,
+				DestLayerId,
+				ChildIndex) != MixtormatParameterBinding::EInstancePlacement::Valid)
+			{
+				continue;
+			}
+			const FGuid NewSourceLayerId = SourceLayer.LayerId;
+			const FGuid NewSourceChildId = Candidate.ChildId;
+			Menu.Item(
+				FText::Format(
+					LOCTEXT("ReplaceInstanceSourceEntry", "{0} / {1}"),
+					SourceLayer.DisplayName,
+					GetLayerChildName(Candidate)),
+				nullptr,
+				FSimpleDelegate::CreateLambda(
+					[this, LayerIndex, ChildIndex, NewSourceLayerId, NewSourceChildId]()
+				{
+					ReplaceChildInstanceSource(LayerIndex, ChildIndex, NewSourceLayerId, NewSourceChildId);
+				}));
+		}
+	}
+	if (Menu.IsEmpty())
+	{
+		Menu.Item(LOCTEXT("ReplaceInstanceNoSource", "Nothing above this position"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+	}
+	return Menu.Build();
+}
+
+void SMixtormat::AddSharedChildMenuItems(
+	MixtormatMenu::FBuilder& Menu,
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	const bool bValid = WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex);
+	const bool bInstance = bValid && WorkingLayers[LayerIndex].Children[ChildIndex].IsInstance();
+
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("CopyChildContext", "Copy"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			CopyLayerChild(LayerIndex, ChildIndex, false);
+		}));
+	Menu.Item(
+		LOCTEXT("CopyChildAsInstanceContext", "Copy as Instance"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			CopyLayerChild(LayerIndex, ChildIndex, true);
+		}));
+	Menu.SubMenu(
+		LOCTEXT("MoveChildToLayerContext", "Move to Layer..."),
+		nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildMoveChildToLayerMenu, LayerIndex, ChildIndex));
+
+	if (!bInstance)
+	{
+		return;
+	}
+	Menu.Separator();
+	Menu.Caption(LOCTEXT("ChildInstanceCaption", "Instance"));
+	Menu.Item(
+		LOCTEXT("GoToInstanceSourceContext", "Go to Source"),
+		FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.ArrowUp")),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			GoToChildInstanceSource(LayerIndex, ChildIndex);
+		}));
+	Menu.Item(
+		LOCTEXT("BreakInstanceContext", "Break Instance"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			BreakChildInstanceAt(LayerIndex, ChildIndex);
+		}));
+	Menu.SubMenu(
+		LOCTEXT("ReplaceInstanceSourceContext", "Replace Source"),
+		nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildReplaceInstanceSourceMenu, LayerIndex, ChildIndex));
+	Menu.Item(
+		LOCTEXT("CopyInstanceReferenceContext", "Copy Instance Reference"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			CopyChildInstanceReference(LayerIndex, ChildIndex);
+		}));
 }
 
 FReply SMixtormat::ToggleLayerExpanded(const int32 LayerIndex)

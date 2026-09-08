@@ -23,6 +23,9 @@ public:
 	{}
 		SLATE_ARGUMENT(float, Size)
 		SLATE_ATTRIBUTE(bool, bFilled)
+		// Names a style brush to paint instead of the filled/hollow pair. Unset -- the default --
+		// leaves the two-state behaviour every other caller relies on untouched.
+		SLATE_ATTRIBUTE(FName, BrushName)
 		SLATE_ATTRIBUTE(FText, ToolTip)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
 	SLATE_END_ARGS()
@@ -37,6 +40,7 @@ private:
 	const FSlateBrush* GetBrush() const;
 
 	TAttribute<bool> bFilled;
+	TAttribute<FName> BrushName;
 	FSimpleDelegate OnClicked;
 	bool bPressed = false;
 };

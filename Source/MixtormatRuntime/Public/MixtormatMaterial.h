@@ -88,6 +88,206 @@ enum class EMixtormatUVRotation : uint8
 	ThreeQuarter UMETA(DisplayName = "270")
 };
 
+
+UENUM(BlueprintType)
+enum class EMixtormatParameterOwnerType : uint8
+{
+	Layer UMETA(DisplayName = "Layer"),
+	Mask UMETA(DisplayName = "Mask"),
+	Effect UMETA(DisplayName = "Effect"),
+	Generated UMETA(DisplayName = "Generated Mask"),
+	Craquelure UMETA(DisplayName = "Craquelure"),
+	ColorId UMETA(DisplayName = "Color ID"),
+	ClusterId UMETA(DisplayName = "Cluster IDs"),
+	HsvId UMETA(DisplayName = "HSV From IDs"),
+	RandomId UMETA(DisplayName = "Random From IDs"),
+	PatternId UMETA(DisplayName = "Pattern IDs"),
+	RampId UMETA(DisplayName = "Ramp From IDs"),
+	MaskShaping UMETA(DisplayName = "Mask Shaping")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatParameterValueType : uint8
+{
+	Float UMETA(DisplayName = "Float"),
+	Int UMETA(DisplayName = "Integer"),
+	Bool UMETA(DisplayName = "Boolean"),
+	Enum UMETA(DisplayName = "Enum")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatDriverCombineMode : uint8
+{
+	Replace UMETA(DisplayName = "Replace"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Min UMETA(DisplayName = "Min"),
+	Max UMETA(DisplayName = "Max"),
+	Lerp UMETA(DisplayName = "Lerp")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatDriverSourceKind : uint8
+{
+	None UMETA(DisplayName = "None"),
+	CombinedMask UMETA(DisplayName = "Layer Mask"),
+	ChildMask UMETA(DisplayName = "Child Mask"),
+	RegionIds UMETA(DisplayName = "Region IDs")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatIdDriverMapping : uint8
+{
+	RandomPerId UMETA(DisplayName = "Random Per ID"),
+	SpecificId UMETA(DisplayName = "Specific ID"),
+	IdRange UMETA(DisplayName = "ID Range")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatParameterAddress
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid LayerId;
+
+	UPROPERTY()
+	FGuid ChildId;
+
+	UPROPERTY()
+	EMixtormatParameterOwnerType Owner = EMixtormatParameterOwnerType::Layer;
+
+	UPROPERTY()
+	FName Parameter;
+
+	UPROPERTY()
+	EMixtormatParameterValueType ValueType = EMixtormatParameterValueType::Float;
+
+	// Used for enum compatibility. Empty for scalar/bool types.
+	UPROPERTY()
+	FName TypeName;
+
+	bool IsValid() const
+	{
+		return LayerId.IsValid() && !Parameter.IsNone();
+	}
+};
+
+// What a reference does when the destination is edited.
+//
+// Follow is one-way: the destination shows the source and an edit to the destination is an edit
+// to the destination, which is what breaks the reference. Link makes the pair one value with two
+// places to reach it -- an edit at either end lands on the authoritative source, so neither side
+// is the copy. References only; a GPU Driver modulates a value it does not own and has nothing to
+// write back to.
+UENUM(BlueprintType)
+enum class EMixtormatReferenceMode : uint8
+{
+	Follow UMETA(DisplayName = "Follow Source"),
+	Link   UMETA(DisplayName = "Link Values")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatParameterReference
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Reference")
+	bool bEnabled = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Reference")
+	FMixtormatParameterAddress Source;
+
+	// Follow by default, so everything already serialized keeps the one-way behaviour it was
+	// authored with.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Reference")
+	EMixtormatReferenceMode Mode = EMixtormatReferenceMode::Follow;
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatParameterDriver
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	bool bEnabled = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	FGuid SourceLayerId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	FGuid SourceChildId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	EMixtormatDriverSourceKind SourceKind = EMixtormatDriverSourceKind::None;
+
+	// Optional published output name. This keeps the serialized model extensible without making
+	// every future mask/effect output another enum value.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	FName SourceOutput;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	EMixtormatDriverCombineMode Combine = EMixtormatDriverCombineMode::Multiply;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float Amount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float InputMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float InputMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float OutputMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	float OutputMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	bool bInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	EMixtormatIdDriverMapping IdMapping = EMixtormatIdDriverMapping::RandomPerId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	int32 Seed = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	int32 SpecificId = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	int32 IdRangeMin = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
+	int32 IdRangeMax = 255;
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatParameterBinding
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName DestinationParameter;
+
+	UPROPERTY()
+	EMixtormatParameterOwnerType DestinationOwner = EMixtormatParameterOwnerType::Layer;
+
+	UPROPERTY()
+	EMixtormatParameterValueType ValueType = EMixtormatParameterValueType::Float;
+
+	UPROPERTY()
+	FName TypeName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Binding")
+	FMixtormatParameterReference Reference;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Binding")
+	FMixtormatParameterDriver Driver;
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 {
@@ -1622,6 +1822,26 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 {
 	GENERATED_BODY()
 
+	UPROPERTY()
+	FGuid ChildId = FGuid::NewGuid();
+
+	// Whole-child instance. With SourceChildId set, everything below this pair -- type, payload,
+	// parameter bindings, mask and source assignments, and whatever is added to this struct later
+	// -- is drawn from the child these two GUIDs name and re-read on every composite, so an edit to
+	// the source reaches every instance of it.
+	//
+	// The instance keeps a ChildId of its own. It is a second place the same content appears, not
+	// the same object twice: every reference, driver and instance that names this child has to go
+	// on naming this one and not the source.
+	UPROPERTY()
+	FGuid SourceLayerId;
+
+	UPROPERTY()
+	FGuid SourceChildId;
+
+	UPROPERTY()
+	TArray<FMixtormatParameterBinding> ParameterBindings;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child")
 	EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 
@@ -1654,6 +1874,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::PatternId"))
 	FMixtormatPatternFilter PatternId;
+
+	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
 
 namespace MixtormatHue
@@ -1671,6 +1893,12 @@ USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatLayer
 {
 	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid LayerId = FGuid::NewGuid();
+
+	UPROPERTY()
+	TArray<FMixtormatParameterBinding> ParameterBindings;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	FText DisplayName;
