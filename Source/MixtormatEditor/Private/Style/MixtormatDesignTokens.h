@@ -109,7 +109,7 @@ namespace MixtormatTokens
 	inline float TabHeight = 20.0f;
 	inline float TabWidth = 88.0f;
 	inline float TabUnderlineThickness = 1.0f;
-	constexpr float TabLabelBottomInset = 2.0f;
+	constexpr float TabLabelBottomInset = 0.0f;
 	inline float ToolbarIconSize = 12.0f;
 	inline float ViewportOverlayInset = 8.0f;
 	constexpr float PreviewToolbarButtonSize = 24.0f;
@@ -350,11 +350,11 @@ namespace MixtormatTokens
 	// ---- Mask picker popover ----------------------------------------------------------------
 	// Wider than the 300px inspector on purpose: a menu is its own window and is not clipped by
 	// the panel that opened it.
-	constexpr float MaskPickerWidth = 600.0f;
+	inline float MaskPickerWidth = 600.0f;
 	// How tall the picker is allowed to get before it scrolls. A menu that runs past the panel it
 	// opened from is worse than one that scrolls, because the entries under the cursor move when
 	// the popup is repositioned to fit.
-	constexpr float MaskPickerMaxHeight = 800.0f;
+	inline float MaskPickerMaxHeight = 800.0f;
 	// The plain option lists -- height source, height reference. Narrow next to the mask grid
 	// because they are lines of text rather than thumbnails, and wide enough that the longest
 	// option does not wrap.

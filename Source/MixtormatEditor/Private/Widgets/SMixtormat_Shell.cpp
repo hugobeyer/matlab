@@ -91,10 +91,25 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.Text(LOCTEXT("NewMaterialTop", "NEW"))
 					.ToolTipText(LOCTEXT("NewMaterialTopHint", "Start a new material workspace, confirming unsaved changes first."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::NewWorkingMaterial)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Add")))
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("NewMaterialTop", "NEW"))
+						]
+					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
@@ -173,14 +188,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::OpenLiveThemePanel)
 				]
-				// Keeps PrimaryButton -- it is the one committing action up here and the accent is
-				// deliberate -- but everything else about it now matches its neighbours: the
-				// toolbar margin token rather than a hand-written 6/2, and the same icon-then-
-				// label body that LOAD, SAVE and SAVE AS use, so the row scans as one set.
+				// Bake is a peer toolbar action, so it uses the same tokenized button, spacing,
+				// icon and label structure as New, Load, Save and Save As.
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return WorkingMaterialAsset.IsValid() && bHasWorkingMaterial; })
 					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
 					.OnClicked(this, &SMixtormat::BakeWorkingMaterial)
@@ -203,11 +216,26 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
-					SNew(SComboButton)
+					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.HasDownArrow(false)
-					.ButtonContent()[SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Overflow")))]
-					.OnGetMenuContent(this, &SMixtormat::BuildWorkflowMenu)
+					.IsEnabled(false)
+					.ToolTipText(LOCTEXT("SettingsTopHint", "Settings are coming soon."))
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Settings")))
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("SettingsTop", "SETTINGS"))
+						]
+					]
 				]
 
 			]

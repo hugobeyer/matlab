@@ -131,6 +131,19 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(
 		TEXT("Mixtormat.DragGhostAccent"),
 		new FSlateRoundedBoxBrush(SelectionFill, MixtormatTokens::DragGhostCornerRadius, AccentHover, MixtormatTokens::OutlineWidth));
+	// Tabs join the column below, so only their exposed top corners are rounded. The active
+	// plate uses the column ground; the resting plate recedes one shade behind it.
+	const FVector4 TabTopCorners(
+		MixtormatTokens::CornerRadius,
+		MixtormatTokens::CornerRadius,
+		0.0f,
+		0.0f);
+	StyleInstance->Set(
+		TEXT("Mixtormat.TabActive"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::Shell(), TabTopCorners));
+	StyleInstance->Set(
+		TEXT("Mixtormat.TabInactive"),
+		new FSlateRoundedBoxBrush(Inset, TabTopCorners));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderline"),
 		new FSlateColorBrush(MixtormatPalette::Divider()));
@@ -617,6 +630,7 @@ void FMixtormatStyle::Refresh()
 	SetIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-all"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/ellipsis"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/plus"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/copy"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));

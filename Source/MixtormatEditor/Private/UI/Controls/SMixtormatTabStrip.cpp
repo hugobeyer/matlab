@@ -5,7 +5,6 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -49,8 +48,8 @@ namespace
 				.BorderImage_Lambda([bSelected]()
 				{
 					return FMixtormatStyle::Get().GetBrush(bSelected.Get(false)
-						? TEXT("Mixtormat.InsetPanel")
-						: TEXT("Mixtormat.SectionBar"));
+						? TEXT("Mixtormat.TabActive")
+						: TEXT("Mixtormat.TabInactive"));
 				})
 				[
 					SNew(SCheckBox)
@@ -73,6 +72,12 @@ namespace
 						[
 							SNew(STextBlock)
 							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+							.ColorAndOpacity_Lambda([bSelected]()
+							{
+								return bSelected.Get(false)
+									? FSlateColor::UseForeground()
+									: FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.55f));
+							})
 							.Text(Label)
 							.Justification(ETextJustify::Center)
 						]
