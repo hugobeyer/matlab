@@ -22,8 +22,11 @@ Texture2D<float2> RampField;
 Texture2D<float2> EdgeField;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
+Texture2D<uint> PatternRegionIds;
+Texture2D<uint> PatternHeightMax;
 
 RWTexture2D<float> OutputHeight;
+RWTexture2D<uint> OutputPatternHeightMax;
 RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
@@ -56,6 +59,30 @@ float BevelRoundness;
 float BevelRoundnessRandom;
 float BevelInsetPixels;
 float GapHeight;
+
+// Pattern-only reduction. Positive structural elevation is limited against one maximum source
+// height per region, so every flat-face texel receives the same safe offset.
+[numthreads(8, 8, 1)]
+void PatternHeightMaxCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const uint RegionId = PatternRegionIds.Load(int3(Pixel, 0));
+	if (RegionId == MIXTORMAT_INVALID_REGION)
+	{
+		return;
+	}
+
+	const uint2 RegionPixel = uint2(
+		RegionId % uint(OutputSize.x),
+		RegionId / uint(OutputSize.x));
+	const float Height = saturate(SourceHeight.Load(int3(Pixel, 0)));
+	InterlockedMax(OutputPatternHeightMax[RegionPixel], asuint(Height));
+}
 
 int RampWrap(int X, int Size)
 {
@@ -219,15 +246,33 @@ float PatternGapHeight(int2 P)
 // somewhere between the base and full Height and never under it: at Random 0 every cell sits at
 // full Height, at 1 they spread the whole way down to the base. Nothing can go negative, so the
 // feather only ever ramps a cell *down* to meet its neighbour and cannot invert a face.
+float BoundedMove(float Amount, float Headroom);
+
 float PatternCellHeight(int2 P)
 {
 	if (UseEdge == 0 || CellHeightAmount == 0.0f)
 	{
 		return 0.0f;
 	}
-	const float2 Field = RampField.Load(int3(RampWrapPixel(P), 0)).xy;
+
+	const int2 W = RampWrapPixel(P);
+	const uint RegionId = PatternRegionIds.Load(int3(W, 0));
+	if (RegionId == MIXTORMAT_INVALID_REGION)
+	{
+		return 0.0f;
+	}
+
+	const float2 Field = RampField.Load(int3(W, 0)).xy;
 	const float Multiplier = lerp(1.0f - saturate(CellHeightRandom), 1.0f, saturate(Field.x));
-	return CellHeightAmount * Multiplier * Field.y;
+	const float RequestedElevation = CellHeightAmount * Multiplier;
+	const int2 RegionPixel = int2(
+		RegionId % uint(OutputSize.x),
+		RegionId / uint(OutputSize.x));
+	const float RegionMaxHeight = asfloat(PatternHeightMax.Load(int3(RegionPixel, 0)));
+	const float SafeElevation = BoundedMove(
+		RequestedElevation,
+		max(1.0f - RegionMaxHeight, 0.0f));
+	return SafeElevation * Field.y;
 }
 
 // How far a relief delta is allowed to move the surface, given the room actually available.
@@ -283,13 +328,15 @@ float ReliefDelta(int2 P)
 		return RampDelta(P);
 	}
 
-	// Pattern IDs: grout, elevation and chamfer, bounded together. Together and not separately,
-	// because they stack -- a cell already sunk near the floor, over a sunk gap, with a chamfer
-	// cutting further, is the case that clips, and bounding each in isolation would miss it.
+	// Pattern IDs: cell elevation is structural and is limited once per region, preserving the
+	// source detail by adding one uniform offset over the flat face. Grout and bevel remain actual
+	// local geometry and are bounded against the already elevated surface.
 	const float Source = SourceHeight.Load(int3(RampWrapPixel(P), 0));
-	return BoundedDelta(
-		PatternGapHeight(P) + PatternCellHeight(P) + PatternBevelDelta(P),
-		Source);
+	const float StructuralElevation = PatternCellHeight(P);
+	const float GeometryDelta = BoundedDelta(
+		PatternGapHeight(P) + PatternBevelDelta(P),
+		Source + StructuralElevation);
+	return StructuralElevation + GeometryDelta;
 }
 
 [numthreads(8, 8, 1)]

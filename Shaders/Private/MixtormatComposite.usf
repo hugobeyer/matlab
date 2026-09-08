@@ -50,7 +50,10 @@ float RegionValMax;
 
 Texture2D<uint> PatternRegionIds;
 Texture2D<float2> PatternUVField;
+Texture2D<uint> PatternOrientationField;
 uint PatternUVEnabled;
+uint PatternUVVariationEnabled;
+uint PatternIntrinsicOrientationEnabled;
 uint PatternUVSeed;
 uint PatternUVOrthogonal;
 float PatternUVRotationMin;
@@ -422,25 +425,43 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 	Delta -= floor(Delta + 0.5f);
 
 	const uint Seeded = MixtormatRegionSeed(RegionId, PatternUVSeed);
-	float AngleDegrees = lerp(
-		PatternUVRotationMin,
-		PatternUVRotationMax,
-		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_ROT));
-	if (PatternUVOrthogonal != 0)
+	float AngleDegrees = 0.0f;
+	float UVScale = 1.0f;
+	bool bPatternFlipU = false;
+	bool bPatternFlipV = false;
+	float2 RandomOffset = 0.0f;
+	if (PatternUVVariationEnabled != 0)
 	{
-		AngleDegrees = round(AngleDegrees / 90.0f) * 90.0f;
+		AngleDegrees = lerp(
+			PatternUVRotationMin,
+			PatternUVRotationMax,
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_ROT));
+		if (PatternUVOrthogonal != 0)
+		{
+			AngleDegrees = round(AngleDegrees / 90.0f) * 90.0f;
+		}
+		UVScale = max(lerp(
+			PatternUVScaleMin,
+			PatternUVScaleMax,
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_SCALE)), 1.0e-4f);
+		bPatternFlipU = PatternUVFlipU != 0
+			&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_U) < 0.5f;
+		bPatternFlipV = PatternUVFlipV != 0
+			&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_V) < 0.5f;
+		RandomOffset = (float2(
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_U),
+			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_V)) - 0.5f)
+			* PatternUVOffset;
 	}
-	const float Angle = radians(AngleDegrees);
-	const float UVScale = max(lerp(
-		PatternUVScaleMin,
-		PatternUVScaleMax,
-		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_SCALE)), 1.0e-4f);
 
 	float2 P = Delta * UVScale;
-	const bool bPatternFlipU = PatternUVFlipU != 0
-		&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_U) < 0.5f;
-	const bool bPatternFlipV = PatternUVFlipV != 0
-		&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_V) < 0.5f;
+	if (PatternIntrinsicOrientationEnabled != 0
+		&& PatternOrientationField.Load(int3(Pixel, 0)) != 0)
+	{
+		const float2x2 IntrinsicRotation = MixtormatRotation90Matrix(1);
+		P = mul(IntrinsicRotation, P);
+		Orientation = mul(IntrinsicRotation, Orientation);
+	}
 	if (bPatternFlipU)
 	{
 		P.x = -P.x;
@@ -450,6 +471,7 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 		P.y = -P.y;
 	}
 
+	const float Angle = radians(AngleDegrees);
 	const float CosA = cos(Angle);
 	const float SinA = sin(Angle);
 	P = float2(P.x * CosA - P.y * SinA, P.x * SinA + P.y * CosA);
@@ -463,10 +485,6 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 		bPatternFlipV ? 1u : 0u);
 	const float2x2 PatternRotation = float2x2(CosA, -SinA, SinA, CosA);
 	Orientation = mul(mul(PatternRotation, PatternFlip), Orientation);
-	const float2 RandomOffset = (float2(
-		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_U),
-		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_V)) - 0.5f)
-		* PatternUVOffset;
 	return frac(CentreSourceUV + P + RandomOffset + 1.0f);
 }
 

@@ -342,8 +342,11 @@ public:
 		SHADER_PARAMETER(float, PatternUVOffset)
 		SHADER_PARAMETER(uint32, PatternUVFlipU)
 		SHADER_PARAMETER(uint32, PatternUVFlipV)
+		SHADER_PARAMETER(uint32, PatternUVVariationEnabled)
+		SHADER_PARAMETER(uint32, PatternIntrinsicOrientationEnabled)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PatternUVField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternOrientationField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -1326,6 +1329,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(uint32, WriteOrientation)
 		SHADER_PARAMETER(uint32, PatternMode)
 		SHADER_PARAMETER(uint32, GridMode)
 		SHADER_PARAMETER(int32, Rows)
@@ -1343,6 +1347,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputUV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputOrientation)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -1426,6 +1431,32 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Pattern-only reduction: one maximum source height at each centre-pixel Region ID.
+class FMixtormatPatternHeightMaxCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatPatternHeightMaxCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatPatternHeightMaxCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputPatternHeightMax)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatPatternHeightMaxCS,
+	"/Plugin/MaterialLab/Private/MixtormatRampIdRelief.usf",
+	"PatternHeightMaxCS",
+	SF_Compute);
+
 // The post-composite half: the gradient turned into a tilt in the composited height and normal.
 class FMixtormatRampIdReliefCS final : public FGlobalShader
 {
@@ -1454,6 +1485,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternHeightMax)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
 	END_SHADER_PARAMETER_STRUCT()
@@ -1764,6 +1797,12 @@ namespace MixtormatGpuCompositor
 		float AOAmount = 0.0f;
 		float AOSpread = 2.0f;
 	};
+
+	bool HasIntrinsicPatternOrientation(const FPatternIdRenderData& Pattern)
+	{
+		return Pattern.PatternMode == EMixtormatPatternMode::Herringbone
+			|| Pattern.PatternMode == EMixtormatPatternMode::Basketweave;
+	}
 
 	// Reads a cluster filter's ID map and rewrites the layer's albedo. No blend mode and no
 	// weight: this is applied at the composite's albedo sample, not in the mask chain.
@@ -2119,9 +2158,11 @@ namespace MixtormatGpuCompositor
 		FIntPoint OutputSize,
 		const FChildRenderData& Child,
 		int32 LayerIndex,
+		FRDGTextureRef EmptyPatternOrientation,
 		FRDGTextureRef& OutUV,
 		FRDGTextureRef& OutRamp,
-		FRDGTextureRef& OutEdge)
+		FRDGTextureRef& OutEdge,
+		FRDGTextureRef& OutOrientation)
 	{
 		const FRDGTextureDesc IdDesc = FRDGTextureDesc::Create2D(
 			OutputSize,
@@ -2139,11 +2180,22 @@ namespace MixtormatGpuCompositor
 		OutUV = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.FeatureUV"));
 		OutRamp = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Ramp"));
 		OutEdge = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Edge"));
+		const bool bWritesOrientation = HasIntrinsicPatternOrientation(Child.PatternId);
+		OutOrientation = bWritesOrientation
+			? GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					OutputSize,
+					PF_R8_UINT,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.Pattern.Orientation"))
+			: EmptyPatternOrientation;
 
 		FMixtormatPatternIdsCS::FParameters* Parameters =
 			GraphBuilder.AllocParameters<FMixtormatPatternIdsCS::FParameters>();
 		Parameters->OutputSize = OutputSize;
 		Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
+		Parameters->WriteOrientation = bWritesOrientation ? 1u : 0u;
 		Parameters->PatternMode = static_cast<uint32>(Child.PatternId.PatternMode);
 		Parameters->GridMode = static_cast<uint32>(Child.PatternId.GridMode);
 		Parameters->Rows = Child.PatternId.Rows;
@@ -2161,6 +2213,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputUV = GraphBuilder.CreateUAV(OutUV);
 		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);
 		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
+		Parameters->OutputOrientation = GraphBuilder.CreateUAV(OutOrientation);
 		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
 
 		TShaderMapRef<FMixtormatPatternIdsCS> PatternShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -3384,6 +3437,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				GraphBuilder.CreateUAV(EmptyPatternUV),
 				FVector4f(0.5f, 0.5f, 0.0f, 0.0f));
 
+			FRDGTextureRef EmptyPatternOrientation = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_R8_UINT,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.EmptyPatternOrientation"));
+			AddClearUAVPass(
+				GraphBuilder,
+				GraphBuilder.CreateUAV(EmptyPatternOrientation),
+				0u);
+
 			// No Driver on this layer, or one that could not resolve: the slot still needs a real
 			// resource. Cleared to zero, which every Combine mode turns into a no-op once Amount
 			// is applied -- and the shader's Enabled flag stops it being read at all.
@@ -3526,6 +3591,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatRandomIdCS> RandomIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatPatternHeightMaxCS> PatternHeightMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatEdgeShadeCS> EdgeShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -3598,6 +3664,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FRDGTextureRef UV = nullptr;
 						FRDGTextureRef Ramp = nullptr;
 						FRDGTextureRef Edge = nullptr;
+						FRDGTextureRef Orientation = nullptr;
 						const FPatternIdRenderData* Settings = nullptr;
 					};
 					TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
@@ -3628,6 +3695,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								const FPatternIdRenderData& Pattern = Child.PatternId;
 								bWanted = bWanted
 									|| Pattern.bUVVariation
+									|| HasIntrinsicPatternOrientation(Pattern)
 									|| Pattern.HeightAmount > 0.0f
 									|| Pattern.BevelHeight > 0.0f
 									|| Pattern.EdgeRoughnessAmount > 0.0f
@@ -3748,9 +3816,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									Request.Resolution,
 									Child,
 									LayerIndex,
+									EmptyPatternOrientation,
 									PatternOutput.UV,
 									PatternOutput.Ramp,
-									PatternOutput.Edge);
+									PatternOutput.Edge,
+									PatternOutput.Orientation);
 								PatternOutput.Ids = RegionIds;
 							}
 
@@ -3808,6 +3878,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					{
 						FRDGTextureRef Field = nullptr;
 						FRDGTextureRef EdgeField = nullptr;
+						FRDGTextureRef RegionIds = nullptr;
 						float HeightAmount = 0.0f;
 						float CellHeightAmount = 0.0f;
 						float CellHeightRandom = 0.0f;
@@ -3861,6 +3932,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
 							Tilt.Field = PatternOutput->Ramp;
 							Tilt.EdgeField = PatternOutput->Edge;
+							Tilt.RegionIds = PatternOutput->Ids;
 							// Pattern has no tilt term: HeightAmount is its per-cell elevation
 							// range and rides CellHeightAmount, leaving the relief pass's tilt
 							// path -- which is Ramp From IDs' -- switched off.
@@ -5521,13 +5593,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
 					Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
 
-					// Pattern source-UV variation is Pattern-only in this pass because this producer
-					// owns an exact analytic feature centre. The last enabled Pattern row wins, just
-					// like the last HSV row wins its whole-channel rewrite.
+					// The last Pattern row that needs source-space work wins. Herringbone and
+					// Basketweave always need their intrinsic basis; other modes only enter when
+					// random Pattern UV variation is enabled.
 					const FPatternIdPassOutput* ActivePatternUV = nullptr;
 					for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
 					{
-						if (PatternOutput.Settings && PatternOutput.Settings->bUVVariation)
+						if (PatternOutput.Settings
+							&& (PatternOutput.Settings->bUVVariation
+								|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
 						{
 							ActivePatternUV = &PatternOutput;
 						}
@@ -5552,10 +5626,16 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						PatternUVSettings && PatternUVSettings->bRandomFlipU ? 1u : 0u;
 					Parameters->PatternUVFlipV =
 						PatternUVSettings && PatternUVSettings->bRandomFlipV ? 1u : 0u;
+					Parameters->PatternUVVariationEnabled =
+						PatternUVSettings && PatternUVSettings->bUVVariation ? 1u : 0u;
+					Parameters->PatternIntrinsicOrientationEnabled =
+						PatternUVSettings && HasIntrinsicPatternOrientation(*PatternUVSettings) ? 1u : 0u;
 					Parameters->PatternRegionIds =
 						ActivePatternUV ? ActivePatternUV->Ids : EmptyRegionIds;
 					Parameters->PatternUVField =
 						ActivePatternUV ? ActivePatternUV->UV : EmptyPatternUV;
+					Parameters->PatternOrientationField =
+						ActivePatternUV ? ActivePatternUV->Orientation : EmptyPatternOrientation;
 
 					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
@@ -5962,6 +6042,38 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
 								OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
 
+							FRDGTextureRef PatternHeightMax = EmptyRegionIds;
+							if (Tilt.bUseEdge && Tilt.CellHeightAmount > 0.0f && Tilt.RegionIds)
+							{
+								PatternHeightMax = GraphBuilder.CreateTexture(
+									FRDGTextureDesc::Create2D(
+										Request.Resolution,
+										PF_R32_UINT,
+										FClearValueBinding::None,
+										TexCreate_ShaderResource | TexCreate_UAV),
+									TEXT("Mixtormat.Pattern.HeightMax"));
+								AddClearUAVPass(
+									GraphBuilder,
+									GraphBuilder.CreateUAV(PatternHeightMax),
+									0u);
+
+								FMixtormatPatternHeightMaxCS::FParameters* MaxP =
+									GraphBuilder.AllocParameters<FMixtormatPatternHeightMaxCS::FParameters>();
+								MaxP->OutputSize = Request.Resolution;
+								MaxP->PatternRegionIds = Tilt.RegionIds;
+								MaxP->SourceHeight = HeightTargets[WriteIndex];
+								MaxP->OutputPatternHeightMax = GraphBuilder.CreateUAV(PatternHeightMax);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("Mixtormat.PatternHeightMax.L%d.%d", LayerIndex, TiltIndex),
+									PatternHeightMaxShader,
+									MaxP,
+									FIntVector(
+										FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+										FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+										1));
+							}
+
 							FMixtormatRampIdReliefCS::FParameters* TiltP =
 								GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
 							TiltP->OutputSize = Request.Resolution;
@@ -5984,6 +6096,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
 							TiltP->SourceHeight = HeightTargets[WriteIndex];
 							TiltP->PreviousNormal = OutputN[WriteIndex];
+							TiltP->PatternRegionIds = Tilt.RegionIds ? Tilt.RegionIds : EmptyRegionIds;
+							TiltP->PatternHeightMax = PatternHeightMax;
 							TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
 							TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
 

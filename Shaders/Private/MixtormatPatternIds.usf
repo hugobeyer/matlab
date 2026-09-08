@@ -12,10 +12,12 @@ RWTexture2D<uint> OutputIds;
 RWTexture2D<float2> OutputUV;
 RWTexture2D<float2> OutputRamp;
 RWTexture2D<float2> OutputEdge;
+RWTexture2D<uint> OutputOrientation;
 RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
 uint WriteDebug;
+uint WriteOrientation;
 uint PatternMode;
 uint GridMode;
 int Rows;
@@ -47,6 +49,8 @@ uint EdgeRelative;
 
 #define MIXTORMAT_PATTERN_GRID 0u
 #define MIXTORMAT_PATTERN_RUNNING_BOND 1u
+#define MIXTORMAT_PATTERN_HERRINGBONE 2u
+#define MIXTORMAT_PATTERN_BASKETWEAVE 3u
 #define MIXTORMAT_GRID_STRAIGHT 0u
 #define MIXTORMAT_GRID_STAGGERED 1u
 #define MIXTORMAT_GRID_DIAMOND 2u
@@ -58,6 +62,7 @@ struct FMixtormatPatternCell
 	float EdgeRelative;
 	float PixelsPerRelativeUnit;
 	float MinCellPixels;
+	uint Orientation;
 };
 
 float2 PatternWorkUV(float2 UV)
@@ -120,6 +125,7 @@ FMixtormatPatternCell PatternRectangularCell(
 		? EdgePixels / EdgeRelative
 		: 0.5f * MinCellPixels;
 	Result.MinCellPixels = MinCellPixels;
+	Result.Orientation = 0u;
 	return Result;
 }
 
@@ -164,6 +170,7 @@ FMixtormatPatternCell PatternDiamondCell(
 	Result.EdgeRelative = EdgeRelative;
 	Result.PixelsPerRelativeUnit = 0.5f / max(GradientQ, 1.0e-6f);
 	Result.MinCellPixels = MinCellPixels;
+	Result.Orientation = 0u;
 	return Result;
 }
 
@@ -261,7 +268,116 @@ FMixtormatPatternCell PatternRunningBondCell(
 		? EdgePixels / EdgeRelative
 		: 0.5f * MinCellPixels;
 	Result.MinCellPixels = MinCellPixels;
+	Result.Orientation = 0u;
 	return Result;
+}
+
+int PatternMultipleOfFourPeriod(int Value)
+{
+	return max(((max(Value, 1) + 3) / 4) * 4, 4);
+}
+
+FMixtormatPatternCell PatternBoxCell(
+	float2 P,
+	float2 AxisPixels,
+	int2 Period,
+	float2 Lower,
+	float2 Size,
+	uint Orientation)
+{
+	const float2 Local = P - Lower;
+	const float2 UnitPixels = AxisPixels / float2(Period);
+	const float2 EdgePixelsByAxis = min(Local, Size - Local) * UnitPixels;
+	const float MinCellPixels = max(min(UnitPixels.x, UnitPixels.y), 1.0e-4f);
+	const float EdgePixels = max(MixtormatSmoothMin(
+		EdgePixelsByAxis.x,
+		EdgePixelsByAxis.y,
+		0.5f * max(Rounding, 0.0f) * MinCellPixels), 0.0f);
+	const float2 RelativeByAxis = 2.0f * min(Local, Size - Local) / Size;
+	const float EdgeRelative = max(MixtormatSmoothMin(
+		RelativeByAxis.x,
+		RelativeByAxis.y,
+		max(Rounding, 0.0f)), 0.0f);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac((Lower + 0.5f * Size) / float2(Period));
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgeRelative;
+	Result.PixelsPerRelativeUnit = EdgeRelative > 1.0e-5f
+		? EdgePixels / EdgeRelative
+		: 0.5f * MinCellPixels;
+	Result.MinCellPixels = MinCellPixels;
+	Result.Orientation = Orientation;
+	return Result;
+}
+
+FMixtormatPatternCell PatternHerringboneCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int2 Period = int2(
+		PatternMultipleOfFourPeriod(AuthoredColumns),
+		PatternMultipleOfFourPeriod(AuthoredRows));
+	const float2 P = WorkUV * float2(Period);
+	const int2 UnitCell = (int2)floor(P);
+	const int Band = MixtormatWrapI(UnitCell.x - UnitCell.y, 4);
+
+	// Four diagonal ownership bands make the interlock. Band 0 owns a horizontal domino and band
+	// 1 points back to it; band 3 owns a vertical domino and band 2 points down to it.
+	if (Band == 0)
+	{
+		return PatternBoxCell(P, AxisPixels, Period, float2(UnitCell), float2(2.0f, 1.0f), 0u);
+	}
+	if (Band == 1)
+	{
+		return PatternBoxCell(
+			P, AxisPixels, Period, float2(UnitCell - int2(1, 0)), float2(2.0f, 1.0f), 0u);
+	}
+	if (Band == 3)
+	{
+		return PatternBoxCell(P, AxisPixels, Period, float2(UnitCell), float2(1.0f, 2.0f), 1u);
+	}
+	return PatternBoxCell(
+		P, AxisPixels, Period, float2(UnitCell - int2(0, 1)), float2(1.0f, 2.0f), 1u);
+}
+
+FMixtormatPatternCell PatternBasketweaveCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int2 Period = int2(
+		PatternMultipleOfFourPeriod(AuthoredColumns),
+		PatternMultipleOfFourPeriod(AuthoredRows));
+	const float2 P = WorkUV * float2(Period);
+	const int2 MacroCell = (int2)floor(P * 0.5f);
+	const float2 MacroLower = float2(MacroCell * 2);
+	const float2 MacroLocal = P - MacroLower;
+	const bool bVertical = ((MacroCell.x + MacroCell.y) & 1) != 0;
+
+	if (bVertical)
+	{
+		const float StripX = floor(MacroLocal.x);
+		return PatternBoxCell(
+			P,
+			AxisPixels,
+			Period,
+			MacroLower + float2(StripX, 0.0f),
+			float2(1.0f, 2.0f),
+			1u);
+	}
+
+	const float StripY = floor(MacroLocal.y);
+	return PatternBoxCell(
+		P,
+		AxisPixels,
+		Period,
+		MacroLower + float2(0.0f, StripY),
+		float2(2.0f, 1.0f),
+		0u);
 }
 
 [numthreads(8, 8, 1)]
@@ -285,6 +401,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (PatternMode == MIXTORMAT_PATTERN_RUNNING_BOND)
 	{
 		Cell = PatternRunningBondCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_HERRINGBONE)
+	{
+		Cell = PatternHerringboneCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_BASKETWEAVE)
+	{
+		Cell = PatternBasketweaveCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
 	}
 	else if (PatternMode == MIXTORMAT_PATTERN_GRID && GridMode == MIXTORMAT_GRID_DIAMOND)
 	{
@@ -332,6 +456,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputIds[Pixel] = bValidRegion ? RegionId : MIXTORMAT_INVALID_REGION;
 	OutputUV[Pixel] = CentreUV;
 	OutputEdge[Pixel] = float2(EdgeSignedPixels, BevelRandom);
+	if (WriteOrientation != 0)
+	{
+		// Swap Axes turns horizontal work-space strips vertical in the authored UV basis.
+		OutputOrientation[Pixel] = Cell.Orientation ^ (SwapAxes != 0 ? 1u : 0u);
+	}
 
 	if (!bValidRegion)
 	{
