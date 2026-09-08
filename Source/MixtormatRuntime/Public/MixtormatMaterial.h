@@ -1529,6 +1529,30 @@ struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 	FMixtormatMaskShaping Shaping;
 };
 
+// Serialized by value. Append new modes; never reorder or insert between existing entries.
+UENUM(BlueprintType)
+enum class EMixtormatPatternMode : uint8
+{
+	Grid = 0 UMETA(DisplayName = "Grid"),
+	RunningBond = 1 UMETA(DisplayName = "Running Bond"),
+	Herringbone = 2 UMETA(DisplayName = "Herringbone"),
+	Basketweave = 3 UMETA(DisplayName = "Basketweave"),
+	Hex = 4 UMETA(DisplayName = "Hex"),
+	OctagonSquare = 5 UMETA(DisplayName = "Octagon + Square"),
+	Flagstone = 6 UMETA(DisplayName = "Flagstone"),
+	Voronoi = 7 UMETA(DisplayName = "Voronoi"),
+	Hopscotch = 8 UMETA(DisplayName = "Hopscotch"),
+	FrenchAshlar = 9 UMETA(DisplayName = "French / Modular Ashlar")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatGridMode : uint8
+{
+	Straight = 0 UMETA(DisplayName = "Straight"),
+	Staggered = 1 UMETA(DisplayName = "Staggered"),
+	Diamond = 2 UMETA(DisplayName = "Diamond / 45 Degree")
+};
+
 // Procedural region producer. A periodic rectangular lattice and the jittered Voronoi end of the
 // same solver publish the same sparse pixel-index IDs as Cluster IDs, so HSV/Random/Ramp From IDs
 // consume either producer without a special path.
@@ -1543,6 +1567,12 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs")
 	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice")
+	EMixtormatPatternMode PatternMode = EMixtormatPatternMode::Grid;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice")
+	EMixtormatGridMode GridMode = EMixtormatGridMode::Straight;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "1", ClampMax = "256"))
 	int32 Rows = 8;

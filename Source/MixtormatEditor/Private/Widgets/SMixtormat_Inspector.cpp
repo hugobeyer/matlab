@@ -1513,6 +1513,73 @@ TSharedRef<SWidget> SMixtormat::BuildBaseColorBlendModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildPatternModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatPatternMode Modes[] = {
+		EMixtormatPatternMode::Grid,
+		EMixtormatPatternMode::RunningBond,
+		EMixtormatPatternMode::Herringbone,
+		EMixtormatPatternMode::Basketweave,
+		EMixtormatPatternMode::Hex,
+		EMixtormatPatternMode::OctagonSquare,
+		EMixtormatPatternMode::Flagstone,
+		EMixtormatPatternMode::Voronoi,
+		EMixtormatPatternMode::Hopscotch,
+		EMixtormatPatternMode::FrenchAshlar
+	};
+	for (const EMixtormatPatternMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::PatternModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatPatternFilter* Pattern = GetSelectedPatternId())
+				{
+					Pattern->PatternMode = Mode;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+				return Pattern && Pattern->PatternMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildGridModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatGridMode Modes[] = {
+		EMixtormatGridMode::Straight,
+		EMixtormatGridMode::Staggered,
+		EMixtormatGridMode::Diamond
+	};
+	for (const EMixtormatGridMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::GridModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatPatternFilter* Pattern = GetSelectedPatternId())
+				{
+					Pattern->GridMode = Mode;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+				return Pattern && Pattern->GridMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 {
 	const auto Pattern = [this]() { return GetSelectedPatternId(); };
@@ -1555,6 +1622,41 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpLattice", "Lattice")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("PatternMode", "Pattern Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+				return Pattern
+					? MixtormatUI::PatternModeText(Pattern->PatternMode)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildPatternModeMenu)),
+		LOCTEXT("PatternModeHint", "Selects the procedural topology used to publish Pattern regions.")));
+	AddSliderRow(Panel,
+		SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+			return Pattern && Pattern->PatternMode == EMixtormatPatternMode::Grid
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::Make(
+				LOCTEXT("PatternGridMode", "Grid Mode"),
+				MixtormatRow::MakeChip(
+					TAttribute<FText>::CreateLambda([this]()
+					{
+						const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+						return Pattern
+							? MixtormatUI::GridModeText(Pattern->GridMode)
+							: FText::GetEmpty();
+					}),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildGridModeMenu)),
+				LOCTEXT("PatternGridModeHint", "Selects the straight, staggered, or diamond Grid topology."))
+		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatPatternFilter>(
 			LOCTEXT("PatternRows", "Rows"), Pattern, &FMixtormatPatternFilter::Rows, 1.0, 256.0, 8,
@@ -1563,10 +1665,28 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternColumns", "Columns"), Pattern, &FMixtormatPatternFilter::Columns, 1.0, 256.0, 8,
 			LOCTEXT("PatternColumnsHint", "Columns across one UV repeat. Set Columns to 1 for stripe-like regions."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("PatternRowOffset", "Row Offset"), &FMixtormatPatternFilter::RowOffset, 0.0, 1.0, 0.0, 0.005,
-			LOCTEXT("PatternRowOffsetHint", "Horizontal shift per row in cell units. 0 is a grid; 0.5 gives running-bond brick when the row count closes periodically.")),
-		Slider(LOCTEXT("PatternJitter", "Jitter"), &FMixtormatPatternFilter::Jitter, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("PatternJitterHint", "Moves each feature point away from its cell centre. 0 is regular tile/brick; 1 reaches the periodic Voronoi end of the same solver."))));
+		SNew(SBox)
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+			return Pattern && (Pattern->PatternMode == EMixtormatPatternMode::RunningBond
+				|| (Pattern->PatternMode == EMixtormatPatternMode::Grid
+					&& Pattern->GridMode == EMixtormatGridMode::Staggered));
+		})
+		[
+			Slider(LOCTEXT("PatternRowOffset", "Row Offset"), &FMixtormatPatternFilter::RowOffset, 0.0, 1.0, 0.0, 0.005,
+				LOCTEXT("PatternRowOffsetHint", "Alternating-row shift in cell units. Used by Staggered Grid and Running Bond."))
+		],
+		SNew(SBox)
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
+			return Pattern && Pattern->PatternMode == EMixtormatPatternMode::RunningBond;
+		})
+		[
+			Slider(LOCTEXT("PatternJitter", "Jitter"), &FMixtormatPatternFilter::Jitter, 0.0, 1.0, 0.0, 0.01,
+				LOCTEXT("PatternJitterHint", "Varies Running Bond row shift and brick widths while preserving the exact row period."))
+		]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternSwapAxes", "Swap Axes"), &FMixtormatPatternFilter::bSwapAxes,
 			LOCTEXT("PatternSwapAxesHint", "Swaps the lattice axes without changing the ID contract; useful for bars and directional patterns.")),

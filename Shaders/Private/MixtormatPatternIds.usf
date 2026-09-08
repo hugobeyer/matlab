@@ -16,6 +16,8 @@ RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
 uint WriteDebug;
+uint PatternMode;
+uint GridMode;
 int Rows;
 int Columns;
 float RowOffset;
@@ -43,6 +45,21 @@ float Rounding;
 //      meant to belong to the cell wants.
 uint EdgeRelative;
 
+#define MIXTORMAT_PATTERN_GRID 0u
+#define MIXTORMAT_PATTERN_RUNNING_BOND 1u
+#define MIXTORMAT_GRID_STRAIGHT 0u
+#define MIXTORMAT_GRID_STAGGERED 1u
+#define MIXTORMAT_GRID_DIAMOND 2u
+
+struct FMixtormatPatternCell
+{
+	float2 CentreWorkUV;
+	float EdgePixels;
+	float EdgeRelative;
+	float PixelsPerRelativeUnit;
+	float MinCellPixels;
+};
+
 float2 PatternWorkUV(float2 UV)
 {
 	return SwapAxes != 0 ? UV.yx : UV;
@@ -53,11 +70,198 @@ float2 PatternUnworkUV(float2 UV)
 	return SwapAxes != 0 ? UV.yx : UV;
 }
 
-float PatternPeriodicRowOffset(int SafeRows)
+int PatternEvenPeriod(int Value)
 {
-	// The top seam only closes when the accumulated row shift is an integer number of cells.
-	// Quantising to 1/Rows keeps the authored value as close as possible while guaranteeing that.
-	return round(saturate(RowOffset) * float(SafeRows)) / float(SafeRows);
+	const int SafeValue = max(Value, 2);
+	return SafeValue + (SafeValue & 1);
+}
+
+FMixtormatPatternCell PatternRectangularCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int SafeColumns,
+	int SafeRows,
+	bool bStaggered)
+{
+	const float2 P = WorkUV * float2(SafeColumns, SafeRows);
+	const int Row = (int)floor(P.y);
+	const int WrappedRow = MixtormatWrapI(Row, SafeRows);
+	const float Shift = bStaggered && ((WrappedRow & 1) != 0)
+		? saturate(RowOffset)
+		: 0.0f;
+	const float LocalX = P.x - Shift;
+	const int Column = (int)floor(LocalX);
+	const float2 CellUV = frac(float2(LocalX, P.y));
+
+	const float2 CellPixels = AxisPixels / float2(SafeColumns, SafeRows);
+	const float2 EdgePixelsByAxis = min(CellUV, 1.0f - CellUV) * CellPixels;
+	const float MinCellPixels = max(min(CellPixels.x, CellPixels.y), 1.0e-4f);
+	const float SmoothPixels = 0.5f * max(Rounding, 0.0f) * MinCellPixels;
+	const float EdgePixels = max(MixtormatSmoothMin(
+		EdgePixelsByAxis.x,
+		EdgePixelsByAxis.y,
+		SmoothPixels), 0.0f);
+
+	const float2 RelativeByAxis = 2.0f * min(CellUV, 1.0f - CellUV);
+	const float EdgeRelative = max(MixtormatSmoothMin(
+		RelativeByAxis.x,
+		RelativeByAxis.y,
+		max(Rounding, 0.0f)), 0.0f);
+
+	const float2 CentreP = float2(
+		float(Column) + 0.5f + Shift,
+		float(Row) + 0.5f);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(CentreP / float2(SafeColumns, SafeRows));
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgeRelative;
+	Result.PixelsPerRelativeUnit = EdgeRelative > 1.0e-5f
+		? EdgePixels / EdgeRelative
+		: 0.5f * MinCellPixels;
+	Result.MinCellPixels = MinCellPixels;
+	return Result;
+}
+
+FMixtormatPatternCell PatternDiamondCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	// An even original-space period makes both torus translations integer translations in Q:
+	// U + 1 -> Q + (Columns/2, -Columns/2), V + 1 -> Q + (Rows/2, Rows/2).
+	const int SafeColumns = PatternEvenPeriod(AuthoredColumns);
+	const int SafeRows = PatternEvenPeriod(AuthoredRows);
+	const float2 P = WorkUV * float2(SafeColumns, SafeRows);
+	const float2 Q = 0.5f * float2(P.x + P.y, P.y - P.x);
+	const int2 QCell = (int2)floor(Q);
+	const float2 QCellUV = frac(Q);
+	const float2 EdgeQByAxis = min(QCellUV, 1.0f - QCellUV);
+	const float EdgeQ = max(MixtormatSmoothMin(
+		EdgeQByAxis.x,
+		EdgeQByAxis.y,
+		0.5f * max(Rounding, 0.0f)), 0.0f);
+
+	// Q is deliberately never wrapped per axis. The inverse integer basis identifies the same
+	// owner on opposite sides of the original U/V torus, then only the centre is canonicalised.
+	const int2 CentreP = int2(
+		QCell.x - QCell.y,
+		QCell.x + QCell.y + 1);
+	const float ColumnsPerPixel = float(SafeColumns) / max(AxisPixels.x, 1.0f);
+	const float RowsPerPixel = float(SafeRows) / max(AxisPixels.y, 1.0f);
+	const float GradientQ = 0.5f * sqrt(
+		ColumnsPerPixel * ColumnsPerPixel + RowsPerPixel * RowsPerPixel);
+	const float EdgePixels = EdgeQ / max(GradientQ, 1.0e-6f);
+	const float EdgeRelative = 2.0f * EdgeQ;
+	const float MinCellPixels = max(min(
+		AxisPixels.x / float(SafeColumns),
+		AxisPixels.y / float(SafeRows)), 1.0e-4f);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(float2(CentreP) / float2(SafeColumns, SafeRows));
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgeRelative;
+	Result.PixelsPerRelativeUnit = 0.5f / max(GradientQ, 1.0e-6f);
+	Result.MinCellPixels = MinCellPixels;
+	return Result;
+}
+
+float PatternRunningBoundaryRandom(int Boundary, int WrappedRow, int2 Period)
+{
+	const int WrappedBoundary = MixtormatWrapI(Boundary, Period.x);
+	const uint BoundaryId = MixtormatCellHash(
+		int2(WrappedBoundary, WrappedRow),
+		Period,
+		Seed ^ 0xa511e9b3u);
+	return MixtormatCellRandom01(BoundaryId);
+}
+
+float PatternRunningBoundary(int Boundary, int WrappedRow, int2 Period)
+{
+	const int WrappedBoundary = MixtormatWrapI(Boundary, Period.x);
+	const int Cycle = (Boundary - WrappedBoundary) / Period.x;
+	const float Anchor = PatternRunningBoundaryRandom(0, WrappedRow, Period);
+	const float Offset = PatternRunningBoundaryRandom(Boundary, WrappedRow, Period) - Anchor;
+
+	// Boundary 0 and Boundary Columns use the same wrapped draw, so they land exactly at 0 and
+	// Columns. Interior widths vary, remain positive, and telescope to the authored row period.
+	return float(Cycle * Period.x + WrappedBoundary)
+		+ Offset * (0.35f * saturate(Jitter));
+}
+
+FMixtormatPatternCell PatternRunningBondCell(
+	float2 WorkUV,
+	float2 AxisPixels,
+	int AuthoredColumns,
+	int AuthoredRows)
+{
+	const int SafeColumns = max(AuthoredColumns, 1);
+	const int SafeRows = PatternEvenPeriod(AuthoredRows);
+	const int2 Period = int2(SafeColumns, SafeRows);
+	const float2 P = WorkUV * float2(Period);
+	const int Row = (int)floor(P.y);
+	const int WrappedRow = MixtormatWrapI(Row, SafeRows);
+
+	const uint RowId = MixtormatCellHash(
+		int2(0, WrappedRow),
+		Period,
+		Seed ^ 0x63d83595u);
+	const float RowJitter = (MixtormatCellRandom01(RowId) - 0.5f) * saturate(Jitter);
+	const float BaseShift = (WrappedRow & 1) != 0 ? saturate(RowOffset) : 0.0f;
+	const float Shift = BaseShift + RowJitter;
+	const float LocalX = frac((P.x - Shift) / float(SafeColumns)) * float(SafeColumns);
+
+	const int ApproxColumn = (int)floor(LocalX);
+	int Column = ApproxColumn;
+	float Left = PatternRunningBoundary(Column, WrappedRow, Period);
+	float Right = PatternRunningBoundary(Column + 1, WrappedRow, Period);
+	[unroll]
+	for (int CandidateOffset = -1; CandidateOffset <= 1; ++CandidateOffset)
+	{
+		const int Candidate = ApproxColumn + CandidateOffset;
+		const float CandidateLeft = PatternRunningBoundary(Candidate, WrappedRow, Period);
+		const float CandidateRight = PatternRunningBoundary(Candidate + 1, WrappedRow, Period);
+		if (LocalX >= CandidateLeft && LocalX < CandidateRight)
+		{
+			Column = Candidate;
+			Left = CandidateLeft;
+			Right = CandidateRight;
+		}
+	}
+
+	const float Width = max(Right - Left, 1.0e-4f);
+	const float CellX = LocalX - Left;
+	const float CellY = frac(P.y);
+	const float2 CellPixels = AxisPixels / float2(SafeColumns, SafeRows);
+	const float2 EdgePixelsByAxis = float2(
+		min(CellX, Width - CellX) * CellPixels.x,
+		min(CellY, 1.0f - CellY) * CellPixels.y);
+	const float MinCellPixels = max(min(CellPixels.x, CellPixels.y), 1.0e-4f);
+	const float EdgePixels = max(MixtormatSmoothMin(
+		EdgePixelsByAxis.x,
+		EdgePixelsByAxis.y,
+		0.5f * max(Rounding, 0.0f) * MinCellPixels), 0.0f);
+	const float2 RelativeByAxis = float2(
+		2.0f * min(CellX, Width - CellX) / Width,
+		2.0f * min(CellY, 1.0f - CellY));
+	const float EdgeRelative = max(MixtormatSmoothMin(
+		RelativeByAxis.x,
+		RelativeByAxis.y,
+		max(Rounding, 0.0f)), 0.0f);
+	const float2 CentreP = float2(
+		0.5f * (Left + Right) + Shift,
+		float(Row) + 0.5f);
+
+	FMixtormatPatternCell Result;
+	Result.CentreWorkUV = frac(CentreP / float2(Period));
+	Result.EdgePixels = EdgePixels;
+	Result.EdgeRelative = EdgeRelative;
+	Result.PixelsPerRelativeUnit = EdgeRelative > 1.0e-5f
+		? EdgePixels / EdgeRelative
+		: 0.5f * MinCellPixels;
+	Result.MinCellPixels = MinCellPixels;
+	return Result;
 }
 
 [numthreads(8, 8, 1)]
@@ -71,73 +275,55 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const int SafeRows = max(Rows, 1);
 	const int SafeColumns = max(Columns, 1);
-	const float EffectiveRowOffset = PatternPeriodicRowOffset(SafeRows);
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	const float2 WorkUV = PatternWorkUV(UV);
+	const float2 AxisPixels = SwapAxes != 0
+		? float2(OutputSize.y, OutputSize.x)
+		: float2(OutputSize.x, OutputSize.y);
 
-	float2 P = float2(WorkUV.x * float(SafeColumns), WorkUV.y * float(SafeRows));
-	// Shear the whole metric, not only the current row. The cellular helper then sees the query
-	// and every neighbouring feature point in one consistent space; shifting only floor(P.y)
-	// makes adjacent-row feature points disagree about where the boundary is.
-	P.x -= P.y * EffectiveRowOffset;
+	FMixtormatPatternCell Cell;
+	if (PatternMode == MIXTORMAT_PATTERN_RUNNING_BOND)
+	{
+		Cell = PatternRunningBondCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else if (PatternMode == MIXTORMAT_PATTERN_GRID && GridMode == MIXTORMAT_GRID_DIAMOND)
+	{
+		Cell = PatternDiamondCell(WorkUV, AxisPixels, SafeColumns, SafeRows);
+	}
+	else
+	{
+		// Unsupported future P1 modes intentionally retain the straight-grid fallback until their
+		// own milestone supplies an ownership solve.
+		const bool bStaggered = PatternMode == MIXTORMAT_PATTERN_GRID
+			&& GridMode == MIXTORMAT_GRID_STAGGERED;
+		const int GridRows = bStaggered ? PatternEvenPeriod(SafeRows) : SafeRows;
+		Cell = PatternRectangularCell(
+			WorkUV,
+			AxisPixels,
+			SafeColumns,
+			GridRows,
+			bStaggered);
+	}
 
-	const FMixtormatCellularResult Cell =
-		MixtormatCellular(P, int2(SafeColumns, SafeRows), Seed, saturate(Jitter), max(Rounding, 0.0f));
-
-	// Recover the feature point and apply the inverse shear before turning it into the centre UV.
-	float2 FeatureP = P - Cell.CellOffset;
-	FeatureP.x += FeatureP.y * EffectiveRowOffset;
-	float2 CentreWorkUV = frac(float2(
-		FeatureP.x / float(SafeColumns),
-		FeatureP.y / float(SafeRows)) + 1.0f);
-	const float2 CentreUV = PatternUnworkUV(CentreWorkUV);
-
+	const float2 CentreUV = PatternUnworkUV(Cell.CentreWorkUV);
 	const int2 CentrePixel = clamp(
 		(int2)floor(CentreUV * float2(OutputSize)),
 		int2(0, 0),
 		OutputSize - int2(1, 1));
 	const uint RegionId = uint(CentrePixel.x + CentrePixel.y * OutputSize.x);
 
-	const float2 AxisPixels = SwapAxes != 0
-		? float2(OutputSize.y, OutputSize.x)
-		: float2(OutputSize.x, OutputSize.y);
-	const float MinCellPixels = max(min(
-		AxisPixels.x / float(SafeColumns),
-		AxisPixels.y / float(SafeRows)), 1.0e-4f);
-	// Absolute: lattice distance scaled to pixels by one scalar. This is the same single-scalar
-	// conversion the reference implementation makes -- it multiplies by length(featuresize) where
-	// this uses the smaller cell pitch -- and it carries the same caveat, that neither is
-	// direction-correct once the cells stop being square.
-	//
-	// Relative: normalised by the largest edge distance a cell can have, which is what makes the
-	// aspect drop out entirely. In lattice space every cell is a unit square by construction, so
-	// a fraction of the way to the middle means the same thing on any lattice at any resolution.
-	// The cell size cancels for the same reason it cancels in the reference graph, where the
-	// distance is multiplied by length(featuresize) and then divided straight back out again.
-	//
-	// The maximum is not simply half a cell: jitter moves feature points apart and the deepest
-	// interior point moves with them. 0.5 * sqrt(1 + j + j*j/2) is the reference's estimate of
-	// that growth, and it is exactly 0.5 at zero jitter -- so an unjittered cell centre lands on
-	// 1.0 and nothing has to be renormalised by hand.
-	const float SafeJitter = saturate(Jitter);
-	const float MaxEdgeCell =
-		0.5f * sqrt(1.0f + SafeJitter + 0.5f * SafeJitter * SafeJitter);
-	const float RawEdgePixels = EdgeRelative != 0
-		? Cell.EdgeDistance / MaxEdgeCell
-		: Cell.EdgeDistance * MinCellPixels;
-	// Converted into whatever unit the edge is published in, or the subtraction below compares
-	// pixels against cell fractions and the grout comes out either invisible or the whole tile.
-	const float HalfGapPixels = EdgeRelative != 0
-		? (max(GapPixels, 0.0f) * 0.5f / MinCellPixels) / MaxEdgeCell
-		: max(GapPixels, 0.0f) * 0.5f;
-	const bool bValidRegion = RawEdgePixels >= HalfGapPixels;
+	// Ownership always uses the physical pixel distance, keeping Gap Pixels absolute even when
+	// consumers request the relative edge field for cell-proportional bevels.
+	const float HalfGapPixels = max(GapPixels, 0.0f) * 0.5f;
+	const bool bValidRegion = Cell.EdgePixels >= HalfGapPixels;
+	const float RawEdge = EdgeRelative != 0 ? Cell.EdgeRelative : Cell.EdgePixels;
+	const float HalfGapOutput = EdgeRelative != 0
+		? HalfGapPixels / max(Cell.PixelsPerRelativeUnit, 1.0e-4f)
+		: HalfGapPixels;
 
-	// Signed, and that is the change that lets a chamfer sit on either side of the grout: negative
-	// inside the gap, zero on the gap's inner wall, positive into the cell face. Clamping it to
-	// zero here -- which is what this used to do -- threw away the half of the axis the gap
-	// occupies, so a bevel could only ever eat into the cell. Consumers that only want the cell
-	// side take max(x, 0); MixtormatEdgeShade does exactly that.
-	const float EdgeSignedPixels = RawEdgePixels - HalfGapPixels;
+	// Signed in the selected edge unit: negative in grout, zero at its inner wall, positive on the
+	// cell face. Consumers that only want the face continue to clamp their read to zero.
+	const float EdgeSignedPixels = RawEdge - HalfGapOutput;
 
 	const uint Seeded = MixtormatRegionSeed(RegionId, Seed);
 	const float BevelRandom =
@@ -183,8 +369,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Feather works off the raw lattice distance, so the gap has to come back into lattice
 		// units here rather than reusing HalfGapPixels -- that one is in whatever unit the edge
 		// field is published in, which is no longer always pixels.
-		const float GapCell = max(GapPixels, 0.0f) * 0.5f / MinCellPixels;
-		const float InteriorEdgeCell = max(Cell.EdgeDistance - GapCell, 0.0f);
+		const float InteriorEdgeCell =
+			max(Cell.EdgePixels - HalfGapPixels, 0.0f) / Cell.MinCellPixels;
 		const float FeatherWeight = CellFeather > 0.0f
 			? saturate(InteriorEdgeCell / CellFeather)
 			: 1.0f;

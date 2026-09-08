@@ -204,6 +204,8 @@ private:
 	FMixtormatPatternFilter* GetSelectedPatternId();
 	const FMixtormatPatternFilter* GetSelectedPatternId() const;
 	TSharedRef<SWidget> BuildPatternIdControls();
+	TSharedRef<SWidget> BuildPatternModeMenu();
+	TSharedRef<SWidget> BuildGridModeMenu();
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 	FMixtormatRampIdFilter* GetSelectedRampId();

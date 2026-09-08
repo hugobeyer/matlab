@@ -1326,6 +1326,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(uint32, PatternMode)
+		SHADER_PARAMETER(uint32, GridMode)
 		SHADER_PARAMETER(int32, Rows)
 		SHADER_PARAMETER(int32, Columns)
 		SHADER_PARAMETER(float, RowOffset)
@@ -1722,6 +1724,8 @@ namespace MixtormatGpuCompositor
 
 	struct FPatternIdRenderData
 	{
+		EMixtormatPatternMode PatternMode = EMixtormatPatternMode::Grid;
+		EMixtormatGridMode GridMode = EMixtormatGridMode::Straight;
 		int32 Rows = 8;
 		int32 Columns = 8;
 		float RowOffset = 0.0f;
@@ -2140,6 +2144,8 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatPatternIdsCS::FParameters>();
 		Parameters->OutputSize = OutputSize;
 		Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
+		Parameters->PatternMode = static_cast<uint32>(Child.PatternId.PatternMode);
+		Parameters->GridMode = static_cast<uint32>(Child.PatternId.GridMode);
 		Parameters->Rows = Child.PatternId.Rows;
 		Parameters->Columns = Child.PatternId.Columns;
 		Parameters->RowOffset = Child.PatternId.RowOffset;
@@ -2562,6 +2568,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FPatternIdRenderData& PatternData = ChildData.PatternId;
 
+				PatternData.PatternMode = Pattern.PatternMode;
+				PatternData.GridMode = Pattern.GridMode;
 				PatternData.Rows = FMath::Clamp(Pattern.Rows, 1, 256);
 				PatternData.Columns = FMath::Clamp(Pattern.Columns, 1, 256);
 				PatternData.RowOffset = FMath::IsFinite(Pattern.RowOffset)

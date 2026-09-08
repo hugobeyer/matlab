@@ -296,6 +296,33 @@ namespace MixtormatUI
 		return Modes;
 	}
 
+	inline FText PatternModeText(const EMixtormatPatternMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatPatternMode::RunningBond: return LOCTEXT("PatternModeRunningBond", "Running Bond");
+		case EMixtormatPatternMode::Herringbone: return LOCTEXT("PatternModeHerringbone", "Herringbone");
+		case EMixtormatPatternMode::Basketweave: return LOCTEXT("PatternModeBasketweave", "Basketweave");
+		case EMixtormatPatternMode::Hex: return LOCTEXT("PatternModeHex", "Hex");
+		case EMixtormatPatternMode::OctagonSquare: return LOCTEXT("PatternModeOctagonSquare", "Octagon + Square");
+		case EMixtormatPatternMode::Flagstone: return LOCTEXT("PatternModeFlagstone", "Flagstone");
+		case EMixtormatPatternMode::Voronoi: return LOCTEXT("PatternModeVoronoi", "Voronoi");
+		case EMixtormatPatternMode::Hopscotch: return LOCTEXT("PatternModeHopscotch", "Hopscotch");
+		case EMixtormatPatternMode::FrenchAshlar: return LOCTEXT("PatternModeFrenchAshlar", "French / Modular Ashlar");
+		default: return LOCTEXT("PatternModeGrid", "Grid");
+		}
+	}
+
+	inline FText GridModeText(const EMixtormatGridMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatGridMode::Staggered: return LOCTEXT("GridModeStaggered", "Staggered");
+		case EMixtormatGridMode::Diamond: return LOCTEXT("GridModeDiamond", "Diamond / 45 Degree");
+		default: return LOCTEXT("GridModeStraight", "Straight");
+		}
+	}
+
 	inline FText UVRotationText(const EMixtormatUVRotation Rotation)
 	{
 		switch (Rotation)
