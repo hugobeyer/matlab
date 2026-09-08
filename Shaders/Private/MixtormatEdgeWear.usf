@@ -1,219 +1,470 @@
-﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
+#include "/Engine/Public/Platform.ush"
 #include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+
+#define WE_MODE_EDGE_SEED 0
+#define WE_MODE_EDGE_DILATE 1
+#define WE_MODE_WEAR 2
+#define WE_MODE_NORMAL 3
+#define WE_TAU 6.28318530717958647692f
 
 Texture2D<float> SourceHeight;
-Texture2D<float4> SourceNormal;
+Texture2D<float> WornHeight;
+Texture2D<float4> PreviousNormal;
 Texture2D<uint> RegionIds;
 Texture2D<float2> EdgeField;
-Texture2D<float> PlacementMaskTexture;
+Texture2D<float> PreviousEdgeBand;
+Texture2D<float> EdgeBand;
+Texture2D<float> LayerMask;
+Texture2D<float> WearMask;
 SamplerState LinearWrapSampler;
 
 RWTexture2D<float> OutputHeight;
+RWTexture2D<float> OutputWearMask;
+RWTexture2D<float> OutputEdgeBand;
 RWTexture2D<float4> OutputNormal;
-RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
-float EdgeWearAmount;
-float EdgeWearWidth;
-int EdgeWearSamples;
-float EdgeWearIdVariation;
-uint EdgeWearSeed;
-float EdgeWearNormalStrength;
-int EdgeWearNoiseType;
-float EdgeWearNoiseScale;
-float EdgeWearNoiseStrength;
-uint UsePlacementMask;
-float PlacementMaskTiling;
-float PlacementMaskStrength;
-uint InvertPlacementMask;
-uint PlacementMaskBlendMode;
-uint HasEdgeField;
-uint WriteDebug;
+int Mode;
+int EdgeStep;
+int Radius;
+float Slope;
+float Strength;
+float Feather;
+int Directions;
+float AngularAA;
+float Gravity;
+float GravityAngle;
+uint Seed;
+int MacroScale;
+float MacroAmount;
+int CellScale;
+float CellAmount;
+int RidgeScale;
+float RidgeAmount;
+int MicroScale;
+float MicroAmount;
+int WarpScale;
+float WarpAmount;
+float NoiseContrast;
+float IDVariation;
+float IDRadius;
+float IDSlope;
+float IDStrength;
+float IDNoise;
+uint HasPatternEdge;
 
-float3 DecodeNormal(float4 EncodedNormal)
+uint WEHash(uint X)
 {
-	float2 XY = EncodedNormal.xy * 2.0f - 1.0f;
-	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+	X ^= X >> 16;
+	X *= 0x7feb352du;
+	X ^= X >> 15;
+	X *= 0x846ca68bu;
+	X ^= X >> 16;
+	return X;
 }
 
-float3 EncodeNormal(float3 Normal)
+float WEU01(uint H)
 {
-	return Normal * 0.5f + 0.5f;
+	return (float)(H & 0x00ffffffu) * (1.0f / 16777216.0f);
 }
 
-float3 BlendReorientedNormals(float3 BaseNormal, float3 DetailNormal)
+float WEIdRand(uint Id, uint LocalSeed, uint Salt)
 {
-	float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
-	float3 U = DetailNormal * float3(-1.0f, -1.0f, 1.0f);
-	return normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+	return WEU01(WEHash(Id ^ LocalSeed * 0x9e3779b9u ^ Salt));
+}
+
+int WEWrapI(int X, int N)
+{
+	const int SafeN = max(N, 1);
+	const int R = X % SafeN;
+	return R < 0 ? R + SafeN : R;
+}
+
+int2 WEWrapP(int2 P)
+{
+	return int2(WEWrapI(P.x, OutputSize.x), WEWrapI(P.y, OutputSize.y));
+}
+
+float WELoadHeight(int2 P)
+{
+	return SourceHeight.Load(int3(WEWrapP(P), 0));
+}
+
+float2 WERand2(int2 P, uint LocalSeed)
+{
+	const uint H = WEHash((uint)P.x * 0x9e3779b9u ^ (uint)P.y * 0x85ebca6bu ^ LocalSeed * 0xc2b2ae35u);
+	return float2(WEU01(H), WEU01(WEHash(H ^ 0x68bc21ebu)));
+}
+
+float2 WEGrad(int2 P, int Cells, uint LocalSeed)
+{
+	const int2 W = int2(WEWrapI(P.x, Cells), WEWrapI(P.y, Cells));
+	const uint H = WEHash((uint)W.x * 0x9e3779b9u ^ (uint)W.y * 0x85ebca6bu ^ LocalSeed * 0xc2b2ae35u);
+	switch (H & 7u)
+	{
+	case 0u: return float2(1.0f, 0.0f);
+	case 1u: return float2(-1.0f, 0.0f);
+	case 2u: return float2(0.0f, 1.0f);
+	case 3u: return float2(0.0f, -1.0f);
+	case 4u: return float2(0.70710678f, 0.70710678f);
+	case 5u: return float2(-0.70710678f, 0.70710678f);
+	case 6u: return float2(0.70710678f, -0.70710678f);
+	default: return float2(-0.70710678f, -0.70710678f);
+	}
+}
+
+float WEGradNoise(float2 UV, int Cells, uint LocalSeed)
+{
+	Cells = max(Cells, 1);
+	const float2 P = UV * (float)Cells;
+	const int2 IP = (int2)floor(P);
+	const float2 F = P - (float2)IP;
+	const float2 U = F * F * F * (F * (F * 6.0f - 15.0f) + 10.0f);
+	const float N00 = dot(WEGrad(IP, Cells, LocalSeed), F);
+	const float N10 = dot(WEGrad(IP + int2(1, 0), Cells, LocalSeed), F - float2(1.0f, 0.0f));
+	const float N01 = dot(WEGrad(IP + int2(0, 1), Cells, LocalSeed), F - float2(0.0f, 1.0f));
+	const float N11 = dot(WEGrad(IP + int2(1, 1), Cells, LocalSeed), F - float2(1.0f, 1.0f));
+	return saturate(0.5f + lerp(lerp(N00, N10, U.x), lerp(N01, N11, U.x), U.y) * 0.70710678f);
+}
+
+float WEFbm(float2 UV, int Cells, uint LocalSeed)
+{
+	Cells = max(Cells, 1);
+	float N = 0.0f;
+	float W = 0.0f;
+	float A = 0.5f;
+	[unroll(4)]
+	for (int O = 0; O < 4; ++O)
+	{
+		N += WEGradNoise(UV, Cells, LocalSeed + (uint)(O * 137)) * A;
+		W += A;
+		Cells *= 2;
+		A *= 0.5f;
+	}
+	return N / max(W, 1.0e-6f);
+}
+
+float WERidged(float2 UV, int Cells, uint LocalSeed)
+{
+	Cells = max(Cells, 1);
+	float N = 0.0f;
+	float W = 0.0f;
+	float A = 0.55f;
+	[unroll(4)]
+	for (int O = 0; O < 4; ++O)
+	{
+		float R = 1.0f - abs(WEGradNoise(UV, Cells, LocalSeed + (uint)(O * 193)) * 2.0f - 1.0f);
+		R *= R;
+		N += R * A;
+		W += A;
+		Cells *= 2;
+		A *= 0.52f;
+	}
+	return N / max(W, 1.0e-6f);
+}
+
+float WEChebyCellular(float2 UV, int Cells, uint LocalSeed)
+{
+	Cells = max(Cells, 1);
+	const float2 P = UV * (float)Cells;
+	const int2 Base = (int2)floor(P);
+	float Best = 1.0e20f;
+	float Second = 1.0e20f;
+	[unroll]
+	for (int OY = -1; OY <= 1; ++OY)
+	{
+		[unroll]
+		for (int OX = -1; OX <= 1; ++OX)
+		{
+			const int2 C = Base + int2(OX, OY);
+			const int2 WC = int2(WEWrapI(C.x, Cells), WEWrapI(C.y, Cells));
+			const float2 R = 0.10f + WERand2(WC, LocalSeed) * 0.80f;
+			const float2 D = abs(P - ((float2)C + R));
+			const float Dist = max(D.x, D.y);
+			if (Dist < Best)
+			{
+				Second = Best;
+				Best = Dist;
+			}
+			else if (Dist < Second)
+			{
+				Second = Dist;
+			}
+		}
+	}
+	const float Body = 1.0f - smoothstep(0.10f, 0.82f, Best);
+	const float Interior = saturate((Second - Best) * 1.55f);
+	const float Corner = 1.0f - smoothstep(0.05f, 0.42f, Second - Best);
+	return saturate(Body * 0.42f + Interior * 0.43f + Corner * 0.15f);
+}
+
+float2 WEWarp(float2 UV, int Scale, uint LocalSeed, float Amount)
+{
+	Scale = max(Scale, 1);
+	const float2 W = float2(
+		WEFbm(UV, Scale, LocalSeed + 701u) * 2.0f - 1.0f,
+		WEFbm(UV, Scale, LocalSeed + 1301u) * 2.0f - 1.0f);
+	return frac(UV + W * (max(Amount, 0.0f) / (float)Scale));
+}
+
+float WEShapeSigned(float X, float Contrast)
+{
+	X = clamp(X, -1.0f, 1.0f);
+	const float A = pow(abs(X), 1.0f / max(Contrast, 0.05f));
+	return X < 0.0f ? -A : A;
 }
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	const uint2 Pixel = DispatchThreadId.xy;
-	if (any(Pixel >= uint2(OutputSize)))
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
 	{
 		return;
 	}
 
-	const float2 InvSize = 1.0f / float2(OutputSize);
-	const float2 UV = (float2(Pixel) + 0.5f) * InvSize;
-	const float BaseHeight = SourceHeight.Load(int3(Pixel, 0));
-	const float4 EncodedNormal = SourceNormal.Load(int3(Pixel, 0));
+	const int2 Pixel = int2(DispatchThreadId.xy);
 
-	if (EdgeWearAmount <= 0.0f)
+	if (Mode == WE_MODE_EDGE_SEED)
 	{
-		OutputHeight[Pixel] = BaseHeight;
-		OutputNormal[Pixel] = EncodedNormal;
-		if (WriteDebug != 0)
+		const uint CenterId = RegionIds.Load(int3(Pixel, 0));
+		float Boundary = 0.0f;
+		if (CenterId != MIXTORMAT_INVALID_REGION)
 		{
-			OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-		}
-		return;
-	}
-
-	// 1. Edge Band Detection
-	float EdgeDistancePixels = 0.0f;
-	float EdgeMask = 0.0f;
-	uint CenterId = RegionIds.Load(int3(Pixel, 0));
-
-	if (HasEdgeField != 0)
-	{
-		const float2 Edge = EdgeField.Load(int3(Pixel, 0));
-		EdgeDistancePixels = abs(Edge.x);
-		EdgeMask = 1.0f - saturate(EdgeDistancePixels / max(EdgeWearWidth, 1.0e-3f));
-	}
-	else
-	{
-		// Cross-check neighborhood when no analytic edge field is bound
-		int DiffCount = 0;
-		const int Radius = max(1, int(ceil(EdgeWearWidth * 0.5f)));
-		const int2 Offsets[4] = { int2(-Radius, 0), int2(Radius, 0), int2(0, -Radius), int2(0, Radius) };
-		for (int k = 0; k < 4; ++k)
-		{
-			int2 NeighborPixel = (int2(Pixel) + Offsets[k]) % OutputSize;
-			if (NeighborPixel.x < 0) NeighborPixel.x += OutputSize.x;
-			if (NeighborPixel.y < 0) NeighborPixel.y += OutputSize.y;
-			uint NId = RegionIds.Load(int3(NeighborPixel, 0));
-			if (NId != CenterId)
+			[unroll]
+			for (int OY = -1; OY <= 1; ++OY)
 			{
-				DiffCount++;
+				[unroll]
+				for (int OX = -1; OX <= 1; ++OX)
+				{
+					if (OX == 0 && OY == 0)
+					{
+						continue;
+					}
+					const uint OtherId = RegionIds.Load(int3(WEWrapP(Pixel + int2(OX, OY)), 0));
+					Boundary = max(Boundary, OtherId != CenterId ? 1.0f : 0.0f);
+				}
 			}
 		}
-		EdgeMask = saturate(float(DiffCount) * 0.35f);
-	}
-
-	if (EdgeMask <= 1.0e-4f)
-	{
-		OutputHeight[Pixel] = BaseHeight;
-		OutputNormal[Pixel] = EncodedNormal;
-		if (WriteDebug != 0)
-		{
-			OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-		}
+		OutputEdgeBand[Pixel] = Boundary;
 		return;
 	}
 
-	// 2. Per-ID Variation
-	const uint CellSeed = MixtormatRegionSeed(CenterId, EdgeWearSeed);
-	const float CellRand = MixtormatRegionRandom(CellSeed);
-	const float VarScale = saturate(EdgeWearIdVariation);
-	const float LocalAmount = EdgeWearAmount * lerp(1.0f - VarScale * 0.6f, 1.0f + VarScale * 0.6f, CellRand);
-	const float LocalWidth = EdgeWearWidth * lerp(1.0f - VarScale * 0.4f, 1.0f + VarScale * 0.4f, CellRand);
-
-	// 3. Noise Direction Perturbation
-	const int NoiseP = max(int(EdgeWearNoiseScale), 1);
-	float2 NoiseDir = float2(0.0f, 0.0f);
-
-	if (EdgeWearNoiseType == 0) // Perlin
+	if (Mode == WE_MODE_EDGE_DILATE)
 	{
-		float3 N = MixtormatPeriodicNoiseD(UV * float(NoiseP), NoiseP, CellSeed);
-		NoiseDir = float2(N.y, N.z);
-	}
-	else if (EdgeWearNoiseType == 1) // Cellular
-	{
-		float2 CellPt = MixtormatCellPoint(int2(floor(UV * float(NoiseP))), NoiseP, CellSeed, 1.0f);
-		NoiseDir = normalize(frac(UV * float(NoiseP)) - frac(CellPt) + 1.0e-4f);
-	}
-	else // Curl
-	{
-		NoiseDir = MixtormatPeriodicCurlField(UV, NoiseP, CellSeed);
-	}
-
-	float3 DecodedNormal = DecodeNormal(EncodedNormal);
-	float2 SlopeDir = float2(-DecodedNormal.x, -DecodedNormal.y);
-	float SlopeLen = length(SlopeDir);
-	float2 BaseDir = SlopeLen > 1.0e-3f ? (SlopeDir / SlopeLen) : float2(1.0f, 0.0f);
-	float2 MarchDir = normalize(lerp(BaseDir, NoiseDir, saturate(EdgeWearNoiseStrength)));
-
-	// 4. Slope-Blur Ray Marching (MIN Height Erosion)
-	const int ClampedSamples = clamp(EdgeWearSamples, 4, 12);
-	const float StepUV = (LocalWidth * InvSize.x) / float(ClampedSamples);
-	float MinH = BaseHeight;
-
-	for (int i = 1; i <= ClampedSamples; ++i)
-	{
-		float2 TapUV = frac(UV + MarchDir * (float(i) * StepUV));
-		float TapHeight = SourceHeight.SampleLevel(LinearWrapSampler, TapUV, 0.0f);
-		MinH = min(MinH, TapHeight);
-	}
-
-	// 5. Optional Mask Modulation
-	if (UsePlacementMask != 0)
-	{
-		float2 MaskUV = frac(UV * max(PlacementMaskTiling, 1.0f));
-		float MaskVal = PlacementMaskTexture.SampleLevel(LinearWrapSampler, MaskUV, 0.0f);
-		if (InvertPlacementMask != 0)
+		const int Step = max(EdgeStep, 1);
+		float V = 0.0f;
+		[unroll]
+		for (int OY = -1; OY <= 1; ++OY)
 		{
-			MaskVal = 1.0f - MaskVal;
+			[unroll]
+			for (int OX = -1; OX <= 1; ++OX)
+			{
+				V = max(V, PreviousEdgeBand.Load(int3(WEWrapP(Pixel + int2(OX, OY) * Step), 0)));
+			}
 		}
-		MaskVal = lerp(1.0f, MaskVal, saturate(PlacementMaskStrength));
-		EdgeMask = MixtormatApplyMaskOperation(PlacementMaskBlendMode, EdgeMask, MaskVal);
+		OutputEdgeBand[Pixel] = V;
+		return;
 	}
 
-	// 6. Height Resolve
-	float ErodedHeight = lerp(BaseHeight, MinH, saturate(LocalAmount));
-	float FinalHeight = lerp(BaseHeight, ErodedHeight, saturate(EdgeMask));
-	OutputHeight[Pixel] = FinalHeight;
-
-	// 7. Normal Update
-	const float CarveDelta = BaseHeight - FinalHeight;
-	if (CarveDelta > 1.0e-5f && EdgeWearNormalStrength > 0.0f)
+	if (Mode == WE_MODE_NORMAL)
 	{
-		// Local 3x3 Sobel gradient on the carved height
-		int xm = Pixel.x > 0 ? Pixel.x - 1 : OutputSize.x - 1;
-		int xp = Pixel.x + 1 < OutputSize.x ? Pixel.x + 1 : 0;
-		int ym = Pixel.y > 0 ? Pixel.y - 1 : OutputSize.y - 1;
-		int yp = Pixel.y + 1 < OutputSize.y ? Pixel.y + 1 : 0;
+		const int XM = WEWrapI(Pixel.x - 1, OutputSize.x);
+		const int XP = WEWrapI(Pixel.x + 1, OutputSize.x);
+		const int YM = WEWrapI(Pixel.y - 1, OutputSize.y);
+		const int YP = WEWrapI(Pixel.y + 1, OutputSize.y);
 
-		float h00 = SourceHeight.Load(int3(xm, ym, 0));
-		float h10 = SourceHeight.Load(int3(Pixel.x, ym, 0));
-		float h20 = SourceHeight.Load(int3(xp, ym, 0));
-		float h01 = SourceHeight.Load(int3(xm, Pixel.y, 0));
-		float h21 = SourceHeight.Load(int3(xp, Pixel.y, 0));
-		float h02 = SourceHeight.Load(int3(xm, yp, 0));
-		float h12 = SourceHeight.Load(int3(Pixel.x, yp, 0));
-		float h22 = SourceHeight.Load(int3(xp, yp, 0));
+		#define WE_CARVE(PX, PY) (SourceHeight.Load(int3(PX, PY, 0)) - WornHeight.Load(int3(PX, PY, 0)))
+		const float Dmm = WE_CARVE(XM, YM);
+		const float D0m = WE_CARVE(Pixel.x, YM);
+		const float Dpm = WE_CARVE(XP, YM);
+		const float Dm0 = WE_CARVE(XM, Pixel.y);
+		const float Dp0 = WE_CARVE(XP, Pixel.y);
+		const float Dmp = WE_CARVE(XM, YP);
+		const float D0p = WE_CARVE(Pixel.x, YP);
+		const float Dpp = WE_CARVE(XP, YP);
+		#undef WE_CARVE
 
-		float dX = (h20 + 2.0f * h21 + h22) - (h00 + 2.0f * h01 + h02);
-		float dY = (h02 + 2.0f * h12 + h22) - (h00 + 2.0f * h10 + h20);
-
-		float3 DeltaNormal = normalize(float3(-dX * EdgeWearNormalStrength, -dY * EdgeWearNormalStrength, 1.0f));
-		float3 ResultNormal = BlendReorientedNormals(DecodedNormal, DeltaNormal);
-		OutputNormal[Pixel] = float4(EncodeNormal(ResultNormal), EncodedNormal.w);
+		const float2 CarveGradient = float2(
+			(Dpm + 2.0f * Dp0 + Dpp) - (Dmm + 2.0f * Dm0 + Dmp),
+			(Dmp + 2.0f * D0p + Dpp) - (Dmm + 2.0f * D0m + Dpm));
+		const float3 CarveNormal = normalize(float3(CarveGradient, 1.0f));
+		const float4 EncodedBase = PreviousNormal.Load(int3(Pixel, 0));
+		const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);
+		const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+		const float3 U = CarveNormal * float3(-1.0f, -1.0f, 1.0f);
+		const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+		OutputNormal[Pixel] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
+		return;
 	}
-	else
+
+	const float H0 = SourceHeight.Load(int3(Pixel, 0));
+	const uint Rid = RegionIds.Load(int3(Pixel, 0));
+	if (Strength <= 0.0f || Rid == MIXTORMAT_INVALID_REGION)
 	{
-		OutputNormal[Pixel] = EncodedNormal;
+		OutputHeight[Pixel] = H0;
+		OutputWearMask[Pixel] = 0.0f;
+		return;
 	}
 
-	if (WriteDebug != 0)
+	const float2 UV = frac((float2(Pixel) + 0.5f) / float2(OutputSize));
+	const float Placement = saturate(LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+	if (Placement <= 0.0f)
 	{
-		OutputDebug[Pixel] = float4(EdgeMask, saturate(CarveDelta * 10.0f), MinH, 1.0f);
+		OutputHeight[Pixel] = H0;
+		OutputWearMask[Pixel] = 0.0f;
+		return;
 	}
+
+	const int BaseRadius = clamp(Radius, 1, 64);
+	if (HasPatternEdge != 0u)
+	{
+		const float SignedEdgePixels = EdgeField.Load(int3(Pixel, 0)).x;
+		const int ConservativeRadius = clamp((int)ceil(
+			(float)BaseRadius * max(1.0f + abs(IDRadius) * saturate(IDVariation), 0.15f) * 1.80f), 1, 64);
+		if (SignedEdgePixels < 0.0f || SignedEdgePixels > (float)ConservativeRadius + 0.5f)
+		{
+			OutputHeight[Pixel] = H0;
+			OutputWearMask[Pixel] = 0.0f;
+			return;
+		}
+	}
+	else if (EdgeBand.Load(int3(Pixel, 0)) <= 0.0f)
+	{
+		OutputHeight[Pixel] = H0;
+		OutputWearMask[Pixel] = 0.0f;
+		return;
+	}
+
+	const float IDAmount = saturate(IDVariation);
+	const float IDR0 = WEIdRand(Rid, Seed + 17u, 0x51ed270bu) * 2.0f - 1.0f;
+	const float IDR1 = WEIdRand(Rid, Seed + 29u, 0xd8163841u) * 2.0f - 1.0f;
+	const float IDR2 = WEIdRand(Rid, Seed + 43u, 0xcb1ab31fu) * 2.0f - 1.0f;
+	const float IDR3 = WEIdRand(Rid, Seed + 71u, 0x8da6b343u) * 2.0f - 1.0f;
+	const float IDRadiusMul = max(1.0f + IDR0 * IDAmount * IDRadius, 0.15f);
+	const int RegionRadius = clamp((int)floor((float)BaseRadius * IDRadiusMul + 0.5f), 1, 64);
+	const int DirectionCount = clamp(Directions, 8, 32);
+
+	const float2 WarpedUV = WEWarp(UV, max(WarpScale, 1), Seed + 41u, max(WarpAmount, 0.0f));
+	const float Macro = WEFbm(WarpedUV, max(MacroScale, 1), Seed + 11u) * 2.0f - 1.0f;
+	const float Cell = WEChebyCellular(WarpedUV, max(CellScale, 1), Seed + 173u) * 2.0f - 1.0f;
+	const float Ridge = WERidged(WarpedUV, max(RidgeScale, 1), Seed + 349u) * 2.0f - 1.0f;
+	const float Micro = WEFbm(UV, max(MicroScale, 1), Seed + 613u) * 2.0f - 1.0f;
+	const float IDNoiseAmount = IDAmount * IDNoise;
+	const float MacroWeight = MacroAmount * max(1.0f + IDR1 * IDNoiseAmount, 0.0f);
+	const float CellWeight = CellAmount * max(1.0f - IDR1 * IDNoiseAmount, 0.0f);
+	const float RidgeWeight = RidgeAmount * max(1.0f + IDR3 * IDNoiseAmount, 0.0f);
+	const float MicroWeight = MicroAmount * max(1.0f - IDR3 * IDNoiseAmount, 0.0f);
+	const float Noise = WEShapeSigned(
+		Macro * MacroWeight + Cell * CellWeight + Ridge * RidgeWeight + Micro * MicroWeight,
+		max(NoiseContrast, 0.05f));
+	const float Resistance = max(1.0f + Noise, 0.06f);
+	const float RadiusNoise = Macro * MacroWeight * 0.65f + Cell * CellWeight * 0.85f + Ridge * RidgeWeight * 0.25f;
+	const float RadiusScale = clamp(1.0f - RadiusNoise, 0.30f, 1.80f);
+	const int LocalRadius = clamp((int)floor((float)RegionRadius * RadiusScale + 0.5f), 1, 64);
+
+	if (HasPatternEdge != 0u && EdgeField.Load(int3(Pixel, 0)).x > (float)LocalRadius + 0.5f)
+	{
+		OutputHeight[Pixel] = H0;
+		OutputWearMask[Pixel] = 0.0f;
+		return;
+	}
+
+	const float IDSlopeMul = max(1.0f + IDR1 * IDAmount * IDSlope, 0.10f);
+	const float LocalSlope = max(Slope, 0.0f) * Resistance * IDSlopeMul;
+	const float StrengthNoise = 1.0f - Ridge * RidgeWeight * 0.40f - Micro * MicroWeight * 0.35f;
+	const float IDStrengthMul = max(1.0f + IDR2 * IDAmount * IDStrength, 0.0f);
+	const float LocalStrength = saturate(Strength) * clamp(StrengthNoise, 0.20f, 1.50f) * IDStrengthMul * Placement;
+	if (LocalStrength <= 0.0f)
+	{
+		OutputHeight[Pixel] = H0;
+		OutputWearMask[Pixel] = 0.0f;
+		return;
+	}
+
+	const float LocalGravity = saturate(Gravity);
+	const float GravityRadians = GravityAngle * 0.017453292519943295f;
+	const float2 GravityDirection = float2(cos(GravityRadians), sin(GravityRadians));
+	float Best0 = H0;
+	float Best1 = H0;
+	float Best2 = H0;
+	float Best3 = H0;
+	const float AngleOffset = (WEU01(WEHash(Seed * 0x9e3779b9u)) - 0.5f) * (WE_TAU / (float)DirectionCount);
+
+	[loop]
+	for (int D = 0; D < 32; ++D)
+	{
+		if (D >= DirectionCount)
+		{
+			break;
+		}
+		const float A = WE_TAU * ((float)D / (float)DirectionCount) + AngleOffset;
+		const float2 Dir = float2(cos(A), sin(A));
+		const float Align = dot(Dir, GravityDirection);
+		const float DirectionalSlope = LocalSlope * max(1.0f - 0.70f * LocalGravity * Align, 0.10f);
+		float DirTarget = H0;
+		int2 PreviousOffset = int2(0, 0);
+
+		[loop]
+		for (int Step = 1; Step <= 64; ++Step)
+		{
+			if (Step > LocalRadius)
+			{
+				break;
+			}
+			const int2 Offset = (int2)round(Dir * (float)Step);
+			if ((Offset.x == 0 && Offset.y == 0) || all(Offset == PreviousOffset))
+			{
+				continue;
+			}
+			PreviousOffset = Offset;
+			const float Distance = length((float2)Offset);
+			if (Distance > (float)LocalRadius + 0.5f)
+			{
+				continue;
+			}
+			const float NeighbourHeight = WELoadHeight(Pixel + Offset);
+			const float Allowed = NeighbourHeight + DirectionalSlope * (Distance / (float)LocalRadius);
+			const float Excess = H0 - Allowed;
+			if (Excess <= 0.0f)
+			{
+				continue;
+			}
+			float FW = 1.0f;
+			if (Feather > 0.0f)
+			{
+				FW = smoothstep(0.0f, max(DirectionalSlope * Feather, 1.0e-6f), Excess);
+			}
+			DirTarget = min(DirTarget, H0 - Excess * FW);
+		}
+
+		if (DirTarget < Best0)
+		{
+			Best3 = Best2;
+			Best2 = Best1;
+			Best1 = Best0;
+			Best0 = DirTarget;
+		}
+		else if (DirTarget < Best1)
+		{
+			Best3 = Best2;
+			Best2 = Best1;
+			Best1 = DirTarget;
+		}
+		else if (DirTarget < Best2)
+		{
+			Best3 = Best2;
+			Best2 = DirTarget;
+		}
+		else if (DirTarget < Best3)
+		{
+			Best3 = DirTarget;
+		}
+	}
+
+	const float AverageBest = (Best0 + Best1 + Best2 + Best3) * 0.25f;
+	const float Target = lerp(Best0, AverageBest, saturate(AngularAA));
+	const float Potential = max(H0 - Target, 0.0f);
+	const float Amount = Potential * LocalStrength;
+	OutputHeight[Pixel] = H0 - Amount;
+	OutputWearMask[Pixel] = Amount > 0.0f ? saturate(LocalStrength) : 0.0f;
 }

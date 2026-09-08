@@ -27,7 +27,8 @@ enum class EMixtormatEffectType : uint8
 	Stain = 1 UMETA(DisplayName = "Stain"),
 	Erosion = 2 UMETA(DisplayName = "Erosion"),
 	Grade = 3 UMETA(DisplayName = "Grade"),
-	Chipping = 4 UMETA(DisplayName = "Chipping")
+	Chipping = 4 UMETA(DisplayName = "Chipping"),
+	WornEdges = 5 UMETA(DisplayName = "Worn Edges")
 };
 
 // The one place the Surface/Filter split is decided. It used to be declared and never called,
@@ -42,6 +43,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::Erosion:
 	case EMixtormatEffectType::Grade:
 	case EMixtormatEffectType::Chipping:
+	case EMixtormatEffectType::WornEdges:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;

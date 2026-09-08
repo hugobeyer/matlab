@@ -1024,6 +1024,73 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
+
+// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
+// localization passes, the Houdini directional-MIN solve, and final-height normal regeneration.
+class FMixtormatEdgeWearCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatEdgeWearCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatEdgeWearCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Mode)
+		SHADER_PARAMETER(int32, EdgeStep)
+		SHADER_PARAMETER(int32, Radius)
+		SHADER_PARAMETER(float, Slope)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(int32, Directions)
+		SHADER_PARAMETER(float, AngularAA)
+		SHADER_PARAMETER(float, Gravity)
+		SHADER_PARAMETER(float, GravityAngle)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(int32, MacroScale)
+		SHADER_PARAMETER(float, MacroAmount)
+		SHADER_PARAMETER(int32, CellScale)
+		SHADER_PARAMETER(float, CellAmount)
+		SHADER_PARAMETER(int32, RidgeScale)
+		SHADER_PARAMETER(float, RidgeAmount)
+		SHADER_PARAMETER(int32, MicroScale)
+		SHADER_PARAMETER(float, MicroAmount)
+		SHADER_PARAMETER(int32, WarpScale)
+		SHADER_PARAMETER(float, WarpAmount)
+		SHADER_PARAMETER(float, NoiseContrast)
+		SHADER_PARAMETER(float, IDVariation)
+		SHADER_PARAMETER(float, IDRadius)
+		SHADER_PARAMETER(float, IDSlope)
+		SHADER_PARAMETER(float, IDStrength)
+		SHADER_PARAMETER(float, IDNoise)
+		SHADER_PARAMETER(uint32, HasPatternEdge)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, WornHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousEdgeBand)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EdgeBand)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, WearMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputWearMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputEdgeBand)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatEdgeWearCS,
+	"/Plugin/MaterialLab/Private/MixtormatEdgeWear.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMixtormatPeelingCS final : public FGlobalShader
 {
 public:
@@ -1667,6 +1734,32 @@ namespace MixtormatGpuCompositor
 		bool bChipInvertMask = false;
 		uint32 ChipSeed = 1;
 		float ChipRoughnessAmount = 0.0f;
+
+		int32 EdgeWearRadius = 24;
+		float EdgeWearSlope = 0.35f;
+		float EdgeWearStrength = 0.75f;
+		float EdgeWearFeather = 1.0f;
+		int32 EdgeWearDirections = 16;
+		float EdgeWearAngularAA = 0.35f;
+		float EdgeWearGravity = 0.0f;
+		float EdgeWearGravityAngle = 90.0f;
+		uint32 EdgeWearSeed = 1;
+		int32 EdgeWearMacroScale = 12;
+		float EdgeWearMacroAmount = 0.75f;
+		int32 EdgeWearCellScale = 16;
+		float EdgeWearCellAmount = 1.0f;
+		int32 EdgeWearRidgeScale = 12;
+		float EdgeWearRidgeAmount = 1.0f;
+		int32 EdgeWearMicroScale = 32;
+		float EdgeWearMicroAmount = 0.5f;
+		int32 EdgeWearWarpScale = 24;
+		float EdgeWearWarpAmount = 0.25f;
+		float EdgeWearNoiseContrast = 0.5f;
+		float EdgeWearIdVariation = 1.0f;
+		float EdgeWearIdRadius = 0.5f;
+		float EdgeWearIdSlope = 0.3f;
+		float EdgeWearIdStrength = 0.25f;
+		float EdgeWearIdNoise = 1.0f;
 		bool bGradeInvertMask = false;
 	};
 
@@ -3128,6 +3221,36 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ChipRoughnessAmount = LayerEffect.ChipRoughnessAmount;
 			}
 
+
+			if (ResolvedType == EMixtormatEffectType::WornEdges)
+			{
+				EffectData.EdgeWearRadius = FMath::Clamp(LayerEffect.EdgeWearRadius, 1, 64);
+				EffectData.EdgeWearSlope = LayerEffect.EdgeWearSlope;
+				EffectData.EdgeWearStrength = LayerEffect.EdgeWearStrength;
+				EffectData.EdgeWearFeather = LayerEffect.EdgeWearFeather;
+				EffectData.EdgeWearDirections = FMath::Clamp(LayerEffect.EdgeWearDirections, 8, 32);
+				EffectData.EdgeWearAngularAA = LayerEffect.EdgeWearAngularAA;
+				EffectData.EdgeWearGravity = LayerEffect.EdgeWearGravity;
+				EffectData.EdgeWearGravityAngle = LayerEffect.EdgeWearGravityAngle;
+				EffectData.EdgeWearSeed = static_cast<uint32>(FMath::Max(LayerEffect.EdgeWearSeed, 0));
+				EffectData.EdgeWearMacroScale = LayerEffect.EdgeWearMacroScale;
+				EffectData.EdgeWearMacroAmount = LayerEffect.EdgeWearMacroAmount;
+				EffectData.EdgeWearCellScale = LayerEffect.EdgeWearCellScale;
+				EffectData.EdgeWearCellAmount = LayerEffect.EdgeWearCellAmount;
+				EffectData.EdgeWearRidgeScale = LayerEffect.EdgeWearRidgeScale;
+				EffectData.EdgeWearRidgeAmount = LayerEffect.EdgeWearRidgeAmount;
+				EffectData.EdgeWearMicroScale = LayerEffect.EdgeWearMicroScale;
+				EffectData.EdgeWearMicroAmount = LayerEffect.EdgeWearMicroAmount;
+				EffectData.EdgeWearWarpScale = LayerEffect.EdgeWearWarpScale;
+				EffectData.EdgeWearWarpAmount = LayerEffect.EdgeWearWarpAmount;
+				EffectData.EdgeWearNoiseContrast = LayerEffect.EdgeWearNoiseContrast;
+				EffectData.EdgeWearIdVariation = LayerEffect.EdgeWearIdVariation;
+				EffectData.EdgeWearIdRadius = LayerEffect.EdgeWearIdRadius;
+				EffectData.EdgeWearIdSlope = LayerEffect.EdgeWearIdSlope;
+				EffectData.EdgeWearIdStrength = LayerEffect.EdgeWearIdStrength;
+				EffectData.EdgeWearIdNoise = LayerEffect.EdgeWearIdNoise;
+			}
+
 			if (ResolvedType == EMixtormatEffectType::Stain)
 			{
 				EffectData.StainMode = static_cast<int32>(LayerEffect.StainMode);
@@ -3604,6 +3727,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatEdgeWearCS> EdgeWearShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatReduceMinMaxCS> ReduceMinMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGradeCS> GradeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -3766,9 +3890,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									{
 										break;
 									}
+									const bool bWornEdgesConsumer =
+										Other.Type == EMixtormatLayerChildType::Effect
+										&& Other.Effect.Type == EMixtormatEffectType::WornEdges;
 									if (Other.Type == EMixtormatLayerChildType::HsvFilter
 										|| Other.Type == EMixtormatLayerChildType::RandomId
-										|| Other.Type == EMixtormatLayerChildType::RampId)
+										|| Other.Type == EMixtormatLayerChildType::RampId
+										|| bWornEdgesConsumer)
 									{
 										bWanted = true;
 										break;
@@ -3845,6 +3973,16 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// contact AO and border normals rather than only the displacement output.
 					const FEffectRenderData* PendingErosion = nullptr;
 					const FEffectRenderData* PendingChipping = nullptr;
+
+
+					struct FPendingWornEdges
+					{
+						const FEffectRenderData* Effect = nullptr;
+						FRDGTextureRef RegionIds = nullptr;
+						FRDGTextureRef PatternEdge = nullptr;
+						bool bHasPatternEdge = false;
+					};
+					TArray<FPendingWornEdges, TInlineAllocator<2>> PendingWornEdges;
 
 					// Craquelure relief, deferred out of the child loop for the same reason
 					// erosion and chipping are: the loop runs before the layer composites, so a
@@ -4796,6 +4934,48 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							// makes sense, and the reverse would have erosion smoothing chips it
 							// never saw.
 							PendingChipping = &Effect;
+							continue;
+						}
+
+
+						if (Effect.Type == EMixtormatEffectType::WornEdges)
+						{
+							int32 ProducerChildIndex = INDEX_NONE;
+							FRDGTextureRef WearRegionIds = nullptr;
+							for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+							{
+								if (Entry.Key < Child.SourceChildIndex)
+								{
+									ProducerChildIndex = Entry.Key;
+									WearRegionIds = Entry.Value;
+								}
+							}
+							if (!WearRegionIds)
+							{
+								// Task B contract: without an upstream Region ID producer Worn Edges
+								// is a deterministic no-op rather than inventing an ID system.
+								continue;
+							}
+
+							FPendingWornEdges& Wear = PendingWornEdges.AddDefaulted_GetRef();
+							Wear.Effect = &Effect;
+							Wear.RegionIds = WearRegionIds;
+							for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
+							{
+								if (PatternOutput.SourceChildIndex != ProducerChildIndex)
+								{
+									continue;
+								}
+								// OutputEdge.x is signed pixels only in absolute mode. Relative mode
+								// stores a cell fraction, so use the ID-derived band there rather than
+								// comparing unlike units to Radius pixels.
+								if (PatternOutput.Settings && !PatternOutput.Settings->bRelativeEdgeWidth)
+								{
+									Wear.PatternEdge = PatternOutput.Edge;
+									Wear.bHasPatternEdge = PatternOutput.Edge != nullptr;
+								}
+								break;
+							}
 							continue;
 						}
 
@@ -6187,6 +6367,233 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 						AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
 						AddCopyTexturePass(GraphBuilder, ReliefN, OutputN[WriteIndex]);
+					}
+
+
+					// Worn Edges runs after Pattern/Ramp and craquelure relief so its input is the
+					// actual structural + material height, and before Chipping so later damage sees
+					// the rounded surface. Multiple Worn Edges nodes chain in child order.
+					for (int32 WearIndex = 0; WearIndex < PendingWornEdges.Num(); ++WearIndex)
+					{
+						const FPendingWornEdges& PendingWear = PendingWornEdges[WearIndex];
+						const FEffectRenderData& Wear = *PendingWear.Effect;
+						if (Wear.EdgeWearStrength <= 0.0f)
+						{
+							continue;
+						}
+
+						const FIntVector WearGroups(
+							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+							1);
+						const FRDGTextureDesc WearScalarDesc = FRDGTextureDesc::Create2D(
+							Request.Resolution,
+							PF_R16F,
+							FClearValueBinding::Black,
+							TexCreate_ShaderResource | TexCreate_UAV);
+
+						FRDGTextureRef WearSourceH = GraphBuilder.CreateTexture(
+							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.SourceH"));
+						FRDGTextureRef WornH = GraphBuilder.CreateTexture(
+							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Height"));
+						FRDGTextureRef WornN = GraphBuilder.CreateTexture(
+							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Normal"));
+						FRDGTextureRef WearMask = GraphBuilder.CreateTexture(
+							WearScalarDesc, TEXT("Mixtormat.WornEdges.Mask"));
+						AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], WearSourceH);
+
+						// One layout is shared by all four shader modes. Tiny distinct dummies keep
+						// every reflected slot valid without ever binding one resource as both SRV
+						// and UAV in the same pass.
+						const FRDGTextureDesc TinyScalarDesc = FRDGTextureDesc::Create2D(
+							FIntPoint(1, 1), PF_R16F, FClearValueBinding::Black,
+							TexCreate_ShaderResource | TexCreate_UAV);
+						const FRDGTextureDesc TinyNormalDesc = FRDGTextureDesc::Create2D(
+							FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding::Black,
+							TexCreate_ShaderResource | TexCreate_UAV);
+						FRDGTextureRef ReadDummy = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.ReadDummy"));
+						FRDGTextureRef WriteDummyA = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyA"));
+						FRDGTextureRef WriteDummyB = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyB"));
+						FRDGTextureRef WriteDummyC = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyC"));
+						FRDGTextureRef NormalDummy = GraphBuilder.CreateTexture(TinyNormalDesc, TEXT("Mixtormat.WornEdges.NormalDummy"));
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ReadDummy), FVector4f(0.0f));
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyA), FVector4f(0.0f));
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyB), FVector4f(0.0f));
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyC), FVector4f(0.0f));
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(NormalDummy), FVector4f(0.0f));
+
+						FRDGTextureRef FinalEdgeBand = ReadDummy;
+						if (!PendingWear.bHasPatternEdge)
+						{
+							FRDGTextureRef Band[2] = {
+								GraphBuilder.CreateTexture(WearScalarDesc, TEXT("Mixtormat.WornEdges.BandA")),
+								GraphBuilder.CreateTexture(WearScalarDesc, TEXT("Mixtormat.WornEdges.BandB"))};
+							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Band[0]), FVector4f(0.0f));
+							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Band[1]), FVector4f(0.0f));
+
+							FMixtormatEdgeWearCS::FParameters* SeedP =
+								GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
+							SeedP->OutputSize = Request.Resolution;
+							SeedP->Mode = 0;
+							SeedP->EdgeStep = 1;
+							SeedP->Radius = Wear.EdgeWearRadius;
+							SeedP->Slope = Wear.EdgeWearSlope;
+							SeedP->Strength = Wear.EdgeWearStrength;
+							SeedP->Feather = Wear.EdgeWearFeather;
+							SeedP->Directions = Wear.EdgeWearDirections;
+							SeedP->AngularAA = Wear.EdgeWearAngularAA;
+							SeedP->Gravity = Wear.EdgeWearGravity;
+							SeedP->GravityAngle = Wear.EdgeWearGravityAngle;
+							SeedP->Seed = Wear.EdgeWearSeed;
+							SeedP->MacroScale = Wear.EdgeWearMacroScale;
+							SeedP->MacroAmount = Wear.EdgeWearMacroAmount;
+							SeedP->CellScale = Wear.EdgeWearCellScale;
+							SeedP->CellAmount = Wear.EdgeWearCellAmount;
+							SeedP->RidgeScale = Wear.EdgeWearRidgeScale;
+							SeedP->RidgeAmount = Wear.EdgeWearRidgeAmount;
+							SeedP->MicroScale = Wear.EdgeWearMicroScale;
+							SeedP->MicroAmount = Wear.EdgeWearMicroAmount;
+							SeedP->WarpScale = Wear.EdgeWearWarpScale;
+							SeedP->WarpAmount = Wear.EdgeWearWarpAmount;
+							SeedP->NoiseContrast = Wear.EdgeWearNoiseContrast;
+							SeedP->IDVariation = Wear.EdgeWearIdVariation;
+							SeedP->IDRadius = Wear.EdgeWearIdRadius;
+							SeedP->IDSlope = Wear.EdgeWearIdSlope;
+							SeedP->IDStrength = Wear.EdgeWearIdStrength;
+							SeedP->IDNoise = Wear.EdgeWearIdNoise;
+							SeedP->HasPatternEdge = 0u;
+							SeedP->SourceHeight = WearSourceH;
+							SeedP->WornHeight = ReadDummy;
+							SeedP->PreviousNormal = OutputN[WriteIndex];
+							SeedP->RegionIds = PendingWear.RegionIds;
+							SeedP->EdgeField = EmptyPatternUV;
+							SeedP->PreviousEdgeBand = ReadDummy;
+							SeedP->EdgeBand = ReadDummy;
+							SeedP->LayerMask = CombinedMask;
+							SeedP->WearMask = ReadDummy;
+							SeedP->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							SeedP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
+							SeedP->OutputWearMask = GraphBuilder.CreateUAV(WriteDummyB);
+							SeedP->OutputEdgeBand = GraphBuilder.CreateUAV(Band[0]);
+							SeedP->OutputNormal = GraphBuilder.CreateUAV(NormalDummy);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.EdgeSeed", LayerIndex, WearIndex),
+								EdgeWearShader,
+								SeedP,
+								WearGroups);
+
+							const float MaxIdRadiusMul = FMath::Max(
+								1.0f + FMath::Abs(Wear.EdgeWearIdRadius) * FMath::Clamp(Wear.EdgeWearIdVariation, 0.0f, 1.0f),
+								0.15f);
+							const int32 ConservativeRadius = FMath::Clamp(
+								FMath::CeilToInt(static_cast<float>(Wear.EdgeWearRadius) * MaxIdRadiusMul * 1.80f),
+								1,
+								64);
+							int32 BandIndex = 0;
+							int32 Covered = 0;
+							int32 DilationStep = 1;
+							while (Covered < ConservativeRadius)
+							{
+								const int32 ThisStep = FMath::Min(DilationStep, ConservativeRadius - Covered);
+								const int32 ReadBand = BandIndex;
+								const int32 WriteBand = 1 - ReadBand;
+								FMixtormatEdgeWearCS::FParameters* DilateP =
+									GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
+								*DilateP = *SeedP;
+								DilateP->Mode = 1;
+								DilateP->EdgeStep = ThisStep;
+								DilateP->PreviousEdgeBand = Band[ReadBand];
+								DilateP->OutputEdgeBand = GraphBuilder.CreateUAV(Band[WriteBand]);
+								FComputeShaderUtils::AddPass(
+									GraphBuilder,
+									RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.EdgeDilate%d", LayerIndex, WearIndex, Covered),
+									EdgeWearShader,
+									DilateP,
+									WearGroups);
+								BandIndex = WriteBand;
+								Covered += ThisStep;
+								DilationStep *= 2;
+							}
+							FinalEdgeBand = Band[BandIndex];
+						}
+
+						auto FillWearParameters = [&](FMixtormatEdgeWearCS::FParameters* P)
+						{
+							P->OutputSize = Request.Resolution;
+							P->EdgeStep = 1;
+							P->Radius = Wear.EdgeWearRadius;
+							P->Slope = Wear.EdgeWearSlope;
+							P->Strength = Wear.EdgeWearStrength;
+							P->Feather = Wear.EdgeWearFeather;
+							P->Directions = Wear.EdgeWearDirections;
+							P->AngularAA = Wear.EdgeWearAngularAA;
+							P->Gravity = Wear.EdgeWearGravity;
+							P->GravityAngle = Wear.EdgeWearGravityAngle;
+							P->Seed = Wear.EdgeWearSeed;
+							P->MacroScale = Wear.EdgeWearMacroScale;
+							P->MacroAmount = Wear.EdgeWearMacroAmount;
+							P->CellScale = Wear.EdgeWearCellScale;
+							P->CellAmount = Wear.EdgeWearCellAmount;
+							P->RidgeScale = Wear.EdgeWearRidgeScale;
+							P->RidgeAmount = Wear.EdgeWearRidgeAmount;
+							P->MicroScale = Wear.EdgeWearMicroScale;
+							P->MicroAmount = Wear.EdgeWearMicroAmount;
+							P->WarpScale = Wear.EdgeWearWarpScale;
+							P->WarpAmount = Wear.EdgeWearWarpAmount;
+							P->NoiseContrast = Wear.EdgeWearNoiseContrast;
+							P->IDVariation = Wear.EdgeWearIdVariation;
+							P->IDRadius = Wear.EdgeWearIdRadius;
+							P->IDSlope = Wear.EdgeWearIdSlope;
+							P->IDStrength = Wear.EdgeWearIdStrength;
+							P->IDNoise = Wear.EdgeWearIdNoise;
+							P->HasPatternEdge = PendingWear.bHasPatternEdge ? 1u : 0u;
+							P->SourceHeight = WearSourceH;
+							P->WornHeight = ReadDummy;
+							P->PreviousNormal = OutputN[WriteIndex];
+							P->RegionIds = PendingWear.RegionIds;
+							P->EdgeField = PendingWear.bHasPatternEdge ? PendingWear.PatternEdge : EmptyPatternUV;
+							P->PreviousEdgeBand = ReadDummy;
+							P->EdgeBand = FinalEdgeBand;
+							P->LayerMask = CombinedMask;
+							P->WearMask = ReadDummy;
+							P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+						};
+
+						FMixtormatEdgeWearCS::FParameters* WearP =
+							GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
+						FillWearParameters(WearP);
+						WearP->Mode = 2;
+						WearP->OutputHeight = GraphBuilder.CreateUAV(WornH);
+						WearP->OutputWearMask = GraphBuilder.CreateUAV(WearMask);
+						WearP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
+						WearP->OutputNormal = GraphBuilder.CreateUAV(NormalDummy);
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.Wear", LayerIndex, WearIndex),
+							EdgeWearShader,
+							WearP,
+							WearGroups);
+
+						FMixtormatEdgeWearCS::FParameters* NormalP =
+							GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
+						FillWearParameters(NormalP);
+						NormalP->Mode = 3;
+						NormalP->WornHeight = WornH;
+						NormalP->WearMask = WearMask;
+						NormalP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
+						NormalP->OutputWearMask = GraphBuilder.CreateUAV(WriteDummyB);
+						NormalP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
+						NormalP->OutputNormal = GraphBuilder.CreateUAV(WornN);
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.Normal", LayerIndex, WearIndex),
+							EdgeWearShader,
+							NormalP,
+							WearGroups);
+
+						AddCopyTexturePass(GraphBuilder, WornH, HeightTargets[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, WornN, OutputN[WriteIndex]);
 					}
 
 					// Chipping filters the layer output the same way erosion does, after both

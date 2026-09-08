@@ -809,6 +809,97 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 		];
 }
 
+
+TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
+{
+	const auto Wear = [this]() { return GetSelectedWornEdges(); };
+	const auto Slider = [this, Wear](
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint = FText::GetEmpty())
+	{
+		return MakeMemberSlider<FMixtormatLayerEffect>(Label, Wear, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpShape", "Shape")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("WearRadius", "Radius"), Wear, &FMixtormatLayerEffect::EdgeWearRadius, 1.0, 64.0, 24,
+			LOCTEXT("WearRadiusHint", "Maximum directional search reach in output pixels.")),
+		Slider(LOCTEXT("WearSlope", "Slope"), &FMixtormatLayerEffect::EdgeWearSlope, 0.0, 4.0, 0.35, 0.01,
+			LOCTEXT("WearSlopeHint", "Allowed rise from a lower neighbour before it can pull the current height down."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("WearStrength", "Strength"), &FMixtormatLayerEffect::EdgeWearStrength, 0.0, 1.0, 0.75, 0.01,
+			LOCTEXT("WearStrengthHint", "Blend toward the directional MIN target. Zero is an exact pass-through and skips the effect.")),
+		Slider(LOCTEXT("WearFeather", "Feather"), &FMixtormatLayerEffect::EdgeWearFeather, 0.0, 8.0, 1.0, 0.01,
+			LOCTEXT("WearFeatherHint", "Softens the erosion threshold; it does not blur the finished height."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpDirection", "Direction")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("WearDirections", "Directions"), Wear, &FMixtormatLayerEffect::EdgeWearDirections, 8.0, 32.0, 16,
+			LOCTEXT("WearDirectionsHint", "Exact uniformly-spaced ray count. Higher values reduce angular stepping and cost proportionally more.")),
+		Slider(LOCTEXT("WearAngularAA", "Angular AA"), &FMixtormatLayerEffect::EdgeWearAngularAA, 0.0, 1.0, 0.35, 0.01,
+			LOCTEXT("WearAngularAAHint", "Blends the strongest directional minimum toward the average of the four strongest minima."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("WearGravity", "Gravity"), &FMixtormatLayerEffect::EdgeWearGravity, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("WearGravityHint", "Biases allowed slope by alignment with Gravity Angle. Zero is isotropic.")),
+		Slider(LOCTEXT("WearGravityAngle", "Angle"), &FMixtormatLayerEffect::EdgeWearGravityAngle, -360.0, 360.0, 90.0, 1.0,
+			LOCTEXT("WearGravityAngleHint", "Gravity direction in tangent-space degrees."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpVariation", "Variation")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatLayerEffect>(
+		LOCTEXT("WearSeed", "Seed"), Wear, &FMixtormatLayerEffect::EdgeWearSeed, 0.0, 1024.0, 1,
+		LOCTEXT("WearSeedHint", "Reseeds the periodic resistance fields and independent per-region draws.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMacroScale", "Macro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMacroScale, 1.0, 512.0, 12),
+		Slider(LOCTEXT("WearMacroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMacroAmount, 0.0, 4.0, 0.75, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearCellScale", "Cell Scale"), Wear, &FMixtormatLayerEffect::EdgeWearCellScale, 1.0, 512.0, 16),
+		Slider(LOCTEXT("WearCellAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearCellAmount, 0.0, 4.0, 1.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearRidgeScale", "Ridge Scale"), Wear, &FMixtormatLayerEffect::EdgeWearRidgeScale, 1.0, 512.0, 12),
+		Slider(LOCTEXT("WearRidgeAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearRidgeAmount, 0.0, 4.0, 1.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMicroScale", "Micro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMicroScale, 1.0, 1024.0, 32),
+		Slider(LOCTEXT("WearMicroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMicroAmount, 0.0, 4.0, 0.5, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearWarpScale", "Warp Scale"), Wear, &FMixtormatLayerEffect::EdgeWearWarpScale, 1.0, 512.0, 24),
+		Slider(LOCTEXT("WearWarpAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearWarpAmount, 0.0, 2.0, 0.25, 0.01)));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("WearNoiseContrast", "Noise Contrast"), &FMixtormatLayerEffect::EdgeWearNoiseContrast, 0.05, 8.0, 0.5, 0.01,
+		LOCTEXT("WearNoiseContrastHint", "Signed shaping of the combined resistance field.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpId", "Per ID")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("WearIdVariation", "Variation"), &FMixtormatLayerEffect::EdgeWearIdVariation, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("WearIdVariationHint", "Master amount for deterministic variation from the nearest Region ID.")),
+		Slider(LOCTEXT("WearIdRadius", "Radius"), &FMixtormatLayerEffect::EdgeWearIdRadius, 0.0, 4.0, 0.5, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("WearIdSlope", "Slope"), &FMixtormatLayerEffect::EdgeWearIdSlope, 0.0, 4.0, 0.3, 0.01),
+		Slider(LOCTEXT("WearIdStrength", "Strength"), &FMixtormatLayerEffect::EdgeWearIdStrength, 0.0, 4.0, 0.25, 0.01)));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("WearIdNoise", "Noise"), &FMixtormatLayerEffect::EdgeWearIdNoise, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("WearIdNoiseHint", "Varies the relative Macro/Cell/Ridge/Micro family weights independently per Region ID.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedWornEdges() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("WornEdgesHeading", "WORN EDGES"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCraquelureBlendModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -3768,6 +3859,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildChippingControls()]
+					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]
 					+ SScrollBox::Slot()[BuildLayerMaskControls()]
 					+ SScrollBox::Slot()[BuildCraquelureControls()]

@@ -168,6 +168,11 @@ private:
 	const FMixtormatLayerEffect* GetSelectedChipping() const;
 	FReply AddChippingToLayer(int32 LayerIndex);
 
+	FMixtormatLayerEffect* GetSelectedWornEdges();
+	const FMixtormatLayerEffect* GetSelectedWornEdges() const;
+	FReply AddWornEdgesToLayer(int32 LayerIndex);
+	TSharedRef<SWidget> BuildWornEdgesControls();
+
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);

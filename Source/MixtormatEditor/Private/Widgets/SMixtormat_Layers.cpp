@@ -1715,6 +1715,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 					: LOCTEXT("WetStainEffectName", "Wet Stain");
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
 			}
 		}
@@ -1727,6 +1728,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
 		}
 	}
@@ -2266,6 +2268,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddChippingEffect", "Chipping"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddChippingToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddWornEdgesEffect", "Worn Edges"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddWornEdgesToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
 		MixtormatIcons::Effect(),
@@ -3319,6 +3325,28 @@ FReply SMixtormat::AddChippingToLayer(const int32 LayerIndex)
 	return FReply::Handled();
 }
 
+
+FReply SMixtormat::AddWornEdgesToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
 FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -3378,6 +3406,29 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedChipping() const
 	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
 	if (!Effect || !Effect->Effect.IsNull()
 		|| Effect->ProceduralType != EMixtormatEffectType::Chipping)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::WornEdges)
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	if (!Effect || !Effect->Effect.IsNull()
+		|| Effect->ProceduralType != EMixtormatEffectType::WornEdges)
 	{
 		return nullptr;
 	}

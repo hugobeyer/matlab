@@ -1065,6 +1065,81 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
 	float ChipRoughnessAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearRadius = 24;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearSlope = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearStrength = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearFeather = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearDirections = 16;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearAngularAA = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearGravity = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearGravityAngle = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearSeed = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearMacroScale = 12;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearMacroAmount = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearCellScale = 16;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearCellAmount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearRidgeScale = 12;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearRidgeAmount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearMicroScale = 32;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearMicroAmount = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	int32 EdgeWearWarpScale = 24;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearWarpAmount = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearNoiseContrast = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearIdVariation = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearIdRadius = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearIdSlope = 0.3f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearIdStrength = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
+	float EdgeWearIdNoise = 1.0f;
 };
 
 // Two constructions, not two presets for one.
