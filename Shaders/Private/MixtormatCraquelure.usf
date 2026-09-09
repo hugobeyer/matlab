@@ -1,6 +1,6 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 
 // Craquelure. A crack network on a cellular lattice, blended into the layer mask.
 //

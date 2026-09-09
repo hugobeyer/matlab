@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 // Craquelure relief. Turns the crack distance field into a groove in the composited height and a
 // matching perturbation of the composited normal.

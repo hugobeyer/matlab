@@ -1,7 +1,7 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
 // Full-resolution stain transport, resolved into a layer mask.
 //

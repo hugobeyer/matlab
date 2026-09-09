@@ -1,7 +1,7 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
 // One periodic lattice solve publishes four views of the same regions:
 // - sparse pixel-index IDs for the existing region consumers,

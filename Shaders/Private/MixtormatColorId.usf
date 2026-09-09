@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 
 // Colour ID mask. Isolates the regions of an ID map that carry one of a set of chosen colours.
 //

@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // Random value per region. Reads a cluster filter's ID map and emits one 0..1 value per region,
 // the same for every pixel inside it.

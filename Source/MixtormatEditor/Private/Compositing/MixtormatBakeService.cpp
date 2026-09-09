@@ -516,7 +516,7 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 
 	SetTextureParameter(TEXT("DA_BaseColor"), Result.BaseColor);
 	SetTextureParameter(TEXT("DA_Normal"), Result.Normal);
-	SetTextureParameter(TEXT("DA_RAM"), Result.RAM);
+	SetTextureParameter(TEXT("DA_RAMH"), Result.RAM);
 	SetTextureParameter(TEXT("DA_Height"), Result.Height);
 	SetScalarParameter(TEXT("DA_Tiling"), 1.0f);
 	SetScalarParameter(TEXT("DA_RoughnessBias"), 0.5f);

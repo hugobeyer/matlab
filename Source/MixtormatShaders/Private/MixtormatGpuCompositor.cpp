@@ -364,7 +364,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCompositeCS,
-	"/Plugin/MaterialLab/Private/MixtormatComposite.usf",
+	"/Plugin/Mixtormat/Private/MixtormatComposite.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -402,7 +402,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatMaskCS,
-	"/Plugin/MaterialLab/Private/MixtormatMask.usf",
+	"/Plugin/Mixtormat/Private/MixtormatMask.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -454,7 +454,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatColorIdCS,
-	"/Plugin/MaterialLab/Private/MixtormatColorId.usf",
+	"/Plugin/Mixtormat/Private/MixtormatColorId.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -510,7 +510,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatGeneratedMaskCS,
-	"/Plugin/MaterialLab/Private/MixtormatGeneratedMask.usf",
+	"/Plugin/Mixtormat/Private/MixtormatGeneratedMask.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -557,7 +557,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelure.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelure.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -597,7 +597,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureSeedCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
 	"SeedCS",
 	SF_Compute);
 
@@ -635,7 +635,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureGrowCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
 	"GrowCS",
 	SF_Compute);
 
@@ -677,7 +677,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureResolveCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureGrow.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
 	"ResolveCS",
 	SF_Compute);
 
@@ -704,7 +704,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureDistanceSeedCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureDistance.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
 	"SeedCS",
 	SF_Compute);
 
@@ -729,7 +729,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureDistanceStepCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureDistance.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
 	"StepCS",
 	SF_Compute);
 
@@ -753,7 +753,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureDistanceResolveCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureDistance.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
 	"ResolveDistanceCS",
 	SF_Compute);
 
@@ -791,7 +791,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCraquelureReliefCS,
-	"/Plugin/MaterialLab/Private/MixtormatCraquelureRelief.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureRelief.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -857,7 +857,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatErosionCS,
-	"/Plugin/MaterialLab/Private/MixtormatErosion.usf",
+	"/Plugin/Mixtormat/Private/MixtormatErosion.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -894,7 +894,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatGradeCS,
-	"/Plugin/MaterialLab/Private/MixtormatGrade.usf",
+	"/Plugin/Mixtormat/Private/MixtormatGrade.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -927,7 +927,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatCarveShadeCS,
-	"/Plugin/MaterialLab/Private/MixtormatCarveShade.usf",
+	"/Plugin/Mixtormat/Private/MixtormatCarveShade.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -958,7 +958,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatReduceMinMaxCS,
-	"/Plugin/MaterialLab/Private/MixtormatReduceMinMax.usf",
+	"/Plugin/Mixtormat/Private/MixtormatReduceMinMax.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1019,7 +1019,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatChippingCS,
-	"/Plugin/MaterialLab/Private/MixtormatChipping.usf",
+	"/Plugin/Mixtormat/Private/MixtormatChipping.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1087,7 +1087,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatEdgeWearCS,
-	"/Plugin/MaterialLab/Private/MixtormatEdgeWear.usf",
+	"/Plugin/Mixtormat/Private/MixtormatEdgeWear.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1132,7 +1132,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatPeelingCS,
-	"/Plugin/MaterialLab/Private/MixtormatPeeling.usf",
+	"/Plugin/Mixtormat/Private/MixtormatPeeling.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1199,7 +1199,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatPeelFieldCS,
-	"/Plugin/MaterialLab/Private/MixtormatPeelField.usf",
+	"/Plugin/Mixtormat/Private/MixtormatPeelField.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1227,7 +1227,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatMaskBlurCS,
-	"/Plugin/MaterialLab/Private/MixtormatMaskBlur.usf",
+	"/Plugin/Mixtormat/Private/MixtormatMaskBlur.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1294,7 +1294,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatStainCS,
-	"/Plugin/MaterialLab/Private/MixtormatStain.usf",
+	"/Plugin/Mixtormat/Private/MixtormatStain.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1343,7 +1343,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatClusterIdsCS,
-	"/Plugin/MaterialLab/Private/MixtormatClusterIds.usf",
+	"/Plugin/Mixtormat/Private/MixtormatClusterIds.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1382,7 +1382,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatRandomIdCS,
-	"/Plugin/MaterialLab/Private/MixtormatRandomId.usf",
+	"/Plugin/Mixtormat/Private/MixtormatRandomId.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1427,7 +1427,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatPatternIdsCS,
-	"/Plugin/MaterialLab/Private/MixtormatPatternIds.usf",
+	"/Plugin/Mixtormat/Private/MixtormatPatternIds.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1458,7 +1458,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatEdgeShadeCS,
-	"/Plugin/MaterialLab/Private/MixtormatEdgeShade.usf",
+	"/Plugin/Mixtormat/Private/MixtormatEdgeShade.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1495,7 +1495,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatRampIdsCS,
-	"/Plugin/MaterialLab/Private/MixtormatRampIds.usf",
+	"/Plugin/Mixtormat/Private/MixtormatRampIds.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -1521,7 +1521,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatPatternHeightMaxCS,
-	"/Plugin/MaterialLab/Private/MixtormatRampIdRelief.usf",
+	"/Plugin/Mixtormat/Private/MixtormatRampIdRelief.usf",
 	"PatternHeightMaxCS",
 	SF_Compute);
 
@@ -1567,7 +1567,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatRampIdReliefCS,
-	"/Plugin/MaterialLab/Private/MixtormatRampIdRelief.usf",
+	"/Plugin/Mixtormat/Private/MixtormatRampIdRelief.usf",
 	"MainCS",
 	SF_Compute);
 
@@ -7196,7 +7196,7 @@ void FMixtormatGpuCompositor::BindOutputs(UMaterialInstanceDynamic& MaterialInst
 {
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_BaseColor"), GetBaseColorOutput());
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_Normal"), GetNormalOutput());
-	MaterialInstance.SetTextureParameterValue(TEXT("DA_RAM"), GetRAMOutput());
+	MaterialInstance.SetTextureParameterValue(TEXT("DA_RAMH"), GetRAMOutput());
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_Height"), GetHeightOutput());
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_Tiling"), 1.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessBias"), 0.5f);

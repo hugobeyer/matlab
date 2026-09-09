@@ -33,7 +33,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatDecodeGradientCS,
-	"/Plugin/MaterialLab/Private/MixtormatNormalHeight.usf",
+	"/Plugin/Mixtormat/Private/MixtormatNormalHeight.usf",
 	"DecodeGradientCS",
 	SF_Compute);
 
@@ -58,7 +58,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatBitReverseCS,
-	"/Plugin/MaterialLab/Private/MixtormatNormalHeight.usf",
+	"/Plugin/Mixtormat/Private/MixtormatNormalHeight.usf",
 	"BitReverseCS",
 	SF_Compute);
 
@@ -85,7 +85,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatFFTRadix2CS,
-	"/Plugin/MaterialLab/Private/MixtormatNormalHeight.usf",
+	"/Plugin/Mixtormat/Private/MixtormatNormalHeight.usf",
 	"FFTCS",
 	SF_Compute);
 
@@ -109,7 +109,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatPoissonCS,
-	"/Plugin/MaterialLab/Private/MixtormatNormalHeight.usf",
+	"/Plugin/Mixtormat/Private/MixtormatNormalHeight.usf",
 	"PoissonCS",
 	SF_Compute);
 
@@ -133,7 +133,7 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(
 	FMixtormatExtractHeightCS,
-	"/Plugin/MaterialLab/Private/MixtormatNormalHeight.usf",
+	"/Plugin/Mixtormat/Private/MixtormatNormalHeight.usf",
 	"ExtractHeightCS",
 	SF_Compute);
 

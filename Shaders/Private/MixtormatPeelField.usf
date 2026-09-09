@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
 
 // Procedural peel field. Replaces the authored PDM/MSK/H/SDF texture set with a front
 // grown across the surface, so peeling can be driven by a mask and by the material

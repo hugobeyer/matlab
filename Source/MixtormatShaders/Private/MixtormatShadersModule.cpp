@@ -8,10 +8,10 @@ class FMixtormatShadersModule final : public IModuleInterface
 public:
 	virtual void StartupModule() override
 	{
-		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("MaterialLab"));
+		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("Mixtormat"));
 		check(Plugin.IsValid());
 		AddShaderSourceDirectoryMapping(
-			TEXT("/Plugin/MaterialLab"),
+			TEXT("/Plugin/Mixtormat"),
 			FPaths::Combine(Plugin->GetBaseDir(), TEXT("Shaders")));
 	}
 };

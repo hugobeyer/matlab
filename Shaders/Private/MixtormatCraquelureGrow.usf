@@ -1,7 +1,7 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCellular.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 // Propagated craquelure. Cracks nucleate at seed points and grow outward as a cellular
 // automaton, steered by a stress/toughness/flow field and stopped where they meet each other.

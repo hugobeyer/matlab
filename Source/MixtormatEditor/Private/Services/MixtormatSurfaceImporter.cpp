@@ -697,9 +697,13 @@ namespace MixtormatImporter
 		}
 
 		Instance->Modify();
+		if (Instance->Parent != &Parent)
+		{
+			UMaterialEditingLibrary::SetMaterialInstanceParent(Instance, &Parent);
+		}
 		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_BaseColor"), &BaseColor);
 		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_Normal"), &Normal);
-		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_RAM"), &Ram);
+		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_RAMH"), &Ram);
 		const float SafeIOR = FMath::Max(1.0f, DefaultIOR);
 		const float DielectricF0 = FMath::Square((SafeIOR - 1.0f) / (SafeIOR + 1.0f));
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(

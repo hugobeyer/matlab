@@ -1,10 +1,10 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatCurvature.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatColorOps.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatDriver.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatColorOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;

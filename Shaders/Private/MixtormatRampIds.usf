@@ -1,5 +1,5 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // Per-region gradient. Gives every region its own local frame and runs a linear ramp across it,
 // oriented by a random angle drawn off the region's ID.

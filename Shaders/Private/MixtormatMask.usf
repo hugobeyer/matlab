@@ -1,6 +1,6 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IncomingMask;

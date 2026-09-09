@@ -1,5 +1,5 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 #define WE_MODE_EDGE_SEED 0
 #define WE_MODE_EDGE_DILATE 1

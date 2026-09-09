@@ -1,5 +1,5 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 // Tileable stacked-gully erosion for material height fields. The filter is evaluated once per
 // pixel: the source slope chooses the first direction, and analytical stripe derivatives steer

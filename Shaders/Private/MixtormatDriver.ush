@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // The order is fixed and is the order the popover lists:
 //

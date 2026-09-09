@@ -1,7 +1,7 @@
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatUV.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
 // Keep all file-scope bindings in FMixtormatClusterIdsCS::FParameters. A single MainCS
 // uses Stage for every dispatch, so no entry point has a partial parameter layout.

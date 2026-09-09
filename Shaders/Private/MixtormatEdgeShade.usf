@@ -1,5 +1,5 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatEdgeShading.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatEdgeShading.ush"
 
 Texture2D<float2> EdgeField;
 Texture2D<float4> SourceRAM;

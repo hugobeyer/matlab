@@ -6,7 +6,7 @@
 namespace
 {
 	const FName CurrentProductName(TEXT("Mixtormat"));
-	const FName CurrentPluginName(TEXT("MaterialLab"));
+	const FName CurrentPluginName(TEXT("Mixtormat"));
 
 	FString PackageChild(const FString& Root, const FString& Child)
 	{

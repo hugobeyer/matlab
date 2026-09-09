@@ -1,6 +1,6 @@
 ﻿#include "/Engine/Public/Platform.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatRegionId.ush"
-#include "/Plugin/MaterialLab/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 
 // Per-region tilt. Takes the gradient field the ramp filter produced and uses it to lift one side
 // of every region and sink the other, in the composited height and the matching normal.

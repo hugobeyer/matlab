@@ -1,7 +1,7 @@
 ﻿#ifndef MATERIAL_LAB_CELLULAR_USH
 #define MATERIAL_LAB_CELLULAR_USH
 
-#include "/Plugin/MaterialLab/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 // Periodic cellular noise. The shared foundation for craquelure, chipping, per-cell colour
 // and per-cell placement -- everything that needs to know which cell a pixel belongs to.
