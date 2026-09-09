@@ -1,5 +1,6 @@
 #include "Services/MixtormatSurfaceImporter.h"
 
+#include "Services/MixtormatPaths.h"
 #include "AssetImportTask.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -23,7 +24,6 @@
 #include "Misc/Paths.h"
 #include "Misc/SecureHash.h"
 #include "ObjectTools.h"
-#include "Interfaces/IPluginManager.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 #include "UObject/Package.h"
 
@@ -152,7 +152,9 @@ namespace MixtormatImporter
 
 	bool IsPluginAssetPath(const FString& PackagePath)
 	{
-		return PackagePath.StartsWith(TEXT("/MaterialLab/"), ESearchCase::CaseSensitive);
+		return PackagePath.StartsWith(
+					FMixtormatPaths::PluginContentRoot() + TEXT("/"),
+					ESearchCase::CaseSensitive);
 	}
 
 	bool SavePluginAsset(UObject& Asset, const TCHAR* AssetLabel, TArray<FString>& Errors)
@@ -659,7 +661,7 @@ namespace MixtormatImporter
 	{
 		return LoadObject<UMaterial>(
 			nullptr,
-			TEXT("/MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
+			*FMixtormatPaths::MasterMaterialObjectPath());
 	}
 
 	UMaterialInstanceConstant* CreateOrUpdatePreviewMaterial(
@@ -675,7 +677,7 @@ namespace MixtormatImporter
 		FString InstanceName = SurfaceAssetName;
 		InstanceName.RemoveFromStart(TEXT("ML_"));
 		InstanceName = TEXT("MI_") + InstanceName;
-		const FString DestinationPath = FString::Printf(TEXT("/MaterialLab/Materials/Instances/%s"), *Family);
+		const FString DestinationPath = FMixtormatPaths::MaterialInstanceFamilyRoot(Family);
 		const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *DestinationPath, *InstanceName, *InstanceName);
 
 		UMaterialInstanceConstant* Instance = LoadObject<UMaterialInstanceConstant>(nullptr, *ObjectPath);
@@ -741,13 +743,10 @@ FText FMixtormatImportResult::ToMessage() const
 
 FString FMixtormatSurfaceImporter::GetPluginTexturesRoot()
 {
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("MaterialLab"));
-	if (Plugin.IsValid())
-	{
-		return FPaths::ConvertRelativePathToFull(
-			Plugin->GetBaseDir() / TEXT("Content/Textures"));
-	}
-	return FString();
+	const FString SourceTexturesDir = FMixtormatPaths::SourceTexturesDir();
+	return SourceTexturesDir.IsEmpty()
+		? FString()
+		: FPaths::ConvertRelativePathToFull(SourceTexturesDir);
 }
 
 TArray<FString> FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories()
@@ -829,7 +828,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedMasks()
 		if (ImportTexture(
 			AssetTools,
 			MaskFile,
-			TEXT("/MaterialLab/Masks"),
+			FMixtormatPaths::MasksRoot(),
 			EMapType::Ram,
 			Result))
 		{
@@ -886,7 +885,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedNormals()
 			Category = TEXT("General");
 		}
 
-		const FString DestinationPath = TEXT("/MaterialLab/Normals/") + Category;
+		const FString DestinationPath = FMixtormatPaths::NormalCategoryRoot(Category);
 		if (ImportTexture(
 			AssetTools,
 			NormalFile,
@@ -1055,7 +1054,9 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 	UMaterial* PreviewMaster = LoadSubstrateMaster();
 	if (!PreviewMaster)
 	{
-		Result.Errors.Add(TEXT("Required master material is missing: /MaterialLab/Materials/M_MaterialLab_Substrate"));
+		Result.Errors.Add(FString::Printf(
+			TEXT("Required master material is missing: %s"),
+			*FMixtormatPaths::MasterMaterialObjectPath()));
 		return Result;
 	}
 
@@ -1091,8 +1092,8 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		TArray<FString> Parts;
 		Identity.ParseIntoArray(Parts, TEXT("_"), true);
 		const FString Family = Parts.IsEmpty() ? TEXT("Uncategorized") : Parts[0];
-		const FString TexturePath = FString::Printf(TEXT("/MaterialLab/Textures/%s/Raw"), *Family);
-		const FString SurfacePath = FString::Printf(TEXT("/MaterialLab/Surfaces/%s"), *Family);
+		const FString TexturePath = FMixtormatPaths::RawTextureFamilyRoot(Family);
+		const FString SurfacePath = FMixtormatPaths::SurfaceFamilyRoot(Family);
 		FString SurfaceAssetName = Set.BaseName;
 		SurfaceAssetName.RemoveFromStart(TEXT("TX_"));
 		SurfaceAssetName = TEXT("ML_") + SurfaceAssetName;

@@ -16,6 +16,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "RenderingThread.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
+#include "Services/MixtormatPaths.h"
 #include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
@@ -60,8 +61,7 @@ namespace MixtormatPreview
 	// UpdateScene -- and Mixtormat calls that whenever lighting changes or an HDRI is rotated.
 	// A material pushed onto the component would survive until the first light change and then
 	// silently revert to the engine grid.
-	const TCHAR* const StudioFloorMaterialPath =
-		TEXT("/MaterialLab/Materials/MI_ML_Studio_Floor.MI_ML_Studio_Floor");
+	const FString StudioFloorMaterialPath = FMixtormatPaths::StudioFloorMaterialObjectPath();
 
 	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile)
 	{
@@ -300,7 +300,7 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		{
 			PreviewMaterial = LoadObject<UMaterialInterface>(
 				nullptr,
-				TEXT("/MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
+				*FMixtormatPaths::MasterMaterialObjectPath());
 		}
 		if (!PreviewMaterial)
 		{
@@ -408,18 +408,18 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 		return;
 	}
 
-	const TCHAR* PluginMeshPath = TEXT("/MaterialLab/Meshes/SM_MaterialLab_Sphere.SM_MaterialLab_Sphere");
+	FString PluginMeshPath = FMixtormatPaths::SphereMeshObjectPath();
 	const TCHAR* FallbackMeshPath = TEXT("/Engine/EditorMeshes/EditorSphere.EditorSphere");
 	FRotator MeshRotation = FRotator::ZeroRotator;
 
 	switch (MeshType)
 	{
 	case EMixtormatPreviewMesh::Plane:
-		PluginMeshPath = TEXT("/MaterialLab/Meshes/SM_MaterialLab_Plane.SM_MaterialLab_Plane");
+		PluginMeshPath = FMixtormatPaths::PlaneMeshObjectPath();
 		FallbackMeshPath = TEXT("/Engine/BasicShapes/Plane.Plane");
 		break;
 	case EMixtormatPreviewMesh::Cube:
-		PluginMeshPath = TEXT("/MaterialLab/Meshes/SM_MaterialLab_Cube.SM_MaterialLab_Cube");
+		PluginMeshPath = FMixtormatPaths::CubeMeshObjectPath();
 		FallbackMeshPath = TEXT("/Engine/BasicShapes/Cube.Cube");
 		break;
 	case EMixtormatPreviewMesh::Sphere:
@@ -427,7 +427,7 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 		break;
 	}
 
-	UStaticMesh* PreviewMesh = LoadObject<UStaticMesh>(nullptr, PluginMeshPath);
+	UStaticMesh* PreviewMesh = LoadObject<UStaticMesh>(nullptr, *PluginMeshPath);
 	if (!PreviewMesh)
 	{
 		PreviewMesh = LoadObject<UStaticMesh>(nullptr, FallbackMeshPath);

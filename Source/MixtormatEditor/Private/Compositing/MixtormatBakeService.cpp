@@ -1,5 +1,6 @@
 #include "Compositing/MixtormatBakeService.h"
 
+#include "Services/MixtormatPaths.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "Editor.h"
@@ -324,15 +325,13 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		return Result;
 	}
 
-	UMaterialInterface* Master = LoadObject<UMaterialInterface>(
-		nullptr,
-		TEXT("/MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
+	const FString MasterPath = FMixtormatPaths::MasterMaterialObjectPath();
+	UMaterialInterface* Master = LoadObject<UMaterialInterface>(nullptr, *MasterPath);
 	if (!Master)
 	{
-		Result.Errors.Add(NSLOCTEXT(
-			"MixtormatBake",
-			"MissingMaster",
-			"Required master is missing: /MaterialLab/Materials/M_MaterialLab_Substrate.M_MaterialLab_Substrate"));
+		Result.Errors.Add(FText::Format(
+			NSLOCTEXT("MixtormatBake", "MissingMaster", "Required master is missing: {0}"),
+			FText::FromString(MasterPath)));
 		return Result;
 	}
 

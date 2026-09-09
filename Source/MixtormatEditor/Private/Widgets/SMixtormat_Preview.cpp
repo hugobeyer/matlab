@@ -1,5 +1,6 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Services/MixtormatPaths.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -840,7 +841,7 @@ TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
 		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 	FARFilter HdriFilter;
 	HdriFilter.ClassPaths.Add(UTextureCube::StaticClass()->GetClassPathName());
-	HdriFilter.PackagePaths.Add(FName(TEXT("/MaterialLab/Lighting")));
+	HdriFilter.PackagePaths.Add(FName(*FMixtormatPaths::LightingRoot()));
 	HdriFilter.bRecursiveClasses = true;
 	HdriFilter.bRecursivePaths = true;
 	TArray<FAssetData> HdriAssets;

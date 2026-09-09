@@ -1,5 +1,6 @@
 #include "Services/MixtormatRegistry.h"
 
+#include "Services/MixtormatPaths.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Texture2D.h"
 #include "MixtormatEffect.h"
@@ -14,7 +15,7 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UMixtormatSurface::StaticClass()->GetClassPathName());
-	Filter.PackagePaths.Add(FName(TEXT("/MaterialLab/Surfaces")));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::SurfacesRoot()));
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = true;
 
@@ -45,7 +46,7 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 		if (Entry.Family.IsNone())
 		{
 			FString Family = Asset.PackagePath.ToString();
-			Family.RemoveFromStart(TEXT("/MaterialLab/Surfaces/"));
+			Family.RemoveFromStart(FMixtormatPaths::SurfacesRoot() + TEXT("/"));
 			FString Remainder;
 			Family.Split(TEXT("/"), &Family, &Remainder);
 			Entry.Family = Family.IsEmpty() ? FName(TEXT("Uncategorized")) : FName(*Family);
@@ -74,7 +75,7 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UMixtormatMask::StaticClass()->GetClassPathName());
 	Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
-	Filter.PackagePaths.Add(FName(TEXT("/MaterialLab/Masks")));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::MasksRoot()));
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = true;
 
@@ -138,7 +139,7 @@ TArray<FMixtormatNormalEntry> FMixtormatRegistry::GetNormals()
 
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
-	Filter.PackagePaths.Add(FName(TEXT("/MaterialLab/Normals")));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::NormalsRoot()));
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = true;
 
@@ -156,8 +157,8 @@ TArray<FMixtormatNormalEntry> FMixtormatRegistry::GetNormals()
 		Entry.DisplayName = FText::FromName(Asset.AssetName);
 
 		FString Category = Asset.PackagePath.ToString();
-		Category.RemoveFromStart(TEXT("/MaterialLab/Normals/"));
-		if (Category.IsEmpty() || Category == TEXT("/MaterialLab/Normals"))
+		Category.RemoveFromStart(FMixtormatPaths::NormalsRoot() + TEXT("/"));
+		if (Category.IsEmpty() || Category == FMixtormatPaths::NormalsRoot())
 		{
 			Category = TEXT("General");
 		}
@@ -179,7 +180,7 @@ TArray<FMixtormatEffectEntry> FMixtormatRegistry::GetEffects()
 
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UMixtormatEffect::StaticClass()->GetClassPathName());
-	Filter.PackagePaths.Add(FName(TEXT("/MaterialLab/Effects")));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::EffectsRoot()));
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = true;
 

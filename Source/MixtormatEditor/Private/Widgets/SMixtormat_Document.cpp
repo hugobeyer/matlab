@@ -1,5 +1,6 @@
 ﻿#include "Widgets/SMixtormat.h"
 #include "MixtormatParameterBinding.h"
+#include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
 
 // Material lifecycle: new/open/save, import, composition resolution, and baking.
@@ -225,7 +226,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 
 	FSaveAssetDialogConfig DialogConfig;
 	DialogConfig.DialogTitleOverride = LOCTEXT("SaveMixtormatMaterialAs", "Save Mixtormat Material As");
-	DialogConfig.DefaultPath = TEXT("/Game/MaterialLab/Materials");
+	DialogConfig.DefaultPath = FMixtormatPaths::ProjectMaterialsRoot();
 	DialogConfig.DefaultAssetName = TEXT("MLM_Untitled");
 	DialogConfig.AssetClassNames.Add(UMixtormatMaterial::StaticClass()->GetClassPathName());
 	DialogConfig.ExistingAssetPolicy = ESaveAssetDialogExistingAssetPolicy::Disallow;

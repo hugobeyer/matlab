@@ -1,5 +1,6 @@
 ﻿#include "Widgets/SMixtormat.h"
 #include "MixtormatParameterBinding.h"
+#include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
@@ -1798,7 +1799,9 @@ void SMixtormat::RebuildMaskList()
 		MaskListBox->AddSlot()
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("EmptyMaskRegistry", "No mask assets in /MaterialLab/Masks"))
+			.Text(FText::Format(
+				LOCTEXT("EmptyMaskRegistry", "No mask assets in {0}"),
+				FText::FromString(FMixtormatPaths::MasksRoot())))
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 		];
 	}

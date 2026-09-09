@@ -1,5 +1,6 @@
 #include "Style/MixtormatLiveTheme.h"
 
+#include "Services/MixtormatPaths.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Dom/JsonObject.h"
@@ -266,7 +267,7 @@ bool FMixtormatLiveTheme::Deserialize(const FString& Text, FString& Error)
 
 FString FMixtormatLiveTheme::SavePath()
 {
-	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MaterialLab"), TEXT("LiveTheme.json"));
+	return FMixtormatPaths::LiveThemePath();
 }
 
 bool FMixtormatLiveTheme::Save(FString& Error)
@@ -278,7 +279,9 @@ bool FMixtormatLiveTheme::Save(FString& Error)
 		|| !FFileHelper::SaveStringToFile(Serialize(), *TemporaryPath)
 		|| !IFileManager::Get().Move(*Path, *TemporaryPath, true, true))
 	{
-		Error = TEXT("Could not save the theme. Check the project's Saved/MaterialLab folder permissions.");
+		Error = FString::Printf(
+			TEXT("Could not save the theme. Check the project's Saved/%s folder permissions."),
+			*FMixtormatPaths::PluginName().ToString());
 		return false;
 	}
 	return true;
@@ -289,7 +292,9 @@ bool FMixtormatLiveTheme::Load(FString& Error)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *SavePath()))
 	{
-		Error = TEXT("Could not read Saved/MaterialLab/LiveTheme.json. Save a theme first.");
+		Error = FString::Printf(
+			TEXT("Could not read Saved/%s/LiveTheme.json. Save a theme first."),
+			*FMixtormatPaths::PluginName().ToString());
 		return false;
 	}
 	return Deserialize(Text, Error);

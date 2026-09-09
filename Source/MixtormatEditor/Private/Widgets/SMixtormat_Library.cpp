@@ -1,5 +1,6 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Services/MixtormatPaths.h"
 
 // The surface library: registry listing, filtering, search, cards and the gallery.
 
@@ -310,9 +311,9 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ContentPadding(FMargin(0.0f))
-					.ToolTipText(LOCTEXT(
-						"ReimportShippedHint",
-						"Reimport Shipped Library from Plugins/MaterialLab/Content/Textures."))
+					.ToolTipText(FText::Format(
+						LOCTEXT("ReimportShippedHint", "Reimport Shipped Library from Plugins/{0}/Content/Textures."),
+						FText::FromName(FMixtormatPaths::PluginName())))
 					.OnClicked(this, &SMixtormat::ReimportShippedLibrary)
 					[
 						SNew(SBox)

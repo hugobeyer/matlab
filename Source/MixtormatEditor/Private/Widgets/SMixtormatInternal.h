@@ -11,6 +11,7 @@
 #include "AssetThumbnail.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Compositing/MixtormatBakeService.h"
+#include "Services/MixtormatPaths.h"
 #include "ContentBrowserModule.h"
 #include "Widgets/Colors/SColorPicker.h"
 #include "Editor.h"
@@ -24,7 +25,6 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "IContentBrowserSingleton.h"
-#include "Interfaces/IPluginManager.h"
 #include "MaterialEditingLibrary.h"
 #include "MixtormatEffect.h"
 #include "MixtormatMask.h"
@@ -214,10 +214,9 @@ namespace MixtormatUI
 		TSharedPtr<FSlateVectorImageBrush>& Brush = Brushes.FindOrAdd(IconName);
 		if (!Brush.IsValid())
 		{
-			const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("MaterialLab"));
 			const FString IconPath = FPaths::Combine(
-				Plugin.IsValid() ? Plugin->GetBaseDir() : FString(),
-				TEXT("Resources/Icons"),
+				FMixtormatPaths::ResourcesDir(),
+				TEXT("Icons"),
 				IconName.ToString() + TEXT(".svg"));
 			Brush = MakeShared<FSlateVectorImageBrush>(
 				IconPath,

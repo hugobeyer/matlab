@@ -1,5 +1,6 @@
 ﻿#include "Style/MixtormatStyle.h"
 #include "Style/MixtormatLiveTheme.h"
+#include "Services/MixtormatPaths.h"
 #include "Style/MixtormatMutableStyleSet.h"
 
 #include "Style/MixtormatDesignTokens.h"
@@ -12,7 +13,6 @@
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateStyle.h"
-#include "Interfaces/IPluginManager.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
 
@@ -100,9 +100,9 @@ void FMixtormatStyle::Refresh()
 	// Resolved through the plugin rather than assembled from a folder name: a plugin's
 	// name comes from its .uplugin, which need not match the directory containing it, and
 	// assuming they match is what silently emptied the icon set during the rename.
-	const TSharedPtr<IPlugin> StylePlugin = IPluginManager::Get().FindPlugin(TEXT("MaterialLab"));
+	const TSharedPtr<IPlugin> StylePlugin = FMixtormatPaths::FindPlugin();
 	check(StylePlugin.IsValid());
-	StyleInstance->SetContentRoot(StylePlugin->GetBaseDir() / TEXT("Resources"));
+	StyleInstance->SetContentRoot(FMixtormatPaths::ResourcesDir());
 
 	StyleInstance->Set(
 		TEXT("Mixtormat.Window"),
