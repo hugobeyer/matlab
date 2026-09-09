@@ -166,7 +166,7 @@ FVector2D SMixtormatTile::ComputeDesiredSize(float) const
 FReply SMixtormatTile::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
 	const int32 Direction = FMath::Sign(MouseEvent.GetWheelDelta());
-	if (Direction != 0 && OnGalleryZoom.IsBound())
+	if (MouseEvent.IsControlDown() && Direction != 0 && OnGalleryZoom.IsBound())
 	{
 		OnGalleryZoom.Execute(Direction);
 		return FReply::Handled();

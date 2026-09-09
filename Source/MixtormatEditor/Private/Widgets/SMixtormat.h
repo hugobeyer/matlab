@@ -18,6 +18,7 @@ class FAssetThumbnailPool;
 class UMaterialInterface;
 class IToolTip;
 class SBox;
+class SButton;
 class SHorizontalBox;
 class SMenuAnchor;
 class STextBlock;
@@ -684,6 +685,7 @@ private:
 	TSharedRef<SWidget> BuildLeftPanel();
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
+	FReply ToggleBottomLibraryCollapsed();
 	TSharedRef<SWidget> BuildWorkflowMenu();
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -758,6 +760,7 @@ private:
 	float ShellRightFraction = 0.21f;
 	float PreviewHeightFraction = 0.64f;
 	float LibraryHeightFraction = 0.36f;
+	bool bBottomLibraryCollapsed = false;
 	float MaterialLibraryFraction = 0.72f;
 	float MaskLibraryFraction = 0.28f;
 	// One page since the mixer and presets mock-ups were removed. Kept as a switcher rather than
@@ -765,6 +768,7 @@ private:
 	// through it, and the settings window will want the second slot.
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
+	TSharedPtr<SButton> BottomLibraryToggleButton;
 	TSharedPtr<SVerticalBox> CategoryListBox;
 	TSharedPtr<SWrapBox> SurfaceListBox;
 	TSharedPtr<SVerticalBox> LayerListBox;

@@ -83,6 +83,8 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Shell", InspectorWidth, 200.0f, 720.0f),
 		THEME_NUMBER("Shell", TopBarHeight, 24.0f, 64.0f),
 		THEME_NUMBER("Shell", StatusBarHeight, 14.0f, 48.0f),
+		THEME_NUMBER("Shell", BottomLibraryCollapseButtonWidth, 4.0f, 32.0f),
+		THEME_NUMBER("Shell", BottomLibraryCollapseButtonHeight, 1.0f, 12.0f),
 		THEME_NUMBER("Layers", LayerRowHeight, 20.0f, 64.0f),
 		THEME_NUMBER("Layers", LayerChildRowHeight, 16.0f, 48.0f),
 		THEME_NUMBER("Layers", LayerThumbnailSize, 12.0f, 48.0f),

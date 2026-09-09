@@ -906,7 +906,7 @@ public:
 	virtual FReply OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
 	{
 		const int32 Direction = FMath::Sign(MouseEvent.GetWheelDelta());
-		if (Direction != 0 && OnGalleryZoom.IsBound())
+		if (MouseEvent.IsControlDown() && Direction != 0 && OnGalleryZoom.IsBound())
 		{
 			OnGalleryZoom.Execute(Direction);
 			return FReply::Handled();
@@ -983,7 +983,7 @@ public:
 	virtual FReply OnMouseWheel(const FGeometry& Geometry, const FPointerEvent& Event) override
 	{
 		const int32 Direction = FMath::Sign(Event.GetWheelDelta());
-		if (Direction != 0 && OnGalleryZoom.IsBound())
+		if (Event.IsControlDown() && Direction != 0 && OnGalleryZoom.IsBound())
 		{
 			OnGalleryZoom.Execute(Direction);
 			return FReply::Handled();

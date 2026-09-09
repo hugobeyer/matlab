@@ -267,13 +267,70 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
 				.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
 				+ SSplitter::Slot()
-								.Value_Lambda([this]() { return PreviewHeightFraction; })
-								.OnSlotResized_Lambda([this](float Value) { PreviewHeightFraction = Value; })
+								.Value_Lambda([this]() { return bBottomLibraryCollapsed ? 0.99f : PreviewHeightFraction; })
+								.OnSlotResized_Lambda([this](float Value)
+								{
+									if (!bBottomLibraryCollapsed)
+									{
+										PreviewHeightFraction = Value;
+									}
+								})
 								[BuildPreviewPanel()]
 				+ SSplitter::Slot()
-								.Value_Lambda([this]() { return LibraryHeightFraction; })
-								.OnSlotResized_Lambda([this](float Value) { LibraryHeightFraction = Value; })
-								[BuildBottomLibrary()]
+								.Value_Lambda([this]() { return bBottomLibraryCollapsed ? 0.01f : LibraryHeightFraction; })
+								.OnSlotResized_Lambda([this](float Value)
+								{
+									if (!bBottomLibraryCollapsed)
+									{
+										LibraryHeightFraction = Value;
+									}
+								})
+								[
+									SNew(SOverlay)
+									+ SOverlay::Slot()
+									[
+										SNew(SBox)
+										.Visibility_Lambda([this]()
+										{
+											return bBottomLibraryCollapsed
+												? EVisibility::Collapsed
+												: EVisibility::Visible;
+										})
+										[BuildBottomLibrary()]
+									]
+									+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
+									[
+										SNew(SBox)
+										.WidthOverride(MixtormatTokens::BottomLibraryCollapseButtonWidth)
+										.HeightOverride(MixtormatTokens::BottomLibraryCollapseButtonHeight)
+										.RenderTransform(FSlateRenderTransform(FVector2D(
+											0.0f,
+											-MixtormatTokens::SplitterHandleSize)))
+										[
+											SAssignNew(BottomLibraryToggleButton, SButton)
+											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+											.ContentPadding(0.0f)
+											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries."))
+											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+											[
+												SNew(SImage)
+												.Visibility_Lambda([this]()
+												{
+													return BottomLibraryToggleButton.IsValid()
+														&& BottomLibraryToggleButton->IsHovered()
+														? EVisibility::HitTestInvisible
+														: EVisibility::Collapsed;
+												})
+												.Image_Lambda([this]()
+												{
+													return bBottomLibraryCollapsed
+														? MixtormatIcons::ChevronRight()
+														: MixtormatIcons::ChevronDown();
+												})
+											]
+										]
+									]
+								]
 			]
 			+ SSplitter::Slot()
 						.Value_Lambda([this]() { return ShellRightFraction; })
@@ -322,25 +379,36 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 			.Padding(FMargin(6.0f, 2.0f))
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.TopBar")))
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+				SNew(SOverlay)
+				+ SOverlay::Slot()
 				[
-					SNew(STextBlock)
-					.Text_Lambda([this]()
-					{
-						const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
-							? LOCTEXT("StatusQualityHigh", "High · Lumen")
-							: PreviewQuality == EMixtormatPreviewQuality::Medium
-								? LOCTEXT("StatusQualityMedium", "Medium")
-								: LOCTEXT("StatusQualityLow", "Low");
-						return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
-					})
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
+					+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
+								? LOCTEXT("StatusQualityHigh", "High · Lumen")
+								: PreviewQuality == EMixtormatPreviewQuality::Medium
+									? LOCTEXT("StatusQualityMedium", "Medium")
+									: LOCTEXT("StatusQualityLow", "Low");
+							return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
+						})
+						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
+					]
+					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
 				]
-				+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
+
 			]
 		];
+}
+
+FReply SMixtormat::ToggleBottomLibraryCollapsed()
+{
+	bBottomLibraryCollapsed = !bBottomLibraryCollapsed;
+	return FReply::Handled();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildWorkflowMenu()

@@ -750,8 +750,7 @@ void SMixtormatPreviewViewport::ResetCameraAndLighting()
 	CameraFov = MixtormatPreviewCamera::FovDefault;
 	HdriYaw = 0.0f;
 	SetStudioLighting(EMixtormatStudioLighting::Neutral);
-	UpdateStudioFog();
-	UpdateCamera();
+	FocusCamera();
 }
 
 void SMixtormatPreviewViewport::FocusCamera()
@@ -770,12 +769,19 @@ void SMixtormatPreviewViewport::FocusCamera()
 
 	const float Radius = FMath::Max(static_cast<float>(Bounds.SphereRadius), KINDA_SMALL_NUMBER);
 
-	// Distance that puts a sphere of this radius exactly inside the vertical field of view.
-	// Sine rather than tangent: the frustum plane is tangent to the sphere, so the radius is the
-	// opposite side of the half-angle against the distance as hypotenuse. Tangent would fit the
-	// sphere's equatorial disc instead and crop the near cap at wide angles.
-	const float HalfFovRadians = FMath::DegreesToRadians(CameraFov) * 0.5f;
-	const float FitDistance = Radius / FMath::Max(FMath::Sin(HalfFovRadians), KINDA_SMALL_NUMBER);
+	// FEditorViewportClient treats ViewFOV as horizontal. Derive the vertical angle from the
+	// current viewport aspect ratio and fit against whichever axis is tighter. Using the horizontal
+	// angle alone over-frames wide viewports and makes F appear to zoom into the mesh.
+	const float HorizontalHalfFov = FMath::DegreesToRadians(CameraFov) * 0.5f;
+	const FVector2D ViewportSize = GetCachedGeometry().GetLocalSize();
+	const float AspectRatio = ViewportSize.Y > KINDA_SMALL_NUMBER
+		? FMath::Max(ViewportSize.X / ViewportSize.Y, KINDA_SMALL_NUMBER)
+		: 1.0f;
+	const float VerticalHalfFov = FMath::Atan(FMath::Tan(HorizontalHalfFov) / AspectRatio);
+	const float LimitingHalfFov = FMath::Min(HorizontalHalfFov, VerticalHalfFov);
+
+	// The frustum plane is tangent to the bounding sphere, so sine fits the near cap too.
+	const float FitDistance = Radius / FMath::Max(FMath::Sin(LimitingHalfFov), KINDA_SMALL_NUMBER);
 
 	CameraDistance = FMath::Clamp(
 		FitDistance * MixtormatPreviewCamera::FocusMargin,
