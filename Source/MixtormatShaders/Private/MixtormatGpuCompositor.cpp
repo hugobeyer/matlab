@@ -7194,17 +7194,17 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 void FMixtormatGpuCompositor::BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const
 {
-	MaterialInstance.SetTextureParameterValue(TEXT("ML_BaseColor"), GetBaseColorOutput());
-	MaterialInstance.SetTextureParameterValue(TEXT("ML_Normal"), GetNormalOutput());
-	MaterialInstance.SetTextureParameterValue(TEXT("ML_RAM"), GetRAMOutput());
-	MaterialInstance.SetTextureParameterValue(TEXT("ML_Height"), GetHeightOutput());
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_Tiling"), 1.0f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_RoughnessBias"), 0.5f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_RoughnessContrast"), 1.0f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_RoughnessOffset"), 0.0f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_NormalIntensity"), 1.0f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_DielectricF0"), 0.04f);
-	MaterialInstance.SetScalarParameterValue(TEXT("ML_UsePackedF0"), 1.0f);
+	MaterialInstance.SetTextureParameterValue(TEXT("DA_BaseColor"), GetBaseColorOutput());
+	MaterialInstance.SetTextureParameterValue(TEXT("DA_Normal"), GetNormalOutput());
+	MaterialInstance.SetTextureParameterValue(TEXT("DA_RAM"), GetRAMOutput());
+	MaterialInstance.SetTextureParameterValue(TEXT("DA_Height"), GetHeightOutput());
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_Tiling"), 1.0f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessBias"), 0.5f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessContrast"), 1.0f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessOffset"), 0.0f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_NormalIntensity"), 1.0f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_DielectricF0"), 0.04f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_UsePackedF0"), 1.0f);
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetBaseColorOutput() const

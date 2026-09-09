@@ -25,9 +25,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 namespace MixtormatPreview
 {
-	const FName UseHeightParameter(TEXT("ML_UseHeight"));
-	const FName HeightAmountParameter(TEXT("ML_HeightAmount"));
-	const FName DebugTextureParameter(TEXT("ML_DebugTexture"));
+	const FName UseHeightParameter(TEXT("DA_UseHeight"));
+	const FName HeightAmountParameter(TEXT("DA_HeightAmount"));
+	const FName DebugTextureParameter(TEXT("DA_DebugTexture"));
 
 	UMaterial* CreateDebugMaterial()
 	{

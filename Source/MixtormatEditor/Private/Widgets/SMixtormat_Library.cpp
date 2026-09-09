@@ -64,15 +64,15 @@ FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 		{
 			CurrentTiling = FMath::Max(1.0f, FMath::RoundToFloat(
 				UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-					SelectedPreviewMaterial.Get(), TEXT("ML_Tiling"))));
+					SelectedPreviewMaterial.Get(), TEXT("DA_Tiling"))));
 			CurrentRoughnessBias = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-				SelectedPreviewMaterial.Get(), TEXT("ML_RoughnessBias"));
+				SelectedPreviewMaterial.Get(), TEXT("DA_RoughnessBias"));
 			CurrentRoughnessContrast = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-				SelectedPreviewMaterial.Get(), TEXT("ML_RoughnessContrast"));
+				SelectedPreviewMaterial.Get(), TEXT("DA_RoughnessContrast"));
 			CurrentRoughnessOffset = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-				SelectedPreviewMaterial.Get(), TEXT("ML_RoughnessOffset"));
+				SelectedPreviewMaterial.Get(), TEXT("DA_RoughnessOffset"));
 			CurrentNormalIntensity = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-				SelectedPreviewMaterial.Get(), TEXT("ML_NormalIntensity"));
+				SelectedPreviewMaterial.Get(), TEXT("DA_NormalIntensity"));
 		}
 		if (SelectedIdentityText.IsValid())
 		{

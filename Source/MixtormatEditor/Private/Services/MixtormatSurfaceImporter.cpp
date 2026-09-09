@@ -675,7 +675,7 @@ namespace MixtormatImporter
 		const float DefaultIOR)
 	{
 		FString InstanceName = SurfaceAssetName;
-		InstanceName.RemoveFromStart(TEXT("ML_"));
+		InstanceName.RemoveFromStart(TEXT("DA_"));
 		InstanceName = TEXT("MI_") + InstanceName;
 		const FString DestinationPath = FMixtormatPaths::MaterialInstanceFamilyRoot(Family);
 		const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *DestinationPath, *InstanceName, *InstanceName);
@@ -697,18 +697,18 @@ namespace MixtormatImporter
 		}
 
 		Instance->Modify();
-		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("ML_BaseColor"), &BaseColor);
-		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("ML_Normal"), &Normal);
-		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("ML_RAM"), &Ram);
+		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_BaseColor"), &BaseColor);
+		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_Normal"), &Normal);
+		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Instance, TEXT("DA_RAM"), &Ram);
 		const float SafeIOR = FMath::Max(1.0f, DefaultIOR);
 		const float DielectricF0 = FMath::Square((SafeIOR - 1.0f) / (SafeIOR + 1.0f));
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
 			Instance,
-			TEXT("ML_DielectricF0"),
+			TEXT("DA_DielectricF0"),
 			DielectricF0);
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
 			Instance,
-			TEXT("ML_UsePackedF0"),
+			TEXT("DA_UsePackedF0"),
 			0.0f);
 		Instance->PostEditChange();
 		Instance->MarkPackageDirty();
@@ -1096,7 +1096,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		const FString SurfacePath = FMixtormatPaths::SurfaceFamilyRoot(Family);
 		FString SurfaceAssetName = Set.BaseName;
 		SurfaceAssetName.RemoveFromStart(TEXT("TX_"));
-		SurfaceAssetName = TEXT("ML_") + SurfaceAssetName;
+		SurfaceAssetName = TEXT("DA_") + SurfaceAssetName;
 		UMixtormatSurface* Surface = CreateOrLoadSurface(
 			AssetTools,
 			SurfaceAssetName,

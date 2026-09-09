@@ -28,7 +28,7 @@ namespace MixtormatLayerPreview
 
 	FName ParameterName(const int32 LayerIndex, const TCHAR* Suffix)
 	{
-		return FName(*FString::Printf(TEXT("ML_L%d_%s"), LayerIndex, Suffix));
+		return FName(*FString::Printf(TEXT("DA_L%d_%s"), LayerIndex, Suffix));
 	}
 
 	template <typename ExpressionType>

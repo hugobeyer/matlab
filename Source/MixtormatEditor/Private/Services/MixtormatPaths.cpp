@@ -119,27 +119,27 @@ FString FMixtormatPaths::MeshesRoot()
 
 FString FMixtormatPaths::MasterMaterialObjectPath()
 {
-	return ObjectPath(MaterialsRoot(), TEXT("M_MaterialLab_Substrate"));
+	return ObjectPath(MaterialsRoot(), TEXT("M_Mixtormat_Substrate"));
 }
 
 FString FMixtormatPaths::StudioFloorMaterialObjectPath()
 {
-	return ObjectPath(MaterialsRoot(), TEXT("MI_ML_Studio_Floor"));
+	return ObjectPath(MaterialsRoot(), TEXT("MI_Mixtormat_StudioFloor"));
 }
 
 FString FMixtormatPaths::SphereMeshObjectPath()
 {
-	return ObjectPath(MeshesRoot(), TEXT("SM_MaterialLab_Sphere"));
+	return ObjectPath(MeshesRoot(), TEXT("SM_Mixtormat_Sphere"));
 }
 
 FString FMixtormatPaths::PlaneMeshObjectPath()
 {
-	return ObjectPath(MeshesRoot(), TEXT("SM_MaterialLab_Plane"));
+	return ObjectPath(MeshesRoot(), TEXT("SM_Mixtormat_Plane"));
 }
 
 FString FMixtormatPaths::CubeMeshObjectPath()
 {
-	return ObjectPath(MeshesRoot(), TEXT("SM_MaterialLab_Cube"));
+	return ObjectPath(MeshesRoot(), TEXT("SM_Mixtormat_Cube"));
 }
 
 FString FMixtormatPaths::ProjectMaterialsRoot()

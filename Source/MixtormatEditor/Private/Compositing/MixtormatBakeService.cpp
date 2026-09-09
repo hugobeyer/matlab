@@ -514,17 +514,17 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		}
 	};
 
-	SetTextureParameter(TEXT("ML_BaseColor"), Result.BaseColor);
-	SetTextureParameter(TEXT("ML_Normal"), Result.Normal);
-	SetTextureParameter(TEXT("ML_RAM"), Result.RAM);
-	SetTextureParameter(TEXT("ML_Height"), Result.Height);
-	SetScalarParameter(TEXT("ML_Tiling"), 1.0f);
-	SetScalarParameter(TEXT("ML_RoughnessBias"), 0.5f);
-	SetScalarParameter(TEXT("ML_RoughnessContrast"), 1.0f);
-	SetScalarParameter(TEXT("ML_RoughnessOffset"), 0.0f);
-	SetScalarParameter(TEXT("ML_NormalIntensity"), 1.0f);
-	SetScalarParameter(TEXT("ML_DielectricF0"), 0.04f);
-	SetScalarParameter(TEXT("ML_UsePackedF0"), 1.0f);
+	SetTextureParameter(TEXT("DA_BaseColor"), Result.BaseColor);
+	SetTextureParameter(TEXT("DA_Normal"), Result.Normal);
+	SetTextureParameter(TEXT("DA_RAM"), Result.RAM);
+	SetTextureParameter(TEXT("DA_Height"), Result.Height);
+	SetScalarParameter(TEXT("DA_Tiling"), 1.0f);
+	SetScalarParameter(TEXT("DA_RoughnessBias"), 0.5f);
+	SetScalarParameter(TEXT("DA_RoughnessContrast"), 1.0f);
+	SetScalarParameter(TEXT("DA_RoughnessOffset"), 0.0f);
+	SetScalarParameter(TEXT("DA_NormalIntensity"), 1.0f);
+	SetScalarParameter(TEXT("DA_DielectricF0"), 0.04f);
+	SetScalarParameter(TEXT("DA_UsePackedF0"), 1.0f);
 	if (!FailedParameters.IsEmpty())
 	{
 		TArray<FString> FailedParameterNames;
