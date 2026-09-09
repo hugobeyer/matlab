@@ -1,6 +1,8 @@
 #pragma once
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "MixtormatGpuCompositor.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "SEditorViewport.h"
@@ -138,6 +140,7 @@ private:
 	void UpdateStudioFog();
 	void UpdateHdriFillLight();
 	void UpdateDebugLightVisibility();
+	void InvalidateDisplacementShadows();
 	bool ComposeLayersWithDebug(
 		const TArray<FMixtormatLayer>& Layers,
 		int32 Resolution,

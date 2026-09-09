@@ -34,6 +34,7 @@ struct FMixtormatPaths final
 	static FString MeshesRoot();
 
 	static FString MasterMaterialObjectPath();
+	static FString PreviewMaterialObjectPath();
 	static FString StudioFloorMaterialObjectPath();
 	static FString SphereMeshObjectPath();
 	static FString PlaneMeshObjectPath();

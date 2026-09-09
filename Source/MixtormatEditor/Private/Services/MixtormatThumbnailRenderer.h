@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+class UMaterialInterface;
 class UTexture2D;
 
 struct FMixtormatThumbnailUpdate
@@ -19,5 +20,19 @@ struct FMixtormatThumbnailUpdate
 class FMixtormatThumbnailRenderer final
 {
 public:
+	FMixtormatThumbnailRenderer();
+	~FMixtormatThumbnailRenderer();
+
+	FMixtormatThumbnailRenderer(const FMixtormatThumbnailRenderer&) = delete;
+	FMixtormatThumbnailRenderer& operator=(const FMixtormatThumbnailRenderer&) = delete;
+
 	static FMixtormatThumbnailUpdate CreateOrUpdateMaskThumbnail(UTexture2D& MaskTexture);
+	FMixtormatThumbnailUpdate CreateOrUpdateSurfaceThumbnail(
+		UMaterialInterface& PreviewMaterial,
+		const FString& Family,
+		const FString& SurfaceAssetName);
+
+private:
+	class FImpl;
+	TUniquePtr<FImpl> Impl;
 };

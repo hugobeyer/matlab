@@ -33,6 +33,7 @@ public class MixtormatEditor : ModuleRules
 			"Projects",
 			"PropertyEditor",
 			"RenderCore",
+			"Renderer",
 			"RHI",
 			"ToolMenus",
 			"UnrealEd"

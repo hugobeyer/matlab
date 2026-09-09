@@ -1,5 +1,6 @@
 #include "Services/MixtormatSurfaceImporter.h"
 
+#include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
 #include "Services/MixtormatThumbnailRenderer.h"
 #include "AssetImportTask.h"
@@ -453,6 +454,20 @@ namespace MixtormatImporter
 			bFlipNormalY ? 1 : 0,
 			*NormalHash,
 			*RamHash);
+	}
+
+	FString MakeSurfaceThumbnailSourceHash(
+		const FTextureSet& Set,
+		const FString& PackedSourceFile,
+		const float DefaultIOR)
+	{
+		return FString::Printf(
+			TEXT("SurfaceThumbnailV5:%d:Rim:Medium:NoAA:NoHeight:NoScreenMessages:Sky2:IOR%.6g:%s:%s:%s"),
+			MixtormatPreviewSceneSettings::ThumbnailResolution,
+			DefaultIOR,
+			*LexToString(FMD5Hash::HashFile(*Set.BaseColorFile)),
+			*LexToString(FMD5Hash::HashFile(*Set.NormalFile)),
+			*LexToString(FMD5Hash::HashFile(*PackedSourceFile)));
 	}
 
 	FString MakeDerivedRAMHAssetName(const FString& BaseName)
@@ -1092,6 +1107,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 	}
 
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get();
+	FMixtormatThumbnailRenderer ThumbnailRenderer;
 	for (const TPair<FString, FTextureSet>& Pair : TextureSets)
 	{
 		const FTextureSet& Set = Pair.Value;
@@ -1229,6 +1245,49 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 			continue;
 		}
 
+		const FString SurfaceThumbnailHash = MakeSurfaceThumbnailSourceHash(
+			Set,
+			PackedSourceFile,
+			Surface->DefaultIOR);
+		UTexture2D* SurfaceThumbnail = Surface->Thumbnail.Get();
+		FString StoredThumbnailHash = Surface->ThumbnailSourceHash;
+		const bool bCanReuseThumbnail = SurfaceThumbnail
+			&& SurfaceThumbnail->Source.GetSizeX() == MixtormatPreviewSceneSettings::ThumbnailResolution
+			&& SurfaceThumbnail->Source.GetSizeY() == MixtormatPreviewSceneSettings::ThumbnailResolution
+			&& StoredThumbnailHash.Equals(SurfaceThumbnailHash, ESearchCase::CaseSensitive);
+		if (bCanReuseThumbnail)
+		{
+			++Result.ReusedThumbnailCount;
+		}
+		else
+		{
+			const FMixtormatThumbnailUpdate ThumbnailUpdate =
+				ThumbnailRenderer.CreateOrUpdateSurfaceThumbnail(
+					*PreviewMaterial,
+					Family,
+					SurfaceAssetName);
+			if (!ThumbnailUpdate.IsValid())
+			{
+				Result.Errors.Add(ThumbnailUpdate.Error);
+			}
+			else if (!ThumbnailUpdate.bChanged || SavePluginAsset(
+				*ThumbnailUpdate.Texture,
+				TEXT("surface thumbnail"),
+				Result.Errors))
+			{
+				SurfaceThumbnail = ThumbnailUpdate.Texture;
+				StoredThumbnailHash = SurfaceThumbnailHash;
+				if (ThumbnailUpdate.bChanged)
+				{
+					++Result.GeneratedThumbnailCount;
+				}
+				else
+				{
+					++Result.ReusedThumbnailCount;
+				}
+			}
+		}
+
 		Surface->Modify();
 		SetIdentity(*Surface, Set.BaseName, Family);
 		Surface->BaseColor = BaseColor;
@@ -1242,6 +1301,8 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 			? DerivedHeightSourceHash
 			: FString();
 		Surface->PreviewMaterial = PreviewMaterial;
+		Surface->Thumbnail = SurfaceThumbnail;
+		Surface->ThumbnailSourceHash = StoredThumbnailHash;
 		Surface->MarkPackageDirty();
 		const bool bPreviewSaved = SavePluginAsset(
 			*PreviewMaterial,

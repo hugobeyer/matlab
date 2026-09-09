@@ -187,7 +187,9 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 
 	SEditorViewport::Construct(SEditorViewport::FArguments());
 	SetPreviewMesh(EMixtormatPreviewMesh::Sphere);
-	SetPreviewMaterial(nullptr);
+	SetPreviewMaterial(LoadObject<UMaterialInterface>(
+		nullptr,
+		*FMixtormatPaths::PreviewMaterialObjectPath()));
 }
 
 void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
@@ -318,10 +320,7 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	PreviewMaterialInstance->SetScalarParameterValue(
 		MixtormatPreview::HeightAmountParameter,
 		DisplacementAmount);
-	if (PreviewViewportClient.IsValid())
-	{
-		PreviewViewportClient->Invalidate();
-	}
+	InvalidateDisplacementShadows();
 	return true;
 }
 
@@ -355,14 +354,7 @@ void SMixtormatPreviewViewport::SetPreviewScalarParameter(
 	}
 
 	PreviewMaterialInstance->SetScalarParameterValue(ParameterName, Value);
-	if (PreviewMeshComponent)
-	{
-		PreviewMeshComponent->MarkRenderStateDirty();
-	}
-	if (PreviewViewportClient.IsValid())
-	{
-		PreviewViewportClient->Invalidate();
-	}
+	InvalidateDisplacementShadows();
 }
 
 void SMixtormatPreviewViewport::SetPreviewDisplacementEnabled(const bool bEnabled)
@@ -559,6 +551,23 @@ void SMixtormatPreviewViewport::SetPreviewSkylightIntensity(const float Scale)
 {
 	SkylightIntensityScale = FMath::Clamp(Scale, 0.0f, 2.0f);
 	ApplyLightIntensities();
+	if (PreviewViewportClient.IsValid())
+	{
+		PreviewViewportClient->Invalidate();
+	}
+}
+
+void SMixtormatPreviewViewport::InvalidateDisplacementShadows()
+{
+	if (PreviewMeshComponent)
+	{
+		PreviewMeshComponent->MarkRenderDynamicDataDirty();
+		PreviewMeshComponent->MarkRenderStateDirty();
+	}
+	if (PreviewScene.DirectionalLight)
+	{
+		PreviewScene.DirectionalLight->MarkRenderStateDirty();
+	}
 	if (PreviewViewportClient.IsValid())
 	{
 		PreviewViewportClient->Invalidate();

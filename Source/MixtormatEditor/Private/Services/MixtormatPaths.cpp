@@ -142,6 +142,11 @@ FString FMixtormatPaths::MasterMaterialObjectPath()
 	return ObjectPath(MaterialsRoot(), TEXT("M_Mixtormat_Substrate"));
 }
 
+FString FMixtormatPaths::PreviewMaterialObjectPath()
+{
+	return ObjectPath(MaterialsRoot(), TEXT("MI_Mixtormat_Preview"));
+}
+
 FString FMixtormatPaths::StudioFloorMaterialObjectPath()
 {
 	return ObjectPath(MaterialsRoot(), TEXT("MI_Mixtormat_StudioFloor"));

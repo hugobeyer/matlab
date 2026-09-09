@@ -17,7 +17,7 @@ The gallery must never render thumbnail scenes, recreate thumbnails on selection
 - Preview mesh: Mixtormat sphere.
 - Floor: Mixtormat studio floor, visible.
 - Environment background: hidden.
-- Studio lighting: the plugin's startup default, currently **Neutral**.
+- Studio lighting: **Rim**, selected specifically for generated thumbnails.
 - Preview quality: **Medium**.
 - Screen percentage: `100%`.
 - Camera FOV: `40°` horizontal.
@@ -86,7 +86,7 @@ It should configure:
 - Mixtormat sphere and fallback sphere paths.
 - Studio floor material.
 - Preview mesh floor clearance.
-- Neutral studio light values.
+- All interactive presets, with Rim selected by the thumbnail renderer.
 - Fog configuration.
 - Fixed exposure and tone mapping.
 - Bloom disabled.
@@ -305,7 +305,7 @@ Existing installations have surfaces and masks without plugin thumbnails.
 
 - Output is exactly `256×256`.
 - Sphere is centered and fully framed on both axes.
-- The image contains the Mixtormat floor and Neutral startup lighting.
+- The image contains the Mixtormat floor and Rim lighting.
 - Medium-quality shadows, AO, and reflections match the interactive viewport.
 - No overlay controls appear.
 - No FXAA, TAA, or TSR is active.
@@ -346,13 +346,10 @@ Source/MixtormatEditor/Private/Widgets/SMixtormat_Layers.cpp
 
 ## Decisions still required before implementation
 
-1. Confirm **Neutral**, not Dramatic, because Neutral is the current startup default.
-2. Confirm whether generated thumbnail textures should include mipmaps.
-3. Confirm whether explicit surface thumbnail references should be stored on `UMixtormatSurface`,
-   or resolved only through deterministic asset paths.
+1. Confirm whether generated thumbnail textures should include mipmaps.
 
 Recommended defaults:
 
-- Neutral lighting.
+- Rim lighting.
 - Generate mipmaps.
 - Store an explicit thumbnail reference on `UMixtormatSurface`.

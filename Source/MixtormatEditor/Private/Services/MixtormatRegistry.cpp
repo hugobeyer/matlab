@@ -49,9 +49,9 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 
 		FMixtormatSurfaceEntry& Entry = Entries.AddDefaulted_GetRef();
 		Entry.AssetPath = Asset.GetSoftObjectPath();
-		if (Surface->PreviewMaterial)
+		if (Surface->Thumbnail)
 		{
-			Entry.ThumbnailAsset = FAssetData(Surface->PreviewMaterial.Get());
+			Entry.ThumbnailAsset = FAssetData(Surface->Thumbnail.Get());
 		}
 		Entry.DisplayName = Surface->DisplayName.IsEmpty()
 			? FText::FromName(Asset.AssetName)

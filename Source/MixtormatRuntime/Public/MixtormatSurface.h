@@ -69,4 +69,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Preview")
 	TObjectPtr<UMaterialInterface> PreviewMaterial;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Preview")
+	TObjectPtr<UTexture2D> Thumbnail;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Preview")
+	FString ThumbnailSourceHash;
 };
