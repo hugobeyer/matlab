@@ -2,6 +2,8 @@
 
 #include "Framework/Commands/UIAction.h"
 #include "Framework/Docking/TabManager.h"
+#include "HAL/IConsoleManager.h"
+#include "Services/MixtormatAssetMigration.h"
 #include "Style/MixtormatStyle.h"
 #include "Textures/SlateIcon.h"
 #include "ToolMenus.h"
@@ -30,10 +32,24 @@ void FMixtormatEditorModule::StartupModule()
 
 	UToolMenus::RegisterStartupCallback(
 			FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FMixtormatEditorModule::RegisterMenus));
+
+	AssetMigrationCommand = IConsoleManager::Get().RegisterConsoleCommand(
+		TEXT("Mixtormat.MigrateAssets"),
+		TEXT("Preview Mixtormat asset renames. Pass Apply to execute the validated batch."),
+		FConsoleCommandWithArgsDelegate::CreateRaw(
+			this,
+			&FMixtormatEditorModule::RunAssetMigrationCommand),
+		ECVF_Default);
 }
 
 void FMixtormatEditorModule::ShutdownModule()
 {
+	if (AssetMigrationCommand)
+	{
+		IConsoleManager::Get().UnregisterConsoleObject(AssetMigrationCommand);
+		AssetMigrationCommand = nullptr;
+	}
+
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MixtormatTabName);
@@ -66,6 +82,19 @@ void FMixtormatEditorModule::RegisterMenus()
 void FMixtormatEditorModule::OpenMixtormatTab()
 {
 	FGlobalTabmanager::Get()->TryInvokeTab(MixtormatTabName);
+}
+
+void FMixtormatEditorModule::RunAssetMigrationCommand(const TArray<FString>& Args)
+{
+	const bool bApply = Args.Num() == 1 && Args[0].Equals(TEXT("Apply"), ESearchCase::IgnoreCase);
+	if (!Args.IsEmpty() && !bApply)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("Usage: Mixtormat.MigrateAssets [Apply]. Without Apply, the command is a dry run."));
+		return;
+	}
+
+	FMixtormatAssetMigration::Run(bApply);
 }
 
 TSharedRef<SDockTab> FMixtormatEditorModule::SpawnMixtormatTab(const FSpawnTabArgs& SpawnTabArgs)

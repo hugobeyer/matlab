@@ -1,6 +1,6 @@
 # Mixtormat — Surface Migration Manifest
 
-Status: **Filesystem baseline captured; live metadata verification pending**
+Status: **Filesystem baseline captured; Unreal dry-run pending**
 
 Created for Phase I1 of [`Mixtormat_Identity_and_Content_Migration_Plan.md`](Mixtormat_Identity_and_Content_Migration_Plan.md).
 
@@ -38,7 +38,7 @@ Current surface families:
 | Wood | 2 |
 | **Total** | **34** |
 
-This is a migration baseline, not an allow-list. Surfaces added later must be discovered from the registry root and imported directly into the canonical Mixtormat paths.
+This is a migration baseline, not an allow-list. The I4 migration tool discovers every surface from the registry root, so surfaces added later are included. Future imports must use canonical Mixtormat paths and `DA_` surface names.
 
 ## Required live inventory
 
@@ -60,6 +60,14 @@ For every `UMixtormatSurface` under `/MaterialLab/Surfaces`, record:
 | Lighting root | `/MaterialLab/Lighting` | 6 files present | |
 | Source textures | `Plugins/MaterialLab/Content/Textures` | 153 PNGs present | Import source root |
 
+## I4 rename rule
+
+- Current surface asset: `/MaterialLab/Surfaces/<Family>/ML_<SurfaceName>`
+- I4 target: `/MaterialLab/Surfaces/<Family>/DA_<SurfaceName>`
+- I5 later changes the mount from `/MaterialLab` to `/Mixtormat`.
+- Descriptive `MI_<SurfaceName>` preview instances retain their current names.
+- The migration command logs every exact object-path pair before applying.
+
 ## Exit requirement
 
-The filesystem half of I1 is complete. Before Phase I4, export or inspect the live Unreal registry metadata and confirm all 34 current surfaces resolve their textures and preview instances. Repeat the baseline immediately before migration so later-added surfaces are included.
+The filesystem half of I1 is complete. Run `Mixtormat.MigrateAssets` in Unreal and confirm the live registry count and collision checks. After apply, confirm every discovered surface resolves its textures and preview instance before approving redirector cleanup.

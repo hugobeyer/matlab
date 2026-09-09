@@ -1,14 +1,15 @@
 # Mixtormat — Identity and Content Migration Plan
 
-Status: **In progress — I2–I3 implemented; I1 filesystem baseline captured**
+Status: **In progress — I2–I3 implemented; I4 migration tool added, execution pending**
 
 Current progress:
 
 - I1: PowerShell baseline captured 34 surfaces and 34 matching preview instances; live metadata verification remains.
 - I2: editor-side plugin/package paths are centralized in `FMixtormatPaths`.
 - I3: new document names, project save defaults, and live-theme storage use `Mixtormat`.
-- Plugin mount, plugin assets, and shader paths still use `MaterialLab` until I4–I5.
-- I4 and later rename/migration phases have not started.
+- Plugin mount and shader paths still use `MaterialLab` until the atomic I5 change.
+- I4 has a guarded Unreal AssetTools command; dry-run, build, and execution remain.
+- The I4 surface scan is dynamic so later imported surfaces are included.
 
 ## 1. Goal
 
@@ -196,6 +197,29 @@ New user-owned files and visible UI text use `Mixtormat` only.
 
 ## 9. Phase I4 — Rename plugin assets inside Unreal
 
+Status: **Tool implemented; not yet built or executed**
+
+Implementation:
+
+- `Source/MixtormatEditor/Private/Services/MixtormatAssetMigration.h`
+- `Source/MixtormatEditor/Private/Services/MixtormatAssetMigration.cpp`
+- Console command: `Mixtormat.MigrateAssets`
+- Apply command: `Mixtormat.MigrateAssets Apply`
+- No argument always performs a non-destructive dry run.
+- The tool uses Unreal `AssetTools`; it never filesystem-renames `.uasset` files.
+- Redirectors are retained until separately approved cleanup.
+
+Planned conventions:
+
+- Every discovered `UMixtormatSurface` named `ML_*` becomes `DA_*`.
+- Existing `DA_*` surfaces are accepted and skipped.
+- New or later-added surfaces are included automatically.
+- Preview instances remain descriptive `MI_*`; they have no old brand prefix.
+- `M_MaterialLab_*`, `MF_MaterialLab_*`, `MI_ML_*`, `T_ML_*`, and
+  `SM_MaterialLab_*` support assets receive explicit Mixtormat names.
+- `MLFX_Peeling_Standard_01` becomes `DA_Peeling_Standard_01`.
+- The obsolete stain asset becomes `DA_Stain`; it is preserved, not deleted.
+
 ### Goal
 
 Remove old names from valuable plugin assets before changing the plugin mount.
@@ -209,9 +233,12 @@ Use Unreal Content Browser or AssetTools operations, never filesystem renames fo
 3. Rename other active assets containing `MaterialLab`, `MatLab`, or obsolete `ML` branding.
 4. Preserve descriptive imported surface names.
 5. Update importer-generated naming rules so reimport does not recreate old names.
-6. Fix redirectors while the old `/MaterialLab` mount is still valid.
-7. Resave surface assets and preview material instances so internal references point to the renamed dependencies.
-8. Compare the surface inventory against Phase I1.
+6. Run the command without arguments and review every planned source/target pair.
+7. Run the command with `Apply` only when the dry run has no errors.
+8. Recount surfaces and verify all renamed targets before any redirector cleanup.
+9. Fix redirectors while the old `/MaterialLab` mount is still valid, after approval.
+10. Resave surface assets and preview material instances so references use renamed dependencies.
+11. Compare the surface inventory against Phase I1.
 
 ### Exit condition
 
