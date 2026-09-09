@@ -1,6 +1,7 @@
 #include "UI/Controls/SMixtormatTile.h"
 
 #include "AssetThumbnail.h"
+#include "Engine/Texture2D.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
 #include "Widgets/Images/SImage.h"
@@ -31,26 +32,38 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 	// shows the tile background rather than nothing at all.
 	TSharedRef<SWidget> Image = SNew(SImage)
 		.Image(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")));
-	if (InArgs._ThumbnailAsset.IsValid() && InArgs._ThumbnailPool.IsValid())
+	if (InArgs._ThumbnailAsset.IsValid())
 	{
-		const int32 Resolution = InArgs._ThumbnailResolution > 0
-			? InArgs._ThumbnailResolution
-			: FMath::RoundToInt(TileSize.Get(MixtormatTokens::MaskTileSize));
-		Thumbnail = MakeShared<FAssetThumbnail>(
-			InArgs._ThumbnailAsset,
-			Resolution,
-			Resolution,
-			InArgs._ThumbnailPool);
+		if (UTexture2D* Texture = Cast<UTexture2D>(InArgs._ThumbnailAsset.GetAsset()))
+		{
+			ThumbnailTexture.Reset(Texture);
+			ThumbnailBrush = MakeUnique<FSlateBrush>();
+			ThumbnailBrush->SetResourceObject(Texture);
+			ThumbnailBrush->SetImageSize(FVector2D(
+				Texture->GetSizeX(),
+				Texture->GetSizeY()));
+			ThumbnailBrush->DrawAs = ESlateBrushDrawType::Image;
+			ThumbnailBrush->Tiling = ESlateBrushTileType::NoTile;
+			Image = SNew(SImage).Image(ThumbnailBrush.Get());
+		}
+		else if (InArgs._ThumbnailPool.IsValid())
+		{
+			const int32 Resolution = InArgs._ThumbnailResolution > 0
+				? InArgs._ThumbnailResolution
+				: FMath::RoundToInt(TileSize.Get(MixtormatTokens::MaskTileSize));
+			Thumbnail = MakeShared<FAssetThumbnail>(
+				InArgs._ThumbnailAsset,
+				Resolution,
+				Resolution,
+				InArgs._ThumbnailPool);
 
-		// The tile draws its own caption and badge, so the asset thumbnail contributes nothing but
-		// the picture: no engine label, no asset-type overlay. Configured here rather than pulled
-		// from the inspector's internals, so this widget depends on nothing but the style.
-		FAssetThumbnailConfig Config;
-		Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
-		Config.AllowAssetSpecificThumbnailOverlay = false;
-		Config.ShowAssetColor = false;
-		Config.ShowAssetBorder = false;
-		Image = Thumbnail->MakeThumbnailWidget(Config);
+			FAssetThumbnailConfig Config;
+			Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
+			Config.AllowAssetSpecificThumbnailOverlay = false;
+			Config.ShowAssetColor = false;
+			Config.ShowAssetBorder = false;
+			Image = Thumbnail->MakeThumbnailWidget(Config);
+		}
 	}
 
 	TSharedRef<SOverlay> Stack = SNew(SOverlay)

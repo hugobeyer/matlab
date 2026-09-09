@@ -77,6 +77,26 @@ FString FMixtormatPaths::RawTextureFamilyRoot(const FString& Family)
 	return PackageChild(PackageChild(TexturesRoot(), Family), TEXT("Raw"));
 }
 
+FString FMixtormatPaths::ThumbnailsRoot()
+{
+	return PackageChild(PluginContentRoot(), TEXT("Thumbnails"));
+}
+
+FString FMixtormatPaths::SurfaceThumbnailsRoot()
+{
+	return PackageChild(ThumbnailsRoot(), TEXT("Surfaces"));
+}
+
+FString FMixtormatPaths::SurfaceThumbnailFamilyRoot(const FString& Family)
+{
+	return PackageChild(SurfaceThumbnailsRoot(), Family);
+}
+
+FString FMixtormatPaths::MaskThumbnailsRoot()
+{
+	return PackageChild(ThumbnailsRoot(), TEXT("Masks"));
+}
+
 FString FMixtormatPaths::MasksRoot()
 {
 	return PackageChild(PluginContentRoot(), TEXT("Masks"));

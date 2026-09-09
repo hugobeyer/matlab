@@ -20,6 +20,10 @@ struct FMixtormatPaths final
 	static FString SurfaceFamilyRoot(const FString& Family);
 	static FString TexturesRoot();
 	static FString RawTextureFamilyRoot(const FString& Family);
+	static FString ThumbnailsRoot();
+	static FString SurfaceThumbnailsRoot();
+	static FString SurfaceThumbnailFamilyRoot(const FString& Family);
+	static FString MaskThumbnailsRoot();
 	static FString MasksRoot();
 	static FString NormalsRoot();
 	static FString NormalCategoryRoot(const FString& Category);

@@ -12,6 +12,8 @@ struct FMixtormatImportResult
 	int32 ReimportedTextureCount = 0;
 	int32 ReusedTextureCount = 0;
 	int32 GeneratedHeightCount = 0;
+	int32 GeneratedThumbnailCount = 0;
+	int32 ReusedThumbnailCount = 0;
 	TArray<FString> Errors;
 
 	FText ToMessage() const;

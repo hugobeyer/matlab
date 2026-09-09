@@ -2,6 +2,7 @@
 
 #include "AdvancedPreviewScene.h"
 #include "MixtormatGpuCompositor.h"
+#include "Preview/MixtormatPreviewSceneSettings.h"
 #include "SEditorViewport.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -78,28 +79,6 @@ namespace MixtormatPreviewScreenPercentage
 	constexpr int32 Default = 100;
 }
 
-// Preview camera. Named because each of these was written as a literal in four to six places --
-// the member's initialiser, the reset, the slider's range, and the slider's restore-default --
-// and they have to agree or the control lies about what it is restoring.
-namespace MixtormatPreviewCamera
-{
-	// Narrower than a game camera on purpose. A material is judged on its surface rather than
-	// its silhouette, and a long lens keeps the perspective divergence across the sample low
-	// enough that tiling and normal detail read the same at the edges as at the centre.
-	constexpr float FovDefault = 40.0f;
-	constexpr float FovMinimum = 20.0f;
-	constexpr float FovMaximum = 90.0f;
-
-	constexpr float DistanceDefault = 225.0f;
-	constexpr float DistanceMinimum = 75.0f;
-	constexpr float DistanceMaximum = 400.0f;
-
-	constexpr float YawDefault = 195.0f;
-	constexpr float PitchDefault = -8.0f;
-
-	// Slack left around the focused bounds so the mesh does not sit edge to edge in the frame.
-	constexpr float FocusMargin = 1.15f;
-}
 
 class SMixtormatPreviewViewport final : public SEditorViewport
 {

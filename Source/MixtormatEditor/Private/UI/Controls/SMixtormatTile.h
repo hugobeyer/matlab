@@ -3,11 +3,14 @@
 #include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Styling/SlateBrush.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+#include "UObject/StrongObjectPtr.h"
 
 class FAssetThumbnail;
 class FAssetThumbnailPool;
+class UTexture2D;
 
 DECLARE_DELEGATE(FMixtormatOnTileActivated);
 DECLARE_DELEGATE_OneParam(FMixtormatOnTileZoom, int32);
@@ -34,8 +37,8 @@ public:
 		// Square edge length of the whole tile, border included.
 		SLATE_ATTRIBUTE(float, TileSize)
 		SLATE_ARGUMENT(FText, DisplayName)
-		// Drawn through the shared thumbnail pool when valid; otherwise the tile shows its
-		// background, which is what an asset with no rendered thumbnail yet looks like.
+		// Texture assets draw directly with strong ownership. Other editor assets temporarily use
+		// the shared pool until surface thumbnails migrate to persistent textures.
 		SLATE_ARGUMENT(FAssetData, ThumbnailAsset)
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
 		SLATE_ARGUMENT(int32, ThumbnailResolution)
@@ -68,8 +71,10 @@ private:
 	FMixtormatOnTileActivated OnActivated;
 	FMixtormatOnTileZoom OnGalleryZoom;
 
-	// Held for the lifetime of the tile: FAssetThumbnail renders through the pool and stops
-	// updating if the handle is dropped.
+	// Both paths own their resource for the full widget lifetime. Masks use the persistent texture
+	// path; surface materials temporarily retain the legacy pooled handle.
 	TSharedPtr<FAssetThumbnail> Thumbnail;
+	TStrongObjectPtr<UTexture2D> ThumbnailTexture;
+	TUniquePtr<FSlateBrush> ThumbnailBrush;
 	bool bPressed = false;
 };

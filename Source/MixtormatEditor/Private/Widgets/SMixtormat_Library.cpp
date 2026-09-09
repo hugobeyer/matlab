@@ -105,7 +105,6 @@ FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 	}
 
 	RebuildLayerList();
-	RebuildMaskList();
 	return FReply::Handled();
 }
 

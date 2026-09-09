@@ -8,6 +8,20 @@
 #include "MixtormatSurface.h"
 #include "Modules/ModuleManager.h"
 
+namespace
+{
+	UTexture2D* LoadGeneratedMaskThumbnail(const UTexture2D& MaskTexture)
+	{
+		const FString ThumbnailName = MaskTexture.GetName() + TEXT("_Thumbnail");
+		const FString ObjectPath = FString::Printf(
+			TEXT("%s/%s.%s"),
+			*FMixtormatPaths::MaskThumbnailsRoot(),
+			*ThumbnailName,
+			*ThumbnailName);
+		return LoadObject<UTexture2D>(nullptr, *ObjectPath);
+	}
+}
+
 TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 {
 	FAssetRegistryModule& AssetRegistryModule =
@@ -77,7 +91,7 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 	Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
 	Filter.PackagePaths.Add(FName(*FMixtormatPaths::MasksRoot()));
 	Filter.bRecursiveClasses = true;
-	Filter.bRecursivePaths = true;
+	Filter.bRecursivePaths = false;
 
 	TArray<FAssetData> Assets;
 	AssetRegistryModule.Get().GetAssets(Filter, Assets);
@@ -105,7 +119,10 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 			}
 			else if (Mask->MaskTexture)
 			{
-				Entry.ThumbnailAsset = FAssetData(Mask->MaskTexture.Get());
+				if (UTexture2D* Thumbnail = LoadGeneratedMaskThumbnail(*Mask->MaskTexture))
+				{
+					Entry.ThumbnailAsset = FAssetData(Thumbnail);
+				}
 			}
 			Entry.DisplayName = Mask->DisplayName.IsEmpty()
 				? FText::FromName(Asset.AssetName)
@@ -114,7 +131,10 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 		}
 		else
 		{
-			Entry.ThumbnailAsset = Asset;
+			if (UTexture2D* Thumbnail = LoadGeneratedMaskThumbnail(*Texture))
+			{
+				Entry.ThumbnailAsset = FAssetData(Thumbnail);
+			}
 			Entry.DisplayName = FText::FromName(Asset.AssetName);
 			Entry.Category = FName(TEXT("Texture"));
 		}

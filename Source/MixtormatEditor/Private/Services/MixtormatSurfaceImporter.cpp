@@ -1,6 +1,7 @@
 #include "Services/MixtormatSurfaceImporter.h"
 
 #include "Services/MixtormatPaths.h"
+#include "Services/MixtormatThumbnailRenderer.h"
 #include "AssetImportTask.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -728,12 +729,14 @@ FText FMixtormatImportResult::ToMessage() const
 	}
 
 	FString Message = FString::Printf(
-		TEXT("Imported or updated %d surfaces, %d masks, %d standalone normals, and %d effects. Generated %d normal-derived height textures. Reimported %d changed textures; reused %d unchanged textures."),
+		TEXT("Imported or updated %d surfaces, %d masks, %d standalone normals, and %d effects. Generated %d normal-derived height textures. Generated or updated %d thumbnails; reused %d unchanged thumbnails. Reimported %d changed textures; reused %d unchanged textures."),
 		ImportedSurfaceCount,
 		ImportedMaskCount,
 		ImportedNormalCount,
 		ImportedEffectCount,
 		GeneratedHeightCount,
+		GeneratedThumbnailCount,
+		ReusedThumbnailCount,
 		ReimportedTextureCount,
 		ReusedTextureCount);
 
@@ -829,13 +832,33 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedMasks()
 	for (const FString& MaskFilename : MaskFiles)
 	{
 		const FString MaskFile = MaskSourceRoot / MaskFilename;
-		if (ImportTexture(
+		if (UTexture2D* MaskTexture = ImportTexture(
 			AssetTools,
 			MaskFile,
 			FMixtormatPaths::MasksRoot(),
 			EMapType::Ram,
 			Result))
 		{
+			const FMixtormatThumbnailUpdate ThumbnailUpdate =
+				FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbnail(*MaskTexture);
+			if (!ThumbnailUpdate.IsValid())
+			{
+				Result.Errors.Add(ThumbnailUpdate.Error);
+			}
+			else if (ThumbnailUpdate.bChanged)
+			{
+				if (SavePluginAsset(
+					*ThumbnailUpdate.Texture,
+					TEXT("mask thumbnail"),
+					Result.Errors))
+				{
+					++Result.GeneratedThumbnailCount;
+				}
+			}
+			else
+			{
+				++Result.ReusedThumbnailCount;
+			}
 			++Result.ImportedMaskCount;
 		}
 		else
@@ -958,12 +981,16 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDefaultLibrary()
 		Result.ReimportedTextureCount += Step.ReimportedTextureCount;
 		Result.ReusedTextureCount += Step.ReusedTextureCount;
 		Result.GeneratedHeightCount += Step.GeneratedHeightCount;
+		Result.GeneratedThumbnailCount += Step.GeneratedThumbnailCount;
+		Result.ReusedThumbnailCount += Step.ReusedThumbnailCount;
 		Result.Errors.Append(Step.Errors);
 	}
 	const FMixtormatImportResult MaskStep = ImportShippedMasks();
 	Result.ImportedMaskCount += MaskStep.ImportedMaskCount;
 	Result.ReimportedTextureCount += MaskStep.ReimportedTextureCount;
 	Result.ReusedTextureCount += MaskStep.ReusedTextureCount;
+	Result.GeneratedThumbnailCount += MaskStep.GeneratedThumbnailCount;
+	Result.ReusedThumbnailCount += MaskStep.ReusedThumbnailCount;
 	Result.Errors.Append(MaskStep.Errors);
 
 	const FMixtormatImportResult NormalStep = ImportShippedNormals();

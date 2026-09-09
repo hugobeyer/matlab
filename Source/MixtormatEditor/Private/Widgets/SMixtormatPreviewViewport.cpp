@@ -16,6 +16,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "RenderingThread.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
+#include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
@@ -54,35 +55,6 @@ namespace MixtormatPreview
 		return Material;
 	}
 
-	// The studio floor.
-	//
-	// Set on the profile rather than on the floor component, because FAdvancedPreviewScene
-	// reassigns every floor material slot from Profile.GetEnvironmentFloorMaterial() on each
-	// UpdateScene -- and Mixtormat calls that whenever lighting changes or an HDRI is rotated.
-	// A material pushed onto the component would survive until the first light change and then
-	// silently revert to the engine grid.
-	const FString StudioFloorMaterialPath = FMixtormatPaths::StudioFloorMaterialObjectPath();
-
-	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile)
-	{
-		// Both the pointer and the path, the way the engine's own defaults are declared: the
-		// getter falls back to loading the path when the pointer is unset, so setting only one
-		// works until something resets the other.
-		Profile.EnvironmentFloorMaterialPath = StudioFloorMaterialPath;
-		Profile.EnvironmentFloorMaterial =
-			TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(StudioFloorMaterialPath));
-
-		Profile.bPostProcessingEnabled = true;
-		Profile.bEnableToneMapping = true;
-		Profile.PostProcessingSettings.bOverride_AutoExposureMinBrightness = true;
-		Profile.PostProcessingSettings.AutoExposureMinBrightness = 0.0f;
-		Profile.PostProcessingSettings.bOverride_AutoExposureMaxBrightness = true;
-		Profile.PostProcessingSettings.AutoExposureMaxBrightness = 0.0f;
-		Profile.PostProcessingSettings.bOverride_AutoExposureBias = true;
-		Profile.PostProcessingSettings.AutoExposureBias = -0.5f;
-		Profile.PostProcessingSettings.bOverride_BloomIntensity = true;
-		Profile.PostProcessingSettings.BloomIntensity = 0.0f;
-	}
 }
 
 class FMixtormatPreviewViewportClient final : public FEditorViewportClient
@@ -195,7 +167,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	if (const FPreviewSceneProfile* CurrentProfile = PreviewScene.GetCurrentProfile())
 	{
 		DefaultPreviewProfile = MakeUnique<FPreviewSceneProfile>(*CurrentProfile);
-		MixtormatPreview::ConfigureLookdevProfile(*DefaultPreviewProfile);
+		MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*DefaultPreviewProfile);
 	}
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
@@ -494,45 +466,18 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 	PreviewScene.SetEnvironmentVisibility(false, true);
 	PreviewScene.SetFloorVisibility(true, true);
 
-	float LightBrightness = 2.0f;
-	float SkyBrightness = 0.45f;
-	float LightSourceAngle = 10.0f;
-	FRotator LightRotation(-35.0f, -45.0f, 0.0f);
+	const FMixtormatStudioLightSettings LightSettings =
+		MixtormatPreviewSceneSettings::GetStudioLighting(LightingPreset);
 
-	switch (LightingPreset)
-	{
-	case EMixtormatStudioLighting::Soft:
-		LightBrightness = 1.25f;
-		SkyBrightness = 0.65f;
-		LightSourceAngle = 16.0f;
-		LightRotation = FRotator(-28.0f, 30.0f, 0.0f);
-		break;
-	case EMixtormatStudioLighting::Dramatic:
-		LightBrightness = 3.0f;
-		SkyBrightness = 0.15f;
-		LightSourceAngle = 6.0f;
-		LightRotation = FRotator(-48.0f, -65.0f, 0.0f);
-		break;
-	case EMixtormatStudioLighting::Rim:
-		LightBrightness = 2.5f;
-		SkyBrightness = 0.2f;
-		LightSourceAngle = 8.0f;
-		LightRotation = FRotator(-22.0f, 145.0f, 0.0f);
-		break;
-	case EMixtormatStudioLighting::Neutral:
-	default:
-		break;
-	}
-
-	LightingYaw = LightRotation.Yaw;
-	BaseLightBrightness = LightBrightness;
-	BaseSkyBrightness = SkyBrightness;
+	LightingYaw = LightSettings.LightRotation.Yaw;
+	BaseLightBrightness = LightSettings.LightBrightness;
+	BaseSkyBrightness = LightSettings.SkyBrightness;
 	ApplyLightIntensities();
-	PreviewScene.SetLightDirection(LightRotation);
+	PreviewScene.SetLightDirection(LightSettings.LightRotation);
 	if (PreviewScene.DirectionalLight)
 	{
-		PreviewScene.DirectionalLight->SetLightSourceAngle(LightSourceAngle);
-		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(LightSourceAngle * 0.5f);
+		PreviewScene.DirectionalLight->SetLightSourceAngle(LightSettings.LightSourceAngle);
+		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(LightSettings.LightSourceAngle * 0.5f);
 		PreviewScene.DirectionalLight->SetShadowBias(0.75f);
 		PreviewScene.DirectionalLight->SetShadowSlopeBias(0.8f);
 		PreviewScene.DirectionalLight->ShadowSharpen = 0.0f;
@@ -559,7 +504,7 @@ void SMixtormatPreviewViewport::SetHdriLighting(UTextureCube* Cubemap)
 	HdriPreviewProfile->EnvironmentCubeMap = Cubemap;
 	HdriPreviewProfile->EnvironmentCubeMapPath = Cubemap->GetPathName();
 	HdriPreviewProfile->LightingRigRotation = HdriYaw;
-	MixtormatPreview::ConfigureLookdevProfile(*HdriPreviewProfile);
+	MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*HdriPreviewProfile);
 	HdriPreviewProfile->SkyLightIntensity = 0.55f;
 	HdriPreviewProfile->DirectionalLightIntensity = 0.35f;
 	bUsingHdri = true;
@@ -640,33 +585,9 @@ void SMixtormatPreviewViewport::SetPreviewQuality(const EMixtormatPreviewQuality
 		return;
 	}
 
-	FEngineShowFlags& ShowFlags = PreviewViewportClient->EngineShowFlags;
-	ShowFlags.SetDynamicShadows(true);
-	switch (Quality)
-	{
-	case EMixtormatPreviewQuality::Low:
-		ShowFlags.SetLumenGlobalIllumination(false);
-		ShowFlags.SetLumenReflections(false);
-		ShowFlags.SetAmbientOcclusion(false);
-		ShowFlags.SetScreenSpaceAO(false);
-		ShowFlags.SetScreenSpaceReflections(false);
-		break;
-	case EMixtormatPreviewQuality::High:
-		ShowFlags.SetLumenGlobalIllumination(true);
-		ShowFlags.SetLumenReflections(true);
-		ShowFlags.SetAmbientOcclusion(true);
-		ShowFlags.SetScreenSpaceAO(true);
-		ShowFlags.SetScreenSpaceReflections(true);
-		break;
-	case EMixtormatPreviewQuality::Medium:
-	default:
-		ShowFlags.SetLumenGlobalIllumination(false);
-		ShowFlags.SetLumenReflections(false);
-		ShowFlags.SetAmbientOcclusion(true);
-		ShowFlags.SetScreenSpaceAO(true);
-		ShowFlags.SetScreenSpaceReflections(true);
-		break;
-	}
+	MixtormatPreviewSceneSettings::ConfigureQuality(
+		PreviewViewportClient->EngineShowFlags,
+		Quality);
 	PreviewViewportClient->Invalidate();
 }
 
@@ -780,24 +701,13 @@ void SMixtormatPreviewViewport::FocusCamera()
 	const FBoxSphereBounds Bounds = PreviewMeshComponent->Bounds;
 	PreviewTarget = Bounds.Origin;
 
-	const float Radius = FMath::Max(static_cast<float>(Bounds.SphereRadius), KINDA_SMALL_NUMBER);
-
-	// FEditorViewportClient treats ViewFOV as horizontal. Derive the vertical angle from the
-	// current viewport aspect ratio and fit against whichever axis is tighter. Using the horizontal
-	// angle alone over-frames wide viewports and makes F appear to zoom into the mesh.
-	const float HorizontalHalfFov = FMath::DegreesToRadians(CameraFov) * 0.5f;
-	const FVector2D ViewportSize = GetCachedGeometry().GetLocalSize();
-	const float AspectRatio = ViewportSize.Y > KINDA_SMALL_NUMBER
-		? FMath::Max(ViewportSize.X / ViewportSize.Y, KINDA_SMALL_NUMBER)
-		: 1.0f;
-	const float VerticalHalfFov = FMath::Atan(FMath::Tan(HorizontalHalfFov) / AspectRatio);
-	const float LimitingHalfFov = FMath::Min(HorizontalHalfFov, VerticalHalfFov);
-
-	// The frustum plane is tangent to the bounding sphere, so sine fits the near cap too.
-	const float FitDistance = Radius / FMath::Max(FMath::Sin(LimitingHalfFov), KINDA_SMALL_NUMBER);
+	const float FitDistance = MixtormatPreviewSceneSettings::CalculateFocusDistance(
+		static_cast<float>(Bounds.SphereRadius),
+		CameraFov,
+		GetCachedGeometry().GetLocalSize());
 
 	CameraDistance = FMath::Clamp(
-		FitDistance * MixtormatPreviewCamera::FocusMargin,
+		FitDistance,
 		MixtormatPreviewCamera::DistanceMinimum,
 		MixtormatPreviewCamera::DistanceMaximum);
 
