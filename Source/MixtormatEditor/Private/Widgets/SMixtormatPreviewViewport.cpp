@@ -113,6 +113,12 @@ public:
 			Owner.FocusCamera();
 			return true;
 		}
+		if (EventArgs.Event == IE_Pressed
+			&& (EventArgs.Key == EKeys::SpaceBar || EventArgs.Key == EKeys::H))
+		{
+			Owner.ToggleOverlayUi();
+			return true;
+		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
 		{
 			Owner.ZoomCamera(1.0f);
@@ -184,6 +190,8 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 {
+	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
+
 	if (const FPreviewSceneProfile* CurrentProfile = PreviewScene.GetCurrentProfile())
 	{
 		DefaultPreviewProfile = MakeUnique<FPreviewSceneProfile>(*CurrentProfile);
@@ -731,6 +739,11 @@ void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)
 		MixtormatPreviewCamera::DistanceMaximum);
 	UpdateStudioFog();
 	UpdateCamera();
+}
+
+void SMixtormatPreviewViewport::ToggleOverlayUi()
+{
+	OnToggleOverlayUi.ExecuteIfBound();
 }
 
 void SMixtormatPreviewViewport::SetCameraFov(const float FovDegrees)

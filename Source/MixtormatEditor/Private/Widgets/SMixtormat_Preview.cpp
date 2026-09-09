@@ -719,7 +719,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 
 	const TSharedRef<SMixtormatPreviewViewport> PreviewViewport = bReusingViewport
 		? PreviewViewports[0].ToSharedRef()
-		: SNew(SMixtormatPreviewViewport);
+		: SNew(SMixtormatPreviewViewport)
+			.OnToggleOverlayUi(FSimpleDelegate::CreateLambda([this]()
+			{
+				bPreviewOverlayUiVisible = !bPreviewOverlayUiVisible;
+			}));
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -730,6 +734,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -741,6 +746,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -750,6 +756,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -759,6 +766,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -771,6 +779,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -782,6 +791,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
@@ -792,6 +802,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
 			SNew(SMixtormatGradientBox)
+			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			.StartColor(MixtormatPalette::OverlayPlateTop())
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)

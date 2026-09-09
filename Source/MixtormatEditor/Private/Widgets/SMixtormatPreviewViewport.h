@@ -105,6 +105,7 @@ class SMixtormatPreviewViewport final : public SEditorViewport
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatPreviewViewport) {}
+		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -153,6 +154,7 @@ private:
 	void OrbitCamera(float YawDelta, float PitchDelta);
 	void RotateLighting(float YawDelta);
 	void ZoomCamera(float ZoomDelta);
+	void ToggleOverlayUi();
 	void UpdateCamera();
 	void UpdateStudioFog();
 	void UpdateHdriFillLight();
@@ -164,6 +166,7 @@ private:
 
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;
+	FSimpleDelegate OnToggleOverlayUi;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	UExponentialHeightFogComponent* StudioFogComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;

@@ -829,6 +829,7 @@ private:
 	bool bInteractiveEdit = false;
 	bool bInteractiveHistoryPending = false;
 	bool bShowCompositionBefore = false;
+	bool bPreviewOverlayUiVisible = true;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = false;
 	bool bIsBaking = false;
