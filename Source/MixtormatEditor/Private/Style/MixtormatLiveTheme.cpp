@@ -281,7 +281,7 @@ bool FMixtormatLiveTheme::Save(FString& Error)
 	{
 		Error = FString::Printf(
 			TEXT("Could not save the theme. Check the project's Saved/%s folder permissions."),
-			*FMixtormatPaths::PluginName().ToString());
+			*FMixtormatPaths::ProductName().ToString());
 		return false;
 	}
 	return true;
@@ -294,7 +294,7 @@ bool FMixtormatLiveTheme::Load(FString& Error)
 	{
 		Error = FString::Printf(
 			TEXT("Could not read Saved/%s/LiveTheme.json. Save a theme first."),
-			*FMixtormatPaths::PluginName().ToString());
+			*FMixtormatPaths::ProductName().ToString());
 		return false;
 	}
 	return Deserialize(Text, Error);

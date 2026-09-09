@@ -5,6 +5,7 @@
 
 namespace
 {
+	const FName CurrentProductName(TEXT("Mixtormat"));
 	const FName CurrentPluginName(TEXT("MaterialLab"));
 
 	FString PackageChild(const FString& Root, const FString& Child)
@@ -16,6 +17,11 @@ namespace
 	{
 		return FString::Printf(TEXT("%s/%s.%s"), *PackageRoot, AssetName, AssetName);
 	}
+}
+
+FName FMixtormatPaths::ProductName()
+{
+	return CurrentProductName;
 }
 
 FName FMixtormatPaths::PluginName()
@@ -138,10 +144,10 @@ FString FMixtormatPaths::CubeMeshObjectPath()
 
 FString FMixtormatPaths::ProjectMaterialsRoot()
 {
-	return TEXT("/Game/MaterialLab/Materials");
+	return TEXT("/Game/Mixtormat/Materials");
 }
 
 FString FMixtormatPaths::LiveThemePath()
 {
-	return FPaths::Combine(FPaths::ProjectSavedDir(), CurrentPluginName.ToString(), TEXT("LiveTheme.json"));
+	return FPaths::Combine(FPaths::ProjectSavedDir(), CurrentProductName.ToString(), TEXT("LiveTheme.json"));
 }

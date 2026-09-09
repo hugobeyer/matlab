@@ -1,13 +1,14 @@
 # Mixtormat — Identity and Content Migration Plan
 
-Status: **In progress — I2 implemented; I1 live inventory blocked**
+Status: **In progress — I2–I3 implemented; I1 filesystem baseline captured**
 
 Current progress:
 
-- I1: static manifest created, but `MaterialLab/Content` is empty in this workspace.
+- I1: PowerShell baseline captured 34 surfaces and 34 matching preview instances; live metadata verification remains.
 - I2: editor-side plugin/package paths are centralized in `FMixtormatPaths`.
-- All centralized values still resolve to the existing `MaterialLab` identity.
-- I3 and all rename/migration phases have not started.
+- I3: new document names, project save defaults, and live-theme storage use `Mixtormat`.
+- Plugin mount, plugin assets, and shader paths still use `MaterialLab` until I4–I5.
+- I4 and later rename/migration phases have not started.
 
 ## 1. Goal
 
@@ -103,7 +104,7 @@ No active `FMaterialLab*`, `UMaterialLab*`, `SMaterialLab*`, or `EMaterialLab*` 
 
 ## 6. Phase I1 — Surface inventory and migration manifest
 
-Status: **Blocked pending access to the live imported surface assets**
+Status: **Filesystem inventory complete; live registry metadata pending**
 
 Static manifest: [`Mixtormat_Surface_Migration_Manifest.md`](Mixtormat_Surface_Migration_Manifest.md)
 
@@ -166,6 +167,15 @@ Remove scattered literals before changing their values.
 Runtime behavior and asset paths are unchanged, but identity values have one source of truth.
 
 ## 8. Phase I3 — Low-risk visible naming
+
+Status: **Implemented**
+
+Notes:
+
+- New recipes default to `/Game/Mixtormat/Materials`.
+- New recipe names and default asset names use `Mixtormat`.
+- Live themes now save to `Saved/Mixtormat/LiveTheme.json`.
+- No legacy theme fallback or copy was added.
 
 ### Goal
 

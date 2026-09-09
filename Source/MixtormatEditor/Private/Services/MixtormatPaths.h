@@ -4,10 +4,11 @@
 
 class IPlugin;
 
-// The current plugin identity and every editor-side package path derived from it.
-// Values intentionally remain MaterialLab until the atomic plugin/content migration.
+// Product-facing paths are canonical Mixtormat now. Plugin package paths intentionally remain
+// MaterialLab until the atomic plugin/content migration.
 struct FMixtormatPaths final
 {
+	static FName ProductName();
 	static FName PluginName();
 	static TSharedPtr<IPlugin> FindPlugin();
 	static FString PluginBaseDir();

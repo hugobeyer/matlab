@@ -45,7 +45,7 @@ FReply SMixtormat::StartNewMaterial()
 
 	bHasWorkingMaterial = true;
 	WorkingMaterialAsset.Reset();
-	WorkingMaterialName = TEXT("Untitled MatLab Material");
+	WorkingMaterialName = TEXT("Untitled Mixtormat Material");
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
@@ -227,7 +227,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	FSaveAssetDialogConfig DialogConfig;
 	DialogConfig.DialogTitleOverride = LOCTEXT("SaveMixtormatMaterialAs", "Save Mixtormat Material As");
 	DialogConfig.DefaultPath = FMixtormatPaths::ProjectMaterialsRoot();
-	DialogConfig.DefaultAssetName = TEXT("MLM_Untitled");
+	DialogConfig.DefaultAssetName = TEXT("Mixtormat_Untitled");
 	DialogConfig.AssetClassNames.Add(UMixtormatMaterial::StaticClass()->GetClassPathName());
 	DialogConfig.ExistingAssetPolicy = ESaveAssetDialogExistingAssetPolicy::Disallow;
 
