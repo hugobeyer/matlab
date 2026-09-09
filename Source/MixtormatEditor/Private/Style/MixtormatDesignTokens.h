@@ -262,6 +262,11 @@ namespace MixtormatTokens
 	constexpr float MaskTileSize = 96.0f;
 	constexpr float MaskPickerTileSize = 76.0f;
 	constexpr float MaskPickerTileSizeDense = 52.0f;
+
+	constexpr float MaskGalleryTileMinimum = 52.0f;
+	constexpr float MaskGalleryTileMaximum = 124.0f;
+	constexpr float MaskGalleryTileStep = 12.0f;
+	inline float MaskGalleryTileGap = 1.0f;
 	constexpr float TileGap = 4.0f;
 	constexpr float MaterialGalleryTileDefault = 96.0f;
 	constexpr float MaterialGalleryTileMinimum = 72.0f;

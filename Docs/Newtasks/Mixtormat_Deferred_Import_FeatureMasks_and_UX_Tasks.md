@@ -1,9 +1,28 @@
-# Mixtormat — Deferred Import, Aspect, Feature Masks, and Library UX Tasks
+# Mixtormat — Deferred Import, Aspect, and Remaining Library UX Tasks
 
-Status: **Deferred**
-Next active feature: **Worn Edges**
+Status: **Deferred backlog — partially implemented**
 
-This document collects the recent features that should be implemented after Worn Edges. They should not interrupt the current Pattern/Worn Edges work.
+Implementation plan: [`Mixtormat_Deferred_Import_Aspect_and_UX_Implementation_Plan.md`](Mixtormat_Deferred_Import_Aspect_and_UX_Implementation_Plan.md)
+
+This document is the requirements backlog for work that follows the current scoped-effect-mask and Worn Edges foundation. It is not an implementation handoff for work already completed.
+
+## Current implementation state
+
+| Area | State |
+|---|---|
+| Worn Edges W7 roughness and generated wear coverage | Implemented; tests added but not run |
+| One-level scoped masks owned by Effect children | Implemented |
+| Shared scoped-mask inspector and RMB Add Mask | Implemented |
+| ID-driven mask UV offsets from Pattern/Cluster IDs | Remaining |
+| Worn Edges per-ID noise-coordinate offset | Remaining |
+| Persistent mask selection and direct RMB placement | Implemented |
+| Dragging masks directly onto Effect rows | Remaining |
+| Mask gallery wheel zoom | Implemented |
+| One shared material/mask gallery gap token | Remaining |
+| User mask/material import and channel routing | Deferred |
+| Rectangular aspect and global canvas rotation | Deferred |
+
+Pattern producers, controls, shaders, and output contracts remain out of scope.
 
 ---
 
@@ -467,248 +486,232 @@ Tangent-space normal XY must rotate with the canvas transform.
 
 ---
 
-## 8. Feature-Local Masks
+## 8. ID-Driven Mask and Worn Noise Offsets
 
-### Current problem
+Status: **Required; not implemented**
 
-`MASK BLENDING` is currently the inspector for an actual sibling `Mask` child.
+This is consumer behavior. It does not make Pattern IDs or Cluster IDs mask owners and must not modify their producers.
 
-It is not a mask belonging to the selected feature/effect.
+### Mask ID offset
 
-When Pattern IDs or an effect is selected, the panel can appear even though no feature-local mask exists. Clicking or dragging a mask currently adds/selects a layer-level mask instead.
+Every layer-scoped or effect-scoped texture mask should optionally consume an upstream Region ID source.
 
-### Goal
+Inspector controls:
 
-Allow effects/features to own their own local mask chain.
+- `ID Offset Source`: None, or a compatible upstream Pattern IDs / Cluster IDs row.
+- `ID Offset Amount`: strength of the deterministic two-dimensional UV phase shift.
+- `ID Offset Seed`: changes the deterministic offset without changing Region IDs.
+
+Store the selected source by stable `ChildId`, not row index or display name.
+
+Evaluation:
+
+```text
+Canvas UV
+→ existing mask tiling / flip / quarter-turn / UV offset
+→ deterministic float2 offset from selected Region ID + seed
+→ wrap
+→ sample mask texture
+→ existing shaping and mask blending
+```
+
+The offset must be constant inside one region and change between IDs. Amount `0` or no valid source must preserve current mask sampling exactly. Only already-evaluated upstream ID producers may appear in the dropdown.
+
+### Worn Edges noise offset
+
+Current Worn Edges behavior already consumes the nearest upstream Region IDs and varies radius, slope, strength, and relative noise-family weights per ID. It does **not** currently offset the noise coordinates per ID.
+
+Add:
+
+- `ID Source`: Auto / nearest upstream, or an explicit upstream Pattern IDs / Cluster IDs row.
+- `Noise Offset`: deterministic per-ID phase-offset amount.
+- Reuse the existing Worn Edges seed when hashing the two-dimensional offset.
+
+Apply the offset to the complete Macro / Cellular / Ridge / Micro / Warp noise domain. Do not offset or alter Pattern `OutputEdge`, Region IDs, or edge localization.
+
+Compatibility:
+
+- Default `ID Source` keeps the current nearest-upstream behavior.
+- Default `Noise Offset = 0` preserves current Worn Edges output.
+- Missing explicit sources fall back safely to Auto during normalization.
+
+## 9. Scoped Effect Masks
+
+Status: **Implemented foundation; hardening remains**
+
+The implemented model is intentionally narrower than the original feature-local proposal:
+
+- Only `Effect` children can own scoped masks.
+- Pattern IDs, Cluster IDs, and other discrete-data producers cannot own them.
+- Ownership uses flat `FMixtormatLayer::Children` storage plus `ScopeOwnerChildId`.
+- Only one ownership level is supported.
+- Scoped masks remain complete `FMixtormatLayerChild` entries.
+- Existing mask controls, drivers, references, copies, and instances are reused.
+- Scoped masks affect only their owning effect.
+- Later siblings retain the unchanged layer-level `CombinedMask`.
+- Missing or unsupported owners fail safely to layer scope.
 
 Example:
 
 ```text
 Material Layer
-├─ Pattern IDs
-│   └─ Mask · Grunge 03
 ├─ Worn Edges
-│   ├─ Mask · Edge Noise
-│   └─ Mask · Painted Areas
+│  ├─ Mask · Edge Noise
+│  └─ Mask · Painted Areas
 ├─ HSV From IDs
 └─ Layer Mask
 ```
 
-### Scope
+`MASK BLENDING` now appears only when a real mask child is selected, whether that mask is layer-scoped or effect-scoped.
 
-Implement **one level of nesting only**.
+Remaining hardening:
 
-Do not introduce arbitrary recursive node trees.
+- Add one deterministic ownership normalizer shared by load and edit paths.
+- Add save/load ownership tests.
+- Add optional owner disclosure/collapse UX.
+- Add explicit same-layer mask reassignment between supported effect owners.
 
-A child feature may own local mask entries, but masks do not themselves own children.
-
-### Reuse existing mask controls
-
-Feature-local masks should reuse:
-
-- Blend Mode
-- Weight
-- Balance
-- Contrast
-- Offset
-- Invert
-- Tiling X/Y
-- UV Offset X/Y
-- Flip U/V
-- Quarter-turn Rotation
-
-### Evaluation
-
-Conceptually:
-
-```text
-FeatureInput
-    ↓
-Feature Solve
-    ↓
-Feature Local Mask
-    ↓
-Blend FeatureInput ↔ FeatureOutput
-```
-
-Example for Worn Edges:
-
-```text
-WornHeight = Solver(InputHeight)
-FinalHeight = lerp(InputHeight, WornHeight, FeatureMask)
-```
-
-For Pattern IDs, initially mask the pattern's **contribution** rather than destroying/stomping the stable Region ID producer outside the mask. Preserve downstream ID behavior unless deliberately redesigned.
-
-### Current misleading inspector
-
-Until feature-local masks are implemented:
-
-- `MASK BLENDING` should only be visible when a real `FMixtormatMaskLayer` child is selected.
-- It should not appear as a fake section above Pattern IDs/effects.
+The detailed implemented architecture remains documented in [`Mixtormat_Scoped_Feature_Masks_Plan.md`](Mixtormat_Scoped_Feature_Masks_Plan.md).
 
 ---
 
-## 9. Context-Sensitive Mask Assignment
+## 10. Persistent Mask Selection and RMB Placement
 
-### Goal
+Status: **Implemented**
 
-Clicking a mask in the mask library should use the current selection context.
+Current behavior:
 
-Expected behavior:
+- Clicking the persistent bottom mask gallery selects and highlights a mask only.
+- Gallery clicks never mutate the layer stack.
+- Layer RMB shows `Add Mask · <selected mask>` and creates a layer-scoped mask.
+- Effect RMB shows the same selected mask and creates a mask scoped to that effect.
+- Mask-row RMB offers `Replace with <selected mask>` directly.
+- These actions are disabled until a mask is selected.
+- Add and replacement actions no longer open secondary mask gallery popovers.
 
-```text
-Layer selected
-→ add mask to layer
-
-Pattern IDs selected
-→ add local mask to Pattern IDs
-
-Worn Edges selected
-→ add local mask to Worn Edges
-
-Other supported effect/feature selected
-→ add local mask to selected feature
-```
-
-If a selected feature cannot accept local masks, fall back only if the UX explicitly communicates that behavior. Do not silently attach to the layer.
+Mask dragging remains available as a separate explicit gesture. Pattern IDs and other discrete-data producers remain unsupported as scoped-mask owners.
 
 ---
 
-## 10. Drag-and-Drop Masks onto Features
+## 11. Drag-and-Drop Masks onto Effects
 
-### Current behavior
+Status: **Deferred**
 
-Mask dragging currently targets the layer row and calls the layer-level mask assignment path.
+Current behavior:
 
-### Required behavior
+- Layer-row drops append layer-scoped masks.
+- Child-row drop targets accept child reorder/move operations only.
+- Effect rows do not yet accept `FMixtormatMaskDragDropOp`.
+
+Required behavior:
 
 ```text
 Drop mask on layer row
-→ append layer mask
+→ append layer-scoped mask
 
-Drop mask on supported feature/effect row
-→ append local mask to that feature
+Drop mask on supported Effect row
+→ append mask scoped to that effect
 ```
-
-Feature rows must accept mask drag operations.
 
 During hover:
 
-- highlight the actual destination feature
-- show a destination-specific tooltip, e.g.:
-  - `Mask Pattern IDs`
-  - `Mask Worn Edges`
+- Highlight the actual destination row.
+- Show a destination-specific tooltip such as `Mask Worn Edges`.
+- Keep the generic layer tooltip only for a layer destination.
+- Reject unsupported child destinations without falling through to the layer.
 
-Do not show the generic layer-level `Release to append this mask` tooltip when the target is a feature.
-
-Drag and click assignment must produce the same ownership semantics.
+Pattern and ID producer rows remain unsupported. Drag and RMB placement must produce the same ownership semantics.
 
 ---
 
-## 11. Mask / Texture Gallery Zoom
+## 12. Mask / Texture Gallery Zoom
 
-### Goal
+Status: **Implemented**
 
-The mask/texture gallery should have the same zoom interaction as the material gallery.
+Current behavior:
 
-Requirements:
+- Mouse-wheel zoom uses the material gallery interaction model.
+- Mask range is `52–124px` with a `12px` step.
+- The persistent mask strip, add/replace mask popovers, and Peeling seed picker share it.
+- Dynamic tiles render at sufficient thumbnail resolution for the maximum zoom.
 
-- same interaction model
-- same min/max tile-size behavior where appropriate
-- same zoom step token unless a concrete reason exists to separate it
-- replacement-mask gallery and main mask library should remain visually consistent
-
-Do not invent a second unrelated zoom system.
+Retain this behavior; do not introduce another zoom system.
 
 ---
 
-## 12. Shared Gallery Gap Tokens
+## 13. Shared Gallery Gap Token
 
-### Goal
+Status: **Partially implemented**
 
-Material and mask/texture galleries should use the same style token for tile spacing.
+Current state:
 
-The current visual gap should not be hard-coded independently in multiple galleries.
+- Material and mask galleries both default to a `1px` gap.
+- They still use separate `MaterialGalleryTileGap` and `MaskGalleryTileGap` tokens.
+- `MaskGalleryTileGap` is exposed live in the developer style panel.
+- The secondary material replacement gallery no longer exists.
 
-Use the existing material-gallery gap token as the shared source of truth, or rename/generalize it if needed:
+Required cleanup:
 
-```text
-GalleryTileGap
-```
-
-Then use it consistently for:
-
-- material library
-- mask library
-- mask replacement picker
-- material replacement picker
-- future import/wizard thumbnail grids where appropriate
-
-Keep the token in the Mixtormat design/style token system.
+- Replace both tokens with one live `GalleryTileGap` source of truth.
+- Keep it in the developer style panel under `Galleries`.
+- Use it for the material library, mask library, mask add/replace pickers, and future import grids.
+- Preserve the current `1px` default and live refresh behavior.
 
 ---
 
-## Recommended Implementation Order After Worn Edges
+## Implementation Order and Status
 
-### D1 — Inspector cleanup
+### R1 — Harden scoped-mask ownership
 
-- Hide misleading `MASK BLENDING` unless an actual mask child is selected.
+- Shared load/edit normalization.
+- Save/load ownership tests.
+- Preserve compatibility behavior.
 
-### D2 — Feature-local mask data model
+### R2 — Add ID-driven offsets
 
-- One-level local mask ownership.
-- Serialization.
-- No compositor behavior changes beyond pass-through yet.
+- Masks select an upstream Pattern IDs or Cluster IDs source.
+- Deterministic per-ID UV offset with amount and seed.
+- Worn Edges offsets its complete noise domain per ID.
+- Consume published ID maps without modifying producers.
 
-### D3 — Feature mask compositor support
+### R3 — Persistent selection and RMB placement — complete
 
-- Evaluate local mask chains.
-- Apply to feature output.
-- Preserve Region ID contracts.
+- Bottom-gallery clicks select only.
+- Layer/effect RMB actions use the selected mask.
+- Mask replacement uses the selected mask without a popover.
 
-### D4 — Context-sensitive click + drag/drop
+Mask drops onto supported Effect rows remain in the next phase.
 
-- Library click targets selected feature or layer.
-- Feature rows accept mask drag.
-- Destination-specific hover feedback.
+### R4 — Unify gallery spacing
 
-### D5 — Gallery consistency
+- One live `GalleryTileGap` token.
+- Migrate material and mask galleries/pickers.
 
-- Mask/texture gallery zoom.
-- Shared tile-gap token.
-- Replace pickers use the same spacing behavior.
+### R5 — User Mask Import
 
-### D6 — User Mask Import
-
-- Project-owned imported masks.
+- Project-owned `UMixtormatMask` and texture assets.
 - Max dimension 4096.
-- Aspect-aware normalization.
+- Aspect-aware normalization and channel selection.
 
-### D7 — Material Import Wizard + Channel Router
+### R6 — Material Import Wizard + Channel Router
 
-- BC / N / arbitrary packed inputs.
-- RAMH routing and packing.
-- Same-dimension canonical outputs.
+- Extend or refactor `FMixtormatSurfaceImporter` for project-owned imports.
+- BC / Normal / arbitrary packed inputs.
+- RAMH routing and same-dimension canonical outputs.
 
-### D8 — Batch Folder Import
+### R7 — Batch Folder Import
 
-- Recursive scan.
-- Grouping.
-- Convention detection.
-- Review table.
+- Recursive scan, grouping, convention detection, and review table.
 
-### D9 — Rectangular surface/aspect support
+### R8 — Rectangular surface/aspect support
 
-- Intrinsic surface aspect.
-- Aspect-compensated sampling.
-- Quarter-turn-safe rectangular behavior.
+- Intrinsic surface aspect and quarter-turn-safe sampling.
 
-### D10 — Global Canvas Rotation
+### R9 — Global Canvas Rotation
 
 - Root 0/90/180/270 rotation.
 - Swap logical output dimensions for 90/270.
-- Correct tangent-space normal rotation.
+- Rotate tangent-space normal XY correctly.
 
 ---
 
@@ -719,5 +722,7 @@ Keep the token in the Mixtormat design/style token system.
 - Do not silently distort material-map aspect ratios.
 - Do not introduce arbitrary recursive child graphs.
 - Do not regress existing layer masks, Pattern IDs, Region IDs, Drivers, Ramp/HSV/Random From IDs, or existing effect semantics.
+- Do not add scoped-mask ownership to Pattern or discrete ID producer rows.
+- Do not modify Pattern shaders, controls, modes, or output contracts as part of this plan.
 - Keep UI styling token-driven.
 - Preserve current serialized enum values; append rather than reorder where serialization depends on numeric values.

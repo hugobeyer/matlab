@@ -86,7 +86,9 @@ bool SMixtormat::HaveSameLayerStructure(
 		for (int32 ChildIndex = 0; ChildIndex < A[LayerIndex].Children.Num(); ++ChildIndex)
 		{
 			if (A[LayerIndex].Children[ChildIndex].Type
-				!= B[LayerIndex].Children[ChildIndex].Type)
+				!= B[LayerIndex].Children[ChildIndex].Type
+				|| A[LayerIndex].Children[ChildIndex].ScopeOwnerChildId
+					!= B[LayerIndex].Children[ChildIndex].ScopeOwnerChildId)
 			{
 				return false;
 			}

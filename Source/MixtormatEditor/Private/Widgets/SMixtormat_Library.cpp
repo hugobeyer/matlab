@@ -22,6 +22,13 @@ void SMixtormat::ZoomMaterialGallery(const int32 Direction)
 	RebuildSurfaceList();
 }
 
+FReply SMixtormat::SelectMask(FText DisplayName, FSoftObjectPath AssetPath)
+{
+	SelectedMaskPath = AssetPath;
+	SelectedLibraryMaskName = DisplayName;
+	return FReply::Handled();
+}
+
 FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 {
 	SelectedSurfacePath = AssetPath;

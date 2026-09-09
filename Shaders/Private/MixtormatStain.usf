@@ -49,6 +49,7 @@ Texture2D<float4> SourceNormal;
 Texture2D<float4> SourceRAM;
 Texture2D<float> SourceHeight;
 Texture2D<float> PreviousMask;
+Texture2D<float> FeatureMask;
 Texture2D<float> SourceMask;
 Texture2D<float> DirtMask;
 SamplerState LinearWrapSampler;
@@ -515,7 +516,10 @@ void ResolveStain(int2 Pixel, float2 UV)
 	const float Carried = Injected * LocalDirt * (0.004f + LocalDirt * 0.018f);
 	const float DepositMask = saturate(State.w / max(Carried * 0.25f, 1.0e-6f));
 
-	const float Incoming = StainMode == 0 ? WetMask : DepositMask;
+	// A scoped feature mask gates the resolved stain without becoming part of the layer's
+	// accumulated mask chain or replacing the stain's own liquid/dirt source semantics.
+	const float Scope = saturate(FeatureMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+	const float Incoming = (StainMode == 0 ? WetMask : DepositMask) * Scope;
 
 	const float Blended = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));

@@ -28,8 +28,8 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			// Horizontal, not vertical: a selected child lights from its right edge, so it cannot
-			// be mistaken for a small layer row lighting from the top.
+			// Horizontal, not vertical: children stay dark at the left and lift toward the right,
+			// so they remain subordinate to the owning layer's top-to-bottom gradient.
 			SNew(SMixtormatGradientBox)
 			.StartColor(this, &SMixtormatLayerChildRow::GetTintEnd)
 			.EndColor(this, &SMixtormatLayerChildRow::GetTintStart)
@@ -104,16 +104,20 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 {
-	// The parent layer row gets its weight from ending on an opaque Panel() stop; a child row has
-	// no such anchor (it runs over whatever its layer group is sitting on), so the same HeaderTint()
-	// alpha reads as far fainter here. HeaderHover() is the same hue, already in the palette, and
-	// strong enough to read as selected rather than merely hovered.
-	return bSelected.Get(false) ? MixtormatPalette::HeaderHover() : FLinearColor::Transparent;
+	if (bSelected.Get(false))
+	{
+		return MixtormatPalette::LayerChildSelectedRight();
+	}
+	return IsHovered() ? MixtormatPalette::LayerChildHoverRight() : FLinearColor::Transparent;
 }
 
 FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
 {
-	return bSelected.Get(false) ? MixtormatPalette::HeaderTintFade() : FLinearColor::Transparent;
+	if (bSelected.Get(false))
+	{
+		return MixtormatPalette::LayerChildSelectedLeft();
+	}
+	return IsHovered() ? MixtormatPalette::LayerChildHoverLeft() : FLinearColor::Transparent;
 }
 
 FReply SMixtormatLayerChildRow::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)

@@ -104,6 +104,8 @@ namespace MixtormatUI
 		FAssetThumbnailConfig Config;
 		Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
 		Config.AllowAssetSpecificThumbnailOverlay = false;
+		Config.ShowAssetColor = false;
+		Config.ShowAssetBorder = false;
 		return Config;
 	}
 
@@ -934,7 +936,7 @@ private:
 	FOnMixtormatSurfaceGalleryZoom OnGalleryZoom;
 };
 
-DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatMaskSelected, int32, FSoftObjectPath);
+DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatMaskSelected, FText, FSoftObjectPath);
 DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatChildSelected, int32, int32);
 
 class SMixtormatMaskCard final : public SCompoundWidget
@@ -942,22 +944,22 @@ class SMixtormatMaskCard final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatMaskCard) {}
 		SLATE_DEFAULT_SLOT(FArguments, Content)
-		SLATE_ARGUMENT(int32, LayerIndex)
 		SLATE_ARGUMENT(FText, DisplayName)
 		SLATE_ARGUMENT(FSoftObjectPath, MaskPath)
 		SLATE_ARGUMENT(FAssetData, ThumbnailAsset)
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
 		SLATE_EVENT(FOnMixtormatMaskSelected, OnSelected)
+		SLATE_EVENT(FOnMixtormatSurfaceGalleryZoom, OnGalleryZoom)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
-		LayerIndex = InArgs._LayerIndex;
 		DisplayName = InArgs._DisplayName;
 		MaskPath = InArgs._MaskPath;
 		ThumbnailAsset = InArgs._ThumbnailAsset;
 		ThumbnailPool = InArgs._ThumbnailPool;
 		OnSelected = InArgs._OnSelected;
+		OnGalleryZoom = InArgs._OnGalleryZoom;
 		ChildSlot
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Top)
@@ -974,9 +976,20 @@ public:
 		}
 		if (OnSelected.IsBound())
 		{
-			OnSelected.Execute(LayerIndex, MaskPath);
+			OnSelected.Execute(DisplayName, MaskPath);
 		}
 		return FReply::Handled().DetectDrag(SharedThis(this), EKeys::LeftMouseButton);
+	}
+
+	virtual FReply OnMouseWheel(const FGeometry& Geometry, const FPointerEvent& Event) override
+	{
+		const int32 Direction = FMath::Sign(Event.GetWheelDelta());
+		if (Direction != 0 && OnGalleryZoom.IsBound())
+		{
+			OnGalleryZoom.Execute(Direction);
+			return FReply::Handled();
+		}
+		return SCompoundWidget::OnMouseWheel(Geometry, Event);
 	}
 
 	virtual FReply OnDragDetected(const FGeometry& Geometry, const FPointerEvent& Event) override
@@ -986,12 +999,12 @@ public:
 	}
 
 private:
-	int32 LayerIndex = INDEX_NONE;
 	FText DisplayName;
 	FSoftObjectPath MaskPath;
 	FAssetData ThumbnailAsset;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FOnMixtormatMaskSelected OnSelected;
+	FOnMixtormatSurfaceGalleryZoom OnGalleryZoom;
 };
 
 #undef LOCTEXT_NAMESPACE

@@ -63,7 +63,9 @@ private:
 	FReply ReimportShippedLibrary();
 	FReply RefreshSurfaceList();
 	void ZoomMaterialGallery(int32 Direction);
+	void ZoomMaskGallery(int32 Direction);
 	FReply SelectSurface(FText DisplayName, FSoftObjectPath AssetPath);
+	FReply SelectMask(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply HandleSurfaceDropped(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply SetCategoryFilter(FName Family);
 	FReply SetPreviewMesh(EMixtormatPreviewMesh MeshType);
@@ -104,6 +106,7 @@ private:
 	FReply SelectWorkingLayer(int32 LayerIndex);
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
+	FReply AssignScopedMaskToChild(int32 LayerIndex, int32 OwnerChildIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceMaskInLayer(int32 LayerIndex, int32 MaskIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
 	FReply ClearLayerMask(int32 LayerIndex);
@@ -696,6 +699,7 @@ private:
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddLayerMenu();
 	TSharedRef<SWidget> BuildAddMaskMenu(int32 LayerIndex);
+	TSharedRef<SWidget> BuildAddScopedMaskMenu(int32 LayerIndex, int32 OwnerChildIndex);
 	TSharedRef<SWidget> BuildAddEffectMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
@@ -708,7 +712,6 @@ private:
 	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildNormalSourceMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskCard(
-		int32 LayerIndex,
 		const FText& Name,
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset,
@@ -775,6 +778,7 @@ private:
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	float MaterialGalleryTileSize = MixtormatTokens::MaterialGalleryTileDefault;
+	float MaskGalleryTileSize = MixtormatTokens::MaskBarTileSize;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
 	// The inspector strip's own thumbnail. Kept apart from LayerThumbnails because the strip is
 	// re-made on every selection while that array is only cleared when the whole stack rebuilds --
@@ -800,6 +804,8 @@ private:
 	FEditHistoryState CurrentHistoryState;
 	FSoftObjectPath SelectedSurfacePath;
 	FText SelectedLibrarySurfaceName;
+	FSoftObjectPath SelectedMaskPath;
+	FText SelectedLibraryMaskName;
 	TStrongObjectPtr<UMaterialInstanceConstant> SelectedPreviewMaterial;
 	TStrongObjectPtr<UMixtormatMaterial> WorkingMaterialAsset;
 	float CurrentTiling = 2.0f;

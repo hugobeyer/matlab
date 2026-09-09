@@ -187,18 +187,15 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatLayerRow::GetBackgroundStart() const
 {
-	// A hidden layer sweeps dark left-to-right; a selected one carries the same tint an inspector
-	// group header does. Both are read off the same two stops, which is why the row needs a
-	// gradient rather than a brush.
-	//
-	// Selection only, deliberately: opening a layer says where you are looking, selecting it says
-	// what you are editing. Tinting both meant most of the stack lit up at once and the tint
-	// stopped meaning anything.
 	if (!bLayerEnabled.Get(true))
 	{
 		return MixtormatPalette::LayerHiddenTop();
 	}
-	return bSelected.Get(false) ? MixtormatPalette::HeaderTint() : MixtormatPalette::Panel();
+	if (bSelected.Get(false))
+	{
+		return MixtormatPalette::LayerSelectedTop();
+	}
+	return IsHovered() ? MixtormatPalette::LayerHoverTop() : MixtormatPalette::Panel();
 }
 
 FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
@@ -207,16 +204,22 @@ FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
 	{
 		return MixtormatPalette::LayerHiddenEnd();
 	}
-	// Shades down to darker than the panel it sits on, so a row reads as its own surface without an
-	// edge drawn round it -- the same fall a group header makes.
-	return MixtormatPalette::PanelBottom();
+	if (bSelected.Get(false))
+	{
+		return MixtormatPalette::LayerSelectedBottom();
+	}
+	return IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom();
 }
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const
 {
-	return FSlateColor(bLayerEnabled.Get(true)
-		? MixtormatPalette::LayerName()
-		: MixtormatPalette::DisabledText());
+	if (!bLayerEnabled.Get(true))
+	{
+		return FSlateColor(MixtormatPalette::DisabledText());
+	}
+	return FSlateColor(bSelected.Get(false) || IsHovered()
+		? MixtormatPalette::RowText()
+		: MixtormatPalette::LayerName());
 }
 
 void SMixtormatLayerRow::HandleEyeClicked(const FPointerEvent& MouseEvent)

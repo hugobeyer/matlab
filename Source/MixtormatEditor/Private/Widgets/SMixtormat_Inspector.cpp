@@ -70,7 +70,9 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 					// a menu is its own window and is not clipped by the panel that opened it.
 					TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
 						.UseAllottedSize(true)
-						.InnerSlotPadding(FVector2D(MixtormatTokens::TileGap, MixtormatTokens::TileGap));
+						.InnerSlotPadding(FVector2D(
+							MixtormatTokens::MaskGalleryTileGap,
+							MixtormatTokens::MaskGalleryTileGap));
 
 					for (const FMixtormatMaskEntry& Entry : FMixtormatRegistry::GetMasks())
 					{
@@ -78,10 +80,12 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 						Grid->AddSlot()
 						[
 							SNew(SMixtormatTile)
-							.TileSize(MixtormatTokens::MaskPickerTileSize)
+							.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
 							.DisplayName(Entry.DisplayName)
 							.ThumbnailAsset(Entry.ThumbnailAsset)
 							.ThumbnailPool(ThumbnailPool)
+							.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+							.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
 							.bSelected_Lambda([this, Path]()
 							{
 								const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
@@ -591,24 +595,6 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradeGamma", "Gamma"), Grade, &FMixtormatLayerEffect::GradeGamma, 0.05, 4.0, 1.0, 0.01,
 		LOCTEXT("GradeGammaHint", "Applied as pow(c, 1/Gamma), so above 1 lifts the midtones. That is the convention every grading UI uses; the reciprocal is easy to get backwards.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpMask", "Mask")));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("GradeInvertMask", "Invert"),
-		MixtormatRow::MakeCheckbox(
-			TAttribute<ECheckBoxState>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedGrade();
-				return E && E->bGradeInvertMask ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-			}),
-			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-			{
-				if (FMixtormatLayerEffect* E = GetSelectedGrade())
-				{
-					E->bGradeInvertMask = State == ECheckBoxState::Checked;
-					RefreshLayeredPreview();
-				}
-			})),
-		LOCTEXT("GradeInvertMaskHint", "The grade uses this layer's accumulated mask children, which is what makes it an adjustment layer. Invert grades everything the mask does not cover. A layer with no mask grades everywhere.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedGrade() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -669,101 +655,6 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 		Slider(LOCTEXT("ChipHeightScale", "Contrast"), &FMixtormatLayerEffect::ChipHeightScale, 0.1, 8.0, 1.0, 0.05,
 			LOCTEXT("ChipHeightScaleHint", "Shapes the smooth height selection before it is mixed with cavity."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpMask", "Placement Mask")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-			[SNew(STextBlock).Text(LOCTEXT("ChipMaskSlot", "Mask"))]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(SMixtormatChip)
-				.ToolTip(LOCTEXT("ChipMaskSlotHint", "Mask used to place chipping. Unset uses the layer's accumulated mask children."))
-				.Text_Lambda([this]()
-						{
-							const FMixtormatLayerEffect* C = GetSelectedChipping();
-							if (!C)
-							{
-								return LOCTEXT("ChipMaskNone", "Child Mask");
-							}
-							if (!C->ChipMask.IsNull())
-							{
-								return FText::FromString(C->ChipMask.ToSoftObjectPath().GetAssetName());
-							}
-							if (!C->ChipMaskTexture.IsNull())
-							{
-								return FText::FromString(C->ChipMaskTexture.ToSoftObjectPath().GetAssetName());
-							}
-							return LOCTEXT("ChipMaskNone", "Child Mask");
-						})
-				.OnGetMenuContent_Lambda([this]()
-				{
-					return SNew(SBox)
-						.WidthOverride(MixtormatTokens::MaskPickerWidth)
-						.Padding(MixtormatTokens::TileGap)
-						[
-							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight().MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
-							[
-								SNew(SScrollBox) + SScrollBox::Slot()
-								[
-									BuildMaskGallery([this](const FSoftObjectPath& Path)
-									{
-										FMixtormatLayerEffect* C = GetSelectedChipping();
-										if (!C)
-										{
-											return;
-										}
-										UObject* MaskObject = Path.TryLoad();
-										if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
-										{
-											C->ChipMask = TSoftObjectPtr<UMixtormatMask>(Path);
-											C->ChipMaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-										}
-										else if (Cast<UTexture2D>(MaskObject))
-										{
-											C->ChipMask.Reset();
-											C->ChipMaskTexture = TSoftObjectPtr<UTexture2D>(Path);
-										}
-										else
-										{
-											return;
-										}
-										RefreshLayeredPreview();
-									})
-								]
-							]
-							+ SVerticalBox::Slot().AutoHeight()
-							.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
-							[
-								SNew(SButton)
-								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-								.Text(LOCTEXT("ChipMaskClear", "Use the layer's child mask"))
-								.OnClicked_Lambda([this]()
-								{
-									if (FMixtormatLayerEffect* C = GetSelectedChipping())
-									{
-										C->ChipMask.Reset();
-										C->ChipMaskTexture.Reset();
-										RefreshLayeredPreview();
-									}
-									return FReply::Handled();
-								})
-							]
-						];
-				})
-			]
-		]
-	];
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("ChipMaskTiling", "Tiling"), Chip, &FMixtormatLayerEffect::ChipMaskTiling, 1.0, 16.0, 1,
-			LOCTEXT("ChipMaskTilingHint", "Integer tiling for the selected placement mask.")),
-		MakeMemberToggle<FMixtormatLayerEffect>(
-			LOCTEXT("ChipInvertMask", "Invert"), Chip, &FMixtormatLayerEffect::bChipInvertMask,
-			LOCTEXT("ChipInvertMaskHint", "Inverts the selected placement mask, or the layer child mask when no mask is selected."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpChips", "Chips")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -887,6 +778,19 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("WearIdNoise", "Noise"), &FMixtormatLayerEffect::EdgeWearIdNoise, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("WearIdNoiseHint", "Varies the relative Macro/Cell/Ridge/Micro family weights independently per Region ID.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpOutput", "Output")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(
+			LOCTEXT("WearRoughnessWeight", "Roughness Weight"),
+			&FMixtormatLayerEffect::EdgeWearRoughnessWeight,
+			0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("WearRoughnessWeightHint", "Scales the roughness change through generated EdgeWearMask. Zero leaves roughness unchanged.")),
+		Slider(
+			LOCTEXT("WearRoughnessOffset", "Roughness Offset"),
+			&FMixtormatLayerEffect::EdgeWearRoughnessOffset,
+			-1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("WearRoughnessOffsetHint", "Signed roughness change on worn coverage. Positive roughens; negative smooths."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedWornEdges() ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -2593,99 +2497,6 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 		MakeErosionSlider(LOCTEXT("EroHeightScale", "Peak / Valley"), &FMixtormatLayerEffect::ErosionHeightScale, 0.0, 8.0, 1.0, 0.05,
 			LOCTEXT("EroHeightScaleHint", "Shapes the fade target: low material becomes a crease and high material becomes a ridge."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpMask", "Placement Mask")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-			[SNew(STextBlock).Text(LOCTEXT("EroMaskSlot", "Mask"))]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(SMixtormatChip)
-				.ToolTip(LOCTEXT("EroMaskSlotHint", "Mask used to place erosion. Unset uses the layer's accumulated mask children."))
-				.Text_Lambda([this]()
-						{
-							const FMixtormatLayerEffect* E = GetSelectedErosion();
-							if (!E)
-							{
-								return LOCTEXT("EroMaskNone", "Child Mask");
-							}
-							if (!E->ErosionMask.IsNull())
-							{
-								return FText::FromString(E->ErosionMask.ToSoftObjectPath().GetAssetName());
-							}
-							if (!E->ErosionMaskTexture.IsNull())
-							{
-								return FText::FromString(E->ErosionMaskTexture.ToSoftObjectPath().GetAssetName());
-							}
-							return LOCTEXT("EroMaskNone", "Child Mask");
-						})
-				.OnGetMenuContent_Lambda([this]()
-				{
-					return SNew(SBox)
-						.WidthOverride(MixtormatTokens::MaskPickerWidth)
-						.Padding(MixtormatTokens::TileGap)
-						[
-							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight().MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
-							[
-								SNew(SScrollBox) + SScrollBox::Slot()
-								[
-									BuildMaskGallery([this](const FSoftObjectPath& Path)
-									{
-										FMixtormatLayerEffect* E = GetSelectedErosion();
-										if (!E)
-										{
-											return;
-										}
-										UObject* MaskObject = Path.TryLoad();
-										if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
-										{
-											E->ErosionMask = TSoftObjectPtr<UMixtormatMask>(Path);
-											E->ErosionMaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-										}
-										else if (Cast<UTexture2D>(MaskObject))
-										{
-											E->ErosionMask.Reset();
-											E->ErosionMaskTexture = TSoftObjectPtr<UTexture2D>(Path);
-										}
-										else
-										{
-											return;
-										}
-										RefreshLayeredPreview();
-									})
-								]
-							]
-							+ SVerticalBox::Slot().AutoHeight()
-							.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
-							[
-								SNew(SButton)
-								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-								.Text(LOCTEXT("EroMaskClear", "Use the layer's child mask"))
-								.OnClicked_Lambda([this]()
-								{
-									if (FMixtormatLayerEffect* E = GetSelectedErosion())
-									{
-										E->ErosionMask.Reset();
-										E->ErosionMaskTexture.Reset();
-										RefreshLayeredPreview();
-									}
-									return FReply::Handled();
-								})
-							]
-						];
-				})
-			]
-		]
-	];
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroMaskTiling", "Tiling"), &FMixtormatLayerEffect::ErosionMaskTiling, 1.0, 16.0, 1),
-		MakeMemberToggle<FMixtormatLayerEffect>(
-			LOCTEXT("EroInvertMask", "Invert"), Ero, &FMixtormatLayerEffect::bErosionInvertMask,
-			LOCTEXT("EroInvertMaskHint", "Inverts the selected placement mask, or the layer child mask when no mask is selected."))));
 
 	// Erosion contributes no base colour. Its resolved mask only weights surface channels.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpOutput", "Output")));
@@ -2838,8 +2649,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 
 TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 {
-	// Same vocabulary as the peel and erosion panels: one generic binding per row, captions for
-	// the grouping, pairs where both labels are one short word.
+	// Shared by layer-scoped and feature-scoped mask rows: one generic binding per row,
+	// captions for grouping, and pairs where both labels are one short word.
 	const auto Mask = [this]() { return GetSelectedLayerMask(); };
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)

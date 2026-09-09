@@ -94,6 +94,7 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Menus and dialogs", MenuWidth, 140.0f, 400.0f),
 		THEME_NUMBER("Galleries", MaskPickerWidth, 200.0f, 1200.0f),
 		THEME_NUMBER("Galleries", MaskPickerMaxHeight, 200.0f, 1200.0f),
+		THEME_NUMBER("Galleries", MaskGalleryTileGap, 0.0f, 24.0f),
 		THEME_NUMBER("Menus and dialogs", MenuPanelPadding, 0.0f, 24.0f),
 		THEME_NUMBER("Menus and dialogs", DialogPadding, 0.0f, 48.0f),
 		THEME_NUMBER("Menus and dialogs", DialogButtonGap, 0.0f, 32.0f),

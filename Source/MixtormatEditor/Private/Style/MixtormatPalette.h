@@ -151,6 +151,16 @@ namespace MixtormatPalette
 	inline FLinearColor LayerName()    { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerName"), Hex(0xA2A2A2)); }
 	inline FLinearColor LayerSource()  { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerSource"), Hex(0xA8A8A8, 0.50f)); }
 	inline FLinearColor LayerEdge()    { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerEdge"), Hex(0x0C6F95)); }
+	// Layer rows are quieter than generic active controls, while retaining a clear vertical lift.
+	inline FLinearColor LayerHoverTop()      { return Hex(0x2D3134); }
+	inline FLinearColor LayerHoverBottom()   { return Hex(0x222629); }
+	inline FLinearColor LayerSelectedTop()   { return Hex(0x383E42); }
+	inline FLinearColor LayerSelectedBottom(){ return Hex(0x2A2F32); }
+	// Children run horizontally and stay one value step below their owning layer.
+	inline FLinearColor LayerChildHoverLeft()    { return Hex(0x17191B, 0.72f); }
+	inline FLinearColor LayerChildHoverRight()   { return Hex(0x25292C, 0.82f); }
+	inline FLinearColor LayerChildSelectedLeft() { return Hex(0x1D2022, 0.90f); }
+	inline FLinearColor LayerChildSelectedRight(){ return Hex(0x303539, 0.94f); }
 	inline FLinearColor LayerHiddenTop()   { return Hex(0x191B1D); }
 	inline FLinearColor LayerHiddenEnd()   { return Hex(0x101112); }
 }

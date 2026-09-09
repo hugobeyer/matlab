@@ -14,6 +14,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 	TileSize = InArgs._TileSize;
 	bSelected = InArgs._bSelected;
 	OnActivated = InArgs._OnActivated;
+	OnGalleryZoom = InArgs._OnGalleryZoom;
 
 	if (InArgs._ToolTip.IsSet())
 	{
@@ -32,7 +33,9 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		.Image(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")));
 	if (InArgs._ThumbnailAsset.IsValid() && InArgs._ThumbnailPool.IsValid())
 	{
-		const int32 Resolution = FMath::RoundToInt(TileSize);
+		const int32 Resolution = InArgs._ThumbnailResolution > 0
+			? InArgs._ThumbnailResolution
+			: FMath::RoundToInt(TileSize.Get(MixtormatTokens::MaskTileSize));
 		Thumbnail = MakeShared<FAssetThumbnail>(
 			InArgs._ThumbnailAsset,
 			Resolution,
@@ -45,6 +48,8 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		FAssetThumbnailConfig Config;
 		Config.ThumbnailLabel = EThumbnailLabel::NoLabel;
 		Config.AllowAssetSpecificThumbnailOverlay = false;
+		Config.ShowAssetColor = false;
+		Config.ShowAssetBorder = false;
 		Image = Thumbnail->MakeThumbnailWidget(Config);
 	}
 
@@ -121,8 +126,14 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SBox)
-		.WidthOverride(TileSize)
-		.HeightOverride(TileSize)
+		.WidthOverride_Lambda([this]()
+		{
+			return TileSize.Get(MixtormatTokens::MaskTileSize);
+		})
+		.HeightOverride_Lambda([this]()
+		{
+			return TileSize.Get(MixtormatTokens::MaskTileSize);
+		})
 		[
 			SNew(SBorder)
 			.BorderImage(this, &SMixtormatTile::GetBorderBrush)
@@ -148,7 +159,19 @@ const FSlateBrush* SMixtormatTile::GetBorderBrush() const
 
 FVector2D SMixtormatTile::ComputeDesiredSize(float) const
 {
-	return FVector2D(TileSize, TileSize);
+	const float CurrentTileSize = TileSize.Get(MixtormatTokens::MaskTileSize);
+	return FVector2D(CurrentTileSize, CurrentTileSize);
+}
+
+FReply SMixtormatTile::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	const int32 Direction = FMath::Sign(MouseEvent.GetWheelDelta());
+	if (Direction != 0 && OnGalleryZoom.IsBound())
+	{
+		OnGalleryZoom.Execute(Direction);
+		return FReply::Handled();
+	}
+	return SCompoundWidget::OnMouseWheel(MyGeometry, MouseEvent);
 }
 
 FReply SMixtormatTile::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)

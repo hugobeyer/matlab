@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterBinding.h"
 #include "MixtormatSurface.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
@@ -108,7 +109,7 @@ namespace MixtormatCompositorTests
 	UMixtormatSurface* MakeSurfaceWithRAMH(UTexture2D* RAMH)
 	{
 		UMixtormatSurface* Surface = NewObject<UMixtormatSurface>(
-			GetTransientPackage(), TEXT("MixtormatClusterIdsTestSurface"), RF_Transient);
+			GetTransientPackage(), NAME_None, RF_Transient);
 		if (Surface)
 		{
 			Surface->RoughnessAOMetallic = RAMH;
@@ -679,6 +680,278 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 		CarvedPixels += ActiveChipping[Index].R < WithoutChipping[Index].R - 1.0e-4f ? 1 : 0;
 	}
 	TestTrue(TEXT("Active chipping carves the height"), CarvedPixels > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatScopedGradeMaskTest,
+	"Mixtormat.Compositor.ScopedGradeMask",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatScopedGradeMaskTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+
+	TStrongObjectPtr<UTexture2D> ScopeMask(
+		MakeTwoToneIdMap(FColor::Black, FColor::White));
+	if (!TestNotNull(TEXT("Two-tone scoped mask exists"), ScopeMask.Get()))
+	{
+		return false;
+	}
+
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+	Layer.bOverrideBaseColor = true;
+	Layer.BaseColor = FLinearColor(0.25f, 0.25f, 0.25f, 1.0f);
+
+	FMixtormatLayerChild& ScopedGrade = Layer.Children.AddDefaulted_GetRef();
+	ScopedGrade.Type = EMixtormatLayerChildType::Effect;
+	ScopedGrade.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	ScopedGrade.Effect.GradeBrightness = 2.0f;
+	const FGuid ScopedGradeId = ScopedGrade.ChildId;
+
+	FMixtormatLayerChild& Mask = Layer.Children.AddDefaulted_GetRef();
+	Mask.Type = EMixtormatLayerChildType::Mask;
+	Mask.ScopeOwnerChildId = ScopedGradeId;
+	Mask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ScopeMask.Get()));
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+	if (!TestTrue(TEXT("Scoped Grade composes without a layer mask"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> ScopedPixels;
+	if (!TestTrue(TEXT("Scoped Grade base color reads back"),
+		ReadTarget(Compositor.GetBaseColorOutput(), ScopedPixels)))
+	{
+		return false;
+	}
+
+	const int32 Row = TestResolution / 2;
+	const int32 LeftIndex = Row * TestResolution + TestResolution / 4;
+	const int32 RightIndex = Row * TestResolution + (3 * TestResolution) / 4;
+	TestTrue(TEXT("Scoped Grade leaves masked-out pixels unchanged"),
+		FMath::IsNearlyEqual(ScopedPixels[LeftIndex].R, 0.25f, 0.01f));
+	TestTrue(TEXT("Scoped Grade changes only masked-in pixels"),
+		FMath::IsNearlyEqual(ScopedPixels[RightIndex].R, 0.50f, 0.01f));
+
+	FMixtormatLayerChild& LaterGrade = Layers[0].Children.AddDefaulted_GetRef();
+	LaterGrade.Type = EMixtormatLayerChildType::Effect;
+	LaterGrade.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	LaterGrade.Effect.GradeBrightness = 0.5f;
+	if (!TestTrue(TEXT("Later unscoped Grade composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> LaterPixels;
+	if (!TestTrue(TEXT("Later Grade base color reads back"),
+		ReadTarget(Compositor.GetBaseColorOutput(), LaterPixels)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Later sibling receives unchanged global mask on the left"),
+		FMath::IsNearlyEqual(LaterPixels[LeftIndex].R, 0.125f, 0.01f));
+	TestTrue(TEXT("Later sibling receives unchanged global mask on the right"),
+		FMath::IsNearlyEqual(LaterPixels[RightIndex].R, 0.25f, 0.01f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatWornEdgesRoughnessTest,
+	"Mixtormat.Compositor.WornEdgesRoughness",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatWornEdgesRoughnessTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+
+	TStrongObjectPtr<UTexture2D> RAMH(MakeTwoBandRAMH());
+	TStrongObjectPtr<UMixtormatSurface> Surface(MakeSurfaceWithRAMH(RAMH.Get()));
+	if (!TestNotNull(TEXT("Worn Edges RAMH fixture exists"), RAMH.Get())
+		|| !TestNotNull(TEXT("Worn Edges test surface exists"), Surface.Get()))
+	{
+		return false;
+	}
+
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(FSoftObjectPath(Surface.Get()));
+	Layer.bOverrideBaseColor = true;
+	Layer.BaseColor = FLinearColor(0.30f, 0.30f, 0.30f, 1.0f);
+	Layer.bOverrideRoughness = true;
+	Layer.Roughness = 0.5f;
+
+	FMixtormatLayerChild& Cluster = Layer.Children.AddDefaulted_GetRef();
+	Cluster.Type = EMixtormatLayerChildType::Filter;
+	Cluster.Filter.Threshold = 0.33f;
+	Cluster.Filter.HeightInfluence = 1.0f;
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+	if (!TestTrue(TEXT("Worn Edges reference composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> ReferenceRAM;
+	TArray<FLinearColor> ReferenceBaseColor;
+	if (!TestTrue(TEXT("Reference RAM reads back"),
+		ReadTarget(Compositor.GetRAMOutput(), ReferenceRAM))
+		|| !TestTrue(TEXT("Reference base color reads back"),
+			ReadTarget(Compositor.GetBaseColorOutput(), ReferenceBaseColor)))
+	{
+		return false;
+	}
+
+	FMixtormatLayerChild& Worn = Layers[0].Children.AddDefaulted_GetRef();
+	Worn.Type = EMixtormatLayerChildType::Effect;
+	Worn.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
+	Worn.Effect.EdgeWearRadius = 8;
+	Worn.Effect.EdgeWearDirections = 8;
+	Worn.Effect.EdgeWearStrength = 1.0f;
+	Worn.Effect.EdgeWearRoughnessWeight = 0.0f;
+	Worn.Effect.EdgeWearRoughnessOffset = 1.0f;
+	if (!TestTrue(TEXT("Weight-zero Worn Edges composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> ZeroWeightRAM;
+	if (!TestTrue(TEXT("Weight-zero RAM reads back"),
+		ReadTarget(Compositor.GetRAMOutput(), ZeroWeightRAM)))
+	{
+		return false;
+	}
+	int32 ZeroWeightDifferences = 0;
+	for (int32 Index = 0; Index < ReferenceRAM.Num(); ++Index)
+	{
+		ZeroWeightDifferences += ZeroWeightRAM[Index].R == ReferenceRAM[Index].R ? 0 : 1;
+	}
+	TestEqual(TEXT("Worn roughness weight zero is the identity"), ZeroWeightDifferences, 0);
+
+	Layers[0].Children.Last().Effect.EdgeWearRoughnessWeight = 1.0f;
+	Layers[0].Children.Last().Effect.EdgeWearRoughnessOffset = 0.25f;
+	if (!TestTrue(TEXT("Positive Worn roughness composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+	TArray<FLinearColor> PositiveRAM;
+	TArray<FLinearColor> PositiveBaseColor;
+	if (!TestTrue(TEXT("Positive Worn RAM reads back"),
+		ReadTarget(Compositor.GetRAMOutput(), PositiveRAM))
+		|| !TestTrue(TEXT("Positive Worn base color reads back"),
+			ReadTarget(Compositor.GetBaseColorOutput(), PositiveBaseColor)))
+	{
+		return false;
+	}
+
+	Layers[0].Children.Last().Effect.EdgeWearRoughnessOffset = -0.25f;
+	if (!TestTrue(TEXT("Negative Worn roughness composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+	TArray<FLinearColor> NegativeRAM;
+	if (!TestTrue(TEXT("Negative Worn RAM reads back"),
+		ReadTarget(Compositor.GetRAMOutput(), NegativeRAM)))
+	{
+		return false;
+	}
+
+	int32 RougherPixels = 0;
+	int32 SmootherPixels = 0;
+	int32 BaseColorDifferences = 0;
+	bool bSignedDeltasMatch = true;
+	for (int32 Index = 0; Index < ReferenceRAM.Num(); ++Index)
+	{
+		const float PositiveDelta = PositiveRAM[Index].R - ReferenceRAM[Index].R;
+		const float NegativeDelta = NegativeRAM[Index].R - ReferenceRAM[Index].R;
+		RougherPixels += PositiveDelta > 1.0e-4f ? 1 : 0;
+		SmootherPixels += NegativeDelta < -1.0e-4f ? 1 : 0;
+		if (FMath::Abs(PositiveDelta) > 1.0e-4f || FMath::Abs(NegativeDelta) > 1.0e-4f)
+		{
+			bSignedDeltasMatch &= FMath::IsNearlyEqual(PositiveDelta, -NegativeDelta, 2.0e-3f);
+		}
+		BaseColorDifferences += PositiveBaseColor[Index].Equals(
+			ReferenceBaseColor[Index], 1.0e-5f) ? 0 : 1;
+	}
+	TestTrue(TEXT("Positive roughness offset roughens worn pixels"), RougherPixels > 0);
+	TestTrue(TEXT("Negative roughness offset smooths worn pixels"), SmootherPixels > 0);
+	TestTrue(TEXT("Signed roughness offsets use the same EdgeWearMask"), bSignedDeltasMatch);
+	TestEqual(TEXT("Worn Edges leaves base color unchanged"), BaseColorDifferences, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatScopedFeatureMaskDataTest,
+	"Mixtormat.Compositor.ScopedFeatureMaskData",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatScopedFeatureMaskDataTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	FMixtormatLayer Layer;
+	FMixtormatLayerChild& Owner = Layer.Children.AddDefaulted_GetRef();
+	Owner.Type = EMixtormatLayerChildType::Effect;
+	Owner.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
+	const FGuid OriginalOwnerId = Owner.ChildId;
+
+	FMixtormatLayerChild& ScopedMask = Layer.Children.AddDefaulted_GetRef();
+	ScopedMask.Type = EMixtormatLayerChildType::Mask;
+	ScopedMask.ScopeOwnerChildId = OriginalOwnerId;
+	TestEqual(TEXT("Scoped mask uses existing weight"), ScopedMask.Mask.Weight, 1.0f);
+	TestEqual(TEXT("Scoped mask uses existing balance"), ScopedMask.Mask.Shaping.Balance, 0.5f);
+	TestEqual(TEXT("Scoped mask uses existing contrast"), ScopedMask.Mask.Shaping.Contrast, 1.0f);
+	TestEqual(TEXT("Scoped mask uses existing offset"), ScopedMask.Mask.Shaping.Offset, 0.0f);
+	TestFalse(TEXT("Scoped mask invert defaults off"), ScopedMask.Mask.Shaping.bInvert);
+
+	TestEqual(
+		TEXT("Worn roughness weight defaults neutral"),
+		Layer.Children[0].Effect.EdgeWearRoughnessWeight,
+		0.0f);
+	TestEqual(
+		TEXT("Worn roughness offset defaults neutral"),
+		Layer.Children[0].Effect.EdgeWearRoughnessOffset,
+		0.0f);
+
+	MixtormatParameterBinding::RegenerateLayerIdentity(Layer);
+	TestTrue(TEXT("Duplicated owner receives a new identity"), Layer.Children[0].ChildId != OriginalOwnerId);
+	TestEqual(
+		TEXT("Duplicated scoped mask follows the duplicated owner"),
+		Layer.Children[1].ScopeOwnerChildId,
+		Layer.Children[0].ChildId);
 
 	return true;
 }

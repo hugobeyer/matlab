@@ -70,7 +70,7 @@ Use an explicit capability check rather than assuming every non-mask row is mask
 
 ### Initially supported
 
-These features write or transform coverage or surface channels and have meaningful masking:
+All `FMixtormatLayerEffect` rows are supported, including effect types classified internally as filters:
 
 - Peeling.
 - Stain.
@@ -78,9 +78,6 @@ These features write or transform coverage or surface channels and have meaningf
 - Grade.
 - Chipping.
 - Worn Edges.
-- Craquelure relief and output.
-- HSV From IDs.
-- Ramp From IDs.
 
 ### Not initially supported
 
@@ -92,6 +89,9 @@ These rows already are masks or produce discrete data:
 - Random From IDs mask.
 - Cluster IDs.
 - Pattern IDs.
+- Craquelure.
+- HSV From IDs.
+- Ramp From IDs.
 
 Cluster IDs and Pattern IDs produce integer region data. Weighted mask blending must not alter those IDs. Their consumers should be masked instead.
 
@@ -313,6 +313,8 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 
 ### Phase S1 — Schema and normalization
 
+Implementation status: schema and identity remapping complete. Runtime validation makes malformed links fall back to layer scope; a shared load-time data normalizer remains pending.
+
 - Add `ScopeOwnerChildId`.
 - Add owner capability checks.
 - Add block and ownership lookup helpers.
@@ -320,6 +322,8 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 - Update child identity remapping.
 
 ### Phase S2 — UI creation and presentation
+
+Implementation status: RMB creation, indentation, and shared inspector complete. Optional owner disclosure/collapse is deferred.
 
 - Add `Add Mask` to supported RMB menus.
 - Render scoped masks indented beneath owners.
@@ -329,6 +333,8 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 
 ### Phase S3 — Editing operations
 
+Implementation status: complete. Same-layer and cross-layer owner moves preserve the full scoped-mask block; selection is restored by child GUID.
+
 - Constrain scoped reorder behavior.
 - Move owner blocks together.
 - Duplicate owner blocks together.
@@ -337,6 +343,8 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 
 ### Phase S4 — Compositor mask scopes
 
+Implementation status: complete for all `FMixtormatLayerEffect` types. Malformed or unsupported owner links fall back to layer scope.
+
 - Separate unscoped and scoped masks during render-data gathering.
 - Evaluate scoped mask stacks from the owner-position `CombinedMask`.
 - Route `FeatureMask` to supported effects and filters.
@@ -344,12 +352,17 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 
 ### Phase S5 — Legacy mask migration
 
+Implementation status: generic placement rows are removed from Erosion, Chipping, and Grade UI. Serialized legacy fields remain compatible when no scoped mask exists; an enabled scoped mask takes runtime precedence so gates never stack. Automatic data conversion remains pending.
+
+Peeling's seed mask and Stain's liquid/dirt masks remain visible because they are algorithm inputs, not generic placement gates.
+
 - Convert populated bespoke effect masks into scoped children.
-- Deprecate bespoke inspector rows.
 - Preserve serialized compatibility fields.
 - Ensure converted recipes have one runtime mask source.
 
 ### Phase S6 — Worn Edges W7
+
+Implementation status: roughness controls and internal `EdgeWearMask` routing complete. GPU identity/sign/base-color tests are added but not run.
 
 - Add roughness weight and signed offset.
 - Preserve generated wear coverage as `EdgeWearMask`.
@@ -358,6 +371,8 @@ Avoid maintaining permanent duplicate mask evaluation paths.
 - Keep base color unchanged.
 
 ## 14. Validation plan
+
+Implementation status: focused data and GPU automation coverage has been added. Tests have not been run.
 
 ### Data and migration
 
@@ -428,3 +443,14 @@ Recommended order:
 4. Convert remaining bespoke effect masks.
 5. Finish Worn Edges W7.
 6. Add targeted regression coverage before broader grouping work.
+
+## 17. Layer grouping readiness
+
+The flat GUID ownership model is ready for one-level effect sublayers and avoids a recursive serialization refactor.
+
+Broader arbitrary layer grouping should wait for:
+
+- The focused GPU tests to pass.
+- Save/load coverage for ownership GUIDs.
+- A shared load-time ownership normalizer.
+- Explicit UX for group collapse and cross-owner mask moves.

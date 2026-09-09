@@ -10,6 +10,7 @@ class FAssetThumbnail;
 class FAssetThumbnailPool;
 
 DECLARE_DELEGATE(FMixtormatOnTileActivated);
+DECLARE_DELEGATE_OneParam(FMixtormatOnTileZoom, int32);
 
 // One thumbnail tile, for every grid in the tool.
 //
@@ -26,16 +27,18 @@ class SMixtormatTile final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatTile)
 		: _TileSize(MixtormatTokens::MaskTileSize)
+		, _ThumbnailResolution(0)
 		, _bShowName(true)
 		, _bSelected(false)
 	{}
 		// Square edge length of the whole tile, border included.
-		SLATE_ARGUMENT(float, TileSize)
+		SLATE_ATTRIBUTE(float, TileSize)
 		SLATE_ARGUMENT(FText, DisplayName)
 		// Drawn through the shared thumbnail pool when valid; otherwise the tile shows its
 		// background, which is what an asset with no rendered thumbnail yet looks like.
 		SLATE_ARGUMENT(FAssetData, ThumbnailAsset)
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
+		SLATE_ARGUMENT(int32, ThumbnailResolution)
 		// Caption strip across the bottom. Off for dense grids that name the hovered tile once
 		// somewhere else instead.
 		SLATE_ARGUMENT(bool, bShowName)
@@ -45,6 +48,7 @@ public:
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(FText, ToolTip)
 		SLATE_EVENT(FMixtormatOnTileActivated, OnActivated)
+		SLATE_EVENT(FMixtormatOnTileZoom, OnGalleryZoom)
 		// Overlaid on hover, top-right: an add affordance, a menu, whatever the call site needs.
 		SLATE_NAMED_SLOT(FArguments, HoverContent)
 	SLATE_END_ARGS()
@@ -53,14 +57,16 @@ public:
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override;
 
 private:
 	const FSlateBrush* GetBorderBrush() const;
 
-	float TileSize = MixtormatTokens::MaskTileSize;
+	TAttribute<float> TileSize;
 	TAttribute<bool> bSelected;
 	FMixtormatOnTileActivated OnActivated;
+	FMixtormatOnTileZoom OnGalleryZoom;
 
 	// Held for the lifetime of the tile: FAssetThumbnail renders through the pool and stops
 	// updating if the handle is dropped.

@@ -1140,6 +1140,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	float EdgeWearIdNoise = 1.0f;
+
+	// Roughness is applied only through the generated wear coverage. Weight is the output
+	// enable/strength control; Offset is signed so worn edges may become rougher or smoother.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges|Output")
+	float EdgeWearRoughnessWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges|Output")
+	float EdgeWearRoughnessOffset = 0.0f;
 };
 
 // Two constructions, not two presets for one.
@@ -1939,6 +1947,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY()
 	FGuid ChildId = FGuid::NewGuid();
+
+	// Invalid means this child participates in the layer's normal ordered child chain. A valid
+	// GUID scopes this child beneath another child in the same layer. Scoped masks keep their own
+	// identity, bindings and instance source, but gate only their owner instead of CombinedMask.
+	UPROPERTY()
+	FGuid ScopeOwnerChildId;
 
 	// Whole-child instance. With SourceChildId set, everything below this pair -- type, payload,
 	// parameter bindings, mask and source assignments, and whatever is added to this struct later

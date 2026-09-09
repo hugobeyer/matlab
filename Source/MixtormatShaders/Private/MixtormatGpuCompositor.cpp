@@ -1276,6 +1276,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FeatureMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DirtMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -1760,6 +1761,8 @@ namespace MixtormatGpuCompositor
 		float EdgeWearIdSlope = 0.3f;
 		float EdgeWearIdStrength = 0.25f;
 		float EdgeWearIdNoise = 1.0f;
+		float EdgeWearRoughnessWeight = 0.0f;
+		float EdgeWearRoughnessOffset = 0.0f;
 		bool bGradeInvertMask = false;
 	};
 
@@ -1942,6 +1945,8 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
+		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
+		int32 ScopeOwnerSourceChildIndex = INDEX_NONE;
 		FMaskRenderData Mask;
 		FEffectRenderData Effect;
 		FGeneratedMaskRenderData Generated;
@@ -2890,6 +2895,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::Mask;
 				ChildData.SourceChildIndex = SourceChildIndex;
+				if (LayerChild.ScopeOwnerChildId.IsValid())
+				{
+					const int32 OwnerIndex = Layer.Children.IndexOfByPredicate(
+						[&LayerChild](const FMixtormatLayerChild& Candidate)
+						{
+							return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
+						});
+					if (Layer.Children.IsValidIndex(OwnerIndex)
+						&& OwnerIndex < SourceChildIndex
+						&& Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect
+						&& !Layer.Children[OwnerIndex].ScopeOwnerChildId.IsValid())
+					{
+						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+					}
+				}
 				FMaskRenderData& MaskData = ChildData.Mask;
 				MaskData.Texture = GetTextureRHI(MaskTexture);
 				if (!MaskData.Texture.IsValid())
@@ -2911,7 +2931,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				MaskData.Contrast = FMath::Clamp(MaskLayer.Shaping.Contrast, 0.0f, 10.0f);
 				MaskData.Offset = FMath::Clamp(MaskLayer.Shaping.Offset, -1.0f, 1.0f);
 				MaskData.bInvert = MaskLayer.Shaping.bInvert;
-				Data.bHasMask = true;
+				if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
+				{
+					Data.bHasMask = true;
+				}
 				continue;
 			}
 
@@ -3249,6 +3272,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.EdgeWearIdSlope = LayerEffect.EdgeWearIdSlope;
 				EffectData.EdgeWearIdStrength = LayerEffect.EdgeWearIdStrength;
 				EffectData.EdgeWearIdNoise = LayerEffect.EdgeWearIdNoise;
+				EffectData.EdgeWearRoughnessWeight = FMath::Clamp(
+					LayerEffect.EdgeWearRoughnessWeight, 0.0f, 1.0f);
+				EffectData.EdgeWearRoughnessOffset = FMath::Clamp(
+					LayerEffect.EdgeWearRoughnessOffset, -1.0f, 1.0f);
 			}
 
 			if (ResolvedType == EMixtormatEffectType::Stain)
@@ -3968,16 +3995,22 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						TEXT("Mixtormat.DefaultEffectData"));
 					FRDGTextureRef CombinedEffectHeight = EffectHeightTargets[0];
 					FRDGTextureRef DebugMask = CombinedMask;
-					// Height the owning layer composites against. An erosion filter replaces it
-					// with its carved result so the reshaped height also drives the blend mask,
-					// contact AO and border normals rather than only the displacement output.
-					const FEffectRenderData* PendingErosion = nullptr;
-					const FEffectRenderData* PendingChipping = nullptr;
+					// Deferred filters retain the mask visible at their own row. Keeping the
+					// texture beside the effect prevents later layer masks from changing scope.
+					struct FPendingEffect
+					{
+						const FEffectRenderData* Effect = nullptr;
+						FRDGTextureRef FeatureMask = nullptr;
+						bool bHasScopedMask = false;
+					};
+					FPendingEffect PendingErosion;
+					FPendingEffect PendingChipping;
 
 
 					struct FPendingWornEdges
 					{
 						const FEffectRenderData* Effect = nullptr;
+						FRDGTextureRef FeatureMask = nullptr;
 						FRDGTextureRef RegionIds = nullptr;
 						FRDGTextureRef PatternEdge = nullptr;
 						bool bHasPatternEdge = false;
@@ -4135,9 +4168,92 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
 					// ordinary way to use an adjustment layer, and dropping all but the last
 					// would read as a bug rather than as a contract.
-					TArray<const FEffectRenderData*, TInlineAllocator<2>> PendingGrades;
+					TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
+
+					// Scoped masks use the same shader and controls as layer masks, but write to
+					// owner-local textures. The starting point is the layer mask visible at the
+					// owner's row; the result never feeds back into CombinedMask.
+					auto ResolveFeatureMask = [&](const int32 OwnerSourceChildIndex)
+					{
+						FRDGTextureRef FeatureMask = CombinedMask;
+						bool bHasScopedMask = false;
+						int32 ScopedPassIndex = 0;
+						for (const FChildRenderData& ScopedChild : Layer.Children)
+						{
+							if (ScopedChild.Type != EMixtormatLayerChildType::Mask
+								|| ScopedChild.ScopeOwnerSourceChildIndex != OwnerSourceChildIndex)
+							{
+								continue;
+							}
+							const FMaskRenderData& Mask = ScopedChild.Mask;
+							if (Mask.Weight == 0.0f)
+							{
+								continue;
+							}
+
+							FRDGTextureRef ScopedOutput = GraphBuilder.CreateTexture(
+								MaskDesc, TEXT("Mixtormat.ScopedFeatureMask"));
+							FMixtormatMaskCS::FParameters* MP =
+								GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
+							MP->OutputSize = Request.Resolution;
+							MP->Initialize = 0u;
+							MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
+							MP->Invert = Mask.bInvert ? 1u : 0u;
+							MP->Weight = Mask.Weight;
+							MP->Tiling = Mask.Tiling;
+							MP->UVOffset = Mask.UVOffset;
+							MP->FlipU = Mask.bFlipU ? 1u : 0u;
+							MP->FlipV = Mask.bFlipV ? 1u : 0u;
+							MP->Rotation = Mask.Rotation;
+							MP->Balance = Mask.Balance;
+							MP->Contrast = Mask.Contrast;
+							MP->Offset = Mask.Offset;
+							MP->PreviousMask = FeatureMask;
+							MP->IncomingMask = RegisterTexture(
+								GraphBuilder, RegisteredTextures, Mask.Texture,
+								TEXT("Mixtormat.ScopedIncomingMask"));
+							MP->LinearWrapSampler = TStaticSamplerState<
+								SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+							MP->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME(
+									"Mixtormat.ScopedMask.Layer%d.Owner%d.Pass%d",
+									LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
+								MaskShader,
+								MP,
+								FIntVector(
+									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+									1));
+							FeatureMask = ScopedOutput;
+							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+								&& Request.DebugSettings.LayerIndex == LayerIndex
+								&& Request.DebugSettings.ChildIndex == ScopedChild.SourceChildIndex)
+							{
+								FRDGTextureRef DebugSnapshot = GraphBuilder.CreateTexture(
+									MaskDesc, TEXT("Mixtormat.DebugScopedMaskSnapshot"));
+								AddCopyTexturePass(GraphBuilder, FeatureMask, DebugSnapshot);
+								DebugMask = DebugSnapshot;
+							}
+							bHasScopedMask = true;
+							++ScopedPassIndex;
+						}
+
+						// Deferred owners need a stable snapshot even when they have no scoped mask,
+						// because the global ping-pong target may be overwritten later in the loop.
+						if (!bHasScopedMask && MaskPassIndex > 0)
+						{
+							FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
+								MaskDesc, TEXT("Mixtormat.FeatureMaskSnapshot"));
+							AddCopyTexturePass(GraphBuilder, FeatureMask, Snapshot);
+							FeatureMask = Snapshot;
+						}
+						return FeatureMask;
+					};
+
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
@@ -4853,6 +4969,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 						if (Child.Type == EMixtormatLayerChildType::Mask)
 						{
+							// Evaluated by ResolveFeatureMask when its owner row is reached.
+							if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
+							{
+								continue;
+							}
 							const FMaskRenderData& Mask = Child.Mask;
 							// Weight 0 makes the whole node the identity: every mask shader
 							// ends on saturate(lerp(Previous, Result, Weight)), and the masks it
@@ -4918,12 +5039,20 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						}
 
 						const FEffectRenderData& Effect = Child.Effect;
+						FRDGTextureRef FeatureMask = ResolveFeatureMask(Child.SourceChildIndex);
 						if (Effect.Type == EMixtormatEffectType::Erosion)
 						{
 							// Erosion is a post-layer filter: it carves what this layer actually
 							// composited, not the height underneath it. Running it here would let
 							// the layer paint straight back over the carve.
-							PendingErosion = &Effect;
+							PendingErosion.Effect = &Effect;
+							PendingErosion.FeatureMask = FeatureMask;
+							PendingErosion.bHasScopedMask = Layer.Children.ContainsByPredicate(
+								[&Child](const FChildRenderData& Candidate)
+								{
+									return Candidate.Type == EMixtormatLayerChildType::Mask
+										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
+								});
 							continue;
 						}
 
@@ -4933,7 +5062,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							// chipping a surface that has already weathered is the order that
 							// makes sense, and the reverse would have erosion smoothing chips it
 							// never saw.
-							PendingChipping = &Effect;
+							PendingChipping.Effect = &Effect;
+							PendingChipping.FeatureMask = FeatureMask;
+							PendingChipping.bHasScopedMask = Layer.Children.ContainsByPredicate(
+								[&Child](const FChildRenderData& Candidate)
+								{
+									return Candidate.Type == EMixtormatLayerChildType::Mask
+										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
+								});
 							continue;
 						}
 
@@ -4959,6 +5095,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 							FPendingWornEdges& Wear = PendingWornEdges.AddDefaulted_GetRef();
 							Wear.Effect = &Effect;
+							Wear.FeatureMask = FeatureMask;
 							Wear.RegionIds = WearRegionIds;
 							for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
 							{
@@ -4984,7 +5121,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							// Also a post-layer filter, for the same reason: it grades what the
 							// stack has accumulated at this point, and running it inside the
 							// child loop would grade a base colour the layer then overwrites.
-							PendingGrades.Add(&Effect);
+							FPendingEffect& Grade = PendingGrades.AddDefaulted_GetRef();
+							Grade.Effect = &Effect;
+							Grade.FeatureMask = FeatureMask;
+							Grade.bHasScopedMask = Layer.Children.ContainsByPredicate(
+								[&Child](const FChildRenderData& Candidate)
+								{
+									return Candidate.Type == EMixtormatLayerChildType::Mask
+										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
+								});
 							continue;
 						}
 
@@ -5124,6 +5269,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								P->SourceRAM = OutputRAM[LayerReadIndex];
 								P->SourceHeight = HeightTargets[LayerReadIndex];
 								P->PreviousMask = MaskTargets[MaskReadIndex];
+								P->FeatureMask = FeatureMask;
 								P->SourceMask = StainSourceMask;
 								P->DirtMask = StainDirtMask;
 								P->LinearWrapSampler =
@@ -5302,7 +5448,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								FP->SurfaceNormal = OutputN[PeelSurfaceIndex];
 								FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
 								FP->SurfaceHeight = HeightTargets[PeelSurfaceIndex];
-								FP->ChildMask = CombinedMask;
+								FP->ChildMask = FeatureMask;
 								FP->PreviousArrival = InArrival;
 								FP->GrowthField = PeelGrowth;
 								FP->LinearWrapSampler =
@@ -5368,7 +5514,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						EffectParameters->Lift = Effect.Lift;
 						EffectParameters->DetailStrength = Effect.DetailStrength;
 						EffectParameters->PreviousEffectData = EffectTargets[EffectReadIndex];
-						EffectParameters->ChildMask = CombinedMask;
+						EffectParameters->ChildMask = FeatureMask;
 						EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
 						EffectParameters->HeightAmount = Effect.PeelHeightAmount;
 						EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;
@@ -5847,13 +5993,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// and copied the previous ridge forward instead would hand the next layer a
 					// different signal from the one it gets today.
 					const bool bErosionActive =
-						PendingErosion != nullptr && PendingErosion->ErosionAmount > 0.0f;
+						PendingErosion.Effect != nullptr && PendingErosion.Effect->ErosionAmount > 0.0f;
 
 					// Every layer hands the next one a ridge, whether or not it erodes. A layer
 					// that left the slot alone would pass on the ridge from two layers back,
 					// which reads as the mask signal being correct on some layers and stale on
 					// others. Eroding layers overwrite this below.
-					if (!PendingErosion)
+					if (!PendingErosion.Effect)
 					{
 						AddCopyTexturePass(
 							GraphBuilder,
@@ -5873,8 +6019,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// what it removed, and writes both back.
 					if (bErosionActive)
 					{
-						const FEffectRenderData& Ero = *PendingErosion;
-						FRDGTextureRef ErosionPlacementMask = Ero.ErosionPlacementMask.IsValid()
+						const FEffectRenderData& Ero = *PendingErosion.Effect;
+						const bool bUseLegacyPlacementMask =
+							!PendingErosion.bHasScopedMask && Ero.ErosionPlacementMask.IsValid();
+						FRDGTextureRef ErosionPlacementMask = bUseLegacyPlacementMask
 							? RegisterTexture(
 								GraphBuilder,
 								RegisteredTextures,
@@ -5994,8 +6142,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							RP->PreviousHeight = InH;
 							RP->SourceHeight = InH;
 							RP->GuideHeight = InH;
-							RP->LayerMask = CombinedMask;
-							RP->UsePlacementMask = Ero.ErosionPlacementMask.IsValid() ? 1u : 0u;
+							RP->LayerMask = PendingErosion.FeatureMask;
+							RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 							RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
 							RP->PlacementMaskTexture = ErosionPlacementMask;
 							RP->PreviousNormal = InN;
@@ -6064,13 +6212,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							Parameters->CavityRemapMax = Ero.ErosionCavityRemapMax;
 							Parameters->HeightInfluence = Ero.ErosionHeightInfluence;
 							Parameters->HeightScale = Ero.ErosionHeightScale;
-							Parameters->UsePlacementMask = Ero.ErosionPlacementMask.IsValid() ? 1u : 0u;
+							Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 							Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
-							Parameters->InvertMask = Ero.bErosionInvertMask ? 1u : 0u;
+							Parameters->InvertMask =
+								!PendingErosion.bHasScopedMask && Ero.bErosionInvertMask ? 1u : 0u;
 							Parameters->Seed = 1u;
 							Parameters->SourceHeight = SourceH;
 							Parameters->PreviousNormal = EroSrcN;
-							Parameters->LayerMask = CombinedMask;
+							Parameters->LayerMask = PendingErosion.FeatureMask;
 							Parameters->PlacementMaskTexture = ErosionPlacementMask;
 							Parameters->PreviousRidge = ResampleRidgeDummy;
 							Parameters->LinearWrapSampler =
@@ -6398,8 +6547,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Height"));
 						FRDGTextureRef WornN = GraphBuilder.CreateTexture(
 							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Normal"));
-						FRDGTextureRef WearMask = GraphBuilder.CreateTexture(
-							WearScalarDesc, TEXT("Mixtormat.WornEdges.Mask"));
+						FRDGTextureRef EdgeWearMask = GraphBuilder.CreateTexture(
+							WearScalarDesc, TEXT("Mixtormat.WornEdges.EdgeWearMask"));
 						AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], WearSourceH);
 
 						// One layout is shared by all four shader modes. Tiny distinct dummies keep
@@ -6469,7 +6618,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							SeedP->EdgeField = EmptyPatternUV;
 							SeedP->PreviousEdgeBand = ReadDummy;
 							SeedP->EdgeBand = ReadDummy;
-							SeedP->LayerMask = CombinedMask;
+							SeedP->LayerMask = PendingWear.FeatureMask;
 							SeedP->WearMask = ReadDummy;
 							SeedP->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 							SeedP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
@@ -6555,7 +6704,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							P->EdgeField = PendingWear.bHasPatternEdge ? PendingWear.PatternEdge : EmptyPatternUV;
 							P->PreviousEdgeBand = ReadDummy;
 							P->EdgeBand = FinalEdgeBand;
-							P->LayerMask = CombinedMask;
+							P->LayerMask = PendingWear.FeatureMask;
 							P->WearMask = ReadDummy;
 							P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 						};
@@ -6565,7 +6714,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FillWearParameters(WearP);
 						WearP->Mode = 2;
 						WearP->OutputHeight = GraphBuilder.CreateUAV(WornH);
-						WearP->OutputWearMask = GraphBuilder.CreateUAV(WearMask);
+						WearP->OutputWearMask = GraphBuilder.CreateUAV(EdgeWearMask);
 						WearP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
 						WearP->OutputNormal = GraphBuilder.CreateUAV(NormalDummy);
 						FComputeShaderUtils::AddPass(
@@ -6580,7 +6729,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FillWearParameters(NormalP);
 						NormalP->Mode = 3;
 						NormalP->WornHeight = WornH;
-						NormalP->WearMask = WearMask;
+						NormalP->WearMask = EdgeWearMask;
 						NormalP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
 						NormalP->OutputWearMask = GraphBuilder.CreateUAV(WriteDummyB);
 						NormalP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
@@ -6592,6 +6741,40 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							NormalP,
 							WearGroups);
 
+						// EdgeWearMask is the generated wear coverage, already gated by the
+						// feature scope. It is the sole roughness mask; placement is not sampled
+						// directly a second time here.
+						const float RoughnessAmount =
+							Wear.EdgeWearRoughnessWeight * Wear.EdgeWearRoughnessOffset;
+						if (RoughnessAmount != 0.0f)
+						{
+							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
+								OutputRAM[WriteIndex]->Desc,
+								TEXT("Mixtormat.WornEdges.RoughnessRAM"));
+							FMixtormatCarveShadeCS::FParameters* ShadeP =
+								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
+							ShadeP->OutputSize = Request.Resolution;
+							ShadeP->RoughnessAmount = RoughnessAmount;
+							ShadeP->CarveDepth = 1.0f;
+							ShadeP->UseCoverageTexture = 1u;
+							ShadeP->CoverageTexture = EdgeWearMask;
+							ShadeP->SourceHeight = WornH;
+							ShadeP->CarvedHeight = WornH;
+							ShadeP->SourceRAM = OutputRAM[WriteIndex];
+							ShadeP->LinearWrapSampler =
+								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+							ShadeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
+							FComputeShaderUtils::AddPass(
+								GraphBuilder,
+								RDG_EVENT_NAME(
+									"Mixtormat.WornEdges.L%d.%d.Roughness",
+									LayerIndex, WearIndex),
+								CarveShadeShader,
+								ShadeP,
+								WearGroups);
+							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+						}
+
 						AddCopyTexturePass(GraphBuilder, WornH, HeightTargets[WriteIndex]);
 						AddCopyTexturePass(GraphBuilder, WornN, OutputN[WriteIndex]);
 					}
@@ -6600,10 +6783,12 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// erosion and craquelure have finished shaping the height it selects from.
 					// Amount 0 seeds nothing, so it should also cost nothing rather than run
 					// the iteration loop to produce an unchanged height.
-					if (PendingChipping && PendingChipping->ChipAmount > 0.0f)
+					if (PendingChipping.Effect && PendingChipping.Effect->ChipAmount > 0.0f)
 					{
-						const FEffectRenderData& Chip = *PendingChipping;
-						FRDGTextureRef ChippingPlacementMask = Chip.ChipPlacementMask.IsValid()
+						const FEffectRenderData& Chip = *PendingChipping.Effect;
+						const bool bUseLegacyPlacementMask =
+							!PendingChipping.bHasScopedMask && Chip.ChipPlacementMask.IsValid();
+						FRDGTextureRef ChippingPlacementMask = bUseLegacyPlacementMask
 							? RegisterTexture(
 								GraphBuilder,
 								RegisteredTextures,
@@ -6787,13 +6972,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							P->CavityRemapMax = Chip.ChipCavityRemapMax;
 							P->HeightInfluence = Chip.ChipHeightInfluence;
 							P->HeightScale = Chip.ChipHeightScale;
-							P->UsePlacementMask = Chip.ChipPlacementMask.IsValid() ? 1u : 0u;
+							P->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 							P->PlacementMaskTiling = Chip.ChipMaskTiling;
-							P->InvertMask = Chip.bChipInvertMask ? 1u : 0u;
+							P->InvertMask =
+								!PendingChipping.bHasScopedMask && Chip.bChipInvertMask ? 1u : 0u;
 							P->Seed = Chip.ChipSeed;
 							P->SourceHeight = ChipSourceH;
 							P->HeightRange = ChipHeightRange;
-							P->LayerMask = CombinedMask;
+							P->LayerMask = PendingChipping.FeatureMask;
 							P->PlacementMaskTexture = ChippingPlacementMask;
 							P->LinearWrapSampler =
 								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -6913,7 +7099,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// composited by the time a grade runs.
 					for (int32 GradeIndex = 0; GradeIndex < PendingGrades.Num(); ++GradeIndex)
 					{
-						const FEffectRenderData& Grade = *PendingGrades[GradeIndex];
+						const FPendingEffect& PendingGrade = PendingGrades[GradeIndex];
+						const FEffectRenderData& Grade = *PendingGrade.Effect;
 
 						// The shader states its own Filter contract: at Amount 0 it returns
 						// exactly what it read. Honour it here rather than paying a
@@ -6932,8 +7119,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FMixtormatGradeCS::FParameters* GP =
 							GraphBuilder.AllocParameters<FMixtormatGradeCS::FParameters>();
 						GP->OutputSize = Request.Resolution;
-						GP->HasMask = Layer.bHasMask ? 1u : 0u;
-						GP->InvertMask = Grade.bGradeInvertMask ? 1u : 0u;
+						GP->HasMask = (Layer.bHasMask || PendingGrade.bHasScopedMask) ? 1u : 0u;
+						GP->InvertMask =
+							!PendingGrade.bHasScopedMask && Grade.bGradeInvertMask ? 1u : 0u;
 						GP->TonemapMode = Grade.GradeTonemap;
 						GP->TonemapStrength = Grade.GradeTonemapStrength;
 						GP->Brightness = Grade.GradeBrightness;
@@ -6945,7 +7133,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 						// The layer's own accumulated child mask, which is what makes this an
 						// adjustment layer rather than a whole-surface grade.
-						GP->LayerMask = CombinedMask;
+						GP->LayerMask = PendingGrade.FeatureMask;
 						GP->LinearWrapSampler =
 							TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 						GP->OutputColor = GraphBuilder.CreateUAV(GradedBC);

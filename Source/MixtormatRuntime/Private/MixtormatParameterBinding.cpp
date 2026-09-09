@@ -474,6 +474,10 @@ namespace MixtormatParameterBinding
 		}
 		for (FMixtormatLayerChild& Child : Layer.Children)
 		{
+			if (const FGuid* NewOwnerChildId = ChildIdRemap.Find(Child.ScopeOwnerChildId))
+			{
+				Child.ScopeOwnerChildId = *NewOwnerChildId;
+			}
 			for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 			{
 				RemapBinding(Binding);
@@ -539,10 +543,13 @@ namespace MixtormatParameterBinding
 		const FGuid KeptChildId = To.ChildId;
 		const FGuid KeptSourceLayerId = To.SourceLayerId;
 		const FGuid KeptSourceChildId = To.SourceChildId;
+		const FGuid KeptScopeOwnerChildId = To.ScopeOwnerChildId;
 		To = From;
 		To.ChildId = KeptChildId;
 		To.SourceLayerId = KeptSourceLayerId;
 		To.SourceChildId = KeptSourceChildId;
+		// Scope belongs to this placement, not to the source instance's placement.
+		To.ScopeOwnerChildId = KeptScopeOwnerChildId;
 	}
 
 	const FMixtormatLayerChild* FindChild(
