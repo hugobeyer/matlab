@@ -380,10 +380,13 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(float, AOAmount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRAM)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -3869,22 +3872,28 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					FRDGTextureRef PreviousHeight,
 					FRDGTextureRef CurrentHeight,
 					FRDGTextureRef PreviousNormal,
+					FRDGTextureRef PreviousRAM,
 					FRDGTextureRef OutputNormal,
+					FRDGTextureRef OutputRAM,
 					const FIntPoint Resolution,
 					const float NormalStrength,
+					const float AOAmount,
 					const TCHAR* DebugName)
 				{
 					FMixtormatHeightDeltaNormalCS::FParameters* P =
 						GraphBuilder.AllocParameters<FMixtormatHeightDeltaNormalCS::FParameters>();
 					P->OutputSize = Resolution;
 					P->NormalStrength = NormalStrength;
+					P->AOAmount = AOAmount;
 					P->PreviousHeight = PreviousHeight;
 					P->CurrentHeight = CurrentHeight;
 					P->PreviousNormal = PreviousNormal;
+					P->PreviousRAM = PreviousRAM;
 					P->OutputNormal = GraphBuilder.CreateUAV(OutputNormal);
+					P->OutputRAM = GraphBuilder.CreateUAV(OutputRAM);
 					FComputeShaderUtils::AddPass(
 						GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.HeightDerivedNormal.%s", DebugName),
+						RDG_EVENT_NAME("Mixtormat.HeightDerivedSurface.%s", DebugName),
 						HeightDeltaNormalShader,
 						P,
 						FIntVector(
@@ -6491,13 +6500,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							ErosionGroups);
 
 						FRDGTextureRef Result = EroH[0];
+						FRDGTextureRef EroRAM = GraphBuilder.CreateTexture(
+							FRDGTextureDesc::Create2D(
+								EroRes, PF_FloatRGBA, FClearValueBinding::White,
+								TexCreate_ShaderResource | TexCreate_UAV),
+							TEXT("Mixtormat.Erosion.HeightDerivedRAM"));
 						AddHeightDerivedNormal(
 							SourceH,
 							Result,
 							EroSrcN,
+							OutputRAM[WriteIndex],
 							EroN,
+							EroRAM,
 							EroRes,
 							Ero.ErosionNormalStrength,
+							0.0f,
 							TEXT("Erosion"));
 
 						if (bResample)
@@ -6645,13 +6662,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 									1));
 
+							FRDGTextureRef TiltRAM = GraphBuilder.CreateTexture(
+								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.RegionRelief.HeightDerivedRAM"));
 							AddHeightDerivedNormal(
 								HeightTargets[WriteIndex],
 								TiltH,
 								OutputN[WriteIndex],
+								OutputRAM[WriteIndex],
 								TiltN,
+								TiltRAM,
 								Request.Resolution,
 								Tilt.NormalStrength,
+								0.0f,
 								TEXT("RegionRelief"));
 							AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
@@ -6727,16 +6749,22 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 								1));
 
+						FRDGTextureRef ReliefRAM = GraphBuilder.CreateTexture(
+							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Craquelure.HeightDerivedRAM"));
 						AddHeightDerivedNormal(
 							HeightTargets[WriteIndex],
 							ReliefH,
 							OutputN[WriteIndex],
+							OutputRAM[WriteIndex],
 							ReliefN,
+							ReliefRAM,
 							Request.Resolution,
 							Relief.NormalWeight,
+							0.35f,
 							TEXT("Craquelure"));
 						AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
 						AddCopyTexturePass(GraphBuilder, ReliefN, OutputN[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, ReliefRAM, OutputRAM[WriteIndex]);
 					}
 
 
@@ -6945,14 +6973,20 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							WearP,
 							WearGroups);
 
+						FRDGTextureRef WornRAM = GraphBuilder.CreateTexture(
+							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.HeightDerivedRAM"));
 						AddHeightDerivedNormal(
 							WearSourceH,
 							WornH,
 							OutputN[WriteIndex],
+							OutputRAM[WriteIndex],
 							WornN,
+							WornRAM,
 							Request.Resolution,
 							8.0f,
+							0.35f,
 							TEXT("WornEdges"));
+						AddCopyTexturePass(GraphBuilder, WornRAM, OutputRAM[WriteIndex]);
 
 						// EdgeWearMask is the generated wear coverage, already gated by the
 						// feature scope. It is the sole roughness mask; placement is not sampled
@@ -7230,15 +7264,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 						// Height is authoritative. Derive the chip normal from the final
 						// height delta instead of maintaining a parallel chip-normal solve.
+						FRDGTextureRef ChipRAM = GraphBuilder.CreateTexture(
+							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Chipping.HeightDerivedRAM"));
 						AddHeightDerivedNormal(
 							ChipSourceH,
 							HeightTargets[WriteIndex],
 							OutputN[WriteIndex],
+							OutputRAM[WriteIndex],
 							ChipNormalScratch,
+							ChipRAM,
 							Request.Resolution,
 							Chip.ChipNormalStrength,
+							0.35f,
 							TEXT("Chipping"));
 						AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, ChipRAM, OutputRAM[WriteIndex]);
 
 						// Roughness is weighted by the resolved chip mask directly, so it remains
 						// independent of chip depth and never touches base colour.

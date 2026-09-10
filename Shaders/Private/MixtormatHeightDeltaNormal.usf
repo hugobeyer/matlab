@@ -3,10 +3,13 @@
 Texture2D<float> PreviousHeight;
 Texture2D<float> CurrentHeight;
 Texture2D<float4> PreviousNormal;
+Texture2D<float4> PreviousRAM;
 RWTexture2D<float4> OutputNormal;
+RWTexture2D<float4> OutputRAM;
 
 int2 OutputSize;
 float NormalStrength;
+float AOAmount;
 
 int WrapI(int X, int Size)
 {
@@ -34,6 +37,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float D0m = HeightDeltaAt(P + int2( 0, -1));
 	const float Dpm = HeightDeltaAt(P + int2( 1, -1));
 	const float Dm0 = HeightDeltaAt(P + int2(-1,  0));
+	const float D00 = HeightDeltaAt(P);
 	const float Dp0 = HeightDeltaAt(P + int2( 1,  0));
 	const float Dmp = HeightDeltaAt(P + int2(-1,  1));
 	const float D0p = HeightDeltaAt(P + int2( 0,  1));
@@ -50,6 +54,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
 	const float3 U = ReliefNormal * float3(-1.0f, -1.0f, 1.0f);
 	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
-
 	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
+
+	const float NeighbourAverage =
+		(Dm0 + Dp0 + D0m + D0p) * 0.25f;
+	const float Cavity = max(D00 - NeighbourAverage, 0.0f);
+	const float Removed = max(D00, 0.0f);
+	const float HeightAO = saturate(Cavity * 32.0f + Removed * 2.0f);
+	float4 RAM = PreviousRAM.Load(int3(P, 0));
+	RAM.g = saturate(RAM.g * (1.0f - saturate(AOAmount) * HeightAO));
+	OutputRAM[P] = RAM;
 }
