@@ -178,6 +178,12 @@ private:
 	FReply AddWornEdgesToLayer(int32 LayerIndex);
 	TSharedRef<SWidget> BuildWornEdgesControls();
 
+	FMixtormatLayerEffect* GetSelectedFlowWarp();
+	const FMixtormatLayerEffect* GetSelectedFlowWarp() const;
+	FReply AddFlowWarpToLayer(int32 LayerIndex);
+	TSharedRef<SWidget> BuildFlowWarpControls();
+	TSharedRef<SWidget> BuildFlowWarpBlendModeMenu();
+
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);

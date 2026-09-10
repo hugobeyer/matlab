@@ -24,6 +24,19 @@ namespace
 		EMixtormatUVRotation::Half,
 		EMixtormatUVRotation::ThreeQuarter
 	};
+
+	FText FlowWarpBlendModeText(const EMixtormatFlowWarpBlendMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatFlowWarpBlendMode::MinHeight:
+			return LOCTEXT("FlowWarpBlendMin", "Min Height");
+		case EMixtormatFlowWarpBlendMode::MaxHeight:
+			return LOCTEXT("FlowWarpBlendMax", "Max Height");
+		default:
+			return LOCTEXT("FlowWarpBlendReplace", "Replace");
+		}
+	}
 }
 
 TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
@@ -601,6 +614,109 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("GradeHeading", "GRADE"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildFlowWarpBlendModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatFlowWarpBlendMode Modes[] = {
+		EMixtormatFlowWarpBlendMode::Replace,
+		EMixtormatFlowWarpBlendMode::MinHeight,
+		EMixtormatFlowWarpBlendMode::MaxHeight
+	};
+	for (const EMixtormatFlowWarpBlendMode Mode : Modes)
+	{
+		Menu.Item(
+			FlowWarpBlendModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatLayerEffect* Flow = GetSelectedFlowWarp())
+				{
+					Flow->FlowWarpBlendMode = Mode;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatLayerEffect* Flow = GetSelectedFlowWarp();
+				return Flow && Flow->FlowWarpBlendMode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
+{
+	const auto Flow = [this]() { return GetSelectedFlowWarp(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpAmount", "Amount"), Flow,
+			&FMixtormatLayerEffect::FlowWarpAmount, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("FlowWarpAmountHint", "Signed displacement. Zero is an exact pass-through; negative values reverse the flow.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpWeight", "Weight"), Flow,
+			&FMixtormatLayerEffect::FlowWarpWeight, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("FlowWarpWeightHint", "Blends the coherent warped surface back over the original."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpScale", "Scale"), Flow,
+			&FMixtormatLayerEffect::FlowWarpScale, 1.0, 128.0, 8,
+			LOCTEXT("FlowWarpScaleHint", "Tileable curl cells across one UV repeat.")),
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpSeed", "Seed"), Flow,
+			&FMixtormatLayerEffect::FlowWarpSeed, 0.0, 1024.0, 1,
+			LOCTEXT("FlowWarpSeedHint", "Chooses another deterministic curl field."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(
+		LOCTEXT("FlowWarpDirection", "Direction"), Flow,
+		&FMixtormatLayerEffect::FlowWarpDirection, -180.0, 180.0, 0.0, 1.0,
+		LOCTEXT("FlowWarpDirectionHint", "Rotates the curl without rotating its tileable lattice.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("FlowWarpSlopeGroup", "Slope Guidance")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpMaskSlope", "Mask Slope"), Flow,
+			&FMixtormatLayerEffect::FlowWarpMaskSlopeInfluence, 0.0, 4.0, 0.0, 0.01,
+			LOCTEXT("FlowWarpMaskSlopeHint", "Steers downhill along the scoped or accumulated mask.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpHeightSlope", "Height Slope"), Flow,
+			&FMixtormatLayerEffect::FlowWarpHeightSlopeInfluence, 0.0, 4.0, 0.0, 0.01,
+			LOCTEXT("FlowWarpHeightSlopeHint", "Steers downhill along the current composited height."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpKernelX", "Kernel X"), Flow,
+			&FMixtormatLayerEffect::FlowWarpDerivativeKernelX, 1.0, 64.0, 2.0, 1.0,
+			LOCTEXT("FlowWarpKernelXHint", "Horizontal derivative radius in pixels. Larger values smooth finer slope detail.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("FlowWarpKernelY", "Kernel Y"), Flow,
+			&FMixtormatLayerEffect::FlowWarpDerivativeKernelY, 1.0, 64.0, 2.0, 1.0,
+			LOCTEXT("FlowWarpKernelYHint", "Vertical derivative radius in pixels. Larger values smooth finer slope detail."))));
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("FlowWarpBlend", "Blend"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatLayerEffect* Selected = GetSelectedFlowWarp();
+				return Selected
+					? FlowWarpBlendModeText(Selected->FlowWarpBlendMode)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildFlowWarpBlendModeMenu)),
+		LOCTEXT("FlowWarpBlendHint", "Replace uses the warped sample. Min or Max Height chooses between original and warped height, then keeps every material channel from that same sample.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedFlowWarp() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("FlowWarpHeading", "FLOW WARP"))
 			.InitiallyExpanded(true)
 			[
 				Panel
@@ -3669,6 +3785,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
+					+ SScrollBox::Slot()[BuildFlowWarpControls()]
 					+ SScrollBox::Slot()[BuildChippingControls()]
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]

@@ -28,7 +28,17 @@ enum class EMixtormatEffectType : uint8
 	Erosion = 2 UMETA(DisplayName = "Erosion"),
 	Grade = 3 UMETA(DisplayName = "Grade"),
 	Chipping = 4 UMETA(DisplayName = "Chipping"),
-	WornEdges = 5 UMETA(DisplayName = "Worn Edges")
+	WornEdges = 5 UMETA(DisplayName = "Worn Edges"),
+	// Appended: serialized recipes store this enum by value.
+	FlowWarp = 6 UMETA(DisplayName = "Flow Warp")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatFlowWarpBlendMode : uint8
+{
+	Replace = 0 UMETA(DisplayName = "Replace"),
+	MinHeight = 1 UMETA(DisplayName = "Min Height"),
+	MaxHeight = 2 UMETA(DisplayName = "Max Height")
 };
 
 // The one place the Surface/Filter split is decided. It used to be declared and never called,
@@ -44,6 +54,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::Grade:
 	case EMixtormatEffectType::Chipping:
 	case EMixtormatEffectType::WornEdges:
+	case EMixtormatEffectType::FlowWarp:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;

@@ -898,6 +898,50 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Tileable curl-flow distortion. It transforms every composited material channel in one pass,
+// before erosion/chipping, so later weathering reads the same warped height and normal field.
+class FMixtormatFlowWarpCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFlowWarpCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowWarpCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, EffectWeight)
+		SHADER_PARAMETER(int32, Scale)
+		SHADER_PARAMETER(float, Direction)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, MaskSlopeInfluence)
+		SHADER_PARAMETER(float, HeightSlopeInfluence)
+		SHADER_PARAMETER(FVector2f, DerivativeKernel)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceBC)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceN)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFlowWarpCS,
+	"/Plugin/Mixtormat/Private/MixtormatFlowWarp.usf",
+	"MainCS",
+	SF_Compute);
+
 // Mask-weighted roughness for what erosion or chipping removed. Kept separate from the carving
 // shaders so its texture slots are not bound on every dispatch that has no use for them.
 class FMixtormatCarveShadeCS final : public FGlobalShader
@@ -1763,6 +1807,16 @@ namespace MixtormatGpuCompositor
 		float EdgeWearIdNoise = 1.0f;
 		float EdgeWearRoughnessWeight = 0.0f;
 		float EdgeWearRoughnessOffset = 0.0f;
+
+		float FlowWarpAmount = 1.0f;
+		float FlowWarpWeight = 1.0f;
+		int32 FlowWarpScale = 8;
+		float FlowWarpDirection = 0.0f;
+		uint32 FlowWarpSeed = 1;
+		float FlowWarpMaskSlopeInfluence = 0.0f;
+		float FlowWarpHeightSlopeInfluence = 0.0f;
+		FVector2f FlowWarpDerivativeKernel = FVector2f(2.0f, 2.0f);
+		uint32 FlowWarpBlendMode = 0;
 		bool bGradeInvertMask = false;
 	};
 
@@ -3245,6 +3299,23 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			}
 
 
+			if (ResolvedType == EMixtormatEffectType::FlowWarp)
+			{
+				EffectData.FlowWarpAmount = LayerEffect.FlowWarpAmount;
+				EffectData.FlowWarpWeight = FMath::Clamp(LayerEffect.FlowWarpWeight, 0.0f, 1.0f);
+				EffectData.FlowWarpScale = FMath::Clamp(LayerEffect.FlowWarpScale, 1, 128);
+				EffectData.FlowWarpDirection = LayerEffect.FlowWarpDirection;
+				EffectData.FlowWarpSeed = static_cast<uint32>(FMath::Max(LayerEffect.FlowWarpSeed, 0));
+				EffectData.FlowWarpMaskSlopeInfluence =
+					FMath::Max(LayerEffect.FlowWarpMaskSlopeInfluence, 0.0f);
+				EffectData.FlowWarpHeightSlopeInfluence =
+					FMath::Max(LayerEffect.FlowWarpHeightSlopeInfluence, 0.0f);
+				EffectData.FlowWarpDerivativeKernel = FVector2f(
+					FMath::Clamp(LayerEffect.FlowWarpDerivativeKernelX, 1.0f, 64.0f),
+					FMath::Clamp(LayerEffect.FlowWarpDerivativeKernelY, 1.0f, 64.0f));
+				EffectData.FlowWarpBlendMode = static_cast<uint32>(LayerEffect.FlowWarpBlendMode);
+			}
+
 			if (ResolvedType == EMixtormatEffectType::WornEdges)
 			{
 				EffectData.EdgeWearRadius = FMath::Clamp(LayerEffect.EdgeWearRadius, 1, 64);
@@ -3759,6 +3830,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatEdgeWearCS> EdgeWearShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatReduceMinMaxCS> ReduceMinMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGradeCS> GradeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				TShaderMapRef<FMixtormatFlowWarpCS> FlowWarpShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
@@ -4170,6 +4242,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
 					// ordinary way to use an adjustment layer, and dropping all but the last
 					// would read as a bug rather than as a contract.
+					TArray<FPendingEffect, TInlineAllocator<2>> PendingFlowWarps;
 					TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
 					int32 MaskPassIndex = 0;
 					int32 EffectPassIndex = 0;
@@ -5118,6 +5191,20 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							continue;
 						}
 
+						if (Effect.Type == EMixtormatEffectType::FlowWarp)
+						{
+							FPendingEffect& FlowWarp = PendingFlowWarps.AddDefaulted_GetRef();
+							FlowWarp.Effect = &Effect;
+							FlowWarp.FeatureMask = FeatureMask;
+							FlowWarp.bHasScopedMask = Layer.Children.ContainsByPredicate(
+								[&Child](const FChildRenderData& Candidate)
+								{
+									return Candidate.Type == EMixtormatLayerChildType::Mask
+										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
+								});
+							continue;
+						}
+
 						if (Effect.Type == EMixtormatEffectType::Grade)
 						{
 							// Also a post-layer filter, for the same reason: it grades what the
@@ -5981,6 +6068,69 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 							1));
+
+					// Flow Warp runs first so erosion and chipping analyze the displaced surface,
+					// not the coordinates it occupied before the warp. Stacked warps compose in
+					// row order, each reading the channels written by the previous one.
+					for (int32 FlowIndex = 0; FlowIndex < PendingFlowWarps.Num(); ++FlowIndex)
+					{
+						const FPendingEffect& PendingFlow = PendingFlowWarps[FlowIndex];
+						const FEffectRenderData& Flow = *PendingFlow.Effect;
+						if (FMath::IsNearlyZero(Flow.FlowWarpAmount)
+							|| FMath::IsNearlyZero(Flow.FlowWarpWeight))
+						{
+							continue;
+						}
+
+						FRDGTextureRef WarpedBC = GraphBuilder.CreateTexture(
+							OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpBC"));
+						FRDGTextureRef WarpedN = GraphBuilder.CreateTexture(
+							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpN"));
+						FRDGTextureRef WarpedRAM = GraphBuilder.CreateTexture(
+							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpRAM"));
+						FRDGTextureRef WarpedHeight = GraphBuilder.CreateTexture(
+							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpHeight"));
+
+						FMixtormatFlowWarpCS::FParameters* FP =
+							GraphBuilder.AllocParameters<FMixtormatFlowWarpCS::FParameters>();
+						FP->OutputSize = Request.Resolution;
+						FP->HasMask = (Layer.bHasMask || PendingFlow.bHasScopedMask) ? 1u : 0u;
+						FP->Amount = Flow.FlowWarpAmount;
+						FP->EffectWeight = Flow.FlowWarpWeight;
+						FP->Scale = Flow.FlowWarpScale;
+						FP->Direction = Flow.FlowWarpDirection;
+						FP->Seed = Flow.FlowWarpSeed;
+						FP->MaskSlopeInfluence = Flow.FlowWarpMaskSlopeInfluence;
+						FP->HeightSlopeInfluence = Flow.FlowWarpHeightSlopeInfluence;
+						FP->DerivativeKernel = Flow.FlowWarpDerivativeKernel;
+						FP->BlendMode = Flow.FlowWarpBlendMode;
+						FP->SourceBC = OutputBC[WriteIndex];
+						FP->SourceN = OutputN[WriteIndex];
+						FP->SourceRAM = OutputRAM[WriteIndex];
+						FP->SourceHeight = HeightTargets[WriteIndex];
+						FP->LayerMask = PendingFlow.FeatureMask;
+						FP->LinearWrapSampler =
+							TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+						FP->OutputBC = GraphBuilder.CreateUAV(WarpedBC);
+						FP->OutputN = GraphBuilder.CreateUAV(WarpedN);
+						FP->OutputRAM = GraphBuilder.CreateUAV(WarpedRAM);
+						FP->OutputHeight = GraphBuilder.CreateUAV(WarpedHeight);
+
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.FlowWarp.Layer%d.%d", LayerIndex, FlowIndex),
+							FlowWarpShader,
+							FP,
+							FIntVector(
+								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+								1));
+
+						AddCopyTexturePass(GraphBuilder, WarpedBC, OutputBC[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, WarpedN, OutputN[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, WarpedRAM, OutputRAM[WriteIndex]);
+						AddCopyTexturePass(GraphBuilder, WarpedHeight, HeightTargets[WriteIndex]);
+					}
 
 					// Amount 0 is an exact identity in the erosion shader: Placement falls to
 					// zero, the height comes back as it went in and the normal is copied

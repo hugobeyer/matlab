@@ -1,0 +1,178 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
+
+// Tileable curl-flow filter over the surface accumulated through the owning layer.
+// Every material channel reads the same displaced coordinate, so colour, packed material data,
+// height and normal detail remain registered. A layer or scoped mask blends the warped result
+// against the untouched input; Amount 0 is therefore an exact identity.
+
+Texture2D<float4> SourceBC;
+Texture2D<float4> SourceN;
+Texture2D<float4> SourceRAM;
+Texture2D<float> SourceHeight;
+Texture2D<float> LayerMask;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float4> OutputBC;
+RWTexture2D<float4> OutputN;
+RWTexture2D<float4> OutputRAM;
+RWTexture2D<float> OutputHeight;
+
+int2 OutputSize;
+uint HasMask;
+float Amount;
+float EffectWeight;
+int Scale;
+float Direction;
+uint Seed;
+float MaskSlopeInfluence;
+float HeightSlopeInfluence;
+float2 DerivativeKernel;
+uint BlendMode;
+
+float2 RotateFlow(float2 V)
+{
+	const float Radians = Direction * 0.017453292519943295f;
+	float S;
+	float C;
+	sincos(Radians, S, C);
+	return float2(C * V.x - S * V.y, S * V.x + C * V.y);
+}
+
+float SampleSlopeSource(float2 UV, uint Source)
+{
+	return Source == 0
+		? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		: SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+// Wrapped 3x3 derivative with independent pixel radii. The perpendicular 1-2-1 taps suppress
+// isolated detail, while increasing either radius measures the slope over a broader footprint.
+float2 DownhillSlope(float2 UV, uint Source)
+{
+	const float2 Radius = max(DerivativeKernel, 1.0f) / float2(OutputSize);
+	const float2 X = float2(Radius.x, 0.0f);
+	const float2 Y = float2(0.0f, Radius.y);
+	const float Right = (
+		SampleSlopeSource(UV + X - Y, Source)
+		+ 2.0f * SampleSlopeSource(UV + X, Source)
+		+ SampleSlopeSource(UV + X + Y, Source)) * 0.25f;
+	const float Left = (
+		SampleSlopeSource(UV - X - Y, Source)
+		+ 2.0f * SampleSlopeSource(UV - X, Source)
+		+ SampleSlopeSource(UV - X + Y, Source)) * 0.25f;
+	const float Up = (
+		SampleSlopeSource(UV - X + Y, Source)
+		+ 2.0f * SampleSlopeSource(UV + Y, Source)
+		+ SampleSlopeSource(UV + X + Y, Source)) * 0.25f;
+	const float Down = (
+		SampleSlopeSource(UV - X - Y, Source)
+		+ 2.0f * SampleSlopeSource(UV - Y, Source)
+		+ SampleSlopeSource(UV + X - Y, Source)) * 0.25f;
+	const float2 Gradient = float2(Right - Left, Up - Down);
+	const float Length = length(Gradient);
+	return Length > 1.0e-5f ? -Gradient / Length : 0.0f;
+}
+
+float2 WarpedCoordinate(float2 UV)
+{
+	const int Period = max(Scale, 1);
+	float2 Flow = RotateFlow(MixtormatPeriodicCurlField(UV, Period, Seed));
+	if (HasMask != 0 && MaskSlopeInfluence > 0.0f)
+	{
+		Flow += DownhillSlope(UV, 0) * MaskSlopeInfluence;
+	}
+	if (HeightSlopeInfluence > 0.0f)
+	{
+		Flow += DownhillSlope(UV, 1) * HeightSlopeInfluence;
+	}
+	Flow /= max(1.0f, length(Flow));
+	return UV + Flow * Amount * (0.5f / (float)Period);
+}
+
+float3 DecodeNormal(float4 Encoded)
+{
+	const float2 XY = Encoded.xy * 2.0f - 1.0f;
+	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+float4 EncodeNormal(float3 Normal, float Alpha)
+{
+	return float4(Normal * 0.5f + 0.5f, Alpha);
+}
+
+// A normal is a height gradient in the source tangent basis. Warping the sampling domain changes
+// that basis by the warp Jacobian; J^T transforms the source slopes into output-space slopes.
+float3 TransformWarpedNormal(float2 UV, float3 SourceNormal)
+{
+	const float2 Texel = 1.0f / float2(OutputSize);
+	const float2 Dx = float2(Texel.x, 0.0f);
+	const float2 Dy = float2(0.0f, Texel.y);
+	const float2 JWrtX = (WarpedCoordinate(UV + Dx) - WarpedCoordinate(UV - Dx)) / (2.0f * Texel.x);
+	const float2 JWrtY = (WarpedCoordinate(UV + Dy) - WarpedCoordinate(UV - Dy)) / (2.0f * Texel.y);
+	const float2 SourceSlope = -SourceNormal.xy / max(SourceNormal.z, 1.0e-4f);
+	const float2 OutputSlope = float2(dot(SourceSlope, JWrtX), dot(SourceSlope, JWrtY));
+	return normalize(float3(-OutputSlope, 1.0f));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 WarpedUV = WarpedCoordinate(UV);
+	const float MaskWeight = HasMask != 0
+		? saturate(LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f))
+		: 1.0f;
+	const float OutputWeight = MaskWeight * saturate(EffectWeight);
+
+	const float4 OriginalBC = SourceBC.Load(int3(Pixel, 0));
+	const float4 OriginalNEncoded = SourceN.Load(int3(Pixel, 0));
+	const float4 OriginalRAM = SourceRAM.Load(int3(Pixel, 0));
+	const float OriginalHeight = SourceHeight.Load(int3(Pixel, 0));
+
+	if (OutputWeight <= 0.0f)
+	{
+		OutputBC[Pixel] = OriginalBC;
+		OutputN[Pixel] = OriginalNEncoded;
+		OutputRAM[Pixel] = OriginalRAM;
+		OutputHeight[Pixel] = OriginalHeight;
+		return;
+	}
+
+	const float4 WarpedBC = SourceBC.SampleLevel(LinearWrapSampler, WarpedUV, 0.0f);
+	const float4 WarpedNEncoded = SourceN.SampleLevel(LinearWrapSampler, WarpedUV, 0.0f);
+	const float4 WarpedRAM = SourceRAM.SampleLevel(LinearWrapSampler, WarpedUV, 0.0f);
+	const float WarpedHeight = SourceHeight.SampleLevel(LinearWrapSampler, WarpedUV, 0.0f);
+
+	const float3 OriginalNormal = DecodeNormal(OriginalNEncoded);
+	const float3 WarpedNormal = TransformWarpedNormal(UV, DecodeNormal(WarpedNEncoded));
+	bool UseWarped = true;
+	if (BlendMode == 1)
+	{
+		UseWarped = WarpedHeight < OriginalHeight;
+	}
+	else if (BlendMode == 2)
+	{
+		UseWarped = WarpedHeight > OriginalHeight;
+	}
+
+	const float4 SelectedBC = UseWarped ? WarpedBC : OriginalBC;
+	const float4 SelectedNEncoded = UseWarped ? WarpedNEncoded : OriginalNEncoded;
+	const float3 SelectedNormal = UseWarped ? WarpedNormal : OriginalNormal;
+	const float4 SelectedRAM = UseWarped ? WarpedRAM : OriginalRAM;
+	const float SelectedHeight = UseWarped ? WarpedHeight : OriginalHeight;
+	const float3 ResultNormal = normalize(lerp(OriginalNormal, SelectedNormal, OutputWeight));
+
+	OutputBC[Pixel] = lerp(OriginalBC, SelectedBC, OutputWeight);
+	OutputN[Pixel] = EncodeNormal(
+		ResultNormal,
+		lerp(OriginalNEncoded.a, SelectedNEncoded.a, OutputWeight));
+	OutputRAM[Pixel] = lerp(OriginalRAM, SelectedRAM, OutputWeight);
+	OutputHeight[Pixel] = lerp(OriginalHeight, SelectedHeight, OutputWeight);
+}

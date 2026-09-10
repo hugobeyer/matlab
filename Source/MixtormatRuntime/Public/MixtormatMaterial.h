@@ -1148,6 +1148,42 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges|Output")
 	float EdgeWearRoughnessOffset = 0.0f;
+
+	// Tileable curl-flow distortion applied to every composited material channel together.
+	// Amount is signed: reversing it follows the same field in the opposite direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp")
+	float FlowWarpAmount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FlowWarpWeight = 1.0f;
+
+	// Integer cells per UV repeat keep the generated vector field seamless.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "1"))
+	int32 FlowWarpScale = 8;
+
+	// Rotates the curl vectors without rotating their periodic sampling lattice.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp")
+	float FlowWarpDirection = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "0"))
+	int32 FlowWarpSeed = 1;
+
+	// Scoped-mask and current-height gradients steer the curl downhill. Zero preserves curl V1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "0.0"))
+	float FlowWarpMaskSlopeInfluence = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "0.0"))
+	float FlowWarpHeightSlopeInfluence = 0.0f;
+
+	// Pixel radii for the wrapped derivative kernel. Larger values reject finer slope detail.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "1.0"))
+	float FlowWarpDerivativeKernelX = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "1.0"))
+	float FlowWarpDerivativeKernelY = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Output")
+	EMixtormatFlowWarpBlendMode FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::Replace;
 };
 
 // Two constructions, not two presets for one.

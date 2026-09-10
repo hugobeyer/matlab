@@ -117,6 +117,22 @@ namespace MixtormatCompositorTests
 		return Surface;
 	}
 
+	UMixtormatSurface* MakeFlowWarpSurface(
+		UTexture2D* BaseColor,
+		UTexture2D* Normal,
+		UTexture2D* RAMH)
+	{
+		UMixtormatSurface* Surface = MakeSurfaceWithRAMH(RAMH);
+		if (Surface)
+		{
+			Surface->BaseColor = BaseColor;
+			Surface->Normal = Normal;
+			Surface->bHasBlendHeight = true;
+			Surface->BlendHeightProvenance = EMixtormatBlendHeightProvenance::AuthoredRAMH;
+		}
+		return Surface;
+	}
+
 	// One material layer with a single child, which is all any of these tests need: the child is
 	// the thing under test and the layer is just somewhere to hang it.
 	FMixtormatLayer MakeLayerWithChild(const FMixtormatLayerChild& Child)
@@ -909,6 +925,261 @@ bool FMixtormatWornEdgesRoughnessTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Negative roughness offset smooths worn pixels"), SmootherPixels > 0);
 	TestTrue(TEXT("Signed roughness offsets use the same EdgeWearMask"), bSignedDeltasMatch);
 	TestEqual(TEXT("Worn Edges leaves base color unchanged"), BaseColorDifferences, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatFlowWarpTest,
+	"Mixtormat.Compositor.FlowWarp",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatFlowWarpTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+
+	TStrongObjectPtr<UTexture2D> BaseColor(
+		MakeTwoToneIdMap(FColor(51, 51, 51), FColor(204, 204, 204)));
+	TStrongObjectPtr<UTexture2D> Normal(
+		MakeTwoToneIdMap(FColor(64, 128, 237), FColor(192, 128, 237)));
+	TStrongObjectPtr<UTexture2D> RAMH(
+		MakeTwoToneIdMap(FColor(51, 128, 0, 51), FColor(204, 128, 0, 204)));
+	TStrongObjectPtr<UMixtormatSurface> Surface(
+		MakeFlowWarpSurface(BaseColor.Get(), Normal.Get(), RAMH.Get()));
+	if (!TestNotNull(TEXT("Flow Warp base-color fixture exists"), BaseColor.Get())
+		|| !TestNotNull(TEXT("Flow Warp normal fixture exists"), Normal.Get())
+		|| !TestNotNull(TEXT("Flow Warp RAMH fixture exists"), RAMH.Get())
+		|| !TestNotNull(TEXT("Flow Warp surface exists"), Surface.Get()))
+	{
+		return false;
+	}
+
+	FMixtormatLayer Layer;
+	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(FSoftObjectPath(Surface.Get()));
+	FMixtormatLayerChild& Flow = Layer.Children.AddDefaulted_GetRef();
+	Flow.Type = EMixtormatLayerChildType::Effect;
+	Flow.Effect.ProceduralType = EMixtormatEffectType::FlowWarp;
+	Flow.Effect.FlowWarpAmount = 0.0f;
+	Flow.Effect.FlowWarpScale = 8;
+	Flow.Effect.FlowWarpDirection = 23.0f;
+	Flow.Effect.FlowWarpSeed = 17;
+	const FGuid FlowId = Flow.ChildId;
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+	if (!TestTrue(TEXT("Zero Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> ZeroBC;
+	TArray<FLinearColor> ZeroN;
+	TArray<FLinearColor> ZeroRAM;
+	TArray<FLinearColor> ZeroHeight;
+	if (!ReadTarget(Compositor.GetBaseColorOutput(), ZeroBC)
+		|| !ReadTarget(Compositor.GetNormalOutput(), ZeroN)
+		|| !ReadTarget(Compositor.GetRAMOutput(), ZeroRAM)
+		|| !ReadHeight(Compositor.GetHeightOutput(), ZeroHeight))
+	{
+		AddError(TEXT("Zero Flow Warp outputs did not read back"));
+		return false;
+	}
+
+	Layers[0].Children.RemoveAt(0);
+	if (!TestTrue(TEXT("Flow Warp reference composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> ReferenceBC;
+	TArray<FLinearColor> ReferenceN;
+	TArray<FLinearColor> ReferenceRAM;
+	TArray<FLinearColor> ReferenceHeight;
+	if (!ReadTarget(Compositor.GetBaseColorOutput(), ReferenceBC)
+		|| !ReadTarget(Compositor.GetNormalOutput(), ReferenceN)
+		|| !ReadTarget(Compositor.GetRAMOutput(), ReferenceRAM)
+		|| !ReadHeight(Compositor.GetHeightOutput(), ReferenceHeight))
+	{
+		AddError(TEXT("Flow Warp reference outputs did not read back"));
+		return false;
+	}
+
+	int32 IdentityDifferences = 0;
+	for (int32 Index = 0; Index < ReferenceBC.Num(); ++Index)
+	{
+		IdentityDifferences += ZeroBC[Index] == ReferenceBC[Index] ? 0 : 1;
+		IdentityDifferences += ZeroN[Index] == ReferenceN[Index] ? 0 : 1;
+		IdentityDifferences += ZeroRAM[Index] == ReferenceRAM[Index] ? 0 : 1;
+		IdentityDifferences += ZeroHeight[Index] == ReferenceHeight[Index] ? 0 : 1;
+	}
+	TestEqual(TEXT("Amount zero is an exact identity"), IdentityDifferences, 0);
+
+	Flow.Effect.FlowWarpAmount = 2.0f;
+	Flow.Effect.FlowWarpHeightSlopeInfluence = 1.0f;
+	Flow.Effect.FlowWarpMaskSlopeInfluence = 1.0f;
+	Flow.Effect.FlowWarpDerivativeKernelX = 6.0f;
+	Flow.Effect.FlowWarpDerivativeKernelY = 3.0f;
+	Layers[0].Children.Add(Flow);
+	if (!TestTrue(TEXT("Active Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> WarpedBC;
+	TArray<FLinearColor> WarpedN;
+	TArray<FLinearColor> WarpedRAM;
+	TArray<FLinearColor> WarpedHeight;
+	if (!ReadTarget(Compositor.GetBaseColorOutput(), WarpedBC)
+		|| !ReadTarget(Compositor.GetNormalOutput(), WarpedN)
+		|| !ReadTarget(Compositor.GetRAMOutput(), WarpedRAM)
+		|| !ReadHeight(Compositor.GetHeightOutput(), WarpedHeight))
+	{
+		AddError(TEXT("Active Flow Warp outputs did not read back"));
+		return false;
+	}
+
+	Layers[0].Children[0].Effect.FlowWarpHeightSlopeInfluence = 0.0f;
+	if (!TestTrue(TEXT("Curl-only Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+	TArray<FLinearColor> CurlOnlyBC;
+	if (!ReadTarget(Compositor.GetBaseColorOutput(), CurlOnlyBC))
+	{
+		AddError(TEXT("Curl-only Flow Warp did not read back"));
+		return false;
+	}
+	int32 HeightGuidanceDifferences = 0;
+	for (int32 Index = 0; Index < WarpedBC.Num(); ++Index)
+	{
+		HeightGuidanceDifferences += WarpedBC[Index].Equals(CurlOnlyBC[Index], 1.0e-4f) ? 0 : 1;
+	}
+	TestTrue(TEXT("Self-height slope changes the flow field"), HeightGuidanceDifferences > 0);
+	Layers[0].Children[0].Effect.FlowWarpHeightSlopeInfluence = 1.0f;
+
+	int32 ChangedBC = 0;
+	int32 ChangedN = 0;
+	int32 ChangedRAM = 0;
+	int32 ChangedHeight = 0;
+	int32 MisalignedBands = 0;
+	for (int32 Index = 0; Index < ReferenceBC.Num(); ++Index)
+	{
+		ChangedBC += WarpedBC[Index].Equals(ReferenceBC[Index], 1.0e-4f) ? 0 : 1;
+		ChangedN += WarpedN[Index].Equals(ReferenceN[Index], 1.0e-4f) ? 0 : 1;
+		ChangedRAM += WarpedRAM[Index].Equals(ReferenceRAM[Index], 1.0e-4f) ? 0 : 1;
+		ChangedHeight += FMath::IsNearlyEqual(
+			WarpedHeight[Index].R, ReferenceHeight[Index].R, 1.0e-4f) ? 0 : 1;
+		const bool bBCBand = WarpedBC[Index].R >= 0.5f;
+		const bool bRAMBand = WarpedRAM[Index].R >= 0.5f;
+		const bool bHeightBand = WarpedHeight[Index].R >= 0.5f;
+		MisalignedBands += bBCBand == bRAMBand && bBCBand == bHeightBand ? 0 : 1;
+	}
+	TestTrue(TEXT("Flow Warp displaces base color"), ChangedBC > 0);
+	TestTrue(TEXT("Flow Warp transforms normals"), ChangedN > 0);
+	TestTrue(TEXT("Flow Warp displaces RAM"), ChangedRAM > 0);
+	TestTrue(TEXT("Flow Warp displaces height"), ChangedHeight > 0);
+	TestEqual(TEXT("BC, RAM, and height boundaries remain aligned"), MisalignedBands, 0);
+
+	Layers[0].Children[0].Effect.FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::MaxHeight;
+	if (!TestTrue(TEXT("Max-height Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+	TArray<FLinearColor> MaxHeight;
+	if (!ReadHeight(Compositor.GetHeightOutput(), MaxHeight))
+	{
+		AddError(TEXT("Max-height Flow Warp did not read back"));
+		return false;
+	}
+	int32 LoweredByMax = 0;
+	int32 RaisedByMax = 0;
+	for (int32 Index = 0; Index < ReferenceHeight.Num(); ++Index)
+	{
+		LoweredByMax += MaxHeight[Index].R < ReferenceHeight[Index].R - 1.0e-4f ? 1 : 0;
+		RaisedByMax += MaxHeight[Index].R > ReferenceHeight[Index].R + 1.0e-4f ? 1 : 0;
+	}
+	TestEqual(TEXT("Max Height never lowers the surface"), LoweredByMax, 0);
+	TestTrue(TEXT("Max Height keeps raised warped samples"), RaisedByMax > 0);
+
+	Layers[0].Children[0].Effect.FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::MinHeight;
+	if (!TestTrue(TEXT("Min-height Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+	TArray<FLinearColor> MinHeight;
+	if (!ReadHeight(Compositor.GetHeightOutput(), MinHeight))
+	{
+		AddError(TEXT("Min-height Flow Warp did not read back"));
+		return false;
+	}
+	int32 RaisedByMin = 0;
+	int32 LoweredByMin = 0;
+	for (int32 Index = 0; Index < ReferenceHeight.Num(); ++Index)
+	{
+		RaisedByMin += MinHeight[Index].R > ReferenceHeight[Index].R + 1.0e-4f ? 1 : 0;
+		LoweredByMin += MinHeight[Index].R < ReferenceHeight[Index].R - 1.0e-4f ? 1 : 0;
+	}
+	TestEqual(TEXT("Min Height never raises the surface"), RaisedByMin, 0);
+	TestTrue(TEXT("Min Height keeps lowered warped samples"), LoweredByMin > 0);
+	Layers[0].Children[0].Effect.FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::Replace;
+
+	TStrongObjectPtr<UTexture2D> ScopeMask(
+		MakeTwoToneIdMap(FColor::Black, FColor::White));
+	if (!TestNotNull(TEXT("Flow Warp scoped mask exists"), ScopeMask.Get()))
+	{
+		return false;
+	}
+	FMixtormatLayerChild& Mask = Layers[0].Children.AddDefaulted_GetRef();
+	Mask.Type = EMixtormatLayerChildType::Mask;
+	Mask.ScopeOwnerChildId = FlowId;
+	Mask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ScopeMask.Get()));
+	if (!TestTrue(TEXT("Masked Flow Warp composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> MaskedBC;
+	if (!TestTrue(TEXT("Masked Flow Warp base color reads back"),
+		ReadTarget(Compositor.GetBaseColorOutput(), MaskedBC)))
+	{
+		return false;
+	}
+	int32 UnmaskedDifferences = 0;
+	int32 MaskedDifferences = 0;
+	for (int32 Y = 0; Y < TestResolution; ++Y)
+	{
+		for (int32 X = 0; X < TestResolution; ++X)
+		{
+			const int32 Index = Y * TestResolution + X;
+			if (X < TestResolution / 2 - 2)
+			{
+				UnmaskedDifferences += MaskedBC[Index].Equals(ReferenceBC[Index], 1.0e-5f) ? 0 : 1;
+			}
+			else if (X > TestResolution / 2 + 2)
+			{
+				MaskedDifferences += MaskedBC[Index].Equals(ReferenceBC[Index], 1.0e-4f) ? 0 : 1;
+			}
+		}
+	}
+	TestEqual(TEXT("Masked-out pixels remain unchanged"), UnmaskedDifferences, 0);
+	TestTrue(TEXT("Masked-in pixels are displaced"), MaskedDifferences > 0);
 
 	return true;
 }

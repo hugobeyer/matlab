@@ -2021,6 +2021,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
+			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
 			}
 		}
@@ -2034,6 +2035,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
+		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
 		}
 	}
@@ -2622,6 +2624,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddWornEdgesEffect", "Worn Edges"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddWornEdgesToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddFlowWarpEffect", "Flow Warp"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFlowWarpToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
 		MixtormatIcons::Effect(),
@@ -3877,6 +3883,45 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges() const
 		return nullptr;
 	}
 	return Effect;
+}
+
+FReply SMixtormat::AddFlowWarpToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::FlowWarp;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	return Effect && Effect->Effect.IsNull()
+		&& Effect->ProceduralType == EMixtormatEffectType::FlowWarp
+		? Effect
+		: nullptr;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	return Effect && Effect->Effect.IsNull()
+		&& Effect->ProceduralType == EMixtormatEffectType::FlowWarp
+		? Effect
+		: nullptr;
 }
 
 FReply SMixtormat::AddProceduralPeelingToLayer(const int32 LayerIndex)

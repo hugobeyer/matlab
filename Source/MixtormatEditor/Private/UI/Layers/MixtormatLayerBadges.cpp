@@ -133,11 +133,13 @@ namespace MixtormatLayerBadges
 	{
 		switch (Type)
 		{
-		case EMixtormatEffectType::Stain:   return LOCTEXT("EffectBadgeStain", "STAIN");
-		case EMixtormatEffectType::Erosion: return LOCTEXT("EffectBadgeErosion", "ERODE");
-		case EMixtormatEffectType::Grade:   return LOCTEXT("EffectBadgeGrade", "GRADE");
-		case EMixtormatEffectType::Chipping: return LOCTEXT("EffectBadgeChipping", "CHIP");
-		default:                            return LOCTEXT("EffectBadgePeel", "PEEL");
+		case EMixtormatEffectType::Stain:     return LOCTEXT("EffectBadgeStain", "STAIN");
+		case EMixtormatEffectType::Erosion:   return LOCTEXT("EffectBadgeErosion", "ERODE");
+		case EMixtormatEffectType::Grade:     return LOCTEXT("EffectBadgeGrade", "GRADE");
+		case EMixtormatEffectType::Chipping:  return LOCTEXT("EffectBadgeChipping", "CHIP");
+		case EMixtormatEffectType::WornEdges: return LOCTEXT("EffectBadgeWorn", "WORN");
+		case EMixtormatEffectType::FlowWarp:  return LOCTEXT("EffectBadgeFlowWarp", "WARP");
+		default:                              return LOCTEXT("EffectBadgePeel", "PEEL");
 		}
 	}
 
