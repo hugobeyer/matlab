@@ -1747,13 +1747,13 @@ namespace MixtormatGpuCompositor
 		uint32 EdgeWearSeed = 1;
 		int32 EdgeWearMacroScale = 12;
 		float EdgeWearMacroAmount = 0.75f;
-		int32 EdgeWearCellScale = 16;
+		int32 EdgeWearCellScale = 8;
 		float EdgeWearCellAmount = 1.0f;
-		int32 EdgeWearRidgeScale = 12;
+		int32 EdgeWearRidgeScale = 8;
 		float EdgeWearRidgeAmount = 1.0f;
-		int32 EdgeWearMicroScale = 32;
+		int32 EdgeWearMicroScale = 40;
 		float EdgeWearMicroAmount = 0.5f;
-		int32 EdgeWearWarpScale = 24;
+		int32 EdgeWearWarpScale = 32;
 		float EdgeWearWarpAmount = 0.25f;
 		float EdgeWearNoiseContrast = 0.5f;
 		float EdgeWearIdVariation = 1.0f;

@@ -20,7 +20,7 @@ class SMixtormatInspectorGroup final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatInspectorGroup)
-		: _InitiallyExpanded(false)
+		: _InitiallyExpanded(true)
 		, _Collapsible(true)
 	{}
 		SLATE_ARGUMENT(FText, Title)

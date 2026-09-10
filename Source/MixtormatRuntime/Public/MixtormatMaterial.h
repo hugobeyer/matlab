@@ -1100,25 +1100,25 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	float EdgeWearMacroAmount = 0.75f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
-	int32 EdgeWearCellScale = 16;
+	int32 EdgeWearCellScale = 8;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	float EdgeWearCellAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
-	int32 EdgeWearRidgeScale = 12;
+	int32 EdgeWearRidgeScale = 8;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	float EdgeWearRidgeAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
-	int32 EdgeWearMicroScale = 32;
+	int32 EdgeWearMicroScale = 40;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	float EdgeWearMicroAmount = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
-	int32 EdgeWearWarpScale = 24;
+	int32 EdgeWearWarpScale = 32;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	float EdgeWearWarpAmount = 0.25f;

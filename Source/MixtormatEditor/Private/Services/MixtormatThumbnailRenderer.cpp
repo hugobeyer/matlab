@@ -1,20 +1,26 @@
 #include "Services/MixtormatThumbnailRenderer.h"
 
+#include "AssetCompilingManager.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetViewerSettings.h"
 #include "CanvasTypes.h"
+#include "Components/BoxReflectionCaptureComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/RectLightComponent.h"
+#include "Components/ReflectionCaptureComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
+#include "Engine/TextureCube.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/World.h"
 #include "LegacyScreenPercentageDriver.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -27,6 +33,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "RHI.h"
 #include "SceneView.h"
 #include "Services/MixtormatPaths.h"
+#include "ShaderCompiler.h"
 #include "Style/MixtormatPalette.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
@@ -274,6 +281,49 @@ public:
 		MeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, HeightAboveFloor));
 		MeshComponent->UpdateBounds();
 
+		const float MeshRadius = FMath::Max(MeshComponent->Bounds.SphereRadius, 0.5f);
+		const FRotator ViewRotation(
+			MixtormatPreviewCamera::PitchDefault,
+			MixtormatPreviewCamera::YawDefault,
+			0.0f);
+		const FVector ViewDirection = ViewRotation.Vector();
+		const FRotationMatrix ViewAxes(ViewRotation);
+		const FVector ViewRight = ViewAxes.GetUnitAxis(EAxis::Y);
+		const FVector ViewUp = ViewAxes.GetUnitAxis(EAxis::Z);
+
+		const FVector RimLightLocation = MeshComponent->Bounds.Origin
+			+ ViewDirection * MeshRadius * 3.5f
+			- ViewRight * MeshRadius * 1.25f
+			+ ViewUp * MeshRadius * 1.5f;
+		RimLightComponent = NewObject<URectLightComponent>();
+		RimLightComponent->SetMobility(EComponentMobility::Movable);
+		RimLightComponent->SetIntensity(3500.0f);
+		RimLightComponent->SetAttenuationRadius(MeshRadius * 9.0f);
+		RimLightComponent->SetSourceWidth(MeshRadius * 5.0f);
+		RimLightComponent->SetSourceHeight(MeshRadius * 2.0f);
+		PreviewScene.AddComponent(
+			RimLightComponent,
+			FTransform(
+				(MeshComponent->Bounds.Origin - RimLightLocation).Rotation(),
+				RimLightLocation));
+
+		const FVector SpecularLightLocation = MeshComponent->Bounds.Origin
+			- ViewDirection * MeshRadius * 2.5f
+			- ViewRight * MeshRadius * 1.1f
+			+ ViewUp * MeshRadius * 0.35f;
+		SpecularLightComponent = NewObject<URectLightComponent>();
+		SpecularLightComponent->SetMobility(EComponentMobility::Movable);
+		SpecularLightComponent->SetIntensity(900.0f);
+		SpecularLightComponent->SetAttenuationRadius(MeshRadius * 6.0f);
+		SpecularLightComponent->SetSourceWidth(MeshRadius);
+		SpecularLightComponent->SetSourceHeight(MeshRadius * 2.25f);
+		SpecularLightComponent->SetCastShadows(false);
+		PreviewScene.AddComponent(
+			SpecularLightComponent,
+			FTransform(
+				(MeshComponent->Bounds.Origin - SpecularLightLocation).Rotation(),
+				SpecularLightLocation));
+
 		FogComponent = NewObject<UExponentialHeightFogComponent>();
 		FogComponent->SetFogHeightFalloff(0.01f);
 		FogComponent->SetFogMaxOpacity(1.0f);
@@ -297,11 +347,22 @@ public:
 		if (PreviewScene.SkyLight)
 		{
 			PreviewScene.SkyLight->SetVisibility(true, true);
+			PreviewScene.SkyLight->SourceType = ESkyLightSourceType::SLS_SpecifiedCubemap;
 			PreviewScene.SkyLight->SetCubemap(EnvironmentCubemap.Get());
 			PreviewScene.SkyLight->SetIntensity(2.0f);
 			PreviewScene.SkyLight->SetIndirectLightingIntensity(1.0f);
 			PreviewScene.SkyLight->SetCaptureIsDirty();
+			PreviewScene.SkyLight->MarkRenderStateDirty();
 		}
+
+		ReflectionCaptureComponent = NewObject<UBoxReflectionCaptureComponent>();
+		ReflectionCaptureComponent->ReflectionSourceType = EReflectionSourceType::SpecifiedCubemap;
+		ReflectionCaptureComponent->Cubemap = EnvironmentCubemap.Get();
+		ReflectionCaptureComponent->Brightness = 10.0f;
+		PreviewScene.AddComponent(
+			ReflectionCaptureComponent,
+			FTransform(FRotator::ZeroRotator, MeshComponent->Bounds.Origin));
+
 		PreviewScene.SetLightDirection(LightSettings.LightRotation);
 		if (PreviewScene.DirectionalLight)
 		{
@@ -325,6 +386,18 @@ public:
 		{
 			PreviewScene.RemoveComponent(FogComponent);
 		}
+		if (RimLightComponent)
+		{
+			PreviewScene.RemoveComponent(RimLightComponent);
+		}
+		if (SpecularLightComponent)
+		{
+			PreviewScene.RemoveComponent(SpecularLightComponent);
+		}
+		if (ReflectionCaptureComponent)
+		{
+			PreviewScene.RemoveComponent(ReflectionCaptureComponent);
+		}
 	}
 
 	bool Render(UMaterialInterface& Material, TArray<FColor>& OutPixels, FString& OutError)
@@ -334,6 +407,20 @@ public:
 			OutError = TEXT("The Mixtormat thumbnail sphere could not be loaded.");
 			return false;
 		}
+		if (!EnvironmentCubemap.IsValid() || !PreviewScene.SkyLight)
+		{
+			OutError = TEXT("The Mixtormat thumbnail cubemap or skylight could not be loaded.");
+			return false;
+		}
+
+		// Import calls this immediately after textures and the preview material change.
+		// UE defers sky processing while those resources or shaders are compiling.
+		FAssetCompilingManager::Get().FinishAllCompilation();
+		if (GShaderCompilingManager)
+		{
+			GShaderCompilingManager->FinishAllCompilation();
+		}
+
 		TStrongObjectPtr<UMaterialInstanceDynamic> ThumbnailMaterial(
 			UMaterialInstanceDynamic::Create(&Material, MeshComponent));
 		if (!ThumbnailMaterial.IsValid())
@@ -351,9 +438,19 @@ public:
 		}
 		MeshComponent->MarkRenderStateDirty();
 
-		// Preview-scene skylight and reflection captures are processed by Tick. The live viewport
-		// does this continuously, but this one-shot renderer must do it explicitly before drawing.
-		PreviewScene.Tick(0.0f);
+		// A one-shot renderer has no editor frame to process deferred component updates.
+		// Explicitly build the specified cubemap's diffuse SH and filtered specular texture,
+		// then publish the updated skylight proxy before rendering the view family.
+		UWorld* PreviewWorld = PreviewScene.GetWorld();
+		PreviewWorld->SendAllEndOfFrameUpdates();
+		USkyLightComponent::UpdateSkyCaptureContents(PreviewWorld);
+		UReflectionCaptureComponent::UpdateReflectionCaptureContents(
+			PreviewWorld,
+			nullptr,
+			false,
+			false,
+			false);
+		PreviewWorld->SendAllEndOfFrameUpdates();
 		FlushRenderingCommands();
 
 		const int32 Resolution = MixtormatPreviewSceneSettings::SurfaceThumbnailResolution;
@@ -410,6 +507,9 @@ public:
 			.SetRealtimeUpdate(false));
 		FSceneViewInitOptions ViewOptions;
 		ViewOptions.ViewFamily = &ViewFamily;
+		// Renderer warnings are skipped for scene-capture views. Without this, warnings such
+		// as the red video-memory message are composed into this render target before ReadPixels.
+		ViewOptions.bIsSceneCapture = true;
 		ViewOptions.SetViewRectangle(FIntRect(0, 0, Resolution, Resolution));
 		ViewOptions.ViewOrigin = CameraLocation;
 		ViewOptions.ViewRotationMatrix = FInverseRotationMatrix(CameraRotation) * FMatrix(
@@ -461,6 +561,9 @@ private:
 	TStrongObjectPtr<UTextureCube> EnvironmentCubemap;
 	UStaticMeshComponent* MeshComponent = nullptr;
 	UExponentialHeightFogComponent* FogComponent = nullptr;
+	URectLightComponent* RimLightComponent = nullptr;
+	URectLightComponent* SpecularLightComponent = nullptr;
+	UBoxReflectionCaptureComponent* ReflectionCaptureComponent = nullptr;
 };
 
 class FMixtormatThumbnailRenderer::FImpl

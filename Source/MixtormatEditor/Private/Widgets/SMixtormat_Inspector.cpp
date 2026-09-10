@@ -749,19 +749,19 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		LOCTEXT("WearSeed", "Seed"), Wear, &FMixtormatLayerEffect::EdgeWearSeed, 0.0, 1024.0, 1,
 		LOCTEXT("WearSeedHint", "Reseeds the periodic resistance fields and independent per-region draws.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMacroScale", "Macro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMacroScale, 1.0, 512.0, 12),
-		Slider(LOCTEXT("WearMacroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMacroAmount, 0.0, 4.0, 0.75, 0.01)));
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMacroScale", "Macro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMacroScale, 1.0, 64.0, 12),
+		Slider(LOCTEXT("WearMacroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMacroAmount, 0.0, 2.0, 0.75, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearCellScale", "Cell Scale"), Wear, &FMixtormatLayerEffect::EdgeWearCellScale, 1.0, 512.0, 16),
-		Slider(LOCTEXT("WearCellAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearCellAmount, 0.0, 4.0, 1.0, 0.01)));
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearCellScale", "Cell Scale"), Wear, &FMixtormatLayerEffect::EdgeWearCellScale, 1.0, 64.0, 8),
+		Slider(LOCTEXT("WearCellAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearCellAmount, 0.0, 2.0, 1.0, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearRidgeScale", "Ridge Scale"), Wear, &FMixtormatLayerEffect::EdgeWearRidgeScale, 1.0, 512.0, 12),
-		Slider(LOCTEXT("WearRidgeAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearRidgeAmount, 0.0, 4.0, 1.0, 0.01)));
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearRidgeScale", "Ridge Scale"), Wear, &FMixtormatLayerEffect::EdgeWearRidgeScale, 1.0, 64.0, 8),
+		Slider(LOCTEXT("WearRidgeAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearRidgeAmount, 0.0, 2.0, 1.0, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMicroScale", "Micro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMicroScale, 1.0, 1024.0, 32),
-		Slider(LOCTEXT("WearMicroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMicroAmount, 0.0, 4.0, 0.5, 0.01)));
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearMicroScale", "Micro Scale"), Wear, &FMixtormatLayerEffect::EdgeWearMicroScale, 1.0, 128.0, 40),
+		Slider(LOCTEXT("WearMicroAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearMicroAmount, 0.0, 2.0, 0.5, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearWarpScale", "Warp Scale"), Wear, &FMixtormatLayerEffect::EdgeWearWarpScale, 1.0, 512.0, 24),
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("WearWarpScale", "Warp Scale"), Wear, &FMixtormatLayerEffect::EdgeWearWarpScale, 1.0, 64.0, 32),
 		Slider(LOCTEXT("WearWarpAmount", "Amount"), &FMixtormatLayerEffect::EdgeWearWarpAmount, 0.0, 2.0, 0.25, 0.01)));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("WearNoiseContrast", "Noise Contrast"), &FMixtormatLayerEffect::EdgeWearNoiseContrast, 0.05, 8.0, 0.5, 0.01,
@@ -2741,7 +2741,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("LayerMaskHeading", "MASK BLENDING"))
-			.InitiallyExpanded(false)
+			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
@@ -2975,7 +2975,7 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("ChannelInfluenceHeading", "CHANNEL INFLUENCE"))
-			.InitiallyExpanded(false)
+			.InitiallyExpanded(true)
 			[
 				Panel
 			]
@@ -3557,7 +3557,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 					: EVisibility::Collapsed;
 			})
 			.Title(LOCTEXT("PeelingSettingsHeading", "PEELING SETTINGS"))
-			.InitiallyExpanded(false)
+			.InitiallyExpanded(true)
 			.HeaderAction(MakeEnabledToggle(LOCTEXT("PeelingEnabled", "Enable Peeling")))
 			[Panel]
 		];
@@ -3740,7 +3740,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									: EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("FillPropertiesHeading", "FILL PROPERTIES"))
-							.InitiallyExpanded(false)
+							.InitiallyExpanded(true)
 							[
 								SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
@@ -3905,7 +3905,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									: EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("SurfaceAdjustmentsHeading", "SURFACE ADJUSTMENTS"))
-							.InitiallyExpanded(false)
+							.InitiallyExpanded(true)
 							[
 								BuildSurfaceAdjustmentCards()
 						]
