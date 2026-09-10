@@ -1,0 +1,55 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> PreviousHeight;
+Texture2D<float> CurrentHeight;
+Texture2D<float4> PreviousNormal;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+float NormalStrength;
+
+int WrapI(int X, int Size)
+{
+	X %= max(Size, 1);
+	return X < 0 ? X + Size : X;
+}
+
+float HeightDeltaAt(int2 P)
+{
+	P.x = WrapI(P.x, OutputSize.x);
+	P.y = WrapI(P.y, OutputSize.y);
+	return PreviousHeight.Load(int3(P, 0)) - CurrentHeight.Load(int3(P, 0));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float Dmm = HeightDeltaAt(P + int2(-1, -1));
+	const float D0m = HeightDeltaAt(P + int2( 0, -1));
+	const float Dpm = HeightDeltaAt(P + int2( 1, -1));
+	const float Dm0 = HeightDeltaAt(P + int2(-1,  0));
+	const float Dp0 = HeightDeltaAt(P + int2( 1,  0));
+	const float Dmp = HeightDeltaAt(P + int2(-1,  1));
+	const float D0p = HeightDeltaAt(P + int2( 0,  1));
+	const float Dpp = HeightDeltaAt(P + int2( 1,  1));
+
+	const float2 G = float2(
+		(Dpm + 2.0f * Dp0 + Dpp) - (Dmm + 2.0f * Dm0 + Dmp),
+		(Dmp + 2.0f * D0p + Dpp) - (Dmm + 2.0f * D0m + Dpm))
+		* (NormalStrength / 8.0f);
+
+	const float3 ReliefNormal = normalize(float3(G, 1.0f));
+	const float4 EncodedBase = PreviousNormal.Load(int3(P, 0));
+	const float3 BaseNormal = normalize(EncodedBase.xyz * 2.0f - 1.0f);
+	const float3 T = BaseNormal + float3(0.0f, 0.0f, 1.0f);
+	const float3 U = ReliefNormal * float3(-1.0f, -1.0f, 1.0f);
+	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+
+	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
+}

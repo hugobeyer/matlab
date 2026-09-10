@@ -368,6 +368,36 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Shared height -> normal reconciliation pass for structural effects.
+// Effects author height; this pass derives only the normal contribution caused by the
+// height delta and RNM-combines it with the normal that entered the effect.
+class FMixtormatHeightDeltaNormalCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatHeightDeltaNormalCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatHeightDeltaNormalCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatHeightDeltaNormalCS,
+	"/Plugin/Mixtormat/Private/MixtormatHeightDeltaNormal.usf",
+	"MainCS",
+	SF_Compute);
+
 class FMixtormatMaskCS final : public FGlobalShader
 {
 public:
@@ -3809,6 +3839,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[0]), FVector4f(0.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[1]), FVector4f(0.0f));
 
+				TShaderMapRef<FMixtormatHeightDeltaNormalCS> HeightDeltaNormalShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -3833,6 +3864,34 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TShaderMapRef<FMixtormatFlowWarpCS> FlowWarpShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 				TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
+				auto AddHeightDerivedNormal = [&](
+					FRDGTextureRef PreviousHeight,
+					FRDGTextureRef CurrentHeight,
+					FRDGTextureRef PreviousNormal,
+					FRDGTextureRef OutputNormal,
+					const FIntPoint Resolution,
+					const float NormalStrength,
+					const TCHAR* DebugName)
+				{
+					FMixtormatHeightDeltaNormalCS::FParameters* P =
+						GraphBuilder.AllocParameters<FMixtormatHeightDeltaNormalCS::FParameters>();
+					P->OutputSize = Resolution;
+					P->NormalStrength = NormalStrength;
+					P->PreviousHeight = PreviousHeight;
+					P->CurrentHeight = CurrentHeight;
+					P->PreviousNormal = PreviousNormal;
+					P->OutputNormal = GraphBuilder.CreateUAV(OutputNormal);
+					FComputeShaderUtils::AddPass(
+						GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.HeightDerivedNormal.%s", DebugName),
+						HeightDeltaNormalShader,
+						P,
+						FIntVector(
+							FMath::DivideAndRoundUp(Resolution.X, 8),
+							FMath::DivideAndRoundUp(Resolution.Y, 8),
+							1));
+				};
 
 				// Placeholders so the peel and peel-field parameter structs always have a
 				// bound resource in slots the active mode does not use. Never read, never
@@ -6431,21 +6490,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							ErosionParameters,
 							ErosionGroups);
 
-						FMixtormatErosionCS::FParameters* NormalParameters =
-							GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-						SetErosionParameters(NormalParameters);
-						NormalParameters->NormalPass = 1;
-						NormalParameters->PreviousHeight = EroH[0];
-						NormalParameters->GuideHeight = Guidance;
-						NormalParameters->OutputHeight = GraphBuilder.CreateUAV(EroH[1]);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Normal", LayerIndex),
-							ErosionShader,
-							NormalParameters,
-							ErosionGroups);
-
-						FRDGTextureRef Result = EroH[1];
+						FRDGTextureRef Result = EroH[0];
+						AddHeightDerivedNormal(
+							SourceH,
+							Result,
+							EroSrcN,
+							EroN,
+							EroRes,
+							Ero.ErosionNormalStrength,
+							TEXT("Erosion"));
 
 						if (bResample)
 						{
@@ -6592,6 +6645,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 									1));
 
+							AddHeightDerivedNormal(
+								HeightTargets[WriteIndex],
+								TiltH,
+								OutputN[WriteIndex],
+								TiltN,
+								Request.Resolution,
+								Tilt.NormalStrength,
+								TEXT("RegionRelief"));
 							AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
 						}
@@ -6642,7 +6703,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							GraphBuilder.AllocParameters<FMixtormatCraquelureReliefCS::FParameters>();
 						RelP->OutputSize = Request.Resolution;
 						RelP->HeightWeight = Relief.HeightWeight;
-						RelP->NormalWeight = Relief.NormalWeight;
+						RelP->NormalWeight = 0.0f;
 						RelP->ReliefWidthPixels = Relief.WidthPixels;
 						RelP->Variation = Relief.Variation;
 						RelP->Profile = Relief.Profile;
@@ -6666,6 +6727,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 								1));
 
+						AddHeightDerivedNormal(
+							HeightTargets[WriteIndex],
+							ReliefH,
+							OutputN[WriteIndex],
+							ReliefN,
+							Request.Resolution,
+							Relief.NormalWeight,
+							TEXT("Craquelure"));
 						AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
 						AddCopyTexturePass(GraphBuilder, ReliefN, OutputN[WriteIndex]);
 					}
@@ -6876,22 +6945,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							WearP,
 							WearGroups);
 
-						FMixtormatEdgeWearCS::FParameters* NormalP =
-							GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
-						FillWearParameters(NormalP);
-						NormalP->Mode = 3;
-						NormalP->WornHeight = WornH;
-						NormalP->WearMask = EdgeWearMask;
-						NormalP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
-						NormalP->OutputWearMask = GraphBuilder.CreateUAV(WriteDummyB);
-						NormalP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
-						NormalP->OutputNormal = GraphBuilder.CreateUAV(WornN);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.Normal", LayerIndex, WearIndex),
-							EdgeWearShader,
-							NormalP,
-							WearGroups);
+						AddHeightDerivedNormal(
+							WearSourceH,
+							WornH,
+							OutputN[WriteIndex],
+							WornN,
+							Request.Resolution,
+							8.0f,
+							TEXT("WornEdges"));
 
 						// EdgeWearMask is the generated wear coverage, already gated by the
 						// feature scope. It is the sole roughness mask; placement is not sampled
@@ -7167,44 +7228,17 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						FRDGTextureRef FinalChips = ChipMask[ChipWrite];
 						FRDGTextureRef SpareChips = ChipMask[1 - ChipWrite];
 
-						// Normal from the finished chip mask. Through scratch and back because
-						// the pass reads the composited normal and writes the same target, which
-						// cannot be SRV and UAV in one dispatch.
-						{
-							FMixtormatChippingCS::FParameters* NP =
-								GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
-							FillChipParameters(NP);
-							NP->Iteration = ChipIterations;
-							NP->NormalPass = 1;
-							NP->PreviousState = ChipState[ChipWrite];
-							NP->ChipsTexture = FinalChips;
-							NP->PreviousNormal = OutputN[WriteIndex];
-
-							// Bound and unwritten on this path: the normal pass returns before it
-							// touches state, chips or height. State and chips are aimed at the
-							// spare ping-pong slots so a future edit that stops returning early
-							// cannot corrupt what the loop just produced.
-							//
-							// Height goes to the live target rather than to a spare, because
-							// the alternative -- ChipSourceH -- is bound as SourceHeight on
-							// this same dispatch, and RDG will not take one texture as SRV and
-							// UAV at once. It is safe under the same hypothetical: an edit that
-							// removed the early return would write the value the last loop pass
-							// already wrote there.
-							NP->OutputState = GraphBuilder.CreateUAV(ChipState[1 - ChipWrite]);
-							NP->OutputChips = GraphBuilder.CreateUAV(SpareChips);
-							NP->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
-							NP->OutputNormal = GraphBuilder.CreateUAV(ChipNormalScratch);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Normal", LayerIndex),
-								ChippingShader,
-								NP,
-								ChipGroups);
-
-							AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
-						}
+						// Height is authoritative. Derive the chip normal from the final
+						// height delta instead of maintaining a parallel chip-normal solve.
+						AddHeightDerivedNormal(
+							ChipSourceH,
+							HeightTargets[WriteIndex],
+							OutputN[WriteIndex],
+							ChipNormalScratch,
+							Request.Resolution,
+							Chip.ChipNormalStrength,
+							TEXT("Chipping"));
+						AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
 
 						// Roughness is weighted by the resolved chip mask directly, so it remains
 						// independent of chip depth and never touches base colour.
