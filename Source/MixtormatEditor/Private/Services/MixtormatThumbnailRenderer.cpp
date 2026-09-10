@@ -8,6 +8,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "CanvasTypes.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Engine/Engine.h"
@@ -80,7 +81,7 @@ namespace
 		const int32 SourceWidth,
 		const int32 SourceHeight)
 	{
-		const int32 Resolution = MixtormatPreviewSceneSettings::ThumbnailResolution;
+		const int32 Resolution = MixtormatPreviewSceneSettings::MaskThumbnailResolution;
 		TArray<FColor> Output;
 		Output.SetNumUninitialized(Resolution * Resolution);
 
@@ -119,9 +120,11 @@ namespace
 		return Output;
 	}
 
-	bool SourcePixelsMatch(UTexture2D& Texture, const TArray<FColor>& Pixels)
+	bool SourcePixelsMatch(
+		UTexture2D& Texture,
+		const TArray<FColor>& Pixels,
+		const int32 Resolution)
 	{
-		const int32 Resolution = MixtormatPreviewSceneSettings::ThumbnailResolution;
 		if (Texture.Source.GetSizeX() != Resolution
 			|| Texture.Source.GetSizeY() != Resolution
 			|| Texture.Source.GetFormat() != TSF_BGRA8
@@ -146,10 +149,10 @@ namespace
 	FMixtormatThumbnailUpdate CreateOrUpdateThumbnailTexture(
 		const FString& DestinationPath,
 		const FString& AssetName,
-		const TArray<FColor>& Pixels)
+		const TArray<FColor>& Pixels,
+		const int32 Resolution)
 	{
 		FMixtormatThumbnailUpdate Result;
-		const int32 Resolution = MixtormatPreviewSceneSettings::ThumbnailResolution;
 		if (Pixels.Num() != Resolution * Resolution)
 		{
 			Result.Error = FString::Printf(
@@ -193,7 +196,7 @@ namespace
 			return Result;
 		}
 
-		const bool bPixelsChanged = !SourcePixelsMatch(*Thumbnail, Pixels);
+		const bool bPixelsChanged = !SourcePixelsMatch(*Thumbnail, Pixels, Resolution);
 		const bool bSettingsChanged = !Thumbnail->SRGB
 			|| Thumbnail->CompressionSettings != TC_EditorIcon
 			|| Thumbnail->LODGroup != TEXTUREGROUP_UI
@@ -291,6 +294,14 @@ public:
 		PreviewScene.SetFloorVisibility(true, true);
 		PreviewScene.SetLightBrightness(LightSettings.LightBrightness);
 		PreviewScene.SetSkyBrightness(2.0f);
+		if (PreviewScene.SkyLight)
+		{
+			PreviewScene.SkyLight->SetVisibility(true, true);
+			PreviewScene.SkyLight->SetCubemap(EnvironmentCubemap.Get());
+			PreviewScene.SkyLight->SetIntensity(2.0f);
+			PreviewScene.SkyLight->SetIndirectLightingIntensity(1.0f);
+			PreviewScene.SkyLight->SetCaptureIsDirty();
+		}
 		PreviewScene.SetLightDirection(LightSettings.LightRotation);
 		if (PreviewScene.DirectionalLight)
 		{
@@ -340,7 +351,12 @@ public:
 		}
 		MeshComponent->MarkRenderStateDirty();
 
-		const int32 Resolution = MixtormatPreviewSceneSettings::ThumbnailResolution;
+		// Preview-scene skylight and reflection captures are processed by Tick. The live viewport
+		// does this continuously, but this one-shot renderer must do it explicitly before drawing.
+		PreviewScene.Tick(0.0f);
+		FlushRenderingCommands();
+
+		const int32 Resolution = MixtormatPreviewSceneSettings::SurfaceThumbnailResolution;
 		const FVector Target = MeshComponent->Bounds.Origin;
 		const float CameraDistance = MixtormatPreviewSceneSettings::CalculateFocusDistance(
 			static_cast<float>(MeshComponent->Bounds.SphereRadius),
@@ -479,7 +495,8 @@ FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbna
 	return CreateOrUpdateThumbnailTexture(
 		FMixtormatPaths::MaskThumbnailsRoot(),
 		MaskTexture.GetName() + TEXT("_Thumbnail"),
-		ThumbnailPixels);
+		ThumbnailPixels,
+		MixtormatPreviewSceneSettings::MaskThumbnailResolution);
 }
 
 FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateSurfaceThumbnail(
@@ -501,5 +518,6 @@ FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateSurfaceThum
 	return CreateOrUpdateThumbnailTexture(
 		FMixtormatPaths::SurfaceThumbnailFamilyRoot(Family),
 		SurfaceAssetName + TEXT("_Thumbnail"),
-		Pixels);
+		Pixels,
+		MixtormatPreviewSceneSettings::SurfaceThumbnailResolution);
 }

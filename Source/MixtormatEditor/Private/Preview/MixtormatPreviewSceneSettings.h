@@ -33,7 +33,8 @@ namespace MixtormatPreviewCamera
 
 namespace MixtormatPreviewSceneSettings
 {
-	constexpr int32 ThumbnailResolution = 256;
+	constexpr int32 SurfaceThumbnailResolution = 128;
+	constexpr int32 MaskThumbnailResolution = 256;
 
 	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile);
 	FString GetStudioEnvironmentObjectPath(EMixtormatStudioLighting LightingPreset);

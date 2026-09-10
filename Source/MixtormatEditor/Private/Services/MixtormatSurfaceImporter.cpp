@@ -471,8 +471,8 @@ namespace MixtormatImporter
 		const float RoughnessOffset = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
 			&PreviewMaterial, TEXT("DA_RoughnessOffset"));
 		return FString::Printf(
-			TEXT("SurfaceThumbnailV7:%d:Rim:Medium:NoAA:NoHeight:NoScreenMessages:PluginFerndaleSky2:IOR%.6g:R%.6g,%.6g,%.6g:%s:%s:%s"),
-			MixtormatPreviewSceneSettings::ThumbnailResolution,
+			TEXT("SurfaceThumbnailV10:%d:Rim:Medium:NoAA:NoHeight:NoScreenMessages:PluginFerndaleSky2:SkyEnabled:IOR%.6g:R%.6g,%.6g,%.6g:%s:%s:%s"),
+			MixtormatPreviewSceneSettings::SurfaceThumbnailResolution,
 			DefaultIOR,
 			RoughnessBias,
 			RoughnessContrast,
@@ -1265,8 +1265,8 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		UTexture2D* SurfaceThumbnail = Surface->Thumbnail.Get();
 		FString StoredThumbnailHash = Surface->ThumbnailSourceHash;
 		const bool bCanReuseThumbnail = SurfaceThumbnail
-			&& SurfaceThumbnail->Source.GetSizeX() == MixtormatPreviewSceneSettings::ThumbnailResolution
-			&& SurfaceThumbnail->Source.GetSizeY() == MixtormatPreviewSceneSettings::ThumbnailResolution
+			&& SurfaceThumbnail->Source.GetSizeX() == MixtormatPreviewSceneSettings::SurfaceThumbnailResolution
+			&& SurfaceThumbnail->Source.GetSizeY() == MixtormatPreviewSceneSettings::SurfaceThumbnailResolution
 			&& StoredThumbnailHash.Equals(SurfaceThumbnailHash, ESearchCase::CaseSensitive);
 		if (bCanReuseThumbnail)
 		{

@@ -608,7 +608,7 @@ void SMixtormatPreviewViewport::RotateLighting(
 	const float PitchDelta)
 {
 	LightingYaw = FMath::Fmod(LightingYaw + YawDelta * 0.35f + 360.0f, 360.0f);
-	LightingPitch = FMath::Clamp(LightingPitch + PitchDelta * 0.25f, -89.0f, -1.0f);
+	LightingPitch = FMath::Clamp(LightingPitch - PitchDelta * 0.25f, -89.0f, -1.0f);
 	PreviewScene.SetLightDirection(FRotator(LightingPitch, LightingYaw, 0.0f));
 
 	if (bUsingStudioEnvironment && StudioPreviewProfile && !FMath::IsNearlyZero(YawDelta))

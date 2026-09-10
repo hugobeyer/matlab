@@ -499,7 +499,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewQualityMedium", "MED"),
 		LOCTEXT("PreviewQualityHigh", "HIGH")};
 	const TArray<FText> QualityToolTips = {
-		LOCTEXT("PreviewQualityLowHint", "Direct light only. No AO, SSR, or Lumen."),
+		LOCTEXT("PreviewQualityLowHint", "Key light and plugin-cubemap skylight. No AO, SSR, or Lumen."),
 		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
 		LOCTEXT("PreviewQualityHighHint", "Lumen GI with stable plugin-cubemap and SSR reflections.")};
 

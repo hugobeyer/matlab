@@ -14,6 +14,9 @@ void MixtormatPreviewSceneSettings::ConfigureLookdevProfile(FPreviewSceneProfile
 	Profile.EnvironmentFloorMaterialPath = FloorMaterialPath;
 	Profile.EnvironmentFloorMaterial =
 		TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(FloorMaterialPath));
+	Profile.bUseSkyLighting = true;
+	Profile.bShowEnvironment = false;
+	Profile.bShowFloor = true;
 
 	Profile.bPostProcessingEnabled = true;
 	Profile.bEnableToneMapping = true;
@@ -97,14 +100,18 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	switch (Quality)
 	{
 	case EMixtormatPreviewQuality::Low:
+		ShowFlags.SetGlobalIllumination(true);
+		ShowFlags.SetSkyLighting(true);
 		ShowFlags.SetLumenGlobalIllumination(false);
 		ShowFlags.SetLumenReflections(false);
-		ShowFlags.SetReflectionEnvironment(false);
+		ShowFlags.SetReflectionEnvironment(true);
 		ShowFlags.SetAmbientOcclusion(false);
 		ShowFlags.SetScreenSpaceAO(false);
 		ShowFlags.SetScreenSpaceReflections(false);
 		break;
 	case EMixtormatPreviewQuality::High:
+		ShowFlags.SetGlobalIllumination(true);
+		ShowFlags.SetSkyLighting(true);
 		ShowFlags.SetLumenGlobalIllumination(true);
 		ShowFlags.SetLumenReflections(false);
 		ShowFlags.SetReflectionEnvironment(true);
@@ -114,6 +121,8 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 		break;
 	case EMixtormatPreviewQuality::Medium:
 	default:
+		ShowFlags.SetGlobalIllumination(true);
+		ShowFlags.SetSkyLighting(true);
 		ShowFlags.SetLumenGlobalIllumination(false);
 		ShowFlags.SetLumenReflections(false);
 		ShowFlags.SetReflectionEnvironment(true);
