@@ -12,10 +12,16 @@ namespace
 {
 	UTexture2D* LoadGeneratedMaskThumbnail(const UTexture2D& MaskTexture)
 	{
+		const FString MaskPackageName = MaskTexture.GetOutermost()->GetName();
+		const FString ThumbnailRoot = MaskPackageName.StartsWith(
+			FMixtormatPaths::ProjectLibraryMasksRoot() + TEXT("/"),
+			ESearchCase::CaseSensitive)
+			? FMixtormatPaths::ProjectLibraryMaskThumbnailsRoot()
+			: FMixtormatPaths::MaskThumbnailsRoot();
 		const FString ThumbnailName = MaskTexture.GetName() + TEXT("_Thumbnail");
 		const FString ObjectPath = FString::Printf(
 			TEXT("%s/%s.%s"),
-			*FMixtormatPaths::MaskThumbnailsRoot(),
+			*ThumbnailRoot,
 			*ThumbnailName,
 			*ThumbnailName);
 		return LoadObject<UTexture2D>(nullptr, *ObjectPath);
@@ -30,6 +36,7 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UMixtormatSurface::StaticClass()->GetClassPathName());
 	Filter.PackagePaths.Add(FName(*FMixtormatPaths::SurfacesRoot()));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::ProjectLibrarySurfacesRoot()));
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = true;
 
@@ -60,7 +67,10 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 		if (Entry.Family.IsNone())
 		{
 			FString Family = Asset.PackagePath.ToString();
-			Family.RemoveFromStart(FMixtormatPaths::SurfacesRoot() + TEXT("/"));
+			if (!Family.RemoveFromStart(FMixtormatPaths::SurfacesRoot() + TEXT("/")))
+			{
+				Family.RemoveFromStart(FMixtormatPaths::ProjectLibrarySurfacesRoot() + TEXT("/"));
+			}
 			FString Remainder;
 			Family.Split(TEXT("/"), &Family, &Remainder);
 			Entry.Family = Family.IsEmpty() ? FName(TEXT("Uncategorized")) : FName(*Family);
@@ -90,8 +100,9 @@ TArray<FMixtormatMaskEntry> FMixtormatRegistry::GetMasks()
 	Filter.ClassPaths.Add(UMixtormatMask::StaticClass()->GetClassPathName());
 	Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
 	Filter.PackagePaths.Add(FName(*FMixtormatPaths::MasksRoot()));
+	Filter.PackagePaths.Add(FName(*FMixtormatPaths::ProjectLibraryMasksRoot()));
 	Filter.bRecursiveClasses = true;
-	Filter.bRecursivePaths = false;
+	Filter.bRecursivePaths = true;
 
 	TArray<FAssetData> Assets;
 	AssetRegistryModule.Get().GetAssets(Filter, Assets);

@@ -26,10 +26,12 @@ public:
 	FMixtormatThumbnailRenderer(const FMixtormatThumbnailRenderer&) = delete;
 	FMixtormatThumbnailRenderer& operator=(const FMixtormatThumbnailRenderer&) = delete;
 
-	static FMixtormatThumbnailUpdate CreateOrUpdateMaskThumbnail(UTexture2D& MaskTexture);
+	static FMixtormatThumbnailUpdate CreateOrUpdateMaskThumbnail(
+		UTexture2D& MaskTexture,
+		const FString& DestinationPath);
 	FMixtormatThumbnailUpdate CreateOrUpdateSurfaceThumbnail(
 		UMaterialInterface& PreviewMaterial,
-		const FString& Family,
+		const FString& DestinationPath,
 		const FString& SurfaceAssetName);
 
 private:

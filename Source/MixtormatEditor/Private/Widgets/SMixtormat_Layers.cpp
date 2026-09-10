@@ -3028,15 +3028,23 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 			.OnSelected(this, &SMixtormat::SelectMask)
 			.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
 			[
-				SNew(SMixtormatTile)
-				.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
-				.DisplayName(Name)
-				.ThumbnailAsset(ThumbnailAsset)
-				.ThumbnailPool(ThumbnailPool)
-				.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
-				.bShowName(false)
-				.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })
-				.ToolTip(LOCTEXT("SelectMaskForLayerActions", "Select for layer, effect, or replacement actions"))
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				[
+					SNew(SMixtormatTile)
+					.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
+					.DisplayName(Name)
+					.ThumbnailAsset(ThumbnailAsset)
+					.ThumbnailPool(ThumbnailPool)
+					.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+					.bShowName(false)
+					.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })
+					.ToolTip(LOCTEXT("SelectMaskForLayerActions", "Select for layer, effect, or replacement actions"))
+				]
+				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+				[
+					MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
+				]
 			];
 	}
 
@@ -3047,7 +3055,15 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
-				SNew(SBox).WidthOverride(ThumbnailSize).HeightOverride(ThumbnailSize)[ThumbnailWidget]
+				SNew(SBox).WidthOverride(ThumbnailSize).HeightOverride(ThumbnailSize)
+				[
+					SNew(SOverlay)
+					+ SOverlay::Slot()[ThumbnailWidget]
+					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(2.0f)
+					[
+						MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
+					]
+				]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(8.0f, 0.0f).VAlign(VAlign_Center)
 			[

@@ -57,6 +57,46 @@ FString FMixtormatPaths::PluginContentRoot()
 	return TEXT("/") + CurrentPluginName.ToString();
 }
 
+FString FMixtormatPaths::ProjectLibraryRoot()
+{
+	return TEXT("/Game/Mixtormat/Library");
+}
+
+FString FMixtormatPaths::ProjectLibrarySurfacesRoot()
+{
+	return PackageChild(ProjectLibraryRoot(), TEXT("Surfaces"));
+}
+
+FString FMixtormatPaths::ProjectLibrarySurfaceFamilyRoot(const FString& Family)
+{
+	return PackageChild(ProjectLibrarySurfacesRoot(), Family);
+}
+
+FString FMixtormatPaths::ProjectLibraryRawTextureFamilyRoot(const FString& Family)
+{
+	return PackageChild(PackageChild(PackageChild(ProjectLibraryRoot(), TEXT("Textures")), Family), TEXT("Raw"));
+}
+
+FString FMixtormatPaths::ProjectLibrarySurfaceThumbnailFamilyRoot(const FString& Family)
+{
+	return PackageChild(PackageChild(PackageChild(ProjectLibraryRoot(), TEXT("Thumbnails")), TEXT("Surfaces")), Family);
+}
+
+FString FMixtormatPaths::ProjectLibraryMasksRoot()
+{
+	return PackageChild(ProjectLibraryRoot(), TEXT("Masks"));
+}
+
+FString FMixtormatPaths::ProjectLibraryMaskThumbnailsRoot()
+{
+	return PackageChild(PackageChild(ProjectLibraryRoot(), TEXT("Thumbnails")), TEXT("Masks"));
+}
+
+FString FMixtormatPaths::ProjectLibraryMaterialInstanceFamilyRoot(const FString& Family)
+{
+	return PackageChild(PackageChild(PackageChild(ProjectLibraryRoot(), TEXT("Materials")), TEXT("Instances")), Family);
+}
+
 FString FMixtormatPaths::SurfacesRoot()
 {
 	return PackageChild(PluginContentRoot(), TEXT("Surfaces"));

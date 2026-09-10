@@ -1,10 +1,15 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
-#include "Services/MixtormatPaths.h"
+
 
 // The surface library: registry listing, filtering, search, cards and the gallery.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+namespace
+{
+	const FName UserLibraryCategoryFilter(TEXT("__MixtormatUserLibrary"));
+}
 
 FReply SMixtormat::RefreshSurfaceList()
 {
@@ -148,7 +153,9 @@ void SMixtormat::RebuildCategoryList()
 		return A.LexicalLess(B);
 	});
 
-	if (!CategoryFilter.IsNone() && !Families.Contains(CategoryFilter))
+	if (!CategoryFilter.IsNone()
+		&& CategoryFilter != UserLibraryCategoryFilter
+		&& !Families.Contains(CategoryFilter))
 	{
 		CategoryFilter = NAME_None;
 	}
@@ -170,6 +177,33 @@ void SMixtormat::RebuildCategoryList()
 	};
 
 	AddCategory(NAME_None, LOCTEXT("AllCategory", "All Materials"));
+	CategoryListBox->AddSlot()
+	.AutoHeight()
+	.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+	[
+		SNew(SButton)
+		.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(
+			CategoryFilter == UserLibraryCategoryFilter
+				? TEXT("Mixtormat.TabButtonActive")
+				: TEXT("Mixtormat.TabButton")))
+		.OnClicked_Lambda([this]() { return SetCategoryFilter(UserLibraryCategoryFilter); })
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SBox)
+				.WidthOverride(12.0f)
+				.HeightOverride(12.0f)
+				[
+					SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+				]
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
+			[
+				SNew(STextBlock).Text(LOCTEXT("UserLibraryCategory", "User Library"))
+			]
+		]
+	];
 	for (const FName Family : Families)
 	{
 		AddCategory(Family, FText::FromName(Family));
@@ -188,7 +222,11 @@ void SMixtormat::RebuildSurfaceList()
 	int32 VisibleSurfaceIndex = 0;
 	for (const FMixtormatSurfaceEntry& Surface : Surfaces)
 	{
-		if (!CategoryFilter.IsNone() && Surface.Family != CategoryFilter)
+		const bool bIsUserSurface = MixtormatUI::IsUserLibraryAsset(Surface.AssetPath);
+		if ((CategoryFilter == UserLibraryCategoryFilter && !bIsUserSurface)
+			|| (!CategoryFilter.IsNone()
+				&& CategoryFilter != UserLibraryCategoryFilter
+				&& Surface.Family != CategoryFilter))
 		{
 			continue;
 		}
@@ -211,9 +249,9 @@ void SMixtormat::RebuildSurfaceList()
 		SurfaceListBox->AddSlot()
 		[
 			SNew(STextBlock)
-			.Text(FText::Format(
-				LOCTEXT("EmptyRegistry", "Starter library is empty. Export the metal maps to:\n{0}"),
-				FText::FromString(FMixtormatSurfaceImporter::GetDefaultSourceDirectory())))
+			.Text(Surfaces.IsEmpty()
+				? LOCTEXT("EmptyRegistry", "Built-in Mixtormat content is missing. Repair or reinstall Mixtormat, or import a texture folder.")
+				: LOCTEXT("NoMatchingSurfaces", "No materials match the current filters."))
 			.AutoWrapText(true)
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 		];
@@ -310,10 +348,8 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ContentPadding(FMargin(0.0f))
-					.ToolTipText(FText::Format(
-						LOCTEXT("ReimportShippedHint", "Reimport Shipped Library from Plugins/{0}/Content/Textures."),
-						FText::FromName(FMixtormatPaths::PluginName())))
-					.OnClicked(this, &SMixtormat::ReimportShippedLibrary)
+					.ToolTipText(LOCTEXT("RefreshLibraryHint", "Refresh Library"))
+					.OnClicked(this, &SMixtormat::RefreshSurfaceList)
 					[
 						SNew(SBox)
 						.WidthOverride(MixtormatTokens::ToolbarIconSize)
@@ -354,14 +390,22 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 		.OnSelected(this, &SMixtormat::SelectSurface)
 		.OnGalleryZoom(this, &SMixtormat::ZoomMaterialGallery)
 		[
-			SNew(SMixtormatTile)
-			.TileSize(MaterialGalleryTileSize)
-			.DisplayName(Name)
-			.ThumbnailAsset(ThumbnailAsset)
-			.ThumbnailPool(ThumbnailPool)
-			.bShowName(false)
-			.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
-			.ToolTip(LOCTEXT("SelectMaterialForLayerActions", "Select for adding, replacing, or dragging to Layers"))
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SMixtormatTile)
+				.TileSize(MaterialGalleryTileSize)
+				.DisplayName(Name)
+				.ThumbnailAsset(ThumbnailAsset)
+				.ThumbnailPool(ThumbnailPool)
+				.bShowName(false)
+				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
+				.ToolTip(LOCTEXT("SelectMaterialForLayerActions", "Select for adding, replacing, or dragging to Layers"))
+			]
+			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+			[
+				MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
+			]
 		];
 }
 

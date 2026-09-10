@@ -12,6 +12,7 @@ Content/
 *.uasset
 *.umap
 *.png
+!Resources/Icon128.png
 *.jpg
 *.jpeg
 *.tga

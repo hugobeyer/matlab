@@ -154,20 +154,24 @@ namespace MixtormatImporter
 		return true;
 	}
 
-	bool IsPluginAssetPath(const FString& PackagePath)
+	bool IsMixtormatAssetPath(const FString& PackagePath)
 	{
-		return PackagePath.StartsWith(
-					FMixtormatPaths::PluginContentRoot() + TEXT("/"),
-					ESearchCase::CaseSensitive);
+		const auto IsUnderRoot = [&PackagePath](const FString& Root)
+		{
+			return PackagePath == Root
+				|| PackagePath.StartsWith(Root + TEXT("/"), ESearchCase::CaseSensitive);
+		};
+		return IsUnderRoot(FMixtormatPaths::PluginContentRoot())
+			|| IsUnderRoot(FMixtormatPaths::ProjectLibraryRoot());
 	}
 
-	bool SavePluginAsset(UObject& Asset, const TCHAR* AssetLabel, TArray<FString>& Errors)
+	bool SaveMixtormatAsset(UObject& Asset, const TCHAR* AssetLabel, TArray<FString>& Errors)
 	{
 		const FString PackageName = Asset.GetOutermost()->GetName();
-		if (!IsPluginAssetPath(PackageName))
+		if (!IsMixtormatAssetPath(PackageName))
 		{
 			Errors.Add(FString::Printf(
-				TEXT("Refused to save %s outside the Mixtormat plugin: %s."),
+				TEXT("Refused to save %s outside Mixtormat-managed content: %s."),
 				AssetLabel,
 				*PackageName));
 			return false;
@@ -198,15 +202,7 @@ namespace MixtormatImporter
 		return Normalized;
 	}
 
-	bool IsPluginSourceFile(const FString& Filename)
-	{
-		FString SourceRoot = NormalizeSourcePath(FMixtormatSurfaceImporter::GetPluginTexturesRoot());
-		FPaths::NormalizeDirectoryName(SourceRoot);
-		SourceRoot += TEXT("/");
-		return NormalizeSourcePath(Filename).StartsWith(SourceRoot, ESearchCase::IgnoreCase);
-	}
-
-	bool HasPluginSourceChanged(const UTexture2D& Texture, const FString& Filename)
+	bool HasSourceChanged(const UTexture2D& Texture, const FString& Filename)
 	{
 		if (!Texture.AssetImportData)
 		{
@@ -236,10 +232,10 @@ namespace MixtormatImporter
 		const EMapType MapType,
 		FMixtormatImportResult& Result)
 	{
-		if (!IsPluginAssetPath(DestinationPath))
+		if (!IsMixtormatAssetPath(DestinationPath))
 		{
 			Result.Errors.Add(FString::Printf(
-				TEXT("Refused to import a texture outside the Mixtormat plugin: %s."),
+				TEXT("Refused to import a texture outside Mixtormat-managed content: %s."),
 				*DestinationPath));
 			return nullptr;
 		}
@@ -252,7 +248,7 @@ namespace MixtormatImporter
 		if (UTexture2D* ExistingTexture = LoadObject<UTexture2D>(nullptr, *ObjectPath))
 		{
 			bool bReimported = false;
-			if (IsPluginSourceFile(Filename) && HasPluginSourceChanged(*ExistingTexture, Filename))
+			if (HasSourceChanged(*ExistingTexture, Filename))
 			{
 				if (!FReimportManager::Instance()->Reimport(
 					ExistingTexture,
@@ -261,7 +257,7 @@ namespace MixtormatImporter
 					Filename))
 				{
 					Result.Errors.Add(FString::Printf(
-						TEXT("Failed to reimport changed plugin texture %s from %s."),
+						TEXT("Failed to reimport changed texture %s from %s."),
 						*ObjectPath,
 						*Filename));
 					return nullptr;
@@ -277,7 +273,7 @@ namespace MixtormatImporter
 			const bool bSettingsChanged = ConfigureTexture(*ExistingTexture, MapType);
 			if (bReimported || bSettingsChanged)
 			{
-				SavePluginAsset(*ExistingTexture, TEXT("imported texture"), Result.Errors);
+				SaveMixtormatAsset(*ExistingTexture, TEXT("imported texture"), Result.Errors);
 			}
 			return ExistingTexture;
 		}
@@ -300,7 +296,7 @@ namespace MixtormatImporter
 			if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ImportedObjectPath))
 			{
 				ConfigureTexture(*Texture, MapType);
-				SavePluginAsset(*Texture, TEXT("imported texture"), Result.Errors);
+				SaveMixtormatAsset(*Texture, TEXT("imported texture"), Result.Errors);
 				return Texture;
 			}
 		}
@@ -354,10 +350,10 @@ namespace MixtormatImporter
 		const TArray<uint8>& HeightPixels,
 		FMixtormatImportResult& Result)
 	{
-		if (!IsPluginAssetPath(DestinationPath))
+		if (!IsMixtormatAssetPath(DestinationPath))
 		{
 			Result.Errors.Add(FString::Printf(
-				TEXT("Refused to create derived RAMH outside the Mixtormat plugin: %s."),
+				TEXT("Refused to create derived RAMH outside Mixtormat-managed content: %s."),
 				*DestinationPath));
 			return nullptr;
 		}
@@ -436,7 +432,7 @@ namespace MixtormatImporter
 		{
 			FAssetRegistryModule::AssetCreated(Texture);
 		}
-		if (!SavePluginAsset(*Texture, TEXT("derived RAMH texture"), Result.Errors))
+		if (!SaveMixtormatAsset(*Texture, TEXT("derived RAMH texture"), Result.Errors))
 		{
 			return nullptr;
 		}
@@ -696,7 +692,7 @@ namespace MixtormatImporter
 		IAssetTools& AssetTools,
 		UMaterial& Parent,
 		const FString& SurfaceAssetName,
-		const FString& Family,
+		const FString& DestinationPath,
 		UTexture2D& BaseColor,
 		UTexture2D& Normal,
 		UTexture2D& Ram,
@@ -705,7 +701,6 @@ namespace MixtormatImporter
 		FString InstanceName = SurfaceAssetName;
 		InstanceName.RemoveFromStart(TEXT("DA_"));
 		InstanceName = TEXT("MI_") + InstanceName;
-		const FString DestinationPath = FMixtormatPaths::MaterialInstanceFamilyRoot(Family);
 		const FString ObjectPath = FString::Printf(TEXT("%s/%s.%s"), *DestinationPath, *InstanceName, *InstanceName);
 
 		UMaterialInstanceConstant* Instance = LoadObject<UMaterialInstanceConstant>(nullptr, *ObjectPath);
@@ -867,14 +862,16 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedMasks()
 			Result))
 		{
 			const FMixtormatThumbnailUpdate ThumbnailUpdate =
-				FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbnail(*MaskTexture);
+				FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbnail(
+					*MaskTexture,
+					FMixtormatPaths::MaskThumbnailsRoot());
 			if (!ThumbnailUpdate.IsValid())
 			{
 				Result.Errors.Add(ThumbnailUpdate.Error);
 			}
 			else if (ThumbnailUpdate.bChanged)
 			{
-				if (SavePluginAsset(
+				if (SaveMixtormatAsset(
 					*ThumbnailUpdate.Texture,
 					TEXT("mask thumbnail"),
 					Result.Errors))
@@ -1003,7 +1000,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDefaultLibrary()
 	FMixtormatImportResult Result;
 	for (const FString& SourceDirectory : EnumerateShippedSourceDirectories())
 	{
-		const FMixtormatImportResult Step = ImportDirectory(SourceDirectory);
+		const FMixtormatImportResult Step = ImportDirectory(SourceDirectory, true);
 		Result.ImportedSurfaceCount += Step.ImportedSurfaceCount;
 		Result.ReimportedTextureCount += Step.ReimportedTextureCount;
 		Result.ReusedTextureCount += Step.ReusedTextureCount;
@@ -1058,7 +1055,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportFromDialog()
 	if (!DesktopPlatform->OpenDirectoryDialog(
 		ParentWindow,
 		TEXT("Choose Mixtormat texture export folder"),
-		GetDefaultSourceDirectory(),
+		FPaths::ProjectContentDir(),
 		SelectedDirectory))
 	{
 		Result.bCancelled = true;
@@ -1068,7 +1065,9 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportFromDialog()
 	return ImportDirectory(SelectedDirectory);
 }
 
-FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString& SourceDirectory)
+FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
+	const FString& SourceDirectory,
+	const bool bUsePluginDestination)
 {
 	using namespace MixtormatImporter;
 	FMixtormatImportResult Result;
@@ -1151,8 +1150,18 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		TArray<FString> Parts;
 		Identity.ParseIntoArray(Parts, TEXT("_"), true);
 		const FString Family = Parts.IsEmpty() ? TEXT("Uncategorized") : Parts[0];
-		const FString TexturePath = FMixtormatPaths::RawTextureFamilyRoot(Family);
-		const FString SurfacePath = FMixtormatPaths::SurfaceFamilyRoot(Family);
+		const FString TexturePath = bUsePluginDestination
+			? FMixtormatPaths::RawTextureFamilyRoot(Family)
+			: FMixtormatPaths::ProjectLibraryRawTextureFamilyRoot(Family);
+		const FString SurfacePath = bUsePluginDestination
+			? FMixtormatPaths::SurfaceFamilyRoot(Family)
+			: FMixtormatPaths::ProjectLibrarySurfaceFamilyRoot(Family);
+		const FString PreviewMaterialPath = bUsePluginDestination
+			? FMixtormatPaths::MaterialInstanceFamilyRoot(Family)
+			: FMixtormatPaths::ProjectLibraryMaterialInstanceFamilyRoot(Family);
+		const FString ThumbnailPath = bUsePluginDestination
+			? FMixtormatPaths::SurfaceThumbnailFamilyRoot(Family)
+			: FMixtormatPaths::ProjectLibrarySurfaceThumbnailFamilyRoot(Family);
 		FString SurfaceAssetName = Set.BaseName;
 		SurfaceAssetName.RemoveFromStart(TEXT("TX_"));
 		SurfaceAssetName = TEXT("DA_") + SurfaceAssetName;
@@ -1246,7 +1255,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 			AssetTools,
 			*PreviewMaster,
 			SurfaceAssetName,
-			Family,
+			PreviewMaterialPath,
 			*BaseColor,
 			*Normal,
 			*Ram,
@@ -1277,13 +1286,13 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 			const FMixtormatThumbnailUpdate ThumbnailUpdate =
 				ThumbnailRenderer.CreateOrUpdateSurfaceThumbnail(
 					*PreviewMaterial,
-					Family,
+					ThumbnailPath,
 					SurfaceAssetName);
 			if (!ThumbnailUpdate.IsValid())
 			{
 				Result.Errors.Add(ThumbnailUpdate.Error);
 			}
-			else if (!ThumbnailUpdate.bChanged || SavePluginAsset(
+			else if (!ThumbnailUpdate.bChanged || SaveMixtormatAsset(
 				*ThumbnailUpdate.Texture,
 				TEXT("surface thumbnail"),
 				Result.Errors))
@@ -1317,11 +1326,11 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		Surface->Thumbnail = SurfaceThumbnail;
 		Surface->ThumbnailSourceHash = StoredThumbnailHash;
 		Surface->MarkPackageDirty();
-		const bool bPreviewSaved = SavePluginAsset(
+		const bool bPreviewSaved = SaveMixtormatAsset(
 			*PreviewMaterial,
 			TEXT("preview material instance"),
 			Result.Errors);
-		const bool bSurfaceSaved = SavePluginAsset(
+		const bool bSurfaceSaved = SaveMixtormatAsset(
 			*Surface,
 			TEXT("Mixtormat surface"),
 			Result.Errors);

@@ -99,6 +99,36 @@
 namespace MixtormatUI
 {
 
+	inline bool IsUserLibraryAsset(const FSoftObjectPath& AssetPath)
+	{
+		return AssetPath.ToString().StartsWith(
+			FMixtormatPaths::ProjectLibraryRoot() + TEXT("/"),
+			ESearchCase::CaseSensitive);
+	}
+
+	inline TSharedRef<SWidget> BuildLibraryOwnershipBadge(const FSoftObjectPath& AssetPath)
+	{
+		const bool bIsUserAsset = IsUserLibraryAsset(AssetPath);
+		const ISlateStyle& Style = FMixtormatStyle::Get();
+		return SNew(SBorder)
+			.Padding(2.0f)
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")))
+			.ToolTipText(bIsUserAsset
+				? LOCTEXT("UserLibraryAssetBadge", "User material")
+				: LOCTEXT("BuiltInLibraryAssetBadge", "Built-in Mixtormat material"))
+			[
+				SNew(SBox)
+				.WidthOverride(12.0f)
+				.HeightOverride(12.0f)
+				[
+					SNew(SImage)
+					.Image(Style.GetBrush(bIsUserAsset
+						? TEXT("Mixtormat.Icon.Folder")
+						: TEXT("Mixtormat.Brand.Icon")))
+				]
+			];
+	}
+
 	inline FAssetThumbnailConfig CleanThumbnailConfig()
 	{
 		FAssetThumbnailConfig Config;

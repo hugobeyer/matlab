@@ -14,11 +14,6 @@ void SMixtormat::Construct(const FArguments& InArgs)
 {
 	ThumbnailPool = MakeShared<FAssetThumbnailPool>(64);
 
-	if (FMixtormatRegistry::GetSurfaces().IsEmpty()
-		|| FMixtormatRegistry::GetMasks().IsEmpty())
-	{
-		FMixtormatSurfaceImporter::ImportDefaultLibrary();
-	}
 
 	BuildWorkspaceUI();
 	ResetEditHistory(true);

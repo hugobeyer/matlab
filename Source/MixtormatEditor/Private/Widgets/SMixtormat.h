@@ -61,7 +61,6 @@ private:
 	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
 	FReply ShowLeftPage(int32 PageIndex);
 	FReply ImportSurfaces();
-	FReply ReimportShippedLibrary();
 	FReply RefreshSurfaceList();
 	void ZoomMaterialGallery(int32 Direction);
 	void ZoomMaskGallery(int32 Direction);

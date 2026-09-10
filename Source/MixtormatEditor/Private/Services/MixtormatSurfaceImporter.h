@@ -31,5 +31,7 @@ public:
 	static FMixtormatImportResult ImportDefaultLibrary();
 	static FMixtormatImportResult ReimportShippedLibrary();
 	static FMixtormatImportResult ImportFromDialog();
-	static FMixtormatImportResult ImportDirectory(const FString& SourceDirectory);
+	static FMixtormatImportResult ImportDirectory(
+		const FString& SourceDirectory,
+		bool bUsePluginDestination = false);
 };

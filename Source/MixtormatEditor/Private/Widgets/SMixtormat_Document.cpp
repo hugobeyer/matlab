@@ -19,22 +19,6 @@ FReply SMixtormat::ImportSurfaces()
 	return FReply::Handled();
 }
 
-FReply SMixtormat::ReimportShippedLibrary()
-{
-	const FMixtormatImportResult Result = FMixtormatSurfaceImporter::ReimportShippedLibrary();
-	RebuildCategoryList();
-	RebuildSurfaceList();
-	RebuildMaskList();
-	WorkingStatusText = Result.Errors.IsEmpty()
-		? FString::Printf(
-			TEXT("Reimported shipped library (%d surface(s), %d mask(s), %d effect(s))"),
-			Result.ImportedSurfaceCount,
-			Result.ImportedMaskCount,
-			Result.ImportedEffectCount)
-		: TEXT("Reimport reported issues");
-	FMessageDialog::Open(EAppMsgType::Ok, Result.ToMessage());
-	return FReply::Handled();
-}
 
 FReply SMixtormat::StartNewMaterial()
 {

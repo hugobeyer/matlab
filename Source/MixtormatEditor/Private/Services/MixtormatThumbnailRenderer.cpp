@@ -580,7 +580,8 @@ FMixtormatThumbnailRenderer::FMixtormatThumbnailRenderer()
 FMixtormatThumbnailRenderer::~FMixtormatThumbnailRenderer() = default;
 
 FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbnail(
-	UTexture2D& MaskTexture)
+	UTexture2D& MaskTexture,
+	const FString& DestinationPath)
 {
 	FMixtormatThumbnailUpdate Result;
 	const int32 SourceWidth = MaskTexture.Source.GetSizeX();
@@ -596,7 +597,7 @@ FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbna
 		SourceWidth,
 		SourceHeight);
 	return CreateOrUpdateThumbnailTexture(
-		FMixtormatPaths::MaskThumbnailsRoot(),
+		DestinationPath,
 		MaskTexture.GetName() + TEXT("_Thumbnail"),
 		ThumbnailPixels,
 		MixtormatPreviewSceneSettings::MaskThumbnailResolution);
@@ -604,7 +605,7 @@ FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbna
 
 FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateSurfaceThumbnail(
 	UMaterialInterface& PreviewMaterial,
-	const FString& Family,
+	const FString& DestinationPath,
 	const FString& SurfaceAssetName)
 {
 	FMixtormatThumbnailUpdate Result;
@@ -619,7 +620,7 @@ FMixtormatThumbnailUpdate FMixtormatThumbnailRenderer::CreateOrUpdateSurfaceThum
 		return Result;
 	}
 	return CreateOrUpdateThumbnailTexture(
-		FMixtormatPaths::SurfaceThumbnailFamilyRoot(Family),
+		DestinationPath,
 		SurfaceAssetName + TEXT("_Thumbnail"),
 		Pixels,
 		MixtormatPreviewSceneSettings::SurfaceThumbnailResolution);

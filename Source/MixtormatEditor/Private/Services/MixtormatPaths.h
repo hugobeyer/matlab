@@ -16,6 +16,14 @@ struct FMixtormatPaths final
 	static FString SourceTexturesDir();
 
 	static FString PluginContentRoot();
+	static FString ProjectLibraryRoot();
+	static FString ProjectLibrarySurfacesRoot();
+	static FString ProjectLibrarySurfaceFamilyRoot(const FString& Family);
+	static FString ProjectLibraryRawTextureFamilyRoot(const FString& Family);
+	static FString ProjectLibrarySurfaceThumbnailFamilyRoot(const FString& Family);
+	static FString ProjectLibraryMasksRoot();
+	static FString ProjectLibraryMaskThumbnailsRoot();
+	static FString ProjectLibraryMaterialInstanceFamilyRoot(const FString& Family);
 	static FString SurfacesRoot();
 	static FString SurfaceFamilyRoot(const FString& Family);
 	static FString TexturesRoot();
