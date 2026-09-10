@@ -19,6 +19,17 @@ FReply SMixtormat::ImportSurfaces()
 	return FReply::Handled();
 }
 
+FReply SMixtormat::ImportMasks()
+{
+	const FMixtormatImportResult Result = FMixtormatSurfaceImporter::ImportMasksFromDialog();
+	if (!Result.bCancelled)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, Result.ToMessage());
+		RebuildMaskList();
+	}
+	return FReply::Handled();
+}
+
 
 FReply SMixtormat::StartNewMaterial()
 {

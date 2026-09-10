@@ -106,9 +106,16 @@ namespace MixtormatUI
 			ESearchCase::CaseSensitive);
 	}
 
-	inline TSharedRef<SWidget> BuildLibraryOwnershipBadge(const FSoftObjectPath& AssetPath)
+	inline TSharedRef<SWidget> BuildLibraryOwnershipBadge(
+		const FSoftObjectPath& AssetPath,
+		const bool bShowBuiltIn = true)
 	{
 		const bool bIsUserAsset = IsUserLibraryAsset(AssetPath);
+		if (!bIsUserAsset && !bShowBuiltIn)
+		{
+			return SNew(SBox).Visibility(EVisibility::Collapsed);
+		}
+
 		const ISlateStyle& Style = FMixtormatStyle::Get();
 		return SNew(SBorder)
 			.Padding(2.0f)

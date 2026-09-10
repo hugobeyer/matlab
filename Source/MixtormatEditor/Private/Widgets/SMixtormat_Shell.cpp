@@ -2,6 +2,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
+#include "HAL/PlatformProcess.h"
 
 
 // Window chrome: top bar, page routing, splitters, status bar.
@@ -15,6 +16,25 @@ FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 	{
 		LeftSwitcher->SetActiveWidgetIndex(PageIndex);
 	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::OpenDocumentation()
+{
+	const FString DocumentationPath = FPaths::Combine(
+		FMixtormatPaths::PluginBaseDir(),
+		TEXT("Docs/Documentation.html"));
+	if (!FPaths::FileExists(DocumentationPath))
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::Format(
+				LOCTEXT("DocumentationMissing", "Mixtormat documentation is missing:\n{0}"),
+				FText::FromString(DocumentationPath)));
+		return FReply::Handled();
+	}
+
+	FPlatformProcess::LaunchFileInDefaultExternalApplication(*DocumentationPath);
 	return FReply::Handled();
 }
 
@@ -211,6 +231,29 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("BakeMaterialTop", "BAKE"))
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.ToolTipText(LOCTEXT("DocumentationTopHint", "Open Mixtormat documentation."))
+					.OnClicked(this, &SMixtormat::OpenDocumentation)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::ToolbarIconSize)
+							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							[
+								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Documentation")))
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
 						]
 					]
 				]

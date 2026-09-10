@@ -57,10 +57,12 @@ private:
 	};
 	void BuildWorkspaceUI();
 	FReply OpenLiveThemePanel();
+	FReply OpenDocumentation();
 	void RequestThemeRefresh();
 	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
 	FReply ShowLeftPage(int32 PageIndex);
 	FReply ImportSurfaces();
+	FReply ImportMasks();
 	FReply RefreshSurfaceList();
 	void ZoomMaterialGallery(int32 Direction);
 	void ZoomMaskGallery(int32 Direction);

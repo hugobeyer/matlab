@@ -1799,9 +1799,9 @@ void SMixtormat::RebuildMaskList()
 		MaskListBox->AddSlot()
 		[
 			SNew(STextBlock)
-			.Text(FText::Format(
-				LOCTEXT("EmptyMaskRegistry", "No mask assets in {0}"),
-				FText::FromString(FMixtormatPaths::MasksRoot())))
+			.Text(LOCTEXT(
+				"EmptyMaskRegistry",
+				"No masks found. Repair or reinstall Mixtormat, or import a PNG mask folder."))
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 		];
 	}
@@ -2911,9 +2911,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddLayerMenu()
 
 TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 {
+	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBorder)
 		.Padding(FMargin(8.0f, 7.0f))
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InsetPanel")))
+		.BorderImage(Style.GetBrush(TEXT("Mixtormat.InsetPanel")))
 		.Visibility_Lambda([this]()
 		{
 			return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed;
@@ -2922,9 +2923,29 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
 			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontMaskBarHeading))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontMaskBarHeading))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.ContentPadding(FMargin(0.0f))
+					.ToolTipText(LOCTEXT("ImportUserMasksHint", "Import PNG masks from a folder"))
+					.OnClicked(this, &SMixtormat::ImportMasks)
+					[
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::ToolbarIconSize)
+						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+						]
+					]
+				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
@@ -2966,18 +2987,26 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 		const FSoftObjectPath Path = Mask.AssetPath;
 		Grid->AddSlot()
 		[
-			SNew(SMixtormatTile)
-			.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
-			.DisplayName(Mask.DisplayName)
-			.ThumbnailAsset(Mask.ThumbnailAsset)
-			.ThumbnailPool(ThumbnailPool)
-			.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
-			.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
-			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
-			{
-				FSlateApplication::Get().DismissAllMenus();
-				OnChosen(Path);
-			}))
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SMixtormatTile)
+				.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
+				.DisplayName(Mask.DisplayName)
+				.ThumbnailAsset(Mask.ThumbnailAsset)
+				.ThumbnailPool(ThumbnailPool)
+				.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+				.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
+				.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
+				{
+					FSlateApplication::Get().DismissAllMenus();
+					OnChosen(Path);
+				}))
+			]
+			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+			[
+				MixtormatUI::BuildLibraryOwnershipBadge(Path, false)
+			]
 		];
 	}
 	return Grid;
@@ -3043,7 +3072,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 				]
 				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
 				[
-					MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
+					MixtormatUI::BuildLibraryOwnershipBadge(AssetPath, false)
 				]
 			];
 	}
@@ -3061,7 +3090,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					+ SOverlay::Slot()[ThumbnailWidget]
 					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(2.0f)
 					[
-						MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
+						MixtormatUI::BuildLibraryOwnershipBadge(AssetPath, false)
 					]
 				]
 			]

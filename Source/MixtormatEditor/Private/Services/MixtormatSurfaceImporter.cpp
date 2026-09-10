@@ -1065,6 +1065,91 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportFromDialog()
 	return ImportDirectory(SelectedDirectory);
 }
 
+FMixtormatImportResult FMixtormatSurfaceImporter::ImportMasksFromDialog()
+{
+	FMixtormatImportResult Result;
+	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+	if (!DesktopPlatform)
+	{
+		Result.Errors.Add(TEXT("Desktop platform services are unavailable."));
+		return Result;
+	}
+
+	FString SelectedDirectory;
+	const void* ParentWindow = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
+	if (!DesktopPlatform->OpenDirectoryDialog(
+		ParentWindow,
+		TEXT("Choose Mixtormat mask folder"),
+		FPaths::ProjectContentDir(),
+		SelectedDirectory))
+	{
+		Result.bCancelled = true;
+		return Result;
+	}
+
+	return ImportMaskDirectory(SelectedDirectory);
+}
+
+FMixtormatImportResult FMixtormatSurfaceImporter::ImportMaskDirectory(const FString& SourceDirectory)
+{
+	using namespace MixtormatImporter;
+	FMixtormatImportResult Result;
+
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(SourceDirectory / TEXT("*.png")), true, false);
+	if (Files.IsEmpty())
+	{
+		Result.Errors.Add(TEXT("No PNG mask files were found in the selected folder."));
+		return Result;
+	}
+	Files.Sort();
+
+	IAssetTools& AssetTools =
+		FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get();
+	for (const FString& Filename : Files)
+	{
+		const FString SourceFile = SourceDirectory / Filename;
+		UTexture2D* MaskTexture = ImportTexture(
+			AssetTools,
+			SourceFile,
+			FMixtormatPaths::ProjectLibraryMasksRoot(),
+			EMapType::Ram,
+			Result);
+		if (!MaskTexture)
+		{
+			Result.Errors.Add(FString::Printf(
+				TEXT("Failed to import mask %s."),
+				*FPaths::GetCleanFilename(SourceFile)));
+			continue;
+		}
+
+		const FMixtormatThumbnailUpdate ThumbnailUpdate =
+			FMixtormatThumbnailRenderer::CreateOrUpdateMaskThumbnail(
+				*MaskTexture,
+				FMixtormatPaths::ProjectLibraryMaskThumbnailsRoot());
+		if (!ThumbnailUpdate.IsValid())
+		{
+			Result.Errors.Add(ThumbnailUpdate.Error);
+		}
+		else if (ThumbnailUpdate.bChanged)
+		{
+			if (SaveMixtormatAsset(
+				*ThumbnailUpdate.Texture,
+				TEXT("mask thumbnail"),
+				Result.Errors))
+			{
+				++Result.GeneratedThumbnailCount;
+			}
+		}
+		else
+		{
+			++Result.ReusedThumbnailCount;
+		}
+		++Result.ImportedMaskCount;
+	}
+	return Result;
+}
+
 FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 	const FString& SourceDirectory,
 	const bool bUsePluginDestination)
