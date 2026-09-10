@@ -32,6 +32,7 @@ public:
 		: _TileSize(MixtormatTokens::MaskTileSize)
 		, _ThumbnailResolution(0)
 		, _bShowName(true)
+		, _bShowNameOnHover(false)
 		, _bSelected(false)
 	{}
 		// Square edge length of the whole tile, border included.
@@ -45,6 +46,7 @@ public:
 		// Caption strip across the bottom. Off for dense grids that name the hovered tile once
 		// somewhere else instead.
 		SLATE_ARGUMENT(bool, bShowName)
+		SLATE_ARGUMENT(bool, bShowNameOnHover)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		// Short all-caps mark in the top-left -- "INV" for an inverted mask, a family for a
 		// surface. Empty for none.

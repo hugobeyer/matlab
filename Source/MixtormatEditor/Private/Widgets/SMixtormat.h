@@ -719,10 +719,15 @@ private:
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset,
 		bool bCompact);
+	TSharedRef<SWidget> BuildMaskLibraryContextMenu(FSoftObjectPath AssetPath);
+	void RemoveImportedMask(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildSurfaceCard(
 		const FText& Name,
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset);
+	TSharedRef<SWidget> BuildSurfaceLibraryContextMenu(FSoftObjectPath AssetPath);
+	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
+	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();

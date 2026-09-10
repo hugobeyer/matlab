@@ -890,6 +890,7 @@ public:
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
 		SLATE_EVENT(FOnMixtormatSurfaceSelected, OnSelected)
 		SLATE_EVENT(FOnMixtormatSurfaceGalleryZoom, OnGalleryZoom)
+		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -902,24 +903,30 @@ public:
 		OnGalleryZoom = InArgs._OnGalleryZoom;
 		ChildSlot
 		[
-			SNew(SOverlay)
-			+ SOverlay::Slot()
+			SAssignNew(ContextAnchor, SMenuAnchor)
+			.Placement(MenuPlacement_MenuRight)
+			.UseApplicationMenuStack(true)
+			.OnGetMenuContent(InArgs._OnGetContextMenu)
 			[
-				InArgs._Content.Widget
-			]
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			[
-				SNew(SBox)
-				.Visibility_Lambda([this]()
-				{
-					return IsHovered()
-						? EVisibility::HitTestInvisible
-						: EVisibility::Collapsed;
-				})
+				SNew(SOverlay)
+				+ SOverlay::Slot()
 				[
-					InArgs._HoverContent.Widget
+					InArgs._Content.Widget
+				]
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Fill)
+				[
+					SNew(SBox)
+					.Visibility_Lambda([this]()
+					{
+						return IsHovered()
+							? EVisibility::HitTestInvisible
+							: EVisibility::Collapsed;
+					})
+					[
+						InArgs._HoverContent.Widget
+					]
 				]
 			]
 		];
@@ -929,6 +936,14 @@ public:
 		const FGeometry& MyGeometry,
 		const FPointerEvent& MouseEvent) override
 	{
+		if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+		{
+			if (ContextAnchor.IsValid())
+			{
+				ContextAnchor->SetIsOpen(true);
+			}
+			return FReply::Handled();
+		}
 		if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 		{
 			if (OnSelected.IsBound())
@@ -970,6 +985,7 @@ private:
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FOnMixtormatSurfaceSelected OnSelected;
 	FOnMixtormatSurfaceGalleryZoom OnGalleryZoom;
+	TSharedPtr<SMenuAnchor> ContextAnchor;
 };
 
 DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatMaskSelected, FText, FSoftObjectPath);
@@ -986,6 +1002,7 @@ public:
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
 		SLATE_EVENT(FOnMixtormatMaskSelected, OnSelected)
 		SLATE_EVENT(FOnMixtormatSurfaceGalleryZoom, OnGalleryZoom)
+		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -1000,12 +1017,26 @@ public:
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Top)
 		[
-			InArgs._Content.Widget
+			SAssignNew(ContextAnchor, SMenuAnchor)
+			.Placement(MenuPlacement_MenuRight)
+			.UseApplicationMenuStack(true)
+			.OnGetMenuContent(InArgs._OnGetContextMenu)
+			[
+				InArgs._Content.Widget
+			]
 		];
 	}
 
 	virtual FReply OnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override
 	{
+		if (Event.GetEffectingButton() == EKeys::RightMouseButton)
+		{
+			if (ContextAnchor.IsValid())
+			{
+				ContextAnchor->SetIsOpen(true);
+			}
+			return FReply::Handled();
+		}
 		if (Event.GetEffectingButton() != EKeys::LeftMouseButton)
 		{
 			return SCompoundWidget::OnPreviewMouseButtonDown(Geometry, Event);
@@ -1041,6 +1072,7 @@ private:
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FOnMixtormatMaskSelected OnSelected;
 	FOnMixtormatSurfaceGalleryZoom OnGalleryZoom;
+	TSharedPtr<SMenuAnchor> ContextAnchor;
 };
 
 #undef LOCTEXT_NAMESPACE

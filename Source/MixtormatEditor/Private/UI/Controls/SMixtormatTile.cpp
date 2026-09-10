@@ -96,13 +96,20 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		];
 	}
 
-	if (InArgs._bShowName && !InArgs._DisplayName.IsEmpty())
+	if ((InArgs._bShowName || InArgs._bShowNameOnHover) && !InArgs._DisplayName.IsEmpty())
 	{
+		const bool bAlwaysShowName = InArgs._bShowName;
 		Stack->AddSlot()
 		.HAlign(HAlign_Fill)
 		.VAlign(VAlign_Bottom)
 		[
 			SNew(SBox)
+			.Visibility_Lambda([this, bAlwaysShowName]()
+			{
+				return bAlwaysShowName || IsHovered()
+					? EVisibility::HitTestInvisible
+					: EVisibility::Collapsed;
+			})
 			.HeightOverride(MixtormatTokens::TileNameStripHeight)
 			[
 				SNew(SBorder)

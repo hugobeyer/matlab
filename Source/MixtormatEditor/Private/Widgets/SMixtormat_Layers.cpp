@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
+#include "ObjectTools.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Controls/SMixtormatTile.h"
 #include "Widgets/SToolTip.h"
@@ -3056,6 +3057,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 			.ThumbnailPool(ThumbnailPool)
 			.OnSelected(this, &SMixtormat::SelectMask)
 			.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
+			.OnGetContextMenu(this, &SMixtormat::BuildMaskLibraryContextMenu, AssetPath)
 			[
 				SNew(SOverlay)
 				+ SOverlay::Slot()
@@ -3067,6 +3069,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					.ThumbnailPool(ThumbnailPool)
 					.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
 					.bShowName(false)
+					.bShowNameOnHover(true)
 					.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })
 					.ToolTip(LOCTEXT("SelectMaskForLayerActions", "Select for layer, effect, or replacement actions"))
 				]
@@ -3099,6 +3102,81 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 				SNew(STextBlock).Text(Name)
 			]
 		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskLibraryContextMenu(const FSoftObjectPath AssetPath)
+{
+	const bool bIsUserAsset = MixtormatUI::IsUserLibraryAsset(AssetPath);
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("LibraryMaskContextCaption", "Library Mask"))
+		.Item(
+			LOCTEXT("BrowseLibraryMask", "Show in Content Browser"),
+			MixtormatUI::LucideIcon(TEXT("folder-open")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath))
+		.Separator()
+		.Item(
+			LOCTEXT("RemoveImportedMask", "Remove Imported Mask…"),
+			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::RemoveImportedMask, AssetPath))
+		.Enabled(bIsUserAsset)
+		.Destructive();
+	return Menu.Build();
+}
+
+void SMixtormat::RemoveImportedMask(const FSoftObjectPath AssetPath)
+{
+	if (!MixtormatUI::IsUserLibraryAsset(AssetPath))
+	{
+		return;
+	}
+
+	UObject* MaskObject = AssetPath.TryLoad();
+	if (!MaskObject)
+	{
+		RebuildMaskList();
+		return;
+	}
+
+	TArray<FAssetData> Assets;
+	const auto AddUserAsset = [&Assets](UObject* Asset)
+	{
+		if (Asset && MixtormatUI::IsUserLibraryAsset(FSoftObjectPath(Asset->GetPathName())))
+		{
+			Assets.AddUnique(FAssetData(Asset));
+		}
+	};
+	AddUserAsset(MaskObject);
+
+	UTexture2D* MaskTexture = Cast<UTexture2D>(MaskObject);
+	if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
+	{
+		MaskTexture = Mask->MaskTexture;
+		AddUserAsset(Mask->MaskTexture);
+		AddUserAsset(Mask->Thumbnail);
+	}
+	if (MaskTexture)
+	{
+		const FString ThumbnailName = MaskTexture->GetName() + TEXT("_Thumbnail");
+		const FString ThumbnailPath = FString::Printf(
+			TEXT("%s/%s.%s"),
+			*FMixtormatPaths::ProjectLibraryMaskThumbnailsRoot(),
+			*ThumbnailName,
+			*ThumbnailName);
+		AddUserAsset(LoadObject<UObject>(nullptr, *ThumbnailPath));
+	}
+
+	ObjectTools::DeleteAssets(Assets, true);
+	if (SelectedMaskPath == AssetPath)
+	{
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		if (!AssetRegistryModule.Get().GetAssetByObjectPath(AssetPath).IsValid())
+		{
+			SelectedMaskPath.Reset();
+			SelectedLibraryMaskName = FText::GetEmpty();
+		}
+	}
+	RebuildMaskList();
 }
 
 FReply SMixtormat::AddColorIdMaskToLayer(const int32 LayerIndex)

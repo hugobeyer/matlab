@@ -1,6 +1,8 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 
+#include "ObjectTools.h"
 
 // The surface library: registry listing, filtering, search, cards and the gallery.
 
@@ -410,6 +412,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 		.ThumbnailPool(ThumbnailPool)
 		.OnSelected(this, &SMixtormat::SelectSurface)
 		.OnGalleryZoom(this, &SMixtormat::ZoomMaterialGallery)
+		.OnGetContextMenu(this, &SMixtormat::BuildSurfaceLibraryContextMenu, AssetPath)
 		[
 			SNew(SOverlay)
 			+ SOverlay::Slot()
@@ -420,6 +423,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 				.ThumbnailAsset(ThumbnailAsset)
 				.ThumbnailPool(ThumbnailPool)
 				.bShowName(false)
+				.bShowNameOnHover(true)
 				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
 				.ToolTip(LOCTEXT("SelectMaterialForLayerActions", "Select for adding, replacing, or dragging to Layers"))
 			]
@@ -428,6 +432,99 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 				MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
 			]
 		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObjectPath AssetPath)
+{
+	const bool bIsUserAsset = MixtormatUI::IsUserLibraryAsset(AssetPath);
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("LibraryMaterialContextCaption", "Library Material"))
+		.Item(
+			LOCTEXT("BrowseLibraryMaterial", "Show in Content Browser"),
+			MixtormatUI::LucideIcon(TEXT("folder-open")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath))
+		.Separator()
+		.Item(
+			LOCTEXT("RemoveImportedMaterial", "Remove Imported Material…"),
+			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::RemoveImportedSurface, AssetPath))
+		.Enabled(bIsUserAsset)
+		.Destructive();
+	return Menu.Build();
+}
+
+void SMixtormat::BrowseLibraryAsset(const FSoftObjectPath AssetPath)
+{
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	const FAssetData Asset = AssetRegistryModule.Get().GetAssetByObjectPath(AssetPath);
+	if (!Asset.IsValid())
+	{
+		return;
+	}
+
+	FContentBrowserModule& ContentBrowserModule =
+		FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
+	ContentBrowserModule.Get().SyncBrowserToAssets({Asset});
+}
+
+void SMixtormat::RemoveImportedSurface(const FSoftObjectPath AssetPath)
+{
+	if (!MixtormatUI::IsUserLibraryAsset(AssetPath))
+	{
+		return;
+	}
+
+	UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.TryLoad());
+	if (!Surface)
+	{
+		RefreshSurfaceList();
+		return;
+	}
+
+	TArray<FAssetData> Assets;
+	const auto AddUserAsset = [&Assets](UObject* Asset)
+	{
+		if (Asset && MixtormatUI::IsUserLibraryAsset(FSoftObjectPath(Asset->GetPathName())))
+		{
+			Assets.AddUnique(FAssetData(Asset));
+		}
+	};
+	AddUserAsset(Surface);
+	AddUserAsset(Surface->PreviewMaterial);
+	AddUserAsset(Surface->Thumbnail);
+	AddUserAsset(Surface->BaseColor);
+	AddUserAsset(Surface->Normal);
+	AddUserAsset(Surface->RoughnessAOMetallic);
+
+	if (!Surface->SourceTextureBaseName.IsEmpty() && Surface->BaseColor)
+	{
+		const FString TextureRoot = FPackageName::GetLongPackagePath(
+			Surface->BaseColor->GetOutermost()->GetName());
+		const TCHAR* PackedSuffixes[] = {TEXT("_RAM"), TEXT("_RAMH"), TEXT("_RAMH_Derived")};
+		for (const TCHAR* Suffix : PackedSuffixes)
+		{
+			const FString AssetName = ObjectTools::SanitizeObjectName(
+				Surface->SourceTextureBaseName + Suffix);
+			const FString ObjectPath = FString::Printf(
+				TEXT("%s/%s.%s"), *TextureRoot, *AssetName, *AssetName);
+			AddUserAsset(LoadObject<UObject>(nullptr, *ObjectPath));
+		}
+	}
+
+	ObjectTools::DeleteAssets(Assets, true);
+	if (SelectedSurfacePath == AssetPath)
+	{
+		FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		if (!AssetRegistryModule.Get().GetAssetByObjectPath(AssetPath).IsValid())
+		{
+			SelectedSurfacePath.Reset();
+			SelectedLibrarySurfaceName = FText::GetEmpty();
+			SelectedPreviewMaterial.Reset();
+		}
+	}
+	RefreshSurfaceList();
 }
 
 #undef LOCTEXT_NAMESPACE

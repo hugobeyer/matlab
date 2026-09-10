@@ -34,7 +34,20 @@ FReply SMixtormat::OpenDocumentation()
 		return FReply::Handled();
 	}
 
-	FPlatformProcess::LaunchFileInDefaultExternalApplication(*DocumentationPath);
+	FString DocumentationUrl = FPaths::ConvertRelativePathToFull(DocumentationPath);
+	DocumentationUrl.ReplaceInline(TEXT("\\"), TEXT("/"));
+	DocumentationUrl = TEXT("file:///") + DocumentationUrl;
+
+	FString LaunchError;
+	FPlatformProcess::LaunchURL(*DocumentationUrl, nullptr, &LaunchError);
+	if (!LaunchError.IsEmpty())
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::Format(
+				LOCTEXT("DocumentationLaunchFailed", "Could not open Mixtormat documentation:\n{0}"),
+				FText::FromString(LaunchError)));
+	}
 	return FReply::Handled();
 }
 
