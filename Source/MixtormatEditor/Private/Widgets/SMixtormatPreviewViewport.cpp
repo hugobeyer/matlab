@@ -20,7 +20,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 
@@ -128,11 +130,12 @@ public:
 		{
 			if (Args.Key == EKeys::MouseX)
 			{
-				Owner.RotateLighting(Args.AmountDepressed);
+				Owner.RotateLighting(Args.AmountDepressed, 0.0f);
 				return true;
 			}
 			if (Args.Key == EKeys::MouseY)
 			{
+				Owner.RotateLighting(0.0f, Args.AmountDepressed);
 				return true;
 			}
 		}
@@ -164,11 +167,6 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 {
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
 
-	if (const FPreviewSceneProfile* CurrentProfile = PreviewScene.GetCurrentProfile())
-	{
-		DefaultPreviewProfile = MakeUnique<FPreviewSceneProfile>(*CurrentProfile);
-		MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*DefaultPreviewProfile);
-	}
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -449,23 +447,30 @@ void SMixtormatPreviewViewport::UpdateStudioFog()
 
 void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting LightingPreset)
 {
-	bUsingHdri = false;
-	HdriPreviewProfile.Reset();
-	if (DefaultPreviewProfile)
-	{
-		PreviewScene.UpdateScene(*DefaultPreviewProfile, true, true, false, false);
-	}
+	const FMixtormatStudioLightSettings LightSettings =
+		MixtormatPreviewSceneSettings::GetStudioLighting(LightingPreset);
+	const FString EnvironmentPath =
+		MixtormatPreviewSceneSettings::GetStudioEnvironmentObjectPath(LightingPreset);
+	StudioEnvironmentCubemap.Reset(LoadObject<UTextureCube>(nullptr, *EnvironmentPath));
+
+	StudioPreviewProfile = MakeUnique<FPreviewSceneProfile>();
+	MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*StudioPreviewProfile);
+	StudioPreviewProfile->EnvironmentCubeMap = StudioEnvironmentCubemap.Get();
+	StudioPreviewProfile->EnvironmentCubeMapPath = EnvironmentPath;
+	StudioPreviewProfile->LightingRigRotation = 0.0f;
+	StudioPreviewProfile->SkyLightIntensity = LightSettings.SkyBrightness;
+	StudioPreviewProfile->DirectionalLightIntensity = LightSettings.LightBrightness;
+	PreviewScene.UpdateScene(*StudioPreviewProfile, true, true, false, true);
 	PreviewScene.SetEnvironmentVisibility(false, true);
 	PreviewScene.SetFloorVisibility(true, true);
 
-	const FMixtormatStudioLightSettings LightSettings =
-		MixtormatPreviewSceneSettings::GetStudioLighting(LightingPreset);
-
+	bUsingStudioEnvironment = StudioEnvironmentCubemap.IsValid();
+	EnvironmentYaw = 0.0f;
 	LightingYaw = LightSettings.LightRotation.Yaw;
+	LightingPitch = LightSettings.LightRotation.Pitch;
 	BaseLightBrightness = LightSettings.LightBrightness;
 	BaseSkyBrightness = LightSettings.SkyBrightness;
-	ApplyLightIntensities();
-	PreviewScene.SetLightDirection(LightSettings.LightRotation);
+	PreviewScene.SetLightDirection(FRotator(LightingPitch, LightingYaw, 0.0f));
 	if (PreviewScene.DirectionalLight)
 	{
 		PreviewScene.DirectionalLight->SetLightSourceAngle(LightSettings.LightSourceAngle);
@@ -476,58 +481,16 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
-	UpdateDebugLightVisibility();
+	UpdateStudioEnvironmentLighting();
 	if (PreviewViewportClient.IsValid())
 	{
 		PreviewViewportClient->Invalidate();
 	}
 }
 
-void SMixtormatPreviewViewport::SetHdriLighting(UTextureCube* Cubemap)
+void SMixtormatPreviewViewport::UpdateStudioEnvironmentLighting()
 {
-	if (!Cubemap)
-	{
-		return;
-	}
-
-	HdriPreviewProfile = DefaultPreviewProfile
-		? MakeUnique<FPreviewSceneProfile>(*DefaultPreviewProfile)
-		: MakeUnique<FPreviewSceneProfile>();
-	HdriPreviewProfile->EnvironmentCubeMap = Cubemap;
-	HdriPreviewProfile->EnvironmentCubeMapPath = Cubemap->GetPathName();
-	HdriPreviewProfile->LightingRigRotation = HdriYaw;
-	MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*HdriPreviewProfile);
-	HdriPreviewProfile->SkyLightIntensity = 0.55f;
-	HdriPreviewProfile->DirectionalLightIntensity = 0.35f;
-	bUsingHdri = true;
-
-	PreviewScene.UpdateScene(*HdriPreviewProfile, true, true, false, true);
-	PreviewScene.SetEnvironmentVisibility(false, true);
-	UpdateHdriFillLight();
-	PreviewScene.SetFloorVisibility(true, true);
-	if (PreviewViewportClient.IsValid())
-	{
-		PreviewViewportClient->Invalidate();
-	}
-}
-
-void SMixtormatPreviewViewport::UpdateHdriFillLight()
-{
-	// The same two numbers the HDRI profile is built with, kept here as the base so the user's
-	// multipliers apply in HDRI mode exactly as they do to a studio preset.
-	BaseLightBrightness = 0.35f;
-	BaseSkyBrightness = 0.55f;
 	ApplyLightIntensities();
-	if (PreviewScene.DirectionalLight)
-	{
-		PreviewScene.DirectionalLight->SetLightSourceAngle(24.0f);
-		PreviewScene.DirectionalLight->SetLightSourceSoftAngle(12.0f);
-		PreviewScene.DirectionalLight->SetShadowBias(0.75f);
-		PreviewScene.DirectionalLight->SetShadowSlopeBias(0.8f);
-		PreviewScene.DirectionalLight->ShadowSharpen = 0.0f;
-		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
-		PreviewScene.DirectionalLight->MarkRenderStateDirty();
-	}
 	UpdateDebugLightVisibility();
 }
 
@@ -640,20 +603,25 @@ void SMixtormatPreviewViewport::OrbitCamera(const float YawDelta, const float Pi
 	UpdateCamera();
 }
 
-void SMixtormatPreviewViewport::RotateLighting(const float YawDelta)
+void SMixtormatPreviewViewport::RotateLighting(
+	const float YawDelta,
+	const float PitchDelta)
 {
-	if (bUsingHdri && HdriPreviewProfile)
+	LightingYaw = FMath::Fmod(LightingYaw + YawDelta * 0.35f + 360.0f, 360.0f);
+	LightingPitch = FMath::Clamp(LightingPitch + PitchDelta * 0.25f, -89.0f, -1.0f);
+	PreviewScene.SetLightDirection(FRotator(LightingPitch, LightingYaw, 0.0f));
+
+	if (bUsingStudioEnvironment && StudioPreviewProfile && !FMath::IsNearlyZero(YawDelta))
 	{
-		HdriYaw = FMath::Fmod(HdriYaw - YawDelta * 0.22f + 360.0f, 360.0f);
-		HdriPreviewProfile->LightingRigRotation = HdriYaw;
-		PreviewScene.UpdateScene(*HdriPreviewProfile, true, true, false, false);
+		EnvironmentYaw = FMath::Fmod(EnvironmentYaw - YawDelta * 0.22f + 360.0f, 360.0f);
+		StudioPreviewProfile->LightingRigRotation = EnvironmentYaw;
+		PreviewScene.UpdateScene(*StudioPreviewProfile, true, true, false, false);
 		PreviewScene.SetEnvironmentVisibility(false, true);
-		UpdateHdriFillLight();
+		UpdateStudioEnvironmentLighting();
 	}
-	else
+	if (PreviewScene.DirectionalLight)
 	{
-		LightingYaw = FMath::Fmod(LightingYaw + YawDelta * 0.35f, 360.0f);
-		PreviewScene.SetLightDirection(FRotator(-35.0f, LightingYaw, 0.0f));
+		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
 	if (PreviewViewportClient.IsValid())
 	{
@@ -691,7 +659,7 @@ void SMixtormatPreviewViewport::ResetCameraAndLighting()
 	CameraYaw = MixtormatPreviewCamera::YawDefault;
 	CameraPitch = MixtormatPreviewCamera::PitchDefault;
 	CameraFov = MixtormatPreviewCamera::FovDefault;
-	HdriYaw = 0.0f;
+	EnvironmentYaw = 0.0f;
 	SetStudioLighting(EMixtormatStudioLighting::Neutral);
 	FocusCamera();
 }

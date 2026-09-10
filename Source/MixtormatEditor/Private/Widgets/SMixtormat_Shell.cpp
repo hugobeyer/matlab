@@ -390,7 +390,7 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 						.Text_Lambda([this]()
 						{
 							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
-								? LOCTEXT("StatusQualityHigh", "High · Lumen")
+								? LOCTEXT("StatusQualityHigh", "High · Lumen GI")
 								: PreviewQuality == EMixtormatPreviewQuality::Medium
 									? LOCTEXT("StatusQualityMedium", "Medium")
 									: LOCTEXT("StatusQualityLow", "Low");

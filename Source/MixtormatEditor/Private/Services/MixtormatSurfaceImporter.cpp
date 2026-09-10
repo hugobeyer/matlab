@@ -3,6 +3,7 @@
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
 #include "Services/MixtormatThumbnailRenderer.h"
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AssetImportTask.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -10,6 +11,7 @@
 #include "Editor.h"
 #include "EditorFramework/AssetImportData.h"
 #include "EditorReimportHandler.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Engine/Texture2D.h"
 #include "Factories/DataAssetFactory.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
@@ -459,12 +461,22 @@ namespace MixtormatImporter
 	FString MakeSurfaceThumbnailSourceHash(
 		const FTextureSet& Set,
 		const FString& PackedSourceFile,
-		const float DefaultIOR)
+		const float DefaultIOR,
+		UMaterialInstanceConstant& PreviewMaterial)
 	{
+		const float RoughnessBias = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
+			&PreviewMaterial, TEXT("DA_RoughnessBias"));
+		const float RoughnessContrast = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
+			&PreviewMaterial, TEXT("DA_RoughnessContrast"));
+		const float RoughnessOffset = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
+			&PreviewMaterial, TEXT("DA_RoughnessOffset"));
 		return FString::Printf(
-			TEXT("SurfaceThumbnailV5:%d:Rim:Medium:NoAA:NoHeight:NoScreenMessages:Sky2:IOR%.6g:%s:%s:%s"),
+			TEXT("SurfaceThumbnailV7:%d:Rim:Medium:NoAA:NoHeight:NoScreenMessages:PluginFerndaleSky2:IOR%.6g:R%.6g,%.6g,%.6g:%s:%s:%s"),
 			MixtormatPreviewSceneSettings::ThumbnailResolution,
 			DefaultIOR,
+			RoughnessBias,
+			RoughnessContrast,
+			RoughnessOffset,
 			*LexToString(FMD5Hash::HashFile(*Set.BaseColorFile)),
 			*LexToString(FMD5Hash::HashFile(*Set.NormalFile)),
 			*LexToString(FMD5Hash::HashFile(*PackedSourceFile)));
@@ -1248,7 +1260,8 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(const FString&
 		const FString SurfaceThumbnailHash = MakeSurfaceThumbnailSourceHash(
 			Set,
 			PackedSourceFile,
-			Surface->DefaultIOR);
+			Surface->DefaultIOR,
+			*PreviewMaterial);
 		UTexture2D* SurfaceThumbnail = Surface->Thumbnail.Get();
 		FString StoredThumbnailHash = Surface->ThumbnailSourceHash;
 		const bool bCanReuseThumbnail = SurfaceThumbnail

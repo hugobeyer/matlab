@@ -1,6 +1,8 @@
 #include "Services/MixtormatThumbnailRenderer.h"
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetViewerSettings.h"
 #include "CanvasTypes.h"
@@ -248,9 +250,6 @@ public:
 			? MakeUnique<FPreviewSceneProfile>(*PreviewScene.GetCurrentProfile())
 			: MakeUnique<FPreviewSceneProfile>();
 		MixtormatPreviewSceneSettings::ConfigureLookdevProfile(*Profile);
-		PreviewScene.UpdateScene(*Profile, true, true, false, false);
-		PreviewScene.SetEnvironmentVisibility(false);
-		PreviewScene.SetFloorVisibility(true);
 
 		MeshComponent = NewObject<UStaticMeshComponent>();
 		MeshComponent->SetMobility(EComponentMobility::Movable);
@@ -280,6 +279,16 @@ public:
 
 		const FMixtormatStudioLightSettings LightSettings =
 			MixtormatPreviewSceneSettings::GetStudioLighting(EMixtormatStudioLighting::Rim);
+		const FString EnvironmentPath = MixtormatPreviewSceneSettings::GetStudioEnvironmentObjectPath(
+			EMixtormatStudioLighting::Rim);
+		EnvironmentCubemap.Reset(LoadObject<UTextureCube>(nullptr, *EnvironmentPath));
+		Profile->EnvironmentCubeMap = EnvironmentCubemap.Get();
+		Profile->EnvironmentCubeMapPath = EnvironmentPath;
+		Profile->SkyLightIntensity = 2.0f;
+		Profile->DirectionalLightIntensity = LightSettings.LightBrightness;
+		PreviewScene.UpdateScene(*Profile, true, true, false, true);
+		PreviewScene.SetEnvironmentVisibility(false, true);
+		PreviewScene.SetFloorVisibility(true, true);
 		PreviewScene.SetLightBrightness(LightSettings.LightBrightness);
 		PreviewScene.SetSkyBrightness(2.0f);
 		PreviewScene.SetLightDirection(LightSettings.LightRotation);
@@ -433,6 +442,7 @@ public:
 private:
 	FAdvancedPreviewScene PreviewScene;
 	TUniquePtr<FPreviewSceneProfile> Profile;
+	TStrongObjectPtr<UTextureCube> EnvironmentCubemap;
 	UStaticMeshComponent* MeshComponent = nullptr;
 	UExponentialHeightFogComponent* FogComponent = nullptr;
 };

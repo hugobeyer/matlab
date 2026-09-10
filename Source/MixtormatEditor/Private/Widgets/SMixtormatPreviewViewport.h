@@ -32,7 +32,8 @@ enum class EMixtormatStudioLighting : uint8
 	Neutral,
 	Soft,
 	Dramatic,
-	Rim
+	Rim,
+	Workshop
 };
 
 enum class EMixtormatPreviewQuality : uint8
@@ -106,15 +107,13 @@ public:
 
 	// Multipliers on whatever the current lighting mode chose, not absolute brightnesses.
 	//
-	// A preset or an HDRI already decided how bright the scene is, and those numbers differ by a
-	// factor of eight between Dramatic and an HDRI fill. An absolute slider would mean the same
-	// value looked different in every mode and switching preset would silently override the
-	// user's setting; a multiplier keeps 1.0 meaning "what this mode intended" everywhere.
+	// Each preset already decides how bright its key and plugin-owned environment should be.
+	// Multipliers keep 1.0 meaning "what this preset intended" while preserving user adjustments
+	// when switching between lighting modes.
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
 	void SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	void SetStudioLighting(EMixtormatStudioLighting LightingPreset);
-	void SetHdriLighting(UTextureCube* Cubemap);
 	void SetPreviewQuality(EMixtormatPreviewQuality Quality);
 	void SetPreviewAntiAliasing(EMixtormatPreviewAntiAliasing AntiAliasing);
 	void SetPreviewScreenPercentage(int32 Percentage);
@@ -133,12 +132,12 @@ private:
 	friend class FMixtormatPreviewViewportClient;
 
 	void OrbitCamera(float YawDelta, float PitchDelta);
-	void RotateLighting(float YawDelta);
+	void RotateLighting(float YawDelta, float PitchDelta);
 	void ZoomCamera(float ZoomDelta);
 	void ToggleOverlayUi();
 	void UpdateCamera();
 	void UpdateStudioFog();
-	void UpdateHdriFillLight();
+	void UpdateStudioEnvironmentLighting();
 	void UpdateDebugLightVisibility();
 	void InvalidateDisplacementShadows();
 	bool ComposeLayersWithDebug(
@@ -154,14 +153,14 @@ private:
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
 	TUniquePtr<FMixtormatGpuCompositor> LayerCompositor;
-	TUniquePtr<FPreviewSceneProfile> DefaultPreviewProfile;
-	TUniquePtr<FPreviewSceneProfile> HdriPreviewProfile;
+	TUniquePtr<FPreviewSceneProfile> StudioPreviewProfile;
+	TStrongObjectPtr<UTextureCube> StudioEnvironmentCubemap;
 	bool bUsingLayerPreview = false;
 	bool bUsingDebugPreview = false;
 	EMixtormatDebugPreviewMode bDebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	int32 bDebugLayerIndex = INDEX_NONE;
 	int32 bDebugChildIndex = INDEX_NONE;
-	bool bUsingHdri = false;
+	bool bUsingStudioEnvironment = false;
 	bool bDisplacementEnabled = false;
 	float DisplacementAmount = 1.0f;
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
@@ -169,6 +168,7 @@ private:
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;
 	float CameraFov = MixtormatPreviewCamera::FovDefault;
 	float LightingYaw = -45.0f;
+	float LightingPitch = -35.0f;
 
 	// What the current mode asked for, before the user's multipliers. Held so a change to either
 	// slider can be re-applied without re-running the whole preset, and so switching preset
@@ -178,6 +178,6 @@ private:
 	float LightIntensityScale = 1.0f;
 	float SkylightIntensityScale = 1.0f;
 	void ApplyLightIntensities();
-	float HdriYaw = 0.0f;
+	float EnvironmentYaw = 0.0f;
 	FVector PreviewTarget = FVector(0.0f, 0.0f, 50.0f);
 };

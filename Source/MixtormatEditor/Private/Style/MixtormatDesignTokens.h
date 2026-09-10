@@ -135,7 +135,6 @@ namespace MixtormatTokens
 	// The composition-resolution segments. Fixed rather than hugging, so the cluster's width does
 	// not change when the active label goes from 1K to 4K.
 	constexpr float PreviewResolutionControlWidth = 92.0f;
-	constexpr int32 PreviewHdriPresetLimit = 2;
 	// Breathing room under a group header before its first row.
 	constexpr float GroupBodyTopInset = 4.0f;
 	// Gap around a group inside the well, so the darker surround reads as a margin and the

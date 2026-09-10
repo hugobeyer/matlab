@@ -1,11 +1,6 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
-#include "Services/MixtormatPaths.h"
-#include "UI/Menus/MixtormatMenuBuilder.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-#include "Engine/TextureCube.h"
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
 
@@ -94,7 +89,6 @@ FReply SMixtormat::ResetPreviewCameraAndLighting()
 {
 	PreviewFov = MixtormatPreviewCamera::FovDefault;
 	StudioLighting = EMixtormatStudioLighting::Neutral;
-	SelectedHdriPath.Reset();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -237,7 +231,6 @@ void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
 FReply SMixtormat::SetStudioLighting(const EMixtormatStudioLighting LightingPreset)
 {
 	StudioLighting = LightingPreset;
-	SelectedHdriPath.Reset();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -248,24 +241,6 @@ FReply SMixtormat::SetStudioLighting(const EMixtormatStudioLighting LightingPres
 	return FReply::Handled();
 }
 
-FReply SMixtormat::SetHdriLighting(const FSoftObjectPath HdriPath)
-{
-	UTextureCube* Cubemap = Cast<UTextureCube>(HdriPath.TryLoad());
-	if (!Cubemap)
-	{
-		return FReply::Handled();
-	}
-
-	SelectedHdriPath = HdriPath;
-	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-	{
-		if (Viewport.IsValid())
-		{
-			Viewport->SetHdriLighting(Cubemap);
-		}
-	}
-	return FReply::Handled();
-}
 
 void SMixtormat::PreviewSurfaceScalarParameter(const FName ParameterName, const float Value)
 {
@@ -408,7 +383,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				.ToolTipText(ToolTip)
 				.IsChecked_Lambda([this, Preset]()
 				{
-					return SelectedHdriPath.IsNull() && StudioLighting == Preset
+					return StudioLighting == Preset
 						? ECheckBoxState::Checked
 						: ECheckBoxState::Unchecked;
 				})
@@ -430,38 +405,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddPresetButton(EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioButton", "Soft studio"), TEXT("Mixtormat.Icon.LightSoft"));
 	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), TEXT("Mixtormat.Icon.LightDramatic"));
 	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), TEXT("Mixtormat.Icon.LightRim"));
-
-	LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
-	[
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
-		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
-		[
-			SNew(SComboButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
-			.HasDownArrow(false)
-			.ToolTipText(LOCTEXT("PreviewHdriMenuHint", "Choose an HDRI or studio lighting preset"))
-			.OnGetMenuContent(this, &SMixtormat::BuildStudioLightingMenu)
-			.ButtonContent()
-			[
-				// Square box around the glyph rather than letting it fill the button.
-				//
-				// The four toggles above draw undistorted by coincidence: the overlay toggle
-				// style insets by 2 a side, which leaves exactly the 20px their brushes are
-				// registered at. This one is a combo button, so it carries its own padding and
-				// reserves arrow space even with HasDownArrow off, and Globe is registered at
-				// the large 28px besides -- a non-square remainder, which is what stretched it.
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
-				.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Globe")))
-				]
-			]
-		]
-	];
+	AddPresetButton(EMixtormatStudioLighting::Workshop, LOCTEXT("WorkshopStudioButton", "Workshop lighting"), TEXT("Mixtormat.Icon.Globe"));
 	LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 	[
 		SNew(SBox)
@@ -474,8 +418,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
 			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
 			[
-				// Same fix as the combo above: this content padding stacks on top of the button
-				// style's own asymmetric padding, so the remainder was not square either.
+
 				SNew(SBox)
 				.WidthOverride(MixtormatTokens::PreviewToolbarIconSize)
 				.HeightOverride(MixtormatTokens::PreviewToolbarIconSize)
@@ -558,7 +501,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	const TArray<FText> QualityToolTips = {
 		LOCTEXT("PreviewQualityLowHint", "Direct light only. No AO, SSR, or Lumen."),
 		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
-		LOCTEXT("PreviewQualityHighHint", "Lumen quality. Uses project ray tracing when supported.")};
+		LOCTEXT("PreviewQualityHighHint", "Lumen GI with stable plugin-cubemap and SSR reflections.")};
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
 	//
@@ -680,7 +623,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				SetPreviewLightIntensity(static_cast<float>(Value));
 			}),
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(1.0f); }),
-			LOCTEXT("PreviewLightIntensityHint", "Scales the key light. A multiplier on whatever the current preset or HDRI chose, so 1 is that mode's own brightness and switching mode keeps this setting rather than overriding it."))
+			LOCTEXT("PreviewLightIntensityHint", "Scales the preset key light. A value of 1 uses that preset's authored brightness."))
 	];
 	SceneControls->AddSlot().AutoHeight()
 	[
@@ -693,7 +636,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				SetPreviewSkylightIntensity(static_cast<float>(Value));
 			}),
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
-			LOCTEXT("PreviewSkylightIntensityHint", "Scales the ambient fill, the same way. Dropping it is how a surface's height reads: the key light alone throws the shadows that show relief, and the skylight is what fills them back in."))
+			LOCTEXT("PreviewSkylightIntensityHint", "Scales the preset's plugin-cubemap fill. Lower values preserve stronger directional relief shadows."))
 	];
 
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
@@ -824,66 +767,5 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	return PreviewPanel;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildStudioLightingMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const TPair<EMixtormatStudioLighting, FText> Presets[] = {
-		{EMixtormatStudioLighting::Neutral, LOCTEXT("NeutralStudioMenu", "Neutral Studio")},
-		{EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioMenu", "Soft Studio")},
-		{EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioMenu", "Dramatic")},
-		{EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioMenu", "Rim Light")}};
-
-	Menu.Caption(LOCTEXT("StudioLightingCaption", "Studio"));
-	for (const TPair<EMixtormatStudioLighting, FText>& Preset : Presets)
-	{
-		// Ticked only while no HDRI is overriding it -- a preset and a cubemap cannot both be
-		// what the viewport is lit by, and showing two ticks would say they can.
-		Menu.Item(
-			Preset.Value,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Lighting = Preset.Key]() { SetStudioLighting(Lighting); }))
-			.Checked(TAttribute<bool>::CreateLambda([this, Lighting = Preset.Key]()
-			{
-				return SelectedHdriPath.IsNull() && StudioLighting == Lighting;
-			}));
-	}
-
-	FAssetRegistryModule& AssetRegistryModule =
-		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	FARFilter HdriFilter;
-	HdriFilter.ClassPaths.Add(UTextureCube::StaticClass()->GetClassPathName());
-	HdriFilter.PackagePaths.Add(FName(*FMixtormatPaths::LightingRoot()));
-	HdriFilter.bRecursiveClasses = true;
-	HdriFilter.bRecursivePaths = true;
-	TArray<FAssetData> HdriAssets;
-	AssetRegistryModule.Get().GetAssets(HdriFilter, HdriAssets);
-	HdriAssets.Sort([](const FAssetData& A, const FAssetData& B)
-	{
-		return A.AssetName.LexicalLess(B.AssetName);
-	});
-	if (HdriAssets.Num() > MixtormatTokens::PreviewHdriPresetLimit)
-	{
-		HdriAssets.SetNum(MixtormatTokens::PreviewHdriPresetLimit);
-	}
-
-	if (!HdriAssets.IsEmpty())
-	{
-		Menu.Caption(LOCTEXT("HdriLightingCaption", "HDRI"));
-	}
-	for (const FAssetData& HdriAsset : HdriAssets)
-	{
-		const FSoftObjectPath HdriPath = HdriAsset.GetSoftObjectPath();
-		Menu.Item(
-			FText::FromName(HdriAsset.AssetName),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, HdriPath]() { SetHdriLighting(HdriPath); }))
-			.Checked(TAttribute<bool>::CreateLambda([this, HdriPath]()
-			{
-				return SelectedHdriPath == HdriPath;
-			}));
-	}
-
-	return Menu.Build();
-}
 
 #undef LOCTEXT_NAMESPACE

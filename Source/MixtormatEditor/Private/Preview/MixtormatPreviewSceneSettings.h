@@ -36,6 +36,7 @@ namespace MixtormatPreviewSceneSettings
 	constexpr int32 ThumbnailResolution = 256;
 
 	void ConfigureLookdevProfile(FPreviewSceneProfile& Profile);
+	FString GetStudioEnvironmentObjectPath(EMixtormatStudioLighting LightingPreset);
 	FMixtormatStudioLightSettings GetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void ConfigureQuality(FEngineShowFlags& ShowFlags, EMixtormatPreviewQuality Quality);
 	float CalculateFocusDistance(

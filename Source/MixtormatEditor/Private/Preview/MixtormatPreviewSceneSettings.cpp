@@ -1,6 +1,8 @@
 #include "Preview/MixtormatPreviewSceneSettings.h"
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AssetViewerSettings.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "ShowFlags.h"
 #include "Materials/MaterialInterface.h"
 #include "Services/MixtormatPaths.h"
@@ -23,6 +25,31 @@ void MixtormatPreviewSceneSettings::ConfigureLookdevProfile(FPreviewSceneProfile
 	Profile.PostProcessingSettings.AutoExposureBias = -0.5f;
 	Profile.PostProcessingSettings.bOverride_BloomIntensity = true;
 	Profile.PostProcessingSettings.BloomIntensity = 0.0f;
+}
+
+FString MixtormatPreviewSceneSettings::GetStudioEnvironmentObjectPath(
+	const EMixtormatStudioLighting LightingPreset)
+{
+	const TCHAR* AssetName = TEXT("monochrome_studio_02_2k");
+	switch (LightingPreset)
+	{
+	case EMixtormatStudioLighting::Soft:
+		AssetName = TEXT("white_home_studio_2k");
+		break;
+	case EMixtormatStudioLighting::Dramatic:
+		AssetName = TEXT("brown_photostudio_02_2k");
+		break;
+	case EMixtormatStudioLighting::Rim:
+		AssetName = TEXT("ferndale_studio_01_2k");
+		break;
+	case EMixtormatStudioLighting::Workshop:
+		AssetName = TEXT("empty_workshop_2k");
+		break;
+	case EMixtormatStudioLighting::Neutral:
+	default:
+		break;
+	}
+	return FString::Printf(TEXT("%s/%s.%s"), *FMixtormatPaths::LightingRoot(), AssetName, AssetName);
 }
 
 FMixtormatStudioLightSettings MixtormatPreviewSceneSettings::GetStudioLighting(
@@ -49,6 +76,12 @@ FMixtormatStudioLightSettings MixtormatPreviewSceneSettings::GetStudioLighting(
 		Settings.LightSourceAngle = 8.0f;
 		Settings.LightRotation = FRotator(-22.0f, 145.0f, 0.0f);
 		break;
+	case EMixtormatStudioLighting::Workshop:
+		Settings.LightBrightness = 1.75f;
+		Settings.SkyBrightness = 0.5f;
+		Settings.LightSourceAngle = 12.0f;
+		Settings.LightRotation = FRotator(-38.0f, -110.0f, 0.0f);
+		break;
 	case EMixtormatStudioLighting::Neutral:
 	default:
 		break;
@@ -66,13 +99,15 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	case EMixtormatPreviewQuality::Low:
 		ShowFlags.SetLumenGlobalIllumination(false);
 		ShowFlags.SetLumenReflections(false);
+		ShowFlags.SetReflectionEnvironment(false);
 		ShowFlags.SetAmbientOcclusion(false);
 		ShowFlags.SetScreenSpaceAO(false);
 		ShowFlags.SetScreenSpaceReflections(false);
 		break;
 	case EMixtormatPreviewQuality::High:
 		ShowFlags.SetLumenGlobalIllumination(true);
-		ShowFlags.SetLumenReflections(true);
+		ShowFlags.SetLumenReflections(false);
+		ShowFlags.SetReflectionEnvironment(true);
 		ShowFlags.SetAmbientOcclusion(true);
 		ShowFlags.SetScreenSpaceAO(true);
 		ShowFlags.SetScreenSpaceReflections(true);
@@ -81,6 +116,7 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	default:
 		ShowFlags.SetLumenGlobalIllumination(false);
 		ShowFlags.SetLumenReflections(false);
+		ShowFlags.SetReflectionEnvironment(true);
 		ShowFlags.SetAmbientOcclusion(true);
 		ShowFlags.SetScreenSpaceAO(true);
 		ShowFlags.SetScreenSpaceReflections(true);

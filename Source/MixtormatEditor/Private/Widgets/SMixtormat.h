@@ -85,7 +85,6 @@ private:
 		EMixtormatDebugPreviewMode Mode,
 		const FText& ToolTip);
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
-	FReply SetHdriLighting(FSoftObjectPath HdriPath);
 	FReply StartNewMaterial();
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();
@@ -723,7 +722,6 @@ private:
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset);
 	TSharedRef<SWidget> BuildPreviewPanel();
-	TSharedRef<SWidget> BuildStudioLightingMenu();
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();
 	TSharedRef<SWidget> BuildEffectInspectorControls();
@@ -789,7 +787,6 @@ private:
 	// pooled thumbnails accumulating there would eat the pool's budget.
 	TSharedPtr<FAssetThumbnail> SelectedStripThumbnail;
 	TArray<TSharedPtr<FAssetThumbnail>> MaskThumbnails;
-	TArray<TSharedPtr<FAssetThumbnail>> HdriThumbnails;
 	TArray<TSharedPtr<SMixtormatPreviewViewport>> PreviewViewports;
 	TSet<int32> ExpandedLayerIndices;
 	TArray<FMixtormatLayer> WorkingLayers;
@@ -850,7 +847,6 @@ private:
 	// Multipliers on the active lighting mode's own brightness; 1 is what that mode intended.
 	float PreviewLightIntensity = 1.0f;
 	float PreviewSkylightIntensity = 1.0f;
-	FSoftObjectPath SelectedHdriPath;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;
 	FString BakeOutputBaseName;
