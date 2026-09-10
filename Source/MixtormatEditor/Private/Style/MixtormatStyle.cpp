@@ -52,6 +52,8 @@ void FMixtormatStyle::Initialize()
 	if (!StyleInstance.IsValid())
 	{
 		FMixtormatLiveTheme::Initialize();
+		FString ThemeLoadError;
+		FMixtormatLiveTheme::Load(ThemeLoadError);
 		Refresh();
 	}
 }
@@ -547,18 +549,16 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
 	FTextBlockStyle SliderLabel = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontSliderLabel))
 		.SetColorAndOpacity(RowText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Label"), SliderLabel);
 
-	// The value is drawn in the same face forced to a uniform advance, which is what makes a
-	// column of numbers line up on the decimal point. Slate exposes no OpenType feature switch,
-	// but bForceMonospaced does the same job -- and it is safe here precisely because this style
-	// is only ever used for digits, never for the label.
+	// Values retain their heavier face and use a uniform advance, which makes a column of numbers
+	// line up on the decimal point without putting the same visual weight on the label.
 	FTextBlockStyle SliderValue = SliderLabel;
-	FSlateFontInfo ValueFont = SliderValue.Font;
+	FSlateFontInfo ValueFont = FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel);
 	ValueFont.bForceMonospaced = true;
 	ValueFont.MonospacedWidth = 0.52f;
 	SliderValue.SetFont(ValueFont);

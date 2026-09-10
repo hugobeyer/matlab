@@ -72,7 +72,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 					SNew(SBox)
 					.HeightOverride(MixtormatTokens::HairlineThickness)
 					[
-						SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.HeaderHairline")))
+						SNew(SImage).Image(this, &SMixtormatLayerRow::GetHairlineBrush)
 					]
 				]
 				+ SOverlay::Slot()
@@ -209,6 +209,13 @@ FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
 		return MixtormatPalette::LayerSelectedBottom();
 	}
 	return IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom();
+}
+
+const FSlateBrush* SMixtormatLayerRow::GetHairlineBrush() const
+{
+	return FMixtormatStyle::Get().GetBrush(bSelected.Get(false)
+		? TEXT("Mixtormat.HeaderHairlineGlow")
+		: TEXT("Mixtormat.HeaderHairline"));
 }
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const
