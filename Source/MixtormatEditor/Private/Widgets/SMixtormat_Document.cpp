@@ -30,6 +30,16 @@ FReply SMixtormat::ImportMasks()
 	return FReply::Handled();
 }
 
+FReply SMixtormat::RebuildBuiltInLibrary()
+{
+	const FMixtormatImportResult Result = FMixtormatSurfaceImporter::ReimportShippedLibrary();
+	RebuildCategoryList();
+	RebuildSurfaceList();
+	RebuildMaskList();
+	FMessageDialog::Open(EAppMsgType::Ok, Result.ToMessage());
+	return FReply::Handled();
+}
+
 
 FReply SMixtormat::StartNewMaterial()
 {

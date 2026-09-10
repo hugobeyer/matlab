@@ -64,6 +64,7 @@ private:
 	FReply ImportSurfaces();
 	FReply ImportMasks();
 	FReply RefreshSurfaceList();
+	FReply RebuildBuiltInLibrary();
 	void ZoomMaterialGallery(int32 Direction);
 	void ZoomMaskGallery(int32 Direction);
 	FReply SelectSurface(FText DisplayName, FSoftObjectPath AssetPath);

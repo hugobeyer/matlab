@@ -529,7 +529,11 @@ void FMixtormatLayerPreview::ApplyLayers(
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideBaseColor"), Layer && Layer->bOverrideBaseColor ? 1.0f : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideRoughness"), Layer && Layer->bOverrideRoughness ? 1.0f : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideMetallic"), Layer && Layer->bOverrideMetallic ? 1.0f : 0.0f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideIOR"), Layer && Layer->bOverrideIOR ? 1.0f : 0.0f);
+		SetScalar(
+					MaterialInstance,
+					LayerIndex,
+					TEXT("OverrideIOR"),
+					Layer && (Layer->Type == EMixtormatLayerType::Fill || Layer->bOverrideIOR) ? 1.0f : 0.0f);
 		MaterialInstance.SetVectorParameterValue(
 			ParameterName(LayerIndex, TEXT("FillColor")),
 			Layer ? Layer->BaseColor : FLinearColor::White);

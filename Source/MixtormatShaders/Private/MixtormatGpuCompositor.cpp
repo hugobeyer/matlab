@@ -3430,7 +3430,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		const float SourceIOR = Surface ? Surface->DefaultIOR : 1.5f;
 		const float LayerIOR = FMath::Max(
 			1.0f,
-			Layer.bOverrideIOR ? Layer.IOR : SourceIOR);
+			(Layer.Type == EMixtormatLayerType::Fill || Layer.bOverrideIOR)
+				? Layer.IOR
+				: SourceIOR);
 		Data.LayerF0 = FMath::Square((LayerIOR - 1.0f) / (LayerIOR + 1.0f));
 		Data.HeightBoost = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
 		Data.BaseColorBlendMode = Layer.BaseColorBlendMode;

@@ -299,6 +299,8 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const bool bHasDeveloperSources =
+		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	const TSharedRef<SSearchBox> SearchBox = SNew(SSearchBox)
 		.HintText(LOCTEXT("SearchHint", "Search materials..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
@@ -356,6 +358,25 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						.HeightOverride(MixtormatTokens::ToolbarIconSize)
 						[
 							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::LibraryBrowseButtonGap, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.ContentPadding(FMargin(0.0f))
+					.ToolTipText(LOCTEXT(
+						"RebuildBuiltInLibraryHint",
+						"Developer only: rebuild built-in assets from plugin source PNGs"))
+					.OnClicked(this, &SMixtormat::RebuildBuiltInLibrary)
+					[
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::ToolbarIconSize)
+						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						[
+							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Settings")))
 						]
 					]
 				]
