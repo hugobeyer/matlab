@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mixtormat Documentation</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB3aWR0aD0iNTMuNDYxMjM5bW0iCiAgIGhlaWdodD0iNTguMDcyOTI2bW0iCiAgIHZpZXdCb3g9IjAgMCA1My40NjEyMzkgNTguMDcyOTI2IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxIgogICB4bWw6c3BhY2U9InByZXNlcnZlIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MSIKICAgICBwYWdlY29sb3I9IiM1MDUwNTAiCiAgICAgYm9yZGVyY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlY2hlY2tlcmJvYXJkPSIxIgogICAgIGlua3NjYXBlOmRlc2tjb2xvcj0iIzUwNTA1MCIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iPjxpbmtzY2FwZTpwYWdlCiAgICAgICB4PSIwIgogICAgICAgeT0iMCIKICAgICAgIHdpZHRoPSI1My40NjEyMzkiCiAgICAgICBoZWlnaHQ9IjU4LjA3MjkyNiIKICAgICAgIGlkPSJwYWdlMiIKICAgICAgIG1hcmdpbj0iMCIKICAgICAgIGJsZWVkPSIwIiAvPjwvc29kaXBvZGk6bmFtZWR2aWV3PjxkZWZzCiAgICAgaWQ9ImRlZnMxIiAvPjxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC04Ny4zNDIxOTUsLTEyNS42Nzk3KSI+PHBhdGgKICAgICAgIHN0eWxlPSJmaWxsOiNmOWY5ZjkiCiAgICAgICBkPSJtIDExMy40MDQwOCwxODMuNzUyNjMgYyAtOC42MTM3MywtNS4yNzY1OSAtMTcuMTY4MjQ2LC0xMC42NTAxMSAtMjUuODE4NzQ2LC0xNS44NjYzOSBsIDYuNTQxMzEsLTMuOTU0NjEgMTkuNzA4NTE2LDEyLjMwMjU2IDIwLjM1ODMyLC0xMi4yMjU1MSA2LjE1ODU4LDMuNzA5NDQgeiBtIC0yNS40Nzg3OTYsLTI4LjA4NTE4IDcuODY3NiwtNS4yODQ4MSAtOC40NTA2OSwtNS4yNDI5OSAwLjE0LC0xNS42Mjc3IDYuMDgwNTYsLTMuODMyMjUgMjAuNDg1MTg2LDEyLjkyODk4IDIwLjU0NjkyLC0xMi45MjE0MiA2LjA2ODU3LDMuODI0NjkgMC4xNCwxNS42NDc5OCAtOC41MzM1OSw1LjQ1MTE1IGMgMi42MTE4OSwxLjc2MzAzIDUuMzQ1NjUsMy4zNTY5NSA4LjAyOTMyLDUuMDExOCAtOC43NDg4NSw1LjM3MTE0IC0xNy41MzAxOSwxMC42OTMwMSAtMjYuMjk5MzcsMTYuMDMyMDIgeiBtIDQzLjQ3NzcyNiwtNi4xMTY1NiAwLjE0MzQsLTEwLjQxMzA0IGggLTAuMjY3MjEgbCAtMTcuMTYyMjgsMTEuMTAwNDkgLTE3LjI3MTEzNiwtMTEuMTAwNDkgLTAuMjM1NTUsMTAuMjc5MjEgMTcuMzMwMjA2LDExLjA2NzkgYyA1LjkyMjUyLC0zLjQ1ODI0IDExLjY2Mjk0LC03LjI2NDUzIDE3LjQ2MjU3LC0xMC45MzQwNyB6IgogICAgICAgaWQ9InBhdGgxIgogICAgICAgc29kaXBvZGk6bm9kZXR5cGVzPSJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiAvPjwvZz48L3N2Zz4K">
+<style>
+:root{
+  --window:#0f0f0f;
+  --topbar:#171819;
+  --shell:#111213;
+  --panel:#191b1d;
+  --panel-raised:#202224;
+  --panel-hover:#26292b;
+  --well:#101112;
+  --border:#292c2e;
+  --border-strong:#383c3e;
+  --divider:#242729;
+  --accent:#4d8fa8;
+  --accent-bright:#6ca8bf;
+  --selection:rgba(77,143,168,.16);
+  --focus:rgba(77,143,168,.10);
+  --text:#c0c0c0;
+  --text-header:#a8a8a8;
+  --text-caption:#6e6e6e;
+  --text-bright:#e6e6e6;
+  --radius:3px;
+  --sidebar:238px;
+  --topbar-h:44px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  color:var(--text);
+  background:var(--window);
+  font:13px/1.65 Inter,Segoe UI,Arial,sans-serif;
+}
+a{color:inherit}
+.topbar{
+  position:fixed;
+  inset:0 0 auto 0;
+  height:var(--topbar-h);
+  z-index:20;
+  display:flex;
+  align-items:center;
+  padding:0 18px;
+  background:var(--topbar);
+  border-bottom:0;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  min-width:var(--sidebar);
+}
+.brand-logo{
+  display:block;
+  width:123px;
+  height:24px;
+  object-fit:contain;
+  object-position:left center;
+}
+.brand-icon{
+  display:none;
+  width:20px;
+  height:21px;
+  object-fit:contain;
+}
+.topbar-title{
+  color:var(--text-caption);
+  font-size:12px;
+}
+.layout{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:var(--sidebar) minmax(0,1fr);
+  padding-top:var(--topbar-h);
+}
+.sidebar{
+  position:fixed;
+  top:var(--topbar-h);
+  left:0;
+  bottom:0;
+  width:var(--sidebar);
+  overflow:auto;
+  padding:12px 10px 24px;
+  background:var(--shell);
+  border-right:0;
+}
+.sidebar-label{
+  padding:6px 8px 8px;
+  color:var(--text-caption);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.nav{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.nav a{
+  min-height:28px;
+  display:flex;
+  align-items:center;
+  padding:4px 8px 4px 10px;
+  border:0;
+  border-radius:var(--radius);
+  color:var(--text-header);
+  text-decoration:none;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.nav a:hover{
+  color:var(--text-bright);
+  background:var(--panel-raised);
+}
+.nav a.active{
+  color:var(--text-bright);
+  background:var(--selection);
+  box-shadow:inset 2px 0 0 var(--accent);
+}
+.content{
+  grid-column:2;
+  min-width:0;
+  padding:34px 48px 100px;
+}
+.article{
+  width:min(920px,100%);
+  margin:0 auto;
+}
+.hero{
+  margin-bottom:34px;
+  padding-bottom:22px;
+  border-bottom:0;
+}
+.eyebrow{
+  color:var(--accent-bright);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+h1,h2,h3{line-height:1.25;color:var(--text-bright);font-weight:600}
+h1{margin:7px 0 10px;font-size:30px;letter-spacing:-.02em}
+h2{margin:0 0 12px;font-size:19px}
+h3{margin:22px 0 8px;font-size:14px;color:var(--text-header)}
+p{margin:0 0 13px}
+.lead{max-width:720px;color:var(--text-header);font-size:14px}
+section{
+  scroll-margin-top:calc(var(--topbar-h) + 24px);
+  margin:0 0 42px;
+}
+.section-head{
+  min-height:34px;
+  display:flex;
+  align-items:center;
+  margin-bottom:14px;
+  padding:0 10px;
+  background:linear-gradient(180deg,rgba(37,40,43,.72),rgba(25,27,29,.25));
+  border:0;
+  border-radius:var(--radius);
+}
+.section-head h2{margin:0;font-size:13px;color:var(--text-header)}
+.card{
+  margin:10px 0;
+  padding:14px 16px;
+  background:var(--panel);
+  border:0;
+  border-radius:var(--radius);
+}
+.card:hover{}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.mini{
+  padding:12px;
+  background:var(--well);
+  border:0;
+  border-radius:var(--radius);
+}
+.mini strong{
+  display:block;
+  margin-bottom:4px;
+  color:var(--text-header);
+  font-size:12px;
+}
+code{
+  padding:2px 5px;
+  color:#d5e4e9;
+  background:#0c0d0e;
+  border:0;
+  border-radius:2px;
+  font:12px/1.5 Consolas,"SFMono-Regular",monospace;
+}
+pre{
+  overflow:auto;
+  margin:12px 0;
+  padding:13px 14px;
+  color:#c6d3d8;
+  background:#070808;
+  border:0;
+  border-radius:var(--radius);
+  font:12px/1.6 Consolas,"SFMono-Regular",monospace;
+}
+.note{
+  margin:12px 0;
+  padding:10px 12px;
+  background:var(--focus);
+  border:0;
+  border-left:2px solid var(--accent);
+  border-radius:var(--radius);
+}
+.kicker{
+  margin-bottom:5px;
+  color:var(--accent-bright);
+  font-size:11px;
+  font-weight:650;
+}
+.footer{
+  padding-top:16px;
+  color:var(--text-caption);
+  border-top:0;
+}
+@media(max-width:760px){
+  :root{--sidebar:190px}
+  .content{padding:26px 22px 80px}
+}
+@media(max-width:620px){
+  .topbar{padding:0 12px}
+  .brand{min-width:0}
+  .brand-logo{display:none}
+  .brand-icon{display:block}
+  .topbar-title{display:none}
+  .layout{display:block}
+  .sidebar{
+    position:sticky;
+    top:var(--topbar-h);
+    z-index:10;
+    width:auto;
+    height:auto;
+    padding:6px 8px;
+    border-right:0;
+    border-bottom:0;
+    white-space:nowrap;
+  }
+  .sidebar-label{display:none}
+  .nav{flex-direction:row;overflow-x:auto}
+  .nav a{flex:0 0 auto}
+  .content{padding:26px 16px 70px}
+  .grid{grid-template-columns:1fr}
+}
+
+.image-slot{
+  min-height:220px;
+  margin:16px 0 22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#101112;
+  border-radius:3px;
+  color:#6e6e6e;
+  text-align:center;
+  font-size:11px;
+  letter-spacing:.04em;
+}
+.image-slot.wide{min-height:300px}
+.image-slot.small{min-height:160px}
+.image-slot span{max-width:520px;padding:20px}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><img class="brand-logo" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB3aWR0aD0iMjk3LjE0MjU1bW0iCiAgIGhlaWdodD0iNTguMDcyOTI2bW0iCiAgIHZpZXdCb3g9IjAgMCAyOTcuMTQyNTUgNTguMDcyOTI2IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxIgogICB4bWw6c3BhY2U9InByZXNlcnZlIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MSIKICAgICBwYWdlY29sb3I9IiM1MDUwNTAiCiAgICAgYm9yZGVyY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlY2hlY2tlcmJvYXJkPSIxIgogICAgIGlua3NjYXBlOmRlc2tjb2xvcj0iIzUwNTA1MCIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iPjxpbmtzY2FwZTpwYWdlCiAgICAgICB4PSIwIgogICAgICAgeT0iMCIKICAgICAgIHdpZHRoPSIyOTcuMTQyNTUiCiAgICAgICBoZWlnaHQ9IjU4LjA3MjkyNiIKICAgICAgIGlkPSJwYWdlMiIKICAgICAgIG1hcmdpbj0iMCIKICAgICAgIGJsZWVkPSIwIiAvPjwvc29kaXBvZGk6bmFtZWR2aWV3PjxkZWZzCiAgICAgaWQ9ImRlZnMxIiAvPjxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC04Ny4zNDIxOTUsLTEyNS42Nzk3KSI+PHBhdGgKICAgICAgIHN0eWxlPSJmaWxsOiNmOWY5ZjkiCiAgICAgICBkPSJtIDExMy40MDQwOCwxODMuNzUyNjMgYyAtOC42MTM3MywtNS4yNzY1OSAtMTcuMTY4MjQ2LC0xMC42NTAxMSAtMjUuODE4NzQ2LC0xNS44NjYzOSBsIDYuNTQxMzEsLTMuOTU0NjEgMTkuNzA4NTE2LDEyLjMwMjU2IDIwLjM1ODMyLC0xMi4yMjU1MSA2LjE1ODU4LDMuNzA5NDQgeiBtIC0yNS40Nzg3OTYsLTI4LjA4NTE4IDcuODY3NiwtNS4yODQ4MSAtOC40NTA2OSwtNS4yNDI5OSAwLjE0LC0xNS42Mjc3IDYuMDgwNTYsLTMuODMyMjUgMjAuNDg1MTg2LDEyLjkyODk4IDIwLjU0NjkyLC0xMi45MjE0MiA2LjA2ODU3LDMuODI0NjkgMC4xNCwxNS42NDc5OCAtOC41MzM1OSw1LjQ1MTE1IGMgMi42MTE4OSwxLjc2MzAzIDUuMzQ1NjUsMy4zNTY5NSA4LjAyOTMyLDUuMDExOCAtOC43NDg4NSw1LjM3MTE0IC0xNy41MzAxOSwxMC42OTMwMSAtMjYuMjk5MzcsMTYuMDMyMDIgeiBtIDQzLjQ3NzcyNiwtNi4xMTY1NiAwLjE0MzQsLTEwLjQxMzA0IGggLTAuMjY3MjEgbCAtMTcuMTYyMjgsMTEuMTAwNDkgLTE3LjI3MTEzNiwtMTEuMTAwNDkgLTAuMjM1NTUsMTAuMjc5MjEgMTcuMzMwMjA2LDExLjA2NzkgYyA1LjkyMjUyLC0zLjQ1ODI0IDExLjY2Mjk0LC03LjI2NDUzIDE3LjQ2MjU3LC0xMC45MzQwNyB6IgogICAgICAgaWQ9InBhdGgxIgogICAgICAgc29kaXBvZGk6bm9kZXR5cGVzPSJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIgogICAgICAgaW5rc2NhcGU6ZXhwb3J0LWZpbGVuYW1lPSJNaXh0b3JNYXRfSWNvbi5zdmciCiAgICAgICBpbmtzY2FwZTpleHBvcnQteGRwaT0iOTYiCiAgICAgICBpbmtzY2FwZTpleHBvcnQteWRwaT0iOTYiIC8+PHBhdGgKICAgICAgIGQ9Im0gMTU0LjAzMjcxLDE1My43NjkyNCB2IC0xNC44MTY2NyBoIDMuNjczMDQgMy42NzMwMyBsIDMuOTY4MDksNi42ODA3MyBjIDIuMTgyNDUsMy42NzQ0IDQuMjkxMzcsNy4yNDYyOCA0LjY4NjQ4LDcuOTM3NSAwLjM5NTExLDAuNjkxMjMgMC43OTYzNywxLjI1NTczIDAuODkxNjksMS4yNTQ0NiAwLjA5NTMsLTEwZS00IDIuMzE1NDQsLTMuNTczMTUgNC45MzM2MSwtNy45Mzc1IGwgNC43NjAzMywtNy45MzUxOSBoIDMuNjQwMiAzLjY0MDE5IHYgMTQuODE2NjcgMTQuODE2NjcgaCAtMy4zMDM4MiAtMy4zMDM4MSBsIC0wLjA2OTYsLTkuMDYxOTggLTAuMDY5NiwtOS4wNjE5OCAtMS4yMDY4NywxLjg1MjA4IGMgLTAuNjYzNzgsMS4wMTg2NSAtMi42ODA4MSw0LjIwMzU3IC00LjQ4MjI5LDcuMDc3NjEgbCAtMy4yNzU0MSw1LjIyNTUyIGggLTEuMjY5MDkgLTEuMjY5MDggbCAtMC42MTEzNSwtMC45OTIxOSBjIC0wLjMzNjI1LC0wLjU0NTcgLTIuMzMyMDQsLTMuNzgwNDMgLTQuNDM1MDksLTcuMTg4MjkgbCAtMy44MjM3NCwtNi4xOTYxIC0wLjA2OTYsOS4xNzI2NiAtMC4wNjk2LDkuMTcyNjcgaCAtMy4zMDM4NiAtMy4zMDM4NiB6IG0gMzguODkzNzUsMy44NjMzMSBWIDE0Ni42NzkyIGwgMS43ODU5MywtMC4xNTg4OCAxLjc4NTk0LC0wLjE1ODg4IDEuNDU1MjEsMC4xOTgxNyAxLjQ1NTIxLDAuMTk4MTcgMC4wNjkxLDEwLjkxNDA3IDAuMDY5MSwxMC45MTQwNiBoIC0zLjMxMDIzIC0zLjMxMDIyIHogbSAxMC4zMTg3NSwxMC44MDQzNSBjIDAsLTAuMTIwNTQgNS4xODAwNiwtNi40MTczMiA4LjI4MzAxLC0xMC4wNjg2NSBsIDAuNzAxMDUsLTAuODI0OTYgLTQuNDkyMDMsLTUuNDQ3MDUgYyAtMi40NzA2MiwtMi45OTU4OCAtNC40OTIwNSwtNS40ODIxNiAtNC40OTIwNywtNS41MjUwNSAtMmUtNSwtMC4wNDI5IDEuNjM3MDksLTAuMDU3NiAzLjYzODAyLC0wLjAzMjYgbCAzLjYzODA2LDAuMDQ1NCAyLjU5NDQ2LDMuMTI5NTggYyAxLjQyNjk1LDEuNzIxMjggMi42ODc2NiwzLjIyMzQ5IDIuODAxNTgsMy4zMzgyNSBsIDAuMjA3MTEsMC4yMDg2NiAyLjY3MDc1LC0zLjI3OTExIDIuNjcwNzQsLTMuMjc5MTIgMS4yNDUzNCwtMC4xNzA2OSBjIDEuNTY3NTQsLTAuMjE0ODYgMy45MTM3NiwtMC4xOTU0OSA1LjIwOTQ0LDAuMDQzIGwgMC45OTUyNSwwLjE4MzE5IC00LjM2ODY5LDUuMjc3ODIgYyAtMi40MDI3OCwyLjkwMjc5IC00LjM2ODY5LDUuMzcwODcgLTQuMzY4NjksNS40ODQ2MSAwLDAuMTc3OTIgNy4wMjM3NSw4Ljc3ODQ4IDguNTUwNzgsMTAuNDcwMzkgbCAwLjUzNzI5LDAuNTk1MzEgaCAtMy43MzE5OSAtMy43MzE5OSBsIC0yLjg2MjU3LC0zLjQ1MjQ2IC0yLjg2MjU2LC0zLjQ1MjQ2IC0wLjY2MTQ2LDAuNzY1ODcgYyAtMS4yMTQ0LDEuNDA2MTEgLTMuODY2NjUsNC42NzUwMiAtNC4zODM4NSw1LjQwMzEzIGwgLTAuNTEwOTQsMC43MTkyOSAtMy42MzgwMiwwLjAwOCBjIC0yLjAwMDkxLDAuMDA1IC0zLjYzODAyLC0wLjA1ODcgLTMuNjM4MDIsLTAuMTQwNjkgeiBtIDMzLjMzOTM4LC0wLjI3MjQ3IGMgLTEuMjAyMDgsLTAuNTIxMjkgLTIuMDQ5NTEsLTEuMzI3ODUgLTIuNjczNDcsLTIuNTQ0NTQgbCAtMC41MDM0MSwtMC45ODE2NSB2IC0xMi4wNDkwOCAtMTIuMDQ5MDkgaCAzLjA0MjcgMy4wNDI3MSB2IDIuOTEwNDIgMi45MTA0MiBsIDAuNDYzMDIsMC4wNDQ0IGMgMC4yNTQ2NiwwLjAyNDQgMi4xODk0MywwLjA1OTMgNC4yOTk0OCwwLjA3NzQgbCAzLjgzNjQ2LDAuMDMzMSB2IDIuNjM0NTMgMi42MzQ1MyBsIC00LjI5OTQ4LDAuMDcyNyAtNC4yOTk0OCwwLjA3MjcgdiA0Ljk5MTIxIDQuOTkxMjIgbCAwLjQ5OTU2LDAuNjE2OTQgMC40OTk1NywwLjYxNjkzIDMuOTMyMjEsMC4wMDggMy45MzIyLDAuMDA4IDAuMDc1NCwyLjcxMTk4IDAuMDc1NCwyLjcxMTk4IC01LjQ5OTM2LC0wLjAxMDQgLTUuNDk5MzYsLTAuMDEwMyB6IG0gMTkuNDQyNzIsLTAuMDcyIC0xLjA2MDYsLTAuNDgxODMgLTAuODM1NTYsLTAuOTUxNjUgLTAuODM1NTcsLTAuOTUxNjUgLTAuMzExMzksLTEuNDk5OTUgLTAuMzExMzgsLTEuNDk5OTYgMC4xMDc2MywtNS45OTA0NSAwLjEwNzYzLC01Ljk5MDQ1IDAuMzMwODIsLTAuNzkzNzUgYyAwLjQ0NzI1LC0xLjA3MzEzIDEuNTMyMDMsLTIuMTc5MTIgMi44MTA2OSwtMi44NjU2NSBsIDEuMDU4MzMsLTAuNTY4MjQgNi45MjcxOSwtMC4wOTE1IDYuOTI3MTksLTAuMDkxNSAxLjQyMzE3LDAuMjk1NDUgMS40MjMxOCwwLjI5NTQ1IDEuMDEwMzcsMC44MzI4MyAxLjAxMDM3LDAuODMyODMgMC40ODkxOCwxLjA3NzA1IDAuNDg5MTksMS4wNzcwNSB2IDYuODc5MTcgNi44NzkxNyBsIC0wLjQ4ODQ1LDEuMDU4MzMgYyAtMC41OTExNSwxLjI4MDg0IC0xLjQyODc2LDIuMDg2OTMgLTIuNzM2MTksMi42MzMyMSBsIC0wLjk4MDA4LDAuNDA5NSAtNy43NDc1NiwtMC4wMDYgLTcuNzQ3NTYsLTAuMDA2IHogbSAxNC4yNzQ3NywtNS42NTA4NSAwLjQxMTg3LC0wLjU4ODA0IHYgLTQuMTkxODUgLTQuMTkxODYgbCAtMC4zMDQxOSwtMC41Nzc4OCBjIC0wLjE2NzMsLTAuMzE3ODUgLTAuNDM1MTksLTAuNjY1MzkgLTAuNTk1MzEsLTAuNzcyMyBsIC0wLjI5MTEyLC0wLjE5NDM5IC00LjY5NjM1LC0wLjAwNCAtNC42OTYzNiwtMC4wMDQgLTAuNTI5MTcsMC41MjkxNiAtMC41MjkxNiwwLjUyOTE3IHYgNC41NDMyMyA0LjU0MzIzIGwgMC40Mzc4OCwwLjQ4Mzg1IDAuNDM3ODgsMC40ODM4NiBoIDQuOTcxMDggNC45NzEwNyB6IG0gMTAuOTk1MjEsLTMuNTM5MTYgdiAtOS42ODM0NSBsIDAuNDAxMTUsLTAuODQ1MzcgMC40MDExNSwtMC44NDUzNiAwLjg1NTYyLC0wLjUxNzU0IDAuODU1NjIsLTAuNTE3NTQgaCA2LjQ4MjI5IDYuNDgyMjkgbCAwLjA3NTQsMi43MTE5OCAwLjA3NTQsMi43MTE5OCBoIC00LjA2NDE4IC00LjA2NDE4IGwgLTAuNTc1MjksMC42MTIzNiAtMC41NzUyOCwwLjYxMjM3IHYgNy43MjIwMSA3LjcyMjAxIGggLTMuMTc1IC0zLjE3NSB6IG0gMjIuMjI1LC01LjEzMzIyIHYgLTE0LjgxNjY3IGggMy42NjE0OSAzLjY2MTQ5IGwgMS4xNDkzMiwxLjc4NTk0IGMgMS41MjUzMywyLjM3MDIzIDYuNDE0MjcsMTAuMzIxNTkgNy43MjczMiwxMi41Njc3MSAwLjU3NDIyLDAuOTgyMjcgMS4xNDIwMiwxLjc4NTk0IDEuMjYxNzcsMS43ODU5NCAwLjIxMjQ0LDAgMi4xOTI4MSwtMy4wODc1OCA2LjYxODQzLC0xMC4zMTg3NSAxLjIwMjM0LC0xLjk2NDUzIDIuNTMyNzQsLTQuMDc3ODkgMi45NTY0NiwtNC42OTYzNiBsIDAuNzcwMzksLTEuMTI0NDggaCAzLjQyNjg3IDMuNDI2ODcgdiAxNC44MTY2NyAxNC44MTY2NyBoIC0zLjAxOTQ1IC0zLjAxOTQ1IGwgLTAuMTM5ODgsLTAuOTkyMTkgYyAtMC4wNzY5LC0wLjU0NTcgLTAuMTM0OTksLTQuNjAxNzQgLTAuMTI5MDMsLTkuMDEzNDEgMC4wMSwtNy4xMTA2IC0wLjA2MzksLTguNjM3MzkgLTAuMzk2NDQsLTguMjI4NiAtMC4yNTA0MSwwLjMwNzg3IC02LjM0NDU2LDkuNjgwNzUgLTcuNTk0NTksMTEuNjgwNTggbCAtMS40NDM4NywyLjMwOTkyIC0xLjM5MDQzLDAuMDA1IC0xLjM5MDQzLDAuMDA1IC0yLjcyNDU1LC00LjE2NzE5IGMgLTEuNDk4NTEsLTIuMjkxOTYgLTMuNTUxNzIsLTUuNDQxNCAtNC41NjI3LC02Ljk5ODc2IGwgLTEuODM4MTMsLTIuODMxNTcgLTAuMzMwNzMsLTAuMDEyNyAtMC4zMzA3MywtMC4wMTI3IHYgOS4xMjgxMiA5LjEyODEzIGggLTMuMTc1IC0zLjE3NSB6IG0gNDIuNzYzMjEsMTQuNDI3OTcgLTEuMDI1MzIsLTAuMzY1NDggLTAuODk1NDksLTAuODY3OTQgLTAuODk1NDksLTAuODY3OTUgLTAuMjYwNTMsLTAuOTM3NzggLTAuMjYwNTIsLTAuOTM3NzggLTEwZS00LC0yLjU4ODE4IC0wLjAwMSwtMi41ODgxOSAwLjM1NzQ3LC0wLjg1NTUzIDAuMzU3NDYsLTAuODU1NTMgMC45NDQ1OSwtMC44MjkzNiAwLjk0NDYsLTAuODI5MzcgMS4zNTY4LC0wLjI5MDk4IDEuMzU2OCwtMC4yOTA5OCBoIDUuNTQzMjIgNS41NDMyMyB2IC0xLjMwNzkyIC0xLjMwNzkxIGwgLTAuNTg4MDQsLTAuNDExODggLTAuNTg4MDQsLTAuNDExODggaCAtNi40MjM0MiAtNi40MjM0MiB2IC0yLjUzMDc3IC0yLjUzMDc3IGwgOC4xMzU5NCwwLjA4MzQgOC4xMzU5NCwwLjA4MzQgMC43OTkyNSwwLjQzODQ2IGMgMS4xNDI1NiwwLjYyNjc5IDIuMjU3MjMsMS44MDAwMSAyLjY5NTE1LDIuODM2NzMgbCAwLjM3NzYxLDAuODkzOTUgMC4wODY2LDguMTAxODkgYyAwLjA0NzcsNC40NTYwNCAwLjAyNDgsOC40MjkzMSAtMC4wNTA4LDguODI5NDkgbCAtMC4xMzc1LDAuNzI3NjEgLTkuMDI4OTEsLTAuMDExNiAtOS4wMjg5LC0wLjAxMTYgeiBtIDEyLjkxNDg4LC00LjY3MjMzIGMgMC4wNTA1LC0wLjA1NDEgMC4xMzQ0MiwtMC45MzE3OCAwLjE4NjUzLC0xLjk1MDQzIGwgMC4wOTQ3LC0xLjg1MjA4IC00LjY1MzEzLC0wLjA3MjEgLTQuNjUzMTQsLTAuMDcyMSAtMC43MDQ2OCwwLjU1NDMgLTAuNzA0NjcsMC41NTQzIHYgMS4wMTk5MiAxLjAxOTkzIGwgMC42MjkyOCwwLjQ5NDk5IDAuNjI5MjgsMC40OTQ5OSA0LjU0MTk5LC0wLjA0NjcgYyAyLjQ5ODEsLTAuMDI1NyA0LjU4MzMsLTAuMDkxIDQuNjMzNzksLTAuMTQ1MDYgeiBtIDE0Ljk2NTY2LDQuNzUwMTYgYyAtMC41MDkzMywtMC4xNDQ3MyAtMS4zMDA4MSwtMC41NDc0OCAtMS43NTg4NiwtMC44OTQ5OSBsIC0wLjgzMjgxLC0wLjYzMTg0IC0wLjU1NjI1LC0xLjE0OTA2IC0wLjU1NjI1LC0xLjE0OTA2IHYgLTExLjgyMjcyIC0xMS44MjI3MSBoIDMuMDQyNzEgMy4wNDI3MSB2IDIuOTEwNDEgMi45MTA0MiBoIDMuOTY4NzUgMy45Njg3NCB2IDIuNTEzNTQgMi41MTM1NCBoIC0zLjk2ODc0IC0zLjk2ODc1IHYgNS4yOTE2NyA1LjI5MTY3IGwgMC41MjkxNiwwLjUyOTE3IDAuNTI5MTcsMC41MjkxNiBoIDMuNDM5NTggMy40Mzk1OCB2IDIuNjQ1ODQgMi42NDU4MyBsIC00LjY5NjM1LC0wLjAyMzkgLTQuNjk2MzUsLTAuMDIzOSB6IE0gMTkzLjA0MTc4LDE0My42MzM5OCBjIC0wLjA3NjUsLTAuMTk5NCAtMC4xMDQsLTEuMzA0NTMgLTAuMDYxMSwtMi40NTU4MyBsIDAuMDc4MSwtMi4wOTMyOCAzLjA4NjkxLC0wLjA3NDQgMy4wODY5MiwtMC4wNzQzIDAuMTc4MDgsMS42NjI5MiBjIDAuMDk3OSwwLjkxNDYxIDAuMTM3NTksMi4wMTk2MyAwLjA4ODEsMi40NTU2IGwgLTAuMDksMC43OTI2OSAtMy4xMTM5MiwwLjA3NDYgLTMuMTEzOTIsMC4wNzQ2IHoiCiAgICAgICBzdHlsZT0iZmlsbDojZjlmOWY5IgogICAgICAgaWQ9InBhdGgxLTQiIC8+PC9nPjwvc3ZnPgo=" alt="Mixtormat"><img class="brand-icon" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB3aWR0aD0iNTMuNDYxMjM5bW0iCiAgIGhlaWdodD0iNTguMDcyOTI2bW0iCiAgIHZpZXdCb3g9IjAgMCA1My40NjEyMzkgNTguMDcyOTI2IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxIgogICB4bWw6c3BhY2U9InByZXNlcnZlIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MSIKICAgICBwYWdlY29sb3I9IiM1MDUwNTAiCiAgICAgYm9yZGVyY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlY2hlY2tlcmJvYXJkPSIxIgogICAgIGlua3NjYXBlOmRlc2tjb2xvcj0iIzUwNTA1MCIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iPjxpbmtzY2FwZTpwYWdlCiAgICAgICB4PSIwIgogICAgICAgeT0iMCIKICAgICAgIHdpZHRoPSI1My40NjEyMzkiCiAgICAgICBoZWlnaHQ9IjU4LjA3MjkyNiIKICAgICAgIGlkPSJwYWdlMiIKICAgICAgIG1hcmdpbj0iMCIKICAgICAgIGJsZWVkPSIwIiAvPjwvc29kaXBvZGk6bmFtZWR2aWV3PjxkZWZzCiAgICAgaWQ9ImRlZnMxIiAvPjxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC04Ny4zNDIxOTUsLTEyNS42Nzk3KSI+PHBhdGgKICAgICAgIHN0eWxlPSJmaWxsOiNmOWY5ZjkiCiAgICAgICBkPSJtIDExMy40MDQwOCwxODMuNzUyNjMgYyAtOC42MTM3MywtNS4yNzY1OSAtMTcuMTY4MjQ2LC0xMC42NTAxMSAtMjUuODE4NzQ2LC0xNS44NjYzOSBsIDYuNTQxMzEsLTMuOTU0NjEgMTkuNzA4NTE2LDEyLjMwMjU2IDIwLjM1ODMyLC0xMi4yMjU1MSA2LjE1ODU4LDMuNzA5NDQgeiBtIC0yNS40Nzg3OTYsLTI4LjA4NTE4IDcuODY3NiwtNS4yODQ4MSAtOC40NTA2OSwtNS4yNDI5OSAwLjE0LC0xNS42Mjc3IDYuMDgwNTYsLTMuODMyMjUgMjAuNDg1MTg2LDEyLjkyODk4IDIwLjU0NjkyLC0xMi45MjE0MiA2LjA2ODU3LDMuODI0NjkgMC4xNCwxNS42NDc5OCAtOC41MzM1OSw1LjQ1MTE1IGMgMi42MTE4OSwxLjc2MzAzIDUuMzQ1NjUsMy4zNTY5NSA4LjAyOTMyLDUuMDExOCAtOC43NDg4NSw1LjM3MTE0IC0xNy41MzAxOSwxMC42OTMwMSAtMjYuMjk5MzcsMTYuMDMyMDIgeiBtIDQzLjQ3NzcyNiwtNi4xMTY1NiAwLjE0MzQsLTEwLjQxMzA0IGggLTAuMjY3MjEgbCAtMTcuMTYyMjgsMTEuMTAwNDkgLTE3LjI3MTEzNiwtMTEuMTAwNDkgLTAuMjM1NTUsMTAuMjc5MjEgMTcuMzMwMjA2LDExLjA2NzkgYyA1LjkyMjUyLC0zLjQ1ODI0IDExLjY2Mjk0LC03LjI2NDUzIDE3LjQ2MjU3LC0xMC45MzQwNyB6IgogICAgICAgaWQ9InBhdGgxIgogICAgICAgc29kaXBvZGk6bm9kZXR5cGVzPSJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiAvPjwvZz48L3N2Zz4K" alt=""></div>
+  <div class="topbar-title">Documentation</div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-label">Contents</div>
+    <nav class="nav" aria-label="Documentation sections">
+      <a href="#overview" class="active">Overview</a>
+      <a href="#quick-start">Quick Start</a>
+      <a href="#workspace">Workspace</a>
+      <a href="#library">Material Library</a>
+      <a href="#importing">Importing Surfaces</a>
+      <a href="#layer-stack">Layer Stack</a>
+      <a href="#layer-types">Layer Types</a>
+      <a href="#composition">Composition & Channels</a>
+      <a href="#height">Height System</a>
+      <a href="#masks">Masks</a>
+      <a href="#generated-masks">Generated Masks</a>
+      <a href="#ids">Region & ID Tools</a>
+      <a href="#effects">Effects</a>
+      <a href="#peeling">Procedural Peeling</a>
+      <a href="#erosion">Erosion</a>
+      <a href="#stain">Stain</a>
+      <a href="#chipping">Chipping & Worn Edges</a>
+      <a href="#grade">Grade</a>
+      <a href="#craquelure">Craquelure</a>
+      <a href="#parameters">Parameters</a>
+      <a href="#references">References & Drivers</a>
+      <a href="#instances">Instances & Reuse</a>
+      <a href="#preview">Preview</a>
+      <a href="#baking">Baking</a>
+      <a href="#shortcuts">Shortcuts & Gestures</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <article class="article">
+      <div class="hero">
+        <div class="eyebrow">Mixtormat / Artist Documentation</div>
+        <h1>Layer, mix, weather, and finish materials inside Unreal.</h1>
+        <p class="lead">Mixtormat is a GPU-driven material compositor built around an artist-friendly layer stack. It combines complete PBR surfaces, masks, height-aware blending, procedural effects, region IDs, parameter links, and a live Unreal preview while keeping the material editable as a recipe until you bake it.</p>
+      </div>
+
+      <section id="overview">
+        <div class="section-head"><h2>Overview</h2></div>
+        <p>The main idea is simple: treat a material like a stack of surfaces rather than a single finished texture set. A stone base can receive plaster, paint, rust, dust, stains, cracks, peeling, or other treatments without flattening those decisions into one irreversible result.</p>
+        <p>Each material layer can contribute several channels at once. Mixtormat then combines the channels, masks, and effects in the order shown in the layer stack. The preview is the current GPU-composited result; the saved Mixtormat asset is the editable recipe; the bake is the final set of Unreal assets.</p>
+
+        <div class="grid">
+          <div class="mini"><strong>Complete PBR Surfaces</strong>Work with Base Color, Normal, Roughness, Ambient Occlusion, Metallic, and Height as one surface instead of rebuilding each channel separately.</div>
+          <div class="mini"><strong>Height-Aware Mixing</strong>Let raised and recessed areas influence where materials meet instead of relying only on flat opacity.</div>
+          <div class="mini"><strong>Ordered Masks & Effects</strong>A layer contains a readable sequence of masks, generated regions, filters, IDs, and effects.</div>
+          <div class="mini"><strong>Non-Destructive Recipes</strong>Save the whole setup, reopen it, reorder it, change values, branch variants, and bake again.</div>
+        </div>
+
+        <div class="image-slot wide"><span>IMAGE — Full Mixtormat workspace. Label Layers, Preview, Inspector, Material Library and Mask Library.</span></div>
+
+        <div class="note">
+          <div class="kicker">A useful mental model</div>
+          Materials define <strong>what the surface is</strong>. Masks define <strong>where something happens</strong>. Effects define <strong>what changes</strong>. IDs define <strong>which regions can behave differently</strong>.
+        </div>
+      </section>
+
+      <section id="quick-start">
+        <div class="section-head"><h2>Quick Start</h2></div>
+
+        <div class="card">
+          <h3>1. Pick a material from the Library</h3>
+          <p>Browse by family or search by name. Selecting a surface lets you inspect it before it becomes part of a recipe.</p>
+        </div>
+
+        <div class="card">
+          <h3>2. Drag the surface into Layers</h3>
+          <p>Dropping a surface into an empty stack starts a new Mixtormat material. Dropping another surface adds a new material layer.</p>
+        </div>
+
+        <div class="card">
+          <h3>3. Decide how the layers should meet</h3>
+          <p>Start with layer order, tiling, composition mode, channel influence, and Height. Then add a mask if the upper material should only appear in specific areas.</p>
+        </div>
+
+        <div class="card">
+          <h3>4. Add breakup</h3>
+          <p>Add texture masks, Generated Masks, region IDs, or procedural tools. Use these to keep wear from being perfectly uniform.</p>
+        </div>
+
+        <div class="card">
+          <h3>5. Add effects</h3>
+          <p>Use Grade, Stain, Erosion, Procedural Peeling, Chipping, Worn Edges, Craquelure, or other available effects to push the surface toward the intended history.</p>
+        </div>
+
+        <div class="card">
+          <h3>6. Check the Preview</h3>
+          <p>Switch between Sphere, Plane, and Cube, change lighting, compare Before / After, inspect masks and IDs, and enable displacement when Height matters.</p>
+        </div>
+
+        <div class="card">
+          <h3>7. Save, then Bake</h3>
+          <p>Save the recipe first. Bake when you want regular Base Color, Normal, packed material data, Height, and a Material Instance for production use.</p>
+        </div>
+
+        <div class="image-slot"><span>IMAGE — One simple material from empty workspace to two-layer result.</span></div>
+      </section>
+
+      <section id="workspace">
+        <div class="section-head"><h2>Workspace</h2></div>
+        <p>Mixtormat keeps the authoring view divided into a few permanent jobs instead of spreading controls across many windows.</p>
+
+        <div class="grid">
+          <div class="mini"><strong>Left — Layers / Library</strong>Switch between the current recipe and the searchable surface library.</div>
+          <div class="mini"><strong>Center — Preview</strong>Judge the current composite on a simple look-development mesh.</div>
+          <div class="mini"><strong>Right — Inspector</strong>Edit whichever layer, mask, generator, ID node, or effect is selected.</div>
+          <div class="mini"><strong>Bottom — Materials / Masks</strong>Keep reusable surfaces and masks close while building the stack.</div>
+        </div>
+
+        <h3>Resizable layout</h3>
+        <p>The primary columns and the center preview/library split can be resized. The bottom Material and Mask galleries can also be collapsed to give the preview more room.</p>
+
+        <h3>Top bar</h3>
+        <p>The main document actions live at the top: Undo, Redo, New, Load, Save, Save As, and Bake. The current material name and edited state remain visible while you work.</p>
+
+        <h3>Status bar</h3>
+        <p>The bottom status area reports the current working state, preview quality, rendering mode, and layer count. It is useful for confirming whether a recipe is saved and what preview mode you are judging.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Annotated workspace screenshot with the four working regions and top/status bars.</span></div>
+      </section>
+
+      <section id="library">
+        <div class="section-head"><h2>Material Library</h2></div>
+        <p>The Library is the source browser for reusable Mixtormat surfaces. Surfaces are grouped by family and shown as visual tiles so the normal workflow is browse → inspect → drag, rather than search through raw texture assets in the Content Browser.</p>
+
+        <h3>Categories and search</h3>
+        <p>Choose a category to narrow the library, or search by material name. The category list is rebuilt from the surface families currently available to Mixtormat.</p>
+
+        <h3>Preview before using</h3>
+        <p>If no recipe is being edited, selecting a surface previews it directly. This makes the Library useful for comparing source materials before committing one to a stack.</p>
+
+        <h3>Gallery zoom</h3>
+        <p>Hold <code>Ctrl</code> and use the mouse wheel over a material or mask tile to change the gallery tile size. Smaller tiles are useful for scanning a large library; larger tiles are better for evaluating a surface visually.</p>
+
+        <h3>Drag into the stack</h3>
+        <p>A library surface can be dragged into Layers. In an empty document it becomes the first layer. In an existing recipe it is added as another Material Layer.</p>
+
+        <div class="image-slot"><span>IMAGE — Material Library showing category filters, search, tile sizes and a selected surface.</span></div>
+      </section>
+
+      <section id="importing">
+        <div class="section-head"><h2>Importing Surfaces</h2></div>
+        <p>For artists preparing custom source sets, Mixtormat expects the channels of a surface to agree as one material. The current source convention uses matching names with channel suffixes.</p>
+
+        <div class="grid">
+          <div class="mini"><strong>_BC</strong>RGB Base Color. This is the color texture and is treated as sRGB data.</div>
+          <div class="mini"><strong>_N</strong>RGB tangent-space Normal.</div>
+          <div class="mini"><strong>_RAM</strong>R = Roughness, G = Ambient Occlusion, B = Metallic.</div>
+          <div class="mini"><strong>_RAMH</strong>Same RAM packing, with A = authored blend Height.</div>
+        </div>
+
+        <h3>RAM versus RAMH</h3>
+        <p>Use RAMH when the source contains an authored height field intended for material blending. A normal RAM texture does not treat its alpha as Height.</p>
+
+        <h3>Reusable masks</h3>
+        <p>Reusable masks are grayscale data rather than PBR surface sets. For source masks, use lossless linear grayscale data rather than sRGB color data.</p>
+
+        <h3>Why the naming matters</h3>
+        <p>The importer needs to recognize which textures belong to the same surface and which role each file plays. Keeping one shared base name makes the set unambiguous.</p>
+
+        <div class="image-slot"><span>IMAGE — Example custom source set: _BC, _N, _RAMH and the imported surface tile.</span></div>
+      </section>
+
+      <section id="layer-stack">
+        <div class="section-head"><h2>Layer Stack</h2></div>
+        <p>The stack is the actual material recipe. Layers are evaluated in order, and each layer can contain an ordered list of children such as masks, effects, generated masks, IDs, and filters.</p>
+
+        <h3>Selecting and reordering</h3>
+        <p>Click a layer to edit it in the Inspector. Drag a layer row to reorder it. The first layer is not a permanently locked “base” layer; layers can be moved and the stack can even be emptied.</p>
+
+        <h3>Visibility</h3>
+        <p>The eye icon enables or disables a layer. Use <code>Ctrl</code> or <code>Alt</code> while clicking the eye to solo that layer in the preview.</p>
+
+        <h3>Layer children</h3>
+        <p>Expand a layer to see its children. Children can be selected, enabled or disabled with their status control, reordered by dragging, moved between compatible layers, duplicated, copied, instanced, or removed.</p>
+
+        <h3>Right-click menus</h3>
+        <p>Right-click a layer or child for its context actions. This is where duplication, removal, copy/paste, instance operations, and other structure-level commands live.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Expanded layer with multiple child types and the layer context menu open.</span></div>
+      </section>
+
+      <section id="layer-types">
+        <div class="section-head"><h2>Layer Types</h2></div>
+
+        <div class="card">
+          <h3>Material Layer</h3>
+          <p>A complete source surface from the Library. This is the usual choice when combining real PBR materials such as stone + paint, metal + rust, plaster + brick, or clean + damaged variants.</p>
+        </div>
+
+        <div class="card">
+          <h3>Fill Layer</h3>
+          <p>An artist-authored layer for simple material values. Fill layers can override properties such as Base Color, Roughness, Metallic, and IOR without requiring a full source texture set.</p>
+        </div>
+
+        <div class="card">
+          <h3>Effect Layer</h3>
+          <p>A layer whose main role is an effect contribution rather than a new base material. This can be useful when a treatment deserves its own top-level place in the recipe.</p>
+        </div>
+
+        <h3>Material Layer versus child Effect</h3>
+        <p>Use a new Material Layer when a different physical surface is being introduced. Use a child effect when the existing surface is being changed. Keeping that distinction usually makes complex stacks easier to read later.</p>
+
+        <div class="image-slot"><span>IMAGE — Side-by-side examples of Material, Fill and Effect layer rows.</span></div>
+      </section>
+
+      <section id="composition">
+        <div class="section-head"><h2>Composition &amp; Channels</h2></div>
+        <p>Mixtormat does not have to treat every layer as one fixed all-or-nothing blend. The layer controls determine both how the surface composes and which material channels should contribute.</p>
+
+        <h3>Composition mode</h3>
+        <div class="grid">
+          <div class="mini"><strong>Replace</strong>The incoming layer replaces the underlying contribution according to its mask and blend controls.</div>
+          <div class="mini"><strong>Coat</strong>Treat the layer more like material sitting over another surface, useful when the underlying surface relationship should remain perceptible.</div>
+        </div>
+
+        <h3>Complete Surface</h3>
+        <p>Use Complete Surface when the layer represents a full material and should contribute the normal PBR channel set together.</p>
+
+        <h3>Normal Detail</h3>
+        <p>Use Normal Detail when a layer is mainly adding normal information rather than replacing the whole surface. A standalone Normal texture can also be used as the normal source.</p>
+
+        <h3>Normal blending</h3>
+        <div class="grid">
+          <div class="mini"><strong>Combine (RNM)</strong>Combines tangent-space normal detail while preserving the orientation of the surface below.</div>
+          <div class="mini"><strong>Override</strong>Uses the incoming normal as the replacement in the affected region.</div>
+        </div>
+
+        <h3>Channel influence</h3>
+        <p>Channel influence lets a layer affect some properties more than others. For example, you may want a dust layer to change Base Color and Roughness strongly while barely changing Normal or Height.</p>
+
+        <h3>Roughness and normal adjustments</h3>
+        <p>Layer-level controls include roughness bias/contrast/offset and normal intensity. These are useful for matching two source materials before adding more complicated effects.</p>
+
+        <div class="image-slot"><span>IMAGE — Inspector showing Composition, Channel Influence and Normal controls.</span></div>
+      </section>
+
+      <section id="height">
+        <div class="section-head"><h2>Height System</h2></div>
+        <p>Height is one of the main differences between a flat opacity mix and a material transition that feels physically layered. Mixtormat can use Height as part of the relationship between an incoming layer and the surface below it.</p>
+
+        <h3>Height sources</h3>
+        <div class="grid">
+          <div class="mini"><strong>RAMH Height</strong>Uses authored Height stored in the alpha channel of a RAMH source.</div>
+          <div class="mini"><strong>Mask as Height</strong>Uses the accumulated layer mask as the height signal.</div>
+          <div class="mini"><strong>Constant Height</strong>Uses a uniform artist-set height value.</div>
+          <div class="mini"><strong>Layer Height</strong>Uses height information from another layer in the current recipe.</div>
+        </div>
+
+        <h3>Why relative height matters</h3>
+        <p>Height blending is most useful when the two materials have a believable relationship. Paint may sit above a rough wall but sink into pores. Dirt may collect in recesses. Mortar may sit lower than brick faces. The correct result often comes from adjusting the relative heights before adding more noise to the mask.</p>
+
+        <h3>Height and the preview</h3>
+        <p>The composited Height can also drive preview displacement. Use this to check whether a blend reads as a real surface from a glancing angle rather than only from the front.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Same blend shown as flat mask versus height-aware blend, plus displaced preview.</span></div>
+      </section>
+
+      <section id="masks">
+        <div class="section-head"><h2>Masks</h2></div>
+        <p>Masks define coverage. They can be texture-based or procedural, and several masks can be combined in sequence under one layer.</p>
+
+        <h3>Mask shaping</h3>
+        <p>Balance, Contrast, Offset, and Invert reshape the mask without changing the source texture. Use these before stacking additional masks when the source is already close to the region you want.</p>
+
+        <h3>Placement controls</h3>
+        <p>Masks support separate X/Y tiling, UV offsets, U/V flips, and 0°, 90°, 180°, or 270° rotation. Quarter-turn rotation keeps tiled masks predictable at their repeat boundaries.</p>
+
+        <h3>Mask weight</h3>
+        <p>Weight controls how strongly that mask operation participates in the accumulated result.</p>
+
+        <h3>Mask blend modes</h3>
+        <div class="grid">
+          <div class="mini"><strong>Replace / Add / Subtract</strong>Directly replace coverage or add/remove regions.</div>
+          <div class="mini"><strong>Multiply</strong>Intersect the current coverage with another mask.</div>
+          <div class="mini"><strong>Min / Max</strong>Keep the lower or higher value between masks.</div>
+          <div class="mini"><strong>Add/Sub</strong>Use a centered add/subtract style operation.</div>
+          <div class="mini"><strong>Overlay</strong>Contrast-like combination that preserves more structure from both masks.</div>
+          <div class="mini"><strong>Difference / Exclusion</strong>Create alternate overlap relationships useful for procedural breakup.</div>
+        </div>
+
+        <h3>Scoped masks</h3>
+        <p>An Effect can own a mask of its own. This means the effect can be localized without changing the entire layer mask—for example, a stain only in one region of a painted layer.</p>
+
+        <div class="image-slot wide"><span>IMAGE — One texture mask with shaping controls, then three mask blend-mode examples.</span></div>
+      </section>
+
+      <section id="generated-masks">
+        <div class="section-head"><h2>Generated Masks</h2></div>
+        <p>A Generated Mask builds coverage from information already available in the material instead of requiring a painted texture. It is useful for effects that should respond to the shape or structure of the surface.</p>
+
+        <h3>Curvature</h3>
+        <p>Curvature can favor convex or cavity regions. Use it for edge exposure, worn corners, recessed buildup, or any mask that should respond to changes in the Normal field.</p>
+
+        <h3>Direction</h3>
+        <p>Directional weighting favors surface orientation in a chosen tangent-space direction. Angle and broadness control where the directional response points and how tightly it is focused.</p>
+
+        <h3>Ambient Occlusion</h3>
+        <p>AO weighting is useful for grime, dust buildup, dampness, or other effects that should prefer occluded areas rather than exposed faces.</p>
+
+        <h3>Height</h3>
+        <p>Height weighting lets coverage prefer higher or lower parts of the current surface structure. Combined with curvature and AO, it can create more believable placement than any one signal alone.</p>
+
+        <h3>Combining signals</h3>
+        <p>Generated Masks use signal weights, so several cues can contribute at once. A practical example is “mostly cavities, slightly biased by height, with a small directional influence.”</p>
+
+        <div class="image-slot"><span>IMAGE — Generated Mask with Curvature, Direction, AO and Height debug examples.</span></div>
+      </section>
+
+      <section id="ids">
+        <div class="section-head"><h2>Region &amp; ID Tools</h2></div>
+        <p>ID tools divide a surface into discrete regions. Unlike a soft grayscale mask, every region can have a stable identity. This is useful when you want variation per brick, stone, flake, tile, crack island, or procedural cell.</p>
+
+        <div class="card">
+          <h3>Color ID</h3>
+          <p>Build regions from color information. This is useful when an authored ID texture or color-coded source already contains the segmentation you need.</p>
+        </div>
+
+        <div class="card">
+          <h3>Cluster IDs</h3>
+          <p>Cluster a surface into region labels instead of producing soft coverage. Because the result is discrete IDs, it is intended to feed later ID-aware variation rather than behaving like a normal mask.</p>
+        </div>
+
+        <div class="card">
+          <h3>Pattern IDs</h3>
+          <p>Create structured, tileable region layouts. Pattern IDs are useful for materials such as masonry, tiles, panels, paving, or any surface where a repeated construction pattern should drive per-piece variation.</p>
+        </div>
+
+        <div class="card">
+          <h3>Random From IDs</h3>
+          <p>Turn each region ID into a repeatable random value. This is ideal for small per-piece changes without noisy variation inside each piece.</p>
+        </div>
+
+        <div class="card">
+          <h3>HSV From IDs</h3>
+          <p>Use IDs to vary hue, saturation, and value per region while keeping each region internally coherent.</p>
+        </div>
+
+        <div class="card">
+          <h3>Ramp From IDs</h3>
+          <p>Turn region IDs into gradient/ramp information for ordered variation, relief shaping, or downstream control.</p>
+        </div>
+
+        <div class="note">
+          <div class="kicker">Why IDs are useful</div>
+          If every pixel receives different noise, the material looks noisy. If every <strong>region</strong> receives a different value, the material can look assembled from different physical pieces.
+        </div>
+
+        <div class="image-slot wide"><span>IMAGE — Pattern/Cluster IDs → Random From IDs → final per-piece material variation.</span></div>
+      </section>
+
+      <section id="effects">
+        <div class="section-head"><h2>Effects</h2></div>
+        <p>Effects modify material information already in the recipe. Some are straightforward adjustments; others generate their own fields from Height, Normal, masks, or region data.</p>
+
+        <div class="grid">
+          <div class="mini"><strong>Grade</strong>Color and tonal correction.</div>
+          <div class="mini"><strong>Stain</strong>Localized discoloration and surface buildup.</div>
+          <div class="mini"><strong>Erosion</strong>Directional/gully-style wear driven by existing surface structure.</div>
+          <div class="mini"><strong>Procedural Peeling</strong>Grow and shape lifted or detached material regions.</div>
+          <div class="mini"><strong>Chipping</strong>Break edges or surface regions into chipped damage.</div>
+          <div class="mini"><strong>Worn Edges</strong>Target edge wear and exposed regions.</div>
+        </div>
+
+        <h3>Effect order</h3>
+        <p>Effects are evaluated in sequence. A Grade before a Stain does not necessarily produce the same result as the Grade after it. Height-changing effects can also change what later effects see.</p>
+
+        <h3>Bypass while judging</h3>
+        <p>Select a child and use <strong>Bypass child</strong> in the preview to temporarily remove it from the live composition without deleting or disabling it in the saved recipe.</p>
+
+        <div class="image-slot"><span>IMAGE — One layer with several effects and Bypass child enabled for the selected effect.</span></div>
+      </section>
+
+      <section id="peeling">
+        <div class="section-head"><h2>Procedural Peeling</h2></div>
+        <p>Procedural Peeling is for material that separates from the surface below: old paint, coatings, plaster, labels, thin crusts, or similar layered damage.</p>
+
+        <h3>Source mask</h3>
+        <p>The peel can use its own Peel Mask. If none is assigned, it can fall back to the layer's accumulated child mask. Mask tiling, inversion, gain, and threshold define the initial peel contour.</p>
+
+        <h3>Growth</h3>
+        <p>Growth can respond to Convexity, Occlusion, and Height. These signals bias where peel propagation is more likely rather than producing a completely uniform expansion.</p>
+
+        <h3>Flakes</h3>
+        <p>Lift Variation and Size Variation break the peel into less uniform pieces. Flake Cells controls the larger segmentation scale. Peel type can be Flat or Curled.</p>
+
+        <h3>Use it as a layered effect</h3>
+        <p>Peeling works best when the underlying and upper materials make sense together. A peeling paint layer over bare metal or plaster has a clear height and color relationship; a peel effect alone cannot create that material story.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Procedural Peeling Inspector and a close-up showing flat versus curled flakes.</span></div>
+      </section>
+
+      <section id="erosion">
+        <div class="section-head"><h2>Erosion</h2></div>
+        <p>Erosion is intended for structured wear rather than simple domain-warp noise. It uses the existing surface and directional/gully information to create breakup that can follow ridges, creases, and broader material structure.</p>
+
+        <h3>Scale and period</h3>
+        <p>Period controls the coarse repeated structure across the UV tile. Keeping the period integral preserves seamless tiling.</p>
+
+        <h3>Gain and detail</h3>
+        <p>Gain controls the strength of the procedural field, while Detail changes how strongly existing ridges and creases suppress or reveal finer erosion structures.</p>
+
+        <h3>Gully weight</h3>
+        <p>Gully Weight controls how strongly the directional gully component participates. Use it when erosion should read as flow or directional wear rather than isotropic breakup.</p>
+
+        <h3>Normalization</h3>
+        <p>Normalization can restore weaker blended structures without forcing every cancellation point into an equally strong feature.</p>
+
+        <div class="image-slot"><span>IMAGE — Erosion at low/high gully weight with Height or Normal debug view beside it.</span></div>
+      </section>
+
+      <section id="stain">
+        <div class="section-head"><h2>Stain</h2></div>
+        <p>Stain adds localized discoloration and buildup while remaining part of the editable effect stack. It is useful for dirt, moisture marks, rust staining, runoff, soot, and other surface history.</p>
+
+        <h3>Start from placement</h3>
+        <p>The most important choice is where the stain belongs. Use a child mask, an effect-local mask, or a reusable stain mask before pushing color or intensity.</p>
+
+        <h3>Height-aware distortion</h3>
+        <p>Stain can use Height to distort or influence its result, helping it follow surface structure instead of looking like a decal placed over the material.</p>
+
+        <h3>Build multiple scales</h3>
+        <p>Large stain shapes establish the event; medium breakup creates pooling and unevenness; smaller variation prevents the edge from looking computer-clean.</p>
+
+        <div class="image-slot"><span>IMAGE — Stain mask, stain effect controls and final shaded result.</span></div>
+      </section>
+
+      <section id="chipping">
+        <div class="section-head"><h2>Chipping &amp; Worn Edges</h2></div>
+        <p>Chipping and Worn Edges cover related but different types of damage. Use them according to whether the surface is losing chunks/material or simply exposing high-contact edges.</p>
+
+        <h3>Chipping</h3>
+        <p>Chipping is suited to broken paint, concrete, stone, plaster, coatings, and other materials where the damaged region needs more irregular depth and breakup.</p>
+
+        <h3>Worn Edges</h3>
+        <p>Worn Edges is suited to contact wear and exposed convex regions. It is especially useful when a clean manufactured or painted object needs the edges to read as handled or abraded.</p>
+
+        <h3>Combine with masks</h3>
+        <p>Neither effect needs to be applied everywhere. Restricting the effect with a Generated Mask, texture mask, or region-based driver usually gives a more believable result than simply lowering global strength.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Chipping and Worn Edges shown on the same base material for comparison.</span></div>
+      </section>
+
+      <section id="grade">
+        <div class="section-head"><h2>Grade</h2></div>
+        <p>Grade is the general-purpose color correction stage. Use it to make a source material fit the current art direction without editing the original texture set.</p>
+
+        <h3>Correct before adding complexity</h3>
+        <p>If two materials feel disconnected because one is too warm, saturated, dark, or bright, fix that relationship before adding extra procedural breakup.</p>
+
+        <h3>Local grading</h3>
+        <p>Because Grade can live as an ordered effect, it can be masked and positioned in the child stack. This makes it useful for localized fading, discoloration, or per-region variation as well as whole-layer correction.</p>
+
+        <div class="image-slot"><span>IMAGE — Grade controls with original and corrected material side-by-side.</span></div>
+      </section>
+
+      <section id="craquelure">
+        <div class="section-head"><h2>Craquelure</h2></div>
+        <p>Craquelure creates crack networks that can be used as coverage and as surface relief. It has two different generation approaches depending on whether you want a cell-wall pattern or actual propagated fracture behavior.</p>
+
+        <h3>Lattice mode</h3>
+        <p>Lattice measures distance to Voronoi-style cell walls. Scale controls the size/count of pieces, Jitter moves from regular construction-like cells toward more organic crazing, and Width controls the crack thickness in cell-relative units.</p>
+
+        <h3>Propagated mode</h3>
+        <p>Propagated mode grows cracks through procedural stress, toughness, and flow fields. Density controls how many cracks begin; Reach controls how far they can travel. Detail, Contrast, Straightness, Fracture Bias, Flow, Roughness, Threshold, and Collision control the character of the growth.</p>
+
+        <h3>Relief</h3>
+        <p>Craquelure can cut into composited Height and derive Normal response around the groove. Height controls the cut depth, Normal controls how strongly the groove catches light, Groove controls its wider depression, and Profile changes the wall shape.</p>
+
+        <h3>Warp</h3>
+        <p>Warp bends the finished crack network with periodic curl-style variation while keeping the result tileable.</p>
+
+        <h3>Blend</h3>
+        <p>The crack network can combine with the mask accumulated above it using the normal mask blend modes, followed by the same shaping controls used by texture masks.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Lattice versus Propagated Craquelure, plus a close-up of crack relief.</span></div>
+      </section>
+
+      <section id="parameters">
+        <div class="section-head"><h2>Parameters</h2></div>
+        <p>Most numeric controls in Mixtormat are scrub-style fields built for fast material iteration.</p>
+
+        <h3>Scrubbing</h3>
+        <p>Drag horizontally with the left mouse button to adjust a value. Hold <code>Shift</code> while dragging for fine adjustment. Hold <code>Ctrl</code> while dragging to snap to the parameter's step.</p>
+
+        <h3>Typing exact values</h3>
+        <p>Click a numeric field without dragging to enter a value directly. Press Enter to commit it. Escape leaves text-entry mode without applying the edited text.</p>
+
+        <h3>Reset to default</h3>
+        <p>Middle-click a numeric control, or hover it and press <code>Backspace</code>, to reset that parameter to its default value.</p>
+
+        <h3>Modified values</h3>
+        <p>Changed controls are visually marked so it is easier to scan an Inspector and see where the selected item differs from its defaults.</p>
+
+        <div class="image-slot"><span>IMAGE — Numeric control showing normal, modified, scrubbed and text-entry states.</span></div>
+      </section>
+
+      <section id="references">
+        <div class="section-head"><h2>References &amp; Drivers</h2></div>
+        <p>Mixtormat parameters do not have to remain isolated values. A parameter can reference another parameter or be driven by procedural data from the recipe.</p>
+
+        <h3>Parameter references</h3>
+        <p>Right-click a compatible parameter to access reference actions. Copy a parameter reference, then paste it onto another compatible parameter.</p>
+
+        <div class="grid">
+          <div class="mini"><strong>Follow Source</strong>One-way. The destination reads the source value. Editing the destination locally breaks the reference.</div>
+          <div class="mini"><strong>Link Values</strong>Two-way editing behavior. Both controls represent one linked value and edits continue to write to the source.</div>
+        </div>
+
+        <p>If the reference source disappears, Mixtormat marks the reference as broken and falls back to the local value rather than leaving the parameter unusable.</p>
+
+        <h3>Drivers</h3>
+        <p>A Driver modulates a parameter using material data rather than copying another parameter. Driver sources include the Layer Mask, a Child Mask, or Region IDs.</p>
+
+        <h3>Driver combine modes</h3>
+        <p>The driven signal can Replace, Multiply, Add, Subtract, Min, Max, or Lerp with the parameter. Input and output ranges let you remap the signal, and it can be inverted.</p>
+
+        <h3>ID-driven values</h3>
+        <p>When Region IDs are the source, the driver can use a repeatable random value per ID, target a specific ID, or work over an ID range. This makes one parameter vary per procedural piece without creating a separate layer for every piece.</p>
+
+        <div class="note">
+          <div class="kicker">Example</div>
+          Pattern IDs can define individual bricks. A Region ID Driver can then vary a Grade or Roughness parameter per brick while each brick stays internally consistent.
+        </div>
+
+        <div class="image-slot wide"><span>IMAGE — Parameter context menu, Follow/Link control, and a Region ID Driver example.</span></div>
+      </section>
+
+      <section id="instances">
+        <div class="section-head"><h2>Instances &amp; Reuse</h2></div>
+        <p>Layer children can be copied either as independent copies or as live instances. This is useful when the same procedural setup needs to appear in several places without manually matching every parameter.</p>
+
+        <h3>Copy / Paste</h3>
+        <p>A normal Copy and Paste creates another child that can be edited independently.</p>
+
+        <h3>Copy as Instance / Paste Instance</h3>
+        <p>An instance keeps a relationship to its source child. Use this when several layers should share the same mask, generated setup, ID tool, or effect configuration.</p>
+
+        <h3>Instance actions</h3>
+        <p>Instance context actions include Go to Source, Break Instance, Replace Instance Source, and Copy Instance Reference. These help manage larger recipes where the same authored child is reused repeatedly.</p>
+
+        <h3>When to use an instance</h3>
+        <p>Use an instance when the repeated setup should remain synchronized. Use a normal copy when the new child is only a starting point and should immediately diverge.</p>
+
+        <div class="image-slot"><span>IMAGE — Same child pasted normally versus pasted as an Instance, with the instance menu open.</span></div>
+      </section>
+
+      <section id="preview">
+        <div class="section-head"><h2>Preview</h2></div>
+        <p>The Preview is a dedicated Unreal look-development viewport for the current GPU composite. It is meant to help judge the material as a surface, not only as a set of texture channels.</p>
+
+        <h3>Preview meshes</h3>
+        <p>Switch between <strong>Sphere</strong>, <strong>Plane</strong>, and <strong>Cube</strong>. A plane is useful for tile structure and patterns; a sphere makes roughness and normal response easy to read; a cube exposes edge behavior.</p>
+
+        <h3>Lighting presets</h3>
+        <p>Available studio lighting presets are <strong>Neutral</strong>, <strong>Soft</strong>, <strong>Dramatic</strong>, <strong>Rim</strong>, and <strong>Workshop</strong>. Light and skylight intensity can be adjusted without losing the character of the selected preset.</p>
+
+        <h3>Before / After</h3>
+        <p><strong>Before</strong> shows the base state before added layers are composed. <strong>After</strong> shows the complete stack. Use this frequently when many subtle operations have accumulated.</p>
+
+        <h3>Bypass child</h3>
+        <p>Temporarily removes the selected Mask, Generated Mask, or Effect from the preview only. It is useful for A/B checking one operation without changing the saved recipe structure.</p>
+
+        <h3>Debug views</h3>
+        <p>Feature-preview controls can show information such as the selected Layer Mask or Cluster IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
+
+        <h3>Displacement</h3>
+        <p>Enable displacement to judge the composited Height as geometry. Displacement Amount controls how strongly Height moves the preview surface.</p>
+
+        <h3>Quality</h3>
+        <p>Preview quality has <strong>Low</strong>, <strong>Medium</strong>, and <strong>High</strong> modes. Use a lighter mode while rapidly scrubbing expensive stacks, then return to higher quality for final look-development checks.</p>
+
+        <h3>Anti-aliasing</h3>
+        <div class="grid">
+          <div class="mini"><strong>FXAA</strong>Single-frame and stable while moving. It is useful when judging thin masks or cracks that can shimmer under temporal accumulation.</div>
+          <div class="mini"><strong>TSR</strong>Temporal Super Resolution. Better at resolving thin detail in a settled view, but history needs to reconverge after camera movement or a recomposite.</div>
+        </div>
+
+        <h3>Screen Percentage</h3>
+        <p>The preview render scale ranges from 75% to 200%. Values below 100% reduce fill cost; values above 100% provide real supersampling for shader and texture detail.</p>
+
+        <h3>Camera</h3>
+        <p>FOV can be adjusted from 20° to 90° and defaults to 40°. A Reset action restores the default camera and lighting state.</p>
+
+        <div class="image-slot wide"><span>IMAGE — Preview overlay showing mesh, lighting, Before/After, AA, quality, displacement and FOV controls.</span></div>
+      </section>
+
+      <section id="baking">
+        <div class="section-head"><h2>Baking</h2></div>
+        <p>Baking converts the current editable recipe into regular Unreal assets. The recipe must be saved before a bake begins.</p>
+
+        <h3>Composition resolution</h3>
+        <p>The current composition choices are <strong>1K (1024)</strong>, <strong>2K (2048)</strong>, and <strong>4K (4096)</strong>. The selected composition resolution is also used for the bake.</p>
+
+        <h3>Bake outputs</h3>
+        <div class="grid">
+          <div class="mini"><strong>Base Color</strong>The composited color output.</div>
+          <div class="mini"><strong>Normal</strong>The composited tangent-space Normal.</div>
+          <div class="mini"><strong>RAM</strong>Packed Roughness, Ambient Occlusion, and Metallic data.</div>
+          <div class="mini"><strong>Height</strong>The composited height output.</div>
+        </div>
+
+        <p>The bake also creates the Material Instance that uses the generated outputs.</p>
+
+        <h3>Destination and naming</h3>
+        <p>The Bake dialog lets you choose the destination and base name. These settings are remembered for the current recipe so repeated bakes do not require rebuilding the destination each time.</p>
+
+        <h3>Updating an existing bake</h3>
+        <p>If output assets already exist, Mixtormat asks before updating them in place. This lets existing asset references remain pointed at the same outputs while the material is re-baked.</p>
+
+        <h3>After the bake</h3>
+        <p>The bake result can open the resulting Material Instance, apply it to selected actors, or run another bake. Applying to actors asks before replacing existing assigned materials.</p>
+
+        <div class="note">
+          <div class="kicker">Recipe versus Bake</div>
+          Keep the Mixtormat recipe as the editable source. Treat the baked textures and Material Instance as the production-facing result.
+        </div>
+
+        <div class="image-slot wide"><span>IMAGE — Bake dialog, generated assets in Content Browser, then baked material applied to an actor.</span></div>
+      </section>
+
+      <section id="shortcuts">
+        <div class="section-head"><h2>Shortcuts &amp; Gestures</h2></div>
+        <p>Mixtormat uses a combination of keyboard shortcuts and direct mouse gestures. These are worth learning because many of them remove the need to open a menu while tuning a material.</p>
+
+        <h3>Document &amp; stack</h3>
+        <div class="grid">
+          <div class="mini"><strong><code>Ctrl + Z</code></strong>Undo the last Mixtormat recipe edit.</div>
+          <div class="mini"><strong><code>Ctrl + Shift + Z</code></strong>Redo.</div>
+          <div class="mini"><strong><code>Ctrl + Y</code></strong>Redo.</div>
+          <div class="mini"><strong><code>Ctrl + D</code></strong>Duplicate, as shown for layers and child rows in their context menus.</div>
+          <div class="mini"><strong><code>Delete</code></strong>Delete/remove, as shown for layers and child rows in their context menus.</div>
+          <div class="mini"><strong><code>Right Click</code></strong>Open the context menu for the layer or child under the cursor.</div>
+        </div>
+
+        <h3>Numeric controls</h3>
+        <div class="grid">
+          <div class="mini"><strong><code>LMB Drag</code></strong>Scrub a numeric value.</div>
+          <div class="mini"><strong><code>Shift + Drag</code></strong>Fine adjustment.</div>
+          <div class="mini"><strong><code>Ctrl + Drag</code></strong>Snap the value to the control's increment.</div>
+          <div class="mini"><strong><code>Click</code></strong>Click without dragging to type an exact value.</div>
+          <div class="mini"><strong><code>MMB</code></strong>Reset the numeric control to default.</div>
+          <div class="mini"><strong><code>Backspace</code></strong>Reset the numeric control currently under the cursor.</div>
+          <div class="mini"><strong><code>Enter</code></strong>Commit typed numeric input.</div>
+          <div class="mini"><strong><code>Escape</code></strong>Cancel/revert the active text edit.</div>
+        </div>
+
+        <h3>Layer stack gestures</h3>
+        <div class="grid">
+          <div class="mini"><strong><code>Drag Layer</code></strong>Move a layer to a new position in the stack.</div>
+          <div class="mini"><strong><code>Drag Child</code></strong>Reorder a child or move it to a compatible location.</div>
+          <div class="mini"><strong><code>Eye Click</code></strong>Show or hide a layer.</div>
+          <div class="mini"><strong><code>Ctrl/Alt + Eye</code></strong>Solo that layer in the preview.</div>
+          <div class="mini"><strong><code>Status Dot</code></strong>Enable or disable a layer child.</div>
+          <div class="mini"><strong><code>Right Click Parameter</code></strong>Open parameter Reference / Driver actions.</div>
+        </div>
+
+        <h3>Preview viewport</h3>
+        <div class="grid">
+          <div class="mini"><strong><code>LMB Drag</code></strong>Orbit the preview camera.</div>
+          <div class="mini"><strong><code>RMB Drag</code></strong>Rotate the studio lighting.</div>
+          <div class="mini"><strong><code>Mouse Wheel</code></strong>Zoom the preview camera.</div>
+          <div class="mini"><strong><code>F</code></strong>Frame / focus the current preview mesh.</div>
+          <div class="mini"><strong><code>Space</code></strong>Hide or show the viewport overlay controls.</div>
+          <div class="mini"><strong><code>H</code></strong>Also hides or shows the viewport overlay controls.</div>
+        </div>
+
+        <h3>Gallery</h3>
+        <div class="grid">
+          <div class="mini"><strong><code>Ctrl + Mouse Wheel</code></strong>Resize Material or Mask gallery tiles while the cursor is over a tile.</div>
+          <div class="mini"><strong><code>Click Tile</code></strong>Select or activate the material/mask represented by the tile.</div>
+        </div>
+
+        <div class="image-slot"><span>IMAGE — Compact shortcut cheat sheet using the actual Mixtormat UI.</span></div>
+      </section>
+
+      <section id="troubleshooting">
+        <div class="section-head"><h2>Troubleshooting the Look</h2></div>
+
+        <div class="card">
+          <h3>The blend looks like a flat Photoshop dissolve</h3>
+          <p>Check Height before adding more mask noise. Make sure the materials have a believable relative height and use a suitable Height source.</p>
+        </div>
+
+        <div class="card">
+          <h3>The material looks too procedural</h3>
+          <p>Separate variation by scale. Use a broad mask for placement, region IDs for per-piece variation, and only then add small surface breakup.</p>
+        </div>
+
+        <div class="card">
+          <h3>An effect is appearing everywhere</h3>
+          <p>Give the effect a scoped mask or drive its parameters from a Layer Mask, Child Mask, or Region IDs. Placement is usually a better fix than reducing every strength control.</p>
+        </div>
+
+        <div class="card">
+          <h3>A child seems to be causing the wrong result</h3>
+          <p>Select it and use <strong>Bypass child</strong>. If the issue disappears, inspect that child's mask or debug view before changing unrelated layers.</p>
+        </div>
+
+        <div class="card">
+          <h3>Fine cracks shimmer while moving the camera</h3>
+          <p>Try FXAA while authoring the crack or mask. TSR can resolve thin detail better when still, but temporal history needs time to settle after movement.</p>
+        </div>
+
+        <div class="card">
+          <h3>The preview is too expensive while tuning</h3>
+          <p>Lower Preview Quality, reduce Screen Percentage, or work at a lower composition resolution. Return to the intended final settings before judging small detail.</p>
+        </div>
+
+        <div class="card">
+          <h3>I cannot tell whether the mask or the effect is wrong</h3>
+          <p>Use the available feature/debug preview. Inspect the region source first; then judge the effect using it.</p>
+        </div>
+
+        <div class="card">
+          <h3>I need the same setup in several layers</h3>
+          <p>Use Copy as Instance / Paste Instance when the children should stay related. Use a normal copy when each one needs independent art direction.</p>
+        </div>
+
+        <div class="card">
+          <h3>I changed too many things at once</h3>
+          <p>Use Before / After, solo layers, bypass the selected child, and Undo/Redo. Reduce the stack back to the first point where the material reads correctly, then reintroduce operations one at a time.</p>
+        </div>
+
+        <div class="image-slot small"><span>IMAGE — Final polished material / beauty render. Optional closing image.</span></div>
+      </section>
+
+      <div class="footer">Mixtormat documentation · artist guide · current feature-oriented draft</div>
+    </article>
+  </main>
+</div>
+
+<script>
+const links=[...document.querySelectorAll(".nav a")];
+const sections=links.map(a=>document.querySelector(a.getAttribute("href"))).filter(Boolean);
+
+let lockedId=null;
+let unlockTimer=null;
+
+const setActive=id=>{
+  for(const a of links){
+    a.classList.toggle("active",a.getAttribute("href")==="#"+id);
+  }
+};
+
+const updateActive=()=>{
+  if(lockedId) return;
+
+  const probe=Math.min(window.innerHeight*.28,220);
+  let current=sections[0];
+
+  for(const section of sections){
+    if(section.getBoundingClientRect().top<=probe) current=section;
+    else break;
+  }
+
+  if(current) setActive(current.id);
+};
+
+const unlockAfterScroll=()=>{
+  clearTimeout(unlockTimer);
+  unlockTimer=setTimeout(()=>{
+    lockedId=null;
+    updateActive();
+  },180);
+};
+
+for(const a of links){
+  a.addEventListener("click",()=>{
+    lockedId=a.getAttribute("href").slice(1);
+    setActive(lockedId);
+    unlockAfterScroll();
+  });
+}
+
+window.addEventListener("scroll",()=>{
+  if(lockedId){
+    unlockAfterScroll();
+    return;
+  }
+  updateActive();
+},{passive:true});
+
+if("onscrollend" in window){
+  window.addEventListener("scrollend",()=>{
+    lockedId=null;
+    clearTimeout(unlockTimer);
+    updateActive();
+  },{passive:true});
+}
+
+updateActive();
+</script>
+</body>
+</html>
