@@ -38,10 +38,9 @@ namespace MixtormatParameterBinding
 		const FGuid& ChildId);
 
 	// Substitutes each instance's payload from the child it names, immediately before references
-	// resolve so an inherited reference is resolved like any other. Reads authored data only, so
-	// it does not care what has composited yet. An instance whose source is missing, is itself, or
-	// closes a loop is left exactly as it is -- the same "keep the local value" fallback a broken
-	// parameter reference gets, rather than a second kind of failure.
+	// resolve. Mask instances keep local BlendMode and Shaping.bInvert values because those control
+	// this placement in the mask chain; bindings inherited for those two fields are discarded.
+	// Reads authored data only. Missing, self-referencing or cyclic sources keep local values.
 	MIXTORMATRUNTIME_API void ResolveChildInstances(
 		const TArray<FMixtormatLayer>& SourceLayers,
 		FMixtormatLayer& InOutLayer);

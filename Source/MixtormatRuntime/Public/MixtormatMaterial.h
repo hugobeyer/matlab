@@ -1954,10 +1954,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	UPROPERTY()
 	FGuid ScopeOwnerChildId;
 
-	// Whole-child instance. With SourceChildId set, everything below this pair -- type, payload,
-	// parameter bindings, mask and source assignments, and whatever is added to this struct later
-	// -- is drawn from the child these two GUIDs name and re-read on every composite, so an edit to
-	// the source reaches every instance of it.
+	// Whole-child instance. With SourceChildId set, the payload, parameter bindings and source
+	// assignments are drawn from the child these GUIDs name and re-read on every composite. Mask
+	// instances deliberately keep their own BlendMode and Shaping.bInvert: those describe how this
+	// placement joins the mask chain, not what source mask it mirrors.
 	//
 	// The instance keeps a ChildId of its own. It is a second place the same content appears, not
 	// the same object twice: every reference, driver and instance that names this child has to go

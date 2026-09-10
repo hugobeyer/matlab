@@ -1211,7 +1211,17 @@ bool SMixtormat::IsParameterLocked(const FMixtormatParameterAddress& Target) con
 		{
 			if (Child.ChildId == Target.ChildId)
 			{
-				return Child.IsInstance();
+				if (!Child.IsInstance())
+				{
+					return false;
+				}
+				const bool bLocalMaskBlend = Child.Type == EMixtormatLayerChildType::Mask
+					&& Target.Owner == EMixtormatParameterOwnerType::Mask
+					&& Target.Parameter == GET_MEMBER_NAME_CHECKED(FMixtormatMaskLayer, BlendMode);
+				const bool bLocalMaskInvert = Child.Type == EMixtormatLayerChildType::Mask
+					&& Target.Owner == EMixtormatParameterOwnerType::MaskShaping
+					&& Target.Parameter == GET_MEMBER_NAME_CHECKED(FMixtormatMaskShaping, bInvert);
+				return !bLocalMaskBlend && !bLocalMaskInvert;
 			}
 		}
 	}
@@ -3069,9 +3079,9 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					.ThumbnailPool(ThumbnailPool)
 					.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
 					.bShowName(false)
-					.bShowNameOnHover(true)
+					.bShowNameOnHover(false)
 					.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })
-					.ToolTip(LOCTEXT("SelectMaskForLayerActions", "Select for layer, effect, or replacement actions"))
+					.ToolTip(Name)
 				]
 				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
 				[

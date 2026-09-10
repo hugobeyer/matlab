@@ -609,7 +609,29 @@ namespace MixtormatParameterBinding
 			}
 			if (Source && Source->ChildId != Child.ChildId)
 			{
+				// A mask instance shares its source and shaping, but its placement in the mask
+				// accumulator is local. Blend Mode and Invert are the two intentional overrides:
+				// the same mask can add here, subtract there, or select the opposite region without
+				// breaking the instance. Every other field still follows the source.
+				const bool bKeepMaskOverrides = Child.Type == EMixtormatLayerChildType::Mask;
+				const EMixtormatMaskBlendMode LocalBlendMode = Child.Mask.BlendMode;
+				const bool bLocalInvert = Child.Mask.Shaping.bInvert;
+
 				CopyChildPayload(*Source, Child);
+				if (bKeepMaskOverrides && Child.Type == EMixtormatLayerChildType::Mask)
+				{
+					Child.Mask.BlendMode = LocalBlendMode;
+					Child.Mask.Shaping.bInvert = bLocalInvert;
+					Child.ParameterBindings.RemoveAll([](const FMixtormatParameterBinding& Binding)
+					{
+						return (Binding.DestinationOwner == EMixtormatParameterOwnerType::Mask
+								&& Binding.DestinationParameter == GET_MEMBER_NAME_CHECKED(
+									FMixtormatMaskLayer, BlendMode))
+							|| (Binding.DestinationOwner == EMixtormatParameterOwnerType::MaskShaping
+								&& Binding.DestinationParameter == GET_MEMBER_NAME_CHECKED(
+									FMixtormatMaskShaping, bInvert));
+					});
+				}
 			}
 		}
 	}

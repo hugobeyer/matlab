@@ -405,6 +405,20 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 	const FSoftObjectPath& AssetPath,
 	const FAssetData& ThumbnailAsset)
 {
+	FText HoverName = Name;
+	if (const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.ResolveObject()))
+	{
+		const FString Family = Surface->Family.ToString();
+		if (!Family.IsEmpty()
+			&& !Name.ToString().StartsWith(Family, ESearchCase::IgnoreCase))
+		{
+			HoverName = FText::Format(
+				LOCTEXT("SurfaceHoverNameWithFamily", "{0} · {1}"),
+				FText::FromString(Family),
+				Name);
+		}
+	}
+
 	return SNew(SMixtormatSurfaceCard)
 		.DisplayName(Name)
 		.SurfacePath(AssetPath)
@@ -419,13 +433,13 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 			[
 				SNew(SMixtormatTile)
 				.TileSize(MaterialGalleryTileSize)
-				.DisplayName(Name)
+				.DisplayName(HoverName)
 				.ThumbnailAsset(ThumbnailAsset)
 				.ThumbnailPool(ThumbnailPool)
 				.bShowName(false)
-				.bShowNameOnHover(true)
+				.bShowNameOnHover(false)
 				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
-				.ToolTip(LOCTEXT("SelectMaterialForLayerActions", "Select for adding, replacing, or dragging to Layers"))
+				.ToolTip(HoverName)
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
 			[
