@@ -3,6 +3,8 @@
 #include "Framework/Commands/UIAction.h"
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
+#include "ISettingsModule.h"
+#include "MixtormatEditorSettings.h"
 #include "Services/MixtormatAssetMigration.h"
 #include "Style/MixtormatStyle.h"
 #include "Textures/SlateIcon.h"
@@ -40,10 +42,14 @@ void FMixtormatEditorModule::StartupModule()
 			this,
 			&FMixtormatEditorModule::RunAssetMigrationCommand),
 		ECVF_Default);
+
+	RegisterSettings();
 }
 
 void FMixtormatEditorModule::ShutdownModule()
 {
+	UnregisterSettings();
+
 	if (AssetMigrationCommand)
 	{
 		IConsoleManager::Get().UnregisterConsoleObject(AssetMigrationCommand);
@@ -54,6 +60,33 @@ void FMixtormatEditorModule::ShutdownModule()
 	UToolMenus::UnregisterOwner(this);
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(MixtormatTabName);
 	FMixtormatStyle::Shutdown();
+}
+
+// UMixtormatEditorSettings already declares Config=EditorPerProjectUserSettings and overrides
+// GetCategoryName()/GetSectionName() for "Plugins"/"Mixtormat", which is enough for UDeveloperSettings
+// reflection-based discovery in most cases -- but that discovery is not guaranteed for a
+// plugin-owned settings class, so this registers the same CDO explicitly to make the placement at
+// Editor Preferences > Plugins > Mixtormat deterministic rather than incidental.
+void FMixtormatEditorModule::RegisterSettings()
+{
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->RegisterSettings(
+			TEXT("Editor"),
+			TEXT("Plugins"),
+			TEXT("Mixtormat"),
+			LOCTEXT("MixtormatSettingsName", "Mixtormat"),
+			LOCTEXT("MixtormatSettingsDescription", "Editor preferences for Mixtormat debug visualization."),
+			GetMutableDefault<UMixtormatEditorSettings>());
+	}
+}
+
+void FMixtormatEditorModule::UnregisterSettings()
+{
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->UnregisterSettings(TEXT("Editor"), TEXT("Plugins"), TEXT("Mixtormat"));
+	}
 }
 
 void FMixtormatEditorModule::RegisterMenus()

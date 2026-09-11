@@ -205,6 +205,70 @@ namespace MixtormatBake
 		return FMath::Clamp(Result, 0.0f, 1.0f);
 	}
 
+	// UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue and
+	// SetMaterialInstanceScalarParameterValue are confirmed broken in UE 5.8: both declare
+	// `bool bResult = false;` and return it unconditionally, never setting it to true even when
+	// the assignment succeeds (Engine/Source/Editor/MaterialEditor/Private/MaterialEditingLibrary.cpp).
+	// So the bake cannot use that return value as a success signal. Instead, the master's real
+	// parameter contract is enumerated up front and every required DA_* name is checked against
+	// it before anything is created; the Set calls below are then just execution, not validation.
+	const FName RequiredTextureParameters[] = {
+		TEXT("DA_BaseColor"),
+		TEXT("DA_Normal"),
+		TEXT("DA_RAMH"),
+		TEXT("DA_Height"),
+	};
+	const FName RequiredScalarParameters[] = {
+		TEXT("DA_FuzzInfluence"),
+		TEXT("DA_Tiling"),
+		TEXT("DA_RoughnessBias"),
+		TEXT("DA_RoughnessContrast"),
+		TEXT("DA_RoughnessOffset"),
+		TEXT("DA_NormalIntensity"),
+		TEXT("DA_DielectricF0"),
+		TEXT("DA_UsePackedF0"),
+	};
+
+	TArray<FName> FindMissingMasterParameters(UMaterialInterface& Master)
+	{
+		TArray<FMaterialParameterInfo> TextureParameterInfo;
+		TArray<FGuid> TextureParameterIds;
+		Master.GetAllTextureParameterInfo(TextureParameterInfo, TextureParameterIds);
+		TSet<FName> AvailableTextureParameters;
+		AvailableTextureParameters.Reserve(TextureParameterInfo.Num());
+		for (const FMaterialParameterInfo& Info : TextureParameterInfo)
+		{
+			AvailableTextureParameters.Add(Info.Name);
+		}
+
+		TArray<FMaterialParameterInfo> ScalarParameterInfo;
+		TArray<FGuid> ScalarParameterIds;
+		Master.GetAllScalarParameterInfo(ScalarParameterInfo, ScalarParameterIds);
+		TSet<FName> AvailableScalarParameters;
+		AvailableScalarParameters.Reserve(ScalarParameterInfo.Num());
+		for (const FMaterialParameterInfo& Info : ScalarParameterInfo)
+		{
+			AvailableScalarParameters.Add(Info.Name);
+		}
+
+		TArray<FName> Missing;
+		for (const FName& Name : RequiredTextureParameters)
+		{
+			if (!AvailableTextureParameters.Contains(Name))
+			{
+				Missing.Add(Name);
+			}
+		}
+		for (const FName& Name : RequiredScalarParameters)
+		{
+			if (!AvailableScalarParameters.Contains(Name))
+			{
+				Missing.Add(Name);
+			}
+		}
+		return Missing;
+	}
+
 	UMaterialInstanceConstant* CreateOrUpdateMaterial(
 		const FString& DestinationPath,
 		const FString& AssetName,
@@ -352,6 +416,26 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.Errors.Add(FText::Format(
 			NSLOCTEXT("MixtormatBake", "MissingMaster", "Required master is missing: {0}"),
 			FText::FromString(MasterPath)));
+		return Result;
+	}
+
+	const TArray<FName> MissingMasterParameters = FindMissingMasterParameters(*Master);
+	if (!MissingMasterParameters.IsEmpty())
+	{
+		TArray<FString> MissingParameterNames;
+		MissingParameterNames.Reserve(MissingMasterParameters.Num());
+		for (const FName& ParameterName : MissingMasterParameters)
+		{
+			MissingParameterNames.Add(ParameterName.ToString());
+		}
+		Result.Errors.Add(FText::Format(
+			NSLOCTEXT(
+				"MixtormatBake",
+				"MasterContractMismatch",
+				"Master material does not expose the parameters Mixtormat requires.\nMaster object path: {0}\nMaster class: {1}\nMissing parameters: {2}"),
+			FText::FromString(MasterPath),
+			FText::FromString(Master->GetClass()->GetName()),
+			FText::FromString(FString::Join(MissingParameterNames, TEXT(", ")))));
 		return Result;
 	}
 
@@ -508,67 +592,23 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.CreatedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
 	}
 
-	TArray<FName> FailedParameters;
-	const auto SetTextureParameter = [&FailedParameters, &Result](
-		const FName ParameterName,
-		UTexture2D* Texture)
-	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(
-			Result.Material,
-			ParameterName,
-			Texture))
-		{
-			FailedParameters.Add(ParameterName);
-		}
-	};
-	const auto SetScalarParameter = [&FailedParameters, &Result](
-		const FName ParameterName,
-		const float Value)
-	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
-			Result.Material,
-			ParameterName,
-			Value))
-		{
-			FailedParameters.Add(ParameterName);
-		}
-	};
-
-	SetTextureParameter(TEXT("DA_BaseColor"), Result.BaseColor);
-	SetTextureParameter(TEXT("DA_Normal"), Result.Normal);
-	SetTextureParameter(TEXT("DA_RAMH"), Result.RAM);
-	SetTextureParameter(TEXT("DA_Height"), Result.Height);
-	SetScalarParameter(TEXT("DA_FuzzInfluence"), ComputeFuzzInfluence(Recipe.Layers));
-	SetScalarParameter(TEXT("DA_Tiling"), 1.0f);
-	SetScalarParameter(TEXT("DA_RoughnessBias"), 0.5f);
-	SetScalarParameter(TEXT("DA_RoughnessContrast"), 1.0f);
-	SetScalarParameter(TEXT("DA_RoughnessOffset"), 0.0f);
-	SetScalarParameter(TEXT("DA_NormalIntensity"), 1.0f);
-	SetScalarParameter(TEXT("DA_DielectricF0"), 0.04f);
-	SetScalarParameter(TEXT("DA_UsePackedF0"), 1.0f);
-	if (!FailedParameters.IsEmpty())
-	{
-		TArray<FString> FailedParameterNames;
-		FailedParameterNames.Reserve(FailedParameters.Num());
-		for (const FName ParameterName : FailedParameters)
-		{
-			FailedParameterNames.Add(ParameterName.ToString());
-		}
-		Result.Errors.Add(FText::Format(
-			NSLOCTEXT(
-				"MixtormatBake",
-				"ParameterAssignmentFailed",
-				"Failed to update {0}; the protected master is missing required parameters: {1}."),
-			FText::FromString(ObjectPaths[MaterialOutputIndex]),
-			FText::FromString(FString::Join(FailedParameterNames, TEXT(", ")))));
-	}
+	// Every DA_* name here was already confirmed present on Master above, so these calls are
+	// execution, not validation -- their bool return is ignored because it is unconditionally
+	// false in UE 5.8 (see the comment on FindMissingMasterParameters).
+	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_BaseColor"), Result.BaseColor);
+	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Normal"), Result.Normal);
+	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_RAMH"), Result.RAM);
+	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Height"), Result.Height);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_FuzzInfluence"), ComputeFuzzInfluence(Recipe.Layers));
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 1.0f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessOffset"), 0.0f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_DielectricF0"), 0.04f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_UsePackedF0"), 1.0f);
 	Result.Material->PostEditChange();
 	Result.Material->MarkPackageDirty();
-	if (!FailedParameters.IsEmpty())
-	{
-		Result.FailedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
-		return Result;
-	}
 
 	Recipe.Modify();
 	Recipe.BakedBaseColor = Result.BaseColor;

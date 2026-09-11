@@ -17,6 +17,8 @@ private:
 	void OpenMixtormatTab();
 	void RunAssetMigrationCommand(const TArray<FString>& Args);
 	TSharedRef<SDockTab> SpawnMixtormatTab(const FSpawnTabArgs& SpawnTabArgs);
+	void RegisterSettings();
+	void UnregisterSettings();
 
 	IConsoleObject* AssetMigrationCommand = nullptr;
 	static const FName MixtormatTabName;
