@@ -58,6 +58,7 @@ private:
 	void BuildWorkspaceUI();
 	FReply OpenLiveThemePanel();
 	FReply OpenDocumentation();
+	FReply OpenSettings();
 	void RequestThemeRefresh();
 	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
 	FReply ShowLeftPage(int32 PageIndex);

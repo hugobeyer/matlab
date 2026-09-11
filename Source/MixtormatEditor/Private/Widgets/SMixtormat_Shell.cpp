@@ -3,6 +3,8 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
 #include "HAL/PlatformProcess.h"
+#include "ISettingsModule.h"
+#include "MixtormatEditorSettings.h"
 
 
 // Window chrome: top bar, page routing, splitters, status bar.
@@ -47,6 +49,15 @@ FReply SMixtormat::OpenDocumentation()
 			FText::Format(
 				LOCTEXT("DocumentationLaunchFailed", "Could not open Mixtormat documentation:\n{0}"),
 				FText::FromString(LaunchError)));
+	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::OpenSettings()
+{
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->ShowViewer("Editor", "Plugins", "Mixtormat");
 	}
 	return FReply::Handled();
 }
@@ -274,8 +285,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				[
 					SNew(SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled(false)
-					.ToolTipText(LOCTEXT("SettingsTopHint", "Settings are coming soon."))
+					.OnClicked(this, &SMixtormat::OpenSettings)
+					.ToolTipText(LOCTEXT("SettingsTopHint", "Open Mixtormat settings."))
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)

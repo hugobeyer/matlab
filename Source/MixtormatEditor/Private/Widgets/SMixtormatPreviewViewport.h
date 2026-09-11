@@ -27,6 +27,21 @@ enum class EMixtormatPreviewMesh : uint8
 	Cube
 };
 
+// Temporary V-key diagnostic cycle: a raw look at one composited output at a time, unlit, with
+// no toolbar exposure yet. Material has to stay first and at value 0 -- CycleChannelPreview wraps
+// by incrementing mod 8, and 0 doubling as "off" is what lets Material mean "untouched".
+enum class EMixtormatChannelPreview : uint8
+{
+	Material,
+	BaseColor,
+	Normal,
+	Roughness,
+	AO,
+	Metallic,
+	F0,
+	Height
+};
+
 enum class EMixtormatStudioLighting : uint8
 {
 	Neutral,
@@ -88,6 +103,7 @@ class SMixtormatPreviewViewport final : public SEditorViewport
 public:
 	SLATE_BEGIN_ARGS(SMixtormatPreviewViewport) {}
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
+		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -124,6 +140,8 @@ public:
 	UTextureRenderTarget2D* GetCompositedNormal() const;
 	UTextureRenderTarget2D* GetCompositedRAM() const;
 	UTextureRenderTarget2D* GetCompositedHeight() const;
+	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
+	FString GetChannelPreviewLabel() const;
 
 protected:
 	virtual TSharedRef<FEditorViewportClient> MakeEditorViewportClient() override;
@@ -135,6 +153,8 @@ private:
 	void RotateLighting(float YawDelta, float PitchDelta);
 	void ZoomCamera(float ZoomDelta);
 	void ToggleOverlayUi();
+	void CycleChannelPreview();
+	void ApplyChannelPreview();
 	void UpdateCamera();
 	void UpdateStudioFog();
 	void UpdateStudioEnvironmentLighting();
@@ -148,10 +168,19 @@ private:
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;
 	FSimpleDelegate OnToggleOverlayUi;
+	FSimpleDelegate OnChannelPreviewChanged;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	UExponentialHeightFogComponent* StudioFogComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
+	EMixtormatChannelPreview ChannelPreview = EMixtormatChannelPreview::Material;
+	TStrongObjectPtr<UMaterial> ChannelPreviewMaterial;
+	TWeakObjectPtr<UMaterialInstanceDynamic> ChannelPreviewMaterialInstance;
+	// PreviewMaterialInstance above is a weak pointer whose only strong owner is normally
+	// PreviewMeshComponent's own material slot. A diagnostic mode detaches it from that slot to
+	// show ChannelPreviewMaterialInstance instead, which would otherwise leave it collectible --
+	// this is the strong ref that keeps it alive until Material mode reclaims it.
+	TStrongObjectPtr<UMaterialInstanceDynamic> RetainedPreviewMaterialInstance;
 	TUniquePtr<FMixtormatGpuCompositor> LayerCompositor;
 	TUniquePtr<FPreviewSceneProfile> StudioPreviewProfile;
 	TStrongObjectPtr<UTextureCube> StudioEnvironmentCubemap;

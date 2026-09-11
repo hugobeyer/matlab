@@ -6,6 +6,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EditorViewportClient.h"
+#include "Engine/Scene.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -14,12 +15,15 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "InputCoreTypes.h"
 #include "Engine/Engine.h"
 #include "RenderingThread.h"
+#include "SceneView.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialExpressionIf.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
@@ -32,6 +36,14 @@ namespace MixtormatPreview
 	const FName HeightAmountParameter(TEXT("DA_HeightAmount"));
 	const FName DebugTextureParameter(TEXT("DA_DebugTexture"));
 	const FName FuzzInfluenceParameter(TEXT("DA_FuzzInfluence"));
+	// Same texture parameter names FMixtormatGpuCompositor::BindOutputs already sets on the real
+	// master-material instance, so the channel-preview material can be fed by that same call
+	// rather than a second copy of the texture-fetch logic.
+	const FName ChannelPreviewBaseColorParameter(TEXT("DA_BaseColor"));
+	const FName ChannelPreviewNormalParameter(TEXT("DA_Normal"));
+	const FName ChannelPreviewRamhParameter(TEXT("DA_RAMH"));
+	const FName ChannelPreviewHeightParameter(TEXT("DA_Height"));
+	const FName ChannelPreviewModeParameter(TEXT("DA_ChannelPreviewMode"));
 
 	// Fuzz has no channel of its own to carry through the compositor -- DA_FuzzInfluence is a
 	// Substrate Slab amount the master material reads once per material instance, not a per-pixel
@@ -79,6 +91,127 @@ namespace MixtormatPreview
 		return Material;
 	}
 
+	// The V-key diagnostic cycle needs an Unlit look at a raw texture channel, and the real
+	// master material's shading model is fixed Lit -- there is no per-instance switch for that
+	// without reworking the production Substrate graph the bake path also depends on. So this
+	// follows the same shortcut CreateDebugMaterial already takes above: a second small transient
+	// material, built once in C++, never touching the saved asset.
+	//
+	// It takes the same DA_BaseColor / DA_Normal / DA_RAMH / DA_Height parameter names
+	// FMixtormatGpuCompositor::BindOutputs already knows how to fill, so binding this material's
+	// textures is that same call, not a second copy of the texture lookup.
+	UMaterial* CreateChannelPreviewMaterial()
+	{
+		UMaterial* Material = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
+		if (!Material)
+		{
+			return nullptr;
+		}
+
+		Material->MaterialDomain = MD_Surface;
+		Material->BlendMode = BLEND_Opaque;
+		Material->SetShadingModel(MSM_Unlit);
+
+		UTexture2D* WhiteFallback = LoadObject<UTexture2D>(
+			nullptr,
+			TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+
+		auto MakeTextureParam = [Material, WhiteFallback](const FName ParameterName)
+		{
+			UMaterialExpressionTextureSampleParameter2D* Sample =
+				NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
+			Sample->SetParameterName(ParameterName);
+			Sample->ExpressionGUID = FGuid::NewGuid();
+			// Matches CreateDebugMaterial's fallback above: the sampler type is validated against
+			// the default texture's own compression settings at compile time, and WhiteSquareTexture
+			// is a Color-setting texture, so LinearColor here would fail that check. The bound
+			// render targets carry their own sRGB flag regardless of this setting.
+			Sample->SamplerType = SAMPLERTYPE_Color;
+			Sample->Texture = WhiteFallback;
+			Material->GetExpressionCollection().AddExpression(Sample);
+			return Sample;
+		};
+
+		UMaterialExpressionTextureSampleParameter2D* BaseColorSample =
+			MakeTextureParam(ChannelPreviewBaseColorParameter);
+		UMaterialExpressionTextureSampleParameter2D* NormalSample =
+			MakeTextureParam(ChannelPreviewNormalParameter);
+		UMaterialExpressionTextureSampleParameter2D* RamhSample =
+			MakeTextureParam(ChannelPreviewRamhParameter);
+		UMaterialExpressionTextureSampleParameter2D* HeightSample =
+			MakeTextureParam(ChannelPreviewHeightParameter);
+
+		UMaterialExpressionScalarParameter* ModeParam =
+			NewObject<UMaterialExpressionScalarParameter>(Material);
+		ModeParam->SetParameterName(ChannelPreviewModeParameter);
+		ModeParam->ExpressionGUID = FGuid::NewGuid();
+		ModeParam->DefaultValue = static_cast<float>(EMixtormatChannelPreview::BaseColor);
+		Material->GetExpressionCollection().AddExpression(ModeParam);
+
+		// One source expression and output index per mode, matched to the fixed output layout
+		// UMaterialExpressionTextureSample always declares: 0 = RGB, 1 = R, 2 = G, 3 = B, 4 = A.
+		// Index 0 (Material) is never read -- that mode never binds this material at all.
+		struct FChannelSource
+		{
+			UMaterialExpression* Expression = nullptr;
+			int32 OutputIndex = 0;
+		};
+		FChannelSource Sources[8];
+		Sources[static_cast<int32>(EMixtormatChannelPreview::BaseColor)] = { BaseColorSample, 0 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Normal)] = { NormalSample, 0 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Roughness)] = { RamhSample, 1 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::AO)] = { RamhSample, 2 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Metallic)] = { RamhSample, 3 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::F0)] = { RamhSample, 4 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Height)] = { HeightSample, 1 };
+
+		// FExpressionInput::Connect, not a hand assignment of Expression/OutputIndex: the R/G/B/A
+		// component mask lives on the *input* (Mask/MaskR/.../MaskA), copied over from the
+		// source's FExpressionOutput entry only inside ConnectExpression. Setting OutputIndex
+		// directly leaves the input unmasked, so every "single channel" pick would otherwise
+		// silently come through as full RGB.
+		auto WireInput = [](FExpressionInput& Input, const FChannelSource& Source)
+		{
+			Input.Connect(Source.OutputIndex, Source.Expression);
+		};
+
+		// A chain of If nodes, one per non-Material mode above the first, each testing
+		// DA_ChannelPreviewMode against its own constant, built low-to-high so ALessThanB can
+		// always point at the node just built -- a strictly backward-only reference, so the graph
+		// stays acyclic. AGreaterThanB is wired to the node's OWN value rather than forward to the
+		// next node: an earlier version pointed it at Chain[Mode + 1] to keep climbing, but that
+		// made every adjacent pair reference each other (A's AGreaterThanB -> B, B's ALessThanB ->
+		// A), which the material compiler rejects outright ("Expression is part of a cycle") and
+		// silently substitutes the default material for every mode -- exactly the "nothing changes
+		// when V is pressed" symptom. AGreaterThanB only needs a valid, harmless connection: it is
+		// only ever reached for Mode > ConstB, and the outermost node (Chain[LastMode], wired to
+		// EmissiveColor below) is the one actually evaluated first, so no interior node's
+		// AGreaterThanB branch is reachable at runtime -- Mode never exceeds LastMode.
+		const int32 FirstMode = static_cast<int32>(EMixtormatChannelPreview::BaseColor);
+		const int32 LastMode = static_cast<int32>(EMixtormatChannelPreview::Height);
+		UMaterialExpressionIf* Chain[8] = {};
+		FExpressionInput PreviousOutput;
+		WireInput(PreviousOutput, Sources[FirstMode]);
+		for (int32 Mode = FirstMode + 1; Mode <= LastMode; ++Mode)
+		{
+			UMaterialExpressionIf* Node = NewObject<UMaterialExpressionIf>(Material);
+			Node->A.Connect(0, ModeParam);
+			Node->ConstB = static_cast<float>(Mode);
+			WireInput(Node->AEqualsB, Sources[Mode]);
+			WireInput(Node->AGreaterThanB, Sources[Mode]);
+			Node->ALessThanB = PreviousOutput;
+			Material->GetExpressionCollection().AddExpression(Node);
+			Chain[Mode] = Node;
+			PreviousOutput.Connect(0, Node);
+		}
+
+		// The root is the node testing the *highest* mode: evaluating it first is what makes
+		// every lower node's ALessThanB chain the correct fallback, down to Sources[FirstMode].
+		Material->GetEditorOnlyData()->EmissiveColor.Expression = Chain[LastMode];
+		Material->PostEditChange();
+		return Material;
+	}
+
 }
 
 class FMixtormatPreviewViewportClient final : public FEditorViewportClient
@@ -98,6 +231,27 @@ public:
 		return MixtormatPalette::PreviewBackground();
 	}
 
+	// A diagnostic channel wants a literal read of the composited texture -- the studio-lighting
+	// look's filmic tone curve compresses highlights and lifts blacks, which turns a linear
+	// roughness/height/normal value into visibly wrong contrast, not the raw data being inspected.
+	// Zeroing ToneCurveAmount and ExpandGamut is the documented way to fully disable that curve
+	// (see FPostProcessSettings::ToneCurveAmount) while leaving the ordinary linear-to-sRGB
+	// display encode in place, which is the "unlit, sRGB, no tonemapping" read a channel preview
+	// needs. Left alone in Material mode, so the shaded look is untouched.
+	virtual void OverridePostProcessSettings(FSceneView& View) override
+	{
+		if (Owner.GetChannelPreview() == EMixtormatChannelPreview::Material)
+		{
+			return;
+		}
+		FPostProcessSettings RawSettings;
+		RawSettings.bOverride_ToneCurveAmount = true;
+		RawSettings.ToneCurveAmount = 0.0f;
+		RawSettings.bOverride_ExpandGamut = true;
+		RawSettings.ExpandGamut = 0.0f;
+		View.OverridePostProcessSettings(RawSettings, 1.0f);
+	}
+
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
 	{
 		// F frames the mesh, the way it does everywhere else in the editor. Handled here rather
@@ -113,6 +267,13 @@ public:
 			&& (EventArgs.Key == EKeys::SpaceBar || EventArgs.Key == EKeys::H))
 		{
 			Owner.ToggleOverlayUi();
+			return true;
+		}
+		// Temporary: cycles the raw-channel diagnostic view. No toolbar yet -- WorkingStatusText
+		// is the only indication, same as every other viewport hotkey here.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V)
+		{
+			Owner.CycleChannelPreview();
 			return true;
 		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
@@ -188,7 +349,7 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 {
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
-
+	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -344,6 +505,14 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		MixtormatPreview::HeightAmountParameter,
 		DisplacementAmount);
 	InvalidateDisplacementShadows();
+	// PreviewMaterialInstance above was just refreshed regardless of what the mesh currently
+	// shows. If a diagnostic channel is active, reapply it too, both to pick up the new textures
+	// and because the swap branch above may have just rebound the mesh to PreviewMaterialInstance
+	// out from under it.
+	if (ChannelPreview != EMixtormatChannelPreview::Material)
+	{
+		ApplyChannelPreview();
+	}
 	return true;
 }
 
@@ -667,6 +836,96 @@ void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)
 void SMixtormatPreviewViewport::ToggleOverlayUi()
 {
 	OnToggleOverlayUi.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::CycleChannelPreview()
+{
+	const uint8 NextMode = (static_cast<uint8>(ChannelPreview) + 1)
+		% (static_cast<uint8>(EMixtormatChannelPreview::Height) + 1);
+	ChannelPreview = static_cast<EMixtormatChannelPreview>(NextMode);
+	ApplyChannelPreview();
+	OnChannelPreviewChanged.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::ApplyChannelPreview()
+{
+	if (!PreviewMeshComponent)
+	{
+		return;
+	}
+
+	if (ChannelPreview == EMixtormatChannelPreview::Material)
+	{
+		// Restore whatever the ordinary layer/debug pipeline last bound. That pipeline was never
+		// touched while a diagnostic mode was active -- PreviewMaterialInstance kept receiving
+		// every recompose in the background -- so this is an exact, up-to-date restore, not a
+		// rebuild.
+		PreviewMeshComponent->SetMaterial(0, PreviewMaterialInstance.Get());
+		// Back in the material slot, so the strong hold is no longer needed.
+		RetainedPreviewMaterialInstance.Reset();
+		if (PreviewViewportClient.IsValid())
+		{
+			PreviewViewportClient->Invalidate();
+		}
+		return;
+	}
+
+	// About to detach PreviewMaterialInstance from the mesh's material slot -- its only other
+	// owner -- so it needs a strong reference of its own or it becomes GC-eligible the moment
+	// this swap happens, leaving Material mode with nothing to restore later.
+	RetainedPreviewMaterialInstance.Reset(PreviewMaterialInstance.Get());
+
+	if (!ChannelPreviewMaterial)
+	{
+		ChannelPreviewMaterial.Reset(MixtormatPreview::CreateChannelPreviewMaterial());
+	}
+	if (!ChannelPreviewMaterial)
+	{
+		return;
+	}
+	if (!ChannelPreviewMaterialInstance.IsValid())
+	{
+		ChannelPreviewMaterialInstance = UMaterialInstanceDynamic::Create(
+			ChannelPreviewMaterial.Get(), PreviewMeshComponent);
+	}
+	UMaterialInstanceDynamic* ChannelMID = ChannelPreviewMaterialInstance.Get();
+	if (!ChannelMID)
+	{
+		return;
+	}
+
+	if (LayerCompositor)
+	{
+		// Same call the real preview material's textures come from -- one texture-fetch, two
+		// consumers, so the diagnostic view can never drift from what BindOutputs considers
+		// current.
+		LayerCompositor->BindOutputs(*ChannelMID);
+	}
+	ChannelMID->SetScalarParameterValue(
+		MixtormatPreview::ChannelPreviewModeParameter,
+		static_cast<float>(ChannelPreview));
+	PreviewMeshComponent->SetMaterial(0, ChannelMID);
+	if (PreviewViewportClient.IsValid())
+	{
+		PreviewViewportClient->Invalidate();
+	}
+}
+
+FString SMixtormatPreviewViewport::GetChannelPreviewLabel() const
+{
+	switch (ChannelPreview)
+	{
+	case EMixtormatChannelPreview::BaseColor: return TEXT("Base Color");
+	case EMixtormatChannelPreview::Normal: return TEXT("Normal");
+	case EMixtormatChannelPreview::Roughness: return TEXT("Roughness");
+	case EMixtormatChannelPreview::AO: return TEXT("AO");
+	case EMixtormatChannelPreview::Metallic: return TEXT("Metallic");
+	case EMixtormatChannelPreview::F0: return TEXT("F0 / Specular");
+	case EMixtormatChannelPreview::Height: return TEXT("Height");
+	case EMixtormatChannelPreview::Material:
+	default:
+		return TEXT("Material");
+	}
 }
 
 void SMixtormatPreviewViewport::SetCameraFov(const float FovDegrees)

@@ -147,6 +147,16 @@ namespace MixtormatPalette
 	inline FLinearColor SegmentActiveText() { return Hex(0xE8F0F8); }
 	inline FLinearColor SegmentShade() { return Hex(0x000000, MixtormatTokens::SegmentShadeAlpha); }
 
+	// ---- Debug visualization ------------------------------------------------------------------
+	// Defaults for UMixtormatEditorSettings' debug swatches. Authored directly as linear values,
+	// like the runtime's own debug-adjacent defaults (see FMixtormatEffect::DefaultStainColor),
+	// rather than through Hex()/ResolveColor(): these seed a config property a user can override,
+	// not a live-editable Slate theme value.
+	inline FLinearColor DebugMask()         { return FLinearColor(0.0f, 0.8f, 1.0f, 1.0f); }
+	inline FLinearColor DebugIdA()          { return FLinearColor(0.15f, 0.65f, 1.0f, 1.0f); }
+	inline FLinearColor DebugIdB()          { return FLinearColor(0.65f, 0.25f, 1.0f, 1.0f); }
+	inline FLinearColor DebugInvalidGrout() { return FLinearColor(0.05f, 0.05f, 0.05f, 1.0f); }
+
 	// ---- Layer stack ------------------------------------------------------------------------
 	inline FLinearColor LayerName()    { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerName"), Hex(0xA2A2A2)); }
 	inline FLinearColor LayerSource()  { return FMixtormatLiveTheme::ResolveColor(TEXT("LayerSource"), Hex(0xA8A8A8, 0.50f)); }

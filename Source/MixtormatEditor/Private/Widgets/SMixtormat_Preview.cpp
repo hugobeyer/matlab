@@ -666,6 +666,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnToggleOverlayUi(FSimpleDelegate::CreateLambda([this]()
 			{
 				bPreviewOverlayUiVisible = !bPreviewOverlayUiVisible;
+			}))
+			// Temporary: V has no toolbar readout yet, so the status line is the only feedback.
+			.OnChannelPreviewChanged(FSimpleDelegate::CreateLambda([this]()
+			{
+				if (!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid())
+				{
+					WorkingStatusText = FString::Printf(
+						TEXT("Preview: %s"),
+						*PreviewViewports[0]->GetChannelPreviewLabel());
+				}
 			}));
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()

@@ -10,6 +10,7 @@ public class MixtormatEditor : ModuleRules
 		{
 			"Core",
 			"CoreUObject",
+			"DeveloperSettings",
 			"Engine",
 			"Slate",
 			"SlateCore"
