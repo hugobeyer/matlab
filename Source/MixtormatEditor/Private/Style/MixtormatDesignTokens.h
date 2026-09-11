@@ -318,8 +318,8 @@ namespace MixtormatTokens
 	inline float InspectorWidth = 300.0f;
 	inline float TopBarHeight = 32.0f;
 	inline float StatusBarHeight = 18.0f;
-	inline float BottomLibraryCollapseButtonWidth = 8.0f;
-	inline float BottomLibraryCollapseButtonHeight = 3.0f;
+	inline float BottomLibraryCollapseButtonWidth = 20.0f;
+	inline float BottomLibraryCollapseButtonHeight = 8.0f;
 	inline float MaskBarTileSize = 62.0f;
 	inline float ToolbarButtonMargin = 2.0f;
 	inline float ToolbarLabelPadding = 5.0f;

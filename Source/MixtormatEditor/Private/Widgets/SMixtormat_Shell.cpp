@@ -366,17 +366,14 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 											SAssignNew(BottomLibraryToggleButton, SButton)
 											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
 											.ContentPadding(0.0f)
-											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries."))
+											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
 											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 											[
 												SNew(SImage)
-												.Visibility_Lambda([this]()
-												{
-													return BottomLibraryToggleButton.IsValid()
-														&& BottomLibraryToggleButton->IsHovered()
-														? EVisibility::HitTestInvisible
-														: EVisibility::Collapsed;
-												})
+												// Always on: the tab was a hover-only reveal on a 3px sliver,
+												// which made the control nearly impossible to find. It is now
+												// the affordance itself, not a hint that one exists.
+												.Visibility(EVisibility::HitTestInvisible)
 												.Image_Lambda([this]()
 												{
 													return bBottomLibraryCollapsed

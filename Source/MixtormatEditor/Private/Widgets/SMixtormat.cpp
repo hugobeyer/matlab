@@ -433,6 +433,12 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	{
 		return RedoMaterialEdit();
 	}
+	// G for the bottom galleries, the same idea as H for the viewport overlay: one key,
+	// no modifier, toggles the panel that eats the most screen space.
+	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::G)
+	{
+		return ToggleBottomLibraryCollapsed();
+	}
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }
 
