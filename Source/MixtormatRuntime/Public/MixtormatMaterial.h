@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
@@ -311,6 +311,26 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	TSoftObjectPtr<UTexture2D> MaskTexture;
+
+	// Optional live scalar output published by another child. This is intentionally separate
+	// from FMixtormatLayerChild::SourceLayerId/SourceChildId: those make the whole child an
+	// instance and require source/destination types to match. A published mask remains an
+	// ordinary Mask child, so its Blend Mode, Weight, Shaping and UV controls stay local.
+	UPROPERTY()
+	FGuid PublishedSourceLayerId;
+
+	UPROPERTY()
+	FGuid PublishedSourceChildId;
+
+	UPROPERTY()
+	FName PublishedSourceOutput;
+
+	bool HasPublishedSource() const
+	{
+		return PublishedSourceLayerId.IsValid()
+			&& PublishedSourceChildId.IsValid()
+			&& !PublishedSourceOutput.IsNone();
+	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;

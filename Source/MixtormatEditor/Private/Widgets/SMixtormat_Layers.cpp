@@ -1,4 +1,4 @@
-﻿#include "Widgets/SMixtormat.h"
+#include "Widgets/SMixtormat.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
@@ -577,6 +577,9 @@ FReply SMixtormat::ReplaceMaskInLayer(
 	FMixtormatMaskLayer Replacement = WorkingLayers[LayerIndex].Children[ChildIndex].Mask;
 	Replacement.Mask.Reset();
 	Replacement.MaskTexture.Reset();
+	Replacement.PublishedSourceLayerId.Invalidate();
+	Replacement.PublishedSourceChildId.Invalidate();
+	Replacement.PublishedSourceOutput = NAME_None;
 	if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
 	{
 		Replacement.Mask = TSoftObjectPtr<UMixtormatMask>(MaskPath);
@@ -977,6 +980,47 @@ void SMixtormat::CopyLayerChild(const int32 LayerIndex, const int32 ChildIndex, 
 		ChildClipboardSourceLayerId = WorkingLayers[LayerIndex].LayerId;
 		ChildClipboardSourceChildId = Child.ChildId;
 	}
+}
+
+void SMixtormat::CopyInstanceMaskFromWear(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+
+	const FMixtormatLayer& SourceLayer = WorkingLayers[LayerIndex];
+	const FMixtormatLayerChild& SourceChild = SourceLayer.Children[ChildIndex];
+	if (SourceChild.Type != EMixtormatLayerChildType::Effect)
+	{
+		return;
+	}
+
+	EMixtormatEffectType Type = SourceChild.Effect.ProceduralType;
+	if (const UMixtormatEffect* Asset = SourceChild.Effect.Effect.LoadSynchronous())
+	{
+		Type = Asset->EffectType;
+	}
+	if (Type != EMixtormatEffectType::WornEdges)
+	{
+		return;
+	}
+
+	FMixtormatLayerChild PublishedMask;
+	PublishedMask.Type = EMixtormatLayerChildType::Mask;
+	PublishedMask.Mask.bEnabled = true;
+	PublishedMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	PublishedMask.Mask.Weight = 1.0f;
+	PublishedMask.Mask.PublishedSourceLayerId = SourceLayer.LayerId;
+	PublishedMask.Mask.PublishedSourceChildId = SourceChild.ChildId;
+	PublishedMask.Mask.PublishedSourceOutput = TEXT("Wear");
+
+	ChildClipboard = MoveTemp(PublishedMask);
+	ChildClipboardSourceLayerId.Invalidate();
+	ChildClipboardSourceChildId.Invalidate();
+	bChildClipboardIsInstance = false;
+	WorkingStatusText = TEXT("Wear instance mask copied");
 }
 
 bool SMixtormat::CanPasteLayerChild() const
@@ -2006,6 +2050,15 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			GetLayerChildName(Named));
 	}
 
+	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.HasPublishedSource())
+	{
+		return Child.Mask.PublishedSourceOutput == TEXT("Wear")
+			? LOCTEXT("PublishedWearMaskName", "Wear Mask")
+			: FText::Format(
+				LOCTEXT("PublishedMaskName", "{0} Mask"),
+				FText::FromName(Child.Mask.PublishedSourceOutput));
+	}
+
 	if (Child.Type == EMixtormatLayerChildType::Effect)
 	{
 		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
@@ -2641,6 +2694,33 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 	const int32 ChildIndex)
 {
 	MixtormatMenu::FBuilder Menu;
+	bool bWornEdges = false;
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		const FMixtormatLayerChild& SourceChild = WorkingLayers[LayerIndex].Children[ChildIndex];
+		if (SourceChild.Type == EMixtormatLayerChildType::Effect)
+		{
+			EMixtormatEffectType Type = SourceChild.Effect.ProceduralType;
+			if (const UMixtormatEffect* Asset = SourceChild.Effect.Effect.LoadSynchronous())
+			{
+				Type = Asset->EffectType;
+			}
+			bWornEdges = Type == EMixtormatEffectType::WornEdges;
+		}
+	}
+	if (bWornEdges)
+	{
+		Menu.Item(
+			LOCTEXT("CopyWearInstanceMask", "Copy Instance Mask from Wear"),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+			{
+				CopyInstanceMaskFromWear(LayerIndex, ChildIndex);
+			}));
+		Menu.Separator();
+	}
+
 	const FSoftObjectPath SelectedEffectMaskPath = SelectedMaskPath;
 	const FText SelectedEffectMaskName = SelectedLibraryMaskName.IsEmpty()
 		? LOCTEXT("NoSelectedEffectMask", "Select Mask from Gallery")

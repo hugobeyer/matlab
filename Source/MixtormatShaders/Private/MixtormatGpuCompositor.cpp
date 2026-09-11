@@ -1,4 +1,4 @@
-﻿#include "MixtormatGpuCompositor.h"
+#include "MixtormatGpuCompositor.h"
 
 #include "Async/Async.h"
 #include "Engine/Texture2D.h"
@@ -1650,9 +1650,31 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
+	struct FPublishedMaskKey
+	{
+		FGuid LayerId;
+		int32 ChildIndex = INDEX_NONE;
+		FName Output;
+
+		friend bool operator==(const FPublishedMaskKey& A, const FPublishedMaskKey& B)
+		{
+			return A.LayerId == B.LayerId && A.ChildIndex == B.ChildIndex && A.Output == B.Output;
+		}
+
+		friend uint32 GetTypeHash(const FPublishedMaskKey& Key)
+		{
+			return HashCombine(
+				HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
+				GetTypeHash(Key.Output));
+		}
+	};
+
 	struct FMaskRenderData
 	{
 		FTextureRHIRef Texture;
+		FGuid PublishedSourceLayerId;
+		int32 PublishedSourceChildIndex = INDEX_NONE;
+		FName PublishedSourceOutput;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
@@ -2966,17 +2988,40 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					continue;
 				}
 
-				UTexture2D* MaskTexture = MaskLayer.MaskTexture.LoadSynchronous();
-				if (!MaskTexture)
+				const bool bPublishedSource = MaskLayer.HasPublishedSource();
+				int32 PublishedSourceChildIndex = INDEX_NONE;
+				if (bPublishedSource)
 				{
-					if (const UMixtormatMask* MaskAsset = MaskLayer.Mask.LoadSynchronous())
+					for (const FMixtormatLayer& SourceLayer : Layers)
 					{
-						MaskTexture = MaskAsset->MaskTexture.Get();
+						if (SourceLayer.LayerId != MaskLayer.PublishedSourceLayerId)
+						{
+							continue;
+						}
+						PublishedSourceChildIndex = SourceLayer.Children.IndexOfByPredicate(
+							[&MaskLayer](const FMixtormatLayerChild& Candidate)
+							{
+								return Candidate.ChildId == MaskLayer.PublishedSourceChildId;
+							});
+						break;
 					}
 				}
-				if (!MaskTexture)
+
+				UTexture2D* MaskTexture = nullptr;
+				if (!bPublishedSource)
 				{
-					continue;
+					MaskTexture = MaskLayer.MaskTexture.LoadSynchronous();
+					if (!MaskTexture)
+					{
+						if (const UMixtormatMask* MaskAsset = MaskLayer.Mask.LoadSynchronous())
+						{
+							MaskTexture = MaskAsset->MaskTexture.Get();
+						}
+					}
+					if (!MaskTexture)
+					{
+						continue;
+					}
 				}
 
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
@@ -2998,10 +3043,19 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					}
 				}
 				FMaskRenderData& MaskData = ChildData.Mask;
-				MaskData.Texture = GetTextureRHI(MaskTexture);
-				if (!MaskData.Texture.IsValid())
+				if (bPublishedSource)
 				{
-					return false;
+					MaskData.PublishedSourceLayerId = MaskLayer.PublishedSourceLayerId;
+					MaskData.PublishedSourceChildIndex = PublishedSourceChildIndex;
+					MaskData.PublishedSourceOutput = MaskLayer.PublishedSourceOutput;
+				}
+				else
+				{
+					MaskData.Texture = GetTextureRHI(MaskTexture);
+					if (!MaskData.Texture.IsValid())
+					{
+						return false;
+					}
 				}
 				MaskData.BlendMode = MaskLayer.BlendMode;
 				MaskData.Weight = FMath::Clamp(MaskLayer.Weight, 0.0f, 1.0f);
@@ -3737,6 +3791,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				}
 			}
 			TMap<FGuid, FRDGTextureRef> DriverSnapshots;
+			TMap<FPublishedMaskKey, FRDGTextureRef> PublishedMaskOutputs;
 
 			if (Request.Layers.IsEmpty())
 			{
@@ -4152,6 +4207,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					struct FPendingWornEdges
 					{
 						const FEffectRenderData* Effect = nullptr;
+						int32 SourceChildIndex = INDEX_NONE;
 						FRDGTextureRef FeatureMask = nullptr;
 						FRDGTextureRef RegionIds = nullptr;
 						FRDGTextureRef PatternEdge = nullptr;
@@ -5148,11 +5204,31 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							MaskParameters->Contrast = Mask.Contrast;
 							MaskParameters->Offset = Mask.Offset;
 							MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							MaskParameters->IncomingMask = RegisterTexture(
-								GraphBuilder,
-								RegisteredTextures,
-								Mask.Texture,
-								TEXT("Mixtormat.IncomingMask"));
+							FRDGTextureRef IncomingMask = nullptr;
+							if (!Mask.PublishedSourceOutput.IsNone())
+							{
+								const FPublishedMaskKey Key{
+									Mask.PublishedSourceLayerId,
+									Mask.PublishedSourceChildIndex,
+									Mask.PublishedSourceOutput};
+								if (FRDGTextureRef* Published = PublishedMaskOutputs.Find(Key))
+								{
+									IncomingMask = *Published;
+								}
+								else
+								{
+									IncomingMask = EmptyDriverSignal;
+								}
+							}
+							else
+							{
+								IncomingMask = RegisterTexture(
+									GraphBuilder,
+									RegisteredTextures,
+									Mask.Texture,
+									TEXT("Mixtormat.IncomingMask"));
+							}
+							MaskParameters->IncomingMask = IncomingMask;
 							MaskParameters->LinearWrapSampler =
 								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 							MaskParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
@@ -5238,6 +5314,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 							FPendingWornEdges& Wear = PendingWornEdges.AddDefaulted_GetRef();
 							Wear.Effect = &Effect;
+							Wear.SourceChildIndex = Child.SourceChildIndex;
 							Wear.FeatureMask = FeatureMask;
 							Wear.RegionIds = WearRegionIds;
 							for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
@@ -6972,6 +7049,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							EdgeWearShader,
 							WearP,
 							WearGroups);
+
+						PublishedMaskOutputs.Add(
+							FPublishedMaskKey{
+								Layer.LayerId,
+								PendingWear.SourceChildIndex,
+								FName(TEXT("Wear"))},
+							EdgeWearMask);
 
 						FRDGTextureRef WornRAM = GraphBuilder.CreateTexture(
 							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.HeightDerivedRAM"));
