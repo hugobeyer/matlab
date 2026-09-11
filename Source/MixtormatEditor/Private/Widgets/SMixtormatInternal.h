@@ -402,20 +402,37 @@ namespace MixtormatUI
 	}
 }
 
+namespace MixtormatBakeDialog
+{
+	// The fixed picker's own option set, in display order. Matches
+	// EMixtormatBakeResolution / EMixtormatBakeAASamples in UMixtormatEditorSettings.
+	constexpr int32 ResolutionOptions[] = {512, 1024, 2048, 4096};
+	constexpr int32 AASamplesOptions[] = {1, 2, 4, 8};
+
+	template <int32 N>
+	int32 ValueToIndex(const int32 (&Options)[N], const int32 Value, const int32 DefaultIndex)
+	{
+		for (int32 Index = 0; Index < N; ++Index)
+		{
+			if (Options[Index] == Value)
+			{
+				return Index;
+			}
+		}
+		return DefaultIndex;
+	}
+}
+
 class SMixtormatBakeSettingsDialog final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatBakeSettingsDialog) {}
 		SLATE_ARGUMENT(FMixtormatBakeSettings, InitialSettings)
-		SLATE_ARGUMENT(int32, Resolution)
-		SLATE_ARGUMENT(int32, AASamples)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
 		Settings = InArgs._InitialSettings;
-		Resolution = InArgs._Resolution;
-		AASamples = InArgs._AASamples;
 		ChildSlot
 		[
 			SNew(SBorder)
@@ -468,28 +485,61 @@ public:
 						ValidationText = FText::GetEmpty();
 					})
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
-					.Text_Lambda([this]()
-					{
-						return FText::Format(
-							LOCTEXT("BakeSharedResolution", "Resolution: {0}K ({1} × {1}) · shared preview/bake"),
-							FText::AsNumber(Resolution / 1024),
-							FText::AsNumber(Resolution));
-					})
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.Text(LOCTEXT("BakeSettingsSectionLabel", "Bake Settings"))
+					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, 0.0f)
 				[
-					SNew(STextBlock)
-					.Text_Lambda([this]()
-					{
-						return FText::Format(
-							LOCTEXT("BakeAASamples", "AA Samples: {0} (setting only -- not yet applied to bake output)"),
-							FText::AsNumber(AASamples));
-					})
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
+					[
+						SNew(SBox).WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)
+						[
+							SNew(STextBlock).Text(LOCTEXT("BakeResolutionLabel", "Resolution"))
+						]
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.0f)
+					[
+						SNew(SMixtormatSegmentedControl)
+						.Options({LOCTEXT("BakeRes512", "512"), LOCTEXT("BakeRes1024", "1024"), LOCTEXT("BakeRes2048", "2048"), LOCTEXT("BakeRes4096", "4096")})
+						.ActiveIndex_Lambda([this]()
+						{
+							return MixtormatBakeDialog::ValueToIndex(MixtormatBakeDialog::ResolutionOptions, Settings.Resolution, 2);
+						})
+						.OnChosen_Lambda([this](const int32 Index)
+						{
+							Settings.Resolution = MixtormatBakeDialog::ResolutionOptions[Index];
+						})
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+				[
+					SNew(SHorizontalBox)
+					.ToolTipText(LOCTEXT("BakeAASamplesDisabledHint", "Supersampling support is not available yet."))
+					.IsEnabled(false)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
+					[
+						SNew(SBox).WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)
+						[
+							SNew(STextBlock).Text(LOCTEXT("BakeAASamplesLabel", "AA Samples"))
+						]
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.0f)
+					[
+						SNew(SMixtormatSegmentedControl)
+						.Options({LOCTEXT("BakeAa1x", "1x"), LOCTEXT("BakeAa2x", "2x"), LOCTEXT("BakeAa4x", "4x"), LOCTEXT("BakeAa8x", "8x")})
+						.ActiveIndex_Lambda([this]()
+						{
+							return MixtormatBakeDialog::ValueToIndex(MixtormatBakeDialog::AASamplesOptions, Settings.AASamples, 0);
+						})
+						.OnChosen_Lambda([this](const int32 Index)
+						{
+							Settings.AASamples = MixtormatBakeDialog::AASamplesOptions[Index];
+						})
+					]
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
@@ -595,8 +645,6 @@ private:
 	FMixtormatBakeSettings Settings;
 	TSharedPtr<SEditableTextBox> DestinationTextBox;
 	FText ValidationText;
-	int32 Resolution = 2048;
-	int32 AASamples = 1;
 	bool bAccepted = false;
 };
 

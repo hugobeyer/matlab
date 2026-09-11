@@ -334,6 +334,7 @@ namespace MixtormatTokens
 	constexpr float BakeDialogFieldTopMargin = 4.0f;
 	constexpr float BakeDialogFieldBottomMargin = 10.0f;
 	constexpr float BakeDialogSectionGap = 8.0f;
+	constexpr float BakeDialogSettingLabelWidth = 90.0f;
 
 	// ---- Toggle -----------------------------------------------------------------------------
 	// A square well that fills rather than marking itself with a glyph. A check or a cross is a

@@ -1,7 +1,6 @@
 ﻿#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
-#include "MixtormatEditorSettings.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -15,13 +14,6 @@ void SMixtormat::Construct(const FArguments& InArgs)
 {
 	ThumbnailPool = MakeShared<FAssetThumbnailPool>(64);
 
-	// Read once, here, at workspace open -- not re-read later, so a settings change never
-	// resets values the user is already editing in an open bake dialog.
-	if (const UMixtormatEditorSettings* Settings = GetDefault<UMixtormatEditorSettings>())
-	{
-		CompositionResolution = MixtormatBakeResolutionToPixels(Settings->DefaultBakeResolution);
-		BakeAASamples = FMath::Max(1, Settings->DefaultBakeAASamples);
-	}
 
 	BuildWorkspaceUI();
 	ResetEditHistory(true);

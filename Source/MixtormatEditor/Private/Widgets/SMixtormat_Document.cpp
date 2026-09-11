@@ -314,25 +314,26 @@ FReply SMixtormat::BakeWorkingMaterial()
 	{
 		BakeSettingsRecipePath = RecipePath;
 		BakeOutputBaseName = WorkingMaterialAsset->GetName();
-		FString DestinationRoot = GetDefault<UMixtormatEditorSettings>()->DefaultBakeOutputPath;
+		const UMixtormatEditorSettings* EditorSettings = GetDefault<UMixtormatEditorSettings>();
+		FString DestinationRoot = EditorSettings->DefaultBakeOutputPath;
 		while (DestinationRoot.RemoveFromEnd(TEXT("/"))) {}
 		BakeDestinationPath = FString::Printf(
 			TEXT("%s/%s"),
 			*DestinationRoot,
 			*WorkingMaterialAsset->GetName());
+		BakeResolution = MixtormatBakeResolutionToPixels(EditorSettings->DefaultBakeResolution);
+		BakeAASamples = MixtormatBakeAASamplesToInt(EditorSettings->DefaultBakeAASamples);
 	}
 
 	TSharedPtr<SMixtormatBakeSettingsDialog> SettingsDialog;
 	const TSharedRef<SWindow> SettingsWindow = SNew(SWindow)
 		.Title(LOCTEXT("BakeSettingsTitle", "Bake Material"))
-		.ClientSize(FVector2D(480.0f, 410.0f))
+		.ClientSize(FVector2D(480.0f, 450.0f))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[
 			SAssignNew(SettingsDialog, SMixtormatBakeSettingsDialog)
-			.InitialSettings(FMixtormatBakeSettings{BakeDestinationPath, BakeOutputBaseName})
-			.Resolution(CompositionResolution)
-			.AASamples(BakeAASamples)
+			.InitialSettings(FMixtormatBakeSettings{BakeDestinationPath, BakeOutputBaseName, BakeResolution, BakeAASamples})
 		];
 	FSlateApplication::Get().AddModalWindow(
 		SettingsWindow,
@@ -347,6 +348,8 @@ FReply SMixtormat::BakeWorkingMaterial()
 	const FMixtormatBakeSettings Settings = SettingsDialog->GetSettings();
 	BakeDestinationPath = Settings.DestinationPath;
 	BakeOutputBaseName = Settings.BaseName;
+	BakeResolution = Settings.Resolution;
+	BakeAASamples = Settings.AASamples;
 	return ExecuteBake(Settings, true);
 }
 
@@ -399,7 +402,10 @@ FReply SMixtormat::ExecuteBake(
 		SlowTask.MakeDialog(false);
 		WorkingStatusText = TEXT("Bake · Compose");
 		SlowTask.EnterProgressFrame(1.0f, LOCTEXT("BakeStageCompose", "Compose"));
-		if (!PreviewViewports[0]->ComposeLayersAtResolution(WorkingLayers, CompositionResolution))
+		// Bake-only resolution, independent of CompositionResolution (the live preview). Composing
+		// at it temporarily resizes the shared compositor's render targets, but RefreshLayeredPreview
+		// below puts them back to CompositionResolution before the viewport is shown again.
+		if (!PreviewViewports[0]->ComposeLayersAtResolution(WorkingLayers, Settings.Resolution))
 		{
 			RefreshLayeredPreview(false);
 			FMessageDialog::Open(

@@ -19,6 +19,13 @@ struct FMixtormatBakeSettings
 {
 	FString DestinationPath;
 	FString BaseName;
+	// Per-bake, initialized from UMixtormatEditorSettings when the bake dialog opens for a recipe
+	// it has not seen yet; never written back to that config. Drives the GPU compositor's target
+	// resolution for this bake only -- see SMixtormat::ExecuteBake.
+	int32 Resolution = 2048;
+	// Infrastructure only -- see UMixtormatEditorSettings::DefaultBakeAASamples. Not read by
+	// FMixtormatBakeService::Bake.
+	int32 AASamples = 1;
 };
 
 struct FMixtormatBakeResult

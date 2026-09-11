@@ -852,8 +852,12 @@ private:
 	int32 SelectedMaskIndex = INDEX_NONE;
 	int32 LeftTabIndex = 0;
 	int32 CompositionResolution = 2048;
-	// Bake-only, not shared with the preview like CompositionResolution is. Infrastructure only:
-	// see UMixtormatEditorSettings::DefaultBakeAASamples.
+	// Bake-only, independent of CompositionResolution (the live preview's resolution, which this
+	// never changes). Reset from UMixtormatEditorSettings::DefaultBakeResolution the first time
+	// the bake dialog opens for a given recipe; edited per-bake after that; never saved back.
+	int32 BakeResolution = 2048;
+	// Bake-only, same lifecycle as BakeResolution above. Infrastructure only: see
+	// UMixtormatEditorSettings::DefaultBakeAASamples.
 	int32 BakeAASamples = 1;
 	EMixtormatStudioLighting StudioLighting = EMixtormatStudioLighting::Neutral;
 	EMixtormatPreviewMesh PreviewMesh = EMixtormatPreviewMesh::Sphere;
