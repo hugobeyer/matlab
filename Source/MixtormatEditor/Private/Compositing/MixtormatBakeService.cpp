@@ -218,6 +218,10 @@ namespace MixtormatBake
 		TEXT("DA_RAMH"),
 		TEXT("DA_Height"),
 	};
+	// DA_DielectricF0 / DA_UsePackedF0 are deliberately not required here: the master computes F0
+	// itself via MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0 (BaseColor + Metallic),
+	// confirmed by inspecting the master's own expression list. There is no manual F0 override
+	// input in the graph for these two names to bind to.
 	const FName RequiredScalarParameters[] = {
 		TEXT("DA_FuzzInfluence"),
 		TEXT("DA_Tiling"),
@@ -225,8 +229,6 @@ namespace MixtormatBake
 		TEXT("DA_RoughnessContrast"),
 		TEXT("DA_RoughnessOffset"),
 		TEXT("DA_NormalIntensity"),
-		TEXT("DA_DielectricF0"),
-		TEXT("DA_UsePackedF0"),
 	};
 
 	TArray<FName> FindMissingMasterParameters(UMaterialInterface& Master)
@@ -605,8 +607,6 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 1.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessOffset"), 0.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_DielectricF0"), 0.04f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_UsePackedF0"), 1.0f);
 	Result.Material->PostEditChange();
 	Result.Material->MarkPackageDirty();
 

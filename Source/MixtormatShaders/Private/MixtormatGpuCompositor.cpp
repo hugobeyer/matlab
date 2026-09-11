@@ -2382,8 +2382,9 @@ void FMixtormatGpuCompositor::BindOutputs(UMaterialInstanceDynamic& MaterialInst
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessContrast"), 1.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessOffset"), 0.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_NormalIntensity"), 1.0f);
-	MaterialInstance.SetScalarParameterValue(TEXT("DA_DielectricF0"), 0.04f);
-	MaterialInstance.SetScalarParameterValue(TEXT("DA_UsePackedF0"), 1.0f);
+	// DA_DielectricF0 / DA_UsePackedF0 intentionally not set: M_Mixtormat_Substrate has no such
+	// parameters -- it derives F0 itself via MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0
+	// (BaseColor + Metallic), so there is nothing in the graph for these two names to bind to.
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetBaseColorOutput() const
