@@ -42,6 +42,13 @@ float ReliefWidthPixels;
 float Variation;
 float Profile;
 
+// Additional per-crack variation, decorrelated from Variation above and from each other by
+// salting the same lineage id with a different constant per parameter. Each is a multiplier on
+// its own target and is the identity at 0, so an authored relief is unchanged until one is raised.
+float GrooveVariation;
+float ProfileVariation;
+float WidthVariation;
+
 int CraqReliefWrap(int X, int Size)
 {
 	const int R = X % max(Size, 1);
@@ -70,14 +77,31 @@ float CraqReliefOffset(int2 P)
 	}
 
 	const float2 Nearby = CrackDistance.Load(int3(CraqReliefWrapPixel(SampleP), 0)).xy;
-	const float Width = max(ReliefWidthPixels, 0.5f);
+	const uint CrackId = asuint(Nearby.y);
+
+	// Width variation shifts the groove's mouth per crack before the cone is evaluated, so it
+	// changes how wide the dish is without moving the crack or its mask.
+	const float WidthVary = lerp(
+		1.0f, MixtormatCellRandom01(CrackId ^ 0xC2B2AE35u), saturate(WidthVariation));
+	const float Width = max(ReliefWidthPixels * WidthVary, 0.5f);
 	const float T = saturate(Nearby.x / Width);
 
 	// Per-crack variation, keyed on the same lineage id the mask varies on, so a crack that reads
 	// as faint in the mask is also shallow in the height instead of the two disagreeing.
-	const float Vary = lerp(1.0f, MixtormatCellRandom01(asuint(Nearby.y)), saturate(Variation));
+	const float Vary = lerp(1.0f, MixtormatCellRandom01(CrackId), saturate(Variation));
 
-	return pow(saturate(1.0f - T), max(Profile, 0.05f)) * Vary;
+	// Groove Variation is a second, independent depth multiplier salted off a different offset
+	// of the same id, so it varies depth without simply restating the mask's own thinning.
+	const float GrooveVary = lerp(
+		1.0f, MixtormatCellRandom01(CrackId ^ 0x27D4EB2Fu), saturate(GrooveVariation));
+
+	// Profile Variation shifts the wall's V-to-U exponent per crack, again ahead of the pow
+	// below rather than changing the distance field it is raised on.
+	const float ProfileVary = lerp(
+		1.0f, MixtormatCellRandom01(CrackId ^ 0x9E3779B9u), saturate(ProfileVariation));
+	const float VariedProfile = max(Profile * ProfileVary, 0.05f);
+
+	return pow(saturate(1.0f - T), VariedProfile) * Vary * GrooveVary;
 }
 
 [numthreads(8, 8, 1)]

@@ -988,6 +988,34 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
 	float GradeGamma = 1.0f;
 
+	// Levels remap, applied first and ahead of Brightness/Contrast: t = (value - Min) / (Max -
+	// Min), clamped to 0..1, then value = lerp(OutputMin, OutputMax, t). At the identity range
+	// (0..1 in, 0..1 out) this is a no-op, which is what keeps every grade already authored
+	// against Brightness/Contrast/Gamma unchanged.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	float GradeInputMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	float GradeInputMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	float GradeOutputMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	float GradeOutputMax = 1.0f;
+
+	// Per-channel offset, added after the levels remap and the linear Brightness/Contrast stage
+	// but ahead of the tonemap, so a colour cast can be dialled in on data the tonemap has not
+	// yet reshaped. Zero on every channel is the identity.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float GradeBiasR = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float GradeBiasG = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float GradeBiasB = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
 	bool bGradeInvertMask = false;
 
@@ -1371,6 +1399,20 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.05", ClampMax = "8.0"))
 	float ReliefProfile = 2.0f;
+
+	// Per-crack variation on the relief, keyed off the same lineage id the crack network already
+	// carries -- stable per crack rather than noisy per pixel, and applied after the network
+	// exists so it never touches which cracks grow or where. Each is its own multiplier on top
+	// of Height/Groove/Profile above and is neutral at 0, so an authored relief looks the same
+	// until one of these is raised.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ReliefGrooveVariation = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ReliefProfileVariation = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ReliefWidthVariation = 0.0f;
 
 	// -- Output -----------------------------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")
@@ -2370,6 +2412,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeightInfluence = 1.0f;
+
+	// How much this layer pushes the substrate's Fuzz Slab amount. Neutral at 0, unlike the other
+	// Channel Influence rows: fuzz has no underlying value every layer already carries, so a
+	// layer that never touches it must leave the substrate's own default alone rather than
+	// zeroing it out. Mixtormat carries this number and nothing else -- the fuzz shading itself
+	// stays on the master material's DA_FuzzRoughness and DA_FuzzColor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FuzzInfluence = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bInvertFeature = false;

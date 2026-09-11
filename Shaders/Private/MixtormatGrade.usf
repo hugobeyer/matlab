@@ -26,6 +26,11 @@ float Contrast;
 float ContrastPivot;
 float Gamma;
 float Amount;
+float InputMin;
+float InputMax;
+float OutputMin;
+float OutputMax;
+float3 ChannelBias;
 
 // c / (1 + c). Cheapest of the three and never clips, but it desaturates highlights and
 // reaches white only at infinity, so bright areas go pale rather than bright.
@@ -83,6 +88,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// untouched source, so a negative pixel survives an Amount of 0 intact.
 	float3 c = max(Source.rgb, 0.0f);
 
+	// Levels remap, first and ahead of everything below: t is where the value sits between
+	// Input Min and Max, and Output Min/Max says what that maps to. At the identity range
+	// (0..1 in, 0..1 out) t == value and the lerp returns it unchanged, so an old grade with no
+	// levels authored keeps reading exactly as it did before this stage existed.
+	const float3 RemapT = saturate((c - InputMin) / max(InputMax - InputMin, 1.0e-5f));
+	c = lerp(OutputMin, OutputMax, RemapT);
+
 	// Brightness is a gain, not an offset. These are linear values, so scaling is what
 	// behaves like exposure and it leaves channel ratios -- and therefore hue -- alone,
 	// where adding a constant washes saturation out of the darks.
@@ -92,6 +104,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// data; 0.5 is what gets reached for out of habit with display-referred images, which is
 	// why the pivot is a control rather than a constant.
 	c = (c - ContrastPivot) * Contrast + ContrastPivot;
+
+	// Per-channel colour cast, after the linear stage above so it reads as a tint on top of
+	// the exposure and contrast already applied, and ahead of the tonemap so the operator sees
+	// the same kind of value it always has rather than a cast one that has already been mapped
+	// toward display. Zero on every channel is the identity.
+	c += ChannelBias;
 	c = max(c, 0.0f);
 
 	// Tonemap after the linear adjustments. It is the map from scene values to displayable

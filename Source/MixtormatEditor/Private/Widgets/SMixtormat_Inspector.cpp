@@ -593,6 +593,32 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradePivot", "Pivot"), Grade, &FMixtormatLayerEffect::GradeContrastPivot, 0.0, 1.0, 0.18, 0.01,
 		LOCTEXT("GradePivotHint", "The value contrast pivots about. 0.18 is linear mid grey and is correct for this data; 0.5 is what display-referred habits reach for, which is why it is a control.")));
 
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpLevels", "Levels")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeInputMin", "Input Min"), Grade, &FMixtormatLayerEffect::GradeInputMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GradeInputMinHint", "Remapped first, ahead of Brightness/Contrast: the value here maps to Output Min. 0 with Input Max 1 is the identity.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeInputMax", "Input Max"), Grade, &FMixtormatLayerEffect::GradeInputMax, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("GradeInputMaxHint", "The value that maps to Output Max. 1 with Input Min 0 is the identity."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeOutputMin", "Output Min"), Grade, &FMixtormatLayerEffect::GradeOutputMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GradeOutputMinHint", "What Input Min maps to. 0 is the identity.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeOutputMax", "Output Max"), Grade, &FMixtormatLayerEffect::GradeOutputMax, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("GradeOutputMaxHint", "What Input Max maps to. 1 is the identity."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeBiasR", "Bias R"), Grade, &FMixtormatLayerEffect::GradeBiasR, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GradeBiasRHint", "Added after the levels remap and the linear stage, ahead of the tonemap. 0 is the identity.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("GradeBiasG", "Bias G"), Grade, &FMixtormatLayerEffect::GradeBiasG, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GradeBiasGHint", "Added after the levels remap and the linear stage, ahead of the tonemap. 0 is the identity."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(
+		LOCTEXT("GradeBiasB", "Bias B"), Grade, &FMixtormatLayerEffect::GradeBiasB, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("GradeBiasBHint", "Added after the levels remap and the linear stage, ahead of the tonemap. 0 is the identity.")));
+
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpTonemap", "Tonemap")));
 	AddSliderRow(Panel, MixtormatRow::Make(
 		LOCTEXT("GradeTonemapMode", "Operator"),
@@ -2410,6 +2436,14 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 			LOCTEXT("CraqReliefWidthHint", "Half-width of the groove, in cell units like Width. Separate from Width because they are different things: Width is the hairline the mask draws, this is the mouth of the dish around it, and a fine dark crack usually sits in a much wider depression.")),
 		Slider(LOCTEXT("CraqReliefProfile", "Profile"), &FMixtormatCraquelure::ReliefProfile, 0.05, 8.0, 1.0, 0.01,
 			LOCTEXT("CraqReliefProfileHint", "Shape of the groove wall. 1 is the straight cone the distance field gives directly, the constant-slope fracture case; below 1 flares it to a dish, above draws it into a narrow V with a broad shoulder."))));
+	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
+		Slider(LOCTEXT("CraqReliefGrooveVar", "Groove Var"), &FMixtormatCraquelure::ReliefGrooveVariation, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("CraqReliefGrooveVarHint", "Per-crack variation in groove depth, keyed on the same lineage id the network already carries -- stable per crack rather than noisy per pixel. 0 leaves every groove the same depth.")),
+		Slider(LOCTEXT("CraqReliefProfileVar", "Profile Var"), &FMixtormatCraquelure::ReliefProfileVariation, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("CraqReliefProfileVarHint", "Per-crack variation in wall shape, so some grooves read as a sharper V and others as a broader dish. 0 leaves Profile constant across the network."))));
+	AddSliderRow(ReliefGroup, Slider(
+		LOCTEXT("CraqReliefWidthVar", "Width Var"), &FMixtormatCraquelure::ReliefWidthVariation, 0.0, 1.0, 0.0, 0.01,
+		LOCTEXT("CraqReliefWidthVarHint", "Per-crack variation in the groove's mouth, so some dishes sit wider than others without moving the crack itself. 0 leaves Groove constant across the network.")));
 	Panel->AddSlot().AutoHeight()[ReliefGroup];
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpWarp", "Warp")));
@@ -3090,6 +3124,9 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		LOCTEXT("LayerNormalInfluenceLabel", "Normal"), Layer, &FMixtormatLayer::NormalInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("LayerHeightInfluenceLabel", "Height"), Layer, &FMixtormatLayer::HeightInfluence, 0.0, 1.0, 1.0, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("FuzzInfluenceLabel", "Fuzz"), Layer, &FMixtormatLayer::FuzzInfluence, 0.0, 1.0, 0.0, 0.01,
+		LOCTEXT("FuzzInfluenceHint", "How much this layer pushes the substrate's Fuzz Slab amount. 0 leaves the master material's own fuzz alone; the fuzz shading itself stays on DA_FuzzRoughness and DA_FuzzColor there.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()

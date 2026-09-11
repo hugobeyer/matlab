@@ -806,6 +806,9 @@ public:
 		SHADER_PARAMETER(float, ReliefWidthPixels)
 		SHADER_PARAMETER(float, Variation)
 		SHADER_PARAMETER(float, Profile)
+		SHADER_PARAMETER(float, GrooveVariation)
+		SHADER_PARAMETER(float, ProfileVariation)
+		SHADER_PARAMETER(float, WidthVariation)
 		SHADER_PARAMETER(float, Warp)
 		SHADER_PARAMETER(int32, WarpPeriod)
 		SHADER_PARAMETER(uint32, WarpSeed)
@@ -913,6 +916,11 @@ public:
 		SHADER_PARAMETER(float, ContrastPivot)
 		SHADER_PARAMETER(float, Gamma)
 		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, InputMin)
+		SHADER_PARAMETER(float, InputMax)
+		SHADER_PARAMETER(float, OutputMin)
+		SHADER_PARAMETER(float, OutputMax)
+		SHADER_PARAMETER(FVector3f, ChannelBias)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -1827,6 +1835,11 @@ namespace MixtormatGpuCompositor
 		float GradeContrast = 1.0f;
 		float GradeContrastPivot = 0.18f;
 		float GradeGamma = 1.0f;
+		float GradeInputMin = 0.0f;
+		float GradeInputMax = 1.0f;
+		float GradeOutputMin = 0.0f;
+		float GradeOutputMax = 1.0f;
+		FVector3f GradeChannelBias = FVector3f::ZeroVector;
 
 		float ChipAmount = 0.45f;
 		float ChipGroutLevel = 0.5f;
@@ -1928,6 +1941,9 @@ namespace MixtormatGpuCompositor
 		float ReliefNormalStrength = 8.0f;
 		float ReliefWidth = 0.08f;
 		float ReliefProfile = 1.0f;
+		float ReliefGrooveVariation = 0.0f;
+		float ReliefProfileVariation = 0.0f;
+		float ReliefWidthVariation = 0.0f;
 
 		// Hash of exactly the parameters the seed and growth passes read. Everything else about
 		// this node is applied to the finished distance field, so it must not appear here or a
@@ -3189,6 +3205,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				CrackData.ReliefNormalStrength = FMath::Max(Craquelure.ReliefNormalStrength, 0.0f);
 				CrackData.ReliefWidth = FMath::Max(Craquelure.ReliefWidth, 0.002f);
 				CrackData.ReliefProfile = FMath::Clamp(Craquelure.ReliefProfile, 0.05f, 8.0f);
+				CrackData.ReliefGrooveVariation = FMath::Clamp(Craquelure.ReliefGrooveVariation, 0.0f, 1.0f);
+				CrackData.ReliefProfileVariation = FMath::Clamp(Craquelure.ReliefProfileVariation, 0.0f, 1.0f);
+				CrackData.ReliefWidthVariation = FMath::Clamp(Craquelure.ReliefWidthVariation, 0.0f, 1.0f);
 				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 1024);
 				CrackData.SeedChance = FMath::Clamp(Craquelure.Density, 0.0f, 1.0f);
 
@@ -3362,6 +3381,12 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.GradeContrast = LayerEffect.GradeContrast;
 				EffectData.GradeContrastPivot = LayerEffect.GradeContrastPivot;
 				EffectData.GradeGamma = LayerEffect.GradeGamma;
+				EffectData.GradeInputMin = LayerEffect.GradeInputMin;
+				EffectData.GradeInputMax = LayerEffect.GradeInputMax;
+				EffectData.GradeOutputMin = LayerEffect.GradeOutputMin;
+				EffectData.GradeOutputMax = LayerEffect.GradeOutputMax;
+				EffectData.GradeChannelBias = FVector3f(
+					LayerEffect.GradeBiasR, LayerEffect.GradeBiasG, LayerEffect.GradeBiasB);
 				EffectData.bGradeInvertMask = LayerEffect.bGradeInvertMask;
 			}
 
@@ -4249,6 +4274,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						float WidthPixels = 0.0f;
 						float Variation = 0.0f;
 						float Profile = 1.0f;
+						float GrooveVariation = 0.0f;
+						float ProfileVariation = 0.0f;
+						float WidthVariation = 0.0f;
 						// Carried so the groove is read through the same displacement as the
 						// mask. The two passes share one distance field; warp only one and the
 						// height ends up beside the crack instead of under it.
@@ -4673,6 +4701,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								Relief.WarpPeriod = Crack.WarpPeriod;
 								Relief.WarpSeed = Crack.WarpSeed;
 								Relief.Profile = Crack.ReliefProfile;
+								Relief.GrooveVariation = Crack.ReliefGrooveVariation;
+								Relief.ProfileVariation = Crack.ReliefProfileVariation;
+								Relief.WidthVariation = Crack.ReliefWidthVariation;
 							};
 
 							// Propagated mode grows a network over N iterations against its own
@@ -6845,6 +6876,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						RelP->ReliefWidthPixels = Relief.WidthPixels;
 						RelP->Variation = Relief.Variation;
 						RelP->Profile = Relief.Profile;
+						RelP->GrooveVariation = Relief.GrooveVariation;
+						RelP->ProfileVariation = Relief.ProfileVariation;
+						RelP->WidthVariation = Relief.WidthVariation;
 						RelP->Warp = Relief.Warp;
 						RelP->WarpPeriod = Relief.WarpPeriod;
 						RelP->WarpSeed = Relief.WarpSeed;
@@ -7478,6 +7512,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						GP->ContrastPivot = Grade.GradeContrastPivot;
 						GP->Gamma = Grade.GradeGamma;
 						GP->Amount = Grade.GradeAmount;
+						GP->InputMin = Grade.GradeInputMin;
+						GP->InputMax = Grade.GradeInputMax;
+						GP->OutputMin = Grade.GradeOutputMin;
+						GP->OutputMax = Grade.GradeOutputMax;
+						GP->ChannelBias = Grade.GradeChannelBias;
 						GP->SourceColor = OutputBC[WriteIndex];
 
 						// The layer's own accumulated child mask, which is what makes this an
