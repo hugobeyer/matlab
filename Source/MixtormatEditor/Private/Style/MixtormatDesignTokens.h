@@ -395,6 +395,9 @@ namespace MixtormatTokens
 	inline float LayerRowGap = 2.0f;
 	constexpr float LayerEyeSize = 15.0f;
 	constexpr float LayerChildIconSize = 12.0f;
+	// The count-and-create bar above the rows: the icon buttons are what governs its natural
+	// height, plus three pixels of breathing room now that it carries the label as well.
+	inline float LayerStackHeaderHeight = IconButtonSize + 3.0f;
 	// The accent edge enclosing an open layer's children.
 	inline float LayerEdgeWidth = 1.0f;
 	constexpr float DropLineThickness = 2.0f;

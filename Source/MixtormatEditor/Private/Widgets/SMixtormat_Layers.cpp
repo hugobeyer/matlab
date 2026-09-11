@@ -1911,38 +1911,42 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					]
 					+ SVerticalBox::Slot().AutoHeight()
 					[
-						SNew(SHorizontalBox)
-						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
-						// Two creations, two glyphs: a square for a material, a circle for a fill. The
-						// same icon button the eye and the chevrons are, so the bar costs one row and
-						// no plate.
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						SNew(SBox)
+						.HeightOverride(MixtormatTokens::LayerStackHeaderHeight)
 						[
-							SNew(SMixtormatIconButton)
-							.Icon(MixtormatIcons::LayerMaterial())
-							.ToolTip(LOCTEXT("AddMaterialLayerHintCompact", "Add a material layer from the selected library surface."))
-							.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
-						[
-							SNew(SMixtormatIconButton)
-							.Icon(MixtormatIcons::LayerFill())
-							.ToolTip(LOCTEXT("AddFillLayerHintCompact", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
-							.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); })
-						]
-						// The count sits on the far edge, so the glyphs read as a pair rather than as
-						// three things in a row.
-						+ SHorizontalBox::Slot().FillWidth(1.0f)
-						.HAlign(HAlign_Right).VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
-						[
-							SNew(STextBlock)
-							.Text_Lambda([this]()
-							{
-								return FText::Format(LOCTEXT("LayerCountCompact", "{0} LAYERS"), FText::AsNumber(WorkingLayers.Num()));
-							})
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							SNew(SHorizontalBox)
+							.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+							// The count reads first, on the leading edge; the two creation glyphs
+							// pair up on the trailing edge, same grouping as the text buttons below.
+							+ SHorizontalBox::Slot().FillWidth(1.0f)
+							.HAlign(HAlign_Left).VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+							[
+								SNew(STextBlock)
+								.Text_Lambda([this]()
+								{
+									return FText::Format(LOCTEXT("LayerCountCompact", "{0} LAYERS"), FText::AsNumber(WorkingLayers.Num()));
+								})
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							]
+							// Two creations, two glyphs: a square for a material, a circle for a fill. The
+							// same icon button the eye and the chevrons are, so the bar costs one row and
+							// no plate.
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(SMixtormatIconButton)
+								.Icon(MixtormatIcons::LayerMaterial())
+								.ToolTip(LOCTEXT("AddMaterialLayerHintCompact", "Add a material layer from the selected library surface."))
+								.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); })
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
+							[
+								SNew(SMixtormatIconButton)
+								.Icon(MixtormatIcons::LayerFill())
+								.ToolTip(LOCTEXT("AddFillLayerHintCompact", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
+								.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); })
+							]
 						]
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
@@ -1950,6 +1954,79 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					[
 						SNew(SScrollBox)
 						+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
+					]
+					// A hairline like the one above the scroll box, so the permanent controls read
+					// as their own footer rather than as one more row of the stack.
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
+					// Permanent creation controls, below the rows rather than inside any one of
+					// them, so they stay put -- and stay reachable -- whether the stack holds
+					// forty layers or none. Same two creations as the header pair above, just
+					// spelled out in text since this is the row a user lands on with an empty
+					// stack and no icon-only glyph to already have learned. Right-aligned to match
+					// the header pair's trailing edge.
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::LayerRowGap, 0.0f, 0.0f)
+					[
+						SNew(SHorizontalBox)
+						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+						+ SHorizontalBox::Slot().FillWidth(1.0f)
+						[
+							SNew(SSpacer)
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.HeightOverride(MixtormatTokens::ButtonHeight)
+							[
+								SNew(SButton)
+								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+								.ToolTipText(LOCTEXT("AddMaterialLayerBottomHint", "Add a material layer from the selected library surface."))
+								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									[
+										SNew(SBox)
+										.WidthOverride(MixtormatTokens::IconButtonSize)
+										.HeightOverride(MixtormatTokens::IconButtonSize)
+										[
+											SNew(SImage).Image(MixtormatIcons::LayerMaterial())
+										]
+									]
+									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									[
+										SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerBottom", "Layer"))
+									]
+								]
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
+						[
+							SNew(SBox)
+							.HeightOverride(MixtormatTokens::ButtonHeight)
+							[
+								SNew(SButton)
+								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+								.ToolTipText(LOCTEXT("AddFillLayerBottomHint", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
+								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									[
+										SNew(SBox)
+										.WidthOverride(MixtormatTokens::IconButtonSize)
+										.HeightOverride(MixtormatTokens::IconButtonSize)
+										[
+											SNew(SImage).Image(MixtormatIcons::LayerFill())
+										]
+									]
+									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									[
+										SNew(STextBlock).Text(LOCTEXT("AddFillLayerBottom", "Fill Layer"))
+									]
+								]
+							]
+						]
 					]
 				]
 			]
