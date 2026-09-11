@@ -1908,6 +1908,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
 	float NormalStrength = 8.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AOAmount = 0.0f;
+
 	// How the ramp meets the height under it. AddSub is the centred case this node used to
 	// hard-code, and is the default so existing materials keep their look.
 	//

@@ -2042,6 +2042,7 @@ namespace MixtormatGpuCompositor
 	{
 		float HeightAmount = 0.05f;
 		float NormalStrength = 8.0f;
+		float AOAmount = 0.0f;
 		float IntensityRandom = 0.0f;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
 		bool bRotateRandom = true;
@@ -2782,6 +2783,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					? FMath::Max(Ramp.HeightAmount, 0.0f) : 0.05f;
 				RampData.NormalStrength = FMath::IsFinite(Ramp.NormalStrength)
 					? FMath::Max(Ramp.NormalStrength, 0.0f) : 8.0f;
+				RampData.AOAmount = FMath::IsFinite(Ramp.AOAmount)
+					? FMath::Clamp(Ramp.AOAmount, 0.0f, 1.0f) : 0.0f;
 				RampData.IntensityRandom = FMath::Clamp(Ramp.IntensityRandom, 0.0f, 1.0f);
 				RampData.BlendMode = Ramp.BlendMode;
 				RampData.bRotateRandom = Ramp.bRotateRandom;
@@ -4359,6 +4362,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						Tilt.EdgeField = Tilt.Field;
 						Tilt.HeightAmount = Ramp.HeightAmount;
 						Tilt.NormalStrength = Ramp.NormalStrength;
+						Tilt.AOAmount = Ramp.AOAmount;
 						Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
 					}
 
@@ -6750,7 +6754,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								TiltRAM,
 								Request.Resolution,
 								Tilt.NormalStrength,
-								0.0f,
+								Tilt.AOAmount,
 								TEXT("RegionRelief"));
 							AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
 							AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);

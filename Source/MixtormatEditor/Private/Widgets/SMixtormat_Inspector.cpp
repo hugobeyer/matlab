@@ -1,4 +1,4 @@
-﻿#include "Widgets/SMixtormat.h"
+#include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 
 #include "Style/MixtormatDesignTokens.h"
@@ -1980,6 +1980,9 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("RampNormal", "Normal Intensity"), &FMixtormatRampIdFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
 			LOCTEXT("RampNormalHint", "Gain on the normal derived from the slope. Independent of Intensity, so a region can catch light as though tipped without displacing as far -- but it is scaled by Intensity too, since a region that is not tipped has no slope to light.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("RampAO", "AO"), &FMixtormatRampIdFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RampAOHint", "Contact and cavity occlusion derived from the height change made by the ramp. Multiplies the existing AO rather than replacing it.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpGradient", "Gradient")));
 	AddSliderRow(Panel, MixtormatRow::Make(
