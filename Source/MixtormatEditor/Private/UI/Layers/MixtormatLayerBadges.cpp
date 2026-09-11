@@ -38,6 +38,11 @@ namespace MixtormatLayerBadges
 		case EComposition::Coat:
 			Layer.ChannelMode = EMixtormatLayerChannelMode::CompleteSurface;
 			Layer.CompositionMode = EMixtormatCompositionMode::Coat;
+			// Coat has to pin this rather than leave it, or the layer's normal keeps whatever
+			// blend mode the previous choice left behind -- Combine from Blend, Override from
+			// Over -- and a coat only reads correctly by accident of which choice preceded it.
+			// A coat sits over what is below, so its own normal replaces rather than reorients.
+			Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
 			break;
 		case EComposition::Over:
 			Layer.ChannelMode = EMixtormatLayerChannelMode::CompleteSurface;
