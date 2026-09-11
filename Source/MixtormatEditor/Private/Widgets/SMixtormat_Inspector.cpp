@@ -2890,9 +2890,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	});
 
 	return SNew(SBox)
+		// Gated on the selected child actually being a Mask, not just on a layer being selected:
+		// this group used to show above every child type -- Peeling, Stain, Erosion, and the rest --
+		// with only a "select a mask child" placeholder standing in for controls that could never
+		// apply to what was actually selected.
 		.Visibility_Lambda([this]()
 		{
-			return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+			return GetSelectedLayerMask()
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
@@ -2929,14 +2933,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				])
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, 2.0f, 2.0f, 5.0f)
-				[
-					SNew(STextBlock)
-					.Visibility_Lambda([this]() { return GetSelectedLayerMask() ? EVisibility::Collapsed : EVisibility::Visible; })
-					.Text(LOCTEXT("SelectMaskForInspector", "Select a mask child in the layer stack to edit its settings."))
-					.AutoWrapText(true)
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-				]
 				+ SVerticalBox::Slot().AutoHeight()[Panel]
 			]
 		];
