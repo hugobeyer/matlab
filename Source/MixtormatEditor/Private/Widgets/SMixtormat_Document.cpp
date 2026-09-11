@@ -1,4 +1,5 @@
 ﻿#include "Widgets/SMixtormat.h"
+#include "MixtormatEditorSettings.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
@@ -313,9 +314,11 @@ FReply SMixtormat::BakeWorkingMaterial()
 	{
 		BakeSettingsRecipePath = RecipePath;
 		BakeOutputBaseName = WorkingMaterialAsset->GetName();
+		FString DestinationRoot = GetDefault<UMixtormatEditorSettings>()->DefaultBakeOutputPath;
+		while (DestinationRoot.RemoveFromEnd(TEXT("/"))) {}
 		BakeDestinationPath = FString::Printf(
-			TEXT("%s/Baked/%s"),
-			*FPackageName::GetLongPackagePath(WorkingMaterialAsset->GetOutermost()->GetName()),
+			TEXT("%s/%s"),
+			*DestinationRoot,
 			*WorkingMaterialAsset->GetName());
 	}
 
@@ -329,6 +332,7 @@ FReply SMixtormat::BakeWorkingMaterial()
 			SAssignNew(SettingsDialog, SMixtormatBakeSettingsDialog)
 			.InitialSettings(FMixtormatBakeSettings{BakeDestinationPath, BakeOutputBaseName})
 			.Resolution(CompositionResolution)
+			.AASamples(BakeAASamples)
 		];
 	FSlateApplication::Get().AddModalWindow(
 		SettingsWindow,

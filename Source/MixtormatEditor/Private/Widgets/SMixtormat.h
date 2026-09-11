@@ -852,6 +852,9 @@ private:
 	int32 SelectedMaskIndex = INDEX_NONE;
 	int32 LeftTabIndex = 0;
 	int32 CompositionResolution = 2048;
+	// Bake-only, not shared with the preview like CompositionResolution is. Infrastructure only:
+	// see UMixtormatEditorSettings::DefaultBakeAASamples.
+	int32 BakeAASamples = 1;
 	EMixtormatStudioLighting StudioLighting = EMixtormatStudioLighting::Neutral;
 	EMixtormatPreviewMesh PreviewMesh = EMixtormatPreviewMesh::Sphere;
 	EMixtormatPreviewQuality PreviewQuality = EMixtormatPreviewQuality::Medium;

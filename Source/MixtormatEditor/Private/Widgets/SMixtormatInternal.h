@@ -408,12 +408,14 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatBakeSettingsDialog) {}
 		SLATE_ARGUMENT(FMixtormatBakeSettings, InitialSettings)
 		SLATE_ARGUMENT(int32, Resolution)
+		SLATE_ARGUMENT(int32, AASamples)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
 		Settings = InArgs._InitialSettings;
 		Resolution = InArgs._Resolution;
+		AASamples = InArgs._AASamples;
 		ChildSlot
 		[
 			SNew(SBorder)
@@ -475,6 +477,17 @@ public:
 							LOCTEXT("BakeSharedResolution", "Resolution: {0}K ({1} × {1}) · shared preview/bake"),
 							FText::AsNumber(Resolution / 1024),
 							FText::AsNumber(Resolution));
+					})
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						return FText::Format(
+							LOCTEXT("BakeAASamples", "AA Samples: {0} (setting only -- not yet applied to bake output)"),
+							FText::AsNumber(AASamples));
 					})
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 				]
@@ -583,6 +596,7 @@ private:
 	TSharedPtr<SEditableTextBox> DestinationTextBox;
 	FText ValidationText;
 	int32 Resolution = 2048;
+	int32 AASamples = 1;
 	bool bAccepted = false;
 };
 
