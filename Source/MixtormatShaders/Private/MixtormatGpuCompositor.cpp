@@ -1,5 +1,7 @@
 #include "MixtormatGpuCompositor.h"
 
+#include "MixtormatGpuCompositorInternal.h"
+
 #include "Async/Async.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -44,132 +46,6 @@ namespace MixtormatSubstrate
 	static const FVector4f PackedRAM(0.5f, 1.0f, 0.0f, 0.04f);
 	static const FVector4f Height(0.5f, 0.0f, 0.0f, 0.0f);
 }
-
-// Generated networks kept between composites.
-//
-// Growing a propagated craquelure network is one full-resolution dispatch per pixel of reach --
-// up to a thousand of them, each doing on the order of eighty texture loads per pixel -- and the
-// panel recomposites the entire stack on every frame of a slider drag. Almost nothing a user
-// touches while tuning changes the network: Width, Contrast, Balance, Offset, Weight, Invert,
-// the blend mode and all four relief controls are applied to the finished distance field, not
-// during growth. Regrowing it for those was the dominant cost of interacting with the tool.
-//
-// Keyed on exactly the parameters growth reads, so a hit is the same field the miss would have
-// produced rather than an approximation of it. Everything downstream still runs every frame, so
-// the controls that shape a crack stay live.
-//
-// Render thread only. Held by the compositor and handed to each render command as a shared
-// reference, so a composite still in flight cannot outlive the cache it is reading, and the
-// pooled targets are released on the render thread by the flush the destructor enqueues.
-struct FMixtormatNetworkCache
-{
-	struct FEntry
-	{
-		uint64 Key = 0;
-		FIntPoint Resolution = FIntPoint::ZeroValue;
-		TRefCountPtr<IPooledRenderTarget> Distance;
-		uint64 LastUsed = 0;
-	};
-
-	// Bounded by bytes rather than by entry count, because the cost of an entry is not a constant:
-	// one is a full-resolution RGBA32F, so 16MB at 1K and 268MB at 4K. A fixed count that is
-	// comfortable at preview resolution pins well over a gigabyte after a 4K export, which is the
-	// one way this cache can cost more than the work it saves.
-	//
-	// 512MB holds two networks at 4K and thirty at 1K. The working set is one entry per
-	// craquelure node in the stack, which is almost always one or two; anything past that is
-	// headroom for a seed being scrubbed back and forth, and headroom is what should give way
-	// first when the entries get large.
-	static constexpr uint64 MaxBytes = 512ull * 1024ull * 1024ull;
-
-	TArray<FEntry> Entries;
-	uint64 Tick = 0;
-
-	static uint64 EntryBytes(const FIntPoint InResolution)
-	{
-		// RGBA32F, matching CraqDistanceDesc. Four channels of four bytes; the field itself uses
-		// two of them, and the format is chosen for the crack id, which is a hash up to 2^24 and
-		// has to stay exact.
-		return static_cast<uint64>(InResolution.X) * static_cast<uint64>(InResolution.Y) * 16ull;
-	}
-
-	uint64 TotalBytes() const
-	{
-		uint64 Total = 0;
-		for (const FEntry& Entry : Entries)
-		{
-			Total += EntryBytes(Entry.Resolution);
-		}
-		return Total;
-	}
-
-	TRefCountPtr<IPooledRenderTarget> Find(const uint64 Key, const FIntPoint InResolution)
-	{
-		check(IsInRenderingThread());
-		++Tick;
-		for (FEntry& Entry : Entries)
-		{
-			if (Entry.Key == Key && Entry.Resolution == InResolution && Entry.Distance.IsValid())
-			{
-				Entry.LastUsed = Tick;
-				return Entry.Distance;
-			}
-		}
-		return nullptr;
-	}
-
-	void Store(
-		const uint64 Key,
-		const FIntPoint InResolution,
-		const TRefCountPtr<IPooledRenderTarget>& Distance)
-	{
-		check(IsInRenderingThread());
-		if (!Distance.IsValid())
-		{
-			return;
-		}
-
-		for (FEntry& Entry : Entries)
-		{
-			if (Entry.Key == Key && Entry.Resolution == InResolution)
-			{
-				Entry.Distance = Distance;
-				Entry.LastUsed = Tick;
-				return;
-			}
-		}
-
-		// Evict least-recently-used until the newcomer fits. The loop is bounded by the array
-		// emptying rather than by the budget, so a single entry larger than the cap is stored
-		// alone rather than thrashing: a network that cannot be cached at all would mean paying
-		// full growth on every frame at exactly the resolution where that hurts most.
-		const uint64 Incoming = EntryBytes(InResolution);
-		while (!Entries.IsEmpty() && TotalBytes() + Incoming > MaxBytes)
-		{
-			int32 OldestIndex = 0;
-			for (int32 Index = 1; Index < Entries.Num(); ++Index)
-			{
-				if (Entries[Index].LastUsed < Entries[OldestIndex].LastUsed)
-				{
-					OldestIndex = Index;
-				}
-			}
-			Entries.RemoveAtSwap(OldestIndex);
-		}
-
-		FEntry& Added = Entries.AddDefaulted_GetRef();
-		Added.Key = Key;
-		Added.Resolution = InResolution;
-		Added.Distance = Distance;
-		Added.LastUsed = Tick;
-	}
-
-	void Reset()
-	{
-		check(IsInRenderingThread());
-		Entries.Reset();
-	}
-};
 
 namespace MixtormatNetworkKey
 {
@@ -368,1865 +244,9 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Shared height -> normal reconciliation pass for structural effects.
-// Effects author height; this pass derives only the normal contribution caused by the
-// height delta and RNM-combines it with the normal that entered the effect.
-class FMixtormatHeightDeltaNormalCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatHeightDeltaNormalCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatHeightDeltaNormalCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, AOAmount)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRAM)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatHeightDeltaNormalCS,
-	"/Plugin/Mixtormat/Private/MixtormatHeightDeltaNormal.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatMaskCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatMaskCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(FVector2f, Tiling)
-		SHADER_PARAMETER(FVector2f, UVOffset)
-		SHADER_PARAMETER(uint32, FlipU)
-		SHADER_PARAMETER(uint32, FlipV)
-		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatMaskCS,
-	"/Plugin/Mixtormat/Private/MixtormatMask.usf",
-	"MainCS",
-	SF_Compute);
-
-// Colour ID mask. Selects the regions of an ID map carrying one of a set of chosen colours.
-//
-// The colours are a fixed-size array rather than a buffer: eight is already more of a set than
-// anyone selects at once, and a constant array costs one root constant range against a structured
-// buffer's descriptor and its own lifetime.
-class FMixtormatColorIdCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatColorIdCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatColorIdCS, FGlobalShader);
-
-	// Deferred to the struct rather than restated, so the array here cannot drift from the array
-	// the inspector offers to fill.
-	static constexpr int32 MaxColors = FMixtormatColorIdMask::MaxColors;
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER_ARRAY(FVector4f, TargetColors, [MaxColors])
-		SHADER_PARAMETER(int32, ColorCount)
-		SHADER_PARAMETER(float, Tolerance)
-		SHADER_PARAMETER(float, Softness)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER(FVector2f, Tiling)
-		SHADER_PARAMETER(FVector2f, UVOffset)
-		SHADER_PARAMETER(uint32, FlipU)
-		SHADER_PARAMETER(uint32, FlipV)
-		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IdTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, PointSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatColorIdCS,
-	"/Plugin/Mixtormat/Private/MixtormatColorId.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatGeneratedMaskCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratedMaskCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratedMaskCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(uint32, SurfaceValid)
-		SHADER_PARAMETER(uint32, FlipNormalY)
-		SHADER_PARAMETER(float, CurvatureWeight)
-		SHADER_PARAMETER(float, CurvatureBias)
-		SHADER_PARAMETER(float, CurvatureStrength)
-		SHADER_PARAMETER(float, CurvaturePower)
-		SHADER_PARAMETER(float, DirectionWeight)
-		SHADER_PARAMETER(float, DirectionAngle)
-		SHADER_PARAMETER(float, DirectionBroadness)
-		SHADER_PARAMETER(float, AOWeight)
-		SHADER_PARAMETER(float, HeightWeight)
-		SHADER_PARAMETER(float, HeightBias)
-		SHADER_PARAMETER(float, RidgeWeight)
-		SHADER_PARAMETER(uint32, NormalizeWeights)
-		SHADER_PARAMETER(int32, Broadness)
-		SHADER_PARAMETER(int32, Smoothing)
-		SHADER_PARAMETER(float, Bias)
-		SHADER_PARAMETER(float, WarpAmount)
-		SHADER_PARAMETER(float, WarpSource)
-		SHADER_PARAMETER(int32, WarpRadius)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceRidge)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatGeneratedMaskCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratedMask.usf",
-	"MainCS",
-	SF_Compute);
-
-// Craquelure. A crack network on a cellular lattice, blended into the layer mask.
-//
-// Its own node rather than a signal on the generated mask: that node reads the surface below
-// and early-returns when there is none, while this is generated from a lattice and means
-// something on the bottom layer. The mask tail is shared through MixtormatMaskOps.ush rather
-// than through a shared parameter struct, so this one carries no surface textures at all.
-class FMixtormatCraquelureCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(int32, Period)
-		SHADER_PARAMETER(float, Jitter)
-		SHADER_PARAMETER(float, Width)
-		SHADER_PARAMETER(float, Variation)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, Warp)
-		SHADER_PARAMETER(int32, WarpPeriod)
-		SHADER_PARAMETER(uint32, WarpSeed)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDistance)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelure.usf",
-	"MainCS",
-	SF_Compute);
-
-// Propagated craquelure. Three entry points in one file, one shader class each.
-//
-// Each class binds only the parameters its own entry point uses, rather than a shared struct
-// covering all three. That is not tidiness: RDG rejects a pass that binds a transient nothing
-// has written, so a seed pass carrying a PreviousState slot would fail on the first dispatch.
-class FMixtormatCraquelureSeedCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureSeedCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureSeedCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(int32, SeedCells)
-		SHADER_PARAMETER(float, SeedChance)
-		SHADER_PARAMETER(float, SeedJitter)
-		SHADER_PARAMETER(int32, NoiseCells)
-		SHADER_PARAMETER(float, StressVariation)
-		SHADER_PARAMETER(float, ToughnessVariation)
-		SHADER_PARAMETER(float, Warp)
-		SHADER_PARAMETER(int32, WarpPeriod)
-		SHADER_PARAMETER(uint32, WarpSeed)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDirection)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputField)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureSeedCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
-	"SeedCS",
-	SF_Compute);
-
-class FMixtormatCraquelureGrowCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureGrowCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureGrowCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, Persistence)
-		SHADER_PARAMETER(float, FlowStrength)
-		SHADER_PARAMETER(float, StressGain)
-		SHADER_PARAMETER(float, ToughnessCost)
-		SHADER_PARAMETER(float, Irregularity)
-		SHADER_PARAMETER(float, GrowthThreshold)
-		SHADER_PARAMETER(float, MinAlignment)
-		SHADER_PARAMETER(float, TurnResponse)
-		SHADER_PARAMETER(int32, CollisionLimit)
-		SHADER_PARAMETER(int32, Iteration)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousDirection)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, Field)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDirection)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureGrowCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
-	"GrowCS",
-	SF_Compute);
-
-class FMixtormatCraquelureResolveCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureResolveCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureResolveCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(int32, SeedCells)
-		SHADER_PARAMETER(float, Width)
-		SHADER_PARAMETER(float, Variation)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		// The warp is read here now rather than during growth, and the uniforms are declared at
-		// file scope in a shader with three entry points -- so every struct that compiles
-		// MixtormatCraquelureGrow.usf has to declare them, not just the pass that grows.
-		SHADER_PARAMETER(float, Warp)
-		SHADER_PARAMETER(int32, WarpPeriod)
-		SHADER_PARAMETER(uint32, WarpSeed)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackDistance)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureResolveCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureGrow.usf",
-	"ResolveCS",
-	SF_Compute);
-
-// Distance to the nearest crack, by jump flooding. Three entry points, one class each, for the
-// same reason the growth passes are split: RDG rejects a pass that binds a transient nothing has
-// written, so a seed pass carrying a PreviousRecord slot would fail on its first dispatch.
-class FMixtormatCraquelureDistanceSeedCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureDistanceSeedCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureDistanceSeedCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackState)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureDistanceSeedCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
-	"SeedCS",
-	SF_Compute);
-
-class FMixtormatCraquelureDistanceStepCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureDistanceStepCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureDistanceStepCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, StepSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureDistanceStepCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
-	"StepCS",
-	SF_Compute);
-
-class FMixtormatCraquelureDistanceResolveCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureDistanceResolveCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureDistanceResolveCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDistance)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureDistanceResolveCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
-	"ResolveDistanceCS",
-	SF_Compute);
-
-// Craquelure relief. Reads the distance field rather than the mask: by the time the mask exists
-// it has been through shaping, a blend mode and a weight lerp, and the distance the groove
-// profile needs is gone.
-class FMixtormatCraquelureReliefCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCraquelureReliefCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCraquelureReliefCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, HeightWeight)
-		SHADER_PARAMETER(float, NormalWeight)
-		SHADER_PARAMETER(float, ReliefWidthPixels)
-		SHADER_PARAMETER(float, Variation)
-		SHADER_PARAMETER(float, Profile)
-		SHADER_PARAMETER(float, GrooveVariation)
-		SHADER_PARAMETER(float, ProfileVariation)
-		SHADER_PARAMETER(float, WidthVariation)
-		SHADER_PARAMETER(float, Warp)
-		SHADER_PARAMETER(int32, WarpPeriod)
-		SHADER_PARAMETER(uint32, WarpSeed)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackDistance)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCraquelureReliefCS,
-	"/Plugin/Mixtormat/Private/MixtormatCraquelureRelief.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatErosionCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatErosionCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatErosionCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, NormalPass)
-		SHADER_PARAMETER(int32, BlurPass)
-		SHADER_PARAMETER(int32, BlurAxis)
-		SHADER_PARAMETER(int32, ResamplePass)
-		SHADER_PARAMETER(int32, ResampleRidge)
-		SHADER_PARAMETER(float, BlurRadius)
-		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(int32, Octaves)
-		SHADER_PARAMETER(int32, Period)
-		SHADER_PARAMETER(float, Gain)
-		SHADER_PARAMETER(float, Detail)
-		SHADER_PARAMETER(float, GullyWeight)
-		SHADER_PARAMETER(float, Normalization)
-		SHADER_PARAMETER(float, RidgeRounding)
-		SHADER_PARAMETER(float, CreaseRounding)
-		SHADER_PARAMETER(float, SlopeOnset)
-		SHADER_PARAMETER(float, FeatureOnset)
-		SHADER_PARAMETER(float, AssumedSlope)
-		SHADER_PARAMETER(float, AssumedSlopeAmount)
-		SHADER_PARAMETER(int32, SlopeRadius)
-		SHADER_PARAMETER(int32, CurvatureMode)
-		SHADER_PARAMETER(float, CavityInfluence)
-		SHADER_PARAMETER(float, CavityOffset)
-		SHADER_PARAMETER(float, CavityRemapMin)
-		SHADER_PARAMETER(float, CavityRemapMax)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER(float, HeightScale)
-		SHADER_PARAMETER(uint32, UsePlacementMask)
-		SHADER_PARAMETER(float, PlacementMaskTiling)
-		SHADER_PARAMETER(uint32, InvertMask)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PlacementMaskTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousRidge)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRidge)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatErosionCS,
-	"/Plugin/Mixtormat/Private/MixtormatErosion.usf",
-	"MainCS",
-	SF_Compute);
-
-// Colour grade. The second Filter: it transforms the base colour composited up to its owning
-// layer and is the identity at zero amount.
-class FMixtormatGradeCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGradeCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGradeCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER(uint32, InvertMask)
-		SHADER_PARAMETER(int32, TonemapMode)
-		SHADER_PARAMETER(float, TonemapStrength)
-		SHADER_PARAMETER(float, Brightness)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, ContrastPivot)
-		SHADER_PARAMETER(float, Gamma)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(float, InputMin)
-		SHADER_PARAMETER(float, InputMax)
-		SHADER_PARAMETER(float, OutputMin)
-		SHADER_PARAMETER(float, OutputMax)
-		SHADER_PARAMETER(FVector3f, ChannelBias)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceColor)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputColor)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatGradeCS,
-	"/Plugin/Mixtormat/Private/MixtormatGrade.usf",
-	"MainCS",
-	SF_Compute);
-
-// Tileable curl-flow distortion. It transforms every composited material channel in one pass,
-// before erosion/chipping, so later weathering reads the same warped height and normal field.
-class FMixtormatFlowWarpCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatFlowWarpCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowWarpCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(float, EffectWeight)
-		SHADER_PARAMETER(int32, Scale)
-		SHADER_PARAMETER(float, Direction)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, MaskSlopeInfluence)
-		SHADER_PARAMETER(float, HeightSlopeInfluence)
-		SHADER_PARAMETER(FVector2f, DerivativeKernel)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceBC)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceN)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatFlowWarpCS,
-	"/Plugin/Mixtormat/Private/MixtormatFlowWarp.usf",
-	"MainCS",
-	SF_Compute);
-
-// Mask-weighted roughness for what erosion or chipping removed. Kept separate from the carving
-// shaders so its texture slots are not bound on every dispatch that has no use for them.
-class FMixtormatCarveShadeCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatCarveShadeCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatCarveShadeCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, RoughnessAmount)
-		SHADER_PARAMETER(float, CarveDepth)
-		SHADER_PARAMETER(uint32, UseCoverageTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CarvedHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CoverageTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatCarveShadeCS,
-	"/Plugin/Mixtormat/Private/MixtormatCarveShade.usf",
-	"MainCS",
-	SF_Compute);
-
-// Min/max of a scalar texture, folded to 1x1 over a few passes. Chipping thresholds the
-// composited height against this rather than against the nominal range of the format, which is
-// what makes its Grout Level a position inside the content instead of an absolute value that
-// lands on the clear colour.
-class FMixtormatReduceMinMaxCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatReduceMinMaxCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatReduceMinMaxCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, InputSize)
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, FirstPass)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRange)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRange)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatReduceMinMaxCS,
-	"/Plugin/Mixtormat/Private/MixtormatReduceMinMax.usf",
-	"MainCS",
-	SF_Compute);
-
-// The fold factor the reduction shader uses. Declared here too because the pass count and the
-// intermediate sizes are worked out on this side.
-static constexpr int32 GMixtormatReduceFactor = 16;
-
-// Chipping. A smooth height selection mixed with local cavity seeds chips, which grow inward
-// over N iterations. One dispatch per iteration ping-pongs (core, tip, dirX, dirY); height stays
-// read-only so the selection remains defined by the surface chipping received.
-class FMixtormatChippingCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatChippingCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatChippingCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Iteration)
-		SHADER_PARAMETER(int32, NormalPass)
-		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, GroutLevel)
-		SHADER_PARAMETER(float, GroutSoftness)
-		SHADER_PARAMETER(float, ChipAmount)
-		SHADER_PARAMETER(float, ChipSize)
-		SHADER_PARAMETER(float, ChipDepth)
-		SHADER_PARAMETER(float, Irregularity)
-		SHADER_PARAMETER(float, MaskEdge)
-		SHADER_PARAMETER(float, CavityInfluence)
-		SHADER_PARAMETER(float, CavityOffset)
-		SHADER_PARAMETER(float, CavityRemapMin)
-		SHADER_PARAMETER(float, CavityRemapMax)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER(float, HeightScale)
-		SHADER_PARAMETER(uint32, UsePlacementMask)
-		SHADER_PARAMETER(float, PlacementMaskTiling)
-		SHADER_PARAMETER(uint32, InvertMask)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HeightRange)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PlacementMaskTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChipsTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputChips)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatChippingCS,
-	"/Plugin/Mixtormat/Private/MixtormatChipping.usf",
-	"MainCS",
-	SF_Compute);
-
-
-
-// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
-// localization passes, the Houdini directional-MIN solve, and final-height normal regeneration.
-class FMixtormatEdgeWearCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatEdgeWearCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatEdgeWearCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Mode)
-		SHADER_PARAMETER(int32, EdgeStep)
-		SHADER_PARAMETER(int32, Radius)
-		SHADER_PARAMETER(float, Slope)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(float, Feather)
-		SHADER_PARAMETER(int32, Directions)
-		SHADER_PARAMETER(float, AngularAA)
-		SHADER_PARAMETER(float, Gravity)
-		SHADER_PARAMETER(float, GravityAngle)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(int32, MacroScale)
-		SHADER_PARAMETER(float, MacroAmount)
-		SHADER_PARAMETER(int32, CellScale)
-		SHADER_PARAMETER(float, CellAmount)
-		SHADER_PARAMETER(int32, RidgeScale)
-		SHADER_PARAMETER(float, RidgeAmount)
-		SHADER_PARAMETER(int32, MicroScale)
-		SHADER_PARAMETER(float, MicroAmount)
-		SHADER_PARAMETER(int32, WarpScale)
-		SHADER_PARAMETER(float, WarpAmount)
-		SHADER_PARAMETER(float, NoiseContrast)
-		SHADER_PARAMETER(float, IDVariation)
-		SHADER_PARAMETER(float, IDRadius)
-		SHADER_PARAMETER(float, IDSlope)
-		SHADER_PARAMETER(float, IDStrength)
-		SHADER_PARAMETER(float, IDNoise)
-		SHADER_PARAMETER(uint32, HasPatternEdge)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, WornHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousEdgeBand)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EdgeBand)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, WearMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputWearMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputEdgeBand)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatEdgeWearCS,
-	"/Plugin/Mixtormat/Private/MixtormatEdgeWear.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatPeelingCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatPeelingCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatPeelingCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(float, Tiling)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(float, Front)
-		SHADER_PARAMETER(float, Width)
-		SHADER_PARAMETER(float, MacroWarp)
-		SHADER_PARAMETER(float, MicroWarp)
-		SHADER_PARAMETER(float, MicroMorph)
-		SHADER_PARAMETER(float, Thickness)
-		SHADER_PARAMETER(float, Lift)
-		SHADER_PARAMETER(float, DetailStrength)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousEffectData)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
-		SHADER_PARAMETER(float, ProceduralAOStrength)
-		SHADER_PARAMETER(float, HeightAmount)
-		SHADER_PARAMETER(float, HeightInvert)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelFieldA)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelFieldB)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, PointWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousEffectHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputEffectData)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputEffectHeight)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatPeelingCS,
-	"/Plugin/Mixtormat/Private/MixtormatPeeling.usf",
-	"MainCS",
-	SF_Compute);
-
-// Grows a peel front across the surface, replacing the authored PDM/MSK/H/SDF set.
-// Seed and Solve run at reduced resolution; Resolve runs full and filters arrival up.
-class FMixtormatPeelFieldCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatPeelFieldCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatPeelFieldCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(int32, Mode)
-		SHADER_PARAMETER(uint32, SurfaceValid)
-		SHADER_PARAMETER(uint32, FlipNormalY)
-
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, MaskWeight)
-		SHADER_PARAMETER(float, PeelMaskTiling)
-		SHADER_PARAMETER(uint32, PeelMaskInvert)
-		SHADER_PARAMETER(uint32, UseOwnMask)
-		SHADER_PARAMETER(float, SeedThreshold)
-
-		SHADER_PARAMETER(int32, CurvatureRadius)
-		SHADER_PARAMETER(int32, CurvatureSmoothing)
-		SHADER_PARAMETER(float, CurvatureWeight)
-		SHADER_PARAMETER(float, CurvatureBias)
-		SHADER_PARAMETER(float, AOWeight)
-		SHADER_PARAMETER(float, HeightWeight)
-		SHADER_PARAMETER(uint32, NormalizeWeights)
-		SHADER_PARAMETER(float, GrowthStrength)
-
-		SHADER_PARAMETER(int32, MacroPeriod)
-		SHADER_PARAMETER(int32, MicroPeriod)
-		SHADER_PARAMETER(float, NoiseWeight)
-		SHADER_PARAMETER(float, SizeVariation)
-		SHADER_PARAMETER(int32, FlakeCells)
-		SHADER_PARAMETER(float, ClusterAmount)
-		SHADER_PARAMETER(int32, WarpPeriod)
-		SHADER_PARAMETER(float, WarpAmount)
-		SHADER_PARAMETER(float, WarpSource)
-
-		SHADER_PARAMETER(int32, PeelType)
-		SHADER_PARAMETER(float, Front)
-		SHADER_PARAMETER(float, Width)
-		SHADER_PARAMETER(float, MacroWarp)
-		SHADER_PARAMETER(float, MicroWarp)
-		SHADER_PARAMETER(float, MicroMorph)
-		SHADER_PARAMETER(float, Thickness)
-		SHADER_PARAMETER(float, Lift)
-		SHADER_PARAMETER(float, DetailStrength)
-		SHADER_PARAMETER(float, LiftVariation)
-		SHADER_PARAMETER(float, EdgeSharpness)
-
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelOwnMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousArrival)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthField)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputArrival)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputGrowth)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFieldA)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFieldB)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatPeelFieldCS,
-	"/Plugin/Mixtormat/Private/MixtormatPeelField.usf",
-	"MainCS",
-	SF_Compute);
-
-// Separable Gaussian over a layer mask. Two dispatches, one per axis.
-class FMixtormatMaskBlurCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatMaskBlurCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskBlurCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Axis)
-		SHADER_PARAMETER(float, Radius)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatMaskBlurCS,
-	"/Plugin/Mixtormat/Private/MixtormatMaskBlur.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatStainCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatStainCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatStainCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(FIntPoint, SurfaceSize)
-		SHADER_PARAMETER(int32, Mode)
-		SHADER_PARAMETER(int32, StainMode)
-		SHADER_PARAMETER(int32, Iteration)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(uint32, UseSourceMask)
-		SHADER_PARAMETER(uint32, UseLayerMask)
-		SHADER_PARAMETER(uint32, UseDirtMask)
-		SHADER_PARAMETER(uint32, InvertSourceMask)
-		SHADER_PARAMETER(uint32, InvertDirtMask)
-		SHADER_PARAMETER(uint32, WriteDebug)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(uint32, SurfaceValid)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(float, SourceMaskTiling)
-		SHADER_PARAMETER(float, DirtMaskTiling)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(float, SourceAmount)
-		SHADER_PARAMETER(float, Gravity)
-		SHADER_PARAMETER(float, SurfaceFollow)
-		SHADER_PARAMETER(float, Spread)
-		SHADER_PARAMETER(float, Accumulation)
-		SHADER_PARAMETER(float, Absorption)
-		SHADER_PARAMETER(float, Drying)
-		SHADER_PARAMETER(float, DirtAmount)
-		SHADER_PARAMETER(float, ConcavityWeight)
-		SHADER_PARAMETER(float, ConvexityWeight)
-		SHADER_PARAMETER(float, OcclusionWeight)
-		SHADER_PARAMETER(float, HeightWeight)
-		SHADER_PARAMETER(float, HeightBias)
-		SHADER_PARAMETER(float, SlopeWeight)
-		SHADER_PARAMETER(float, SurfaceResponse)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateA)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateB)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FeatureMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DirtMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateA)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateB)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatStainCS,
-	"/Plugin/Mixtormat/Private/MixtormatStain.usf",
-	"MainCS",
-	SF_Compute);
-
-// One entry point and one complete parameter layout for every stage. In particular, do not
-// split this into partial per-entry structs: UE validates all file-scope shader uniforms.
-class FMixtormatClusterIdsCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatClusterIdsCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatClusterIdsCS, FGlobalShader);
-
-	static constexpr uint32 UnionStart = 4;
-	static constexpr uint32 UnionPasses = 12;
-	static constexpr uint32 ResolveStage = UnionStart + UnionPasses;
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Stage)
-		SHADER_PARAMETER(uint32, WriteDebug)
-		SHADER_PARAMETER(uint32, SourceMode)
-		SHADER_PARAMETER(FVector2f, SourceTiling)
-		SHADER_PARAMETER(FVector2f, SourceOffset)
-		SHADER_PARAMETER(uint32, FlipU)
-		SHADER_PARAMETER(uint32, FlipV)
-		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER(float, Threshold)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Statistics)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, GuideSignal)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Parents)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ClusterIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatClusterIdsCS,
-	"/Plugin/Mixtormat/Private/MixtormatClusterIds.usf",
-	"MainCS",
-	SF_Compute);
-
-// Random value per region. A mask, so it ends in the same PreviousMask/BlendMode/Weight tail
-// every other mask child uses -- the only thing that makes it different is where the value
-// comes from.
-class FMixtormatRandomIdCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatRandomIdCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatRandomIdCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, MinValue)
-		SHADER_PARAMETER(float, MaxValue)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatRandomIdCS,
-	"/Plugin/Mixtormat/Private/MixtormatRandomId.usf",
-	"MainCS",
-	SF_Compute);
-
-// Procedural lattice/Voronoi region producer. One dispatch writes IDs, feature-point UV,
-// the shared ramp field, and an edge-distance field for bevel/shading.
-class FMixtormatPatternIdsCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatPatternIdsCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatPatternIdsCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, WriteDebug)
-		SHADER_PARAMETER(uint32, WriteOrientation)
-		SHADER_PARAMETER(uint32, PatternMode)
-		SHADER_PARAMETER(uint32, GridMode)
-		SHADER_PARAMETER(int32, Rows)
-		SHADER_PARAMETER(int32, Columns)
-		SHADER_PARAMETER(float, RowOffset)
-		SHADER_PARAMETER(float, Jitter)
-		SHADER_PARAMETER(uint32, SwapAxes)
-		SHADER_PARAMETER(float, GapPixels)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, Feather)
-		SHADER_PARAMETER(float, FeatherRandom)
-		SHADER_PARAMETER(float, Rounding)
-		SHADER_PARAMETER(uint32, EdgeRelative)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputUV)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputOrientation)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatPatternIdsCS,
-	"/Plugin/Mixtormat/Private/MixtormatPatternIds.usf",
-	"MainCS",
-	SF_Compute);
-
-class FMixtormatEdgeShadeCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatEdgeShadeCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatEdgeShadeCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, BevelWidthPixels)
-		SHADER_PARAMETER(float, BevelVariation)
-		SHADER_PARAMETER(float, AOSpread)
-		SHADER_PARAMETER(float, EdgeRoughness)
-		SHADER_PARAMETER(float, EdgeRoughnessAmount)
-		SHADER_PARAMETER(float, AOAmount)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatEdgeShadeCS,
-	"/Plugin/Mixtormat/Private/MixtormatEdgeShade.usf",
-	"MainCS",
-	SF_Compute);
-
-// Per-region gradient. One entry point staged by Stage, so -- as with the cluster filter --
-// every file-scope uniform is declared here whether a given stage reads it or not.
-class FMixtormatRampIdsCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatRampIdsCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatRampIdsCS, FGlobalShader);
-
-	static constexpr uint32 StageInit = 0;
-	static constexpr uint32 StageBounds = 1;
-	static constexpr uint32 StageResolve = 2;
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Stage)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(uint32, RotateRandom)
-		SHADER_PARAMETER(uint32, AngleStepping)
-		SHADER_PARAMETER(float, AngleStepDegrees)
-		SHADER_PARAMETER(float, IntensityRandom)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatRampIdsCS,
-	"/Plugin/Mixtormat/Private/MixtormatRampIds.usf",
-	"MainCS",
-	SF_Compute);
-
-// Pattern-only reduction: one maximum source height at each centre-pixel Region ID.
-class FMixtormatPatternHeightMaxCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatPatternHeightMaxCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatPatternHeightMaxCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputPatternHeightMax)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatPatternHeightMaxCS,
-	"/Plugin/Mixtormat/Private/MixtormatRampIdRelief.usf",
-	"PatternHeightMaxCS",
-	SF_Compute);
-
-// The post-composite half: the gradient turned into a tilt in the composited height and normal.
-class FMixtormatRampIdReliefCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatRampIdReliefCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatRampIdReliefCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, HeightAmount)
-		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, UseEdge)
-		SHADER_PARAMETER(float, CellHeightAmount)
-		SHADER_PARAMETER(float, CellHeightRandom)
-		SHADER_PARAMETER(float, BevelHeight)
-		SHADER_PARAMETER(float, BevelWidthPixels)
-		SHADER_PARAMETER(float, BevelWidthCells)
-		SHADER_PARAMETER(uint32, BevelRelative)
-		SHADER_PARAMETER(float, BevelVariation)
-		SHADER_PARAMETER(float, BevelRoundness)
-		SHADER_PARAMETER(float, BevelRoundnessRandom)
-		SHADER_PARAMETER(float, BevelInsetPixels)
-		SHADER_PARAMETER(float, GapHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RampField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternHeightMax)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatRampIdReliefCS,
-	"/Plugin/Mixtormat/Private/MixtormatRampIdRelief.usf",
-	"MainCS",
-	SF_Compute);
-
 namespace MixtormatGpuCompositor
 {
-	struct FPublishedMaskKey
-	{
-		FGuid LayerId;
-		int32 ChildIndex = INDEX_NONE;
-		FName Output;
-
-		friend bool operator==(const FPublishedMaskKey& A, const FPublishedMaskKey& B)
-		{
-			return A.LayerId == B.LayerId && A.ChildIndex == B.ChildIndex && A.Output == B.Output;
-		}
-
-		friend uint32 GetTypeHash(const FPublishedMaskKey& Key)
-		{
-			return HashCombine(
-				HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
-				GetTypeHash(Key.Output));
-		}
-	};
-
-	struct FMaskRenderData
-	{
-		FTextureRHIRef Texture;
-		FGuid PublishedSourceLayerId;
-		int32 PublishedSourceChildIndex = INDEX_NONE;
-		FName PublishedSourceOutput;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
-		float Weight = 1.0f;
-		FVector2f Tiling = FVector2f(1.0f, 1.0f);
-		FVector2f UVOffset = FVector2f::ZeroVector;
-		bool bFlipU = false;
-		bool bFlipV = false;
-		int32 Rotation = 0;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-		bool bInvert = false;
-	};
-
-	struct FColorIdRenderData
-	{
-		FTextureRHIRef IdTexture;
-		TArray<FVector4f, TInlineAllocator<FMixtormatColorIdCS::MaxColors>> Colors;
-		float Tolerance = 0.10f;
-		float Softness = 0.02f;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
-		float Weight = 1.0f;
-		bool bInvert = false;
-		FVector2f Tiling = FVector2f(1.0f, 1.0f);
-		FVector2f UVOffset = FVector2f::ZeroVector;
-		bool bFlipU = false;
-		bool bFlipV = false;
-		int32 Rotation = 0;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-	};
-
-	struct FEffectRenderData
-	{
-		EMixtormatEffectType Type = EMixtormatEffectType::Peeling;
-		float Tiling = 1.0f;
-		float Strength = 1.0f;
-		float Front = 0.08f;
-		float Width = 0.015f;
-		float MacroWarp = 0.01f;
-		float MicroWarp = 0.003f;
-		float MicroMorph = 1.0f;
-		float Thickness = 0.04f;
-		float Lift = 0.04f;
-		float DetailStrength = 0.02f;
-		int32 StainMode = 0;
-		FTextureRHIRef StainSourceMask;
-		FTextureRHIRef StainDirtMask;
-		float StainSourceMaskTiling = 1.0f;
-		float StainDirtMaskTiling = 1.0f;
-		bool bStainSourceMaskInvert = false;
-		bool bStainDirtMaskInvert = false;
-		int32 StainIterations = 20;
-		uint32 StainSeed = 1;
-		float StainSourceAmount = 0.12f;
-		float StainGravity = 1.0f;
-		float StainSurfaceFollow = 1.0f;
-		float StainSpread = 0.12f;
-		float StainAccumulation = 0.5f;
-		float StainAbsorption = 0.35f;
-		float StainDrying = 0.20f;
-		float StainDirtAmount = 0.35f;
-		float StainConcavityWeight = 0.35f;
-		float StainConvexityWeight = 0.15f;
-		float StainOcclusionWeight = 0.0f;
-		float StainHeightWeight = 0.0f;
-		float StainSourceHeightBias = 0.0f;
-		float StainSlopeWeight = 0.0f;
-		float StainSurfaceResponse = 1.0f;
-		// Procedural peeling. bProceduralPeel selects the generated field over the
-		// authored maps; the shaping values above are shared by both paths.
-		bool bProceduralPeel = false;
-		int32 PeelType = 0;
-		int32 PeelMacroPeriod = 8;
-		int32 PeelMicroPeriod = 32;
-		uint32 PeelRandomSeed = 1;
-		float PeelSeedThreshold = 0.62f;
-		float PeelSeedNoiseWeight = 1.0f;
-		float PeelSeedCurvatureWeight = 0.0f;
-		float PeelSeedCurvatureBias = 1.0f;
-		float PeelSeedAOWeight = 0.0f;
-		float PeelSeedHeightWeight = 0.0f;
-		float PeelSeedMaskWeight = 0.0f;
-		bool bPeelNormalizeSeedWeights = true;
-		int32 PeelCurvatureRadius = 2;
-		float PeelGrowthStrength = 1.0f;
-		float PeelAOStrength = 0.8f;
-		float PeelEdgeSharpness = 1.0f;
-		float PeelLiftVariation = 0.6f;
-		float PeelSizeVariation = 0.5f;
-		int32 PeelClusterPeriod = 4;
-		int32 PeelSolveDivisor = 4;
-		FTextureRHIRef PeelOwnMask;
-		float PeelMaskTiling = 1.0f;
-		bool bPeelMaskInvert = false;
-		float PeelClusterAmount = 0.35f;
-		int32 PeelWarpPeriod = 16;
-		float PeelWarpAmount = 0.0f;
-		float PeelWarpSource = 0.0f;
-		float PeelHeightAmount = 1.0f;
-		bool bPeelHeightInvert = false;
-
-		float ErosionAmount = 1.0f;
-		float ErosionStrength = 0.08f;
-		int32 ErosionOctaves = 5;
-		int32 ErosionPeriod = 12;
-		float ErosionGain = 0.5f;
-		float ErosionDetail = 1.5f;
-		float ErosionGullyWeight = 0.65f;
-		float ErosionNormalization = 0.5f;
-		float ErosionRidgeRounding = 0.10f;
-		float ErosionCreaseRounding = 0.0f;
-		float ErosionSlopeOnset = 1.0f;
-		float ErosionFeatureOnset = 1.25f;
-		float ErosionAssumedSlope = 0.7f;
-		float ErosionAssumedSlopeAmount = 1.0f;
-		float ErosionNormalStrength = 8.0f;
-		int32 ErosionSlopeRadius = 2;
-		float ErosionSlopeBlur = 0.0f;
-		int32 ErosionCurvatureMode = 1;
-		float ErosionCavityInfluence = 0.0f;
-		float ErosionCavityOffset = 0.0f;
-		float ErosionCavityRemapMin = 0.0f;
-		float ErosionCavityRemapMax = 1.0f;
-		float ErosionHeightInfluence = 0.0f;
-		float ErosionHeightScale = 1.0f;
-		FTextureRHIRef ErosionPlacementMask;
-		float ErosionMaskTiling = 1.0f;
-		bool bErosionInvertMask = false;
-		float ErosionRoughnessAmount = 0.0f;
-		float ErosionCarveDepth = 0.05f;
-
-		float GradeAmount = 1.0f;
-		int32 GradeTonemap = 0;
-		float GradeTonemapStrength = 1.0f;
-		float GradeBrightness = 1.0f;
-		float GradeContrast = 1.0f;
-		float GradeContrastPivot = 0.18f;
-		float GradeGamma = 1.0f;
-		float GradeInputMin = 0.0f;
-		float GradeInputMax = 1.0f;
-		float GradeOutputMin = 0.0f;
-		float GradeOutputMax = 1.0f;
-		FVector3f GradeChannelBias = FVector3f::ZeroVector;
-
-		float ChipAmount = 0.45f;
-		float ChipGroutLevel = 0.5f;
-		float ChipGroutSoftness = 0.08f;
-		float ChipSize = 0.6f;
-		float ChipDepth = 0.035f;
-		float ChipIrregularity = 0.6f;
-		int32 ChipIterations = 16;
-		float ChipNormalStrength = 8.0f;
-		float ChipMaskEdge = 0.0f;
-		float ChipCavityInfluence = 0.5f;
-		float ChipCavityOffset = 0.0f;
-		float ChipCavityRemapMin = 0.0f;
-		float ChipCavityRemapMax = 0.04f;
-		float ChipHeightInfluence = 1.0f;
-		float ChipHeightScale = 1.0f;
-		FTextureRHIRef ChipPlacementMask;
-		float ChipMaskTiling = 1.0f;
-		bool bChipInvertMask = false;
-		uint32 ChipSeed = 1;
-		float ChipRoughnessAmount = 0.0f;
-
-		int32 EdgeWearRadius = 24;
-		float EdgeWearSlope = 0.35f;
-		float EdgeWearStrength = 0.75f;
-		float EdgeWearFeather = 1.0f;
-		int32 EdgeWearDirections = 16;
-		float EdgeWearAngularAA = 0.35f;
-		float EdgeWearGravity = 0.0f;
-		float EdgeWearGravityAngle = 90.0f;
-		uint32 EdgeWearSeed = 1;
-		int32 EdgeWearMacroScale = 12;
-		float EdgeWearMacroAmount = 0.75f;
-		int32 EdgeWearCellScale = 8;
-		float EdgeWearCellAmount = 1.0f;
-		int32 EdgeWearRidgeScale = 8;
-		float EdgeWearRidgeAmount = 1.0f;
-		int32 EdgeWearMicroScale = 40;
-		float EdgeWearMicroAmount = 0.5f;
-		int32 EdgeWearWarpScale = 32;
-		float EdgeWearWarpAmount = 0.25f;
-		float EdgeWearNoiseContrast = 0.5f;
-		float EdgeWearIdVariation = 1.0f;
-		float EdgeWearIdRadius = 0.5f;
-		float EdgeWearIdSlope = 0.3f;
-		float EdgeWearIdStrength = 0.25f;
-		float EdgeWearIdNoise = 1.0f;
-		float EdgeWearRoughnessWeight = 0.0f;
-		float EdgeWearRoughnessOffset = 0.0f;
-
-		float FlowWarpAmount = 1.0f;
-		float FlowWarpWeight = 1.0f;
-		int32 FlowWarpScale = 8;
-		float FlowWarpDirection = 0.0f;
-		uint32 FlowWarpSeed = 1;
-		float FlowWarpMaskSlopeInfluence = 0.0f;
-		float FlowWarpHeightSlopeInfluence = 0.0f;
-		FVector2f FlowWarpDerivativeKernel = FVector2f(2.0f, 2.0f);
-		uint32 FlowWarpBlendMode = 0;
-		bool bGradeInvertMask = false;
-	};
-
-	struct FGeneratedMaskRenderData
-	{
-		float CurvatureWeight = 0.0f;
-		float CurvatureBias = 0.0f;
-		float CurvatureStrength = 4.0f;
-		float CurvaturePower = 1.0f;
-		float DirectionWeight = 0.0f;
-		float DirectionAngle = 90.0f;
-		float DirectionBroadness = 1.0f;
-		float AOWeight = 0.0f;
-		float HeightWeight = 0.0f;
-		float HeightBias = 0.0f;
-		float RidgeWeight = 0.0f;
-		bool bNormalizeWeights = true;
-		int32 Broadness = 2;
-		int32 Smoothing = 2;
-		float Bias = 0.5f;
-		float WarpAmount = 0.0f;
-		float WarpSource = 0.0f;
-		int32 WarpRadius = 1;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Multiply;
-		float Weight = 1.0f;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-		bool bInvert = false;
-	};
-
-	// Craquelure. No surface inputs at all -- that is the whole reason it left the generated
-	// mask, whose every signal is derived from the surface accumulated below it.
-	struct FCraquelureRenderData
-	{
-		bool bEnabled = true;
-		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
-
-		float ReliefDepth = 0.04f;
-		float ReliefNormalStrength = 8.0f;
-		float ReliefWidth = 0.08f;
-		float ReliefProfile = 1.0f;
-		float ReliefGrooveVariation = 0.0f;
-		float ReliefProfileVariation = 0.0f;
-		float ReliefWidthVariation = 0.0f;
-
-		// Hash of exactly the parameters the seed and growth passes read. Everything else about
-		// this node is applied to the finished distance field, so it must not appear here or a
-		// user tuning crack width would miss the cache on every frame of the drag.
-		uint64 NetworkKey = 0;
-		int32 Period = 16;
-		float Jitter = 1.0f;
-		float Width = 0.04f;
-		float Variation = 0.0f;
-		uint32 Seed = 1;
-		float Warp = 0.0f;
-		int32 WarpPeriod = 4;
-		uint32 WarpSeed = 7;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
-		bool bInvert = false;
-		float Weight = 1.0f;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-
-		// Propagated mode only.
-		int32 Iterations = 48;
-		int32 SeedCells = 4;
-		float SeedChance = 0.35f;
-		float SeedJitter = 0.85f;
-		int32 NoiseCells = 5;
-		float StressVariation = 0.35f;
-		float ToughnessVariation = 0.45f;
-		float Persistence = 1.65f;
-		float FlowStrength = 0.18f;
-		float StressGain = 0.75f;
-		float ToughnessCost = 0.95f;
-		float Irregularity = 0.32f;
-		float GrowthThreshold = 0.55f;
-		float TurnResponse = 0.72f;
-		int32 CollisionLimit = 2;
-	};
-
-	struct FClusterFilterRenderData
-	{
-		EMixtormatClusterSource Source = EMixtormatClusterSource::LayerSurface;
-		float Threshold = 0.33f;
-		float Offset = 0.0f;
-		float HeightInfluence = 1.0f;
-	};
-
-	struct FPatternIdRenderData
-	{
-		EMixtormatPatternMode PatternMode = EMixtormatPatternMode::Grid;
-		EMixtormatGridMode GridMode = EMixtormatGridMode::Straight;
-		int32 Rows = 8;
-		int32 Columns = 8;
-		float RowOffset = 0.0f;
-		float Jitter = 0.0f;
-		float Rounding = 0.0f;
-		bool bRelativeEdgeWidth = false;
-		bool bSwapAxes = false;
-		float GapPixels = 0.0f;
-		uint32 Seed = 1;
-
-		bool bUVVariation = false;
-		bool bOrthogonalUV = true;
-		float UVRotationMin = 0.0f;
-		float UVRotationMax = 360.0f;
-		float UVScaleMin = 1.0f;
-		float UVScaleMax = 1.0f;
-		float UVOffset = 0.0f;
-		bool bRandomFlipU = false;
-		bool bRandomFlipV = false;
-
-		float HeightAmount = 0.0f;
-		float NormalStrength = 8.0f;
-		float Feather = 0.15f;
-		float BevelHeight = 0.0f;
-		float BevelWidthPixels = 4.0f;
-		float BevelWidthCells = 0.25f;
-		float BevelVariation = 0.0f;
-		float BevelRoundness = 0.0f;
-		float BevelRoundnessRandom = 0.0f;
-		float BevelInsetPixels = 0.0f;
-		float GapHeight = 0.0f;
-		float HeightRandom = 1.0f;
-		float FeatherRandom = 0.0f;
-		float EdgeRoughness = 0.65f;
-		float EdgeRoughnessAmount = 0.0f;
-		float AOAmount = 0.0f;
-		float AOSpread = 2.0f;
-	};
-
-	bool HasIntrinsicPatternOrientation(const FPatternIdRenderData& Pattern)
-	{
-		return Pattern.PatternMode == EMixtormatPatternMode::Herringbone
-			|| Pattern.PatternMode == EMixtormatPatternMode::Basketweave;
-	}
-
-	// Reads a cluster filter's ID map and rewrites the layer's albedo. No blend mode and no
-	// weight: this is applied at the composite's albedo sample, not in the mask chain.
-	struct FHsvIdFilterRenderData
-	{
-		TArray<FVector4f, TInlineAllocator<FMixtormatCompositeCS::MaxRegionPalette>> Palette;
-		float MixMin = 0.0f;
-		float MixMax = 0.15f;
-		float HueMin = 0.0f;
-		float HueMax = 0.0f;
-		float SatMin = 0.9f;
-		float SatMax = 1.1f;
-		float ValMin = 0.9f;
-		float ValMax = 1.1f;
-		uint32 Seed = 1;
-	};
-
-	struct FRandomIdRenderData
-	{
-		float MinValue = 0.0f;
-		float MaxValue = 1.0f;
-		uint32 Seed = 1;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
-		float Weight = 1.0f;
-		bool bInvert = false;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-	};
-
-	struct FRampIdRenderData
-	{
-		float HeightAmount = 0.05f;
-		float NormalStrength = 8.0f;
-		float AOAmount = 0.0f;
-		float IntensityRandom = 0.0f;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
-		bool bRotateRandom = true;
-		bool bAngleStepping = false;
-		float AngleStepDegrees = 5.0f;
-		uint32 Seed = 1;
-	};
-
-	struct FChildRenderData
-	{
-		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
-		int32 SourceChildIndex = INDEX_NONE;
-		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
-		int32 ScopeOwnerSourceChildIndex = INDEX_NONE;
-		FMaskRenderData Mask;
-		FEffectRenderData Effect;
-		FGeneratedMaskRenderData Generated;
-		FCraquelureRenderData Craquelure;
-		FColorIdRenderData ColorId;
-		FClusterFilterRenderData Filter;
-		FPatternIdRenderData PatternId;
-		FHsvIdFilterRenderData HsvFilter;
-		FRandomIdRenderData RandomId;
-		FRampIdRenderData RampId;
-	};
-
-	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
-	// layer whose combined mask is the signal and says nothing about what produced that mask, so a
-	// published-output or region-ID source later fills the same slot without changing this.
-	struct FScalarDriverRenderData
-	{
-		bool bEnabled = false;
-		// A region source names the producer child as well as the layer; a mask source names the
-		// layer alone. bRegionSource picks which of the slot's two bindings the shader reads.
-		bool bRegionSource = false;
-		FGuid SourceLayerId;
-		int32 SourceChildIndex = INDEX_NONE;
-		uint32 Seed = 0;
-		float IdRandomMin = 0.0f;
-		float IdRandomMax = 1.0f;
-		bool bInvert = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
-		float OutputMin = 0.0f;
-		float OutputMax = 1.0f;
-		float Amount = 1.0f;
-		uint32 Combine = 0;
-	};
-
-	struct FLayerRenderData
-	{
-		FGuid LayerId;
-		FScalarDriverRenderData ScalarDrivers[2];
-		FTextureRHIRef BaseColor;
-		FTextureRHIRef Normal;
-		FTextureRHIRef RAM;
-		FTextureRHIRef Mask;
-		TArray<FChildRenderData> Children;
-		FVector4f FillColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
-		float Opacity = 1.0f;
-		float Tiling = 1.0f;
-		int32 UVScaleX = 1;
-		int32 UVScaleY = 1;
-		FVector2f UVOffset = FVector2f::ZeroVector;
-		bool bFlipU = false;
-		bool bFlipV = false;
-		int32 Rotation = 0;
-		float NormalIntensity = 1.0f;
-		float HueShift = 0.0f;
-		float Saturation = 1.0f;
-		float Value = 1.0f;
-		float RoughnessBias = 0.5f;
-		float RoughnessContrast = 1.0f;
-		float RoughnessOffset = 0.0f;
-		float FillRoughness = 0.5f;
-		float FillMetallic = 0.0f;
-		float LayerF0 = 0.04f;
-		EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
-		float BaseColorBlendAmount = 1.0f;
-		float BaseColorInfluence = 1.0f;
-		float RoughnessInfluence = 1.0f;
-		float AOInfluence = 1.0f;
-		float MetallicInfluence = 1.0f;
-		float F0Influence = 1.0f;
-		float NormalInfluence = 1.0f;
-		float HeightInfluence = 1.0f;
-		float HeightBoost = 1.0f;
-		float HeightBlendAmount = 1.0f;
-		float HeightThreshold = 0.5f;
-		float HeightRange = 0.1f;
-		float HeightContrast = 1.0f;
-		float HeightOffset = 0.0f;
-		float HeightBias = 0.0f;
-		float ConstantHeight = 0.5f;
-		float MaskHeightInfluence = 0.0f;
-		float HeightContactAOAmount = 0.0f;
-		float HeightContactAOWidth = 0.05f;
-		float HeightBorderLift = 0.0f;
-		float HeightBorderWidth = 0.05f;
-		float HeightBorderNormalStrength = 1.0f;
-		float HeightSmoothRadius = 0.0f;
-		float HeightSmoothAmount = 1.0f;
-		float HeightBorderSmoothing = 1.0f;
-		float FeatureInfluence = 0.0f;
-		float FeatureBias = 0.0f;
-		float HeightFeatureInfluence = 0.0f;
-		float AOFeatureInfluence = 0.0f;
-		float CurvatureStrength = 1.0f;
-		float CurvaturePower = 1.0f;
-		int32 CurvatureSmoothing = 2;
-		int32 CurvatureRadius = 1;
-		bool bEnabled = true;
-		bool bHasMask = false;
-		bool bHasEffects = false;
-		bool bOverrideBaseColor = false;
-		bool bOverrideRoughness = false;
-		bool bOverrideMetallic = false;
-		bool bCoat = false;
-		bool bFill = false;
-		bool bHasSurface = false;
-		bool bHasNormal = false;
-		bool bNormalOnly = false;
-		bool bOverrideNormal = false;
-		bool bFlipNormalY = false;
-		bool bHeightBlendEnabled = false;
-		bool bHasPackedHeight = false;
-		bool bInvertHeight = false;
-		bool bDirectHeightComparison = false;
-		bool bInvertHeightFeature = false;
-		bool bInvertAOFeature = false;
-		bool bInvertFeature = false;
-		uint32 HeightSource = 2u;
-		int32 HeightReferenceLayerIndex = INDEX_NONE;
-	};
-
-	struct FRenderRequest
-	{
-		FIntPoint Resolution = FIntPoint::ZeroValue;
-		TArray<FLayerRenderData> Layers;
-		FTextureRHIRef OutputBC[2];
-		FTextureRHIRef OutputN[2];
-		FTextureRHIRef OutputRAM[2];
-		FTextureRHIRef OutputHeight[2];
-		FTextureRHIRef OutputDebug[2];
-		FMixtormatDebugPreviewSettings DebugSettings;
-		FSimpleDelegate OnComplete;
-		int32 PublishedTargetIndex = 0;
-
-		// Shared rather than raw, so a composite still in flight holds the cache alive even if
-		// the panel that owns it has gone.
-		TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;
-	};
-
-	FTextureRHIRef GetTextureRHI(UTexture2D* Texture)
+	static FTextureRHIRef GetTextureRHI(UTexture2D* Texture)
 	{
 		return Texture && Texture->GetResource()
 			? Texture->GetResource()->TextureRHI
@@ -2239,7 +259,7 @@ namespace MixtormatGpuCompositor
 	// the only copies outside it, and they have to be converted the same way or an untouched
 	// region of the preview sits at a different brightness from the ramp drawn over it -- which
 	// reads as the debug view having two backgrounds.
-	FLinearColor DebugClearColor()
+	static FLinearColor DebugClearColor()
 	{
 		// FLinearColor::FromSRGBColor would quantise through 8-bit first; these are authored as
 		// floats and the low channel is small enough for that to round visibly.
@@ -2250,7 +270,7 @@ namespace MixtormatGpuCompositor
 		return FLinearColor(ToLinear(0.08f), ToLinear(0.02f), ToLinear(0.12f), 1.0f);
 	}
 
-	UTextureRenderTarget2D* CreateTarget(
+	static UTextureRenderTarget2D* CreateTarget(
 		const FIntPoint Resolution,
 		const FLinearColor ClearColor,
 		const EPixelFormat Format = PF_FloatRGBA)
@@ -2267,287 +287,431 @@ namespace MixtormatGpuCompositor
 		return Target;
 	}
 
-	FTextureRHIRef GetTargetRHI(UTextureRenderTarget2D* Target)
+	static FTextureRHIRef GetTargetRHI(UTextureRenderTarget2D* Target)
 	{
 		return Target && Target->GameThread_GetRenderTargetResource()
 			? Target->GameThread_GetRenderTargetResource()->GetRenderTargetTexture()
 			: FTextureRHIRef();
 	}
 
-	FRDGTextureRef RegisterTexture(
-		FRDGBuilder& GraphBuilder,
-		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures,
-		const FTextureRHIRef& Texture,
-		const TCHAR* Name)
-	{
-		FRHITexture* TextureRHI = Texture.GetReference();
-		check(TextureRHI);
-		if (const FRDGTextureRef* ExistingTexture = RegisteredTextures.Find(TextureRHI))
-		{
-			return *ExistingTexture;
-		}
-
-		FRDGTextureRef RegisteredTexture =
-			GraphBuilder.RegisterExternalTexture(CreateRenderTarget(Texture, Name));
-		RegisteredTextures.Add(TextureRHI, RegisteredTexture);
-		return RegisteredTexture;
-	}
-
-	// Produces one layer's ID map, and its debug preview alongside it.
+	// One layer composited onto what the stack has accumulated below it.
 	//
-	// Returns the map rather than only writing the preview, because the two consumers -- the HSV
-	// filter at the composite's albedo sample and the random-value mask in the chain -- both read
-	// it, and both have to read the *same* one. Segmenting twice would cost 17 dispatches twice
-	// and, worse, could disagree: a tint landing on different regions than the stain it is
-	// supposed to share boundaries with is exactly the failure a shared map exists to prevent.
-	FRDGTextureRef AddClusterIdPasses(
-		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef SourceRAMH,
-		FRDGTextureRef SurfaceRAM,
-		FRDGTextureRef SurfaceHeight,
-		bool bHasSurfaceBelow,
-		bool bWriteDebug,
-		FRDGTextureRef OutputDebug,
-		FIntPoint OutputSize,
-		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
-		int32 LayerIndex)
+	// Everything the composite shader needs is gathered here: the layer's own parameters, the
+	// two smoothing blurs that have to happen in a texture rather than per tap, the resolved
+	// scalar Drivers, the HSV region tint applied at the albedo sample, and the Pattern UV
+	// basis. It also takes the layer's Driver-signal snapshot, which can only be done here --
+	// CombinedMask is final by this point and the mask halves are overwritten by the next layer.
+	void AddLayerCompositePass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer)
 	{
-		// The bottom layer has nothing composited below it -- the substrate is flat, and
-		// segmenting a flat surface returns one region covering everything. Fall back to the
-		// layer's own map rather than hand back a map with no regions in it.
-		const bool bFromComposite =
-			Child.Filter.Source == EMixtormatClusterSource::CompositeBelow && bHasSurfaceBelow;
-		// Deliberately graph-local. An RHI identity (even held strongly) cannot detect in-place
-		// texture edits, reimports or streaming updates. Until the source exposes a content
-		// revision, recompute selected previews each request rather than cache stale regions.
-		// Any future persistent key must include that revision, retained source identity,
-		// resolution, UV placement and these three filter controls -- not material grading.
-		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
-		FRDGBufferRef Statistics = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4), TEXT("Mixtormat.Cluster.Statistics"));
-		FRDGBufferRef GuideSignal = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector2f), PixelCount), TEXT("Mixtormat.Cluster.GuideSignal"));
-		FRDGBufferRef Parents = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Parents"));
-		// Sparse integer root indices, not colors or a compacted label map. No consumers yet.
-		FRDGBufferRef ClusterIds = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Ids"));
-		const FRDGBufferUAVRef StatisticsUAV = GraphBuilder.CreateUAV(Statistics);
-		const FRDGBufferUAVRef GuideSignalUAV = GraphBuilder.CreateUAV(GuideSignal);
-		const FRDGBufferUAVRef ParentsUAV = GraphBuilder.CreateUAV(Parents);
-		const FRDGBufferUAVRef ClusterIdsUAV = GraphBuilder.CreateUAV(ClusterIds);
-		const FRDGTextureUAVRef DebugUAV = GraphBuilder.CreateUAV(OutputDebug);
-		// R32_UINT and read with Load, never a sampler. Filtering an ID is meaningless -- halfway
-		// between two regions is a third number naming neither -- and every consumer runs at this
-		// resolution, so a pixel lookup is exact.
-		FRDGTextureRef RegionIds = GraphBuilder.CreateTexture(
-			FRDGTextureDesc::Create2D(
-				OutputSize,
-				PF_R32_UINT,
-				FClearValueBinding::None,
-				TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Cluster.RegionIds"));
-		const FRDGTextureUAVRef RegionIdsUAV = GraphBuilder.CreateUAV(RegionIds);
-		TShaderMapRef<FMixtormatClusterIdsCS> ClusterShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		const FIntVector Groups(
-			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
-		for (uint32 Stage = 0; Stage <= FMixtormatClusterIdsCS::ResolveStage; ++Stage)
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
+		FRDGTextureRef* const OutputBC = Ctx.OutputBC;
+		FRDGTextureRef* const OutputN = Ctx.OutputN;
+		FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
+		FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
+		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
+		const FRDGTextureRef EmptyRegionIds = Ctx.EmptyRegionIds;
+		const FRDGTextureRef EmptyPatternUV = Ctx.EmptyPatternUV;
+		const FRDGTextureRef EmptyPatternOrientation = Ctx.EmptyPatternOrientation;
+		const FRDGTextureRef EmptyDriverSignal = Ctx.EmptyDriverSignal;
+		TSet<FGuid>& DriverSnapshotDemand = Ctx.DriverSnapshotDemand;
+		TMap<FGuid, FRDGTextureRef>& DriverSnapshots = Ctx.DriverSnapshots;
+		TMap<int32, FRDGTextureRef>& HeightSnapshots = Ctx.HeightSnapshots;
+		const int32 LayerIndex = LayerCtx.LayerIndex;
+		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
+		TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
+		TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
+			LayerCtx.PatternOutputs;
+		FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
+		FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
+		FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
+		FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
+		TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		const int32 WriteIndex = LayerIndex & 1;
+		const int32 ReadIndex = 1 - WriteIndex;
+		FMixtormatCompositeCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatCompositeCS::FParameters>();
+		Parameters->OutputSize = Request.Resolution;
+		Parameters->Enabled = Layer.bEnabled ? 1u : 0u;
+		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
+		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
+		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
+		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
+		Parameters->CompositionMode = Layer.bCoat ? 1u : 0u;
+		Parameters->IsFill = Layer.bFill ? 1u : 0u;
+		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
+		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
+		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
+		Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
+		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
+		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
+		Parameters->HeightBlendEnabled = Layer.bHeightBlendEnabled ? 1u : 0u;
+		Parameters->HeightSource = Layer.HeightSource;
+		Parameters->InvertHeight = Layer.bInvertHeight ? 1u : 0u;
+		Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
+		Parameters->InvertHeightFeature = Layer.bInvertHeightFeature ? 1u : 0u;
+		Parameters->InvertAOFeature = Layer.bInvertAOFeature ? 1u : 0u;
+		Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
+		Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
+
+		// Stain and ClusterIds publish their own previews before this composite.
+		// Neither has a case in the composite shader: exclude both or DebugValue 0
+		// would overwrite the selected child's preview with flat DebugLow.
+		Parameters->WriteDebug =
+			Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ClusterIds
+			&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
+		Parameters->Opacity = Layer.Opacity;
+		Parameters->Tiling = Layer.Tiling;
+		Parameters->UVScaleX = Layer.UVScaleX;
+		Parameters->UVScaleY = Layer.UVScaleY;
+		Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
+		Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
+		Parameters->UVOffset = Layer.UVOffset;
+		Parameters->Rotation = Layer.Rotation;
+		Parameters->NormalIntensity = Layer.NormalIntensity;
+		Parameters->HueShift = Layer.HueShift;
+		Parameters->Saturation = Layer.Saturation;
+		Parameters->Value = Layer.Value;
+		Parameters->RoughnessBias = Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.RoughnessOffset;
+		Parameters->FillRoughness = Layer.FillRoughness;
+		Parameters->FillMetallic = Layer.FillMetallic;
+		Parameters->LayerF0 = Layer.LayerF0;
+		Parameters->HeightBoost = Layer.HeightBoost;
+		Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
+		Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
+		Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
+		Parameters->RoughnessInfluence = Layer.RoughnessInfluence;
+		Parameters->AOInfluence = Layer.AOInfluence;
+		Parameters->MetallicInfluence = Layer.MetallicInfluence;
+		Parameters->F0Influence = Layer.F0Influence;
+		Parameters->NormalInfluence = Layer.NormalInfluence;
+		Parameters->HeightInfluence = Layer.HeightInfluence;
+		Parameters->HeightBlendAmount = Layer.HeightBlendAmount;
+		Parameters->HeightThreshold = Layer.HeightThreshold;
+		Parameters->HeightRange = Layer.HeightRange;
+		Parameters->HeightContrast = Layer.HeightContrast;
+		Parameters->HeightOffset = Layer.HeightOffset;
+		Parameters->HeightBias = Layer.HeightBias;
+		Parameters->ConstantHeight = Layer.ConstantHeight;
+		Parameters->MaskHeightInfluence = Layer.MaskHeightInfluence;
+		Parameters->HeightContactAOAmount = Layer.HeightContactAOAmount;
+		Parameters->HeightContactAOWidth = Layer.HeightContactAOWidth;
+		Parameters->HeightBorderLift = Layer.HeightBorderLift;
+		Parameters->HeightBorderWidth = Layer.HeightBorderWidth;
+		Parameters->HeightBorderNormalStrength = Layer.HeightBorderNormalStrength;
+
+		// Contact and border smoothing. The same separable Gaussian the mask smoothing
+		// uses, run over the accumulated height the two fields are built from.
+		//
+		// It has to happen here rather than inside the composite, because a blur wants
+		// the field already in a texture: evaluating the field per tap would cost four
+		// texture reads each, and a kernel wide enough to matter would be dozens of
+		// taps per pixel. Two separable passes over one texture is the same result for
+		// a fraction of the work.
+		//
+		// Blurring the *source* rather than widening the derivative is the whole
+		// point. A central difference taken further apart reaches further into the
+		// noise instead of averaging it, which is why widening the measurement made
+		// the stipple coarser rather than removing it.
+		const bool bBorderActive =
+			Layer.bHeightBlendEnabled
+			&& !Layer.bNormalOnly
+			&& ((Layer.HeightContactAOAmount > 0.0f)
+				|| (FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f
+					&& Layer.HeightBorderNormalStrength > 0.0f));
+		const bool bSmoothBorderField =
+			bBorderActive && Layer.HeightBorderSmoothing > 1.0f;
+		FRDGTextureRef BorderBaseHeight = HeightTargets[ReadIndex];
+		if (bSmoothBorderField)
 		{
-			FMixtormatClusterIdsCS::FParameters* Parameters =
-				GraphBuilder.AllocParameters<FMixtormatClusterIdsCS::FParameters>();
-			Parameters->OutputSize = OutputSize;
-			Parameters->Stage = Stage;
-			Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
-			Parameters->SourceMode = bFromComposite ? 1u : 0u;
-			Parameters->SourceTiling = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
-			Parameters->SourceOffset = Layer.UVOffset;
-			Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
-			Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
-			Parameters->Rotation = Layer.Rotation;
-			Parameters->Threshold = Child.Filter.Threshold;
-			Parameters->Offset = Child.Filter.Offset;
-			Parameters->HeightInfluence = Child.Filter.HeightInfluence;
-			Parameters->SourceRAMH = SourceRAMH;
-			Parameters->SurfaceRAM = SurfaceRAM;
-			Parameters->SurfaceHeight = SurfaceHeight;
-			Parameters->LinearWrapSampler =
-				TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-			Parameters->Statistics = StatisticsUAV;
-			Parameters->GuideSignal = GuideSignalUAV;
-			Parameters->Parents = ParentsUAV;
-			Parameters->ClusterIds = ClusterIdsUAV;
-			Parameters->OutputIds = RegionIdsUAV;
-			Parameters->OutputDebug = DebugUAV;
-			// Keep the default UAV barriers: each dispatch must finish before the next stage
-			// reads global statistics/parents. A group barrier cannot synchronize this algorithm.
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.ClusterIds.Layer%d.Child%d.Stage%u", LayerIndex, Child.SourceChildIndex, Stage),
-				ClusterShader, Parameters, Stage == 0 ? FIntVector(1, 1, 1) : Groups);
+			BorderBaseHeight = AddBorderHeightBlurPasses(Ctx, LayerCtx, Layer);
 		}
-		return RegionIds;
-	}
-
-	FRDGTextureRef AddPatternIdPasses(
-		FRDGBuilder& GraphBuilder,
-		bool bWriteDebug,
-		FRDGTextureRef OutputDebug,
-		FIntPoint OutputSize,
-		const FChildRenderData& Child,
-		int32 LayerIndex,
-		FRDGTextureRef EmptyPatternOrientation,
-		FRDGTextureRef& OutUV,
-		FRDGTextureRef& OutRamp,
-		FRDGTextureRef& OutEdge,
-		FRDGTextureRef& OutOrientation)
-	{
-		const FRDGTextureDesc IdDesc = FRDGTextureDesc::Create2D(
-			OutputSize,
-			PF_R32_UINT,
-			FClearValueBinding::None,
-			TexCreate_ShaderResource | TexCreate_UAV);
-		const FRDGTextureDesc Float2Desc = FRDGTextureDesc::Create2D(
-			OutputSize,
-			PF_G16R16F,
-			FClearValueBinding::None,
-			TexCreate_ShaderResource | TexCreate_UAV);
-
-		FRDGTextureRef RegionIds =
-			GraphBuilder.CreateTexture(IdDesc, TEXT("Mixtormat.Pattern.RegionIds"));
-		OutUV = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.FeatureUV"));
-		OutRamp = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Ramp"));
-		OutEdge = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Edge"));
-		const bool bWritesOrientation = HasIntrinsicPatternOrientation(Child.PatternId);
-		OutOrientation = bWritesOrientation
-			? GraphBuilder.CreateTexture(
-				FRDGTextureDesc::Create2D(
-					OutputSize,
-					PF_R8_UINT,
-					FClearValueBinding::None,
-					TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.Pattern.Orientation"))
-			: EmptyPatternOrientation;
-
-		FMixtormatPatternIdsCS::FParameters* Parameters =
-			GraphBuilder.AllocParameters<FMixtormatPatternIdsCS::FParameters>();
-		Parameters->OutputSize = OutputSize;
-		Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
-		Parameters->WriteOrientation = bWritesOrientation ? 1u : 0u;
-		Parameters->PatternMode = static_cast<uint32>(Child.PatternId.PatternMode);
-		Parameters->GridMode = static_cast<uint32>(Child.PatternId.GridMode);
-		Parameters->Rows = Child.PatternId.Rows;
-		Parameters->Columns = Child.PatternId.Columns;
-		Parameters->RowOffset = Child.PatternId.RowOffset;
-		Parameters->Jitter = Child.PatternId.Jitter;
-		Parameters->SwapAxes = Child.PatternId.bSwapAxes ? 1u : 0u;
-		Parameters->GapPixels = Child.PatternId.GapPixels;
-		Parameters->Seed = Child.PatternId.Seed;
-		Parameters->FeatherRandom = Child.PatternId.FeatherRandom;
-		Parameters->Rounding = Child.PatternId.Rounding;
-		Parameters->EdgeRelative = Child.PatternId.bRelativeEdgeWidth ? 1u : 0u;
-		Parameters->Feather = Child.PatternId.Feather;
-		Parameters->OutputIds = GraphBuilder.CreateUAV(RegionIds);
-		Parameters->OutputUV = GraphBuilder.CreateUAV(OutUV);
-		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);
-		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
-		Parameters->OutputOrientation = GraphBuilder.CreateUAV(OutOrientation);
-		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
-
-		TShaderMapRef<FMixtormatPatternIdsCS> PatternShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		const FIntVector Groups(
-			FMath::DivideAndRoundUp(OutputSize.X, 8),
-			FMath::DivideAndRoundUp(OutputSize.Y, 8),
-			1);
-		FComputeShaderUtils::AddPass(
+		Parameters->BorderBaseHeight = BorderBaseHeight;
+		Parameters->BorderSmoothValid = bSmoothBorderField ? 1u : 0u;
+		Parameters->FeatureInfluence = Layer.FeatureInfluence;
+		Parameters->FeatureBias = Layer.FeatureBias;
+		Parameters->HeightFeatureInfluence = Layer.HeightFeatureInfluence;
+		Parameters->AOFeatureInfluence = Layer.AOFeatureInfluence;
+		Parameters->CurvatureRadius = Layer.CurvatureRadius;
+		Parameters->CurvatureStrength = Layer.CurvatureStrength;
+		Parameters->CurvaturePower = Layer.CurvaturePower;
+		Parameters->CurvatureSmoothing = Layer.CurvatureSmoothing;
+		Parameters->FillColor = Layer.FillColor;
+		Parameters->PreviousBC = OutputBC[ReadIndex];
+		Parameters->PreviousN = OutputN[ReadIndex];
+		Parameters->PreviousRAM = OutputRAM[ReadIndex];
+		Parameters->PreviousHeight = HeightTargets[ReadIndex];
+		Parameters->ReferenceHeight = HeightTargets[ReadIndex];
+		if (FRDGTextureRef* Snapshot = HeightSnapshots.Find(Layer.HeightReferenceLayerIndex))
+		{
+			Parameters->ReferenceHeight = *Snapshot;
+		}
+		Parameters->LayerBC = RegisterTexture(
 			GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.PatternIds.Layer%d.Child%d", LayerIndex, Child.SourceChildIndex),
-			PatternShader,
-			Parameters,
-			Groups);
-		return RegionIds;
-	}
+			RegisteredTextures,
+			Layer.BaseColor,
+			TEXT("Mixtormat.LayerBC"));
+		Parameters->LayerN = RegisterTexture(
+			GraphBuilder,
+			RegisteredTextures,
+			Layer.Normal,
+			TEXT("Mixtormat.LayerN"));
+		Parameters->LayerRAM = RegisterTexture(
+			GraphBuilder,
+			RegisteredTextures,
+			Layer.RAM,
+			TEXT("Mixtormat.LayerRAM"));
+		Parameters->LayerMask = CombinedMask;
 
-	// Builds one ramp filter's gradient field from an ID map.
-	//
-	// Three dispatches and one full-resolution int4 scratch buffer, so it is demand-culled the
-	// same way the segmentation is: no tilt weight, no pass.
-	FRDGTextureRef AddRampIdPasses(
-		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef RegionIds,
-		FIntPoint OutputSize,
-		const FRampIdRenderData& Ramp,
-		int32 LayerIndex,
-		int32 ChildIndex)
-	{
-		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
-		// Four ints per pixel -- min x, max x, min y, max y -- strided in one buffer. Sized by
-		// pixel rather than by region because an ID *is* a pixel index and nothing compacts them;
-		// most of this is never touched, which is the price of keeping the root's position.
-		FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 4u),
-			TEXT("Mixtormat.Ramp.RegionBounds"));
-		const FRDGBufferUAVRef RegionBoundsUAV = GraphBuilder.CreateUAV(RegionBounds);
-
-		FRDGTextureRef RampField = GraphBuilder.CreateTexture(
-			FRDGTextureDesc::Create2D(
-				OutputSize,
-				PF_G16R16F,
-				FClearValueBinding::None,
-				TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Ramp.Field"));
-		const FRDGTextureUAVRef RampFieldUAV = GraphBuilder.CreateUAV(RampField);
-
-		TShaderMapRef<FMixtormatRampIdsCS> RampShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		const FIntVector Groups(
-			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
-		for (uint32 Stage = FMixtormatRampIdsCS::StageInit;
-			Stage <= FMixtormatRampIdsCS::StageResolve;
-			++Stage)
+		// Rounding for the height field. A placement mask is a step, so the layer's
+		// height falls from full to nothing across one texel and the layer reads as a
+		// decal sitting on the surface. Blurring the mask and taking the height from
+		// the blurred copy replaces that step with a ramp, and at a wide enough radius
+		// the interior domes rather than merely softening at the rim.
+		//
+		// Its own pair of scratch targets, not the mask ping-pong halves: those are
+		// the chain the next layer's mask children read and write, and blurring into
+		// them would hand a later layer a mask nobody asked to smooth.
+		FRDGTextureRef LayerHeightMask = CombinedMask;
+		const bool bSmoothHeightMask =
+			Layer.HeightSmoothRadius > 0.0f
+			&& Layer.HeightSmoothAmount > 0.0f
+			&& Layer.bHasMask
+			&& !Layer.bNormalOnly;
+		if (bSmoothHeightMask)
 		{
-			FMixtormatRampIdsCS::FParameters* Parameters =
-				GraphBuilder.AllocParameters<FMixtormatRampIdsCS::FParameters>();
-			Parameters->OutputSize = OutputSize;
-			Parameters->Stage = Stage;
-			Parameters->Seed = Ramp.Seed;
-			Parameters->RotateRandom = Ramp.bRotateRandom ? 1u : 0u;
-			Parameters->AngleStepping = Ramp.bAngleStepping ? 1u : 0u;
-			Parameters->AngleStepDegrees = Ramp.AngleStepDegrees;
-			Parameters->IntensityRandom = Ramp.IntensityRandom;
-			Parameters->RegionIds = RegionIds;
-			Parameters->RegionBounds = RegionBoundsUAV;
-			Parameters->OutputRamp = RampFieldUAV;
-
-			// Default UAV barriers, deliberately: the bounds reduction has to have finished for
-			// every pixel of a region before any pixel of it reads the box back.
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.RampIds.Layer%d.Child%d.Stage%u", LayerIndex, ChildIndex, Stage),
-				RampShader, Parameters, Groups);
+			LayerHeightMask = AddHeightMaskBlurPasses(Ctx, LayerCtx, Layer);
 		}
-		return RampField;
-	}
+		Parameters->LayerHeightMask = LayerHeightMask;
+		Parameters->HeightSmoothAmount =
+			bSmoothHeightMask ? Layer.HeightSmoothAmount : 0.0f;
+		Parameters->EffectData = CombinedEffectData;
+		Parameters->EffectHeight = CombinedEffectHeight;
+		Parameters->DebugMask = DebugMask;
 
-	// The cluster filter a consumer reads: the nearest enabled one above it in the child list.
-	//
-	// Above rather than anywhere in the layer, so two cluster filters at different thresholds can
-	// coexist -- a coarse one with its own consumers, then a fine one with its own -- which is
-	// how the micro/macro pairing in the design note is meant to be authored. Nothing above means
-	// no map, and the consumer is culled rather than guessing.
-	FRDGTextureRef FindRegionIdsAbove(
-		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
-		int32 ChildIndex)
-	{
-		FRDGTextureRef Found = nullptr;
-		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+		// Per-region colour variation. Applied here rather than in a pass of its own
+		// because line-for-line this is the layer's colour-rewrite site already --
+		// the same place HueShift/Saturation/Value are applied, and the ID map is
+		// already in this pass's pixel space, so there is no second transform to get
+		// wrong.
+		//
+		// One HSV filter per layer takes effect: the last enabled one that has a
+		// cluster above it. Two of them do not compose into a single colour, they
+		// each claim the whole albedo, so the later row wins rather than the two
+		// silently averaging.
+		const FHsvIdFilterRenderData* ActiveHsv = nullptr;
+		FRDGTextureRef HsvRegionIds = nullptr;
+		for (const FChildRenderData& Child : Layer.Children)
 		{
-			if (Entry.Key < ChildIndex)
+			if (Child.Type != EMixtormatLayerChildType::HsvFilter)
 			{
-				Found = Entry.Value;
+				continue;
+			}
+			if (FRDGTextureRef Ids = FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex))
+			{
+				ActiveHsv = &Child.HsvFilter;
+				HsvRegionIds = Ids;
 			}
 		}
-		return Found;
+		Parameters->RegionTintEnabled = ActiveHsv != nullptr ? 1u : 0u;
+
+		// CombinedMask is only a mask-chain texture once a mask child has written
+		// one. Before that it is still the registered white UTexture2D the chain
+		// started from -- BGRA8, at that asset's own size, not R16F at the composite
+		// resolution. LayerMask gets away with binding it because the shader gates on
+		// HasMask; a Driver signal is sampled unconditionally and a snapshot is
+		// copied, so both have to check rather than assume.
+		const bool bMaskIsSignalShaped =
+			CombinedMask->Desc.Format == MaskDesc.Format
+			&& CombinedMask->Desc.Extent == MaskDesc.Extent;
+
+		// CombinedMask is final by here -- every mask-chain reassignment for
+		// this layer has happened -- so this is the only place a snapshot can be
+		// taken without capturing a half-built chain.
+		if (bMaskIsSignalShaped
+			&& DriverSnapshotDemand.Contains(Layer.LayerId)
+			&& !DriverSnapshots.Contains(Layer.LayerId))
+		{
+			// Desc taken from the source, so the copy can never be handed two
+			// incompatible descriptors.
+			FRDGTextureDesc SnapshotDesc = CombinedMask->Desc;
+			SnapshotDesc.Flags |= TexCreate_ShaderResource;
+			FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
+				SnapshotDesc,
+				TEXT("Mixtormat.DriverSignalSnapshot"));
+			AddCopyTexturePass(GraphBuilder, CombinedMask, Snapshot);
+			DriverSnapshots.Add(Layer.LayerId, Snapshot);
+		}
+
+		// A source in this same layer reads the live mask and needs no copy at all.
+		// One earlier in the stack reads its snapshot. One that has not composited
+		// yet has none, so the Driver is switched off and the scalar keeps its value
+		// -- the same rule an instance follows, and the reason nothing here needs a
+		// dependency graph.
+		FRDGTextureRef DriverSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
+			{ EmptyDriverSignal, EmptyDriverSignal };
+		FRDGTextureRef DriverRegionSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
+			{ EmptyRegionIds, EmptyRegionIds };
+		for (int32 SlotIndex = 0; SlotIndex < FMixtormatCompositeCS::MaxScalarDrivers; ++SlotIndex)
+		{
+			const FScalarDriverRenderData& Driver = Layer.ScalarDrivers[SlotIndex];
+			FRDGTextureRef Signal = nullptr;
+			FRDGTextureRef RegionSignal = nullptr;
+			if (Driver.bEnabled && Driver.bRegionSource)
+			{
+				// The ID maps this layer produced, in this layer's own pixel space.
+				// A named producer takes that producer's map; an unnamed one takes the
+				// nearest above the composite, which is the same "nearest ID producer"
+				// rule every other consumer follows. A region source in another layer
+				// has no map here and stays unresolved rather than guessing.
+				if (Driver.SourceLayerId == Layer.LayerId)
+				{
+					if (Driver.SourceChildIndex != INDEX_NONE)
+					{
+						for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+						{
+							if (Entry.Key == Driver.SourceChildIndex)
+							{
+								RegionSignal = Entry.Value;
+							}
+						}
+					}
+					else
+					{
+						RegionSignal = FindRegionIdsAbove(RegionIdMaps, MAX_int32);
+					}
+				}
+			}
+			else if (Driver.bEnabled)
+			{
+				if (Driver.SourceLayerId == Layer.LayerId)
+				{
+					Signal = bMaskIsSignalShaped ? CombinedMask : nullptr;
+				}
+				else if (FRDGTextureRef* Found = DriverSnapshots.Find(Driver.SourceLayerId))
+				{
+					Signal = *Found;
+				}
+			}
+			const bool bResolved = Driver.bRegionSource
+				? RegionSignal != nullptr
+				: Signal != nullptr;
+			DriverSignals[SlotIndex] = Signal ? Signal : EmptyDriverSignal;
+			DriverRegionSignals[SlotIndex] = RegionSignal ? RegionSignal : EmptyRegionIds;
+			Parameters->DriverParamsC[SlotIndex] = FVector4f(
+				bResolved && Driver.bRegionSource ? 1.0f : 0.0f,
+				static_cast<float>(Driver.Seed),
+				Driver.IdRandomMin,
+				Driver.IdRandomMax);
+			Parameters->DriverParamsA[SlotIndex] = FVector4f(
+				bResolved ? 1.0f : 0.0f,
+				Driver.bInvert ? 1.0f : 0.0f,
+				Driver.InputMin,
+				Driver.InputMax);
+			Parameters->DriverParamsB[SlotIndex] = FVector4f(
+				Driver.OutputMin,
+				Driver.OutputMax,
+				Driver.Amount,
+				static_cast<float>(Driver.Combine));
+		}
+		Parameters->DriverSignal0 = DriverSignals[0];
+		Parameters->DriverSignal1 = DriverSignals[1];
+		Parameters->DriverRegionIds0 = DriverRegionSignals[0];
+		Parameters->DriverRegionIds1 = DriverRegionSignals[1];
+		Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
+		Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
+		Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
+		for (int32 ColorIndex = 0; ColorIndex < FMixtormatCompositeCS::MaxRegionPalette; ++ColorIndex)
+		{
+			// The unused tail is filled rather than left alone, for the same reason
+			// FMixtormatColorIdCS fills its own: a shader parameter array is not
+			// zero initialised, and an uninitialised constant is the kind of thing
+			// that only misbehaves on one driver.
+			Parameters->RegionPalette[ColorIndex] =
+				ActiveHsv && ActiveHsv->Palette.IsValidIndex(ColorIndex)
+					? ActiveHsv->Palette[ColorIndex]
+					: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+		Parameters->RegionMixMin = ActiveHsv ? ActiveHsv->MixMin : 0.0f;
+		Parameters->RegionMixMax = ActiveHsv ? ActiveHsv->MixMax : 0.0f;
+		Parameters->RegionHueMin = ActiveHsv ? ActiveHsv->HueMin : 0.0f;
+		Parameters->RegionHueMax = ActiveHsv ? ActiveHsv->HueMax : 0.0f;
+		Parameters->RegionSatMin = ActiveHsv ? ActiveHsv->SatMin : 1.0f;
+		Parameters->RegionSatMax = ActiveHsv ? ActiveHsv->SatMax : 1.0f;
+		Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
+		Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
+
+		// The last Pattern row that needs source-space work wins. Herringbone and
+		// Basketweave always need their intrinsic basis; other modes only enter when
+		// random Pattern UV variation is enabled.
+		const FPatternIdPassOutput* ActivePatternUV = nullptr;
+		for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
+		{
+			if (PatternOutput.Settings
+				&& (PatternOutput.Settings->bUVVariation
+					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
+			{
+				ActivePatternUV = &PatternOutput;
+			}
+		}
+		const FPatternIdRenderData* PatternUVSettings =
+			ActivePatternUV ? ActivePatternUV->Settings : nullptr;
+		Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
+		Parameters->PatternUVSeed = PatternUVSettings ? PatternUVSettings->Seed : 0u;
+		Parameters->PatternUVOrthogonal =
+			PatternUVSettings && PatternUVSettings->bOrthogonalUV ? 1u : 0u;
+		Parameters->PatternUVRotationMin =
+			PatternUVSettings ? PatternUVSettings->UVRotationMin : 0.0f;
+		Parameters->PatternUVRotationMax =
+			PatternUVSettings ? PatternUVSettings->UVRotationMax : 0.0f;
+		Parameters->PatternUVScaleMin =
+			PatternUVSettings ? PatternUVSettings->UVScaleMin : 1.0f;
+		Parameters->PatternUVScaleMax =
+			PatternUVSettings ? PatternUVSettings->UVScaleMax : 1.0f;
+		Parameters->PatternUVOffset =
+			PatternUVSettings ? PatternUVSettings->UVOffset : 0.0f;
+		Parameters->PatternUVFlipU =
+			PatternUVSettings && PatternUVSettings->bRandomFlipU ? 1u : 0u;
+		Parameters->PatternUVFlipV =
+			PatternUVSettings && PatternUVSettings->bRandomFlipV ? 1u : 0u;
+		Parameters->PatternUVVariationEnabled =
+			PatternUVSettings && PatternUVSettings->bUVVariation ? 1u : 0u;
+		Parameters->PatternIntrinsicOrientationEnabled =
+			PatternUVSettings && HasIntrinsicPatternOrientation(*PatternUVSettings) ? 1u : 0u;
+		Parameters->PatternRegionIds =
+			ActivePatternUV ? ActivePatternUV->Ids : EmptyRegionIds;
+		Parameters->PatternUVField =
+			ActivePatternUV ? ActivePatternUV->UV : EmptyPatternUV;
+		Parameters->PatternOrientationField =
+			ActivePatternUV ? ActivePatternUV->Orientation : EmptyPatternOrientation;
+
+		Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+		Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
+		Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);
+		Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
+		Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
+		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Composite.Layer%d", LayerIndex),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
 	}
+
 }
 
 FMixtormatGpuCompositor::FMixtormatGpuCompositor()
@@ -2987,7 +1151,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				// inspector does not offer to add past it, so this only trips on data authored
 				// through Blueprint or a hand-edited asset.
 				const int32 ColorCount =
-					FMath::Min(ColorIdMask.Colors.Num(), FMixtormatColorIdCS::MaxColors);
+					FMath::Min(ColorIdMask.Colors.Num(), FMixtormatColorIdMask::MaxColors);
 				for (int32 ColorIndex = 0; ColorIndex < ColorCount; ++ColorIndex)
 				{
 					const FLinearColor& Color = ColorIdMask.Colors[ColorIndex];
@@ -3723,12 +1887,13 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		[Request = MoveTemp(Request)](FRHICommandListImmediate& RHICmdList)
 		{
 			FRDGBuilder GraphBuilder(RHICmdList);
-			TMap<FRHITexture*, FRDGTextureRef> RegisteredTextures;
-			FRDGTextureRef OutputBC[2];
-			FRDGTextureRef OutputN[2];
-			FRDGTextureRef OutputRAM[2];
-			FRDGTextureRef OutputHeight[2];
-			FRDGTextureRef OutputDebug[2];
+			FMixtormatComposeContext Ctx(GraphBuilder, Request);
+			TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
+			FRDGTextureRef* const OutputBC = Ctx.OutputBC;
+			FRDGTextureRef* const OutputN = Ctx.OutputN;
+			FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
+			FRDGTextureRef* const OutputHeight = Ctx.OutputHeight;
+			FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
 			for (int32 Index = 0; Index < 2; ++Index)
 			{
 				OutputBC[Index] = RegisterTexture(
@@ -3769,7 +1934,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			// cheapest something there is. Cleared to the no-region sentinel, so if the tint
 			// branch were ever entered against it the result is a pass-through rather than a
 			// colour hashed out of uninitialised memory.
-			FRDGTextureRef EmptyRegionIds = GraphBuilder.CreateTexture(
+			FRDGTextureRef& EmptyRegionIds = Ctx.EmptyRegionIds;
+			EmptyRegionIds = GraphBuilder.CreateTexture(
 				FRDGTextureDesc::Create2D(
 					FIntPoint(1, 1),
 					PF_R32_UINT,
@@ -3778,7 +1944,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				TEXT("Mixtormat.EmptyRegionIds"));
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyRegionIds), 0xffffffffu);
 
-			FRDGTextureRef EmptyPatternUV = GraphBuilder.CreateTexture(
+			FRDGTextureRef& EmptyPatternUV = Ctx.EmptyPatternUV;
+			EmptyPatternUV = GraphBuilder.CreateTexture(
 				FRDGTextureDesc::Create2D(
 					FIntPoint(1, 1),
 					PF_G16R16F,
@@ -3790,7 +1957,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				GraphBuilder.CreateUAV(EmptyPatternUV),
 				FVector4f(0.5f, 0.5f, 0.0f, 0.0f));
 
-			FRDGTextureRef EmptyPatternOrientation = GraphBuilder.CreateTexture(
+			FRDGTextureRef& EmptyPatternOrientation = Ctx.EmptyPatternOrientation;
+			EmptyPatternOrientation = GraphBuilder.CreateTexture(
 				FRDGTextureDesc::Create2D(
 					FIntPoint(1, 1),
 					PF_R8_UINT,
@@ -3805,7 +1973,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			// No Driver on this layer, or one that could not resolve: the slot still needs a real
 			// resource. Cleared to zero, which every Combine mode turns into a no-op once Amount
 			// is applied -- and the shader's Enabled flag stops it being read at all.
-			FRDGTextureRef EmptyDriverSignal = GraphBuilder.CreateTexture(
+			FRDGTextureRef& EmptyDriverSignal = Ctx.EmptyDriverSignal;
+			EmptyDriverSignal = GraphBuilder.CreateTexture(
 				FRDGTextureDesc::Create2D(
 					FIntPoint(1, 1),
 					PF_R16F,
@@ -3818,7 +1987,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			// because the mask pair is rotated across the whole graph and a layer's combined mask
 			// is overwritten by the next layer that runs. Collected before the loop so layer N
 			// already knows whether it has to be copied when its own mask is final.
-			TSet<FGuid> DriverSnapshotDemand;
+			TSet<FGuid>& DriverSnapshotDemand = Ctx.DriverSnapshotDemand;
 			for (const FLayerRenderData& DemandLayer : Request.Layers)
 			{
 				for (const FScalarDriverRenderData& Driver : DemandLayer.ScalarDrivers)
@@ -3833,8 +2002,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					}
 				}
 			}
-			TMap<FGuid, FRDGTextureRef> DriverSnapshots;
-			TMap<FPublishedMaskKey, FRDGTextureRef> PublishedMaskOutputs;
+			TMap<FGuid, FRDGTextureRef>& DriverSnapshots = Ctx.DriverSnapshots;
+			TMap<FPublishedMaskKey, FRDGTextureRef>& PublishedMaskOutputs = Ctx.PublishedMaskOutputs;
 
 			if (Request.Layers.IsEmpty())
 			{
@@ -3845,16 +2014,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			}
 			else
 			{
-				const FRDGTextureDesc MaskDesc = FRDGTextureDesc::Create2D(
+				FMixtormatLayerPassContext LayerCtx(Ctx);
+				FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
+				MaskDesc = FRDGTextureDesc::Create2D(
 					Request.Resolution,
 					PF_R16F,
 					FClearValueBinding::White,
 					TexCreate_ShaderResource | TexCreate_UAV);
-				FRDGTextureRef MaskTargets[2] =
+				FRDGTextureRef* const MaskTargets = LayerCtx.MaskTargets;
+				const FRDGTextureRef MaskTargetsInit[2] =
 				{
 					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.MaskA")),
 					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.MaskB"))
 				};
+				MaskTargets[0] = MaskTargetsInit[0];
+				MaskTargets[1] = MaskTargetsInit[1];
 				// Both halves cleared before anything reads either. The first mask child on a
 				// layer binds the half it is not writing as PreviousMask and ignores the value --
 				// Initialize makes it treat Previous as zero -- but RDG validates the binding
@@ -3876,7 +2050,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				// Parity matters here and is easy to get backwards. WriteIndex is
 				// LayerIndex & 1, so layer 0 writes half 0 and reads half 1 -- the substrate
 				// belongs in half 1. Half 0 needs no seed; layer 0 overwrites it.
-				FRDGTextureRef* HeightTargets = OutputHeight;
+				FRDGTextureRef* const HeightTargets = OutputHeight;
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputBC[1]), MixtormatSubstrate::BaseColor);
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputN[1]), MixtormatSubstrate::Normal);
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputRAM[1]), MixtormatSubstrate::PackedRAM);
@@ -3901,24 +2075,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				// That means every layer has to write it, not only eroding ones: a layer that
 				// left its slot alone would hand the next layer the ridge from two layers
 				// back. Layers without erosion copy read to write below.
-				FRDGTextureRef RidgeTargets[2] =
-				{
-					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeA")),
-					GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeB"))
-				};
+				FRDGTextureRef* const RidgeTargets = LayerCtx.RidgeTargets;
+				RidgeTargets[0] = GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeA"));
+				RidgeTargets[1] = GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.RidgeB"));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RidgeTargets[0]), FVector4f(0.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RidgeTargets[1]), FVector4f(0.0f));
 
-				const FRDGTextureDesc EffectDesc = FRDGTextureDesc::Create2D(
+				FRDGTextureDesc& EffectDesc = LayerCtx.EffectDesc;
+				EffectDesc = FRDGTextureDesc::Create2D(
 					Request.Resolution,
 					PF_FloatRGBA,
 					FClearValueBinding::White,
 					TexCreate_ShaderResource | TexCreate_UAV);
-				FRDGTextureRef EffectTargets[2] =
-				{
-					GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.EffectA")),
-					GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.EffectB"))
-				};
+				FRDGTextureRef* const EffectTargets = LayerCtx.EffectTargets;
+				EffectTargets[0] = GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.EffectA"));
+				EffectTargets[1] = GraphBuilder.CreateTexture(EffectDesc, TEXT("Mixtormat.EffectB"));
 
 				// Cleared for the same reason the mask pair is: the first surface effect on a
 				// layer binds the half it is not writing and ignores it, and RDG validates the
@@ -3927,78 +2098,21 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectTargets[0]), FVector4f(1.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectTargets[1]), FVector4f(1.0f));
 				// Peel relief, signed around zero so stacked peels accumulate.
-				const FRDGTextureDesc EffectHeightDesc = FRDGTextureDesc::Create2D(
+				FRDGTextureDesc& EffectHeightDesc = LayerCtx.EffectHeightDesc;
+				EffectHeightDesc = FRDGTextureDesc::Create2D(
 					Request.Resolution,
 					PF_R16F,
 					FClearValueBinding::Black,
 					TexCreate_ShaderResource | TexCreate_UAV);
-				FRDGTextureRef EffectHeightTargets[2] =
-				{
-					GraphBuilder.CreateTexture(EffectHeightDesc, TEXT("Mixtormat.EffectHeightA")),
-					GraphBuilder.CreateTexture(EffectHeightDesc, TEXT("Mixtormat.EffectHeightB"))
-				};
+				FRDGTextureRef* const EffectHeightTargets = LayerCtx.EffectHeightTargets;
+				EffectHeightTargets[0] =
+					GraphBuilder.CreateTexture(EffectHeightDesc, TEXT("Mixtormat.EffectHeightA"));
+				EffectHeightTargets[1] =
+					GraphBuilder.CreateTexture(EffectHeightDesc, TEXT("Mixtormat.EffectHeightB"));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[0]), FVector4f(0.0f));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EffectHeightTargets[1]), FVector4f(0.0f));
 
-				TShaderMapRef<FMixtormatHeightDeltaNormalCS> HeightDeltaNormalShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatGeneratedMaskCS> GeneratedMaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureCS> CraquelureShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatRandomIdCS> RandomIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatPatternHeightMaxCS> PatternHeightMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatEdgeShadeCS> EdgeShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureSeedCS> CraquelureSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureGrowCS> CraquelureGrowShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureResolveCS> CraquelureResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureReliefCS> CraquelureReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureDistanceSeedCS> CraqDistanceSeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureDistanceStepCS> CraqDistanceStepShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCraquelureDistanceResolveCS> CraqDistanceResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatEdgeWearCS> EdgeWearShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatReduceMinMaxCS> ReduceMinMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatGradeCS> GradeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatFlowWarpCS> FlowWarpShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
-				auto AddHeightDerivedNormal = [&](
-					FRDGTextureRef PreviousHeight,
-					FRDGTextureRef CurrentHeight,
-					FRDGTextureRef PreviousNormal,
-					FRDGTextureRef PreviousRAM,
-					FRDGTextureRef OutputNormal,
-					FRDGTextureRef OutputRAM,
-					const FIntPoint Resolution,
-					const float NormalStrength,
-					const float AOAmount,
-					const TCHAR* DebugName)
-				{
-					FMixtormatHeightDeltaNormalCS::FParameters* P =
-						GraphBuilder.AllocParameters<FMixtormatHeightDeltaNormalCS::FParameters>();
-					P->OutputSize = Resolution;
-					P->NormalStrength = NormalStrength;
-					P->AOAmount = AOAmount;
-					P->PreviousHeight = PreviousHeight;
-					P->CurrentHeight = CurrentHeight;
-					P->PreviousNormal = PreviousNormal;
-					P->PreviousRAM = PreviousRAM;
-					P->OutputNormal = GraphBuilder.CreateUAV(OutputNormal);
-					P->OutputRAM = GraphBuilder.CreateUAV(OutputRAM);
-					FComputeShaderUtils::AddPass(
-						GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.HeightDerivedSurface.%s", DebugName),
-						HeightDeltaNormalShader,
-						P,
-						FIntVector(
-							FMath::DivideAndRoundUp(Resolution.X, 8),
-							FMath::DivideAndRoundUp(Resolution.Y, 8),
-							1));
-				};
 
 				// Placeholders so the peel and peel-field parameter structs always have a
 				// bound resource in slots the active mode does not use. Never read, never
@@ -4009,10 +2123,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				const FRDGTextureDesc TinyRGBADesc = FRDGTextureDesc::Create2D(
 					FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding::Black,
 					TexCreate_ShaderResource | TexCreate_UAV);
-				FRDGTextureRef PeelNoiseDummy =
-					GraphBuilder.CreateTexture(TinyRGDesc, TEXT("Mixtormat.PeelNoiseDummy"));
-				FRDGTextureRef PeelFieldDummy =
-					GraphBuilder.CreateTexture(TinyRGBADesc, TEXT("Mixtormat.PeelFieldDummy"));
+				FRDGTextureRef& PeelNoiseDummy = LayerCtx.PeelNoiseDummy;
+				PeelNoiseDummy = GraphBuilder.CreateTexture(TinyRGDesc, TEXT("Mixtormat.PeelNoiseDummy"));
+				FRDGTextureRef& PeelFieldDummy = LayerCtx.PeelFieldDummy;
+				PeelFieldDummy = GraphBuilder.CreateTexture(TinyRGBADesc, TEXT("Mixtormat.PeelFieldDummy"));
 
 				// Bound wherever a peel input is absent -- the peel's own mask when the layer
 				// uses its child mask, and the authored map slots on the procedural path. RDG
@@ -4027,11 +2141,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					GraphBuilder,
 					GraphBuilder.CreateUAV(PeelNoiseDummy),
 					FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
-				TShaderMapRef<FMixtormatStainCS> StainShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TShaderMapRef<FMixtormatMaskBlurCS> MaskBlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
-				TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-				TSet<int32> RequiredHeightSnapshots;
+				TSet<int32>& RequiredHeightSnapshots = Ctx.RequiredHeightSnapshots;
 				for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 				{
 					const int32 ReferenceIndex = Request.Layers[LayerIndex].HeightReferenceLayerIndex;
@@ -4040,223 +2151,39 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						RequiredHeightSnapshots.Add(ReferenceIndex);
 					}
 				}
-				TMap<int32, FRDGTextureRef> HeightSnapshots;
+				TMap<int32, FRDGTextureRef>& HeightSnapshots = Ctx.HeightSnapshots;
 				for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 				{
 					const FLayerRenderData& Layer = Request.Layers[LayerIndex];
+					LayerCtx.BeginLayer(LayerIndex);
 
-					// Region producers run before the whole mask/effect chain regardless of row
-					// order, because masks, composite colour and deferred relief can all read them.
-					// Keyed by SourceChildIndex so a consumer finds the nearest producer above it.
-					struct FPatternIdPassOutput
-					{
-						int32 SourceChildIndex = INDEX_NONE;
-						FRDGTextureRef Ids = nullptr;
-						FRDGTextureRef UV = nullptr;
-						FRDGTextureRef Ramp = nullptr;
-						FRDGTextureRef Edge = nullptr;
-						FRDGTextureRef Orientation = nullptr;
-						const FPatternIdRenderData* Settings = nullptr;
-					};
-					TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
-					TArray<FPatternIdPassOutput, TInlineAllocator<2>> PatternOutputs;
-					if (Layer.bEnabled)
-					{
-						const bool bPreviewingThisLayer =
-							Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ClusterIds
-							&& Request.DebugSettings.LayerIndex == LayerIndex;
-						for (const FChildRenderData& Child : Layer.Children)
-						{
-							const bool bClusterProducer =
-								Child.Type == EMixtormatLayerChildType::Filter;
-							const bool bPatternProducer =
-								Child.Type == EMixtormatLayerChildType::PatternId;
-							if (!bClusterProducer && !bPatternProducer)
-							{
-								continue;
-							}
+					TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
+					TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
+						LayerCtx.PatternOutputs;
+					AddRegionProducerPasses(Ctx, LayerCtx, Layer);
 
-							// Gated separately from whether the producer runs at all: ordinary
-							// consumers must not overwrite a debug target owned by another layer.
-							const bool bIsSelectedPreview = bPreviewingThisLayer
-								&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
-							bool bWanted = bIsSelectedPreview;
-							if (bPatternProducer)
-							{
-								const FPatternIdRenderData& Pattern = Child.PatternId;
-								bWanted = bWanted
-									|| Pattern.bUVVariation
-									|| HasIntrinsicPatternOrientation(Pattern)
-									|| Pattern.HeightAmount > 0.0f
-									|| Pattern.BevelHeight > 0.0f
-									|| Pattern.EdgeRoughnessAmount > 0.0f
-									|| Pattern.AOAmount > 0.0f;
-							}
-
-							// A scalar Driver is an ID consumer like any other, and it consumes at
-							// the composite rather than from a row in the stack -- so it is not
-							// visible to the child scan below and has to be asked for separately.
-							// Without this a producer referenced only by a Driver is culled, and
-							// the Driver then finds no map and silently disables itself.
-							if (!bWanted)
-							{
-								for (const FScalarDriverRenderData& Driver : Layer.ScalarDrivers)
-								{
-									if (!Driver.bEnabled
-										|| !Driver.bRegionSource
-										|| Driver.SourceLayerId != Layer.LayerId)
-									{
-										continue;
-									}
-									if (Driver.SourceChildIndex != INDEX_NONE)
-									{
-										// Named producer: only that one is demanded.
-										if (Driver.SourceChildIndex == Child.SourceChildIndex)
-										{
-											bWanted = true;
-											break;
-										}
-										continue;
-									}
-									// Unnamed: the Driver reads the nearest map above the
-									// composite, which is the last producer in the layer. Demand
-									// this one only when nothing later would shadow it, so the
-									// nearest-producer rule decides here exactly as it does at
-									// resolve time.
-									bool bLaterProducer = false;
-									for (const FChildRenderData& Other : Layer.Children)
-									{
-										if (Other.SourceChildIndex > Child.SourceChildIndex
-											&& (Other.Type == EMixtormatLayerChildType::Filter
-												|| Other.Type == EMixtormatLayerChildType::PatternId))
-										{
-											bLaterProducer = true;
-											break;
-										}
-									}
-									if (!bLaterProducer)
-									{
-										bWanted = true;
-										break;
-									}
-								}
-							}
-
-							if (!bWanted)
-							{
-								// Any ID consumer below this producer and above the next producer.
-								// The next producer shadows this one for every later consumer.
-								for (const FChildRenderData& Other : Layer.Children)
-								{
-									if (Other.SourceChildIndex <= Child.SourceChildIndex)
-									{
-										continue;
-									}
-									if (Other.Type == EMixtormatLayerChildType::Filter
-										|| Other.Type == EMixtormatLayerChildType::PatternId)
-									{
-										break;
-									}
-									const bool bWornEdgesConsumer =
-										Other.Type == EMixtormatLayerChildType::Effect
-										&& Other.Effect.Type == EMixtormatEffectType::WornEdges;
-									if (Other.Type == EMixtormatLayerChildType::HsvFilter
-										|| Other.Type == EMixtormatLayerChildType::RandomId
-										|| Other.Type == EMixtormatLayerChildType::RampId
-										|| bWornEdgesConsumer)
-									{
-										bWanted = true;
-										break;
-									}
-								}
-							}
-							if (!bWanted)
-							{
-								continue;
-							}
-
-							FRDGTextureRef RegionIds = nullptr;
-							if (bClusterProducer)
-							{
-								// The same ping-pong slot the layer composite and generated masks
-								// read: what every layer below this one has accumulated.
-								const int32 SurfaceReadIndex = 1 - (LayerIndex & 1);
-								RegionIds = AddClusterIdPasses(
-									GraphBuilder,
-									RegisterTexture(
-										GraphBuilder,
-										RegisteredTextures,
-										Layer.RAM,
-										TEXT("Mixtormat.Cluster.SourceRAMH")),
-									OutputRAM[SurfaceReadIndex],
-									HeightTargets[SurfaceReadIndex],
-									LayerIndex > 0,
-									bIsSelectedPreview,
-									OutputDebug[Request.PublishedTargetIndex],
-									Request.Resolution,
-									Layer,
-									Child,
-									LayerIndex);
-							}
-							else
-							{
-								FPatternIdPassOutput& PatternOutput =
-									PatternOutputs.AddDefaulted_GetRef();
-								PatternOutput.SourceChildIndex = Child.SourceChildIndex;
-								PatternOutput.Settings = &Child.PatternId;
-								RegionIds = AddPatternIdPasses(
-									GraphBuilder,
-									bIsSelectedPreview,
-									OutputDebug[Request.PublishedTargetIndex],
-									Request.Resolution,
-									Child,
-									LayerIndex,
-									EmptyPatternOrientation,
-									PatternOutput.UV,
-									PatternOutput.Ramp,
-									PatternOutput.Edge,
-									PatternOutput.Orientation);
-								PatternOutput.Ids = RegionIds;
-							}
-
-							RegionIdMaps.Emplace(Child.SourceChildIndex, RegionIds);
-						}
-					}
-
-					FRDGTextureRef CombinedMask = RegisterTexture(
+					FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
+					CombinedMask = RegisterTexture(
 						GraphBuilder,
 						RegisteredTextures,
 						Layer.Mask,
 						TEXT("Mixtormat.WhiteMask"));
-					FRDGTextureRef CombinedEffectData = RegisterTexture(
+					FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
+					CombinedEffectData = RegisterTexture(
 						GraphBuilder,
 						RegisteredTextures,
 						Layer.BaseColor,
 						TEXT("Mixtormat.DefaultEffectData"));
-					FRDGTextureRef CombinedEffectHeight = EffectHeightTargets[0];
-					FRDGTextureRef DebugMask = CombinedMask;
-					// Deferred filters retain the mask visible at their own row. Keeping the
-					// texture beside the effect prevents later layer masks from changing scope.
-					struct FPendingEffect
-					{
-						const FEffectRenderData* Effect = nullptr;
-						FRDGTextureRef FeatureMask = nullptr;
-						bool bHasScopedMask = false;
-					};
-					FPendingEffect PendingErosion;
-					FPendingEffect PendingChipping;
+					FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
+					CombinedEffectHeight = EffectHeightTargets[0];
+					FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
+					DebugMask = CombinedMask;
+					FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
+					FPendingEffect& PendingChipping = LayerCtx.PendingChipping;
 
 
-					struct FPendingWornEdges
-					{
-						const FEffectRenderData* Effect = nullptr;
-						int32 SourceChildIndex = INDEX_NONE;
-						FRDGTextureRef FeatureMask = nullptr;
-						FRDGTextureRef RegionIds = nullptr;
-						FRDGTextureRef PatternEdge = nullptr;
-						bool bHasPatternEdge = false;
-					};
-					TArray<FPendingWornEdges, TInlineAllocator<2>> PendingWornEdges;
+					TArray<FPendingWornEdges, TInlineAllocator<2>>& PendingWornEdges =
+						LayerCtx.PendingWornEdges;
 
 					// Craquelure relief, deferred out of the child loop for the same reason
 					// erosion and chipping are: the loop runs before the layer composites, so a
@@ -4266,239 +2193,25 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// the mask targets it was produced alongside are ping-ponged -- any later
 					// mask child overwrites the slot, and relief would then read whichever child
 					// happened to run last instead of its own network.
-					struct FPendingCraquelureRelief
-					{
-						FRDGTextureRef Distance = nullptr;
-						float HeightWeight = 0.0f;
-						float NormalWeight = 0.0f;
-						float WidthPixels = 0.0f;
-						float Variation = 0.0f;
-						float Profile = 1.0f;
-						float GrooveVariation = 0.0f;
-						float ProfileVariation = 0.0f;
-						float WidthVariation = 0.0f;
-						// Carried so the groove is read through the same displacement as the
-						// mask. The two passes share one distance field; warp only one and the
-						// height ends up beside the crack instead of under it.
-						float Warp = 0.0f;
-						int32 WarpPeriod = 4;
-						uint32 WarpSeed = 7;
-					};
-					TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
+					TArray<FPendingCraquelureRelief, TInlineAllocator<2>>& PendingCraquelureReliefs =
+						LayerCtx.PendingCraquelureReliefs;
 
 					// Region relief and edge shading are deferred for exactly the reason
 					// craquelure relief is: their fields exist before the composite, but the
 					// surface they modify does not exist until after it.
-					struct FPendingRampTilt
-					{
-						FRDGTextureRef Field = nullptr;
-						FRDGTextureRef EdgeField = nullptr;
-						FRDGTextureRef RegionIds = nullptr;
-						float HeightAmount = 0.0f;
-						float CellHeightAmount = 0.0f;
-						float CellHeightRandom = 0.0f;
-						float NormalStrength = 0.0f;
-						uint32 BlendMode = 0;
-						bool bUseEdge = false;
-						float BevelHeight = 0.0f;
-						float BevelWidthPixels = 4.0f;
-						float BevelWidthCells = 0.25f;
-						bool bBevelRelative = false;
-						float BevelVariation = 0.0f;
-						float BevelRoundness = 0.0f;
-						float BevelRoundnessRandom = 0.0f;
-						float BevelInsetPixels = 0.0f;
-						float GapHeight = 0.0f;
-						float EdgeRoughness = 0.65f;
-						float EdgeRoughnessAmount = 0.0f;
-						float AOAmount = 0.0f;
-						float AOSpread = 2.0f;
-					};
-					TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
-					for (const FChildRenderData& Child : Layer.Children)
-					{
-						if (Child.Type == EMixtormatLayerChildType::PatternId)
-						{
-							const FPatternIdPassOutput* PatternOutput = nullptr;
-							for (const FPatternIdPassOutput& Candidate : PatternOutputs)
-							{
-								if (Candidate.SourceChildIndex == Child.SourceChildIndex)
-								{
-									PatternOutput = &Candidate;
-									break;
-								}
-							}
-							if (!PatternOutput)
-							{
-								continue;
-							}
-
-							const FPatternIdRenderData& Pattern = Child.PatternId;
-							const bool bNeedsRelief = Pattern.HeightAmount > 0.0f
-								|| Pattern.BevelHeight != 0.0f
-								|| Pattern.GapHeight != 0.0f;
-							const bool bNeedsShade =
-								Pattern.EdgeRoughnessAmount > 0.0f || Pattern.AOAmount > 0.0f;
-							if (!bNeedsRelief && !bNeedsShade)
-							{
-								continue;
-							}
-
-							FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
-							Tilt.Field = PatternOutput->Ramp;
-							Tilt.EdgeField = PatternOutput->Edge;
-							Tilt.RegionIds = PatternOutput->Ids;
-							// Pattern has no tilt term: HeightAmount is its per-cell elevation
-							// range and rides CellHeightAmount, leaving the relief pass's tilt
-							// path -- which is Ramp From IDs' -- switched off.
-							Tilt.HeightAmount = 0.0f;
-							// Height is the elevation every cell gets; Height Random is how far
-							// below it a cell may be drawn. Multiplied in the shader, not folded
-							// together here, or Random 0 would zero the whole term instead of
-							// leaving every cell at full Height.
-							Tilt.CellHeightAmount = Pattern.HeightAmount;
-							Tilt.CellHeightRandom = Pattern.HeightRandom;
-							Tilt.NormalStrength = Pattern.NormalStrength;
-
-							Tilt.bUseEdge = true;
-							Tilt.BevelHeight = Pattern.BevelHeight;
-							Tilt.BevelWidthPixels = Pattern.BevelWidthPixels;
-							Tilt.BevelWidthCells = Pattern.BevelWidthCells;
-							Tilt.bBevelRelative = Pattern.bRelativeEdgeWidth;
-							Tilt.BevelVariation = Pattern.BevelVariation;
-							Tilt.BevelRoundness = Pattern.BevelRoundness;
-							Tilt.BevelRoundnessRandom = Pattern.BevelRoundnessRandom;
-							Tilt.BevelInsetPixels = Pattern.BevelInsetPixels;
-							Tilt.GapHeight = Pattern.GapHeight;
-							Tilt.EdgeRoughness = Pattern.EdgeRoughness;
-							Tilt.EdgeRoughnessAmount = Pattern.EdgeRoughnessAmount;
-							Tilt.AOAmount = Pattern.AOAmount;
-							Tilt.AOSpread = Pattern.AOSpread;
-							continue;
-						}
-
-						if (Child.Type != EMixtormatLayerChildType::RampId)
-						{
-							continue;
-						}
-
-						FRDGTextureRef RegionIds =
-							FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
-						if (!RegionIds)
-						{
-							continue;
-						}
-						const FRampIdRenderData& Ramp = Child.RampId;
-						if (Ramp.HeightAmount <= 0.0f)
-						{
-							continue;
-						}
-
-						FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
-						Tilt.Field = AddRampIdPasses(
-							GraphBuilder,
-							RegionIds,
-							Request.Resolution,
-							Ramp,
-							LayerIndex,
-							Child.SourceChildIndex);
-						Tilt.EdgeField = Tilt.Field;
-						Tilt.HeightAmount = Ramp.HeightAmount;
-						Tilt.NormalStrength = Ramp.NormalStrength;
-						Tilt.AOAmount = Ramp.AOAmount;
-						Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
-					}
+					TArray<FPendingRampTilt, TInlineAllocator<2>>& PendingRampTilts =
+						LayerCtx.PendingRampTilts;
+					CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
 					// An array where erosion keeps a single pointer. Two erosions on one layer
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
 					// ordinary way to use an adjustment layer, and dropping all but the last
 					// would read as a bug rather than as a contract.
-					TArray<FPendingEffect, TInlineAllocator<2>> PendingFlowWarps;
-					TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
-					int32 MaskPassIndex = 0;
-					int32 EffectPassIndex = 0;
+					TArray<FPendingEffect, TInlineAllocator<2>>& PendingFlowWarps = LayerCtx.PendingFlowWarps;
+					TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
+					int32& MaskPassIndex = LayerCtx.MaskPassIndex;
+					int32& EffectPassIndex = LayerCtx.EffectPassIndex;
 
-					// Scoped masks use the same shader and controls as layer masks, but write to
-					// owner-local textures. The starting point is the layer mask visible at the
-					// owner's row; the result never feeds back into CombinedMask.
-					auto ResolveFeatureMask = [&](const int32 OwnerSourceChildIndex)
-					{
-						FRDGTextureRef FeatureMask = CombinedMask;
-						bool bHasScopedMask = false;
-						int32 ScopedPassIndex = 0;
-						for (const FChildRenderData& ScopedChild : Layer.Children)
-						{
-							if (ScopedChild.Type != EMixtormatLayerChildType::Mask
-								|| ScopedChild.ScopeOwnerSourceChildIndex != OwnerSourceChildIndex)
-							{
-								continue;
-							}
-							const FMaskRenderData& Mask = ScopedChild.Mask;
-							if (Mask.Weight == 0.0f)
-							{
-								continue;
-							}
-
-							FRDGTextureRef ScopedOutput = GraphBuilder.CreateTexture(
-								MaskDesc, TEXT("Mixtormat.ScopedFeatureMask"));
-							FMixtormatMaskCS::FParameters* MP =
-								GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
-							MP->OutputSize = Request.Resolution;
-							MP->Initialize = 0u;
-							MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
-							MP->Invert = Mask.bInvert ? 1u : 0u;
-							MP->Weight = Mask.Weight;
-							MP->Tiling = Mask.Tiling;
-							MP->UVOffset = Mask.UVOffset;
-							MP->FlipU = Mask.bFlipU ? 1u : 0u;
-							MP->FlipV = Mask.bFlipV ? 1u : 0u;
-							MP->Rotation = Mask.Rotation;
-							MP->Balance = Mask.Balance;
-							MP->Contrast = Mask.Contrast;
-							MP->Offset = Mask.Offset;
-							MP->PreviousMask = FeatureMask;
-							MP->IncomingMask = RegisterTexture(
-								GraphBuilder, RegisteredTextures, Mask.Texture,
-								TEXT("Mixtormat.ScopedIncomingMask"));
-							MP->LinearWrapSampler = TStaticSamplerState<
-								SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							MP->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.ScopedMask.Layer%d.Owner%d.Pass%d",
-									LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
-								MaskShader,
-								MP,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							FeatureMask = ScopedOutput;
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == ScopedChild.SourceChildIndex)
-							{
-								FRDGTextureRef DebugSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc, TEXT("Mixtormat.DebugScopedMaskSnapshot"));
-								AddCopyTexturePass(GraphBuilder, FeatureMask, DebugSnapshot);
-								DebugMask = DebugSnapshot;
-							}
-							bHasScopedMask = true;
-							++ScopedPassIndex;
-						}
-
-						// Deferred owners need a stable snapshot even when they have no scoped mask,
-						// because the global ping-pong target may be overwritten later in the loop.
-						if (!bHasScopedMask && MaskPassIndex > 0)
-						{
-							FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
-								MaskDesc, TEXT("Mixtormat.FeatureMaskSnapshot"));
-							AddCopyTexturePass(GraphBuilder, FeatureMask, Snapshot);
-							FeatureMask = Snapshot;
-						}
-						return FeatureMask;
-					};
 
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
@@ -4516,3029 +2229,98 @@ bool FMixtormatGpuCompositor::RequestCompose(
 						}
 						if (Child.Type == EMixtormatLayerChildType::Generated)
 						{
-							// Generated masks read the surface accumulated below this layer,
-							// which is the same ping-pong slot the layer composite reads.
-							const int32 LayerReadIndex = 1 - (LayerIndex & 1);
-							const FGeneratedMaskRenderData& Generated = Child.Generated;
-							// Weight 0 makes the whole node the identity: every mask shader
-							// ends on saturate(lerp(Previous, Result, Weight)), and the masks it
-							// reads are already saturated, so the output is the input bit for
-							// bit. Skipping is only exact from the second mask child onward --
-							// the first establishes the chain with Initialize, where Previous is
-							// zero rather than what the layer already had, and a skip there
-							// would leave a different mask behind rather than the same one.
-							if (MaskPassIndex > 0 && Generated.Weight == 0.0f)
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-							FMixtormatGeneratedMaskCS::FParameters* GeneratedParameters =
-								GraphBuilder.AllocParameters<FMixtormatGeneratedMaskCS::FParameters>();
-							GeneratedParameters->OutputSize = Request.Resolution;
-							GeneratedParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-							GeneratedParameters->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
-							GeneratedParameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-							GeneratedParameters->CurvatureWeight = Generated.CurvatureWeight;
-							GeneratedParameters->CurvatureBias = Generated.CurvatureBias;
-							GeneratedParameters->CurvatureStrength = Generated.CurvatureStrength;
-							GeneratedParameters->CurvaturePower = Generated.CurvaturePower;
-							GeneratedParameters->DirectionWeight = Generated.DirectionWeight;
-							GeneratedParameters->DirectionAngle = Generated.DirectionAngle;
-							GeneratedParameters->DirectionBroadness = Generated.DirectionBroadness;
-							GeneratedParameters->AOWeight = Generated.AOWeight;
-							GeneratedParameters->HeightWeight = Generated.HeightWeight;
-							GeneratedParameters->HeightBias = Generated.HeightBias;
-							GeneratedParameters->RidgeWeight = Generated.RidgeWeight;
-							GeneratedParameters->NormalizeWeights = Generated.bNormalizeWeights ? 1u : 0u;
-							GeneratedParameters->Broadness = Generated.Broadness;
-							GeneratedParameters->Smoothing = Generated.Smoothing;
-							GeneratedParameters->Bias = Generated.Bias;
-							GeneratedParameters->WarpAmount = Generated.WarpAmount;
-							GeneratedParameters->WarpSource = Generated.WarpSource;
-							GeneratedParameters->WarpRadius = Generated.WarpRadius;
-							GeneratedParameters->BlendMode = static_cast<uint32>(Generated.BlendMode);
-							GeneratedParameters->Invert = Generated.bInvert ? 1u : 0u;
-							GeneratedParameters->Weight = Generated.Weight;
-							GeneratedParameters->Balance = Generated.Balance;
-							GeneratedParameters->Contrast = Generated.Contrast;
-							GeneratedParameters->Offset = Generated.Offset;
-							GeneratedParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
-							GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
-							GeneratedParameters->SurfaceHeight = HeightTargets[LayerReadIndex];
-							GeneratedParameters->SurfaceRidge = RidgeTargets[LayerReadIndex];
-							GeneratedParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							GeneratedParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.GeneratedMask.Layer%d.Child%d", LayerIndex, ChildIndex),
-								GeneratedMaskShader,
-								GeneratedParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugGeneratedSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc,
-									TEXT("Mixtormat.DebugGeneratedSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugGeneratedSnapshot);
-								DebugMask = DebugGeneratedSnapshot;
-							}
-							++MaskPassIndex;
+							AddGeneratedMaskPass(Ctx, LayerCtx, Layer, Child, ChildIndex);
 							continue;
 						}
 
 						if (Child.Type == EMixtormatLayerChildType::Craquelure)
 						{
-							const FCraquelureRenderData& Crack = Child.Craquelure;
-
-							// The same identity as the other mask children, and the one that
-							// saves the most by far: a muted craquelure node was still growing
-							// its whole network, up to a thousand full-resolution passes, to
-							// produce a mask it then discarded. Relief reads the same network
-							// through its own weights, so both halves have to be idle before
-							// there is nothing left to compute.
-							// Weight 0 makes the mask half the identity: every mask shader
-							// ends on saturate(lerp(Previous, Result, Weight)), and the masks it
-							// reads are already saturated, so the output is the input bit for
-							// bit. Skipping is only exact from the second mask child onward --
-							// the first establishes the chain with Initialize, where Previous is
-							// zero rather than what the layer already had, and a skip there
-							// would leave a different mask behind rather than the same one.
-							if (MaskPassIndex > 0
-								&& Crack.Weight == 0.0f
-								&& Crack.ReliefDepth == 0.0f
-								&& Crack.ReliefNormalStrength == 0.0f)
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-							const FIntVector CrackGroups(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1);
-
-							// (distance to the nearest crack in pixels, crack id). Both modes fill
-							// it -- the lattice analytically, the propagated mode by flooding its
-							// grown skeleton -- so the mask tail and relief read one field and
-							// never learn which built it.
-							//
-							// Full float rather than half: the id is a lineage hash up to 2^24 and
-							// has to stay exact, and a half would truncate it and silently merge
-							// unrelated cracks into one variation value.
-							const FRDGTextureDesc CraqDistanceDesc = FRDGTextureDesc::Create2D(
-								Request.Resolution,
-								PF_A32B32G32R32F,
-								FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-
-							// Propagated networks are looked up before anything is dispatched. On
-							// a hit the seed, the growth loop and the whole jump flood are
-							// skipped and the kept field is registered straight into this graph:
-							// it is the same texture the miss would have produced, so everything
-							// downstream is unchanged.
-							//
-							// Lattice mode is deliberately not cached. Its distance falls out of
-							// the same single pass that writes its mask, so there is nothing to
-							// skip -- the pass would have to run anyway.
-							FRDGTextureRef CraqDistance = nullptr;
-							bool bCraqNetworkCached = false;
-							if (Crack.Mode == EMixtormatCraquelureMode::Propagated
-								&& Request.NetworkCache.IsValid())
-							{
-								const TRefCountPtr<IPooledRenderTarget> Cached =
-									Request.NetworkCache->Find(Crack.NetworkKey, Request.Resolution);
-								if (Cached.IsValid())
-								{
-									CraqDistance = GraphBuilder.RegisterExternalTexture(
-										Cached, TEXT("Mixtormat.CraqDistanceCached"));
-									bCraqNetworkCached = true;
-								}
-							}
-							if (CraqDistance == nullptr)
-							{
-								CraqDistance = GraphBuilder.CreateTexture(
-									CraqDistanceDesc, TEXT("Mixtormat.CraqDistance"));
-							}
-
-							// Half-width of the groove in pixels. Cell units on both sides of the
-							// conversion, so it means the same fraction of a cell at any
-							// resolution -- and the cell count is the seed lattice in propagated
-							// mode and the crack lattice in lattice mode, matching what Width
-							// already divides by in each.
-							const int32 CraqReliefCells = Crack.Mode == EMixtormatCraquelureMode::Propagated
-								? FMath::Max(Crack.SeedCells, 1)
-								: FMath::Max(Crack.Period, 1);
-							const float CraqReliefWidthPixels =
-								Crack.ReliefWidth * Request.Resolution.X / static_cast<float>(CraqReliefCells);
-
-							// Queued whether or not either weight is live, so the branch that
-							// decides is in one place; the dispatch below skips a pair of zeroes.
-							auto QueueCraquelureRelief = [&]()
-							{
-								if (Crack.ReliefDepth <= 0.0f && Crack.ReliefNormalStrength <= 0.0f)
-								{
-									return;
-								}
-								FPendingCraquelureRelief& Relief = PendingCraquelureReliefs.AddDefaulted_GetRef();
-								Relief.Distance = CraqDistance;
-								Relief.HeightWeight = Crack.ReliefDepth;
-								Relief.NormalWeight = Crack.ReliefNormalStrength;
-								Relief.WidthPixels = CraqReliefWidthPixels;
-								Relief.Variation = Crack.Variation;
-								Relief.Warp = Crack.Warp;
-								Relief.WarpPeriod = Crack.WarpPeriod;
-								Relief.WarpSeed = Crack.WarpSeed;
-								Relief.Profile = Crack.ReliefProfile;
-								Relief.GrooveVariation = Crack.ReliefGrooveVariation;
-								Relief.ProfileVariation = Crack.ReliefProfileVariation;
-								Relief.WidthVariation = Crack.ReliefWidthVariation;
-							};
-
-							// Propagated mode grows a network over N iterations against its own
-							// ping-ponged state, then resolves it into the layer mask. The
-							// state and direction pair are meaningless to any other mask child,
-							// so they are allocated here rather than routed through MaskTargets:
-							// the node still consumes one MaskPassIndex and writes one R16F
-							// target, exactly like every other mask child.
-							if (Crack.Mode == EMixtormatCraquelureMode::Propagated)
-							{
-								// Everything from here to the store is the build, and it runs only
-								// on a miss. A hit already holds the field it would produce, and
-								// the mask tail below reads the two identically.
-								if (!bCraqNetworkCached)
-								{
-									// State is (cracked, front, id, level) at full float. The id is
-									// a lineage hash up to 2^24 and has to stay exact -- a half
-									// would truncate it and silently merge unrelated cracks into
-									// one, which the per-crack Variation would then show as a
-									// single flat value across the whole network.
-									const FRDGTextureDesc CraqStateDesc = FRDGTextureDesc::Create2D(
-										Request.Resolution,
-										PF_A32B32G32R32F,
-										FClearValueBinding::Black,
-										TexCreate_ShaderResource | TexCreate_UAV);
-
-									// Direction only needs two channels and the field four, but both
-									// are four here. A two-channel typed UAV is a binding shape
-									// nothing else in this compositor uses, and it is the one thing
-									// a standalone HLSL compile cannot check -- it validates the
-									// shader in isolation, never the format against the
-									// declaration. Four bytes a pixel to delete that failure mode.
-									const FRDGTextureDesc CraqDirectionDesc = FRDGTextureDesc::Create2D(
-										Request.Resolution,
-										PF_FloatRGBA,
-										FClearValueBinding::Black,
-										TexCreate_ShaderResource | TexCreate_UAV);
-									const FRDGTextureDesc CraqFieldDesc = FRDGTextureDesc::Create2D(
-										Request.Resolution,
-										PF_FloatRGBA,
-										FClearValueBinding::Black,
-										TexCreate_ShaderResource | TexCreate_UAV);
-
-									FRDGTextureRef CraqState[2] = {
-										GraphBuilder.CreateTexture(CraqStateDesc, TEXT("Mixtormat.CraqStateA")),
-										GraphBuilder.CreateTexture(CraqStateDesc, TEXT("Mixtormat.CraqStateB"))};
-									FRDGTextureRef CraqDirection[2] = {
-										GraphBuilder.CreateTexture(CraqDirectionDesc, TEXT("Mixtormat.CraqDirA")),
-										GraphBuilder.CreateTexture(CraqDirectionDesc, TEXT("Mixtormat.CraqDirB"))};
-									FRDGTextureRef CraqField =
-										GraphBuilder.CreateTexture(CraqFieldDesc, TEXT("Mixtormat.CraqField"));
-
-									FMixtormatCraquelureSeedCS::FParameters* SeedParameters =
-										GraphBuilder.AllocParameters<FMixtormatCraquelureSeedCS::FParameters>();
-									SeedParameters->OutputSize = Request.Resolution;
-									SeedParameters->Seed = Crack.Seed;
-									SeedParameters->SeedCells = Crack.SeedCells;
-									SeedParameters->SeedChance = Crack.SeedChance;
-									SeedParameters->SeedJitter = Crack.SeedJitter;
-									SeedParameters->NoiseCells = Crack.NoiseCells;
-									SeedParameters->StressVariation = Crack.StressVariation;
-									SeedParameters->ToughnessVariation = Crack.ToughnessVariation;
-									SeedParameters->Warp = Crack.Warp;
-									SeedParameters->WarpPeriod = Crack.WarpPeriod;
-									SeedParameters->WarpSeed = Crack.WarpSeed;
-									SeedParameters->OutputState = GraphBuilder.CreateUAV(CraqState[0]);
-									SeedParameters->OutputDirection = GraphBuilder.CreateUAV(CraqDirection[0]);
-									SeedParameters->OutputField = GraphBuilder.CreateUAV(CraqField);
-
-									FComputeShaderUtils::AddPass(
-										GraphBuilder,
-										RDG_EVENT_NAME("Mixtormat.Craquelure.Seed.Layer%d.Child%d", LayerIndex, ChildIndex),
-										CraquelureSeedShader,
-										SeedParameters,
-										CrackGroups);
-
-									// A crack advances one pixel per iteration, so the authored
-									// count is a reach in pixels. Scaled against the same 1024
-									// reference chipping uses, so a preview and an export grow the
-									// same network rather than the same pixel count.
-									//
-									// The cap is a cost bound. It used to sit at 192, which quietly
-									// made it the reach control rather than a guard on it: at a
-									// Reach of 1024 the authored value was clamped to under a fifth
-									// of itself at every resolution from 1K up, so most of the
-									// slider did nothing at all. Raised to the top of the authored
-									// range so Reach means what it says.
-									//
-									// The scaling still stops being honest above that: a 4K export
-									// at maximum Reach clamps where the preview did not. Kept as a
-									// bound rather than removed because each step is a
-									// full-resolution pass doing roughly eighty texture loads per
-									// pixel -- this is by some way the most expensive node in the
-									// graph, and an unbounded count at 4K is minutes.
-									const int32 GrowIterations = FMath::Clamp(
-										FMath::RoundToInt(
-											Crack.Iterations *
-											FMath::Max(Request.Resolution.X, Request.Resolution.Y) / 1024.0f),
-										1,
-										1024);
-
-									int32 StateIndex = 0;
-									for (int32 GrowPass = 0; GrowPass < GrowIterations; ++GrowPass)
-									{
-										const int32 ReadState = StateIndex;
-										const int32 WriteState = 1 - ReadState;
-
-										FMixtormatCraquelureGrowCS::FParameters* GrowParameters =
-											GraphBuilder.AllocParameters<FMixtormatCraquelureGrowCS::FParameters>();
-										GrowParameters->OutputSize = Request.Resolution;
-										GrowParameters->Seed = Crack.Seed;
-										GrowParameters->Persistence = Crack.Persistence;
-										GrowParameters->FlowStrength = Crack.FlowStrength;
-										GrowParameters->StressGain = Crack.StressGain;
-										GrowParameters->ToughnessCost = Crack.ToughnessCost;
-										GrowParameters->Irregularity = Crack.Irregularity;
-										GrowParameters->GrowthThreshold = Crack.GrowthThreshold;
-										// Fixed rather than exposed: it only rejects steps a tip
-										// would never take anyway, and the interesting control over
-										// how straight a crack runs is Persistence.
-										GrowParameters->MinAlignment = 0.05f;
-										GrowParameters->TurnResponse = Crack.TurnResponse;
-										GrowParameters->CollisionLimit = Crack.CollisionLimit;
-										GrowParameters->Iteration = GrowPass;
-										GrowParameters->PreviousState = CraqState[ReadState];
-										GrowParameters->PreviousDirection = CraqDirection[ReadState];
-										GrowParameters->Field = CraqField;
-										GrowParameters->OutputState = GraphBuilder.CreateUAV(CraqState[WriteState]);
-										GrowParameters->OutputDirection = GraphBuilder.CreateUAV(CraqDirection[WriteState]);
-
-										FComputeShaderUtils::AddPass(
-											GraphBuilder,
-											RDG_EVENT_NAME(
-												"Mixtormat.Craquelure.Grow%d.Layer%d.Child%d",
-												GrowPass, LayerIndex, ChildIndex),
-											CraquelureGrowShader,
-											GrowParameters,
-											CrackGroups);
-
-										StateIndex = WriteState;
-									}
-
-									// Distance to the grown skeleton, by jump flooding. Log2(N) passes
-									// for any radius, where the resolve pass used to brute force a box
-									// clamped to radius 8 -- quadratic in the width and a hard cap on
-									// it. Relief needs the same field at radii far past what a box
-									// could reach, so both read this now.
-									{
-										const FRDGTextureDesc RecordDesc = FRDGTextureDesc::Create2D(
-											Request.Resolution,
-											PF_A32B32G32R32F,
-											FClearValueBinding::Black,
-											TexCreate_ShaderResource | TexCreate_UAV);
-										FRDGTextureRef Record[2] = {
-											GraphBuilder.CreateTexture(RecordDesc, TEXT("Mixtormat.CraqJfaA")),
-											GraphBuilder.CreateTexture(RecordDesc, TEXT("Mixtormat.CraqJfaB"))};
-
-										FMixtormatCraquelureDistanceSeedCS::FParameters* JfaSeed =
-											GraphBuilder.AllocParameters<FMixtormatCraquelureDistanceSeedCS::FParameters>();
-										JfaSeed->OutputSize = Request.Resolution;
-										JfaSeed->CrackState = CraqState[StateIndex];
-										JfaSeed->OutputRecord = GraphBuilder.CreateUAV(Record[0]);
-										FComputeShaderUtils::AddPass(
-											GraphBuilder,
-											RDG_EVENT_NAME(
-												"Mixtormat.Craquelure.Distance.Seed.Layer%d.Child%d",
-												LayerIndex, ChildIndex),
-											CraqDistanceSeedShader,
-											JfaSeed,
-											CrackGroups);
-
-										int32 RecordIndex = 0;
-
-										// Strides halve from half the padded extent down to 1, then one
-										// more pass at 1 -- the JFA+1 variant. Plain jump flooding is
-										// not exact: a seed can be lost when the record that would have
-										// carried it was itself overwritten at a coarser stride. The
-										// extra unit pass costs one dispatch and removes the islands
-										// that error shows up as.
-										const int32 FirstStep = FMath::Max(
-											1,
-											static_cast<int32>(FMath::RoundUpToPowerOfTwo(
-												static_cast<uint32>(FMath::Max(
-													Request.Resolution.X, Request.Resolution.Y)))) / 2);
-
-										for (int32 StepSize = FirstStep; StepSize >= 1; StepSize /= 2)
-										{
-											const int32 ReadRecord = RecordIndex;
-											const int32 WriteRecord = 1 - ReadRecord;
-
-											FMixtormatCraquelureDistanceStepCS::FParameters* JfaStep =
-												GraphBuilder.AllocParameters<FMixtormatCraquelureDistanceStepCS::FParameters>();
-											JfaStep->OutputSize = Request.Resolution;
-											JfaStep->StepSize = StepSize;
-											JfaStep->PreviousRecord = Record[ReadRecord];
-											JfaStep->OutputRecord = GraphBuilder.CreateUAV(Record[WriteRecord]);
-											FComputeShaderUtils::AddPass(
-												GraphBuilder,
-												RDG_EVENT_NAME(
-													"Mixtormat.Craquelure.Distance.Step%d.Layer%d.Child%d",
-													StepSize, LayerIndex, ChildIndex),
-												CraqDistanceStepShader,
-												JfaStep,
-												CrackGroups);
-
-											RecordIndex = WriteRecord;
-										}
-
-										{
-											const int32 ReadRecord = RecordIndex;
-											const int32 WriteRecord = 1 - ReadRecord;
-
-											FMixtormatCraquelureDistanceStepCS::FParameters* JfaStep =
-												GraphBuilder.AllocParameters<FMixtormatCraquelureDistanceStepCS::FParameters>();
-											JfaStep->OutputSize = Request.Resolution;
-											JfaStep->StepSize = 1;
-											JfaStep->PreviousRecord = Record[ReadRecord];
-											JfaStep->OutputRecord = GraphBuilder.CreateUAV(Record[WriteRecord]);
-											FComputeShaderUtils::AddPass(
-												GraphBuilder,
-												RDG_EVENT_NAME(
-													"Mixtormat.Craquelure.Distance.StepFinal.Layer%d.Child%d",
-													LayerIndex, ChildIndex),
-												CraqDistanceStepShader,
-												JfaStep,
-												CrackGroups);
-
-											RecordIndex = WriteRecord;
-										}
-
-										FMixtormatCraquelureDistanceResolveCS::FParameters* JfaResolve =
-											GraphBuilder.AllocParameters<FMixtormatCraquelureDistanceResolveCS::FParameters>();
-										JfaResolve->OutputSize = Request.Resolution;
-										JfaResolve->PreviousRecord = Record[RecordIndex];
-										JfaResolve->OutputDistance = GraphBuilder.CreateUAV(CraqDistance);
-										FComputeShaderUtils::AddPass(
-											GraphBuilder,
-											RDG_EVENT_NAME(
-												"Mixtormat.Craquelure.Distance.Resolve.Layer%d.Child%d",
-												LayerIndex, ChildIndex),
-											CraqDistanceResolveShader,
-											JfaResolve,
-											CrackGroups);
-									}
-
-									// Kept for the next composite. Converting promotes the transient to
-									// a pooled target, which costs the memory of one full-resolution
-									// RGBA32F per distinct network -- the trade this whole path makes.
-									if (Request.NetworkCache.IsValid())
-									{
-										Request.NetworkCache->Store(
-											Crack.NetworkKey,
-											Request.Resolution,
-											GraphBuilder.ConvertToExternalTexture(CraqDistance));
-									}
-
-								}
-
-								QueueCraquelureRelief();
-
-								FMixtormatCraquelureResolveCS::FParameters* ResolveParameters =
-									GraphBuilder.AllocParameters<FMixtormatCraquelureResolveCS::FParameters>();
-								ResolveParameters->OutputSize = Request.Resolution;
-								ResolveParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-								ResolveParameters->SeedCells = Crack.SeedCells;
-								ResolveParameters->Width = Crack.Width;
-								ResolveParameters->Variation = Crack.Variation;
-								ResolveParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
-								ResolveParameters->Invert = Crack.bInvert ? 1u : 0u;
-								ResolveParameters->Weight = Crack.Weight;
-								ResolveParameters->Balance = Crack.Balance;
-								ResolveParameters->Contrast = Crack.Contrast;
-								ResolveParameters->Offset = Crack.Offset;
-								ResolveParameters->Warp = Crack.Warp;
-								ResolveParameters->WarpPeriod = Crack.WarpPeriod;
-								ResolveParameters->WarpSeed = Crack.WarpSeed;
-								ResolveParameters->CrackDistance = CraqDistance;
-								ResolveParameters->PreviousMask = MaskTargets[MaskReadIndex];
-								ResolveParameters->LinearWrapSampler =
-									TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-								ResolveParameters->OutputMask =
-									GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.Craquelure.Resolve.Layer%d.Child%d", LayerIndex, ChildIndex),
-									CraquelureResolveShader,
-									ResolveParameters,
-									CrackGroups);
-
-								CombinedMask = MaskTargets[MaskWriteIndex];
-								if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-									&& Request.DebugSettings.LayerIndex == LayerIndex
-									&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-								{
-									FRDGTextureRef DebugCrackSnapshot = GraphBuilder.CreateTexture(
-										MaskDesc,
-										TEXT("Mixtormat.DebugCraquelureSnapshot"));
-									AddCopyTexturePass(GraphBuilder, CombinedMask, DebugCrackSnapshot);
-									DebugMask = DebugCrackSnapshot;
-								}
-								++MaskPassIndex;
-								continue;
-							}
-
-							FMixtormatCraquelureCS::FParameters* CrackParameters =
-								GraphBuilder.AllocParameters<FMixtormatCraquelureCS::FParameters>();
-							CrackParameters->OutputSize = Request.Resolution;
-							CrackParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-							CrackParameters->Period = Crack.Period;
-							CrackParameters->Jitter = Crack.Jitter;
-							CrackParameters->Width = Crack.Width;
-							CrackParameters->Variation = Crack.Variation;
-							CrackParameters->Seed = Crack.Seed;
-							CrackParameters->Warp = Crack.Warp;
-							CrackParameters->WarpPeriod = Crack.WarpPeriod;
-							CrackParameters->WarpSeed = Crack.WarpSeed;
-							CrackParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
-							CrackParameters->Invert = Crack.bInvert ? 1u : 0u;
-							CrackParameters->Weight = Crack.Weight;
-							CrackParameters->Balance = Crack.Balance;
-							CrackParameters->Contrast = Crack.Contrast;
-							CrackParameters->Offset = Crack.Offset;
-							CrackParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							CrackParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							CrackParameters->OutputMask =
-								GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-							CrackParameters->OutputDistance = GraphBuilder.CreateUAV(CraqDistance);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Craquelure.Layer%d.Child%d", LayerIndex, ChildIndex),
-								CraquelureShader,
-								CrackParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							QueueCraquelureRelief();
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugCrackSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc,
-									TEXT("Mixtormat.DebugCraquelureSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugCrackSnapshot);
-								DebugMask = DebugCrackSnapshot;
-							}
-							++MaskPassIndex;
+							AddCraquelureMaskPasses(Ctx, LayerCtx, Layer, Child, ChildIndex);
 							continue;
 						}
 
 						if (Child.Type == EMixtormatLayerChildType::RandomId)
 						{
-							const FRandomIdRenderData& RandomId = Child.RandomId;
-
-							// Culled rather than defaulted when there is no cluster above it. A
-							// mask with no ID map has no regions to vary, and emitting a flat
-							// value would silently replace whatever the chain had accumulated.
-							FRDGTextureRef RegionIds =
-								FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
-							if (!RegionIds)
-							{
-								continue;
-							}
-
-							// The same identity as every other mask child: at Weight 0 the tail
-							// returns Previous unchanged, so skipping from the second child on
-							// leaves exactly that behind.
-							if (MaskPassIndex > 0 && RandomId.Weight == 0.0f)
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-
-							FMixtormatRandomIdCS::FParameters* RandomParameters =
-								GraphBuilder.AllocParameters<FMixtormatRandomIdCS::FParameters>();
-							RandomParameters->OutputSize = Request.Resolution;
-							RandomParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-							RandomParameters->Seed = RandomId.Seed;
-							RandomParameters->MinValue = RandomId.MinValue;
-							RandomParameters->MaxValue = RandomId.MaxValue;
-							RandomParameters->BlendMode = static_cast<uint32>(RandomId.BlendMode);
-							RandomParameters->Invert = RandomId.bInvert ? 1u : 0u;
-							RandomParameters->Weight = RandomId.Weight;
-							RandomParameters->Balance = RandomId.Balance;
-							RandomParameters->Contrast = RandomId.Contrast;
-							RandomParameters->Offset = RandomId.Offset;
-							RandomParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							RandomParameters->RegionIds = RegionIds;
-							RandomParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							RandomParameters->OutputMask =
-								GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.RandomId.Layer%d.Child%d", LayerIndex, ChildIndex),
-								RandomIdShader,
-								RandomParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugRandomSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc,
-									TEXT("Mixtormat.DebugRandomIdSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugRandomSnapshot);
-								DebugMask = DebugRandomSnapshot;
-							}
-							++MaskPassIndex;
+							AddRandomIdMaskPass(Ctx, LayerCtx, Layer, Child, ChildIndex);
 							continue;
 						}
 
 						if (Child.Type == EMixtormatLayerChildType::ColorId)
 						{
-							const FColorIdRenderData& ColorId = Child.ColorId;
-
-							// The same identity as the other mask children: at Weight 0 the tail
-							// returns Previous unchanged, and skipping from the second child on
-							// leaves exactly that behind.
-							if (MaskPassIndex > 0 && ColorId.Weight == 0.0f)
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-
-							FMixtormatColorIdCS::FParameters* IdParameters =
-								GraphBuilder.AllocParameters<FMixtormatColorIdCS::FParameters>();
-							IdParameters->OutputSize = Request.Resolution;
-							IdParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-							IdParameters->ColorCount = ColorId.Colors.Num();
-							for (int32 ColorIndex = 0; ColorIndex < FMixtormatColorIdCS::MaxColors; ++ColorIndex)
-							{
-								// The unused tail is filled rather than left alone. A shader
-								// parameter array is not zero initialised, and the loop in the
-								// shader is bounded by ColorCount, but an uninitialised constant
-								// is the kind of thing that only misbehaves on one driver.
-								IdParameters->TargetColors[ColorIndex] =
-									ColorId.Colors.IsValidIndex(ColorIndex)
-										? ColorId.Colors[ColorIndex]
-										: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
-							}
-							IdParameters->Tolerance = ColorId.Tolerance;
-							IdParameters->Softness = ColorId.Softness;
-							IdParameters->BlendMode = static_cast<uint32>(ColorId.BlendMode);
-							IdParameters->Invert = ColorId.bInvert ? 1u : 0u;
-							IdParameters->Weight = ColorId.Weight;
-							IdParameters->Balance = ColorId.Balance;
-							IdParameters->Contrast = ColorId.Contrast;
-							IdParameters->Offset = ColorId.Offset;
-							IdParameters->Tiling = ColorId.Tiling;
-							IdParameters->UVOffset = ColorId.UVOffset;
-							IdParameters->FlipU = ColorId.bFlipU ? 1u : 0u;
-							IdParameters->FlipV = ColorId.bFlipV ? 1u : 0u;
-							IdParameters->Rotation = ColorId.Rotation;
-							IdParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							IdParameters->IdTexture = RegisterTexture(
-								GraphBuilder,
-								RegisteredTextures,
-								ColorId.IdTexture,
-								TEXT("Mixtormat.ColorIdMap"));
-
-							// Point, and the only point sampler in the compositor. Every other
-							// map here is a continuous signal that wants filtering; an id map is
-							// a set of labels, and the average of two labels is a third label
-							// that names nothing.
-							IdParameters->PointSampler =
-								TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							IdParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							IdParameters->OutputMask =
-								GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.ColorId.Layer%d.Child%d", LayerIndex, ChildIndex),
-								ColorIdShader,
-								IdParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugIdSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc,
-									TEXT("Mixtormat.DebugColorIdSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugIdSnapshot);
-								DebugMask = DebugIdSnapshot;
-							}
-							++MaskPassIndex;
+							AddColorIdMaskPass(Ctx, LayerCtx, Layer, Child, ChildIndex);
 							continue;
 						}
 
 						if (Child.Type == EMixtormatLayerChildType::Mask)
 						{
-							// Evaluated by ResolveFeatureMask when its owner row is reached.
-							if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
-							{
-								continue;
-							}
-							const FMaskRenderData& Mask = Child.Mask;
-							// Weight 0 makes the whole node the identity: every mask shader
-							// ends on saturate(lerp(Previous, Result, Weight)), and the masks it
-							// reads are already saturated, so the output is the input bit for
-							// bit. Skipping is only exact from the second mask child onward --
-							// the first establishes the chain with Initialize, where Previous is
-							// zero rather than what the layer already had, and a skip there
-							// would leave a different mask behind rather than the same one.
-							if (MaskPassIndex > 0 && Mask.Weight == 0.0f)
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-							FMixtormatMaskCS::FParameters* MaskParameters =
-								GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
-							MaskParameters->OutputSize = Request.Resolution;
-							MaskParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-							MaskParameters->BlendMode = static_cast<uint32>(Mask.BlendMode);
-							MaskParameters->Invert = Mask.bInvert ? 1u : 0u;
-							MaskParameters->Weight = Mask.Weight;
-							MaskParameters->Tiling = Mask.Tiling;
-							MaskParameters->UVOffset = Mask.UVOffset;
-							MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
-							MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
-							MaskParameters->Rotation = Mask.Rotation;
-							MaskParameters->Balance = Mask.Balance;
-							MaskParameters->Contrast = Mask.Contrast;
-							MaskParameters->Offset = Mask.Offset;
-							MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
-							FRDGTextureRef IncomingMask = nullptr;
-							if (!Mask.PublishedSourceOutput.IsNone())
-							{
-								const FPublishedMaskKey Key{
-									Mask.PublishedSourceLayerId,
-									Mask.PublishedSourceChildIndex,
-									Mask.PublishedSourceOutput};
-								if (FRDGTextureRef* Published = PublishedMaskOutputs.Find(Key))
-								{
-									IncomingMask = *Published;
-								}
-								else
-								{
-									IncomingMask = EmptyDriverSignal;
-								}
-							}
-							else
-							{
-								IncomingMask = RegisterTexture(
-									GraphBuilder,
-									RegisteredTextures,
-									Mask.Texture,
-									TEXT("Mixtormat.IncomingMask"));
-							}
-							MaskParameters->IncomingMask = IncomingMask;
-							MaskParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							MaskParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Mask.Layer%d.Child%d", LayerIndex, ChildIndex),
-								MaskShader,
-								MaskParameters,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugMaskSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc,
-									TEXT("Mixtormat.DebugMaskSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugMaskSnapshot);
-								DebugMask = DebugMaskSnapshot;
-							}
-							++MaskPassIndex;
+							AddTextureMaskPass(Ctx, LayerCtx, Layer, Child, ChildIndex);
 							continue;
 						}
 
 						const FEffectRenderData& Effect = Child.Effect;
-						FRDGTextureRef FeatureMask = ResolveFeatureMask(Child.SourceChildIndex);
+						FRDGTextureRef FeatureMask =
+							AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex);
 						if (Effect.Type == EMixtormatEffectType::Erosion)
 						{
-							// Erosion is a post-layer filter: it carves what this layer actually
-							// composited, not the height underneath it. Running it here would let
-							// the layer paint straight back over the carve.
-							PendingErosion.Effect = &Effect;
-							PendingErosion.FeatureMask = FeatureMask;
-							PendingErosion.bHasScopedMask = Layer.Children.ContainsByPredicate(
-								[&Child](const FChildRenderData& Candidate)
-								{
-									return Candidate.Type == EMixtormatLayerChildType::Mask
-										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
-								});
+							QueuePendingErosion(LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
 						if (Effect.Type == EMixtormatEffectType::Chipping)
 						{
-							// Also a post-layer filter. It runs after erosion rather than before:
-							// chipping a surface that has already weathered is the order that
-							// makes sense, and the reverse would have erosion smoothing chips it
-							// never saw.
-							PendingChipping.Effect = &Effect;
-							PendingChipping.FeatureMask = FeatureMask;
-							PendingChipping.bHasScopedMask = Layer.Children.ContainsByPredicate(
-								[&Child](const FChildRenderData& Candidate)
-								{
-									return Candidate.Type == EMixtormatLayerChildType::Mask
-										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
-								});
+							QueuePendingChipping(LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
 
 						if (Effect.Type == EMixtormatEffectType::WornEdges)
 						{
-							int32 ProducerChildIndex = INDEX_NONE;
-							FRDGTextureRef WearRegionIds = nullptr;
-							for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
-							{
-								if (Entry.Key < Child.SourceChildIndex)
-								{
-									ProducerChildIndex = Entry.Key;
-									WearRegionIds = Entry.Value;
-								}
-							}
-							if (!WearRegionIds)
-							{
-								// Task B contract: without an upstream Region ID producer Worn Edges
-								// is a deterministic no-op rather than inventing an ID system.
-								continue;
-							}
-
-							FPendingWornEdges& Wear = PendingWornEdges.AddDefaulted_GetRef();
-							Wear.Effect = &Effect;
-							Wear.SourceChildIndex = Child.SourceChildIndex;
-							Wear.FeatureMask = FeatureMask;
-							Wear.RegionIds = WearRegionIds;
-							for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
-							{
-								if (PatternOutput.SourceChildIndex != ProducerChildIndex)
-								{
-									continue;
-								}
-								// OutputEdge.x is signed pixels only in absolute mode. Relative mode
-								// stores a cell fraction, so use the ID-derived band there rather than
-								// comparing unlike units to Radius pixels.
-								if (PatternOutput.Settings && !PatternOutput.Settings->bRelativeEdgeWidth)
-								{
-									Wear.PatternEdge = PatternOutput.Edge;
-									Wear.bHasPatternEdge = PatternOutput.Edge != nullptr;
-								}
-								break;
-							}
+							QueuePendingWornEdges(LayerCtx, Child, Effect, FeatureMask);
 							continue;
 						}
 
 						if (Effect.Type == EMixtormatEffectType::FlowWarp)
 						{
-							FPendingEffect& FlowWarp = PendingFlowWarps.AddDefaulted_GetRef();
-							FlowWarp.Effect = &Effect;
-							FlowWarp.FeatureMask = FeatureMask;
-							FlowWarp.bHasScopedMask = Layer.Children.ContainsByPredicate(
-								[&Child](const FChildRenderData& Candidate)
-								{
-									return Candidate.Type == EMixtormatLayerChildType::Mask
-										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
-								});
+							QueuePendingFlowWarp(LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
 						if (Effect.Type == EMixtormatEffectType::Grade)
 						{
-							// Also a post-layer filter, for the same reason: it grades what the
-							// stack has accumulated at this point, and running it inside the
-							// child loop would grade a base colour the layer then overwrites.
-							FPendingEffect& Grade = PendingGrades.AddDefaulted_GetRef();
-							Grade.Effect = &Effect;
-							Grade.FeatureMask = FeatureMask;
-							Grade.bHasScopedMask = Layer.Children.ContainsByPredicate(
-								[&Child](const FChildRenderData& Candidate)
-								{
-									return Candidate.Type == EMixtormatLayerChildType::Mask
-										&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
-								});
+							QueuePendingGrade(LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
 						if (Effect.Type == EMixtormatEffectType::Stain)
 						{
-							// A mask child, not a post-layer filter. Stain resolves the shape of
-							// where liquid ran into the layer's accumulated mask, and the layer it
-							// masks supplies every channel -- a rust streak is a rust material
-							// masked by a stain, not a tint the filter paints on afterwards.
-							//
-							// That is also why it belongs here rather than after the composite:
-							// the surface it reads is the one accumulated underneath the layer,
-							// which is the surface the liquid would actually run over.
-
-							// Weight 0 is the identity from the second mask child onward, the same
-							// rule every other mask node follows. The first child cannot skip: it
-							// establishes the chain with Initialize, where Previous is zero rather
-							// than the half's white clear, and skipping would leave the layer
-							// fully visible instead of unstained.
-							if (MaskPassIndex > 0
-								&& (Effect.Strength <= 0.0f || Effect.StainSourceAmount <= 0.0f))
-							{
-								continue;
-							}
-
-							const int32 MaskWriteIndex = MaskPassIndex & 1;
-							const int32 MaskReadIndex = 1 - MaskWriteIndex;
-							const int32 LayerReadIndex = 1 - (LayerIndex & 1);
-
-							const FRDGTextureDesc StateDesc = FRDGTextureDesc::Create2D(
-								Request.Resolution,
-								PF_FloatRGBA,
-								FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-							FRDGTextureRef StateA[2] = {
-								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateA0")),
-								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateA1"))};
-							FRDGTextureRef StateB[2] = {
-								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB0")),
-								GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB1"))};
-
-							// One-by-one stand-ins for the slots a given pass does not write. RDG
-							// validates every binding whether or not the shader stores through it.
-							const FRDGTextureDesc TinyStateDesc = FRDGTextureDesc::Create2D(
-								FIntPoint(1, 1),
-								PF_FloatRGBA,
-								FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-							const FRDGTextureDesc TinyMaskDesc = FRDGTextureDesc::Create2D(
-								FIntPoint(1, 1),
-								PF_R16F,
-								FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-							FRDGTextureRef StateReadDummy = GraphBuilder.CreateTexture(
-								TinyStateDesc, TEXT("Mixtormat.StainReadDummy"));
-							FRDGTextureRef StateWriteDummyA = GraphBuilder.CreateTexture(
-								TinyStateDesc, TEXT("Mixtormat.StainWriteDummyA"));
-							FRDGTextureRef StateWriteDummyB = GraphBuilder.CreateTexture(
-								TinyStateDesc, TEXT("Mixtormat.StainWriteDummyB"));
-							FRDGTextureRef StainMaskDummy = GraphBuilder.CreateTexture(
-								TinyMaskDesc, TEXT("Mixtormat.StainMaskDummy"));
-							AddClearUAVPass(
-								GraphBuilder, GraphBuilder.CreateUAV(StateReadDummy), FVector4f(0.0f));
-							AddClearUAVPass(
-								GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyA), FVector4f(0.0f));
-							AddClearUAVPass(
-								GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyB), FVector4f(0.0f));
-							AddClearUAVPass(
-								GraphBuilder, GraphBuilder.CreateUAV(StainMaskDummy), FVector4f(0.0f));
-
-							// The feature-preview eye on the Stain group. Gated on the selected
-							// layer the way the composite gates its own debug write, so two stains
-							// on different layers cannot fight over one target. Only the resolve
-							// binds the shared debug target; the solve passes take a dummy.
-							const bool bWriteStainDebug =
-								Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::Stain
-								&& Request.DebugSettings.LayerIndex == LayerIndex;
-
-							FRDGTextureRef StainSourceMask = Effect.StainSourceMask.IsValid()
-								? RegisterTexture(
-									GraphBuilder,
-									RegisteredTextures,
-									Effect.StainSourceMask,
-									TEXT("Mixtormat.StainSourceMask"))
-								: MaskTargets[MaskReadIndex];
-							FRDGTextureRef StainDirtMask = Effect.StainDirtMask.IsValid()
-								? RegisterTexture(
-									GraphBuilder,
-									RegisteredTextures,
-									Effect.StainDirtMask,
-									TEXT("Mixtormat.StainDirtMask"))
-								: StainSourceMask;
-
-							auto FillStainParameters = [&](FMixtormatStainCS::FParameters* P)
-							{
-								P->OutputSize = Request.Resolution;
-								P->SurfaceSize = Request.Resolution;
-								P->StainMode = Effect.StainMode;
-								P->Seed = Effect.StainSeed;
-								P->UseSourceMask = Effect.StainSourceMask.IsValid() ? 1u : 0u;
-
-								// Only from the second mask child onward. The read half is cleared
-								// to white, so trusting it on the first child would source liquid
-								// over the whole surface instead of falling back to curvature.
-								P->UseLayerMask = MaskPassIndex > 0 ? 1u : 0u;
-								P->UseDirtMask = Effect.StainDirtMask.IsValid() ? 1u : 0u;
-								P->InvertSourceMask = Effect.bStainSourceMaskInvert ? 1u : 0u;
-								P->InvertDirtMask = Effect.bStainDirtMaskInvert ? 1u : 0u;
-								P->WriteDebug = 0u;
-								P->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-								P->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
-
-								// Replace. Stain exposes no blend mode of its own: it is the shape
-								// of a run, and a run either covers a texel or it does not.
-								P->BlendMode = static_cast<uint32>(EMixtormatMaskBlendMode::Replace);
-								P->SourceMaskTiling = Effect.StainSourceMaskTiling;
-								P->DirtMaskTiling = Effect.StainDirtMaskTiling;
-								P->Strength = Effect.Strength;
-								P->SourceAmount = Effect.StainSourceAmount;
-								P->Gravity = Effect.StainGravity;
-								P->SurfaceFollow = Effect.StainSurfaceFollow;
-								P->Spread = Effect.StainSpread;
-								P->Accumulation = Effect.StainAccumulation;
-								P->Absorption = Effect.StainAbsorption;
-								P->Drying = Effect.StainDrying;
-								P->DirtAmount = Effect.StainDirtAmount;
-								P->ConcavityWeight = Effect.StainConcavityWeight;
-								P->ConvexityWeight = Effect.StainConvexityWeight;
-								P->OcclusionWeight = Effect.StainOcclusionWeight;
-								P->HeightWeight = Effect.StainHeightWeight;
-								P->HeightBias = Effect.StainSourceHeightBias;
-								P->SlopeWeight = Effect.StainSlopeWeight;
-								P->SurfaceResponse = Effect.StainSurfaceResponse;
-
-								// The surface accumulated below this layer, the same one the
-								// generated mask reads.
-								P->SourceNormal = OutputN[LayerReadIndex];
-								P->SourceRAM = OutputRAM[LayerReadIndex];
-								P->SourceHeight = HeightTargets[LayerReadIndex];
-								P->PreviousMask = MaskTargets[MaskReadIndex];
-								P->FeatureMask = FeatureMask;
-								P->SourceMask = StainSourceMask;
-								P->DirtMask = StainDirtMask;
-								P->LinearWrapSampler =
-									TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							};
-
-							const FIntVector StainGroups(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1);
-							FMixtormatStainCS::FParameters* Init =
-								GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-							FillStainParameters(Init);
-							Init->Mode = 0;
-							Init->Iteration = 0;
-							Init->PreviousStateA = StateReadDummy;
-							Init->PreviousStateB = StateReadDummy;
-							Init->OutputStateA = GraphBuilder.CreateUAV(StateA[0]);
-							Init->OutputStateB = GraphBuilder.CreateUAV(StateB[0]);
-							Init->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
-							Init->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.Stain.L%d.C%d.Initialize", LayerIndex, ChildIndex),
-								StainShader,
-								Init,
-								StainGroups);
-
-							int32 StateReadIndex = 0;
-							for (int32 Iteration = 0; Iteration < Effect.StainIterations; ++Iteration)
-							{
-								const int32 StateWriteIndex = 1 - StateReadIndex;
-								FMixtormatStainCS::FParameters* Step =
-									GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-								FillStainParameters(Step);
-								Step->Mode = 1;
-								Step->Iteration = Iteration + 1;
-								Step->PreviousStateA = StateA[StateReadIndex];
-								Step->PreviousStateB = StateB[StateReadIndex];
-								Step->OutputStateA = GraphBuilder.CreateUAV(StateA[StateWriteIndex]);
-								Step->OutputStateB = GraphBuilder.CreateUAV(StateB[StateWriteIndex]);
-								Step->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
-								Step->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME(
-										"Mixtormat.Stain.L%d.C%d.Step%d",
-										LayerIndex,
-										ChildIndex,
-										Iteration),
-									StainShader,
-									Step,
-									StainGroups);
-								StateReadIndex = StateWriteIndex;
-							}
-
-							FMixtormatStainCS::FParameters* Resolve =
-								GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-							FillStainParameters(Resolve);
-							Resolve->Mode = 2;
-							Resolve->Iteration = Effect.StainIterations;
-							Resolve->WriteDebug = bWriteStainDebug ? 1u : 0u;
-							Resolve->PreviousStateA = StateA[StateReadIndex];
-							Resolve->PreviousStateB = StateB[StateReadIndex];
-							Resolve->OutputStateA = GraphBuilder.CreateUAV(StateWriteDummyA);
-							Resolve->OutputStateB = GraphBuilder.CreateUAV(StateWriteDummyB);
-							Resolve->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-							Resolve->OutputDebug = GraphBuilder.CreateUAV(
-								OutputDebug[Request.PublishedTargetIndex]);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.Stain.L%d.C%d.Resolve", LayerIndex, ChildIndex),
-								StainShader,
-								Resolve,
-								StainGroups);
-
-							CombinedMask = MaskTargets[MaskWriteIndex];
-							if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-								&& Request.DebugSettings.LayerIndex == LayerIndex
-								&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
-							{
-								FRDGTextureRef DebugStainSnapshot = GraphBuilder.CreateTexture(
-									MaskDesc, TEXT("Mixtormat.DebugStainSnapshot"));
-								AddCopyTexturePass(GraphBuilder, CombinedMask, DebugStainSnapshot);
-								DebugMask = DebugStainSnapshot;
-							}
-							++MaskPassIndex;
+							AddStainMaskPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 							continue;
 						}
 
-						// A procedural peel builds its field first: seed the mask's threshold
-						// contour, then a chain of eikonal solve steps, then one resolve into
-						// the same channel layout the authored maps carry. The peel pass below
-						// is identical either way apart from which source it reads.
-						FRDGTextureRef PeelFieldA = PeelFieldDummy;
-						FRDGTextureRef PeelFieldB = PeelFieldDummy;
-						if (Effect.bProceduralPeel)
-						{
-							// Same accumulated state the generated mask reads: the surface
-							// composited below this layer.
-							const int32 PeelSurfaceIndex = 1 - (LayerIndex & 1);
-
-							// The solve dominates cost, and halving the side both quarters
-							// the texels and halves the passes the front needs to cross
-							// them. Arrival is smooth enough to filter back up afterwards.
-							const int32 SolveDivisor = FMath::Clamp(Effect.PeelSolveDivisor, 1, 32);
-							const FIntPoint SolveRes(
-								FMath::Max(Request.Resolution.X / SolveDivisor, 64),
-								FMath::Max(Request.Resolution.Y / SolveDivisor, 64));
-
-							const FRDGTextureDesc ArrivalDesc = FRDGTextureDesc::Create2D(
-								SolveRes, PF_G32R32F, FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-							const FRDGTextureDesc GrowthDesc = FRDGTextureDesc::Create2D(
-								SolveRes, PF_R16F, FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-							const FRDGTextureDesc FieldDesc = FRDGTextureDesc::Create2D(
-								Request.Resolution, PF_FloatRGBA, FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-
-							FRDGTextureRef Arrival[2] = {
-								GraphBuilder.CreateTexture(ArrivalDesc, TEXT("Mixtormat.PeelArrivalA")),
-								GraphBuilder.CreateTexture(ArrivalDesc, TEXT("Mixtormat.PeelArrivalB"))};
-							FRDGTextureRef PeelGrowth =
-								GraphBuilder.CreateTexture(GrowthDesc, TEXT("Mixtormat.PeelGrowth"));
-							FRDGTextureRef FieldA =
-								GraphBuilder.CreateTexture(FieldDesc, TEXT("Mixtormat.PeelFieldA"));
-							FRDGTextureRef FieldB =
-								GraphBuilder.CreateTexture(FieldDesc, TEXT("Mixtormat.PeelFieldB"));
-
-							auto AddPeelFieldPass = [&](
-								const int32 ModeIndex,
-								FRDGTextureRef InArrival,
-								FRDGTextureRef OutArrival,
-								const TCHAR* DebugName)
-							{
-								FMixtormatPeelFieldCS::FParameters* FP =
-									GraphBuilder.AllocParameters<FMixtormatPeelFieldCS::FParameters>();
-								FP->OutputSize = Request.Resolution;
-								FP->SolveSize = SolveRes;
-								FP->Mode = ModeIndex;
-								FP->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
-								FP->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-								FP->Seed = Effect.PeelRandomSeed;
-								FP->MaskWeight = Effect.PeelSeedMaskWeight;
-								FP->PeelMaskTiling = Effect.PeelMaskTiling;
-								FP->PeelMaskInvert = Effect.bPeelMaskInvert ? 1u : 0u;
-								FP->UseOwnMask = Effect.PeelOwnMask.IsValid() ? 1u : 0u;
-								FP->PeelOwnMask = Effect.PeelOwnMask.IsValid()
-									? RegisterTexture(GraphBuilder, RegisteredTextures, Effect.PeelOwnMask, TEXT("Mixtormat.PeelOwnMask"))
-									: PeelFieldDummy;
-								FP->SeedThreshold = Effect.PeelSeedThreshold;
-								FP->CurvatureRadius = Effect.PeelCurvatureRadius;
-								FP->CurvatureSmoothing = 1;
-								FP->CurvatureWeight = Effect.PeelSeedCurvatureWeight;
-								FP->CurvatureBias = Effect.PeelSeedCurvatureBias;
-								FP->AOWeight = Effect.PeelSeedAOWeight;
-								FP->HeightWeight = Effect.PeelSeedHeightWeight;
-								FP->NormalizeWeights = Effect.bPeelNormalizeSeedWeights ? 1u : 0u;
-								FP->GrowthStrength = Effect.PeelGrowthStrength;
-
-								FP->MacroPeriod = FMath::Clamp(Effect.PeelMacroPeriod, 1, 256);
-								FP->MicroPeriod = FMath::Clamp(Effect.PeelMicroPeriod, 1, 512);
-								FP->NoiseWeight = Effect.PeelSeedNoiseWeight;
-								FP->SizeVariation = Effect.PeelSizeVariation;
-								FP->FlakeCells = FMath::Clamp(Effect.PeelClusterPeriod, 1, 128);
-								FP->ClusterAmount = Effect.PeelClusterAmount;
-								FP->WarpPeriod = FMath::Clamp(Effect.PeelWarpPeriod, 1, 256);
-								FP->WarpAmount = Effect.PeelWarpAmount;
-								FP->WarpSource = Effect.PeelWarpSource;
-
-								FP->PeelType = Effect.PeelType;
-								FP->Front = Effect.Front;
-								FP->Width = Effect.Width;
-								FP->MacroWarp = Effect.MacroWarp;
-								FP->MicroWarp = Effect.MicroWarp;
-								FP->MicroMorph = Effect.MicroMorph;
-								FP->Thickness = Effect.Thickness;
-								FP->Lift = Effect.Lift;
-								FP->DetailStrength = Effect.DetailStrength;
-								FP->LiftVariation = Effect.PeelLiftVariation;
-								FP->EdgeSharpness = Effect.PeelEdgeSharpness;
-								FP->SurfaceNormal = OutputN[PeelSurfaceIndex];
-								FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
-								FP->SurfaceHeight = HeightTargets[PeelSurfaceIndex];
-								FP->ChildMask = FeatureMask;
-								FP->PreviousArrival = InArrival;
-								FP->GrowthField = PeelGrowth;
-								FP->LinearWrapSampler =
-									TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-								FP->OutputArrival = GraphBuilder.CreateUAV(OutArrival);
-								FP->OutputGrowth = GraphBuilder.CreateUAV(PeelGrowth);
-								FP->OutputFieldA = GraphBuilder.CreateUAV(FieldA);
-								FP->OutputFieldB = GraphBuilder.CreateUAV(FieldB);
-
-								const FIntPoint PassRes = ModeIndex == 2 ? Request.Resolution : SolveRes;
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME(
-										"Mixtormat.PeelField.L%d.C%d.%s",
-										LayerIndex, ChildIndex, DebugName),
-									PeelFieldShader,
-									FP,
-									FIntVector(
-										FMath::DivideAndRoundUp(PassRes.X, 8),
-										FMath::DivideAndRoundUp(PassRes.Y, 8),
-										1));
-							};
-
-							AddPeelFieldPass(0, Arrival[1], Arrival[0], TEXT("Seed"));
-
-							// The front only has to travel Front plus a few transition
-							// widths, and advances about one texel per pass, so the count
-							// is bounded by reach at the solve resolution. Seeding the
-							// contour rather than the interior does not raise it: inward
-							// and outward propagation leave the same band on the same pass,
-							// and the reach each side needs is still the same.
-							int32 Ping = 0;
-							const float CurlLength =
-								FMath::Abs(Effect.Width)
-								* FMath::Lerp(
-									2.0f,
-									10.0f,
-									FMath::Clamp(Effect.MicroMorph, 0.0f, 1.0f));
-
-							const float Reach =
-								FMath::Abs(Effect.Front)
-								+ FMath::Max(
-									4.0f * FMath::Abs(Effect.Width),
-									2.25f * CurlLength);
-							const int32 Iterations = FMath::Clamp(
-								FMath::CeilToInt(Reach * SolveRes.X), 1, 256);
-							for (int32 Step = 0; Step < Iterations; ++Step)
-							{
-								AddPeelFieldPass(1, Arrival[Ping], Arrival[1 - Ping], TEXT("Solve"));
-								Ping = 1 - Ping;
-							}
-
-							AddPeelFieldPass(2, Arrival[Ping], Arrival[1 - Ping], TEXT("Resolve"));
-
-							PeelFieldA = FieldA;
-							PeelFieldB = FieldB;
-						}
-
-						const int32 EffectWriteIndex = EffectPassIndex & 1;
-						const int32 EffectReadIndex = 1 - EffectWriteIndex;
-						FMixtormatPeelingCS::FParameters* EffectParameters =
-							GraphBuilder.AllocParameters<FMixtormatPeelingCS::FParameters>();
-						EffectParameters->OutputSize = Request.Resolution;
-						EffectParameters->Initialize = EffectPassIndex == 0 ? 1u : 0u;
-						EffectParameters->Tiling = Effect.Tiling;
-						EffectParameters->Strength = Effect.Strength;
-						EffectParameters->Front = Effect.Front;
-						EffectParameters->Width = Effect.Width;
-						EffectParameters->MacroWarp = Effect.MacroWarp;
-						EffectParameters->MicroWarp = Effect.MicroWarp;
-						EffectParameters->MicroMorph = Effect.MicroMorph;
-						EffectParameters->Thickness = Effect.Thickness;
-						EffectParameters->Lift = Effect.Lift;
-						EffectParameters->DetailStrength = Effect.DetailStrength;
-						EffectParameters->PreviousEffectData = EffectTargets[EffectReadIndex];
-						EffectParameters->ChildMask = FeatureMask;
-						EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
-						EffectParameters->HeightAmount = Effect.PeelHeightAmount;
-						EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;
-						EffectParameters->PreviousEffectHeight = EffectHeightTargets[EffectReadIndex];
-						EffectParameters->OutputEffectHeight = GraphBuilder.CreateUAV(EffectHeightTargets[EffectWriteIndex]);
-						EffectParameters->PeelFieldA = PeelFieldA;
-						EffectParameters->PeelFieldB = PeelFieldB;
-						EffectParameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-						EffectParameters->PointWrapSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-						EffectParameters->OutputEffectData = GraphBuilder.CreateUAV(EffectTargets[EffectWriteIndex]);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.Peeling.Layer%d.Child%d", LayerIndex, ChildIndex),
-							PeelingShader,
-							EffectParameters,
-							FIntVector(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1));
-						CombinedEffectData = EffectTargets[EffectWriteIndex];
-						CombinedEffectHeight = EffectHeightTargets[EffectWriteIndex];
-						++EffectPassIndex;
+						AddPeelingEffectPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 					}
 
+					AddLayerCompositePass(Ctx, LayerCtx, Layer);
+
+					AddFlowWarpPasses(Ctx, LayerCtx, Layer);
+
+					AddErosionPasses(Ctx, LayerCtx, Layer);
+
+					AddRampReliefPasses(Ctx, LayerCtx, Layer);
+
+					AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
+
+
+					AddWornEdgesPasses(Ctx, LayerCtx, Layer);
+
+					AddChippingPasses(Ctx, LayerCtx, Layer);
+
+					AddGradePasses(Ctx, LayerCtx, Layer);
+
+					// The half this layer wrote. Same parity the composite used; taken here because
+					// a later layer's ReferenceHeight must see this layer's finished height, after
+					// every filter above has had its turn at it.
 					const int32 WriteIndex = LayerIndex & 1;
-					const int32 ReadIndex = 1 - WriteIndex;
-					FMixtormatCompositeCS::FParameters* Parameters =
-						GraphBuilder.AllocParameters<FMixtormatCompositeCS::FParameters>();
-					Parameters->OutputSize = Request.Resolution;
-					Parameters->Enabled = Layer.bEnabled ? 1u : 0u;
-					Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
-					Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
-					Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
-					Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
-					Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
-					Parameters->CompositionMode = Layer.bCoat ? 1u : 0u;
-					Parameters->IsFill = Layer.bFill ? 1u : 0u;
-					Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
-					Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
-					Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
-					Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
-					Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
-					Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-					Parameters->HeightBlendEnabled = Layer.bHeightBlendEnabled ? 1u : 0u;
-					Parameters->HeightSource = Layer.HeightSource;
-					Parameters->InvertHeight = Layer.bInvertHeight ? 1u : 0u;
-					Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
-					Parameters->InvertHeightFeature = Layer.bInvertHeightFeature ? 1u : 0u;
-					Parameters->InvertAOFeature = Layer.bInvertAOFeature ? 1u : 0u;
-					Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
-					Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
-
-					// Stain and ClusterIds publish their own previews before this composite.
-					// Neither has a case in the composite shader: exclude both or DebugValue 0
-					// would overwrite the selected child's preview with flat DebugLow.
-					Parameters->WriteDebug =
-						Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
-						&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
-						&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ClusterIds
-						&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
-					Parameters->Opacity = Layer.Opacity;
-					Parameters->Tiling = Layer.Tiling;
-					Parameters->UVScaleX = Layer.UVScaleX;
-					Parameters->UVScaleY = Layer.UVScaleY;
-					Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
-					Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
-					Parameters->UVOffset = Layer.UVOffset;
-					Parameters->Rotation = Layer.Rotation;
-					Parameters->NormalIntensity = Layer.NormalIntensity;
-					Parameters->HueShift = Layer.HueShift;
-					Parameters->Saturation = Layer.Saturation;
-					Parameters->Value = Layer.Value;
-					Parameters->RoughnessBias = Layer.RoughnessBias;
-					Parameters->RoughnessContrast = Layer.RoughnessContrast;
-					Parameters->RoughnessOffset = Layer.RoughnessOffset;
-					Parameters->FillRoughness = Layer.FillRoughness;
-					Parameters->FillMetallic = Layer.FillMetallic;
-					Parameters->LayerF0 = Layer.LayerF0;
-					Parameters->HeightBoost = Layer.HeightBoost;
-					Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
-					Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
-					Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
-					Parameters->RoughnessInfluence = Layer.RoughnessInfluence;
-					Parameters->AOInfluence = Layer.AOInfluence;
-					Parameters->MetallicInfluence = Layer.MetallicInfluence;
-					Parameters->F0Influence = Layer.F0Influence;
-					Parameters->NormalInfluence = Layer.NormalInfluence;
-					Parameters->HeightInfluence = Layer.HeightInfluence;
-					Parameters->HeightBlendAmount = Layer.HeightBlendAmount;
-					Parameters->HeightThreshold = Layer.HeightThreshold;
-					Parameters->HeightRange = Layer.HeightRange;
-					Parameters->HeightContrast = Layer.HeightContrast;
-					Parameters->HeightOffset = Layer.HeightOffset;
-					Parameters->HeightBias = Layer.HeightBias;
-					Parameters->ConstantHeight = Layer.ConstantHeight;
-					Parameters->MaskHeightInfluence = Layer.MaskHeightInfluence;
-					Parameters->HeightContactAOAmount = Layer.HeightContactAOAmount;
-					Parameters->HeightContactAOWidth = Layer.HeightContactAOWidth;
-					Parameters->HeightBorderLift = Layer.HeightBorderLift;
-					Parameters->HeightBorderWidth = Layer.HeightBorderWidth;
-					Parameters->HeightBorderNormalStrength = Layer.HeightBorderNormalStrength;
-
-					// Contact and border smoothing. The same separable Gaussian the mask smoothing
-					// uses, run over the accumulated height the two fields are built from.
-					//
-					// It has to happen here rather than inside the composite, because a blur wants
-					// the field already in a texture: evaluating the field per tap would cost four
-					// texture reads each, and a kernel wide enough to matter would be dozens of
-					// taps per pixel. Two separable passes over one texture is the same result for
-					// a fraction of the work.
-					//
-					// Blurring the *source* rather than widening the derivative is the whole
-					// point. A central difference taken further apart reaches further into the
-					// noise instead of averaging it, which is why widening the measurement made
-					// the stipple coarser rather than removing it.
-					const bool bBorderActive =
-						Layer.bHeightBlendEnabled
-						&& !Layer.bNormalOnly
-						&& ((Layer.HeightContactAOAmount > 0.0f)
-							|| (FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f
-								&& Layer.HeightBorderNormalStrength > 0.0f));
-					const bool bSmoothBorderField =
-						bBorderActive && Layer.HeightBorderSmoothing > 1.0f;
-					FRDGTextureRef BorderBaseHeight = HeightTargets[ReadIndex];
-					if (bSmoothBorderField)
-					{
-						FRDGTextureRef BorderBlur[2] = {
-							GraphBuilder.CreateTexture(
-								HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurX")),
-							GraphBuilder.CreateTexture(
-								HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurY"))};
-						const FIntVector BorderGroups(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1);
-						for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
-						{
-							FMixtormatMaskBlurCS::FParameters* BorderBlurParameters =
-								GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
-							BorderBlurParameters->OutputSize = Request.Resolution;
-							BorderBlurParameters->Axis = BlurAxis;
-							BorderBlurParameters->Radius = Layer.HeightBorderSmoothing;
-							BorderBlurParameters->SourceMask = BlurAxis == 0
-								? HeightTargets[ReadIndex]
-								: BorderBlur[0];
-							BorderBlurParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							BorderBlurParameters->OutputMask =
-								GraphBuilder.CreateUAV(BorderBlur[BlurAxis]);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.BorderHeightBlur.Layer%d.Axis%d",
-									LayerIndex,
-									BlurAxis),
-								MaskBlurShader,
-								BorderBlurParameters,
-								BorderGroups);
-						}
-						BorderBaseHeight = BorderBlur[1];
-					}
-					Parameters->BorderBaseHeight = BorderBaseHeight;
-					Parameters->BorderSmoothValid = bSmoothBorderField ? 1u : 0u;
-					Parameters->FeatureInfluence = Layer.FeatureInfluence;
-					Parameters->FeatureBias = Layer.FeatureBias;
-					Parameters->HeightFeatureInfluence = Layer.HeightFeatureInfluence;
-					Parameters->AOFeatureInfluence = Layer.AOFeatureInfluence;
-					Parameters->CurvatureRadius = Layer.CurvatureRadius;
-					Parameters->CurvatureStrength = Layer.CurvatureStrength;
-					Parameters->CurvaturePower = Layer.CurvaturePower;
-					Parameters->CurvatureSmoothing = Layer.CurvatureSmoothing;
-					Parameters->FillColor = Layer.FillColor;
-					Parameters->PreviousBC = OutputBC[ReadIndex];
-					Parameters->PreviousN = OutputN[ReadIndex];
-					Parameters->PreviousRAM = OutputRAM[ReadIndex];
-					Parameters->PreviousHeight = HeightTargets[ReadIndex];
-					Parameters->ReferenceHeight = HeightTargets[ReadIndex];
-					if (FRDGTextureRef* Snapshot = HeightSnapshots.Find(Layer.HeightReferenceLayerIndex))
-					{
-						Parameters->ReferenceHeight = *Snapshot;
-					}
-					Parameters->LayerBC = RegisterTexture(
-						GraphBuilder,
-						RegisteredTextures,
-						Layer.BaseColor,
-						TEXT("Mixtormat.LayerBC"));
-					Parameters->LayerN = RegisterTexture(
-						GraphBuilder,
-						RegisteredTextures,
-						Layer.Normal,
-						TEXT("Mixtormat.LayerN"));
-					Parameters->LayerRAM = RegisterTexture(
-						GraphBuilder,
-						RegisteredTextures,
-						Layer.RAM,
-						TEXT("Mixtormat.LayerRAM"));
-					Parameters->LayerMask = CombinedMask;
-
-					// Rounding for the height field. A placement mask is a step, so the layer's
-					// height falls from full to nothing across one texel and the layer reads as a
-					// decal sitting on the surface. Blurring the mask and taking the height from
-					// the blurred copy replaces that step with a ramp, and at a wide enough radius
-					// the interior domes rather than merely softening at the rim.
-					//
-					// Its own pair of scratch targets, not the mask ping-pong halves: those are
-					// the chain the next layer's mask children read and write, and blurring into
-					// them would hand a later layer a mask nobody asked to smooth.
-					FRDGTextureRef LayerHeightMask = CombinedMask;
-					const bool bSmoothHeightMask =
-						Layer.HeightSmoothRadius > 0.0f
-						&& Layer.HeightSmoothAmount > 0.0f
-						&& Layer.bHasMask
-						&& !Layer.bNormalOnly;
-					if (bSmoothHeightMask)
-					{
-						FRDGTextureRef BlurTargets[2] = {
-							GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurX")),
-							GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurY"))};
-						const FIntVector BlurGroups(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1);
-						for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
-						{
-							FMixtormatMaskBlurCS::FParameters* BlurParameters =
-								GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
-							BlurParameters->OutputSize = Request.Resolution;
-							BlurParameters->Axis = BlurAxis;
-							BlurParameters->Radius = Layer.HeightSmoothRadius;
-							BlurParameters->SourceMask =
-								BlurAxis == 0 ? CombinedMask : BlurTargets[0];
-							BlurParameters->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							BlurParameters->OutputMask =
-								GraphBuilder.CreateUAV(BlurTargets[BlurAxis]);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.HeightMaskBlur.Layer%d.Axis%d", LayerIndex, BlurAxis),
-								MaskBlurShader,
-								BlurParameters,
-								BlurGroups);
-						}
-						LayerHeightMask = BlurTargets[1];
-					}
-					Parameters->LayerHeightMask = LayerHeightMask;
-					Parameters->HeightSmoothAmount =
-						bSmoothHeightMask ? Layer.HeightSmoothAmount : 0.0f;
-					Parameters->EffectData = CombinedEffectData;
-					Parameters->EffectHeight = CombinedEffectHeight;
-					Parameters->DebugMask = DebugMask;
-
-					// Per-region colour variation. Applied here rather than in a pass of its own
-					// because line-for-line this is the layer's colour-rewrite site already --
-					// the same place HueShift/Saturation/Value are applied, and the ID map is
-					// already in this pass's pixel space, so there is no second transform to get
-					// wrong.
-					//
-					// One HSV filter per layer takes effect: the last enabled one that has a
-					// cluster above it. Two of them do not compose into a single colour, they
-					// each claim the whole albedo, so the later row wins rather than the two
-					// silently averaging.
-					const FHsvIdFilterRenderData* ActiveHsv = nullptr;
-					FRDGTextureRef HsvRegionIds = nullptr;
-					for (const FChildRenderData& Child : Layer.Children)
-					{
-						if (Child.Type != EMixtormatLayerChildType::HsvFilter)
-						{
-							continue;
-						}
-						if (FRDGTextureRef Ids = FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex))
-						{
-							ActiveHsv = &Child.HsvFilter;
-							HsvRegionIds = Ids;
-						}
-					}
-					Parameters->RegionTintEnabled = ActiveHsv != nullptr ? 1u : 0u;
-
-					// CombinedMask is only a mask-chain texture once a mask child has written
-					// one. Before that it is still the registered white UTexture2D the chain
-					// started from -- BGRA8, at that asset's own size, not R16F at the composite
-					// resolution. LayerMask gets away with binding it because the shader gates on
-					// HasMask; a Driver signal is sampled unconditionally and a snapshot is
-					// copied, so both have to check rather than assume.
-					const bool bMaskIsSignalShaped =
-						CombinedMask->Desc.Format == MaskDesc.Format
-						&& CombinedMask->Desc.Extent == MaskDesc.Extent;
-
-					// CombinedMask is final by here -- every mask-chain reassignment for
-					// this layer has happened -- so this is the only place a snapshot can be
-					// taken without capturing a half-built chain.
-					if (bMaskIsSignalShaped
-						&& DriverSnapshotDemand.Contains(Layer.LayerId)
-						&& !DriverSnapshots.Contains(Layer.LayerId))
-					{
-						// Desc taken from the source, so the copy can never be handed two
-						// incompatible descriptors.
-						FRDGTextureDesc SnapshotDesc = CombinedMask->Desc;
-						SnapshotDesc.Flags |= TexCreate_ShaderResource;
-						FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
-							SnapshotDesc,
-							TEXT("Mixtormat.DriverSignalSnapshot"));
-						AddCopyTexturePass(GraphBuilder, CombinedMask, Snapshot);
-						DriverSnapshots.Add(Layer.LayerId, Snapshot);
-					}
-
-					// A source in this same layer reads the live mask and needs no copy at all.
-					// One earlier in the stack reads its snapshot. One that has not composited
-					// yet has none, so the Driver is switched off and the scalar keeps its value
-					// -- the same rule an instance follows, and the reason nothing here needs a
-					// dependency graph.
-					FRDGTextureRef DriverSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
-						{ EmptyDriverSignal, EmptyDriverSignal };
-					FRDGTextureRef DriverRegionSignals[FMixtormatCompositeCS::MaxScalarDrivers] =
-						{ EmptyRegionIds, EmptyRegionIds };
-					for (int32 SlotIndex = 0; SlotIndex < FMixtormatCompositeCS::MaxScalarDrivers; ++SlotIndex)
-					{
-						const FScalarDriverRenderData& Driver = Layer.ScalarDrivers[SlotIndex];
-						FRDGTextureRef Signal = nullptr;
-						FRDGTextureRef RegionSignal = nullptr;
-						if (Driver.bEnabled && Driver.bRegionSource)
-						{
-							// The ID maps this layer produced, in this layer's own pixel space.
-							// A named producer takes that producer's map; an unnamed one takes the
-							// nearest above the composite, which is the same "nearest ID producer"
-							// rule every other consumer follows. A region source in another layer
-							// has no map here and stays unresolved rather than guessing.
-							if (Driver.SourceLayerId == Layer.LayerId)
-							{
-								if (Driver.SourceChildIndex != INDEX_NONE)
-								{
-									for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
-									{
-										if (Entry.Key == Driver.SourceChildIndex)
-										{
-											RegionSignal = Entry.Value;
-										}
-									}
-								}
-								else
-								{
-									RegionSignal = FindRegionIdsAbove(RegionIdMaps, MAX_int32);
-								}
-							}
-						}
-						else if (Driver.bEnabled)
-						{
-							if (Driver.SourceLayerId == Layer.LayerId)
-							{
-								Signal = bMaskIsSignalShaped ? CombinedMask : nullptr;
-							}
-							else if (FRDGTextureRef* Found = DriverSnapshots.Find(Driver.SourceLayerId))
-							{
-								Signal = *Found;
-							}
-						}
-						const bool bResolved = Driver.bRegionSource
-							? RegionSignal != nullptr
-							: Signal != nullptr;
-						DriverSignals[SlotIndex] = Signal ? Signal : EmptyDriverSignal;
-						DriverRegionSignals[SlotIndex] = RegionSignal ? RegionSignal : EmptyRegionIds;
-						Parameters->DriverParamsC[SlotIndex] = FVector4f(
-							bResolved && Driver.bRegionSource ? 1.0f : 0.0f,
-							static_cast<float>(Driver.Seed),
-							Driver.IdRandomMin,
-							Driver.IdRandomMax);
-						Parameters->DriverParamsA[SlotIndex] = FVector4f(
-							bResolved ? 1.0f : 0.0f,
-							Driver.bInvert ? 1.0f : 0.0f,
-							Driver.InputMin,
-							Driver.InputMax);
-						Parameters->DriverParamsB[SlotIndex] = FVector4f(
-							Driver.OutputMin,
-							Driver.OutputMax,
-							Driver.Amount,
-							static_cast<float>(Driver.Combine));
-					}
-					Parameters->DriverSignal0 = DriverSignals[0];
-					Parameters->DriverSignal1 = DriverSignals[1];
-					Parameters->DriverRegionIds0 = DriverRegionSignals[0];
-					Parameters->DriverRegionIds1 = DriverRegionSignals[1];
-					Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
-					Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
-					Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
-					for (int32 ColorIndex = 0; ColorIndex < FMixtormatCompositeCS::MaxRegionPalette; ++ColorIndex)
-					{
-						// The unused tail is filled rather than left alone, for the same reason
-						// FMixtormatColorIdCS fills its own: a shader parameter array is not
-						// zero initialised, and an uninitialised constant is the kind of thing
-						// that only misbehaves on one driver.
-						Parameters->RegionPalette[ColorIndex] =
-							ActiveHsv && ActiveHsv->Palette.IsValidIndex(ColorIndex)
-								? ActiveHsv->Palette[ColorIndex]
-								: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
-					}
-					Parameters->RegionMixMin = ActiveHsv ? ActiveHsv->MixMin : 0.0f;
-					Parameters->RegionMixMax = ActiveHsv ? ActiveHsv->MixMax : 0.0f;
-					Parameters->RegionHueMin = ActiveHsv ? ActiveHsv->HueMin : 0.0f;
-					Parameters->RegionHueMax = ActiveHsv ? ActiveHsv->HueMax : 0.0f;
-					Parameters->RegionSatMin = ActiveHsv ? ActiveHsv->SatMin : 1.0f;
-					Parameters->RegionSatMax = ActiveHsv ? ActiveHsv->SatMax : 1.0f;
-					Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
-					Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
-
-					// The last Pattern row that needs source-space work wins. Herringbone and
-					// Basketweave always need their intrinsic basis; other modes only enter when
-					// random Pattern UV variation is enabled.
-					const FPatternIdPassOutput* ActivePatternUV = nullptr;
-					for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
-					{
-						if (PatternOutput.Settings
-							&& (PatternOutput.Settings->bUVVariation
-								|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
-						{
-							ActivePatternUV = &PatternOutput;
-						}
-					}
-					const FPatternIdRenderData* PatternUVSettings =
-						ActivePatternUV ? ActivePatternUV->Settings : nullptr;
-					Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
-					Parameters->PatternUVSeed = PatternUVSettings ? PatternUVSettings->Seed : 0u;
-					Parameters->PatternUVOrthogonal =
-						PatternUVSettings && PatternUVSettings->bOrthogonalUV ? 1u : 0u;
-					Parameters->PatternUVRotationMin =
-						PatternUVSettings ? PatternUVSettings->UVRotationMin : 0.0f;
-					Parameters->PatternUVRotationMax =
-						PatternUVSettings ? PatternUVSettings->UVRotationMax : 0.0f;
-					Parameters->PatternUVScaleMin =
-						PatternUVSettings ? PatternUVSettings->UVScaleMin : 1.0f;
-					Parameters->PatternUVScaleMax =
-						PatternUVSettings ? PatternUVSettings->UVScaleMax : 1.0f;
-					Parameters->PatternUVOffset =
-						PatternUVSettings ? PatternUVSettings->UVOffset : 0.0f;
-					Parameters->PatternUVFlipU =
-						PatternUVSettings && PatternUVSettings->bRandomFlipU ? 1u : 0u;
-					Parameters->PatternUVFlipV =
-						PatternUVSettings && PatternUVSettings->bRandomFlipV ? 1u : 0u;
-					Parameters->PatternUVVariationEnabled =
-						PatternUVSettings && PatternUVSettings->bUVVariation ? 1u : 0u;
-					Parameters->PatternIntrinsicOrientationEnabled =
-						PatternUVSettings && HasIntrinsicPatternOrientation(*PatternUVSettings) ? 1u : 0u;
-					Parameters->PatternRegionIds =
-						ActivePatternUV ? ActivePatternUV->Ids : EmptyRegionIds;
-					Parameters->PatternUVField =
-						ActivePatternUV ? ActivePatternUV->UV : EmptyPatternUV;
-					Parameters->PatternOrientationField =
-						ActivePatternUV ? ActivePatternUV->Orientation : EmptyPatternOrientation;
-
-					Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-					Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
-					Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);
-					Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
-					Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
-					Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]);
-
-					FComputeShaderUtils::AddPass(
-						GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.Composite.Layer%d", LayerIndex),
-						Shader,
-						Parameters,
-						FIntVector(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1));
-
-					// Flow Warp runs first so erosion and chipping analyze the displaced surface,
-					// not the coordinates it occupied before the warp. Stacked warps compose in
-					// row order, each reading the channels written by the previous one.
-					for (int32 FlowIndex = 0; FlowIndex < PendingFlowWarps.Num(); ++FlowIndex)
-					{
-						const FPendingEffect& PendingFlow = PendingFlowWarps[FlowIndex];
-						const FEffectRenderData& Flow = *PendingFlow.Effect;
-						if (FMath::IsNearlyZero(Flow.FlowWarpAmount)
-							|| FMath::IsNearlyZero(Flow.FlowWarpWeight))
-						{
-							continue;
-						}
-
-						FRDGTextureRef WarpedBC = GraphBuilder.CreateTexture(
-							OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpBC"));
-						FRDGTextureRef WarpedN = GraphBuilder.CreateTexture(
-							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpN"));
-						FRDGTextureRef WarpedRAM = GraphBuilder.CreateTexture(
-							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpRAM"));
-						FRDGTextureRef WarpedHeight = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.FlowWarpHeight"));
-
-						FMixtormatFlowWarpCS::FParameters* FP =
-							GraphBuilder.AllocParameters<FMixtormatFlowWarpCS::FParameters>();
-						FP->OutputSize = Request.Resolution;
-						FP->HasMask = (Layer.bHasMask || PendingFlow.bHasScopedMask) ? 1u : 0u;
-						FP->Amount = Flow.FlowWarpAmount;
-						FP->EffectWeight = Flow.FlowWarpWeight;
-						FP->Scale = Flow.FlowWarpScale;
-						FP->Direction = Flow.FlowWarpDirection;
-						FP->Seed = Flow.FlowWarpSeed;
-						FP->MaskSlopeInfluence = Flow.FlowWarpMaskSlopeInfluence;
-						FP->HeightSlopeInfluence = Flow.FlowWarpHeightSlopeInfluence;
-						FP->DerivativeKernel = Flow.FlowWarpDerivativeKernel;
-						FP->BlendMode = Flow.FlowWarpBlendMode;
-						FP->SourceBC = OutputBC[WriteIndex];
-						FP->SourceN = OutputN[WriteIndex];
-						FP->SourceRAM = OutputRAM[WriteIndex];
-						FP->SourceHeight = HeightTargets[WriteIndex];
-						FP->LayerMask = PendingFlow.FeatureMask;
-						FP->LinearWrapSampler =
-							TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-						FP->OutputBC = GraphBuilder.CreateUAV(WarpedBC);
-						FP->OutputN = GraphBuilder.CreateUAV(WarpedN);
-						FP->OutputRAM = GraphBuilder.CreateUAV(WarpedRAM);
-						FP->OutputHeight = GraphBuilder.CreateUAV(WarpedHeight);
-
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.FlowWarp.Layer%d.%d", LayerIndex, FlowIndex),
-							FlowWarpShader,
-							FP,
-							FIntVector(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1));
-
-						AddCopyTexturePass(GraphBuilder, WarpedBC, OutputBC[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, WarpedN, OutputN[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, WarpedRAM, OutputRAM[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, WarpedHeight, HeightTargets[WriteIndex]);
-					}
-
-					// Amount 0 is an exact identity in the erosion shader: Placement falls to
-					// zero, the height comes back as it went in and the normal is copied
-					// through. It was still costing the full filter -- six passes at twice the
-					// composition resolution, so four times the pixels, plus the resample pair
-					// -- which is the single most expensive thing a material could carry while
-					// doing nothing at all. An erosion node parked at 0, or a mask that has
-					// faded it out, now costs one clear.
-					//
-					// The clear is not an optimisation detail, it is what makes the skip exact:
-					// at Amount 0 the filter writes a ridge of zero, so a layer that skipped it
-					// and copied the previous ridge forward instead would hand the next layer a
-					// different signal from the one it gets today.
-					const bool bErosionActive =
-						PendingErosion.Effect != nullptr && PendingErosion.Effect->ErosionAmount > 0.0f;
-
-					// Every layer hands the next one a ridge, whether or not it erodes. A layer
-					// that left the slot alone would pass on the ridge from two layers back,
-					// which reads as the mask signal being correct on some layers and stale on
-					// others. Eroding layers overwrite this below.
-					if (!PendingErosion.Effect)
-					{
-						AddCopyTexturePass(
-							GraphBuilder,
-							RidgeTargets[1 - WriteIndex],
-							RidgeTargets[WriteIndex]);
-					}
-					else if (!bErosionActive)
-					{
-						AddClearUAVPass(
-							GraphBuilder,
-							GraphBuilder.CreateUAV(RidgeTargets[WriteIndex]),
-							FVector4f(0.0f));
-					}
-
-					// Erosion filters the layer output: it reads the height and normal this
-					// layer just composited, carves the height, derives the normal change from
-					// what it removed, and writes both back.
-					if (bErosionActive)
-					{
-						const FEffectRenderData& Ero = *PendingErosion.Effect;
-						const bool bUseLegacyPlacementMask =
-							!PendingErosion.bHasScopedMask && Ero.ErosionPlacementMask.IsValid();
-						FRDGTextureRef ErosionPlacementMask = bUseLegacyPlacementMask
-							? RegisterTexture(
-								GraphBuilder,
-								RegisteredTextures,
-								Ero.ErosionPlacementMask,
-								TEXT("Mixtormat.ErosionPlacementMask"))
-							: PeelFieldDummy;
-
-						// Erosion runs at twice the composition resolution, capped at 4096,
-						// then resamples back. Carving is high-frequency work: at composition
-						// resolution the octave loop hits the two-pixels-per-cell floor with
-						// passes still to run, so the finest gullies have nowhere to cut.
-						// Above 4096 the cost stops buying visible detail.
-						const FIntPoint EroRes(
-							FMath::Min(Request.Resolution.X * 2, 4096),
-							FMath::Min(Request.Resolution.Y * 2, 4096));
-						const bool bResample = EroRes != Request.Resolution;
-
-						// The height chain is R32F, not R16F like the rest of the compositor.
-						// Every quantity this filter derives is a difference of two nearly
-						// equal heights, and half floats do not survive that.
-						//
-						// A half around mid height has a ULP of 2^-11, about 4.9e-4. The slope
-						// Sobel sums six taps and scales by Res/(8R) -- 128 at 2K with radius 2
-						// -- so quantisation alone puts roughly 0.25 of noise on a slope the
-						// repose gate thresholds at 0.30 with a 0.25 transition. The gate is
-						// then close to a coin flip per pixel and it multiplies the carve, so
-						// the height comes out dithered before the normal pass amplifies
-						// anything. Slope Blur cannot help: the blur averages correctly and the
-						// R16F write throws the result straight back to one ULP.
-						//
-						// The normal pass is the second victim: it differences the carve depth
-						// between neighbours, and those differences are far smaller than the
-						// carve itself, so they land on nought, one or two ULP -- a handful of
-						// distinct slopes over the whole carve. The Hessian is the third, since
-						// a second difference divided by StepUV squared multiplies its error by
-						// about a million.
-						//
-						// EroGuide has to be R32F for the same reason as the rest: it is what
-						// the slope and curvature stencils actually read.
-						const FRDGTextureDesc EroDesc = FRDGTextureDesc::Create2D(
-							EroRes,
-							PF_R32_FLOAT,
-							FClearValueBinding::White,
-							TexCreate_ShaderResource | TexCreate_UAV);
-
-						// The ridge map is a 0..1 signal that is never differenced, so it keeps
-						// the cheaper format.
-						const FRDGTextureDesc EroRidgeDesc = FRDGTextureDesc::Create2D(
-							EroRes,
-							PF_R16F,
-							FClearValueBinding::White,
-							TexCreate_ShaderResource | TexCreate_UAV);
-						FRDGTextureDesc EroNormalDesc = OutputN[WriteIndex]->Desc;
-						EroNormalDesc.Extent = EroRes;
-
-						FRDGTextureRef SourceH = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionSrc"));
-						FRDGTextureRef EroH[2] = {
-							GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionA")),
-							GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionB"))};
-						FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroRidgeDesc, TEXT("Mixtormat.ErosionRidge"));
-						FRDGTextureRef EroGuide = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionGuide"));
-
-						// The horizontal half of the separable slope blur. Allocated here with
-						// the rest rather than per pass: it is another full erosion-resolution
-						// R32F transient, 64MB at the 4096 cap.
-						FRDGTextureRef EroGuideX = GraphBuilder.CreateTexture(
-							EroDesc, TEXT("Mixtormat.ErosionGuideX"));
-						FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionN"));
-						// The layer normal every carving pass reads, lifted to erosion resolution.
-						FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
-
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroRidge), FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
-
-						// Stands in at both ends of the ridge plumbing: the UAV slot on the
-						// upsample, which must not be aimed at a composition-res target from an
-						// erosion-res dispatch, and the SRV slot on every carving and blur pass,
-						// which cannot read EroRidge because those passes write it.
-						//
-						// Cleared rather than left alone: RDG rejects a read of a transient
-						// texture nothing has written, and it is now read as well as bound.
-						FRDGTextureRef ResampleRidgeDummy = GraphBuilder.CreateTexture(
-							FRDGTextureDesc::Create2D(
-								FIntPoint(1, 1),
-								PF_R16F,
-								FClearValueBinding::White,
-								TexCreate_ShaderResource | TexCreate_UAV),
-							TEXT("Mixtormat.ErosionRidgeDummy"));
-						AddClearUAVPass(
-							GraphBuilder, GraphBuilder.CreateUAV(ResampleRidgeDummy), FVector4f(0.0f));
-
-						// One dispatch moves height and normal together, in either direction.
-						auto AddErosionResample = [&](
-							FRDGTextureRef InH,
-							FRDGTextureRef InN,
-							FRDGTextureRef OutH,
-							FRDGTextureRef OutN,
-							FRDGTextureRef InRidge,
-							FRDGTextureRef OutRidgeTarget,
-							const FIntPoint DestRes,
-							const TCHAR* DebugName)
-						{
-							// A ridge target only on the way down. On the way up the dispatch
-							// runs at erosion resolution and the ridge slot holds the 1x1
-							// dummy, so the shader's write is gated off rather than aimed at
-							// a target it would overrun.
-							const bool bCarryRidge = OutRidgeTarget != nullptr;
-
-							FMixtormatErosionCS::FParameters* RP =
-								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-							RP->OutputSize = DestRes;
-							RP->NormalPass = 0;
-							RP->BlurPass = 0;
-							RP->BlurAxis = 0;
-							RP->ResamplePass = 1;
-							RP->ResampleRidge = bCarryRidge ? 1 : 0;
-							RP->PreviousRidge = InRidge;
-							RP->PreviousHeight = InH;
-							RP->SourceHeight = InH;
-							RP->GuideHeight = InH;
-							RP->LayerMask = PendingErosion.FeatureMask;
-							RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
-							RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
-							RP->PlacementMaskTexture = ErosionPlacementMask;
-							RP->PreviousNormal = InN;
-							RP->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
-							RP->OutputRidge = GraphBuilder.CreateUAV(
-								bCarryRidge ? OutRidgeTarget : ResampleRidgeDummy);
-							RP->OutputNormal = GraphBuilder.CreateUAV(OutN);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.%s", LayerIndex, DebugName),
-								ErosionShader,
-								RP,
-								FIntVector(
-									FMath::DivideAndRoundUp(DestRes.X, 8),
-									FMath::DivideAndRoundUp(DestRes.Y, 8),
-									1));
-						};
-
-						if (bResample)
-						{
-							AddErosionResample(
-								HeightTargets[WriteIndex], OutputN[WriteIndex],
-								SourceH, EroSrcN,
-								EroRidge, nullptr,
-								EroRes, TEXT("Up"));
-						}
-						else
-						{
-							AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], SourceH);
-							AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
-						}
-
-						// All octaves are evaluated together, so steering is analytical and no pass
-						// can feed a masked boundary or quantized intermediate back into the next band.
-						auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
-						{
-							Parameters->OutputSize = EroRes;
-							Parameters->NormalPass = 0;
-							Parameters->BlurPass = 0;
-							Parameters->BlurAxis = 0;
-							Parameters->ResamplePass = 0;
-							Parameters->ResampleRidge = 0;
-							Parameters->BlurRadius = Ero.ErosionSlopeBlur;
-							Parameters->NormalStrength = Ero.ErosionNormalStrength;
-							Parameters->Amount = Ero.ErosionAmount;
-							Parameters->Strength = Ero.ErosionStrength;
-							Parameters->Octaves = Ero.ErosionOctaves;
-							Parameters->Period = Ero.ErosionPeriod;
-							Parameters->Gain = Ero.ErosionGain;
-							Parameters->Detail = Ero.ErosionDetail;
-							Parameters->GullyWeight = Ero.ErosionGullyWeight;
-							Parameters->Normalization = Ero.ErosionNormalization;
-							Parameters->RidgeRounding = Ero.ErosionRidgeRounding;
-							Parameters->CreaseRounding = Ero.ErosionCreaseRounding;
-							Parameters->SlopeOnset = Ero.ErosionSlopeOnset;
-							Parameters->FeatureOnset = Ero.ErosionFeatureOnset;
-							Parameters->AssumedSlope = Ero.ErosionAssumedSlope;
-							Parameters->AssumedSlopeAmount = Ero.ErosionAssumedSlopeAmount;
-							Parameters->SlopeRadius = Ero.ErosionSlopeRadius;
-							Parameters->CurvatureMode = Ero.ErosionCurvatureMode;
-							Parameters->CavityInfluence = Ero.ErosionCavityInfluence;
-							Parameters->CavityOffset = Ero.ErosionCavityOffset;
-							Parameters->CavityRemapMin = Ero.ErosionCavityRemapMin;
-							Parameters->CavityRemapMax = Ero.ErosionCavityRemapMax;
-							Parameters->HeightInfluence = Ero.ErosionHeightInfluence;
-							Parameters->HeightScale = Ero.ErosionHeightScale;
-							Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
-							Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
-							Parameters->InvertMask =
-								!PendingErosion.bHasScopedMask && Ero.bErosionInvertMask ? 1u : 0u;
-							Parameters->Seed = 1u;
-							Parameters->SourceHeight = SourceH;
-							Parameters->PreviousNormal = EroSrcN;
-							Parameters->LayerMask = PendingErosion.FeatureMask;
-							Parameters->PlacementMaskTexture = ErosionPlacementMask;
-							Parameters->PreviousRidge = ResampleRidgeDummy;
-							Parameters->LinearWrapSampler =
-								TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-							Parameters->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
-							Parameters->OutputNormal = GraphBuilder.CreateUAV(EroN);
-						};
-
-						const FIntVector ErosionGroups(
-							FMath::DivideAndRoundUp(EroRes.X, 8),
-							FMath::DivideAndRoundUp(EroRes.Y, 8),
-							1);
-
-						FRDGTextureRef Guidance = SourceH;
-						if (Ero.ErosionSlopeBlur > 0.0f)
-						{
-							FMixtormatErosionCS::FParameters* BlurX =
-								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-							SetErosionParameters(BlurX);
-							BlurX->BlurPass = 1;
-							BlurX->BlurAxis = 0;
-							BlurX->PreviousHeight = SourceH;
-							BlurX->GuideHeight = SourceH;
-							BlurX->OutputHeight = GraphBuilder.CreateUAV(EroGuideX);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurX", LayerIndex),
-								ErosionShader,
-								BlurX,
-								ErosionGroups);
-
-							FMixtormatErosionCS::FParameters* BlurY =
-								GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-							*BlurY = *BlurX;
-							BlurY->BlurAxis = 1;
-							BlurY->PreviousHeight = EroGuideX;
-							BlurY->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurY", LayerIndex),
-								ErosionShader,
-								BlurY,
-								ErosionGroups);
-							Guidance = EroGuide;
-						}
-
-						FMixtormatErosionCS::FParameters* ErosionParameters =
-							GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-						SetErosionParameters(ErosionParameters);
-						ErosionParameters->PreviousHeight = SourceH;
-						ErosionParameters->GuideHeight = Guidance;
-						ErosionParameters->OutputHeight = GraphBuilder.CreateUAV(EroH[0]);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Filter", LayerIndex),
-							ErosionShader,
-							ErosionParameters,
-							ErosionGroups);
-
-						FRDGTextureRef Result = EroH[0];
-						FRDGTextureRef EroRAM = GraphBuilder.CreateTexture(
-							FRDGTextureDesc::Create2D(
-								EroRes, PF_FloatRGBA, FClearValueBinding::White,
-								TexCreate_ShaderResource | TexCreate_UAV),
-							TEXT("Mixtormat.Erosion.HeightDerivedRAM"));
-						AddHeightDerivedNormal(
-							SourceH,
-							Result,
-							EroSrcN,
-							OutputRAM[WriteIndex],
-							EroN,
-							EroRAM,
-							EroRes,
-							Ero.ErosionNormalStrength,
-							0.0f,
-							TEXT("Erosion"));
-
-						if (bResample)
-						{
-							AddErosionResample(
-								Result, EroN,
-								HeightTargets[WriteIndex], OutputN[WriteIndex],
-								EroRidge, RidgeTargets[WriteIndex],
-								Request.Resolution, TEXT("Down"));
-						}
-						else
-						{
-							AddCopyTexturePass(GraphBuilder, Result, HeightTargets[WriteIndex]);
-							AddCopyTexturePass(GraphBuilder, EroN, OutputN[WriteIndex]);
-							AddCopyTexturePass(GraphBuilder, EroRidge, RidgeTargets[WriteIndex]);
-						}
-
-						// Roughness is the only packed surface channel erosion changes. Skip the
-						// full-resolution pass when its mask weight is neutral.
-						if (Ero.ErosionRoughnessAmount != 0.0f)
-						{
-							// Through scratch and back rather than in place: RAM cannot be bound as
-							// both SRV and UAV on the same dispatch.
-							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ErosionShadeRAM"));
-
-							FMixtormatCarveShadeCS::FParameters* SP =
-								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
-							SP->OutputSize = Request.Resolution;
-							SP->RoughnessAmount = Ero.ErosionRoughnessAmount;
-							SP->CarveDepth = Ero.ErosionCarveDepth;
-
-							// Erosion recovers coverage from the height pair, so the coverage
-							// slot is unread here. Bind an existing valid scalar texture.
-							SP->UseCoverageTexture = 0;
-							SP->CoverageTexture = SourceH;
-
-							SP->SourceHeight = SourceH;
-							SP->CarvedHeight = Result;
-							SP->SourceRAM = OutputRAM[WriteIndex];
-							SP->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Roughness", LayerIndex),
-								CarveShadeShader,
-								SP,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-
-							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
-						}
-					}
-
-					// The region tilt runs before craquelure relief, and the order is not
-					// arbitrary: a crack carved into a tile that has already settled is right,
-					// whereas tilting a tile after its crack was carved drags the groove's depth
-					// around with the slope.
-					for (int32 TiltIndex = 0; TiltIndex < PendingRampTilts.Num(); ++TiltIndex)
-					{
-						const FPendingRampTilt& Tilt = PendingRampTilts[TiltIndex];
-						const bool bNeedsRelief =
-							Tilt.HeightAmount > 0.0f
-							|| (Tilt.bUseEdge
-								&& (Tilt.CellHeightAmount > 0.0f
-									|| Tilt.BevelHeight != 0.0f
-									|| Tilt.GapHeight != 0.0f));
-						if (bNeedsRelief)
-						{
-							FRDGTextureRef TiltH = GraphBuilder.CreateTexture(
-								HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltH"));
-							FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
-								OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
-
-							FRDGTextureRef PatternHeightMax = EmptyRegionIds;
-							if (Tilt.bUseEdge && Tilt.CellHeightAmount > 0.0f && Tilt.RegionIds)
-							{
-								PatternHeightMax = GraphBuilder.CreateTexture(
-									FRDGTextureDesc::Create2D(
-										Request.Resolution,
-										PF_R32_UINT,
-										FClearValueBinding::None,
-										TexCreate_ShaderResource | TexCreate_UAV),
-									TEXT("Mixtormat.Pattern.HeightMax"));
-								AddClearUAVPass(
-									GraphBuilder,
-									GraphBuilder.CreateUAV(PatternHeightMax),
-									0u);
-
-								FMixtormatPatternHeightMaxCS::FParameters* MaxP =
-									GraphBuilder.AllocParameters<FMixtormatPatternHeightMaxCS::FParameters>();
-								MaxP->OutputSize = Request.Resolution;
-								MaxP->PatternRegionIds = Tilt.RegionIds;
-								MaxP->SourceHeight = HeightTargets[WriteIndex];
-								MaxP->OutputPatternHeightMax = GraphBuilder.CreateUAV(PatternHeightMax);
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.PatternHeightMax.L%d.%d", LayerIndex, TiltIndex),
-									PatternHeightMaxShader,
-									MaxP,
-									FIntVector(
-										FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-										FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-										1));
-							}
-
-							FMixtormatRampIdReliefCS::FParameters* TiltP =
-								GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
-							TiltP->OutputSize = Request.Resolution;
-							TiltP->HeightAmount = Tilt.HeightAmount;
-							TiltP->NormalStrength = Tilt.NormalStrength;
-							TiltP->BlendMode = Tilt.BlendMode;
-							TiltP->UseEdge = Tilt.bUseEdge ? 1u : 0u;
-							TiltP->CellHeightAmount = Tilt.CellHeightAmount;
-							TiltP->CellHeightRandom = Tilt.CellHeightRandom;
-							TiltP->BevelHeight = Tilt.BevelHeight;
-							TiltP->BevelWidthPixels = Tilt.BevelWidthPixels;
-							TiltP->BevelWidthCells = Tilt.BevelWidthCells;
-							TiltP->BevelRelative = Tilt.bBevelRelative ? 1u : 0u;
-							TiltP->BevelVariation = Tilt.BevelVariation;
-							TiltP->BevelRoundness = Tilt.BevelRoundness;
-							TiltP->BevelRoundnessRandom = Tilt.BevelRoundnessRandom;
-							TiltP->BevelInsetPixels = Tilt.BevelInsetPixels;
-							TiltP->GapHeight = Tilt.GapHeight;
-							TiltP->RampField = Tilt.Field;
-							TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
-							TiltP->SourceHeight = HeightTargets[WriteIndex];
-							TiltP->PreviousNormal = OutputN[WriteIndex];
-							TiltP->PatternRegionIds = Tilt.RegionIds ? Tilt.RegionIds : EmptyRegionIds;
-							TiltP->PatternHeightMax = PatternHeightMax;
-							TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
-							TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.RegionRelief.L%d.%d", LayerIndex, TiltIndex),
-								RampIdReliefShader,
-								TiltP,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-
-							FRDGTextureRef TiltRAM = GraphBuilder.CreateTexture(
-								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.RegionRelief.HeightDerivedRAM"));
-							AddHeightDerivedNormal(
-								HeightTargets[WriteIndex],
-								TiltH,
-								OutputN[WriteIndex],
-								OutputRAM[WriteIndex],
-								TiltN,
-								TiltRAM,
-								Request.Resolution,
-								Tilt.NormalStrength,
-								Tilt.AOAmount,
-								TEXT("RegionRelief"));
-							AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
-							AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);
-						}
-
-						if (Tilt.bUseEdge
-							&& (Tilt.EdgeRoughnessAmount > 0.0f || Tilt.AOAmount > 0.0f))
-						{
-							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.PatternEdgeRAM"));
-							FMixtormatEdgeShadeCS::FParameters* EdgeP =
-								GraphBuilder.AllocParameters<FMixtormatEdgeShadeCS::FParameters>();
-							EdgeP->OutputSize = Request.Resolution;
-							EdgeP->BevelWidthPixels = Tilt.BevelWidthPixels;
-							EdgeP->BevelVariation = Tilt.BevelVariation;
-							EdgeP->AOSpread = Tilt.AOSpread;
-							EdgeP->EdgeRoughness = Tilt.EdgeRoughness;
-							EdgeP->EdgeRoughnessAmount = Tilt.EdgeRoughnessAmount;
-							EdgeP->AOAmount = Tilt.AOAmount;
-							EdgeP->EdgeField = Tilt.EdgeField;
-							EdgeP->SourceRAM = OutputRAM[WriteIndex];
-							EdgeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.PatternEdgeShade.L%d.%d", LayerIndex, TiltIndex),
-								EdgeShadeShader,
-								EdgeP,
-								FIntVector(
-									FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-									FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-									1));
-							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
-						}
-					}
-
-					// Craquelure relief runs after erosion but before chipping. Chipping selects
-					// from the current height and its cavity, so it must see cracks already carved
-					// into the layer rather than the flat height that preceded them.
-					for (int32 ReliefIndex = 0; ReliefIndex < PendingCraquelureReliefs.Num(); ++ReliefIndex)
-					{
-						const FPendingCraquelureRelief& Relief = PendingCraquelureReliefs[ReliefIndex];
-						FRDGTextureRef ReliefH = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.CraqReliefH"));
-						FRDGTextureRef ReliefN = GraphBuilder.CreateTexture(
-							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.CraqReliefN"));
-
-						FMixtormatCraquelureReliefCS::FParameters* RelP =
-							GraphBuilder.AllocParameters<FMixtormatCraquelureReliefCS::FParameters>();
-						RelP->OutputSize = Request.Resolution;
-						RelP->HeightWeight = Relief.HeightWeight;
-						RelP->NormalWeight = 0.0f;
-						RelP->ReliefWidthPixels = Relief.WidthPixels;
-						RelP->Variation = Relief.Variation;
-						RelP->Profile = Relief.Profile;
-						RelP->GrooveVariation = Relief.GrooveVariation;
-						RelP->ProfileVariation = Relief.ProfileVariation;
-						RelP->WidthVariation = Relief.WidthVariation;
-						RelP->Warp = Relief.Warp;
-						RelP->WarpPeriod = Relief.WarpPeriod;
-						RelP->WarpSeed = Relief.WarpSeed;
-						RelP->CrackDistance = Relief.Distance;
-						RelP->SourceHeight = HeightTargets[WriteIndex];
-						RelP->PreviousNormal = OutputN[WriteIndex];
-						RelP->OutputHeight = GraphBuilder.CreateUAV(ReliefH);
-						RelP->OutputNormal = GraphBuilder.CreateUAV(ReliefN);
-
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME(
-								"Mixtormat.Craquelure.Relief.L%d.%d", LayerIndex, ReliefIndex),
-							CraquelureReliefShader,
-							RelP,
-							FIntVector(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1));
-
-						FRDGTextureRef ReliefRAM = GraphBuilder.CreateTexture(
-							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Craquelure.HeightDerivedRAM"));
-						AddHeightDerivedNormal(
-							HeightTargets[WriteIndex],
-							ReliefH,
-							OutputN[WriteIndex],
-							OutputRAM[WriteIndex],
-							ReliefN,
-							ReliefRAM,
-							Request.Resolution,
-							Relief.NormalWeight,
-							0.35f,
-							TEXT("Craquelure"));
-						AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, ReliefN, OutputN[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, ReliefRAM, OutputRAM[WriteIndex]);
-					}
-
-
-					// Worn Edges runs after Pattern/Ramp and craquelure relief so its input is the
-					// actual structural + material height, and before Chipping so later damage sees
-					// the rounded surface. Multiple Worn Edges nodes chain in child order.
-					for (int32 WearIndex = 0; WearIndex < PendingWornEdges.Num(); ++WearIndex)
-					{
-						const FPendingWornEdges& PendingWear = PendingWornEdges[WearIndex];
-						const FEffectRenderData& Wear = *PendingWear.Effect;
-						if (Wear.EdgeWearStrength <= 0.0f)
-						{
-							continue;
-						}
-
-						const FIntVector WearGroups(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1);
-						const FRDGTextureDesc WearScalarDesc = FRDGTextureDesc::Create2D(
-							Request.Resolution,
-							PF_R16F,
-							FClearValueBinding::Black,
-							TexCreate_ShaderResource | TexCreate_UAV);
-
-						FRDGTextureRef WearSourceH = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.SourceH"));
-						FRDGTextureRef WornH = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Height"));
-						FRDGTextureRef WornN = GraphBuilder.CreateTexture(
-							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.Normal"));
-						FRDGTextureRef EdgeWearMask = GraphBuilder.CreateTexture(
-							WearScalarDesc, TEXT("Mixtormat.WornEdges.EdgeWearMask"));
-						AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], WearSourceH);
-
-						// One layout is shared by all four shader modes. Tiny distinct dummies keep
-						// every reflected slot valid without ever binding one resource as both SRV
-						// and UAV in the same pass.
-						const FRDGTextureDesc TinyScalarDesc = FRDGTextureDesc::Create2D(
-							FIntPoint(1, 1), PF_R16F, FClearValueBinding::Black,
-							TexCreate_ShaderResource | TexCreate_UAV);
-						const FRDGTextureDesc TinyNormalDesc = FRDGTextureDesc::Create2D(
-							FIntPoint(1, 1), PF_FloatRGBA, FClearValueBinding::Black,
-							TexCreate_ShaderResource | TexCreate_UAV);
-						FRDGTextureRef ReadDummy = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.ReadDummy"));
-						FRDGTextureRef WriteDummyA = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyA"));
-						FRDGTextureRef WriteDummyB = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyB"));
-						FRDGTextureRef WriteDummyC = GraphBuilder.CreateTexture(TinyScalarDesc, TEXT("Mixtormat.WornEdges.WriteDummyC"));
-						FRDGTextureRef NormalDummy = GraphBuilder.CreateTexture(TinyNormalDesc, TEXT("Mixtormat.WornEdges.NormalDummy"));
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ReadDummy), FVector4f(0.0f));
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyA), FVector4f(0.0f));
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyB), FVector4f(0.0f));
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(WriteDummyC), FVector4f(0.0f));
-						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(NormalDummy), FVector4f(0.0f));
-
-						FRDGTextureRef FinalEdgeBand = ReadDummy;
-						if (!PendingWear.bHasPatternEdge)
-						{
-							FRDGTextureRef Band[2] = {
-								GraphBuilder.CreateTexture(WearScalarDesc, TEXT("Mixtormat.WornEdges.BandA")),
-								GraphBuilder.CreateTexture(WearScalarDesc, TEXT("Mixtormat.WornEdges.BandB"))};
-							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Band[0]), FVector4f(0.0f));
-							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Band[1]), FVector4f(0.0f));
-
-							FMixtormatEdgeWearCS::FParameters* SeedP =
-								GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
-							SeedP->OutputSize = Request.Resolution;
-							SeedP->Mode = 0;
-							SeedP->EdgeStep = 1;
-							SeedP->Radius = Wear.EdgeWearRadius;
-							SeedP->Slope = Wear.EdgeWearSlope;
-							SeedP->Strength = Wear.EdgeWearStrength;
-							SeedP->Feather = Wear.EdgeWearFeather;
-							SeedP->Directions = Wear.EdgeWearDirections;
-							SeedP->AngularAA = Wear.EdgeWearAngularAA;
-							SeedP->Gravity = Wear.EdgeWearGravity;
-							SeedP->GravityAngle = Wear.EdgeWearGravityAngle;
-							SeedP->Seed = Wear.EdgeWearSeed;
-							SeedP->MacroScale = Wear.EdgeWearMacroScale;
-							SeedP->MacroAmount = Wear.EdgeWearMacroAmount;
-							SeedP->CellScale = Wear.EdgeWearCellScale;
-							SeedP->CellAmount = Wear.EdgeWearCellAmount;
-							SeedP->RidgeScale = Wear.EdgeWearRidgeScale;
-							SeedP->RidgeAmount = Wear.EdgeWearRidgeAmount;
-							SeedP->MicroScale = Wear.EdgeWearMicroScale;
-							SeedP->MicroAmount = Wear.EdgeWearMicroAmount;
-							SeedP->WarpScale = Wear.EdgeWearWarpScale;
-							SeedP->WarpAmount = Wear.EdgeWearWarpAmount;
-							SeedP->NoiseContrast = Wear.EdgeWearNoiseContrast;
-							SeedP->IDVariation = Wear.EdgeWearIdVariation;
-							SeedP->IDRadius = Wear.EdgeWearIdRadius;
-							SeedP->IDSlope = Wear.EdgeWearIdSlope;
-							SeedP->IDStrength = Wear.EdgeWearIdStrength;
-							SeedP->IDNoise = Wear.EdgeWearIdNoise;
-							SeedP->HasPatternEdge = 0u;
-							SeedP->SourceHeight = WearSourceH;
-							SeedP->WornHeight = ReadDummy;
-							SeedP->PreviousNormal = OutputN[WriteIndex];
-							SeedP->RegionIds = PendingWear.RegionIds;
-							SeedP->EdgeField = EmptyPatternUV;
-							SeedP->PreviousEdgeBand = ReadDummy;
-							SeedP->EdgeBand = ReadDummy;
-							SeedP->LayerMask = PendingWear.FeatureMask;
-							SeedP->WearMask = ReadDummy;
-							SeedP->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							SeedP->OutputHeight = GraphBuilder.CreateUAV(WriteDummyA);
-							SeedP->OutputWearMask = GraphBuilder.CreateUAV(WriteDummyB);
-							SeedP->OutputEdgeBand = GraphBuilder.CreateUAV(Band[0]);
-							SeedP->OutputNormal = GraphBuilder.CreateUAV(NormalDummy);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.EdgeSeed", LayerIndex, WearIndex),
-								EdgeWearShader,
-								SeedP,
-								WearGroups);
-
-							const float MaxIdRadiusMul = FMath::Max(
-								1.0f + FMath::Abs(Wear.EdgeWearIdRadius) * FMath::Clamp(Wear.EdgeWearIdVariation, 0.0f, 1.0f),
-								0.15f);
-							const int32 ConservativeRadius = FMath::Clamp(
-								FMath::CeilToInt(static_cast<float>(Wear.EdgeWearRadius) * MaxIdRadiusMul * 1.80f),
-								1,
-								64);
-							int32 BandIndex = 0;
-							int32 Covered = 0;
-							int32 DilationStep = 1;
-							while (Covered < ConservativeRadius)
-							{
-								const int32 ThisStep = FMath::Min(DilationStep, ConservativeRadius - Covered);
-								const int32 ReadBand = BandIndex;
-								const int32 WriteBand = 1 - ReadBand;
-								FMixtormatEdgeWearCS::FParameters* DilateP =
-									GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
-								*DilateP = *SeedP;
-								DilateP->Mode = 1;
-								DilateP->EdgeStep = ThisStep;
-								DilateP->PreviousEdgeBand = Band[ReadBand];
-								DilateP->OutputEdgeBand = GraphBuilder.CreateUAV(Band[WriteBand]);
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.EdgeDilate%d", LayerIndex, WearIndex, Covered),
-									EdgeWearShader,
-									DilateP,
-									WearGroups);
-								BandIndex = WriteBand;
-								Covered += ThisStep;
-								DilationStep *= 2;
-							}
-							FinalEdgeBand = Band[BandIndex];
-						}
-
-						auto FillWearParameters = [&](FMixtormatEdgeWearCS::FParameters* P)
-						{
-							P->OutputSize = Request.Resolution;
-							P->EdgeStep = 1;
-							P->Radius = Wear.EdgeWearRadius;
-							P->Slope = Wear.EdgeWearSlope;
-							P->Strength = Wear.EdgeWearStrength;
-							P->Feather = Wear.EdgeWearFeather;
-							P->Directions = Wear.EdgeWearDirections;
-							P->AngularAA = Wear.EdgeWearAngularAA;
-							P->Gravity = Wear.EdgeWearGravity;
-							P->GravityAngle = Wear.EdgeWearGravityAngle;
-							P->Seed = Wear.EdgeWearSeed;
-							P->MacroScale = Wear.EdgeWearMacroScale;
-							P->MacroAmount = Wear.EdgeWearMacroAmount;
-							P->CellScale = Wear.EdgeWearCellScale;
-							P->CellAmount = Wear.EdgeWearCellAmount;
-							P->RidgeScale = Wear.EdgeWearRidgeScale;
-							P->RidgeAmount = Wear.EdgeWearRidgeAmount;
-							P->MicroScale = Wear.EdgeWearMicroScale;
-							P->MicroAmount = Wear.EdgeWearMicroAmount;
-							P->WarpScale = Wear.EdgeWearWarpScale;
-							P->WarpAmount = Wear.EdgeWearWarpAmount;
-							P->NoiseContrast = Wear.EdgeWearNoiseContrast;
-							P->IDVariation = Wear.EdgeWearIdVariation;
-							P->IDRadius = Wear.EdgeWearIdRadius;
-							P->IDSlope = Wear.EdgeWearIdSlope;
-							P->IDStrength = Wear.EdgeWearIdStrength;
-							P->IDNoise = Wear.EdgeWearIdNoise;
-							P->HasPatternEdge = PendingWear.bHasPatternEdge ? 1u : 0u;
-							P->SourceHeight = WearSourceH;
-							P->WornHeight = ReadDummy;
-							P->PreviousNormal = OutputN[WriteIndex];
-							P->RegionIds = PendingWear.RegionIds;
-							P->EdgeField = PendingWear.bHasPatternEdge ? PendingWear.PatternEdge : EmptyPatternUV;
-							P->PreviousEdgeBand = ReadDummy;
-							P->EdgeBand = FinalEdgeBand;
-							P->LayerMask = PendingWear.FeatureMask;
-							P->WearMask = ReadDummy;
-							P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-						};
-
-						FMixtormatEdgeWearCS::FParameters* WearP =
-							GraphBuilder.AllocParameters<FMixtormatEdgeWearCS::FParameters>();
-						FillWearParameters(WearP);
-						WearP->Mode = 2;
-						WearP->OutputHeight = GraphBuilder.CreateUAV(WornH);
-						WearP->OutputWearMask = GraphBuilder.CreateUAV(EdgeWearMask);
-						WearP->OutputEdgeBand = GraphBuilder.CreateUAV(WriteDummyC);
-						WearP->OutputNormal = GraphBuilder.CreateUAV(NormalDummy);
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.WornEdges.L%d.%d.Wear", LayerIndex, WearIndex),
-							EdgeWearShader,
-							WearP,
-							WearGroups);
-
-						PublishedMaskOutputs.Add(
-							FPublishedMaskKey{
-								Layer.LayerId,
-								PendingWear.SourceChildIndex,
-								FName(TEXT("Wear"))},
-							EdgeWearMask);
-
-						FRDGTextureRef WornRAM = GraphBuilder.CreateTexture(
-							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.HeightDerivedRAM"));
-						AddHeightDerivedNormal(
-							WearSourceH,
-							WornH,
-							OutputN[WriteIndex],
-							OutputRAM[WriteIndex],
-							WornN,
-							WornRAM,
-							Request.Resolution,
-							8.0f,
-							0.35f,
-							TEXT("WornEdges"));
-						AddCopyTexturePass(GraphBuilder, WornRAM, OutputRAM[WriteIndex]);
-
-						// EdgeWearMask is the generated wear coverage, already gated by the
-						// feature scope. It is the sole roughness mask; placement is not sampled
-						// directly a second time here.
-						const float RoughnessAmount =
-							Wear.EdgeWearRoughnessWeight * Wear.EdgeWearRoughnessOffset;
-						if (RoughnessAmount != 0.0f)
-						{
-							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-								OutputRAM[WriteIndex]->Desc,
-								TEXT("Mixtormat.WornEdges.RoughnessRAM"));
-							FMixtormatCarveShadeCS::FParameters* ShadeP =
-								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
-							ShadeP->OutputSize = Request.Resolution;
-							ShadeP->RoughnessAmount = RoughnessAmount;
-							ShadeP->CarveDepth = 1.0f;
-							ShadeP->UseCoverageTexture = 1u;
-							ShadeP->CoverageTexture = EdgeWearMask;
-							ShadeP->SourceHeight = WornH;
-							ShadeP->CarvedHeight = WornH;
-							ShadeP->SourceRAM = OutputRAM[WriteIndex];
-							ShadeP->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							ShadeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME(
-									"Mixtormat.WornEdges.L%d.%d.Roughness",
-									LayerIndex, WearIndex),
-								CarveShadeShader,
-								ShadeP,
-								WearGroups);
-							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
-						}
-
-						AddCopyTexturePass(GraphBuilder, WornH, HeightTargets[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, WornN, OutputN[WriteIndex]);
-					}
-
-					// Chipping filters the layer output the same way erosion does, after both
-					// erosion and craquelure have finished shaping the height it selects from.
-					// Amount 0 seeds nothing, so it should also cost nothing rather than run
-					// the iteration loop to produce an unchanged height.
-					if (PendingChipping.Effect && PendingChipping.Effect->ChipAmount > 0.0f)
-					{
-						const FEffectRenderData& Chip = *PendingChipping.Effect;
-						const bool bUseLegacyPlacementMask =
-							!PendingChipping.bHasScopedMask && Chip.ChipPlacementMask.IsValid();
-						FRDGTextureRef ChippingPlacementMask = bUseLegacyPlacementMask
-							? RegisterTexture(
-								GraphBuilder,
-								RegisteredTextures,
-								Chip.ChipPlacementMask,
-								TEXT("Mixtormat.ChippingPlacementMask"))
-							: PeelFieldDummy;
-
-						// A chip advances one pixel per iteration, so the authored count is a
-						// reach in pixels. Scaled against a 1024 reference so a 512 preview and
-						// a 2048 export show the same chip size rather than the same pixel
-						// count -- otherwise the preview lies about the result.
-						//
-						// The obvious alternative, a dilated 3x3 gather at stride N, is cheaper
-						// and wrong: at stride 2 the four pixel-parity classes never read each
-						// other, so it produces four interleaved chip networks instead of one.
-						//
-						// This is the one filter whose dispatch count scales with output size.
-						// At 4K with Iterations 24 the clamp binds at 96 full-resolution passes,
-						// which is where a slow export will be coming from.
-						const int32 ChipIterations = FMath::Clamp(
-							FMath::RoundToInt(
-								Chip.ChipIterations *
-								FMath::Max(Request.Resolution.X, Request.Resolution.Y) / 1024.0f),
-							1,
-							96);
-
-						// The state is (core, tip, dirX, dirY) at full float, not half, for the
-						// reason the erosion height chain is R32F. Tip is a geometric decay --
-						// multiplied by 0.72..0.99 every iteration, read back, re-multiplied --
-						// and tested against a hard 0.001 cutoff, so half-float quantisation
-						// near that cutoff turns a chip stopping into a per-pixel coin flip.
-						// The stored direction is worse: it is renormalised every pass and fed
-						// to a hard alignment test at dot > -0.10.
-						const FRDGTextureDesc ChipStateDesc = FRDGTextureDesc::Create2D(
-							Request.Resolution,
-							PF_A32B32G32R32F,
-							FClearValueBinding::Black,
-							TexCreate_ShaderResource | TexCreate_UAV);
-						const FRDGTextureDesc ChipMaskDesc = FRDGTextureDesc::Create2D(
-							Request.Resolution,
-							PF_R16F,
-							FClearValueBinding::Black,
-							TexCreate_ShaderResource | TexCreate_UAV);
-
-						FRDGTextureRef ChipState[2] = {
-							GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateA")),
-							GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateB"))};
-
-						// The chip mask ping-pongs for the same reason the state does: the
-						// normal pass and the shade pass both read it, and a pass cannot write
-						// the texture it is reading.
-						FRDGTextureRef ChipMask[2] = {
-							GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskA")),
-							GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskB"))};
-
-						// The height the layer composited, held aside. Every iteration reads
-						// this rather than its own output, matching the read-only height bind in
-						// the prototype: a chip must not be able to carve its own brick down
-						// into grout and so stop itself.
-						FRDGTextureRef ChipSourceH = GraphBuilder.CreateTexture(
-							HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.ChipSourceH"));
-						AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], ChipSourceH);
-
-						// The extent of that height, folded to a single texel. Every brick/grout
-						// decision in the filter is taken on the height remapped through this
-						// pair rather than on the composited value itself.
-						//
-						// Without it Grout Level is an absolute threshold on a target that is
-						// cleared to 0.5, so at its own default it sits exactly on the clear
-						// value, BrickMask comes out identically zero across the image, and the
-						// filter -- every term of which is multiplied by that mask -- returns its
-						// input unchanged. That is the whole reason chipping showed nothing.
-						//
-						// Folded on the GPU and consumed as a texture rather than read back:
-						// this runs inside the same graph as the passes that use it, and a
-						// readback here would stall the frame to move eight bytes.
-						FRDGTextureRef ChipHeightRange = nullptr;
-						{
-							const FRDGTextureDesc RangeDesc1x1 = FRDGTextureDesc::Create2D(
-								FIntPoint(1, 1),
-								PF_A32B32G32R32F,
-								FClearValueBinding::Black,
-								TexCreate_ShaderResource | TexCreate_UAV);
-
-							FIntPoint ReduceSize = Request.Resolution;
-							FRDGTextureRef ReduceSource = nullptr;
-							int32 ReducePass = 0;
-							while (ReduceSource == nullptr || ReduceSize != FIntPoint(1, 1))
-							{
-								const FIntPoint NextSize(
-									FMath::DivideAndRoundUp(ReduceSize.X, GMixtormatReduceFactor),
-									FMath::DivideAndRoundUp(ReduceSize.Y, GMixtormatReduceFactor));
-
-								const FRDGTextureDesc StepDesc = FRDGTextureDesc::Create2D(
-									NextSize,
-									PF_A32B32G32R32F,
-									FClearValueBinding::Black,
-									TexCreate_ShaderResource | TexCreate_UAV);
-								FRDGTextureRef StepTarget = GraphBuilder.CreateTexture(
-									StepDesc, TEXT("Mixtormat.ChipHeightRange"));
-
-								FMixtormatReduceMinMaxCS::FParameters* RP =
-									GraphBuilder.AllocParameters<FMixtormatReduceMinMaxCS::FParameters>();
-								RP->InputSize = ReduceSize;
-								RP->OutputSize = NextSize;
-								RP->FirstPass = ReducePass == 0 ? 1 : 0;
-								RP->SourceHeight = ChipSourceH;
-
-								// Bound on every pass because the struct requires it and unread on
-								// the first, where the chain has produced nothing yet. Aiming it at
-								// the height would bind an R16F single-channel texture to a float4
-								// slot; the 1x1 is the cheapest thing of the right shape, and RDG
-								// rejects a transient nothing has written, so it is cleared.
-								if (ReducePass == 0)
-								{
-									FRDGTextureRef RangeDummy = GraphBuilder.CreateTexture(
-										RangeDesc1x1, TEXT("Mixtormat.ChipRangeDummy"));
-									AddClearUAVPass(
-										GraphBuilder,
-										GraphBuilder.CreateUAV(RangeDummy),
-										FVector4f(0.0f));
-									RP->SourceRange = RangeDummy;
-								}
-								else
-								{
-									RP->SourceRange = ReduceSource;
-								}
-								RP->OutputRange = GraphBuilder.CreateUAV(StepTarget);
-
-								FComputeShaderUtils::AddPass(
-									GraphBuilder,
-									RDG_EVENT_NAME(
-										"Mixtormat.Chipping.L%d.HeightRange%d", LayerIndex, ReducePass),
-									ReduceMinMaxShader,
-									RP,
-									FIntVector(
-										FMath::DivideAndRoundUp(NextSize.X, 8),
-										FMath::DivideAndRoundUp(NextSize.Y, 8),
-										1));
-
-								ReduceSource = StepTarget;
-								ReduceSize = NextSize;
-								++ReducePass;
-							}
-							ChipHeightRange = ReduceSource;
-						}
-
-						// Scratch for the normal pass, which reads the composited normal and
-						// writes the same target.
-						FRDGTextureRef ChipNormalScratch = GraphBuilder.CreateTexture(
-							OutputN[WriteIndex]->Desc, TEXT("Mixtormat.ChipNormalScratch"));
-
-						AddClearUAVPass(
-							GraphBuilder, GraphBuilder.CreateUAV(ChipState[0]), FVector4f(0.0f));
-						AddClearUAVPass(
-							GraphBuilder, GraphBuilder.CreateUAV(ChipState[1]), FVector4f(0.0f));
-						AddClearUAVPass(
-							GraphBuilder, GraphBuilder.CreateUAV(ChipMask[0]), FVector4f(0.0f));
-						AddClearUAVPass(
-							GraphBuilder, GraphBuilder.CreateUAV(ChipMask[1]), FVector4f(0.0f));
-
-						const FIntVector ChipGroups(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1);
-
-						auto FillChipParameters = [&](FMixtormatChippingCS::FParameters* P)
-						{
-							P->OutputSize = Request.Resolution;
-							P->GroutLevel = Chip.ChipGroutLevel;
-							P->GroutSoftness = Chip.ChipGroutSoftness;
-							P->ChipAmount = Chip.ChipAmount;
-							P->ChipSize = Chip.ChipSize;
-							P->ChipDepth = Chip.ChipDepth;
-							P->Irregularity = Chip.ChipIrregularity;
-							P->MaskEdge = Chip.ChipMaskEdge;
-							P->NormalStrength = Chip.ChipNormalStrength;
-							P->CavityInfluence = Chip.ChipCavityInfluence;
-							P->CavityOffset = Chip.ChipCavityOffset;
-							P->CavityRemapMin = Chip.ChipCavityRemapMin;
-							P->CavityRemapMax = Chip.ChipCavityRemapMax;
-							P->HeightInfluence = Chip.ChipHeightInfluence;
-							P->HeightScale = Chip.ChipHeightScale;
-							P->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
-							P->PlacementMaskTiling = Chip.ChipMaskTiling;
-							P->InvertMask =
-								!PendingChipping.bHasScopedMask && Chip.bChipInvertMask ? 1u : 0u;
-							P->Seed = Chip.ChipSeed;
-							P->SourceHeight = ChipSourceH;
-							P->HeightRange = ChipHeightRange;
-							P->LayerMask = PendingChipping.FeatureMask;
-							P->PlacementMaskTexture = ChippingPlacementMask;
-							P->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-						};
-
-						int32 ChipWrite = 0;
-						for (int32 PassIndex = 0; PassIndex < ChipIterations; ++PassIndex)
-						{
-							ChipWrite = PassIndex & 1;
-							const int32 ChipRead = 1 - ChipWrite;
-
-							FMixtormatChippingCS::FParameters* CP =
-								GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
-							FillChipParameters(CP);
-							CP->Iteration = PassIndex;
-							CP->NormalPass = 0;
-							CP->PreviousState = ChipState[ChipRead];
-							CP->ChipsTexture = ChipMask[ChipRead];
-							CP->PreviousNormal = OutputN[WriteIndex];
-							CP->OutputState = GraphBuilder.CreateUAV(ChipState[ChipWrite]);
-							CP->OutputChips = GraphBuilder.CreateUAV(ChipMask[ChipWrite]);
-							CP->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
-							CP->OutputNormal = GraphBuilder.CreateUAV(ChipNormalScratch);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.P%d", LayerIndex, PassIndex),
-								ChippingShader,
-								CP,
-								ChipGroups);
-						}
-
-						FRDGTextureRef FinalChips = ChipMask[ChipWrite];
-						FRDGTextureRef SpareChips = ChipMask[1 - ChipWrite];
-
-						// Height is authoritative. Derive the chip normal from the final
-						// height delta instead of maintaining a parallel chip-normal solve.
-						FRDGTextureRef ChipRAM = GraphBuilder.CreateTexture(
-							OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Chipping.HeightDerivedRAM"));
-						AddHeightDerivedNormal(
-							ChipSourceH,
-							HeightTargets[WriteIndex],
-							OutputN[WriteIndex],
-							OutputRAM[WriteIndex],
-							ChipNormalScratch,
-							ChipRAM,
-							Request.Resolution,
-							Chip.ChipNormalStrength,
-							0.35f,
-							TEXT("Chipping"));
-						AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
-						AddCopyTexturePass(GraphBuilder, ChipRAM, OutputRAM[WriteIndex]);
-
-						// Roughness is weighted by the resolved chip mask directly, so it remains
-						// independent of chip depth and never touches base colour.
-						if (Chip.ChipRoughnessAmount != 0.0f)
-						{
-							FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-								OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeRAM"));
-
-							FMixtormatCarveShadeCS::FParameters* SP =
-								GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
-							SP->OutputSize = Request.Resolution;
-							SP->RoughnessAmount = Chip.ChipRoughnessAmount;
-
-							// The chip mask is already normalized coverage, so no depth divisor is used.
-							SP->CarveDepth = 1.0f;
-							SP->UseCoverageTexture = 1;
-							SP->CoverageTexture = FinalChips;
-
-							// Required by the erosion path, unread when coverage comes from a texture.
-							SP->SourceHeight = ChipSourceH;
-							SP->CarvedHeight = ChipSourceH;
-
-							SP->SourceRAM = OutputRAM[WriteIndex];
-							SP->LinearWrapSampler =
-								TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-							SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-
-							FComputeShaderUtils::AddPass(
-								GraphBuilder,
-								RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Roughness", LayerIndex),
-								CarveShadeShader,
-								SP,
-								ChipGroups);
-
-							AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
-						}
-					}
-
-					// Grade runs after erosion and chipping, so it grades the final weathered
-					// surface rather than the one either filter was about to change.
-					// That is the order the panel lists them in and the order a grade wants:
-					// last, over the finished result. Stain is no longer in this list at all --
-					// it resolves a mask inside the child loop, so the layer it masks has already
-					// composited by the time a grade runs.
-					for (int32 GradeIndex = 0; GradeIndex < PendingGrades.Num(); ++GradeIndex)
-					{
-						const FPendingEffect& PendingGrade = PendingGrades[GradeIndex];
-						const FEffectRenderData& Grade = *PendingGrade.Effect;
-
-						// The shader states its own Filter contract: at Amount 0 it returns
-						// exactly what it read. Honour it here rather than paying a
-						// full-resolution pass and a full-resolution copy to reproduce the input.
-						if (Grade.GradeAmount == 0.0f)
-						{
-							continue;
-						}
-
-						// Through scratch and back, for the same reason the erosion shade pass
-						// is: one texture cannot be SRV and UAV in the same dispatch. Stacked
-						// grades chain through it, each reading what the last wrote.
-						FRDGTextureRef GradedBC = GraphBuilder.CreateTexture(
-							OutputBC[WriteIndex]->Desc, TEXT("Mixtormat.GradeBC"));
-
-						FMixtormatGradeCS::FParameters* GP =
-							GraphBuilder.AllocParameters<FMixtormatGradeCS::FParameters>();
-						GP->OutputSize = Request.Resolution;
-						GP->HasMask = (Layer.bHasMask || PendingGrade.bHasScopedMask) ? 1u : 0u;
-						GP->InvertMask =
-							!PendingGrade.bHasScopedMask && Grade.bGradeInvertMask ? 1u : 0u;
-						GP->TonemapMode = Grade.GradeTonemap;
-						GP->TonemapStrength = Grade.GradeTonemapStrength;
-						GP->Brightness = Grade.GradeBrightness;
-						GP->Contrast = Grade.GradeContrast;
-						GP->ContrastPivot = Grade.GradeContrastPivot;
-						GP->Gamma = Grade.GradeGamma;
-						GP->Amount = Grade.GradeAmount;
-						GP->InputMin = Grade.GradeInputMin;
-						GP->InputMax = Grade.GradeInputMax;
-						GP->OutputMin = Grade.GradeOutputMin;
-						GP->OutputMax = Grade.GradeOutputMax;
-						GP->ChannelBias = Grade.GradeChannelBias;
-						GP->SourceColor = OutputBC[WriteIndex];
-
-						// The layer's own accumulated child mask, which is what makes this an
-						// adjustment layer rather than a whole-surface grade.
-						GP->LayerMask = PendingGrade.FeatureMask;
-						GP->LinearWrapSampler =
-							TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-						GP->OutputColor = GraphBuilder.CreateUAV(GradedBC);
-
-						FComputeShaderUtils::AddPass(
-							GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.Grade.Layer%d.%d", LayerIndex, GradeIndex),
-							GradeShader,
-							GP,
-							FIntVector(
-								FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-								FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-								1));
-
-						AddCopyTexturePass(GraphBuilder, GradedBC, OutputBC[WriteIndex]);
-					}
-
 					if (RequiredHeightSnapshots.Contains(LayerIndex))
 					{
 						FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
