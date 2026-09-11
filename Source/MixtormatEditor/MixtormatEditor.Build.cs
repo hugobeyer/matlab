@@ -25,6 +25,7 @@ public class MixtormatEditor : ModuleRules
 			"ContentBrowser",
 			"DesktopPlatform",
 			"InputCore",
+			"Settings",
 			"ImageCore",
 			"Json",
 			"LevelEditor",
