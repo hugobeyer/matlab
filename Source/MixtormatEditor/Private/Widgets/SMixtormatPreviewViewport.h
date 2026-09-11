@@ -24,7 +24,8 @@ enum class EMixtormatPreviewMesh : uint8
 {
 	Sphere,
 	Plane,
-	Cube
+	Cube,
+	Cylinder
 };
 
 // Temporary V-key diagnostic cycle: a raw look at one composited output at a time, unlit, with

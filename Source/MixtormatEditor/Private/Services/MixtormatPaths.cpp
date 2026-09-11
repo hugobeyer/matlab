@@ -207,6 +207,11 @@ FString FMixtormatPaths::CubeMeshObjectPath()
 	return ObjectPath(MeshesRoot(), TEXT("SM_Mixtormat_Cube"));
 }
 
+FString FMixtormatPaths::CylinderMeshObjectPath()
+{
+	return ObjectPath(MeshesRoot(), TEXT("SM_Mixtormat_Cylinder"));
+}
+
 FString FMixtormatPaths::ProjectMaterialsRoot()
 {
 	return TEXT("/Game/Mixtormat/Materials");

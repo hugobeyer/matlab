@@ -575,6 +575,10 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 	FString PluginMeshPath = FMixtormatPaths::SphereMeshObjectPath();
 	const TCHAR* FallbackMeshPath = TEXT("/Engine/EditorMeshes/EditorSphere.EditorSphere");
 	FRotator MeshRotation = FRotator::ZeroRotator;
+	// No engine fallback: the plugin cylinder is a specific authored asset, and standing in
+	// /Engine/BasicShapes/Cylinder.Cylinder on a missing load would look plausible while being
+	// silently wrong (different proportions/pivot), rather than surfacing the real problem.
+	bool bAllowEngineFallback = true;
 
 	switch (MeshType)
 	{
@@ -586,6 +590,10 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 		PluginMeshPath = FMixtormatPaths::CubeMeshObjectPath();
 		FallbackMeshPath = TEXT("/Engine/BasicShapes/Cube.Cube");
 		break;
+	case EMixtormatPreviewMesh::Cylinder:
+		PluginMeshPath = FMixtormatPaths::CylinderMeshObjectPath();
+		bAllowEngineFallback = false;
+		break;
 	case EMixtormatPreviewMesh::Sphere:
 	default:
 		break;
@@ -594,6 +602,13 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 	UStaticMesh* PreviewMesh = LoadObject<UStaticMesh>(nullptr, *PluginMeshPath);
 	if (!PreviewMesh)
 	{
+		if (!bAllowEngineFallback)
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("Mixtormat: required preview mesh %s could not be loaded. Preview mesh left unchanged."),
+				*PluginMeshPath);
+			return;
+		}
 		PreviewMesh = LoadObject<UStaticMesh>(nullptr, FallbackMeshPath);
 		if (MeshType == EMixtormatPreviewMesh::Plane)
 		{

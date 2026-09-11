@@ -656,6 +656,7 @@ void FMixtormatStyle::Refresh()
 	SetIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/box"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/circle"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/rectangle-horizontal"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetIcon(TEXT("Mixtormat.Icon.Cylinder"), TEXT("Icons/cylinder"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
 	SetIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/workflow"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
 	SetIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));

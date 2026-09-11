@@ -364,8 +364,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		];
 	};
 	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere"), TEXT("Mixtormat.Icon.Sphere"));
-	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
+	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), TEXT("Mixtormat.Icon.Cylinder"));
 	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), TEXT("Mixtormat.Icon.Cube"));
+	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
 
 	const auto AddPresetButton = [this, &LightingControls, OverlayToggle](
 		const EMixtormatStudioLighting Preset,

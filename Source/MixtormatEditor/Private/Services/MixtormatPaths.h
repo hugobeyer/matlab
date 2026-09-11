@@ -47,6 +47,7 @@ struct FMixtormatPaths final
 	static FString SphereMeshObjectPath();
 	static FString PlaneMeshObjectPath();
 	static FString CubeMeshObjectPath();
+	static FString CylinderMeshObjectPath();
 
 	static FString ProjectMaterialsRoot();
 	static FString LiveThemePath();
