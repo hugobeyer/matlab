@@ -2,36 +2,6 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
 
-// Procedural peel field. Replaces the authored PDM/MSK/H/SDF texture set with a front
-// grown across the surface, so peeling can be driven by a mask and by the material
-// composited underneath rather than by a baked map.
-//
-// Three modes, dispatched in sequence by the compositor:
-//
-//   Seed     precompute the speed field, and lay the zero level set on the mask's
-//            threshold isocontour with the crossing interpolated between cells.
-//   Solve    one Godunov eikonal iteration, ported from Handoff/Houdini/OpenCl/peel.cl.
-//            Repeated, the front advances about one texel per pass -- inward and outward
-//            from that contour alike, which is what makes the result a distance rather
-//            than a one-sided dilation.
-//   Resolve  sign the solved distance by side and turn it into the channel layout the
-//            authored maps carry, so MixtormatPeeling.usf consumes either source through
-//            one code path.
-//
-// Seed and Solve run at a reduced resolution; Resolve runs at full resolution and filters
-// the arrival field up. Arrival is smooth, so it survives that, and the solve is by far
-// the dominant cost: halving the side both quarters the texels and halves the passes the
-// front needs to cross them.
-//
-// There is deliberately no noise here. The ordered child mask is the seed field, which
-// means peeling goes where the artist painted or generated it rather than where a hash
-// happened to land.
-//
-// The field is a true signed distance: distance is solved from the mask's threshold
-// contour, then signed by which side of that threshold the mask falls on. It is still a
-// non-uniform distance -- the speed field reshapes the outline -- which is the part a plain
-// distance transform or a jump flood cannot do, and why they came out radial.
-
 Texture2D<float4> SurfaceNormal;
 Texture2D<float4> SurfaceRAM;
 Texture2D<float> SurfaceHeight;
@@ -52,28 +22,32 @@ int Mode;
 uint SurfaceValid;
 uint FlipNormalY;
 
-// Seeding.
 uint Seed;
 float MaskWeight;
 float PeelMaskTiling;
 uint PeelMaskInvert;
 uint UseOwnMask;
 float SeedThreshold;
+
 int CurvatureRadius;
 int CurvatureSmoothing;
-
-// Growth. These shape the speed the front propagates at, which is what gives the peel its
-// outline; on the seed they would only have decided where it started.
 float CurvatureWeight;
 float CurvatureBias;
 float AOWeight;
 float HeightWeight;
 uint NormalizeWeights;
 float GrowthStrength;
+
+int MacroPeriod;
+int MicroPeriod;
+float NoiseWeight;
 float SizeVariation;
 int FlakeCells;
+float ClusterAmount;
+int WarpPeriod;
+float WarpAmount;
+float WarpSource;
 
-// Peel shaping. Same meanings as the authored path.
 int PeelType;
 float Front;
 float Width;
@@ -86,354 +60,1202 @@ float DetailStrength;
 float LiftVariation;
 float EdgeSharpness;
 
-#define ML_PEEL_FAR 10000.0f
+#define PEEL_FAR 1024.0f
 
-// What an unreached cell resolves to. It has to stay half-representable: OutputFieldA is
-// RGBA16F, so the old 1.0e6f wrote +inf, and once the field is signed that sentinel covers
-// the whole unreached interior rather than only the far outside, where a texel of bilinear
-// filtering against inf would poison the edge of every large peel. 1024 saturates every
-// Smooth01 and underflows every exp(-2X*X) at any usable Width.
-#define ML_PEEL_UNREACHED 1024.0f
-
-float Smooth01(float Value)
+int PeelWrapI(int x, int n)
 {
-	Value = saturate(Value);
-	return Value * Value * (3.0f - 2.0f * Value);
+	x %= max(n, 1);
+	return x < 0 ? x + n : x;
 }
 
-int2 WrapPixel(int2 P, int2 Res)
+int2 PeelWrapP(int2 p, int2 n)
 {
-	P.x = P.x % Res.x;
-	P.y = P.y % Res.y;
-	P.x = P.x < 0 ? P.x + Res.x : P.x;
-	P.y = P.y < 0 ? P.y + Res.y : P.y;
-	return P;
+	return int2(
+		PeelWrapI(p.x, n.x),
+		PeelWrapI(p.y, n.y));
 }
 
-// The peel's seed source. Its own mask when one is assigned, otherwise the layer's
-// accumulated child mask -- so a layer can mask its other work independently of what
-// seeds the peel, and recipes written before the slot existed still behave as they did.
-float PeelSeedMask(float2 UV)
+float PeelSmooth(float x)
+{
+	x = saturate(x);
+	return x * x * (3.0f - 2.0f * x);
+}
+
+uint PeelHashGrid(int2 p, int2 period, uint salt)
+{
+	p = PeelWrapP(p, period);
+
+	return MixtormatHashU(
+		(uint)p.x * 73856093u ^
+		(uint)p.y * 19349663u ^
+		Seed * 2654435761u ^
+		salt);
+}
+
+float PeelHash01(int2 p, int2 period, uint salt)
+{
+	return
+		(float)(PeelHashGrid(p, period, salt) & 0x00ffffffu)
+		* (1.0f / 16777215.0f);
+}
+
+float PeelNoise(float2 uv, int2 period, uint salt)
+{
+	period = max(period, int2(1, 1));
+
+	float2 p = frac(uv) * float2(period);
+	int2 i = int2(floor(p));
+	float2 f = frac(p);
+	float2 s = f * f * (3.0f - 2.0f * f);
+
+	float a = PeelHash01(i, period, salt);
+	float b = PeelHash01(i + int2(1, 0), period, salt);
+	float c = PeelHash01(i + int2(0, 1), period, salt);
+	float d = PeelHash01(i + int2(1, 1), period, salt);
+
+	return lerp(
+		lerp(a, b, s.x),
+		lerp(c, d, s.x),
+		s.y);
+}
+
+float PeelFBM(float2 uv, int period, uint salt)
+{
+	period = max(period, 1);
+
+	float sum = 0.0f;
+	float norm = 0.0f;
+	float amp = 0.5f;
+
+	[unroll]
+	for (int i = 0; i < 4; ++i)
+	{
+		int p = min(period << i, 512);
+
+		sum +=
+			PeelNoise(
+				uv,
+				int2(p, p),
+				salt + (uint)i * 0x9e3779b9u)
+			* amp;
+
+		norm += amp;
+		amp *= 0.5f;
+	}
+
+	return sum / max(norm, 1.0e-6f);
+}
+
+float PeelMask(float2 uv)
 {
 	if (UseOwnMask != 0)
 	{
-		const float2 MaskUV = frac(UV * max(PeelMaskTiling, 1.0f));
-		const float V = PeelOwnMask.SampleLevel(LinearWrapSampler, MaskUV, 0.0f).r;
-		return PeelMaskInvert != 0 ? 1.0f - V : V;
+		float2 muv =
+			frac(
+				uv * max(
+					PeelMaskTiling,
+					1.0f));
+
+		float m =
+			PeelOwnMask.SampleLevel(
+				LinearWrapSampler,
+				muv,
+				0.0f).r;
+
+		return
+			PeelMaskInvert != 0
+			? 1.0f - m
+			: m;
 	}
-	return ChildMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	return
+		ChildMask.SampleLevel(
+			LinearWrapSampler,
+			uv,
+			0.0f);
 }
 
-// The seed mask signed about its threshold: negative outside the peel region, positive
-// inside, zero exactly on the contour the peel is measured from. Weight scales the mask
-// before the threshold so one control can move between "only the strongest parts peel"
-// and "nearly all of it". Seeding, the sign of the distance and the macro warp term all
-// read this one quantity, so none of them can disagree about where the boundary is.
-float PeelSeedFieldFrom(float MaskValue)
+float2 PeelSurfaceFlow(float2 uv, int2 res)
 {
-	return saturate(MaskValue * MaskWeight) - SeedThreshold;
+	float2 gravity =
+		float2(
+			0.0f,
+			-1.0f);
+
+	if (SurfaceValid == 0)
+		return gravity;
+
+	float3 n =
+		SurfaceNormal.SampleLevel(
+			LinearWrapSampler,
+			uv,
+			0.0f).xyz
+		* 2.0f
+		- 1.0f;
+
+	if (FlipNormalY != 0)
+		n.y = -n.y;
+
+	float2 texel =
+		1.0f / float2(res);
+
+	float hl =
+		SurfaceHeight.SampleLevel(
+			LinearWrapSampler,
+			uv - float2(texel.x, 0.0f),
+			0.0f);
+
+	float hr =
+		SurfaceHeight.SampleLevel(
+			LinearWrapSampler,
+			uv + float2(texel.x, 0.0f),
+			0.0f);
+
+	float hd =
+		SurfaceHeight.SampleLevel(
+			LinearWrapSampler,
+			uv - float2(0.0f, texel.y),
+			0.0f);
+
+	float hu =
+		SurfaceHeight.SampleLevel(
+			LinearWrapSampler,
+			uv + float2(0.0f, texel.y),
+			0.0f);
+
+	float2 normalSlope =
+		-n.xy;
+
+	float2 heightSlope =
+		-float2(
+			hr - hl,
+			hu - hd);
+
+	float2 flow =
+		gravity;
+
+	if (length(normalSlope) > 1.0e-5f)
+		flow += normalize(normalSlope) * 0.65f;
+
+	if (length(heightSlope) > 1.0e-5f)
+		flow += normalize(heightSlope) * 0.85f;
+
+	return
+		length(flow) > 1.0e-5f
+		? normalize(flow)
+		: gravity;
 }
 
-float PeelSeedField(float2 UV)
+float2 PeelProceduralFlow(float2 uv)
 {
-	return PeelSeedFieldFrom(PeelSeedMask(UV));
+	int p =
+		max(
+			WarpPeriod,
+			2);
+
+	float e =
+		1.0f
+		/ max(
+			(float)p * 8.0f,
+			64.0f);
+
+	float l =
+		PeelNoise(
+			uv - float2(e, 0.0f),
+			int2(p, p),
+			0x1234567u);
+
+	float r =
+		PeelNoise(
+			uv + float2(e, 0.0f),
+			int2(p, p),
+			0x1234567u);
+
+	float d =
+		PeelNoise(
+			uv - float2(0.0f, e),
+			int2(p, p),
+			0x1234567u);
+
+	float u =
+		PeelNoise(
+			uv + float2(0.0f, e),
+			int2(p, p),
+			0x1234567u);
+
+	float2 g =
+		float2(
+			r - l,
+			u - d);
+
+	float2 curl =
+		float2(
+			g.y,
+			-g.x);
+
+	return
+		length(curl) > 1.0e-6f
+		? normalize(curl)
+		: float2(0.0f, -1.0f);
 }
 
-// Distance from this cell to the zero crossing on the segment towards one neighbour, in UV
-// units, or FAR when that segment carries no locatable crossing. Interpolating the crossing
-// is what puts the boundary between cells instead of snapping it to whole ones, which is
-// the difference between a sub-cell contour and a stair-stepped one at low Solve Scale.
-float CrossingDistance(float F, float Fn, float H)
+float2 PeelFlow(float2 uv, int2 res)
 {
-	if (F * Fn > 0.0f)
+	float2 procedural =
+		PeelProceduralFlow(uv);
+
+	float2 surface =
+		PeelSurfaceFlow(
+			uv,
+			res);
+
+	float2 flow =
+		lerp(
+			procedural,
+			surface,
+			saturate(WarpSource));
+
+	flow +=
+		float2(
+			0.0f,
+			-1.0f)
+		* 0.35f;
+
+	return
+		length(flow) > 1.0e-5f
+		? normalize(flow)
+		: float2(0.0f, -1.0f);
+}
+
+float PeelSurfaceDamage(float2 uv, int2 res)
+{
+	if (SurfaceValid == 0)
+		return 0.0f;
+
+	float raw = 0.0f;
+	float total = 0.0f;
+
+	if (abs(CurvatureWeight) > 1.0e-6f)
 	{
-		return ML_PEEL_FAR;
+		float curvature;
+		float cavity;
+		float convex;
+
+		MixtormatEvaluateCurvature(
+			SurfaceNormal,
+			LinearWrapSampler,
+			uv,
+			res,
+			max(CurvatureRadius, 1),
+			max(CurvatureSmoothing, 1),
+			1.0f,
+			1.0f,
+			FlipNormalY,
+			curvature,
+			cavity,
+			convex);
+
+		raw +=
+			CurvatureWeight
+			* lerp(
+				cavity,
+				convex,
+				saturate(
+					CurvatureBias));
+
+		total +=
+			abs(
+				CurvatureWeight);
 	}
 
-	// Flat at the threshold. Nothing to locate, and treating it as a crossing would seed
-	// the whole plateau at zero -- the degenerate case where the mask sits exactly on the
-	// threshold everywhere, which must stay unseeded as it was before.
-	const float Denom = abs(F - Fn);
-	return Denom > 1.0e-12f ? H * abs(F) / Denom : ML_PEEL_FAR;
-}
-
-// One random value per cell. Regions rather than pixels, so a flake differs from its
-// neighbours instead of dissolving into noise inside itself.
-float FlakeRandom01(float2 UV)
-{
-	const int P = max(FlakeCells, 1);
-	const uint2 Cell = (uint2)floor(frac(UV) * (float)P);
-	const uint H = MixtormatHashU(
-		Cell.x * 73856093u ^ Cell.y * 19349663u ^ (Seed * 2654435761u));
-	return (float)(H & 0x00FFFFFFu) * (1.0f / 16777215.0f);
-}
-
-// Slowness s = 1/F, what the Godunov update consumes. The per-region factor lets flakes
-// reach different extents by genuinely propagating further, rather than by scaling a
-// finished distance.
-//
-// Seed and Solve share it deliberately. The solve propagates travel time, not geometric
-// distance, so the boundary condition has to be stated in the same units: a raw crossing
-// distance would be wrong by the local speed, and Solve8's min() can only correct that
-// downwards, leaving slow regions permanently short by up to a texel.
-float PeelSlowness(float Growth, float2 UV)
-{
-	const float Speed = exp2((Growth * 2.0f - 1.0f) * GrowthStrength)
-		* lerp(1.0f, FlakeRandom01(UV) * 2.0f, saturate(SizeVariation));
-	return 1.0f / max(Speed, 1.0e-4f);
-}
-
-// Godunov update for the eikonal equation |grad T| = s, solving the quadratic for the
-// arrival time implied by two upwind neighbours. This is what makes the front follow the
-// speed field: a slow region raises s, the front stalls there, and the resulting shape is
-// governed by the surface. A plain distance transform cannot do this, which is why it
-// comes out radial.
-float Eikonal2(float c, float a, float b, float ha, float hb, float s)
-{
-	ha = max(ha, 1.0e-8f);
-	hb = max(hb, 1.0e-8f);
-	s = max(s, 0.0f);
-
-	const float ia = 1.0f / (ha * ha);
-	const float ib = 1.0f / (hb * hb);
-	const float A = ia + ib;
-	const float B = a * ia + b * ib;
-	const float C = a * a * ia + b * b * ib - s * s;
-	float t = min(a + ha * s, b + hb * s);
-	const float disc = B * B - A * C;
-
-	if (disc >= 0.0f)
+	if (abs(AOWeight) > 1.0e-6f)
 	{
-		const float q = (B + sqrt(max(disc, 0.0f))) / A;
-		if (q >= max(a, b))
-		{
-			t = min(t, q);
-		}
+		float ao =
+			SurfaceRAM.SampleLevel(
+				LinearWrapSampler,
+				uv,
+				0.0f).g;
+
+		raw +=
+			AOWeight
+			* (1.0f - ao);
+
+		total +=
+			abs(
+				AOWeight);
 	}
 
-	return min(c, t);
+	if (abs(HeightWeight) > 1.0e-6f)
+	{
+		float h =
+			SurfaceHeight.SampleLevel(
+				LinearWrapSampler,
+				uv,
+				0.0f);
+
+		raw +=
+			HeightWeight
+			* (h * 2.0f - 1.0f);
+
+		total +=
+			abs(
+				HeightWeight);
+	}
+
+	if (
+		NormalizeWeights != 0
+		&& total > 1.0e-6f)
+	{
+		raw /= total;
+	}
+
+	return
+		clamp(
+			raw,
+			-1.0f,
+			1.0f);
 }
 
-// Axis pair, diagonal pair, then every single-neighbour candidate.
-float Solve8(
-	float c,
-	float l, float r, float d, float u,
-	float nw, float ne, float sw, float se,
-	float hx, float hy, float s)
+float PeelFiberNoise(float2 uv)
 {
-	const float hd = sqrt(hx * hx + hy * hy);
-	float t = Eikonal2(c, min(l, r), min(d, u), hx, hy, s);
-	t = min(t, Eikonal2(c, min(nw, se), min(ne, sw), hd, hd, s));
-	t = min(t, l + hx * s);
-	t = min(t, r + hx * s);
-	t = min(t, d + hy * s);
-	t = min(t, u + hy * s);
-	t = min(t, nw + hd * s);
-	t = min(t, ne + hd * s);
-	t = min(t, sw + hd * s);
-	t = min(t, se + hd * s);
+	int macroP =
+		max(
+			MacroPeriod,
+			2);
+
+	int microP =
+		max(
+			MicroPeriod,
+			2);
+
+	bool swapAxis =
+		(Seed & 1u) != 0u;
+
+	int2 p0 =
+		swapAxis
+		? int2(
+			max(2, macroP / 2),
+			microP)
+		: int2(
+			microP,
+			max(2, macroP / 2));
+
+	int2 p1 =
+		swapAxis
+		? int2(
+			microP,
+			max(2, macroP / 2))
+		: int2(
+			max(2, macroP / 2),
+			microP);
+
+	float a =
+		PeelNoise(
+			uv,
+			p0,
+			0x517cc1b7u);
+
+	float b =
+		PeelNoise(
+			frac(
+				uv
+				+ float2(
+					0.317f,
+					0.173f)),
+			p1,
+			0x6c8e9cf5u);
+
+	return
+		lerp(
+			a,
+			max(a, b),
+			saturate(SizeVariation) * 0.45f);
+}
+
+float PeelDamage(
+	float2 uv,
+	int2 res,
+	out float adhesion)
+{
+	float2 flow =
+		PeelFlow(
+			uv,
+			res);
+
+	float2 warpedUV =
+		frac(
+			uv
+			+ flow
+				* WarpAmount
+				* 0.05f);
+
+	float macro =
+		PeelFBM(
+			warpedUV,
+			max(MacroPeriod, 2),
+			0x811c9dc5u);
+
+	float micro =
+		PeelFBM(
+			warpedUV,
+			max(MicroPeriod, 2),
+			0xb5297a4du);
+
+	float fiber =
+		PeelFiberNoise(
+			warpedUV);
+
+	int clusterP =
+		max(
+			FlakeCells,
+			2);
+
+	float cluster =
+		PeelNoise(
+			warpedUV,
+			int2(
+				clusterP,
+				clusterP),
+			0x68e31da4u);
+
+	float baseDamage =
+		macro * 0.48f
+		+ fiber * 0.32f
+		+ micro * 0.20f;
+
+	float broadDamage =
+		max(
+			macro,
+			fiber * 0.82f
+				+ macro * 0.18f);
+
+	baseDamage =
+		lerp(
+			baseDamage,
+			broadDamage,
+			saturate(SizeVariation));
+
+	baseDamage =
+		0.5f
+		+ (baseDamage - 0.5f)
+			* max(
+				NoiseWeight,
+				0.0f);
+
+	baseDamage +=
+		(macro - 0.5f)
+		* MacroWarp
+		* 4.0f;
+
+	baseDamage +=
+		(micro - 0.5f)
+		* MicroWarp
+		* 8.0f;
+
+	float clusterShape =
+		PeelSmooth(
+			saturate(
+				(cluster - 0.22f)
+				/ 0.58f));
+
+	float clusterMultiplier =
+		lerp(
+			1.0f,
+			lerp(
+				0.40f,
+				1.45f,
+				clusterShape),
+			saturate(
+				ClusterAmount));
+
+	float surfaceDamage =
+		PeelSurfaceDamage(
+			uv,
+			res);
+
+	float mask =
+		saturate(
+			PeelMask(uv));
+
+	float damage =
+		baseDamage
+		* clusterMultiplier;
+
+	damage +=
+		surfaceDamage
+		* 0.35f;
+
+	damage +=
+		(mask - 0.5f)
+		* MaskWeight
+		* 0.25f;
+
+	damage =
+		saturate(
+			damage);
+
+	damage *=
+		mask;
+
+	adhesion =
+		saturate(
+			1.0f - damage);
+
+	return damage;
+}
+
+float PeelPhi(
+	float2 uv,
+	int2 res,
+	out float adhesion)
+{
+	float damage =
+		PeelDamage(
+			uv,
+			res,
+			adhesion);
+
+	return
+		saturate(SeedThreshold)
+		- damage;
+}
+
+float PeelBoundaryDistance(
+	float center,
+	float neighbour,
+	float spacing)
+{
+	if (
+		center == 0.0f
+		|| center * neighbour <= 0.0f)
+	{
+		float denom =
+			abs(center)
+			+ abs(neighbour);
+
+		return
+			denom > 1.0e-6f
+			? spacing
+				* abs(center)
+				/ denom
+			: 0.0f;
+	}
+
+	return PEEL_FAR;
+}
+
+float PeelStepCost(
+	float2 direction,
+	float2 flow,
+	float adhesion)
+{
+	float strength =
+		max(
+			GrowthStrength,
+			0.0f);
+
+	float resistance =
+		exp2(
+			(adhesion * 2.0f - 1.0f)
+			* strength);
+
+	float align =
+		dot(
+			normalize(direction),
+			normalize(flow));
+
+	float directionalAmount =
+		saturate(
+			strength * 0.35f);
+
+	float directional =
+		lerp(
+			1.0f,
+			lerp(
+				1.55f,
+				0.62f,
+				align * 0.5f + 0.5f),
+			directionalAmount);
+
+	return
+		resistance
+		* directional;
+}
+
+float PeelSolve(
+	float self,
+	float l,
+	float r,
+	float d,
+	float u,
+	float nw,
+	float ne,
+	float sw,
+	float se,
+	float2 flow,
+	float adhesion,
+	float2 texel)
+{
+	float sx =
+		texel.x;
+
+	float sy =
+		texel.y;
+
+	float sd =
+		length(
+			texel);
+
+	float t =
+		self;
+
+	t = min(
+		t,
+		l
+		+ sx
+		* PeelStepCost(
+			float2(-1.0f, 0.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		r
+		+ sx
+		* PeelStepCost(
+			float2(1.0f, 0.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		d
+		+ sy
+		* PeelStepCost(
+			float2(0.0f, -1.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		u
+		+ sy
+		* PeelStepCost(
+			float2(0.0f, 1.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		nw
+		+ sd
+		* PeelStepCost(
+			float2(-1.0f, 1.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		ne
+		+ sd
+		* PeelStepCost(
+			float2(1.0f, 1.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		sw
+		+ sd
+		* PeelStepCost(
+			float2(-1.0f, -1.0f),
+			flow,
+			adhesion));
+
+	t = min(
+		t,
+		se
+		+ sd
+		* PeelStepCost(
+			float2(1.0f, -1.0f),
+			flow,
+			adhesion));
+
 	return t;
+}
+
+float PeelLiftVariationField(float2 uv)
+{
+	int p =
+		max(
+			FlakeCells,
+			2);
+
+	float v =
+		PeelNoise(
+			uv,
+			int2(p, p),
+			0x9e3779b9u);
+
+	return
+		lerp(
+			1.0f,
+			lerp(
+				0.45f,
+				1.40f,
+				v),
+			saturate(
+				LiftVariation));
 }
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	const int2 Res = Mode == 2 ? OutputSize : SolveSize;
-	if (any(DispatchThreadId.xy >= uint2(Res)))
+	int2 res =
+		Mode == 2
+		? OutputSize
+		: SolveSize;
+
+	if (any(
+		DispatchThreadId.xy
+		>= uint2(res)))
 	{
 		return;
 	}
 
-	const int2 Pixel = int2(DispatchThreadId.xy);
-	const float2 Resf = float2(Res);
-	const float2 UV = (float2(Pixel) + 0.5f) / Resf;
+	int2 pixel =
+		int2(
+			DispatchThreadId.xy);
+
+	float2 rf =
+		float2(res);
+
+	float2 uv =
+		(float2(pixel) + 0.5f)
+		/ rf;
 
 	if (Mode == 0)
 	{
-		// Speed field, mixed to 0..1 and centred on 0.5 so that with no weights authored
-		// it resolves to 0.5, giving speed 1 and uniform propagation.
-		float Raw = 0.0f;
-		float Total = 0.0f;
+		float adhesion;
 
-		if (abs(CurvatureWeight) > 0.0f && SurfaceValid != 0)
-		{
-			float Curvature;
-			float Cavity;
-			float Convex;
-			MixtormatEvaluateCurvature(
-				SurfaceNormal,
-				LinearWrapSampler,
-				UV,
-				Res,
-				max(CurvatureRadius, 1),
-				max(CurvatureSmoothing, 1),
-				1.0f,
-				1.0f,
-				FlipNormalY,
-				Curvature,
-				Cavity,
-				Convex);
-			Raw += CurvatureWeight * lerp(Cavity, Convex, saturate(CurvatureBias));
-			Total += abs(CurvatureWeight);
-		}
+		float phi =
+			PeelPhi(
+				uv,
+				res,
+				adhesion);
 
-		if (abs(AOWeight) > 0.0f && SurfaceValid != 0)
-		{
-			Raw += AOWeight * (1.0f - SurfaceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
-			Total += abs(AOWeight);
-		}
+		OutputGrowth[pixel] =
+			adhesion;
 
-		if (abs(HeightWeight) > 0.0f && SurfaceValid != 0)
-		{
-			Raw += HeightWeight * SurfaceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
-			Total += abs(HeightWeight);
-		}
+		float2 texel =
+			1.0f / rf;
 
-		const float Growth = Total > 1.0e-6f
-			? saturate((NormalizeWeights != 0) ? Raw / Total : Raw)
-			: 0.5f;
+		float dummy;
 
-		OutputGrowth[Pixel] = Growth;
+		float l =
+			PeelPhi(
+				frac(
+					uv
+					- float2(
+						texel.x,
+						0.0f)),
+				res,
+				dummy);
 
-		// The zero level set is the mask's threshold isocontour, not its interior. A cell
-		// whose field changes sign against a neighbour carries the interpolated distance to
-		// that crossing; everything else starts unreached, and the solve fills it inward and
-		// outward alike. Seeding the interior instead pinned it flat at T = 0, so it had no
-		// gradient for coverage to shape and Front could only ever dilate.
-		const float2 Texel = 1.0f / Resf;
-		const float F = PeelSeedField(UV);
+		float r =
+			PeelPhi(
+				frac(
+					uv
+					+ float2(
+						texel.x,
+						0.0f)),
+				res,
+				dummy);
 
-		float T0 = ML_PEEL_FAR;
-		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV - float2(Texel.x, 0.0f)), Texel.x));
-		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV + float2(Texel.x, 0.0f)), Texel.x));
-		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV - float2(0.0f, Texel.y)), Texel.y));
-		T0 = min(T0, CrossingDistance(F, PeelSeedField(UV + float2(0.0f, Texel.y)), Texel.y));
+		float d =
+			PeelPhi(
+				frac(
+					uv
+					- float2(
+						0.0f,
+						texel.y)),
+				res,
+				dummy);
 
-		// Boundary cells are flagged so the solve pins them: the contour has to stay where
-		// the mask put it rather than drift as the front sweeps past.
-		OutputArrival[Pixel] = T0 < ML_PEEL_FAR
-			? float2(T0 * PeelSlowness(Growth, UV), 1.0f)
-			: float2(ML_PEEL_FAR, 0.0f);
+		float u =
+			PeelPhi(
+				frac(
+					uv
+					+ float2(
+						0.0f,
+						texel.y)),
+				res,
+				dummy);
+
+		float boundary =
+			PEEL_FAR;
+
+		boundary =
+			min(
+				boundary,
+				PeelBoundaryDistance(
+					phi,
+					l,
+					texel.x));
+
+		boundary =
+			min(
+				boundary,
+				PeelBoundaryDistance(
+					phi,
+					r,
+					texel.x));
+
+		boundary =
+			min(
+				boundary,
+				PeelBoundaryDistance(
+					phi,
+					d,
+					texel.y));
+
+		boundary =
+			min(
+				boundary,
+				PeelBoundaryDistance(
+					phi,
+					u,
+					texel.y));
+
+		OutputArrival[pixel] =
+			float2(
+				boundary,
+				phi < 0.0f
+				? -1.0f
+				: 1.0f);
+
 		return;
 	}
 
 	if (Mode == 1)
 	{
-		const float2 Self = PreviousArrival.Load(int3(Pixel, 0));
+		float2 self =
+			PreviousArrival.Load(
+				int3(
+					pixel,
+					0));
 
-		// Both components of each neighbour are wrapped once, so the diagonals compose two
-		// coordinates that are each valid on their own axis.
-		const int2 Lo = WrapPixel(Pixel - 1, Res);
-		const int2 Hi = WrapPixel(Pixel + 1, Res);
+		int xm =
+			PeelWrapI(
+				pixel.x - 1,
+				res.x);
 
-		const float l  = PreviousArrival.Load(int3(Lo.x, Pixel.y, 0)).x;
-		const float r  = PreviousArrival.Load(int3(Hi.x, Pixel.y, 0)).x;
-		const float d  = PreviousArrival.Load(int3(Pixel.x, Lo.y, 0)).x;
-		const float u  = PreviousArrival.Load(int3(Pixel.x, Hi.y, 0)).x;
-		const float nw = PreviousArrival.Load(int3(Lo.x, Hi.y, 0)).x;
-		const float ne = PreviousArrival.Load(int3(Hi.x, Hi.y, 0)).x;
-		const float sw = PreviousArrival.Load(int3(Lo.x, Lo.y, 0)).x;
-		const float se = PreviousArrival.Load(int3(Hi.x, Lo.y, 0)).x;
+		int xp =
+			PeelWrapI(
+				pixel.x + 1,
+				res.x);
 
-		const float Slowness = PeelSlowness(GrowthField.Load(int3(Pixel, 0)), UV);
+		int ym =
+			PeelWrapI(
+				pixel.y - 1,
+				res.y);
 
-		// A flagged cell holds the interpolated crossing distance from the seed pass and
-		// keeps it. The rest advance.
-		const float T = Self.y > 0.5f
-			? Self.x
-			: Solve8(
-				Self.x, l, r, d, u, nw, ne, sw, se,
-				1.0f / Resf.x, 1.0f / Resf.y, Slowness);
+		int yp =
+			PeelWrapI(
+				pixel.y + 1,
+				res.y);
 
-		OutputArrival[Pixel] = float2(T, Self.y);
+		float l =
+			PreviousArrival.Load(
+				int3(
+					xm,
+					pixel.y,
+					0)).x;
+
+		float r =
+			PreviousArrival.Load(
+				int3(
+					xp,
+					pixel.y,
+					0)).x;
+
+		float d =
+			PreviousArrival.Load(
+				int3(
+					pixel.x,
+					ym,
+					0)).x;
+
+		float u =
+			PreviousArrival.Load(
+				int3(
+					pixel.x,
+					yp,
+					0)).x;
+
+		float nw =
+			PreviousArrival.Load(
+				int3(
+					xm,
+					yp,
+					0)).x;
+
+		float ne =
+			PreviousArrival.Load(
+				int3(
+					xp,
+					yp,
+					0)).x;
+
+		float sw =
+			PreviousArrival.Load(
+				int3(
+					xm,
+					ym,
+					0)).x;
+
+		float se =
+			PreviousArrival.Load(
+				int3(
+					xp,
+					ym,
+					0)).x;
+
+		float adhesion =
+			GrowthField.Load(
+				int3(
+					pixel,
+					0));
+
+		float2 flow =
+			PeelFlow(
+				uv,
+				res);
+
+		float solved =
+			PeelSolve(
+				self.x,
+				l,
+				r,
+				d,
+				u,
+				nw,
+				ne,
+				sw,
+				se,
+				flow,
+				adhesion,
+				1.0f / rf);
+
+		OutputArrival[pixel] =
+			float2(
+				solved,
+				self.y);
+
 		return;
 	}
 
-	// Resolve, at full resolution. Arrival is filtered up from the solve resolution; it is
-	// a smooth field, so the peel boundary stays clean even though the solve was coarser.
-	// Unreached cells clamp rather than threshold: monotone, and free of the band where a
-	// bilinear mix of FAR against a solved neighbour used to fall the wrong side of a test.
-	const float T = min(
-		PreviousArrival.SampleLevel(LinearWrapSampler, UV, 0.0f).x, ML_PEEL_UNREACHED);
+	float2 arrivalData =
+		PreviousArrival.SampleLevel(
+			LinearWrapSampler,
+			uv,
+			0.0f);
 
-	// Boundary variation. The mask supplies it now that there is no noise: sampling it
-	// against a blurred copy of itself gives a signed local detail term, so Macro and
-	// Micro Warp still break the front up instead of leaving it perfectly smooth.
-	const float MaskHere = PeelSeedMask(UV);
-	const float2 Texel = 1.0f / Resf;
-	const float MaskBlur = 0.25f * (
-		  PeelSeedMask(UV + float2( Texel.x * 3.0f, 0.0f))
-		+ PeelSeedMask(UV - float2( Texel.x * 3.0f, 0.0f))
-		+ PeelSeedMask(UV + float2(0.0f,  Texel.y * 3.0f))
-		+ PeelSeedMask(UV - float2(0.0f,  Texel.y * 3.0f)));
+	float arrival =
+		min(
+			arrivalData.x,
+			PEEL_FAR);
 
-	// Sign by side, read from the mask at full resolution rather than carried through the
-	// coarse solve. That puts the zero crossing exactly on the threshold contour; a side
-	// carried on the solve grid would snap it back to the nearest half-texel, which is the
-	// quantisation the interpolated seed exists to remove.
-	const float SeedField = PeelSeedFieldFrom(MaskHere);
-	const float SDF = SeedField > 0.0f ? -T : T;
+	float sdf =
+		arrival
+		* (
+			arrivalData.y < 0.0f
+			? -1.0f
+			: 1.0f);
 
-	// Macro warp rides the signed seed field, which is zero on the contour by construction.
-	// The mask remapped to -1..1 was not: at the default threshold it sat at +0.24 there, so
-	// Macro Warp injected a constant offset and Front = 0 no longer landed on the contour.
-	// Doubled to keep the control's usable range close to what it was.
-	const float M = SeedField * 2.0f;
-	const float U = (MaskHere - MaskBlur) * 8.0f * saturate(MicroMorph);
+	float finalSDF =
+		sdf - Front;
 
-	const float FlakeRandom = FlakeRandom01(UV);
-	const float FlakeLift = Lift * lerp(1.0f, FlakeRandom, saturate(LiftVariation));
+	float width =
+		max(
+			Width,
+			1.0e-6f);
 
-	// Negative Front now erodes inside the mask and positive dilates outside it, both with a
-	// real gradient, because SDF is signed on both sides instead of pinned flat within.
-	const float D = SDF + M * MacroWarp + U * MicroWarp - Front;
-	const float X = D / max(Width, 1.0e-6f);
+	float x =
+		finalSDF
+		/ width;
 
-	float Coverage = 0.0f;
-	float Edge = 0.0f;
-	float Detail = 0.0f;
-	float H = 0.0f;
+	float peelCoverage =
+		1.0f
+		- PeelSmooth(
+			x * 0.5f
+			+ 0.5f);
+
+	float edge =
+		pow(
+			exp(
+				-2.0f
+				* x
+				* x),
+			max(
+				EdgeSharpness,
+				0.01f));
+
+	float maxRes =
+		max(
+			(float)max(
+				OutputSize.x,
+				OutputSize.y),
+			1.0f);
+
+	float pixelSize =
+		1.0f
+		/ maxRes;
+
+	float geometricAA =
+		max(
+			pixelSize * 1.25f,
+			1.0e-6f);
+
+	float peeledPlateau =
+		1.0f
+		- PeelSmooth(
+			saturate(
+				finalSDF
+				/ (
+					geometricAA
+					* 2.0f)
+				+ 0.5f));
+
+	// Curl is intentionally evaluated on the ATTACHED side.
+	// finalSDF < 0 = exposed/peeled.
+	// finalSDF > 0 = remaining wallpaper.
+	float attachedDistance =
+		max(
+			finalSDF,
+			0.0f);
+
+	float curlLength =
+		max(
+			width
+			* lerp(
+				3.0f,
+				14.0f,
+				saturate(
+					MicroMorph)),
+			pixelSize * 4.0f);
+
+	float curlT =
+		attachedDistance
+		/ curlLength;
+
+	// Starts at zero exactly on the tear, rises immediately
+	// into the remaining sheet, then relaxes to the flat film.
+	float curl =
+		curlT < 10.0f
+		? curlT
+			* exp(
+				1.0f - curlT)
+		: 0.0f;
+
+	curl =
+		saturate(
+			curl);
+
+	float foldT =
+		(curlT - 1.75f)
+		/ 0.70f;
+
+	float fold =
+		exp(
+			-2.0f
+			* foldT
+			* foldT);
+
+	float liftVariation =
+		PeelLiftVariationField(
+			uv);
+
+	float localLift =
+		Lift
+		* liftVariation;
+
+	float fine =
+		PeelFBM(
+			uv,
+			max(
+				MicroPeriod,
+				2),
+			0x27d4eb2du)
+		* 2.0f
+		- 1.0f;
+
+	float detailHeight =
+		fine
+		* DetailStrength
+		* saturate(
+			edge + curl);
+
+	// Exposed wall/substrate is exactly Thickness lower.
+	// Attached wallpaper remains at zero height delta.
+	float heightDelta =
+		-peeledPlateau
+		* Thickness;
 
 	if (PeelType == 0)
 	{
-		Coverage = 1.0f - Smooth01(X * 0.5f + 0.5f);
-		Edge = pow(exp(-2.0f * X * X), max(EdgeSharpness, 0.01f));
-		Detail = saturate(-U * 0.75f - M * 0.25f);
-		Detail *= Detail;
+		heightDelta +=
+			edge
+			* localLift
+			* 0.20f;
 
-		// Height belongs to the film that is still attached, not to the hole it left.
-		// Weighting by Coverage raised the peeled area instead of dropping it to the
-		// substrate, which reads as blisters rather than flaking.
-		const float Intact = 1.0f - Coverage;
-		H = Intact
-			* (Thickness
-				+ (M + U * 0.35f) * DetailStrength
-				- Detail * DetailStrength * 0.75f)
-			+ Edge * FlakeLift;
+		heightDelta +=
+			detailHeight
+			* 0.45f;
 	}
 	else
 	{
-		// Curled variant: the sheet lifts into a flap ahead of the front and folds back
-		// behind it. Ported from the Houdini generator's mode 1.
-		const float Intact = Smooth01(X * 0.5f + 0.5f);
-		const float Fx = (X + 0.80f) / 0.55f;
-		const float Flap = exp(-2.0f * Fx * Fx);
-		const float Bx = (X - 0.75f) / 0.65f;
-		const float Fold = exp(-2.0f * Bx * Bx);
+		// Heightfield approximation of a curling sheet:
+		// lift the still-attached paper beside the tear instead
+		// of placing the ridge on the exposed substrate.
+		heightDelta +=
+			curl
+			* localLift;
 
-		Coverage = 1.0f - Intact;
-		Edge = pow(exp(-2.0f * X * X), max(EdgeSharpness, 0.01f));
-		Detail = saturate(Flap + Fold);
+		heightDelta -=
+			fold
+			* localLift
+			* 0.12f;
 
-		H = Intact * Thickness
-			+ Edge * FlakeLift
-			+ Flap * FlakeLift * 0.45f
-			- Fold * FlakeLift * 0.15f
-			+ U * DetailStrength * (Edge + Flap);
+		heightDelta +=
+			edge
+			* localLift
+			* 0.18f;
+
+		heightDelta +=
+			detailHeight;
 	}
 
-	// A carries the signed distance, the mask, the micro term, and the shaped distance, all
-	// raw: there is no 8-bit round trip here, so none of the authored decode ranges apply.
-	OutputFieldA[Pixel] = float4(SDF, MaskHere, saturate(U * 0.5f + 0.5f), D);
-	OutputFieldB[Pixel] = float4(saturate(Coverage), saturate(Edge), saturate(Detail), H);
+	float adhesion =
+		GrowthField.SampleLevel(
+			LinearWrapSampler,
+			uv,
+			0.0f);
+
+	OutputFieldA[pixel] =
+		float4(
+			sdf,
+			adhesion,
+			1.0f - adhesion,
+			finalSDF);
+
+	OutputFieldB[pixel] =
+		float4(
+			saturate(
+				peelCoverage),
+			saturate(
+				edge),
+			saturate(
+				curl),
+			heightDelta);
 }

@@ -1227,12 +1227,14 @@ public:
 		SHADER_PARAMETER(int32, Mode)
 		SHADER_PARAMETER(uint32, SurfaceValid)
 		SHADER_PARAMETER(uint32, FlipNormalY)
+
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(float, MaskWeight)
 		SHADER_PARAMETER(float, PeelMaskTiling)
 		SHADER_PARAMETER(uint32, PeelMaskInvert)
 		SHADER_PARAMETER(uint32, UseOwnMask)
 		SHADER_PARAMETER(float, SeedThreshold)
+
 		SHADER_PARAMETER(int32, CurvatureRadius)
 		SHADER_PARAMETER(int32, CurvatureSmoothing)
 		SHADER_PARAMETER(float, CurvatureWeight)
@@ -1241,8 +1243,17 @@ public:
 		SHADER_PARAMETER(float, HeightWeight)
 		SHADER_PARAMETER(uint32, NormalizeWeights)
 		SHADER_PARAMETER(float, GrowthStrength)
+
+		SHADER_PARAMETER(int32, MacroPeriod)
+		SHADER_PARAMETER(int32, MicroPeriod)
+		SHADER_PARAMETER(float, NoiseWeight)
 		SHADER_PARAMETER(float, SizeVariation)
 		SHADER_PARAMETER(int32, FlakeCells)
+		SHADER_PARAMETER(float, ClusterAmount)
+		SHADER_PARAMETER(int32, WarpPeriod)
+		SHADER_PARAMETER(float, WarpAmount)
+		SHADER_PARAMETER(float, WarpSource)
+
 		SHADER_PARAMETER(int32, PeelType)
 		SHADER_PARAMETER(float, Front)
 		SHADER_PARAMETER(float, Width)
@@ -1254,6 +1265,7 @@ public:
 		SHADER_PARAMETER(float, DetailStrength)
 		SHADER_PARAMETER(float, LiftVariation)
 		SHADER_PARAMETER(float, EdgeSharpness)
+
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
@@ -1337,6 +1349,7 @@ public:
 		SHADER_PARAMETER(float, Gravity)
 		SHADER_PARAMETER(float, SurfaceFollow)
 		SHADER_PARAMETER(float, Spread)
+		SHADER_PARAMETER(float, Accumulation)
 		SHADER_PARAMETER(float, Absorption)
 		SHADER_PARAMETER(float, Drying)
 		SHADER_PARAMETER(float, DirtAmount)
@@ -1733,6 +1746,7 @@ namespace MixtormatGpuCompositor
 		float StainGravity = 1.0f;
 		float StainSurfaceFollow = 1.0f;
 		float StainSpread = 0.12f;
+		float StainAccumulation = 0.5f;
 		float StainAbsorption = 0.35f;
 		float StainDrying = 0.20f;
 		float StainDirtAmount = 0.35f;
@@ -3454,6 +3468,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.StainGravity = LayerEffect.StainGravity;
 				EffectData.StainSurfaceFollow = LayerEffect.StainSurfaceFollow;
 				EffectData.StainSpread = LayerEffect.StainSpread;
+				EffectData.StainAccumulation = LayerEffect.StainAccumulation;
 				EffectData.StainAbsorption = LayerEffect.StainAbsorption;
 				EffectData.StainDrying = LayerEffect.StainDrying;
 				EffectData.StainDirtAmount = LayerEffect.StainDirtAmount;
@@ -5490,6 +5505,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								P->Gravity = Effect.StainGravity;
 								P->SurfaceFollow = Effect.StainSurfaceFollow;
 								P->Spread = Effect.StainSpread;
+								P->Accumulation = Effect.StainAccumulation;
 								P->Absorption = Effect.StainAbsorption;
 								P->Drying = Effect.StainDrying;
 								P->DirtAmount = Effect.StainDirtAmount;
@@ -5670,8 +5686,17 @@ bool FMixtormatGpuCompositor::RequestCompose(
 								FP->HeightWeight = Effect.PeelSeedHeightWeight;
 								FP->NormalizeWeights = Effect.bPeelNormalizeSeedWeights ? 1u : 0u;
 								FP->GrowthStrength = Effect.PeelGrowthStrength;
+
+								FP->MacroPeriod = FMath::Clamp(Effect.PeelMacroPeriod, 1, 256);
+								FP->MicroPeriod = FMath::Clamp(Effect.PeelMicroPeriod, 1, 512);
+								FP->NoiseWeight = Effect.PeelSeedNoiseWeight;
 								FP->SizeVariation = Effect.PeelSizeVariation;
-								FP->FlakeCells = Effect.PeelClusterPeriod;
+								FP->FlakeCells = FMath::Clamp(Effect.PeelClusterPeriod, 1, 128);
+								FP->ClusterAmount = Effect.PeelClusterAmount;
+								FP->WarpPeriod = FMath::Clamp(Effect.PeelWarpPeriod, 1, 256);
+								FP->WarpAmount = Effect.PeelWarpAmount;
+								FP->WarpSource = Effect.PeelWarpSource;
+
 								FP->PeelType = Effect.PeelType;
 								FP->Front = Effect.Front;
 								FP->Width = Effect.Width;
@@ -5719,8 +5744,18 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							// and outward propagation leave the same band on the same pass,
 							// and the reach each side needs is still the same.
 							int32 Ping = 0;
+							const float CurlLength =
+								FMath::Abs(Effect.Width)
+								* FMath::Lerp(
+									2.0f,
+									10.0f,
+									FMath::Clamp(Effect.MicroMorph, 0.0f, 1.0f));
+
 							const float Reach =
-								FMath::Abs(Effect.Front) + 4.0f * FMath::Abs(Effect.Width);
+								FMath::Abs(Effect.Front)
+								+ FMath::Max(
+									4.0f * FMath::Abs(Effect.Width),
+									2.25f * CurlLength);
 							const int32 Iterations = FMath::Clamp(
 								FMath::CeilToInt(Reach * SolveRes.X), 1, 256);
 							for (int32 Step = 0; Step < Iterations; ++Step)

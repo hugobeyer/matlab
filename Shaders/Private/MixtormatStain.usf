@@ -82,6 +82,7 @@ float SourceAmount;
 float Gravity;
 float SurfaceFollow;
 float Spread;
+float Accumulation;
 float Absorption;
 float Drying;
 float DirtAmount;
@@ -316,10 +317,21 @@ void SimulateState(int2 Pixel, float2 UV)
 		float2(FlowSinCos.y, FlowSinCos.x), float2(0.0f, -1.0f));
 	const float SourceField = max(OldB.w, 0.0f);
 
-	const float WaterL = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f).x;
-	const float WaterR = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f).x;
-	const float WaterD = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f).x;
-	const float WaterU = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f).x;
+	// The four neighbors water is gathered from below. Sampled once and reused for the velocity
+	// gradient, the new gather-based transport and the post-transport diffusion, rather than
+	// re-sampling the same texels three times.
+	const float4 NeighborAL = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f);
+	const float4 NeighborAR = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f);
+	const float4 NeighborAD = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f);
+	const float4 NeighborAU = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f);
+	const float2 NeighborVelL = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f).xy;
+	const float2 NeighborVelR = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f).xy;
+	const float2 NeighborVelD = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f).xy;
+	const float2 NeighborVelU = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f).xy;
+	const float WaterL = NeighborAL.x;
+	const float WaterR = NeighborAR.x;
+	const float WaterD = NeighborAD.x;
+	const float WaterU = NeighborAU.x;
 	const float2 WaterGradient = 0.5f * float2(WaterR - WaterL, WaterU - WaterD);
 
 	// The packed channels accumulated below the layer, sampled once and used for two different
@@ -369,15 +381,19 @@ void SimulateState(int2 Pixel, float2 UV)
 	const float2 AdvectedVelocity = PreviousStateB.SampleLevel(LinearWrapSampler, BackUV, 0.0f).xy;
 	Velocity = lerp(AdvectedVelocity, Velocity, 0.80f);
 
+	// Dissolved dirt still rides the old semi-Lagrangian sample, with the same lateral spread
+	// blending it towards its side neighbors. Water no longer transports this way -- see below --
+	// but dirt is a much smaller, slower-moving signal and the backward sample remains a fine
+	// answer for it.
 	const float SpreadAmount = saturate(Spread) * (0.35f + 0.65f * LocalRoughness);
 	if (SpreadAmount > 1.0e-5f)
 	{
 		const float2 Direction = StainSafeDirection(Velocity, BaseDirection);
 		const float2 Lateral = float2(-Direction.y, Direction.x);
 		const float2 LateralOffset = Lateral * SimTexel * (1.0f + LocalRoughness * 1.5f);
-		const float4 SideA = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV + LateralOffset, 0.0f);
-		const float4 SideB = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV - LateralOffset, 0.0f);
-		AdvectedA.xz = lerp(AdvectedA.xz, 0.5f * (SideA.xz + SideB.xz), SpreadAmount);
+		const float SideZA = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV + LateralOffset, 0.0f).z;
+		const float SideZB = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV - LateralOffset, 0.0f).z;
+		AdvectedA.z = lerp(AdvectedA.z, 0.5f * (SideZA + SideZB), SpreadAmount);
 	}
 
 	// The same combined source the initial injection used, read back rather than recomputed. It
@@ -385,7 +401,44 @@ void SimulateState(int2 Pixel, float2 UV)
 	// init and no top-up at all -- so auto mode read as much weaker than mask mode for reasons
 	// that had nothing to do with either.
 	const float ContinuousSource = SourceField * max(SourceAmount, 0.0f) * 0.06f;
-	float Water = min(max(AdvectedA.x + ContinuousSource, 0.0f), 4.0f);
+
+	// Water transport: gather rather than smear. The old backward sample followed a single texel
+	// back along Velocity and picked up whatever was there, which is semi-Lagrangian advection --
+	// conservative for a single stream, but it never lets two converging streams add up, so liquid
+	// running into a cavity from two sides settled at whichever side the sample happened to land
+	// on instead of pooling. Gathering from all four neighbors and summing only the fraction of
+	// each one's water whose velocity actually points this way makes convergent flow accumulate
+	// instead of overwrite.
+	//
+	// Accumulation is the one dial: how much of this texel's own water stays local (Retain) versus
+	// how much of a neighbor's water can arrive in a single step (Transport). Low Accumulation
+	// behaves close to the old smear; high Accumulation lets repeated convergent flow build a pool
+	// that does not get renormalized away.
+	const float Retain = lerp(0.05f, 0.80f, saturate(Accumulation));
+	const float Transport = 1.0f - Retain;
+
+	const float IncomingLeft = NeighborAL.x * saturate(NeighborVelL.x) * Transport;
+	const float IncomingRight = NeighborAR.x * saturate(-NeighborVelR.x) * Transport;
+	const float IncomingDown = NeighborAD.x * saturate(NeighborVelD.y) * Transport;
+	const float IncomingUp = NeighborAU.x * saturate(-NeighborVelU.y) * Transport;
+
+	float Water = OldA.x * Retain;
+	Water += IncomingLeft;
+	Water += IncomingRight;
+	Water += IncomingDown;
+	Water += IncomingUp;
+	Water += ContinuousSource;
+
+	// Spread applied after transport, as mild diffusion rather than the primary way water moves --
+	// it softens the gather's texel-grid look without smearing pools back out the way it used to
+	// when it operated on the backward-advected sample directly.
+	if (SpreadAmount > 1.0e-5f)
+	{
+		const float NeighborAverage = 0.25f * (WaterL + WaterR + WaterD + WaterU);
+		Water = lerp(Water, NeighborAverage, SpreadAmount * 0.25f);
+	}
+
+	Water = min(max(Water, 0.0f), 4.0f);
 	float Saturation = max(OldA.y, 0.0f);
 	float Dissolved = max(AdvectedA.z, 0.0f);
 	float Deposit = max(OldA.w, 0.0f);
@@ -503,11 +556,14 @@ void ResolveStain(int2 Pixel, float2 UV)
 	// changing either rate carries the reference with it.
 	const float Injected = max(SourceAmount, 0.0f) * (1.0f + (float)Iteration * 0.06f);
 
-	// Absorbed liquid plus a fraction of what is still on the surface. Half the injected volume
-	// is the reference rather than all of it, because evaporation and runoff mean a texel never
-	// absorbs everything that passes over it.
-	const float WetMask = saturate(
-		(State.y + State.x * 0.20f) / max(Injected * 0.5f, 1.0e-4f));
+	// Wet mask resolves from accumulated density rather than a ratio against injected volume.
+	// Normalizing against Injected meant a texel that kept getting wetter run after run -- a
+	// cavity where converging flow pools -- was renormalized back down as Iteration grew, because
+	// the denominator grew with it. Density has no such ceiling: saturation and standing water
+	// both push it up directly, so repeated convergence and cavities read as progressively wetter
+	// instead of being flattened away by the reference they are compared against.
+	const float WetDensity = State.y * 2.5f + State.x * 0.65f;
+	const float WetMask = 1.0f - exp(-WetDensity);
 
 	// Dirt that settled, against the dirt that much liquid could dissolve. The dissolve rate is
 	// the same expression SimulateState uses, so the reference tracks Dirt Amount instead of

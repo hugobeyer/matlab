@@ -178,7 +178,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	];
 
 	// Paired: both labels are one short word, and at the inspector's width each half is about
-	// 139px. Anything longer would clip, which is why Growth's weights below are not paired.
+	// 139px. Anything longer would clip, which is why Adhesion's weights below are not paired.
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSliderInt(LOCTEXT("PPeelMaskTiling", "Tiling"), &FMixtormatLayerEffect::PeelMaskTiling, 1.0, 16.0, 1),
 		MakeMemberToggle<FMixtormatLayerEffect>(
@@ -186,14 +186,12 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 			[this]() { return GetSelectedProceduralPeel(); },
 			&FMixtormatLayerEffect::bPeelMaskInvert)));
 
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpAdhesion", "Adhesion")));
 	AddPeelSlider(Panel, LOCTEXT("PPeelMaskW", "Mask Gain"), &FMixtormatLayerEffect::PeelSeedMaskWeight, 0.0, 4.0, 0.0, 0.01,
 		LOCTEXT("PPeelMaskWHint", "Scales the mask before the threshold. At 0 nothing crosses it and there is no peel at all, whichever mask is chosen."));
-	AddPeelSlider(Panel, LOCTEXT("PPeelThreshold", "Threshold"), &FMixtormatLayerEffect::PeelSeedThreshold, 0.0, 1.0, 0.62, 0.01,
-		LOCTEXT("PPeelThresholdHint", "The mask value the peel contour follows. The distance field is signed about this isocontour."));
+	AddPeelSlider(Panel, LOCTEXT("PPeelAdhesion", "Adhesion"), &FMixtormatLayerEffect::PeelSeedThreshold, 0.0, 1.0, 0.62, 0.01,
+		LOCTEXT("PPeelAdhesionHint", "How easily the peel nucleates. Lower values make peeling start more readily; higher values require stronger surface features."));
 
-	// The labels used to carry their group as a prefix -- "Growth · Convexity" in every row --
-	// which is what made the column read as repetitive. The caption says it once instead.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpGrowth", "Growth")));
 	AddPeelSlider(Panel, LOCTEXT("PPeelCurvW", "Convexity"), &FMixtormatLayerEffect::PeelSeedCurvatureWeight, -2.0, 2.0, 0.0, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelCurvBias", "Convex Bias"), &FMixtormatLayerEffect::PeelSeedCurvatureBias, 0.0, 1.0, 1.0, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelAOW", "Occlusion"), &FMixtormatLayerEffect::PeelSeedAOWeight, -2.0, 2.0, 0.0, 0.01);
@@ -204,15 +202,18 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		LOCTEXT("PPeelNormalize", "Normalize Weights"),
 		[this]() { return GetSelectedProceduralPeel(); },
 		&FMixtormatLayerEffect::bPeelNormalizeSeedWeights));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakePeelSliderInt(LOCTEXT("PPeelCurvRadius", "Radius"), &FMixtormatLayerEffect::PeelCurvatureRadius, 1.0, 32.0, 2),
-		MakePeelSlider(LOCTEXT("PPeelGrowth", "Strength"), &FMixtormatLayerEffect::PeelGrowthStrength, 0.05, 8.0, 1.0, 0.05)));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpFlake", "Flake")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpPropagation", "Propagation")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakePeelSliderInt(LOCTEXT("PPeelCurvRadius", "Radius"), &FMixtormatLayerEffect::PeelCurvatureRadius, 1.0, 64.0, 2),
+		MakePeelSlider(LOCTEXT("PPeelPropagation", "Propagation"), &FMixtormatLayerEffect::PeelGrowthStrength, 0.05, 32.0, 1.0, 0.05)));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpShape", "Peel Shape")));
 	AddPeelSlider(Panel, LOCTEXT("PPeelLiftVar", "Lift Variation"), &FMixtormatLayerEffect::PeelLiftVariation, 0.0, 1.0, 0.6, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelSizeVar", "Size Variation"), &FMixtormatLayerEffect::PeelSizeVariation, 0.0, 1.0, 0.5, 0.01,
-		LOCTEXT("PPeelSizeVarHint", "Per-cell speed factor. Set this to 0 as well as the growth weights to check that the field dilates uniformly."));
-	AddPeelSliderInt(Panel, LOCTEXT("PPeelClusterP", "Flake Cells"), &FMixtormatLayerEffect::PeelClusterPeriod, 1.0, 512.0, 4);
+		LOCTEXT("PPeelSizeVarHint", "Per-cell speed factor. Set this to 0 as well as the adhesion weights to check that the field dilates uniformly."));
+	AddPeelSliderInt(Panel, LOCTEXT("PPeelDamageScale", "Damage Scale"), &FMixtormatLayerEffect::PeelClusterPeriod, 1.0, 128.0, 4,
+		LOCTEXT("PPeelDamageScaleHint", "Cell count for per-flake variation. One random value per cell, so adjacent flakes differ in size and lift."));
 	AddSliderRow(Panel, MixtormatRow::Make(
 		LOCTEXT("PPeelType", "Curled"),
 		MixtormatRow::MakeCheckbox(
@@ -233,9 +234,9 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 			})),
 		LOCTEXT("PPeelTypeHint", "Checked lifts a flap ahead of the front and folds it back behind. Unchecked is the flat chip.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpSolve", "Solve")));
-	AddPeelSlider(Panel, LOCTEXT("PPeelAO", "Contact AO"), &FMixtormatLayerEffect::PeelAOStrength, 0.0, 1.0, 0.8, 0.01);
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpRelief", "Relief")));
 	AddPeelSlider(Panel, LOCTEXT("PPeelSharp", "Edge Sharpness"), &FMixtormatLayerEffect::PeelEdgeSharpness, 0.0, 4.0, 1.0, 0.01);
+	AddPeelSlider(Panel, LOCTEXT("PPeelAO", "Contact AO"), &FMixtormatLayerEffect::PeelAOStrength, 0.0, 1.0, 0.8, 0.01);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSliderInt(LOCTEXT("PPeelSeed", "Seed"), &FMixtormatLayerEffect::PeelRandomSeed, 1.0, 999.0, 1),
 		MakePeelSliderInt(LOCTEXT("PPeelSolveDiv", "Solve"), &FMixtormatLayerEffect::PeelSolveDivisor, 1.0, 32.0, 4,
@@ -494,6 +495,10 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 			LOCTEXT("StainSpreadHint", "Lateral pressure and rough-surface dispersion.")),
 		Slider(LOCTEXT("StainAbsorption", "Absorption"), &FMixtormatLayerEffect::StainAbsorption, 0.0, 1.0, 0.35, 0.01,
 			LOCTEXT("StainAbsorptionHint", "Rate liquid enters porous material and becomes the wet mask."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StainAccumulation", "Accumulation"), &FMixtormatLayerEffect::StainAccumulation,
+		0.0, 1.0, 0.5, 0.01,
+		LOCTEXT("StainAccumulationHint", "Controls how much liquid remains and pools locally while flow transports the rest.")));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("StainDrying", "Drying"), &FMixtormatLayerEffect::StainDrying,
 		0.0, 1.0, 0.20, 0.01,
@@ -3636,7 +3641,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 	AddFloatControl(Panel, LOCTEXT("PeelingWidth", "Transition Width"), &FMixtormatLayerEffect::Width, 0.000001f, 0.25f, 0.001f, 0.015f);
 	AddFloatControl(Panel, LOCTEXT("PeelingMacroWarp", "Macro Warp"), &FMixtormatLayerEffect::MacroWarp, -1.0f, 1.0f, 0.005f, 0.01f);
 	AddFloatControl(Panel, LOCTEXT("PeelingMicroWarp", "Micro Warp"), &FMixtormatLayerEffect::MicroWarp, -1.0f, 1.0f, 0.001f, 0.003f);
-	AddFloatControl(Panel, LOCTEXT("PeelingMicroMorph", "Micro Morph"), &FMixtormatLayerEffect::MicroMorph, 0.0f, 1.0f, 0.01f, 1.0f);
+	AddFloatControl(Panel, LOCTEXT("PeelingCurlLength", "Curl Length"), &FMixtormatLayerEffect::MicroMorph, 0.0f, 1.0f, 0.01f, 1.0f);
 	AddFloatControl(Panel, LOCTEXT("PeelingThickness", "Thickness"), &FMixtormatLayerEffect::Thickness, 0.0f, 1.0f, 0.005f, 0.04f);
 	AddFloatControl(Panel, LOCTEXT("PeelingLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0f, 1.0f, 0.005f, 0.04f);
 	AddFloatControl(Panel, LOCTEXT("PeelingDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0f, 1.0f, 0.005f, 0.02f);
