@@ -1238,6 +1238,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					{
 						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 					}
+					else
+					{
+						// A scoped mask whose owner can't be resolved as a preceding,
+						// top-level Effect child is broken/inactive: drop it rather than
+						// let it fall through as an ordinary layer-wide mask (INDEX_NONE),
+						// which would unexpectedly modify CombinedMask.
+						Data.Children.RemoveAt(Data.Children.Num() - 1);
+						continue;
+					}
 				}
 				FMaskRenderData& MaskData = ChildData.Mask;
 				if (bPublishedSource)

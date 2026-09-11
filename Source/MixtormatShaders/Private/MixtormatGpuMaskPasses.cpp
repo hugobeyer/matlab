@@ -185,6 +185,30 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
+	// Resolves the texture a mask child reads from: a published output looked up by
+	// FPublishedMaskKey (or the empty driver signal when that source hasn't produced
+	// output yet), otherwise the child's own authored texture. Shared by ordinary layer
+	// masks and scoped feature masks so a published source behaves identically in both.
+	static FRDGTextureRef ResolveMaskSourceTexture(
+		FMixtormatComposeContext& Ctx,
+		const FMaskRenderData& Mask,
+		const TCHAR* DebugName)
+	{
+		if (!Mask.PublishedSourceOutput.IsNone())
+		{
+			const FPublishedMaskKey Key{
+				Mask.PublishedSourceLayerId,
+				Mask.PublishedSourceChildIndex,
+				Mask.PublishedSourceOutput};
+			if (const FRDGTextureRef* Published = Ctx.PublishedMaskOutputs.Find(Key))
+			{
+				return *Published;
+			}
+			return Ctx.EmptyDriverSignal;
+		}
+		return RegisterTexture(Ctx.GraphBuilder, Ctx.RegisteredTextures, Mask.Texture, DebugName);
+	}
+
 	// Scoped masks use the same shader and controls as layer masks, but write to
 	// owner-local textures. The starting point is the layer mask visible at the
 	// owner's row; the result never feeds back into CombinedMask.
@@ -200,7 +224,6 @@ namespace MixtormatGpuCompositor
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
-		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
 		const FRDGTextureRef CombinedMask = LayerCtx.CombinedMask;
@@ -241,9 +264,7 @@ namespace MixtormatGpuCompositor
 			MP->Contrast = Mask.Contrast;
 			MP->Offset = Mask.Offset;
 			MP->PreviousMask = FeatureMask;
-			MP->IncomingMask = RegisterTexture(
-				GraphBuilder, RegisteredTextures, Mask.Texture,
-				TEXT("Mixtormat.ScopedIncomingMask"));
+			MP->IncomingMask = ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.ScopedIncomingMask"));
 			MP->LinearWrapSampler = TStaticSamplerState<
 				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 			MP->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
@@ -500,9 +521,6 @@ namespace MixtormatGpuCompositor
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
-		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
-		const FRDGTextureRef EmptyDriverSignal = Ctx.EmptyDriverSignal;
-		TMap<FPublishedMaskKey, FRDGTextureRef>& PublishedMaskOutputs = Ctx.PublishedMaskOutputs;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
 		FRDGTextureRef* const MaskTargets = LayerCtx.MaskTargets;
@@ -547,31 +565,7 @@ namespace MixtormatGpuCompositor
 		MaskParameters->Contrast = Mask.Contrast;
 		MaskParameters->Offset = Mask.Offset;
 		MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
-		FRDGTextureRef IncomingMask = nullptr;
-		if (!Mask.PublishedSourceOutput.IsNone())
-		{
-			const FPublishedMaskKey Key{
-				Mask.PublishedSourceLayerId,
-				Mask.PublishedSourceChildIndex,
-				Mask.PublishedSourceOutput};
-			if (FRDGTextureRef* Published = PublishedMaskOutputs.Find(Key))
-			{
-				IncomingMask = *Published;
-			}
-			else
-			{
-				IncomingMask = EmptyDriverSignal;
-			}
-		}
-		else
-		{
-			IncomingMask = RegisterTexture(
-				GraphBuilder,
-				RegisteredTextures,
-				Mask.Texture,
-				TEXT("Mixtormat.IncomingMask"));
-		}
-		MaskParameters->IncomingMask = IncomingMask;
+		MaskParameters->IncomingMask = ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.IncomingMask"));
 		MaskParameters->LinearWrapSampler =
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		MaskParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
