@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Primitives/SMixtormatGradientBox.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Primitives/MixtormatGradientPainter.h"

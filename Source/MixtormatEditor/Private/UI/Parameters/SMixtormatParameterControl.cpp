@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "UI/Parameters/SMixtormatParameterControl.h"
+#include "UI/Parameters/SMixtormatParameterControl.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"

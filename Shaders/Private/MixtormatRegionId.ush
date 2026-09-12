@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#ifndef MIXTORMAT_REGION_ID_USH
+#ifndef MIXTORMAT_REGION_ID_USH
 #define MIXTORMAT_REGION_ID_USH
 
 // Everything shared by the cluster filter and the nodes that read its ID map: the hash the IDs

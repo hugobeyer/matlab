@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#pragma once
+#pragma once
 
 // Where a drag can be released, and what happens when it is.
 //

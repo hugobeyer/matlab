@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "UI/Layers/SMixtormatLayerRow.h"
+#include "UI/Layers/SMixtormatLayerRow.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"

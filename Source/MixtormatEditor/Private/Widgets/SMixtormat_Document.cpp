@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "Widgets/SMixtormat.h"
+#include "Widgets/SMixtormat.h"
 #include "MixtormatEditorSettings.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"

@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "UI/Containers/SMixtormatInspectorWell.h"
+#include "UI/Containers/SMixtormatInspectorWell.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"

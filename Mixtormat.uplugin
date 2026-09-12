@@ -11,7 +11,7 @@
 	"DocsURL": "https://hugobeyer.github.io/mixtormat/",
 	"SupportURL": "mailto:overjoy.hb@gmail.com",
 	"CanContainContent": true,
-	"PlatformAllowList": [
+	"SupportedTargetPlatforms": [
 		"Win64"
 	],
 	"IsBetaVersion": false,

@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatStyle.h"
 #include "Style/MixtormatLiveTheme.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatMutableStyleSet.h"

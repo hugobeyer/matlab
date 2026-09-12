@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#include "/Engine/Public/Platform.ush"
+#include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatEdgeShading.ush"
 
 Texture2D<float2> EdgeField;

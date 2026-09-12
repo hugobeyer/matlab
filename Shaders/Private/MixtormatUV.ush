@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#ifndef MATERIAL_LAB_UV_USH
+#ifndef MATERIAL_LAB_UV_USH
 #define MATERIAL_LAB_UV_USH
 
 // Source UV placement, shared by anything that reads an authored texture through a frac().

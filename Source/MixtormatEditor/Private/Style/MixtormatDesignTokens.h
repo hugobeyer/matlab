@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 
