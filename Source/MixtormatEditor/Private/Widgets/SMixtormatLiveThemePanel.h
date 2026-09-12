@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #pragma once
 
 #include "Widgets/SCompoundWidget.h"

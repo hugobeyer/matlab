@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 ﻿#include "UI/Controls/SMixtormatSlider.h"
 
 #include "Fonts/FontMeasure.h"

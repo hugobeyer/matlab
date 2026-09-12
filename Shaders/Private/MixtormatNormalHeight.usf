@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 
 Texture2D<float4> InputNormal;

@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 
 // Min/max reduction over a scalar texture, down to a 1x1 (min, max) pair.

@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"

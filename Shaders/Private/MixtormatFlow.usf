@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 
 // Coherent tangent flow field, built from a height texture and consumed by any effect that

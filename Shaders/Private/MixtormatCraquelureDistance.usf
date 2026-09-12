@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 
 // Distance to the nearest crack, by jump flooding.

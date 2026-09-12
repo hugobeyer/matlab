@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Preview/MixtormatPreviewSceneSettings.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS

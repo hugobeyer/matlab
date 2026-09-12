@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Services/MixtormatSurfaceImporter.h"
 
 #include "Preview/MixtormatPreviewSceneSettings.h"

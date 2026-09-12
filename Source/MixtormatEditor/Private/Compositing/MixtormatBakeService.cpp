@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Compositing/MixtormatBakeService.h"
 
 #include "Services/MixtormatPaths.h"

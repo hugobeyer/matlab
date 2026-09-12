@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Layers/MixtormatLayerBadges.h"
 
 #include "MixtormatEffect.h"

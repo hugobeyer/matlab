@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
 
 // Mask-weighted roughness for what a carving filter removed. Shared by Erosion and Chipping.

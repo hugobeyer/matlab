@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Services/MixtormatLayerPreview.h"
 
 #include "Engine/Texture2D.h"

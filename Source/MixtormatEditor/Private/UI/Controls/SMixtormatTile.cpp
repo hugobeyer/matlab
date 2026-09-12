@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Controls/SMixtormatTile.h"
 
 #include "AssetThumbnail.h"

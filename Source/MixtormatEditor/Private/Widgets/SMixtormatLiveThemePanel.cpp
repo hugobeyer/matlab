@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Widgets/SMixtormatLiveThemePanel.h"
 
 #include "Style/MixtormatLiveTheme.h"

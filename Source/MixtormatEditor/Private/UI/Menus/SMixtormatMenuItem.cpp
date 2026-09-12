@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Menus/SMixtormatMenuItem.h"
 
 #include "Framework/Application/SlateApplication.h"

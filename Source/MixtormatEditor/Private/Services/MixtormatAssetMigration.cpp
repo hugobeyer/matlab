@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Services/MixtormatAssetMigration.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"

@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #pragma once
 
 // The drag operations the layer stack and the library speak in.

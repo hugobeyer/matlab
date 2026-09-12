@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 using UnrealBuildTool;
 
 public class MixtormatEditor : ModuleRules

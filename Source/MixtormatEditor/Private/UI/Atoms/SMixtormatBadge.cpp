@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Atoms/SMixtormatBadge.h"
 
 #include "Style/MixtormatDesignTokens.h"

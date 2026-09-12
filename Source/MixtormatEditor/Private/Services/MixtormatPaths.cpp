@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Services/MixtormatPaths.h"
 
 #include "Interfaces/IPluginManager.h"

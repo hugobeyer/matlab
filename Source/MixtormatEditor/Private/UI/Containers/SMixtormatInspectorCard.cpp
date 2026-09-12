@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Containers/SMixtormatInspectorCard.h"
 
 #include "Style/MixtormatDesignTokens.h"

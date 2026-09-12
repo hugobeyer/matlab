@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "Services/MixtormatThumbnailRenderer.h"
 
 #include "AssetCompilingManager.h"

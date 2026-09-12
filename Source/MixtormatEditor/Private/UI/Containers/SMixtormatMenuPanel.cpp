@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 ﻿#include "UI/Containers/SMixtormatMenuPanel.h"
 
 #include "Style/MixtormatPalette.h"

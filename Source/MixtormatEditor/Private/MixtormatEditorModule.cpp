@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "MixtormatEditorModule.h"
 
 #include "Framework/Commands/UIAction.h"

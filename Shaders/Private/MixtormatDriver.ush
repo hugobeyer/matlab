@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 // Scalar Drivers: per-pixel modulation of a layer scalar by a mask-shaped signal.
 //
 // Deliberately blind to where the signal came from. A Driver here is a scalar in 0..1 sampled at

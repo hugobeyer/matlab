@@ -1,3 +1,5 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "UI/Atoms/MixtormatIcons.h"
 
 #include "Style/MixtormatStyle.h"
