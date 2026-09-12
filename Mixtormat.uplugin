@@ -5,9 +5,15 @@
 	"FriendlyName": "Mixtormat",
 	"Description": "Material browsing, editor-based authoring, look development, baking, and runtime control of baked materials.",
 	"Category": "Rendering",
+	"EngineVersion": "5.8.0",
 	"CreatedBy": "Hugo Beyer",
 	"CreatedByURL": "https://hugobeyer.github.io/resume/",
+	"DocsURL": "https://hugobeyer.github.io/mixtormat/",
+	"SupportURL": "mailto:overjoy.hb@gmail.com",
 	"CanContainContent": true,
+	"PlatformAllowList": [
+		"Win64"
+	],
 	"IsBetaVersion": false,
 	"Modules": [
 		{

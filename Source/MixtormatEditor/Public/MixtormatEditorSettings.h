@@ -55,32 +55,17 @@ inline int32 MixtormatBakeAASamplesToInt(const EMixtormatBakeAASamples Samples)
 	}
 }
 
-// Editor-preference colors for Mixtormat debug visualization, plus the bake dialog's starting
-// values. Read via GetDefault<UMixtormatEditorSettings>(); the bake defaults below are read once
-// when the Mixtormat workspace / bake dialog is opened and never written back to, so editing a
-// destination or resolution for a single bake never changes these.
+// The bake dialog's starting values. Read via GetDefault<UMixtormatEditorSettings>(); they are
+// read once when the Mixtormat workspace / bake dialog is opened and never written back to, so
+// editing a destination or resolution for a single bake never changes these.
 UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Mixtormat"))
 class MIXTORMATEDITOR_API UMixtormatEditorSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
 public:
-	UMixtormatEditorSettings();
-
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 	virtual FName GetSectionName() const override { return TEXT("Mixtormat"); }
-
-	UPROPERTY(EditAnywhere, Config, Category = "Debug", meta = (DisplayName = "Mask Color"))
-	FLinearColor MaskColor;
-
-	UPROPERTY(EditAnywhere, Config, Category = "Debug", meta = (DisplayName = "ID Color A"))
-	FLinearColor IdColorA;
-
-	UPROPERTY(EditAnywhere, Config, Category = "Debug", meta = (DisplayName = "ID Color B"))
-	FLinearColor IdColorB;
-
-	UPROPERTY(EditAnywhere, Config, Category = "Debug", meta = (DisplayName = "Invalid / Grout Color"))
-	FLinearColor InvalidGroutColor;
 
 	// Bake-only (SMixtormat::BakeResolution): the live preview's own resolution
 	// (SMixtormat::CompositionResolution) is untouched by this setting.
@@ -88,9 +73,11 @@ public:
 	EMixtormatBakeResolution DefaultBakeResolution = EMixtormatBakeResolution::Res2048;
 
 	// Infrastructure only: nothing in FMixtormatBakeService or the GPU compositor implements
-	// supersampling yet. Stored so the setting and its bake-panel control exist ahead of that
-	// work; the panel's AA control is disabled until it does something.
-	UPROPERTY(EditAnywhere, Config, Category = "Bake", meta = (DisplayName = "Default AA Samples"))
+	// supersampling yet, so this is deliberately NOT EditAnywhere -- a user who could pick 4x here
+	// would be choosing a value the bake ignores. The field stays so the plumbing through
+	// FMixtormatBakeSettings and the (disabled) bake-panel control keeps compiling ahead of that
+	// work; restore EditAnywhere in the same change that makes supersampling real.
+	UPROPERTY(Config)
 	EMixtormatBakeAASamples DefaultBakeAASamples = EMixtormatBakeAASamples::Samples1x;
 
 	UPROPERTY(EditAnywhere, Config, Category = "Bake", meta = (DisplayName = "Default Output Path"))

@@ -393,10 +393,13 @@ pre{
         </div>
 
         <h3>Resizable layout</h3>
-        <p>The primary columns and the center preview/library split can be resized. The bottom Material and Mask galleries can also be collapsed to give the preview more room.</p>
+        <p>The primary columns and the center preview/library split can be resized. The bottom Material and Mask galleries can also be collapsed to give the preview more room &mdash; press <code>G</code> to toggle them, the same idea as <code>H</code> for the viewport overlay.</p>
 
         <h3>Top bar</h3>
-        <p>The main document actions live at the top: Undo, Redo, New, Load, Save, Save As, and Bake. The current material name and edited state remain visible while you work.</p>
+        <p>The main document actions live at the top: Undo, Redo, New, Load, Save, Save As, and Bake. The current material name and edited state remain visible while you work. <strong>DOCS</strong> opens this documentation, and <strong>SETTINGS</strong> opens the Mixtormat preferences described below.</p>
+
+        <h3>Settings</h3>
+        <p>Mixtormat's preferences live in <strong>Editor Preferences &rarr; Plugins &rarr; Mixtormat</strong>, reachable directly from the SETTINGS button in the top bar. They cover the bake defaults: <strong>Default Resolution</strong> and <strong>Default Output Path</strong> (<code>/Game/Mixtormat/Baked</code> unless changed). These are starting values for the Bake dialog only &mdash; changing the destination or resolution for a single bake never writes back to them.</p>
 
         <h3>Status bar</h3>
         <p>The bottom status area reports the current working state, preview quality, rendering mode, and layer count. It is useful for confirming whether a recipe is saved and what preview mode you are judging.</p>
@@ -443,6 +446,9 @@ pre{
         <h3>Why the naming matters</h3>
         <p>The importer needs to recognize which textures belong to the same surface and which role each file plays. Keeping one shared base name makes the set unambiguous.</p>
 
+        <h3>Where imports land</h3>
+        <p>Imported surfaces and masks go into your <strong>project</strong> content at <code>/Game/Mixtormat/Library</code> &mdash; surfaces under <code>Surfaces/</code>, masks under <code>Masks/</code>, raw textures under <code>Textures/</code>. Nothing is written into the installed plugin, so your own imports survive reinstalling or updating Mixtormat, and they travel with the project rather than the engine install. The Library browser reads both roots at once, so built-in and imported content appear together.</p>
+
         <div class="image-slot"><span>IMAGE — Example custom source set: _BC, _N, _RAMH and the imported surface tile.</span></div>
       </section>
 
@@ -478,15 +484,10 @@ pre{
           <p>An artist-authored layer for simple material values. Fill layers can override properties such as Base Color, Roughness, Metallic, and IOR without requiring a full source texture set.</p>
         </div>
 
-        <div class="card">
-          <h3>Effect Layer</h3>
-          <p>A layer whose main role is an effect contribution rather than a new base material. This can be useful when a treatment deserves its own top-level place in the recipe.</p>
-        </div>
+        <h3>New layer versus child effect</h3>
+        <p>Effects are not a layer type &mdash; they are children you add to an existing layer. Add a new Material or Fill Layer when a different physical surface is being introduced; add a child effect when the surface already in the stack is being changed. Keeping that distinction usually makes complex stacks easier to read later.</p>
 
-        <h3>Material Layer versus child Effect</h3>
-        <p>Use a new Material Layer when a different physical surface is being introduced. Use a child effect when the existing surface is being changed. Keeping that distinction usually makes complex stacks easier to read later.</p>
-
-        <div class="image-slot"><span>IMAGE — Side-by-side examples of Material, Fill and Effect layer rows.</span></div>
+        <div class="image-slot"><span>IMAGE — Side-by-side examples of Material and Fill layer rows, and a layer with child effects.</span></div>
       </section>
 
       <section id="composition">
@@ -835,7 +836,7 @@ pre{
         <p>The Preview is a dedicated Unreal look-development viewport for the current GPU composite. It is meant to help judge the material as a surface, not only as a set of texture channels.</p>
 
         <h3>Preview meshes</h3>
-        <p>Switch between <strong>Sphere</strong>, <strong>Plane</strong>, and <strong>Cube</strong>. A plane is useful for tile structure and patterns; a sphere makes roughness and normal response easy to read; a cube exposes edge behavior.</p>
+        <p>Switch between <strong>Sphere</strong>, <strong>Plane</strong>, <strong>Cube</strong>, and <strong>Cylinder</strong>. A plane is useful for tile structure and patterns; a sphere makes roughness and normal response easy to read; a cube exposes edge behavior; a cylinder shows how a pattern wraps and where tiling seams land on a curved surface.</p>
 
         <h3>Lighting presets</h3>
         <p>Available studio lighting presets are <strong>Neutral</strong>, <strong>Soft</strong>, <strong>Dramatic</strong>, <strong>Rim</strong>, and <strong>Workshop</strong>. Light and skylight intensity can be adjusted without losing the character of the selected preset.</p>
@@ -848,6 +849,9 @@ pre{
 
         <h3>Debug views</h3>
         <p>Feature-preview controls can show information such as the selected Layer Mask or Cluster IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
+
+        <h3>Channel preview</h3>
+        <p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited output at a time: <strong>Material</strong> (the normal shaded result) &rarr; <strong>Base Color</strong> &rarr; <strong>Normal</strong> &rarr; <strong>Roughness</strong> &rarr; <strong>AO</strong> &rarr; <strong>Metallic</strong> &rarr; <strong>F0</strong> &rarr; <strong>Height</strong>, then back to Material. This is a diagnostic view with no toolbar control &mdash; it shows the channel exactly as it was composited, with no lighting applied, which is the quickest way to tell whether a problem is in the channel data or in how it is being lit.</p>
 
         <h3>Displacement</h3>
         <p>Enable displacement to judge the composited Height as geometry. Displacement Amount controls how strongly Height moves the preview surface.</p>
@@ -874,8 +878,9 @@ pre{
         <div class="section-head"><h2>Baking</h2></div>
         <p>Baking converts the current editable recipe into regular Unreal assets. The recipe must be saved before a bake begins.</p>
 
-        <h3>Composition resolution</h3>
-        <p>The current composition choices are <strong>1K (1024)</strong>, <strong>2K (2048)</strong>, and <strong>4K (4096)</strong>. The selected composition resolution is also used for the bake.</p>
+        <h3>Bake resolution</h3>
+        <p>The Bake dialog has its own <strong>Resolution</strong> control, offering <strong>512</strong>, <strong>1024</strong>, <strong>2048</strong>, and <strong>4096</strong>. It is independent of the preview's composition resolution (<strong>1024</strong>, <strong>2048</strong>, <strong>4096</strong>), so you can work against a cheap preview and still bake at full size without changing how you were judging the material. The bake composites at the chosen resolution and restores the preview afterwards.</p>
+        <p>The starting value comes from <strong>Default Resolution</strong> in Editor Preferences &rarr; Plugins &rarr; Mixtormat. Picking a different resolution for one bake does not change that default.</p>
 
         <h3>Bake outputs</h3>
         <div class="grid">
@@ -888,7 +893,16 @@ pre{
         <p>The bake also creates the Material Instance that uses the generated outputs.</p>
 
         <h3>Destination and naming</h3>
-        <p>The Bake dialog lets you choose the destination and base name. These settings are remembered for the current recipe so repeated bakes do not require rebuilding the destination each time.</p>
+        <p>The Bake dialog lets you choose the destination folder and a base name. These are remembered for the current recipe, so repeated bakes do not require rebuilding the destination each time. The dialog previews the exact asset names before you commit.</p>
+        <p>For a base name of <code>Rock_01</code>, a bake writes five assets into the destination folder:</p>
+        <div class="grid">
+          <div class="mini"><strong><code>T_Rock_01_BC</code></strong>Base Color.</div>
+          <div class="mini"><strong><code>T_Rock_01_N</code></strong>Tangent-space Normal.</div>
+          <div class="mini"><strong><code>T_Rock_01_RAM</code></strong>Packed Roughness / AO / Metallic.</div>
+          <div class="mini"><strong><code>T_Rock_01_H</code></strong>Height.</div>
+          <div class="mini"><strong><code>MI_Rock_01</code></strong>The Material Instance wired to the four textures above.</div>
+        </div>
+        <p>The default destination is <code>/Game/Mixtormat/Baked</code>, set by <strong>Default Output Path</strong> in Editor Preferences &rarr; Plugins &rarr; Mixtormat.</p>
 
         <h3>Updating an existing bake</h3>
         <p>If output assets already exist, Mixtormat asks before updating them in place. This lets existing asset references remain pointed at the same outputs while the material is re-baked.</p>
@@ -916,6 +930,7 @@ pre{
           <div class="mini"><strong><code>Ctrl + D</code></strong>Duplicate, as shown for layers and child rows in their context menus.</div>
           <div class="mini"><strong><code>Delete</code></strong>Delete/remove, as shown for layers and child rows in their context menus.</div>
           <div class="mini"><strong><code>Right Click</code></strong>Open the context menu for the layer or child under the cursor.</div>
+          <div class="mini"><strong><code>G</code></strong>Collapse or restore the bottom Material and Mask galleries.</div>
         </div>
 
         <h3>Numeric controls</h3>
@@ -948,6 +963,7 @@ pre{
           <div class="mini"><strong><code>F</code></strong>Frame / focus the current preview mesh.</div>
           <div class="mini"><strong><code>Space</code></strong>Hide or show the viewport overlay controls.</div>
           <div class="mini"><strong><code>H</code></strong>Also hides or shows the viewport overlay controls.</div>
+          <div class="mini"><strong><code>V</code></strong>Cycle the raw unlit channel preview: Material, Base Color, Normal, Roughness, AO, Metallic, F0, Height.</div>
         </div>
 
         <h3>Gallery</h3>
