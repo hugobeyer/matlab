@@ -18,6 +18,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Engine/Engine.h"
 #include "RenderingThread.h"
 #include "SceneView.h"
+#include "MixtormatEditorModule.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
@@ -606,8 +607,8 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 	{
 		if (!bAllowEngineFallback)
 		{
-			UE_LOG(LogTemp, Error,
-				TEXT("Mixtormat: required preview mesh %s could not be loaded. Preview mesh left unchanged."),
+			UE_LOG(LogMixtormat, Error,
+				TEXT("Required preview mesh %s could not be loaded. Preview mesh left unchanged."),
 				*PluginMeshPath);
 			return;
 		}

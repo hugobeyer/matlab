@@ -14,6 +14,8 @@
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SMixtormat.h"
 
+DEFINE_LOG_CATEGORY(LogMixtormat);
+
 #define LOCTEXT_NAMESPACE "MixtormatEditorModule"
 
 const FName FMixtormatEditorModule::MixtormatTabName(TEXT("Mixtormat"));
@@ -124,7 +126,7 @@ void FMixtormatEditorModule::RunAssetMigrationCommand(const TArray<FString>& Arg
 	const bool bApply = Args.Num() == 1 && Args[0].Equals(TEXT("Apply"), ESearchCase::IgnoreCase);
 	if (!Args.IsEmpty() && !bApply)
 	{
-		UE_LOG(LogTemp, Error,
+		UE_LOG(LogMixtormat, Error,
 			TEXT("Usage: Mixtormat.MigrateAssets [Apply]. Without Apply, the command is a dry run."));
 		return;
 	}

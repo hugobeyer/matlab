@@ -2580,8 +2580,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	Menu.Item(
 		LOCTEXT("DuplicateLayerContext", "Duplicate"),
 		MixtormatIcons::Duplicate(),
-		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }))
-		.Shortcut(LOCTEXT("DuplicateLayerShortcut", "Ctrl D"));
+		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }));
 
 	// Paste lands a copy at the end of the layer. Paste Instance lands a live one at the top,
 	// which is what a layer header means, except that a source in this same layer pushes it to the
@@ -2618,8 +2617,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("DeleteLayerContext", "Delete"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
-		.Destructive()
-		.Shortcut(LOCTEXT("DeleteLayerShortcut", "Del"));
+		.Destructive();
 
 	return Menu.Build();
 }
@@ -2819,8 +2817,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
 			DuplicateLayerChild(LayerIndex, ChildIndex);
-		}))
-		.Shortcut(LOCTEXT("DuplicateChildShortcut", "Ctrl D"));
+		}));
 	AddSharedChildMenuItems(Menu, LayerIndex, ChildIndex);
 	Menu.Separator();
 	Menu.Item(
@@ -2830,8 +2827,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 		{
 			RemoveLayerEffect(LayerIndex, ChildIndex);
 		}))
-		.Destructive()
-		.Shortcut(LOCTEXT("RemoveChildShortcut", "Del"));
+		.Destructive();
 	return Menu.Build();
 }
 
@@ -2866,8 +2862,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
 			DuplicateLayerChild(LayerIndex, ChildIndex);
-		}))
-		.Shortcut(LOCTEXT("DuplicateGeneratedShortcut", "Ctrl D"));
+		}));
 	AddSharedChildMenuItems(Menu, LayerIndex, ChildIndex);
 	Menu.Separator();
 	// Named after the row it is on. This menu serves generated masks, craquelure and colour id
@@ -2912,8 +2907,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		{
 			RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
 		}))
-		.Destructive()
-		.Shortcut(LOCTEXT("RemoveGeneratedShortcut", "Del"));
+		.Destructive();
 	return Menu.Build();
 }
 
@@ -2947,8 +2941,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
 		{
 			DuplicateLayerChild(LayerIndex, MaskIndex);
-		}))
-		.Shortcut(LOCTEXT("DuplicateMaskShortcut", "Ctrl D"));
+		}));
 	AddSharedChildMenuItems(Menu, LayerIndex, MaskIndex);
 	Menu.Separator();
 	Menu.Item(
@@ -2958,8 +2951,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		{
 			RemoveMaskFromLayer(LayerIndex, MaskIndex);
 		}))
-		.Destructive()
-		.Shortcut(LOCTEXT("RemoveMaskShortcut", "Del"));
+		.Destructive();
 	return Menu.Build();
 }
 
