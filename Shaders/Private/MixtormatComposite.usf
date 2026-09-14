@@ -126,6 +126,7 @@ float F0Influence;
 float NormalInfluence;
 float HeightInfluence;
 float HeightBoost;
+float HeightLevelOffset;
 float HeightBlendAmount;
 
 // Scalar Drivers. Two slots this step, one per driven scalar: slot 0 modulates RoughnessInfluence,
@@ -516,7 +517,8 @@ float SampleIncomingHeight(float2 UV)
 	// layer's height sees the same boosted value -- the displacement, the blend comparison and
 	// the normals derived from it. Height is stored centred on 0.5, so scaling the deviation
 	// deepens pits exactly as much as it raises peaks and leaves the average level alone.
-	SourceHeight = saturate((SourceHeight - 0.5f) * HeightBoost + 0.5f);
+	SourceHeight = saturate(
+		(SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset);
 	if (DirectHeightComparison != 0)
 	{
 		return SourceHeight;

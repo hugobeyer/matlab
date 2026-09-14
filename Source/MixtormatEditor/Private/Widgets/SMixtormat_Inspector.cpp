@@ -3030,6 +3030,9 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("HeightBoostHint", "Gain on this layer's height, signed about the flat midpoint: peaks rise and pits sink by the same factor, so the surface exaggerates without floating. 1 is untouched, 0 is flat. Applied before anything reads the height, so displacement, the height blend and the derived normals all agree. Not Height Influence, which is coverage -- how much of this layer's height reaches the composite rather than how deep it is.")));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));
 
 	AddGeneratedFeatureCards(Panel);
 	return Panel;

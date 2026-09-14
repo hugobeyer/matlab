@@ -145,7 +145,7 @@ namespace MixtormatPalette
 	inline FLinearColor TileNameText() { return Hex(0xDADADA); }
 	inline FLinearColor PreviewBackground() { return Hex(0x050609); }
 	inline FLinearColor PreviewFog() { return Hex(0x020203); }
-	inline FLinearColor PreviewFogCyan() { return Hex(0x187E9B); }
+	inline FLinearColor PreviewFogDense() { return Hex(0x24282C); }
 	inline FLinearColor ErrorText() { return Hex(0xE63333); }
 	inline FLinearColor SegmentActiveText() { return Hex(0xE8F0F8); }
 	inline FLinearColor SegmentShade() { return Hex(0x000000, MixtormatTokens::SegmentShadeAlpha); }

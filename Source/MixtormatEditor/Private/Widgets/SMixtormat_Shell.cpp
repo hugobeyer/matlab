@@ -7,6 +7,7 @@
 #include "HAL/PlatformProcess.h"
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
+#include "Services/MixtormatSurfaceImporter.h"
 
 
 // Window chrome: top bar, page routing, splitters, status bar.
@@ -88,6 +89,8 @@ TSharedRef<SWidget> SMixtormat::BuildCompositionResolutionMenu()
 TSharedRef<SWidget> SMixtormat::BuildTopBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const bool bHasDeveloperSources =
+		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	return SNew(SBox)
 		.HeightOverride(MixtormatTokens::TopBarHeight)
 		[
@@ -228,6 +231,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarButtonMargin, 0.0f)
 				[
 					SNew(SButton)
+					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.Text(LOCTEXT("OpenLiveTheme", "UI STYLE"))
 					.ToolTipText(LOCTEXT("OpenLiveThemeHint", "Developer popup: edit shared UI spacing, sizes, typography and colors live."))
@@ -458,7 +462,7 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
 								? LOCTEXT("StatusQualityHigh", "High · Lumen GI")
 								: PreviewQuality == EMixtormatPreviewQuality::Medium
-									? LOCTEXT("StatusQualityMedium", "Medium")
+									? LOCTEXT("StatusQualityMedium", "Medium · Lumen GI")
 									: LOCTEXT("StatusQualityLow", "Low");
 							return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
 						})

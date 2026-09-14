@@ -569,8 +569,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewQualityHigh", "HIGH")};
 	const TArray<FText> QualityToolTips = {
 		LOCTEXT("PreviewQualityLowHint", "Key light and plugin-cubemap skylight. No AO, SSR, or Lumen."),
-		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, material AO, and SSR. No screen-space AO or Lumen."),
-		LOCTEXT("PreviewQualityHighHint", "Lumen GI with stable plugin-cubemap and SSR reflections.")};
+		LOCTEXT("PreviewQualityMediumHint", "Lumen GI and reflections with reduced final gather. No viewport AO."),
+		LOCTEXT("PreviewQualityHighHint", "Full-quality Lumen GI and reflections with viewport AO.")};
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
 	//
@@ -581,8 +581,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewAaFxaa", "FXAA"),
 		LOCTEXT("PreviewAaTsr", "TSR")};
 	const TArray<FText> AntiAliasingToolTips = {
-		LOCTEXT("PreviewAaFxaaHint", "Single frame, no history. Softer, but a hairline crack stays put instead of swimming -- which is what you want while judging a mask."),
-		LOCTEXT("PreviewAaTsrHint", "Temporal Super-Resolution, the project default. Resolves thin detail best on a still image, but it accumulates over frames, so hairlines shimmer while the history reconverges after a camera move or a recomposite.")};
+		LOCTEXT("PreviewAaFxaaHint", "Single frame, no history. Click again to turn anti-aliasing off."),
+		LOCTEXT("PreviewAaTsrHint", "Temporal Super-Resolution, the project default. Click again to turn anti-aliasing off.")};
 
 	TSharedRef<SVerticalBox> RenderControls = SNew(SVerticalBox);
 	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
@@ -590,15 +590,22 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		SNew(SMixtormatSegmentedControl)
 		.Options(AntiAliasingOptions)
 		.ToolTips(AntiAliasingToolTips)
-		.ActiveIndex_Lambda([this]()
+		.ActiveIndex_Lambda([this]() -> int32
 		{
+			if (PreviewAntiAliasing == EMixtormatPreviewAntiAliasing::Off)
+			{
+				return INDEX_NONE;
+			}
 			return PreviewAntiAliasing == EMixtormatPreviewAntiAliasing::Fxaa ? 0 : 1;
 		})
 		.OnChosen_Lambda([this](const int32 Index)
 		{
-			SetPreviewAntiAliasing(Index == 0
+			const EMixtormatPreviewAntiAliasing Chosen = Index == 0
 				? EMixtormatPreviewAntiAliasing::Fxaa
-				: EMixtormatPreviewAntiAliasing::Temporal);
+				: EMixtormatPreviewAntiAliasing::Temporal;
+			SetPreviewAntiAliasing(PreviewAntiAliasing == Chosen
+				? EMixtormatPreviewAntiAliasing::Off
+				: Chosen);
 		})
 	];
 	RenderControls->AddSlot().AutoHeight()
@@ -705,7 +712,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				SetPreviewSkylightIntensity(static_cast<float>(Value));
 			}),
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
-			LOCTEXT("PreviewSkylightIntensityHint", "Scales the preset's plugin-cubemap fill. Lower values preserve stronger directional relief shadows."))
+			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflections. Lower values preserve stronger directional relief shadows."))
 	];
 	SceneControls->AddSlot().AutoHeight()
 	[
@@ -718,7 +725,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				SetPreviewFogBrightness(static_cast<float>(Value));
 			}),
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewFogBrightness(0.0f); }),
-			LOCTEXT("PreviewFogBrightnessHint", "Blend the height fog from near-black to a brighter cyan-blue."))
+			LOCTEXT("PreviewFogBrightnessHint", "Blend the height fog from near-black to a dark cool gray."))
 	];
 
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);

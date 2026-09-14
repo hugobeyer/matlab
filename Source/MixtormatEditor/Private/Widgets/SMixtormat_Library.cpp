@@ -352,6 +352,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::LibraryBrowseButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
+					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT("RefreshLibraryHint", "Refresh Library"))

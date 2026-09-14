@@ -83,7 +83,10 @@ enum class EMixtormatPreviewAntiAliasing : uint8
 	// The project default. Resolves thin detail best when the image is still, but it accumulates
 	// over frames, so hairline features shimmer while the history reconverges after a camera
 	// move or a recomposite.
-	Temporal
+	Temporal,
+
+	// Both AA show flags are disabled. Represented by neither viewport segment being active.
+	Off
 };
 
 // Render scale, kept separate from the method above rather than folded into it as a
@@ -198,6 +201,7 @@ private:
 	int32 bDebugChildIndex = INDEX_NONE;
 	bool bUsingStudioEnvironment = false;
 	EMixtormatPreviewMesh CurrentPreviewMesh = EMixtormatPreviewMesh::Sphere;
+	EMixtormatPreviewQuality CurrentPreviewQuality = EMixtormatPreviewQuality::Medium;
 	bool bDisplacementEnabled = false;
 	bool bGlobalUVRotation90 = false;
 	float DisplacementAmount = 1.0f;

@@ -2384,6 +2384,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", ClampMax = "8.0"))
 	float HeightBoost = 1.0f;
 
+	// Adds to this layer's boosted source height before blending, displacement, and derived normals.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Offset", ClampMin = "-1.0", ClampMax = "1.0"))
+	float HeightLevelOffset = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
 	EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
 

@@ -251,16 +251,26 @@ public:
 	// needs. Left alone in Material mode, so the shaded look is untouched.
 	virtual void OverridePostProcessSettings(FSceneView& View) override
 	{
-		if (Owner.GetChannelPreview() == EMixtormatChannelPreview::Material)
+		FPostProcessSettings Settings;
+		// Force-disable inherited project/editor motion blur even if a profile or view extension
+		// injects post settings after the viewport's MotionBlur show flag was cleared.
+		Settings.bOverride_MotionBlurAmount = true;
+		Settings.MotionBlurAmount = 0.0f;
+		Settings.bOverride_MotionBlurMax = true;
+		Settings.MotionBlurMax = 0.0f;
+		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Medium)
 		{
-			return;
+			Settings.bOverride_LumenFinalGatherQuality = true;
+			Settings.LumenFinalGatherQuality = 0.5f;
 		}
-		FPostProcessSettings RawSettings;
-		RawSettings.bOverride_ToneCurveAmount = true;
-		RawSettings.ToneCurveAmount = 0.0f;
-		RawSettings.bOverride_ExpandGamut = true;
-		RawSettings.ExpandGamut = 0.0f;
-		View.OverridePostProcessSettings(RawSettings, 1.0f);
+		if (Owner.GetChannelPreview() != EMixtormatChannelPreview::Material)
+		{
+			Settings.bOverride_ToneCurveAmount = true;
+			Settings.ToneCurveAmount = 0.0f;
+			Settings.bOverride_ExpandGamut = true;
+			Settings.ExpandGamut = 0.0f;
+		}
+		View.OverridePostProcessSettings(Settings, 1.0f);
 	}
 
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
@@ -746,8 +756,10 @@ void SMixtormatPreviewViewport::UpdateStudioEnvironmentLighting()
 
 void SMixtormatPreviewViewport::ApplyLightIntensities()
 {
+	constexpr float CubemapReflectionBoost = 1.35f;
 	PreviewScene.SetLightBrightness(BaseLightBrightness * LightIntensityScale);
-	PreviewScene.SetSkyBrightness(BaseSkyBrightness * SkylightIntensityScale);
+	PreviewScene.SetSkyBrightness(
+		BaseSkyBrightness * SkylightIntensityScale * CubemapReflectionBoost);
 }
 
 void SMixtormatPreviewViewport::ApplyFogColor()
@@ -758,7 +770,7 @@ void SMixtormatPreviewViewport::ApplyFogColor()
 	}
 	StudioFogComponent->SetFogInscatteringColor(FMath::Lerp(
 		MixtormatPalette::PreviewFog(),
-		MixtormatPalette::PreviewFogCyan(),
+		MixtormatPalette::PreviewFogDense(),
 		FogBrightness));
 }
 
@@ -824,6 +836,7 @@ void SMixtormatPreviewViewport::UpdateDebugLightVisibility()
 
 void SMixtormatPreviewViewport::SetPreviewQuality(const EMixtormatPreviewQuality Quality)
 {
+	CurrentPreviewQuality = Quality;
 	if (!PreviewViewportClient.IsValid())
 	{
 		return;
@@ -842,9 +855,10 @@ void SMixtormatPreviewViewport::SetPreviewAntiAliasing(const EMixtormatPreviewAn
 		return;
 	}
 
-	// TemporalAA is the whole switch. The project default is TSR, and SetupAntiAliasingMethod
-	// turns TSR into FXAA when this flag is clear -- so there is nothing to set for FXAA beyond
-	// taking the history away, and no console variable is involved.
+	// AntiAliasing is the master switch. With it enabled, TemporalAA selects TSR; clearing only
+	// TemporalAA deliberately falls back to FXAA. Off therefore has to clear both flags.
+	PreviewViewportClient->EngineShowFlags.SetAntiAliasing(
+		AntiAliasing != EMixtormatPreviewAntiAliasing::Off);
 	PreviewViewportClient->EngineShowFlags.SetTemporalAA(
 		AntiAliasing == EMixtormatPreviewAntiAliasing::Temporal);
 	PreviewViewportClient->Invalidate();

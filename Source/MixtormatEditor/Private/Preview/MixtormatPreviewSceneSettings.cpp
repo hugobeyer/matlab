@@ -30,6 +30,10 @@ void MixtormatPreviewSceneSettings::ConfigureLookdevProfile(FPreviewSceneProfile
 	Profile.PostProcessingSettings.AutoExposureBias = -0.5f;
 	Profile.PostProcessingSettings.bOverride_BloomIntensity = true;
 	Profile.PostProcessingSettings.BloomIntensity = 0.0f;
+	Profile.PostProcessingSettings.bOverride_MotionBlurAmount = true;
+	Profile.PostProcessingSettings.MotionBlurAmount = 0.0f;
+	Profile.PostProcessingSettings.bOverride_MotionBlurMax = true;
+	Profile.PostProcessingSettings.MotionBlurMax = 0.0f;
 }
 
 FString MixtormatPreviewSceneSettings::GetStudioEnvironmentObjectPath(
@@ -98,6 +102,8 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	FEngineShowFlags& ShowFlags,
 	const EMixtormatPreviewQuality Quality)
 {
+	// Quality changes must never restore inherited editor/project motion blur.
+	ShowFlags.SetMotionBlur(false);
 	ShowFlags.SetDynamicShadows(true);
 	switch (Quality)
 	{
@@ -115,7 +121,7 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 		ShowFlags.SetGlobalIllumination(true);
 		ShowFlags.SetSkyLighting(true);
 		ShowFlags.SetLumenGlobalIllumination(true);
-		ShowFlags.SetLumenReflections(false);
+		ShowFlags.SetLumenReflections(true);
 		ShowFlags.SetReflectionEnvironment(true);
 		ShowFlags.SetAmbientOcclusion(true);
 		ShowFlags.SetScreenSpaceAO(true);
@@ -125,12 +131,12 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	default:
 		ShowFlags.SetGlobalIllumination(true);
 		ShowFlags.SetSkyLighting(true);
-		ShowFlags.SetLumenGlobalIllumination(false);
-		ShowFlags.SetLumenReflections(false);
+		ShowFlags.SetLumenGlobalIllumination(true);
+		ShowFlags.SetLumenReflections(true);
 		ShowFlags.SetReflectionEnvironment(true);
-		// Keep authored material AO, but remove the screen-space layer that can double-darken
-		// displacement and normal detail beside the preview's directional shadows.
-		ShowFlags.SetAmbientOcclusion(true);
+		// AmbientOcclusion is the master viewport AO flag; leaving it enabled can still run GTAO
+		// even when ScreenSpaceAO is false, producing the same dark contact halos.
+		ShowFlags.SetAmbientOcclusion(false);
 		ShowFlags.SetScreenSpaceAO(false);
 		ShowFlags.SetScreenSpaceReflections(true);
 		break;
