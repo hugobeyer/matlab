@@ -2462,4 +2462,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UMaterialInterface> BakedMaterial;
+
+	// A document-level quarter turn applied after composition. The GPU output pass also rotates
+	// tangent-space normal XY, so the baked normal remains aligned with the rotated channels.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Canvas")
+	bool bRotateUV90 = false;
 };

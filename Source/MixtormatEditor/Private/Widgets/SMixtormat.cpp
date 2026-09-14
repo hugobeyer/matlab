@@ -99,12 +99,14 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	UndoHistory.Reset();
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	bHistoryInitialized = true;
 	bApplyingHistory = false;
 	LastHistoryRecordTime = 0.0;
 	if (bCurrentStateIsSaved)
 	{
 		SavedLayers = WorkingLayers;
+		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 	}
 }
 
@@ -119,7 +121,8 @@ void SMixtormat::RecordEditHistory()
 		ResetEditHistory(false);
 		return;
 	}
-	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers))
+	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers)
+		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90)
 	{
 		return;
 	}
@@ -140,6 +143,7 @@ void SMixtormat::RecordEditHistory()
 	}
 
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	RedoHistory.Reset();
 	LastHistoryRecordTime = Now;
 }
@@ -147,13 +151,22 @@ void SMixtormat::RecordEditHistory()
 bool SMixtormat::IsCurrentStateSaved() const
 {
 	return WorkingMaterialAsset.IsValid()
-		&& AreLayerStacksEqual(WorkingLayers, SavedLayers);
+		&& AreLayerStacksEqual(WorkingLayers, SavedLayers)
+		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90;
 }
 
 void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 {
 	bApplyingHistory = true;
 	WorkingLayers = State.Layers;
+	bGlobalUVRotation90 = State.bRotateUV90;
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetGlobalUVRotation90(bGlobalUVRotation90);
+		}
+	}
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	CurrentHistoryState = State;
@@ -178,8 +191,10 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 void SMixtormat::SynchronizeHistoryAfterCancelledEdit()
 {
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	if (!UndoHistory.IsEmpty()
-		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers))
+		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers)
+		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90)
 	{
 		UndoHistory.Pop();
 	}

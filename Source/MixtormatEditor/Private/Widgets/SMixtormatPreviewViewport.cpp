@@ -144,6 +144,13 @@ namespace MixtormatPreview
 		UMaterialExpressionTextureSampleParameter2D* HeightSample =
 			MakeTextureParam(ChannelPreviewHeightParameter);
 
+		UMaterialExpressionScalarParameter* FuzzSample =
+			NewObject<UMaterialExpressionScalarParameter>(Material);
+		FuzzSample->SetParameterName(FuzzInfluenceParameter);
+		FuzzSample->ExpressionGUID = FGuid::NewGuid();
+		FuzzSample->DefaultValue = 0.0f;
+		Material->GetExpressionCollection().AddExpression(FuzzSample);
+
 		UMaterialExpressionScalarParameter* ModeParam =
 			NewObject<UMaterialExpressionScalarParameter>(Material);
 		ModeParam->SetParameterName(ChannelPreviewModeParameter);
@@ -159,7 +166,7 @@ namespace MixtormatPreview
 			UMaterialExpression* Expression = nullptr;
 			int32 OutputIndex = 0;
 		};
-		FChannelSource Sources[8];
+		FChannelSource Sources[9];
 		Sources[static_cast<int32>(EMixtormatChannelPreview::BaseColor)] = { BaseColorSample, 0 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Normal)] = { NormalSample, 0 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Roughness)] = { RamhSample, 1 };
@@ -167,6 +174,7 @@ namespace MixtormatPreview
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Metallic)] = { RamhSample, 3 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::F0)] = { RamhSample, 4 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Height)] = { HeightSample, 1 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Fuzz)] = { FuzzSample, 0 };
 
 		// FExpressionInput::Connect, not a hand assignment of Expression/OutputIndex: the R/G/B/A
 		// component mask lives on the *input* (Mask/MaskR/.../MaskA), copied over from the
@@ -191,8 +199,8 @@ namespace MixtormatPreview
 		// EmissiveColor below) is the one actually evaluated first, so no interior node's
 		// AGreaterThanB branch is reachable at runtime -- Mode never exceeds LastMode.
 		const int32 FirstMode = static_cast<int32>(EMixtormatChannelPreview::BaseColor);
-		const int32 LastMode = static_cast<int32>(EMixtormatChannelPreview::Height);
-		UMaterialExpressionIf* Chain[8] = {};
+		const int32 LastMode = static_cast<int32>(EMixtormatChannelPreview::Fuzz);
+		UMaterialExpressionIf* Chain[9] = {};
 		FExpressionInput PreviousOutput;
 		WireInput(PreviousOutput, Sources[FirstMode]);
 		for (int32 Mode = FirstMode + 1; Mode <= LastMode; ++Mode)
@@ -483,7 +491,11 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
-	if (!LayerCompositor->RequestCompose(Layers, FSimpleDelegate(), DebugSettings))
+	if (!LayerCompositor->RequestCompose(
+		Layers,
+		FSimpleDelegate(),
+		DebugSettings,
+		bGlobalUVRotation90))
 	{
 		return false;
 	}
@@ -497,9 +509,10 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	else
 	{
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
+		CompositedFuzzInfluence = MixtormatPreview::ComputeFuzzInfluence(Layers);
 		PreviewMaterialInstance->SetScalarParameterValue(
 			MixtormatPreview::FuzzInfluenceParameter,
-			MixtormatPreview::ComputeFuzzInfluence(Layers));
+			CompositedFuzzInfluence);
 	}
 	PreviewMaterialInstance->SetScalarParameterValue(
 		MixtormatPreview::UseHeightParameter,
@@ -558,6 +571,9 @@ void SMixtormatPreviewViewport::SetPreviewDisplacementEnabled(const bool bEnable
 	SetPreviewScalarParameter(
 		MixtormatPreview::UseHeightParameter,
 		bDisplacementEnabled ? 1.0f : 0.0f);
+	UpdatePreviewMeshFloorClearance();
+	UpdateStudioFog();
+	UpdateCamera();
 }
 
 void SMixtormatPreviewViewport::SetPreviewDisplacementAmount(const float Amount)
@@ -566,6 +582,33 @@ void SMixtormatPreviewViewport::SetPreviewDisplacementAmount(const float Amount)
 	SetPreviewScalarParameter(
 		MixtormatPreview::HeightAmountParameter,
 		DisplacementAmount);
+	UpdatePreviewMeshFloorClearance();
+	UpdateStudioFog();
+	UpdateCamera();
+}
+
+void SMixtormatPreviewViewport::SetGlobalUVRotation90(const bool bEnabled)
+{
+	bGlobalUVRotation90 = bEnabled;
+}
+
+void SMixtormatPreviewViewport::UpdatePreviewMeshFloorClearance()
+{
+	if (!PreviewMeshComponent || !PreviewMeshComponent->GetStaticMesh())
+	{
+		return;
+	}
+
+	PreviewMeshComponent->SetRelativeLocation(FVector::ZeroVector);
+	PreviewMeshComponent->UpdateBounds();
+	const float PlaneDisplacementClearance = bDisplacementEnabled ? DisplacementAmount : 0.0f;
+	const float FloorClearance = CurrentPreviewMesh == EMixtormatPreviewMesh::Plane
+		? 2.0f + PlaneDisplacementClearance
+		: 0.5f;
+	const float HeightAboveFloor = -PreviewMeshComponent->Bounds.GetBox().Min.Z + FloorClearance;
+	PreviewMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, HeightAboveFloor));
+	PreviewMeshComponent->UpdateBounds();
+	PreviewTarget = PreviewMeshComponent->Bounds.Origin;
 }
 
 void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshType)
@@ -620,14 +663,8 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 	}
 	PreviewMeshComponent->SetStaticMesh(PreviewMesh);
 	PreviewMeshComponent->SetRelativeRotation(MeshRotation);
-	PreviewMeshComponent->SetRelativeLocation(FVector::ZeroVector);
-	PreviewMeshComponent->UpdateBounds();
-
-	const float FloorClearance = 0.5f;
-	const float HeightAboveFloor = -PreviewMeshComponent->Bounds.GetBox().Min.Z + FloorClearance;
-	PreviewMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, HeightAboveFloor));
-	PreviewMeshComponent->UpdateBounds();
-	PreviewTarget = PreviewMeshComponent->Bounds.Origin;
+	CurrentPreviewMesh = MeshType;
+	UpdatePreviewMeshFloorClearance();
 
 	UpdateStudioFog();
 	UpdateCamera();
@@ -655,6 +692,7 @@ void SMixtormatPreviewViewport::UpdateStudioFog()
 	StudioFogComponent->SetFogDensity(FogDensity);
 	StudioFogComponent->SetFogHeightFalloff(0.01f);
 	StudioFogComponent->SetFogMaxOpacity(1.0f);
+	ApplyFogColor();
 }
 
 void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting LightingPreset)
@@ -712,6 +750,18 @@ void SMixtormatPreviewViewport::ApplyLightIntensities()
 	PreviewScene.SetSkyBrightness(BaseSkyBrightness * SkylightIntensityScale);
 }
 
+void SMixtormatPreviewViewport::ApplyFogColor()
+{
+	if (!StudioFogComponent)
+	{
+		return;
+	}
+	StudioFogComponent->SetFogInscatteringColor(FMath::Lerp(
+		MixtormatPalette::PreviewFog(),
+		MixtormatPalette::PreviewFogCyan(),
+		FogBrightness));
+}
+
 void SMixtormatPreviewViewport::SetPreviewLightIntensity(const float Scale)
 {
 	LightIntensityScale = FMath::Clamp(Scale, 0.0f, 2.0f);
@@ -726,6 +776,16 @@ void SMixtormatPreviewViewport::SetPreviewSkylightIntensity(const float Scale)
 {
 	SkylightIntensityScale = FMath::Clamp(Scale, 0.0f, 2.0f);
 	ApplyLightIntensities();
+	if (PreviewViewportClient.IsValid())
+	{
+		PreviewViewportClient->Invalidate();
+	}
+}
+
+void SMixtormatPreviewViewport::SetPreviewFogBrightness(const float Brightness)
+{
+	FogBrightness = FMath::Clamp(Brightness, 0.0f, 1.0f);
+	ApplyFogColor();
 	if (PreviewViewportClient.IsValid())
 	{
 		PreviewViewportClient->Invalidate();
@@ -859,7 +919,7 @@ void SMixtormatPreviewViewport::ToggleOverlayUi()
 void SMixtormatPreviewViewport::CycleChannelPreview()
 {
 	const uint8 NextMode = (static_cast<uint8>(ChannelPreview) + 1)
-		% (static_cast<uint8>(EMixtormatChannelPreview::Height) + 1);
+		% (static_cast<uint8>(EMixtormatChannelPreview::Fuzz) + 1);
 	ChannelPreview = static_cast<EMixtormatChannelPreview>(NextMode);
 	ApplyChannelPreview();
 	OnChannelPreviewChanged.ExecuteIfBound();
@@ -920,6 +980,9 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 		LayerCompositor->BindOutputs(*ChannelMID);
 	}
 	ChannelMID->SetScalarParameterValue(
+		MixtormatPreview::FuzzInfluenceParameter,
+		CompositedFuzzInfluence);
+	ChannelMID->SetScalarParameterValue(
 		MixtormatPreview::ChannelPreviewModeParameter,
 		static_cast<float>(ChannelPreview));
 	PreviewMeshComponent->SetMaterial(0, ChannelMID);
@@ -940,6 +1003,7 @@ FString SMixtormatPreviewViewport::GetChannelPreviewLabel() const
 	case EMixtormatChannelPreview::Metallic: return TEXT("Metallic");
 	case EMixtormatChannelPreview::F0: return TEXT("F0 / Specular");
 	case EMixtormatChannelPreview::Height: return TEXT("Height");
+	case EMixtormatChannelPreview::Fuzz: return TEXT("Fuzz Influence");
 	case EMixtormatChannelPreview::Material:
 	default:
 		return TEXT("Material");

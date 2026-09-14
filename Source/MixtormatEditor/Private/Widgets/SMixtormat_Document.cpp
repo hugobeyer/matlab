@@ -56,8 +56,16 @@ FReply SMixtormat::StartNewMaterial()
 	WorkingMaterialName = TEXT("Untitled Mixtormat Material");
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
+	bGlobalUVRotation90 = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetGlobalUVRotation90(false);
+		}
+	}
 
 	// The first layer of a new recipe -- an ordinary Material layer, not a privileged base.
 	FMixtormatLayer& FirstLayer = WorkingLayers.AddDefaulted_GetRef();
@@ -103,10 +111,19 @@ FReply SMixtormat::NewWorkingMaterial()
 	SelectedMaskIndex = INDEX_NONE;
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
+	bGlobalUVRotation90 = false;
+	bSavedGlobalUVRotation90 = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
 	SavedLayers.Reset();
 	WorkingMaterialAsset.Reset();
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetGlobalUVRotation90(false);
+		}
+	}
 	ResetEditHistory(true);
 	WorkingMaterialName = TEXT("No material");
 	WorkingStatusText = TEXT("Select a library material, then drag it into Layers");
@@ -162,6 +179,14 @@ FReply SMixtormat::OpenWorkingMaterial()
 
 	WorkingMaterialAsset.Reset(MaterialAsset);
 	WorkingLayers = MaterialAsset->Layers;
+	bGlobalUVRotation90 = MaterialAsset->bRotateUV90;
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetGlobalUVRotation90(bGlobalUVRotation90);
+		}
+	}
 	MixtormatParameterBinding::EnsureStableIds(WorkingLayers);
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
@@ -207,6 +232,7 @@ FReply SMixtormat::SaveWorkingMaterial()
 	MaterialAsset->Modify();
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
+	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
 	if (UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>())
@@ -217,7 +243,9 @@ FReply SMixtormat::SaveWorkingMaterial()
 	if (bSaved)
 	{
 		SavedLayers = WorkingLayers;
+		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		CurrentHistoryState.Layers = WorkingLayers;
+		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
@@ -268,6 +296,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	MaterialAsset->Modify();
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
+	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
 	if (UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>())
@@ -278,7 +307,9 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	if (bSaved)
 	{
 		SavedLayers = WorkingLayers;
+		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		CurrentHistoryState.Layers = WorkingLayers;
+		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)

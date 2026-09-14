@@ -698,6 +698,7 @@ namespace MixtormatGpuCompositor
 		FMixtormatDebugPreviewSettings DebugSettings;
 		FSimpleDelegate OnComplete;
 		int32 PublishedTargetIndex = 0;
+		bool bRotateOutput90 = false;
 
 		// Shared rather than raw, so a composite still in flight holds the cache alive even if
 		// the panel that owns it has gone.

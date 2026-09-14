@@ -50,6 +50,7 @@ private:
 	struct FEditHistoryState
 	{
 		TArray<FMixtormatLayer> Layers;
+		bool bRotateUV90 = false;
 	};
 
 	struct FNumericResetBinding
@@ -75,6 +76,7 @@ private:
 	FReply HandleSurfaceDropped(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply SetCategoryFilter(FName Family);
 	FReply SetPreviewMesh(EMixtormatPreviewMesh MeshType);
+	void SetGlobalUVRotation90(bool bEnabled);
 	FReply SetPreviewQuality(EMixtormatPreviewQuality Quality);
 	FReply SetPreviewAntiAliasing(EMixtormatPreviewAntiAliasing AntiAliasing);
 	void SetPreviewScreenPercentage(int32 Percentage);
@@ -84,6 +86,7 @@ private:
 	void SetPreviewDisplacementAmount(float Amount);
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
+	void SetPreviewFogBrightness(float Brightness);
 	void PreviewSelectedSurfaceWithDisplacement();
 	FReply ToggleFeaturePreview(EMixtormatDebugPreviewMode Mode);
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
@@ -846,6 +849,8 @@ private:
 	bool bPreviewOverlayUiVisible = true;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = false;
+	bool bGlobalUVRotation90 = false;
+	bool bSavedGlobalUVRotation90 = false;
 	bool bIsBaking = false;
 	EMixtormatDebugPreviewMode DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	int32 SelectedLayerIndex = INDEX_NONE;
@@ -871,6 +876,7 @@ private:
 	// Multipliers on the active lighting mode's own brightness; 1 is what that mode intended.
 	float PreviewLightIntensity = 1.0f;
 	float PreviewSkylightIntensity = 1.0f;
+	float PreviewFogBrightness = 0.0f;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;
 	FString BakeOutputBaseName;

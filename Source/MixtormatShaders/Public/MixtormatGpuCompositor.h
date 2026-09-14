@@ -48,7 +48,8 @@ public:
 	bool RequestCompose(
 		const TArray<FMixtormatLayer>& Layers,
 		FSimpleDelegate OnComplete = FSimpleDelegate(),
-		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings());
+		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
+		bool bRotateOutput90 = false);
 	void BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const;
 
 	bool IsInitialized() const { return bInitialized; }

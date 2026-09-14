@@ -83,6 +83,19 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 
 	Entries.Sort([](const FMixtormatSurfaceEntry& A, const FMixtormatSurfaceEntry& B)
 	{
+		if (A.Subtype != B.Subtype)
+		{
+			return A.Subtype.LexicalLess(B.Subtype);
+		}
+		if (A.Family != B.Family)
+		{
+			return A.Family.LexicalLess(B.Family);
+		}
+		if (A.Finish != B.Finish)
+		{
+			return A.Finish.LexicalLess(B.Finish);
+		}
+
 		const FString AName = A.DisplayName.ToString();
 		const FString BName = B.DisplayName.ToString();
 		return AName == BName

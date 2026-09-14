@@ -246,6 +246,38 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+class FMixtormatRotateOutputCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRotateOutputCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRotateOutputCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputBC)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputN)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputDebug)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRotateOutputCS,
+	"/Plugin/Mixtormat/Private/MixtormatRotateOutput.usf",
+	"MainCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
 	static FTextureRHIRef GetTextureRHI(UTexture2D* Texture)
@@ -779,11 +811,18 @@ bool FMixtormatGpuCompositor::Initialize(const FIntPoint InResolution)
 bool FMixtormatGpuCompositor::RequestCompose(
 	const TArray<FMixtormatLayer>& Layers,
 	FSimpleDelegate OnComplete,
-	FMixtormatDebugPreviewSettings DebugSettings)
+	FMixtormatDebugPreviewSettings DebugSettings,
+	const bool bRotateOutput90)
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
 	if (!bInitialized && !Initialize())
+	{
+		return false;
+	}
+	// A quarter-turn swaps rectangular dimensions. The current compositor owns fixed-size output
+	// targets, so reject that unsupported case rather than sampling outside either target.
+	if (bRotateOutput90 && Resolution.X != Resolution.Y)
 	{
 		return false;
 	}
@@ -1888,10 +1927,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.bFlipNormalY = Layer.bFlipNormalY;
 	}
 
-	PublishedTargetIndex = Request.Layers.IsEmpty()
+	const int32 CompositedTargetIndex = Request.Layers.IsEmpty()
 		? 0
 		: (Request.Layers.Num() - 1) & 1;
-	Request.PublishedTargetIndex = PublishedTargetIndex;
+	Request.PublishedTargetIndex = CompositedTargetIndex;
+	Request.bRotateOutput90 = bRotateOutput90;
+	PublishedTargetIndex = bRotateOutput90
+		? 1 - CompositedTargetIndex
+		: CompositedTargetIndex;
 	Request.NetworkCache = NetworkCache;
 
 	ENQUEUE_RENDER_COMMAND(MixtormatComposite)(
@@ -2343,21 +2386,41 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				}
 			}
 
-			GraphBuilder.SetTextureAccessFinal(
-				OutputBC[Request.PublishedTargetIndex],
-				ERHIAccess::SRVMask);
-			GraphBuilder.SetTextureAccessFinal(
-				OutputN[Request.PublishedTargetIndex],
-				ERHIAccess::SRVMask);
-			GraphBuilder.SetTextureAccessFinal(
-				OutputRAM[Request.PublishedTargetIndex],
-				ERHIAccess::SRVMask);
-			GraphBuilder.SetTextureAccessFinal(
-				OutputHeight[Request.PublishedTargetIndex],
-				ERHIAccess::SRVMask);
-			GraphBuilder.SetTextureAccessFinal(
-				OutputDebug[Request.PublishedTargetIndex],
-				ERHIAccess::SRVMask);
+			int32 FinalTargetIndex = Request.PublishedTargetIndex;
+			if (Request.bRotateOutput90)
+			{
+				FinalTargetIndex = 1 - Request.PublishedTargetIndex;
+				TShaderMapRef<FMixtormatRotateOutputCS> RotateShader(
+					GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				FMixtormatRotateOutputCS::FParameters* Rotate =
+					GraphBuilder.AllocParameters<FMixtormatRotateOutputCS::FParameters>();
+				Rotate->OutputSize = Request.Resolution;
+				Rotate->InputBC = OutputBC[Request.PublishedTargetIndex];
+				Rotate->InputN = OutputN[Request.PublishedTargetIndex];
+				Rotate->InputRAM = OutputRAM[Request.PublishedTargetIndex];
+				Rotate->InputHeight = OutputHeight[Request.PublishedTargetIndex];
+				Rotate->InputDebug = OutputDebug[Request.PublishedTargetIndex];
+				Rotate->OutputBC = GraphBuilder.CreateUAV(OutputBC[FinalTargetIndex]);
+				Rotate->OutputN = GraphBuilder.CreateUAV(OutputN[FinalTargetIndex]);
+				Rotate->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[FinalTargetIndex]);
+				Rotate->OutputHeight = GraphBuilder.CreateUAV(OutputHeight[FinalTargetIndex]);
+				Rotate->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[FinalTargetIndex]);
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.RotateOutput90"),
+					RotateShader,
+					Rotate,
+					FIntVector(
+						FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+						FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+						1));
+			}
+
+			GraphBuilder.SetTextureAccessFinal(OutputBC[FinalTargetIndex], ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(OutputN[FinalTargetIndex], ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(OutputRAM[FinalTargetIndex], ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.Execute();
 			if (Request.OnComplete.IsBound())
 			{

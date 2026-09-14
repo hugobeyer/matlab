@@ -1,0 +1,40 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+
+int2 OutputSize;
+Texture2D<float4> InputBC;
+Texture2D<float4> InputN;
+Texture2D<float4> InputRAM;
+Texture2D<float> InputHeight;
+Texture2D<float4> InputDebug;
+RWTexture2D<float4> OutputBC;
+RWTexture2D<float4> OutputN;
+RWTexture2D<float4> OutputRAM;
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float4> OutputDebug;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+
+	// Matches MixtormatRotateUV90(UV, 1), expressed in integer texel coordinates so a
+	// quarter-turn is exact and never introduces filtering at channel boundaries.
+	const int2 SourcePixel = int2(Pixel.y, OutputSize.x - 1 - Pixel.x);
+	OutputBC[Pixel] = InputBC.Load(int3(SourcePixel, 0));
+	OutputRAM[Pixel] = InputRAM.Load(int3(SourcePixel, 0));
+	OutputHeight[Pixel] = InputHeight.Load(int3(SourcePixel, 0));
+	OutputDebug[Pixel] = InputDebug.Load(int3(SourcePixel, 0));
+
+	float4 EncodedNormal = InputN.Load(int3(SourcePixel, 0));
+	const float2 TangentXY = EncodedNormal.xy * 2.0f - 1.0f;
+	EncodedNormal.xy = MixtormatTransformTangentVector(
+		MixtormatRotation90Matrix(1), TangentXY) * 0.5f + 0.5f;
+	OutputN[Pixel] = EncodedNormal;
+}

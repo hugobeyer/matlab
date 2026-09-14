@@ -128,8 +128,10 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 		ShowFlags.SetLumenGlobalIllumination(false);
 		ShowFlags.SetLumenReflections(false);
 		ShowFlags.SetReflectionEnvironment(true);
+		// Keep authored material AO, but remove the screen-space layer that can double-darken
+		// displacement and normal detail beside the preview's directional shadows.
 		ShowFlags.SetAmbientOcclusion(true);
-		ShowFlags.SetScreenSpaceAO(true);
+		ShowFlags.SetScreenSpaceAO(false);
 		ShowFlags.SetScreenSpaceReflections(true);
 		break;
 	}

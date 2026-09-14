@@ -31,8 +31,8 @@ enum class EMixtormatPreviewMesh : uint8
 };
 
 // Temporary V-key diagnostic cycle: a raw look at one composited output at a time, unlit, with
-// no toolbar exposure yet. Material has to stay first and at value 0 -- CycleChannelPreview wraps
-// by incrementing mod 8, and 0 doubling as "off" is what lets Material mean "untouched".
+// no toolbar exposure yet. Material has to stay first and at value 0, with 0 doubling as "off"
+// so Material means "untouched".
 enum class EMixtormatChannelPreview : uint8
 {
 	Material,
@@ -42,7 +42,8 @@ enum class EMixtormatChannelPreview : uint8
 	AO,
 	Metallic,
 	F0,
-	Height
+	Height,
+	Fuzz
 };
 
 enum class EMixtormatStudioLighting : uint8
@@ -123,6 +124,7 @@ public:
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
+	void SetGlobalUVRotation90(bool bEnabled);
 
 	// Multipliers on whatever the current lighting mode chose, not absolute brightnesses.
 	//
@@ -131,6 +133,7 @@ public:
 	// when switching between lighting modes.
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
+	void SetPreviewFogBrightness(float Brightness);
 	void SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	void SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void SetPreviewQuality(EMixtormatPreviewQuality Quality);
@@ -162,6 +165,7 @@ private:
 	void UpdateStudioFog();
 	void UpdateStudioEnvironmentLighting();
 	void UpdateDebugLightVisibility();
+	void UpdatePreviewMeshFloorClearance();
 	void InvalidateDisplacementShadows();
 	bool ComposeLayersWithDebug(
 		const TArray<FMixtormatLayer>& Layers,
@@ -193,8 +197,11 @@ private:
 	int32 bDebugLayerIndex = INDEX_NONE;
 	int32 bDebugChildIndex = INDEX_NONE;
 	bool bUsingStudioEnvironment = false;
+	EMixtormatPreviewMesh CurrentPreviewMesh = EMixtormatPreviewMesh::Sphere;
 	bool bDisplacementEnabled = false;
+	bool bGlobalUVRotation90 = false;
 	float DisplacementAmount = 1.0f;
+	float CompositedFuzzInfluence = 0.0f;
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;
@@ -209,7 +216,9 @@ private:
 	float BaseSkyBrightness = 0.45f;
 	float LightIntensityScale = 1.0f;
 	float SkylightIntensityScale = 1.0f;
+	float FogBrightness = 0.0f;
 	void ApplyLightIntensities();
+	void ApplyFogColor();
 	float EnvironmentYaw = 0.0f;
 	FVector PreviewTarget = FVector(0.0f, 0.0f, 50.0f);
 };

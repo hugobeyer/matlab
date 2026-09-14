@@ -21,6 +21,18 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	FMixtormatGpuCompositor Compositor;
 	TestTrue(TEXT("Compositor render targets initialize"), Compositor.Initialize(FIntPoint(32, 32)));
 
+	FMixtormatGpuCompositor RectangularCompositor;
+	TestTrue(
+		TEXT("Rectangular compositor render targets initialize"),
+		RectangularCompositor.Initialize(FIntPoint(32, 16)));
+	TestFalse(
+		TEXT("Quarter-turn rejects fixed rectangular outputs instead of reading out of bounds"),
+		RectangularCompositor.RequestCompose(
+			TArray<FMixtormatLayer>(),
+			FSimpleDelegate(),
+			FMixtormatDebugPreviewSettings(),
+			true));
+
 	const auto ReadFirstPixel = [this](
 		UTextureRenderTarget2D* Target,
 		const TCHAR* Label,
@@ -191,6 +203,21 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		if (ReadFirstPixel(Compositor.GetNormalOutput(), TEXT("Full-influence Normal can be read"), Pixel))
 		{
 			TestTrue(TEXT("The test normal differs from the neutral lower normal"), Pixel.R > 160 && Pixel.G > 160);
+		}
+
+		TestTrue(
+			TEXT("Compositor accepts a global UV quarter turn"),
+			Compositor.RequestCompose(
+				Layers,
+				FSimpleDelegate(),
+				FMixtormatDebugPreviewSettings(),
+				true));
+		FlushRenderingCommands();
+		if (ReadFirstPixel(Compositor.GetNormalOutput(), TEXT("Rotated Normal can be read"), Pixel))
+		{
+			TestTrue(
+				TEXT("Global UV rotation also rotates tangent-space normal XY"),
+				Pixel.R < 96 && Pixel.G > 160);
 		}
 
 		Layers[1].NormalInfluence = 0.0f;

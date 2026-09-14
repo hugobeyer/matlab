@@ -31,6 +31,27 @@ FReply SMixtormat::SetPreviewMesh(const EMixtormatPreviewMesh MeshType)
 	return FReply::Handled();
 }
 
+void SMixtormat::SetGlobalUVRotation90(const bool bEnabled)
+{
+	if (bGlobalUVRotation90 == bEnabled)
+	{
+		return;
+	}
+
+	bGlobalUVRotation90 = bEnabled;
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetGlobalUVRotation90(bGlobalUVRotation90);
+		}
+	}
+	RefreshLayeredPreview();
+	// Keep this document-level toggle as its own undo step rather than allowing the next slider
+	// edit inside the normal coalescing window to absorb it.
+	LastHistoryRecordTime = 0.0;
+}
+
 FReply SMixtormat::SetPreviewQuality(const EMixtormatPreviewQuality Quality)
 {
 	PreviewQuality = Quality;
@@ -137,6 +158,18 @@ void SMixtormat::SetPreviewSkylightIntensity(const float Scale)
 		if (Viewport.IsValid())
 		{
 			Viewport->SetPreviewSkylightIntensity(PreviewSkylightIntensity);
+		}
+	}
+}
+
+void SMixtormat::SetPreviewFogBrightness(const float Brightness)
+{
+	PreviewFogBrightness = FMath::Clamp(Brightness, 0.0f, 1.0f);
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->SetPreviewFogBrightness(PreviewFogBrightness);
 		}
 	}
 }
@@ -369,6 +402,39 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), TEXT("Mixtormat.Icon.Cylinder"));
 	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), TEXT("Mixtormat.Icon.Cube"));
 	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
+	GeometryControls->AddSlot().AutoHeight().Padding(
+		0.0f,
+		0.0f,
+		0.0f,
+		MixtormatTokens::ViewportOverlayButtonGap)
+	[
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::PreviewToolbarButtonSize)
+		.HeightOverride(MixtormatTokens::PreviewToolbarButtonSize)
+		[
+			SNew(SCheckBox)
+			.Style(OverlayToggle)
+			.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+			.ToolTipText(LOCTEXT(
+				"GlobalUVRotation90Hint",
+				"Rotate the complete material UVs 90 degrees. All channels rotate together, including tangent-space normal direction."))
+			.IsChecked_Lambda([this]()
+			{
+				return bGlobalUVRotation90
+					? ECheckBoxState::Checked
+					: ECheckBoxState::Unchecked;
+			})
+			.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
+			{
+				SetGlobalUVRotation90(State == ECheckBoxState::Checked);
+			})
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("GlobalUVRotation90", "90°"))
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
+			]
+		]
+	];
 
 	const auto AddPresetButton = [this, &LightingControls, OverlayToggle](
 		const EMixtormatStudioLighting Preset,
@@ -503,7 +569,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewQualityHigh", "HIGH")};
 	const TArray<FText> QualityToolTips = {
 		LOCTEXT("PreviewQualityLowHint", "Key light and plugin-cubemap skylight. No AO, SSR, or Lumen."),
-		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, AO, and SSR. No Lumen."),
+		LOCTEXT("PreviewQualityMediumHint", "Stable shadows, material AO, and SSR. No screen-space AO or Lumen."),
 		LOCTEXT("PreviewQualityHighHint", "Lumen GI with stable plugin-cubemap and SSR reflections.")};
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
@@ -641,6 +707,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
 			LOCTEXT("PreviewSkylightIntensityHint", "Scales the preset's plugin-cubemap fill. Lower values preserve stronger directional relief shadows."))
 	];
+	SceneControls->AddSlot().AutoHeight()
+	[
+		MakeSlider(
+			LOCTEXT("PreviewFogBrightnessLabel", "Fog"),
+			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFogBrightness); }),
+			0.0, 1.0, 0.0, 0.01, false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+			{
+				SetPreviewFogBrightness(static_cast<float>(Value));
+			}),
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewFogBrightness(0.0f); }),
+			LOCTEXT("PreviewFogBrightnessHint", "Blend the height fog from near-black to a brighter cyan-blue."))
+	];
 
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
 	CameraControls->AddSlot().AutoHeight()
@@ -776,6 +855,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		PreviewViewport->SetPreviewScreenPercentage(PreviewScreenPercentage);
 		PreviewViewport->SetCameraFov(PreviewFov);
 		PreviewViewport->SetStudioLighting(StudioLighting);
+		PreviewViewport->SetGlobalUVRotation90(bGlobalUVRotation90);
+		PreviewViewport->SetPreviewFogBrightness(PreviewFogBrightness);
 	}
 	return PreviewPanel;
 }
