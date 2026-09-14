@@ -1835,7 +1835,9 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.Rotation = static_cast<int32>(Layer.Rotation);
 		Data.bFlipU = Layer.bFlipU;
 		Data.bFlipV = Layer.bFlipV;
-		Data.NormalIntensity = Layer.NormalIntensity;
+		// Height Booster is the layer's single relief-strength control. Keep source normals in
+		// lockstep with height; height-derived normals already read the boosted height directly.
+		Data.NormalIntensity = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
 		Data.HueShift = FMath::Clamp(Layer.HueShift, -180.0f, 180.0f);
 		Data.Saturation = FMath::Clamp(Layer.Saturation, 0.0f, 2.0f);
 		Data.Value = FMath::Clamp(Layer.Value, 0.0f, 2.0f);

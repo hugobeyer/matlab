@@ -3020,16 +3020,11 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
-	// Relief, not Normal: the card holds both halves of how strongly this layer's own detail
-	// reads -- how hard the light follows it and how deep it actually is -- and those are always
-	// reached for together. Same word craquelure and the ramp filter use for the same pair.
+	// Relief owns the layer's single depth/normal-strength control plus its vertical offset.
 	TSharedRef<SVerticalBox> Relief = AddCard(Panel, LOCTEXT("CardRelief", "Relief"));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("NormalLabel", "Normal Intensity"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 2.0, 1.0, 0.01,
-		LOCTEXT("NormalIntensityHint", "Gain on this layer's normal map. Independent of Height Booster, so the surface can catch light as though deeper without actually displacing further.")));
-	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightBoostHint", "Gain on this layer's height, signed about the flat midpoint: peaks rise and pits sink by the same factor, so the surface exaggerates without floating. 1 is untouched, 0 is flat. Applied before anything reads the height, so displacement, the height blend and the derived normals all agree. Not Height Influence, which is coverage -- how much of this layer's height reaches the composite rather than how deep it is.")));
+		LOCTEXT("HeightBoostHint", "Gain on this layer's height and normal strength. 1 is untouched; 0 flattens both; values above 1 deepen the relief and strengthen its lighting response. Applied before displacement, height blending, and derived normals. Not Height Influence, which controls how much of this layer reaches the composite.")));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));

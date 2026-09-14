@@ -526,7 +526,7 @@ void FMixtormatLayerPreview::ApplyLayers(
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessBias"), Layer ? Layer->RoughnessBias : 0.5f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessContrast"), Layer ? Layer->RoughnessContrast : 1.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessOffset"), Layer ? Layer->RoughnessOffset : 0.0f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("NormalIntensity"), Layer && Layer->Type != EMixtormatLayerType::Fill ? Layer->NormalIntensity : 0.0f);
+		SetScalar(MaterialInstance, LayerIndex, TEXT("NormalIntensity"), Layer && Layer->Type != EMixtormatLayerType::Fill ? Layer->HeightBoost : 0.0f);
 
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideBaseColor"), Layer && Layer->bOverrideBaseColor ? 1.0f : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideRoughness"), Layer && Layer->bOverrideRoughness ? 1.0f : 0.0f);
