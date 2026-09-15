@@ -386,6 +386,13 @@ namespace MixtormatUI
 	}
 
 
+	inline FText LayerBlurScopeText(const EMixtormatLayerBlurScope Scope)
+	{
+		return Scope == EMixtormatLayerBlurScope::Layer
+			? LOCTEXT("LayerBlurScopeLayer", "This Layer")
+			: LOCTEXT("LayerBlurScopeComposite", "Whole Composite");
+	}
+
 	inline FText CurvatureSourceText(const EMixtormatCurvatureSource Source)
 	{
 		return Source == EMixtormatCurvatureSource::Height

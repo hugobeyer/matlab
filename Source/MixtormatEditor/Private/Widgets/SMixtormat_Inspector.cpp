@@ -684,6 +684,91 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpBlendModeMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildLayerBlurScopeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatLayerBlurScope Scopes[] = {
+		EMixtormatLayerBlurScope::Layer,
+		EMixtormatLayerBlurScope::Composite};
+	for (const EMixtormatLayerBlurScope Scope : Scopes)
+	{
+		Menu.Item(
+			MixtormatUI::LayerBlurScopeText(Scope),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Scope]()
+			{
+				if (FMixtormatLayerEffect* Effect = GetSelectedLayerBlurEffect())
+				{
+					Effect->LayerBlurScope = Scope;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Scope]()
+			{
+				const FMixtormatLayerEffect* Effect = GetSelectedLayerBlurEffect();
+				return Effect && Effect->LayerBlurScope == Scope;
+			}));
+	}
+	return Menu.Build();
+}
+
+// The mask blur's opposite number, so the controls deliberately read the same: two radii, and a
+// weight. Scope is the one thing it has that the mask blur cannot, because a mask has no notion
+// of what is underneath it.
+TSharedRef<SWidget> SMixtormat::BuildLayerBlurControls()
+{
+	const auto Blur = [this]() { return GetSelectedLayerBlurEffect(); };
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("LayerBlurScopeLabel", "Scope"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatLayerEffect* Selected = GetSelectedLayerBlurEffect();
+				return Selected
+					? MixtormatUI::LayerBlurScopeText(Selected->LayerBlurScope)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerBlurScopeMenu)),
+		LOCTEXT("LayerBlurScopeHint", "This Layer keeps the layer's own coverage in the blend, so nothing outside this layer moves. Whole Composite drops that and softens everything the stack has reached. Either way a mask scoped under this effect gates it, which is what turns the second one into a lens blur over a chosen region rather than over the whole surface.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("LayerBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatLayerEffect::LayerBlurRadiusX,
+			0.0, 32.0, 4.0, 0.1,
+			LOCTEXT("LayerBlurRadiusXHint", "Horizontal softening in texels at the composition resolution. Zero skips the pass for that axis rather than running a one-tap identity, so X alone smears sideways and leaves verticals crisp.")),
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("LayerBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatLayerEffect::LayerBlurRadiusY,
+			0.0, 32.0, 4.0, 0.1,
+			LOCTEXT("LayerBlurRadiusYHint", "Vertical softening, same units. Equal to Radius X this is an ordinary Gaussian; unequal it is anisotropic."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(
+			LOCTEXT("LayerBlurAmountLabel", "Amount"), Blur, &FMixtormatLayerEffect::LayerBlurAmount,
+			0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("LayerBlurAmountHint", "Lerps against the unblurred surface, so zero returns exactly what it read and the passes are skipped outright.")),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("LayerBlurHeightLabel", "Blur Height"), Blur, &FMixtormatLayerEffect::bLayerBlurHeight,
+			LOCTEXT("LayerBlurHeightHint", "Includes height in the blur. Off by preference when you want the surface to look softer without becoming softer: height feeds displacement, the height blend between layers, and the normals derived from it, so softening it changes what the surface is rather than only how it reads."))));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedLayerBlurEffect() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("LayerBlurHeading", "LAYER BLUR"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 {
 	const auto Flow = [this]() { return GetSelectedFlowWarp(); };
@@ -3997,6 +4082,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						return GetSelectedLayerEffect()
 							|| GetSelectedGeneratedMask()
 							|| GetSelectedLayerMask()
+							|| GetSelectedLayerBlur()
+							|| GetSelectedLayerCurvature()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
 							|| GetSelectedFilter()
@@ -4012,6 +4099,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]
+					+ SScrollBox::Slot()[BuildLayerBlurControls()]
 					+ SScrollBox::Slot()[BuildChippingControls()]
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]
@@ -4043,6 +4131,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						return GetSelectedLayerEffect()
 							|| GetSelectedGeneratedMask()
 							|| GetSelectedLayerMask()
+							|| GetSelectedLayerBlur()
+							|| GetSelectedLayerCurvature()
 							|| GetSelectedCraquelure()
 							|| GetSelectedColorId()
 							|| GetSelectedFilter()

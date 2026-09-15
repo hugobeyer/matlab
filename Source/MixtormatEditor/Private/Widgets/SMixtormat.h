@@ -195,6 +195,11 @@ private:
 	FMixtormatLayerEffect* GetSelectedFlowWarp();
 	const FMixtormatLayerEffect* GetSelectedFlowWarp() const;
 	FReply AddFlowWarpToLayer(int32 LayerIndex);
+	FReply AddLayerBlurToLayer(int32 LayerIndex);
+	FMixtormatLayerEffect* GetSelectedLayerBlurEffect();
+	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
+	TSharedRef<SWidget> BuildLayerBlurControls();
+	TSharedRef<SWidget> BuildLayerBlurScopeMenu();
 	TSharedRef<SWidget> BuildFlowWarpControls();
 	TSharedRef<SWidget> BuildFlowWarpBlendModeMenu();
 

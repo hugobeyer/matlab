@@ -146,6 +146,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatEffectType::Chipping:  return LOCTEXT("EffectBadgeChipping", "CHIP");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("EffectBadgeWorn", "WORN");
 		case EMixtormatEffectType::FlowWarp:  return LOCTEXT("EffectBadgeFlowWarp", "WARP");
+		case EMixtormatEffectType::LayerBlur: return LOCTEXT("EffectBadgeLayerBlur", "BLUR");
 		default:                              return LOCTEXT("EffectBadgePeel", "PEEL");
 		}
 	}

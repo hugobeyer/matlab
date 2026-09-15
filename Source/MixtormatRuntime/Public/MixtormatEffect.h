@@ -32,7 +32,30 @@ enum class EMixtormatEffectType : uint8
 	Chipping = 4 UMETA(DisplayName = "Chipping"),
 	WornEdges = 5 UMETA(DisplayName = "Worn Edges"),
 	// Appended: serialized recipes store this enum by value.
-	FlowWarp = 6 UMETA(DisplayName = "Flow Warp")
+	FlowWarp = 6 UMETA(DisplayName = "Flow Warp"),
+	// The mask blur turned outward: that one softens a mask, this softens the surface the
+	// stack has built. A Filter, because it wants the composited result rather than the
+	// effect data target -- and being an Effect is what lets a mask be scoped under it.
+	LayerBlur = 7 UMETA(DisplayName = "Layer Blur")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatLayerBlurScope : uint8
+{
+	// Gated by the layer's own coverage: the blur only lands where this layer covers.
+	//
+	// It does not isolate this layer's contribution, and the name used to imply that it did. By
+	// the time a Filter runs there is one surface target holding the whole accumulated stack, so
+	// what gets blurred inside the coverage is that composite -- including whatever of the layers
+	// beneath shows through wherever this layer is not fully opaque. A layer with no mask at all
+	// has full coverage, which is white, so this blurs everything.
+	//
+	// Isolating the layer would mean blurring before the composite merges it, which is a
+	// different insertion point than a Filter has.
+	Layer = 0 UMETA(DisplayName = "Layer Coverage"),
+	// Ungated by layer coverage: softens the whole accumulated surface. A scoped mask child still
+	// gates it, which is how this becomes a lens blur over a chosen region.
+	Composite = 1 UMETA(DisplayName = "Everywhere")
 };
 
 UENUM(BlueprintType)
@@ -57,6 +80,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::Chipping:
 	case EMixtormatEffectType::WornEdges:
 	case EMixtormatEffectType::FlowWarp:
+	case EMixtormatEffectType::LayerBlur:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;

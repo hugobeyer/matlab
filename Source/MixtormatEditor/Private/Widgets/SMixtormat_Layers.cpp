@@ -40,6 +40,19 @@ namespace
 			|| Child.Type == EMixtormatLayerChildType::Curvature;
 	}
 
+	// Whether this child has a scoped block beneath it at all, whatever that block holds -- an
+	// effect's masks or a mask's filters. Distinct from the two questions above, which ask what
+	// may be put under a child; this one asks what has to travel with it.
+	//
+	// Every place that reorders, duplicates or moves a child reads this. Using the effect-only
+	// predicate there left a mask's filters behind the moment masks could own anything: the mask
+	// moved, the block did not, and the filters ended up scoped to a child that was no longer
+	// above them.
+	bool CanOwnScopedChildren(const FMixtormatLayerChild& Child)
+	{
+		return CanOwnScopedMasks(Child) || CanOwnScopedBlurs(Child);
+	}
+
 	bool BuildMaskLayerFromPath(const FSoftObjectPath& MaskPath, FMixtormatMaskLayer& OutMask)
 	{
 		UObject* MaskObject = MaskPath.TryLoad();
@@ -753,27 +766,61 @@ FReply SMixtormat::ClearLayerMask(const int32 LayerIndex)
 	return FReply::Handled();
 }
 
+// Masks and the filters scoped under them, because the same menu action removes either and the
+// row dispatch cannot tell them apart. Removing a mask takes its filters with it: they name it by
+// ChildId, and a filter left behind would point at a child that no longer exists and be dropped
+// silently by the gather instead of visibly by this.
 FReply SMixtormat::RemoveMaskFromLayer(const int32 LayerIndex, const int32 ChildIndex)
 {
-	if (WorkingLayers.IsValidIndex(LayerIndex)
+	const bool bRemovable = WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
+		&& (WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Mask
+			|| WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Blur
+			|| WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Curvature);
+	if (bRemovable)
 	{
-		WorkingLayers[LayerIndex].Children.RemoveAt(ChildIndex);
+		FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+		const FGuid OwnerId = Layer.Children[ChildIndex].ChildId;
+
+		// Selection is restored by identity rather than by shifting indices down one, because a
+		// mask takes its scoped filters with it and that is any number of children, not one.
+		// RemoveLayerEffect has always done it this way for the same reason.
+		FGuid SelectedEffectId;
+		FGuid SelectedMaskId;
 		if (SelectedLayerIndex == LayerIndex)
 		{
-			if (SelectedMaskIndex == ChildIndex)
+			if (Layer.Children.IsValidIndex(SelectedEffectIndex))
 			{
-				SelectedMaskIndex = INDEX_NONE;
+				SelectedEffectId = Layer.Children[SelectedEffectIndex].ChildId;
+			}
+			if (Layer.Children.IsValidIndex(SelectedMaskIndex))
+			{
+				SelectedMaskId = Layer.Children[SelectedMaskIndex].ChildId;
+			}
+		}
+
+		Layer.Children.RemoveAll([OwnerId](const FMixtormatLayerChild& Candidate)
+		{
+			return Candidate.ChildId == OwnerId || Candidate.ScopeOwnerChildId == OwnerId;
+		});
+
+		if (SelectedLayerIndex == LayerIndex)
+		{
+			const auto FindById = [&Layer](const FGuid& Id)
+			{
+				return Id.IsValid()
+					? Layer.Children.IndexOfByPredicate(
+						[&Id](const FMixtormatLayerChild& Candidate)
+						{
+							return Candidate.ChildId == Id;
+						})
+					: INDEX_NONE;
+			};
+			SelectedEffectIndex = FindById(SelectedEffectId);
+			SelectedMaskIndex = FindById(SelectedMaskId);
+			if (SelectedMaskIndex == INDEX_NONE)
+			{
 				bBypassSelectedChild = false;
-			}
-			else if (SelectedMaskIndex > ChildIndex)
-			{
-				--SelectedMaskIndex;
-			}
-			if (SelectedEffectIndex > ChildIndex)
-			{
-				--SelectedEffectIndex;
 			}
 			SyncSelectedLayerControls();
 		}
@@ -809,7 +856,7 @@ FReply SMixtormat::ReorderLayerChild(
 	}
 
 	int32 SourceBlockEnd = SourceChildIndex + 1;
-	if (!bMovingScopedMask && CanOwnScopedMasks(SourceChild))
+	if (!bMovingScopedMask && CanOwnScopedChildren(SourceChild))
 	{
 		while (Layer.Children.IsValidIndex(SourceBlockEnd)
 			&& Layer.Children[SourceBlockEnd].ScopeOwnerChildId == SourceChild.ChildId)
@@ -837,7 +884,7 @@ FReply SMixtormat::ReorderLayerChild(
 				return FReply::Unhandled();
 			}
 		}
-		else if (CanOwnScopedMasks(TargetChild))
+		else if (CanOwnScopedChildren(TargetChild))
 		{
 			TargetOwnerId = TargetChild.ChildId;
 		}
@@ -924,7 +971,7 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	TArray<FMixtormatLayerChild> Copies;
 	Copies.Add(Source);
 	int32 InsertAt = ChildIndex + 1;
-	if (CanOwnScopedMasks(Source))
+	if (CanOwnScopedChildren(Source))
 	{
 		while (Layer.Children.IsValidIndex(InsertAt)
 			&& Layer.Children[InsertAt].ScopeOwnerChildId == Source.ChildId)
@@ -991,7 +1038,7 @@ FReply SMixtormat::MoveChildToLayer(
 	const FGuid NewLayerId = WorkingLayers[DestLayerIndex].LayerId;
 	const FGuid OwnerId = SourceLayer.Children[ChildIndex].ChildId;
 	int32 MoveCount = 1;
-	if (CanOwnScopedMasks(SourceLayer.Children[ChildIndex]))
+	if (CanOwnScopedChildren(SourceLayer.Children[ChildIndex]))
 	{
 		while (SourceLayer.Children.IsValidIndex(ChildIndex + MoveCount)
 			&& SourceLayer.Children[ChildIndex + MoveCount].ScopeOwnerChildId == OwnerId)
@@ -1855,15 +1902,27 @@ FReply SMixtormat::RemoveLayerEffect(const int32 LayerIndex, const int32 ChildIn
 	return FReply::Handled();
 }
 
+// Reached by every child the row treats as a mask, which since the filters arrived means the
+// mask filters too: the toggle dispatch sends anything that is not an Effect or a generated
+// producer here, so a Type check for Mask alone left a Blur's and a Curvature's checkbox inert.
 void SMixtormat::SetMaskEnabled(const ECheckBoxState CheckState, const int32 LayerIndex, const int32 ChildIndex)
 {
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
-		WorkingLayers[LayerIndex].Children[ChildIndex].Mask.bEnabled = CheckState == ECheckBoxState::Checked;
-		RefreshLayeredPreview();
+		return;
 	}
+
+	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	const bool bEnabled = CheckState == ECheckBoxState::Checked;
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Mask: Child.Mask.bEnabled = bEnabled; break;
+	case EMixtormatLayerChildType::Blur: Child.Blur.bEnabled = bEnabled; break;
+	case EMixtormatLayerChildType::Curvature: Child.Curvature.bEnabled = bEnabled; break;
+	default: return;
+	}
+	RefreshLayeredPreview();
 }
 
 void SMixtormat::SetMaskBlendMode(
@@ -2273,6 +2332,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
+		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
 			}
 		}
@@ -2287,6 +2347,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
+		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
 		}
 	}
@@ -2898,6 +2959,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddFlowWarpEffect", "Flow Warp"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFlowWarpToLayer(LayerIndex); }));
+	Menu.Item(
+		LOCTEXT("AddLayerBlurEffect", "Layer Blur"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddLayerBlurToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
 		MixtormatIcons::Effect(),
@@ -4308,6 +4373,45 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp() const
 	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
 	return Effect && Effect->Effect.IsNull()
 		&& Effect->ProceduralType == EMixtormatEffectType::FlowWarp
+		? Effect
+		: nullptr;
+}
+
+FReply SMixtormat::AddLayerBlurToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedLayerBlurEffect()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	return Effect && Effect->Effect.IsNull()
+		&& Effect->ProceduralType == EMixtormatEffectType::LayerBlur
+		? Effect
+		: nullptr;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedLayerBlurEffect() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	return Effect && Effect->Effect.IsNull()
+		&& Effect->ProceduralType == EMixtormatEffectType::LayerBlur
 		? Effect
 		: nullptr;
 }

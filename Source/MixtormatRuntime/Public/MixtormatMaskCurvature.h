@@ -86,8 +86,15 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskCurvature
 
 	// How much of the narrowing to apply. Zero is the identity, which is what lets the node be
 	// dialled back or driven to nothing without being removed from the chain.
+	//
+	// Zero by default, and deliberately. Curvature is unbounded and its useful Range depends
+	// entirely on the field being read, the Scale and the Kernel -- so there is no default window
+	// that is right for an arbitrary height. At full strength with a guessed window the node lands
+	// on a mask and multiplies it to nothing, and a mask that has silently gone to zero looks like
+	// every other thing being broken rather than like this node needing tuning. Starting inert
+	// costs one drag and cannot destroy what it was attached to.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Weight = 1.0f;
+	float Weight = 0.0f;
 
 	bool KeepsAnything() const
 	{
@@ -114,7 +121,7 @@ namespace MixtormatMaskCurvatureRange
 
 	constexpr double WeightMin = 0.0;
 	constexpr double WeightMax = 1.0;
-	constexpr double WeightDefault = 1.0;
+	constexpr double WeightDefault = 0.0;
 
 	constexpr double SnapDelta = 0.01;
 }

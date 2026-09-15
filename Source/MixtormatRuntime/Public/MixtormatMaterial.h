@@ -1241,6 +1241,30 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Output")
 	EMixtormatFlowWarpBlendMode FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::Replace;
+
+	// ---- Layer Blur ------------------------------------------------------------------
+	// Per axis, like the mask blur, and for the same reasons: the shader runs a dispatch per
+	// direction so a zero radius costs nothing, an unequal pair is anisotropic, and each axis
+	// can be driven on its own where a direction enum could not be driven at all.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius X", ClampMin = "0.0", ClampMax = "32.0"))
+	float LayerBlurRadiusX = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius Y", ClampMin = "0.0", ClampMax = "32.0"))
+	float LayerBlurRadiusY = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur")
+	EMixtormatLayerBlurScope LayerBlurScope = EMixtormatLayerBlurScope::Layer;
+
+	// Lerped against the unblurred source, so 0 is the identity and the pass is skipped
+	// outright rather than paying for a dispatch that reproduces its own input.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float LayerBlurAmount = 1.0f;
+
+	// Height last, and optional, because it is the one channel where softening changes what
+	// the surface *is* rather than how it looks: the height feeds displacement, the height
+	// blend between layers, and the normals derived from it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Blur Height"))
+	bool bLayerBlurHeight = true;
 };
 
 // Two constructions, not two presets for one.

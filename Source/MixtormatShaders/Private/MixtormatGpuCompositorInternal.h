@@ -376,6 +376,11 @@ namespace MixtormatGpuCompositor
 		float EdgeWearIdSlope = 0.3f;
 		float EdgeWearIdStrength = 0.25f;
 		float EdgeWearIdNoise = 1.0f;
+		float LayerBlurRadiusX = 0.0f;
+		float LayerBlurRadiusY = 0.0f;
+		uint32 LayerBlurScope = 0;
+		float LayerBlurAmount = 1.0f;
+		bool bLayerBlurHeight = true;
 		float EdgeWearRoughnessWeight = 0.0f;
 		float EdgeWearRoughnessOffset = 0.0f;
 
@@ -902,6 +907,9 @@ namespace MixtormatGpuCompositor
 		TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
 		TArray<FPendingEffect, TInlineAllocator<2>> PendingFlowWarps;
 		TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
+		// Last of the filters, so it softens the finished surface rather than one a later
+		// filter was about to change.
+		TArray<FPendingEffect, TInlineAllocator<2>> PendingLayerBlurs;
 
 		explicit FMixtormatLayerPassContext(FMixtormatComposeContext& InCtx)
 			: Ctx(InCtx)
@@ -926,6 +934,7 @@ namespace MixtormatGpuCompositor
 			PendingRampTilts.Reset();
 			PendingFlowWarps.Reset();
 			PendingGrades.Reset();
+			PendingLayerBlurs.Reset();
 		}
 	};
 
@@ -1048,6 +1057,18 @@ namespace MixtormatGpuCompositor
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
+
+	void QueuePendingLayerBlur(
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		const FEffectRenderData& Effect,
+		FRDGTextureRef FeatureMask);
+
+	void AddLayerBlurPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
 
 	void QueuePendingGrade(
 		FMixtormatLayerPassContext& LayerCtx,

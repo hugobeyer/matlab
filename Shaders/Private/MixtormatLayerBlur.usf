@@ -1,0 +1,94 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+
+// The mask blur's opposite number: that one softens a mask, this one softens the surface the
+// stack has built. Same separable Gaussian, an axis per dispatch, wrap-sampled for the same
+// reason -- a clamped tap at the edge pulls in a neighbourhood that does not continue there and
+// the material stops tiling.
+//
+// Run as a Filter-class effect, so by the time it sees anything the layer has composited and the
+// target holds the accumulated surface. Which is what makes Scope meaningful rather than
+// decorative: the texture is the same either way, and the only question is where the result is
+// allowed to land. Layer scope multiplies the layer's own coverage into the blend, so nothing
+// outside this layer moves; Composite scope ignores that coverage and softens everything the
+// stack has reached, which is the one a lens-blur or a depth-of-field pass wants.
+//
+// Four channels in one pass rather than four passes: base colour, normal, packed RAM and height
+// all want the same kernel over the same footprint, and running them together costs one set of
+// bilinear fetches instead of four.
+
+Texture2D<float4> SourceTexture;
+Texture2D<float> LayerMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float4> OutputTexture;
+
+int2 OutputSize;
+int Axis;
+float Radius;
+// 1 while the layer's own coverage still gates the result, 0 once it does not.
+uint UseMask;
+uint InvertMask;
+// How much of the blurred result to keep. The lerp is against the unblurred centre tap, so at 0
+// this returns what it read, bit for bit, and the caller can skip the pass entirely.
+float Amount;
+// Tangent-space normals have to come back to unit length: a weighted mean of unit vectors is not
+// one, and the shortfall reads as a flattened, washed-out normal exactly where the blur is
+// strongest. The other three targets are plain values and must not be touched this way.
+uint RenormalizeXYZ;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float2 Direction = Axis == 0 ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f);
+	const float2 Texel = Direction / max(float2(OutputSize), 1.0f);
+
+	const float4 Center = SourceTexture.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// Same convention as the mask blur: sigma is half the radius, so the kernel has decayed to
+	// roughly 13% by the last tap and the truncation does not show as a ring.
+	const float Sigma = max(Radius * 0.5f, 1.0e-4f);
+	const int Taps = clamp((int)ceil(Radius), 1, 32);
+
+	float4 Sum = Center;
+	float WeightSum = 1.0f;
+
+	[unroll(32)]
+	for (int Tap = 1; Tap <= Taps; ++Tap)
+	{
+		const float NormalizedDistance = (float)Tap / Sigma;
+		const float Weight = exp(-0.5f * NormalizedDistance * NormalizedDistance);
+		const float2 Offset = Texel * (float)Tap;
+		Sum += SourceTexture.SampleLevel(LinearWrapSampler, UV + Offset, 0.0f) * Weight;
+		Sum += SourceTexture.SampleLevel(LinearWrapSampler, UV - Offset, 0.0f) * Weight;
+		WeightSum += 2.0f * Weight;
+	}
+
+	float4 Blurred = Sum / WeightSum;
+
+	if (RenormalizeXYZ != 0)
+	{
+		const float Length = length(Blurred.xyz);
+		Blurred.xyz = Length > 1.0e-6f ? Blurred.xyz / Length : Center.xyz;
+	}
+
+	// Coverage decides where the blur is allowed to land, and Amount decides how much of it does.
+	// Both fold into the one lerp so that either at zero returns the input untouched.
+	float Coverage = 1.0f;
+	if (UseMask != 0)
+	{
+		Coverage = saturate(LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+		if (InvertMask != 0)
+		{
+			Coverage = 1.0f - Coverage;
+		}
+	}
+
+	OutputTexture[DispatchThreadId.xy] = lerp(Center, Blurred, saturate(Amount) * Coverage);
+}

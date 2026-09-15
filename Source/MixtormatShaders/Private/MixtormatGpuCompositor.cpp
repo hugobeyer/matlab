@@ -1675,6 +1675,15 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			}
 
 
+			if (ResolvedType == EMixtormatEffectType::LayerBlur)
+			{
+				EffectData.LayerBlurRadiusX = FMath::Clamp(LayerEffect.LayerBlurRadiusX, 0.0f, 32.0f);
+				EffectData.LayerBlurRadiusY = FMath::Clamp(LayerEffect.LayerBlurRadiusY, 0.0f, 32.0f);
+				EffectData.LayerBlurScope = static_cast<uint32>(LayerEffect.LayerBlurScope);
+				EffectData.LayerBlurAmount = FMath::Clamp(LayerEffect.LayerBlurAmount, 0.0f, 1.0f);
+				EffectData.bLayerBlurHeight = LayerEffect.bLayerBlurHeight;
+			}
+
 			if (ResolvedType == EMixtormatEffectType::FlowWarp)
 			{
 				EffectData.FlowWarpAmount = LayerEffect.FlowWarpAmount;
@@ -2299,6 +2308,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					// would read as a bug rather than as a contract.
 					TArray<FPendingEffect, TInlineAllocator<2>>& PendingFlowWarps = LayerCtx.PendingFlowWarps;
 					TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
+					TArray<FPendingEffect, TInlineAllocator<2>>& PendingLayerBlurs =
+						LayerCtx.PendingLayerBlurs;
 					int32& MaskPassIndex = LayerCtx.MaskPassIndex;
 					int32& EffectPassIndex = LayerCtx.EffectPassIndex;
 
@@ -2375,6 +2386,12 @@ bool FMixtormatGpuCompositor::RequestCompose(
 							continue;
 						}
 
+						if (Effect.Type == EMixtormatEffectType::LayerBlur)
+						{
+							QueuePendingLayerBlur(LayerCtx, Layer, Child, Effect, FeatureMask);
+							continue;
+						}
+
 						if (Effect.Type == EMixtormatEffectType::Grade)
 						{
 							QueuePendingGrade(LayerCtx, Layer, Child, Effect, FeatureMask);
@@ -2406,6 +2423,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 					AddChippingPasses(Ctx, LayerCtx, Layer);
 
 					AddGradePasses(Ctx, LayerCtx, Layer);
+
+					// Last of all: the blur softens the finished surface, so a grade or a relief pass
+					// running after it would be sharpening detail the blur was asked to remove.
+					AddLayerBlurPasses(Ctx, LayerCtx, Layer);
 
 					// The half this layer wrote. Same parity the composite used; taken here because
 					// a later layer's ReferenceHeight must see this layer's finished height, after
