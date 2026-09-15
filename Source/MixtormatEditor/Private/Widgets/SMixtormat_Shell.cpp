@@ -425,7 +425,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 				.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY") })
 				.ToolTips({
 					LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
-					LOCTEXT("LibraryLeftTabHint", "Search and filter the surface library by category.") })
+					LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces.") })
 				.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
 				.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 			]
@@ -434,7 +434,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			SAssignNew(LeftSwitcher, SWidgetSwitcher)
 				.WidgetIndex(LeftTabIndex)
 				+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
-				+ SWidgetSwitcher::Slot()[BuildLibraryPage()]
+				+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
 			]
 		];
 }

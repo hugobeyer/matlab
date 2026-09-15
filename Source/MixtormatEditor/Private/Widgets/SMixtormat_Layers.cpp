@@ -3116,8 +3116,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SNew(SScrollBox)
-				+ SScrollBox::Slot()
+				SNew(SMixtormatGalleryScrollBox)
+				.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
 				[
 					SAssignNew(MaskListBox, SWrapBox)
 					.UseAllottedSize(true)

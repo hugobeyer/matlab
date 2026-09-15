@@ -690,8 +690,10 @@ private:
 	bool ResetHoveredNumericControl();
 	void PreviewSurfaceScalarParameter(FName ParameterName, float Value);
 	void HandleSearchChanged(const FText& SearchTextValue);
+	void HandleUserLibrarySearchChanged(const FText& SearchTextValue);
 	void RebuildCategoryList();
 	void RebuildSurfaceList();
+	void RebuildUserLibraryList();
 	void RebuildLayerList();
 	void RebuildMaskList();
 	TSharedRef<SWidget> BuildTopBar();
@@ -702,6 +704,7 @@ private:
 	FReply ToggleBottomLibraryCollapsed();
 	TSharedRef<SWidget> BuildWorkflowMenu();
 	TSharedRef<SWidget> BuildLibraryPage();
+	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
 	TSharedRef<SWidget> BuildLayerStackPanel();
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
@@ -739,6 +742,9 @@ private:
 		const FSoftObjectPath& AssetPath,
 		const FAssetData& ThumbnailAsset);
 	TSharedRef<SWidget> BuildSurfaceLibraryContextMenu(FSoftObjectPath AssetPath);
+	TSharedRef<SWidget> BuildCompositionLibraryContextMenu(FSoftObjectPath AssetPath);
+	void AddSurfaceFromLibrary(FSoftObjectPath AssetPath);
+	void AddCompositionLayers(FSoftObjectPath AssetPath);
 	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
@@ -789,6 +795,7 @@ private:
 	TSharedPtr<SButton> BottomLibraryToggleButton;
 	TSharedPtr<SVerticalBox> CategoryListBox;
 	TSharedPtr<SWrapBox> SurfaceListBox;
+	TSharedPtr<SVerticalBox> UserLibraryListBox;
 	TSharedPtr<SVerticalBox> LayerListBox;
 	TSharedPtr<SWrapBox> MaskListBox;
 	TSharedPtr<STextBlock> SelectedSurfaceText;
@@ -825,6 +832,7 @@ private:
 	FEditHistoryState CurrentHistoryState;
 	FSoftObjectPath SelectedSurfacePath;
 	FText SelectedLibrarySurfaceName;
+	FString UserLibrarySearchText;
 	FSoftObjectPath SelectedMaskPath;
 	FText SelectedLibraryMaskName;
 	TStrongObjectPtr<UMaterialInstanceConstant> SelectedPreviewMaterial;

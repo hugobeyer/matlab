@@ -1226,4 +1226,44 @@ bool FMixtormatScopedFeatureMaskDataTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatCompositionIdentityRemapTest,
+	"Mixtormat.Compositor.CompositionIdentityRemap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatCompositionIdentityRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	TArray<FMixtormatLayer> Layers;
+	FMixtormatLayer& SourceLayer = Layers.AddDefaulted_GetRef();
+	FMixtormatLayerChild& SourceChild = SourceLayer.Children.AddDefaulted_GetRef();
+	const FGuid OldSourceLayerId = SourceLayer.LayerId;
+	const FGuid OldSourceChildId = SourceChild.ChildId;
+
+	FMixtormatLayer& DestinationLayer = Layers.AddDefaulted_GetRef();
+	FMixtormatLayerChild& DestinationChild = DestinationLayer.Children.AddDefaulted_GetRef();
+	DestinationChild.SourceLayerId = OldSourceLayerId;
+	DestinationChild.SourceChildId = OldSourceChildId;
+	DestinationChild.Mask.PublishedSourceLayerId = OldSourceLayerId;
+	DestinationChild.Mask.PublishedSourceChildId = OldSourceChildId;
+	FMixtormatParameterBinding& Binding = DestinationChild.ParameterBindings.AddDefaulted_GetRef();
+	Binding.Reference.Source.LayerId = OldSourceLayerId;
+	Binding.Reference.Source.ChildId = OldSourceChildId;
+	Binding.Driver.SourceLayerId = OldSourceLayerId;
+	Binding.Driver.SourceChildId = OldSourceChildId;
+
+	MixtormatParameterBinding::RegenerateLayerIdentities(Layers);
+
+	TestTrue(TEXT("Imported source layer receives a new identity"), Layers[0].LayerId != OldSourceLayerId);
+	TestTrue(TEXT("Imported source child receives a new identity"), Layers[0].Children[0].ChildId != OldSourceChildId);
+	TestEqual(TEXT("Instance follows imported layer"), Layers[1].Children[0].SourceLayerId, Layers[0].LayerId);
+	TestEqual(TEXT("Instance follows imported child"), Layers[1].Children[0].SourceChildId, Layers[0].Children[0].ChildId);
+	TestEqual(TEXT("Published mask follows imported layer"), Layers[1].Children[0].Mask.PublishedSourceLayerId, Layers[0].LayerId);
+	TestEqual(TEXT("Published mask follows imported child"), Layers[1].Children[0].Mask.PublishedSourceChildId, Layers[0].Children[0].ChildId);
+	TestEqual(TEXT("Reference follows imported layer"), Layers[1].Children[0].ParameterBindings[0].Reference.Source.LayerId, Layers[0].LayerId);
+	TestEqual(TEXT("Driver follows imported child"), Layers[1].Children[0].ParameterBindings[0].Driver.SourceChildId, Layers[0].Children[0].ChildId);
+	return true;
+}
+
 #endif

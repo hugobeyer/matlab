@@ -7,6 +7,7 @@
 #include "Engine/Texture2D.h"
 #include "MixtormatEffect.h"
 #include "MixtormatMask.h"
+#include "MixtormatMaterial.h"
 #include "MixtormatSurface.h"
 #include "Modules/ModuleManager.h"
 
@@ -103,6 +104,50 @@ TArray<FMixtormatSurfaceEntry> FMixtormatRegistry::GetSurfaces()
 			: AName < BName;
 	});
 
+	return Entries;
+}
+
+TArray<FMixtormatCompositionEntry> FMixtormatRegistry::GetCompositions()
+{
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+
+	FARFilter Filter;
+	Filter.ClassPaths.Add(UMixtormatMaterial::StaticClass()->GetClassPathName());
+	Filter.PackagePaths.Add(FName(TEXT("/Game")));
+	Filter.bRecursiveClasses = true;
+	Filter.bRecursivePaths = true;
+
+	TArray<FAssetData> Assets;
+	AssetRegistryModule.Get().GetAssets(Filter, Assets);
+
+	TArray<FMixtormatCompositionEntry> Entries;
+	Entries.Reserve(Assets.Num());
+	for (const FAssetData& Asset : Assets)
+	{
+		const UMixtormatMaterial* Composition = Cast<UMixtormatMaterial>(Asset.GetAsset());
+		if (!Composition || Composition->Layers.IsEmpty())
+		{
+			continue;
+		}
+
+		FMixtormatCompositionEntry& Entry = Entries.AddDefaulted_GetRef();
+		Entry.AssetPath = Asset.GetSoftObjectPath();
+		Entry.ThumbnailAsset = Asset;
+		Entry.DisplayName = Composition->DisplayName.IsEmpty()
+			? FText::FromName(Asset.AssetName)
+			: Composition->DisplayName;
+		Entry.LayerCount = Composition->Layers.Num();
+	}
+
+	Entries.Sort([](const FMixtormatCompositionEntry& A, const FMixtormatCompositionEntry& B)
+	{
+		const FString AName = A.DisplayName.ToString();
+		const FString BName = B.DisplayName.ToString();
+		return AName == BName
+			? A.AssetPath.ToString() < B.AssetPath.ToString()
+			: AName < BName;
+	});
 	return Entries;
 }
 

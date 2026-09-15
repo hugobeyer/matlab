@@ -18,6 +18,7 @@ FReply SMixtormat::ImportSurfaces()
 		FMessageDialog::Open(EAppMsgType::Ok, Result.ToMessage());
 		RebuildCategoryList();
 		RebuildSurfaceList();
+		RebuildUserLibraryList();
 	}
 	return FReply::Handled();
 }
@@ -38,6 +39,7 @@ FReply SMixtormat::RebuildBuiltInLibrary()
 	const FMixtormatImportResult Result = FMixtormatSurfaceImporter::ReimportShippedLibrary();
 	RebuildCategoryList();
 	RebuildSurfaceList();
+	RebuildUserLibraryList();
 	RebuildMaskList();
 	FMessageDialog::Open(EAppMsgType::Ok, Result.ToMessage());
 	return FReply::Handled();
@@ -249,6 +251,10 @@ FReply SMixtormat::SaveWorkingMaterial()
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
 		: TEXT("Save failed");
+	if (bSaved)
+	{
+		RebuildUserLibraryList();
+	}
 	return FReply::Handled();
 }
 
@@ -313,6 +319,10 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
 		: TEXT("Save failed");
+	if (bSaved)
+	{
+		RebuildUserLibraryList();
+	}
 	return FReply::Handled();
 }
 

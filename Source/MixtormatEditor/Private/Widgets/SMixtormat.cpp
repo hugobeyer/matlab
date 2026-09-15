@@ -42,6 +42,7 @@ void SMixtormat::BuildWorkspaceUI()
 
 	RebuildCategoryList();
 	RebuildSurfaceList();
+	RebuildUserLibraryList();
 	RebuildLayerList();
 	RebuildMaskList();
 }

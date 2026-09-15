@@ -8,6 +8,7 @@
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
 #include "Services/MixtormatAssetMigration.h"
+#include "Services/MixtormatSurfaceImporter.h"
 #include "Style/MixtormatStyle.h"
 #include "Textures/SlateIcon.h"
 #include "ToolMenus.h"
@@ -39,13 +40,16 @@ void FMixtormatEditorModule::StartupModule()
 	UToolMenus::RegisterStartupCallback(
 			FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FMixtormatEditorModule::RegisterMenus));
 
-	AssetMigrationCommand = IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("Mixtormat.MigrateAssets"),
-		TEXT("Preview Mixtormat asset renames. Pass Apply to execute the validated batch."),
-		FConsoleCommandWithArgsDelegate::CreateRaw(
-			this,
-			&FMixtormatEditorModule::RunAssetMigrationCommand),
-		ECVF_Default);
+	if (!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty())
+	{
+		AssetMigrationCommand = IConsoleManager::Get().RegisterConsoleCommand(
+			TEXT("Mixtormat.MigrateAssets"),
+			TEXT("Preview Mixtormat asset renames. Pass Apply to execute the validated batch."),
+			FConsoleCommandWithArgsDelegate::CreateRaw(
+				this,
+				&FMixtormatEditorModule::RunAssetMigrationCommand),
+			ECVF_Default);
+	}
 
 	RegisterSettings();
 }

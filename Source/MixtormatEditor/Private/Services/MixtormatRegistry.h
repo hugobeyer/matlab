@@ -24,6 +24,14 @@ struct FMixtormatSurfaceEntry
 	FName Finish;
 };
 
+struct FMixtormatCompositionEntry
+{
+	FSoftObjectPath AssetPath;
+	FAssetData ThumbnailAsset;
+	FText DisplayName;
+	int32 LayerCount = 0;
+};
+
 struct FMixtormatNormalEntry
 {
 	FSoftObjectPath AssetPath;
@@ -44,6 +52,7 @@ class FMixtormatRegistry final
 {
 public:
 	static TArray<FMixtormatSurfaceEntry> GetSurfaces();
+	static TArray<FMixtormatCompositionEntry> GetCompositions();
 	static TArray<FMixtormatMaskEntry> GetMasks();
 	static TArray<FMixtormatNormalEntry> GetNormals();
 	static TArray<FMixtormatEffectEntry> GetEffects();

@@ -386,10 +386,10 @@ pre{
         <p>Mixtormat keeps the authoring view divided into a few permanent jobs instead of spreading controls across many windows.</p>
 
         <div class="grid">
-          <div class="mini"><strong>Left — Layers / Library</strong>Switch between the current recipe and the searchable surface library.</div>
+          <div class="mini"><strong>Left — Layers / Library</strong>Switch between the current recipe and user-owned saved mixes or imported surfaces.</div>
           <div class="mini"><strong>Center — Preview</strong>Judge the current composite on a simple look-development mesh.</div>
           <div class="mini"><strong>Right — Inspector</strong>Edit whichever layer, mask, generator, ID node, or effect is selected.</div>
-          <div class="mini"><strong>Bottom — Materials / Masks</strong>Keep reusable surfaces and masks close while building the stack.</div>
+          <div class="mini"><strong>Bottom — Materials / Masks</strong>Keep shipped Mixtormat source surfaces and masks close while building the stack.</div>
         </div>
 
         <h3>Resizable layout</h3>
@@ -409,19 +409,19 @@ pre{
 
       <section id="library">
         <div class="section-head"><h2>Material Library</h2></div>
-        <p>The Library is the source browser for reusable Mixtormat surfaces. Surfaces are grouped by family and shown as visual tiles so the normal workflow is browse → inspect → drag, rather than search through raw texture assets in the Content Browser.</p>
+        <p>Mixtormat separates shipped source content from user-owned content. The bottom Material gallery contains the supplied source surfaces. The left Library tab contains saved mixes and surfaces imported into the current project.</p>
 
-        <h3>Categories and search</h3>
-        <p>Choose a category to narrow the library, or search by material name. The category list is rebuilt from the surface families currently available to Mixtormat.</p>
+        <h3>Saved mixes</h3>
+        <p>Every saved Mixtormat recipe appears under <strong>Saved Mixes</strong>. Right-click a mix and choose <strong>Add All Layers</strong> to copy its complete editable stack into the current material. Masks, effects, filters, ordering, instances, drivers, and internal references are retained, while identities are regenerated so the imported layers remain independent of the source recipe.</p>
 
-        <h3>Preview before using</h3>
-        <p>If no recipe is being edited, selecting a surface previews it directly. This makes the Library useful for comparing source materials before committing one to a stack.</p>
+        <h3>Imported surfaces</h3>
+        <p>Texture sets imported by the user appear under <strong>Imported Surfaces</strong> in the left Library. Right-click one and choose <strong>Add as Material Layer</strong>. These project-owned surfaces are not duplicated in the bottom shipped-material gallery.</p>
 
-        <h3>Gallery zoom</h3>
-        <p>Hold <code>Ctrl</code> and use the mouse wheel over a material or mask tile to change the gallery tile size. Smaller tiles are useful for scanning a large library; larger tiles are better for evaluating a surface visually.</p>
+        <h3>Search and context actions</h3>
+        <p>Search filters saved mixes and imported surfaces by name. Right-click any entry to add it or locate its asset in the Content Browser.</p>
 
-        <h3>Drag into the stack</h3>
-        <p>A library surface can be dragged into Layers. In an empty document it becomes the first layer. In an existing recipe it is added as another Material Layer.</p>
+        <h3>Bottom gallery</h3>
+        <p>Shipped surfaces remain grouped by family in the bottom gallery. Select one to preview it, drag it into Layers, or right-click it and choose <strong>Add as Material Layer</strong>. Hold <code>Ctrl</code> and use the mouse wheel anywhere over a material or mask gallery, including its empty background, to change gallery size.</p>
 
         <div class="image-slot"><span>IMAGE — Material Library showing category filters, search, tile sizes and a selected surface.</span></div>
       </section>
@@ -447,7 +447,7 @@ pre{
         <p>The importer needs to recognize which textures belong to the same surface and which role each file plays. Keeping one shared base name makes the set unambiguous.</p>
 
         <h3>Where imports land</h3>
-        <p>Imported surfaces and masks go into your <strong>project</strong> content at <code>/Game/Mixtormat/Library</code> &mdash; surfaces under <code>Surfaces/</code>, masks under <code>Masks/</code>, raw textures under <code>Textures/</code>. Nothing is written into the installed plugin, so your own imports survive reinstalling or updating Mixtormat, and they travel with the project rather than the engine install. The Library browser reads both roots at once, so built-in and imported content appear together.</p>
+        <p>Imported surfaces and masks go into your <strong>project</strong> content at <code>/Game/Mixtormat/Library</code> &mdash; surfaces under <code>Surfaces/</code>, masks under <code>Masks/</code>, raw textures under <code>Textures/</code>. Nothing is written into the installed plugin, so your own imports survive reinstalling or updating Mixtormat, and they travel with the project rather than the engine install. The left Library shows imported project surfaces, while the bottom gallery remains dedicated to shipped Mixtormat surfaces.</p>
 
         <div class="image-slot"><span>IMAGE — Example custom source set: _BC, _N, _RAMH and the imported surface tile.</span></div>
       </section>
@@ -515,10 +515,10 @@ pre{
         <h3>Channel influence</h3>
         <p>Channel influence lets a layer affect some properties more than others. For example, you may want a dust layer to change Base Color and Roughness strongly while barely changing Normal or Height.</p>
 
-        <h3>Roughness and normal adjustments</h3>
-        <p>Layer-level controls include roughness bias/contrast/offset and normal intensity. These are useful for matching two source materials before adding more complicated effects.</p>
+        <h3>Roughness and relief adjustments</h3>
+        <p>Layer-level controls include roughness bias, contrast, and offset, plus Height Booster and Height Offset. Height Booster scales the layer's height and normal response together: 0 flattens both, 1 preserves the source, and higher values strengthen both. Height Offset raises or sinks only that layer before compositing. It changes level rather than slope, so it does not add artificial normal strength.</p>
 
-        <div class="image-slot"><span>IMAGE — Inspector showing Composition, Channel Influence and Normal controls.</span></div>
+        <div class="image-slot"><span>IMAGE — Inspector showing Composition, Channel Influence and Relief controls.</span></div>
       </section>
 
       <section id="height">
@@ -535,6 +535,9 @@ pre{
 
         <h3>Why relative height matters</h3>
         <p>Height blending is most useful when the two materials have a believable relationship. Paint may sit above a rough wall but sink into pores. Dirt may collect in recesses. Mortar may sit lower than brick faces. The correct result often comes from adjusting the relative heights before adding more noise to the mask.</p>
+
+        <h3>Per-layer relief</h3>
+        <p><strong>Height Booster</strong> scales a layer's relief around the flat midpoint and automatically scales its normal response. Height-changing effects and ID filters follow the same rule: their normals derive from the final height they write rather than from a separate intensity control. <strong>Height Offset</strong> raises or sinks one layer before it reaches the composite without changing its slope.</p>
 
         <h3>Height and the preview</h3>
         <p>The composited Height can also drive preview displacement. Use this to check whether a blend reads as a real surface from a glancing angle rather than only from the front.</p>
@@ -609,7 +612,7 @@ pre{
 
         <div class="card">
           <h3>Pattern IDs</h3>
-          <p>Create structured, tileable region layouts. Pattern IDs are useful for materials such as masonry, tiles, panels, paving, or any surface where a repeated construction pattern should drive per-piece variation.</p>
+          <p>Create structured, tileable region layouts. Pattern Height, Gap Height, and bevel relief write the final surface shape; their normal response is derived automatically from that height.</p>
         </div>
 
         <div class="card">
@@ -624,7 +627,7 @@ pre{
 
         <div class="card">
           <h3>Ramp From IDs</h3>
-          <p>Turn region IDs into gradient/ramp information for ordered variation, relief shaping, or downstream control.</p>
+          <p>Turn region IDs into gradient/ramp information for ordered variation, relief shaping, or downstream control. Intensity changes the written ramp height and its derived normal together.</p>
         </div>
 
         <div class="note">
@@ -690,7 +693,7 @@ pre{
         <p>Gully Weight controls how strongly the directional gully component participates. Use it when erosion should read as flow or directional wear rather than isotropic breakup.</p>
 
         <h3>Normalization</h3>
-        <p>Normalization can restore weaker blended structures without forcing every cancellation point into an equally strong feature.</p>
+        <p>Normalization can restore weaker blended structures without forcing every cancellation point into an equally strong feature. Depth controls the final carve, and the erosion normal is derived automatically from that carved height.</p>
 
         <div class="image-slot"><span>IMAGE — Erosion at low/high gully weight with Height or Normal debug view beside it.</span></div>
       </section>
@@ -716,10 +719,10 @@ pre{
         <p>Chipping and Worn Edges cover related but different types of damage. Use them according to whether the surface is losing chunks/material or simply exposing high-contact edges.</p>
 
         <h3>Chipping</h3>
-        <p>Chipping is suited to broken paint, concrete, stone, plaster, coatings, and other materials where the damaged region needs more irregular depth and breakup.</p>
+        <p>Chipping is suited to broken paint, concrete, stone, plaster, coatings, and other materials where the damaged region needs more irregular depth and breakup. Chip Depth changes both the written height and its automatically derived normal response.</p>
 
         <h3>Worn Edges</h3>
-        <p>Worn Edges is suited to contact wear and exposed convex regions. It is especially useful when a clean manufactured or painted object needs the edges to read as handled or abraded.</p>
+        <p>Worn Edges is suited to contact wear and exposed convex regions. Its normal response is derived from the final worn height, keeping shading consistent with the relief.</p>
 
         <h3>Combine with masks</h3>
         <p>Neither effect needs to be applied everywhere. Restricting the effect with a Generated Mask, texture mask, or region-based driver usually gives a more believable result than simply lowering global strength.</p>
@@ -751,7 +754,7 @@ pre{
         <p>Propagated mode grows cracks through procedural stress, toughness, and flow fields. Density controls how many cracks begin; Reach controls how far they can travel. Detail, Contrast, Straightness, Fracture Bias, Flow, Roughness, Threshold, and Collision control the character of the growth.</p>
 
         <h3>Relief</h3>
-        <p>Craquelure can cut into composited Height and derive Normal response around the groove. Height controls the cut depth, Normal controls how strongly the groove catches light, Groove controls its wider depression, and Profile changes the wall shape.</p>
+        <p>Craquelure can cut into composited Height and automatically derive the Normal response around the groove. Height controls both cut depth and shading strength, Groove controls the wider depression, and Profile changes the wall shape.</p>
 
         <h3>Warp</h3>
         <p>Warp bends the finished crack network with periodic curl-style variation while keeping the result tileable.</p>
@@ -839,7 +842,7 @@ pre{
         <p>Switch between <strong>Sphere</strong>, <strong>Plane</strong>, <strong>Cube</strong>, and <strong>Cylinder</strong>. A plane is useful for tile structure and patterns; a sphere makes roughness and normal response easy to read; a cube exposes edge behavior; a cylinder shows how a pattern wraps and where tiling seams land on a curved surface.</p>
 
         <h3>Lighting presets</h3>
-        <p>Available studio lighting presets are <strong>Neutral</strong>, <strong>Soft</strong>, <strong>Dramatic</strong>, <strong>Rim</strong>, and <strong>Workshop</strong>. Light and skylight intensity can be adjusted without losing the character of the selected preset.</p>
+        <p>Available studio lighting presets are <strong>Neutral</strong>, <strong>Soft</strong>, <strong>Dramatic</strong>, <strong>Rim</strong>, and <strong>Workshop</strong>. Light and boosted cubemap/skylight intensity can be adjusted independently. Fog blends from near-black to dark cool gray.</p>
 
         <h3>Before / After</h3>
         <p><strong>Before</strong> shows the base state before added layers are composed. <strong>After</strong> shows the complete stack. Use this frequently when many subtle operations have accumulated.</p>
@@ -851,19 +854,20 @@ pre{
         <p>Feature-preview controls can show information such as the selected Layer Mask or Cluster IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
 
         <h3>Channel preview</h3>
-        <p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited output at a time: <strong>Material</strong> (the normal shaded result) &rarr; <strong>Base Color</strong> &rarr; <strong>Normal</strong> &rarr; <strong>Roughness</strong> &rarr; <strong>AO</strong> &rarr; <strong>Metallic</strong> &rarr; <strong>F0</strong> &rarr; <strong>Height</strong>, then back to Material. This is a diagnostic view with no toolbar control &mdash; it shows the channel exactly as it was composited, with no lighting applied, which is the quickest way to tell whether a problem is in the channel data or in how it is being lit.</p>
+        <p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited output at a time: <strong>Material</strong> (the normal shaded result) &rarr; <strong>Base Color</strong> &rarr; <strong>Normal</strong> &rarr; <strong>Roughness</strong> &rarr; <strong>AO</strong> &rarr; <strong>Metallic</strong> &rarr; <strong>F0</strong> &rarr; <strong>Height</strong> &rarr; <strong>Fuzz Influence</strong>, then back to Material. This is a diagnostic view with no toolbar control &mdash; it shows the channel exactly as it was composited, with no lighting applied, which is the quickest way to tell whether a problem is in the channel data or in how it is being lit.</p>
 
-        <h3>Displacement</h3>
-        <p>Enable displacement to judge the composited Height as geometry. Displacement Amount controls how strongly Height moves the preview surface.</p>
+        <h3>Displacement and UV orientation</h3>
+        <p>Enable displacement to judge the composited Height as geometry. Displacement Amount controls how strongly Height moves the preview surface. The global 90° UV toggle rotates every composited output together, including the tangent-space normal direction, so shading stays aligned.</p>
 
         <h3>Quality</h3>
-        <p>Preview quality has <strong>Low</strong>, <strong>Medium</strong>, and <strong>High</strong> modes. Use a lighter mode while rapidly scrubbing expensive stacks, then return to higher quality for final look-development checks.</p>
+        <p><strong>Low</strong> uses the key light and plugin cubemap without Lumen. <strong>Medium</strong> enables Lumen GI and reflections with reduced final-gather quality while keeping viewport AO off. <strong>High</strong> uses full-quality Lumen GI and reflections with viewport AO enabled.</p>
 
         <h3>Anti-aliasing</h3>
         <div class="grid">
           <div class="mini"><strong>FXAA</strong>Single-frame and stable while moving. It is useful when judging thin masks or cracks that can shimmer under temporal accumulation.</div>
           <div class="mini"><strong>TSR</strong>Temporal Super Resolution. Better at resolving thin detail in a settled view, but history needs to reconverge after camera movement or a recomposite.</div>
         </div>
+        <p>Click the selected FXAA or TSR option again to deselect it. With neither selected, anti-aliasing is completely off.</p>
 
         <h3>Screen Percentage</h3>
         <p>The preview render scale ranges from 75% to 200%. Values below 100% reduce fill cost; values above 100% provide real supersampling for shader and texture detail.</p>
@@ -1024,7 +1028,7 @@ pre{
         <div class="image-slot small"><span>IMAGE — Final polished material / beauty render. Optional closing image.</span></div>
       </section>
 
-      <div class="footer">Mixtormat documentation · artist guide · current feature-oriented draft</div>
+      <div class="footer">Mixtormat documentation · artist guide</div>
     </article>
   </main>
 </div>
