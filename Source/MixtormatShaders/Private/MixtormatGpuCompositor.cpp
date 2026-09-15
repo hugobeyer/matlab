@@ -149,6 +149,7 @@ public:
 		SHADER_PARAMETER(float, HeightBoost)
 		SHADER_PARAMETER(float, HeightLevelOffset)
 		SHADER_PARAMETER(float, HeightShape)
+		SHADER_PARAMETER(float, HeightSmooth)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
@@ -424,6 +425,7 @@ namespace MixtormatGpuCompositor
 		Parameters->HeightBoost = Layer.HeightBoost;
 		Parameters->HeightLevelOffset = Layer.HeightLevelOffset;
 		Parameters->HeightShape = Layer.HeightShape;
+		Parameters->HeightSmooth = Layer.HeightSmooth;
 		Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
 		Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
 		Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
@@ -1896,6 +1898,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.HeightBoost = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
 		Data.HeightLevelOffset = FMath::Clamp(Layer.HeightLevelOffset, -1.0f, 1.0f);
 		Data.HeightShape = FMath::Clamp(Layer.HeightShape, -1.0f, 1.0f);
+		Data.HeightSmooth = FMath::Clamp(Layer.HeightSmooth, 0.0f, 8.0f);
 		Data.BaseColorBlendMode = Layer.BaseColorBlendMode;
 		Data.BaseColorBlendAmount = FMath::Clamp(Layer.BaseColorBlendAmount, 0.0f, 1.0f);
 		Data.BaseColorInfluence = FMath::Clamp(Layer.BaseColorInfluence, 0.0f, 1.0f);

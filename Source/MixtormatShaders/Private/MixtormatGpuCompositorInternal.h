@@ -653,6 +653,7 @@ namespace MixtormatGpuCompositor
 		float HeightBoost = 1.0f;
 		float HeightLevelOffset = 0.0f;
 		float HeightShape = 0.0f;
+		float HeightSmooth = 0.0f;
 		float HeightBlendAmount = 1.0f;
 		float HeightThreshold = 0.5f;
 		float HeightRange = 0.1f;

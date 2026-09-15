@@ -3291,6 +3291,9 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("HeightSmoothLabel", "Height Smooth"), Layer(), &FMixtormatLayer::HeightSmooth, 0.0, 8.0, 0.0, 0.05,
+		LOCTEXT("HeightSmoothHint", "Softens this layer's own height before anything reads it -- displacement, the height blend and the derived normals all see the smoothed result. Only this layer: it is applied at the source, before the composite merges anything, which is what the Layer Blur effect cannot do. Measured in output texels, so tiling does not scale it, and both axes together.")));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightShapeLabel", "Height Shape"), Layer(), &FMixtormatLayer::HeightShape, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightShapeHint", "Redistributes this layer's height between its own ends instead of moving or scaling it. Positive bulges the form, raising the midtones toward the peaks; negative pinches it, sinking them toward the pits. Both extremes stay put either way, so the relief changes shape rather than depth -- Height Booster is the one that changes depth. Applied before Booster and Offset.")));
 

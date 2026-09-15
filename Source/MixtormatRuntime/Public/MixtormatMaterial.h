@@ -2436,6 +2436,18 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Shape", ClampMin = "-1.0", ClampMax = "1.0"))
 	float HeightShape = 0.0f;
 
+	// Softens this layer's own source height before anything reads it -- and only this
+	// layer's, which is what separates it from the Layer Blur effect. That one is a Filter,
+	// so by the time it runs there is a single target holding the whole accumulated stack and
+	// it cannot tell one layer's contribution from another's. This is applied at the source,
+	// before the composite merges anything, so nothing below is touched.
+	//
+	// In output texels, both axes together: a height smooth that was anisotropic would be a
+	// different feature, and one radius is what takes the stair-stepping off a low-resolution
+	// height or the hard edge off a tiling seam.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Smooth", ClampMin = "0.0", ClampMax = "8.0"))
+	float HeightSmooth = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
 	EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
 
