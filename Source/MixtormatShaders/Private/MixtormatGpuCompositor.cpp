@@ -123,6 +123,9 @@ public:
 	// Two driven scalars this step: slot 0 RoughnessInfluence, slot 1 HeightBlendAmount. Kept
 	// small on purpose -- every slot is a texture binding on every composite dispatch.
 	static constexpr int32 MaxScalarDrivers = 2;
+	// Fixed shader slots keep masks independently sampleable. Additional grades are rejected by
+	// the gather instead of falling back to grading the accumulated stack.
+	static constexpr int32 MaxLayerGrades = 8;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -230,6 +233,19 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, DriverRegionIds0)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, DriverRegionIds1)
+		SHADER_PARAMETER(uint32, GradeCount)
+		SHADER_PARAMETER_ARRAY(FVector4f, GradeParamsA, [MaxLayerGrades])
+		SHADER_PARAMETER_ARRAY(FVector4f, GradeParamsB, [MaxLayerGrades])
+		SHADER_PARAMETER_ARRAY(FVector4f, GradeParamsC, [MaxLayerGrades])
+		SHADER_PARAMETER_ARRAY(FVector4f, GradeParamsD, [MaxLayerGrades])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask2)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask3)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask4)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask5)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask6)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GradeMask7)
 		// Per-region colour variation, read off a cluster filter's ID map in the same layer.
 		// RegionIds is bound on every dispatch -- a 1x1 dummy when the layer has no cluster --
 		// because RDG validates the binding whether RegionTintEnabled takes the branch or not.
@@ -392,6 +408,7 @@ namespace MixtormatGpuCompositor
 		TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
 		TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
 			LayerCtx.PatternOutputs;
+		TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
 		FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
 		FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
 		FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
@@ -701,6 +718,48 @@ namespace MixtormatGpuCompositor
 		Parameters->DriverSignal1 = DriverSignals[1];
 		Parameters->DriverRegionIds0 = DriverRegionSignals[0];
 		Parameters->DriverRegionIds1 = DriverRegionSignals[1];
+
+		FRDGTextureRef GradeMasks[FMixtormatCompositeCS::MaxLayerGrades];
+		Parameters->GradeCount = FMath::Min(
+			PendingGrades.Num(), FMixtormatCompositeCS::MaxLayerGrades);
+		for (int32 GradeIndex = 0;
+			GradeIndex < FMixtormatCompositeCS::MaxLayerGrades;
+			++GradeIndex)
+		{
+			Parameters->GradeParamsA[GradeIndex] = FVector4f(0.0f, 0.0f, 1.0f, 1.0f);
+			Parameters->GradeParamsB[GradeIndex] = FVector4f(0.18f, 1.0f, 0.0f, 0.0f);
+			Parameters->GradeParamsC[GradeIndex] = FVector4f(1.0f, 0.0f, 1.0f, 0.0f);
+			Parameters->GradeParamsD[GradeIndex] = FVector4f::Zero();
+			GradeMasks[GradeIndex] = EmptyDriverSignal;
+			if (PendingGrades.IsValidIndex(GradeIndex))
+			{
+				const FPendingEffect& Pending = PendingGrades[GradeIndex];
+				const FEffectRenderData& Grade = *Pending.Effect;
+				const bool bHasGradeMask = Layer.bHasMask || Pending.bHasScopedMask;
+				Parameters->GradeParamsA[GradeIndex] = FVector4f(
+					static_cast<float>(Grade.GradeTonemap), Grade.GradeTonemapStrength,
+					Grade.GradeBrightness, Grade.GradeContrast);
+				Parameters->GradeParamsB[GradeIndex] = FVector4f(
+					Grade.GradeContrastPivot, Grade.GradeGamma, Grade.GradeAmount,
+					Grade.GradeInputMin);
+				Parameters->GradeParamsC[GradeIndex] = FVector4f(
+					Grade.GradeInputMax, Grade.GradeOutputMin, Grade.GradeOutputMax,
+					bHasGradeMask ? 1.0f : 0.0f);
+				Parameters->GradeParamsD[GradeIndex] = FVector4f(
+					Grade.GradeChannelBias.X, Grade.GradeChannelBias.Y,
+					Grade.GradeChannelBias.Z,
+					!Pending.bHasScopedMask && Grade.bGradeInvertMask ? 1.0f : 0.0f);
+				GradeMasks[GradeIndex] = Pending.FeatureMask;
+			}
+		}
+		Parameters->GradeMask0 = GradeMasks[0];
+		Parameters->GradeMask1 = GradeMasks[1];
+		Parameters->GradeMask2 = GradeMasks[2];
+		Parameters->GradeMask3 = GradeMasks[3];
+		Parameters->GradeMask4 = GradeMasks[4];
+		Parameters->GradeMask5 = GradeMasks[5];
+		Parameters->GradeMask6 = GradeMasks[6];
+		Parameters->GradeMask7 = GradeMasks[7];
 		Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
 		Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
 		Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
@@ -1664,6 +1723,25 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			}
 			const EMixtormatEffectType ResolvedType =
 				EffectAsset ? EffectAsset->EffectType : LayerEffect.ProceduralType;
+			if (ResolvedType == EMixtormatEffectType::Grade)
+			{
+				int32 GradeCount = 0;
+				for (const FChildRenderData& Existing : Data.Children)
+				{
+					if (Existing.Type == EMixtormatLayerChildType::Effect
+						&& Existing.Effect.Type == EMixtormatEffectType::Grade)
+					{
+						++GradeCount;
+					}
+				}
+				if (GradeCount >= FMixtormatCompositeCS::MaxLayerGrades)
+				{
+					UE_LOG(LogMixtormatComposition, Warning,
+						TEXT("Layer %d exceeds the supported maximum of %d Grade effects."),
+						LayerIndex, FMixtormatCompositeCS::MaxLayerGrades);
+					return false;
+				}
+			}
 			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMixtormatLayerChildType::Effect;
 			ChildData.SourceChildIndex = SourceChildIndex;
@@ -2561,7 +2639,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 					AddChippingPasses(Ctx, LayerCtx, Layer);
 
-					AddGradePasses(Ctx, LayerCtx, Layer);
+					// Grade is applied to the incoming layer color inside the composite shader.
 
 					// Last of all: the blur softens the finished surface, so a grade or a relief pass
 					// running after it would be sharpening detail the blur was asked to remove.

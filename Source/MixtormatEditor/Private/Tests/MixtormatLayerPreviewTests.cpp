@@ -138,10 +138,10 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	FMixtormatLayer ReferenceLayer;
 	ReferenceLayer.Type = EMixtormatLayerType::Material;
 	ReferenceLayer.SourceComposition = ReferenceSource;
-	TArray<FMixtormatLayer> ReferenceLayers = { ReferenceLayer };
+	TArray<FMixtormatLayer> LiveReferenceLayers = { ReferenceLayer };
 	TestTrue(
 		TEXT("Compositor accepts an isolated reference layer"),
-		Compositor.RequestCompose(ReferenceLayers));
+		Compositor.RequestCompose(LiveReferenceLayers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Reference output can be read"), Pixel))
 	{
@@ -150,14 +150,14 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	TestTrue(
 		TEXT("Referenced fuzz reaches the parent material"),
 		FMath::IsNearlyEqual(
-			MixtormatCompositionReferences::ComputeFuzzInfluence(ReferenceLayers),
+			MixtormatCompositionReferences::ComputeFuzzInfluence(LiveReferenceLayers),
 			0.8f));
-	ReferenceSource->Layers = ReferenceLayers;
+	ReferenceSource->Layers = LiveReferenceLayers;
 	FText ReferenceError;
 	TestFalse(
 		TEXT("Reference cycles are rejected"),
 		MixtormatCompositionReferences::Validate(
-			ReferenceLayers, FSoftObjectPath(), ReferenceError));
+			LiveReferenceLayers, FSoftObjectPath(), ReferenceError));
 
 	TArray<UMixtormatMaterial*> DeepSources;
 	DeepSources.Reserve(33);
@@ -178,6 +178,24 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		TEXT("Reference nesting beyond the render limit is rejected"),
 		MixtormatCompositionReferences::Validate(
 			TArray<FMixtormatLayer>{ DeepRoot }, FSoftObjectPath(), ReferenceError));
+
+	FMixtormatLayer GradeLower = BaseLayer;
+	GradeLower.BaseColor = FLinearColor::Blue;
+	FMixtormatLayer GradeUpper = BaseLayer;
+	GradeUpper.BaseColor = FLinearColor::Red;
+	GradeUpper.Opacity = 0.5f;
+	FMixtormatLayerChild& GradeChild = GradeUpper.Children.AddDefaulted_GetRef();
+	GradeChild.Type = EMixtormatLayerChildType::Effect;
+	GradeChild.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	GradeChild.Effect.GradeBrightness = 0.0f;
+	TestTrue(
+		TEXT("Compositor accepts a layer-local Grade"),
+		Compositor.RequestCompose(TArray<FMixtormatLayer>{ GradeLower, GradeUpper }));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Layer-local Grade output can be read"), Pixel))
+	{
+		TestTrue(TEXT("Grade leaves the lower layer contribution intact"), Pixel.B > 100 && Pixel.R < 8);
+	}
 
 	Layers[0].HueShift = 120.0f;
 	TestTrue(TEXT("Compositor accepts per-layer HSV adjustment"), Compositor.RequestCompose(Layers));

@@ -31,6 +31,15 @@ Texture2D<float> BorderBaseHeight;
 Texture2D<float4> EffectData;
 Texture2D<float> EffectHeight;
 Texture2D<float> DebugMask;
+#define MIXTORMAT_MAX_LAYER_GRADES 8
+Texture2D<float> GradeMask0;
+Texture2D<float> GradeMask1;
+Texture2D<float> GradeMask2;
+Texture2D<float> GradeMask3;
+Texture2D<float> GradeMask4;
+Texture2D<float> GradeMask5;
+Texture2D<float> GradeMask6;
+Texture2D<float> GradeMask7;
 SamplerState LinearWrapSampler;
 
 // The ID map published by a cluster filter in this layer, and the per-region colour
@@ -99,6 +108,11 @@ uint InvertAOFeature;
 uint InvertFeature;
 float HeightSmoothAmount;
 uint BorderSmoothValid;
+uint GradeCount;
+float4 GradeParamsA[MIXTORMAT_MAX_LAYER_GRADES];
+float4 GradeParamsB[MIXTORMAT_MAX_LAYER_GRADES];
+float4 GradeParamsC[MIXTORMAT_MAX_LAYER_GRADES];
+float4 GradeParamsD[MIXTORMAT_MAX_LAYER_GRADES];
 uint DebugMode;
 uint WriteDebug;
 float Opacity;
@@ -674,6 +688,76 @@ float2 SampleBorderGradient(float2 UV, uint Contact)
 	return float2(Rt - L, U - D) * float2(OutputSize) * 0.5f;
 }
 
+float3 MixtormatGradeHableCurve(float3 Value)
+{
+	const float A = 0.15f;
+	const float B = 0.50f;
+	const float C = 0.10f;
+	const float D = 0.20f;
+	const float E = 0.02f;
+	const float F = 0.30f;
+	return ((Value * (A * Value + C * B) + D * E)
+		/ (Value * (A * Value + B) + D * F)) - E / F;
+}
+
+float MixtormatSampleGradeMask(int Index, float2 UV)
+{
+	if (Index == 0) return GradeMask0.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 1) return GradeMask1.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 2) return GradeMask2.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 3) return GradeMask3.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 4) return GradeMask4.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 5) return GradeMask5.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	if (Index == 6) return GradeMask6.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return GradeMask7.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+float3 MixtormatApplyLayerGrade(float3 Source, float2 UV, int Index)
+{
+	const float4 ParamsA = GradeParamsA[Index];
+	const float4 ParamsB = GradeParamsB[Index];
+	const float4 ParamsC = GradeParamsC[Index];
+	const float4 ParamsD = GradeParamsD[Index];
+	float3 Graded = max(Source, 0.0f);
+	const float3 RemapT = saturate(
+		(Graded - ParamsB.w) / max(ParamsC.x - ParamsB.w, 1.0e-5f));
+	Graded = lerp(ParamsC.y, ParamsC.z, RemapT);
+	Graded *= ParamsA.z;
+	Graded = (Graded - ParamsB.x) * ParamsA.w + ParamsB.x;
+	Graded += ParamsD.xyz;
+	Graded = max(Graded, 0.0f);
+	if (ParamsA.x > 0.5f)
+	{
+		float3 Mapped;
+		if (ParamsA.x < 1.5f)
+		{
+			Mapped = Graded / (1.0f + Graded);
+		}
+		else if (ParamsA.x < 2.5f)
+		{
+			const float A = 2.51f;
+			const float B = 0.03f;
+			const float D = 2.43f;
+			const float E = 0.59f;
+			const float F = 0.14f;
+			Mapped = saturate(
+				(Graded * (A * Graded + B))
+				/ (Graded * (D * Graded + E) + F));
+		}
+		else
+		{
+			const float White = 11.2f;
+			Mapped = MixtormatGradeHableCurve(Graded)
+				/ MixtormatGradeHableCurve(float3(White, White, White));
+		}
+		Graded = lerp(Graded, Mapped, saturate(ParamsA.y));
+	}
+	Graded = pow(max(Graded, 0.0f), 1.0f / max(ParamsB.y, 1.0e-3f));
+	float Mask = ParamsC.w > 0.5f ? MixtormatSampleGradeMask(Index, UV) : 1.0f;
+	Mask = ParamsD.w > 0.5f ? 1.0f - Mask : Mask;
+	return lerp(Source, Graded, ParamsB.z * saturate(Mask));
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -739,6 +823,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (HasSeparateHeight == 0 || HueShift != 0.0f || Saturation != 1.0f || Value != 1.0f)
 	{
 		LayerBaseColor = AdjustHSV(LayerBaseColor);
+	}
+	[unroll]
+	for (int GradeIndex = 0; GradeIndex < MIXTORMAT_MAX_LAYER_GRADES; ++GradeIndex)
+	{
+		if (GradeIndex < int(GradeCount))
+		{
+			LayerBaseColor = MixtormatApplyLayerGrade(LayerBaseColor, UV, GradeIndex);
+		}
 	}
 	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
