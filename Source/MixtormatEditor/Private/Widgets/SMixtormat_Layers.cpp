@@ -1024,6 +1024,39 @@ void SMixtormat::CopyInstanceMaskFromWear(const int32 LayerIndex, const int32 Ch
 	WorkingStatusText = TEXT("Wear instance mask copied");
 }
 
+void SMixtormat::CopyInstanceMaskFromPatternGap(
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+
+	const FMixtormatLayer& SourceLayer = WorkingLayers[LayerIndex];
+	const FMixtormatLayerChild& SourceChild = SourceLayer.Children[ChildIndex];
+	if (SourceChild.Type != EMixtormatLayerChildType::PatternId)
+	{
+		return;
+	}
+
+	FMixtormatLayerChild PublishedMask;
+	PublishedMask.Type = EMixtormatLayerChildType::Mask;
+	PublishedMask.Mask.bEnabled = true;
+	PublishedMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	PublishedMask.Mask.Weight = 1.0f;
+	PublishedMask.Mask.PublishedSourceLayerId = SourceLayer.LayerId;
+	PublishedMask.Mask.PublishedSourceChildId = SourceChild.ChildId;
+	PublishedMask.Mask.PublishedSourceOutput = TEXT("Gap");
+
+	ChildClipboard = MoveTemp(PublishedMask);
+	ChildClipboardSourceLayerId.Invalidate();
+	ChildClipboardSourceChildId.Invalidate();
+	bChildClipboardIsInstance = false;
+	WorkingStatusText = TEXT("Pattern gap instance mask copied");
+}
+
 bool SMixtormat::CanPasteLayerChild() const
 {
 	return ChildClipboard.IsSet();
@@ -2846,6 +2879,18 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
 		|| RowType == EMixtormatLayerChildType::PatternId;
+
+	if (RowType == EMixtormatLayerChildType::PatternId)
+	{
+		Menu.Item(
+			LOCTEXT("CopyPatternGapInstanceMask", "Copy Instance Mask from Gap"),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+			{
+				CopyInstanceMaskFromPatternGap(LayerIndex, ChildIndex);
+			}));
+		Menu.Separator();
+	}
 
 	if (!bFilter)
 	{

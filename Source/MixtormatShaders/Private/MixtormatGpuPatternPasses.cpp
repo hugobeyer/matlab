@@ -128,6 +128,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputUV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputGap)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputOrientation)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
@@ -393,6 +394,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef& OutUV,
 		FRDGTextureRef& OutRamp,
 		FRDGTextureRef& OutEdge,
+		FRDGTextureRef& OutGap,
 		FRDGTextureRef& OutOrientation)
 	{
 		const FRDGTextureDesc IdDesc = FRDGTextureDesc::Create2D(
@@ -411,6 +413,13 @@ namespace MixtormatGpuCompositor
 		OutUV = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.FeatureUV"));
 		OutRamp = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Ramp"));
 		OutEdge = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Pattern.Edge"));
+		OutGap = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				OutputSize,
+				PF_R16F,
+				FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Pattern.Gap"));
 		const bool bWritesOrientation = HasIntrinsicPatternOrientation(Child.PatternId);
 		OutOrientation = bWritesOrientation
 			? GraphBuilder.CreateTexture(
@@ -444,6 +453,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputUV = GraphBuilder.CreateUAV(OutUV);
 		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);
 		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
+		Parameters->OutputGap = GraphBuilder.CreateUAV(OutGap);
 		Parameters->OutputOrientation = GraphBuilder.CreateUAV(OutOrientation);
 		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
 
@@ -665,6 +675,23 @@ namespace MixtormatGpuCompositor
 						|| Pattern.BevelHeight > 0.0f
 						|| Pattern.EdgeRoughnessAmount > 0.0f
 						|| Pattern.AOAmount > 0.0f;
+
+					// A Gap instance mask is an explicit consumer even when every Pattern relief
+					// control is neutral. Demand its producer so the published texture exists.
+					if (!bWanted)
+					{
+						for (const FChildRenderData& Other : Layer.Children)
+						{
+							if (Other.Type == EMixtormatLayerChildType::Mask
+								&& Other.Mask.PublishedSourceLayerId == Layer.LayerId
+								&& Other.Mask.PublishedSourceChildIndex == Child.SourceChildIndex
+								&& Other.Mask.PublishedSourceOutput == TEXT("Gap"))
+							{
+								bWanted = true;
+								break;
+							}
+						}
+					}
 				}
 
 				// A scalar Driver is an ID consumer like any other, and it consumes at
@@ -789,8 +816,15 @@ namespace MixtormatGpuCompositor
 						PatternOutput.UV,
 						PatternOutput.Ramp,
 						PatternOutput.Edge,
+						PatternOutput.Gap,
 						PatternOutput.Orientation);
 					PatternOutput.Ids = RegionIds;
+					Ctx.PublishedMaskOutputs.Add(
+						FPublishedMaskKey{
+							Layer.LayerId,
+							Child.SourceChildIndex,
+							FName(TEXT("Gap"))},
+						PatternOutput.Gap);
 				}
 
 				RegionIdMaps.Emplace(Child.SourceChildIndex, RegionIds);

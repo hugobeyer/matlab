@@ -733,6 +733,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef UV = nullptr;
 		FRDGTextureRef Ramp = nullptr;
 		FRDGTextureRef Edge = nullptr;
+		FRDGTextureRef Gap = nullptr;
 		FRDGTextureRef Orientation = nullptr;
 		const FPatternIdRenderData* Settings = nullptr;
 	};

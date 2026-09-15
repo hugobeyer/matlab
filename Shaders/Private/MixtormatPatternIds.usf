@@ -14,6 +14,7 @@ RWTexture2D<uint> OutputIds;
 RWTexture2D<float2> OutputUV;
 RWTexture2D<float2> OutputRamp;
 RWTexture2D<float2> OutputEdge;
+RWTexture2D<float> OutputGap;
 RWTexture2D<uint> OutputOrientation;
 RWTexture2D<float4> OutputDebug;
 
@@ -843,6 +844,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputIds[Pixel] = bValidRegion ? RegionId : MIXTORMAT_INVALID_REGION;
 	OutputUV[Pixel] = CentreUV;
 	OutputEdge[Pixel] = float2(EdgeSignedPixels, BevelRandom);
+	OutputGap[Pixel] = bValidRegion ? 0.0f : 1.0f;
 	if (WriteOrientation != 0)
 	{
 		// Swap Axes turns horizontal work-space strips vertical in the authored UV basis.
