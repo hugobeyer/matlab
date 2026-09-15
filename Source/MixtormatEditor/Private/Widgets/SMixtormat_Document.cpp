@@ -76,7 +76,6 @@ FReply SMixtormat::StartNewMaterial()
 	FirstLayer.RoughnessBias = CurrentRoughnessBias;
 	FirstLayer.RoughnessContrast = CurrentRoughnessContrast;
 	FirstLayer.RoughnessOffset = CurrentRoughnessOffset;
-	FirstLayer.NormalIntensity = CurrentNormalIntensity;
 
 	SelectedLayerIndex = 0;
 	SelectedEffectIndex = INDEX_NONE;

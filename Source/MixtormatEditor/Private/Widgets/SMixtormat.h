@@ -833,7 +833,6 @@ private:
 	float CurrentRoughnessBias = 0.5f;
 	float CurrentRoughnessContrast = 1.0f;
 	float CurrentRoughnessOffset = 0.0f;
-	float CurrentNormalIntensity = 1.0f;
 	bool bHasWorkingMaterial = false;
 	bool bHasSelectedLayer = false;
 	bool bIsWorkingMaterialDirty = false;

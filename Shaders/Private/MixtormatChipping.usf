@@ -216,8 +216,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float c_pp = ML_CHIP(bx, by);
 		#undef ML_CHIP
 
-		// Sobel with the same 1/8 normalisation the erosion normal pass uses, so
-		// NormalStrength means the same thing in both filters.
+		// Retained provisional-normal path with neutral Sobel normalization. The compositor
+		// publishes a normal derived from the final carved height instead.
 		const float Scale = max(ChipDepth, 0.0f) * (NormalStrength / 8.0f);
 		const float2 dD = float2(
 			(c_pm + 2.0f * c_p0 + c_pp) - (c_mm + 2.0f * c_m0 + c_mp),

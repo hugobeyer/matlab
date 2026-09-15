@@ -936,7 +936,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
 	bool bErosionInvertMask = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion normals derive from the final carved height."))
 	float ErosionNormalStrength = 8.0f;
 
 	// Kept only so older recipes deserialize without losing fields. Erosion resolves coverage
@@ -1101,9 +1101,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
 	float ChipMaskEdge = 0.0f;
 
-	// Gain on the normal derived from the chip mask. Same meaning and default as the erosion
-	// control, because both passes use the same Sobel normalisation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
+	// Retained only so older assets deserialize; chip normals derive from the final carved height.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chip normals derive from Chip Depth."))
 	float ChipNormalStrength = 8.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping", meta = (ClampMin = "0"))
@@ -1386,12 +1385,11 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	int32 CollisionLimit = 4;
 
 	// -- Relief -----------------------------------------------------------------------------------
-	// Two weights on one generated groove: how deep it cuts and how hard the normal follows it.
-	// Either at zero switches off that half without touching the other.
+	// The generated groove is authoritative for both height and its derived normal.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float ReliefDepth = 0.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "32.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Craquelure normals derive from Relief Depth."))
 	float ReliefNormalStrength = 1.0f;
 
 	// The groove's mouth, and the curve of its wall between a straight V and a rounded U. Not
@@ -1850,7 +1848,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeightRandom = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Pattern normals derive from the final pattern height."))
 	float NormalStrength = 4.0f;
 
 	// The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove
@@ -1942,9 +1940,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	bool bEnabled = true;
 
 	// -- Relief ---------------------------------------------------------------------------------
-	// The same pair craquelure's relief carries, and for the same reason: how far the surface
-	// moves and how hard the light follows are different questions, and either at zero switches
-	// off that half alone.
+	// The composited ramp height is authoritative for its derived normal.
 
 	// How strongly each region's ramp meets the surface. A blend weight, not a tilt amount: at 0
 	// the surface is untouched under every blend mode, not only the additive ones.
@@ -1958,7 +1954,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float IntensityRandom = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Ramp normals derive from Intensity."))
 	float NormalStrength = 8.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -2239,7 +2235,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-0.5", ClampMax = "0.5"))
 	float RoughnessOffset = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Layer normal strength derives from Height Booster."))
 	float NormalIntensity = 1.0f;
 
 	// Degrees. The composite pass divides by 360 and wraps, so the clamp is a half turn either
@@ -2302,7 +2298,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0001", ClampMax = "1.0"))
 	float HeightBorderWidth = 0.05f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "8.0"))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Border normal strength derives from Border Lift."))
 	float HeightBorderNormalStrength = 1.0f;
 
 	// Gaussian radius, in texels, applied to the accumulated height that Contact AO and Border

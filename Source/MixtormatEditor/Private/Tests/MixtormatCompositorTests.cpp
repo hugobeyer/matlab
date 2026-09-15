@@ -336,7 +336,6 @@ bool FMixtormatCraquelureNetworkTest::RunTest(const FString& Parameters)
 	// Relief off for this one. The network is what is under test, and leaving the height alone
 	// keeps a failure here from being ambiguous with a failure in the relief pass.
 	Child.Craquelure.ReliefDepth = 0.0f;
-	Child.Craquelure.ReliefNormalStrength = 0.0f;
 
 	TArray<FMixtormatLayer> Layers;
 	Layers.Add(MakeLayerWithChild(Child));
@@ -410,11 +409,10 @@ bool FMixtormatCraquelureReliefTest::RunTest(const FString& Parameters)
 	Child.Craquelure.Density = 1.0f;
 	Child.Craquelure.Iterations = 64;
 
-	// Mask muted, relief on. The two halves are independent weights now, and this is the
-	// combination that proves it: a node contributing nothing to the mask still has to carve.
+	// Mask muted, relief on. A node contributing nothing to the mask still has to carve, and
+	// its normal is derived automatically from that carved height.
 	Child.Craquelure.Weight = 0.0f;
 	Child.Craquelure.ReliefDepth = 0.25f;
-	Child.Craquelure.ReliefNormalStrength = 8.0f;
 	Child.Craquelure.ReliefWidth = 0.08f;
 
 	TArray<FMixtormatLayer> Layers;
@@ -574,7 +572,6 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	CrackChild.Craquelure.Weight = 0.0f;
 	CrackChild.Craquelure.ReliefDepth = 0.30f;
 	CrackChild.Craquelure.ReliefWidth = 0.30f;
-	CrackChild.Craquelure.ReliefNormalStrength = 0.0f;
 
 	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
 		nullptr,

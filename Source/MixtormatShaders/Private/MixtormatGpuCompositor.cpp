@@ -443,7 +443,7 @@ namespace MixtormatGpuCompositor
 		Parameters->HeightContactAOWidth = Layer.HeightContactAOWidth;
 		Parameters->HeightBorderLift = Layer.HeightBorderLift;
 		Parameters->HeightBorderWidth = Layer.HeightBorderWidth;
-		Parameters->HeightBorderNormalStrength = Layer.HeightBorderNormalStrength;
+		Parameters->HeightBorderNormalStrength = BorderHeightDerivedNormalStrength;
 
 		// Contact and border smoothing. The same separable Gaussian the mask smoothing
 		// uses, run over the accumulated height the two fields are built from.
@@ -462,8 +462,7 @@ namespace MixtormatGpuCompositor
 			Layer.bHeightBlendEnabled
 			&& !Layer.bNormalOnly
 			&& ((Layer.HeightContactAOAmount > 0.0f)
-				|| (FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f
-					&& Layer.HeightBorderNormalStrength > 0.0f));
+				|| FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f);
 		const bool bSmoothBorderField =
 			bBorderActive && Layer.HeightBorderSmoothing > 1.0f;
 		FRDGTextureRef BorderBaseHeight = HeightTargets[ReadIndex];
@@ -1018,8 +1017,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				FRampIdRenderData& RampData = ChildData.RampId;
 				RampData.HeightAmount = FMath::IsFinite(Ramp.HeightAmount)
 					? FMath::Max(Ramp.HeightAmount, 0.0f) : 0.05f;
-				RampData.NormalStrength = FMath::IsFinite(Ramp.NormalStrength)
-					? FMath::Max(Ramp.NormalStrength, 0.0f) : 8.0f;
 				RampData.AOAmount = FMath::IsFinite(Ramp.AOAmount)
 					? FMath::Clamp(Ramp.AOAmount, 0.0f, 1.0f) : 0.0f;
 				RampData.IntensityRandom = FMath::Clamp(Ramp.IntensityRandom, 0.0f, 1.0f);
@@ -1101,8 +1098,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 				PatternData.HeightAmount = FMath::IsFinite(Pattern.HeightAmount)
 					? FMath::Max(Pattern.HeightAmount, 0.0f) : 0.0f;
-				PatternData.NormalStrength = FMath::IsFinite(Pattern.NormalStrength)
-					? FMath::Max(Pattern.NormalStrength, 0.0f) : 8.0f;
 				PatternData.Feather = FMath::IsFinite(Pattern.Feather)
 					? FMath::Max(Pattern.Feather, 0.0f) : 0.15f;
 				// Finite-guarded, not range-clamped. The editor sliders bound the drag; a typed
@@ -1418,7 +1413,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 
 				CrackData.Mode = Craquelure.Mode;
 				CrackData.ReliefDepth = FMath::Max(Craquelure.ReliefDepth, 0.0f);
-				CrackData.ReliefNormalStrength = FMath::Max(Craquelure.ReliefNormalStrength, 0.0f);
 				CrackData.ReliefWidth = FMath::Max(Craquelure.ReliefWidth, 0.002f);
 				CrackData.ReliefProfile = FMath::Clamp(Craquelure.ReliefProfile, 0.05f, 8.0f);
 				CrackData.ReliefGrooveVariation = FMath::Clamp(Craquelure.ReliefGrooveVariation, 0.0f, 1.0f);
@@ -1556,7 +1550,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ErosionFeatureOnset = LayerEffect.ErosionFeatureOnset;
 				EffectData.ErosionAssumedSlope = LayerEffect.ErosionAssumedSlope;
 				EffectData.ErosionAssumedSlopeAmount = LayerEffect.ErosionAssumedSlopeAmount;
-				EffectData.ErosionNormalStrength = LayerEffect.ErosionNormalStrength;
 				EffectData.ErosionSlopeRadius = FMath::Clamp(LayerEffect.ErosionSlopeRadius, 1, 32);
 				EffectData.ErosionSlopeBlur = LayerEffect.ErosionSlopeBlur;
 				EffectData.ErosionCurvatureMode = static_cast<int32>(LayerEffect.ErosionCurvatureMode);
@@ -1616,7 +1609,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				EffectData.ChipIrregularity = LayerEffect.ChipIrregularity;
 				EffectData.ChipIterations = FMath::Clamp(LayerEffect.ChipIterations, 1, 32);
 				EffectData.ChipMaskEdge = LayerEffect.ChipMaskEdge;
-				EffectData.ChipNormalStrength = LayerEffect.ChipNormalStrength;
 				EffectData.ChipCavityInfluence = LayerEffect.ChipCavityInfluence;
 				EffectData.ChipCavityOffset = LayerEffect.ChipCavityOffset;
 				EffectData.ChipCavityRemapMin = LayerEffect.ChipCavityRemapMin;
@@ -1876,7 +1868,6 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.HeightContactAOWidth = FMath::Max(Layer.HeightContactAOWidth, 1.0e-4f);
 		Data.HeightBorderLift = FMath::Clamp(Layer.HeightBorderLift, -1.0f, 1.0f);
 		Data.HeightBorderWidth = FMath::Max(Layer.HeightBorderWidth, 1.0e-4f);
-		Data.HeightBorderNormalStrength = FMath::Max(Layer.HeightBorderNormalStrength, 0.0f);
 		Data.HeightSmoothRadius = FMath::Clamp(Layer.HeightSmoothRadius, 0.0f, 32.0f);
 		Data.HeightSmoothAmount = FMath::Clamp(Layer.HeightSmoothAmount, 0.0f, 1.0f);
 		Data.HeightBorderSmoothing = FMath::Clamp(Layer.HeightBorderSmoothing, 1.0f, 32.0f);

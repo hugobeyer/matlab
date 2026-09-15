@@ -149,6 +149,10 @@ struct FMixtormatNetworkCache
 };
 namespace MixtormatGpuCompositor
 {
+	// Sobel passes divide this by eight; eight therefore follows the authored height exactly.
+	constexpr float HeightDerivedNormalStrength = 8.0f;
+	constexpr float BorderHeightDerivedNormalStrength = 1.0f;
+
 	struct FPublishedMaskKey
 	{
 		FGuid LayerId;
@@ -290,7 +294,6 @@ namespace MixtormatGpuCompositor
 		float ErosionFeatureOnset = 1.25f;
 		float ErosionAssumedSlope = 0.7f;
 		float ErosionAssumedSlopeAmount = 1.0f;
-		float ErosionNormalStrength = 8.0f;
 		int32 ErosionSlopeRadius = 2;
 		float ErosionSlopeBlur = 0.0f;
 		int32 ErosionCurvatureMode = 1;
@@ -326,7 +329,6 @@ namespace MixtormatGpuCompositor
 		float ChipDepth = 0.035f;
 		float ChipIrregularity = 0.6f;
 		int32 ChipIterations = 16;
-		float ChipNormalStrength = 8.0f;
 		float ChipMaskEdge = 0.0f;
 		float ChipCavityInfluence = 0.5f;
 		float ChipCavityOffset = 0.0f;
@@ -416,7 +418,6 @@ namespace MixtormatGpuCompositor
 		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
 
 		float ReliefDepth = 0.04f;
-		float ReliefNormalStrength = 8.0f;
 		float ReliefWidth = 0.08f;
 		float ReliefProfile = 1.0f;
 		float ReliefGrooveVariation = 0.0f;
@@ -493,7 +494,6 @@ namespace MixtormatGpuCompositor
 		bool bRandomFlipV = false;
 
 		float HeightAmount = 0.0f;
-		float NormalStrength = 8.0f;
 		float Feather = 0.15f;
 		float BevelHeight = 0.0f;
 		float BevelWidthPixels = 4.0f;
@@ -549,7 +549,6 @@ namespace MixtormatGpuCompositor
 	struct FRampIdRenderData
 	{
 		float HeightAmount = 0.05f;
-		float NormalStrength = 8.0f;
 		float AOAmount = 0.0f;
 		float IntensityRandom = 0.0f;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
@@ -651,7 +650,6 @@ namespace MixtormatGpuCompositor
 		float HeightContactAOWidth = 0.05f;
 		float HeightBorderLift = 0.0f;
 		float HeightBorderWidth = 0.05f;
-		float HeightBorderNormalStrength = 1.0f;
 		float HeightSmoothRadius = 0.0f;
 		float HeightSmoothAmount = 1.0f;
 		float HeightBorderSmoothing = 1.0f;
@@ -770,7 +768,6 @@ namespace MixtormatGpuCompositor
 	{
 		FRDGTextureRef Distance = nullptr;
 		float HeightWeight = 0.0f;
-		float NormalWeight = 0.0f;
 		float WidthPixels = 0.0f;
 		float Variation = 0.0f;
 		float Profile = 1.0f;
@@ -796,7 +793,6 @@ namespace MixtormatGpuCompositor
 		float HeightAmount = 0.0f;
 		float CellHeightAmount = 0.0f;
 		float CellHeightRandom = 0.0f;
-		float NormalStrength = 0.0f;
 		uint32 BlendMode = 0;
 		bool bUseEdge = false;
 		float BevelHeight = 0.0f;

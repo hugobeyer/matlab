@@ -80,8 +80,6 @@ FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 				SelectedPreviewMaterial.Get(), TEXT("DA_RoughnessContrast"));
 			CurrentRoughnessOffset = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
 				SelectedPreviewMaterial.Get(), TEXT("DA_RoughnessOffset"));
-			CurrentNormalIntensity = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
-				SelectedPreviewMaterial.Get(), TEXT("DA_NormalIntensity"));
 		}
 		if (SelectedIdentityText.IsValid())
 		{

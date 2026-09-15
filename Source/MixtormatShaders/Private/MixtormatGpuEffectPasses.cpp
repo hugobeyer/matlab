@@ -763,8 +763,7 @@ namespace MixtormatGpuCompositor
 		// would leave a different mask behind rather than the same one.
 		if (MaskPassIndex > 0
 			&& Crack.Weight == 0.0f
-			&& Crack.ReliefDepth == 0.0f
-			&& Crack.ReliefNormalStrength == 0.0f)
+			&& Crack.ReliefDepth == 0.0f)
 		{
 			return;
 		}
@@ -834,14 +833,13 @@ namespace MixtormatGpuCompositor
 		// decides is in one place; the dispatch below skips a pair of zeroes.
 		auto QueueCraquelureRelief = [&]()
 		{
-			if (Crack.ReliefDepth <= 0.0f && Crack.ReliefNormalStrength <= 0.0f)
+			if (Crack.ReliefDepth <= 0.0f)
 			{
 				return;
 			}
 			FPendingCraquelureRelief& Relief = PendingCraquelureReliefs.AddDefaulted_GetRef();
 			Relief.Distance = CraqDistance;
 			Relief.HeightWeight = Crack.ReliefDepth;
-			Relief.NormalWeight = Crack.ReliefNormalStrength;
 			Relief.WidthPixels = CraqReliefWidthPixels;
 			Relief.Variation = Crack.Variation;
 			Relief.Warp = Crack.Warp;
@@ -1665,7 +1663,7 @@ namespace MixtormatGpuCompositor
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
 				Parameters->BlurRadius = Ero.ErosionSlopeBlur;
-				Parameters->NormalStrength = Ero.ErosionNormalStrength;
+				Parameters->NormalStrength = HeightDerivedNormalStrength;
 				Parameters->Amount = Ero.ErosionAmount;
 				Parameters->Strength = Ero.ErosionStrength;
 				Parameters->Octaves = Ero.ErosionOctaves;
@@ -1770,7 +1768,7 @@ namespace MixtormatGpuCompositor
 				EroN,
 				EroRAM,
 				EroRes,
-				Ero.ErosionNormalStrength,
+				HeightDerivedNormalStrength,
 				0.0f,
 				TEXT("Erosion"));
 
@@ -1901,7 +1899,7 @@ namespace MixtormatGpuCompositor
 				ReliefN,
 				ReliefRAM,
 				Request.Resolution,
-				Relief.NormalWeight,
+				HeightDerivedNormalStrength,
 				0.35f,
 				TEXT("Craquelure"));
 			AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
@@ -2404,7 +2402,7 @@ namespace MixtormatGpuCompositor
 				P->ChipDepth = Chip.ChipDepth;
 				P->Irregularity = Chip.ChipIrregularity;
 				P->MaskEdge = Chip.ChipMaskEdge;
-				P->NormalStrength = Chip.ChipNormalStrength;
+				P->NormalStrength = HeightDerivedNormalStrength;
 				P->CavityInfluence = Chip.ChipCavityInfluence;
 				P->CavityOffset = Chip.ChipCavityOffset;
 				P->CavityRemapMin = Chip.ChipCavityRemapMin;
@@ -2467,7 +2465,7 @@ namespace MixtormatGpuCompositor
 				ChipNormalScratch,
 				ChipRAM,
 				Request.Resolution,
-				Chip.ChipNormalStrength,
+				HeightDerivedNormalStrength,
 				0.35f,
 				TEXT("Chipping"));
 			AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);

@@ -250,7 +250,6 @@ void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
 	PreviewLayer.RoughnessBias = CurrentRoughnessBias;
 	PreviewLayer.RoughnessContrast = CurrentRoughnessContrast;
 	PreviewLayer.RoughnessOffset = CurrentRoughnessOffset;
-	PreviewLayer.NormalIntensity = CurrentNormalIntensity;
 
 	TArray<FMixtormatLayer> PreviewLayers;
 	PreviewLayers.Add(MoveTemp(PreviewLayer));

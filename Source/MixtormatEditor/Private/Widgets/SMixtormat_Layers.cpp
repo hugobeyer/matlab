@@ -362,7 +362,6 @@ void SMixtormat::SyncSelectedLayerControls()
 	CurrentRoughnessBias = Layer.RoughnessBias;
 	CurrentRoughnessContrast = Layer.RoughnessContrast;
 	CurrentRoughnessOffset = Layer.RoughnessOffset;
-	CurrentNormalIntensity = Layer.NormalIntensity;
 
 	if (SelectedSurfaceText.IsValid())
 	{

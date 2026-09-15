@@ -27,8 +27,8 @@ RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
 
-// Both are weights on the same generated signal: how far the groove cuts, and how strongly the
-// normal follows it. Either at zero switches off that half without touching the other.
+// Height is authoritative. NormalWeight remains bound at zero because the compositor derives the
+// published normal from the final written groove height.
 float HeightWeight;
 float NormalWeight;
 
@@ -142,8 +142,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float O0p = CraqReliefOffset(int2(P.x, Yp));
 	const float Opp = CraqReliefOffset(int2(Xp, Yp));
 
-	// The same 1/8 normalisation the erosion and chipping normal passes use, so Normal means the
-	// same thing across all three.
+	// Retained provisional-normal path; production dispatches bind NormalWeight to zero.
 	const float Scale = NormalWeight / 8.0f;
 	const float2 Gradient = float2(
 		(Opm + 2.0f * Op0 + Opp) - (Omm + 2.0f * Om0 + Omp),

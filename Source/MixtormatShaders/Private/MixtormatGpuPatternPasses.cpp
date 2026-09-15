@@ -856,7 +856,6 @@ namespace MixtormatGpuCompositor
 				// leaving every cell at full Height.
 				Tilt.CellHeightAmount = Pattern.HeightAmount;
 				Tilt.CellHeightRandom = Pattern.HeightRandom;
-				Tilt.NormalStrength = Pattern.NormalStrength;
 
 				Tilt.bUseEdge = true;
 				Tilt.BevelHeight = Pattern.BevelHeight;
@@ -902,7 +901,6 @@ namespace MixtormatGpuCompositor
 				Child.SourceChildIndex);
 			Tilt.EdgeField = Tilt.Field;
 			Tilt.HeightAmount = Ramp.HeightAmount;
-			Tilt.NormalStrength = Ramp.NormalStrength;
 			Tilt.AOAmount = Ramp.AOAmount;
 			Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
 		}
@@ -984,7 +982,7 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.AllocParameters<FMixtormatRampIdReliefCS::FParameters>();
 				TiltP->OutputSize = Request.Resolution;
 				TiltP->HeightAmount = Tilt.HeightAmount;
-				TiltP->NormalStrength = Tilt.NormalStrength;
+				TiltP->NormalStrength = HeightDerivedNormalStrength;
 				TiltP->BlendMode = Tilt.BlendMode;
 				TiltP->UseEdge = Tilt.bUseEdge ? 1u : 0u;
 				TiltP->CellHeightAmount = Tilt.CellHeightAmount;
@@ -1028,7 +1026,7 @@ namespace MixtormatGpuCompositor
 					TiltN,
 					TiltRAM,
 					Request.Resolution,
-					Tilt.NormalStrength,
+					HeightDerivedNormalStrength,
 					Tilt.AOAmount,
 					TEXT("RegionRelief"));
 				AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);

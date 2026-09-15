@@ -824,11 +824,9 @@ TSharedRef<SWidget> SMixtormat::BuildChippingControls()
 			LOCTEXT("ChipSeed", "Seed"), Chip, &FMixtormatLayerEffect::ChipSeed, 0.0, 64.0, 1,
 			LOCTEXT("ChipSeedHint", "Reshuffles where chips start and which way they wander, without changing how many there are."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipNormalStrength", "Normal Strength"), &FMixtormatLayerEffect::ChipNormalStrength, 0.0, 32.0, 8.0, 0.05,
-			LOCTEXT("ChipNormalStrengthHint", "Gain on the normal derived from the chip mask. Same meaning and default as the erosion control, because both passes use the same Sobel normalisation.")),
+	AddSliderRow(Panel,
 		Slider(LOCTEXT("ChipMaskEdge", "Mask Edge"), &FMixtormatLayerEffect::ChipMaskEdge, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("ChipMaskEdgeHint", "Biases chips toward the edge of this layer's own mask -- where they start, how long they survive and how deep they cut. Inert on a layer whose mask is uniform, and zero by default."))));
+			LOCTEXT("ChipMaskEdgeHint", "Biases chips toward the edge of this layer's own mask -- where they start, how long they survive and how deep they cut. Inert on a layer whose mask is uniform, and zero by default.")));
 
 	// Chipping contributes no base colour. Its resolved mask only weights surface channels.
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpOutput", "Output")));
@@ -1894,9 +1892,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternFeatherHint", "Eases each cell's height out at its boundary so neighbouring pieces meet through a ramp rather than a one-texel cliff.")),
 		Slider(LOCTEXT("PatternFeatherRandom", "Feather Random"), &FMixtormatPatternFilter::FeatherRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternFeatherRandomHint", "Varies the feather width once per cell, so the run-out is not identical on every piece."))));
-	AddSliderRow(Panel,
-		Slider(LOCTEXT("PatternNormal", "Normal"), &FMixtormatPatternFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
-			LOCTEXT("PatternNormalHint", "Normal strength derived from the same elevation and bevel height field.")));
+
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -2010,9 +2006,7 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildRampIdBlendModeMenu)),
 		LOCTEXT("RampBlendModeHint", "How the ramp meets the height under it. Add/Sub is the centred case -- a region rises on one side exactly as much as it falls on the other -- and Min carves, Multiply darkens. The normal is derived from the blended height rather than blended separately, so it always describes the surface actually written.")));
-	AddSliderRow(Panel,
-		Slider(LOCTEXT("RampNormal", "Normal Intensity"), &FMixtormatRampIdFilter::NormalStrength, 0.0, 32.0, 8.0, 0.05,
-			LOCTEXT("RampNormalHint", "Gain on the normal derived from the slope. Independent of Intensity, so a region can catch light as though tipped without displacing as far -- but it is scaled by Intensity too, since a region that is not tipped has no slope to light.")));
+
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("RampAO", "AO"), &FMixtormatRampIdFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("RampAOHint", "Contact and cavity occlusion derived from the height change made by the ramp. Multiplies the existing AO rather than replacing it.")));
@@ -2422,17 +2416,12 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	Panel->AddSlot().AutoHeight()[GrowGroup];
 
-	// Always shown, rather than behind an output mode. A crack normally wants to mask, cut and
-	// catch light at the same time, and the three weights say how much of each -- Height and
-	// Normal here, Weight in Blend below. Each is its own off switch at zero, so nothing has to
-	// be chosen between.
+	// Always shown rather than behind an output mode. Relief height also drives its normal.
 	TSharedRef<SVerticalBox> ReliefGroup = SNew(SVerticalBox);
 	AddSliderRow(ReliefGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpRelief", "Relief")));
-	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
+	AddSliderRow(ReliefGroup,
 		Slider(LOCTEXT("CraqReliefDepth", "Height"), &FMixtormatCraquelure::ReliefDepth, 0.0, 0.5, 0.04, 0.001,
-			LOCTEXT("CraqReliefDepthHint", "How deep the crack cuts into the composited height. The groove is a cone on the distance to the crack -- the eikonal solution, so its wall has one constant slope -- subtracted under a minimum, so this can only lower the height. 0 skips the pass.")),
-		Slider(LOCTEXT("CraqReliefNormal", "Normal"), &FMixtormatCraquelure::ReliefNormalStrength, 0.0, 32.0, 8.0, 0.05,
-			LOCTEXT("CraqReliefNormalHint", "Gain on the normal derived from the groove wall. Independent of Height, so a crack can catch light without displacing, or displace without being relit."))));
+			LOCTEXT("CraqReliefDepthHint", "How deep the crack cuts into the composited height and its derived normal. The groove is a cone on the distance to the crack -- the eikonal solution, so its wall has one constant slope -- subtracted under a minimum, so this can only lower the height. 0 skips the pass.")));
 	AddSliderRow(ReliefGroup, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqReliefWidth", "Groove"), &FMixtormatCraquelure::ReliefWidth, 0.002, 1.0, 0.08, 0.001,
 			LOCTEXT("CraqReliefWidthHint", "Half-width of the groove, in cell units like Width. Separate from Width because they are different things: Width is the hairline the mask draws, this is the mouth of the dish around it, and a fine dark crack usually sits in a much wider depression.")),
@@ -2665,7 +2654,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroRoughAmountHint", "Signed, mask-weighted offset on composited roughness; positive moves toward rough.")),
 		MakeErosionSlider(LOCTEXT("EroCarveDepth", "Full At Depth"), &FMixtormatLayerEffect::ErosionCarveDepth, 0.001, 1.0, 0.05, 0.001,
 			LOCTEXT("EroCarveDepthHint", "Carve depth that reaches the full roughness weight."))));
-	AddErosionSlider(Panel, LOCTEXT("EroNormalStrength", "Normal Strength"), &FMixtormatLayerEffect::ErosionNormalStrength, 0.0, 32.0, 8.0, 0.05);
+
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedErosion() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3529,8 +3518,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					[NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f)]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 					[NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightBorderNormalStrength", "Intensity"), &FMixtormatLayer::HeightBorderNormalStrength, 0.0f, 8.0f, 0.001f, 1.0f)]
+
 
 					// Shared by both effects above, because both are built from the same field and
 					// both stipple for the same reason: the height underneath carries detail at
