@@ -4,10 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/SoftObjectPath.h"
 #include "Engine/TextureRenderTarget2D.h"
 
 class UMaterialInstanceDynamic;
+class UMixtormatMaterial;
 struct FMixtormatLayer;
+struct FMixtormatComposeResources;
 
 // Cache of generated networks that survive between composites. Defined in the compositor
 // translation unit and only ever touched on the render thread; the compositor holds it so that
@@ -45,11 +48,16 @@ public:
 	~FMixtormatGpuCompositor();
 
 	bool Initialize(FIntPoint InResolution = FIntPoint(1024, 1024));
+	// False rejects invalid references or a failed gather/initialization; no parent is submitted.
+	// True means queued, not GPU-complete. OnComplete runs on the game thread after successful
+	// render-graph submission. Sources are evaluated at this compositor's resolution.
+	// Pass the document asset path to reject references back into an unsaved edit of that asset.
 	bool RequestCompose(
 		const TArray<FMixtormatLayer>& Layers,
 		FSimpleDelegate OnComplete = FSimpleDelegate(),
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
-		bool bRotateOutput90 = false);
+		bool bRotateOutput90 = false,
+		const FSoftObjectPath& OwnerPath = FSoftObjectPath());
 	void BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const;
 
 	bool IsInitialized() const { return bInitialized; }
@@ -61,6 +69,17 @@ public:
 	UTextureRenderTarget2D* GetDebugOutput() const;
 
 private:
+	bool InitializeTargets(FIntPoint InResolution, bool bWaitForResources);
+	bool RequestComposeInternal(
+		const TArray<FMixtormatLayer>& Layers,
+		FSimpleDelegate OnComplete,
+		FMixtormatDebugPreviewSettings DebugSettings,
+		bool bRotateOutput90,
+		TSet<const UMixtormatMaterial*>& ActiveSources);
+
+	// A submission owns its targets independently of this instance and any later resize.
+	TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> PendingOutputs;
+
 	struct FTargetSet
 	{
 		TStrongObjectPtr<UTextureRenderTarget2D> BaseColor;

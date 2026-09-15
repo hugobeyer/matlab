@@ -14,6 +14,7 @@
 class UMaterialInterface;
 class UMixtormatEffect;
 class UMixtormatMask;
+class UMixtormatMaterial;
 class UMixtormatSurface;
 class UTexture2D;
 
@@ -2190,6 +2191,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	TSoftObjectPtr<UMixtormatSurface> SourceSurface;
 
+	// Live, isolated composition source. Material layers only; mutually exclusive with SourceSurface.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
+	TSoftObjectPtr<UMixtormatMaterial> SourceComposition;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerChannelMode ChannelMode = EMixtormatLayerChannelMode::CompleteSurface;
 
@@ -2490,6 +2495,21 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bInvertFeature = false;
 };
+
+namespace MixtormatCompositionReferences
+{
+	// Game-thread validation; synchronously loads transitive references, including disabled layers.
+	// Pass the intended save asset's object path (also for Save As), or null for an unsaved document.
+	// Checks self references, cycles, missing assets and source exclusivity without modifying assets.
+	// Returns the first failure in OutError; clears it on success. Shared acyclic sources are valid.
+	MIXTORMATRUNTIME_API bool Validate(
+		const TArray<FMixtormatLayer>& Layers,
+		const FSoftObjectPath& OwnerPath,
+		FText& OutError);
+
+	// Resolves the non-texture fuzz channel through live composition references.
+	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers);
+}
 
 UCLASS(BlueprintType)
 class MIXTORMATRUNTIME_API UMixtormatMaterial final : public UPrimaryDataAsset

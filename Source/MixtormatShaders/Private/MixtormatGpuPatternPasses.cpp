@@ -28,6 +28,7 @@ public:
 		SHADER_PARAMETER(uint32, Stage)
 		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(uint32, SourceMode)
+		SHADER_PARAMETER(uint32, HasSeparateSourceHeight)
 		SHADER_PARAMETER(FVector2f, SourceTiling)
 		SHADER_PARAMETER(FVector2f, SourceOffset)
 		SHADER_PARAMETER(uint32, FlipU)
@@ -37,6 +38,7 @@ public:
 		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -297,6 +299,7 @@ namespace MixtormatGpuCompositor
 	static FRDGTextureRef AddClusterIdPasses(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceRAMH,
+		FRDGTextureRef SourceHeight,
 		FRDGTextureRef SurfaceRAM,
 		FRDGTextureRef SurfaceHeight,
 		bool bHasSurfaceBelow,
@@ -354,6 +357,7 @@ namespace MixtormatGpuCompositor
 			Parameters->Stage = Stage;
 			Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
 			Parameters->SourceMode = bFromComposite ? 1u : 0u;
+			Parameters->HasSeparateSourceHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 			Parameters->SourceTiling = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
 			Parameters->SourceOffset = Layer.UVOffset;
 			Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
@@ -363,6 +367,7 @@ namespace MixtormatGpuCompositor
 			Parameters->Offset = Child.Filter.Offset;
 			Parameters->HeightInfluence = Child.Filter.HeightInfluence;
 			Parameters->SourceRAMH = SourceRAMH;
+			Parameters->SourceHeight = SourceHeight;
 			Parameters->SurfaceRAM = SurfaceRAM;
 			Parameters->SurfaceHeight = SurfaceHeight;
 			Parameters->LinearWrapSampler =
@@ -789,6 +794,10 @@ namespace MixtormatGpuCompositor
 							RegisteredTextures,
 							Layer.RAM,
 							TEXT("Mixtormat.Cluster.SourceRAMH")),
+						Layer.Height.IsValid()
+							? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
+								TEXT("Mixtormat.Cluster.SourceHeight"))
+							: HeightTargets[SurfaceReadIndex],
 						OutputRAM[SurfaceReadIndex],
 						HeightTargets[SurfaceReadIndex],
 						LayerIndex > 0,

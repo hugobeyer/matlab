@@ -4,6 +4,8 @@
 
 #include "Style/MixtormatStyle.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Modules/ModuleManager.h"
 #include "UI/Containers/SMixtormatInspectorGroup.h"
 #include "Widgets/SMixtormatLiveThemePanel.h"
 #include "Framework/Application/SlateApplication.h"
@@ -78,6 +80,15 @@ namespace
 
 SMixtormat::~SMixtormat()
 {
+	if (AssetUpdatedHandle.IsValid())
+	{
+		if (FAssetRegistryModule* AssetRegistryModule =
+			FModuleManager::GetModulePtr<FAssetRegistryModule>(TEXT("AssetRegistry")))
+		{
+			AssetRegistryModule->Get().OnAssetUpdated().Remove(AssetUpdatedHandle);
+		}
+		AssetUpdatedHandle.Reset();
+	}
 	if (FSlateApplication::IsInitialized())
 	{
 		if (const TSharedPtr<SWindow> Window = LiveThemeWindow.Pin())

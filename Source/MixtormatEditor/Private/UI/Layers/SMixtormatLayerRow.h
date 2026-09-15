@@ -33,6 +33,7 @@ public:
 		: _bEnabled(true)
 		, _bExpanded(false)
 		, _bSelected(false)
+		, _bReference(false)
 		, _bSolo(false)
 		, _bCanDisable(true)
 	{}
@@ -45,6 +46,7 @@ public:
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bExpanded)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		SLATE_ATTRIBUTE(bool, bReference)
 		// Soloed layers light the eye in the accent, so the one layer the preview is showing is
 		// visible without a second control in the row.
 		SLATE_ATTRIBUTE(bool, bSolo)
@@ -83,6 +85,7 @@ private:
 	TAttribute<bool> bLayerEnabled;
 	TAttribute<bool> bExpanded;
 	TAttribute<bool> bSelected;
+	TAttribute<bool> bReference;
 	FSimpleDelegate OnToggleExpanded;
 	FSimpleDelegate OnSelected;
 	FSimpleDelegate OnToggleEnabled;

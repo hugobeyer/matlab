@@ -21,6 +21,36 @@
 #include "ShaderParameterStruct.h"
 #include "TextureResource.h"
 
+// Render commands retain the exact target generation, including isolated child outputs.
+// UObject pins are released on the game thread; RDG/RHI retain GPU resources until queued work
+// retires. Resource pointers are captured on the game thread but dereferenced only after their
+// initialization commands on the render thread, so child creation never needs a flush.
+struct FMixtormatComposeResources
+{
+	TArray<TStrongObjectPtr<UTextureRenderTarget2D>> Pins;
+	FTextureRenderTargetResource* BaseColor[2] = {};
+	FTextureRenderTargetResource* Normal[2] = {};
+	FTextureRenderTargetResource* RAM[2] = {};
+	FTextureRenderTargetResource* Height[2] = {};
+	FTextureRenderTargetResource* Debug[2] = {};
+	int32 PublishedIndex = 0;
+	// Only read/written on the render thread. A failed child must not publish stale pixels.
+	bool bSucceeded = false;
+
+	~FMixtormatComposeResources()
+	{
+		if (!IsInGameThread())
+		{
+			AsyncTask(ENamedThreads::GameThread, [KeepAlive = MoveTemp(Pins)]() mutable
+			{
+				KeepAlive.Reset();
+			});
+		}
+	}
+};
+
+DEFINE_LOG_CATEGORY_STATIC(LogMixtormatComposition, Log, All);
+
 // The ground every stack composites onto.
 //
 // Deliberately not a layer. It has no row, no selection, no children and no inspector -- it
@@ -106,6 +136,8 @@ public:
 		SHADER_PARAMETER(uint32, IsFill)
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
+		SHADER_PARAMETER(uint32, HasSeparateHeight)
+		SHADER_PARAMETER(uint32, UseSourceF0)
 		SHADER_PARAMETER(uint32, HasNormal)
 		SHADER_PARAMETER(uint32, NormalOnly)
 		SHADER_PARAMETER(uint32, OverrideNormal)
@@ -180,6 +212,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerBC)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerN)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerSourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, EffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EffectHeight)
@@ -283,6 +316,7 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
+
 	static FTextureRHIRef GetTextureRHI(UTexture2D* Texture)
 	{
 		return Texture && Texture->GetResource()
@@ -324,12 +358,7 @@ namespace MixtormatGpuCompositor
 		return Target;
 	}
 
-	static FTextureRHIRef GetTargetRHI(UTextureRenderTarget2D* Target)
-	{
-		return Target && Target->GameThread_GetRenderTargetResource()
-			? Target->GameThread_GetRenderTargetResource()->GetRenderTargetTexture()
-			: FTextureRHIRef();
-	}
+
 
 	// One layer composited onto what the stack has accumulated below it.
 	//
@@ -383,6 +412,8 @@ namespace MixtormatGpuCompositor
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
+		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
+		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
 		Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
 		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
@@ -509,6 +540,10 @@ namespace MixtormatGpuCompositor
 			RegisteredTextures,
 			Layer.RAM,
 			TEXT("Mixtormat.LayerRAM"));
+		Parameters->LayerSourceHeight = Layer.Height.IsValid()
+			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
+				TEXT("Mixtormat.LayerSourceHeight"))
+			: HeightTargets[ReadIndex];
 		Parameters->LayerMask = CombinedMask;
 
 		// Rounding for the height field. A placement mask is a step, so the layer's
@@ -776,6 +811,13 @@ FMixtormatGpuCompositor::~FMixtormatGpuCompositor()
 
 bool FMixtormatGpuCompositor::Initialize(const FIntPoint InResolution)
 {
+	return InitializeTargets(InResolution, true);
+}
+
+bool FMixtormatGpuCompositor::InitializeTargets(
+	const FIntPoint InResolution, const bool bWaitForResources)
+{
+	check(IsInGameThread());
 	using namespace MixtormatGpuCompositor;
 	if (InResolution.X <= 0 || InResolution.Y <= 0)
 	{
@@ -807,7 +849,10 @@ bool FMixtormatGpuCompositor::Initialize(const FIntPoint InResolution)
 			});
 	}
 
-	FlushRenderingCommands();
+	if (bWaitForResources)
+	{
+		FlushRenderingCommands();
+	}
 	PublishedTargetIndex = 0;
 	bInitialized = true;
 	return true;
@@ -817,7 +862,27 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	const TArray<FMixtormatLayer>& Layers,
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
-	const bool bRotateOutput90)
+	const bool bRotateOutput90,
+	const FSoftObjectPath& OwnerPath)
+{
+	check(IsInGameThread());
+	FText ReferenceError;
+	if (!MixtormatCompositionReferences::Validate(Layers, OwnerPath, ReferenceError))
+	{
+		UE_LOG(LogMixtormatComposition, Warning, TEXT("%s"), *ReferenceError.ToString());
+		return false;
+	}
+	TSet<const UMixtormatMaterial*> ActiveSources;
+	return RequestComposeInternal(Layers, MoveTemp(OnComplete), DebugSettings,
+		bRotateOutput90, ActiveSources);
+}
+
+bool FMixtormatGpuCompositor::RequestComposeInternal(
+	const TArray<FMixtormatLayer>& Layers,
+	FSimpleDelegate OnComplete,
+	FMixtormatDebugPreviewSettings DebugSettings,
+	const bool bRotateOutput90,
+	TSet<const UMixtormatMaterial*>& ActiveSources)
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
@@ -865,18 +930,22 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	Request.Resolution = Resolution;
 	Request.DebugSettings = DebugSettings;
 	Request.OnComplete = MoveTemp(OnComplete);
+	Request.Targets = MakeShared<FMixtormatComposeResources, ESPMode::ThreadSafe>();
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
-		Request.OutputBC[Index] = GetTargetRHI(Targets[Index].BaseColor.Get());
-		Request.OutputN[Index] = GetTargetRHI(Targets[Index].Normal.Get());
-		Request.OutputRAM[Index] = GetTargetRHI(Targets[Index].RAM.Get());
-		Request.OutputHeight[Index] = GetTargetRHI(Targets[Index].Height.Get());
-		Request.OutputDebug[Index] = GetTargetRHI(Targets[Index].Debug.Get());
-		if (!Request.OutputBC[Index].IsValid()
-			|| !Request.OutputN[Index].IsValid()
-			|| !Request.OutputRAM[Index].IsValid()
-			|| !Request.OutputHeight[Index].IsValid()
-			|| !Request.OutputDebug[Index].IsValid())
+		const auto CaptureTarget = [&Request](UTextureRenderTarget2D* Target)
+		{
+			Request.Targets->Pins.Emplace(Target);
+			return Target ? Target->GameThread_GetRenderTargetResource() : nullptr;
+		};
+		Request.Targets->BaseColor[Index] = CaptureTarget(Targets[Index].BaseColor.Get());
+		Request.Targets->Normal[Index] = CaptureTarget(Targets[Index].Normal.Get());
+		Request.Targets->RAM[Index] = CaptureTarget(Targets[Index].RAM.Get());
+		Request.Targets->Height[Index] = CaptureTarget(Targets[Index].Height.Get());
+		Request.Targets->Debug[Index] = CaptureTarget(Targets[Index].Debug.Get());
+		if (!Request.Targets->BaseColor[Index] || !Request.Targets->Normal[Index]
+			|| !Request.Targets->RAM[Index] || !Request.Targets->Height[Index]
+			|| !Request.Targets->Debug[Index])
 		{
 			return false;
 		}
@@ -887,7 +956,37 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		FMixtormatLayer Layer = Layers[LayerIndex];
 		MixtormatParameterBinding::ApplyDirectReferences(Layers, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
-		const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous();
+		const bool bReference = !Layer.SourceComposition.IsNull();
+		if (bReference && Layer.bEnabled)
+		{
+			// Do not reinterpret malformed references as fills, surfaces or stale baked outputs.
+			TStrongObjectPtr<UMixtormatMaterial> Source(Layer.SourceComposition.LoadSynchronous());
+			if (!Source.IsValid() || Layer.Type != EMixtormatLayerType::Material
+				|| !Layer.SourceSurface.IsNull() || ActiveSources.Contains(Source.Get())
+				|| ActiveSources.Num() >= 32)
+			{
+				UE_LOG(LogMixtormatComposition, Warning,
+					TEXT("Reference layer %d: missing source, invalid source contract, cycle or depth limit (32)."),
+					LayerIndex);
+				return false;
+			}
+
+			// Each occurrence gets a fresh compositor, even for repeated DAG edges. Source layer
+			// IDs, masks, Drivers, direct references and ping-pong targets stay in their own graph.
+			FMixtormatGpuCompositor SourceCompositor;
+			ActiveSources.Add(Source.Get());
+			const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
+				&& SourceCompositor.RequestComposeInternal(Source->Layers, FSimpleDelegate(),
+					FMixtormatDebugPreviewSettings(), Source->bRotateUV90, ActiveSources);
+			ActiveSources.Remove(Source.Get());
+			if (!bComposed)
+			{
+				return false;
+			}
+			Data.SourceOutputs = SourceCompositor.PendingOutputs;
+			Data.bUseSourceF0 = !Layer.bOverrideIOR;
+		}
+		const UMixtormatSurface* Surface = bReference ? nullptr : Layer.SourceSurface.LoadSynchronous();
 		const bool bNormalOnly = Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail;
 		UTexture2D* LayerBaseColor = Surface && Surface->BaseColor ? Surface->BaseColor.Get() : WhiteTexture;
 		UTexture2D* LayerNormal = Surface && Surface->Normal ? Surface->Normal.Get() : NormalTexture;
@@ -1933,7 +2032,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.CurvaturePower = Layer.CurvaturePower;
 		Data.bEnabled = Layer.bEnabled;
 		Data.bHeightBlendEnabled = Layer.bHeightBlendEnabled;
-		Data.bHasPackedHeight = Surface && Surface->bHasBlendHeight;
+		Data.bHasPackedHeight = Data.SourceOutputs.IsValid() || (Surface && Surface->bHasBlendHeight);
 		Data.bInvertHeight = Layer.bInvertHeight;
 		Data.bDirectHeightComparison = !bNormalOnly;
 		Data.bInvertHeightFeature = Layer.bInvertHeightFeature;
@@ -1965,11 +2064,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.bOverrideMetallic = Layer.bOverrideMetallic;
 		Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
 		Data.bFill = Layer.Type == EMixtormatLayerType::Fill;
-		Data.bHasSurface = Surface
+		Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 			&& Surface->BaseColor
 			&& Surface->Normal
-			&& Surface->RoughnessAOMetallic;
-		Data.bHasNormal = LayerNormal != nullptr;
+			&& Surface->RoughnessAOMetallic);
+		Data.bHasNormal = Data.SourceOutputs.IsValid() || LayerNormal != nullptr;
 		Data.bNormalOnly = bNormalOnly;
 		Data.bOverrideNormal = Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override;
 		Data.bFlipNormalY = Layer.bFlipNormalY;
@@ -1984,11 +2083,48 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		? 1 - CompositedTargetIndex
 		: CompositedTargetIndex;
 	Request.NetworkCache = NetworkCache;
+	Request.Targets->PublishedIndex = PublishedTargetIndex;
+	PendingOutputs = Request.Targets;
 
 	ENQUEUE_RENDER_COMMAND(MixtormatComposite)(
-		[Request = MoveTemp(Request)](FRHICommandListImmediate& RHICmdList)
-		{
-			FRDGBuilder GraphBuilder(RHICmdList);
+		[Request = MoveTemp(Request)](FRHICommandListImmediate& RHICmdList) mutable
+			{
+				// Child commands were enqueued first on the same game thread. Their RDG graphs
+				// finish submission and transition outputs to SRVs before this graph reads them.
+				for (FLayerRenderData& Layer : Request.Layers)
+				{
+					if (!Layer.SourceOutputs.IsValid())
+					{
+						continue;
+					}
+					const FMixtormatComposeResources& Source = *Layer.SourceOutputs;
+					if (!Source.bSucceeded)
+					{
+						UE_LOG(LogMixtormatComposition, Error, TEXT("Reference composition failed on the render thread."));
+						return;
+					}
+					const int32 Index = Source.PublishedIndex;
+					Layer.BaseColor = Source.BaseColor[Index]->GetRenderTargetTexture();
+					Layer.Normal = Source.Normal[Index]->GetRenderTargetTexture();
+					Layer.RAM = Source.RAM[Index]->GetRenderTargetTexture();
+					Layer.Height = Source.Height[Index]->GetRenderTargetTexture();
+				}
+				for (int32 Index = 0; Index < 2; ++Index)
+				{
+					Request.OutputBC[Index] = Request.Targets->BaseColor[Index]->GetRenderTargetTexture();
+					Request.OutputN[Index] = Request.Targets->Normal[Index]->GetRenderTargetTexture();
+					Request.OutputRAM[Index] = Request.Targets->RAM[Index]->GetRenderTargetTexture();
+					Request.OutputHeight[Index] = Request.Targets->Height[Index]->GetRenderTargetTexture();
+					Request.OutputDebug[Index] = Request.Targets->Debug[Index]->GetRenderTargetTexture();
+					if (!Request.OutputBC[Index].IsValid() || !Request.OutputN[Index].IsValid()
+						|| !Request.OutputRAM[Index].IsValid() || !Request.OutputHeight[Index].IsValid()
+						|| !Request.OutputDebug[Index].IsValid())
+					{
+						UE_LOG(LogMixtormatComposition, Error, TEXT("Composition target initialization failed."));
+						return;
+					}
+				}
+				FRDGBuilder GraphBuilder(RHICmdList);
 			FMixtormatComposeContext Ctx(GraphBuilder, Request);
 			TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
 			FRDGTextureRef* const OutputBC = Ctx.OutputBC;
@@ -2482,6 +2618,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 			GraphBuilder.SetTextureAccessFinal(OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.SetTextureAccessFinal(OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.Execute();
+			Request.Targets->bSucceeded = true;
 			if (Request.OnComplete.IsBound())
 			{
 				AsyncTask(

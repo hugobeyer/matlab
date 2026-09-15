@@ -230,6 +230,13 @@ FReply SMixtormat::SaveWorkingMaterial()
 	}
 
 	UMixtormatMaterial* MaterialAsset = WorkingMaterialAsset.Get();
+	FText ReferenceError;
+	if (!MixtormatCompositionReferences::Validate(
+		WorkingLayers, FSoftObjectPath(MaterialAsset), ReferenceError))
+	{
+		WorkingStatusText = ReferenceError.ToString();
+		return FReply::Handled();
+	}
 	MaterialAsset->Modify();
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
@@ -277,6 +284,14 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	const FString ObjectPath = ContentBrowserModule.Get().CreateModalSaveAssetDialog(DialogConfig);
 	if (ObjectPath.IsEmpty())
 	{
+		return FReply::Handled();
+	}
+
+	FText ReferenceError;
+	if (!MixtormatCompositionReferences::Validate(
+		WorkingLayers, FSoftObjectPath(ObjectPath), ReferenceError))
+	{
+		WorkingStatusText = ReferenceError.ToString();
 		return FReply::Handled();
 	}
 

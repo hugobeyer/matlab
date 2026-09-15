@@ -394,7 +394,7 @@ void SMixtormat::SyncSelectedLayerControls()
 
 	if (SelectedSurfaceText.IsValid())
 	{
-		SelectedSurfaceText->SetText(Layer.DisplayName);
+		SelectedSurfaceText->SetText(GetLayerDisplayName(SelectedLayerIndex));
 	}
 	if (SelectedIdentityText.IsValid())
 	{
@@ -419,6 +419,12 @@ void SMixtormat::SyncSelectedLayerControls()
 		if (Layer.Type == EMixtormatLayerType::Fill)
 		{
 			SelectedMapsText->SetText(LOCTEXT("FillLayerMaps", "Generated BC · RAM"));
+		}
+		else if (!Layer.SourceComposition.IsNull())
+		{
+			SelectedMapsText->SetText(Layer.SourceComposition.LoadSynchronous()
+				? LOCTEXT("ReferenceLayerMaps", "Live composition channels")
+				: LOCTEXT("MissingReferenceLayerMaps", "Missing referenced composition"));
 		}
 		else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
 		{
@@ -641,12 +647,16 @@ FReply SMixtormat::ReplaceSurfaceInLayer(const int32 LayerIndex, const FSoftObje
 	{
 		return FReply::Handled();
 	}
-	if (!Cast<UMixtormatSurface>(SurfacePath.TryLoad()))
+	const UMixtormatSurface* ReplacementSurface = Cast<UMixtormatSurface>(SurfacePath.TryLoad());
+	if (!ReplacementSurface)
 	{
 		return FReply::Handled();
 	}
 
+	Layer.SourceComposition.Reset();
 	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SurfacePath);
+	Layer.DisplayName = ReplacementSurface->DisplayName.IsEmpty()
+		? FText::FromString(ReplacementSurface->GetName()) : ReplacementSurface->DisplayName;
 	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
 	{
 		if (Surface.AssetPath == SurfacePath)
@@ -2246,6 +2256,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 			return Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
 		}
 	}
+	else if (!Layer.SourceComposition.IsNull())
+	{
+		if (UMixtormatMaterial* Composition = Layer.SourceComposition.LoadSynchronous())
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
+				FAssetData(Composition), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
+		}
+	}
 	else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
 	{
 		if (Surface->PreviewMaterial)
@@ -2262,9 +2282,33 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 		.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
 }
 
+FText SMixtormat::GetLayerDisplayName(const int32 LayerIndex) const
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	if (Layer.SourceComposition.IsNull())
+	{
+		return Layer.DisplayName;
+	}
+	const FText Name = Layer.DisplayName.IsEmpty()
+		? FText::FromString(Layer.SourceComposition.ToSoftObjectPath().GetAssetName())
+		: Layer.DisplayName;
+	return FText::Format(LOCTEXT("ReferenceLayerName", "{0} (ref)"), Name);
+}
+
 FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 {
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	if (!Layer.SourceComposition.IsNull())
+	{
+		const UMixtormatMaterial* Composition = Layer.SourceComposition.LoadSynchronous();
+		const FText Name = Composition && !Composition->DisplayName.IsEmpty()
+			? Composition->DisplayName
+			: FText::FromString(Layer.SourceComposition.ToSoftObjectPath().GetAssetName());
+		return Composition
+			? FText::Format(LOCTEXT("ReferenceLayerSource", "REF - {0}"), Name)
+			: FText::Format(LOCTEXT("MissingReferenceLayerSource", "MISSING REF - {0}"), Name);
+	}
 
 	// What the layer is made of, which is a different question from what it is called. A surface
 	// name when there is one, because that is the answer a user is scanning for; the layer's kind
@@ -2487,7 +2531,7 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 {
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FText DisplayName = Layer.DisplayName;
+	const FText DisplayName = GetLayerDisplayName(LayerIndex);
 	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
 
 	TSharedRef<SMixtormatLayerGroup> Group = SNew(SMixtormatLayerGroup)
@@ -2500,6 +2544,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		[
 			SNew(SMixtormatLayerRow)
 			.Name(DisplayName)
+			.bReference(!Layer.SourceComposition.IsNull())
 			.Source(GetLayerSourceText(LayerIndex))
 			.Badge(MixtormatLayerBadges::ForLayer(Layer))
 			.ColorBadge_Lambda([this, LayerIndex]()

@@ -8,6 +8,8 @@
 // Keep all file-scope bindings in FMixtormatClusterIdsCS::FParameters. A single MainCS
 // uses Stage for every dispatch, so no entry point has a partial parameter layout.
 Texture2D<float4> SourceRAMH;
+Texture2D<float> SourceHeight;
+uint HasSeparateSourceHeight;
 // The surface accumulated below this layer, for SourceMode 1. Two textures rather than one
 // because the composite keeps height in its own R16F target rather than in the packed map's
 // alpha, which is only true of an authored RAMH.
@@ -137,9 +139,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 			float2 SourceUV = MixtormatSourceUV(UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
 			float4 RAMH = SourceRAMH.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
-			// Raw layer height (alpha) and roughness (red), not the accumulated substrate,
-			// mask, height-source selector, overrides, grading or other material controls.
-			Height = RAMH.a;
+			// Raw source relief, not F0 from a live composition's RAM alpha.
+			Height = HasSeparateSourceHeight != 0
+				? SourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+				: RAMH.a;
 			Roughness = RAMH.r;
 		}
 		else

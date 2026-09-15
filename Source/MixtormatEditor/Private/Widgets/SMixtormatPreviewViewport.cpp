@@ -52,26 +52,6 @@ namespace MixtormatPreview
 	const FName ChannelPreviewHeightParameter(TEXT("DA_Height"));
 	const FName ChannelPreviewModeParameter(TEXT("DA_ChannelPreviewMode"));
 
-	// Fuzz has no channel of its own to carry through the compositor -- DA_FuzzInfluence is a
-	// Substrate Slab amount the master material reads once per material instance, not a per-pixel
-	// value, so it is composited here on the CPU rather than baked as a texture. Later, more
-	// influential layers blend over earlier ones by their own Opacity, the same way a layer's
-	// Channel Influence rows blend a real per-pixel channel in the GPU composite.
-	float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers)
-	{
-		float Result = 0.0f;
-		for (const FMixtormatLayer& Layer : Layers)
-		{
-			if (!Layer.bEnabled || Layer.FuzzInfluence <= 0.0f)
-			{
-				continue;
-			}
-			const float Weight = FMath::Clamp(Layer.Opacity, 0.0f, 1.0f);
-			const float Target = FMath::Clamp(Layer.FuzzInfluence, 0.0f, 1.0f);
-			Result = FMath::Lerp(Result, Target, Weight);
-		}
-		return FMath::Clamp(Result, 0.0f, 1.0f);
-	}
 
 	UMaterial* CreateDebugMaterial()
 	{
@@ -524,7 +504,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	else
 	{
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
-		CompositedFuzzInfluence = MixtormatPreview::ComputeFuzzInfluence(Layers);
+		CompositedFuzzInfluence =
+			MixtormatCompositionReferences::ComputeFuzzInfluence(Layers);
 		PreviewMaterialInstance->SetScalarParameterValue(
 			MixtormatPreview::FuzzInfluenceParameter,
 			CompositedFuzzInfluence);

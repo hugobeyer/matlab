@@ -16,6 +16,7 @@ Texture2D<float> ReferenceHeight;
 Texture2D<float4> LayerBC;
 Texture2D<float4> LayerN;
 Texture2D<float4> LayerRAM;
+Texture2D<float> LayerSourceHeight;
 Texture2D<float> LayerMask;
 
 // The same mask, separably blurred. Bound to the unblurred mask when the layer asks for no
@@ -83,6 +84,8 @@ uint CompositionMode;
 uint IsFill;
 uint HasSurface;
 uint HasPackedHeight;
+uint HasSeparateHeight;
+uint UseSourceF0;
 uint HasNormal;
 uint NormalOnly;
 uint OverrideNormal;
@@ -510,11 +513,19 @@ float2 LayerSourceUV(float2 UV)
 // no second pass to run: nine taps is what a smooth costs here. The spacing widens the reach
 // without adding taps, which is right for height -- it is low frequency, and the alternative is
 // three more render targets per layer for something that is meant to take the edge off a seam.
+float SampleRawLayerHeight(float2 SourceUV)
+{
+	// Authored surfaces carry RAMH; live compositions carry F0 in RAM alpha.
+	return HasSeparateHeight != 0
+		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+		: LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).a;
+}
+
 float SampleLayerSourceHeight(float2 UV)
 {
 	if (HeightSmooth <= 0.0f)
 	{
-		return LayerRAM.SampleLevel(LinearWrapSampler, LayerSourceUV(UV), 0.0f).a;
+		return SampleRawLayerHeight(LayerSourceUV(UV));
 	}
 
 	const float2 Step = HeightSmooth / max(float2(OutputSize), 1.0f);
@@ -528,7 +539,7 @@ float SampleLayerSourceHeight(float2 UV)
 			// Separable [1 2 1] weights, as the outer product -- 1/2/4 over a total of 16.
 			const float Weight = (X == 0 ? 2.0f : 1.0f) * (Y == 0 ? 2.0f : 1.0f);
 			const float2 TapUV = UV + float2(float(X), float(Y)) * Step;
-			Sum += LayerRAM.SampleLevel(LinearWrapSampler, LayerSourceUV(TapUV), 0.0f).a * Weight;
+			Sum += SampleRawLayerHeight(LayerSourceUV(TapUV)) * Weight;
 		}
 	}
 	return Sum / 16.0f;
@@ -559,9 +570,15 @@ float SampleIncomingHeight(float2 UV)
 	// and its highest peak stays its highest, and only the distribution between them moves --
 	// which is what separates reshaping relief from simply deepening it, as HeightBoost does.
 	// The exponent runs 1/4 to 4 across the slider, and 0 lands exactly on 1.
-	SourceHeight = pow(saturate(SourceHeight), exp2(-HeightShape * 2.0f));
-	SourceHeight = saturate(
-		(SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset);
+	// Preserve float relief outside 0..1 when a live source is passed through unchanged.
+	// Authored controls retain their existing bounded shaping when explicitly adjusted.
+	if (HasSeparateHeight == 0 || HeightShape != 0.0f
+		|| HeightBoost != 1.0f || HeightLevelOffset != 0.0f)
+	{
+		SourceHeight = pow(saturate(SourceHeight), exp2(-HeightShape * 2.0f));
+		SourceHeight = saturate(
+			(SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset);
+	}
 	if (DirectHeightComparison != 0)
 	{
 		return SourceHeight;
@@ -704,13 +721,25 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	//
 	// Z is untouched and the length of XY is preserved: LayerOrientation is orthonormal, so this
 	// cannot change the normal's slope, only where it points.
+	if (HasSeparateHeight != 0)
+	{
+		// Compositor normals store all three components, unlike imported two-channel maps.
+		SampledNormal = LayerN.SampleLevel(LinearWrapSampler, LayerUV, 0.0f).xyz * 2.0f - 1.0f;
+		SampledNormal.xy *= NormalIntensity;
+		SampledNormal.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
+		SampledNormal = normalize(SampledNormal);
+	}
 	SampledNormal.xy = MixtormatTransformTangentVector(LayerOrientation, SampledNormal.xy);
 
 	// Region variation before the layer grade, not after: the jitter says how this brick
 	// differs from that one, the grade says what the whole layer is. Reversing them makes
 	// the global grade fight per-region offsets it cannot see.
-	float3 LayerBaseColor = AdjustHSV(ApplyRegionVariation(
-		lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor), DispatchThreadId.xy));
+	float3 LayerBaseColor = ApplyRegionVariation(
+		lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor), DispatchThreadId.xy);
+	if (HasSeparateHeight == 0 || HueShift != 0.0f || Saturation != 1.0f || Value != 1.0f)
+	{
+		LayerBaseColor = AdjustHSV(LayerBaseColor);
+	}
 	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
@@ -802,8 +831,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// the default safe on every material already saved.
 	float3 BlendedBaseColor = MixtormatBlendColor(
 		BaseColorBlendMode, PreviousBaseColor.rgb, LayerBaseColor);
-	float3 IncomingBaseColor = saturate(
-		lerp(LayerBaseColor, BlendedBaseColor, saturate(BaseColorBlendAmount)));
+	float3 IncomingBaseColor = HasSeparateHeight != 0 && BaseColorBlendMode == 0
+		? LayerBaseColor
+		: saturate(lerp(LayerBaseColor, BlendedBaseColor, saturate(BaseColorBlendAmount)));
 
 	float3 ResultBaseColor = NormalOnly != 0
 		? PreviousBaseColor.rgb
@@ -819,7 +849,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: lerp(PreviousPacked.b, LayerMetallic, Alpha * saturate(MetallicInfluence));
 	float ResultF0 = NormalOnly != 0
 		? PreviousPacked.a
-		: lerp(PreviousPacked.a, LayerF0, Alpha * saturate(F0Influence));
+		: lerp(PreviousPacked.a, UseSourceF0 != 0 ? SampledRAM.a : LayerF0,
+			Alpha * saturate(F0Influence));
 	float3 WeightedDetail = normalize(float3(
 		SampledNormal.xy * NormalWeight,
 		lerp(1.0f, SampledNormal.z, NormalWeight)));
@@ -928,5 +959,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		ResultHeight += EffectHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) * EffectVisibility;
 	}
 
-	OutputHeight[DispatchThreadId.xy] = saturate(ResultHeight);
+	OutputHeight[DispatchThreadId.xy] = HasSeparateHeight != 0 ? ResultHeight : saturate(ResultHeight);
 }

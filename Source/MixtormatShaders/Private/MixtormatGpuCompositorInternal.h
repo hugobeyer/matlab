@@ -620,6 +620,9 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef BaseColor;
 		FTextureRHIRef Normal;
 		FTextureRHIRef RAM;
+		FTextureRHIRef Height;
+		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> SourceOutputs;
+		bool bUseSourceF0 = false;
 		FTextureRHIRef Mask;
 		TArray<FChildRenderData> Children;
 		FVector4f FillColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -705,6 +708,7 @@ namespace MixtormatGpuCompositor
 	{
 		FIntPoint Resolution = FIntPoint::ZeroValue;
 		TArray<FLayerRenderData> Layers;
+		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> Targets;
 		FTextureRHIRef OutputBC[2];
 		FTextureRHIRef OutputN[2];
 		FTextureRHIRef OutputRAM[2];

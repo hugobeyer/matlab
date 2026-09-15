@@ -196,25 +196,6 @@ namespace MixtormatBake
 		return Texture;
 	}
 
-	// DA_FuzzInfluence is a Substrate Slab amount the master material reads once per material
-	// instance, not a per-pixel channel, so there is nothing to bake into a texture for it. Later,
-	// more influential layers blend over earlier ones by their own Opacity, mirroring how a
-	// layer's Channel Influence rows blend a real per-pixel channel in the GPU composite.
-	float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers)
-	{
-		float Result = 0.0f;
-		for (const FMixtormatLayer& Layer : Layers)
-		{
-			if (!Layer.bEnabled || Layer.FuzzInfluence <= 0.0f)
-			{
-				continue;
-			}
-			const float Weight = FMath::Clamp(Layer.Opacity, 0.0f, 1.0f);
-			const float Target = FMath::Clamp(Layer.FuzzInfluence, 0.0f, 1.0f);
-			Result = FMath::Lerp(Result, Target, Weight);
-		}
-		return FMath::Clamp(Result, 0.0f, 1.0f);
-	}
 
 	// UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue and
 	// SetMaterialInstanceScalarParameterValue are confirmed broken in UE 5.8: both declare
@@ -447,6 +428,14 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	if (!ValidateSettings(Settings, SettingsError))
 	{
 		Result.Errors.Add(SettingsError);
+		return Result;
+	}
+
+	FText ReferenceError;
+	if (!MixtormatCompositionReferences::Validate(
+		Recipe.Layers, FSoftObjectPath(&Recipe), ReferenceError))
+	{
+		Result.Errors.Add(ReferenceError);
 		return Result;
 	}
 
@@ -692,7 +681,10 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Normal"), Result.Normal);
 	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_RAMH"), Result.RAM);
 	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Height"), Result.Height);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_FuzzInfluence"), ComputeFuzzInfluence(Recipe.Layers));
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
+		Result.Material,
+		TEXT("DA_FuzzInfluence"),
+		MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers));
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);

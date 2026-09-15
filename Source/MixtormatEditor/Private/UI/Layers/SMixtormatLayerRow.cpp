@@ -24,6 +24,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	bLayerEnabled = InArgs._bEnabled;
 	bExpanded = InArgs._bExpanded;
 	bSelected = InArgs._bSelected;
+	bReference = InArgs._bReference;
 	OnToggleExpanded = InArgs._OnToggleExpanded;
 	OnSelected = InArgs._OnSelected;
 	OnToggleEnabled = InArgs._OnToggleEnabled;
@@ -189,6 +190,12 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatLayerRow::GetBackgroundStart() const
 {
+	if (bReference.Get(false))
+	{
+		const float TintAmount = !bLayerEnabled.Get(true) ? 0.08f
+			: bSelected.Get(false) ? 0.38f : IsHovered() ? 0.30f : 0.22f;
+		return FMath::Lerp(MixtormatPalette::Panel(), MixtormatPalette::Modified(), TintAmount);
+	}
 	if (!bLayerEnabled.Get(true))
 	{
 		return MixtormatPalette::LayerHiddenTop();

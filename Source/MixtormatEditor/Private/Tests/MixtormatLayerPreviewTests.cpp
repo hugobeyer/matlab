@@ -129,6 +129,56 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 			FMath::Abs(static_cast<int32>(Pixel.R) - 128) <= 2);
 	}
 
+	UMixtormatMaterial* ReferenceSource = NewObject<UMixtormatMaterial>(
+		GetTransientPackage(), NAME_None, RF_Transient);
+	FMixtormatLayer ReferencedFill = BaseLayer;
+	ReferencedFill.BaseColor = FLinearColor::Blue;
+	ReferencedFill.FuzzInfluence = 0.8f;
+	ReferenceSource->Layers = { ReferencedFill };
+	FMixtormatLayer ReferenceLayer;
+	ReferenceLayer.Type = EMixtormatLayerType::Material;
+	ReferenceLayer.SourceComposition = ReferenceSource;
+	TArray<FMixtormatLayer> ReferenceLayers = { ReferenceLayer };
+	TestTrue(
+		TEXT("Compositor accepts an isolated reference layer"),
+		Compositor.RequestCompose(ReferenceLayers));
+	FlushRenderingCommands();
+	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Reference output can be read"), Pixel))
+	{
+		TestTrue(TEXT("Referenced composition reaches the parent output"), Pixel.B > Pixel.R);
+	}
+	TestTrue(
+		TEXT("Referenced fuzz reaches the parent material"),
+		FMath::IsNearlyEqual(
+			MixtormatCompositionReferences::ComputeFuzzInfluence(ReferenceLayers),
+			0.8f));
+	ReferenceSource->Layers = ReferenceLayers;
+	FText ReferenceError;
+	TestFalse(
+		TEXT("Reference cycles are rejected"),
+		MixtormatCompositionReferences::Validate(
+			ReferenceLayers, FSoftObjectPath(), ReferenceError));
+
+	TArray<UMixtormatMaterial*> DeepSources;
+	DeepSources.Reserve(33);
+	for (int32 Index = 0; Index < 33; ++Index)
+	{
+		DeepSources.Add(NewObject<UMixtormatMaterial>(
+			GetTransientPackage(), NAME_None, RF_Transient));
+	}
+	for (int32 Index = 0; Index < DeepSources.Num() - 1; ++Index)
+	{
+		FMixtormatLayer NestedReference;
+		NestedReference.SourceComposition = DeepSources[Index + 1];
+		DeepSources[Index]->Layers = { NestedReference };
+	}
+	FMixtormatLayer DeepRoot;
+	DeepRoot.SourceComposition = DeepSources[0];
+	TestFalse(
+		TEXT("Reference nesting beyond the render limit is rejected"),
+		MixtormatCompositionReferences::Validate(
+			TArray<FMixtormatLayer>{ DeepRoot }, FSoftObjectPath(), ReferenceError));
+
 	Layers[0].HueShift = 120.0f;
 	TestTrue(TEXT("Compositor accepts per-layer HSV adjustment"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();

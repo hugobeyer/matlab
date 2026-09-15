@@ -59,6 +59,7 @@ private:
 		FSimpleDelegate Reset;
 	};
 	void BuildWorkspaceUI();
+	void HandleReferencedCompositionUpdated(const FAssetData& AssetData);
 	FReply OpenLiveThemePanel();
 	FReply OpenDocumentation();
 	FReply OpenSettings();
@@ -725,6 +726,7 @@ private:
 	// The mask a child row is carrying, shown on hover -- the row only has room for a glyph.
 	// Null for effects and generated masks, which have no picture to show.
 	TSharedPtr<IToolTip> BuildMaskPreviewTooltip(int32 LayerIndex, int32 ChildIndex);
+	FText GetLayerDisplayName(int32 LayerIndex) const;
 	FText GetLayerSourceText(int32 LayerIndex) const;
 	FText GetLayerChildName(const FMixtormatLayerChild& Child) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
@@ -761,6 +763,7 @@ private:
 	void AddSurfaceFromLibrary(FSoftObjectPath AssetPath);
 	void AddCompositionLayers(FSoftObjectPath AssetPath);
 	void AddBakedLayerFromComposition(FSoftObjectPath AssetPath);
+	void AddReferenceLayerFromComposition(FSoftObjectPath AssetPath);
 	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
@@ -823,6 +826,7 @@ private:
 	TSharedPtr<SBox> SelectedThumbnailBox;
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
+	FDelegateHandle AssetUpdatedHandle;
 	float MaterialGalleryTileSize = MixtormatTokens::MaterialGalleryTileDefault;
 	float MaskGalleryTileSize = MixtormatTokens::MaskBarTileSize;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;

@@ -651,13 +651,16 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 TSharedRef<SWidget> SMixtormat::BuildCompositionLibraryContextMenu(const FSoftObjectPath AssetPath)
 {
 	MixtormatMenu::FBuilder Menu;
-	// A saved mix can come in either way: as the layers that made it, still editable, or as the
-	// single baked layer they resolve to. The bake is the one the recipe already owns -- nothing
-	// is baked from here, because baking drives the shared compositor the open document is
-	// rendering through, and reaching into that from a library right-click would disturb it.
+	// References keep the recipe live; the other actions import its layers or its existing bake.
+	// Nothing is baked here: the shared compositor belongs to the open document.
 	const UMixtormatMaterial* Composition = Cast<UMixtormatMaterial>(AssetPath.TryLoad());
 	const bool bHasBakedSurface = Composition && !Composition->BakedSurface.IsNull();
 	Menu.Caption(LOCTEXT("SavedMixContextCaption", "Saved Mix"))
+		.Item(
+			LOCTEXT("AddCompositionReferenceLayer", "Add as Reference Layer"),
+			MixtormatUI::LucideIcon(TEXT("layers")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::AddReferenceLayerFromComposition, AssetPath))
+		.Enabled(Composition != nullptr)
 		.Item(
 			LOCTEXT("AddCompositionLayers", "Add All Layers"),
 			MixtormatUI::LucideIcon(TEXT("layers")),
@@ -718,6 +721,74 @@ void SMixtormat::AddBakedLayerFromComposition(const FSoftObjectPath AssetPath)
 	// Same path a library surface takes when it is dropped onto the stack: select it, then add
 	// one Material layer that sources it.
 	HandleSurfaceDropped(DisplayName, FSoftObjectPath(Surface));
+}
+
+void SMixtormat::AddReferenceLayerFromComposition(const FSoftObjectPath AssetPath)
+{
+	const UMixtormatMaterial* Composition = Cast<UMixtormatMaterial>(AssetPath.TryLoad());
+	if (!Composition)
+	{
+		WorkingStatusText = TEXT("Saved mix could not be loaded");
+		return;
+	}
+
+	TArray<FMixtormatLayer> ReferenceLayers;
+	FMixtormatLayer& Reference = ReferenceLayers.AddDefaulted_GetRef();
+	Reference.Type = EMixtormatLayerType::Material;
+	Reference.SourceSurface.Reset();
+	Reference.SourceComposition = TSoftObjectPtr<UMixtormatMaterial>(AssetPath);
+	Reference.DisplayName = Composition->DisplayName.IsEmpty()
+		? FText::FromString(Composition->GetName())
+		: Composition->DisplayName;
+
+	FText ReferenceError;
+	const FSoftObjectPath OwnerPath = bHasWorkingMaterial && WorkingMaterialAsset.IsValid()
+		? FSoftObjectPath(WorkingMaterialAsset.Get()) : FSoftObjectPath();
+	if (!MixtormatCompositionReferences::Validate(ReferenceLayers, OwnerPath, ReferenceError))
+	{
+		WorkingStatusText = ReferenceError.ToString();
+		return;
+	}
+
+	const bool bCreateDocument = !bHasWorkingMaterial;
+	if (bCreateDocument)
+	{
+		bHasWorkingMaterial = true;
+		WorkingMaterialAsset.Reset();
+		WorkingMaterialName = TEXT("Untitled Mixtormat Material");
+		WorkingLayers.Reset();
+		// The isolated source already includes its own document rotation.
+		bGlobalUVRotation90 = false;
+		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+		{
+			if (Viewport.IsValid())
+			{
+				Viewport->SetGlobalUVRotation90(false);
+			}
+		}
+		SavedLayers.Reset();
+	}
+
+	WorkingLayers.Append(MoveTemp(ReferenceLayers));
+	if (bCreateDocument)
+	{
+		ResetEditHistory(false);
+	}
+	SoloLayerIndex = INDEX_NONE;
+	bShowCompositionBefore = false;
+	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+	SelectedLayerIndex = WorkingLayers.Num() - 1;
+	ExpandedLayerIndices.Remove(SelectedLayerIndex);
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = INDEX_NONE;
+	bHasSelectedLayer = true;
+	SyncChildInstances();
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview(!bCreateDocument);
+	bIsWorkingMaterialDirty = true;
+	WorkingStatusText = FString::Printf(TEXT("Added reference to %s"), *Composition->GetName());
+	RebuildLayerList();
+	RebuildMaskList();
 }
 
 void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)

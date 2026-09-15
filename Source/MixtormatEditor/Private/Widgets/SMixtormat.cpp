@@ -15,10 +15,31 @@
 void SMixtormat::Construct(const FArguments& InArgs)
 {
 	ThumbnailPool = MakeShared<FAssetThumbnailPool>(64);
-
+	FAssetRegistryModule& AssetRegistryModule =
+		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	AssetUpdatedHandle = AssetRegistryModule.Get().OnAssetUpdated().AddSP(
+		this, &SMixtormat::HandleReferencedCompositionUpdated);
 
 	BuildWorkspaceUI();
 	ResetEditHistory(true);
+}
+
+void SMixtormat::HandleReferencedCompositionUpdated(const FAssetData& AssetData)
+{
+	if (!bHasWorkingMaterial || !Cast<UMixtormatMaterial>(AssetData.GetAsset()))
+	{
+		return;
+	}
+	const bool bHasReferences = WorkingLayers.ContainsByPredicate(
+		[](const FMixtormatLayer& Layer)
+		{
+			return !Layer.SourceComposition.IsNull();
+		});
+	if (bHasReferences)
+	{
+		RefreshLayeredPreview(false);
+		RebuildLayerList();
+	}
 }
 
 void SMixtormat::BuildWorkspaceUI()
