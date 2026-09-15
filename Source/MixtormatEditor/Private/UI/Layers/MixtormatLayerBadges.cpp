@@ -191,6 +191,34 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.RandomId.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::Curvature)
+		{
+			// The field it reads, not the invariant: two curvature nodes on one mask most often
+			// differ by source, and "HEIGHT" against "MASK" is the distinction worth four glyphs.
+			return Child.Curvature.Source == EMixtormatCurvatureSource::Height
+				? LOCTEXT("CurvatureBadgeHeight", "HEIGHT")
+				: LOCTEXT("CurvatureBadgeMask", "MASK");
+		}
+		if (Child.Type == EMixtormatLayerChildType::Blur)
+		{
+			// No blend mode: a blur reshapes the mask it is scoped to rather than joining the
+			// chain, so the slot names which axes are running instead.
+			const bool bX = Child.Blur.RadiusX > 0.0f;
+			const bool bY = Child.Blur.RadiusY > 0.0f;
+			if (bX && bY)
+			{
+				return LOCTEXT("BlurBadgeXY", "XY");
+			}
+			if (bX)
+			{
+				return LOCTEXT("BlurBadgeX", "X");
+			}
+			if (bY)
+			{
+				return LOCTEXT("BlurBadgeY", "Y");
+			}
+			return LOCTEXT("BlurBadgeOff", "OFF");
+		}
 		return ForMaskBlendMode(Child.Mask.BlendMode);
 	}
 
@@ -207,6 +235,8 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");
+		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
+		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

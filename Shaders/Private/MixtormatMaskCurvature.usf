@@ -1,0 +1,150 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+
+// Curvature of a height field, done properly: first and second fundamental forms, then whichever
+// invariant of the shape operator was asked for.
+//
+// The compositor already had a curvature, in MixtormatCurvature.ush. That one is div(N.xy) over a
+// normal map by Sobel -- fast, and adequate for the cavity/convex pair it feeds -- but it is one
+// number with no geometric meaning beyond "roughly mean curvature, up to scale". It cannot tell a
+// saddle from a dome, because both can sum to the same divergence. This one can: a saddle has
+// negative Gaussian curvature and a dome positive, whatever their mean.
+//
+// Treat the source as a Monge patch, the surface z = f(x, y):
+//
+//   E = 1 + fx^2      F = fx*fy        G = 1 + fy^2        (first fundamental form)
+//   L = fxx / d       M = fxy / d      N = fyy / d         (second, d = |(-fx, -fy, 1)|)
+//
+//   Gaussian  K = (LN - M^2) / (EG - F^2)
+//   Mean      H = (LG - 2MF + NE) / (2(EG - F^2))
+//
+// The principal curvatures are the eigenvalues of the shape operator S = I^-1 II, and they follow
+// from K and H alone: trace(S) = 2H and det(S) = K, so k solves k^2 - 2Hk + K = 0, giving
+//
+//   k = H +/- sqrt(H^2 - K)
+//
+// which is exact, and cheaper than forming S. It is worth being explicit about that, because the
+// common shortcut -- taking the eigenvalues of II directly, 0.5*(L + N +/- sqrt((L-N)^2 + 4M^2)) --
+// is only the principal curvature where I is the identity, that is where the surface is flat
+// enough that fx and fy vanish. Precisely where curvature is interesting, it is wrong.
+//
+// Every tap wraps. The source is a tileable mask or a tileable height, so a clamped tap at the
+// edge would pull in a neighbourhood that is not the one that continues there, and the surface
+// would stop meeting itself. Wrapping also removes the entire boundary-correction problem that a
+// non-tiling implementation has to solve with one-sided differences at four edges and four
+// corners: here there is no edge, so there is no case.
+
+Texture2D<float> SourceField;
+Texture2D<float> PreviousMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+
+int2 OutputSize;
+// Tap spacing in texels. Widening it measures curvature over a broader neighbourhood, which is
+// how the same field yields the shape of a bolt head at one setting and the panel it sits on at
+// another.
+int Kernel;
+// Height amplitude. The field arrives as 0..1 with no idea what that is worth in texels, and
+// curvature is not scale-invariant -- every second derivative scales with it.
+float Scale;
+// 0 Gaussian, 1 Mean, 2 Max principal, 3 Min principal.
+int Mode;
+// The signed curvature mapped to 0..1 coverage. Low above High inverts, which is how a cavity
+// selection and a convex one are the same control.
+float RangeLow;
+float RangeHigh;
+uint Invert;
+// How the result joins what the mask already had. Zero leaves the mask untouched.
+float Weight;
+
+float SampleField(float2 UV, float2 Offset)
+{
+	return SourceField.SampleLevel(LinearWrapSampler, UV + Offset, 0.0f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float2 Texel = 1.0f / max(float2(OutputSize), 1.0f);
+	const float Step = float(clamp(Kernel, 1, 32));
+	const float2 H = Texel * Step;
+
+	// Nine taps: the centre, the four axial neighbours for the second derivatives along x and y,
+	// and the four diagonals for the mixed one. Scale is applied once, here, so everything
+	// downstream is in the same units.
+	const float C  = Scale * SampleField(UV, float2(0.0f, 0.0f));
+	const float R  = Scale * SampleField(UV, float2( H.x, 0.0f));
+	const float L  = Scale * SampleField(UV, float2(-H.x, 0.0f));
+	const float U  = Scale * SampleField(UV, float2(0.0f,  H.y));
+	const float D  = Scale * SampleField(UV, float2(0.0f, -H.y));
+	const float UR = Scale * SampleField(UV, float2( H.x,  H.y));
+	const float UL = Scale * SampleField(UV, float2(-H.x,  H.y));
+	const float DR = Scale * SampleField(UV, float2( H.x, -H.y));
+	const float DL = Scale * SampleField(UV, float2(-H.x, -H.y));
+
+	// Spacing is in UV, so the derivatives are per unit UV and the result is resolution
+	// independent: the same shape curves the same amount whatever it is composited at.
+	const float Fx = (R - L) / (2.0f * H.x);
+	const float Fy = (U - D) / (2.0f * H.y);
+	const float Fxx = (R - 2.0f * C + L) / (H.x * H.x);
+	const float Fyy = (U - 2.0f * C + D) / (H.y * H.y);
+	const float Fxy = ((UR - UL) - (DR - DL)) / (4.0f * H.x * H.y);
+
+	const float EForm = 1.0f + Fx * Fx;
+	const float FForm = Fx * Fy;
+	const float GForm = 1.0f + Fy * Fy;
+
+	// |(-fx, -fy, 1)|, the length of the unnormalised surface normal. Never zero: the 1 in the z
+	// component floors it, so this needs no epsilon.
+	const float Denominator = sqrt(1.0f + Fx * Fx + Fy * Fy);
+	const float LForm = Fxx / Denominator;
+	const float MForm = Fxy / Denominator;
+	const float NForm = Fyy / Denominator;
+
+	// EG - F^2 = 1 + fx^2 + fy^2, which is Denominator^2 and likewise always at least 1. The
+	// algebra makes the guard unnecessary rather than cheap.
+	const float FirstFormDeterminant = EForm * GForm - FForm * FForm;
+
+	const float Gaussian = (LForm * NForm - MForm * MForm) / FirstFormDeterminant;
+	const float Mean =
+		(LForm * GForm - 2.0f * MForm * FForm + NForm * EForm) / (2.0f * FirstFormDeterminant);
+
+	float Signed;
+	if (Mode == 0)
+	{
+		Signed = Gaussian;
+	}
+	else if (Mode == 1)
+	{
+		Signed = Mean;
+	}
+	else
+	{
+		// H^2 >= K for any real surface; the max() is against rounding at the umbilics, where the
+		// two principal curvatures meet and the difference under the root is a cancellation of
+		// two nearly equal numbers.
+		const float Spread = sqrt(max(Mean * Mean - Gaussian, 0.0f));
+		Signed = Mode == 2 ? (Mean + Spread) : (Mean - Spread);
+	}
+
+	// Signed curvature into coverage. Not a saturate of the raw value: curvature has no natural
+	// range -- it is unbounded and its useful band depends entirely on Scale and Kernel -- so the
+	// window has to be stated rather than assumed.
+	float Coverage = saturate((Signed - RangeLow) / (RangeHigh - RangeLow + 1.0e-6f));
+	if (Invert != 0)
+	{
+		Coverage = 1.0f - Coverage;
+	}
+
+	// Multiplied in, and lerped by Weight so the node can be dialled back without being removed.
+	// Keeping is the operation: this narrows what the mask already covers and never widens it.
+	const float Previous = PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Previous * Coverage, saturate(Weight)));
+}

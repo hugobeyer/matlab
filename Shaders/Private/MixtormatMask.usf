@@ -6,10 +6,16 @@
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IncomingMask;
+// A mask this node has already sampled, placed and shaped in output space, and which something
+// has done further work on since -- currently the Blur child. Read straight through when
+// UsePreShaped is set: placing or shaping it twice would be wrong, and sampling it with the
+// source transform would undo the very thing that made it worth a second pass.
+Texture2D<float> PreShapedMask;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputMask;
 
 int2 OutputSize;
+uint UsePreShaped;
 uint Initialize;
 uint BlendMode;
 uint Invert;
@@ -38,10 +44,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Previous = Initialize != 0
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
-	float Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
-
-	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+	float Incoming;
+	if (UsePreShaped != 0)
+	{
+		Incoming = PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	}
+	else
+	{
+		const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
+		Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
+		Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+	}
 
 	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));

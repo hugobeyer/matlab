@@ -3,8 +3,8 @@
 #include "Widgets/SMixtormatPreviewViewport.h"
 
 #include "AssetViewerSettings.h"
+#include "Components/BoxReflectionCaptureComponent.h"
 #include "Components/DirectionalLightComponent.h"
-#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EditorViewportClient.h"
@@ -39,6 +39,10 @@ namespace MixtormatPreview
 	const FName HeightAmountParameter(TEXT("DA_HeightAmount"));
 	const FName DebugTextureParameter(TEXT("DA_DebugTexture"));
 	const FName FuzzInfluenceParameter(TEXT("DA_FuzzInfluence"));
+	// Studio floor fade radii, in world units. Pushed from the subject's own size so the
+	// floor dissolves at the same point relative to the object whatever the object is.
+	const FName FloorFadeInParameter(TEXT("DA_FadeIn"));
+	const FName FloorFadeOutParameter(TEXT("DA_FadeOut"));
 	// Same texture parameter names FMixtormatGpuCompositor::BindOutputs already sets on the real
 	// master-material instance, so the channel-preview material can be fed by that same call
 	// rather than a second copy of the texture-fetch logic.
@@ -361,9 +365,9 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 	{
 		PreviewScene.RemoveComponent(PreviewMeshComponent);
 	}
-	if (StudioFogComponent)
+	if (StudioReflectionCapture)
 	{
-		PreviewScene.RemoveComponent(StudioFogComponent);
+		PreviewScene.RemoveComponent(StudioReflectionCapture);
 	}
 }
 
@@ -377,11 +381,12 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	PreviewMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PreviewScene.AddComponent(PreviewMeshComponent, FTransform::Identity);
 
-	StudioFogComponent = NewObject<UExponentialHeightFogComponent>();
-	StudioFogComponent->SetFogHeightFalloff(0.01f);
-	StudioFogComponent->SetFogMaxOpacity(1.0f);
-	StudioFogComponent->SetFogInscatteringColor(MixtormatPalette::PreviewFog());
-	PreviewScene.AddComponent(StudioFogComponent, FTransform::Identity);
+	// Added before the lighting preset runs, because SetStudioLighting is what hands it a cubemap.
+	StudioReflectionCapture = NewObject<UBoxReflectionCaptureComponent>();
+	StudioReflectionCapture->ReflectionSourceType = EReflectionSourceType::SpecifiedCubemap;
+	StudioReflectionCapture->Brightness =
+		MixtormatPreviewSceneSettings::ReflectionCaptureBrightness;
+	PreviewScene.AddComponent(StudioReflectionCapture, FTransform::Identity);
 
 	PreviewScene.SetFloorVisibility(true);
 	PreviewScene.SetEnvironmentVisibility(false);
@@ -582,7 +587,7 @@ void SMixtormatPreviewViewport::SetPreviewDisplacementEnabled(const bool bEnable
 		MixtormatPreview::UseHeightParameter,
 		bDisplacementEnabled ? 1.0f : 0.0f);
 	UpdatePreviewMeshFloorClearance();
-	UpdateStudioFog();
+	UpdateStudioFloor();
 	UpdateCamera();
 }
 
@@ -593,7 +598,7 @@ void SMixtormatPreviewViewport::SetPreviewDisplacementAmount(const float Amount)
 		MixtormatPreview::HeightAmountParameter,
 		DisplacementAmount);
 	UpdatePreviewMeshFloorClearance();
-	UpdateStudioFog();
+	UpdateStudioFloor();
 	UpdateCamera();
 }
 
@@ -676,33 +681,61 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 	CurrentPreviewMesh = MeshType;
 	UpdatePreviewMeshFloorClearance();
 
-	UpdateStudioFog();
+	UpdateStudioFloor();
 	UpdateCamera();
 }
 
-void SMixtormatPreviewViewport::UpdateStudioFog()
+// The floor runs to a fixed extent whatever the object's size, so something has to hide its
+// edge. That used to be height fog, which cost the reflections their sky. Now the floor is scaled
+// to the object and its material fades itself to the background colour in its own object space,
+// so the edge is hidden by the floor rather than by something drawn in front of it.
+void SMixtormatPreviewViewport::UpdateStudioFloor()
 {
-	if (!StudioFogComponent || !PreviewMeshComponent || !PreviewMeshComponent->GetStaticMesh())
+	if (!PreviewMeshComponent || !PreviewMeshComponent->GetStaticMesh())
+	{
+		return;
+	}
+	const UStaticMeshComponent* Floor = PreviewScene.GetFloorMeshComponent();
+	if (!Floor || !Floor->GetStaticMesh())
 	{
 		return;
 	}
 
+	// The floor mesh's own unscaled half-size, so this does not depend on which plane the
+	// preview scene profile happens to supply.
+	const FVector FloorExtent = Floor->GetStaticMesh()->GetBounds().BoxExtent;
+	const float FloorHalfSize = FMath::Max(FMath::Max(FloorExtent.X, FloorExtent.Y), 1.0f);
+
 	const float MeshRadius = FMath::Max(PreviewMeshComponent->Bounds.SphereRadius, 0.5f);
-	const float MeshDiameter = MeshRadius * 2.0f;
-	const float StrongFadeDistance = MeshDiameter * 2.0f;
-	const float FogStartDistance = CameraDistance * 2.0f;
+	const float TargetRadius = MeshRadius * MixtormatPreviewSceneSettings::FloorRadiusInMeshRadii;
+	const float Scale = TargetRadius / FloorHalfSize;
+	PreviewScene.SetFloorMeshScale(FVector(Scale, Scale, 1.0f));
 
-	// Fog density is measured per 1,000 Unreal units. Reach 95% opacity over the fade range.
-	const float FogDensity = FMath::Clamp(
-		-FMath::Loge(0.05f) * 1000.0f / StrongFadeDistance,
-		0.001f,
-		20.0f);
-
-	StudioFogComponent->SetStartDistance(FogStartDistance);
-	StudioFogComponent->SetFogDensity(FogDensity);
-	StudioFogComponent->SetFogHeightFalloff(0.01f);
-	StudioFogComponent->SetFogMaxOpacity(1.0f);
-	ApplyFogColor();
+	if (!StudioFloorMaterial.IsValid())
+	{
+		UMaterialInterface* FloorMaster = LoadObject<UMaterialInterface>(
+			nullptr,
+			*FMixtormatPaths::StudioFloorMaterialObjectPath());
+		if (FloorMaster)
+		{
+			StudioFloorMaterial.Reset(
+				UMaterialInstanceDynamic::Create(FloorMaster, GetTransientPackage()));
+		}
+	}
+	if (!StudioFloorMaterial.IsValid())
+	{
+		return;
+	}
+	// The material reads distance in world units, so the radii are pushed rather than baked --
+	// the floor mesh is scaled above, but scaling a plane does not move where its own fade sits.
+	StudioFloorMaterial->SetScalarParameterValue(
+		MixtormatPreview::FloorFadeInParameter,
+		MeshRadius * MixtormatPreviewSceneSettings::FloorFadeInInMeshRadii);
+	StudioFloorMaterial->SetScalarParameterValue(
+		MixtormatPreview::FloorFadeOutParameter,
+		MeshRadius * MixtormatPreviewSceneSettings::FloorFadeOutInMeshRadii);
+	// Re-handed every update, because UpdateScene puts the profile's own material back.
+	PreviewScene.SetFloorMaterial(StudioFloorMaterial.Get());
 }
 
 void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting LightingPreset)
@@ -723,6 +756,9 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 	PreviewScene.UpdateScene(*StudioPreviewProfile, true, true, false, true);
 	PreviewScene.SetEnvironmentVisibility(false, true);
 	PreviewScene.SetFloorVisibility(true, true);
+	// UpdateScene resets the floor back to the profile's own scale, so this has to follow every
+	// call rather than being set once.
+	UpdateStudioFloor();
 
 	bUsingStudioEnvironment = StudioEnvironmentCubemap.IsValid();
 	EnvironmentYaw = 0.0f;
@@ -741,6 +777,14 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 		PreviewScene.DirectionalLight->ContactShadowLength = 0.0f;
 		PreviewScene.DirectionalLight->MarkRenderStateDirty();
 	}
+	if (StudioReflectionCapture)
+	{
+		// Same asset the skylight reads, so the traced and the captured reflections agree rather
+		// than disagreeing wherever Lumen hands over to the reflection environment.
+		StudioReflectionCapture->Cubemap = StudioEnvironmentCubemap.Get();
+		StudioReflectionCapture->MarkDirtyForRecaptureOrUpload();
+		StudioReflectionCapture->MarkRenderStateDirty();
+	}
 	UpdateStudioEnvironmentLighting();
 	if (PreviewViewportClient.IsValid())
 	{
@@ -756,22 +800,11 @@ void SMixtormatPreviewViewport::UpdateStudioEnvironmentLighting()
 
 void SMixtormatPreviewViewport::ApplyLightIntensities()
 {
-	constexpr float CubemapReflectionBoost = 1.35f;
 	PreviewScene.SetLightBrightness(BaseLightBrightness * LightIntensityScale);
 	PreviewScene.SetSkyBrightness(
-		BaseSkyBrightness * SkylightIntensityScale * CubemapReflectionBoost);
-}
-
-void SMixtormatPreviewViewport::ApplyFogColor()
-{
-	if (!StudioFogComponent)
-	{
-		return;
-	}
-	StudioFogComponent->SetFogInscatteringColor(FMath::Lerp(
-		MixtormatPalette::PreviewFog(),
-		MixtormatPalette::PreviewFogDense(),
-		FogBrightness));
+		BaseSkyBrightness
+		* SkylightIntensityScale
+		* MixtormatPreviewSceneSettings::CubemapReflectionBoost);
 }
 
 void SMixtormatPreviewViewport::SetPreviewLightIntensity(const float Scale)
@@ -794,15 +827,6 @@ void SMixtormatPreviewViewport::SetPreviewSkylightIntensity(const float Scale)
 	}
 }
 
-void SMixtormatPreviewViewport::SetPreviewFogBrightness(const float Brightness)
-{
-	FogBrightness = FMath::Clamp(Brightness, 0.0f, 1.0f);
-	ApplyFogColor();
-	if (PreviewViewportClient.IsValid())
-	{
-		PreviewViewportClient->Invalidate();
-	}
-}
 
 void SMixtormatPreviewViewport::InvalidateDisplacementShadows()
 {
@@ -903,6 +927,7 @@ void SMixtormatPreviewViewport::RotateLighting(
 		StudioPreviewProfile->LightingRigRotation = EnvironmentYaw;
 		PreviewScene.UpdateScene(*StudioPreviewProfile, true, true, false, false);
 		PreviewScene.SetEnvironmentVisibility(false, true);
+		UpdateStudioFloor();
 		UpdateStudioEnvironmentLighting();
 	}
 	if (PreviewScene.DirectionalLight)
@@ -921,7 +946,7 @@ void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)
 		CameraDistance - ZoomDelta * 6.0f,
 		MixtormatPreviewCamera::DistanceMinimum,
 		MixtormatPreviewCamera::DistanceMaximum);
-	UpdateStudioFog();
+	UpdateStudioFloor();
 	UpdateCamera();
 }
 
@@ -1069,7 +1094,7 @@ void SMixtormatPreviewViewport::FocusCamera()
 		MixtormatPreviewCamera::DistanceMaximum);
 
 	// The fog trails the camera, and it is keyed off distance.
-	UpdateStudioFog();
+	UpdateStudioFloor();
 	UpdateCamera();
 }
 

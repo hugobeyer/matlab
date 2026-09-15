@@ -439,6 +439,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
 						]
 					]
+				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
@@ -650,11 +651,22 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 TSharedRef<SWidget> SMixtormat::BuildCompositionLibraryContextMenu(const FSoftObjectPath AssetPath)
 {
 	MixtormatMenu::FBuilder Menu;
+	// A saved mix can come in either way: as the layers that made it, still editable, or as the
+	// single baked layer they resolve to. The bake is the one the recipe already owns -- nothing
+	// is baked from here, because baking drives the shared compositor the open document is
+	// rendering through, and reaching into that from a library right-click would disturb it.
+	const UMixtormatMaterial* Composition = Cast<UMixtormatMaterial>(AssetPath.TryLoad());
+	const bool bHasBakedSurface = Composition && !Composition->BakedSurface.IsNull();
 	Menu.Caption(LOCTEXT("SavedMixContextCaption", "Saved Mix"))
 		.Item(
 			LOCTEXT("AddCompositionLayers", "Add All Layers"),
 			MixtormatUI::LucideIcon(TEXT("layers")),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::AddCompositionLayers, AssetPath))
+		.Item(
+			LOCTEXT("AddCompositionBakedLayer", "Add as Baked Layer"),
+			MixtormatUI::LucideIcon(TEXT("box")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::AddBakedLayerFromComposition, AssetPath))
+		.Enabled(bHasBakedSurface)
 		.Item(
 			LOCTEXT("BrowseComposition", "Show in Content Browser"),
 			MixtormatUI::LucideIcon(TEXT("folder-open")),
@@ -674,6 +686,38 @@ void SMixtormat::AddSurfaceFromLibrary(const FSoftObjectPath AssetPath)
 		? FText::FromString(Surface->GetName())
 		: Surface->DisplayName;
 	HandleSurfaceDropped(DisplayName, AssetPath);
+}
+
+// The flattened counterpart to AddCompositionLayers: one layer sourcing the mix's own baked
+// surface, instead of every layer that produced it. Per-pixel F0 is the one thing that does not
+// survive the bake -- it shared the alpha the height now occupies -- so the surface stands in
+// with a single IOR.
+void SMixtormat::AddBakedLayerFromComposition(const FSoftObjectPath AssetPath)
+{
+	const UMixtormatMaterial* Composition = Cast<UMixtormatMaterial>(AssetPath.TryLoad());
+	if (!Composition)
+	{
+		WorkingStatusText = TEXT("Saved mix could not be loaded");
+		return;
+	}
+	if (Composition->BakedSurface.IsNull())
+	{
+		WorkingStatusText = TEXT("Saved mix has no bake yet · bake it first");
+		return;
+	}
+	const UMixtormatSurface* Surface = Composition->BakedSurface.LoadSynchronous();
+	if (!Surface)
+	{
+		WorkingStatusText = TEXT("Baked surface is missing from disk");
+		return;
+	}
+
+	const FText DisplayName = Composition->DisplayName.IsEmpty()
+		? FText::FromString(Composition->GetName())
+		: Composition->DisplayName;
+	// Same path a library surface takes when it is dropped onto the stack: select it, then add
+	// one Material layer that sources it.
+	HandleSurfaceDropped(DisplayName, FSoftObjectPath(Surface));
 }
 
 void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)

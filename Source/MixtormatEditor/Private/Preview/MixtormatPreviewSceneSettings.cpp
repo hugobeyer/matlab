@@ -105,6 +105,10 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	// Quality changes must never restore inherited editor/project motion blur.
 	ShowFlags.SetMotionBlur(false);
 	ShowFlags.SetDynamicShadows(true);
+	// Height fog stays a screen pass over the mesh. Volumetric fog would put it in the froxel
+	// volume that Lumen samples, which fogs the traced reflections themselves -- the sky is what
+	// those are for. Off at every quality level, including the ones that trace.
+	ShowFlags.SetVolumetricFog(false);
 	switch (Quality)
 	{
 	case EMixtormatPreviewQuality::Low:

@@ -11,7 +11,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "CanvasTypes.h"
 #include "Components/BoxReflectionCaptureComponent.h"
 #include "Components/DirectionalLightComponent.h"
-#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/RectLightComponent.h"
 #include "Components/ReflectionCaptureComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -309,29 +308,6 @@ public:
 				(MeshComponent->Bounds.Origin - RimLightLocation).Rotation(),
 				RimLightLocation));
 
-		const FVector SpecularLightLocation = MeshComponent->Bounds.Origin
-			- ViewDirection * MeshRadius * 2.5f
-			- ViewRight * MeshRadius * 1.1f
-			+ ViewUp * MeshRadius * 0.35f;
-		SpecularLightComponent = NewObject<URectLightComponent>();
-		SpecularLightComponent->SetMobility(EComponentMobility::Movable);
-		SpecularLightComponent->SetIntensity(900.0f);
-		SpecularLightComponent->SetAttenuationRadius(MeshRadius * 6.0f);
-		SpecularLightComponent->SetSourceWidth(MeshRadius);
-		SpecularLightComponent->SetSourceHeight(MeshRadius * 2.25f);
-		SpecularLightComponent->SetCastShadows(false);
-		PreviewScene.AddComponent(
-			SpecularLightComponent,
-			FTransform(
-				(MeshComponent->Bounds.Origin - SpecularLightLocation).Rotation(),
-				SpecularLightLocation));
-
-		FogComponent = NewObject<UExponentialHeightFogComponent>();
-		FogComponent->SetFogHeightFalloff(0.01f);
-		FogComponent->SetFogMaxOpacity(1.0f);
-		FogComponent->SetFogInscatteringColor(MixtormatPalette::PreviewFog());
-		PreviewScene.AddComponent(FogComponent, FTransform::Identity);
-
 		const FMixtormatStudioLightSettings LightSettings =
 			MixtormatPreviewSceneSettings::GetStudioLighting(EMixtormatStudioLighting::Rim);
 		const FString EnvironmentPath = MixtormatPreviewSceneSettings::GetStudioEnvironmentObjectPath(
@@ -339,19 +315,56 @@ public:
 		EnvironmentCubemap.Reset(LoadObject<UTextureCube>(nullptr, *EnvironmentPath));
 		Profile->EnvironmentCubeMap = EnvironmentCubemap.Get();
 		Profile->EnvironmentCubeMapPath = EnvironmentPath;
-		Profile->SkyLightIntensity = 2.0f;
+		Profile->SkyLightIntensity = LightSettings.SkyBrightness;
 		Profile->DirectionalLightIntensity = LightSettings.LightBrightness;
 		PreviewScene.UpdateScene(*Profile, true, true, false, true);
 		PreviewScene.SetEnvironmentVisibility(false, true);
 		PreviewScene.SetFloorVisibility(true, true);
+		// Scaled to the sphere, so the floor material's own object-space fade lands in the same
+		// place relative to the subject here as it does in the live viewport. UpdateScene above
+		// resets the floor to the profile's scale, so this follows it. See UpdateStudioFloor.
+		if (const UStaticMeshComponent* Floor = PreviewScene.GetFloorMeshComponent())
+		{
+			if (const UStaticMesh* FloorMesh = Floor->GetStaticMesh())
+			{
+				const FVector FloorExtent = FloorMesh->GetBounds().BoxExtent;
+				const float FloorHalfSize = FMath::Max(FMath::Max(FloorExtent.X, FloorExtent.Y), 1.0f);
+				const float FloorScale =
+					MeshRadius * MixtormatPreviewSceneSettings::FloorRadiusInMeshRadii / FloorHalfSize;
+				PreviewScene.SetFloorMeshScale(FVector(FloorScale, FloorScale, 1.0f));
+			}
+		}
+		UMaterialInterface* FloorMaster = LoadObject<UMaterialInterface>(
+			nullptr,
+			*FMixtormatPaths::StudioFloorMaterialObjectPath());
+		if (FloorMaster)
+		{
+			FloorMaterial.Reset(UMaterialInstanceDynamic::Create(FloorMaster, GetTransientPackage()));
+			if (FloorMaterial.IsValid())
+			{
+				FloorMaterial->SetScalarParameterValue(
+					TEXT("DA_FadeIn"),
+					MeshRadius * MixtormatPreviewSceneSettings::FloorFadeInInMeshRadii);
+				FloorMaterial->SetScalarParameterValue(
+					TEXT("DA_FadeOut"),
+					MeshRadius * MixtormatPreviewSceneSettings::FloorFadeOutInMeshRadii);
+				PreviewScene.SetFloorMaterial(FloorMaterial.Get());
+			}
+		}
 		PreviewScene.SetLightBrightness(LightSettings.LightBrightness);
-		PreviewScene.SetSkyBrightness(2.0f);
+		// Same number the live viewport lands on at an untouched Skylight slider, so a gallery
+		// tile and the preview of the same surface are lit alike. It used to be a flat 2.0 here --
+		// the preset's own SkyBrightness was the one field this scene read past, and at ~7x the
+		// intended level it washed the sphere out before the rim and specular cards even landed.
+		const float SkyBrightness =
+			LightSettings.SkyBrightness * MixtormatPreviewSceneSettings::CubemapReflectionBoost;
+		PreviewScene.SetSkyBrightness(SkyBrightness);
 		if (PreviewScene.SkyLight)
 		{
 			PreviewScene.SkyLight->SetVisibility(true, true);
 			PreviewScene.SkyLight->SourceType = ESkyLightSourceType::SLS_SpecifiedCubemap;
 			PreviewScene.SkyLight->SetCubemap(EnvironmentCubemap.Get());
-			PreviewScene.SkyLight->SetIntensity(2.0f);
+			PreviewScene.SkyLight->SetIntensity(SkyBrightness);
 			PreviewScene.SkyLight->SetIndirectLightingIntensity(1.0f);
 			PreviewScene.SkyLight->SetCaptureIsDirty();
 			PreviewScene.SkyLight->MarkRenderStateDirty();
@@ -360,7 +373,8 @@ public:
 		ReflectionCaptureComponent = NewObject<UBoxReflectionCaptureComponent>();
 		ReflectionCaptureComponent->ReflectionSourceType = EReflectionSourceType::SpecifiedCubemap;
 		ReflectionCaptureComponent->Cubemap = EnvironmentCubemap.Get();
-		ReflectionCaptureComponent->Brightness = 10.0f;
+		ReflectionCaptureComponent->Brightness =
+			MixtormatPreviewSceneSettings::ReflectionCaptureBrightness;
 		PreviewScene.AddComponent(
 			ReflectionCaptureComponent,
 			FTransform(FRotator::ZeroRotator, MeshComponent->Bounds.Origin));
@@ -384,17 +398,9 @@ public:
 		{
 			PreviewScene.RemoveComponent(MeshComponent);
 		}
-		if (FogComponent)
-		{
-			PreviewScene.RemoveComponent(FogComponent);
-		}
 		if (RimLightComponent)
 		{
 			PreviewScene.RemoveComponent(RimLightComponent);
-		}
-		if (SpecularLightComponent)
-		{
-			PreviewScene.RemoveComponent(SpecularLightComponent);
 		}
 		if (ReflectionCaptureComponent)
 		{
@@ -467,14 +473,6 @@ public:
 			0.0f).Vector();
 		const FVector CameraLocation = Target - ViewDirection * CameraDistance;
 		const FRotator CameraRotation = (Target - CameraLocation).Rotation();
-
-		const float MeshRadius = FMath::Max(MeshComponent->Bounds.SphereRadius, 0.5f);
-		const float StrongFadeDistance = MeshRadius * 4.0f;
-		FogComponent->SetStartDistance(CameraDistance * 2.0f);
-		FogComponent->SetFogDensity(FMath::Clamp(
-			-FMath::Loge(0.05f) * 1000.0f / StrongFadeDistance,
-			0.001f,
-			20.0f));
 
 		TStrongObjectPtr<UTextureRenderTarget2D> RenderTarget(
 			NewObject<UTextureRenderTarget2D>(GetTransientPackage()));
@@ -561,10 +559,9 @@ private:
 	FAdvancedPreviewScene PreviewScene;
 	TUniquePtr<FPreviewSceneProfile> Profile;
 	TStrongObjectPtr<UTextureCube> EnvironmentCubemap;
+	TStrongObjectPtr<UMaterialInstanceDynamic> FloorMaterial;
 	UStaticMeshComponent* MeshComponent = nullptr;
-	UExponentialHeightFogComponent* FogComponent = nullptr;
 	URectLightComponent* RimLightComponent = nullptr;
-	URectLightComponent* SpecularLightComponent = nullptr;
 	UBoxReflectionCaptureComponent* ReflectionCaptureComponent = nullptr;
 };
 

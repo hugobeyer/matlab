@@ -49,6 +49,7 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 	static const TArray<FMixtormatThemeNumber> Entries = {
 		THEME_NUMBER("Rows", RowHeight, 12.0f, 48.0f),
 		THEME_NUMBER("Rows", RowGap, 0.0f, 24.0f),
+		THEME_NUMBER("Rows", SegmentedControlGap, 0.0f, 24.0f),
 		THEME_NUMBER("Rows", SliderRowGap, 0.0f, 24.0f),
 		THEME_NUMBER("Rows", RowTextInset, 1.0f, 24.0f),
 		THEME_NUMBER("Rows", RowLabelGap, 0.0f, 32.0f),
@@ -107,13 +108,16 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Menus and dialogs", DialogActionsTopMargin, 0.0f, 48.0f),
 		THEME_NUMBER("Typography", FontBody, 8.0f, 24.0f),
 		THEME_NUMBER("Typography", FontCaption, 6.0f, 20.0f),
+		THEME_NUMBER("Typography", FontCardTitle, 6.0f, 20.0f),
 		THEME_NUMBER("Typography", FontTile, 6.0f, 20.0f),
 		THEME_NUMBER("Typography", FontGroupHeader, 6.0f, 20.0f),
 		THEME_NUMBER("Typography", FontLayerSource, 6.0f, 20.0f),
 		THEME_NUMBER("Typography", FontBadge, 6.0f, 20.0f),
 		THEME_NUMBER("Typography", FontDialogLabel, 6.0f, 24.0f),
 		THEME_NUMBER("Typography", FontMaskBarHeading, 6.0f, 24.0f),
-		THEME_NUMBER("Typography", FontDragGhostLabel, 6.0f, 24.0f)
+		THEME_NUMBER("Typography", FontDragGhostLabel, 6.0f, 24.0f),
+		THEME_NUMBER("Typography", CardTitleBold, 0.0f, 1.0f),
+		THEME_NUMBER("Typography", GroupHeaderBold, 0.0f, 1.0f)
 	};
 #undef THEME_NUMBER
 	return Entries;
@@ -126,7 +130,8 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(Window), THEME_COLOR(TopBar), THEME_COLOR(Shell),
 		THEME_COLOR(Panel), THEME_COLOR(RaisedPanel), THEME_COLOR(RaisedPanelHover),
 		THEME_COLOR(GroupSurround), THEME_COLOR(HeaderTint), THEME_COLOR(HeaderText),
-		THEME_COLOR(RowText), THEME_COLOR(CaptionText), THEME_COLOR(LayerName),
+		THEME_COLOR(RowText), THEME_COLOR(CaptionText), THEME_COLOR(CardTitleText),
+		THEME_COLOR(LayerName),
 		THEME_COLOR(LayerSource), THEME_COLOR(LayerEdge), THEME_COLOR(Accent),
 		THEME_COLOR(AccentBright), THEME_COLOR(SelectionFill), THEME_COLOR(FocusFill),
 		THEME_COLOR(Border), THEME_COLOR(BorderStrong), THEME_COLOR(WellTop),

@@ -24,6 +24,22 @@ namespace
 		return Child.Type == EMixtormatLayerChildType::Effect;
 	}
 
+	// A mask owns blurs, an effect owns masks. Kept apart from CanOwnScopedMasks because the two
+	// answer different questions and only happen to share a mechanism: what may be scoped under
+	// this, and what may this be scoped under.
+	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Mask;
+	}
+
+	// Blur and Curvature are both mask filters: scoped under a mask, consumed by it, never
+	// standing in the chain on their own. One predicate rather than two identical ones.
+	bool IsMaskFilter(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Blur
+			|| Child.Type == EMixtormatLayerChildType::Curvature;
+	}
+
 	bool BuildMaskLayerFromPath(const FSoftObjectPath& MaskPath, FMixtormatMaskLayer& OutMask)
 	{
 		UObject* MaskObject = MaskPath.TryLoad();
@@ -468,6 +484,77 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+// A Blur scoped beneath the mask it softens, inserted after any blurs already on it so the
+// order in the stack is the order they were added. It is a child rather than a field on the mask
+// for one reason: only a child can be a driver's destination, be published as a source, or stand
+// as one definition behind several instances.
+FReply SMixtormat::AddBlurToMask(const int32 LayerIndex, const int32 OwnerChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
+		|| !CanOwnScopedBlurs(WorkingLayers[LayerIndex].Children[OwnerChildIndex]))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
+	int32 InsertAt = OwnerChildIndex + 1;
+	while (Layer.Children.IsValidIndex(InsertAt)
+		&& Layer.Children[InsertAt].ScopeOwnerChildId == OwnerId)
+	{
+		++InsertAt;
+	}
+
+	FMixtormatLayerChild BlurChild;
+	BlurChild.Type = EMixtormatLayerChildType::Blur;
+	BlurChild.ScopeOwnerChildId = OwnerId;
+	Layer.Children.Insert(MoveTemp(BlurChild), InsertAt);
+
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = InsertAt;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+// The other mask filter, inserted the same way and for the same reasons as a Blur.
+FReply SMixtormat::AddCurvatureToMask(const int32 LayerIndex, const int32 OwnerChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
+		|| !CanOwnScopedBlurs(WorkingLayers[LayerIndex].Children[OwnerChildIndex]))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
+	int32 InsertAt = OwnerChildIndex + 1;
+	while (Layer.Children.IsValidIndex(InsertAt)
+		&& Layer.Children[InsertAt].ScopeOwnerChildId == OwnerId)
+	{
+		++InsertAt;
+	}
+
+	FMixtormatLayerChild CurvatureChild;
+	CurvatureChild.Type = EMixtormatLayerChildType::Curvature;
+	CurvatureChild.ScopeOwnerChildId = OwnerId;
+	Layer.Children.Insert(MoveTemp(CurvatureChild), InsertAt);
+
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = InsertAt;
 	ExpandedLayerIndices.Add(LayerIndex);
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
@@ -2231,6 +2318,16 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("PatternIdChildName", "Pattern IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::Blur)
+	{
+		// Named for what it does rather than for the mask it is on: the row sits indented under
+		// that mask already, so repeating its name would be the only thing on the line.
+		return LOCTEXT("BlurChildName", "Blur");
+	}
+	if (Child.Type == EMixtormatLayerChildType::Curvature)
+	{
+		return LOCTEXT("CurvatureChildName", "Curvature");
+	}
 	if (Child.Type == EMixtormatLayerChildType::ColorId)
 	{
 		// Named after its map rather than after itself, the way a painted mask row is: two id
@@ -2389,6 +2486,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 	{
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
+		const bool bBlur = Child.Type == EMixtormatLayerChildType::Blur;
+		const bool bCurvature = Child.Type == EMixtormatLayerChildType::Curvature;
 		// Procedural children share row actions, not mask blending semantics.
 		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
 			|| Child.Type == EMixtormatLayerChildType::Craquelure
@@ -2449,8 +2548,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						SetMaskEnabled(Next, LayerIndex, ChildIndex);
 					}
 				})
-				.OnGetContextMenu_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
+				.OnGetContextMenu_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated, bBlur, bCurvature]()
 				{
+					if (bBlur || bCurvature)
+					{
+						// One menu: a blur and a curvature offer the same actions, because what
+						// they have in common -- scoped, consumed, instanceable -- is everything
+						// the menu is about.
+						return BuildBlurContextMenu(LayerIndex, ChildIndex);
+					}
 					if (bGenerated)
 					{
 						return BuildGeneratedContextMenu(LayerIndex, ChildIndex);
@@ -2496,6 +2602,8 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
 	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
+	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
+	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -2955,6 +3063,77 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	return Menu.Build();
 }
 
+// Fewer entries than a mask's, because a blur has none of what that menu offers: no source to
+// replace, no blend mode, nothing to publish. What it shares is the instancing and the removal.
+TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("DuplicateBlurContext", "Duplicate"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			DuplicateLayerChild(LayerIndex, ChildIndex);
+		}));
+	AddSharedChildMenuItems(Menu, LayerIndex, ChildIndex);
+	Menu.Separator();
+	Menu.Item(
+		LOCTEXT("RemoveMaskFilterContext", "Remove Filter"),
+		MixtormatIcons::Trash(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+		{
+			RemoveMaskFromLayer(LayerIndex, ChildIndex);
+		}))
+		.Destructive();
+	return Menu.Build();
+}
+
+FMixtormatMaskCurvature* SMixtormat::GetSelectedLayerCurvature()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Curvature ? &Child.Curvature : nullptr;
+}
+
+const FMixtormatMaskCurvature* SMixtormat::GetSelectedLayerCurvature() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child =
+		WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Curvature ? &Child.Curvature : nullptr;
+}
+
+FMixtormatMaskBlur* SMixtormat::GetSelectedLayerBlur()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Blur ? &Child.Blur : nullptr;
+}
+
+const FMixtormatMaskBlur* SMixtormat::GetSelectedLayerBlur() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| !WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child =
+		WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
+	return Child.Type == EMixtormatLayerChildType::Blur ? &Child.Blur : nullptr;
+}
+
 TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, const int32 MaskIndex)
 {
 	// A menu, like every other right-click in the stack. This used to open a 340px gallery titled
@@ -2978,6 +3157,20 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 			ReplaceMaskInLayer(LayerIndex, MaskIndex, ReplacementPath);
 		}))
 		.Enabled(TAttribute<bool>(!ReplacementPath.IsNull()));
+	Menu.Item(
+		LOCTEXT("AddBlurToMaskContext", "Add Blur"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
+		{
+			AddBlurToMask(LayerIndex, MaskIndex);
+		}));
+	Menu.Item(
+		LOCTEXT("AddCurvatureToMaskContext", "Add Curvature"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
+		{
+			AddCurvatureToMask(LayerIndex, MaskIndex);
+		}));
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("DuplicateMaskContext", "Duplicate"),

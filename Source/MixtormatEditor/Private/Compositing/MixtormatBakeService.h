@@ -6,6 +6,7 @@
 
 class UMaterialInstanceConstant;
 class UMixtormatMaterial;
+class UMixtormatSurface;
 class UTexture2D;
 class UTextureRenderTarget2D;
 
@@ -36,6 +37,10 @@ struct FMixtormatBakeResult
 	UTexture2D* Normal = nullptr;
 	UTexture2D* RAM = nullptr;
 	UTexture2D* Height = nullptr;
+	// RAM with height repacked into its alpha, and the surface that points at it. What a layer
+	// needs; the four above are what the master material needs.
+	UTexture2D* RAMH = nullptr;
+	UMixtormatSurface* Surface = nullptr;
 	UMaterialInstanceConstant* Material = nullptr;
 	TArray<FString> CreatedAssetPaths;
 	TArray<FString> UpdatedAssetPaths;

@@ -189,6 +189,15 @@ namespace MixtormatGpuCompositor
 		float Contrast = 1.0f;
 		float Offset = 0.0f;
 		bool bInvert = false;
+		// Summed from every enabled Blur child scoped to this mask. Zero on an axis skips that
+		// dispatch. A node in the recipe, a number by the time it reaches here -- which is what
+		// lets the blur be driven and instanced without the pass code knowing it exists.
+		float BlurRadiusX = 0.0f;
+		float BlurRadiusY = 0.0f;
+		// Flattened from the Curvature children scoped to this mask, in chain order. Unlike the
+		// blur radii these do not sum: two curvature filters are two separate narrowings, applied
+		// one after the other, and collapsing them would change what they mean.
+		TArray<FMixtormatMaskCurvature, TInlineAllocator<2>> CurvatureFilters;
 	};
 
 	struct FColorIdRenderData
@@ -622,7 +631,7 @@ namespace MixtormatGpuCompositor
 		float Saturation = 1.0f;
 		float Value = 1.0f;
 		float RoughnessBias = 0.5f;
-		float RoughnessContrast = 1.0f;
+		float RoughnessContrast = 0.0f;
 		float RoughnessOffset = 0.0f;
 		float FillRoughness = 0.5f;
 		float FillMetallic = 0.0f;
@@ -638,6 +647,7 @@ namespace MixtormatGpuCompositor
 		float HeightInfluence = 1.0f;
 		float HeightBoost = 1.0f;
 		float HeightLevelOffset = 0.0f;
+		float HeightShape = 0.0f;
 		float HeightBlendAmount = 1.0f;
 		float HeightThreshold = 0.5f;
 		float HeightRange = 0.1f;

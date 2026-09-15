@@ -25,7 +25,7 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 			bHasTitle
 				? StaticCastSharedRef<SWidget>(
 					SNew(STextBlock)
-					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
+					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.CardTitle")))
 					.Text(InArgs._Title.ToUpper()))
 				: SNullWidget::NullWidget
 		];

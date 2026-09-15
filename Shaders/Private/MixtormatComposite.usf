@@ -127,6 +127,7 @@ float NormalInfluence;
 float HeightInfluence;
 float HeightBoost;
 float HeightLevelOffset;
+float HeightShape;
 float HeightBlendAmount;
 
 // Scalar Drivers. Two slots this step, one per driven scalar: slot 0 modulates RoughnessInfluence,
@@ -320,7 +321,7 @@ float AdjustRoughness(float Roughness)
 {
 	float SafeBias = clamp(RoughnessBias, 0.01f, 0.99f);
 	float Biased = Roughness / ((((1.0f / SafeBias) - 2.0f) * (1.0f - Roughness)) + 1.0f);
-	float Contrasted = lerp(0.5f, saturate(Biased), RoughnessContrast);
+	float Contrasted = 0.5f + (Biased - 0.5f) * (RoughnessContrast + 1.0f);
 	return saturate(Contrasted + RoughnessOffset);
 }
 
@@ -517,6 +518,13 @@ float SampleIncomingHeight(float2 UV)
 	// layer's height sees the same boosted value -- the displacement, the blend comparison and
 	// the normals derived from it. Height is stored centred on 0.5, so scaling the deviation
 	// deepens pits exactly as much as it raises peaks and leaves the average level alone.
+	//
+	// Bulge or pinch first, ahead of the boost so the curve always sees a clean 0..1. A power curve is
+	// the shape this wants because it pins both ends: the layer's deepest pit stays its deepest
+	// and its highest peak stays its highest, and only the distribution between them moves --
+	// which is what separates reshaping relief from simply deepening it, as HeightBoost does.
+	// The exponent runs 1/4 to 4 across the slider, and 0 lands exactly on 1.
+	SourceHeight = pow(saturate(SourceHeight), exp2(-HeightShape * 2.0f));
 	SourceHeight = saturate(
 		(SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset);
 	if (DirectHeightComparison != 0)

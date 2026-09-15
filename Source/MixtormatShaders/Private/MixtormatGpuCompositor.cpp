@@ -148,6 +148,7 @@ public:
 		SHADER_PARAMETER(float, HeightInfluence)
 		SHADER_PARAMETER(float, HeightBoost)
 		SHADER_PARAMETER(float, HeightLevelOffset)
+		SHADER_PARAMETER(float, HeightShape)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
@@ -422,6 +423,7 @@ namespace MixtormatGpuCompositor
 		Parameters->LayerF0 = Layer.LayerF0;
 		Parameters->HeightBoost = Layer.HeightBoost;
 		Parameters->HeightLevelOffset = Layer.HeightLevelOffset;
+		Parameters->HeightShape = Layer.HeightShape;
 		Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
 		Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
 		Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
@@ -1215,6 +1217,14 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				continue;
 			}
 
+			// Consumed by the mask it is scoped to, never a node of its own down here. Skipped
+			// explicitly so it cannot fall through to whatever handles an unrecognised type.
+			if (LayerChild.Type == EMixtormatLayerChildType::Blur
+				|| LayerChild.Type == EMixtormatLayerChildType::Curvature)
+			{
+				continue;
+			}
+
 			if (LayerChild.Type == EMixtormatLayerChildType::Mask)
 			{
 				const FMixtormatMaskLayer& MaskLayer = LayerChild.Mask;
@@ -1316,6 +1326,35 @@ bool FMixtormatGpuCompositor::RequestCompose(
 				MaskData.Contrast = FMath::Clamp(MaskLayer.Shaping.Contrast, 0.0f, 10.0f);
 				MaskData.Offset = FMath::Clamp(MaskLayer.Shaping.Offset, -1.0f, 1.0f);
 				MaskData.bInvert = MaskLayer.Shaping.bInvert;
+				// Blur is a node in the recipe -- so it can be driven, published and instanced --
+				// but a pair of numbers by the time the passes see it. Summed rather than maxed:
+				// two blurs stacked on one mask should soften more than either alone, which is
+				// what stacking them plainly means. Clamped to the shader's 32-tap unroll.
+				for (const FMixtormatLayerChild& BlurChild : Layer.Children)
+				{
+					if (BlurChild.Type != EMixtormatLayerChildType::Blur
+						|| BlurChild.ScopeOwnerChildId != LayerChild.ChildId
+						|| !BlurChild.Blur.bEnabled)
+					{
+						continue;
+					}
+					MaskData.BlurRadiusX += FMath::Max(BlurChild.Blur.RadiusX, 0.0f);
+					MaskData.BlurRadiusY += FMath::Max(BlurChild.Blur.RadiusY, 0.0f);
+				}
+				MaskData.BlurRadiusX = FMath::Min(MaskData.BlurRadiusX, 32.0f);
+				MaskData.BlurRadiusY = FMath::Min(MaskData.BlurRadiusY, 32.0f);
+				// Gathered in the order they appear, and kept as a list rather than reduced: each
+				// one narrows what the one before it left, so two of them are not one of anything.
+				for (const FMixtormatLayerChild& CurvatureChild : Layer.Children)
+				{
+					if (CurvatureChild.Type != EMixtormatLayerChildType::Curvature
+						|| CurvatureChild.ScopeOwnerChildId != LayerChild.ChildId
+						|| !CurvatureChild.Curvature.KeepsAnything())
+					{
+						continue;
+					}
+					MaskData.CurvatureFilters.Add(CurvatureChild.Curvature);
+				}
 				if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
 				{
 					Data.bHasMask = true;
@@ -1847,6 +1886,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 		Data.LayerF0 = FMath::Square((LayerIOR - 1.0f) / (LayerIOR + 1.0f));
 		Data.HeightBoost = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
 		Data.HeightLevelOffset = FMath::Clamp(Layer.HeightLevelOffset, -1.0f, 1.0f);
+		Data.HeightShape = FMath::Clamp(Layer.HeightShape, -1.0f, 1.0f);
 		Data.BaseColorBlendMode = Layer.BaseColorBlendMode;
 		Data.BaseColorBlendAmount = FMath::Clamp(Layer.BaseColorBlendAmount, 0.0f, 1.0f);
 		Data.BaseColorInfluence = FMath::Clamp(Layer.BaseColorInfluence, 0.0f, 1.0f);
@@ -2440,7 +2480,7 @@ void FMixtormatGpuCompositor::BindOutputs(UMaterialInstanceDynamic& MaterialInst
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_Height"), GetHeightOutput());
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_Tiling"), 1.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessBias"), 0.5f);
-	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessContrast"), 1.0f);
+	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessContrast"), 0.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessOffset"), 0.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_NormalIntensity"), 1.0f);
 	// DA_DielectricF0 / DA_UsePackedF0 intentionally not set: M_Mixtormat_Substrate has no such

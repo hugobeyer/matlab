@@ -259,14 +259,24 @@ namespace MixtormatLayerPreview
 				Subtract(Material, Divide(Material, Constant(Material, 1.0f), SafeBias), Constant(Material, 2.0f)),
 				OneMinus(Material, RawRoughness)),
 			Constant(Material, 1.0f));
-		UMaterialExpression* RoughnessBiased = Saturate(
-			Material,
-			Divide(Material, RawRoughness, BiasDenominator));
-		UMaterialExpression* RoughnessContrasted = Lerp(
+		// No saturate here. The bias curve already maps [0,1] onto [0,1] -- the SafeBias clamp is
+		// what keeps its denominator positive -- and the saturate after the offset catches whatever
+		// the contrast expansion pushes past the ends.
+		UMaterialExpression* RoughnessBiased = Divide(Material, RawRoughness, BiasDenominator);
+		// Signed around zero, matching M_Mixtormat_Substrate's own roughness bias function:
+		// the slider is a departure from untouched, so 0 passes the biased value straight through
+		// and -1 collapses it to flat 0.5. A lerp against 0.5 put neutral at 1 and flat at 0, which
+		// is the same curve read backwards -- and double-applied once the master function changed.
+		UMaterialExpression* RoughnessContrasted = Add(
 			Material,
 			Constant(Material, 0.5f),
-			RoughnessBiased,
-			ScalarParameter(Material, ParameterName(LayerIndex, TEXT("RoughnessContrast")), 1.0f));
+			Multiply(
+				Material,
+				Subtract(Material, RoughnessBiased, Constant(Material, 0.5f)),
+				Add(
+					Material,
+					ScalarParameter(Material, ParameterName(LayerIndex, TEXT("RoughnessContrast")), 0.0f),
+					Constant(Material, 1.0f))));
 		UMaterialExpression* AdjustedRoughness = Saturate(
 			Material,
 			Add(
@@ -524,7 +534,7 @@ void FMixtormatLayerPreview::ApplyLayers(
 			TEXT("Tiling"),
 			Layer ? FMath::Max(1.0f, FMath::RoundToFloat(Layer->Tiling)) : 1.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessBias"), Layer ? Layer->RoughnessBias : 0.5f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessContrast"), Layer ? Layer->RoughnessContrast : 1.0f);
+		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessContrast"), Layer ? Layer->RoughnessContrast : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessOffset"), Layer ? Layer->RoughnessOffset : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("NormalIntensity"), Layer && Layer->Type != EMixtormatLayerType::Fill ? Layer->HeightBoost : 0.0f);
 

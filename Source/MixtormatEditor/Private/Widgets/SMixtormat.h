@@ -86,7 +86,6 @@ private:
 	void SetPreviewDisplacementAmount(float Amount);
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
-	void SetPreviewFogBrightness(float Brightness);
 	void PreviewSelectedSurfaceWithDisplacement();
 	FReply ToggleFeaturePreview(EMixtormatDebugPreviewMode Mode);
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
@@ -114,6 +113,13 @@ private:
 	FReply SelectWorkingLayer(int32 LayerIndex);
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
+	FReply AddBlurToMask(int32 LayerIndex, int32 OwnerChildIndex);
+	FReply AddCurvatureToMask(int32 LayerIndex, int32 OwnerChildIndex);
+	FMixtormatMaskCurvature* GetSelectedLayerCurvature();
+	const FMixtormatMaskCurvature* GetSelectedLayerCurvature() const;
+	TSharedRef<SWidget> BuildMaskCurvatureControls();
+	TSharedRef<SWidget> BuildCurvatureSourceMenu(int32 LayerIndex, int32 ChildIndex);
+	TSharedRef<SWidget> BuildCurvatureModeMenu(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignScopedMaskToChild(int32 LayerIndex, int32 OwnerChildIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceMaskInLayer(int32 LayerIndex, int32 MaskIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
@@ -725,6 +731,9 @@ private:
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
+	TSharedRef<SWidget> BuildBlurContextMenu(int32 LayerIndex, int32 ChildIndex);
+	FMixtormatMaskBlur* GetSelectedLayerBlur();
+	const FMixtormatMaskBlur* GetSelectedLayerBlur() const;
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
 
@@ -746,6 +755,7 @@ private:
 	TSharedRef<SWidget> BuildCompositionLibraryContextMenu(FSoftObjectPath AssetPath);
 	void AddSurfaceFromLibrary(FSoftObjectPath AssetPath);
 	void AddCompositionLayers(FSoftObjectPath AssetPath);
+	void AddBakedLayerFromComposition(FSoftObjectPath AssetPath);
 	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
@@ -765,6 +775,7 @@ private:
 	void AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel);
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
+	TSharedRef<SWidget> BuildMaskBlurControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
 	TSharedRef<SWidget> BuildStainControls();
 	TSharedRef<SWidget> BuildStainModeMenu();
@@ -840,7 +851,7 @@ private:
 	TStrongObjectPtr<UMixtormatMaterial> WorkingMaterialAsset;
 	float CurrentTiling = 2.0f;
 	float CurrentRoughnessBias = 0.5f;
-	float CurrentRoughnessContrast = 1.0f;
+	float CurrentRoughnessContrast = 0.0f;
 	float CurrentRoughnessOffset = 0.0f;
 	bool bHasWorkingMaterial = false;
 	bool bHasSelectedLayer = false;
@@ -884,7 +895,6 @@ private:
 	// Multipliers on the active lighting mode's own brightness; 1 is what that mode intended.
 	float PreviewLightIntensity = 1.0f;
 	float PreviewSkylightIntensity = 1.0f;
-	float PreviewFogBrightness = 0.0f;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;
 	FString BakeOutputBaseName;

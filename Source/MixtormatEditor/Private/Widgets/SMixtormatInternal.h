@@ -386,6 +386,24 @@ namespace MixtormatUI
 	}
 
 
+	inline FText CurvatureSourceText(const EMixtormatCurvatureSource Source)
+	{
+		return Source == EMixtormatCurvatureSource::Height
+			? LOCTEXT("CurvSourceHeight", "Surface Height")
+			: LOCTEXT("CurvSourceMask", "Mask Itself");
+	}
+
+	inline FText CurvatureModeText(const EMixtormatCurvatureMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatCurvatureMode::Gaussian: return LOCTEXT("CurvModeGaussian", "Gaussian");
+		case EMixtormatCurvatureMode::MaxPrincipal: return LOCTEXT("CurvModeMax", "Max Principal");
+		case EMixtormatCurvatureMode::MinPrincipal: return LOCTEXT("CurvModeMin", "Min Principal");
+		default: return LOCTEXT("CurvModeMean", "Mean");
+		}
+	}
+
 	inline FText ErosionCurvatureModeText(const EMixtormatErosionCurvatureMode Mode)
 	{
 		switch (Mode)

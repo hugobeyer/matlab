@@ -34,6 +34,10 @@ namespace MixtormatTokens
 	inline float RowHeight = 18.0f;
 	inline float RowGap = 3.0f;
 	constexpr float RowGapTight = 2.0f;
+	// A segmented control heading a run of rows takes more air under it than two rows take
+	// between them: it is the mode switch everything below is read against, not another
+	// value in the same column.
+	inline float SegmentedControlGap = 5.0f;
 
 	// Vertical gap between two stacked value rows. Every slider in a panel is spaced by this and
 	// nothing else -- it was a literal 2 in AddSliderRow and in forty inline slot paddings, which
@@ -416,6 +420,10 @@ namespace MixtormatTokens
 	// rows are the densest thing in the tool, and weight reads at this size where size does not.
 	inline float FontSliderLabel = 9.0f;
 	inline float FontCaption = 8.0f;
+	// A card's own title, apart from the caption tier it used to borrow. A card title heads a
+	// sheet; a caption names a run of rows inside one. They were the same style, which is why a
+	// card read as another caption that happened to sit higher up.
+	inline float FontCardTitle = 8.0f;
 	inline float FontTile = 8.0f;
 	// Group headers: small tracked caps. A header names a group rather than being read as content,
 	// so it sits under the caption tier -- the extra header height carries it instead of the type.
@@ -427,6 +435,12 @@ namespace MixtormatTokens
 	inline float FontDialogLabel = 9.0f;
 	inline float FontMaskBarHeading = 9.0f;
 	inline float FontDragGhostLabel = 9.0f;
+
+	// Weight as a number, because the live theme carries numbers and colours and nothing else.
+	// At or above 0.5 the face is Bold, below it Regular -- there is no half-weight in the
+	// default font family, so the slider is a switch that happens to be continuous.
+	inline float CardTitleBold = 0.0f;
+	inline float GroupHeaderBold = 1.0f;
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.

@@ -20,10 +20,16 @@ TSharedRef<SWidget> Make(
 	const TSharedRef<SWidget>& TrailingContent,
 	const TAttribute<FText>& ToolTip)
 {
+	// The label takes the slack but sits at its right end, so it reads up against the control it
+	// names instead of across a gap from it. Every caller here is a label in front of a chip,
+	// dropdown or toggle, and a label pinned to the far left left the pairing to be inferred
+	// from vertical position alone.
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
+		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
 		[
 			SNew(STextBlock)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))

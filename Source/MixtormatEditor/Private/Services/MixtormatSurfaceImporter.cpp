@@ -469,7 +469,7 @@ namespace MixtormatImporter
 		const float RoughnessOffset = UMaterialEditingLibrary::GetMaterialInstanceScalarParameterValue(
 			&PreviewMaterial, TEXT("DA_RoughnessOffset"));
 		return FString::Printf(
-			TEXT("SurfaceThumbnailV17:%d:ReflectionBrightness10:CompileReadySky:ShapedLeftRimAndSpecular:Medium:NoAA:NoHeight:SceneCaptureView:PluginFerndaleSky3:IOR%.6g:R%.6g,%.6g,%.6g:%s:%s:%s"),
+			TEXT("SurfaceThumbnailV19:%d:ReflectionBrightness10:StudioPresetSky:NoFogScaledFloor:ShapedLeftRim:Medium:NoAA:NoHeight:SceneCaptureView:PluginFerndaleSky3:IOR%.6g:R%.6g,%.6g,%.6g:%s:%s:%s"),
 			MixtormatPreviewSceneSettings::SurfaceThumbnailResolution,
 			DefaultIOR,
 			RoughnessBias,

@@ -129,6 +129,9 @@ namespace MixtormatPalette
 	inline FLinearColor IconHover()    { return Hex(0xE6E6E6); }
 	inline FLinearColor HeaderText()   { return FMixtormatLiveTheme::ResolveColor(TEXT("HeaderText"), Hex(0xA8A8A8)); }
 	inline FLinearColor CaptionText()  { return FMixtormatLiveTheme::ResolveColor(TEXT("CaptionText"), Hex(0x6E6E6E)); }
+	// Between CaptionText and HeaderText on purpose: a card title outranks the captions inside
+	// the card and sits under the foldout header that contains it.
+	inline FLinearColor CardTitleText(){ return FMixtormatLiveTheme::ResolveColor(TEXT("CardTitleText"), Hex(0x8C8C8C)); }
 	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.6f); }
 	inline FLinearColor BadgeSurface() { return Hex(0x0d0d0d); }
 	inline FLinearColor DisabledText() { return Hex(0xFFFFFF, 0.20f); }
@@ -143,9 +146,11 @@ namespace MixtormatPalette
 	inline FLinearColor ThumbnailPlaceholder() { return Hex(0x141414); }
 	inline FLinearColor TileNameStrip() { return Hex(0x040404, 0.90f); }
 	inline FLinearColor TileNameText() { return Hex(0xDADADA); }
-	inline FLinearColor PreviewBackground() { return Hex(0x050609); }
-	inline FLinearColor PreviewFog() { return Hex(0x020203); }
-	inline FLinearColor PreviewFogDense() { return Hex(0x24282C); }
+	// Black, and deliberately. The studio floor fades to an unlit black slab -- no emissive --
+	// so the background has to be the one colour that slab can reach exactly. The old 0x050609
+	// was already indistinguishable from black anyway: 0.0015 linear, which the tonemapper's
+	// toe and the -0.5 exposure bias crush to zero before it ever reaches the screen.
+	inline FLinearColor PreviewBackground() { return Hex(0x000000); }
 	inline FLinearColor ErrorText() { return Hex(0xE63333); }
 	inline FLinearColor SegmentActiveText() { return Hex(0xE8F0F8); }
 	inline FLinearColor SegmentShade() { return Hex(0x000000, MixtormatTokens::SegmentShadeAlpha); }

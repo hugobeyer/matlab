@@ -162,18 +162,6 @@ void SMixtormat::SetPreviewSkylightIntensity(const float Scale)
 	}
 }
 
-void SMixtormat::SetPreviewFogBrightness(const float Brightness)
-{
-	PreviewFogBrightness = FMath::Clamp(Brightness, 0.0f, 1.0f);
-	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-	{
-		if (Viewport.IsValid())
-		{
-			Viewport->SetPreviewFogBrightness(PreviewFogBrightness);
-		}
-	}
-}
-
 void SMixtormat::SetPreviewDisplacementAmount(const float Amount)
 {
 	PreviewDisplacementAmount = FMath::Clamp(Amount, 0.0f, 4.0f);
@@ -713,20 +701,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
 			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflections. Lower values preserve stronger directional relief shadows."))
 	];
-	SceneControls->AddSlot().AutoHeight()
-	[
-		MakeSlider(
-			LOCTEXT("PreviewFogBrightnessLabel", "Fog"),
-			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFogBrightness); }),
-			0.0, 1.0, 0.0, 0.01, false,
-			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-			{
-				SetPreviewFogBrightness(static_cast<float>(Value));
-			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewFogBrightness(0.0f); }),
-			LOCTEXT("PreviewFogBrightnessHint", "Blend the height fog from near-black to a dark cool gray."))
-	];
-
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
 	CameraControls->AddSlot().AutoHeight()
 	[
@@ -862,7 +836,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		PreviewViewport->SetCameraFov(PreviewFov);
 		PreviewViewport->SetStudioLighting(StudioLighting);
 		PreviewViewport->SetGlobalUVRotation90(bGlobalUVRotation90);
-		PreviewViewport->SetPreviewFogBrightness(PreviewFogBrightness);
 	}
 	return PreviewPanel;
 }

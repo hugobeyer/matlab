@@ -6,6 +6,8 @@
 #include "Engine/DataAsset.h"
 #include "UObject/SoftObjectPtr.h"
 #include "MixtormatEffect.h"
+#include "MixtormatMaskBlur.h"
+#include "MixtormatMaskCurvature.h"
 #include "MixtormatMaskShaping.h"
 #include "MixtormatMaterial.generated.h"
 
@@ -105,7 +107,9 @@ enum class EMixtormatParameterOwnerType : uint8
 	RandomId UMETA(DisplayName = "Random From IDs"),
 	PatternId UMETA(DisplayName = "Pattern IDs"),
 	RampId UMETA(DisplayName = "Ramp From IDs"),
-	MaskShaping UMETA(DisplayName = "Mask Shaping")
+	MaskShaping UMETA(DisplayName = "Mask Shaping"),
+	Blur UMETA(DisplayName = "Blur"),
+	Curvature UMETA(DisplayName = "Curvature")
 };
 
 UENUM(BlueprintType)
@@ -2045,7 +2049,14 @@ enum class EMixtormatLayerChildType : uint8
 	HsvFilter UMETA(DisplayName = "HSV From IDs"),
 	RandomId UMETA(DisplayName = "Random From IDs"),
 	RampId UMETA(DisplayName = "Ramp From IDs"),
-	PatternId UMETA(DisplayName = "Pattern IDs")
+	PatternId UMETA(DisplayName = "Pattern IDs"),
+	// Scoped beneath the mask it blurs, never standing on its own in the chain. A node and
+	// not a field on FMixtormatMaskLayer because only a node can be a driver destination,
+	// a published source, or the one definition behind several instances.
+	Blur UMETA(DisplayName = "Blur"),
+	// Scoped the same way and for the same reasons. Only ever keeps: its result multiplies
+	// into the coverage the mask already had, never widens it.
+	Curvature UMETA(DisplayName = "Curvature")
 };
 
 USTRUCT(BlueprintType)
@@ -2111,6 +2122,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::PatternId"))
 	FMixtormatPatternFilter PatternId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Blur"))
+	FMixtormatMaskBlur Blur;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Curvature"))
+	FMixtormatMaskCurvature Curvature;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
@@ -2229,8 +2246,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RoughnessBias = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "2.0"))
-	float RoughnessContrast = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-1.0", ClampMax = "2.0"))
+	float RoughnessContrast = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-0.5", ClampMax = "0.5"))
 	float RoughnessOffset = 0.0f;
@@ -2384,6 +2401,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Offset", ClampMin = "-1.0", ClampMax = "1.0"))
 	float HeightLevelOffset = 0.0f;
 
+	// Redistributes the source height between its own ends rather than moving or scaling it: a
+	// power curve, so nought and one map to themselves and only what lies between them shifts.
+	// Positive bulges -- the midtones rise toward the peaks and the form reads as swollen -- and
+	// negative pinches them down toward the pits. Neutral at 0.
+	//
+	// Named Shape rather than Bias because HeightBias is already taken, by the height-blend
+	// comparison offset further up. That one moves where two layers cross; this one reshapes one
+	// layer's own relief. Applied before HeightBoost, so the curve always sees a clean 0..1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Shape", ClampMin = "-1.0", ClampMax = "1.0"))
+	float HeightShape = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
 	EMixtormatColorBlendMode BaseColorBlendMode = EMixtormatColorBlendMode::Normal;
 
@@ -2462,6 +2490,16 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UMaterialInterface> BakedMaterial;
+
+	// The same bake, wrapped so a layer can source it. A layer points at a UMixtormatSurface
+	// rather than at four loose textures, and it reads height from the RAM alpha -- which the
+	// bake fills with F0 -- so this carries its own repacked RAMH rather than reusing BakedRAM.
+	//
+	// Owned by the recipe, so its lifetime is the recipe's: there is nothing provisional to
+	// promote on save or collect on discard. Per-pixel F0 does not survive the repack; the
+	// surface carries a single DefaultIOR in its place.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
+	TSoftObjectPtr<UMixtormatSurface> BakedSurface;
 
 	// A document-level quarter turn applied after composition. The GPU output pass also rotates
 	// tangent-space normal XY, so the baked normal remains aligned with the rotated channels.

@@ -13,6 +13,7 @@
 #include "IAssetTools.h"
 #include "MaterialEditingLibrary.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
@@ -27,6 +28,8 @@ namespace MixtormatBake
 	constexpr int32 RAMOutputIndex = 2;
 	constexpr int32 HeightOutputIndex = 3;
 	constexpr int32 MaterialOutputIndex = 4;
+	constexpr int32 RAMHOutputIndex = 5;
+	constexpr int32 SurfaceOutputIndex = 6;
 
 	FString MakePackageName(const FString& DestinationPath, const FString& AssetName)
 	{
@@ -91,7 +94,8 @@ namespace MixtormatBake
 		const TArray<FColor>& Pixels,
 		const bool bSRGB,
 		const TextureCompressionSettings Compression,
-		const TextureGroup LODGroup)
+		const TextureGroup LODGroup,
+		const bool bPreserveAlpha = false)
 	{
 		const FString ObjectPath = FString::Printf(
 			TEXT("%s.%s"),
@@ -123,6 +127,11 @@ namespace MixtormatBake
 			reinterpret_cast<const uint8*>(Pixels.GetData()));
 		Texture->SRGB = bSRGB;
 		Texture->CompressionSettings = Compression;
+		if (bPreserveAlpha)
+		{
+			// TC_Masks discards alpha by default, and the alpha is the height.
+			Texture->CompressionNoAlpha = false;
+		}
 		Texture->LODGroup = LODGroup;
 		Texture->MipGenSettings = TMGS_FromTextureGroup;
 		Texture->NeverStream = true;
@@ -273,6 +282,53 @@ namespace MixtormatBake
 		return Missing;
 	}
 
+	UMixtormatSurface* CreateOrUpdateSurface(
+		const FString& PackageName,
+		const FString& AssetName,
+		UTexture2D* BaseColor,
+		UTexture2D* Normal,
+		UTexture2D* RAMH,
+		UMaterialInterface* PreviewMaterial,
+		const FText& DisplayName)
+	{
+		const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
+		UMixtormatSurface* Surface = LoadObject<UMixtormatSurface>(nullptr, *ObjectPath);
+		const bool bCreated = Surface == nullptr;
+		if (bCreated)
+		{
+			UPackage* Package = CreatePackage(*PackageName);
+			Surface = NewObject<UMixtormatSurface>(
+				Package,
+				*AssetName,
+				RF_Public | RF_Standalone | RF_Transactional);
+		}
+		if (!Surface)
+		{
+			return nullptr;
+		}
+
+		Surface->Modify();
+		Surface->DisplayName = DisplayName;
+		Surface->BaseColor = BaseColor;
+		Surface->Normal = Normal;
+		Surface->RoughnessAOMetallic = RAMH;
+		// Authored rather than derived: the height in that alpha is the composite's own, read
+		// back from the height target, not something reconstructed from the normal.
+		Surface->bHasBlendHeight = true;
+		Surface->BlendHeightProvenance = EMixtormatBlendHeightProvenance::AuthoredRAMH;
+		// The bake's per-pixel F0 lived in the alpha the height now occupies, so a single value
+		// stands in for it. 1.5 is the struct's own default and the usual dielectric.
+		Surface->DefaultIOR = 1.5f;
+		Surface->PreviewMaterial = PreviewMaterial;
+		Surface->PostEditChange();
+		Surface->MarkPackageDirty();
+		if (bCreated)
+		{
+			FAssetRegistryModule::AssetCreated(Surface);
+		}
+		return Surface;
+	}
+
 	UMaterialInstanceConstant* CreateOrUpdateMaterial(
 		const FString& DestinationPath,
 		const FString& AssetName,
@@ -341,7 +397,9 @@ TArray<FString> FMixtormatBakeService::GetOutputAssetNames(
 		FString::Printf(TEXT("T_%s_N"), *Settings.BaseName),
 		FString::Printf(TEXT("T_%s_RAM"), *Settings.BaseName),
 		FString::Printf(TEXT("T_%s_H"), *Settings.BaseName),
-		FString::Printf(TEXT("MI_%s"), *Settings.BaseName)
+		FString::Printf(TEXT("MI_%s"), *Settings.BaseName),
+		FString::Printf(TEXT("T_%s_RAMH"), *Settings.BaseName),
+		FString::Printf(TEXT("SF_%s"), *Settings.BaseName)
 	};
 }
 
@@ -464,7 +522,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		UTexture2D::StaticClass(),
 		UTexture2D::StaticClass(),
 		UTexture2D::StaticClass(),
-		UMaterialInstanceConstant::StaticClass()
+		UMaterialInstanceConstant::StaticClass(),
+		UTexture2D::StaticClass(),
+		UMixtormatSurface::StaticClass()
 	};
 	for (int32 OutputIndex = 0; OutputIndex < ObjectPaths.Num(); ++OutputIndex)
 	{
@@ -546,6 +606,35 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Resolution.X,
 		Resolution.Y,
 		HeightPixels);
+
+	// The layer-facing copy. A layer reads its height from the RAM alpha, and the bake puts F0
+	// there, so the two cannot be the same texture -- this is RAM's RGB with the height target
+	// in its alpha. Height comes back 16-bit and the texture source is 8-bit BGRA, so it is
+	// taken from the high byte.
+	const FString& RAMHName = AssetNames[RAMHOutputIndex];
+	TArray<FColor> RAMHPixels = RAMPixels;
+	const int32 RAMHPixelCount = FMath::Min(RAMHPixels.Num(), HeightPixels.Num());
+	for (int32 PixelIndex = 0; PixelIndex < RAMHPixelCount; ++PixelIndex)
+	{
+		RAMHPixels[PixelIndex].A = static_cast<uint8>(HeightPixels[PixelIndex] >> 8);
+	}
+	Result.RAMH = CreateOrUpdateTexture(
+		MakePackageName(Settings.DestinationPath, RAMHName),
+		RAMHName,
+		Resolution.X,
+		Resolution.Y,
+		RAMHPixels,
+		false,
+		TC_Masks,
+		TEXTUREGROUP_World,
+		true);
+	if (!Result.RAMH)
+	{
+		Result.FailedAssetPaths.AddUnique(ObjectPaths[RAMHOutputIndex]);
+		Result.Errors.Add(FText::Format(
+			NSLOCTEXT("MixtormatBake", "RAMHCreationFailed", "Failed to create or update {0}."),
+			FText::FromString(ObjectPaths[RAMHOutputIndex])));
+	}
 	UObject* TextureOutputs[] = {Result.BaseColor, Result.Normal, Result.RAM, Result.Height};
 	for (int32 TextureIndex = 0; TextureIndex < UE_ARRAY_COUNT(TextureOutputs); ++TextureIndex)
 	{
@@ -606,11 +695,30 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_FuzzInfluence"), ComputeFuzzInfluence(Recipe.Layers));
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 1.0f);
+	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessOffset"), 0.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
 	Result.Material->PostEditChange();
 	Result.Material->MarkPackageDirty();
+
+	const FString& SurfaceName = AssetNames[SurfaceOutputIndex];
+	Result.Surface = CreateOrUpdateSurface(
+		MakePackageName(Settings.DestinationPath, SurfaceName),
+		SurfaceName,
+		Result.BaseColor,
+		Result.Normal,
+		Result.RAMH,
+		Result.Material,
+		Recipe.DisplayName.IsEmpty()
+			? FText::FromString(Recipe.GetName())
+			: Recipe.DisplayName);
+	if (!Result.Surface)
+	{
+		Result.FailedAssetPaths.AddUnique(ObjectPaths[SurfaceOutputIndex]);
+		Result.Errors.Add(FText::Format(
+			NSLOCTEXT("MixtormatBake", "SurfaceCreationFailed", "Failed to create or update {0}."),
+			FText::FromString(ObjectPaths[SurfaceOutputIndex])));
+	}
 
 	Recipe.Modify();
 	Recipe.BakedBaseColor = Result.BaseColor;
@@ -618,6 +726,7 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	Recipe.BakedRAM = Result.RAM;
 	Recipe.BakedHeight = Result.Height;
 	Recipe.BakedMaterial = Result.Material;
+	Recipe.BakedSurface = Result.Surface;
 	Recipe.MarkPackageDirty();
 	Result.UpdatedAssetPaths.AddUnique(Recipe.GetPathName());
 
@@ -647,6 +756,14 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	SaveAsset(Result.RAM);
 	SaveAsset(Result.Height);
 	SaveAsset(Result.Material);
+	if (Result.RAMH)
+	{
+		SaveAsset(Result.RAMH);
+	}
+	if (Result.Surface)
+	{
+		SaveAsset(Result.Surface);
+	}
 	SaveAsset(&Recipe);
 	return Result;
 }

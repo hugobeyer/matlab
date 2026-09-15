@@ -45,6 +45,13 @@ namespace MixtormatStylePrivate
 		Color.B *= Amount;
 		return Color;
 	}
+
+	// The live theme carries numbers, so weight arrives as one. The default font family has no
+	// half-weight, so anything from the midpoint up is Bold and the rest Regular.
+	const TCHAR* Weight(const float Bold)
+	{
+		return Bold >= 0.5f ? TEXT("Bold") : TEXT("Regular");
+	}
 }
 
 TSharedPtr<FMixtormatMutableStyleSet> FMixtormatStyle::StyleInstance;
@@ -93,6 +100,7 @@ void FMixtormatStyle::Refresh()
 	const FLinearColor Icon = MixtormatPalette::RowText();
 	const FLinearColor HeaderText = MixtormatPalette::HeaderText();
 	const FLinearColor CaptionText = MixtormatPalette::CaptionText();
+	const FLinearColor CardTitleText = MixtormatPalette::CardTitleText();
 	const FLinearColor RowText = MixtormatPalette::RowText();
 	const FLinearColor TroughSurface = MixtormatPalette::WellBottom();
 	const FLinearColor TroughLine = MixtormatPalette::WellOutline();
@@ -162,7 +170,9 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, MixtormatTokens::CompactRowValidDropOutlineWidth));
 
 	FTextBlockStyle SectionHeader = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontGroupHeader))
+		.SetFont(FCoreStyle::GetDefaultFontStyle(
+			MixtormatStylePrivate::Weight(MixtormatTokens::GroupHeaderBold),
+			MixtormatTokens::FontGroupHeader))
 		.SetColorAndOpacity(HeaderText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -593,6 +603,20 @@ void FMixtormatStyle::Refresh()
 	CaptionFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
 	RowCaption.SetFont(CaptionFont);
 	StyleInstance->Set(TEXT("Mixtormat.RowCaption"), RowCaption);
+
+	// A card's title line. Same tracking as the caption it used to share a style with, but its own
+	// weight, size and colour -- the three things that decide whether a title reads as one.
+	FTextBlockStyle CardTitle = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(
+			MixtormatStylePrivate::Weight(MixtormatTokens::CardTitleBold),
+			MixtormatTokens::FontCardTitle))
+		.SetColorAndOpacity(CardTitleText)
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo CardTitleFont = CardTitle.Font;
+	CardTitleFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
+	CardTitle.SetFont(CardTitleFont);
+	StyleInstance->Set(TEXT("Mixtormat.CardTitle"), CardTitle);
 
 	FTextBlockStyle RowLabel = SliderLabel;
 	RowLabel.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);

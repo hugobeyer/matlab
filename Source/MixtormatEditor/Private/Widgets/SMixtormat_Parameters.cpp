@@ -84,6 +84,8 @@ namespace
 		case EMixtormatLayerChildType::RandomId: return EMixtormatParameterOwnerType::RandomId;
 		case EMixtormatLayerChildType::PatternId: return EMixtormatParameterOwnerType::PatternId;
 		case EMixtormatLayerChildType::RampId: return EMixtormatParameterOwnerType::RampId;
+		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
+		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
 	}
@@ -102,6 +104,8 @@ namespace
 		case EMixtormatLayerChildType::RandomId: return &Child.RandomId;
 		case EMixtormatLayerChildType::PatternId: return &Child.PatternId;
 		case EMixtormatLayerChildType::RampId: return &Child.RampId;
+		case EMixtormatLayerChildType::Blur: return &Child.Blur;
+		case EMixtormatLayerChildType::Curvature: return &Child.Curvature;
 		default: return nullptr;
 		}
 	}

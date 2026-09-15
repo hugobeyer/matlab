@@ -191,7 +191,7 @@ FString FMixtormatPaths::PreviewMaterialObjectPath()
 
 FString FMixtormatPaths::StudioFloorMaterialObjectPath()
 {
-	return ObjectPath(MaterialsRoot(), TEXT("MI_Mixtormat_StudioFloor"));
+	return ObjectPath(MaterialsRoot(), TEXT("M_Mixtormat_StudioFloor"));
 }
 
 FString FMixtormatPaths::SphereMeshObjectPath()

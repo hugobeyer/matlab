@@ -2796,6 +2796,194 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 		];
 }
 
+// Two radii and nothing else. A direction enum would have been one control instead of two, but
+// it could not be driven per axis and could not express an unequal blur -- and the shader already
+// runs a dispatch per axis, so the second number is free.
+TSharedRef<SWidget> SMixtormat::BuildCurvatureSourceMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatCurvatureSource Sources[] = {
+		EMixtormatCurvatureSource::Height,
+		EMixtormatCurvatureSource::Mask};
+	for (const EMixtormatCurvatureSource Source : Sources)
+	{
+		Menu.Item(
+			MixtormatUI::CurvatureSourceText(Source),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Source]()
+			{
+				if (WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+				{
+					WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Source = Source;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Source]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+					&& WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Source == Source;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatCurvatureMode Modes[] = {
+		EMixtormatCurvatureMode::Gaussian,
+		EMixtormatCurvatureMode::Mean,
+		EMixtormatCurvatureMode::MaxPrincipal,
+		EMixtormatCurvatureMode::MinPrincipal};
+	for (const EMixtormatCurvatureMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::CurvatureModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			{
+				if (WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+				{
+					WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Mode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+					&& WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Mode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+// Source and Mode lead, because they decide what every number under them means: the same Range
+// that keeps cavities under Mean keeps saddles under Gaussian.
+TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
+{
+	using namespace MixtormatMaskCurvatureRange;
+	const auto Curve = [this]() { return GetSelectedLayerCurvature(); };
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("CurvatureSourceLabel", "Source"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatMaskCurvature* Selected = GetSelectedLayerCurvature();
+				return Selected
+					? MixtormatUI::CurvatureSourceText(Selected->Source)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateLambda([this]()
+			{
+				return BuildCurvatureSourceMenu(SelectedLayerIndex, SelectedMaskIndex);
+			})),
+		LOCTEXT("CurvatureSourceHint", "Which field is measured. Surface Height is what this layer is being laid onto, so the mask follows shape already in the surface. Mask Itself reads the mask at this point in the chain -- after a Blur, if one precedes this, which is usually what gives a painted edge enough shape to measure at all.")));
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("CurvatureModeLabel", "Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatMaskCurvature* Selected = GetSelectedLayerCurvature();
+				return Selected
+					? MixtormatUI::CurvatureModeText(Selected->Mode)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateLambda([this]()
+			{
+				return BuildCurvatureModeMenu(SelectedLayerIndex, SelectedMaskIndex);
+			})),
+		LOCTEXT("CurvatureModeHint", "Gaussian is zero on anything that could be unrolled flat, so a cylinder reads like a plane and only corners survive it. Mean is the average bend, which is what finds edges and creases. Max and Min Principal are the sharpest convex and concave bends at each point, taken in whichever direction they actually run rather than averaged against the flat axis.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureKernelLabel", "Kernel"), Curve, &FMixtormatMaskCurvature::Kernel,
+			KernelMin, KernelMax, KernelDefault,
+			LOCTEXT("CurvatureKernelHint", "Tap spacing in texels: how wide a neighbourhood the curvature is measured over. Small finds the shape of small things; large finds the shape of what those things sit on.")),
+		MakeMemberSlider<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureScaleLabel", "Scale"), Curve, &FMixtormatMaskCurvature::Scale,
+			ScaleMin, ScaleMax, ScaleDefault, SnapDelta,
+			LOCTEXT("CurvatureScaleHint", "Height amplitude. The field arrives as 0-1 with no statement of what that is worth against a texel, and curvature is not scale invariant, so this decides whether a shape registers as a gentle swell or a cliff."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureRangeLowLabel", "Range Low"), Curve, &FMixtormatMaskCurvature::RangeLow,
+			RangeMin, RangeMax, RangeLowDefault, SnapDelta,
+			LOCTEXT("CurvatureRangeHint", "The window of signed curvature that becomes coverage. Curvature is unbounded and its useful band moves with Scale and Kernel, so it is stated rather than assumed. Setting Low above High inverts the ramp, which is the whole difference between keeping cavities and keeping edges.")),
+		MakeMemberSlider<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureRangeHighLabel", "Range High"), Curve, &FMixtormatMaskCurvature::RangeHigh,
+			RangeMin, RangeMax, RangeHighDefault, SnapDelta,
+			LOCTEXT("CurvatureRangeHint", "The window of signed curvature that becomes coverage. Curvature is unbounded and its useful band moves with Scale and Kernel, so it is stated rather than assumed. Setting Low above High inverts the ramp, which is the whole difference between keeping cavities and keeping edges."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureWeightLabel", "Weight"), Curve, &FMixtormatMaskCurvature::Weight,
+			WeightMin, WeightMax, WeightDefault, SnapDelta,
+			LOCTEXT("CurvatureWeightHint", "How much of the narrowing to apply. Zero is the identity, so the node can be dialled back, or driven to nothing, without being removed from the chain.")),
+		MakeMemberToggle<FMixtormatMaskCurvature>(
+			LOCTEXT("CurvatureInvertLabel", "Invert"), Curve, &FMixtormatMaskCurvature::bInvert,
+			LOCTEXT("CurvatureInvertHint", "Keeps what the range rejects instead."))));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedLayerCurvature() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("MaskCurvatureHeading", "CURVATURE"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskBlurControls()
+{
+	using namespace MixtormatMaskBlurRange;
+	const auto Blur = [this]() { return GetSelectedLayerBlur(); };
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedLayerBlur() ? EVisibility::Visible : EVisibility::Collapsed;
+		});
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskBlur>(
+			LOCTEXT("MaskBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatMaskBlur::RadiusX,
+			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
+			LOCTEXT("MaskBlurRadiusXHint", "Horizontal softening of the mask this sits under, in texels at the composition resolution. Zero skips the pass entirely rather than running a one-tap identity, so X alone smears sideways and leaves verticals crisp.")),
+		MakeMemberSlider<FMixtormatMaskBlur>(
+			LOCTEXT("MaskBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatMaskBlur::RadiusY,
+			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
+			LOCTEXT("MaskBlurRadiusYHint", "Vertical softening, in the same units. Equal to Radius X this is an ordinary Gaussian; unequal it is anisotropic. Both at zero and the node does nothing."))));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedLayerBlur() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("MaskBlurHeading", "BLUR"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 {
 	// Shared by layer-scoped and feature-scoped mask rows: one generic binding per row,
@@ -3005,7 +3193,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessLabel", "Bias"), Layer(), &FMixtormatLayer::RoughnessBias, 0.0, 1.0, 0.5, 0.01));
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("RoughnessContrastLabel", "Contrast"), Layer(), &FMixtormatLayer::RoughnessContrast, 0.0, 2.0, 1.0, 0.01));
+		LOCTEXT("RoughnessContrastLabel", "Contrast"), Layer(), &FMixtormatLayer::RoughnessContrast, -1.0, 2.0, 0.0, 0.01));
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
@@ -3017,15 +3205,23 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("HeightShapeLabel", "Height Shape"), Layer(), &FMixtormatLayer::HeightShape, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("HeightShapeHint", "Redistributes this layer's height between its own ends instead of moving or scaling it. Positive bulges the form, raising the midtones toward the peaks; negative pinches it, sinking them toward the pits. Both extremes stay put either way, so the relief changes shape rather than depth -- Height Booster is the one that changes depth. Applied before Booster and Offset.")));
 
 	AddGeneratedFeatureCards(Panel);
 	return Panel;
 }
 
-// No group header of its own. These are three runs of values inside Surface Adjustments, and a
-// second header bar over them only repeated the one already above -- with a chevron that hid
-// controls the panel exists to offer. The eye that previewed the feature mask moves to the card
-// it belongs to, at the end of that card's title line.
+// One card, one title. Feature, Curvature and Surface Mask are all the same question -- what
+// generated signal masks this layer -- and as three sheets they read as three unrelated runs
+// with the widest gap in the panel between values that are set together. Captions between the
+// runs only rebuilt that split a line at a time, so the card title carries the subject alone.
+//
+// No group header of its own. This is one run of values inside Surface Adjustments, and a second
+// header bar over it only repeated the one already above -- with a chevron that hid controls the
+// panel exists to offer. The eye that previews the feature mask sits at the end of the title
+// line, where a card's actions go.
 void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 {
 	const auto Layer = [this]()
@@ -3036,36 +3232,37 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 		});
 	};
 
-	TSharedRef<SVerticalBox> Feature = AddCard(
+	TSharedRef<SVerticalBox> Masks = AddCard(
 		Panel,
-		LOCTEXT("CardFeature", "Feature"),
+		LOCTEXT("CardFeaturedMasks", "Featured Masks"),
 		MakeFeaturePreviewButton(
 			EMixtormatDebugPreviewMode::GeneratedFeature,
 			LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")));
-	AddSliderRow(Feature, MakeMemberSlider<FMixtormatLayer>(
+
+	AddSliderRow(Masks, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("FeatureInfluenceLabel", "Normal Influence"), Layer(), &FMixtormatLayer::FeatureInfluence, 0.0, 1.0, 0.0, 0.01));
-	AddSliderRow(Feature, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("FeatureBiasLabel", "Cavity to Convex"), Layer(), &FMixtormatLayer::FeatureBias, 0.0, 1.0, 0.0, 0.01));
-	AddSliderRow(Feature, MakeMemberToggle<FMixtormatLayer>(
-		LOCTEXT("InvertGeneratedFeatureLabel", "Invert"), Layer(), &FMixtormatLayer::bInvertFeature,
-		LOCTEXT("InvertGeneratedFeatureHint", "Apply one-minus to the selected cavity-to-convex feature mask")));
+	// Paired with its own invert, the way the Height and AO influences below are.
+	AddSliderRow(Masks, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayer>(
+			LOCTEXT("FeatureBiasLabel", "Cavity to Convex"), Layer(), &FMixtormatLayer::FeatureBias, 0.0, 1.0, 0.0, 0.01),
+		MakeMemberToggle<FMixtormatLayer>(
+			LOCTEXT("InvertGeneratedFeatureLabel", "Invert"), Layer(), &FMixtormatLayer::bInvertFeature,
+			LOCTEXT("InvertGeneratedFeatureHint", "Apply one-minus to the selected cavity-to-convex feature mask"))));
 
 	// Four short labels that are read against each other, so two across.
-	TSharedRef<SVerticalBox> Curvature = AddCard(Panel, LOCTEXT("CardCurvature", "Curvature"));
-	AddSliderRow(Curvature, MixtormatRow::MakePair(
+	AddSliderRow(Masks, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayer>(
 			LOCTEXT("CurvatureRadiusLabel", "Radius"), Layer(), &FMixtormatLayer::CurvatureRadius, 1.0, 32.0, 2),
 		MakeMemberSliderInt<FMixtormatLayer>(
 			LOCTEXT("CurvatureSmoothingLabel", "Smoothing"), Layer(), &FMixtormatLayer::CurvatureSmoothing, 1.0, 4.0, 2)));
-	AddSliderRow(Curvature, MixtormatRow::MakePair(
+	AddSliderRow(Masks, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("CurvatureStrengthLabel", "Strength"), Layer(), &FMixtormatLayer::CurvatureStrength, 0.0, 8.0, 1.0, 0.05),
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("CurvaturePowerLabel", "Power"), Layer(), &FMixtormatLayer::CurvaturePower, 0.001, 8.0, 1.0, 0.05)));
 
-	TSharedRef<SVerticalBox> SurfaceMask = AddCard(Panel, LOCTEXT("CardSurfaceMask", "Surface Mask"));
 	// Each influence pairs with its own invert, which is what paired rows exist for.
-	AddSliderRow(SurfaceMask, MixtormatRow::MakePair(
+	AddSliderRow(Masks, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("UnderlyingHeightInfluenceLabel", "Height"), Layer(),
 			&FMixtormatLayer::HeightFeatureInfluence, 0.0, 1.0, 0.0, 0.01,
@@ -3074,7 +3271,7 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 			LOCTEXT("InvertUnderlyingHeightLabel", "Invert"), Layer(),
 			&FMixtormatLayer::bInvertHeightFeature,
 			LOCTEXT("InvertUnderlyingHeightHint", "Favor lower underlying height instead of higher height"))));
-	AddSliderRow(SurfaceMask, MixtormatRow::MakePair(
+	AddSliderRow(Masks, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayer>(
 			LOCTEXT("UnderlyingAOInfluenceLabel", "AO"), Layer(),
 			&FMixtormatLayer::AOFeatureInfluence, 0.0, 1.0, 0.0, 0.01,
@@ -3819,6 +4016,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]
 					+ SScrollBox::Slot()[BuildLayerMaskControls()]
+					+ SScrollBox::Slot()[BuildMaskBlurControls()]
+					+ SScrollBox::Slot()[BuildMaskCurvatureControls()]
 					+ SScrollBox::Slot()[BuildCraquelureControls()]
 					+ SScrollBox::Slot()[BuildColorIdControls()]
 					+ SScrollBox::Slot()[BuildFilterControls()]
@@ -3969,7 +4168,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								// badge prints -- so the stack and the inspector teach one vocabulary.
 								+ SVerticalBox::Slot()
 								.AutoHeight()
-								.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+								.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SegmentedControlGap)
 								[
 									SNew(SMixtormatSegmentedControl)
 									.Options(MixtormatLayerBadges::CompositionOptions())
@@ -4001,7 +4200,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								[
 									MixtormatRow::MakePair(
 										MixtormatRow::Make(
-											LOCTEXT("BaseColorBlendLabel", "Color Blend"),
+											LOCTEXT("BaseColorBlendLabel", "Blend"),
 											MixtormatRow::MakeChip(
 												TAttribute<FText>::CreateLambda([this]()
 												{

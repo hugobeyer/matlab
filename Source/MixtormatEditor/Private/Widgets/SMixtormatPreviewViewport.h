@@ -12,10 +12,10 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 class FEditorViewportClient;
 class FMixtormatPreviewViewportClient;
-class UExponentialHeightFogComponent;
 class UMaterial;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UBoxReflectionCaptureComponent;
 class UStaticMeshComponent;
 class UTextureCube;
 class UTextureRenderTarget2D;
@@ -136,7 +136,6 @@ public:
 	// when switching between lighting modes.
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
-	void SetPreviewFogBrightness(float Brightness);
 	void SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	void SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void SetPreviewQuality(EMixtormatPreviewQuality Quality);
@@ -165,7 +164,7 @@ private:
 	void CycleChannelPreview();
 	void ApplyChannelPreview();
 	void UpdateCamera();
-	void UpdateStudioFog();
+	void UpdateStudioFloor();
 	void UpdateStudioEnvironmentLighting();
 	void UpdateDebugLightVisibility();
 	void UpdatePreviewMeshFloorClearance();
@@ -180,7 +179,6 @@ private:
 	FSimpleDelegate OnToggleOverlayUi;
 	FSimpleDelegate OnChannelPreviewChanged;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
-	UExponentialHeightFogComponent* StudioFogComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
 	EMixtormatChannelPreview ChannelPreview = EMixtormatChannelPreview::Material;
@@ -194,6 +192,12 @@ private:
 	TUniquePtr<FMixtormatGpuCompositor> LayerCompositor;
 	TUniquePtr<FPreviewSceneProfile> StudioPreviewProfile;
 	TStrongObjectPtr<UTextureCube> StudioEnvironmentCubemap;
+	// The one specular source that does not depend on a trace succeeding. Re-pointed at the
+	// preset's cubemap in SetStudioLighting, alongside the skylight that reads the same asset.
+	UBoxReflectionCaptureComponent* StudioReflectionCapture = nullptr;
+	// Owned here because FAdvancedPreviewScene::UpdateScene reassigns the floor's material
+	// from the profile, so it has to be handed back after every one of those.
+	TStrongObjectPtr<UMaterialInstanceDynamic> StudioFloorMaterial;
 	bool bUsingLayerPreview = false;
 	bool bUsingDebugPreview = false;
 	EMixtormatDebugPreviewMode bDebugPreviewMode = EMixtormatDebugPreviewMode::None;
@@ -220,9 +224,7 @@ private:
 	float BaseSkyBrightness = 0.45f;
 	float LightIntensityScale = 1.0f;
 	float SkylightIntensityScale = 1.0f;
-	float FogBrightness = 0.0f;
 	void ApplyLightIntensities();
-	void ApplyFogColor();
 	float EnvironmentYaw = 0.0f;
 	FVector PreviewTarget = FVector(0.0f, 0.0f, 50.0f);
 };
