@@ -140,6 +140,7 @@ public:
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(uint32, HasSeparateHeight)
+		SHADER_PARAMETER(uint32, LayerInputResolved)
 		SHADER_PARAMETER(uint32, UseSourceF0)
 		SHADER_PARAMETER(uint32, HasNormal)
 		SHADER_PARAMETER(uint32, NormalOnly)
@@ -298,6 +299,67 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Resolves an authored or referenced material into this layer's output-space tangent basis.
+// Allocated only for a top-level Flow Warp, so ordinary layers retain the direct sample path.
+class FMixtormatLayerInputCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatLayerInputCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatLayerInputCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, HasSurface)
+		SHADER_PARAMETER(uint32, HasSeparateHeight)
+		SHADER_PARAMETER(uint32, LayerInputResolved)
+		SHADER_PARAMETER(uint32, HasNormal)
+		SHADER_PARAMETER(uint32, FlipNormalY)
+		SHADER_PARAMETER(float, Tiling)
+		SHADER_PARAMETER(int32, UVScaleX)
+		SHADER_PARAMETER(int32, UVScaleY)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(FVector2f, UVOffset)
+		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER(float, NormalIntensity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerBC)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerN)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerSourceHeight)
+		SHADER_PARAMETER(uint32, PatternUVEnabled)
+		SHADER_PARAMETER(uint32, PatternUVSeed)
+		SHADER_PARAMETER(uint32, PatternUVOrthogonal)
+		SHADER_PARAMETER(float, PatternUVRotationMin)
+		SHADER_PARAMETER(float, PatternUVRotationMax)
+		SHADER_PARAMETER(float, PatternUVScaleMin)
+		SHADER_PARAMETER(float, PatternUVScaleMax)
+		SHADER_PARAMETER(float, PatternUVOffset)
+		SHADER_PARAMETER(uint32, PatternUVFlipU)
+		SHADER_PARAMETER(uint32, PatternUVFlipV)
+		SHADER_PARAMETER(uint32, PatternUVVariationEnabled)
+		SHADER_PARAMETER(uint32, PatternIntrinsicOrientationEnabled)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PatternUVField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternOrientationField)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatLayerInputCS,
+	"/Plugin/Mixtormat/Private/MixtormatComposite.usf",
+	"ResolveLayerInputCS",
+	SF_Compute);
+
 class FMixtormatRotateOutputCS final : public FGlobalShader
 {
 public:
@@ -375,6 +437,105 @@ namespace MixtormatGpuCompositor
 	}
 
 
+	void AddLayerInputPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer)
+	{
+		if (LayerCtx.LayerInputBC)
+		{
+			return;
+		}
+
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
+		const FPatternIdPassOutput* ActivePatternUV = nullptr;
+		for (const FPatternIdPassOutput& PatternOutput : LayerCtx.PatternOutputs)
+		{
+			if (PatternOutput.Settings
+				&& (PatternOutput.Settings->bUVVariation
+					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
+			{
+				ActivePatternUV = &PatternOutput;
+			}
+		}
+		const FPatternIdRenderData* Pattern =
+			ActivePatternUV ? ActivePatternUV->Settings : nullptr;
+
+		LayerCtx.LayerInputBC = GraphBuilder.CreateTexture(
+			Ctx.OutputBC[0]->Desc, TEXT("Mixtormat.LayerInputBC"));
+		LayerCtx.LayerInputN = GraphBuilder.CreateTexture(
+			Ctx.OutputN[0]->Desc, TEXT("Mixtormat.LayerInputN"));
+		LayerCtx.LayerInputRAM = GraphBuilder.CreateTexture(
+			Ctx.OutputRAM[0]->Desc, TEXT("Mixtormat.LayerInputRAM"));
+		LayerCtx.LayerInputHeight = GraphBuilder.CreateTexture(
+			Ctx.OutputHeight[0]->Desc, TEXT("Mixtormat.LayerInputHeight"));
+
+		FMixtormatLayerInputCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatLayerInputCS::FParameters>();
+		Parameters->OutputSize = Request.Resolution;
+		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
+		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
+		Parameters->LayerInputResolved = 0u;
+		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
+		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
+		Parameters->Tiling = Layer.Tiling;
+		Parameters->UVScaleX = Layer.UVScaleX;
+		Parameters->UVScaleY = Layer.UVScaleY;
+		Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
+		Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
+		Parameters->UVOffset = Layer.UVOffset;
+		Parameters->Rotation = Layer.Rotation;
+		Parameters->NormalIntensity = Layer.NormalIntensity;
+		Parameters->LayerBC = RegisterTexture(
+			GraphBuilder, RegisteredTextures, Layer.BaseColor, TEXT("Mixtormat.LayerBC"));
+		Parameters->LayerN = RegisterTexture(
+			GraphBuilder, RegisteredTextures, Layer.Normal, TEXT("Mixtormat.LayerN"));
+		Parameters->LayerRAM = RegisterTexture(
+			GraphBuilder, RegisteredTextures, Layer.RAM, TEXT("Mixtormat.LayerRAM"));
+		Parameters->LayerSourceHeight = Layer.Height.IsValid()
+			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
+				TEXT("Mixtormat.LayerSourceHeight"))
+			: Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
+		Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
+		Parameters->PatternUVSeed = Pattern ? Pattern->Seed : 0u;
+		Parameters->PatternUVOrthogonal = Pattern && Pattern->bOrthogonalUV ? 1u : 0u;
+		Parameters->PatternUVRotationMin = Pattern ? Pattern->UVRotationMin : 0.0f;
+		Parameters->PatternUVRotationMax = Pattern ? Pattern->UVRotationMax : 0.0f;
+		Parameters->PatternUVScaleMin = Pattern ? Pattern->UVScaleMin : 1.0f;
+		Parameters->PatternUVScaleMax = Pattern ? Pattern->UVScaleMax : 1.0f;
+		Parameters->PatternUVOffset = Pattern ? Pattern->UVOffset : 0.0f;
+		Parameters->PatternUVFlipU = Pattern && Pattern->bRandomFlipU ? 1u : 0u;
+		Parameters->PatternUVFlipV = Pattern && Pattern->bRandomFlipV ? 1u : 0u;
+		Parameters->PatternUVVariationEnabled = Pattern && Pattern->bUVVariation ? 1u : 0u;
+		Parameters->PatternIntrinsicOrientationEnabled =
+			Pattern && HasIntrinsicPatternOrientation(*Pattern) ? 1u : 0u;
+		Parameters->PatternRegionIds =
+			ActivePatternUV ? ActivePatternUV->Ids : Ctx.EmptyRegionIds;
+		Parameters->PatternUVField =
+			ActivePatternUV ? ActivePatternUV->UV : Ctx.EmptyPatternUV;
+		Parameters->PatternOrientationField =
+			ActivePatternUV ? ActivePatternUV->Orientation : Ctx.EmptyPatternOrientation;
+		Parameters->LinearWrapSampler = TStaticSamplerState<
+			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+		Parameters->OutputBC = GraphBuilder.CreateUAV(LayerCtx.LayerInputBC);
+		Parameters->OutputN = GraphBuilder.CreateUAV(LayerCtx.LayerInputN);
+		Parameters->OutputRAM = GraphBuilder.CreateUAV(LayerCtx.LayerInputRAM);
+		Parameters->OutputHeight = GraphBuilder.CreateUAV(LayerCtx.LayerInputHeight);
+
+		TShaderMapRef<FMixtormatLayerInputCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.LayerInput.Layer%d", LayerCtx.LayerIndex),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
+	}
 
 	// One layer composited onto what the stack has accumulated below it.
 	//
@@ -430,6 +591,7 @@ namespace MixtormatGpuCompositor
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
+		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
 		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
 		Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
@@ -542,25 +704,33 @@ namespace MixtormatGpuCompositor
 		{
 			Parameters->ReferenceHeight = *Snapshot;
 		}
-		Parameters->LayerBC = RegisterTexture(
-			GraphBuilder,
-			RegisteredTextures,
-			Layer.BaseColor,
-			TEXT("Mixtormat.LayerBC"));
-		Parameters->LayerN = RegisterTexture(
-			GraphBuilder,
-			RegisteredTextures,
-			Layer.Normal,
-			TEXT("Mixtormat.LayerN"));
-		Parameters->LayerRAM = RegisterTexture(
-			GraphBuilder,
-			RegisteredTextures,
-			Layer.RAM,
-			TEXT("Mixtormat.LayerRAM"));
-		Parameters->LayerSourceHeight = Layer.Height.IsValid()
-			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
-				TEXT("Mixtormat.LayerSourceHeight"))
-			: HeightTargets[ReadIndex];
+		Parameters->LayerBC = LayerCtx.LayerInputBC
+			? LayerCtx.LayerInputBC
+			: RegisterTexture(
+				GraphBuilder,
+				RegisteredTextures,
+				Layer.BaseColor,
+				TEXT("Mixtormat.LayerBC"));
+		Parameters->LayerN = LayerCtx.LayerInputN
+			? LayerCtx.LayerInputN
+			: RegisterTexture(
+				GraphBuilder,
+				RegisteredTextures,
+				Layer.Normal,
+				TEXT("Mixtormat.LayerN"));
+		Parameters->LayerRAM = LayerCtx.LayerInputRAM
+			? LayerCtx.LayerInputRAM
+			: RegisterTexture(
+				GraphBuilder,
+				RegisteredTextures,
+				Layer.RAM,
+				TEXT("Mixtormat.LayerRAM"));
+		Parameters->LayerSourceHeight = LayerCtx.LayerInputHeight
+			? LayerCtx.LayerInputHeight
+			: (Layer.Height.IsValid()
+				? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
+					TEXT("Mixtormat.LayerSourceHeight"))
+				: HeightTargets[ReadIndex]);
 		Parameters->LayerMask = CombinedMask;
 
 		// Rounding for the height field. A placement mask is a step, so the layer's
@@ -1441,17 +1611,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						});
 					if (Layer.Children.IsValidIndex(OwnerIndex)
 						&& OwnerIndex < SourceChildIndex
-						&& Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect
-						&& !Layer.Children[OwnerIndex].ScopeOwnerChildId.IsValid())
+						&& Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect)
 					{
 						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 					}
 					else
 					{
-						// A scoped mask whose owner can't be resolved as a preceding,
-						// top-level Effect child is broken/inactive: drop it rather than
-						// let it fall through as an ordinary layer-wide mask (INDEX_NONE),
-						// which would unexpectedly modify CombinedMask.
+						// A scoped mask whose owner cannot be resolved as a preceding Effect
+						// is inactive. Never let it fall through as a layer-wide mask.
 						Data.Children.RemoveAt(Data.Children.Num() - 1);
 						continue;
 					}
@@ -1745,6 +1912,37 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMixtormatLayerChildType::Effect;
 			ChildData.SourceChildIndex = SourceChildIndex;
+			if (LayerChild.ScopeOwnerChildId.IsValid())
+			{
+				const int32 OwnerIndex = Layer.Children.IndexOfByPredicate(
+					[&LayerChild](const FMixtormatLayerChild& Candidate)
+					{
+						return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
+					});
+				bool bWarpableOwner = false;
+				if (Layer.Children.IsValidIndex(OwnerIndex) && OwnerIndex < SourceChildIndex)
+				{
+					const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
+					bWarpableOwner = Owner.Type == EMixtormatLayerChildType::Mask;
+					if (Owner.Type == EMixtormatLayerChildType::Effect)
+					{
+						const UMixtormatEffect* OwnerAsset = Owner.Effect.Effect.LoadSynchronous();
+						const EMixtormatEffectType OwnerType = OwnerAsset
+							? OwnerAsset->EffectType
+							: Owner.Effect.ProceduralType;
+						bWarpableOwner =
+							MixtormatEffectClassOf(OwnerType) == EMixtormatEffectClass::Surface;
+					}
+				}
+				const bool bValidFlowWarpScope =
+					ResolvedType == EMixtormatEffectType::FlowWarp && bWarpableOwner;
+				if (!bValidFlowWarpScope)
+				{
+					Data.Children.RemoveAt(Data.Children.Num() - 1);
+					continue;
+				}
+				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+			}
 			FEffectRenderData& EffectData = ChildData.Effect;
 			EffectData.Type = ResolvedType;
 			EffectData.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
@@ -2523,13 +2721,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
 					// ordinary way to use an adjustment layer, and dropping all but the last
 					// would read as a bug rather than as a contract.
-					TArray<FPendingEffect, TInlineAllocator<2>>& PendingFlowWarps = LayerCtx.PendingFlowWarps;
 					TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
 					TArray<FPendingEffect, TInlineAllocator<2>>& PendingLayerBlurs =
 						LayerCtx.PendingLayerBlurs;
-					int32& MaskPassIndex = LayerCtx.MaskPassIndex;
-					int32& EffectPassIndex = LayerCtx.EffectPassIndex;
-
 
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
@@ -2599,7 +2793,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 						if (Effect.Type == EMixtormatEffectType::FlowWarp)
 						{
-							QueuePendingFlowWarp(LayerCtx, Layer, Child, Effect, FeatureMask);
+							AddLayerFlowWarpPass(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
@@ -2625,8 +2819,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 
 					AddLayerCompositePass(Ctx, LayerCtx, Layer);
-
-					AddFlowWarpPasses(Ctx, LayerCtx, Layer);
 
 					AddErosionPasses(Ctx, LayerCtx, Layer);
 

@@ -32,6 +32,44 @@ uint FlipU;
 uint FlipV;
 int Rotation;
 
+float SampleIncomingMask(float2 UV)
+{
+	if (UsePreShaped != 0)
+	{
+		return PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	}
+	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
+	const float Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
+	return MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+}
+
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	OutputMask[DispatchThreadId.xy] = SampleIncomingMask(UV);
+}
+
+[numthreads(8, 8, 1)]
+void MergeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float Incoming = PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -40,22 +78,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
-	float Previous = Initialize != 0
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float Incoming;
-	if (UsePreShaped != 0)
-	{
-		Incoming = PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	}
-	else
-	{
-		const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
-		Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
-		Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
-	}
-
-	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+	const float Incoming = SampleIncomingMask(UV);
+	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
 }

@@ -51,6 +51,71 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+class FMixtormatMaskResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMaskResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, UsePreShaped)
+		SHADER_PARAMETER(uint32, Invert)
+		SHADER_PARAMETER(FVector2f, Tiling)
+		SHADER_PARAMETER(FVector2f, UVOffset)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatMaskResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatMask.usf",
+	"ResolveCS",
+	SF_Compute);
+
+class FMixtormatMaskMergeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMaskMergeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskMergeCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatMaskMergeCS,
+	"/Plugin/Mixtormat/Private/MixtormatMask.usf",
+	"MergeCS",
+	SF_Compute);
+
 // Colour ID mask. Selects the regions of an ID map carrying one of a set of chosen colours.
 //
 // The colours are a fixed-size array rather than a buffer: eight is already more of a set than
@@ -761,41 +826,100 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef PreShapedMask = AddMaskFilterPasses(
 			Ctx, Mask, MaskDesc, MaskTargets[MaskReadIndex], LayerIndex, ChildIndex);
 
-		FMixtormatMaskCS::FParameters* MaskParameters =
-			GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
-		MaskParameters->OutputSize = Request.Resolution;
-		MaskParameters->UsePreShaped = PreShapedMask ? 1u : 0u;
-		MaskParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-		MaskParameters->BlendMode = static_cast<uint32>(Mask.BlendMode);
-		MaskParameters->Invert = Mask.bInvert ? 1u : 0u;
-		MaskParameters->Weight = Mask.Weight;
-		MaskParameters->Tiling = Mask.Tiling;
-		MaskParameters->UVOffset = Mask.UVOffset;
-		MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
-		MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
-		MaskParameters->Rotation = Mask.Rotation;
-		MaskParameters->Balance = Mask.Balance;
-		MaskParameters->Contrast = Mask.Contrast;
-		MaskParameters->Offset = Mask.Offset;
-		MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
-		MaskParameters->IncomingMask = ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.IncomingMask"));
-		// Bound either way: RDG requires every declared texture to have something behind it, and
-		// UsePreShaped is what decides whether the shader reads it.
-		MaskParameters->PreShapedMask =
+		const FRDGTextureRef IncomingMask =
+			ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.IncomingMask"));
+		const FRDGTextureRef FilteredMask =
 			PreShapedMask ? PreShapedMask : MaskTargets[MaskReadIndex];
-		MaskParameters->LinearWrapSampler =
-			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-		MaskParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+			FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+			1);
+		if (HasOwnedFlowWarps(Layer, Child.SourceChildIndex))
+		{
+			// Resolve this mask without its chain operation, warp that local value, then merge once.
+			// The previous mask never enters the warp target.
+			FRDGTextureRef LocalMask = GraphBuilder.CreateTexture(
+				MaskDesc, TEXT("Mixtormat.LocalMask"));
+			FMixtormatMaskResolveCS::FParameters* Resolve =
+				GraphBuilder.AllocParameters<FMixtormatMaskResolveCS::FParameters>();
+			Resolve->OutputSize = Request.Resolution;
+			Resolve->UsePreShaped = PreShapedMask ? 1u : 0u;
+			Resolve->Invert = Mask.bInvert ? 1u : 0u;
+			Resolve->Tiling = Mask.Tiling;
+			Resolve->UVOffset = Mask.UVOffset;
+			Resolve->FlipU = Mask.bFlipU ? 1u : 0u;
+			Resolve->FlipV = Mask.bFlipV ? 1u : 0u;
+			Resolve->Rotation = Mask.Rotation;
+			Resolve->Balance = Mask.Balance;
+			Resolve->Contrast = Mask.Contrast;
+			Resolve->Offset = Mask.Offset;
+			Resolve->IncomingMask = IncomingMask;
+			Resolve->PreShapedMask = FilteredMask;
+			Resolve->LinearWrapSampler = TStaticSamplerState<
+				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+			Resolve->OutputMask = GraphBuilder.CreateUAV(LocalMask);
+			TShaderMapRef<FMixtormatMaskResolveCS> ResolveShader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Mask.Resolve.Layer%d.Child%d", LayerIndex, ChildIndex),
+				ResolveShader,
+				Resolve,
+				Groups);
 
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.Mask.Layer%d.Child%d", LayerIndex, ChildIndex),
-			MaskShader,
-			MaskParameters,
-			FIntVector(
-				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-				1));
+			LocalMask = AddOwnedMaskFlowWarpPasses(
+				Ctx, LayerCtx, Layer, Child.SourceChildIndex, LocalMask);
+			FMixtormatMaskMergeCS::FParameters* Merge =
+				GraphBuilder.AllocParameters<FMixtormatMaskMergeCS::FParameters>();
+			Merge->OutputSize = Request.Resolution;
+			Merge->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+			Merge->BlendMode = static_cast<uint32>(Mask.BlendMode);
+			Merge->Weight = Mask.Weight;
+			Merge->PreviousMask = MaskTargets[MaskReadIndex];
+			Merge->PreShapedMask = LocalMask;
+			Merge->LinearWrapSampler = TStaticSamplerState<
+				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+			Merge->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+			TShaderMapRef<FMixtormatMaskMergeCS> MergeShader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Mask.Merge.Layer%d.Child%d", LayerIndex, ChildIndex),
+				MergeShader,
+				Merge,
+				Groups);
+		}
+		else
+		{
+			FMixtormatMaskCS::FParameters* MaskParameters =
+				GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
+			MaskParameters->OutputSize = Request.Resolution;
+			MaskParameters->UsePreShaped = PreShapedMask ? 1u : 0u;
+			MaskParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
+			MaskParameters->BlendMode = static_cast<uint32>(Mask.BlendMode);
+			MaskParameters->Invert = Mask.bInvert ? 1u : 0u;
+			MaskParameters->Weight = Mask.Weight;
+			MaskParameters->Tiling = Mask.Tiling;
+			MaskParameters->UVOffset = Mask.UVOffset;
+			MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
+			MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
+			MaskParameters->Rotation = Mask.Rotation;
+			MaskParameters->Balance = Mask.Balance;
+			MaskParameters->Contrast = Mask.Contrast;
+			MaskParameters->Offset = Mask.Offset;
+			MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
+			MaskParameters->IncomingMask = IncomingMask;
+			MaskParameters->PreShapedMask = FilteredMask;
+			MaskParameters->LinearWrapSampler = TStaticSamplerState<
+				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+			MaskParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Mask.Layer%d.Child%d", LayerIndex, ChildIndex),
+				MaskShader,
+				MaskParameters,
+				Groups);
+		}
 		CombinedMask = MaskTargets[MaskWriteIndex];
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex

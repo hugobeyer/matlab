@@ -890,6 +890,13 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef EffectTargets[2] = {};
 		FRDGTextureRef EffectHeightTargets[2] = {};
 
+		// Material channels resolved into layer/output UV space only when a top-level Flow Warp
+		// needs an isolated input. The composite reads these instead of the authored textures.
+		FRDGTextureRef LayerInputBC = nullptr;
+		FRDGTextureRef LayerInputN = nullptr;
+		FRDGTextureRef LayerInputRAM = nullptr;
+		FRDGTextureRef LayerInputHeight = nullptr;
+
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
 
@@ -910,7 +917,6 @@ namespace MixtormatGpuCompositor
 		TArray<FPendingWornEdges, TInlineAllocator<2>> PendingWornEdges;
 		TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 		TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
-		TArray<FPendingEffect, TInlineAllocator<2>> PendingFlowWarps;
 		TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
 		// Last of the filters, so it softens the finished surface rather than one a later
 		// filter was about to change.
@@ -937,8 +943,11 @@ namespace MixtormatGpuCompositor
 			PendingWornEdges.Reset();
 			PendingCraquelureReliefs.Reset();
 			PendingRampTilts.Reset();
-			PendingFlowWarps.Reset();
 			PendingGrades.Reset();
+			LayerInputBC = nullptr;
+			LayerInputN = nullptr;
+			LayerInputRAM = nullptr;
+			LayerInputHeight = nullptr;
 			PendingLayerBlurs.Reset();
 		}
 	};
@@ -1021,7 +1030,7 @@ namespace MixtormatGpuCompositor
 		const FLayerRenderData& Layer);
 
 	// MixtormatGpuEffectPasses.cpp -- Grade, Craquelure, Worn Edges, Chipping, Erosion,
-	// Flow Warp and the shared height-derived normal.
+	// owner-local Flow Warp and the shared height-derived normal.
 	void AddHeightDerivedNormalPass(
 		FMixtormatComposeContext& Ctx,
 		FRDGTextureRef PreviousHeight,
@@ -1056,12 +1065,44 @@ namespace MixtormatGpuCompositor
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
 
-	void QueuePendingFlowWarp(
+	void AddLayerInputPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
+	void AddLayerFlowWarpPass(
+		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
+
+	bool HasOwnedFlowWarps(
+		const FLayerRenderData& Layer,
+		const int32 OwnerSourceChildIndex);
+
+	FRDGTextureRef AddOwnedMaskFlowWarpPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const int32 OwnerSourceChildIndex,
+		FRDGTextureRef SourceMask);
+
+	void AddOwnedEffectFlowWarpPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const int32 OwnerSourceChildIndex,
+		FRDGTextureRef& EffectData,
+		FRDGTextureRef& EffectHeight);
+
+	void AddEffectContributionPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const int32 OwnerSourceChildIndex,
+		FRDGTextureRef EffectData,
+		FRDGTextureRef EffectHeight);
 
 	void QueuePendingLayerBlur(
 		FMixtormatLayerPassContext& LayerCtx,
@@ -1087,11 +1128,6 @@ namespace MixtormatGpuCompositor
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
-
-	void AddFlowWarpPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer);
 
 	void AddErosionPasses(
 		FMixtormatComposeContext& Ctx,

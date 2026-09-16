@@ -94,6 +94,7 @@ uint IsFill;
 uint HasSurface;
 uint HasPackedHeight;
 uint HasSeparateHeight;
+uint LayerInputResolved;
 uint UseSourceF0;
 uint HasNormal;
 uint NormalOnly;
@@ -423,6 +424,12 @@ int2 PatternPixel(float2 UV)
 // not the direction of its tangent frame. See MixtormatTransformTangentVector.
 float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 {
+	if (LayerInputResolved != 0)
+	{
+		Orientation = float2x2(1.0f, 0.0f, 0.0f, 1.0f);
+		return UV;
+	}
+
 	const float2 Scale = float2(
 		max(Tiling, 0.0001f) * (float)max(UVScaleX, 1),
 		max(Tiling, 0.0001f) * (float)max(UVScaleY, 1));
@@ -529,6 +536,10 @@ float2 LayerSourceUV(float2 UV)
 // three more render targets per layer for something that is meant to take the edge off a seam.
 float SampleRawLayerHeight(float2 SourceUV)
 {
+	if (LayerInputResolved != 0)
+	{
+		return LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
+	}
 	// Authored surfaces carry RAMH; live compositions carry F0 in RAM alpha.
 	return HasSeparateHeight != 0
 		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
@@ -759,6 +770,45 @@ float3 MixtormatApplyLayerGrade(float3 Source, float2 UV, int Index)
 }
 
 [numthreads(8, 8, 1)]
+void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	float2x2 Orientation;
+	const float2 SourceUV = LayerSourceUVAndOrientation(UV, Orientation);
+	const float4 SourceBC = HasSurface != 0
+		? LayerBC.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+		: float4(1.0f, 1.0f, 1.0f, 1.0f);
+	const float4 SourceRAM = HasSurface != 0
+		? LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+		: float4(0.5f, 1.0f, 0.0f, 0.04f);
+	const float4 SourceN = LayerN.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
+	float3 Normal = HasNormal != 0
+		? DecodeNormal(SourceN, NormalIntensity, FlipNormalY)
+		: float3(0.0f, 0.0f, 1.0f);
+	if (HasSeparateHeight != 0)
+	{
+		Normal = SourceN.xyz * 2.0f - 1.0f;
+		Normal.xy *= NormalIntensity;
+		Normal.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
+		Normal = normalize(Normal);
+	}
+	Normal.xy = MixtormatTransformTangentVector(Orientation, Normal.xy);
+
+	OutputBC[Pixel] = SourceBC;
+	OutputN[Pixel] = float4(EncodeNormal(Normal), SourceN.a);
+	OutputRAM[Pixel] = SourceRAM;
+	OutputHeight[Pixel] = HasSeparateHeight != 0
+		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+		: SourceRAM.a;
+}
+
+[numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
@@ -805,9 +855,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	//
 	// Z is untouched and the length of XY is preserved: LayerOrientation is orthonormal, so this
 	// cannot change the normal's slope, only where it points.
-	if (HasSeparateHeight != 0)
+	if (HasSeparateHeight != 0 || LayerInputResolved != 0)
 	{
-		// Compositor normals store all three components, unlike imported two-channel maps.
+		// Resolved layer inputs and compositor normals store all three components, unlike
+		// imported two-channel maps.
 		SampledNormal = LayerN.SampleLevel(LinearWrapSampler, LayerUV, 0.0f).xyz * 2.0f - 1.0f;
 		SampledNormal.xy *= NormalIntensity;
 		SampledNormal.y *= FlipNormalY != 0 ? -1.0f : 1.0f;

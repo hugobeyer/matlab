@@ -195,7 +195,7 @@ private:
 
 	FMixtormatLayerEffect* GetSelectedFlowWarp();
 	const FMixtormatLayerEffect* GetSelectedFlowWarp() const;
-	FReply AddFlowWarpToLayer(int32 LayerIndex);
+	FReply AddFlowWarpToLayer(int32 LayerIndex, int32 OwnerChildIndex = INDEX_NONE);
 	FReply AddLayerBlurToLayer(int32 LayerIndex);
 	FMixtormatLayerEffect* GetSelectedLayerBlurEffect();
 	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
@@ -729,6 +729,7 @@ private:
 	FText GetLayerDisplayName(int32 LayerIndex) const;
 	FText GetLayerSourceText(int32 LayerIndex) const;
 	FText GetLayerChildName(const FMixtormatLayerChild& Child) const;
+	FText GetLayerChildSourceText(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddLayerMenu();
 	TSharedRef<SWidget> BuildAddMaskMenu(int32 LayerIndex);

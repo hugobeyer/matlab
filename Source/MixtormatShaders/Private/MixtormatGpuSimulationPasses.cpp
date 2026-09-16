@@ -491,9 +491,6 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef* const EffectTargets = LayerCtx.EffectTargets;
 		FRDGTextureRef* const EffectHeightTargets = LayerCtx.EffectHeightTargets;
 		const FRDGTextureRef PeelFieldDummy = LayerCtx.PeelFieldDummy;
-		FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
-		FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
-		int32& EffectPassIndex = LayerCtx.EffectPassIndex;
 		TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		// A procedural peel builds its field first: seed the mask's threshold
@@ -650,12 +647,14 @@ namespace MixtormatGpuCompositor
 			PeelFieldB = FieldB;
 		}
 
-		const int32 EffectWriteIndex = EffectPassIndex & 1;
-		const int32 EffectReadIndex = 1 - EffectWriteIndex;
+		FRDGTextureRef LocalEffectData = GraphBuilder.CreateTexture(
+			LayerCtx.EffectDesc, TEXT("Mixtormat.LocalPeelingData"));
+		FRDGTextureRef LocalEffectHeight = GraphBuilder.CreateTexture(
+			LayerCtx.EffectHeightDesc, TEXT("Mixtormat.LocalPeelingHeight"));
 		FMixtormatPeelingCS::FParameters* EffectParameters =
 			GraphBuilder.AllocParameters<FMixtormatPeelingCS::FParameters>();
 		EffectParameters->OutputSize = Request.Resolution;
-		EffectParameters->Initialize = EffectPassIndex == 0 ? 1u : 0u;
+		EffectParameters->Initialize = 1u;
 		EffectParameters->Tiling = Effect.Tiling;
 		EffectParameters->Strength = Effect.Strength;
 		EffectParameters->Front = Effect.Front;
@@ -666,18 +665,18 @@ namespace MixtormatGpuCompositor
 		EffectParameters->Thickness = Effect.Thickness;
 		EffectParameters->Lift = Effect.Lift;
 		EffectParameters->DetailStrength = Effect.DetailStrength;
-		EffectParameters->PreviousEffectData = EffectTargets[EffectReadIndex];
+		EffectParameters->PreviousEffectData = EffectTargets[0];
 		EffectParameters->ChildMask = FeatureMask;
 		EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
 		EffectParameters->HeightAmount = Effect.PeelHeightAmount;
 		EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;
-		EffectParameters->PreviousEffectHeight = EffectHeightTargets[EffectReadIndex];
-		EffectParameters->OutputEffectHeight = GraphBuilder.CreateUAV(EffectHeightTargets[EffectWriteIndex]);
+		EffectParameters->PreviousEffectHeight = EffectHeightTargets[0];
+		EffectParameters->OutputEffectHeight = GraphBuilder.CreateUAV(LocalEffectHeight);
 		EffectParameters->PeelFieldA = PeelFieldA;
 		EffectParameters->PeelFieldB = PeelFieldB;
 		EffectParameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		EffectParameters->PointWrapSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-		EffectParameters->OutputEffectData = GraphBuilder.CreateUAV(EffectTargets[EffectWriteIndex]);
+		EffectParameters->OutputEffectData = GraphBuilder.CreateUAV(LocalEffectData);
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.Peeling.Layer%d.Child%d", LayerIndex, ChildIndex),
@@ -687,9 +686,19 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 				1));
-		CombinedEffectData = EffectTargets[EffectWriteIndex];
-		CombinedEffectHeight = EffectHeightTargets[EffectWriteIndex];
-		++EffectPassIndex;
+		AddOwnedEffectFlowWarpPasses(
+			Ctx,
+			LayerCtx,
+			Layer,
+			Child.SourceChildIndex,
+			LocalEffectData,
+			LocalEffectHeight);
+		AddEffectContributionPass(
+			Ctx,
+			LayerCtx,
+			Child.SourceChildIndex,
+			LocalEffectData,
+			LocalEffectHeight);
 	}
 
 }

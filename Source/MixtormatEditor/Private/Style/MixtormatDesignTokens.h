@@ -386,8 +386,9 @@ namespace MixtormatTokens
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
 	inline float LayerThumbnailSize = 24.0f;
-	// Children sit under the parent's name, clear of its eye and thumbnail.
+	// Children sit under the layer name; each scoped ownership level steps in again.
 	inline float LayerChildIndent = 28.0f;
+	inline float LayerScopeIndent = 14.0f;
 	// Leading inset is larger than trailing: the eye needs room from the panel edge, while the
 	// chevron on the right is already inset by its own slot padding.
 	inline float LayerRowInsetLeading = 6.0f;
