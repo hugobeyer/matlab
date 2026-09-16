@@ -2771,7 +2771,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 						const FEffectRenderData& Effect = Child.Effect;
 						FRDGTextureRef FeatureMask =
-							AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex);
+							AddScopedFeatureMask(
+								Ctx, LayerCtx, Layer, Child.SourceChildIndex,
+								Effect.Type == EMixtormatEffectType::LayerBlur);
 						if (Effect.Type == EMixtormatEffectType::Erosion)
 						{
 							QueuePendingErosion(LayerCtx, Layer, Child, Effect, FeatureMask);

@@ -503,7 +503,15 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	}
 	else
 	{
+		// Rebind the complete layer preview so removed overrides inherit the master again.
+		PreviewMaterialInstance->ClearParameterValues();
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
+		const TOptional<FLinearColor> FuzzColor =
+			MixtormatCompositionReferences::ComputeFuzzColor(Layers);
+		if (FuzzColor.IsSet())
+		{
+			PreviewMaterialInstance->SetVectorParameterValue(TEXT("DA_FuzzColor"), FuzzColor.GetValue());
+		}
 		CompositedFuzzInfluence =
 			MixtormatCompositionReferences::ComputeFuzzInfluence(Layers);
 		PreviewMaterialInstance->SetScalarParameterValue(

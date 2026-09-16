@@ -789,6 +789,8 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, Axis)
 		SHADER_PARAMETER(float, Radius)
+		SHADER_PARAMETER(uint32, UseLayerCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerCoverage)
 		SHADER_PARAMETER(uint32, UseMask)
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER(float, Amount)
@@ -1445,8 +1447,7 @@ namespace MixtormatGpuCompositor
 			// mask gates either, which is what turns the second one into a lens blur over a region.
 			const bool bLayerScope =
 				Blur.LayerBlurScope == static_cast<uint32>(EMixtormatLayerBlurScope::Layer);
-			const bool bUseMask =
-				Pending.FeatureMask != nullptr && (bLayerScope || Pending.bHasScopedMask);
+			const bool bUseMask = Pending.bHasScopedMask;
 
 			// Every surface target the layer writes. Height is optional because softening it changes
 			// what the surface is -- displacement, the height blend, derived normals -- rather than
@@ -1484,6 +1485,8 @@ namespace MixtormatGpuCompositor
 					BP->OutputSize = Request.Resolution;
 					BP->Axis = BlurAxis;
 					BP->Radius = BlurAxis == 0 ? Blur.LayerBlurRadiusX : Blur.LayerBlurRadiusY;
+					BP->UseLayerCoverage = bLayerScope && Layer.bHasMask ? 1u : 0u;
+					BP->LayerCoverage = LayerCtx.CombinedMask;
 					BP->UseMask = bUseMask ? 1u : 0u;
 					BP->InvertMask = 0u;
 					BP->Amount = Blur.LayerBlurAmount;
@@ -1491,9 +1494,7 @@ namespace MixtormatGpuCompositor
 					// shortfall reads as a flattened normal exactly where the blur is strongest.
 					BP->RenormalizeXYZ = TargetIndex == 1 ? 1u : 0u;
 					BP->SourceTexture = Target;
-					BP->LayerMask = Pending.FeatureMask
-						? Pending.FeatureMask
-						: LayerCtx.MaskTargets[0];
+					BP->LayerMask = Pending.FeatureMask;
 					BP->LinearWrapSampler =
 						TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 					BP->OutputTexture = GraphBuilder.CreateUAV(Scratch);

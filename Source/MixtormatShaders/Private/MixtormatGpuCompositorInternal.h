@@ -973,7 +973,8 @@ namespace MixtormatGpuCompositor
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex);
+		const int32 OwnerSourceChildIndex,
+		const bool bIndependentScope = false);
 
 	void AddGeneratedMaskPass(
 		FMixtormatComposeContext& Ctx,

@@ -20,13 +20,15 @@
 
 Texture2D<float4> SourceTexture;
 Texture2D<float> LayerMask;
+Texture2D<float> LayerCoverage;
 SamplerState LinearWrapSampler;
 RWTexture2D<float4> OutputTexture;
 
 int2 OutputSize;
 int Axis;
 float Radius;
-// 1 while the layer's own coverage still gates the result, 0 once it does not.
+// Scoped masks gate either scope; layer coverage is an independent intersection.
+uint UseLayerCoverage;
 uint UseMask;
 uint InvertMask;
 // How much of the blurred result to keep. The lerp is against the unblurred centre tap, so at 0
@@ -88,6 +90,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			Coverage = 1.0f - Coverage;
 		}
+	}
+
+	if (UseLayerCoverage != 0)
+	{
+		Coverage *= saturate(LayerCoverage.SampleLevel(LinearWrapSampler, UV, 0.0f));
 	}
 
 	OutputTexture[DispatchThreadId.xy] = lerp(Center, Blurred, saturate(Amount) * Coverage);

@@ -700,6 +700,107 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatBlurScopeTest,
+	"Mixtormat.Compositor.BlurScope",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatBlurScopeTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+	TStrongObjectPtr<UTexture2D> Coverage(MakeTwoToneIdMap(FColor::Black, FColor::White));
+	TStrongObjectPtr<UTexture2D> White(MakeTwoToneIdMap(FColor::White, FColor::White));
+	if (!TestNotNull(TEXT("Coverage exists"), Coverage.Get())
+		|| !TestNotNull(TEXT("White scope exists"), White.Get()))
+	{
+		return false;
+	}
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.SetNum(2);
+	for (FMixtormatLayer& Layer : Layers)
+	{
+		Layer.Type = EMixtormatLayerType::Fill;
+		Layer.bOverrideBaseColor = true;
+	}
+	Layers[0].BaseColor = FLinearColor::Black;
+	Layers[1].BaseColor = FLinearColor::White;
+	FMixtormatLayerChild& Mask = Layers[1].Children.AddDefaulted_GetRef();
+	Mask.Type = EMixtormatLayerChildType::Mask;
+	Mask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(Coverage.Get()));
+	Mask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	FMixtormatLayerChild& Blur = Layers[1].Children.AddDefaulted_GetRef();
+	Blur.Type = EMixtormatLayerChildType::Effect;
+	Blur.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
+	Blur.Effect.LayerBlurRadiusX = 8.0f;
+	Blur.Effect.LayerBlurRadiusY = 0.0f;
+	const FGuid BlurId = Blur.ChildId;
+
+	const int32 Outside = (TestResolution / 2) * TestResolution + TestResolution / 2 - 2;
+	const int32 Inside = Outside + 3;
+	// No scope, full Replace, and weighted Replace must all leave white independent of coverage.
+	for (int32 ScopedCase = 0; ScopedCase < 3; ++ScopedCase)
+	{
+		if (ScopedCase == 1)
+		{
+			FMixtormatLayerChild& Scope = Layers[1].Children.AddDefaulted_GetRef();
+			Scope.Type = EMixtormatLayerChildType::Mask;
+			Scope.ScopeOwnerChildId = BlurId;
+			Scope.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(White.Get()));
+			Scope.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+		}
+		if (ScopedCase == 2)
+		{
+			Layers[1].Children[2].Mask.Weight = 0.5f;
+		}
+		for (const EMixtormatLayerBlurScope Scope :
+			{EMixtormatLayerBlurScope::Layer, EMixtormatLayerBlurScope::Composite})
+		{
+			Layers[1].Children[1].Effect.LayerBlurScope = Scope;
+			TArray<FLinearColor> Pixels;
+			if (!TestTrue(TEXT("Blur composes"),
+				ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
+				|| !TestTrue(TEXT("Blur reads back"),
+					ReadTarget(Compositor.GetBaseColorOutput(), Pixels)))
+			{
+				return false;
+			}
+			TestTrue(FString::Printf(TEXT("Case %d: covered edge blurs"), ScopedCase),
+				Pixels[Inside].R < 0.95f);
+			TestTrue(FString::Printf(TEXT("Case %d: scope gates uncovered edge"), ScopedCase),
+				Scope == EMixtormatLayerBlurScope::Layer
+					? FMath::IsNearlyZero(Pixels[Outside].R, 0.01f)
+					: Pixels[Outside].R > 0.1f);
+		}
+	}
+	// A black scoped mask must suppress blur even in Whole Composite mode.
+	Layers[1].Children[2].Mask.Weight = 1.0f;
+	Layers[1].Children[2].Mask.Shaping.bInvert = true;
+	TArray<FLinearColor> MaskedPixels;
+	if (!TestTrue(TEXT("Black scoped blur composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
+		|| !TestTrue(TEXT("Black scoped blur reads back"),
+			ReadTarget(Compositor.GetBaseColorOutput(), MaskedPixels)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Scoped mask excludes uncovered edge"),
+		FMath::IsNearlyZero(MaskedPixels[Outside].R, 0.01f));
+	TestTrue(TEXT("Scoped mask excludes covered edge"),
+		FMath::IsNearlyEqual(MaskedPixels[Inside].R, 1.0f, 0.01f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatScopedGradeMaskTest,
 	"Mixtormat.Compositor.ScopedGradeMask",
 	EAutomationTestFlags::EditorContext

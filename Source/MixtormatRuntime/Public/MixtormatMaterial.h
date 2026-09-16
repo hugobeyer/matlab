@@ -2487,10 +2487,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// How much this layer pushes the substrate's Fuzz Slab amount. Neutral at 0, unlike the other
 	// Channel Influence rows: fuzz has no underlying value every layer already carries, so a
 	// layer that never touches it must leave the substrate's own default alone rather than
-	// zeroing it out. Mixtormat carries this number and nothing else -- the fuzz shading itself
-	// stays on the master material's DA_FuzzRoughness and DA_FuzzColor.
+	// zeroing it out. Roughness remains on the master material's DA_FuzzRoughness.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FuzzInfluence = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence")
+	FLinearColor FuzzColor = FLinearColor::White;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bInvertFeature = false;
@@ -2509,6 +2511,9 @@ namespace MixtormatCompositionReferences
 
 	// Resolves the non-texture fuzz channel through live composition references.
 	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers);
+
+	// Strongest positive influence wins; later (topmost) layers win ties. Unset inherits the master.
+	MIXTORMATRUNTIME_API TOptional<FLinearColor> ComputeFuzzColor(const TArray<FMixtormatLayer>& Layers);
 }
 
 UCLASS(BlueprintType)

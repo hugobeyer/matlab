@@ -389,7 +389,7 @@ namespace MixtormatUI
 	inline FText LayerBlurScopeText(const EMixtormatLayerBlurScope Scope)
 	{
 		return Scope == EMixtormatLayerBlurScope::Layer
-			? LOCTEXT("LayerBlurScopeLayer", "This Layer")
+			? LOCTEXT("LayerBlurScopeLayer", "Layer Coverage")
 			: LOCTEXT("LayerBlurScopeComposite", "Whole Composite");
 	}
 

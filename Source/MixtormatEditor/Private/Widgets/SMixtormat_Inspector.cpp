@@ -733,7 +733,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerBlurControls()
 					: FText::GetEmpty();
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerBlurScopeMenu)),
-		LOCTEXT("LayerBlurScopeHint", "This Layer keeps the layer's own coverage in the blend, so nothing outside this layer moves. Whole Composite drops that and softens everything the stack has reached. Either way a mask scoped under this effect gates it, which is what turns the second one into a lens blur over a chosen region rather than over the whole surface.")));
+		LOCTEXT("LayerBlurScopeHint", "Blurs the accumulated composite. Layer Coverage intersects layer coverage with scoped masks. Whole Composite uses scoped masks only, or affects everything when none are present.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(
@@ -3394,9 +3394,65 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		LOCTEXT("LayerNormalInfluenceLabel", "Normal"), Layer, &FMixtormatLayer::NormalInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("LayerHeightInfluenceLabel", "Height"), Layer, &FMixtormatLayer::HeightInfluence, 0.0, 1.0, 1.0, 0.01));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("FuzzInfluenceLabel", "Fuzz"), Layer, &FMixtormatLayer::FuzzInfluence, 0.0, 1.0, 0.0, 0.01,
-		LOCTEXT("FuzzInfluenceHint", "How much this layer pushes the substrate's Fuzz Slab amount. 0 leaves the master material's own fuzz alone; the fuzz shading itself stays on DA_FuzzRoughness and DA_FuzzColor there.")));
+	AddSliderRow(Panel, SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.0f)
+		[
+			MakeMemberSlider<FMixtormatLayer>(
+				LOCTEXT("FuzzInfluenceLabel", "Fuzz"), Layer, &FMixtormatLayer::FuzzInfluence, 0.0, 1.0, 0.0, 0.01,
+				LOCTEXT("FuzzInfluenceHint", "Fuzz amount. The strongest enabled positive influence supplies the fuzz color; the topmost layer wins ties. Roughness stays on the master material."))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+			.ContentPadding(2.0f)
+			.ToolTipText(LOCTEXT("FuzzColorHint", "Fuzz Color (DA_FuzzColor). No positive fuzz influence leaves the master's color unchanged."))
+			.OnClicked_Lambda([this]()
+			{
+				if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+				{
+					return FReply::Handled();
+				}
+				const FGuid LayerId = WorkingLayers[SelectedLayerIndex].LayerId;
+				const FLinearColor Original = WorkingLayers[SelectedLayerIndex].FuzzColor;
+				const TWeakPtr<SMixtormat> WeakThis = SharedThis(this);
+				const auto ApplyColor = [WeakThis, LayerId](FLinearColor Color)
+				{
+					if (const TSharedPtr<SMixtormat> Widget = WeakThis.Pin())
+					{
+						for (FMixtormatLayer& Target : Widget->WorkingLayers)
+						{
+							if (Target.LayerId == LayerId)
+							{
+								Color.A = 1.0f;
+								Target.FuzzColor = Color;
+								Widget->RefreshLayeredPreview();
+								break;
+							}
+						}
+					}
+				};
+				LastHistoryRecordTime = 0.0;
+				FColorPickerArgs Args;
+				Args.bUseAlpha = false;
+				Args.bOnlyRefreshOnMouseUp = false;
+				Args.InitialColor = Original;
+				Args.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda(ApplyColor);
+				Args.OnColorPickerCancelled = FOnColorPickerCancelled::CreateLambda(
+					[ApplyColor, Original](const FLinearColor) { ApplyColor(Original); });
+				OpenColorPicker(Args);
+				return FReply::Handled();
+			})
+			[
+				SNew(SColorBlock)
+				.Size(FVector2D(24.0f, 16.0f))
+				.Color_Lambda([Layer]()
+				{
+					const FMixtormatLayer* Selected = Layer();
+					return Selected ? Selected->FuzzColor : FLinearColor::White;
+				})
+			]
+		]);
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()

@@ -12,6 +12,41 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatFuzzColorTest,
+	"Mixtormat.Editor.FuzzColor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatFuzzColorTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	TArray<FMixtormatLayer> Layers;
+	Layers.SetNum(2);
+	TestFalse(TEXT("Zero influence inherits the master color"),
+		MixtormatCompositionReferences::ComputeFuzzColor(Layers).IsSet());
+	Layers[0].FuzzInfluence = 0.8f;
+	Layers[0].FuzzColor = FLinearColor::Red;
+	Layers[1].FuzzInfluence = 0.2f;
+	Layers[1].FuzzColor = FLinearColor::Blue;
+	const auto ExpectColor = [this, &Layers](const TCHAR* Label, FLinearColor Expected)
+	{
+		const TOptional<FLinearColor> Color = MixtormatCompositionReferences::ComputeFuzzColor(Layers);
+		TestTrue(Label, Color.IsSet() && Color.GetValue().Equals(Expected));
+	};
+	ExpectColor(TEXT("Strongest influence supplies color"), FLinearColor::Red);
+	Layers[1].FuzzInfluence = 0.8f;
+	ExpectColor(TEXT("Topmost layer wins ties"), FLinearColor::Blue);
+	Layers[1].bEnabled = false;
+	ExpectColor(TEXT("Disabled layers do not supply color"), FLinearColor::Red);
+	Layers[1].bEnabled = true;
+	Layers[1].Opacity = 0.0f;
+	ExpectColor(TEXT("Invisible layers do not supply color"), FLinearColor::Red);
+	Layers[0].FuzzInfluence = 0.0f;
+	TestFalse(TEXT("Removing all active fuzz restores inheritance"),
+		MixtormatCompositionReferences::ComputeFuzzColor(Layers).IsSet());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatGpuCompositorTest,
 	"Mixtormat.Editor.GpuCompositor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

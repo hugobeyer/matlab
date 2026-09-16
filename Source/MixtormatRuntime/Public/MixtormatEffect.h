@@ -42,7 +42,7 @@ enum class EMixtormatEffectType : uint8
 UENUM(BlueprintType)
 enum class EMixtormatLayerBlurScope : uint8
 {
-	// Gated by the layer's own coverage: the blur only lands where this layer covers.
+	// Gated by layer coverage multiplied by the independently evaluated scoped mask chain.
 	//
 	// It does not isolate this layer's contribution, and the name used to imply that it did. By
 	// the time a Filter runs there is one surface target holding the whole accumulated stack, so
@@ -55,7 +55,7 @@ enum class EMixtormatLayerBlurScope : uint8
 	Layer = 0 UMETA(DisplayName = "Layer Coverage"),
 	// Ungated by layer coverage: softens the whole accumulated surface. A scoped mask child still
 	// gates it, which is how this becomes a lens blur over a chosen region.
-	Composite = 1 UMETA(DisplayName = "Everywhere")
+	Composite = 1 UMETA(DisplayName = "Whole Composite")
 };
 
 UENUM(BlueprintType)

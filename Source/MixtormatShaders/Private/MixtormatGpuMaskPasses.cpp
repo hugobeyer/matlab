@@ -480,7 +480,7 @@ namespace MixtormatGpuCompositor
 
 	// Scoped masks use the same shader and controls as layer masks, but write to
 	// owner-local textures. The starting point is the layer mask visible at the
-	// owner's row; the result never feeds back into CombinedMask.
+	// owner's row, or white for blur's independent scoped chain; neither feeds back into CombinedMask.
 	//
 	// Called for every effect child before the effect-type dispatch, including the ones that
 	// only append to a pending list: those still need these passes emitted at that point in
@@ -489,7 +489,8 @@ namespace MixtormatGpuCompositor
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex)
+		const int32 OwnerSourceChildIndex,
+		const bool bIndependentScope)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -500,6 +501,11 @@ namespace MixtormatGpuCompositor
 		const int32 MaskPassIndex = LayerCtx.MaskPassIndex;
 		TShaderMapRef<FMixtormatMaskCS> MaskShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		FRDGTextureRef FeatureMask = CombinedMask;
+		if (bIndependentScope)
+		{
+			FeatureMask = GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.ScopedMaskWhite"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(FeatureMask), FVector4f(1.0f));
+		}
 		bool bHasScopedMask = false;
 		int32 ScopedPassIndex = 0;
 		for (const FChildRenderData& ScopedChild : Layer.Children)
@@ -568,7 +574,7 @@ namespace MixtormatGpuCompositor
 
 		// Deferred owners need a stable snapshot even when they have no scoped mask,
 		// because the global ping-pong target may be overwritten later in the loop.
-		if (!bHasScopedMask && MaskPassIndex > 0)
+		if (!bIndependentScope && !bHasScopedMask && MaskPassIndex > 0)
 		{
 			FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
 				MaskDesc, TEXT("Mixtormat.FeatureMaskSnapshot"));

@@ -117,6 +117,44 @@ float MixtormatCompositionReferences::ComputeFuzzInfluence(
 	return Visit(Layers);
 }
 
+TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
+	const TArray<FMixtormatLayer>& Layers)
+{
+	TOptional<FLinearColor> Result;
+	float Strongest = 0.0f;
+	TSet<const UMixtormatMaterial*> Active;
+	TFunction<void(const TArray<FMixtormatLayer>&)> Visit;
+	Visit = [&](const TArray<FMixtormatLayer>& CurrentLayers)
+	{
+		for (const FMixtormatLayer& Layer : CurrentLayers)
+		{
+			if (!Layer.bEnabled || Layer.Opacity <= 0.0f)
+			{
+				continue;
+			}
+			if (!Layer.SourceComposition.IsNull())
+			{
+				const UMixtormatMaterial* Source = Layer.SourceComposition.LoadSynchronous();
+				if (Source && !Active.Contains(Source))
+				{
+					Active.Add(Source);
+					Visit(Source->Layers);
+					Active.Remove(Source);
+				}
+				continue;
+			}
+			const float Influence = FMath::Clamp(Layer.FuzzInfluence, 0.0f, 1.0f);
+			if (Influence > 0.0f && Influence >= Strongest)
+			{
+				Strongest = Influence;
+				Result = Layer.FuzzColor;
+			}
+		}
+	};
+	Visit(Layers);
+	return Result;
+}
+
 void UMixtormatMaterial::PostLoad()
 {
 	Super::PostLoad();

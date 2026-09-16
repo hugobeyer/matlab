@@ -260,6 +260,14 @@ namespace MixtormatBake
 				Missing.Add(Name);
 			}
 		}
+		TArray<FMaterialParameterInfo> VectorParameterInfo;
+		TArray<FGuid> VectorParameterIds;
+		Master.GetAllVectorParameterInfo(VectorParameterInfo, VectorParameterIds);
+		if (!VectorParameterInfo.ContainsByPredicate([](const FMaterialParameterInfo& Info)
+			{ return Info.Name == FName(TEXT("DA_FuzzColor")); }))
+		{
+			Missing.Add(TEXT("DA_FuzzColor"));
+		}
 		return Missing;
 	}
 
@@ -685,6 +693,21 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.Material,
 		TEXT("DA_FuzzInfluence"),
 		MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers));
+	const TOptional<FLinearColor> FuzzColor =
+		MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers);
+	if (FuzzColor.IsSet())
+	{
+		UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
+			Result.Material, TEXT("DA_FuzzColor"), FuzzColor.GetValue());
+	}
+	else
+	{
+		// Re-baking without fuzz must remove the old override, not freeze the master's current value.
+		Result.Material->VectorParameterValues.RemoveAll([](const FVectorParameterValue& Value)
+		{
+			return Value.ParameterInfo.Name == FName(TEXT("DA_FuzzColor"));
+		});
+	}
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);
