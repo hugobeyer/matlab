@@ -13,6 +13,8 @@
 
 namespace
 {
+	bool bSuppressDeveloperRefreshSuccessDialog = false;
+
 	class SMixtormatCompositionCard final : public SCompoundWidget
 	{
 	public:
@@ -628,6 +630,11 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObjectPath AssetPath)
 {
 	const bool bIsUserAsset = MixtormatUI::IsUserLibraryAsset(AssetPath);
+	const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.TryLoad());
+	const bool bCanDeveloperRefresh = !bIsUserAsset
+		&& Surface
+		&& !Surface->SourceTextureBaseName.IsEmpty()
+		&& !FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	MixtormatMenu::FBuilder Menu;
 	Menu.Caption(LOCTEXT("LibraryMaterialContextCaption", "Library Material"))
 		.Item(
@@ -637,8 +644,15 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 		.Item(
 			LOCTEXT("BrowseLibraryMaterial", "Show in Content Browser"),
 			MixtormatUI::LucideIcon(TEXT("folder-open")),
-			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath))
-		.Separator()
+			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath));
+	if (bCanDeveloperRefresh)
+	{
+		Menu.Item(
+			LOCTEXT("RefreshBuiltInMaterial", "Developer: Refresh / Reimport from Source"),
+			MixtormatUI::LucideIcon(TEXT("refresh-cw")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::RefreshBuiltInSurface, AssetPath));
+	}
+	Menu.Separator()
 		.Item(
 			LOCTEXT("RemoveImportedMaterial", "Remove Imported Material…"),
 			MixtormatUI::LucideIcon(TEXT("trash-2")),
@@ -646,6 +660,75 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 		.Enabled(bIsUserAsset)
 		.Destructive();
 	return Menu.Build();
+}
+
+void SMixtormat::RefreshBuiltInSurface(const FSoftObjectPath AssetPath)
+{
+	const FMixtormatImportResult Result =
+		FMixtormatSurfaceImporter::ReimportShippedSurface(AssetPath);
+	RebuildCategoryList();
+	RebuildSurfaceList();
+	RebuildUserLibraryList();
+
+	const bool bSucceeded = Result.Errors.IsEmpty();
+	WorkingStatusText = bSucceeded
+		? TEXT("Developer material refresh completed")
+		: TEXT("Developer material refresh failed");
+	if (bSucceeded && bSuppressDeveloperRefreshSuccessDialog)
+	{
+		return;
+	}
+
+	bool bSuppressSuccessFeedback = false;
+	TSharedPtr<SWindow> FeedbackWindow;
+	SAssignNew(FeedbackWindow, SWindow)
+		.Title(LOCTEXT("DeveloperRefreshResultTitle", "Material Refresh"))
+		.ClientSize(FVector2D(520.0f, 210.0f))
+		.SupportsMaximize(false)
+		.SupportsMinimize(false)
+		[
+			SNew(SBorder)
+			.Padding(MixtormatTokens::DialogPadding)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().FillHeight(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(Result.ToMessage())
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 12.0f)
+				[
+					SNew(SCheckBox)
+					.IsChecked(ECheckBoxState::Unchecked)
+					.OnCheckStateChanged_Lambda([&bSuppressSuccessFeedback](const ECheckBoxState State)
+					{
+						bSuppressSuccessFeedback = State == ECheckBoxState::Checked;
+					})
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT(
+							"SuppressDeveloperRefreshSuccess",
+							"Don't show successful refresh feedback again this session"))
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("CloseDeveloperRefreshResult", "OK"))
+					.OnClicked_Lambda([&FeedbackWindow]()
+					{
+						FeedbackWindow->RequestDestroyWindow();
+						return FReply::Handled();
+					})
+				]
+			]
+		];
+	FSlateApplication::Get().AddModalWindow(
+		FeedbackWindow.ToSharedRef(),
+		FSlateApplication::Get().FindWidgetWindow(AsShared()),
+		false);
+	bSuppressDeveloperRefreshSuccessDialog |= bSuppressSuccessFeedback;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildCompositionLibraryContextMenu(const FSoftObjectPath AssetPath)

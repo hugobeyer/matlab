@@ -766,6 +766,7 @@ private:
 	void AddBakedLayerFromComposition(FSoftObjectPath AssetPath);
 	void AddReferenceLayerFromComposition(FSoftObjectPath AssetPath);
 	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
+	void RefreshBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
 	TSharedRef<SWidget> BuildCompositionResolutionMenu();

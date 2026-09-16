@@ -232,7 +232,8 @@ namespace MixtormatImporter
 		const FString& Filename,
 		const FString& DestinationPath,
 		const EMapType MapType,
-		FMixtormatImportResult& Result)
+		FMixtormatImportResult& Result,
+		const bool bForceReimport = false)
 	{
 		if (!IsMixtormatAssetPath(DestinationPath))
 		{
@@ -250,7 +251,7 @@ namespace MixtormatImporter
 		if (UTexture2D* ExistingTexture = LoadObject<UTexture2D>(nullptr, *ObjectPath))
 		{
 			bool bReimported = false;
-			if (HasSourceChanged(*ExistingTexture, Filename))
+			if (bForceReimport || HasSourceChanged(*ExistingTexture, Filename))
 			{
 				if (!FReimportManager::Instance()->Reimport(
 					ExistingTexture,
@@ -259,7 +260,7 @@ namespace MixtormatImporter
 					Filename))
 				{
 					Result.Errors.Add(FString::Printf(
-						TEXT("Failed to reimport changed texture %s from %s."),
+						TEXT("Failed to reimport texture %s from %s."),
 						*ObjectPath,
 						*Filename));
 					return nullptr;
@@ -1042,6 +1043,57 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ReimportShippedLibrary()
 	return ImportDefaultLibrary();
 }
 
+FMixtormatImportResult FMixtormatSurfaceImporter::ReimportShippedSurface(
+	const FSoftObjectPath& SurfacePath)
+{
+	using namespace MixtormatImporter;
+	FMixtormatImportResult Result;
+	const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(SurfacePath.TryLoad());
+	if (!Surface)
+	{
+		Result.Errors.Add(TEXT("The selected gallery material could not be loaded."));
+		return Result;
+	}
+
+	const FString PackageName = Surface->GetPackage()->GetName();
+	const FString ManagedRoot = FMixtormatPaths::SurfacesRoot();
+	if (PackageName != ManagedRoot && !PackageName.StartsWith(ManagedRoot + TEXT("/")))
+	{
+		Result.Errors.Add(TEXT("Only built-in gallery materials can be refreshed from developer sources."));
+		return Result;
+	}
+
+	const FString SourceBaseName = Surface->SourceTextureBaseName;
+	if (SourceBaseName.IsEmpty())
+	{
+		Result.Errors.Add(TEXT("The selected material does not record a source texture base name."));
+		return Result;
+	}
+
+	for (const FString& SourceDirectory : EnumerateShippedSourceDirectories())
+	{
+		TArray<FString> Files;
+		IFileManager::Get().FindFiles(Files, *(SourceDirectory / TEXT("*.png")), true, false);
+		const bool bContainsSurface = Files.ContainsByPredicate(
+			[&SourceBaseName](const FString& File)
+			{
+				FString ParsedBaseName;
+				EMapType MapType;
+				return ParseMapName(FPaths::GetBaseFilename(File), ParsedBaseName, MapType)
+					&& ParsedBaseName.Equals(SourceBaseName, ESearchCase::IgnoreCase);
+			});
+		if (bContainsSurface)
+		{
+			return ImportDirectoryInternal(SourceDirectory, true, SourceBaseName, true);
+		}
+	}
+
+	Result.Errors.Add(FString::Printf(
+		TEXT("No shipped source PNG set was found for %s."),
+		*SourceBaseName));
+	return Result;
+}
+
 FMixtormatImportResult FMixtormatSurfaceImporter::ImportFromDialog()
 {
 	FMixtormatImportResult Result;
@@ -1156,6 +1208,15 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 	const FString& SourceDirectory,
 	const bool bUsePluginDestination)
 {
+	return ImportDirectoryInternal(SourceDirectory, bUsePluginDestination, FString(), false);
+}
+
+FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectoryInternal(
+	const FString& SourceDirectory,
+	const bool bUsePluginDestination,
+	const FString& SourceBaseName,
+	const bool bForceRefresh)
+{
 	using namespace MixtormatImporter;
 	FMixtormatImportResult Result;
 
@@ -1173,7 +1234,9 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 		const FString Stem = FPaths::GetBaseFilename(File);
 		FString BaseName;
 		EMapType MapType;
-		if (!ParseMapName(Stem, BaseName, MapType))
+		if (!ParseMapName(Stem, BaseName, MapType)
+			|| (!SourceBaseName.IsEmpty()
+				&& !BaseName.Equals(SourceBaseName, ESearchCase::IgnoreCase)))
 		{
 			continue;
 		}
@@ -1193,6 +1256,13 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 			break;
 		default: break;
 		}
+	}
+	if (TextureSets.IsEmpty())
+	{
+		Result.Errors.Add(SourceBaseName.IsEmpty()
+			? FString(TEXT("No recognized Mixtormat texture sets were found in the selected folder."))
+			: FString::Printf(TEXT("No texture set was found for %s."), *SourceBaseName));
+		return Result;
 	}
 
 	UMaterial* PreviewMaster = LoadSubstrateMaster();
@@ -1264,15 +1334,18 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 			continue;
 		}
 
-		UTexture2D* BaseColor = ImportTexture(AssetTools, Set.BaseColorFile, TexturePath, EMapType::BaseColor, Result);
-		UTexture2D* Normal = ImportTexture(AssetTools, Set.NormalFile, TexturePath, EMapType::Normal, Result);
+		UTexture2D* BaseColor = ImportTexture(
+			AssetTools, Set.BaseColorFile, TexturePath, EMapType::BaseColor, Result, bForceRefresh);
+		UTexture2D* Normal = ImportTexture(
+			AssetTools, Set.NormalFile, TexturePath, EMapType::Normal, Result, bForceRefresh);
 		const FString& PackedSourceFile = bHasAuthoredHeight ? Set.RamHeightFile : Set.RamFile;
 		UTexture2D* SourceRam = ImportTexture(
 			AssetTools,
 			PackedSourceFile,
 			TexturePath,
 			bHasAuthoredHeight ? EMapType::RamHeight : EMapType::Ram,
-			Result);
+			Result,
+			bForceRefresh);
 		if (!BaseColor || !Normal || !SourceRam)
 		{
 			Result.Errors.Add(FString::Printf(TEXT("Failed to import the _BC, _N, and packed RAM texture set for %s."), *Set.BaseName));
@@ -1313,11 +1386,13 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 				Set.NormalFile,
 				Set.RamFile,
 				Normal->bFlipGreenChannel);
-			UTexture2D* DerivedRAMH = LoadReusableDerivedRAMH(
-				*Surface,
-				TexturePath,
-				Set.BaseName,
-				DerivedHeightSourceHash);
+			UTexture2D* DerivedRAMH = bForceRefresh
+				? nullptr
+				: LoadReusableDerivedRAMH(
+					*Surface,
+					TexturePath,
+					Set.BaseName,
+					DerivedHeightSourceHash);
 			if (DerivedRAMH)
 			{
 				++Result.ReusedTextureCount;
@@ -1360,7 +1435,8 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDirectory(
 			*PreviewMaterial);
 		UTexture2D* SurfaceThumbnail = Surface->Thumbnail.Get();
 		FString StoredThumbnailHash = Surface->ThumbnailSourceHash;
-		const bool bCanReuseThumbnail = SurfaceThumbnail
+		const bool bCanReuseThumbnail = !bForceRefresh
+			&& SurfaceThumbnail
 			&& SurfaceThumbnail->Source.GetSizeX() == MixtormatPreviewSceneSettings::SurfaceThumbnailResolution
 			&& SurfaceThumbnail->Source.GetSizeY() == MixtormatPreviewSceneSettings::SurfaceThumbnailResolution
 			&& StoredThumbnailHash.Equals(SurfaceThumbnailHash, ESearchCase::CaseSensitive);

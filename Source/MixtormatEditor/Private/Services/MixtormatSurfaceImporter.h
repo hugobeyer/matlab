@@ -32,10 +32,18 @@ public:
 	static FString GetDefaultSourceDirectory();
 	static FMixtormatImportResult ImportDefaultLibrary();
 	static FMixtormatImportResult ReimportShippedLibrary();
+	static FMixtormatImportResult ReimportShippedSurface(const FSoftObjectPath& SurfacePath);
 	static FMixtormatImportResult ImportFromDialog();
 	static FMixtormatImportResult ImportMasksFromDialog();
 	static FMixtormatImportResult ImportMaskDirectory(const FString& SourceDirectory);
 	static FMixtormatImportResult ImportDirectory(
 		const FString& SourceDirectory,
 		bool bUsePluginDestination = false);
+
+private:
+	static FMixtormatImportResult ImportDirectoryInternal(
+		const FString& SourceDirectory,
+		bool bUsePluginDestination,
+		const FString& SourceBaseName,
+		bool bForceRefresh);
 };
