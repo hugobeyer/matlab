@@ -696,6 +696,132 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Active chipping carves the height"), CarvedPixels > 0);
 
+	// A neutral later node must not replace an earlier active node in the pending queue.
+	FMixtormatLayerChild NeutralChip = ChipChild;
+	NeutralChip.ChildId = FGuid::NewGuid();
+	NeutralChip.Effect.ChipAmount = 0.0f;
+	Layers[0].Children.Add(NeutralChip);
+	TArray<FLinearColor> ChippingWithNeutral;
+	if (!TestTrue(TEXT("Chained chipping composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
+		|| !TestTrue(TEXT("Chained chipping reads back"),
+			ReadHeight(Compositor.GetHeightOutput(), ChippingWithNeutral)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("Chained height size matches"), ChippingWithNeutral.Num(), ActiveChipping.Num()))
+	{
+		return false;
+	}
+	int32 ChainedDifferences = 0;
+	for (int32 Index = 0; Index < ActiveChipping.Num(); ++Index)
+	{
+		ChainedDifferences += ChippingWithNeutral[Index].R == ActiveChipping[Index].R ? 0 : 1;
+	}
+	TestEqual(TEXT("Neutral chipping preserves earlier active chipping"), ChainedDifferences, 0);
+
+	TStrongObjectPtr<UTexture2D> ChipCoverage(MakeTwoToneIdMap(FColor::White, FColor::Black));
+	if (!TestNotNull(TEXT("Chip coverage exists"), ChipCoverage.Get()))
+	{
+		return false;
+	}
+	FMixtormatLayerChild Scope;
+	Scope.Type = EMixtormatLayerChildType::Mask;
+	Scope.ScopeOwnerChildId = ChipChild.ChildId;
+	Scope.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ChipCoverage.Get()));
+	Scope.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	Layers[0].Children.Insert(Scope, 2);
+	TArray<FLinearColor> MaskedChipping;
+	if (!TestTrue(TEXT("Masked chipping composes"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
+		|| !TestTrue(TEXT("Masked chipping reads back"),
+			ReadHeight(Compositor.GetHeightOutput(), MaskedChipping)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("Masked height size matches"), MaskedChipping.Num(), WithoutChipping.Num()))
+	{
+		return false;
+	}
+	int32 OutsideChanges = 0;
+	int32 InsideCarves = 0;
+	for (int32 Index = 0; Index < MaskedChipping.Num(); ++Index)
+	{
+		const int32 X = Index % TestResolution;
+		if (X >= TestResolution / 2 + 1 && X < TestResolution - 1)
+		{
+			OutsideChanges += MaskedChipping[Index].R == WithoutChipping[Index].R ? 0 : 1;
+		}
+		else if (X > 0 && X < TestResolution / 2 - 1)
+		{
+			InsideCarves += MaskedChipping[Index].R < WithoutChipping[Index].R - 1.0e-4f ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("Chip growth leaves excluded height unchanged"), OutsideChanges, 0);
+	TestTrue(TEXT("Chip mask still permits carving inside"), InsideCarves > 0);
+
+	// The same chipped owner must blend against, rather than carve into, another layer.
+	FMixtormatLayer Owner = Layer;
+	Owner.LayerId = FGuid::NewGuid();
+	Owner.Children[1].Effect.ChipAmount = 1.0f;
+	TArray<FMixtormatLayer> IsolationLayers = {Layer};
+	TArray<FLinearColor> UnderlyingNormal;
+	TArray<FLinearColor> UnderlyingRAM;
+	if (!ComposeAndWait(Compositor, IsolationLayers, FMixtormatDebugPreviewSettings())
+		|| !ReadTarget(Compositor.GetNormalOutput(), UnderlyingNormal)
+		|| !ReadTarget(Compositor.GetRAMOutput(), UnderlyingRAM))
+	{
+		AddError(TEXT("Could not read underlying channels for isolation test"));
+		return false;
+	}
+	IsolationLayers.Add(Owner);
+	for (const float OwnerOpacity : {0.0f, 0.5f, 1.0f, -1.0f})
+	{
+		IsolationLayers[1].bEnabled = OwnerOpacity >= 0.0f;
+		IsolationLayers[1].Opacity = FMath::Max(OwnerOpacity, 0.0f);
+		TArray<FLinearColor> IsolatedHeight;
+		if (!TestTrue(TEXT("Owner-local chipping composes"),
+			ComposeAndWait(Compositor, IsolationLayers, FMixtormatDebugPreviewSettings()))
+			|| !TestTrue(TEXT("Owner-local height reads back"),
+				ReadHeight(Compositor.GetHeightOutput(), IsolatedHeight)))
+		{
+			return false;
+		}
+		if (!TestEqual(TEXT("Owner-local height size matches"), IsolatedHeight.Num(), ActiveChipping.Num()))
+		{
+			return false;
+		}
+		float MaximumError = 0.0f;
+		for (int32 Index = 0; Index < IsolatedHeight.Num(); ++Index)
+		{
+			const float Expected = FMath::Lerp(
+				WithoutChipping[Index].R, ActiveChipping[Index].R, FMath::Max(OwnerOpacity, 0.0f));
+			MaximumError = FMath::Max(MaximumError, FMath::Abs(IsolatedHeight[Index].R - Expected));
+		}
+		TestTrue(FString::Printf(TEXT("Chipping obeys owner opacity %.1f"), OwnerOpacity),
+			MaximumError <= 0.001f);
+		if (OwnerOpacity <= 0.0f)
+		{
+			TArray<FLinearColor> HiddenNormal;
+			TArray<FLinearColor> HiddenRAM;
+			if (!ReadTarget(Compositor.GetNormalOutput(), HiddenNormal)
+				|| !ReadTarget(Compositor.GetRAMOutput(), HiddenRAM)
+				|| HiddenNormal.Num() != UnderlyingNormal.Num()
+				|| HiddenRAM.Num() != UnderlyingRAM.Num())
+			{
+				AddError(TEXT("Could not read hidden-owner channels"));
+				return false;
+			}
+			int32 ChangedPixels = 0;
+			for (int32 Index = 0; Index < HiddenNormal.Num(); ++Index)
+			{
+				ChangedPixels += HiddenNormal[Index].Equals(UnderlyingNormal[Index], 0.001f)
+					&& HiddenRAM[Index].Equals(UnderlyingRAM[Index], 0.001f) ? 0 : 1;
+			}
+			TestEqual(TEXT("Hidden chipped owner preserves underlying normal and RAM"), ChangedPixels, 0);
+		}
+	}
+
 	return true;
 }
 

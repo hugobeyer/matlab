@@ -138,6 +138,7 @@ public:
 		SHADER_PARAMETER(uint32, CompositionMode)
 		SHADER_PARAMETER(uint32, IsFill)
 		SHADER_PARAMETER(uint32, HasSurface)
+		SHADER_PARAMETER(uint32, PreparedLayerMode)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(uint32, HasSeparateHeight)
 		SHADER_PARAMETER(uint32, LayerInputResolved)
@@ -547,7 +548,8 @@ namespace MixtormatGpuCompositor
 	void AddLayerCompositePass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer)
+		const FLayerRenderData& Layer,
+		const uint32 PreparedLayerMode = 0)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -589,6 +591,7 @@ namespace MixtormatGpuCompositor
 		Parameters->CompositionMode = Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
+		Parameters->PreparedLayerMode = PreparedLayerMode;
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
@@ -2693,7 +2696,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
 					DebugMask = CombinedMask;
 					FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
-					FPendingEffect& PendingChipping = LayerCtx.PendingChipping;
+
 
 
 					TArray<FPendingWornEdges, TInlineAllocator<2>>& PendingWornEdges =
@@ -2820,7 +2823,23 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						AddPeelingEffectPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 					}
 
-					AddLayerCompositePass(Ctx, LayerCtx, Layer);
+					// Keep preparation stable as Amount crosses zero; only the carve dispatches stop.
+					const bool bPrepareChipping = !LayerCtx.PendingChippings.IsEmpty();
+					const int32 LocalWriteIndex = LayerIndex & 1;
+					FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
+					FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
+					FRDGTextureRef SavedRAM = Ctx.OutputRAM[LocalWriteIndex];
+					FRDGTextureRef SavedHeight = Ctx.OutputHeight[LocalWriteIndex];
+					if (bPrepareChipping)
+					{
+						// Keep the read side intact for placement/height-reference evaluation.
+						// Relief filters write only the isolated incoming material channels.
+						Ctx.OutputBC[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedBC->Desc, TEXT("Mixtormat.LocalBC"));
+						Ctx.OutputN[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedN->Desc, TEXT("Mixtormat.LocalN"));
+						Ctx.OutputRAM[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedRAM->Desc, TEXT("Mixtormat.LocalRAM"));
+						Ctx.OutputHeight[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedHeight->Desc, TEXT("Mixtormat.LocalHeight"));
+					}
+					AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareChipping ? 1u : 0u);
 
 					AddErosionPasses(Ctx, LayerCtx, Layer);
 
@@ -2832,6 +2851,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 
 					AddChippingPasses(Ctx, LayerCtx, Layer);
+
+					if (bPrepareChipping)
+					{
+						LayerCtx.LayerInputBC = Ctx.OutputBC[LocalWriteIndex];
+						LayerCtx.LayerInputN = Ctx.OutputN[LocalWriteIndex];
+						LayerCtx.LayerInputRAM = Ctx.OutputRAM[LocalWriteIndex];
+						LayerCtx.LayerInputHeight = Ctx.OutputHeight[LocalWriteIndex];
+						Ctx.OutputBC[LocalWriteIndex] = SavedBC;
+						Ctx.OutputN[LocalWriteIndex] = SavedN;
+						Ctx.OutputRAM[LocalWriteIndex] = SavedRAM;
+						Ctx.OutputHeight[LocalWriteIndex] = SavedHeight;
+						AddLayerCompositePass(Ctx, LayerCtx, Layer, 2u);
+					}
 
 					// Grade is applied to the incoming layer color inside the composite shader.
 

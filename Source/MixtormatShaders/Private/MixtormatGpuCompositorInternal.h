@@ -913,7 +913,7 @@ namespace MixtormatGpuCompositor
 		int32 MaskPassIndex = 0;
 		int32 EffectPassIndex = 0;
 		FPendingEffect PendingErosion;
-		FPendingEffect PendingChipping;
+		TArray<FPendingEffect, TInlineAllocator<2>> PendingChippings;
 		TArray<FPendingWornEdges, TInlineAllocator<2>> PendingWornEdges;
 		TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 		TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
@@ -939,7 +939,7 @@ namespace MixtormatGpuCompositor
 			MaskPassIndex = 0;
 			EffectPassIndex = 0;
 			PendingErosion = FPendingEffect();
-			PendingChipping = FPendingEffect();
+			PendingChippings.Reset();
 			PendingWornEdges.Reset();
 			PendingCraquelureReliefs.Reset();
 			PendingRampTilts.Reset();

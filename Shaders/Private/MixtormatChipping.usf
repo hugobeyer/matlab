@@ -283,15 +283,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? normalize(MaskGradient2)
 		: float2(0.0f, 0.0f);
 
-	// A brick pixel with grout next to it. Where chips can start.
-	const float Edge = bm * saturate((bm - bl) + (bm - br) + (bm - bd) + (bm - bu));
 
 	const float2 HeightGradient = float2((hr - hl) * 0.5f, (hu - hd) * 0.5f);
 	const float2 Downhill = SafeNormalize(-HeightGradient);
 
-	// Placement uses Chipping's own mask when configured, otherwise the layer's accumulated
-	// child mask. Its value gates seeds and its gradient optionally biases them toward the mask
-	// boundary. A layer with no mask has a white child mask, so the fallback remains unmasked.
+	// Placement confines both seeds and propagation. Apply fractional coverage only to the
+	// final carve, so a soft mask does not exponentially attenuate a growing chip.
 	const float MaskValue = saturate(SamplePlacementMask(UV));
 
 	float MaskEdgeTerm = 0.0f;
@@ -306,10 +303,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		MaskEdgeTerm = saturate(length(MaskGradient) * 5.0f) * MaskEdge;
 	}
 
-	// Pick raised material with the same smooth height split used for propagation, then mix
-	// cavity into it. Requiring a hard brick/grout edge made smooth height fields produce no
-	// seeds at all; cavity now concentrates chips in recesses while the height term keeps them
-	// confined to material above the grout transition.
+	// Height and cavity select eligible edges; neither creates seeds in flat interiors.
+	// Measure the edge across a fixed UV footprint so higher output resolutions do not
+	// weaken its seed amplitude simply by placing neighbouring pixels closer together.
 	const float Laplacian = (hl + hr + hd + hu) * 0.25f - hc;
 	const float Cavity = RemapSmooth(
 		CavityRemapMin,
@@ -318,8 +314,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float CavityGate = saturate(lerp(1.0f, Cavity, CavityInfluence));
 	const float HeightWeight = pow(saturate(bm), max(HeightScale, 1.0e-3f));
 	const float HeightGate = saturate(lerp(1.0f, HeightWeight, HeightInfluence));
-	const float HeightCavityPick = bm * HeightGate * CavityGate;
-	const float SeedRegion = max(Edge, HeightCavityPick);
+	const float2 EdgeStep = float2(1.0f / 1024.0f, 1.0f / 1024.0f);
+	const float EdgeL = BrickMask(NormalizedHeight(SourceHeight.SampleLevel(
+		LinearWrapSampler, UV - float2(EdgeStep.x, 0.0f), 0.0f)));
+	const float EdgeR = BrickMask(NormalizedHeight(SourceHeight.SampleLevel(
+		LinearWrapSampler, UV + float2(EdgeStep.x, 0.0f), 0.0f)));
+	const float EdgeD = BrickMask(NormalizedHeight(SourceHeight.SampleLevel(
+		LinearWrapSampler, UV - float2(0.0f, EdgeStep.y), 0.0f)));
+	const float EdgeU = BrickMask(NormalizedHeight(SourceHeight.SampleLevel(
+		LinearWrapSampler, UV + float2(0.0f, EdgeStep.y), 0.0f)));
+	const float Edge = bm * saturate(
+		max(bm - EdgeL, 0.0f) + max(bm - EdgeR, 0.0f)
+		+ max(bm - EdgeD, 0.0f) + max(bm - EdgeU, 0.0f));
+	const float SeedRegion = Edge * HeightGate * CavityGate;
 
 	const float n0 = TileNoise(UV, 24, Seed * 0x12345u + 11u);
 	const float n1 = TileNoise(UV, 53, Seed * 0x23456u + 29u);
@@ -364,7 +371,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float SeedTip = bSeedPass
 		? SeedRegion * SmoothRange(Threshold, 1.0f, n0)
 			* (0.45f + MaskEdgeTerm * 0.35f + Cavity * 0.20f)
-			* SeedWeak * MaskValue
+			* SeedWeak * (MaskValue > 0.0f ? 1.0f : 0.0f)
 		: 0.0f;
 
 	// Gather: find the neighbour whose stored chip direction points at this pixel, and inherit
@@ -378,14 +385,25 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Best = 0.0f;
 	float2 Parent = float2(0.0f, 0.0f);
 	float2 Travel = float2(0.0f, 0.0f);
+	float TravelDistance = 0.0f;
 
-	if (!bSeedPass && bm > 0.15f && Old.x < 0.98f)
+	if (!bSeedPass && MaskValue > 0.0f && bm > 0.15f && Old.x < 0.98f)
 	{
 		for (int yy = -1; yy <= 1; ++yy)
 		{
 			for (int xx = -1; xx <= 1; ++xx)
 			{
 				if (xx == 0 && yy == 0)
+				{
+					continue;
+				}
+
+				// Diagonal growth must not jump across an excluded corner.
+				const float2 StepUV = float2(xx, yy) / Resf;
+				if (SamplePlacementMask(UV + StepUV) <= 0.0f
+					|| (xx != 0 && yy != 0
+						&& (SamplePlacementMask(UV + float2(StepUV.x, 0.0f)) <= 0.0f
+							|| SamplePlacementMask(UV + float2(0.0f, StepUV.y)) <= 0.0f)))
 				{
 					continue;
 				}
@@ -436,6 +454,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 						Best = s.y * nb * bm;
 						Parent = ParentDir;
 						Travel = Toward;
+						TravelDistance = length(float2(xx, yy) / Resf) * 1024.0f;
 					}
 				}
 			}
@@ -445,7 +464,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Capped just under 1 rather than Size clamped to 1. This is a genuine invariant: at a
 	// retention of 1 or more a tip stops decaying and every chip grows until it meets the
 	// iteration cap, so the whole surface goes to full core.
-	const float Decay = min(0.82f + ChipSize * 0.175f, 0.999f);
+	// Iteration count scales with resolution; retention must scale with travelled UV
+	// distance too, otherwise the extra iterations merely repeat already-dead tips.
+	const float ReferenceDecay = clamp(0.82f + ChipSize * 0.175f, 0.001f, 0.999f);
+	const float Decay = pow(ReferenceDecay, TravelDistance);
 
 	// Decay is the only thing that attenuates a propagating tip, which is what makes Size mean
 	// something. It used to be Best * Decay * Weak with Best already carrying the alignment
@@ -489,7 +511,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// meant the neutral setting of an opt-in control was not neutral.
 	const float DepthEdgeBias = 1.0f - MaskEdge * 0.30f + MaskEdgeTerm * 0.30f;
 
-	const float DepthMod = Core * (0.55f + n1 * 0.45f) * DepthEdgeBias;
+	const float DepthMod = saturate(Core * (0.55f + n1 * 0.45f) * DepthEdgeBias) * MaskValue;
 
 	// A live tip keeps the direction it just chose; a dead pixel keeps what it had, so a chip
 	// that stalls behind a slower neighbour can still be inherited from later. On the seed pass

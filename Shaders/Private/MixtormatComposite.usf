@@ -92,6 +92,8 @@ uint OverrideMetallic;
 uint CompositionMode;
 uint IsFill;
 uint HasSurface;
+// 0: direct composite, 1: prepare incoming channels, 2: composite prepared channels.
+uint PreparedLayerMode;
 uint HasPackedHeight;
 uint HasSeparateHeight;
 uint LayerInputResolved;
@@ -572,6 +574,10 @@ float SampleLayerSourceHeight(float2 UV)
 
 float SampleIncomingHeight(float2 UV)
 {
+	if (PreparedLayerMode == 2)
+	{
+		return LayerSourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	}
 	float PlacementMask = SamplePlacementHeightMask(UV);
 	float SourceHeight = DirectHeightComparison != 0
 		? (HasPackedHeight != 0
@@ -830,10 +836,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float4 PreviousPacked = PreviousRAM.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float PreviousHeightValue = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	float4 SampledBaseColor = HasSurface != 0
+	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2)
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(1.0f, 1.0f, 1.0f, 1.0f);
-	float4 SampledRAM = HasSurface != 0
+	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2)
 		? LayerRAM.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.04f);
 	float3 SampledNormal = HasNormal != 0
@@ -865,6 +871,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		SampledNormal = normalize(SampledNormal);
 	}
 	SampledNormal.xy = MixtormatTransformTangentVector(LayerOrientation, SampledNormal.xy);
+	if (PreparedLayerMode == 2)
+	{
+		SampledNormal = normalize(LayerN.SampleLevel(LinearWrapSampler, UV, 0.0f).xyz * 2.0f - 1.0f);
+	}
 
 	// Region variation before the layer grade, not after: the jitter says how this brick
 	// differs from that one, the grade says what the whole layer is. Reversing them makes
@@ -887,6 +897,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
 	SampledNormal = lerp(SampledNormal, float3(0.0f, 0.0f, 1.0f), IsFill);
+	if (PreparedLayerMode == 2)
+	{
+		// These controls already ran before relief. Do not grade or flatten it twice.
+		LayerBaseColor = SampledBaseColor.rgb;
+		LayerRoughness = SampledRAM.r;
+		LayerAO = SampledRAM.g;
+		LayerMetallic = SampledRAM.b;
+		SampledNormal = normalize(LayerN.SampleLevel(LinearWrapSampler, UV, 0.0f).xyz * 2.0f - 1.0f);
+	}
 
 	float EffectKeep = 1.0f;
 	float3 EffectNormal = float3(0.0f, 0.0f, 1.0f);
@@ -901,6 +920,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float PlacementMask = SamplePlacementMask(UV);
 	float IncomingHeight = SampleIncomingHeight(UV);
+	if (PreparedLayerMode == 1)
+	{
+		OutputBC[DispatchThreadId.xy] = float4(LayerBaseColor, 1.0f);
+		OutputN[DispatchThreadId.xy] = float4(EncodeNormal(
+			BlendReorientedNormals(SampledNormal, EffectNormal)), 1.0f);
+		OutputRAM[DispatchThreadId.xy] = float4(LayerRoughness, LayerAO * EffectAO,
+			LayerMetallic, UseSourceF0 != 0 ? SampledRAM.a : LayerF0);
+		OutputHeight[DispatchThreadId.xy] = IncomingHeight
+			+ (HasEffects != 0 ? EffectHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) : 0.0f);
+		return;
+	}
+	if (PreparedLayerMode == 2)
+	{
+		EffectNormal = float3(0.0f, 0.0f, 1.0f);
+		EffectAO = 1.0f;
+	}
 
 	float GeneratedFeatureMask = 1.0f;
 	float FeatureWeight = 1.0f;
@@ -992,7 +1027,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: lerp(PreviousPacked.b, LayerMetallic, Alpha * saturate(MetallicInfluence));
 	float ResultF0 = NormalOnly != 0
 		? PreviousPacked.a
-		: lerp(PreviousPacked.a, UseSourceF0 != 0 ? SampledRAM.a : LayerF0,
+		: lerp(PreviousPacked.a, (UseSourceF0 != 0 || PreparedLayerMode == 2) ? SampledRAM.a : LayerF0,
 			Alpha * saturate(F0Influence));
 	float3 WeightedDetail = normalize(float3(
 		SampledNormal.xy * NormalWeight,
@@ -1097,7 +1132,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Peel relief rides on top of the layer's own height so the lip and the coverage
 	// boundary are derived from the same field, rather than the peel changing coverage
 	// while the height silently reverted to whatever sat underneath.
-	if (HasEffects != 0)
+	if (HasEffects != 0 && PreparedLayerMode != 2)
 	{
 		ResultHeight += EffectHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) * EffectVisibility;
 	}

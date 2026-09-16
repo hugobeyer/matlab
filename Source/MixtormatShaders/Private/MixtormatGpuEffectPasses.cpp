@@ -1367,7 +1367,7 @@ namespace MixtormatGpuCompositor
 			});
 	}
 
-	// Also a post-layer filter, and it runs after erosion.
+	// Chipping runs on prepared owner channels after that owner's earlier relief filters.
 	void QueuePendingChipping(
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
@@ -1375,12 +1375,9 @@ namespace MixtormatGpuCompositor
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask)
 	{
-		FPendingEffect& PendingChipping = LayerCtx.PendingChipping;
+		FPendingEffect& PendingChipping = LayerCtx.PendingChippings.AddDefaulted_GetRef();
 
-		// Also a post-layer filter. It runs after erosion rather than before:
-		// chipping a surface that has already weathered is the order that
-		// makes sense, and the reverse would have erosion smoothing chips it
-		// never saw.
+		// Keep every child and its scope; the local relief stage executes them in order.
 		PendingChipping.Effect = &Effect;
 		PendingChipping.FeatureMask = FeatureMask;
 		PendingChipping.bHasScopedMask = Layer.Children.ContainsByPredicate(
@@ -2600,8 +2597,8 @@ namespace MixtormatGpuCompositor
 		}
 	}
 
-	// Chipping: a smooth height selection mixed with local cavity seeds chips, grown inward
-	// over N ping-ponged iterations against a height held read-only for the whole loop.
+	// Chipping: edge seeds grow against a fixed owner-local height. The caller routes
+	// the output slots to prepared layer channels until all local relief is finished.
 	void AddChippingPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -2616,16 +2613,19 @@ namespace MixtormatGpuCompositor
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const int32 WriteIndex = LayerCtx.LayerIndex & 1;
 		const FRDGTextureRef PeelFieldDummy = LayerCtx.PeelFieldDummy;
-		FPendingEffect& PendingChipping = LayerCtx.PendingChipping;
 		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatReduceMinMaxCS> ReduceMinMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		// Chipping filters the layer output the same way erosion does, after both
-		// erosion and craquelure have finished shaping the height it selects from.
+		// The local stage preserves relief order without reading accumulated surface channels.
 		// Amount 0 seeds nothing, so it should also cost nothing rather than run
 		// the iteration loop to produce an unchanged height.
-		if (PendingChipping.Effect && PendingChipping.Effect->ChipAmount > 0.0f)
+		for (const FPendingEffect& PendingChipping : LayerCtx.PendingChippings)
 		{
+			if (!PendingChipping.Effect || PendingChipping.Effect->ChipAmount <= 0.0f)
+			{
+				continue;
+			}
+
 			const FEffectRenderData& Chip = *PendingChipping.Effect;
 			const bool bUseLegacyPlacementMask =
 				!PendingChipping.bHasScopedMask && Chip.ChipPlacementMask.IsValid();
