@@ -26,6 +26,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, AOAmount)
+		SHADER_PARAMETER(uint32, WriteRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
@@ -667,6 +668,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, Iteration)
 		SHADER_PARAMETER(int32, NormalPass)
+		SHADER_PARAMETER(uint32, WriteSurface)
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, GroutLevel)
 		SHADER_PARAMETER(float, GroutSoftness)
@@ -830,6 +832,7 @@ namespace MixtormatGpuCompositor
 		const FIntPoint Resolution,
 		const float NormalStrength,
 		const float AOAmount,
+		const bool bWriteRAM,
 		const TCHAR* DebugName)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -840,11 +843,19 @@ namespace MixtormatGpuCompositor
 		P->OutputSize = Resolution;
 		P->NormalStrength = NormalStrength;
 		P->AOAmount = AOAmount;
+		P->WriteRAM = bWriteRAM ? 1u : 0u;
 		P->PreviousHeight = PreviousHeight;
 		P->CurrentHeight = CurrentHeight;
 		P->PreviousNormal = PreviousNormal;
 		P->PreviousRAM = PreviousRAM;
 		P->OutputNormal = GraphBuilder.CreateUAV(OutputNormal);
+		if (!OutputRAM)
+		{
+			FRDGTextureDesc DummyDesc = PreviousRAM->Desc;
+			DummyDesc.Extent = FIntPoint(1, 1);
+			OutputRAM = GraphBuilder.CreateTexture(
+				DummyDesc, TEXT("Mixtormat.HeightDerivedRAMDummy"));
+		}
 		P->OutputRAM = GraphBuilder.CreateUAV(OutputRAM);
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -2161,11 +2172,6 @@ namespace MixtormatGpuCompositor
 				ErosionGroups);
 
 			FRDGTextureRef Result = EroH[0];
-			FRDGTextureRef EroRAM = GraphBuilder.CreateTexture(
-				FRDGTextureDesc::Create2D(
-					EroRes, PF_FloatRGBA, FClearValueBinding::White,
-					TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.Erosion.HeightDerivedRAM"));
 			AddHeightDerivedNormalPass(
 				Ctx,
 				SourceH,
@@ -2173,10 +2179,11 @@ namespace MixtormatGpuCompositor
 				EroSrcN,
 				OutputRAM[WriteIndex],
 				EroN,
-				EroRAM,
+				nullptr,
 				EroRes,
 				HeightDerivedNormalStrength,
 				0.0f,
+				false,
 				TEXT("Erosion"));
 
 			if (bResample)
@@ -2308,6 +2315,7 @@ namespace MixtormatGpuCompositor
 				Request.Resolution,
 				HeightDerivedNormalStrength,
 				0.35f,
+				true,
 				TEXT("Craquelure"));
 			AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
 			AddCopyTexturePass(GraphBuilder, ReliefN, OutputN[WriteIndex]);
@@ -2561,6 +2569,7 @@ namespace MixtormatGpuCompositor
 				Request.Resolution,
 				8.0f,
 				0.35f,
+				true,
 				TEXT("WornEdges"));
 			FRDGTextureRef FinalWornRAM = WornRAM;
 
@@ -2685,12 +2694,10 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateA")),
 				GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateB"))};
 
-			// The chip mask ping-pongs for the same reason the state does: the
-			// normal pass and the shade pass both read it, and a pass cannot write
-			// the texture it is reading.
-			FRDGTextureRef ChipMask[2] = {
-				GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskA")),
-				GraphBuilder.CreateTexture(ChipMaskDesc, TEXT("Mixtormat.ChipMaskB"))};
+			// Growth reads only state, so one full-resolution mask is enough for the
+			// final published coverage.
+			FRDGTextureRef FinalChipMask = GraphBuilder.CreateTexture(
+				ChipMaskDesc, TEXT("Mixtormat.ChipMask"));
 
 			// The height the layer composited, held aside. Every iteration reads
 			// this rather than its own output, matching the read-only height bind in
@@ -2784,19 +2791,29 @@ namespace MixtormatGpuCompositor
 				ChipHeightRange = ReduceSource;
 			}
 
-			// Scratch for the normal pass, which reads the composited normal and
-			// writes the same target.
+			// Full-resolution surface outputs are published only by the final growth pass.
+			// Intermediate passes bind tiny UAVs and write state alone.
 			FRDGTextureRef ChipNormalScratch = GraphBuilder.CreateTexture(
 				OutputN[WriteIndex]->Desc, TEXT("Mixtormat.ChipNormalScratch"));
+			const FRDGTextureDesc TinyScalarDesc = FRDGTextureDesc::Create2D(
+				FIntPoint(1, 1), PF_R16F, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV);
+			FRDGTextureRef UnusedHeight = GraphBuilder.CreateTexture(
+				TinyScalarDesc, TEXT("Mixtormat.ChipUnusedHeight"));
+			FRDGTextureRef UnusedMask = GraphBuilder.CreateTexture(
+				TinyScalarDesc, TEXT("Mixtormat.ChipUnusedMask"));
+			FRDGTextureRef MaskReadDummy = GraphBuilder.CreateTexture(
+				TinyScalarDesc, TEXT("Mixtormat.ChipMaskReadDummy"));
+			FRDGTextureDesc TinyNormalDesc = OutputN[WriteIndex]->Desc;
+			TinyNormalDesc.Extent = FIntPoint(1, 1);
+			FRDGTextureRef UnusedNormal = GraphBuilder.CreateTexture(
+				TinyNormalDesc, TEXT("Mixtormat.ChipUnusedNormal"));
 
-			AddClearUAVPass(
-				GraphBuilder, GraphBuilder.CreateUAV(ChipState[0]), FVector4f(0.0f));
+			// Seed pass writes state A completely but binds state B as its inactive read side.
 			AddClearUAVPass(
 				GraphBuilder, GraphBuilder.CreateUAV(ChipState[1]), FVector4f(0.0f));
 			AddClearUAVPass(
-				GraphBuilder, GraphBuilder.CreateUAV(ChipMask[0]), FVector4f(0.0f));
-			AddClearUAVPass(
-				GraphBuilder, GraphBuilder.CreateUAV(ChipMask[1]), FVector4f(0.0f));
+				GraphBuilder, GraphBuilder.CreateUAV(MaskReadDummy), FVector4f(0.0f));
 
 			const FIntVector ChipGroups(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
@@ -2842,15 +2859,19 @@ namespace MixtormatGpuCompositor
 				FMixtormatChippingCS::FParameters* CP =
 					GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
 				FillChipParameters(CP);
+				const bool bFinalPass = PassIndex == ChipIterations - 1;
 				CP->Iteration = PassIndex;
 				CP->NormalPass = 0;
+				CP->WriteSurface = bFinalPass ? 1u : 0u;
 				CP->PreviousState = ChipState[ChipRead];
-				CP->ChipsTexture = ChipMask[ChipRead];
+				CP->ChipsTexture = MaskReadDummy;
 				CP->PreviousNormal = OutputN[WriteIndex];
 				CP->OutputState = GraphBuilder.CreateUAV(ChipState[ChipWrite]);
-				CP->OutputChips = GraphBuilder.CreateUAV(ChipMask[ChipWrite]);
-				CP->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
-				CP->OutputNormal = GraphBuilder.CreateUAV(ChipNormalScratch);
+				CP->OutputChips = GraphBuilder.CreateUAV(
+					bFinalPass ? FinalChipMask : UnusedMask);
+				CP->OutputHeight = GraphBuilder.CreateUAV(
+					bFinalPass ? HeightTargets[WriteIndex] : UnusedHeight);
+				CP->OutputNormal = GraphBuilder.CreateUAV(UnusedNormal);
 
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
@@ -2860,8 +2881,7 @@ namespace MixtormatGpuCompositor
 					ChipGroups);
 			}
 
-			FRDGTextureRef FinalChips = ChipMask[ChipWrite];
-			FRDGTextureRef SpareChips = ChipMask[1 - ChipWrite];
+			FRDGTextureRef FinalChips = FinalChipMask;
 
 			// Height is authoritative. Derive the chip normal from the final
 			// height delta instead of maintaining a parallel chip-normal solve.
@@ -2878,6 +2898,7 @@ namespace MixtormatGpuCompositor
 				Request.Resolution,
 				HeightDerivedNormalStrength,
 				0.35f,
+				true,
 				TEXT("Chipping"));
 			AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
 			FRDGTextureRef FinalChipRAM = ChipRAM;

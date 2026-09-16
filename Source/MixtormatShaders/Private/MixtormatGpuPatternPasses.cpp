@@ -1058,8 +1058,6 @@ namespace MixtormatGpuCompositor
 						FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 						1));
 
-				FRDGTextureRef TiltRAM = GraphBuilder.CreateTexture(
-					OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.RegionRelief.HeightDerivedRAM"));
 				AddHeightDerivedNormalPass(
 					Ctx,
 					HeightTargets[WriteIndex],
@@ -1067,10 +1065,11 @@ namespace MixtormatGpuCompositor
 					OutputN[WriteIndex],
 					OutputRAM[WriteIndex],
 					TiltN,
-					TiltRAM,
+					nullptr,
 					Request.Resolution,
 					HeightDerivedNormalStrength,
 					Tilt.AOAmount,
+					false,
 					TEXT("RegionRelief"));
 				AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
 				AddCopyTexturePass(GraphBuilder, TiltN, OutputN[WriteIndex]);

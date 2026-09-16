@@ -1043,6 +1043,7 @@ namespace MixtormatGpuCompositor
 		const FIntPoint Resolution,
 		const float NormalStrength,
 		const float AOAmount,
+		const bool bWriteRAM,
 		const TCHAR* DebugName);
 
 	void AddCraquelureMaskPasses(

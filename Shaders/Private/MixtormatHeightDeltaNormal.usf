@@ -12,6 +12,7 @@ RWTexture2D<float4> OutputRAM;
 int2 OutputSize;
 float NormalStrength;
 float AOAmount;
+uint WriteRAM;
 
 int WrapI(int X, int Size)
 {
@@ -58,12 +59,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
 	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedBase.w);
 
-	const float NeighbourAverage =
-		(Dm0 + Dp0 + D0m + D0p) * 0.25f;
-	const float Cavity = max(D00 - NeighbourAverage, 0.0f);
-	const float Removed = max(D00, 0.0f);
-	const float HeightAO = saturate(Cavity * 32.0f + Removed * 2.0f);
-	float4 RAM = PreviousRAM.Load(int3(P, 0));
-	RAM.g = saturate(RAM.g * (1.0f - saturate(AOAmount) * HeightAO));
-	OutputRAM[P] = RAM;
+	if (WriteRAM != 0)
+	{
+		const float NeighbourAverage =
+			(Dm0 + Dp0 + D0m + D0p) * 0.25f;
+		const float Cavity = max(D00 - NeighbourAverage, 0.0f);
+		const float Removed = max(D00, 0.0f);
+		const float HeightAO = saturate(Cavity * 32.0f + Removed * 2.0f);
+		float4 RAM = PreviousRAM.Load(int3(P, 0));
+		RAM.g = saturate(RAM.g * (1.0f - saturate(AOAmount) * HeightAO));
+		OutputRAM[P] = RAM;
+	}
 }

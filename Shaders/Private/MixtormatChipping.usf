@@ -36,6 +36,7 @@ RWTexture2D<float4> OutputNormal;
 int2 OutputSize;
 int Iteration;
 int NormalPass;
+uint WriteSurface;
 float NormalStrength;
 
 float GroutLevel;
@@ -519,10 +520,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 KeepDir = (bSeedPass || Tip > 0.001f) ? NewDir : Old.zw;
 
 	OutputState[Pixel] = float4(Core, Tip, KeepDir.x, KeepDir.y);
-	OutputChips[Pixel] = saturate(DepthMod);
+	if (WriteSurface != 0)
+	{
+		OutputChips[Pixel] = saturate(DepthMod);
 
-	// The carve is always measured from the unmodified layer height, not from the previous
-	// iteration. Core only grows, so subtracting from the source each pass converges on one
-	// depth instead of compounding N times into a hole.
-	OutputHeight[Pixel] = SourceHeight.Load(int3(Pixel, 0)) - max(ChipDepth, 0.0f) * DepthMod;
+		// The carve is always measured from the unmodified layer height. Only the final
+		// growth iteration publishes it; intermediate iterations feed state alone.
+		OutputHeight[Pixel] = SourceHeight.Load(int3(Pixel, 0))
+			- max(ChipDepth, 0.0f) * DepthMod;
+	}
 }
