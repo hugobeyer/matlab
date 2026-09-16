@@ -868,7 +868,8 @@ bool FMixtormatBlurScopeTest::RunTest(const FString& Parameters)
 	Blur.Type = EMixtormatLayerChildType::Effect;
 	Blur.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
 	Blur.Effect.LayerBlurRadiusX = 8.0f;
-	Blur.Effect.LayerBlurRadiusY = 0.0f;
+	// Exercise the two-axis ping-pong path; this fixture is vertically uniform.
+	Blur.Effect.LayerBlurRadiusY = 8.0f;
 	const FGuid BlurId = Blur.ChildId;
 
 	const int32 Outside = (TestResolution / 2) * TestResolution + TestResolution / 2 - 2;

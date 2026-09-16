@@ -1467,16 +1467,20 @@ namespace MixtormatGpuCompositor
 				{
 					continue;
 				}
+				FRDGTextureRef Source = Target;
+				const int32 LastAxis = bAxis[1] ? 1 : 0;
 				for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
 				{
 					if (!bAxis[BlurAxis])
 					{
 						continue;
 					}
-					// Through scratch and back: one texture cannot be SRV and UAV in the same
-					// dispatch, and the second axis has to read what the first wrote.
-					FRDGTextureRef Scratch =
-						GraphBuilder.CreateTexture(Target->Desc, TargetNames[TargetIndex]);
+					// With both axes active, the first writes scratch and the second writes
+					// straight back to Target. This removes both full-image copy passes.
+					const bool bCanWriteTarget = BlurAxis == LastAxis && Source != Target;
+					FRDGTextureRef Destination = bCanWriteTarget
+						? Target
+						: GraphBuilder.CreateTexture(Target->Desc, TargetNames[TargetIndex]);
 					FMixtormatLayerBlurCS::FParameters* BP =
 						GraphBuilder.AllocParameters<FMixtormatLayerBlurCS::FParameters>();
 					BP->OutputSize = Request.Resolution;
@@ -1487,14 +1491,12 @@ namespace MixtormatGpuCompositor
 					BP->UseMask = bUseMask ? 1u : 0u;
 					BP->InvertMask = 0u;
 					BP->Amount = Blur.LayerBlurAmount;
-					// Only the normal target. A weighted mean of unit vectors is not one, and the
-					// shortfall reads as a flattened normal exactly where the blur is strongest.
 					BP->RenormalizeXYZ = TargetIndex == 1 ? 1u : 0u;
-					BP->SourceTexture = Target;
+					BP->SourceTexture = Source;
 					BP->LayerMask = Pending.FeatureMask;
 					BP->LinearWrapSampler =
 						TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-					BP->OutputTexture = GraphBuilder.CreateUAV(Scratch);
+					BP->OutputTexture = GraphBuilder.CreateUAV(Destination);
 					FComputeShaderUtils::AddPass(
 						GraphBuilder,
 						RDG_EVENT_NAME(
@@ -1506,7 +1508,11 @@ namespace MixtormatGpuCompositor
 							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 							1));
-					AddCopyTexturePass(GraphBuilder, Scratch, Target);
+					Source = Destination;
+				}
+				if (Source != Target)
+				{
+					AddCopyTexturePass(GraphBuilder, Source, Target);
 				}
 			}
 		}
@@ -2556,7 +2562,7 @@ namespace MixtormatGpuCompositor
 				8.0f,
 				0.35f,
 				TEXT("WornEdges"));
-			AddCopyTexturePass(GraphBuilder, WornRAM, OutputRAM[WriteIndex]);
+			FRDGTextureRef FinalWornRAM = WornRAM;
 
 			// EdgeWearMask is the generated wear coverage, already gated by the
 			// feature scope. It is the sole roughness mask; placement is not sampled
@@ -2577,7 +2583,7 @@ namespace MixtormatGpuCompositor
 				ShadeP->CoverageTexture = EdgeWearMask;
 				ShadeP->SourceHeight = WornH;
 				ShadeP->CarvedHeight = WornH;
-				ShadeP->SourceRAM = OutputRAM[WriteIndex];
+				ShadeP->SourceRAM = FinalWornRAM;
 				ShadeP->LinearWrapSampler =
 					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 				ShadeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
@@ -2589,9 +2595,10 @@ namespace MixtormatGpuCompositor
 					CarveShadeShader,
 					ShadeP,
 					WearGroups);
-				AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+				FinalWornRAM = ShadeRAM;
 			}
 
+			AddCopyTexturePass(GraphBuilder, FinalWornRAM, OutputRAM[WriteIndex]);
 			AddCopyTexturePass(GraphBuilder, WornH, HeightTargets[WriteIndex]);
 			AddCopyTexturePass(GraphBuilder, WornN, OutputN[WriteIndex]);
 		}
@@ -2873,7 +2880,7 @@ namespace MixtormatGpuCompositor
 				0.35f,
 				TEXT("Chipping"));
 			AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
-			AddCopyTexturePass(GraphBuilder, ChipRAM, OutputRAM[WriteIndex]);
+			FRDGTextureRef FinalChipRAM = ChipRAM;
 
 			// Roughness is weighted by the resolved chip mask directly, so it remains
 			// independent of chip depth and never touches base colour.
@@ -2896,7 +2903,7 @@ namespace MixtormatGpuCompositor
 				SP->SourceHeight = ChipSourceH;
 				SP->CarvedHeight = ChipSourceH;
 
-				SP->SourceRAM = OutputRAM[WriteIndex];
+				SP->SourceRAM = FinalChipRAM;
 				SP->LinearWrapSampler =
 					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 				SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
@@ -2908,8 +2915,9 @@ namespace MixtormatGpuCompositor
 					SP,
 					ChipGroups);
 
-				AddCopyTexturePass(GraphBuilder, ShadeRAM, OutputRAM[WriteIndex]);
+				FinalChipRAM = ShadeRAM;
 			}
+			AddCopyTexturePass(GraphBuilder, FinalChipRAM, OutputRAM[WriteIndex]);
 		}
 	}
 
