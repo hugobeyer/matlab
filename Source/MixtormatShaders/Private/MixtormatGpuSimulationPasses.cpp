@@ -533,17 +533,20 @@ namespace MixtormatGpuCompositor
 			FRDGTextureRef FieldB =
 				GraphBuilder.CreateTexture(FieldDesc, TEXT("Mixtormat.PeelFieldB"));
 
-			auto AddPeelFieldPass = [&](
-				const int32 ModeIndex,
-				FRDGTextureRef InArrival,
-				FRDGTextureRef OutArrival,
-				const TCHAR* DebugName)
+			// All solve iterations share these values and views. Only mode and arrival
+			// ping-pong bindings change; avoid rebuilding the invariant setup up to 256 times.
+			FMixtormatPeelFieldCS::FParameters* CommonParameters =
+				GraphBuilder.AllocParameters<FMixtormatPeelFieldCS::FParameters>();
+			const FRDGTextureUAVRef ArrivalUAVs[2] = {
+				GraphBuilder.CreateUAV(Arrival[0]),
+				GraphBuilder.CreateUAV(Arrival[1])};
 			{
-				FMixtormatPeelFieldCS::FParameters* FP =
-					GraphBuilder.AllocParameters<FMixtormatPeelFieldCS::FParameters>();
+				FMixtormatPeelFieldCS::FParameters* FP = CommonParameters;
 				FP->OutputSize = Request.Resolution;
 				FP->SolveSize = SolveRes;
-				FP->Mode = ModeIndex;
+				FP->Mode = 0;
+				FP->PreviousArrival = Arrival[1];
+				FP->OutputArrival = ArrivalUAVs[0];
 				FP->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
 				FP->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 				FP->Seed = Effect.PeelRandomSeed;
@@ -589,14 +592,28 @@ namespace MixtormatGpuCompositor
 				FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
 				FP->SurfaceHeight = HeightTargets[PeelSurfaceIndex];
 				FP->ChildMask = FeatureMask;
-				FP->PreviousArrival = InArrival;
+
 				FP->GrowthField = PeelGrowth;
 				FP->LinearWrapSampler =
 					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-				FP->OutputArrival = GraphBuilder.CreateUAV(OutArrival);
+
 				FP->OutputGrowth = GraphBuilder.CreateUAV(PeelGrowth);
 				FP->OutputFieldA = GraphBuilder.CreateUAV(FieldA);
 				FP->OutputFieldB = GraphBuilder.CreateUAV(FieldB);
+			}
+
+			auto AddPeelFieldPass = [&](
+				const int32 ModeIndex,
+				FRDGTextureRef InArrival,
+				FRDGTextureRef OutArrival,
+				const TCHAR* DebugName)
+			{
+				FMixtormatPeelFieldCS::FParameters* FP =
+					GraphBuilder.AllocParameters<FMixtormatPeelFieldCS::FParameters>();
+				*FP = *CommonParameters;
+				FP->Mode = ModeIndex;
+				FP->PreviousArrival = InArrival;
+				FP->OutputArrival = ArrivalUAVs[OutArrival == Arrival[0] ? 0 : 1];
 
 				const FIntPoint PassRes = ModeIndex == 2 ? Request.Resolution : SolveRes;
 				FComputeShaderUtils::AddPass(
