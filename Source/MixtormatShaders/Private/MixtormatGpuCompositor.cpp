@@ -186,7 +186,6 @@ public:
 		SHADER_PARAMETER(float, HeightBoost)
 		SHADER_PARAMETER(float, HeightLevelOffset)
 		SHADER_PARAMETER(float, HeightShape)
-		SHADER_PARAMETER(float, HeightSmooth)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
@@ -638,7 +637,6 @@ namespace MixtormatGpuCompositor
 		Parameters->HeightBoost = Layer.HeightBoost;
 		Parameters->HeightLevelOffset = Layer.HeightLevelOffset;
 		Parameters->HeightShape = Layer.HeightShape;
-		Parameters->HeightSmooth = Layer.HeightSmooth;
 		Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
 		Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
 		Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
@@ -2695,6 +2693,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					CombinedEffectHeight = EffectHeightTargets[0];
 					FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
 					DebugMask = CombinedMask;
+					AddLayerHeightSmoothPasses(Ctx, LayerCtx, Layer);
 					FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 
 

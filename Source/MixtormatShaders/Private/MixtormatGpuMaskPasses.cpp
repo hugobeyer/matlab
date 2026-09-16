@@ -235,6 +235,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, Axis)
 		SHADER_PARAMETER(float, Radius)
+		SHADER_PARAMETER(uint32, ClampOutput)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
@@ -400,6 +401,7 @@ namespace MixtormatGpuCompositor
 			BlurParameters->OutputSize = Request.Resolution;
 			BlurParameters->Axis = BlurAxis;
 			BlurParameters->Radius = AxisRadius[BlurAxis];
+			BlurParameters->ClampOutput = 1u;
 			BlurParameters->SourceMask = FilteredMask;
 			BlurParameters->LinearWrapSampler =
 				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -977,6 +979,7 @@ namespace MixtormatGpuCompositor
 				BorderBlurParameters->OutputSize = Request.Resolution;
 				BorderBlurParameters->Axis = BlurAxis;
 				BorderBlurParameters->Radius = Layer.HeightBorderSmoothing;
+				BorderBlurParameters->ClampOutput = 1u;
 				BorderBlurParameters->SourceMask = BlurAxis == 0
 					? HeightTargets[ReadIndex]
 					: BorderBlur[0];
@@ -1032,6 +1035,7 @@ namespace MixtormatGpuCompositor
 				BlurParameters->OutputSize = Request.Resolution;
 				BlurParameters->Axis = BlurAxis;
 				BlurParameters->Radius = Layer.HeightSmoothRadius;
+				BlurParameters->ClampOutput = 1u;
 				BlurParameters->SourceMask =
 					BlurAxis == 0 ? CombinedMask : BlurTargets[0];
 				BlurParameters->LinearWrapSampler =
@@ -1049,6 +1053,48 @@ namespace MixtormatGpuCompositor
 			LayerHeightMask = BlurTargets[1];
 		}
 		return LayerHeightMask;
+	}
+
+	void AddLayerHeightSmoothPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer)
+	{
+		if (Layer.HeightSmooth <= 0.0f)
+		{
+			return;
+		}
+
+		AddLayerInputPass(Ctx, LayerCtx, Layer);
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		TShaderMapRef<FMixtormatMaskBlurCS> BlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FRDGTextureRef BlurTargets[2] = {
+			GraphBuilder.CreateTexture(LayerCtx.LayerInputHeight->Desc, TEXT("Mixtormat.LayerHeightSmoothX")),
+			GraphBuilder.CreateTexture(LayerCtx.LayerInputHeight->Desc, TEXT("Mixtormat.LayerHeightSmoothY"))};
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(Ctx.Request.Resolution.X, 8),
+			FMath::DivideAndRoundUp(Ctx.Request.Resolution.Y, 8),
+			1);
+		for (int32 Axis = 0; Axis < 2; ++Axis)
+		{
+			FMixtormatMaskBlurCS::FParameters* P =
+				GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
+			P->OutputSize = Ctx.Request.Resolution;
+			P->Axis = Axis;
+			P->Radius = Layer.HeightSmooth;
+			P->ClampOutput = 0u;
+			P->SourceMask = Axis == 0 ? LayerCtx.LayerInputHeight : BlurTargets[0];
+			P->LinearWrapSampler =
+				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			P->OutputMask = GraphBuilder.CreateUAV(BlurTargets[Axis]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.LayerHeightSmooth.L%d.Axis%d", LayerCtx.LayerIndex, Axis),
+				BlurShader,
+				P,
+				Groups);
+		}
+		LayerCtx.LayerInputHeight = BlurTargets[1];
 	}
 
 }

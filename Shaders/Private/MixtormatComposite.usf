@@ -148,7 +148,6 @@ float HeightInfluence;
 float HeightBoost;
 float HeightLevelOffset;
 float HeightShape;
-float HeightSmooth;
 float HeightBlendAmount;
 
 // Scalar Drivers. Two slots this step, one per driven scalar: slot 0 modulates RoughnessInfluence,
@@ -525,17 +524,8 @@ float2 LayerSourceUV(float2 UV)
 	return LayerSourceUVAndOrientation(UV, Orientation);
 }
 
-// This layer's own source height, softened before anything reads it.
-//
-// The offsets are taken in output UV and each tap is then put through LayerSourceUV, rather than
-// offsetting inside the source. That is the whole trick: a smooth measured in source texels would
-// be scaled by Tiling, so the same setting would soften a 1x layer and barely touch an 8x one.
-// Offsetting first means the radius is in output texels and means the same thing everywhere.
-//
-// A 3x3 Gaussian and not a separable pass, because this runs inside the composite where there is
-// no second pass to run: nine taps is what a smooth costs here. The spacing widens the reach
-// without adding taps, which is right for height -- it is low frequency, and the alternative is
-// three more render targets per layer for something that is meant to take the edge off a seam.
+// This layer's source height. Height Smooth resolves and blurs the source into output UV before
+// this composite runs, so this remains one sample and every later reader sees the same result.
 float SampleRawLayerHeight(float2 SourceUV)
 {
 	if (LayerInputResolved != 0)
@@ -550,26 +540,7 @@ float SampleRawLayerHeight(float2 SourceUV)
 
 float SampleLayerSourceHeight(float2 UV)
 {
-	if (HeightSmooth <= 0.0f)
-	{
-		return SampleRawLayerHeight(LayerSourceUV(UV));
-	}
-
-	const float2 Step = HeightSmooth / max(float2(OutputSize), 1.0f);
-	float Sum = 0.0f;
-	[unroll]
-	for (int Y = -1; Y <= 1; ++Y)
-	{
-		[unroll]
-		for (int X = -1; X <= 1; ++X)
-		{
-			// Separable [1 2 1] weights, as the outer product -- 1/2/4 over a total of 16.
-			const float Weight = (X == 0 ? 2.0f : 1.0f) * (Y == 0 ? 2.0f : 1.0f);
-			const float2 TapUV = UV + float2(float(X), float(Y)) * Step;
-			Sum += SampleRawLayerHeight(LayerSourceUV(TapUV)) * Weight;
-		}
-	}
-	return Sum / 16.0f;
+	return SampleRawLayerHeight(LayerSourceUV(UV));
 }
 
 float SampleIncomingHeight(float2 UV)

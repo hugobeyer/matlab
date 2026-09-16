@@ -1007,6 +1007,11 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
+	void AddLayerHeightSmoothPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
 	// MixtormatGpuPatternPasses.cpp -- Pattern IDs, Cluster/Colour IDs, HSV/Random/Ramp-from-ID.
 	void AddRandomIdMaskPass(
 		FMixtormatComposeContext& Ctx,

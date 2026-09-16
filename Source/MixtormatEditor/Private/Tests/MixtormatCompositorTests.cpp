@@ -1494,4 +1494,70 @@ bool FMixtormatCompositionIdentityRemapTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatLayerHeightSmoothTest,
+	"Mixtormat.Compositor.LayerHeightSmooth",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatLayerHeightSmoothTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!Compositor.Initialize(FIntPoint(TestResolution, TestResolution)))
+	{
+		AddError(TEXT("Compositor did not initialise"));
+		return false;
+	}
+	TStrongObjectPtr<UTexture2D> RAMH(MakeTwoBandRAMH());
+	TStrongObjectPtr<UMixtormatSurface> Surface(MakeSurfaceWithRAMH(RAMH.Get()));
+	if (!RAMH.Get() || !Surface.Get())
+	{
+		AddError(TEXT("Height Smooth fixture was not created"));
+		return false;
+	}
+	Surface->bHasBlendHeight = true;
+	Surface->BlendHeightProvenance = EMixtormatBlendHeightProvenance::AuthoredRAMH;
+
+	FMixtormatLayer Layer;
+	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(FSoftObjectPath(Surface.Get()));
+	TArray<FMixtormatLayer> Layers = {Layer};
+	TArray<FLinearColor> Sharp;
+	if (!ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())
+		|| !ReadHeight(Compositor.GetHeightOutput(), Sharp))
+	{
+		AddError(TEXT("Sharp height did not compose"));
+		return false;
+	}
+
+	Layers[0].HeightSmooth = 8.0f;
+	TArray<FLinearColor> Smooth;
+	if (!ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())
+		|| !ReadHeight(Compositor.GetHeightOutput(), Smooth))
+	{
+		AddError(TEXT("Smoothed height did not compose"));
+		return false;
+	}
+	int32 ChangedBoundaryPixels = 0;
+	int32 ChangedInteriorPixels = 0;
+	for (int32 Y = 0; Y < TestResolution; ++Y)
+	{
+		for (int32 X = 0; X < TestResolution; ++X)
+		{
+			const int32 Index = Y * TestResolution + X;
+			const bool bBoundary = FMath::Abs(X - TestResolution / 2) <= 8
+				|| X <= 8 || X >= TestResolution - 9;
+			const bool bChanged = !FMath::IsNearlyEqual(Sharp[Index].R, Smooth[Index].R, 1.0e-3f);
+			ChangedBoundaryPixels += bBoundary && bChanged ? 1 : 0;
+			ChangedInteriorPixels += !bBoundary && bChanged ? 1 : 0;
+		}
+	}
+	TestTrue(TEXT("Height Smooth softens height boundaries"), ChangedBoundaryPixels > 0);
+	TestEqual(TEXT("Height Smooth preserves flat interiors"), ChangedInteriorPixels, 0);
+	return true;
+}
+
 #endif

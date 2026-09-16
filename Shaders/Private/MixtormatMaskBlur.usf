@@ -21,6 +21,7 @@ RWTexture2D<float> OutputMask;
 int2 OutputSize;
 int Axis;
 float Radius;
+uint ClampOutput;
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -55,5 +56,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		WeightSum += 2.0f * Weight;
 	}
 
-	OutputMask[Pixel] = saturate(Sum / WeightSum);
+	const float Result = Sum / WeightSum;
+	OutputMask[Pixel] = ClampOutput != 0 ? saturate(Result) : Result;
 }
