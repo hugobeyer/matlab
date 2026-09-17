@@ -4,6 +4,7 @@
 
 #include "Engine/Texture2D.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAdd.h"
@@ -536,7 +537,16 @@ void FMixtormatLayerPreview::ApplyLayers(
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessBias"), Layer ? Layer->RoughnessBias : 0.5f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessContrast"), Layer ? Layer->RoughnessContrast : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessOffset"), Layer ? Layer->RoughnessOffset : 0.0f);
-		SetScalar(MaterialInstance, LayerIndex, TEXT("NormalIntensity"), Layer && Layer->Type != EMixtormatLayerType::Fill ? Layer->HeightBoost : 0.0f);
+		// Neutral for any surface layer, not Height Booster: the preview has to agree with the
+		// GPU composite, which no longer gains the authored normal by the booster. A Fill layer
+		// has no normal map to show, so it stays flat at zero.
+		SetScalar(
+			MaterialInstance,
+			LayerIndex,
+			TEXT("NormalIntensity"),
+			Layer && Layer->Type != EMixtormatLayerType::Fill
+				? MixtormatRelief::SourceNormalScale(Layer->HeightBoost)
+				: 0.0f);
 
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideBaseColor"), Layer && Layer->bOverrideBaseColor ? 1.0f : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideRoughness"), Layer && Layer->bOverrideRoughness ? 1.0f : 0.0f);

@@ -849,6 +849,82 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainSurfaceResponse = 1.0f;
 
+	// Runoff: the cheap procedural streak.
+	//
+	// Ten controls, and everything else derived from them. The rule the whole effect is built
+	// around is that an artist tuning a dirty run is choosing how far it goes, how soft it is and
+	// how broken up it looks -- not a strata count, a lip width or an octave count. Those follow
+	// from the four that matter, and are documented where they are derived rather than exposed
+	// here as another dozen sliders to get wrong.
+	//
+	// What it actually does: cavities and downhill ledges in the accumulated height say where
+	// runoff starts, the incoming mask says how much starts there, a small-feature fractal noise
+	// breaks it up, and the result is smeared along one axis with a directional Gaussian. Several
+	// strata of that smear, each a slightly different length and each warped only along gravity,
+	// stack into something that reads as overlapping deposits rather than one blurred streak.
+
+	// Which way runoff runs, in degrees. -90 is straight down the texture, which is what gravity
+	// means on a wall. Runoff is strictly one-directional: it never spreads sideways off its own
+	// axis the way a transport solve does, which is exactly what makes it a smear and not a solve.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
+	float RunoffGravityAngle = -90.0f;
+
+	// How far runoff reaches from its source, in texels at 1K. Read as a fraction of the longer
+	// side rather than as literal texels, so the same number is the same run at 1K, 2K and 4K --
+	// a streak that shortened when the composition grew would make the control meaningless.
+	//
+	// This is the reach of the strongest source. A weaker mask value reaches proportionally less,
+	// which is what makes the incoming mask a length control and not only an opacity.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "8.0", ClampMax = "512.0"))
+	float RunoffStreakRadius = 320.0f;
+
+	// The Gaussian's sigma as a fraction of reach. Low values keep a run tight and defined and
+	// stop it abruptly; high values let it fade out over most of its length. It also widens the
+	// terminal lip, because a soft run deposits over a longer stretch than a sharp one does.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float RunoffStreakSoftness = 0.46f;
+
+	// How much the height underneath decides where runoff starts. At 1 only cavities and the
+	// upper edges of ledges source it, which is where dirt actually collects. At 0 the height is
+	// ignored and the incoming mask alone is the source, which is how to streak from a painted
+	// mark rather than from the surface's own shape.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RunoffSurfaceInfluence = 0.95f;
+
+	// How strongly the stacked layers read as separate deposits. Not a count: it widens their
+	// spacing, spreads their lengths and flattens their opacity falloff all at once, so 0 is a
+	// single coherent run and 1 is a visibly layered, uneven buildup. The count itself follows
+	// from Streak Radius -- a short run has no room to show five strata.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RunoffStrataAmount = 0.75f;
+
+	// Feature size of the internal fractal noise, as cells across the texture. It does double
+	// duty deliberately: the same field breaks up the source before the smear and warps each
+	// stratum's length, so one control changes the grain of the whole effect rather than needing
+	// a separate noise scale nobody would match to it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "1.0", ClampMax = "64.0"))
+	float RunoffWarpScale = 18.0f;
+
+	// How far that noise pushes each stratum's endpoint along gravity. Only along gravity -- a
+	// sideways push would turn a run into a smudge. Above 1 the strata pull apart far enough to
+	// read as independent runs from the same source.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float RunoffWarpAmount = 1.5f;
+
+	// The narrow deposit left where a run stops, the way a drying streak leaves a tidemark. 0
+	// ends every run on a clean fade; 1 puts a defined crust at the end of each stratum.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RunoffLipStrength = 0.55f;
+
+	// Overall weight of the resolved runoff in the layer's mask chain. 0 is the identity.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RunoffStrength = 0.25f;
+
+	// Every random choice the effect makes -- the noise field, the per-stratum decorrelation --
+	// comes off this. Same seed, same runoff, at any resolution.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0", ClampMax = "9999"))
+	int32 RunoffSeed = 1;
+
 	// Kept only so older recipes deserialize without losing fields. The solver resolves a layer
 	// mask and shades nothing, so none of the shading controls are read any more.
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
@@ -2327,7 +2403,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-0.5", ClampMax = "0.5"))
 	float RoughnessOffset = 0.0f;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Layer normal strength derives from Height Booster."))
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Authored normal maps keep their own strength; Height Booster shapes height and the normals derived from it."))
 	float NormalIntensity = 1.0f;
 
 	// Degrees. The composite pass divides by 360 and wraps, so the clamp is a half turn either
@@ -2469,6 +2545,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// and the derived normals all agree. 1 is untouched, 0 is flat, and above 1 exaggerates.
 	// Not the same thing as HeightInfluence, which is coverage -- how much of this layer's height
 	// reaches the composite, rather than how deep that height is.
+	//
+	// The height and nothing else. An authored normal map is micro detail in its own right, not a
+	// picture of the height, and is left at the strength it was authored with: gaining it here as
+	// well made a surface whose height and normal describe the same relief carry that relief
+	// twice. The normals the structural passes derive still respond, because they differentiate
+	// the boosted height -- once. See MixtormatReliefScaling.h.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", ClampMax = "8.0"))
 	float HeightBoost = 1.0f;
 

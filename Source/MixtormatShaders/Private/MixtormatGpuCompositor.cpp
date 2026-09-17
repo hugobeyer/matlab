@@ -12,6 +12,7 @@
 #include "MixtormatMask.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "RenderGraphBuilder.h"
@@ -718,12 +719,13 @@ namespace MixtormatGpuCompositor
 		Parameters->InvertFeature = Layer.bInvertFeature ? 1u : 0u;
 		Parameters->DebugMode = static_cast<uint32>(Request.DebugSettings.Mode);
 
-		// Stain and ClusterIds publish their own previews before this composite.
-		// Neither has a case in the composite shader: exclude both or DebugValue 0
+		// Stain, Runoff and ClusterIds publish their own previews before this composite.
+		// None has a case in the composite shader: exclude all three or DebugValue 0
 		// would overwrite the selected child's preview with flat DebugLow.
 		Parameters->WriteDebug =
 			Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Runoff
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ClusterIds
 			&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 		Parameters->Opacity = Layer.Opacity;
@@ -2286,6 +2288,74 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				Data.bHasMask = true;
 			}
 
+			if (ResolvedType == EMixtormatEffectType::Runoff)
+			{
+				// Degrees to radians here rather than in the shader: the angle is constant across
+				// every texel and every stratum, so converting it per-pixel would be the one bit
+				// of arithmetic in the whole effect that is pure waste.
+				EffectData.RunoffGravityAngle = FMath::DegreesToRadians(
+					FMath::Clamp(LayerEffect.RunoffGravityAngle, -180.0f, 180.0f));
+
+				// Texels to UV, and this is what makes the effect resolution-independent.
+				//
+				// The control is authored in texels because that is how an artist reads a streak
+				// length, but texels are the wrong unit to store it in: a 320-texel run is a third
+				// of the way down a 1K texture and a twelfth of the way down a 4K one, so the same
+				// material would grow a different streak at every output size -- and cost sixteen
+				// times as much to grow the shorter one, because the tap count scales with texels
+				// too.
+				//
+				// Dividing by 1024 pins the number to what it means at 1K and leaves it a
+				// fraction of the texture from then on. The shader works entirely in UV, derives
+				// its tap count from the UV reach rather than from a texel count, and so produces
+				// the same run at every resolution for the same cost. The reference resolution is
+				// not exposed: moving it would rescale every runoff in every material at once,
+				// which is what Streak Radius is already for.
+				constexpr float RunoffReferenceResolution = 1024.0f;
+				EffectData.RunoffStreakRadius =
+					FMath::Clamp(LayerEffect.RunoffStreakRadius, 8.0f, 512.0f)
+					/ RunoffReferenceResolution;
+
+				EffectData.RunoffStreakSoftness =
+					FMath::Clamp(LayerEffect.RunoffStreakSoftness, 0.05f, 1.0f);
+				EffectData.RunoffSurfaceInfluence =
+					FMath::Clamp(LayerEffect.RunoffSurfaceInfluence, 0.0f, 1.0f);
+				EffectData.RunoffStrataAmount =
+					FMath::Clamp(LayerEffect.RunoffStrataAmount, 0.0f, 1.0f);
+				EffectData.RunoffWarpScale =
+					FMath::Clamp(LayerEffect.RunoffWarpScale, 1.0f, 64.0f);
+				EffectData.RunoffWarpAmount =
+					FMath::Clamp(LayerEffect.RunoffWarpAmount, 0.0f, 2.0f);
+				EffectData.RunoffLipStrength =
+					FMath::Clamp(LayerEffect.RunoffLipStrength, 0.0f, 1.0f);
+				EffectData.RunoffStrength =
+					FMath::Clamp(LayerEffect.RunoffStrength, 0.0f, 1.0f);
+				EffectData.RunoffSeed =
+					static_cast<uint32>(FMath::Clamp(LayerEffect.RunoffSeed, 0, 9999));
+
+				// Strata count follows the reach rather than being a control of its own. A short
+				// run has no room to show five layered deposits -- they would land on top of each
+				// other and read as one thicker run -- so the number of them is a function of how
+				// much length there is to spread them over. Derived on the CPU because it decides
+				// a loop bound the shader has to unroll against.
+				//
+				// The thresholds are in authored texels, not in the converted UV reach: what an
+				// artist means by a long streak is the number they typed, and it should pick the
+				// same stratification at every composition size.
+				const float AuthoredRadius =
+					FMath::Clamp(LayerEffect.RunoffStreakRadius, 8.0f, 512.0f);
+				int32 StrataCount = 2;
+				StrataCount += AuthoredRadius >= 160.0f ? 1 : 0;
+				StrataCount += AuthoredRadius >= 320.0f ? 1 : 0;
+				StrataCount += AuthoredRadius >= 480.0f ? 1 : 0;
+				EffectData.RunoffStrataCount = FMath::Clamp(StrataCount, 2, 5);
+
+				// Same reason Stain sets it: Runoff resolves into the layer's mask chain, so the
+				// layer is masked by it. Without this the composite takes HasMask 0 and covers
+				// fully, ignoring the chain the runoff just wrote.
+				Data.bHasMask = true;
+			}
+
 			// Filters have nothing further to gather. bHasEffects is deliberately not set for
 			// them: a Filter never writes the effect data target, so flagging it would make
 			// the composite sample a buffer nothing wrote.
@@ -2374,9 +2444,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.Rotation = static_cast<int32>(Layer.Rotation);
 		Data.bFlipU = Layer.bFlipU;
 		Data.bFlipV = Layer.bFlipV;
-		// Height Booster is the layer's single relief-strength control. Keep source normals in
-		// lockstep with height; height-derived normals already read the boosted height directly.
-		Data.NormalIntensity = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
+		// Height Booster owns the height and only the height. The authored normal map is micro
+		// detail in its own right, not a picture of the relief, so it stays neutral: tying it to
+		// the booster made a matching height+normal pair carry the same bump twice, once through
+		// the strengthened source normal and again through the normals the structural passes
+		// derive from the boosted height. See MixtormatReliefScaling.h.
+		Data.NormalIntensity = MixtormatRelief::SourceNormalScale(Layer.HeightBoost);
 		Data.HueShift = FMath::Clamp(Layer.HueShift, -180.0f, 180.0f);
 		Data.Saturation = FMath::Clamp(Layer.Saturation, 0.0f, 2.0f);
 		Data.Value = FMath::Clamp(Layer.Value, 0.0f, 2.0f);
@@ -2392,7 +2465,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				? Layer.IOR
 				: SourceIOR);
 		Data.LayerF0 = FMath::Square((LayerIOR - 1.0f) / (LayerIOR + 1.0f));
-		Data.HeightBoost = FMath::Clamp(Layer.HeightBoost, 0.0f, 8.0f);
+		Data.HeightBoost = MixtormatRelief::HeightScale(Layer.HeightBoost);
 		Data.HeightLevelOffset = FMath::Clamp(Layer.HeightLevelOffset, -1.0f, 1.0f);
 		Data.HeightShape = FMath::Clamp(Layer.HeightShape, -1.0f, 1.0f);
 		Data.HeightSmooth = FMath::Clamp(Layer.HeightSmooth, 0.0f, 8.0f);
@@ -2937,6 +3010,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						if (Effect.Type == EMixtormatEffectType::Stain)
 						{
 							AddStainMaskPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
+							continue;
+						}
+
+						if (Effect.Type == EMixtormatEffectType::Runoff)
+						{
+							AddRunoffMaskPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 							continue;
 						}
 

@@ -3413,11 +3413,13 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
-	// Relief owns the layer's single depth/normal-strength control plus its vertical offset.
+	// Relief owns the layer's depth control plus its vertical offset. Depth, not normal strength:
+	// the booster shapes the height and the normals reconstructed from it, and deliberately
+	// leaves an authored normal map alone.
 	TSharedRef<SVerticalBox> Relief = AddCard(Panel, LOCTEXT("CardRelief", "Relief"));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightBoostHint", "Gain on this layer's height and normal strength. 1 is untouched; 0 flattens both; values above 1 deepen the relief and strengthen its lighting response. Applied before displacement, height blending, and derived normals. Not Height Influence, which controls how much of this layer reaches the composite.")));
+		LOCTEXT("HeightBoostHint", "Gain on this layer's height. 1 is untouched; 0 flattens it; values above 1 deepen the relief and, with it, the normals derived from that height. An imported normal map is left at its authored strength, so a surface whose height and normal describe the same relief is not deepened twice. Applied before displacement, height blending, and derived normals. Not Height Influence, which controls how much of this layer reaches the composite.")));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));

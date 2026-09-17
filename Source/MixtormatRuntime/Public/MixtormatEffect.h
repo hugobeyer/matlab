@@ -36,7 +36,15 @@ enum class EMixtormatEffectType : uint8
 	// The mask blur turned outward: that one softens a mask, this softens the surface the
 	// stack has built. A Filter, because it wants the composited result rather than the
 	// effect data target -- and being an Effect is what lets a mask be scoped under it.
-	LayerBlur = 7 UMETA(DisplayName = "Layer Blur")
+	LayerBlur = 7 UMETA(DisplayName = "Layer Blur"),
+	// The cheap procedural answer to Wet Stain for vertical runoff: streaks, mineral buildup and
+	// dirt under ledges. Where Stain transports liquid over tens of ping-ponged iterations,
+	// Runoff smears one prepared source field along gravity with a directional Gaussian and
+	// stacks a few strata of it. Not a replacement -- Stain still solves things a smear cannot,
+	// like liquid pooling and flowing around an obstacle -- but for a streak it is two passes
+	// instead of twenty-two. A mask child, same as Stain: it resolves the shape of where the
+	// runoff ran into the layer's mask chain and the layer supplies every channel.
+	Runoff = 8 UMETA(DisplayName = "Runoff")
 };
 
 UENUM(BlueprintType)
@@ -81,6 +89,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::WornEdges:
 	case EMixtormatEffectType::FlowWarp:
 	case EMixtormatEffectType::LayerBlur:
+	case EMixtormatEffectType::Runoff:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;

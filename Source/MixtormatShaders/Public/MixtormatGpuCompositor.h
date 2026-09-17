@@ -31,7 +31,10 @@ enum class EMixtormatDebugPreviewMode : uint8
 	Stain,
 	// Pre-mask filter preview; LayerIndex/ChildIndex address the original runtime arrays.
 	// Disabled filters/layers or a missing packed source leave the cleared Debug output.
-	ClusterIds
+	ClusterIds,
+	// Written by the runoff resolve, for the same reason Stain writes its own: the composite
+	// would otherwise overwrite the child's published preview with a flat DebugValue.
+	Runoff
 };
 
 struct FMixtormatDebugPreviewSettings

@@ -262,6 +262,20 @@ namespace MixtormatGpuCompositor
 		float StainSourceHeightBias = 0.0f;
 		float StainSlopeWeight = 0.0f;
 		float StainSurfaceResponse = 1.0f;
+
+		// Runoff. Angle in radians by the time it reaches here, radius already converted out of
+		// texels into a fraction of the longer side -- see the mapping in MixtormatGpuCompositor.
+		float RunoffGravityAngle = 0.0f;
+		float RunoffStreakRadius = 0.3125f;
+		float RunoffStreakSoftness = 0.46f;
+		float RunoffSurfaceInfluence = 0.95f;
+		float RunoffStrataAmount = 0.75f;
+		float RunoffWarpScale = 18.0f;
+		float RunoffWarpAmount = 1.5f;
+		float RunoffLipStrength = 0.55f;
+		float RunoffStrength = 0.25f;
+		uint32 RunoffSeed = 1;
+		int32 RunoffStrataCount = 4;
 		// Procedural peeling. bProceduralPeel selects the generated field over the
 		// authored maps; the shaping values above are shared by both paths.
 		bool bProceduralPeel = false;
@@ -1190,6 +1204,18 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef FeatureMask);
 
 	void AddPeelingEffectPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		const int32 ChildIndex,
+		const FEffectRenderData& Effect,
+		FRDGTextureRef FeatureMask);
+
+	// MixtormatGpuRunoffPasses.cpp -- the procedural streak. Its own translation unit rather
+	// than joining the two above: Runoff is deliberately not a simulation, and filing it beside
+	// the ping-ponged solves would bury the one thing worth knowing about it.
+	void AddRunoffMaskPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
