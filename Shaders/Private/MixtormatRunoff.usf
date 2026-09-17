@@ -1,0 +1,467 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Runoff: vertical streaking without a transport solve.
+//
+// Wet Stain answers "where does the liquid go" by moving it, one texel per iteration, twenty-odd
+// ping-ponged passes deep. That is the right shape for liquid that pools, converges and flows
+// around things. It is a great deal of machinery for a dirty streak under a ledge, which does not
+// converge or pool -- it goes down, it gets thinner, it stops.
+//
+// So this does not simulate anything. It prepares one source field, then smears that field along
+// a single axis with a directional Gaussian, several times at slightly different lengths. Two
+// passes, no state, no ping-pong. Everything that makes it read as runoff rather than as a blur
+// comes from the shaping around the smear: where the source is allowed to exist, how the reach
+// varies with source strength, and how the strata disagree with each other.
+//
+// Two passes rather than one, and the split is deliberate. Pass one is where the fractal noise is
+// evaluated, and putting it in its own pass makes it structurally impossible to evaluate inside
+// the Gaussian tap loop -- which, at twenty-four taps times five strata, is the difference
+// between one FBM per pixel and a hundred and twenty. The alternative, one pass with the noise
+// hoisted above the loop by hand, is the same arithmetic but only until someone edits the loop.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+int2 OutputSize;
+int Mode;
+uint Initialize;
+uint SurfaceValid;
+uint UseLayerMask;
+uint WriteDebug;
+uint BlendMode;
+uint Seed;
+int StrataCount;
+
+float GravityAngle;
+float StreakRadius;
+float StreakSoftness;
+float SurfaceInfluence;
+float StrataAmount;
+float WarpScale;
+float WarpAmount;
+float LipStrength;
+float Strength;
+
+Texture2D<float> SourceHeight;
+Texture2D<float> PreviousMask;
+Texture2D<float> FeatureMask;
+Texture2D<float2> RunoffSource;
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float2> OutputSource;
+RWTexture2D<float> OutputMask;
+RWTexture2D<float4> OutputDebug;
+
+// The reference the CPU already divided StreakRadius by. Here only to turn a UV length back into
+// a sane tap floor, so a step never collapses to nothing on a very short run.
+static const float MixtormatRunoffReferenceResolution = 1024.0f;
+
+// Taps per stratum group, and the number that decides whether this is cheap.
+//
+// Fixed, and spread across the reach in UV rather than one per texel. That is what keeps the
+// effect the same size at 1K, 2K and 4K: a texel-spaced walk would need four times as many taps
+// at 4K to cover the same fraction of the texture, and capping it there would silently shorten
+// every streak instead of merely sampling it more coarsely. Spreading a constant count over the
+// reach trades sampling density for scale stability, which is the right way round -- the source
+// field being smeared is already low-frequency, so the density is what can afford to give.
+#define MIXTORMAT_RUNOFF_TAPS 24
+
+// Strata are unrolled against this, not against StrataCount, which is dynamic.
+#define MIXTORMAT_RUNOFF_MAX_STRATA 5
+
+float MixtormatRunoffHash(float2 Cell, uint InSeed)
+{
+	// Integer lattice in, one value out. The seed is folded in as a coordinate rather than as a
+	// multiplier so that two nearby seeds give unrelated fields instead of scaled ones.
+	float3 P = float3(Cell, (float)(InSeed & 0xFFFFu) * 0.618034f);
+	P = frac(P * float3(0.1031f, 0.1030f, 0.0973f));
+	P += dot(P, P.yzx + 33.33f);
+	return frac((P.x + P.y) * P.z);
+}
+
+// Value noise on a wrapped integer lattice.
+//
+// Tileable by construction: the lattice coordinate is taken modulo the period before it is
+// hashed, so the cell at the right edge and the cell at the left edge are the same cell. That is
+// the whole reason this is value noise over a period rather than any of the prettier gradient
+// constructions -- the effect has to survive being laid next to itself, and a noise that only
+// almost tiles shows up as a seam down the middle of every streak.
+float MixtormatRunoffValueNoise(float2 UV, float Period, uint InSeed)
+{
+	const float SafePeriod = max(floor(Period), 1.0f);
+	const float2 P = UV * SafePeriod;
+	const float2 Cell = floor(P);
+	float2 F = frac(P);
+
+	// Quintic, so the second derivative is continuous at the lattice lines. Cubic leaves a faint
+	// grid visible once the field is used as a displacement, which is exactly what it is used for.
+	F = F * F * F * (F * (F * 6.0f - 15.0f) + 10.0f);
+
+	const float2 C00 = fmod(Cell + float2(0.0f, 0.0f), SafePeriod);
+	const float2 C10 = fmod(Cell + float2(1.0f, 0.0f), SafePeriod);
+	const float2 C01 = fmod(Cell + float2(0.0f, 1.0f), SafePeriod);
+	const float2 C11 = fmod(Cell + float2(1.0f, 1.0f), SafePeriod);
+
+	const float V00 = MixtormatRunoffHash(C00, InSeed);
+	const float V10 = MixtormatRunoffHash(C10, InSeed);
+	const float V01 = MixtormatRunoffHash(C01, InSeed);
+	const float V11 = MixtormatRunoffHash(C11, InSeed);
+
+	return lerp(lerp(V00, V10, F.x), lerp(V01, V11, F.x), F.y);
+}
+
+// Three octaves, roughness 0.5, lacunarity 2. The fractal idea from the Houdini reference kept
+// and nothing else: no animation, no dimensionality, no post-processing, no channel count. An
+// octave doubles the period and halves the weight, and the sum is normalised back to 0..1 so the
+// downstream smoothstep thresholds mean the same thing whatever the octave count becomes.
+//
+// Three because the field does two jobs, and neither wants more. As breakup it is multiplied into
+// a source that is about to be smeared over hundreds of texels, so detail finer than the smear is
+// detail the smear deletes. As warp it displaces a whole stratum, and a warp field with fine
+// octaves in it makes a stratum ragged rather than uneven.
+float MixtormatRunoffFBM(float2 UV, float Period, uint InSeed)
+{
+	float Sum = MixtormatRunoffValueNoise(UV, Period, InSeed);
+	float Weight = 1.0f;
+	float Total = 1.0f;
+	float OctavePeriod = Period;
+
+	[unroll]
+	for (int Octave = 1; Octave < 3; ++Octave)
+	{
+		Weight *= 0.5f;
+		OctavePeriod *= 2.0f;
+		Sum += MixtormatRunoffValueNoise(UV, OctavePeriod, InSeed + (uint)Octave * 131u) * Weight;
+		Total += Weight;
+	}
+
+	return Sum / Total;
+}
+
+// The direction runoff flows, as a unit vector in UV.
+//
+// Sin is negated because the angle is authored the way a person reads a screen -- -90 is down --
+// while V grows downward in texture space, so the two disagree by a flip. Getting this backwards
+// is invisible in the code and extremely visible on a wall.
+//
+// It also has to agree with the rest of the plugin: Stain treats negative Gravity as flow toward
+// +V, and its default is negative. Runoff's default of -90 resolves to (0, +1) here, which is the
+// same direction. Two effects on one layer streaking opposite ways from the same defaults would
+// be indefensible.
+float2 MixtormatRunoffGravity()
+{
+	return float2(cos(GravityAngle), -sin(GravityAngle));
+}
+
+float SampleHeight(float2 UV)
+{
+	return SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+// Where runoff is allowed to start.
+//
+// Two compact local reads rather than a curvature solve, because the question is only "is this a
+// pit, or the top lip of a drop" and a four-tap neighbourhood answers it. A wide-radius curvature
+// pass would answer it better and cost more than the rest of the effect put together.
+//
+// Cavity is the classic concavity test: a texel lower than the average of its neighbours is
+// sitting in a dip, and dirt collects in dips. Ledge is the same test taken directionally --
+// height here against height one step downhill -- so it fires on the upper edge of a drop and
+// nowhere else. A wall with a sill streaks from the sill; a flat wall does not streak at all,
+// which is correct and is why the incoming mask exists.
+//
+// The gains are fixed at the prototype's 35 and 22 rather than exposed. They are the slope at
+// which a height difference counts as a feature, expressed against a 0..1 height, and an artist
+// adjusting them would be doing by feel what Surface Influence already does by name.
+float SurfaceResponseAt(float2 UV)
+{
+	if (SurfaceValid == 0)
+	{
+		// Nothing composited underneath yet, so there is no relief to read. Fully responsive
+		// rather than fully dead: on the bottom layer the incoming mask is the entire source,
+		// which is the sane reading of "runoff from what you painted".
+		return 1.0f;
+	}
+
+	const float2 Texel = 1.0f / float2(OutputSize);
+	const float HeightCentre = SampleHeight(UV);
+	const float HeightLeft = SampleHeight(UV - float2(Texel.x, 0.0f));
+	const float HeightRight = SampleHeight(UV + float2(Texel.x, 0.0f));
+	const float HeightDown = SampleHeight(UV - float2(0.0f, Texel.y));
+	const float HeightUp = SampleHeight(UV + float2(0.0f, Texel.y));
+	const float Average = (HeightLeft + HeightRight + HeightDown + HeightUp) * 0.25f;
+
+	const float Cavity = saturate((Average - HeightCentre) * 35.0f);
+
+	// One texel along gravity, not along -Y: turning the gravity dial has to turn what counts as
+	// downhill with it, or a sideways runoff would still be sourcing from horizontal ledges.
+	const float HeightAhead = SampleHeight(UV + MixtormatRunoffGravity() * Texel);
+	const float Ledge = saturate((HeightCentre - HeightAhead) * 22.0f);
+
+	// Lerp toward one rather than scaling toward zero, which is where this departs from the
+	// prototype's `saturate((cavity + ledge) * influence)`. Under that expression Surface
+	// Influence 0 produces no source at all, making it a second, worse Strength; here it means
+	// "ignore the height", so the incoming mask alone drives the runoff. That is the reading the
+	// control's name promises and the one that is actually useful -- streaking from a painted
+	// mark on a flat surface is a thing people want.
+	return lerp(1.0f, saturate(Cavity + Ledge), saturate(SurfaceInfluence));
+}
+
+// Pass one. Everything that is invariant across the smear, resolved once.
+void PrepareSource(int2 Pixel, float2 UV)
+{
+	// The layer's accumulated mask, and only from the second mask child onward. The read half is
+	// cleared to white, so trusting it on the first child would source runoff over every texel in
+	// the composition instead of falling back to the surface's own shape.
+	const float LayerMask = UseLayerMask != 0
+		? saturate(PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f))
+		: 1.0f;
+
+	const float Noise = MixtormatRunoffFBM(UV, WarpScale, Seed);
+
+	// Breakup, at a fixed 45%. Enough that a default runoff arrives already uneven -- a streak
+	// with no grain in it reads as a gradient, not as dirt -- and not so much that the source
+	// stops following the surface it was derived from. Exposing the blend would be a sixth
+	// control for something with one good value.
+	const float Breakup = smoothstep(0.28f, 0.72f, Noise);
+
+	const float Source = LayerMask * SurfaceResponseAt(UV) * lerp(1.0f, Breakup, 0.45f);
+
+	// Source in x, the raw noise in y. The noise is carried forward rather than recomputed in
+	// pass two because pass two wants it for the per-stratum warp, and re-evaluating three
+	// octaves per pixel to avoid one texture read would be the wrong trade in both directions.
+	OutputSource[Pixel] = float2(saturate(Source), Noise);
+}
+
+// Pass two. One walk up the gravity axis, shared by every stratum.
+//
+// The loop is over taps, not over strata-times-taps, which is the other half of why this is
+// cheap. A tap fetches the source once at its distance upstream; each stratum then decides what
+// that sample is worth to it from its own reach, warp and lip -- pure arithmetic on a value that
+// is already in a register. Five strata cost five multiply-adds per tap, not five texture reads.
+void ResolveRunoff(int2 Pixel, float2 UV)
+{
+	// Initialize is the first mask child on the layer: there is no accumulated mask yet, and the
+	// half bound here is cleared to white rather than to what the layer had. Every mask node in
+	// the plugin treats Previous as zero in that case, and a runoff that trusted the white would
+	// blend against full coverage and resolve to nothing.
+	const float Previous = Initialize != 0
+		? 0.0f
+		: saturate(PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+
+	// Automated strata shaping. Strata Amount is one dial over four behaviours because they only
+	// make sense together: widening the spacing without spreading the lengths just moves the
+	// stack, and flattening the opacity without either makes it uniformly muddier. Separating
+	// them would be four controls with one useful diagonal through them.
+	const float SafeStrataAmount = saturate(StrataAmount);
+	const float StrataSpacing = lerp(0.55f, 1.15f, SafeStrataAmount);
+	const float StrataLengthStep = 0.08f + 0.04f * SafeStrataAmount;
+	const float StrataOpacityFalloff = lerp(1.15f, 0.75f, SafeStrataAmount);
+
+	// A soft run deposits over a longer stretch than a sharp one, so the terminal lip widens with
+	// the same control that softens the streak. Derived rather than exposed for that reason: a
+	// lip width that did not track softness would need re-tuning every time the streak moved.
+	const float LipWidth = 0.35f + saturate(StreakSoftness) * 0.35f;
+
+	const float2 Gravity = MixtormatRunoffGravity();
+	const float SafeSoftness = max(StreakSoftness, 0.05f);
+
+	// The noise this pixel warps by, read once. Three decorrelated values derived from it by the
+	// cheap frac trick in the brief, so the strata do not all deform identically without paying
+	// for three more fractal evaluations.
+	const float BaseNoise = RunoffSource.SampleLevel(LinearWrapSampler, UV, 0.0f).y;
+	const float NoiseA = BaseNoise;
+	const float NoiseB = frac(BaseNoise * 1.73f + 0.31f);
+	const float NoiseC = frac(BaseNoise * 2.17f + 0.57f);
+
+	// Contrast shaping on the warp field, tightened as the warp grows. A large displacement
+	// through a soft field smears every stratum the same way; through a contrasted one it pushes
+	// some of them hard and leaves others, which is what makes the stack read as separate runs.
+	const float WarpContrast = clamp(0.35f - WarpAmount * 0.10f, 0.12f, 0.35f);
+	const float WarpMask = max(
+		smoothstep(0.5f - WarpContrast, 0.5f + WarpContrast, NoiseA),
+		smoothstep(0.5f - WarpContrast, 0.5f + WarpContrast, max(NoiseB, NoiseC)));
+	const float WarpSigned = WarpMask * 2.0f - 1.0f;
+
+	const int SafeStrataCount = clamp(StrataCount, 2, MIXTORMAT_RUNOFF_MAX_STRATA);
+	const float StrataDivisor = (float)max(SafeStrataCount - 1, 1);
+
+	// Per-stratum constants, hoisted out of the tap loop.
+	float MaxReach[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float StartOffset[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float WarpOffset[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float Opacity[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float Accumulated[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float WeightSum[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float LipAccumulated[MIXTORMAT_RUNOFF_MAX_STRATA];
+
+	float FurthestReach = 0.0f;
+	float OpacityTotal = 0.0f;
+
+	[unroll]
+	for (int Init = 0; Init < MIXTORMAT_RUNOFF_MAX_STRATA; ++Init)
+	{
+		const float LayerT = (float)Init / StrataDivisor;
+
+		// Later strata start further down and run longer, so their heads overlap the tails of the
+		// ones before them. That overlap is the layered look: strata that all started together
+		// would differ only in length and read as one run with a soft end.
+		MaxReach[Init] = StreakRadius * (0.85f + LayerT * StrataLengthStep * (float)SafeStrataCount);
+		StartOffset[Init] = StrataSpacing * (float)Init * StreakRadius * 0.12f;
+
+		// Vertical only. The displacement is a scalar on the distance along gravity, never a
+		// vector -- there is no expression anywhere in this shader that can move a sample off the
+		// gravity axis, which is what "no arbitrary sideways flow" has to mean to be true rather
+		// than merely intended.
+		//
+		// The per-stratum multiplier alternates sign so adjacent strata pull apart rather than
+		// drifting together, and grows with the index so the stack fans out down its length.
+		const float LayerMultiplier = (Init % 2 == 0 ? 1.0f : -1.0f) * (0.35f + LayerT * 0.65f);
+		WarpOffset[Init] = WarpSigned * WarpAmount * StreakRadius * LayerMultiplier * 0.25f;
+
+		Opacity[Init] = 1.0f / (1.0f + (float)Init * StrataOpacityFalloff);
+		Accumulated[Init] = 0.0f;
+		WeightSum[Init] = 0.0f;
+		LipAccumulated[Init] = 0.0f;
+
+		if (Init < SafeStrataCount)
+		{
+			FurthestReach = max(FurthestReach, MaxReach[Init] + abs(WarpOffset[Init]) + StartOffset[Init]);
+			OpacityTotal += Opacity[Init];
+		}
+	}
+
+	// The walk covers the furthest stratum. Beyond its reach every Gaussian has decayed past
+	// anything a 16-bit mask can hold, so there is nothing further upstream worth fetching.
+	const float Step = max(FurthestReach / (float)MIXTORMAT_RUNOFF_TAPS,
+		0.5f / MixtormatRunoffReferenceResolution);
+
+	// Sigma cannot go below roughly half a reference texel or a tight streak turns into a line of
+	// disconnected taps at the moment it stops being able to resolve itself.
+	const float MinSigma = 0.5f / MixtormatRunoffReferenceResolution;
+
+	[loop]
+	for (int Tap = 0; Tap < MIXTORMAT_RUNOFF_TAPS; ++Tap)
+	{
+		// Half a step in, so tap zero samples the middle of its own band rather than exactly the
+		// output pixel, which would double-count the source against the first stratum.
+		const float Distance = ((float)Tap + 0.5f) * Step;
+
+		// Upstream: runoff at this pixel came from somewhere against gravity, so the source is
+		// fetched back along the axis. Wrapped by the sampler, which is what keeps a streak that
+		// runs off the bottom edge arriving at the top.
+		const float2 TapUV = UV - Gravity * Distance;
+		const float Source = RunoffSource.SampleLevel(LinearWrapSampler, TapUV, 0.0f).x;
+
+		if (Source <= 0.0f)
+		{
+			continue;
+		}
+
+		[unroll]
+		for (int Layer = 0; Layer < MIXTORMAT_RUNOFF_MAX_STRATA; ++Layer)
+		{
+			if (Layer >= SafeStrataCount)
+			{
+				continue;
+			}
+
+			// Mask intensity is a length control, not only an opacity. A strong source runs the
+			// full radius; a weak one fades out early, from the same settings. This is the single
+			// line that makes the incoming mask feel like it is driving the effect rather than
+			// dimming it, and it is why the reach has to be evaluated per tap: the value it
+			// depends on is the source at the tap, not at the pixel being written.
+			const float Reach = Source * MaxReach[Layer];
+			if (Reach <= 0.0f)
+			{
+				continue;
+			}
+
+			const float Warped = max(Distance + WarpOffset[Layer] - StartOffset[Layer], 0.0f);
+			const float Sigma = max(Reach * SafeSoftness, MinSigma);
+			const float X = Warped / Sigma;
+			const float Gaussian = exp(-0.5f * X * X);
+
+			Accumulated[Layer] += Source * Gaussian;
+			WeightSum[Layer] += Gaussian;
+
+			// The tidemark, where the run stops. Measured against the stratum's own reach so it
+			// tracks wherever the warp put the end, rather than sitting at a fixed distance that
+			// the warp would then walk the streak away from.
+			const float NormalizedDistance = Warped / max(Reach, 1.0e-5f);
+			const float Edge = 1.0f - smoothstep(0.0f, LipWidth, abs(NormalizedDistance - 1.0f));
+			LipAccumulated[Layer] += Source * Edge;
+		}
+	}
+
+	float Runoff = 0.0f;
+	float Lip = 0.0f;
+
+	[unroll]
+	for (int Combine = 0; Combine < MIXTORMAT_RUNOFF_MAX_STRATA; ++Combine)
+	{
+		if (Combine >= SafeStrataCount)
+		{
+			continue;
+		}
+
+		// Against the Gaussian weight rather than the tap count: a normalised smear of a solid
+		// source is that source, whatever the sampling happened to be. Dividing by the taps
+		// instead would make the result depend on the step, and the step depends on the reach.
+		const float Normalized = Accumulated[Combine] / max(WeightSum[Combine], 1.0e-5f);
+		Runoff = max(Runoff, Normalized * Opacity[Combine]);
+		Lip = max(Lip, saturate(LipAccumulated[Combine] * 0.5f) * Opacity[Combine]);
+	}
+
+	// Max across strata, then normalised against the opacity a single full stratum would have
+	// carried. Max rather than sum because the strata are overlapping readings of one runoff, not
+	// separate deposits stacked on top of each other -- summing them would make the shared head of
+	// the stack, where every stratum agrees, blow out to white while the tails stayed faint. The
+	// normalisation is what stops a longer radius, which buys more strata, from also brightening
+	// the whole mask.
+	const float StrataNormalization = max(OpacityTotal / (float)SafeStrataCount, 1.0e-5f);
+	Runoff = saturate(Runoff / StrataNormalization);
+	Lip = saturate(Lip / StrataNormalization);
+
+	const float WithLip = saturate(Runoff + Lip * saturate(LipStrength));
+
+	// The scoped feature mask gates the resolved runoff without becoming part of the layer's
+	// accumulated mask chain. Applied at the end, so a scoped runoff is the same streak with the
+	// outside cut away rather than a different, shorter streak -- gating the source instead would
+	// let runoff stop at the scope boundary and never reach past it.
+	const float Scope = saturate(FeatureMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+	const float Incoming = WithLip * Scope;
+
+	const float Blended = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));
+
+	// The runoff before Strength blends it into the chain, matching what every other feature
+	// preview in the plugin shows.
+	if (WriteDebug != 0)
+	{
+		// The same unlit ramp every other feature preview writes, so runoff reads as one more
+		// channel view rather than as its own kind of display.
+		OutputDebug[Pixel] = float4(MixtormatDebugRamp(Incoming), 1.0f);
+	}
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	if (Mode == 0)
+	{
+		PrepareSource(Pixel, UV);
+	}
+	else
+	{
+		ResolveRunoff(Pixel, UV);
+	}
+}

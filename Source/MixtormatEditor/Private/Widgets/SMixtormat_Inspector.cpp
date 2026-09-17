@@ -552,6 +552,97 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		];
 }
 
+// Ten sliders, and that is the whole effect.
+//
+// Runoff has as many derived constants behind it as Stain has exposed controls -- strata count,
+// spacing, length step, opacity falloff, warp contrast, lip width, three noise parameters and the
+// breakup blend. None of them are here. The test for whether a number belongs on this panel is
+// whether an artist looking at a dirty wall would have an opinion about it, and nobody has an
+// opinion about lacunarity.
+TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
+{
+	const auto Runoff = [this]() { return GetSelectedRunoff(); };
+	const auto Slider = [this, Runoff](
+		const FText& Label,
+		float FMixtormatLayerEffect::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatLayerEffect>(
+			Label, Runoff, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpStreak", "Streak")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RunoffGravityAngle", "Gravity Angle"),
+			&FMixtormatLayerEffect::RunoffGravityAngle, -180.0, 180.0, -90.0, 1.0,
+			LOCTEXT("RunoffGravityAngleHint", "Which way runoff runs, in degrees. -90 is straight down the texture. Runoff is strictly one-directional and never spreads sideways off this axis, which is what separates it from the Stain transport solve.")),
+		Slider(LOCTEXT("RunoffStreakRadius", "Streak Radius"),
+			&FMixtormatLayerEffect::RunoffStreakRadius, 8.0, 512.0, 320.0, 1.0,
+			LOCTEXT("RunoffStreakRadiusHint", "How far the strongest source reaches, in texels at 1K. Read as a fraction of the texture, so the same number is the same streak at 1K, 2K and 4K. Weaker mask values reach proportionally less, which is what makes the incoming mask a length control rather than only an opacity."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("RunoffStreakSoftness", "Streak Softness"),
+		&FMixtormatLayerEffect::RunoffStreakSoftness, 0.05, 1.0, 0.46, 0.01,
+		LOCTEXT("RunoffStreakSoftnessHint", "How gradually a run fades over its length. Low values keep it tight and stop it abruptly; high values let it fade out over most of its reach. It also widens the terminal lip, because a soft run deposits over a longer stretch than a sharp one.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpSource", "Source")));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("RunoffSurfaceInfluence", "Surface Influence"),
+		&FMixtormatLayerEffect::RunoffSurfaceInfluence, 0.0, 1.0, 0.95, 0.01,
+		LOCTEXT("RunoffSurfaceInfluenceHint", "How much the height underneath decides where runoff starts. At 1 only cavities and the upper edges of ledges source it, which is where dirt collects. At 0 the height is ignored and the incoming mask alone is the source, for streaking from a painted mark on a flat surface.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpStrata", "Strata")));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("RunoffStrataAmount", "Strata Amount"),
+		&FMixtormatLayerEffect::RunoffStrataAmount, 0.0, 1.0, 0.75, 0.01,
+		LOCTEXT("RunoffStrataAmountHint", "How strongly the stacked layers read as separate deposits. Not a count: it widens their spacing, spreads their lengths and flattens their opacity falloff together, so 0 is one coherent run and 1 is a visibly layered buildup. The count itself follows from Streak Radius, since a short run has no room to show five strata.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RunoffWarpScale", "Warp Scale"),
+			&FMixtormatLayerEffect::RunoffWarpScale, 1.0, 64.0, 18.0, 1.0,
+			LOCTEXT("RunoffWarpScaleHint", "Feature size of the internal noise, as cells across the texture. The same field breaks up the source before the smear and warps each stratum's length, so this one control sets the grain of the whole effect.")),
+		Slider(LOCTEXT("RunoffWarpAmount", "Warp Amount"),
+			&FMixtormatLayerEffect::RunoffWarpAmount, 0.0, 2.0, 1.5, 0.01,
+			LOCTEXT("RunoffWarpAmountHint", "How far that noise pushes each stratum's endpoint along gravity, and only along gravity. Above 1 the strata pull apart far enough to read as independent runs from the same source."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("RunoffLipStrength", "Lip Strength"),
+		&FMixtormatLayerEffect::RunoffLipStrength, 0.0, 1.0, 0.55, 0.01,
+		LOCTEXT("RunoffLipStrengthHint", "The narrow deposit left where a run stops, the way a drying streak leaves a tidemark. 0 ends every run on a clean fade; 1 puts a defined crust at the end of each stratum. Its width follows Streak Softness.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpOutput", "Output")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("RunoffStrength", "Strength"),
+			&FMixtormatLayerEffect::RunoffStrength, 0.0, 1.0, 0.25, 0.01,
+			LOCTEXT("RunoffStrengthHint", "Weight of the resolved runoff in the layer's mask chain. 0 is the identity.")),
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("RunoffSeed", "Seed"), Runoff,
+			&FMixtormatLayerEffect::RunoffSeed, 0.0, 9999.0, 1)));
+
+	// No Shade group, for the same reason Stain has none: Runoff resolves a layer mask and shades
+	// nothing. The layer it masks supplies colour, roughness, normal and height.
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedRunoff() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("RunoffHeading", "RUNOFF"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeFeaturePreviewButton(
+					EMixtormatDebugPreviewMode::Runoff,
+					LOCTEXT("PreviewRunoff", "Preview the resolved runoff coverage before Strength blends it into the mask chain")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildGradeTonemapMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -4288,6 +4379,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
+					+ SScrollBox::Slot()[BuildRunoffControls()]
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]

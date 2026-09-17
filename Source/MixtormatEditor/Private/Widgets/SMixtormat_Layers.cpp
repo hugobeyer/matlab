@@ -2471,6 +2471,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
+			case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
 			}
 		}
@@ -2486,6 +2487,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
+		case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
 		}
 	}
@@ -3133,6 +3135,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		{
 			AddStainToLayer(LayerIndex, EMixtormatStainMode::Deposit);
 		}));
+	Menu.Item(
+		LOCTEXT("AddRunoffEffect", "Runoff"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRunoffToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddErosionEffect", "Erosion"),
 		MixtormatIcons::Effect(),
@@ -4447,6 +4453,55 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedStain() const
 	if (!Effect || (Asset
 		? Asset->EffectType != EMixtormatEffectType::Stain
 		: Effect->ProceduralType != EMixtormatEffectType::Stain))
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+// The cheap streak, next to Wet Stain in the menu because that is what an artist is choosing
+// between. No mode to pick: Runoff has one behaviour.
+FReply SMixtormat::AddRunoffToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = EMixtormatEffectType::Runoff;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = Layer.Children.Num() - 1;
+	SelectedMaskIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedRunoff()
+{
+	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	const UMixtormatEffect* Asset = Effect ? Effect->Effect.LoadSynchronous() : nullptr;
+	if (!Effect || (Asset
+		? Asset->EffectType != EMixtormatEffectType::Runoff
+		: Effect->ProceduralType != EMixtormatEffectType::Runoff))
+	{
+		return nullptr;
+	}
+	return Effect;
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedRunoff() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	const UMixtormatEffect* Asset = Effect ? Effect->Effect.LoadSynchronous() : nullptr;
+	if (!Effect || (Asset
+		? Asset->EffectType != EMixtormatEffectType::Runoff
+		: Effect->ProceduralType != EMixtormatEffectType::Runoff))
 	{
 		return nullptr;
 	}

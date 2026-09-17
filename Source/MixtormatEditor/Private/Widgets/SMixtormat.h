@@ -174,6 +174,9 @@ private:
 	FReply AddStainToLayer(int32 LayerIndex, EMixtormatStainMode Mode);
 	FMixtormatLayerEffect* GetSelectedStain();
 	const FMixtormatLayerEffect* GetSelectedStain() const;
+	FReply AddRunoffToLayer(int32 LayerIndex);
+	FMixtormatLayerEffect* GetSelectedRunoff();
+	const FMixtormatLayerEffect* GetSelectedRunoff() const;
 	FReply AddErosionToLayer(int32 LayerIndex);
 	FReply AddProceduralPeelingToLayer(int32 LayerIndex);
 	FMixtormatLayerEffect* GetSelectedProceduralPeel();
@@ -791,6 +794,7 @@ private:
 	TSharedRef<SWidget> BuildMaskBlurControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
 	TSharedRef<SWidget> BuildStainControls();
+	TSharedRef<SWidget> BuildRunoffControls();
 	TSharedRef<SWidget> BuildStainModeMenu();
 	TSharedRef<SWidget> BuildErosionControls();
 	TSharedRef<SWidget> BuildProceduralPeelControls();

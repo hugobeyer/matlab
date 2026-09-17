@@ -521,6 +521,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					case EMixtormatDebugPreviewMode::BorderNormal: return LOCTEXT("DebugBorderNormal", "Border normal ×");
 					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
 					case EMixtormatDebugPreviewMode::Stain: return LOCTEXT("DebugStain", "Stain ×");
+					case EMixtormatDebugPreviewMode::Runoff: return LOCTEXT("DebugRunoff", "Runoff ×");
 					case EMixtormatDebugPreviewMode::ClusterIds: return LOCTEXT("DebugClusterIds", "Cluster IDs ×");
 					default: return FText::GetEmpty();
 					}
