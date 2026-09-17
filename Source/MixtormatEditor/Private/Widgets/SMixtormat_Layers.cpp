@@ -2436,6 +2436,15 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			GetLayerChildName(Named));
 	}
 
+	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesLayerValues())
+	{
+		// Named for the channel, because there is no asset to name it after and two of them on
+		// one layer differ by nothing else.
+		return FText::Format(
+			LOCTEXT("LayerValuesMaskName", "Layer {0}"),
+			MixtormatUI::LayerValueChannelText(Child.Mask.LayerValueChannel));
+	}
+
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.HasPublishedSource())
 	{
 		return Child.Mask.PublishedSourceOutput == TEXT("Wear")
@@ -2893,6 +2902,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGeneratedMaskToLayer(LayerIndex); }));
+	// Beside the other mask producers rather than under the asset picker above, because it needs
+	// no asset: it reads the layer it is added to.
+	Menu.Item(
+		LOCTEXT("AddLayerValuesChild", "Layer Values Mask"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddLayerValuesMaskToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddColorIdChild", "Color ID Mask"),
 		MixtormatIcons::Mask(),
@@ -4160,6 +4175,45 @@ const FMixtormatCraquelure* SMixtormat::GetSelectedCraquelure() const
 	}
 	const FMixtormatLayerChild& Child = WorkingLayers[SelectedLayerIndex].Children[SelectedMaskIndex];
 	return Child.Type == EMixtormatLayerChildType::Craquelure ? &Child.Craquelure : nullptr;
+}
+
+// An ordinary Mask child whose source is the layer's own values.
+//
+// Deliberately not a child type of its own. Everything that makes a mask useful -- the blend into
+// the chain, the placement, the shaping, a scoped Blur or Curvature under it, publishing it,
+// instancing it -- already belongs to FMixtormatMaskLayer, and a separate type would have to
+// re-earn all of it. This sets one enum.
+FReply SMixtormat::AddLayerValuesMaskToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	// The same rule the asset path uses: the first mask on a layer replaces, later ones multiply
+	// into what is already there rather than wiping it.
+	const bool bHasMask = Layer.Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Mask
+			&& !Child.ScopeOwnerChildId.IsValid();
+	});
+
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Mask;
+	Child.Mask.Source = EMixtormatMaskSource::LayerValues;
+	Child.Mask.BlendMode = bHasMask
+		? EMixtormatMaskBlendMode::Multiply
+		: EMixtormatMaskBlendMode::Replace;
+	SelectedLayerIndex = LayerIndex;
+	SelectedMaskIndex = Layer.Children.Num() - 1;
+	SelectedEffectIndex = INDEX_NONE;
+	ExpandedLayerIndices.Add(LayerIndex);
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
 }
 
 FReply SMixtormat::AddGeneratedMaskToLayer(const int32 LayerIndex)

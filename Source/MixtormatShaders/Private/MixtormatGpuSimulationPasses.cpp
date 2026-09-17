@@ -1,4 +1,4 @@
-// Copyright 2026 Hugo Beyer. All Rights Reserved.
+﻿// Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
 
@@ -9,11 +9,13 @@
 
 // The two iterative solves.
 //
-// Wet Stain ping-pongs a pair of state textures over StainIterations and resolves into the
-// layer mask; Procedural Peeling solves an eikonal front at reduced resolution and resolves
-// it up. Both own their state transients outright: nothing outside these functions reads
-// them, and the capture semantics -- which half is read on which iteration, and what the
-// resolve binds -- are exactly as they were in the single-file compositor.
+// Both are reduced-resolution solves with a full-resolution resolve on the end. Wet Stain
+// ping-pongs a pair of state textures over StainIterations at a fixed solve size and filters
+// the result into the layer mask; Procedural Peeling solves an eikonal front at a divisor of
+// the composition and resolves it up. Both own their state transients outright: nothing
+// outside these functions reads them, and the capture semantics -- which half is read on
+// which iteration, and what the resolve binds -- are exactly as they were in the single-file
+// compositor.
 
 class FMixtormatPeelingCS final : public FGlobalShader
 {
@@ -181,6 +183,7 @@ public:
 		SHADER_PARAMETER(float, SurfaceResponse)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateA)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateB)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, StainSurface)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
@@ -191,6 +194,7 @@ public:
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateA)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateB)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputSurface)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
@@ -209,9 +213,11 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
-	// Wet Stain: an iterative solve whose state ping-pongs across StainIterations, resolved
-	// into the layer's mask chain. A mask child rather than a post-layer filter, because the
-	// surface it reads is the one accumulated underneath the layer.
+	// Wet Stain: an iterative solve whose state ping-pongs across StainIterations at a fixed
+	// solve resolution, resolved up into the layer's mask chain. Full-resolution inputs,
+	// reduced-resolution transport, full-resolution resolve. A mask child rather than a
+	// post-layer filter, because the surface it reads is the one accumulated underneath the
+	// layer.
 	void AddStainMaskPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -260,8 +266,44 @@ namespace MixtormatGpuCompositor
 		const int32 MaskReadIndex = 1 - MaskWriteIndex;
 		const int32 LayerReadIndex = 1 - (LayerIndex & 1);
 
+		// The solve runs on its own grid, not on the composition's.
+		//
+		// Every step the transport takes is measured in texels -- water crosses at most one of
+		// them per iteration through the gather, advection steps StainStepScale of them -- so how
+		// far a run reaches in UV is the iteration count over the solve resolution. Solving at
+		// composition resolution therefore made a stain a different size at every output size: a
+		// run at 4K travelled a quarter of the distance it did at 1K from the same settings, and
+		// cost sixteen times as much to get there.
+		//
+		// Pinning the solve to a fixed target fixes both at once. The divisor comes off the
+		// longer side so texels stay square, which matters for a solve where gravity and flow are
+		// directional, and it is clamped at 1 so a composition already at or below the target
+		// solves where it is rather than being upsampled into.
+		//
+		// The target is not exposed. Unlike Peeling's divisor, which trades quality for speed on
+		// a front whose useful resolution genuinely depends on the peel, this one is what makes
+		// the effect resolution-independent -- an artist moving it would be changing the size of
+		// every stain in the material, which is what Iterations and Gravity are for.
+		//
+		// 1024 rather than half of whatever came in: one solve size shared by 1K, 2K and 4K is
+		// what makes the three agree, and the size has to be at least 1K for a run to keep its
+		// shape, which leaves exactly one value. The iteration count is passed through untouched
+		// on the way -- evaporation, absorption and deposition are per-iteration rates, so buying
+		// resolution back with iterations would change how wet and how dirty the stain is rather
+		// than only how far it ran.
+		constexpr int32 StainSolveTarget = 1024;
+		const int32 StainSolveDivisor = FMath::Clamp(
+			FMath::DivideAndRoundUp(
+				FMath::Max(Request.Resolution.X, Request.Resolution.Y),
+				StainSolveTarget),
+			1,
+			8);
+		const FIntPoint SolveRes(
+			FMath::Max(Request.Resolution.X / StainSolveDivisor, 64),
+			FMath::Max(Request.Resolution.Y / StainSolveDivisor, 64));
+
 		const FRDGTextureDesc StateDesc = FRDGTextureDesc::Create2D(
-			Request.Resolution,
+			SolveRes,
 			PF_FloatRGBA,
 			FClearValueBinding::Black,
 			TexCreate_ShaderResource | TexCreate_UAV);
@@ -271,6 +313,14 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef StateB[2] = {
 			GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB0")),
 			GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainStateB1"))};
+
+		// Everything the material below says about a texel, answered once by the initialize pass
+		// and read unchanged by every iteration after it: the two Surface Response couplings, the
+		// dirt available to dissolve, and the combined liquid source. None of it moves while the
+		// solve runs, so none of it is worth resampling the packed surface, the dirt mask and the
+		// curvature rings for on every step. It does not ping-pong -- one texture, written once.
+		FRDGTextureRef StainSurface =
+			GraphBuilder.CreateTexture(StateDesc, TEXT("Mixtormat.StainSurface"));
 
 		// One-by-one stand-ins for the slots a given pass does not write. RDG
 		// validates every binding whether or not the shader stores through it.
@@ -290,6 +340,12 @@ namespace MixtormatGpuCompositor
 			TinyStateDesc, TEXT("Mixtormat.StainWriteDummyA"));
 		FRDGTextureRef StateWriteDummyB = GraphBuilder.CreateTexture(
 			TinyStateDesc, TEXT("Mixtormat.StainWriteDummyB"));
+
+		// Its own stand-in rather than sharing one of the two above. A pass binding the same
+		// resource through two UAV slots is not something to rely on, and the initialize pass
+		// already spends one of them on the debug stand-in.
+		FRDGTextureRef SurfaceWriteDummy = GraphBuilder.CreateTexture(
+			TinyStateDesc, TEXT("Mixtormat.StainSurfaceWriteDummy"));
 		FRDGTextureRef StainMaskDummy = GraphBuilder.CreateTexture(
 			TinyMaskDesc, TEXT("Mixtormat.StainMaskDummy"));
 		AddClearUAVPass(
@@ -298,6 +354,8 @@ namespace MixtormatGpuCompositor
 			GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyA), FVector4f(0.0f));
 		AddClearUAVPass(
 			GraphBuilder, GraphBuilder.CreateUAV(StateWriteDummyB), FVector4f(0.0f));
+		AddClearUAVPass(
+			GraphBuilder, GraphBuilder.CreateUAV(SurfaceWriteDummy), FVector4f(0.0f));
 		AddClearUAVPass(
 			GraphBuilder, GraphBuilder.CreateUAV(StainMaskDummy), FVector4f(0.0f));
 
@@ -324,10 +382,23 @@ namespace MixtormatGpuCompositor
 				TEXT("Mixtormat.StainDirtMask"))
 			: StainSourceMask;
 
-		auto FillStainParameters = [&](FMixtormatStainCS::FParameters* P)
+		// Every value and view the initialize, solve and resolve passes share, built once. Only
+		// the mode, the iteration number, the ping-pong bindings and the resolve's output grid
+		// change from pass to pass; with the default twenty iterations that is one parameter
+		// block filled instead of twenty-two.
+		FMixtormatStainCS::FParameters* CommonParameters =
+			GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
 		{
-			P->OutputSize = Request.Resolution;
-			P->SurfaceSize = Request.Resolution;
+			FMixtormatStainCS::FParameters* P = CommonParameters;
+
+			// The solve grid, for every pass but the resolve, which overrides it below.
+			P->OutputSize = SolveRes;
+
+			// The solve grid again, not the composition's. Every read this feeds is a tap
+			// spacing -- the height gradient behind surface following, the curvature rings behind
+			// the auto source -- and measuring the surface finer than the transport can carry
+			// only hands the solve detail it will immediately alias away.
+			P->SurfaceSize = SolveRes;
 			P->StainMode = Effect.StainMode;
 			P->Seed = Effect.StainSeed;
 			P->UseSourceMask = Effect.StainSourceMask.IsValid() ? 1u : 0u;
@@ -366,7 +437,8 @@ namespace MixtormatGpuCompositor
 			P->SurfaceResponse = Effect.StainSurfaceResponse;
 
 			// The surface accumulated below this layer, the same one the
-			// generated mask reads.
+			// generated mask reads. Full resolution throughout -- the solve
+			// samples it by UV rather than having it resampled down first.
 			P->SourceNormal = OutputN[LayerReadIndex];
 			P->SourceRAM = OutputRAM[LayerReadIndex];
 			P->SourceHeight = HeightTargets[LayerReadIndex];
@@ -376,23 +448,39 @@ namespace MixtormatGpuCompositor
 			P->DirtMask = StainDirtMask;
 			P->LinearWrapSampler =
 				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-		};
+
+			// Overridden per pass, but bound here so no pass can leave a slot empty.
+			P->Mode = 0;
+			P->Iteration = 0;
+			P->PreviousStateA = StateReadDummy;
+			P->PreviousStateB = StateReadDummy;
+			P->StainSurface = StainSurface;
+			P->OutputStateA = GraphBuilder.CreateUAV(StateWriteDummyA);
+			P->OutputStateB = GraphBuilder.CreateUAV(StateWriteDummyB);
+			P->OutputSurface = GraphBuilder.CreateUAV(SurfaceWriteDummy);
+			P->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
+			P->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
+		}
+
+		// Created once rather than per iteration, for the same reason the parameter block is.
+		const FRDGTextureUAVRef StateAUAVs[2] = {
+			GraphBuilder.CreateUAV(StateA[0]), GraphBuilder.CreateUAV(StateA[1])};
+		const FRDGTextureUAVRef StateBUAVs[2] = {
+			GraphBuilder.CreateUAV(StateB[0]), GraphBuilder.CreateUAV(StateB[1])};
 
 		const FIntVector StainGroups(
-			FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-			FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+			FMath::DivideAndRoundUp(SolveRes.X, 8),
+			FMath::DivideAndRoundUp(SolveRes.Y, 8),
 			1);
 		FMixtormatStainCS::FParameters* Init =
 			GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-		FillStainParameters(Init);
-		Init->Mode = 0;
-		Init->Iteration = 0;
-		Init->PreviousStateA = StateReadDummy;
-		Init->PreviousStateB = StateReadDummy;
-		Init->OutputStateA = GraphBuilder.CreateUAV(StateA[0]);
-		Init->OutputStateB = GraphBuilder.CreateUAV(StateB[0]);
-		Init->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
-		Init->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
+		*Init = *CommonParameters;
+
+		// The one pass that writes the surface half, so the one pass that cannot also read it.
+		Init->StainSurface = StateReadDummy;
+		Init->OutputSurface = GraphBuilder.CreateUAV(StainSurface);
+		Init->OutputStateA = StateAUAVs[0];
+		Init->OutputStateB = StateBUAVs[0];
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME(
@@ -407,15 +495,13 @@ namespace MixtormatGpuCompositor
 			const int32 StateWriteIndex = 1 - StateReadIndex;
 			FMixtormatStainCS::FParameters* Step =
 				GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-			FillStainParameters(Step);
+			*Step = *CommonParameters;
 			Step->Mode = 1;
 			Step->Iteration = Iteration + 1;
 			Step->PreviousStateA = StateA[StateReadIndex];
 			Step->PreviousStateB = StateB[StateReadIndex];
-			Step->OutputStateA = GraphBuilder.CreateUAV(StateA[StateWriteIndex]);
-			Step->OutputStateB = GraphBuilder.CreateUAV(StateB[StateWriteIndex]);
-			Step->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
-			Step->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
+			Step->OutputStateA = StateAUAVs[StateWriteIndex];
+			Step->OutputStateB = StateBUAVs[StateWriteIndex];
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME(
@@ -429,16 +515,19 @@ namespace MixtormatGpuCompositor
 			StateReadIndex = StateWriteIndex;
 		}
 
+		// Composition resolution, filtering the solve up as it goes. The state textures are read
+		// through the bilinear sampler by UV rather than loaded by texel, so this is the upsample;
+		// everything else it touches -- the accumulated mask it blends against, the scope mask
+		// that gates it, the debug target it previews into -- is full resolution and stays there.
 		FMixtormatStainCS::FParameters* Resolve =
 			GraphBuilder.AllocParameters<FMixtormatStainCS::FParameters>();
-		FillStainParameters(Resolve);
+		*Resolve = *CommonParameters;
+		Resolve->OutputSize = Request.Resolution;
 		Resolve->Mode = 2;
 		Resolve->Iteration = Effect.StainIterations;
 		Resolve->WriteDebug = bWriteStainDebug ? 1u : 0u;
 		Resolve->PreviousStateA = StateA[StateReadIndex];
 		Resolve->PreviousStateB = StateB[StateReadIndex];
-		Resolve->OutputStateA = GraphBuilder.CreateUAV(StateWriteDummyA);
-		Resolve->OutputStateB = GraphBuilder.CreateUAV(StateWriteDummyB);
 		Resolve->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 		Resolve->OutputDebug = GraphBuilder.CreateUAV(
 			OutputDebug[Request.PublishedTargetIndex]);
@@ -448,7 +537,10 @@ namespace MixtormatGpuCompositor
 				"Mixtormat.Stain.L%d.C%d.Resolve", LayerIndex, ChildIndex),
 			StainShader,
 			Resolve,
-			StainGroups);
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
 
 		CombinedMask = MaskTargets[MaskWriteIndex];
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask

@@ -206,6 +206,7 @@ private:
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
+	FReply AddLayerValuesMaskToLayer(int32 LayerIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);
 	FReply AddCraquelureToLayer(int32 LayerIndex);
 	FReply RemoveGeneratedFromLayer(int32 LayerIndex, int32 ChildIndex);
@@ -266,6 +267,8 @@ private:
 	FReply RemoveColorIdEntry(int32 ColorIndex);
 	FReply OpenColorIdPicker(int32 ColorIndex);
 	void SetColorIdColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
+	TSharedRef<SWidget> BuildMaskSourceMenu();
+	TSharedRef<SWidget> BuildMaskLayerValueChannelMenu();
 	TSharedRef<SWidget> BuildMaskRotationMenu();
 	TSharedRef<SWidget> BuildLayerRotationMenu();
 

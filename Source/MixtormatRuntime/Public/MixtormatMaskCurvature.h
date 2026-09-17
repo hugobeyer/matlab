@@ -36,7 +36,25 @@ enum class EMixtormatCurvatureMode : uint8
 	// flat axis the way Mean does.
 	MaxPrincipal = 2 UMETA(DisplayName = "Max Principal"),
 	// The smaller one: the sharpest concave bend. Valleys, grooves, and the inside of a fillet.
-	MinPrincipal = 3 UMETA(DisplayName = "Min Principal")
+	MinPrincipal = 3 UMETA(DisplayName = "Min Principal"),
+	// Appended, never reordered: Mode is serialised by value.
+	//
+	// The same invariant Gaussian measures, by a different estimator. 2*pi minus the angles of the
+	// triangle fan through the sampled neighbours, over a third of the fan's area -- the standard
+	// discrete Gaussian curvature. It is here because it fails differently: the Monge form above
+	// differentiates the field twice, so a quantised or faceted source comes through as
+	// second-derivative noise, where the deficit never differentiates at all and degrades into a
+	// flat answer instead. On a clean smooth field the two agree.
+	AngleDeficit = 4 UMETA(DisplayName = "Angle Deficit"),
+	// The deficit, oriented. A dome and a pit are both elliptic and both give a positive deficit,
+	// which is exactly what Gaussian curvature says and exactly what is unhelpful when the thing
+	// wanted is one of the two: these carry the deficit's magnitude with the mean's sign, so
+	// Convex is positive on a raised bump and Concave is positive in a sunk one.
+	//
+	// Saddles are outside what either means -- the deficit is negative there and the mean's sign
+	// says nothing useful -- so both read low on one, which is the honest answer.
+	AngleDeficitConvex = 5 UMETA(DisplayName = "Angle Deficit Convex"),
+	AngleDeficitConcave = 6 UMETA(DisplayName = "Angle Deficit Concave")
 };
 
 // Narrows a mask to where a field bends a particular way.
@@ -63,7 +81,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskCurvature
 
 	// Tap spacing in texels: the width of the neighbourhood the curvature is measured over. Small
 	// finds the shape of small things, large finds the shape of what those things sit on.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "1", ClampMax = "64"))
 	int32 Kernel = 2;
 
 	// Height amplitude. The field is 0..1 with no statement of what that is worth against a
@@ -107,7 +125,12 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskCurvature
 namespace MixtormatMaskCurvatureRange
 {
 	constexpr double KernelMin = 1.0;
-	constexpr double KernelMax = 16.0;
+
+	// Half the clamp, on the rule this namespace exists for: the asset may hold up to 64, but a
+	// drag that spanned all of it would compress the 1..8 band every ordinary curvature lives in
+	// into the first eighth of the slider. Above 32 is reachable by typing the value or by driving
+	// it, which is what a clamp wider than a range is for.
+	constexpr double KernelMax = 32.0;
 	constexpr int32 KernelDefault = 2;
 
 	constexpr double ScaleMin = 0.0;

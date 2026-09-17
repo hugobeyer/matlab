@@ -189,6 +189,12 @@ namespace MixtormatGpuCompositor
 		float Contrast = 1.0f;
 		float Offset = 0.0f;
 		bool bInvert = false;
+		// Reads the layer's own resolved values instead of an authored texture. Texture stays
+		// unset in that case -- there is nothing to register.
+		bool bLayerValues = false;
+		// EMixtormatLayerValueChannel by value for a Layer Values source, and 1 -- plain red --
+		// for a texture, which is the channel this shader has always read.
+		int32 SourceChannel = 1;
 		// Summed from every enabled Blur child scoped to this mask. Zero on an axis skips that
 		// dispatch. A node in the recipe, a number by the time it reaches here -- which is what
 		// lets the blur be driven and instanced without the pass code knowing it exists.
@@ -895,6 +901,9 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef LayerInputBC = nullptr;
 		FRDGTextureRef LayerInputN = nullptr;
 		FRDGTextureRef LayerInputRAM = nullptr;
+		// Albedo in RGB, roughness in alpha, resolved once per layer by AddLayerValuesPass and
+		// shared by every Layer Values mask on it.
+		FRDGTextureRef LayerValues = nullptr;
 		FRDGTextureRef LayerInputHeight = nullptr;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
@@ -947,6 +956,7 @@ namespace MixtormatGpuCompositor
 			LayerInputBC = nullptr;
 			LayerInputN = nullptr;
 			LayerInputRAM = nullptr;
+			LayerValues = nullptr;
 			LayerInputHeight = nullptr;
 			PendingLayerBlurs.Reset();
 		}
@@ -1073,6 +1083,13 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef FeatureMask);
 
 	void AddLayerInputPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
+	// The layer's own resolved albedo and roughness, for a Mask child whose source is Layer
+	// Values. Idempotent: the first mask to ask for it pays, the rest share it.
+	void AddLayerValuesPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);

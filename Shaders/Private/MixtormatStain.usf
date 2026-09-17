@@ -5,11 +5,13 @@
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
-// Full-resolution stain transport, resolved into a layer mask.
+// Reduced-resolution stain transport, resolved into a layer mask at composition resolution.
 //
-// Mode 0 initializes liquid and a static surface-following direction.
-// Mode 1 advects water and dissolved dirt, absorbs, dries and deposits it.
-// Mode 2 resolves either the wet or deposit mask into the layer's accumulated mask.
+// Mode 0 initializes liquid, a static surface-following direction and the static surface
+//        response, at solve resolution.
+// Mode 1 advects water and dissolved dirt, absorbs, dries and deposits it, at solve resolution.
+// Mode 2 resolves either the wet or deposit mask into the layer's accumulated mask, at
+//        composition resolution, filtering the solve state up as it goes.
 //
 // Stain writes a mask and nothing else. It used to shade -- a colour multiplier over the
 // composited albedo, then an absolute roughness target -- which meant a stain could only ever be
@@ -29,17 +31,30 @@
 // option rather than a requirement. On the bottom layer there is no surface below, so the auto
 // source is unavailable there and a Liquid Mask is the only way to place liquid.
 //
-// The solve runs at composition resolution. To keep a run reaching as far as the old
-// reduced-resolution solve did, advection steps a StainStepScale multiple of a texel instead of
-// one, which buys the same travel for half the iterations.
+// The solve runs at a fixed solve resolution, not at composition resolution, and the resolve
+// filters it back up. Everything inside the loop is measured in texels -- water crosses at most
+// one texel per iteration through the gather, advection steps StainStepScale of them, spread and
+// diffusion tap neighbours -- so a run's reach in UV is iterations over solve resolution. Pinning
+// the solve resolution is therefore what makes a stain the same size at 1K, 2K and 4K, and it is
+// why the iteration count is passed through untouched rather than scaled: evaporation, absorption
+// and deposition are per-iteration rates, so trading iterations for resolution would change how
+// wet and how dirty the result is, not just how far it ran.
+//
+// SurfaceSize is the solve grid too. Every derivative this shader takes off the full-resolution
+// surface -- the height gradient in SurfaceFlow, the curvature rings in EvaluateSurfaceSource --
+// is a tap spacing, and measuring at composition resolution while stepping at solve resolution
+// would feed the transport detail it cannot carry.
 //
 // State A: water, saturation, dissolved dirt, deposit.
-// State B: velocity.xy, flow direction as an angle, source field.
+// State B: velocity.xy, flow direction.xy.
+// Surface: local roughness, local porosity, local dirt, per-iteration source top-up.
 //
-// The flow direction is stored as an angle rather than as a vector so the fourth channel can
-// carry the source field. That matters: the per-iteration top-up needs the same combined source
-// the initial injection used, and re-deriving it would mean running the curvature analysis on
-// every step instead of once.
+// The surface half is written once, by mode 0, and read unchanged by every iteration after it.
+// It holds what the material below says about this texel -- the two Surface Response couplings,
+// the dirt the liquid can dissolve, and the combined liquid source -- none of which move while
+// the solve runs. Keeping them there is what lets the loop read one point-sampled texel instead
+// of resampling the packed surface and the dirt mask, and re-running the curvature analysis,
+// on every step.
 
 // Texels advected per iteration. Only the transport offset is scaled; the water gradient and the
 // lateral spread taps stay at one texel because they estimate derivatives, not travel.
@@ -47,6 +62,7 @@ static const float StainStepScale = 2.0f;
 
 Texture2D<float4> PreviousStateA;
 Texture2D<float4> PreviousStateB;
+Texture2D<float4> StainSurface;
 Texture2D<float4> SourceNormal;
 Texture2D<float4> SourceRAM;
 Texture2D<float> SourceHeight;
@@ -58,6 +74,7 @@ SamplerState LinearWrapSampler;
 
 RWTexture2D<float4> OutputStateA;
 RWTexture2D<float4> OutputStateB;
+RWTexture2D<float4> OutputSurface;
 RWTexture2D<float> OutputMask;
 RWTexture2D<float4> OutputDebug;
 
@@ -304,41 +321,10 @@ void InitializeState(int2 Pixel, float2 UV)
 	const float Source = SourceField * max(SourceAmount, 0.0f) * Breakup;
 	const float InitialSpeed = 0.20f + abs(Gravity) * 0.25f;
 
-	OutputStateA[Pixel] = float4(Source, 0.0f, 0.0f, 0.0f);
-	OutputStateB[Pixel] = float4(Flow * InitialSpeed, atan2(Flow.y, Flow.x), SourceField);
-}
-
-void SimulateState(int2 Pixel, float2 UV)
-{
-	const float2 SimTexel = 1.0f / max(float2(OutputSize), 1.0f);
-	const float4 OldA = PreviousStateA.Load(int3(Pixel, 0));
-	const float4 OldB = PreviousStateB.Load(int3(Pixel, 0));
-	float2 FlowSinCos;
-	sincos(OldB.z, FlowSinCos.x, FlowSinCos.y);
-	const float2 BaseDirection = StainSafeDirection(
-		float2(FlowSinCos.y, FlowSinCos.x), float2(0.0f, -1.0f));
-	const float SourceField = max(OldB.w, 0.0f);
-
-	// The four neighbors water is gathered from below. Sampled once and reused for the velocity
-	// gradient, the new gather-based transport and the post-transport diffusion, rather than
-	// re-sampling the same texels three times.
-	const float4 NeighborAL = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f);
-	const float4 NeighborAR = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f);
-	const float4 NeighborAD = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f);
-	const float4 NeighborAU = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f);
-	const float2 NeighborVelL = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f).xy;
-	const float2 NeighborVelR = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f).xy;
-	const float2 NeighborVelD = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f).xy;
-	const float2 NeighborVelU = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f).xy;
-	const float WaterL = NeighborAL.x;
-	const float WaterR = NeighborAR.x;
-	const float WaterD = NeighborAD.x;
-	const float WaterU = NeighborAU.x;
-	const float2 WaterGradient = 0.5f * float2(WaterR - WaterL, WaterU - WaterD);
-
-	// The packed channels accumulated below the layer, sampled once and used for two different
-	// questions: how the run moves, and how much the surface drinks. Both are properties of the
-	// material the liquid is on, so both are read rather than typed.
+	// The packed channels accumulated below the layer, read once here and answered into the
+	// surface half rather than resampled on every iteration. Both questions they settle -- how
+	// the run moves, and how much the surface drinks -- are properties of the material below,
+	// and the material below does not change while the solve runs.
 	const float4 SurfacePacked = SurfaceValid != 0
 		? SourceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.5f);
@@ -358,6 +344,67 @@ void SimulateState(int2 Pixel, float2 UV)
 	// wander and spread laterally.
 	const float CompositeRoughness = saturate(SurfacePacked.r);
 	const float LocalRoughness = lerp(0.5f, CompositeRoughness, Response);
+
+	// The absorption side of the same signal. Rough dielectrics drink -- concrete, brick,
+	// unglazed stone, cloth. Smooth or metallic surfaces do not: water beads on polished steel
+	// and runs off rather than soaking in.
+	//
+	// The metallic term is what makes this a different number from LocalRoughness rather than a
+	// copy of it, and it is the right shape: either term at its extreme shuts absorption off,
+	// which is what both materials actually do. Metal still drags a run normally -- only the
+	// drinking stops.
+	const float SurfacePorosity = saturate(
+		CompositeRoughness * (1.0f - saturate(SurfacePacked.b)));
+	const float LocalPorosity = lerp(0.5f, SurfacePorosity, Response);
+
+	// The per-iteration top-up, folded to its final value here. It used to be the authored mask
+	// alone, which left an auto-sourced stain with one injection at init and no top-up at all --
+	// so auto mode read as much weaker than mask mode for reasons that had nothing to do with
+	// either. It is the same combined source the injection above uses.
+	const float ContinuousSource = SourceField * max(SourceAmount, 0.0f) * 0.06f;
+
+	OutputStateA[Pixel] = float4(Source, 0.0f, 0.0f, 0.0f);
+	OutputStateB[Pixel] = float4(Flow * InitialSpeed, Flow);
+	OutputSurface[Pixel] = float4(
+		LocalRoughness,
+		LocalPorosity,
+		saturate(DirtAmount) * SampleDirt(UV),
+		ContinuousSource);
+}
+
+void SimulateState(int2 Pixel, float2 UV)
+{
+	const float2 SimTexel = 1.0f / max(float2(OutputSize), 1.0f);
+	const float4 OldA = PreviousStateA.Load(int3(Pixel, 0));
+	const float4 OldB = PreviousStateB.Load(int3(Pixel, 0));
+	const float2 BaseDirection = StainSafeDirection(OldB.zw, float2(0.0f, -1.0f));
+
+	// Everything the material below has to say about this texel, answered once by mode 0 and
+	// point-sampled here: the two Surface Response couplings, the dirt this texel can give up,
+	// and the per-iteration source top-up. None of it moves while the solve runs, so none of it
+	// is worth resampling twenty times.
+	const float4 Surface = StainSurface.Load(int3(Pixel, 0));
+	const float LocalRoughness = Surface.x;
+	const float LocalPorosity = Surface.y;
+	const float LocalDirt = Surface.z;
+	const float ContinuousSource = Surface.w;
+
+	// The four neighbors water is gathered from below. Sampled once and reused for the velocity
+	// gradient, the new gather-based transport and the post-transport diffusion, rather than
+	// re-sampling the same texels three times.
+	const float4 NeighborAL = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f);
+	const float4 NeighborAR = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f);
+	const float4 NeighborAD = PreviousStateA.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f);
+	const float4 NeighborAU = PreviousStateA.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f);
+	const float2 NeighborVelL = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(SimTexel.x, 0.0f), 0.0f).xy;
+	const float2 NeighborVelR = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(SimTexel.x, 0.0f), 0.0f).xy;
+	const float2 NeighborVelD = PreviousStateB.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SimTexel.y), 0.0f).xy;
+	const float2 NeighborVelU = PreviousStateB.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SimTexel.y), 0.0f).xy;
+	const float WaterL = NeighborAL.x;
+	const float WaterR = NeighborAR.x;
+	const float WaterD = NeighborAD.x;
+	const float WaterU = NeighborAU.x;
+	const float2 WaterGradient = 0.5f * float2(WaterR - WaterL, WaterU - WaterD);
 
 	const float Inertia = lerp(0.95f, 0.80f, LocalRoughness);
 	const float TargetSpeed = 0.45f + abs(Gravity) * 1.25f;
@@ -397,12 +444,6 @@ void SimulateState(int2 Pixel, float2 UV)
 		const float SideZB = PreviousStateA.SampleLevel(LinearWrapSampler, BackUV - LateralOffset, 0.0f).z;
 		AdvectedA.z = lerp(AdvectedA.z, 0.5f * (SideZA + SideZB), SpreadAmount);
 	}
-
-	// The same combined source the initial injection used, read back rather than recomputed. It
-	// used to be the authored mask alone, which left an auto-sourced stain with one injection at
-	// init and no top-up at all -- so auto mode read as much weaker than mask mode for reasons
-	// that had nothing to do with either.
-	const float ContinuousSource = SourceField * max(SourceAmount, 0.0f) * 0.06f;
 
 	// Water transport: gather rather than smear. The old backward sample followed a single texel
 	// back along Velocity and picked up whatever was there, which is semi-Lagrangian advection --
@@ -450,17 +491,6 @@ void SimulateState(int2 Pixel, float2 UV)
 	const float Evaporated = Water * (1.0f - exp(-EvaporationRate));
 	Water -= Evaporated;
 
-	// The absorption side of the same signal. Rough dielectrics drink -- concrete, brick,
-	// unglazed stone, cloth. Smooth or metallic surfaces do not: water beads on polished steel
-	// and runs off rather than soaking in.
-	//
-	// The metallic term is what makes this a different number from LocalRoughness rather than a
-	// copy of it, and it is the right shape: either term at its extreme shuts absorption off,
-	// which is what both materials actually do. Metal still drags a run normally -- only the
-	// drinking stops.
-	const float SurfacePorosity = saturate(
-		CompositeRoughness * (1.0f - saturate(SurfacePacked.b)));
-	const float LocalPorosity = lerp(0.5f, SurfacePorosity, Response);
 	const float Capacity = 0.55f + 0.65f * LocalPorosity;
 	const float Saturation01 = saturate(Saturation / max(Capacity, 1.0e-6f));
 	const float AbsorptionRate =
@@ -474,7 +504,6 @@ void SimulateState(int2 Pixel, float2 UV)
 		0.0f,
 		Capacity);
 
-	const float LocalDirt = saturate(DirtAmount) * SampleDirt(UV);
 	Dissolved += Water * LocalDirt * (0.004f + LocalDirt * 0.018f) * (1.0f - saturate(Deposit));
 
 	const float ThinWater = rcp(1.0f + Water * 10.0f);
@@ -490,7 +519,7 @@ void SimulateState(int2 Pixel, float2 UV)
 		Saturation,
 		max(Dissolved, 0.0f),
 		max(Deposit, 0.0f));
-	OutputStateB[Pixel] = float4(Velocity, OldB.z, SourceField);
+	OutputStateB[Pixel] = float4(Velocity, OldB.zw);
 }
 
 // The same unlit ramp every other feature preview writes, so the stain reads as one more channel

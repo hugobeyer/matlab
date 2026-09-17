@@ -33,6 +33,7 @@ public:
 		SHADER_PARAMETER(float, Contrast)
 		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -69,6 +70,7 @@ public:
 		SHADER_PARAMETER(float, Balance)
 		SHADER_PARAMETER(float, Contrast)
 		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -290,15 +292,29 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
-	// Resolves the texture a mask child reads from: a published output looked up by
-	// FPublishedMaskKey (or the empty driver signal when that source hasn't produced
-	// output yet), otherwise the child's own authored texture. Shared by ordinary layer
-	// masks and scoped feature masks so a published source behaves identically in both.
+	// Resolves the texture a mask child reads from: the layer's own resolved values, a published
+	// output looked up by FPublishedMaskKey (or the empty driver signal when that source hasn't
+	// produced output yet), otherwise the child's own authored texture. Shared by ordinary layer
+	// masks and scoped feature masks so every source behaves identically in both.
+	//
+	// One choke point is the whole reason Layer Values needs no parallel machinery: whatever comes
+	// back here is placed, shaped, blurred, narrowed and blended by the code that follows, which
+	// neither knows nor cares which branch produced it.
 	static FRDGTextureRef ResolveMaskSourceTexture(
 		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
 		const FMaskRenderData& Mask,
 		const TCHAR* DebugName)
 	{
+		// The layer's own resolved values, shared across every mask on the layer that asks for
+		// them. Ahead of the published-source branch only because the gather already decided
+		// between the two -- UsesLayerValues() yields to an explicit wiring.
+		if (Mask.bLayerValues)
+		{
+			AddLayerValuesPass(Ctx, LayerCtx, Layer);
+			return LayerCtx.LayerValues;
+		}
 		if (!Mask.PublishedSourceOutput.IsNone())
 		{
 			const FPublishedMaskKey Key{
@@ -331,6 +347,8 @@ namespace MixtormatGpuCompositor
 	// distinction the recipe never made.
 	static FRDGTextureRef AddMaskFilterPasses(
 		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
 		const FMaskRenderData& Mask,
 		const FRDGTextureDesc& MaskDesc,
 		FRDGTextureRef PreviousMask,
@@ -366,8 +384,9 @@ namespace MixtormatGpuCompositor
 		ShapeParameters->Contrast = Mask.Contrast;
 		ShapeParameters->Offset = Mask.Offset;
 		ShapeParameters->PreviousMask = PreviousMask;
-		ShapeParameters->IncomingMask =
-			ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.IncomingMask"));
+		ShapeParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
+		ShapeParameters->IncomingMask = ResolveMaskSourceTexture(
+			Ctx, LayerCtx, Layer, Mask, TEXT("Mixtormat.IncomingMask"));
 		// Anything but ShapedTarget, which this pass writes -- RDG will not let one resource be
 		// both the SRV and the UAV of a single pass. UsePreShaped is 0 here, so it is never read.
 		ShapeParameters->PreShapedMask = PreviousMask;
@@ -450,7 +469,7 @@ namespace MixtormatGpuCompositor
 			FMixtormatMaskCurvatureCS::FParameters* CurvatureParameters =
 				GraphBuilder.AllocParameters<FMixtormatMaskCurvatureCS::FParameters>();
 			CurvatureParameters->OutputSize = Request.Resolution;
-			CurvatureParameters->Kernel = FMath::Clamp(Filter.Kernel, 1, 32);
+			CurvatureParameters->Kernel = FMath::Clamp(Filter.Kernel, 1, 64);
 			CurvatureParameters->Scale = FMath::Max(Filter.Scale, 0.0f);
 			CurvatureParameters->Mode = static_cast<int32>(Filter.Mode);
 			CurvatureParameters->RangeLow = Filter.RangeLow;
@@ -526,7 +545,8 @@ namespace MixtormatGpuCompositor
 			FRDGTextureRef ScopedOutput = GraphBuilder.CreateTexture(
 				MaskDesc, TEXT("Mixtormat.ScopedFeatureMask"));
 			FRDGTextureRef ScopedPreShaped = AddMaskFilterPasses(
-				Ctx, Mask, MaskDesc, FeatureMask, LayerIndex, OwnerSourceChildIndex);
+				Ctx, LayerCtx, Layer, Mask, MaskDesc, FeatureMask, LayerIndex,
+				OwnerSourceChildIndex);
 			FMixtormatMaskCS::FParameters* MP =
 				GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
 			MP->OutputSize = Request.Resolution;
@@ -544,7 +564,9 @@ namespace MixtormatGpuCompositor
 			MP->Contrast = Mask.Contrast;
 			MP->Offset = Mask.Offset;
 			MP->PreviousMask = FeatureMask;
-			MP->IncomingMask = ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.ScopedIncomingMask"));
+			MP->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
+			MP->IncomingMask = ResolveMaskSourceTexture(
+				Ctx, LayerCtx, Layer, Mask, TEXT("Mixtormat.ScopedIncomingMask"));
 			MP->PreShapedMask = ScopedPreShaped ? ScopedPreShaped : FeatureMask;
 			MP->LinearWrapSampler = TStaticSamplerState<
 				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
@@ -832,10 +854,11 @@ namespace MixtormatGpuCompositor
 		const int32 MaskReadIndex = 1 - MaskWriteIndex;
 
 		FRDGTextureRef PreShapedMask = AddMaskFilterPasses(
-			Ctx, Mask, MaskDesc, MaskTargets[MaskReadIndex], LayerIndex, ChildIndex);
+			Ctx, LayerCtx, Layer, Mask, MaskDesc, MaskTargets[MaskReadIndex], LayerIndex,
+			ChildIndex);
 
-		const FRDGTextureRef IncomingMask =
-			ResolveMaskSourceTexture(Ctx, Mask, TEXT("Mixtormat.IncomingMask"));
+		const FRDGTextureRef IncomingMask = ResolveMaskSourceTexture(
+			Ctx, LayerCtx, Layer, Mask, TEXT("Mixtormat.IncomingMask"));
 		const FRDGTextureRef FilteredMask =
 			PreShapedMask ? PreShapedMask : MaskTargets[MaskReadIndex];
 		const FIntVector Groups(
@@ -861,6 +884,7 @@ namespace MixtormatGpuCompositor
 			Resolve->Balance = Mask.Balance;
 			Resolve->Contrast = Mask.Contrast;
 			Resolve->Offset = Mask.Offset;
+			Resolve->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			Resolve->IncomingMask = IncomingMask;
 			Resolve->PreShapedMask = FilteredMask;
 			Resolve->LinearWrapSampler = TStaticSamplerState<
@@ -916,6 +940,7 @@ namespace MixtormatGpuCompositor
 			MaskParameters->Contrast = Mask.Contrast;
 			MaskParameters->Offset = Mask.Offset;
 			MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
+			MaskParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			MaskParameters->IncomingMask = IncomingMask;
 			MaskParameters->PreShapedMask = FilteredMask;
 			MaskParameters->LinearWrapSampler = TStaticSamplerState<

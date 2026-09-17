@@ -19,6 +19,9 @@ uint UsePreShaped;
 uint Initialize;
 uint BlendMode;
 uint Invert;
+// Which scalar to take out of the four-channel source. EMixtormatLayerValueChannel by value, and
+// 1 -- plain red -- for an authored texture, which is what this shader always read.
+uint SourceChannel;
 float Weight;
 float Balance;
 float Contrast;
@@ -32,6 +35,36 @@ uint FlipU;
 uint FlipV;
 int Rotation;
 
+// One scalar out of a four-channel source.
+//
+// Luminance is Rec. 709 relative luminance over *linear* RGB, and no conversion is applied on the
+// way in. That is not an oversight: base colour imports sRGB-flagged, so the hardware linearises
+// it at the sample, fill colours are authored as FLinearColor, and every compositor target is a
+// float format holding linear data. Decoding again here would darken the midtones of every mask.
+float SelectMaskChannel(float4 Value)
+{
+	if (SourceChannel == 1)
+	{
+		return Value.r;
+	}
+	if (SourceChannel == 2)
+	{
+		return Value.g;
+	}
+	if (SourceChannel == 3)
+	{
+		return Value.b;
+	}
+	if (SourceChannel == 4)
+	{
+		// The layer's resolved roughness on a Layer Values source; the source map's alpha on an
+		// authored one. Both are the fourth channel of what was bound, which is the only thing
+		// this shader can know about it.
+		return Value.a;
+	}
+	return dot(Value.rgb, float3(0.2126f, 0.7152f, 0.0722f));
+}
+
 float SampleIncomingMask(float2 UV)
 {
 	if (UsePreShaped != 0)
@@ -39,7 +72,8 @@ float SampleIncomingMask(float2 UV)
 		return PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	}
 	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
-	const float Incoming = IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).r;
+	const float Incoming =
+		SelectMaskChannel(IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f));
 	return MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
 }
 

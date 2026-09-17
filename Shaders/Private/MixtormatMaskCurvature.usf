@@ -29,6 +29,14 @@
 // is only the principal curvature where I is the identity, that is where the surface is flat
 // enough that fx and fy vanish. Precisely where curvature is interesting, it is wrong.
 //
+// Two estimators, not one. The forms above are analytic: they differentiate the field twice and
+// read the invariants off the result, which is exact on a smooth field and is noise on a faceted
+// one -- a second derivative of a quantised height is a second derivative of the quantisation.
+// The angle-deficit modes measure the same Gaussian invariant without differentiating anything:
+// they build the triangle fan through the sampled neighbours and take 2*pi minus the angles that
+// meet at the centre, over a third of the fan's area. That is bounded by construction, so a
+// stepped source degrades it toward a flat answer instead of toward noise.
+//
 // Every tap wraps. The source is a tileable mask or a tileable height, so a clamped tap at the
 // edge would pull in a neighbourhood that is not the one that continues there, and the surface
 // would stop meeting itself. Wrapping also removes the entire boundary-correction problem that a
@@ -48,7 +56,8 @@ int Kernel;
 // Height amplitude. The field arrives as 0..1 with no idea what that is worth in texels, and
 // curvature is not scale-invariant -- every second derivative scales with it.
 float Scale;
-// 0 Gaussian, 1 Mean, 2 Max principal, 3 Min principal.
+// 0 Gaussian, 1 Mean, 2 Max principal, 3 Min principal, 4 Angle deficit,
+// 5 Angle deficit convex, 6 Angle deficit concave.
 int Mode;
 // The signed curvature mapped to 0..1 coverage. Low above High inverts, which is how a cavity
 // selection and a convex one are the same control.
@@ -73,7 +82,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
 	const float2 Texel = 1.0f / max(float2(OutputSize), 1.0f);
-	const float Step = float(clamp(Kernel, 1, 32));
+	// 64, not 32. The spacing is in UV, so a wide kernel is a statement about how broad a shape
+	// to measure rather than about resolution -- but it is wide: at 64 the fan spans 128 texels,
+	// and on a small composition the wrapped taps start meeting themselves from the other side.
+	const float Step = float(clamp(Kernel, 1, 64));
 	const float2 H = Texel * Step;
 
 	// Nine taps: the centre, the four axial neighbours for the second derivatives along x and y,
@@ -125,13 +137,54 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		Signed = Mean;
 	}
-	else
+	else if (Mode == 2 || Mode == 3)
 	{
 		// H^2 >= K for any real surface; the max() is against rounding at the umbilics, where the
 		// two principal curvatures meet and the difference under the root is a cancellation of
 		// two nearly equal numbers.
 		const float Spread = sqrt(max(Mean * Mean - Gaussian, 0.0f));
 		Signed = Mode == 2 ? (Mean + Spread) : (Mean - Spread);
+	}
+	else
+	{
+		// The angle deficit, over the same nine taps. The eight neighbours are walked in angular
+		// order -- right, up-right, up, and round -- because the fan has to be the fan: taken in
+		// index order the triangles would cross and the angles would sum to something that is not
+		// the solid angle at the centre.
+		const float3 Centre = float3(0.0f, 0.0f, C);
+		const float3 Fan[8] = {
+			float3( H.x,  0.0f, R),
+			float3( H.x,  H.y,  UR),
+			float3( 0.0f, H.y,  U),
+			float3(-H.x,  H.y,  UL),
+			float3(-H.x,  0.0f, L),
+			float3(-H.x, -H.y,  DL),
+			float3( 0.0f,-H.y,  D),
+			float3( H.x, -H.y,  DR)};
+
+		float AngleSum = 0.0f;
+		float AreaSum = 0.0f;
+		[unroll]
+		for (int Corner = 0; Corner < 8; ++Corner)
+		{
+			const float3 EdgeA = Fan[Corner] - Centre;
+			const float3 EdgeB = Fan[(Corner + 1) & 7] - Centre;
+			const float Lengths = max(length(EdgeA) * length(EdgeB), 1.0e-12f);
+			AngleSum += acos(clamp(dot(EdgeA, EdgeB) / Lengths, -1.0f, 1.0f));
+			AreaSum += 0.5f * length(cross(EdgeA, EdgeB));
+		}
+
+		// A third of the fan area is the centre's own share, which is what turns an integrated
+		// deficit -- radians, scaling with how much surface the fan covers -- into a curvature in
+		// the same units as the Gaussian above, so one Range window serves both.
+		const float Deficit = (6.28318531f - AngleSum) / max(AreaSum / 3.0f, 1.0e-9f);
+
+		// Orientation comes from the mean, because the deficit cannot supply it: a dome and a pit
+		// are both elliptic and both deficit-positive. The surface here is z = Scale * f with the
+		// normal (-fx, -fy, 1), which puts the mean negative where the height peaks -- so a raised
+		// bump is Mean < 0, and that is the case Convex has to come out positive on.
+		const float Oriented = Mean > 0.0f ? -Deficit : Deficit;
+		Signed = Mode == 4 ? Deficit : (Mode == 5 ? Oriented : -Oriented);
 	}
 
 	// Signed curvature into coverage. Not a saturate of the raw value: curvature has no natural

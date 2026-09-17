@@ -27,6 +27,19 @@ namespace
 		EMixtormatUVRotation::ThreeQuarter
 	};
 
+	const EMixtormatMaskSource GMixtormatMaskSources[] = {
+		EMixtormatMaskSource::Texture,
+		EMixtormatMaskSource::LayerValues
+	};
+
+	const EMixtormatLayerValueChannel GMixtormatLayerValueChannels[] = {
+		EMixtormatLayerValueChannel::Luminance,
+		EMixtormatLayerValueChannel::Red,
+		EMixtormatLayerValueChannel::Green,
+		EMixtormatLayerValueChannel::Blue,
+		EMixtormatLayerValueChannel::Roughness
+	};
+
 	FText FlowWarpBlendModeText(const EMixtormatFlowWarpBlendMode Mode)
 	{
 		switch (Mode)
@@ -2574,6 +2587,60 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 }
 
 
+TSharedRef<SWidget> SMixtormat::BuildMaskSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	for (const EMixtormatMaskSource Source : GMixtormatMaskSources)
+	{
+		Menu.Item(
+			MixtormatUI::MaskSourceText(Source),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Source]()
+			{
+				if (FMixtormatMaskLayer* M = GetSelectedLayerMask())
+				{
+					M->Source = Source;
+					RefreshLayeredPreview();
+
+					// The row shows the source rather than the asset name once this changes, and
+					// the badge follows it, so the list has to be rebuilt and not just redrawn.
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Source]()
+			{
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M && M->Source == Source;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskLayerValueChannelMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	for (const EMixtormatLayerValueChannel Channel : GMixtormatLayerValueChannels)
+	{
+		Menu.Item(
+			MixtormatUI::LayerValueChannelText(Channel),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Channel]()
+			{
+				if (FMixtormatMaskLayer* M = GetSelectedLayerMask())
+				{
+					M->LayerValueChannel = Channel;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Channel]()
+			{
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M && M->LayerValueChannel == Channel;
+			}));
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildMaskRotationMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -2922,7 +2989,10 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, c
 		EMixtormatCurvatureMode::Gaussian,
 		EMixtormatCurvatureMode::Mean,
 		EMixtormatCurvatureMode::MaxPrincipal,
-		EMixtormatCurvatureMode::MinPrincipal};
+		EMixtormatCurvatureMode::MinPrincipal,
+		EMixtormatCurvatureMode::AngleDeficit,
+		EMixtormatCurvatureMode::AngleDeficitConvex,
+		EMixtormatCurvatureMode::AngleDeficitConcave};
 	for (const EMixtormatCurvatureMode Mode : Modes)
 	{
 		Menu.Item(
@@ -3088,6 +3158,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			{
 				return LOCTEXT("NoSelectedMask", "No mask selected");
 			}
+			if (Selected->UsesLayerValues())
+			{
+				// Naming the channel, because that is the whole identity of this mask -- there is
+				// no asset to name and two Layer Values masks on one layer differ only by it.
+				return FText::Format(
+					LOCTEXT("SelectedMaskLayerValuesName", "Layer Values - {0}"),
+					MixtormatUI::LayerValueChannelText(Selected->LayerValueChannel));
+			}
 			const FSoftObjectPath Path = !Selected->Mask.IsNull()
 				? Selected->Mask.ToSoftObjectPath()
 				: Selected->MaskTexture.ToSoftObjectPath();
@@ -3095,6 +3173,59 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		})
 		.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontBody))
 	];
+
+	// Where the scalar comes from, ahead of everything that shapes it -- the rows below are the
+	// same for either source, which is the point of offering it here rather than as a separate
+	// kind of mask node.
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("SelectedMaskSource", "Source"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M ? MixtormatUI::MaskSourceText(M->Source) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskSourceMenu)),
+		LOCTEXT("SelectedMaskSourceHint",
+			"Texture reads the authored map. Layer Values reads the layer this mask is on -- its "
+			"own resolved albedo and roughness -- so the mask is the shape of the material rather "
+			"than a painted map, and it follows the layer as its colour, fill, instance "
+			"parameters or referenced composition change.\n\n"
+			"It sees the layer's resolved input: the source maps through the layer's UV "
+			"transform, its fill overrides and its HSV. What sibling children do to the layer "
+			"afterwards -- a Grade child, an HSV From IDs tint, the mask chain itself -- is not "
+			"in it, which is what keeps a mask from depending on its own output.")));
+
+	// Collapsed for a texture mask, where it would be a control over nothing.
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->Source == EMixtormatMaskSource::LayerValues
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::Make(
+				LOCTEXT("SelectedMaskLayerValueChannel", "Channel"),
+				MixtormatRow::MakeChip(
+					TAttribute<FText>::CreateLambda([this]()
+					{
+						const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+						return M
+							? MixtormatUI::LayerValueChannelText(M->LayerValueChannel)
+							: FText::GetEmpty();
+					}),
+					FOnGetContent::CreateSP(
+						this, &SMixtormat::BuildMaskLayerValueChannelMenu)),
+				LOCTEXT("SelectedMaskLayerValueChannelHint",
+					"Which scalar to take. Luminance is Rec. 709 over the layer's linear albedo "
+					"and is what reads as brightness; the single channels are the raw albedo "
+					"components. Roughness is the layer's resolved roughness, after its bias, "
+					"contrast and offset.\n\n"
+					"Inversion, Balance, Contrast and Offset under Shaping do the levelling -- "
+					"there is no second set of range controls here."))
+		]);
 
 	AddSliderRow(Panel, MixtormatRow::Make(
 		LOCTEXT("SelectedMaskBlendMode", "Blend Mode"),

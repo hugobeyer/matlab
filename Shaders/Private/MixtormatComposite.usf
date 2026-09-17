@@ -785,6 +785,55 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: SourceRAM.a;
 }
 
+// The layer's own resolved values, as a mask source.
+//
+// Reads what ResolveLayerInputCS already produced -- the layer's source maps through its UV
+// transform, its pattern UV basis, and whatever a Flow Warp child has done to them -- and finishes
+// the albedo the way the composite finishes it: the fill-colour override, then the layer's HSV.
+// Roughness gets the same treatment, its bias/contrast/offset and then the fill override.
+//
+// Straight UV, no source transform: the input textures are already in output space. Sampling them
+// through LayerSourceUVAndOrientation would apply the layer's tiling a second time.
+//
+// What is deliberately *not* here is everything a sibling child does to the layer later -- the
+// region tint from an HSV-From-IDs filter, a Grade child, the mask chain itself. The rule is that
+// this sees the layer's own resolved input and not what its siblings go on to do with it, which is
+// what makes the result well-defined no matter where in the chain the mask reading it sits, and
+// what makes a mask derived from a layer unable to depend on the mask being derived.
+[numthreads(8, 8, 1)]
+void ResolveLayerValuesCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	float3 Albedo = lerp(
+		LayerBC.SampleLevel(LinearWrapSampler, UV, 0.0f).rgb,
+		FillColor.rgb,
+		OverrideBaseColor);
+
+	// Guarded rather than unconditional. The RGB->HSV->RGB round trip is not the identity at the
+	// grey axis or outside 0..1, so running it on a neutral layer would move colours no control
+	// asked to move.
+	if (HueShift != 0.0f || Saturation != 1.0f || Value != 1.0f)
+	{
+		Albedo = AdjustHSV(Albedo);
+	}
+
+	const float Roughness = lerp(
+		AdjustRoughness(LayerRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).r),
+		FillRoughness,
+		OverrideRoughness);
+
+	// Albedo in RGB, roughness in the fourth channel -- the two signals a layer can be masked by,
+	// resolved together in one pass so the channel an artist picks costs nothing to change.
+	OutputBC[Pixel] = float4(Albedo, Roughness);
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {

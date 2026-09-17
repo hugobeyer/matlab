@@ -360,6 +360,50 @@ IMPLEMENT_GLOBAL_SHADER(
 	"ResolveLayerInputCS",
 	SF_Compute);
 
+// The layer's own resolved values, packed for a mask to read: albedo in RGB, roughness in alpha.
+//
+// Reads what FMixtormatLayerInputCS produced rather than the source maps, so the layer's UV
+// transform, its pattern UV basis and any Flow Warp already applied come along for free and are
+// not applied twice. Small on purpose -- the parameters here are exactly the layer-own finishing
+// the composite does to albedo and roughness, and nothing else.
+class FMixtormatLayerValuesCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatLayerValuesCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatLayerValuesCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		// uint32, matching the globals these share with the composite -- the shader lerps with
+		// them and HLSL converts, but the parameter type has to agree or the bind is rejected.
+		SHADER_PARAMETER(uint32, OverrideBaseColor)
+		SHADER_PARAMETER(uint32, OverrideRoughness)
+		SHADER_PARAMETER(FVector4f, FillColor)
+		SHADER_PARAMETER(float, FillRoughness)
+		SHADER_PARAMETER(float, HueShift)
+		SHADER_PARAMETER(float, Saturation)
+		SHADER_PARAMETER(float, Value)
+		SHADER_PARAMETER(float, RoughnessBias)
+		SHADER_PARAMETER(float, RoughnessContrast)
+		SHADER_PARAMETER(float, RoughnessOffset)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerBC)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatLayerValuesCS,
+	"/Plugin/Mixtormat/Private/MixtormatComposite.usf",
+	"ResolveLayerValuesCS",
+	SF_Compute);
+
 class FMixtormatRotateOutputCS final : public FGlobalShader
 {
 public:
@@ -529,6 +573,72 @@ namespace MixtormatGpuCompositor
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.LayerInput.Layer%d", LayerCtx.LayerIndex),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
+	}
+
+	// The layer's own resolved values, as one texture a mask child can read.
+	//
+	// Idempotent and lazy, the same contract AddLayerInputPass has: several Layer Values masks on
+	// one layer -- one on luminance, one on roughness, one scoped under an effect -- all share this
+	// single dispatch, and a layer with none never pays for it.
+	//
+	// It chains onto AddLayerInputPass rather than re-reading the source maps. That pass may
+	// already exist for a Flow Warp or a height smooth, in which case this costs one dispatch over
+	// a texture that was going to be there anyway; and going through it is what makes the layer's
+	// UV transform and pattern UV basis apply exactly once.
+	//
+	// **Cycle prevention, mechanically.** Nothing bound here is part of a mask chain. The inputs
+	// are LayerInputBC/LayerInputRAM -- the layer's source maps resolved into output space -- and
+	// the layer's own scalar parameters. The layer mask, the accumulated composite below, the
+	// effect targets and the mask ping-pong halves are all absent from the parameter struct, so a
+	// mask cannot reach its own output through this pass however it is scoped or ordered. That is
+	// a property of what is bound, not of where the call happens to sit.
+	void AddLayerValuesPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer)
+	{
+		if (LayerCtx.LayerValues)
+		{
+			return;
+		}
+
+		AddLayerInputPass(Ctx, LayerCtx, Layer);
+
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		LayerCtx.LayerValues = GraphBuilder.CreateTexture(
+			Ctx.OutputBC[0]->Desc, TEXT("Mixtormat.LayerValues"));
+
+		FMixtormatLayerValuesCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatLayerValuesCS::FParameters>();
+		Parameters->OutputSize = Request.Resolution;
+
+		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
+		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->FillColor = Layer.FillColor;
+		Parameters->FillRoughness = Layer.FillRoughness;
+		Parameters->HueShift = Layer.HueShift;
+		Parameters->Saturation = Layer.Saturation;
+		Parameters->Value = Layer.Value;
+		Parameters->RoughnessBias = Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.RoughnessOffset;
+		Parameters->LayerBC = LayerCtx.LayerInputBC;
+		Parameters->LayerRAM = LayerCtx.LayerInputRAM;
+		Parameters->LinearWrapSampler = TStaticSamplerState<
+			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+		Parameters->OutputBC = GraphBuilder.CreateUAV(LayerCtx.LayerValues);
+
+		TShaderMapRef<FMixtormatLayerValuesCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.LayerValues.Layer%d", LayerCtx.LayerIndex),
 			Shader,
 			Parameters,
 			FIntVector(
@@ -1583,8 +1693,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 				}
 
+				// A Layer Values mask reads the layer it sits on, so it needs no asset at all --
+				// which is also why it cannot be dropped for the want of one the way a texture
+				// mask is below.
+				const bool bLayerValues = MaskLayer.UsesLayerValues();
+
 				UTexture2D* MaskTexture = nullptr;
-				if (!bPublishedSource)
+				if (!bPublishedSource && !bLayerValues)
 				{
 					MaskTexture = MaskLayer.MaskTexture.LoadSynchronous();
 					if (!MaskTexture)
@@ -1630,6 +1745,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					MaskData.PublishedSourceLayerId = MaskLayer.PublishedSourceLayerId;
 					MaskData.PublishedSourceChildIndex = PublishedSourceChildIndex;
 					MaskData.PublishedSourceOutput = MaskLayer.PublishedSourceOutput;
+				}
+				else if (bLayerValues)
+				{
+					MaskData.bLayerValues = true;
+					MaskData.SourceChannel =
+						static_cast<int32>(MaskLayer.LayerValueChannel);
 				}
 				else
 				{

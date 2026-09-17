@@ -81,6 +81,37 @@ enum class EMixtormatMaskBlendMode : uint8
 	Exclusion UMETA(DisplayName = "Exclusion")
 };
 
+// Where a Mask child reads its scalar from.
+//
+// Texture is the authored map or the published output a mask has always read. Layer Values reads
+// the layer the mask is on instead: its own resolved albedo and roughness, so a mask can be the
+// shape of the material rather than a painted map. Everything downstream is unchanged -- the
+// placement, the shaping, the blur and curvature children, the blend into the chain -- because
+// this names the source and nothing else.
+UENUM(BlueprintType)
+enum class EMixtormatMaskSource : uint8
+{
+	Texture = 0 UMETA(DisplayName = "Texture"),
+	LayerValues = 1 UMETA(DisplayName = "Layer Values")
+};
+
+// Which scalar comes out of the layer's resolved values.
+//
+// The numbering is the shader's: MixtormatMask.usf switches on this directly, so these are not
+// free to reorder. Luminance is Rec. 709 over linear RGB, which is what the compositor holds.
+UENUM(BlueprintType)
+enum class EMixtormatLayerValueChannel : uint8
+{
+	Luminance = 0 UMETA(DisplayName = "Luminance"),
+	Red = 1 UMETA(DisplayName = "Red"),
+	Green = 2 UMETA(DisplayName = "Green"),
+	Blue = 3 UMETA(DisplayName = "Blue"),
+	// No Alpha: the compositor's albedo carries none -- every layer writes 1 there -- so the
+	// fourth channel of the resolved values is the layer's roughness instead, which is a signal
+	// an artist actually has.
+	Roughness = 4 UMETA(DisplayName = "Roughness")
+};
+
 // Quarter turns only. The compositor wraps every source read in a frac(), so a transform has
 // to map the unit square onto itself or it seams at the repeat; an arbitrary angle drags the
 // corners of the tile outside the domain. Same reason per-axis scale is an integer.
@@ -376,6 +407,21 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
 
+	// Appended, and defaulted to the behaviour every saved mask already has: Texture reads the
+	// authored map exactly as before, so a material written before Layer Values existed loads
+	// unchanged and needs no upgrade path.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
+	EMixtormatMaskSource Source = EMixtormatMaskSource::Texture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (EditCondition = "Source == EMixtormatMaskSource::LayerValues"))
+	EMixtormatLayerValueChannel LayerValueChannel = EMixtormatLayerValueChannel::Luminance;
+
+	bool UsesLayerValues() const
+	{
+		// A published source wins: it is an explicit wiring to another child's output, and the
+		// mask has no business second-guessing it.
+		return Source == EMixtormatMaskSource::LayerValues && !HasPublishedSource();
+	}
 };
 
 USTRUCT(BlueprintType)

@@ -281,6 +281,27 @@ namespace MixtormatUI
 		}
 	}
 
+	inline FText MaskSourceText(const EMixtormatMaskSource Source)
+	{
+		switch (Source)
+		{
+		case EMixtormatMaskSource::LayerValues: return LOCTEXT("MaskSourceLayerValues", "Layer Values");
+		default: return LOCTEXT("MaskSourceTexture", "Texture");
+		}
+	}
+
+	inline FText LayerValueChannelText(const EMixtormatLayerValueChannel Channel)
+	{
+		switch (Channel)
+		{
+		case EMixtormatLayerValueChannel::Red: return LOCTEXT("LayerValueRed", "Red");
+		case EMixtormatLayerValueChannel::Green: return LOCTEXT("LayerValueGreen", "Green");
+		case EMixtormatLayerValueChannel::Blue: return LOCTEXT("LayerValueBlue", "Blue");
+		case EMixtormatLayerValueChannel::Roughness: return LOCTEXT("LayerValueRoughness", "Roughness");
+		default: return LOCTEXT("LayerValueLuminance", "Luminance");
+		}
+	}
+
 	inline FText ColorBlendModeText(const EMixtormatColorBlendMode Mode)
 	{
 		switch (Mode)
@@ -407,6 +428,9 @@ namespace MixtormatUI
 		case EMixtormatCurvatureMode::Gaussian: return LOCTEXT("CurvModeGaussian", "Gaussian");
 		case EMixtormatCurvatureMode::MaxPrincipal: return LOCTEXT("CurvModeMax", "Max Principal");
 		case EMixtormatCurvatureMode::MinPrincipal: return LOCTEXT("CurvModeMin", "Min Principal");
+		case EMixtormatCurvatureMode::AngleDeficit: return LOCTEXT("CurvModeDeficit", "Angle Deficit");
+		case EMixtormatCurvatureMode::AngleDeficitConvex: return LOCTEXT("CurvModeDeficitConvex", "Deficit Convex");
+		case EMixtormatCurvatureMode::AngleDeficitConcave: return LOCTEXT("CurvModeDeficitConcave", "Deficit Concave");
 		default: return LOCTEXT("CurvModeMean", "Mean");
 		}
 	}
