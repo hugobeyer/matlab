@@ -159,21 +159,61 @@ float SampleHeight(float2 UV)
 	return SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 }
 
+// The three scales concavity is measured at, in reference texels.
+//
+// Three rather than one because a cavity has a size, and a test tuned to one size is blind to the
+// others. The first version of this was a single-texel Laplacian -- centre against the mean of its
+// four neighbours -- which is a fine detector for a mortar line and completely blind to a bowl:
+// the middle of a broad recess is locally almost planar, so the Laplacian there is zero and the
+// dish read as flat ground. Only the ledges showed up, because a ledge is a first derivative and
+// first derivatives do not care about scale in the same way.
+//
+// Two texels catches a crease, eight catches a moulding or a panel gap, thirty-two catches an
+// actual recess. The widest is deliberately close to the default streak radius: a cavity too broad
+// to source across is a cavity the runoff cannot cross anyway.
+static const float MixtormatRunoffCavityRadii[3] = { 2.0f, 8.0f, 32.0f };
+
+// Height difference at which a feature counts as fully sourcing, against a 0..1 height.
+//
+// Lower than the prototype's 35 and 22, and the two are now comparable to each other, which
+// matters more than either absolute. At 35 against a one-texel Laplacian the cavity term needed a
+// near-vertical crease to register anything, while the ledge term at 22 saturated on almost any
+// slope -- so summing them and clamping meant the ledge decided the answer everywhere the two
+// overlapped. Measured over a ring instead, the same feature produces a far larger difference, so
+// the gain comes down and the two terms can both be visible in one result.
+#define MIXTORMAT_RUNOFF_CAVITY_GAIN 10.0f
+#define MIXTORMAT_RUNOFF_LEDGE_GAIN 8.0f
+
+// Mean height on a ring of eight taps. Axes and diagonals, evenly weighted.
+//
+// A ring rather than a disc: what the concavity test wants to know is how the surroundings sit
+// relative to here, and the interior of the disc is mostly answering about points nearer than the
+// scale being measured -- which the smaller ring has already answered.
+float RingMeanHeight(float2 UV, float RadiusUV)
+{
+	const float Diagonal = RadiusUV * 0.70710678f;
+	float Sum = SampleHeight(UV + float2(RadiusUV, 0.0f));
+	Sum += SampleHeight(UV + float2(-RadiusUV, 0.0f));
+	Sum += SampleHeight(UV + float2(0.0f, RadiusUV));
+	Sum += SampleHeight(UV + float2(0.0f, -RadiusUV));
+	Sum += SampleHeight(UV + float2(Diagonal, Diagonal));
+	Sum += SampleHeight(UV + float2(Diagonal, -Diagonal));
+	Sum += SampleHeight(UV + float2(-Diagonal, Diagonal));
+	Sum += SampleHeight(UV + float2(-Diagonal, -Diagonal));
+	return Sum * 0.125f;
+}
+
 // Where runoff is allowed to start.
 //
-// Two compact local reads rather than a curvature solve, because the question is only "is this a
-// pit, or the top lip of a drop" and a four-tap neighbourhood answers it. A wide-radius curvature
-// pass would answer it better and cost more than the rest of the effect put together.
+// Two questions, both asked of the height accumulated below the layer. Is this texel sitting in a
+// dip, at any of three scales -- dirt collects in dips. And is the ground about to fall away
+// downstream of it -- that is a ledge, and a ledge is where a run begins.
 //
-// Cavity is the classic concavity test: a texel lower than the average of its neighbours is
-// sitting in a dip, and dirt collects in dips. Ledge is the same test taken directionally --
-// height here against height one step downhill -- so it fires on the upper edge of a drop and
-// nowhere else. A wall with a sill streaks from the sill; a flat wall does not streak at all,
-// which is correct and is why the incoming mask exists.
-//
-// The gains are fixed at the prototype's 35 and 22 rather than exposed. They are the slope at
-// which a height difference counts as a feature, expressed against a 0..1 height, and an artist
-// adjusting them would be doing by feel what Surface Influence already does by name.
+// Both are measured at radii fixed against the reference resolution rather than in actual texels,
+// for the same reason Streak Radius is converted on the CPU: a one-texel measurement finds a
+// quarter of the height difference at 4K that it finds at 1K, so a surface response built on
+// texel spacing would quietly fade out as the composition grew. Sampling at a UV radius asks the
+// same question of the same feature at every resolution.
 float SurfaceResponseAt(float2 UV)
 {
 	if (SurfaceValid == 0)
@@ -184,20 +224,34 @@ float SurfaceResponseAt(float2 UV)
 		return 1.0f;
 	}
 
-	const float2 Texel = 1.0f / float2(OutputSize);
 	const float HeightCentre = SampleHeight(UV);
-	const float HeightLeft = SampleHeight(UV - float2(Texel.x, 0.0f));
-	const float HeightRight = SampleHeight(UV + float2(Texel.x, 0.0f));
-	const float HeightDown = SampleHeight(UV - float2(0.0f, Texel.y));
-	const float HeightUp = SampleHeight(UV + float2(0.0f, Texel.y));
-	const float Average = (HeightLeft + HeightRight + HeightDown + HeightUp) * 0.25f;
 
-	const float Cavity = saturate((Average - HeightCentre) * 35.0f);
+	// Max across the scales, not a sum. Each ring is the same question asked at a different size,
+	// so the answers are alternatives rather than contributions -- a feature that registers at one
+	// scale is a cavity, and summing would make a feature that happens to register at two of them
+	// twice the cavity of one that registers at three.
+	float Cavity = 0.0f;
+	[unroll]
+	for (int Ring = 0; Ring < 3; ++Ring)
+	{
+		const float RadiusUV =
+			MixtormatRunoffCavityRadii[Ring] / MixtormatRunoffReferenceResolution;
+		const float Mean = RingMeanHeight(UV, RadiusUV);
+		Cavity = max(
+			Cavity,
+			saturate((Mean - HeightCentre) * MIXTORMAT_RUNOFF_CAVITY_GAIN));
+	}
 
-	// One texel along gravity, not along -Y: turning the gravity dial has to turn what counts as
+	// Downhill along gravity, not along -Y: turning the gravity dial has to turn what counts as
 	// downhill with it, or a sideways runoff would still be sourcing from horizontal ledges.
-	const float HeightAhead = SampleHeight(UV + MixtormatRunoffGravity() * Texel);
-	const float Ledge = saturate((HeightCentre - HeightAhead) * 22.0f);
+	//
+	// Measured at the middle cavity radius rather than one texel away. A ledge worth streaking
+	// from is a drop of some size, and asking at a scale keeps this term reading the same feature
+	// the cavity rings read rather than every faint gradient in the height.
+	const float LedgeRadiusUV =
+		MixtormatRunoffCavityRadii[1] / MixtormatRunoffReferenceResolution;
+	const float HeightAhead = SampleHeight(UV + MixtormatRunoffGravity() * LedgeRadiusUV);
+	const float Ledge = saturate((HeightCentre - HeightAhead) * MIXTORMAT_RUNOFF_LEDGE_GAIN);
 
 	// Lerp toward one rather than scaling toward zero, which is where this departs from the
 	// prototype's `saturate((cavity + ledge) * influence)`. Under that expression Surface
