@@ -1418,8 +1418,10 @@ FReply SMixtormat::ReplaceMaskInLayer(
 	const int32 ChildIndex,
 	const FSoftObjectPath MaskPath)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+	// Guarded through ResolveChild rather than by layer index, so the body and the guard agree on
+	// which container they are talking about. Nothing addresses a group's shared child through here
+	// yet; an index guard would answer "no such child" instead of resolving one if something did.
+	if (!ResolveChild(LayerIndex, ChildIndex)
 		|| ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::Mask)
 	{
 		return FReply::Handled();
@@ -2529,8 +2531,8 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 
 FReply SMixtormat::ToggleLayerEffect(const int32 LayerIndex, const int32 ChildIndex)
 {
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+	// Guarded through ResolveChild, for the same reason as ReplaceMaskInLayer above.
+	if (ResolveChild(LayerIndex, ChildIndex)
 		&& ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Effect)
 	{
 		FMixtormatLayerEffect& Effect = ResolveChild(LayerIndex, ChildIndex)->Effect;
