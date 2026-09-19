@@ -330,7 +330,6 @@ private:
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
 	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
-	TSharedRef<SWidget> BuildGroupAddMaskMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddFilterMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupChildContextMenu(FGuid GroupId, int32 ChildIndex);

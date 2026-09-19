@@ -3053,8 +3053,10 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureSourceMenu(const int32 LayerIndex,
 			nullptr,
 			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Source]()
 			{
-				if (WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+				// Guarded through ResolveChild, not WorkingLayers: the inspector passes
+				// SelectedLayerIndex, which is INDEX_NONE while a group's shared child is the
+				// subject, and an index guard turns that into a silent no-op.
+				if (ResolveChild(LayerIndex, ChildIndex))
 				{
 					ResolveChild(LayerIndex, ChildIndex)->Curvature.Source = Source;
 					RefreshLayeredPreview();
@@ -3063,8 +3065,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureSourceMenu(const int32 LayerIndex,
 			}))
 			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Source]()
 			{
-				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+				return ResolveChild(LayerIndex, ChildIndex)
 					&& ResolveChild(LayerIndex, ChildIndex)->Curvature.Source == Source;
 			}));
 	}
@@ -3089,8 +3090,10 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, c
 			nullptr,
 			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
 			{
-				if (WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+				// Guarded through ResolveChild, not WorkingLayers: the inspector passes
+				// SelectedLayerIndex, which is INDEX_NONE while a group's shared child is the
+				// subject, and an index guard turns that into a silent no-op.
+				if (ResolveChild(LayerIndex, ChildIndex))
 				{
 					ResolveChild(LayerIndex, ChildIndex)->Curvature.Mode = Mode;
 					RefreshLayeredPreview();
@@ -3099,8 +3102,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, c
 			}))
 			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
 			{
-				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+				return ResolveChild(LayerIndex, ChildIndex)
 					&& ResolveChild(LayerIndex, ChildIndex)->Curvature.Mode == Mode;
 			}));
 	}
