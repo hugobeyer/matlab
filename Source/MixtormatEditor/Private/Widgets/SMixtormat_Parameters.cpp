@@ -139,22 +139,21 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 	Result.ValueType = ValueTypeForProperty(Property);
 	Result.TypeName = TypeNameForProperty(Property);
 
-	for (const FMixtormatLayer& Layer : WorkingLayers)
+	// ContainerId is whatever names the container in an address: a layer's LayerId, or a group's
+	// GroupId standing in the same slot. See FMixtormatBindingScope.
+	const auto ScanChildren =
+		[&Result, Owner, OwnerStruct](
+			const TArray<FMixtormatLayerChild>& Children,
+			const FGuid& ContainerId)
 	{
-		if (OwnerStruct == FMixtormatLayer::StaticStruct() && Owner == &Layer)
-		{
-			Result.LayerId = Layer.LayerId;
-			Result.Owner = EMixtormatParameterOwnerType::Layer;
-			return Result;
-		}
-		for (const FMixtormatLayerChild& Child : Layer.Children)
+		for (const FMixtormatLayerChild& Child : Children)
 		{
 			if (Owner == OwnerPointer(Child))
 			{
-				Result.LayerId = Layer.LayerId;
+				Result.LayerId = ContainerId;
 				Result.ChildId = Child.ChildId;
 				Result.Owner = OwnerTypeForChild(Child);
-				return Result;
+				return true;
 			}
 			if (OwnerStruct == FMixtormatMaskShaping::StaticStruct())
 			{
@@ -164,16 +163,79 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 				else if (Child.Type == EMixtormatLayerChildType::RandomId) Shaping = &Child.RandomId.Shaping;
 				if (Owner == Shaping)
 				{
-					Result.LayerId = Layer.LayerId;
+					Result.LayerId = ContainerId;
 					Result.ChildId = Child.ChildId;
 					Result.Owner = EMixtormatParameterOwnerType::MaskShaping;
-					return Result;
+					return true;
 				}
 			}
 		}
+		return false;
+	};
+
+	for (const FMixtormatLayer& Layer : WorkingLayers)
+	{
+		if (OwnerStruct == FMixtormatLayer::StaticStruct() && Owner == &Layer)
+		{
+			Result.LayerId = Layer.LayerId;
+			Result.Owner = EMixtormatParameterOwnerType::Layer;
+			return Result;
+		}
+		if (ScanChildren(Layer.Children, Layer.LayerId))
+		{
+			return Result;
+		}
 	}
+
+	// A shared group child. No Layer case: a group has no FMixtormatLayer of its own, so only its
+	// children are addressable.
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		if (ScanChildren(Group.Children, Group.GroupId))
+		{
+			return Result;
+		}
+	}
+
 	Result.Parameter = NAME_None;
 	return Result;
+}
+
+namespace
+{
+	// The binding for one address within one container's binding array. Shared by the layer and
+	// group paths so the create-and-retype rules cannot drift between them.
+	FMixtormatParameterBinding* FindBindingIn(
+		TArray<FMixtormatParameterBinding>& Bindings,
+		const FMixtormatParameterAddress& Target,
+		const bool bCreate)
+	{
+		FMixtormatParameterBinding* Binding = Bindings.FindByPredicate(
+			[&Target](const FMixtormatParameterBinding& Item)
+			{
+				return Item.DestinationOwner == Target.Owner
+					&& Item.DestinationParameter == Target.Parameter;
+			});
+		if (!Binding && bCreate)
+		{
+			Binding = &Bindings.AddDefaulted_GetRef();
+			Binding->DestinationOwner = Target.Owner;
+			Binding->DestinationParameter = Target.Parameter;
+			Binding->ValueType = Target.ValueType;
+			Binding->TypeName = Target.TypeName;
+		}
+		else if (Binding
+			&& (Binding->ValueType != Target.ValueType || Binding->TypeName != Target.TypeName))
+		{
+			// The parameter under this address changed type, so whatever was bound to it no
+			// longer describes anything. Reset rather than reinterpret.
+			Binding->ValueType = Target.ValueType;
+			Binding->TypeName = Target.TypeName;
+			Binding->Reference = FMixtormatParameterReference{};
+			Binding->Driver = FMixtormatParameterDriver{};
+		}
+		return Binding;
+	}
 }
 
 FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
@@ -182,6 +244,21 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 {
 	if (!Target.IsValid())
 	{
+		return nullptr;
+	}
+	for (FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		if (Group.GroupId != Target.LayerId)
+		{
+			continue;
+		}
+		for (FMixtormatLayerChild& Child : Group.Children)
+		{
+			if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+			{
+				return FindBindingIn(Child.ParameterBindings, Target, bCreate);
+			}
+		}
 		return nullptr;
 	}
 	for (FMixtormatLayer& Layer : WorkingLayers)
@@ -206,30 +283,7 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 				}
 			}
 		}
-		if (!Bindings)
-		{
-			return nullptr;
-		}
-		FMixtormatParameterBinding* Binding = Bindings->FindByPredicate([&Target](const FMixtormatParameterBinding& Item)
-		{
-			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter;
-		});
-		if (!Binding && bCreate)
-		{
-			Binding = &Bindings->AddDefaulted_GetRef();
-			Binding->DestinationOwner = Target.Owner;
-			Binding->DestinationParameter = Target.Parameter;
-			Binding->ValueType = Target.ValueType;
-			Binding->TypeName = Target.TypeName;
-		}
-		else if (Binding && (Binding->ValueType != Target.ValueType || Binding->TypeName != Target.TypeName))
-		{
-			Binding->ValueType = Target.ValueType;
-			Binding->TypeName = Target.TypeName;
-			Binding->Reference = FMixtormatParameterReference{};
-			Binding->Driver = FMixtormatParameterDriver{};
-		}
-		return Binding;
+		return Bindings ? FindBindingIn(*Bindings, Target, bCreate) : nullptr;
 	}
 	return nullptr;
 }
@@ -238,6 +292,26 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 {
 	if (!Target.IsValid())
 	{
+		return nullptr;
+	}
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		if (Group.GroupId != Target.LayerId)
+		{
+			continue;
+		}
+		for (const FMixtormatLayerChild& Child : Group.Children)
+		{
+			if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+			{
+				return Child.ParameterBindings.FindByPredicate(
+					[&Target](const FMixtormatParameterBinding& Item)
+					{
+						return Item.DestinationOwner == Target.Owner
+							&& Item.DestinationParameter == Target.Parameter;
+					});
+			}
+		}
 		return nullptr;
 	}
 	for (const FMixtormatLayer& Layer : WorkingLayers)
@@ -286,7 +360,7 @@ bool SMixtormat::IsParameterReferenceBroken(const FMixtormatParameterAddress& Ta
 {
 	const FMixtormatParameterBinding* Binding = FindParameterBinding(Target);
 	return Binding && Binding->Reference.bEnabled
-		&& !MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Binding->Reference.Source);
+		&& !MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Binding->Reference.Source);
 }
 
 bool SMixtormat::WouldCreateParameterReferenceCycle(
@@ -326,13 +400,13 @@ bool SMixtormat::CanPasteParameterReference(const FMixtormatParameterAddress& Ta
 {
 	return ParameterReferenceClipboard.IsSet()
 		&& MixtormatParameterBinding::AreReferenceTypesCompatible(Target, ParameterReferenceClipboard.GetValue())
-		&& MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, ParameterReferenceClipboard.GetValue())
+		&& MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, ParameterReferenceClipboard.GetValue())
 		&& !WouldCreateParameterReferenceCycle(Target, ParameterReferenceClipboard.GetValue());
 }
 
 void SMixtormat::CopyParameterReference(FMixtormatParameterAddress Source)
 {
-	if (MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Source))
+	if (MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Source))
 	{
 		ParameterReferenceClipboard = Source;
 		WorkingStatusText = FString::Printf(TEXT("Reference copied · %s"), *Source.Parameter.ToString());
@@ -417,25 +491,25 @@ EMixtormatReferenceMode SMixtormat::GetParameterReferenceMode(const FMixtormatPa
 bool SMixtormat::TryWriteLinkedFloat(const FMixtormatParameterAddress& Target, const float Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteFloat(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteFloat({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 bool SMixtormat::TryWriteLinkedInt(const FMixtormatParameterAddress& Target, const int32 Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteInt(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteInt({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 bool SMixtormat::TryWriteLinkedBool(const FMixtormatParameterAddress& Target, const bool Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteBool(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteBool({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAddress Target)
@@ -471,7 +545,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			const FMixtormatParameterBinding* Binding = FindParameterBinding(Target);
 			return Binding
 				&& Binding->Reference.bEnabled
-				&& MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Binding->Reference.Source);
+				&& MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Binding->Reference.Source);
 		}))
 		.Separator()
 		// Which way the reference runs, as the two words themselves rather than a lock glyph
@@ -565,7 +639,7 @@ double SMixtormat::GetEffectiveFloatParameter(
 	const double LocalValue) const
 {
 	float Value = static_cast<float>(LocalValue);
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveFloat(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveFloat({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? static_cast<double>(Value)
 		: LocalValue;
 }
@@ -575,7 +649,7 @@ int32 SMixtormat::GetEffectiveIntParameter(
 	const int32 LocalValue) const
 {
 	int32 Value = LocalValue;
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveInt(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveInt({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? Value
 		: LocalValue;
 }
@@ -585,7 +659,7 @@ bool SMixtormat::GetEffectiveBoolParameter(
 	const bool LocalValue) const
 {
 	bool Value = LocalValue;
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveBool(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveBool({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? Value
 		: LocalValue;
 }

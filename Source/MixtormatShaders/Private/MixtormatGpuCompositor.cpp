@@ -1324,7 +1324,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
 		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
-		MixtormatParameterBinding::ApplyDirectReferences(EffectiveLayers, Layer);
+		MixtormatParameterBinding::ApplyDirectReferences(
+			FMixtormatBindingScope{EffectiveLayers, Groups}, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
 		const bool bReference = !Layer.SourceComposition.IsNull();
 		if (bReference && Layer.bEnabled)

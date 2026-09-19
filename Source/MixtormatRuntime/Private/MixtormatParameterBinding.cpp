@@ -150,8 +150,39 @@ namespace
 		return View;
 	}
 
-	FOwnerView LocateOwner(const TArray<FMixtormatLayer>& Layers, const FMixtormatParameterAddress& Address)
+	// A group's shared children, addressed the same way a layer's are.
+	//
+	// There is no Layer case: a group has no FMixtormatLayer to expose, so an address naming a
+	// group as an owner in its own right resolves to nothing rather than to something wrong.
+	FOwnerView LocateGroupOwner(
+		const TArray<FMixtormatLayerGroup>* Groups,
+		const FMixtormatParameterAddress& Address)
 	{
+		if (!Groups || Address.Owner == EMixtormatParameterOwnerType::Layer)
+		{
+			return {};
+		}
+		for (const FMixtormatLayerGroup& Group : *Groups)
+		{
+			if (Group.GroupId != Address.LayerId)
+			{
+				continue;
+			}
+			for (const FMixtormatLayerChild& Child : Group.Children)
+			{
+				if (Child.ChildId == Address.ChildId)
+				{
+					return ChildOwner(Child, Address.Owner);
+				}
+			}
+			return {};
+		}
+		return {};
+	}
+
+	FOwnerView LocateOwner(const FMixtormatBindingScope& Scope, const FMixtormatParameterAddress& Address)
+	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		for (const FMixtormatLayer& Layer : Layers)
 		{
 			if (Layer.LayerId != Address.LayerId)
@@ -175,15 +206,45 @@ namespace
 			}
 			return {};
 		}
-		return {};
+		// No layer owns that id, so it may be a group's. Groups are checked second and never
+		// shadow a layer: a GroupId colliding with a LayerId is not something PostLoad allows.
+		return LocateGroupOwner(Scope.Groups, Address);
 	}
 
 	// The mutable twin of LocateOwner. ApplyDirectReferences only ever writes into the transient
 	// layer it was handed, so it never needed one; a linked edit writes into the authored stack at
 	// an arbitrary address and does.
-	FOwnerView LocateMutableOwnerByAddress(TArray<FMixtormatLayer>& Layers, const FMixtormatParameterAddress& Address)
+	FOwnerView LocateMutableGroupOwner(
+		TArray<FMixtormatLayerGroup>* Groups,
+		const FMixtormatParameterAddress& Address)
 	{
-		for (FMixtormatLayer& Layer : Layers)
+		if (!Groups || Address.Owner == EMixtormatParameterOwnerType::Layer)
+		{
+			return {};
+		}
+		for (FMixtormatLayerGroup& Group : *Groups)
+		{
+			if (Group.GroupId != Address.LayerId)
+			{
+				continue;
+			}
+			for (FMixtormatLayerChild& Child : Group.Children)
+			{
+				if (Child.ChildId == Address.ChildId)
+				{
+					return MutableChildOwner(Child, Address.Owner);
+				}
+			}
+			return {};
+		}
+		return {};
+	}
+
+	FOwnerView LocateMutableOwnerByAddress(
+		const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address)
+	{
+		for (FMixtormatLayer& Layer : *Scope.Layers)
 		{
 			if (Layer.LayerId != Address.LayerId)
 			{
@@ -208,7 +269,7 @@ namespace
 			}
 			return {};
 		}
-		return {};
+		return LocateMutableGroupOwner(Scope.Groups, Address);
 	}
 
 	FOwnerView LocateMutableOwner(FMixtormatLayer& Layer, const FMixtormatParameterBinding& Binding, FMixtormatLayerChild* Child)
@@ -300,11 +361,12 @@ namespace
 	}
 
 	bool ResolveValue(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Address,
 		TSet<FString>& Visiting,
 		FResolvedValue& OutValue)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (!Address.IsValid())
 		{
 			return false;
@@ -316,7 +378,7 @@ namespace
 		}
 		Visiting.Add(Key);
 
-		const FOwnerView Owner = LocateOwner(Layers, Address);
+		const FOwnerView Owner = LocateOwner(Scope, Address);
 		if (!Owner.ConstData || !Owner.Struct)
 		{
 			Visiting.Remove(Key);
@@ -326,7 +388,7 @@ namespace
 		{
 			const FMixtormatParameterAddress& Source = Binding->Reference.Source;
 			if (MixtormatParameterBinding::AreReferenceTypesCompatible(Address, Source)
-				&& ResolveValue(Layers, Source, Visiting, OutValue))
+				&& ResolveValue(Scope, Source, Visiting, OutValue))
 			{
 				Visiting.Remove(Key);
 				return true;
@@ -387,7 +449,7 @@ namespace
 	}
 
 	void ApplyBindingSet(
-		const TArray<FMixtormatLayer>& SourceLayers,
+		const FMixtormatBindingScope& Scope,
 		FMixtormatLayer& InOutLayer,
 		FMixtormatLayerChild* Child,
 		const TArray<FMixtormatParameterBinding>& Bindings)
@@ -405,7 +467,7 @@ namespace
 			}
 			FResolvedValue Value;
 			TSet<FString> Visiting;
-			if (ResolveValue(SourceLayers, Binding.Reference.Source, Visiting, Value))
+			if (ResolveValue(Scope, Binding.Reference.Source, Visiting, Value))
 			{
 				WriteResolvedValue(Destination, Binding, Value);
 			}
@@ -588,10 +650,11 @@ namespace MixtormatParameterBinding
 	}
 
 	bool IsReferenceSourceValid(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Source)
 	{
-		const FOwnerView Owner = LocateOwner(Layers, Source);
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
+		const FOwnerView Owner = LocateOwner(Scope, Source);
 		return Owner.ConstData
 			&& Owner.Struct
 			&& PropertyMatchesAddress(Owner.Struct->FindPropertyByName(Source.Parameter), Source);
@@ -614,10 +677,11 @@ namespace MixtormatParameterBinding
 	}
 
 	const FMixtormatLayerChild* FindChild(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FGuid& LayerId,
 		const FGuid& ChildId)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (!LayerId.IsValid() || !ChildId.IsValid())
 		{
 			return nullptr;
@@ -641,9 +705,10 @@ namespace MixtormatParameterBinding
 	}
 
 	void ResolveChildInstances(
-		const TArray<FMixtormatLayer>& SourceLayers,
+		const FMixtormatBindingScope& Scope,
 		FMixtormatLayer& InOutLayer)
 	{
+		const TArray<FMixtormatLayer>& SourceLayers = Scope.GetLayers();
 		for (FMixtormatLayerChild& Child : InOutLayer.Children)
 		{
 			if (!Child.IsInstance())
@@ -657,7 +722,7 @@ namespace MixtormatParameterBinding
 			TSet<FGuid> Visited;
 			Visited.Add(Child.ChildId);
 			const FMixtormatLayerChild* Source =
-				FindChild(SourceLayers, Child.SourceLayerId, Child.SourceChildId);
+				FindChild(Scope, Child.SourceLayerId, Child.SourceChildId);
 			while (Source && Source->IsInstance())
 			{
 				if (Visited.Contains(Source->ChildId))
@@ -666,7 +731,7 @@ namespace MixtormatParameterBinding
 					break;
 				}
 				Visited.Add(Source->ChildId);
-				Source = FindChild(SourceLayers, Source->SourceLayerId, Source->SourceChildId);
+				Source = FindChild(Scope, Source->SourceLayerId, Source->SourceChildId);
 			}
 			if (Source && Source->ChildId != Child.ChildId)
 			{
@@ -698,12 +763,13 @@ namespace MixtormatParameterBinding
 	}
 
 	EInstancePlacement ClassifyInstancePlacement(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FGuid& SourceLayerId,
 		const FGuid& SourceChildId,
 		const FGuid& DestLayerId,
 		const int32 DestChildIndex)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		int32 SourceLayerIndex = INDEX_NONE;
 		int32 SourceChildIndex = INDEX_NONE;
 		int32 DestLayerIndex = INDEX_NONE;
@@ -745,9 +811,10 @@ namespace MixtormatParameterBinding
 	}
 
 	bool BreakChildInstance(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		FMixtormatLayerChild& InOutChild)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (!InOutChild.IsInstance())
 		{
 			return false;
@@ -756,7 +823,7 @@ namespace MixtormatParameterBinding
 		// instance breaks into the values it was already showing rather than into empty defaults.
 		FMixtormatLayer Scratch;
 		Scratch.Children.Add(InOutChild);
-		ResolveChildInstances(Layers, Scratch);
+		ResolveChildInstances(Scope, Scratch);
 		const FGuid KeptChildId = InOutChild.ChildId;
 		InOutChild = Scratch.Children[0];
 		InOutChild.ChildId = KeptChildId;
@@ -809,22 +876,24 @@ namespace MixtormatParameterBinding
 	}
 
 	void ApplyDirectReferences(
-		const TArray<FMixtormatLayer>& SourceLayers,
+		const FMixtormatBindingScope& Scope,
 		FMixtormatLayer& InOutLayer)
 	{
+		const TArray<FMixtormatLayer>& SourceLayers = Scope.GetLayers();
 		// Instances first: an instance inherits its source's bindings, and those have to be
 		// present before the binding pass walks them.
-		ResolveChildInstances(SourceLayers, InOutLayer);
-		ApplyBindingSet(SourceLayers, InOutLayer, nullptr, InOutLayer.ParameterBindings);
+		ResolveChildInstances(Scope, InOutLayer);
+		ApplyBindingSet(Scope, InOutLayer, nullptr, InOutLayer.ParameterBindings);
 		for (FMixtormatLayerChild& Child : InOutLayer.Children)
 		{
-			ApplyBindingSet(SourceLayers, InOutLayer, &Child, Child.ParameterBindings);
+			ApplyBindingSet(Scope, InOutLayer, &Child, Child.ParameterBindings);
 		}
 	}
 	FMixtormatParameterAddress ResolveLinkTarget(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Destination)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (!Destination.IsValid())
 		{
 			return {};
@@ -844,7 +913,7 @@ namespace MixtormatParameterBinding
 			}
 			Visited.Add(Key);
 
-			const FOwnerView Owner = LocateOwner(Layers, Current);
+			const FOwnerView Owner = LocateOwner(Scope, Current);
 			if (!Owner.ConstData || !Owner.Struct)
 			{
 				return {};
@@ -865,7 +934,7 @@ namespace MixtormatParameterBinding
 			const FMixtormatParameterAddress Source = Binding->Reference.Source;
 			if (!Source.IsValid()
 				|| !AreReferenceTypesCompatible(Current, Source)
-				|| !IsReferenceSourceValid(Layers, Source))
+				|| !IsReferenceSourceValid(Scope, Source))
 			{
 				return {};
 			}
@@ -878,7 +947,7 @@ namespace MixtormatParameterBinding
 	{
 		template <typename TProperty, typename TValue>
 		bool WriteTyped(
-			TArray<FMixtormatLayer>& Layers,
+			const FMixtormatMutableBindingScope& Scope,
 			const FMixtormatParameterAddress& Address,
 			const EMixtormatParameterValueType Expected,
 			const TValue Value)
@@ -887,7 +956,7 @@ namespace MixtormatParameterBinding
 			{
 				return false;
 			}
-			const FOwnerView Owner = LocateMutableOwnerByAddress(Layers, Address);
+			const FOwnerView Owner = LocateMutableOwnerByAddress(Scope, Address);
 			if (!Owner.MutableData || !Owner.Struct)
 			{
 				return false;
@@ -902,33 +971,43 @@ namespace MixtormatParameterBinding
 		}
 	}
 
-	bool TryWriteFloat(TArray<FMixtormatLayer>& Layers, const FMixtormatParameterAddress& Address, const float Value)
+	bool TryWriteFloat(
+		const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address,
+		const float Value)
 	{
-		return WriteTyped<FFloatProperty>(Layers, Address, EMixtormatParameterValueType::Float, Value);
+		return WriteTyped<FFloatProperty>(Scope, Address, EMixtormatParameterValueType::Float, Value);
 	}
 
-	bool TryWriteInt(TArray<FMixtormatLayer>& Layers, const FMixtormatParameterAddress& Address, const int32 Value)
+	bool TryWriteInt(
+		const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address,
+		const int32 Value)
 	{
-		return WriteTyped<FIntProperty>(Layers, Address, EMixtormatParameterValueType::Int, Value);
+		return WriteTyped<FIntProperty>(Scope, Address, EMixtormatParameterValueType::Int, Value);
 	}
 
-	bool TryWriteBool(TArray<FMixtormatLayer>& Layers, const FMixtormatParameterAddress& Address, const bool Value)
+	bool TryWriteBool(
+		const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address,
+		const bool Value)
 	{
-		return WriteTyped<FBoolProperty>(Layers, Address, EMixtormatParameterValueType::Bool, Value);
+		return WriteTyped<FBoolProperty>(Scope, Address, EMixtormatParameterValueType::Bool, Value);
 	}
 
 	bool TryResolveFloat(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Address,
 		float& OutValue)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (Address.ValueType != EMixtormatParameterValueType::Float)
 		{
 			return false;
 		}
 		FResolvedValue Value;
 		TSet<FString> Visiting;
-		if (!ResolveValue(Layers, Address, Visiting, Value))
+		if (!ResolveValue(Scope, Address, Visiting, Value))
 		{
 			return false;
 		}
@@ -937,17 +1016,18 @@ namespace MixtormatParameterBinding
 	}
 
 	bool TryResolveInt(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Address,
 		int32& OutValue)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (Address.ValueType != EMixtormatParameterValueType::Int)
 		{
 			return false;
 		}
 		FResolvedValue Value;
 		TSet<FString> Visiting;
-		if (!ResolveValue(Layers, Address, Visiting, Value))
+		if (!ResolveValue(Scope, Address, Visiting, Value))
 		{
 			return false;
 		}
@@ -956,17 +1036,18 @@ namespace MixtormatParameterBinding
 	}
 
 	bool TryResolveBool(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FMixtormatParameterAddress& Address,
 		bool& OutValue)
 	{
+		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (Address.ValueType != EMixtormatParameterValueType::Bool)
 		{
 			return false;
 		}
 		FResolvedValue Value;
 		TSet<FString> Visiting;
-		if (!ResolveValue(Layers, Address, Visiting, Value))
+		if (!ResolveValue(Scope, Address, Visiting, Value))
 		{
 			return false;
 		}
