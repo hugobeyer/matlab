@@ -8,27 +8,61 @@
 // converge or pool -- it goes down, it gets thinner, it stops.
 //
 // So this does not simulate anything. It prepares one source field, then smears that field along
-// a single axis with a directional Gaussian, several times at slightly different lengths. Two
-// passes, no state, no ping-pong. Everything that makes it read as runoff rather than as a blur
-// comes from the shaping around the smear: where the source is allowed to exist, how the reach
-// varies with source strength, and how the strata disagree with each other.
+// a single axis with a directional Gaussian, several times at slightly different lengths. No
+// state, no ping-pong. Everything that makes it read as runoff rather than as a blur comes from
+// the shaping around the smear: where the source is allowed to exist, how the reach varies with
+// source strength, and how the strata disagree with each other.
 //
-// Two passes rather than one, and the split is deliberate. Pass one is where the fractal noise is
-// evaluated, and putting it in its own pass makes it structurally impossible to evaluate inside
-// the Gaussian tap loop -- which, at twenty-four taps times five strata, is the difference
-// between one FBM per pixel and a hundred and twenty. The alternative, one pass with the noise
-// hoisted above the loop by hand, is the same arithmetic but only until someone edits the loop.
+// Four passes, and the split is deliberate at every seam.
+//
+// Downsample, Prepare and Resolve run on a fixed analysis grid; only Apply runs at the
+// composition's own resolution. That is the whole reason this is affordable at 4K. Every distance
+// in the effect is a UV fraction -- the streak reach, the cavity radii, the Gaussian sigma, the
+// tap spacing -- so the analysis answers the same question at every composition size, and
+// answering it sixteen times over at 4K buys sampling density that the fields being sampled do
+// not contain. It cost sixteen times as much to produce the same streak, which is the wrong way
+// round, and at 4K it was enough GPU time in one submission to trip the driver's watchdog.
+//
+// Downsample is its own pass because the cavity rings read the height twenty-six times per
+// analysis texel. Point-sampling a 4K height from a 1K grid would alias every one of those taps
+// and make the surface response at 4K a noisier answer than the same response at 1K -- and it
+// would scatter twenty-six reads across a 32MB texture instead of across a 2MB one, which was the
+// actual cost rather than the arithmetic. Box-filtering once, into a texture the rings then hit
+// entirely in cache, fixes the fidelity and the locality together.
+//
+// Prepare is separate from Resolve because it is where the fractal noise is evaluated, and
+// putting it in its own pass makes it structurally impossible to evaluate inside the Gaussian tap
+// loop -- which, at twenty-four taps times five strata, is the difference between one FBM per
+// pixel and a hundred and twenty. The alternative, one pass with the noise hoisted above the loop
+// by hand, is the same arithmetic but only until someone edits the loop.
+//
+// Apply is separate from Resolve because the two things that must stay sharp at the composition's
+// own resolution are the scope mask and the layer's mask chain. Gating and blending at full
+// resolution keeps a scoped runoff a crisp cut through a smooth streak rather than a smooth cut.
+//
+// Four entry points rather than one with a Mode uniform, and that is also deliberate. A mode
+// branch means every pass binds every output slot, so three of the four outputs on any given
+// dispatch were one-by-one stand-ins written by nothing -- protected only by a branch that was
+// assumed not to be taken, while the code inside it still addressed those stand-ins with
+// full-resolution pixel coordinates. Separate entry points give each pass a parameter struct
+// holding exactly the resources it writes, so the protection is that the binding does not exist.
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
+// The grid this dispatch writes, always. Every pass bounds-checks against it and derives its UV
+// from it, so no entry point can address its output with another pass's resolution.
 int2 OutputSize;
-int Mode;
+
+// The full composition resolution, and only the downsample needs it: it is the grid being read,
+// not the grid being written.
+int2 SourceSize;
+int DownsampleTaps;
+
 uint Initialize;
 uint SurfaceValid;
 uint UseLayerMask;
-uint WriteDebug;
 uint BlendMode;
 uint Seed;
 int StrataCount;
@@ -43,15 +77,30 @@ float WarpAmount;
 float LipStrength;
 float Strength;
 
+// Full resolution.
 Texture2D<float> SourceHeight;
 Texture2D<float> PreviousMask;
 Texture2D<float> FeatureMask;
+
+// Analysis resolution. Height in x, the layer's accumulated mask in y.
+Texture2D<float2> AnalysisSource;
+
+// Analysis resolution. Source coverage in x, the raw fractal field in y.
 Texture2D<float2> RunoffSource;
+
+// Analysis resolution. The resolved streak with its lip, before scope and Strength.
+Texture2D<float> ResolvedRunoff;
+
 SamplerState LinearWrapSampler;
 
+RWTexture2D<float2> OutputAnalysis;
 RWTexture2D<float2> OutputSource;
+RWTexture2D<float> OutputRunoff;
 RWTexture2D<float> OutputMask;
+
+#if MIXTORMAT_RUNOFF_WRITE_DEBUG
 RWTexture2D<float4> OutputDebug;
+#endif
 
 // The reference the CPU already divided StreakRadius by. Here only to turn a UV length back into
 // a sane tap floor, so a step never collapses to nothing on a very short run.
@@ -69,6 +118,12 @@ static const float MixtormatRunoffReferenceResolution = 1024.0f;
 
 // Strata are unrolled against this, not against StrataCount, which is dynamic.
 #define MIXTORMAT_RUNOFF_MAX_STRATA 5
+
+// Minus half of log2(e), so the Gaussian folds its own -0.5 into the exponent constant and reaches
+// exp2 directly. This is the lowering every compiler performs on exp() anyway; writing it out
+// saves the multiply that would otherwise sit inside the tap loop a hundred and twenty times per
+// pixel, and makes it visible that nothing transcendental is being paid for twice.
+#define MIXTORMAT_RUNOFF_GAUSSIAN_EXPONENT -0.7213475204444817f
 
 float MixtormatRunoffHash(float2 Cell, uint InSeed)
 {
@@ -154,9 +209,12 @@ float2 MixtormatRunoffGravity()
 	return float2(cos(GravityAngle), -sin(GravityAngle));
 }
 
+// The height, off the analysis grid. Every read of the surface in this shader goes through here,
+// and it reads the reduced copy rather than the composition's own height, so the cavity rings hit
+// one small resident texture instead of scattering across a full-resolution one.
 float SampleHeight(float2 UV)
 {
-	return SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	return AnalysisSource.SampleLevel(LinearWrapSampler, UV, 0.0f).x;
 }
 
 // The three scales concavity is measured at, in reference texels.
@@ -171,6 +229,11 @@ float SampleHeight(float2 UV)
 // Two texels catches a crease, eight catches a moulding or a panel gap, thirty-two catches an
 // actual recess. The widest is deliberately close to the default streak radius: a cavity too broad
 // to source across is a cavity the runoff cannot cross anyway.
+//
+// Reference texels, against 1024, which is also the resolution the analysis grid targets. The two
+// agreeing is not a coincidence and is worth stating: a two-reference-texel ring is two actual
+// texels on the analysis grid, so the finest scale this detector was ever tuned to find is exactly
+// the finest scale the grid can carry. Running the rings at 4K was measuring below the tuning.
 static const float MixtormatRunoffCavityRadii[3] = { 2.0f, 8.0f, 32.0f };
 
 // Height difference at which a feature counts as fully sourcing, against a 0..1 height.
@@ -262,15 +325,73 @@ float SurfaceResponseAt(float2 UV)
 	return lerp(1.0f, saturate(Cavity + Ledge), saturate(SurfaceInfluence));
 }
 
-// Pass one. Everything that is invariant across the smear, resolved once.
-void PrepareSource(int2 Pixel, float2 UV)
+// Pass one. The composition's height and mask, reduced onto the analysis grid.
+//
+// One bilinear tap already averages a two-by-two block of source texels, so reducing by a factor
+// of D needs D/2 taps per axis and not one more. At D of one or two that is a single tap on the
+// analysis texel's own centre, which lands exactly on a source texel centre and on a source
+// two-by-two midpoint respectively -- so a 1K composition, where the divisor is one, reads its
+// height and mask through this pass completely unchanged rather than through a filter.
+//
+// A box filter rather than a point sample because everything downstream reads this twenty-six
+// times per texel at three radii. Point-sampling would hand the cavity rings aliased 4K detail
+// and make the surface response at 4K disagree with the same response at 1K on the same material,
+// which is the one thing the reference-texel radii exist to prevent.
+[numthreads(8, 8, 1)]
+void DownsampleCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	const int Taps = max(DownsampleTaps, 1);
+	const float2 TapStep = 2.0f / float2(max(SourceSize, int2(1, 1)));
+	const float TapCentre = (float)(Taps - 1) * 0.5f;
+
+	float Height = 0.0f;
+	float Mask = 0.0f;
+
+	[loop]
+	for (int Y = 0; Y < Taps; ++Y)
+	{
+		[loop]
+		for (int X = 0; X < Taps; ++X)
+		{
+			const float2 TapUV =
+				UV + (float2((float)X, (float)Y) - TapCentre) * TapStep;
+			Height += SourceHeight.SampleLevel(LinearWrapSampler, TapUV, 0.0f);
+			Mask += PreviousMask.SampleLevel(LinearWrapSampler, TapUV, 0.0f);
+		}
+	}
+
+	const float Normalization = 1.0f / (float)(Taps * Taps);
+
 	// The layer's accumulated mask, and only from the second mask child onward. The read half is
 	// cleared to white, so trusting it on the first child would source runoff over every texel in
 	// the composition instead of falling back to the surface's own shape.
-	const float LayerMask = UseLayerMask != 0
-		? saturate(PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f))
-		: 1.0f;
+	OutputAnalysis[Pixel] = float2(
+		Height * Normalization,
+		UseLayerMask != 0 ? saturate(Mask * Normalization) : 1.0f);
+}
+
+// Pass two. Everything that is invariant across the smear, resolved once.
+[numthreads(8, 8, 1)]
+void PrepareCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	const float LayerMask =
+		saturate(AnalysisSource.SampleLevel(LinearWrapSampler, UV, 0.0f).y);
 
 	const float Noise = MixtormatRunoffFBM(UV, WarpScale, Seed);
 
@@ -282,27 +403,34 @@ void PrepareSource(int2 Pixel, float2 UV)
 
 	const float Source = LayerMask * SurfaceResponseAt(UV) * lerp(1.0f, Breakup, 0.45f);
 
-	// Source in x, the raw noise in y. The noise is carried forward rather than recomputed in
-	// pass two because pass two wants it for the per-stratum warp, and re-evaluating three
+	// Source in x, the raw noise in y. The noise is carried forward rather than recomputed in the
+	// resolve because the resolve wants it for the per-stratum warp, and re-evaluating three
 	// octaves per pixel to avoid one texture read would be the wrong trade in both directions.
 	OutputSource[Pixel] = float2(saturate(Source), Noise);
 }
 
-// Pass two. One walk up the gravity axis, shared by every stratum.
+// Pass three. One walk up the gravity axis, shared by every stratum.
 //
 // The loop is over taps, not over strata-times-taps, which is the other half of why this is
 // cheap. A tap fetches the source once at its distance upstream; each stratum then decides what
 // that sample is worth to it from its own reach, warp and lip -- pure arithmetic on a value that
 // is already in a register. Five strata cost five multiply-adds per tap, not five texture reads.
-void ResolveRunoff(int2 Pixel, float2 UV)
+//
+// Every reciprocal in that arithmetic is hoisted. The reach a stratum gets from a tap is the
+// tap's source times that stratum's maximum, and both the Gaussian argument and the lip's
+// normalised distance are that reach divided into a warped distance -- so one reciprocal of the
+// source per tap and one reciprocal of the maximum per stratum replace two divides per tap per
+// stratum, which at twenty-four by five was two hundred and forty divides per pixel.
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	// Initialize is the first mask child on the layer: there is no accumulated mask yet, and the
-	// half bound here is cleared to white rather than to what the layer had. Every mask node in
-	// the plugin treats Previous as zero in that case, and a runoff that trusted the white would
-	// blend against full coverage and resolve to nothing.
-	const float Previous = Initialize != 0
-		? 0.0f
-		: saturate(PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 
 	// Automated strata shaping. Strata Amount is one dial over four behaviours because they only
 	// make sense together: widening the spacing without spreading the lengths just moves the
@@ -317,9 +445,11 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 	// the same control that softens the streak. Derived rather than exposed for that reason: a
 	// lip width that did not track softness would need re-tuning every time the streak moved.
 	const float LipWidth = 0.35f + saturate(StreakSoftness) * 0.35f;
+	const float InvLipWidth = 1.0f / LipWidth;
 
 	const float2 Gravity = MixtormatRunoffGravity();
 	const float SafeSoftness = max(StreakSoftness, 0.05f);
+	const float InvSoftness = 1.0f / SafeSoftness;
 
 	// The noise this pixel warps by, read once. Three decorrelated values derived from it by the
 	// cheap frac trick in the brief, so the strata do not all deform identically without paying
@@ -341,10 +471,13 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 	const int SafeStrataCount = clamp(StrataCount, 2, MIXTORMAT_RUNOFF_MAX_STRATA);
 	const float StrataDivisor = (float)max(SafeStrataCount - 1, 1);
 
-	// Per-stratum constants, hoisted out of the tap loop.
-	float MaxReach[MIXTORMAT_RUNOFF_MAX_STRATA];
-	float StartOffset[MIXTORMAT_RUNOFF_MAX_STRATA];
-	float WarpOffset[MIXTORMAT_RUNOFF_MAX_STRATA];
+	// Per-stratum constants, hoisted out of the tap loop. Only the three the loop actually reads
+	// are kept as arrays; the reach, the start offset and the warp displacement that produce them
+	// are locals inside the setup, so they do not hold registers across twenty-four iterations.
+	// That matters more than the arithmetic it saves: this loop's occupancy is what decides
+	// whether the source fetches hide behind anything.
+	float WarpBias[MIXTORMAT_RUNOFF_MAX_STRATA];
+	float InvMaxReach[MIXTORMAT_RUNOFF_MAX_STRATA];
 	float Opacity[MIXTORMAT_RUNOFF_MAX_STRATA];
 	float Accumulated[MIXTORMAT_RUNOFF_MAX_STRATA];
 	float WeightSum[MIXTORMAT_RUNOFF_MAX_STRATA];
@@ -361,8 +494,9 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 		// Later strata start further down and run longer, so their heads overlap the tails of the
 		// ones before them. That overlap is the layered look: strata that all started together
 		// would differ only in length and read as one run with a soft end.
-		MaxReach[Init] = StreakRadius * (0.85f + LayerT * StrataLengthStep * (float)SafeStrataCount);
-		StartOffset[Init] = StrataSpacing * (float)Init * StreakRadius * 0.12f;
+		const float MaxReach =
+			StreakRadius * (0.85f + LayerT * StrataLengthStep * (float)SafeStrataCount);
+		const float StartOffset = StrataSpacing * (float)Init * StreakRadius * 0.12f;
 
 		// Vertical only. The displacement is a scalar on the distance along gravity, never a
 		// vector -- there is no expression anywhere in this shader that can move a sample off the
@@ -371,8 +505,15 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 		//
 		// The per-stratum multiplier alternates sign so adjacent strata pull apart rather than
 		// drifting together, and grows with the index so the stack fans out down its length.
-		const float LayerMultiplier = (Init % 2 == 0 ? 1.0f : -1.0f) * (0.35f + LayerT * 0.65f);
-		WarpOffset[Init] = WarpSigned * WarpAmount * StreakRadius * LayerMultiplier * 0.25f;
+		const float LayerMultiplier =
+			(Init % 2 == 0 ? 1.0f : -1.0f) * (0.35f + LayerT * 0.65f);
+		const float WarpOffset =
+			WarpSigned * WarpAmount * StreakRadius * LayerMultiplier * 0.25f;
+
+		// The tap loop only ever wants the difference of the two offsets and the reciprocal of
+		// the maximum, so those are what it is handed.
+		WarpBias[Init] = WarpOffset - StartOffset;
+		InvMaxReach[Init] = 1.0f / max(MaxReach, 1.0e-5f);
 
 		Opacity[Init] = 1.0f / (1.0f + (float)Init * StrataOpacityFalloff);
 		Accumulated[Init] = 0.0f;
@@ -381,7 +522,7 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 
 		if (Init < SafeStrataCount)
 		{
-			FurthestReach = max(FurthestReach, MaxReach[Init] + abs(WarpOffset[Init]) + StartOffset[Init]);
+			FurthestReach = max(FurthestReach, MaxReach + abs(WarpOffset) + StartOffset);
 			OpacityTotal += Opacity[Init];
 		}
 	}
@@ -392,8 +533,11 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 		0.5f / MixtormatRunoffReferenceResolution);
 
 	// Sigma cannot go below roughly half a reference texel or a tight streak turns into a line of
-	// disconnected taps at the moment it stops being able to resolve itself.
-	const float MinSigma = 0.5f / MixtormatRunoffReferenceResolution;
+	// disconnected taps at the moment it stops being able to resolve itself. Applied as a ceiling
+	// on the reciprocal rather than a floor on sigma, which is the same clamp without the divide:
+	// the Gaussian argument is a non-negative distance over sigma, so the larger sigma gives the
+	// smaller argument and the floor becomes a min.
+	const float InvMinSigma = MixtormatRunoffReferenceResolution / 0.5f;
 
 	[loop]
 	for (int Tap = 0; Tap < MIXTORMAT_RUNOFF_TAPS; ++Tap)
@@ -413,38 +557,49 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 			continue;
 		}
 
+		// One reciprocal for every stratum's reach at this tap. Mask intensity is a length
+		// control, not only an opacity: a strong source runs the full radius, a weak one fades
+		// out early, from the same settings. This is what makes the incoming mask feel like it is
+		// driving the effect rather than dimming it, and it is why the reach has to be evaluated
+		// per tap -- the value it depends on is the source at the tap, not at the pixel being
+		// written.
+		const float InvSource = 1.0f / Source;
+
 		[unroll]
 		for (int Layer = 0; Layer < MIXTORMAT_RUNOFF_MAX_STRATA; ++Layer)
 		{
+			// Wave-uniform, because the count comes from a uniform: the hardware skips the block
+			// for an inactive stratum rather than predicating through it. The unrolled five cost
+			// their registers whatever the count is, which is why the arrays above were trimmed,
+			// but they do not cost their arithmetic.
 			if (Layer >= SafeStrataCount)
 			{
 				continue;
 			}
 
-			// Mask intensity is a length control, not only an opacity. A strong source runs the
-			// full radius; a weak one fades out early, from the same settings. This is the single
-			// line that makes the incoming mask feel like it is driving the effect rather than
-			// dimming it, and it is why the reach has to be evaluated per tap: the value it
-			// depends on is the source at the tap, not at the pixel being written.
-			const float Reach = Source * MaxReach[Layer];
-			if (Reach <= 0.0f)
-			{
-				continue;
-			}
+			const float Warped = max(Distance + WarpBias[Layer], 0.0f);
 
-			const float Warped = max(Distance + WarpOffset[Layer] - StartOffset[Layer], 0.0f);
-			const float Sigma = max(Reach * SafeSoftness, MinSigma);
-			const float X = Warped / Sigma;
-			const float Gaussian = exp(-0.5f * X * X);
+			// The reciprocal of the reach, ceilinged where the original floored the reach itself
+			// at 1e-5. The same clamp, as two multiplies and a min instead of a divide.
+			const float InvReach = min(InvSource * InvMaxReach[Layer], 1.0e5f);
+
+			// The tidemark's normalised distance, and the Gaussian argument, which is that same
+			// number over the softness. Deriving the second from the first is what removes the
+			// second divide: sigma is the reach times the softness, so the argument is the
+			// normalised distance times the reciprocal softness.
+			const float NormalizedDistance = Warped * InvReach;
+			const float X = min(NormalizedDistance * InvSoftness, Warped * InvMinSigma);
+			const float Gaussian = exp2(MIXTORMAT_RUNOFF_GAUSSIAN_EXPONENT * X * X);
 
 			Accumulated[Layer] += Source * Gaussian;
 			WeightSum[Layer] += Gaussian;
 
 			// The tidemark, where the run stops. Measured against the stratum's own reach so it
 			// tracks wherever the warp put the end, rather than sitting at a fixed distance that
-			// the warp would then walk the streak away from.
-			const float NormalizedDistance = Warped / max(Reach, 1.0e-5f);
-			const float Edge = 1.0f - smoothstep(0.0f, LipWidth, abs(NormalizedDistance - 1.0f));
+			// the warp would then walk the streak away from. Written out rather than left to
+			// smoothstep so the reciprocal of the width is hoisted with the rest of them.
+			const float LipT = saturate(abs(NormalizedDistance - 1.0f) * InvLipWidth);
+			const float Edge = 1.0f - LipT * LipT * (3.0f - 2.0f * LipT);
 			LipAccumulated[Layer] += Source * Edge;
 		}
 	}
@@ -478,7 +633,35 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 	Runoff = saturate(Runoff / StrataNormalization);
 	Lip = saturate(Lip / StrataNormalization);
 
-	const float WithLip = saturate(Runoff + Lip * saturate(LipStrength));
+	OutputRunoff[Pixel] = saturate(Runoff + Lip * saturate(LipStrength));
+}
+
+// Pass four. The resolved streak into the layer's mask chain, at the composition's resolution.
+//
+// Three reads and a blend. The streak arrives filtered up off the analysis grid, which it can
+// afford to be -- it is a Gaussian smear whose sigma is a substantial fraction of the texture --
+// while the scope mask and the incoming chain are read where they actually live, so neither is
+// softened by the reduction that made the smear cheap.
+[numthreads(8, 8, 1)]
+void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+
+	// Initialize is the first mask child on the layer: there is no accumulated mask yet, and the
+	// half bound here is cleared to white rather than to what the layer had. Every mask node in
+	// the plugin treats Previous as zero in that case, and a runoff that trusted the white would
+	// blend against full coverage and resolve to nothing.
+	const float Previous = Initialize != 0
+		? 0.0f
+		: saturate(PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+
+	const float WithLip = saturate(ResolvedRunoff.SampleLevel(LinearWrapSampler, UV, 0.0f));
 
 	// The scoped feature mask gates the resolved runoff without becoming part of the layer's
 	// accumulated mask chain. Applied at the end, so a scoped runoff is the same streak with the
@@ -491,31 +674,10 @@ void ResolveRunoff(int2 Pixel, float2 UV)
 	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));
 
 	// The runoff before Strength blends it into the chain, matching what every other feature
-	// preview in the plugin shows.
-	if (WriteDebug != 0)
-	{
-		// The same unlit ramp every other feature preview writes, so runoff reads as one more
-		// channel view rather than as its own kind of display.
-		OutputDebug[Pixel] = float4(MixtormatDebugRamp(Incoming), 1.0f);
-	}
-}
-
-[numthreads(8, 8, 1)]
-void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
-	{
-		return;
-	}
-
-	const int2 Pixel = int2(DispatchThreadId.xy);
-	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
-	if (Mode == 0)
-	{
-		PrepareSource(Pixel, UV);
-	}
-	else
-	{
-		ResolveRunoff(Pixel, UV);
-	}
+	// preview in the plugin shows: the same unlit ramp, so runoff reads as one more channel view
+	// rather than as its own kind of display. Compiled out entirely on the permutation that is
+	// not previewing, so the shared debug target is neither bound nor addressable from here.
+#if MIXTORMAT_RUNOFF_WRITE_DEBUG
+	OutputDebug[Pixel] = float4(MixtormatDebugRamp(Incoming), 1.0f);
+#endif
 }

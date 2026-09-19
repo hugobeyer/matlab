@@ -1076,4 +1076,248 @@ bool FMixtormatRunoffResolutionTest::RunTest(const FString&)
 	return true;
 }
 
+namespace MixtormatRunoffTests
+{
+	// The shelf fixture from the height-source test, as a helper, because the analysis-grid test
+	// below needs the same relief. A raised shelf across the upper half of the base layer, with a
+	// drop at its lower edge -- the feature both the cavity rings and the ledge term are built to
+	// find, and therefore the part of Runoff whose answer depends on what resolution the height is
+	// read at.
+	TArray<FMixtormatLayer> MakeReliefRunoffLayers(UTexture2D* Shelf, UTexture2D* Full)
+	{
+		TArray<FMixtormatLayer> Layers = MakeRunoffLayers(Full);
+
+		FMixtormatLayerChild& ShelfMask = Layers[0].Children.AddDefaulted_GetRef();
+		ShelfMask.Type = EMixtormatLayerChildType::Mask;
+		ShelfMask.Mask.bEnabled = true;
+		ShelfMask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(Shelf));
+		ShelfMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+		ShelfMask.Mask.Weight = 1.0f;
+		Layers[0].bHeightBlendEnabled = true;
+		Layers[0].HeightSource = EMixtormatHeightSource::CombinedMask;
+		Layers[0].HeightInfluence = 1.0f;
+
+		// The surface is the whole source, so the cavity rings and the ledge decide the answer.
+		Layers[1].Children[1].Effect.RunoffSurfaceInfluence = 1.0f;
+		Layers[1].Children[1].Effect.RunoffWarpAmount = 0.0f;
+		return Layers;
+	}
+
+	UTexture2D* MakeShelfMask()
+	{
+		return MakeMask([](const float, const float V)
+		{
+			return V <= 0.45f ? 1.0f : 0.0f;
+		});
+	}
+}
+
+// The surface response agrees between 1K and 4K, which is what the fixed analysis grid buys.
+//
+// The sibling Resolution test above measures reach and centroid, which are properties of the
+// smear, and the smear was already resolution-independent because it works in UV. This one
+// measures the part that was not: the multi-scale cavity detector, whose rings are authored in
+// reference texels against 1024 and which used to be evaluated on whatever grid the composition
+// happened to be. At 4K that read the height four times more finely than the radii were ever tuned
+// for, so the same shelf produced a different, noisier response than it did at 1K -- and cost
+// sixteen times as much to produce it, which is what made a 4K composition unsafe.
+//
+// Now the rings run on a grid pinned to 1024 at every composition size, so the response is the
+// same answer rather than a similar one, and the profile down the streak should agree band for
+// band. A regression that put the analysis back on the composition's own grid would show up here
+// as the bands drifting apart, and -- on a material with more than one runoff in it -- as this
+// test taking the GPU down with it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatRunoffAnalysisGridTest,
+	"Mixtormat.Runoff.AnalysisGrid",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatRunoffAnalysisGridTest::RunTest(const FString&)
+{
+	using namespace MixtormatRunoffTests;
+
+	TStrongObjectPtr<UTexture2D> Shelf(MakeShelfMask());
+	TStrongObjectPtr<UTexture2D> Full(MakeMask([](float, float) { return 1.0f; }));
+	if (!TestNotNull(TEXT("Shelf fixture exists"), Shelf.Get())
+		|| !TestNotNull(TEXT("Full fixture exists"), Full.Get()))
+	{
+		return false;
+	}
+
+	// Bands in UV, so the same stretch of the streak is measured at every resolution. Each one
+	// averages over at least a million texels at 4K, which is what makes the comparison a
+	// statement about the field rather than about where one threshold happened to land.
+	struct FBand
+	{
+		float MinV;
+		float MaxV;
+		const TCHAR* Name;
+	};
+	static const FBand Bands[] = {
+		{0.05f, 0.30f, TEXT("above the shelf edge")},
+		{0.46f, 0.60f, TEXT("just below the shelf edge")},
+		{0.60f, 0.80f, TEXT("down the run")},
+		{0.80f, 1.00f, TEXT("at the tail")},
+	};
+	constexpr int32 BandCount = UE_ARRAY_COUNT(Bands);
+
+	const auto MeasureAt =
+		[&](const int32 Resolution, float& OutMean, float (&OutBands)[BandCount]) -> bool
+	{
+		FMixtormatGpuCompositor Compositor;
+		if (!Compositor.Initialize(FIntPoint(Resolution, Resolution)))
+		{
+			return false;
+		}
+		TArray<FMixtormatLayer> Layers = MakeReliefRunoffLayers(Shelf.Get(), Full.Get());
+		if (!ComposeAndWait(Compositor, Layers, RunoffDebug()))
+		{
+			return false;
+		}
+		TArray<FLinearColor> Pixels;
+		if (!ReadTarget(Compositor.GetDebugOutput(), Resolution, Pixels))
+		{
+			return false;
+		}
+		OutMean = MeanCoverage(Pixels);
+		for (int32 Index = 0; Index < BandCount; ++Index)
+		{
+			OutBands[Index] =
+				RowCoverage(Pixels, Resolution, Bands[Index].MinV, Bands[Index].MaxV);
+		}
+		return true;
+	};
+
+	float Mean1K = 0.0f;
+	float Mean4K = 0.0f;
+	float Bands1K[BandCount] = {};
+	float Bands4K[BandCount] = {};
+	if (!TestTrue(TEXT("1K composes with relief"), MeasureAt(1024, Mean1K, Bands1K))
+		|| !TestTrue(TEXT("4K composes with relief"), MeasureAt(4096, Mean4K, Bands4K)))
+	{
+		return false;
+	}
+
+	// The ledge has to have sourced something, or the agreement below is agreement about nothing.
+	TestTrue(
+		FString::Printf(TEXT("The shelf sources runoff at 1K (mean %.4f)"), Mean1K),
+		Mean1K > 0.01f);
+
+	// The same ten percent the Resolution test uses. Not tighter, because the apply pass filters
+	// the streak up off the analysis grid and the two resolutions still quantise the mask through
+	// a 16-bit target at different densities; not looser, because with the rings pinned to one
+	// grid there is no longer a mechanism that would move these by more than that.
+	constexpr float Tolerance = 0.10f;
+	TestTrue(
+		FString::Printf(TEXT("Mean coverage agrees 1K to 4K (%.4f vs %.4f)"), Mean1K, Mean4K),
+		WithinRelative(Mean1K, Mean4K, Tolerance));
+
+	for (int32 Index = 0; Index < BandCount; ++Index)
+	{
+		TestTrue(
+			FString::Printf(
+				TEXT("Coverage agrees 1K to 4K %s (%.4f vs %.4f)"),
+				Bands[Index].Name,
+				Bands1K[Index],
+				Bands4K[Index]),
+			WithinRelative(Bands1K[Index], Bands4K[Index], Tolerance));
+	}
+
+	return true;
+}
+
+// Three runoffs on one layer at 4K, in one composition.
+//
+// This is the crash, as a test. The compositor builds the whole composition into a single render
+// graph and executes it in one submission, so the driver's watchdog is looking at the total, not
+// at any one pass -- which means the thing that made 4K unsafe was never a single dispatch being
+// slow, it was a per-child cost that scaled with texel count multiplied by however many children
+// the material had. Three is the smallest count that makes that multiplication visible, and the
+// fixture deliberately turns the surface response on so the cavity rings run too.
+//
+// There is no timing assertion here and there should not be: the budget this guards is not a
+// number of milliseconds on one machine, it is whether the work is proportional to the output at
+// all. If a change puts the analysis back on the composition's own grid, this does not fail with a
+// bad value -- it hangs the GPU, and that is the signal.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatRunoffFourKBudgetTest,
+	"Mixtormat.Runoff.FourKBudget",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatRunoffFourKBudgetTest::RunTest(const FString&)
+{
+	using namespace MixtormatRunoffTests;
+	constexpr int32 Resolution = 4096;
+
+	TStrongObjectPtr<UTexture2D> Shelf(MakeShelfMask());
+	TStrongObjectPtr<UTexture2D> Full(MakeMask([](float, float) { return 1.0f; }));
+	if (!TestNotNull(TEXT("Shelf fixture exists"), Shelf.Get())
+		|| !TestNotNull(TEXT("Full fixture exists"), Full.Get()))
+	{
+		return false;
+	}
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises at 4K"),
+		Compositor.Initialize(FIntPoint(Resolution, Resolution))))
+	{
+		return false;
+	}
+
+	TArray<FMixtormatLayer> Layers = MakeReliefRunoffLayers(Shelf.Get(), Full.Get());
+
+	// Two more runoffs behind the first, at settings far enough apart that none of them is the
+	// same dispatch as another: a long soft run, then a short sharp one. Each adds its own four
+	// passes and its own analysis intermediates to the graph.
+	{
+		FMixtormatLayerChild& Second = Layers[1].Children.AddDefaulted_GetRef();
+		Second.Type = EMixtormatLayerChildType::Effect;
+		Second.Effect.ProceduralType = EMixtormatEffectType::Runoff;
+		Second.Effect.RunoffStrength = 1.0f;
+		Second.Effect.RunoffStreakRadius = 512.0f;
+		Second.Effect.RunoffStreakSoftness = 0.9f;
+		Second.Effect.RunoffSurfaceInfluence = 1.0f;
+		Second.Effect.RunoffSeed = 7;
+
+		FMixtormatLayerChild& Third = Layers[1].Children.AddDefaulted_GetRef();
+		Third.Type = EMixtormatLayerChildType::Effect;
+		Third.Effect.ProceduralType = EMixtormatEffectType::Runoff;
+		Third.Effect.RunoffStrength = 1.0f;
+		Third.Effect.RunoffStreakRadius = 48.0f;
+		Third.Effect.RunoffStreakSoftness = 0.1f;
+		Third.Effect.RunoffSurfaceInfluence = 0.5f;
+		Third.Effect.RunoffSeed = 23;
+	}
+
+	if (!TestTrue(TEXT("Three runoffs compose at 4K"),
+		ComposeAndWait(Compositor, Layers, RunoffDebug())))
+	{
+		return false;
+	}
+
+	TArray<FLinearColor> Pixels;
+	if (!TestTrue(TEXT("The 4K preview reads back"),
+		ReadTarget(Compositor.GetDebugOutput(), Resolution, Pixels)))
+	{
+		return false;
+	}
+
+	// Neither empty nor saturated. A wrong divisor, a wrong UV or an analysis grid addressed with
+	// full-resolution coordinates would land on one of those two, and both would otherwise read as
+	// a composition that completed successfully.
+	const float Mean = MeanCoverage(Pixels);
+	TestTrue(
+		FString::Printf(TEXT("The 4K runoff is not empty (mean %.4f)"), Mean),
+		Mean > 0.005f);
+	TestTrue(
+		FString::Printf(TEXT("The 4K runoff is not saturated (mean %.4f)"), Mean),
+		Mean < 0.95f);
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
