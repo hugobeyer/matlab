@@ -165,6 +165,11 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRow"),
 		new FSlateRoundedBoxBrush(RaisedPanel, 1.0f, Border, MixtormatTokens::CompactRowOutlineWidth));
+	// The line drawn where a dragged row will land. A bar rather than an outline: an outline says
+	// "onto this row", and the whole point of the line is that it says "between these two".
+	StyleInstance->Set(
+		TEXT("Mixtormat.DropInsertionLine"),
+		new FSlateColorBrush(AccentHover));
 	StyleInstance->Set(
 		TEXT("Mixtormat.CompactRowValidDrop"),
 		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, MixtormatTokens::CompactRowValidDropOutlineWidth));

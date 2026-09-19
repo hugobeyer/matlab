@@ -2279,6 +2279,43 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
 
+// A named set of adjacent layers that share one authored child stack.
+//
+// Groups live beside Layers rather than inside it. A header entry in the layer array would shift
+// every integer a layer index means -- HeightReferenceLayerIndex above all -- so the array the
+// compositor walks stays exactly the authored render order and membership is carried on the layer
+// instead. Members are a contiguous run, which is what lets the editor draw one header per group
+// and move a group as a single block.
+//
+// Children here are authored once and broadcast: MixtormatLayerGroups::BuildEffectiveLayers
+// appends a remapped copy of them to every member layer immediately before composition. Nothing
+// is written back, so the shared stack has exactly one authored home.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatLayerGroup
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid GroupId = FGuid::NewGuid();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Group")
+	FText DisplayName;
+
+	// Gates the members for the render only. Member bEnabled is never rewritten, so re-enabling a
+	// group returns each layer to the visibility the user gave it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Group")
+	bool bEnabled = true;
+
+	// Reserved for group-level parameters. There are none yet, and these are deliberately not
+	// broadcast onto member layers: a group owns no layer parameter surface to bind against, and
+	// pushing them down would silently overwrite each member's own bindings.
+	UPROPERTY()
+	TArray<FMixtormatParameterBinding> ParameterBindings;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Children")
+	TArray<FMixtormatLayerChild> Children;
+};
+
 namespace MixtormatHue
 {
 	// Degrees of hue rotation per unit of a normalised -1..1 editor slider.
@@ -2297,6 +2334,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY()
 	FGuid LayerId = FGuid::NewGuid();
+
+	// The group this layer belongs to, or invalid for an ungrouped layer. Membership is stored
+	// here rather than as a member list on the group so that a layer can only ever be in one
+	// group, and so that nothing has to be kept in step when layers move.
+	UPROPERTY()
+	FGuid GroupId;
 
 	UPROPERTY()
 	TArray<FMixtormatParameterBinding> ParameterBindings;
@@ -2639,9 +2682,15 @@ namespace MixtormatCompositionReferences
 
 	// Resolves the non-texture fuzz channel through live composition references.
 	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers);
+	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups);
 
 	// Strongest positive influence wins; later (topmost) layers win ties. Unset inherits the master.
 	MIXTORMATRUNTIME_API TOptional<FLinearColor> ComputeFuzzColor(const TArray<FMixtormatLayer>& Layers);
+	MIXTORMATRUNTIME_API TOptional<FLinearColor> ComputeFuzzColor(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups);
 }
 
 UCLASS(BlueprintType)
@@ -2664,6 +2713,11 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layers", meta = (TitleProperty = "DisplayName"))
 	TArray<FMixtormatLayer> Layers;
+
+	// Groups over the layers above. Order here is storage order only -- a group's position in the
+	// stack is the position of its first member, so this array never has to be kept sorted.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layers", meta = (TitleProperty = "DisplayName"))
+	TArray<FMixtormatLayerGroup> LayerGroups;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UTexture2D> BakedBaseColor;

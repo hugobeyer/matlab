@@ -50,6 +50,9 @@ private:
 	struct FEditHistoryState
 	{
 		TArray<FMixtormatLayer> Layers;
+		// Groups are part of the same edit as the layers they hold -- membership lives on the
+		// layer, so restoring one without the other leaves a layer in a group that is not there.
+		TArray<FMixtormatLayerGroup> Groups;
 		bool bRotateUV90 = false;
 	};
 
@@ -75,6 +78,12 @@ private:
 	FReply SelectSurface(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply SelectMask(FText DisplayName, FSoftObjectPath AssetPath);
 	FReply HandleSurfaceDropped(FText DisplayName, FSoftObjectPath AssetPath);
+	// The positional form. GroupId valid means the drop named a group, so the new layer joins it.
+	FReply HandleSurfaceDroppedAt(
+		FText DisplayName,
+		FSoftObjectPath AssetPath,
+		int32 InsertIndex,
+		FGuid GroupId);
 	FReply SetCategoryFilter(FName Family);
 	FReply SetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	void SetGlobalUVRotation90(bool bEnabled);
@@ -297,6 +306,70 @@ private:
 	void ApplyEditHistoryState(const FEditHistoryState& State);
 	void SynchronizeHistoryAfterCancelledEdit();
 	bool IsCurrentStateSaved() const;
+	// Group operations. Creating gathers the selected layers into one contiguous block, because a
+	// group owning a scattered set of layers would have no single position in the stack.
+	// Shared group children. Authored once on the group and broadcast onto every member by
+	// MixtormatLayerGroups::BuildEffectiveLayers, which is the whole point of a group.
+	// The one place the inspector learns what container a child lives in.
+	//
+	// A child is addressed by (LayerIndex, ChildIndex) everywhere, and a group has no layer index,
+	// so INDEX_NONE plus a valid SelectedGroupId means the selected group's shared stack. Neither
+	// variable lies -- when a group child is selected there genuinely is no layer selected -- and
+	// no setter signature has to change, which is what keeps this from being a rewrite of every
+	// slider in the panel.
+	FMixtormatLayerChild* ResolveChild(int32 LayerIndex, int32 ChildIndex);
+	const FMixtormatLayerChild* ResolveChild(int32 LayerIndex, int32 ChildIndex) const;
+
+	FMixtormatLayerChild* AppendGroupChild(FGuid GroupId, EMixtormatLayerChildType ChildType);
+	void FinishGroupChildEdit(FGuid GroupId);
+	FReply AddMaskToGroup(FGuid GroupId, FSoftObjectPath MaskPath);
+	FReply AddEffectToGroup(FGuid GroupId, FSoftObjectPath EffectPath);
+	FReply AddProceduralChildToGroup(FGuid GroupId, EMixtormatLayerChildType ChildType);
+	FReply RemoveGroupChild(FGuid GroupId, int32 ChildIndex);
+	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
+	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
+	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
+	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
+	TSharedRef<SWidget> BuildGroupAddMaskMenu(FGuid GroupId);
+	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
+	TSharedRef<SWidget> BuildGroupAddFilterMenu(FGuid GroupId);
+	TSharedRef<SWidget> BuildGroupChildContextMenu(FGuid GroupId, int32 ChildIndex);
+
+	// Rename. Names do not reach the compositor, so committing one records history and marks the
+	// document dirty but deliberately does not ask for a new composite.
+	FReply RenameLayer(FGuid LayerId, FText NewName);
+	FReply RenameLayerGroup(FGuid GroupId, FText NewName);
+	// F2, and the context menu, on whichever of the two selections is live.
+	bool BeginRenameSelection();
+
+	TSharedRef<SWidget> BuildLayerGroupRow(FGuid GroupId);
+	TSharedRef<SWidget> BuildLayerGroupContextMenu(FGuid GroupId);
+	static int32 InsertIndexToMoveTarget(int32 SourceIndex, int32 InsertIndex);
+	FReply HandleLayerInsertedAt(int32 SourceLayerIndex, int32 InsertIndex);
+	FReply HandleGroupInsertedAt(FGuid GroupId, int32 InsertIndex);
+	FReply HandleLayerDroppedOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId);
+	FGuid ResolveGroupMembershipAt(int32 LayerIndex) const;
+	FReply CreateGroupFromSelection();
+	FReply UngroupLayerGroup(FGuid GroupId);
+	bool CanCreateGroupFromSelection() const;
+	TArray<int32> GetSelectedLayerIndices() const;
+	FText MakeUniqueGroupName() const;
+	bool IsGroupExpanded(const FGuid& GroupId) const;
+	FReply ToggleGroupExpanded(FGuid GroupId);
+	FReply SelectLayerGroup(FGuid GroupId);
+	FReply SetLayerGroupEnabled(FGuid GroupId, bool bEnabled);
+
+	// Expansion and multi-select, addressed by index at the call site and stored by identity.
+	bool IsLayerExpanded(int32 LayerIndex) const;
+	void SetLayerExpanded(int32 LayerIndex, bool bExpanded);
+	bool IsLayerMultiSelected(int32 LayerIndex) const;
+	// Applies the modifier keys currently held: plain replaces, ctrl/cmd toggles, shift extends
+	// from the anchor.
+	void UpdateMultiSelection(int32 LayerIndex);
+
+	static bool AreLayerGroupsEqual(
+		const TArray<FMixtormatLayerGroup>& A,
+		const TArray<FMixtormatLayerGroup>& B);
 	static bool AreLayerStacksEqual(
 		const TArray<FMixtormatLayer>& A,
 		const TArray<FMixtormatLayer>& B);
@@ -845,9 +918,30 @@ private:
 	TSharedPtr<FAssetThumbnail> SelectedStripThumbnail;
 	TArray<TSharedPtr<FAssetThumbnail>> MaskThumbnails;
 	TArray<TSharedPtr<SMixtormatPreviewViewport>> PreviewViewports;
-	TSet<int32> ExpandedLayerIndices;
+	// Keyed on identity, not position. Grouping gathers layers into a contiguous block and every
+	// index in the stack shifts; an index-keyed set would hand one layer's expanded state to
+	// whichever layer landed on its old row.
+	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
+	// the widgets away and builds new ones on every change.
+	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
+	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
+	TSet<FGuid> ExpandedLayerIds;
+	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
+	TSet<FGuid> CollapsedGroupIds;
+	// Selecting a group clears the layer selection and the other way round, so the inspector
+	// always has exactly one subject.
+	FGuid SelectedGroupId;
+	int32 SelectedGroupChildIndex = INDEX_NONE;
+	// What the Group button acts on. Additive: SelectedLayerIndex stays the single layer the
+	// inspector shows, and every existing path that reads it is unaffected.
+	TSet<FGuid> SelectedLayerIds;
+	// Where a shift-extend measures from. Set by a plain click only -- reusing SelectedLayerIndex
+	// would move the anchor on every ctrl-click and make the next range unpredictable.
+	FGuid SelectionAnchorLayerId;
 	TArray<FMixtormatLayer> WorkingLayers;
 	TArray<FMixtormatLayer> SavedLayers;
+	TArray<FMixtormatLayerGroup> WorkingLayerGroups;
+	TArray<FMixtormatLayerGroup> SavedLayerGroups;
 	TArray<FEditHistoryState> UndoHistory;
 	TArray<FEditHistoryState> RedoHistory;
 	TArray<FNumericResetBinding> NumericResetBindings;

@@ -1346,12 +1346,11 @@ void SMixtormat::SetColorIdColor(
 	// Resolved by index rather than through GetSelectedColorId, because the picker is modeless:
 	// the selection can move while it is open, and committing to whatever happens to be selected
 	// when the user drags a swatch would edit a different node from the one they opened.
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	if (!ResolveChild(LayerIndex, ChildIndex))
 	{
 		return;
 	}
-	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
 	if (Child.Type != EMixtormatLayerChildType::ColorId
 		|| !Child.ColorId.Colors.IsValidIndex(ColorIndex))
 	{
@@ -1600,12 +1599,11 @@ void SMixtormat::SetHsvPaletteColor(
 	const int32 ChildIndex,
 	const int32 ColorIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	if (!ResolveChild(LayerIndex, ChildIndex))
 	{
 		return;
 	}
-	FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
 	if (Child.Type != EMixtormatLayerChildType::HsvFilter
 		|| !Child.HsvFilter.Palette.IsValidIndex(ColorIndex))
 	{
@@ -3058,7 +3056,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureSourceMenu(const int32 LayerIndex,
 				if (WorkingLayers.IsValidIndex(LayerIndex)
 					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 				{
-					WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Source = Source;
+					ResolveChild(LayerIndex, ChildIndex)->Curvature.Source = Source;
 					RefreshLayeredPreview();
 					RebuildLayerList();
 				}
@@ -3067,7 +3065,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureSourceMenu(const int32 LayerIndex,
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
 					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-					&& WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Source == Source;
+					&& ResolveChild(LayerIndex, ChildIndex)->Curvature.Source == Source;
 			}));
 	}
 	return Menu.Build();
@@ -3094,7 +3092,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, c
 				if (WorkingLayers.IsValidIndex(LayerIndex)
 					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 				{
-					WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Mode = Mode;
+					ResolveChild(LayerIndex, ChildIndex)->Curvature.Mode = Mode;
 					RefreshLayeredPreview();
 					RebuildLayerList();
 				}
@@ -3103,7 +3101,7 @@ TSharedRef<SWidget> SMixtormat::BuildCurvatureModeMenu(const int32 LayerIndex, c
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
 					&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-					&& WorkingLayers[LayerIndex].Children[ChildIndex].Curvature.Mode == Mode;
+					&& ResolveChild(LayerIndex, ChildIndex)->Curvature.Mode == Mode;
 			}));
 	}
 	return Menu.Build();

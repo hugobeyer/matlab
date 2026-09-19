@@ -85,6 +85,12 @@ namespace MixtormatTokens
 	constexpr float DragGhostOutlineWidth = 0.8f;
 	constexpr float CompactRowOutlineWidth = 0.25f;
 	constexpr float CompactRowValidDropOutlineWidth = 0.65f;
+	// Thick enough to read as a deliberate mark between two rows rather than as a hairline the
+	// stack already uses for its own seams.
+	constexpr float DropInsertionLineThickness = 2.0f;
+	// How much of a group header means "into this group" rather than either side of it. The
+	// middle half, so the two edges stay easy to hit without the centre becoming a sliver.
+	constexpr float GroupRowIntoZoneFraction = 0.25f;
 	constexpr float CompactRowHoverOutlineWidth = 0.35f;
 	constexpr float CompactRowPressedOutlineWidth = 0.5f;
 	constexpr float CompactRowDisabledOutlineWidth = 0.2f;
@@ -383,6 +389,9 @@ namespace MixtormatTokens
 	// connector rail is drawn between them.
 	inline float LayerRowHeight = 28.0f;
 	inline float LayerChildRowHeight = 22.0f;
+	// A group header is a layer row without the thumbnail, so it sits at child height rather than
+	// layer height -- the stack reads as groups of layers, not as a taller kind of layer.
+	inline float LayerGroupRowHeight = 22.0f;
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
 	inline float LayerThumbnailSize = 24.0f;

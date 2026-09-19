@@ -67,7 +67,8 @@
 #include "UI/Controls/SMixtormatTile.h"
 #include "UI/Layers/MixtormatLayerBadges.h"
 #include "UI/Layers/SMixtormatLayerChildRow.h"
-#include "UI/Layers/SMixtormatLayerGroup.h"
+#include "UI/Layers/SMixtormatLayerContainer.h"
+#include "UI/Layers/SMixtormatLayerGroupRow.h"
 #include "UI/Layers/SMixtormatLayerRow.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -189,6 +190,64 @@ namespace MixtormatUI
 				ReferenceIndex = INDEX_NONE;
 			}
 		}
+	}
+
+	// Reorders the stack by an arbitrary permutation and carries the height references with it.
+	//
+	// NewOrder[n] is the index the layer now at position n used to occupy. Grouping a scattered
+	// selection is the reason this exists: gathering layers into a contiguous block is not a
+	// sequence of single-layer moves, and running RemapHeightReferencesAfterMove once per member
+	// would remap against indices that the previous member's move already invalidated.
+	//
+	// Returns how many references were dropped. A reference can only point at a layer below its
+	// own -- that is what ValidateHeightReferences enforces -- so gathering layers past each other
+	// can turn a reference forward, and a forward reference has no meaning to preserve. The count
+	// is for telling the user, not for deciding whether the move was legal.
+	inline int32 ReorderLayersByPermutation(
+		TArray<FMixtormatLayer>& Layers,
+		const TArray<int32>& NewOrder)
+	{
+		check(NewOrder.Num() == Layers.Num());
+
+		TArray<int32> OldToNew;
+		OldToNew.Init(INDEX_NONE, Layers.Num());
+		for (int32 NewIndex = 0; NewIndex < NewOrder.Num(); ++NewIndex)
+		{
+			OldToNew[NewOrder[NewIndex]] = NewIndex;
+		}
+
+		// Read every reference before any of them move, or a rewritten one gets rewritten again.
+		TArray<int32> RemappedReferences;
+		RemappedReferences.Reserve(Layers.Num());
+		for (const FMixtormatLayer& Layer : Layers)
+		{
+			RemappedReferences.Add(
+				Layers.IsValidIndex(Layer.HeightReferenceLayerIndex)
+					? OldToNew[Layer.HeightReferenceLayerIndex]
+					: INDEX_NONE);
+		}
+
+		TArray<FMixtormatLayer> Reordered;
+		Reordered.Reserve(Layers.Num());
+		for (int32 NewIndex = 0; NewIndex < NewOrder.Num(); ++NewIndex)
+		{
+			const int32 OldIndex = NewOrder[NewIndex];
+			Reordered.Add(Layers[OldIndex]);
+			Reordered.Last().HeightReferenceLayerIndex = RemappedReferences[OldIndex];
+		}
+		Layers = MoveTemp(Reordered);
+
+		int32 DroppedCount = 0;
+		for (int32 LayerIndex = 0; LayerIndex < Layers.Num(); ++LayerIndex)
+		{
+			int32& ReferenceIndex = Layers[LayerIndex].HeightReferenceLayerIndex;
+			if (ReferenceIndex != INDEX_NONE && ReferenceIndex >= LayerIndex)
+			{
+				++DroppedCount;
+			}
+		}
+		ValidateHeightReferences(Layers);
+		return DroppedCount;
 	}
 
 	inline void RemapHeightReferencesAfterInsert(TArray<FMixtormatLayer>& Layers, const int32 InsertIndex)

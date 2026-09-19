@@ -1,7 +1,25 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatMaterial.h"
+#include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+
+namespace
+{
+	// A member of a disabled group renders as hidden without its own bEnabled ever being touched
+	// -- the same rule BuildEffectiveLayers applies, for the aggregates that never go through it.
+	bool IsLayerEffectivelyEnabled(
+		const FMixtormatLayer& Layer,
+		const TArray<FMixtormatLayerGroup>& Groups)
+	{
+		if (!Layer.bEnabled)
+		{
+			return false;
+		}
+		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, Layer.GroupId);
+		return !Group || Group->bEnabled;
+	}
+}
 
 bool MixtormatCompositionReferences::Validate(
 	const TArray<FMixtormatLayer>& Layers,
@@ -82,14 +100,24 @@ bool MixtormatCompositionReferences::Validate(
 float MixtormatCompositionReferences::ComputeFuzzInfluence(
 	const TArray<FMixtormatLayer>& Layers)
 {
+	return ComputeFuzzInfluence(Layers, TArray<FMixtormatLayerGroup>());
+}
+
+float MixtormatCompositionReferences::ComputeFuzzInfluence(
+	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups)
+{
 	TSet<const UMixtormatMaterial*> Active;
-	TFunction<float(const TArray<FMixtormatLayer>&)> Visit;
-	Visit = [&](const TArray<FMixtormatLayer>& CurrentLayers)
+	TFunction<float(const TArray<FMixtormatLayer>&, const TArray<FMixtormatLayerGroup>&)> Visit;
+	Visit = [&](const TArray<FMixtormatLayer>& CurrentLayers,
+		const TArray<FMixtormatLayerGroup>& CurrentGroups)
 	{
 		float Result = 0.0f;
 		for (const FMixtormatLayer& Layer : CurrentLayers)
 		{
-			if (!Layer.bEnabled)
+			// Fuzz is resolved outside the compositor, so it never sees the effective stack and
+			// has to apply the group gate itself.
+			if (!IsLayerEffectivelyEnabled(Layer, CurrentGroups))
 			{
 				continue;
 			}
@@ -103,7 +131,7 @@ float MixtormatCompositionReferences::ComputeFuzzInfluence(
 					continue;
 				}
 				Active.Add(Source);
-				Target = Visit(Source->Layers);
+				Target = Visit(Source->Layers, Source->LayerGroups);
 				Active.Remove(Source);
 			}
 			if (Target > 0.0f)
@@ -114,21 +142,29 @@ float MixtormatCompositionReferences::ComputeFuzzInfluence(
 		}
 		return FMath::Clamp(Result, 0.0f, 1.0f);
 	};
-	return Visit(Layers);
+	return Visit(Layers, Groups);
 }
 
 TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
 	const TArray<FMixtormatLayer>& Layers)
 {
+	return ComputeFuzzColor(Layers, TArray<FMixtormatLayerGroup>());
+}
+
+TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
+	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups)
+{
 	TOptional<FLinearColor> Result;
 	float Strongest = 0.0f;
 	TSet<const UMixtormatMaterial*> Active;
-	TFunction<void(const TArray<FMixtormatLayer>&)> Visit;
-	Visit = [&](const TArray<FMixtormatLayer>& CurrentLayers)
+	TFunction<void(const TArray<FMixtormatLayer>&, const TArray<FMixtormatLayerGroup>&)> Visit;
+	Visit = [&](const TArray<FMixtormatLayer>& CurrentLayers,
+		const TArray<FMixtormatLayerGroup>& CurrentGroups)
 	{
 		for (const FMixtormatLayer& Layer : CurrentLayers)
 		{
-			if (!Layer.bEnabled || Layer.Opacity <= 0.0f)
+			if (!IsLayerEffectivelyEnabled(Layer, CurrentGroups) || Layer.Opacity <= 0.0f)
 			{
 				continue;
 			}
@@ -138,7 +174,7 @@ TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
 				if (Source && !Active.Contains(Source))
 				{
 					Active.Add(Source);
-					Visit(Source->Layers);
+					Visit(Source->Layers, Source->LayerGroups);
 					Active.Remove(Source);
 				}
 				continue;
@@ -151,14 +187,17 @@ TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
 			}
 		}
 	};
-	Visit(Layers);
+	Visit(Layers, Groups);
 	return Result;
 }
 
 void UMixtormatMaterial::PostLoad()
 {
 	Super::PostLoad();
+	// Layer identity first: group validation reconciles group children against the layer child
+	// IDs, so those have to be settled before it looks at them.
 	MixtormatParameterBinding::EnsureStableIds(Layers);
+	MixtormatLayerGroups::ValidateGroups(Layers, LayerGroups);
 }
 
 FPrimaryAssetId UMixtormatMaterial::GetPrimaryAssetId() const

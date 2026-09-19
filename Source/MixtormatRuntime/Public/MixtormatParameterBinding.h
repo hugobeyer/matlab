@@ -5,6 +5,64 @@
 #include "CoreMinimal.h"
 #include "MixtormatMaterial.h"
 
+// What a parameter address is allowed to name.
+//
+// An address identifies its container by LayerId, and a group has no layer. Rather than give the
+// address a second field -- which every serialized binding would have to grow -- a group's own
+// GroupId occupies that slot, and this says whether groups are in scope for the lookup. Nothing
+// already written to disk carries a group id there, so old assets resolve exactly as before.
+//
+// Constructible from a bare layer array so every existing call site keeps compiling and keeps its
+// current behaviour: no groups passed means no groups resolved.
+struct MIXTORMATRUNTIME_API FMixtormatBindingScope
+{
+	const TArray<FMixtormatLayer>* Layers = nullptr;
+	const TArray<FMixtormatLayerGroup>* Groups = nullptr;
+
+	FMixtormatBindingScope(const TArray<FMixtormatLayer>& InLayers)
+		: Layers(&InLayers)
+	{
+	}
+
+	FMixtormatBindingScope(
+		const TArray<FMixtormatLayer>& InLayers,
+		const TArray<FMixtormatLayerGroup>& InGroups)
+		: Layers(&InLayers)
+		, Groups(&InGroups)
+	{
+	}
+
+	const TArray<FMixtormatLayer>& GetLayers() const { return *Layers; }
+};
+
+// The same, for the two entry points that write. Kept apart rather than made one struct with four
+// pointers: a caller holding only const data must not be able to reach a write by accident.
+struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
+{
+	TArray<FMixtormatLayer>* Layers = nullptr;
+	TArray<FMixtormatLayerGroup>* Groups = nullptr;
+
+	FMixtormatMutableBindingScope(TArray<FMixtormatLayer>& InLayers)
+		: Layers(&InLayers)
+	{
+	}
+
+	FMixtormatMutableBindingScope(
+		TArray<FMixtormatLayer>& InLayers,
+		TArray<FMixtormatLayerGroup>& InGroups)
+		: Layers(&InLayers)
+		, Groups(&InGroups)
+	{
+	}
+
+	operator FMixtormatBindingScope() const
+	{
+		return Groups
+			? FMixtormatBindingScope(*Layers, *Groups)
+			: FMixtormatBindingScope(*Layers);
+	}
+};
+
 namespace MixtormatParameterBinding
 {
 	// Ensures every layer/child has persistent identity. Existing valid IDs are preserved.
@@ -39,7 +97,7 @@ namespace MixtormatParameterBinding
 		FMixtormatLayerChild& To);
 
 	MIXTORMATRUNTIME_API const FMixtormatLayerChild* FindChild(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FGuid& LayerId,
 		const FGuid& ChildId);
 
@@ -48,14 +106,14 @@ namespace MixtormatParameterBinding
 	// this placement in the mask chain; bindings inherited for those two fields are discarded.
 	// Reads authored data only. Missing, self-referencing or cyclic sources keep local values.
 	MIXTORMATRUNTIME_API void ResolveChildInstances(
-		const TArray<FMixtormatLayer>& SourceLayers,
+		const FMixtormatBindingScope& SourceLayers,
 		FMixtormatLayer& InOutLayer);
 
 	// Whether an instance of Source may sit at DestChildIndex in DestLayerId. Placement is checked
 	// when the instance is made; a later reorder can invalidate it, and that case falls back to the
 	// resolve-time behaviour above rather than being prevented here.
 	MIXTORMATRUNTIME_API EInstancePlacement ClassifyInstancePlacement(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FGuid& SourceLayerId,
 		const FGuid& SourceChildId,
 		const FGuid& DestLayerId,
@@ -63,7 +121,7 @@ namespace MixtormatParameterBinding
 
 	// Bakes an instance down to a plain child holding the source's current payload.
 	MIXTORMATRUNTIME_API bool BreakChildInstance(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		FMixtormatLayerChild& InOutChild);
 
 	// Rewrites every address in the stack that named ChildId under OldLayerId to name it under
@@ -79,11 +137,11 @@ namespace MixtormatParameterBinding
 	// Local authored values are untouched in the asset/editor data. Missing, incompatible or cyclic
 	// references simply leave the local value in place.
 	MIXTORMATRUNTIME_API void ApplyDirectReferences(
-		const TArray<FMixtormatLayer>& SourceLayers,
+		const FMixtormatBindingScope& SourceLayers,
 		FMixtormatLayer& InOutLayer);
 
 	MIXTORMATRUNTIME_API bool IsReferenceSourceValid(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Source);
 
 	MIXTORMATRUNTIME_API bool AreReferenceTypesCompatible(
@@ -98,34 +156,34 @@ namespace MixtormatParameterBinding
 	// type-incompatible, when the chain closes on itself, or when the parameter it arrives at is
 	// itself referencing something (writing there would be overwritten on the next resolve).
 	MIXTORMATRUNTIME_API FMixtormatParameterAddress ResolveLinkTarget(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Destination);
 
 	// Writes an authored value straight into the parameter at Address. Type-checked against the
 	// property it lands on, so a mismatched address fails rather than reinterpreting the value.
 	MIXTORMATRUNTIME_API bool TryWriteFloat(
-		TArray<FMixtormatLayer>& Layers,
+		const FMixtormatMutableBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		float Value);
 	MIXTORMATRUNTIME_API bool TryWriteInt(
-		TArray<FMixtormatLayer>& Layers,
+		const FMixtormatMutableBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		int32 Value);
 	MIXTORMATRUNTIME_API bool TryWriteBool(
-		TArray<FMixtormatLayer>& Layers,
+		const FMixtormatMutableBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		bool Value);
 
 	MIXTORMATRUNTIME_API bool TryResolveFloat(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		float& OutValue);
 	MIXTORMATRUNTIME_API bool TryResolveInt(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		int32& OutValue);
 	MIXTORMATRUNTIME_API bool TryResolveBool(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		bool& OutValue);
 }

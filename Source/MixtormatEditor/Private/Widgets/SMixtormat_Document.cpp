@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "MixtormatEditorSettings.h"
+#include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
@@ -61,6 +62,7 @@ FReply SMixtormat::StartNewMaterial()
 	bGlobalUVRotation90 = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
+	WorkingLayerGroups.Reset();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -88,6 +90,7 @@ FReply SMixtormat::StartNewMaterial()
 		SelectedSurfaceText->SetText(SelectedLibrarySurfaceName);
 	}
 	SavedLayers.Reset();
+	SavedLayerGroups.Reset();
 	ResetEditHistory(false);
 	bIsWorkingMaterialDirty = true;
 	RefreshLayeredPreview(false);
@@ -116,7 +119,9 @@ FReply SMixtormat::NewWorkingMaterial()
 	bSavedGlobalUVRotation90 = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
+	WorkingLayerGroups.Reset();
 	SavedLayers.Reset();
+	SavedLayerGroups.Reset();
 	WorkingMaterialAsset.Reset();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
@@ -180,6 +185,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 
 	WorkingMaterialAsset.Reset(MaterialAsset);
 	WorkingLayers = MaterialAsset->Layers;
+	WorkingLayerGroups = MaterialAsset->LayerGroups;
 	bGlobalUVRotation90 = MaterialAsset->bRotateUV90;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
@@ -189,6 +195,9 @@ FReply SMixtormat::OpenWorkingMaterial()
 		}
 	}
 	MixtormatParameterBinding::EnsureStableIds(WorkingLayers);
+	// The asset repairs itself on load, but a working copy can also come from an older in-memory
+	// edit, so reconcile membership against the layers actually opened.
+	MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
@@ -240,6 +249,7 @@ FReply SMixtormat::SaveWorkingMaterial()
 	MaterialAsset->Modify();
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
+	MaterialAsset->LayerGroups = WorkingLayerGroups;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
@@ -251,8 +261,10 @@ FReply SMixtormat::SaveWorkingMaterial()
 	if (bSaved)
 	{
 		SavedLayers = WorkingLayers;
+		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		CurrentHistoryState.Layers = WorkingLayers;
+		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved
@@ -316,6 +328,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	MaterialAsset->Modify();
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
+	MaterialAsset->LayerGroups = WorkingLayerGroups;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
@@ -327,8 +340,10 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	if (bSaved)
 	{
 		SavedLayers = WorkingLayers;
+		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		CurrentHistoryState.Layers = WorkingLayers;
+		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved
@@ -462,7 +477,8 @@ FReply SMixtormat::ExecuteBake(
 		// Bake-only resolution, independent of CompositionResolution (the live preview). Composing
 		// at it temporarily resizes the shared compositor's render targets, but RefreshLayeredPreview
 		// below puts them back to CompositionResolution before the viewport is shown again.
-		if (!PreviewViewports[0]->ComposeLayersAtResolution(WorkingLayers, Settings.Resolution))
+		if (!PreviewViewports[0]->ComposeLayersAtResolution(
+			WorkingLayers, WorkingLayerGroups, Settings.Resolution))
 		{
 			RefreshLayeredPreview(false);
 			FMessageDialog::Open(

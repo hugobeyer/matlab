@@ -692,9 +692,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
 		Result.Material,
 		TEXT("DA_FuzzInfluence"),
-		MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers));
+		MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers, Recipe.LayerGroups));
 	const TOptional<FLinearColor> FuzzColor =
-		MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers);
+		MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers, Recipe.LayerGroups);
 	if (FuzzColor.IsSet())
 	{
 		UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(

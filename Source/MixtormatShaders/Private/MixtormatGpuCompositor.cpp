@@ -9,6 +9,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "GlobalShader.h"
 #include "MixtormatEffect.h"
+#include "MixtormatLayerGroups.h"
 #include "MixtormatMask.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
@@ -1207,20 +1208,35 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	const bool bRotateOutput90,
 	const FSoftObjectPath& OwnerPath)
 {
+	return RequestCompose(Layers, TArray<FMixtormatLayerGroup>(), MoveTemp(OnComplete),
+		DebugSettings, bRotateOutput90, OwnerPath);
+}
+
+bool FMixtormatGpuCompositor::RequestCompose(
+	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
+	FSimpleDelegate OnComplete,
+	FMixtormatDebugPreviewSettings DebugSettings,
+	const bool bRotateOutput90,
+	const FSoftObjectPath& OwnerPath)
+{
 	check(IsInGameThread());
 	FText ReferenceError;
+	// Against the authored layers: groups add no SourceComposition of their own, and expansion
+	// leaves every reference layer exactly where it was.
 	if (!MixtormatCompositionReferences::Validate(Layers, OwnerPath, ReferenceError))
 	{
 		UE_LOG(LogMixtormatComposition, Warning, TEXT("%s"), *ReferenceError.ToString());
 		return false;
 	}
 	TSet<const UMixtormatMaterial*> ActiveSources;
-	return RequestComposeInternal(Layers, MoveTemp(OnComplete), DebugSettings,
+	return RequestComposeInternal(Layers, Groups, MoveTemp(OnComplete), DebugSettings,
 		bRotateOutput90, ActiveSources);
 }
 
 bool FMixtormatGpuCompositor::RequestComposeInternal(
 	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
@@ -1228,6 +1244,18 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
+
+	// Groups become ordinary layers here and nowhere else. Below this point EffectiveLayers is the
+	// only stack that exists -- resolving references against the authored array instead would look
+	// up shared children by IDs that only exist in the expanded copy.
+	TArray<FMixtormatLayer> ExpandedLayers;
+	const bool bExpandGroups = MixtormatLayerGroups::RequiresExpansion(Layers, Groups);
+	if (bExpandGroups)
+	{
+		MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, ExpandedLayers);
+	}
+	const TArray<FMixtormatLayer>& EffectiveLayers = bExpandGroups ? ExpandedLayers : Layers;
+
 	if (!bInitialized && !Initialize())
 	{
 		return false;
@@ -1293,10 +1321,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		}
 	}
 
-	for (int32 LayerIndex = 0; LayerIndex < Layers.Num(); ++LayerIndex)
+	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
-		FMixtormatLayer Layer = Layers[LayerIndex];
-		MixtormatParameterBinding::ApplyDirectReferences(Layers, Layer);
+		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
+		MixtormatParameterBinding::ApplyDirectReferences(EffectiveLayers, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
 		const bool bReference = !Layer.SourceComposition.IsNull();
 		if (bReference && Layer.bEnabled)
@@ -1318,8 +1346,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			FMixtormatGpuCompositor SourceCompositor;
 			ActiveSources.Add(Source.Get());
 			const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
-				&& SourceCompositor.RequestComposeInternal(Source->Layers, FSimpleDelegate(),
-					FMixtormatDebugPreviewSettings(), Source->bRotateUV90, ActiveSources);
+				&& SourceCompositor.RequestComposeInternal(Source->Layers, Source->LayerGroups,
+					FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
+					ActiveSources);
 			ActiveSources.Remove(Source.Get());
 			if (!bComposed)
 			{
@@ -1680,7 +1709,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				int32 PublishedSourceChildIndex = INDEX_NONE;
 				if (bPublishedSource)
 				{
-					for (const FMixtormatLayer& SourceLayer : Layers)
+					for (const FMixtormatLayer& SourceLayer : EffectiveLayers)
 					{
 						if (SourceLayer.LayerId != MaskLayer.PublishedSourceLayerId)
 						{

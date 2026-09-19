@@ -12,7 +12,10 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
@@ -30,6 +33,8 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	OnToggleEnabled = InArgs._OnToggleEnabled;
 	OnToggleSolo = InArgs._OnToggleSolo;
 	OnRowDragDetected = InArgs._OnDragDetected;
+	EditableName = InArgs._EditableName;
+	OnNameCommitted = InArgs._OnNameCommitted;
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const bool bCanDisable = InArgs._bCanDisable;
@@ -114,16 +119,30 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						]
 
 						// Name grows; source is right-aligned beside it so the two form columns.
+						// A switcher rather than SInlineEditableTextBlock: that widget enters
+						// editing on double-click, and double-click on this row opens and shuts
+						// the layer. Rename is F2 and the context menu, and only those.
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
 						.VAlign(VAlign_Center)
 						.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
 						[
-							SNew(STextBlock)
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
-							.ColorAndOpacity(this, &SMixtormatLayerRow::GetNameColor)
-							.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-							.Text(InArgs._Name)
+							SAssignNew(NameSwitcher, SWidgetSwitcher)
+							+ SWidgetSwitcher::Slot()
+							[
+								SNew(STextBlock)
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+								.ColorAndOpacity(this, &SMixtormatLayerRow::GetNameColor)
+								.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+								.Text(InArgs._Name)
+							]
+							+ SWidgetSwitcher::Slot()
+							[
+								SAssignNew(NameEditBox, SEditableTextBox)
+								.SelectAllTextWhenFocused(true)
+								.ClearKeyboardFocusOnCommit(true)
+								.OnTextCommitted(this, &SMixtormatLayerRow::HandleNameCommitted)
+							]
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
@@ -274,6 +293,47 @@ FReply SMixtormatLayerRow::OnMouseButtonDown(const FGeometry&, const FPointerEve
 	// own press.
 	OnSelected.ExecuteIfBound();
 	return FReply::Handled().DetectDrag(SharedThis(this), EKeys::LeftMouseButton);
+}
+
+void SMixtormatLayerRow::BeginRename()
+{
+	if (!NameSwitcher.IsValid() || !NameEditBox.IsValid())
+	{
+		return;
+	}
+	NameEditBox->SetText(EditableName.Get(FText::GetEmpty()));
+	NameSwitcher->SetActiveWidgetIndex(1);
+	// Without this the box appears and the keystrokes go on reaching the panel, so F2 looks like
+	// it did nothing.
+	FSlateApplication::Get().SetKeyboardFocus(NameEditBox, EFocusCause::SetDirectly);
+}
+
+void SMixtormatLayerRow::HandleNameCommitted(const FText& Text, const ETextCommit::Type CommitType)
+{
+	if (NameSwitcher.IsValid())
+	{
+		NameSwitcher->SetActiveWidgetIndex(0);
+	}
+	// Escape arrives as OnCleared. Moving focus away is a commit, the way it is everywhere else
+	// in the editor -- clicking off a half-typed name should keep it, not discard it.
+	if (CommitType == ETextCommit::OnCleared)
+	{
+		return;
+	}
+	OnNameCommitted.ExecuteIfBound(Text, CommitType);
+}
+
+FReply SMixtormatLayerRow::OnMouseButtonDoubleClick(
+	const FGeometry&,
+	const FPointerEvent& MouseEvent)
+{
+	if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+	{
+		return FReply::Unhandled();
+	}
+	OnSelected.ExecuteIfBound();
+	OnToggleExpanded.ExecuteIfBound();
+	return FReply::Handled();
 }
 
 FReply SMixtormatLayerRow::OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)

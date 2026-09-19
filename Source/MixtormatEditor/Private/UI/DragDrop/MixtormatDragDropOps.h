@@ -170,15 +170,23 @@ public:
 
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
+	// Whether this child may leave its layer at all. Decided once by the owner, which knows what
+	// the child is; a target cannot work it out from the indices it was handed, and a target that
+	// lights up for a drop that will then be refused is worse than one that stays dark.
+	bool bCanLeaveLayer = true;
+	FText Name;
 
 	static TSharedRef<FMixtormatChildDragDropOp> New(
 		const int32 InLayerIndex,
 		const int32 InChildIndex,
-		const FText& Name)
+		const FText& Name,
+		const bool bInCanLeaveLayer = true)
 	{
 		TSharedRef<FMixtormatChildDragDropOp> Operation = MakeShared<FMixtormatChildDragDropOp>();
 		Operation->LayerIndex = InLayerIndex;
 		Operation->ChildIndex = InChildIndex;
+		Operation->bCanLeaveLayer = bInCanLeaveLayer;
+		Operation->Name = Name;
 		Operation->DefaultHoverText = FText::Format(LOCTEXT("ReorderChildDrag", "Move {0}"), Name);
 		Operation->DecoratorWidget = SNew(SBorder)
 			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
@@ -197,6 +205,41 @@ public:
 					+ SHorizontalBox::Slot().AutoWidth()[SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Grip")))]
 					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DragGhostTextGap, 0.0f)[SNew(STextBlock).Text(Name)]
 				]
+			];
+		Operation->Construct();
+		return Operation;
+	}
+
+	virtual TSharedPtr<SWidget> GetDefaultDecorator() const override { return DecoratorWidget; }
+
+private:
+	TSharedPtr<SWidget> DecoratorWidget;
+};
+
+// A whole group on the move. Carries the GroupId rather than an index because the block it names
+// is found by membership, and every index in the stack shifts the moment it lands.
+class FMixtormatGroupDragDropOp final : public FDecoratedDragDropOp
+{
+public:
+	DRAG_DROP_OPERATOR_TYPE(FMixtormatGroupDragDropOp, FDecoratedDragDropOp)
+
+	FGuid GroupId;
+
+	static TSharedRef<FMixtormatGroupDragDropOp> New(
+		const FGuid& InGroupId,
+		const FText& DisplayName)
+	{
+		TSharedRef<FMixtormatGroupDragDropOp> Operation =
+			MakeShared<FMixtormatGroupDragDropOp>();
+		Operation->GroupId = InGroupId;
+		Operation->DefaultHoverText = FText::Format(
+			LOCTEXT("MoveGroupDrag", "Move {0}"), DisplayName);
+		Operation->DecoratorWidget = SNew(SBorder)
+			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
+			.Padding(FMargin(MixtormatTokens::DragGhostPadding, MixtormatTokens::DragGhostShadowOffsetY))
+			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhostAccent")))
+			[
+				SNew(STextBlock).Text(DisplayName)
 			];
 		Operation->Construct();
 		return Operation;

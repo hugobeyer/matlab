@@ -12,10 +12,10 @@ class SVerticalBox;
 //
 // The accent edge down the left is what encloses a layer's masks and effects -- without it an
 // expanded layer's children read as siblings of the next layer rather than as its contents.
-class SMixtormatLayerGroup final : public SCompoundWidget
+class SMixtormatLayerContainer final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatLayerGroup)
+	SLATE_BEGIN_ARGS(SMixtormatLayerContainer)
 		: _bExpanded(false)
 	{}
 		SLATE_ATTRIBUTE(bool, bExpanded)

@@ -245,7 +245,9 @@ void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
 	{
 		if (Viewport.IsValid())
 		{
-			Viewport->SetPreviewLayers(PreviewLayers, CompositionResolution);
+			// A library surface on its own, nothing to do with the working document.
+			Viewport->SetPreviewLayers(
+				PreviewLayers, TArray<FMixtormatLayerGroup>(), CompositionResolution);
 		}
 	}
 }

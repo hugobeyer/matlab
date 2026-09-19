@@ -10,6 +10,7 @@
 class UMaterialInstanceDynamic;
 class UMixtormatMaterial;
 struct FMixtormatLayer;
+struct FMixtormatLayerGroup;
 struct FMixtormatComposeResources;
 
 // Cache of generated networks that survive between composites. Defined in the compositor
@@ -61,6 +62,17 @@ public:
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
 		bool bRotateOutput90 = false,
 		const FSoftObjectPath& OwnerPath = FSoftObjectPath());
+	// With groups. Each group's shared children are expanded onto its member layers before any of
+	// the above happens, so what this composes is still one flat array of the same length and
+	// order as Layers -- see MixtormatLayerGroups::BuildEffectiveLayers. The overload without
+	// Groups is the same call on a document that has none.
+	bool RequestCompose(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
+		FSimpleDelegate OnComplete = FSimpleDelegate(),
+		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
+		bool bRotateOutput90 = false,
+		const FSoftObjectPath& OwnerPath = FSoftObjectPath());
 	void BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const;
 
 	bool IsInitialized() const { return bInitialized; }
@@ -75,6 +87,7 @@ private:
 	bool InitializeTargets(FIntPoint InResolution, bool bWaitForResources);
 	bool RequestComposeInternal(
 		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
 		FSimpleDelegate OnComplete,
 		FMixtormatDebugPreviewSettings DebugSettings,
 		bool bRotateOutput90,

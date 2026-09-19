@@ -29,6 +29,7 @@ namespace MixtormatIcons
 
 	const FSlateBrush* LayerMaterial() { return Get(TEXT("Mixtormat.Icon.LayerMaterial")); }
 	const FSlateBrush* LayerFill()     { return Get(TEXT("Mixtormat.Icon.LayerFill")); }
+	const FSlateBrush* Folder()        { return Get(TEXT("Mixtormat.Icon.Folder")); }
 	const FSlateBrush* Check()        { return Get(TEXT("Mixtormat.Icon.Check")); }
 	const FSlateBrush* Trash()        { return Get(TEXT("Mixtormat.Icon.Trash")); }
 }

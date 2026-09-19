@@ -417,28 +417,31 @@ void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 
 void SMixtormatPreviewViewport::SetPreviewLayers(
 	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
 	FMixtormatDebugPreviewSettings DebugSettings)
 {
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
-	ComposeLayersWithDebug(Layers, Resolution, DebugSettings);
+	ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings);
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution)
 {
 	FMixtormatDebugPreviewSettings DebugSettings;
 	DebugSettings.Mode = bDebugPreviewMode;
 	DebugSettings.LayerIndex = bDebugLayerIndex;
 	DebugSettings.ChildIndex = bDebugChildIndex;
-	return ComposeLayersWithDebug(Layers, Resolution, DebugSettings);
+	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings);
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
 	FMixtormatDebugPreviewSettings DebugSettings)
 {
@@ -488,6 +491,7 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 
 	if (!LayerCompositor->RequestCompose(
 		Layers,
+		Groups,
 		FSimpleDelegate(),
 		DebugSettings,
 		bGlobalUVRotation90))
@@ -507,13 +511,13 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		PreviewMaterialInstance->ClearParameterValues();
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
 		const TOptional<FLinearColor> FuzzColor =
-			MixtormatCompositionReferences::ComputeFuzzColor(Layers);
+			MixtormatCompositionReferences::ComputeFuzzColor(Layers, Groups);
 		if (FuzzColor.IsSet())
 		{
 			PreviewMaterialInstance->SetVectorParameterValue(TEXT("DA_FuzzColor"), FuzzColor.GetValue());
 		}
 		CompositedFuzzInfluence =
-			MixtormatCompositionReferences::ComputeFuzzInfluence(Layers);
+			MixtormatCompositionReferences::ComputeFuzzInfluence(Layers, Groups);
 		PreviewMaterialInstance->SetScalarParameterValue(
 			MixtormatPreview::FuzzInfluenceParameter,
 			CompositedFuzzInfluence);

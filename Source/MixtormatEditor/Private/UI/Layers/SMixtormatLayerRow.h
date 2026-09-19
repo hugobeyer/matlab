@@ -38,6 +38,10 @@ public:
 		, _bCanDisable(true)
 	{}
 		SLATE_ATTRIBUTE(FText, Name)
+		// What the edit box starts from, which is not what the row shows: Name is decorated --
+		// a reference layer reads "Foo (ref)" and an unnamed one borrows its asset's name --
+		// and committing that back would write the decoration into the layer.
+		SLATE_ATTRIBUTE(FText, EditableName)
 		SLATE_ATTRIBUTE(FText, Source)
 		SLATE_ATTRIBUTE(FText, Badge)
 		// A second, optional mark for a layer that also blends its colour. Collapsed when empty,
@@ -68,11 +72,21 @@ public:
 		SLATE_EVENT(FPointerEventHandler, OnDragDetected)
 		// Right button. The row selects itself first, so the menu always acts on what it opened on.
 		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
+		// Enter or focus loss commits; Escape arrives as OnCleared and is dropped.
+		SLATE_EVENT(FOnTextCommitted, OnNameCommitted)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
+	// Swaps the name for an edit box and puts the caret in it. Driven from F2 and the context
+	// menu; deliberately not from double-click, which opens and shuts the layer.
+	void BeginRename();
+
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	// Opens or shuts the layer, the same as the chevron. Rename is F2 and the context menu, never
+	// this -- a double-click that sometimes collapses and sometimes starts editing a name would
+	// have to be guessed at every time.
+	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 private:
@@ -81,6 +95,7 @@ private:
 	const FSlateBrush* GetHairlineBrush() const;
 	FSlateColor GetNameColor() const;
 	void HandleEyeClicked(const FPointerEvent& MouseEvent);
+	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);
 
 	TAttribute<bool> bLayerEnabled;
 	TAttribute<bool> bExpanded;
@@ -92,4 +107,8 @@ private:
 	FSimpleDelegate OnToggleSolo;
 	FPointerEventHandler OnRowDragDetected;
 	TSharedPtr<SMenuAnchor> ContextAnchor;
+	TAttribute<FText> EditableName;
+	FOnTextCommitted OnNameCommitted;
+	TSharedPtr<class SWidgetSwitcher> NameSwitcher;
+	TSharedPtr<class SEditableTextBox> NameEditBox;
 };

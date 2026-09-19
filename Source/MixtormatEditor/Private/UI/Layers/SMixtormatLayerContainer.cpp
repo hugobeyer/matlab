@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-#include "UI/Layers/SMixtormatLayerGroup.h"
+#include "UI/Layers/SMixtormatLayerContainer.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
@@ -10,7 +10,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 
-void SMixtormatLayerGroup::Construct(const FArguments& InArgs)
+void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 {
 	const TAttribute<bool> bExpanded = InArgs._bExpanded;
 
@@ -53,7 +53,7 @@ void SMixtormatLayerGroup::Construct(const FArguments& InArgs)
 	];
 }
 
-void SMixtormatLayerGroup::AddChild(const TSharedRef<SWidget>& Child)
+void SMixtormatLayerContainer::AddChild(const TSharedRef<SWidget>& Child)
 {
 	if (Children.IsValid())
 	{

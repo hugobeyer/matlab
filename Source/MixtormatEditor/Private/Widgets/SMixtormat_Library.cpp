@@ -861,7 +861,7 @@ void SMixtormat::AddReferenceLayerFromComposition(const FSoftObjectPath AssetPat
 	bShowCompositionBefore = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	SelectedLayerIndex = WorkingLayers.Num() - 1;
-	ExpandedLayerIndices.Remove(SelectedLayerIndex);
+	SetLayerExpanded(SelectedLayerIndex, false);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
 	bHasSelectedLayer = true;

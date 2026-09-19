@@ -34,6 +34,10 @@ namespace MixtormatIcons
 	const FSlateBrush* LayerMaterial();
 	const FSlateBrush* LayerFill();
 
+	// A layer group. One glyph for both states: the chevron beside it already says open or shut,
+	// and swapping the folder too would say it twice.
+	const FSlateBrush* Folder();
+
 	// The tick in a menu's icon gutter.
 	const FSlateBrush* Check();
 	const FSlateBrush* Trash();

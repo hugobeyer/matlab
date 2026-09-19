@@ -68,6 +68,25 @@ void SMixtormat::BuildWorkspaceUI()
 	RebuildMaskList();
 }
 
+bool SMixtormat::AreLayerGroupsEqual(
+	const TArray<FMixtormatLayerGroup>& A,
+	const TArray<FMixtormatLayerGroup>& B)
+{
+	if (A.Num() != B.Num())
+	{
+		return false;
+	}
+	const UScriptStruct* GroupStruct = FMixtormatLayerGroup::StaticStruct();
+	for (int32 GroupIndex = 0; GroupIndex < A.Num(); ++GroupIndex)
+	{
+		if (!GroupStruct->CompareScriptStruct(&A[GroupIndex], &B[GroupIndex], 0))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 bool SMixtormat::AreLayerStacksEqual(
 	const TArray<FMixtormatLayer>& A,
 	const TArray<FMixtormatLayer>& B)
@@ -121,6 +140,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	UndoHistory.Reset();
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	bHistoryInitialized = true;
 	bApplyingHistory = false;
@@ -128,6 +148,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	if (bCurrentStateIsSaved)
 	{
 		SavedLayers = WorkingLayers;
+		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 	}
 }
@@ -144,6 +165,7 @@ void SMixtormat::RecordEditHistory()
 		return;
 	}
 	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers)
+		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
 		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90)
 	{
 		return;
@@ -154,7 +176,8 @@ void SMixtormat::RecordEditHistory()
 	const double Now = FPlatformTime::Seconds();
 	const bool bCoalesceInteractiveEdit = !UndoHistory.IsEmpty()
 		&& Now - LastHistoryRecordTime <= InteractiveEditWindowSeconds
-		&& HaveSameLayerStructure(CurrentHistoryState.Layers, WorkingLayers);
+		&& HaveSameLayerStructure(CurrentHistoryState.Layers, WorkingLayers)
+		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups);
 	if (!bCoalesceInteractiveEdit)
 	{
 		UndoHistory.Add(CurrentHistoryState);
@@ -165,6 +188,7 @@ void SMixtormat::RecordEditHistory()
 	}
 
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	RedoHistory.Reset();
 	LastHistoryRecordTime = Now;
@@ -174,6 +198,7 @@ bool SMixtormat::IsCurrentStateSaved() const
 {
 	return WorkingMaterialAsset.IsValid()
 		&& AreLayerStacksEqual(WorkingLayers, SavedLayers)
+		&& AreLayerGroupsEqual(WorkingLayerGroups, SavedLayerGroups)
 		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90;
 }
 
@@ -181,6 +206,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 {
 	bApplyingHistory = true;
 	WorkingLayers = State.Layers;
+	WorkingLayerGroups = State.Groups;
 	bGlobalUVRotation90 = State.bRotateUV90;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
@@ -199,6 +225,13 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 		: FMath::Clamp(SelectedLayerIndex, 0, WorkingLayers.Num() - 1);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
+	// Undoing past a Create Group leaves these naming layers and a group the restored state does
+	// not have. Dropping them is the same reasoning as clearing the child selection above: the
+	// state that comes back is not the state they were taken against.
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
 	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
@@ -213,9 +246,11 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 void SMixtormat::SynchronizeHistoryAfterCancelledEdit()
 {
 	CurrentHistoryState.Layers = WorkingLayers;
+	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	if (!UndoHistory.IsEmpty()
 		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers)
+		&& AreLayerGroupsEqual(UndoHistory.Last().Groups, WorkingLayerGroups)
 		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90)
 	{
 		UndoHistory.Pop();
@@ -464,6 +499,12 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	{
 		return FReply::Handled();
 	}
+	// Rename the selected group or layer. Not double-click: that opens and shuts the row, and one
+	// gesture cannot mean both without the user having to guess which it will be this time.
+	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::F2 && BeginRenameSelection())
+	{
+		return FReply::Handled();
+	}
 	if (bModifierDown && InKeyEvent.GetKey() == EKeys::Z)
 	{
 		return InKeyEvent.IsShiftDown() ? RedoMaterialEdit() : UndoMaterialEdit();
@@ -572,6 +613,20 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 
 	TArray<FMixtormatLayer> PreviewOverrideLayers;
 	const TArray<FMixtormatLayer>* PreviewLayers = &WorkingLayers;
+	// Solo and composition-before isolate one layer and force it visible. A disabled group would
+	// otherwise put it straight back out of sight, so those two paths preview against groups that
+	// are all switched on -- the shared children still apply, only the group gate is lifted.
+	TArray<FMixtormatLayerGroup> PreviewOverrideGroups;
+	const TArray<FMixtormatLayerGroup>* PreviewGroups = &WorkingLayerGroups;
+	const auto UseEnabledGroupsForIsolation = [&]()
+	{
+		PreviewOverrideGroups = WorkingLayerGroups;
+		for (FMixtormatLayerGroup& Group : PreviewOverrideGroups)
+		{
+			Group.bEnabled = true;
+		}
+		PreviewGroups = &PreviewOverrideGroups;
+	};
 	const int32 BypassedChildIndex = GetSelectedChildIndex();
 	if (bBypassSelectedChild
 		&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
@@ -630,6 +685,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		PreviewOverrideLayers[0].bEnabled = true;
 		PreviewOverrideLayers[0].HeightReferenceLayerIndex = INDEX_NONE;
 		PreviewLayers = &PreviewOverrideLayers;
+		UseEnabledGroupsForIsolation();
 	}
 	else if (DebugPreviewMode == EMixtormatDebugPreviewMode::None
 		&& bShowCompositionBefore
@@ -641,6 +697,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		PreviewOverrideLayers[0].bEnabled = true;
 		PreviewOverrideLayers[0].HeightReferenceLayerIndex = INDEX_NONE;
 		PreviewLayers = &PreviewOverrideLayers;
+		UseEnabledGroupsForIsolation();
 	}
 
 	// Always the full composition resolution, dragging included. Halving the side while scrubbing
@@ -662,7 +719,8 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 				|| DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds)
 				? GetSelectedChildIndex()
 				: INDEX_NONE;
-			Viewport->SetPreviewLayers(*PreviewLayers, CompositionResolution, DebugSettings);
+			Viewport->SetPreviewLayers(
+				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings);
 		}
 	}
 

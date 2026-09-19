@@ -120,10 +120,14 @@ public:
 	void SetPreviewMaterial(UMaterialInterface* Material);
 	void SetPreviewLayers(
 		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings());
 	void SetDebugPreview(FMixtormatDebugPreviewSettings DebugSettings);
-	bool ComposeLayersAtResolution(const TArray<FMixtormatLayer>& Layers, int32 Resolution);
+	bool ComposeLayersAtResolution(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
+		int32 Resolution);
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
@@ -171,6 +175,7 @@ private:
 	void InvalidateDisplacementShadows();
 	bool ComposeLayersWithDebug(
 		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
 		FMixtormatDebugPreviewSettings DebugSettings);
 
