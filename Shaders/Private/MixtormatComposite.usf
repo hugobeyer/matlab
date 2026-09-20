@@ -103,6 +103,9 @@ uint NormalOnly;
 uint OverrideNormal;
 uint FlipNormalY;
 uint HeightBlendEnabled;
+// BLEND: merge this layer's height with the surface below instead of cross-fading it.
+// A height operation only -- it moves no coverage, and it is not Height Mask Blending.
+uint SmoothHeightMerge;
 uint HeightSource;
 uint InvertHeight;
 uint DirectHeightComparison;
@@ -228,12 +231,28 @@ float CurvaturePower;
 int CurvatureSmoothing;
 float4 FillColor;
 
-float3 DecodeNormal(float4 EncodedNormal, float Intensity, uint InvertY)
+// Normal Strength as a tangent slope, which is the only reading of "strength" that stays sane
+// above 1.
+//
+// |xy|/z is the tangent of the normal's tilt, so scaling xy against a fixed z scales that tilt
+// directly and the normal can be steepened without bound. Scaling xy *before* Z is rebuilt --
+// which is what DecodeNormal used to do -- pushes the pair outside the unit circle, saturate()
+// pins the radicand at zero, and the normal ends up lying on the horizon exactly where the
+// artist asked for more relief. Above 1 that form did not strengthen an authored normal, it
+// destroyed it, which is why the control could never be offered above 1 in the first place.
+float3 MixtormatScaleNormalSlope(float3 Normal, float Strength)
+{
+	return normalize(float3(Normal.xy * Strength, max(Normal.z, 1.0e-4f)));
+}
+
+// A two-channel authored map. Reconstruct the unit normal first, then take its slope up: the
+// decode and the strength are separate operations and doing them in this order is the whole fix.
+float3 DecodeNormal(float4 EncodedNormal, float Strength, uint InvertY)
 {
 	float2 XY = EncodedNormal.xy * 2.0f - 1.0f;
 	XY.y *= InvertY != 0 ? -1.0f : 1.0f;
-	XY *= Intensity;
-	return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+	const float Z = sqrt(saturate(1.0f - dot(XY, XY)));
+	return MixtormatScaleNormalSlope(float3(XY, Z), Strength);
 }
 
 float3 DecodeEffectNormal(float2 EncodedXY)
@@ -608,7 +627,42 @@ float CalculateHeightDifference(float IncomingHeight, float ComparisonHeight)
 // the same saturated field -- so a smoother base changes nothing outside the width and everything
 // inside it. Coverage, the height the layer composites, and the blend weight all keep reading the
 // sharp height, so nothing beyond these two effects moves.
-float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
+// One height competition, read two ways: the visibility every channel is weighted by, and the
+// surface the composite keeps. They are the same operation, which is the point.
+struct FMixtormatHeightBlend
+{
+	// The winner field. BaseColor, Roughness, AO, Metallic, F0, Normal and Height are all
+	// weighted by this and nothing else, so no channel can disagree with the height about which
+	// surface is on top.
+	float Weight;
+	// The composited surface at full coverage.
+	float Height;
+	// The base surface after its authored bias -- what Height falls back to as coverage drops.
+	float Base;
+};
+
+// A polynomial smooth maximum of the two competing surfaces.
+//
+// For a base surface A, an incoming surface B and a softness k:
+//
+//     w = saturate(0.5 + 0.5 * (B - A) / k)
+//     H = lerp(A, B, w) + k * w * (1 - w)
+//
+// H is smax(A, B, k) and w is exactly dH/dB, which is what makes the pair consistent rather than
+// merely similar: the field that decides which surface is visible is the same field that decides
+// which surface the height keeps.
+//
+// The fillet term is why this is not the lerp it replaces. At B == A the old form returned A --
+// the two surfaces averaged to the height they already shared, so an intersection read as a
+// crease pressed flat. This returns A + k/4, a rounded ridge over the crossing, and outside the
+// band the term vanishes and the result is exactly max(A, B). The upper surface is preserved
+// everywhere instead of being softened away where the two layers meet.
+//
+// Coverage enters as a height penalty rather than as a second mask multiplied on afterwards: a
+// fully masked texel competes on its own height, an unmasked one sits a whole height range under
+// the base and loses outright, and HeightThreshold recentres that contest. Folding it in here is
+// what keeps one field driving everything.
+FMixtormatHeightBlend EvaluateHeightBlend(float2 UV, float Softness, uint SmoothBase)
 {
 	const bool bSmooth = SmoothBase != 0 && BorderSmoothValid != 0;
 	float BaseHeight = bSmooth
@@ -620,22 +674,71 @@ float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
 	{
 		BaseHeight = 1.0f - BaseHeight;
 	}
-	float BlendHeight = SampleIncomingHeight(UV);
-	float SafeSoftness = max(Softness, 1.0e-6f);
-	if (DirectHeightComparison != 0)
+	const float BlendHeight = SampleIncomingHeight(UV);
+	const float SafeSoftness = max(Softness, 1.0e-6f);
+
+	FMixtormatHeightBlend Result;
+	if (DirectHeightComparison == 0)
 	{
-		// One height-derived mask must drive every composited surface channel.
-		float A = BaseHeight + HeightBias;
-		float B = BlendHeight + HeightOffset;
-		float M = saturate(SamplePlacementHeightMask(UV) * GetHeightBlendAmount(UV));
-		return smoothstep(
-			HeightThreshold - SafeSoftness,
-			HeightThreshold + SafeSoftness,
-			M + B - A);
+		// The legacy gather-era comparison, reachable only for normal-only layers, which never
+		// read the height below. Left exactly as it was rather than folded into the model above.
+		const float Difference = CalculateHeightDifference(BlendHeight, BaseHeight);
+		Result.Weight = smoothstep(-SafeSoftness, SafeSoftness, Difference);
+		Result.Base = BaseHeight;
+		Result.Height = lerp(BaseHeight, BlendHeight, Result.Weight);
+		return Result;
 	}
 
-	float Difference = CalculateHeightDifference(BlendHeight, BaseHeight);
-	return smoothstep(-SafeSoftness, SafeSoftness, Difference);
+	const float A = BaseHeight + HeightBias;
+	const float B = BlendHeight + HeightOffset;
+	const float Coverage = saturate(Opacity * SamplePlacementHeightMask(UV));
+
+	// The mask gates, the height decides inside the gate. Two separate questions, kept separate.
+	//
+	// The old form added the mask into the height difference, which conflated them: a fully
+	// painted layer won ties by half a height range and so covered the very recesses it was
+	// supposed to settle into, while at Blend Strength 0 the mask dropped out of the sum entirely
+	// and the layer appeared wherever it happened to be taller, ignoring where it was painted.
+	//
+	// Here the contest is mask-independent -- sand over brick sinks into the mortar because the
+	// mortar is lower, full stop -- and coverage scales the result, so the mask stays meaningful
+	// across its whole range and an unpainted texel is gone whatever its height.
+	//
+	// HeightThreshold is the contest's bias, neutral at 0.5 and half a height range either way.
+	const float Contested = B + (0.5f - HeightThreshold);
+
+	// Blend Strength says how much of the contest happens, not how strong the mask is.
+	//
+	// At 0 there is no contest at all and the field collapses to ordinary coverage, so the layer
+	// composites exactly as OVER does -- which is the behaviour the slider's bottom end has to
+	// mean. It used to multiply the mask instead, so 0 erased the mask and left a bare height
+	// comparison: the layer appeared wherever it happened to be taller, ignoring where it was
+	// painted. Above 1 the contest is already total, so the remainder of the range sharpens the
+	// transition rather than widening anything, and the slider stays monotone end to end.
+	const float Amount = max(GetHeightBlendAmount(UV), 0.0f);
+	const float Contest = saturate(Amount);
+	const float K = SafeSoftness / max(Amount, 1.0f);
+
+	const float HeightWinner = saturate(0.5f + 0.5f * (Contested - A) / K);
+
+	// At Blend Strength 0 this is ordinary coverage and nothing competes; at 1 it is the contest
+	// gated by coverage. Two surfaces at genuinely equal height tie at one half, and that tie is
+	// the difference between BLEND and OVER rather than a defect -- any real relief in either
+	// surface resolves it within the Softness band.
+	Result.Weight = lerp(Coverage, Coverage * HeightWinner, Contest);
+	Result.Base = A;
+
+	// smax's fillet, scaled by the coverage that gated the contest. At full coverage Weight is
+	// HeightWinner and this is exactly smax(A, B, K) with Weight == dHeight/dB; below it the term
+	// degrades into a small rounding of the coverage boundary, which is what that boundary wants.
+	Result.Height = lerp(A, B, Result.Weight)
+		+ K * HeightWinner * (1.0f - HeightWinner) * Coverage * Contest;
+	return Result;
+}
+
+float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
+{
+	return EvaluateHeightBlend(UV, Softness, SmoothBase).Weight;
 }
 
 float SampleHeightBlendField(float2 UV, float Softness)
@@ -770,10 +873,12 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: float3(0.0f, 0.0f, 1.0f);
 	if (HasSeparateHeight != 0)
 	{
-		Normal = SourceN.xyz * 2.0f - 1.0f;
-		Normal.xy *= NormalIntensity;
-		Normal.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
-		Normal = normalize(Normal);
+		// A live composition stores all three components, so there is nothing to reconstruct --
+		// only the green convention to apply and the same slope strength to take up, so a
+		// resolved source and an imported two-channel map mean the same thing by "strength".
+		float3 Stored = normalize(SourceN.xyz * 2.0f - 1.0f);
+		Stored.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
+		Normal = MixtormatScaleNormalSlope(Stored, NormalIntensity);
 	}
 	Normal.xy = MixtormatTransformTangentVector(Orientation, Normal.xy);
 
@@ -885,10 +990,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		// Resolved layer inputs and compositor normals store all three components, unlike
 		// imported two-channel maps.
-		SampledNormal = LayerN.SampleLevel(LinearWrapSampler, LayerUV, 0.0f).xyz * 2.0f - 1.0f;
-		SampledNormal.xy *= NormalIntensity;
-		SampledNormal.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
-		SampledNormal = normalize(SampledNormal);
+		float3 Stored = normalize(
+			LayerN.SampleLevel(LinearWrapSampler, LayerUV, 0.0f).xyz * 2.0f - 1.0f);
+		if (LayerInputResolved != 0)
+		{
+			// ResolveLayerInputCS has already applied Normal Strength and the green convention
+			// to this texture. Applying them a second time here squared the strength and flipped
+			// green back -- invisible while the control was pinned at 1, wrong the moment it
+			// became an artist control again.
+			SampledNormal = Stored;
+		}
+		else
+		{
+			Stored.y *= FlipNormalY != 0 ? -1.0f : 1.0f;
+			SampledNormal = MixtormatScaleNormalSlope(Stored, NormalIntensity);
+		}
 	}
 	SampledNormal.xy = MixtormatTransformTangentVector(LayerOrientation, SampledNormal.xy);
 	if (PreparedLayerMode == 2)
@@ -996,20 +1112,39 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	uint UseHeightBlendMask = HeightBlendEnabled != 0
 		&& DirectHeightComparison != 0
 		&& NormalOnly == 0;
-	float PlacementCoverage = UseHeightBlendMask != 0 ? 1.0f : PlacementMask;
-	float ExistingCoverage = Enabled != 0
-		? saturate(Opacity * PlacementCoverage * SurfaceMaskWeight * EffectKeep)
-		: 0.0f;
-	float HeightWeight = 1.0f;
+
+	// The height contest, evaluated once. Everything below reads this one result: there is no
+	// second, slightly different mask anywhere for colour, normal or height to disagree over.
+	FMixtormatHeightBlend HeightBlend;
+	HeightBlend.Weight = 1.0f;
+	HeightBlend.Height = IncomingHeight;
+	HeightBlend.Base = PreviousHeightValue;
 	if ((HeightBlendEnabled != 0 || (WriteDebug != 0 && DebugMode == 2))
 		&& NormalOnly == 0)
 	{
-		HeightWeight = SampleHeightBlendField(UV, HeightRange);
+		HeightBlend = EvaluateHeightBlend(UV, HeightRange, 0);
 	}
-	float HeightCoverage = DirectHeightComparison != 0
+	float HeightWeight = HeightBlend.Weight;
+
+	// Coverage in two parts, because only the first can take part in a height contest.
+	//
+	// SurfaceCoverage is opacity and the placement mask. Under BLEND the contest has already
+	// consumed both -- they entered as a height penalty -- so its winner *is* the coverage, and
+	// multiplying the mask back on here would apply it twice. Under OVER there is no contest and
+	// it is ordinary opacity/mask compositing.
+	float SurfaceCoverage = UseHeightBlendMask != 0
 		? HeightWeight
-		: lerp(1.0f, HeightWeight, saturate(GetHeightBlendAmount(UV)));
-	float Alpha = saturate(ExistingCoverage * HeightCoverage);
+		: saturate(Opacity * PlacementMask);
+
+	// NonHeightCoverage is everything that is not a surface competing for the same space: the
+	// generated feature masks and whatever an effect has already carved away. It gates every
+	// channel including the height, so the height and the material channels never see different
+	// masks.
+	float NonHeightCoverage = Enabled != 0
+		? saturate(SurfaceMaskWeight * EffectKeep)
+		: 0.0f;
+
+	float Alpha = saturate(SurfaceCoverage * NonHeightCoverage);
 	float Coat = CompositionMode != 0 ? 1.0f : 0.0f;
 	float ReplaceWeight = Alpha * (1.0f - Coat);
 	// Base colour is the one channel a coat only tints: the film is thin, so what is under it
@@ -1055,11 +1190,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float3 CombinedNormal = BlendReorientedNormals(PreviousNormal, WeightedDetail);
 	float3 OverriddenNormal = normalize(lerp(PreviousNormal, SampledNormal, NormalWeight));
 	float3 LayerResultNormal = OverrideNormal != 0 ? OverriddenNormal : CombinedNormal;
-	float HeightVisibility = DirectHeightComparison != 0
-		? HeightWeight
-		: lerp(1.0f, HeightWeight, saturate(GetHeightBlendAmount(UV)));
+	// Effects ride the surface's own visibility rather than a third coverage of their own.
+	// Under BLEND that is the contest winner, which already carries opacity and the mask; under
+	// OVER it is the opacity the effect path has always used.
 	float EffectVisibility = Enabled != 0 && HasEffects != 0
-		? saturate(Opacity * FeatureWeight * HeightVisibility)
+		? saturate((UseHeightBlendMask != 0 ? HeightWeight : Opacity) * FeatureWeight)
 		: 0.0f;
 	float EffectNormalVisibility = EffectVisibility * saturate(NormalInfluence);
 	float3 WeightedEffectNormal = normalize(float3(
@@ -1105,12 +1240,39 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float LayerResultHeight = PreviousHeightValue;
 		if (UseHeightBlendMask != 0)
 		{
-			float BaseHeight = InvertHeight != 0
-				? 1.0f - PreviousHeightValue
-				: PreviousHeightValue;
-			float A = BaseHeight + HeightBias;
-			float B = IncomingHeight + HeightOffset;
-			LayerResultHeight = lerp(A, B, Alpha);
+			// Height Mask Blending: the contest decided coverage, so the height it chose is
+			// faded back toward the base by the coverage that took no part in it. Expanding this
+			// gives lerp(A, B, Alpha) plus the smooth-max fillet scaled by the same factor, so
+			// the height is weighted by exactly the Alpha every material channel above used.
+			LayerResultHeight = lerp(HeightBlend.Base, HeightBlend.Height, NonHeightCoverage);
+		}
+		else if (SmoothHeightMerge != 0)
+		{
+			// BLEND. The heights merge; nothing else about the composite changes.
+			//
+			// A polynomial smooth maximum of the surface below and this layer's, at the layer's
+			// Softness:
+			//
+			//     W = saturate(0.5 + 0.5 * (B - A) / K)
+			//     M = lerp(A, B, W) + K * W * (1 - W)
+			//
+			// M is smax(A, B, K). Where the two surfaces intersect a cross-fade returns their
+			// average, so a crossing reads as a crease pressed flat; this keeps the upper surface
+			// and rounds the join over by at most K/4. Far from the crossing the fillet vanishes
+			// and the result is exactly max(A, B) -- the layer adds material on top of what is
+			// beneath it and never digs into it. A layer that should cut the height down is OVER.
+			//
+			// Coverage is deliberately absent from the merge. Alpha here is the ordinary
+			// opacity-and-mask coverage every other channel uses, applied to the merged surface
+			// afterwards, which is what keeps BLEND from moving base colour, roughness, AO,
+			// metallic, F0 or the normal's weight. Height deciding *visibility* is Height Mask
+			// Blending, armed separately and by the artist rather than by this badge.
+			const float K = max(HeightRange, 1.0e-6f);
+			const float W = saturate(
+				0.5f + 0.5f * (IncomingHeight - PreviousHeightValue) / K);
+			const float Merged =
+				lerp(PreviousHeightValue, IncomingHeight, W) + K * W * (1.0f - W);
+			LayerResultHeight = lerp(PreviousHeightValue, Merged, Alpha);
 		}
 		else
 		{

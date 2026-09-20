@@ -1,0 +1,90 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#pragma once
+
+// One definition of "height -> normal" for the whole plugin.
+//
+// The rule every structural effect is meant to follow is:
+//
+//     effect writes HEIGHT
+//             |
+//     one shared height->normal function
+//             |
+//     RNM-combine with the previous normal
+//
+// The part that matters is not that everyone uses a Sobel -- everyone already did -- but that
+// everyone uses the same *units*. Before this header there were three incompatible conventions
+// living side by side, and the difference between them is three orders of magnitude:
+//
+//     Sobel / 8                   pixel-space gradient   erosion, craquelure relief,
+//                                                        region relief, worn edges, the shared
+//                                                        MixtormatHeightDeltaNormal pass
+//     Sobel                       un-normalised          worn edges' internal normal path
+//     Sobel / 8 * OutputSize      UV-space gradient      peeling, border lift
+//
+// A pixel-space gradient is the height difference between neighbouring texels, which is a slope
+// only if one texel happens to be one height unit wide. A UV-space gradient is the other extreme:
+// it assumes a height of 1 spans the entire tile. At 2K the second is about 256x the first, which
+// is exactly why peel relief read as near-vertical walls while erosion and craquelure read as
+// almost flat -- the same height field, differentiated in two different worlds.
+//
+// The convention here is the middle one, and it is resolution-independent: the gradient is scaled
+// by the texel count relative to a 1024 reference. A continuous height field then produces the
+// same surface slope whatever resolution it is rasterised at, which the other two do not.
+//
+//     1024 -> 1x      2048 -> 2x      4096 -> 4x
+//
+// 1024 is the reference rather than 1 so that the shared pass's existing look is preserved where
+// it was authored: its old gain was Sobel * (NormalStrength / 8) with NormalStrength pinned at 8,
+// i.e. Sobel * 1, which is what this returns at 1024 with a neutral strength. Materials authored
+// at 1K do not move; above 1K relief deepens, because that is the resolution independence.
+//
+// Strength stays neutral at 1. A structural effect's relief depth belongs in the height it writes,
+// not in a private gain on its derivative -- that is what let each effect drift in the first place.
+
+#define MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES 1024.0f
+
+// Sobel over a 3x3 neighbourhood, converted to the shared slope units.
+//
+// Taps are named by their offset: M is -1, 0 is centre, P is +1, x first. The centre tap is not
+// read -- a Sobel does not use it -- so it is not in the signature.
+float2 MixtormatHeightGradient(
+	float hMM, float h0M, float hPM,
+	float hM0,            float hP0,
+	float hMP, float h0P, float hPP,
+	int2 OutputSize,
+	float Strength)
+{
+	const float2 Sobel = float2(
+		(hPM + 2.0f * hP0 + hPP) - (hMM + 2.0f * hM0 + hMP),
+		(hMP + 2.0f * h0P + hPP) - (hMM + 2.0f * h0M + hPM));
+
+	return Sobel
+		* (float2(OutputSize) / MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES)
+		* Strength;
+}
+
+// The tangent-space normal of a height field with the given gradient.
+//
+// Negated, because the normal of a height field h is (-dh/dx, -dh/dy, 1): a surface rising to the
+// right tilts its normal to the left. Getting this sign wrong is what makes relief read
+// inside-out -- a raised feature lighting as though it were sunk.
+float3 MixtormatNormalFromHeightGradient(float2 Gradient)
+{
+	return normalize(float3(-Gradient.x, -Gradient.y, 1.0f));
+}
+
+// Central-difference variant, for passes that sample a field rather than load a neighbourhood.
+// Scaled to agree with the Sobel above: a Sobel over a linear ramp of per-texel step d evaluates
+// to 8d, so a central difference of 2d needs the same factor of four to land in the same units.
+float2 MixtormatHeightGradientCentral(
+	float hM0, float hP0,
+	float h0M, float h0P,
+	int2 OutputSize,
+	float Strength)
+{
+	return float2(hP0 - hM0, h0P - h0M)
+		* 4.0f
+		* (float2(OutputSize) / MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES)
+		* Strength;
+}

@@ -271,9 +271,15 @@ private:
 	TSharedRef<SWidget> BuildGridModeMenu();
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
+	FReply AddCombineIdToLayer(int32 LayerIndex);
+	FMixtormatCombineIdFilter* GetSelectedCombineId();
+	const FMixtormatCombineIdFilter* GetSelectedCombineId() const;
 	FMixtormatRampIdFilter* GetSelectedRampId();
 	const FMixtormatRampIdFilter* GetSelectedRampId() const;
 	TSharedRef<SWidget> BuildRampIdControls();
+	TSharedRef<SWidget> BuildCombineIdControls();
+	TSharedRef<SWidget> BuildCombineIdModeMenu();
+	TSharedRef<SWidget> BuildCombineIdModeMenuFor(int32 LayerIndex, int32 ChildIndex);
 
 	FReply AddRandomIdToLayer(int32 LayerIndex);
 	FMixtormatRandomIdMask* GetSelectedRandomId();

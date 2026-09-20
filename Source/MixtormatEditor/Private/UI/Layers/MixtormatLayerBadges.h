@@ -30,8 +30,8 @@ namespace MixtormatLayerBadges
 	// into the four words the design uses -- the same four the badge prints.
 	enum class EComposition : uint8
 	{
-		Blend,   // Replace + Combine  -- reoriented onto the normal below
-		Over,    // Replace + Override -- replaces the normal outright
+		Blend,   // Replace + Combine  -- heights merged, normal reoriented onto the one below
+		Over,    // Replace + Override -- heights cross-faded, normal replaces the one below
 		Coat,    // sits over what is below
 		Detail,  // contributes normal only
 	};
@@ -53,8 +53,14 @@ namespace MixtormatLayerBadges
 	//
 	//   NormalDetail channel        -> DETAIL   contributes normal only
 	//   Coat composition            -> COAT     sits over what is below
-	//   Replace + Override normals  -> OVER     replaces the normal outright
-	//   Replace + Combine normals   -> BLEND    reoriented onto the normal below
+	//   Replace + Override normals  -> OVER     heights cross-faded, normal replaced
+	//   Replace + Combine normals   -> BLEND    heights merged, normal reoriented
+	//
+	// BLEND and OVER differ in how the height channel is composited and in how the normal is
+	// combined -- and in nothing else. Coverage is identical: base colour, roughness, AO, metallic
+	// and F0 see the same opacity and mask either way. Height driving *coverage* is a separate,
+	// independently armed feature (bHeightBlendEnabled, Height Mask Blending) that neither choice
+	// switches on.
 	FText ForLayer(const FMixtormatLayer& Layer);
 
 	// The colour blend mark, and empty when the mode is Normal.

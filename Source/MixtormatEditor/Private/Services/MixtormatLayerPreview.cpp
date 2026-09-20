@@ -8,6 +8,7 @@
 #include "MixtormatSurface.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAdd.h"
+#include "Materials/MaterialExpressionAppendVector.h"
 #include "Materials/MaterialExpressionClamp.h"
 #include "Materials/MaterialExpressionComponentMask.h"
 #include "Materials/MaterialExpressionConstant.h"
@@ -167,6 +168,31 @@ namespace MixtormatLayerPreview
 	{
 		UMaterialExpressionOneMinus* Expression = AddExpression<UMaterialExpressionOneMinus>(Material);
 		Expression->Input.Expression = Input;
+		return Expression;
+	}
+
+	// The tangent pair on its own, so the normal's slope can be scaled without touching Z.
+	UMaterialExpressionComponentMask* ChannelsRG(UMaterial& Material, UMaterialExpression* Input)
+	{
+		UMaterialExpressionComponentMask* Expression =
+			AddExpression<UMaterialExpressionComponentMask>(Material);
+		Expression->Input.Expression = Input;
+		Expression->R = true;
+		Expression->G = true;
+		Expression->B = false;
+		Expression->A = false;
+		return Expression;
+	}
+
+	UMaterialExpressionAppendVector* Append(
+		UMaterial& Material,
+		UMaterialExpression* A,
+		UMaterialExpression* B)
+	{
+		UMaterialExpressionAppendVector* Expression =
+			AddExpression<UMaterialExpressionAppendVector>(Material);
+		Expression->A.Expression = A;
+		Expression->B.Expression = B;
 		return Expression;
 	}
 
@@ -333,13 +359,21 @@ namespace MixtormatLayerPreview
 			Material,
 			ParameterName(LayerIndex, TEXT("NormalIntensity")),
 			1.0f);
-		UMaterialExpression* BlendedNormal = Lerp(
-			Material,
-			Constant3(Material, FLinearColor(0.0f, 0.0f, 1.0f)),
-			NormalSample,
-			NormalStrength);
+
+		// Scale the tangent slope, matching MixtormatScaleNormalSlope in MixtormatComposite.usf:
+		// XY against an untouched Z, so |xy|/z -- the tangent of the normal's tilt -- scales
+		// directly and the preview means the same thing by "strength" that the composite does.
+		//
+		// This was a lerp from flat toward the sampled normal, which agrees with a slope scale
+		// only at 0 and 1. In between it is a different curve, and above 1 it extrapolates Z
+		// downward and past zero, so the preview would have inverted where the composite
+		// steepened. The sampler is SAMPLERTYPE_Normal, so the sample is already in -1..1.
+		UMaterialExpression* ScaledTangent = Multiply(
+			Material, ChannelsRG(Material, NormalSample), NormalStrength);
+		UMaterialExpression* ScaledNormal = Append(
+			Material, ScaledTangent, Channel(Material, NormalSample, 2));
 		UMaterialExpressionNormalize* NormalizedNormal = AddExpression<UMaterialExpressionNormalize>(Material);
-		NormalizedNormal->VectorInput.Expression = BlendedNormal;
+		NormalizedNormal->VectorInput.Expression = ScaledNormal;
 		Result.Normal = NormalizedNormal;
 
 		UMaterialExpressionTextureCoordinate* MaskCoordinates =
@@ -537,15 +571,15 @@ void FMixtormatLayerPreview::ApplyLayers(
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessBias"), Layer ? Layer->RoughnessBias : 0.5f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessContrast"), Layer ? Layer->RoughnessContrast : 0.0f);
 		SetScalar(MaterialInstance, LayerIndex, TEXT("RoughnessOffset"), Layer ? Layer->RoughnessOffset : 0.0f);
-		// Neutral for any surface layer, not Height Booster: the preview has to agree with the
-		// GPU composite, which no longer gains the authored normal by the booster. A Fill layer
-		// has no normal map to show, so it stays flat at zero.
+		// The layer's authored Normal Strength, not Height Booster: the preview has to agree with
+		// the GPU composite, which gains the authored normal by this and by nothing else. A Fill
+		// layer has no normal map to show, so it stays flat at zero.
 		SetScalar(
 			MaterialInstance,
 			LayerIndex,
 			TEXT("NormalIntensity"),
 			Layer && Layer->Type != EMixtormatLayerType::Fill
-				? MixtormatRelief::SourceNormalScale(Layer->HeightBoost)
+				? MixtormatRelief::AuthoredNormalScale(Layer->NormalIntensity)
 				: 0.0f);
 
 		SetScalar(MaterialInstance, LayerIndex, TEXT("OverrideBaseColor"), Layer && Layer->bOverrideBaseColor ? 1.0f : 0.0f);

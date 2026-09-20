@@ -41,11 +41,15 @@ namespace MixtormatReliefScalingTests
 		return FVector2d(Normal.X, Normal.Y).Length() / FMath::Max(Normal.Z, 1.0e-6);
 	}
 
-	// MixtormatComposite.usf: DecodeNormal. A two-channel map, gained, Z rebuilt.
-	inline FVector3d DecodeNormal(const FVector2d& EncodedXY, const double Intensity)
+	// MixtormatComposite.usf: DecodeNormal. A two-channel map decoded to a unit normal, then its
+	// tangent slope scaled -- in that order, which is what lets a strength above 1 steepen the
+	// normal instead of pinning Z at zero. At strength 1, the only value SourceNormalScale can
+	// return, this is identical to the gain-then-rebuild form it replaced, so nothing asserted in
+	// this file moves. Mixtormat.Relief.NormalStrength covers the orders diverging above 1.
+	inline FVector3d DecodeNormal(const FVector2d& EncodedXY, const double Strength)
 	{
-		const FVector2d XY = EncodedXY * Intensity;
-		return FVector3d(XY.X, XY.Y, FMath::Sqrt(FMath::Max(1.0 - XY.SizeSquared(), 0.0)))
+		const double Z = FMath::Sqrt(FMath::Max(1.0 - EncodedXY.SizeSquared(), 0.0));
+		return FVector3d(EncodedXY.X * Strength, EncodedXY.Y * Strength, FMath::Max(Z, 1.0e-4))
 			.GetSafeNormal();
 	}
 

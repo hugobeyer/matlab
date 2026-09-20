@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHeightNormal.ush"
 
 Texture2D<float4> PreviousEffectData;
 Texture2D<float> ChildMask;
@@ -26,6 +27,7 @@ float MicroMorph;
 float Thickness;
 float Lift;
 float DetailStrength;
+float NormalStrength;
 
 float ProceduralAOStrength;
 float HeightAmount;
@@ -197,36 +199,30 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		PeelScaledHeight(
 			p + int2(1, 1));
 
-	// Sobel derivative in UV space.
-	// The previous version missed the OutputSize scaling here,
-	// which made the generated normal almost flat.
-	float gx =
-		(
-			hpm
-			+ 2.0f * hp0
-			+ hpp
-			- hmm
-			- 2.0f * hm0
-			- hmp)
-		* ((float)OutputSize.x / 8.0f);
-
-	float gy =
-		(
-			hmp
-			+ 2.0f * h0p
-			+ hpp
-			- hmm
-			- 2.0f * h0m
-			- hpm)
-		* ((float)OutputSize.y / 8.0f);
+	// The shared height->normal convention. See MixtormatHeightNormal.ush.
+	//
+	// This pass used to scale the Sobel by OutputSize/8 -- a UV-space gradient, which assumes a
+	// height of 1 spans the whole tile. That is roughly 256x the gain every other structural pass
+	// uses at 2K, and it is why peel relief read as near-vertical walls while erosion, craquelure
+	// and region relief read as nearly flat: the same height field, differentiated in two
+	// different worlds. It was resolution-dependent as well, so a peel authored at 1K changed
+	// shape when the same material was rendered at 4K.
+	//
+	// The comment that used to sit here said the OutputSize scaling had been *missing* and that
+	// the normal was "almost flat" without it. The flatness was real, but it belonged to the
+	// pixel-space convention the rest of the plugin shares; multiplying by the resolution
+	// overshot it by three orders of magnitude rather than correcting it.
+	float2 reliefGradient =
+		MixtormatHeightGradient(
+			hmm, h0m, hpm,
+			hm0,      hp0,
+			hmp, h0p, hpp,
+			OutputSize,
+			NormalStrength);
 
 	float3 reliefNormal =
 		enabled > 0.0f
-		? normalize(
-			float3(
-				-gx,
-				-gy,
-				1.0f))
+		? MixtormatNormalFromHeightGradient(reliefGradient)
 		: float3(
 			0.0f,
 			0.0f,

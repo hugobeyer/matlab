@@ -22,6 +22,10 @@ namespace MixtormatLayerBadges
 		}
 		// Replace is the only mode left, so the normal blend distinguishes the two that remain:
 		// Over discards the normal below, Blend reorients onto it.
+		//
+		// Deliberately not read from bHeightBlendEnabled. That flag arms Height Mask Blending,
+		// where the height decides *coverage* and drags a dozen authored controls with it, and
+		// it is an independent opt-in. BLEND merges heights; it does not turn that feature on.
 		return Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override
 			? EComposition::Over
 			: EComposition::Blend;
@@ -74,8 +78,8 @@ namespace MixtormatLayerBadges
 	TArray<FText> CompositionToolTips()
 	{
 		return {
-			LOCTEXT("CompositionBlendHint", "Reorient this layer's normal onto the surface below (RNM), through the layer mask."),
-			LOCTEXT("CompositionOverHint", "Replace the normal below with this layer's, through the layer mask."),
+			LOCTEXT("CompositionBlendHint", "Merge this layer's height with the surface below instead of cross-fading it, so an intersection keeps the upper surface rather than sinking to the average. Its normal reorients onto what is below (RNM). Coverage is unchanged: base colour, roughness, AO, metallic and F0 composite exactly as they do under OVER."),
+			LOCTEXT("CompositionOverHint", "Cross-fade this layer's height with the surface below, and replace the normal below with this layer's. Ordinary opacity and mask compositing throughout."),
 			LOCTEXT("CompositionCoatHint", "Sit this layer over what is below rather than blending into it."),
 			LOCTEXT("CompositionDetailHint", "Contribute only a normal. The layer's other channels are ignored."),
 		};
@@ -180,6 +184,14 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.ColorId.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::CombineId)
+		{
+			// The mode, not the category: two of these in a row differ by exactly this, and
+			// which one a row is doing is what the column is scanned for.
+			return Child.CombineId.Mode == EMixtormatIdCombineMode::Subtract
+				? LOCTEXT("CombineIdBadgeSubtract", "SUB")
+				: LOCTEXT("CombineIdBadgeMerge", "MERGE");
+		}
 		if (Child.Type == EMixtormatLayerChildType::Filter
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
@@ -234,6 +246,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
 		case EMixtormatLayerChildType::Filter:    return LOCTEXT("ChildKindFilter", "FILT");
 		case EMixtormatLayerChildType::PatternId: return LOCTEXT("ChildKindPatternId", "PAT");
+		case EMixtormatLayerChildType::CombineId: return LOCTEXT("ChildKindCombineId", "CMB");
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");

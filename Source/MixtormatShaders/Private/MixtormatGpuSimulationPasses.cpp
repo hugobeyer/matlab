@@ -36,6 +36,7 @@ public:
 		SHADER_PARAMETER(float, Thickness)
 		SHADER_PARAMETER(float, Lift)
 		SHADER_PARAMETER(float, DetailStrength)
+		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousEffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
 		SHADER_PARAMETER(float, ProceduralAOStrength)
@@ -113,6 +114,11 @@ public:
 		SHADER_PARAMETER(float, Lift)
 		SHADER_PARAMETER(float, DetailStrength)
 		SHADER_PARAMETER(float, LiftVariation)
+		SHADER_PARAMETER(float, CornerLift)
+		SHADER_PARAMETER(float, CornerRadius)
+		SHADER_PARAMETER(float, IDInfluence)
+		SHADER_PARAMETER(uint32, HasRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER(float, EdgeSharpness)
 
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
@@ -591,6 +597,16 @@ namespace MixtormatGpuCompositor
 		// is identical either way apart from which source it reads.
 		FRDGTextureRef PeelFieldA = PeelFieldDummy;
 		FRDGTextureRef PeelFieldB = PeelFieldDummy;
+
+		// The nearest ID map published above this child, exactly as Worn Edges and the region
+		// tint resolve theirs -- so "the IDs" means the same thing wherever it is read.
+		FRDGTextureRef PeelRegionIds =
+			FindRegionIdsAbove(LayerCtx.RegionIdMaps, ChildIndex);
+		const bool bPeelHasRegionIds = PeelRegionIds != nullptr;
+		if (!bPeelHasRegionIds)
+		{
+			PeelRegionIds = Ctx.EmptyRegionIds;
+		}
 		if (Effect.bProceduralPeel)
 		{
 			// Same accumulated state the generated mask reads: the surface
@@ -679,6 +695,14 @@ namespace MixtormatGpuCompositor
 				FP->Lift = Effect.Lift;
 				FP->DetailStrength = Effect.DetailStrength;
 				FP->LiftVariation = Effect.PeelLiftVariation;
+				FP->CornerLift = Effect.PeelCornerLift;
+				FP->CornerRadius = Effect.PeelCornerRadius;
+				// Whatever ID map ran before this peel in the layer's chain. Bound either way --
+				// a 1x1 dummy when the layer has none -- because RDG validates the binding
+				// whether the shader branches on it or not.
+				FP->IDInfluence = Effect.PeelIDInfluence;
+				FP->RegionIds = PeelRegionIds;
+				FP->HasRegionIds = bPeelHasRegionIds ? 1u : 0u;
 				FP->EdgeSharpness = Effect.PeelEdgeSharpness;
 				FP->SurfaceNormal = OutputN[PeelSurfaceIndex];
 				FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
@@ -776,6 +800,9 @@ namespace MixtormatGpuCompositor
 		EffectParameters->DetailStrength = Effect.DetailStrength;
 		EffectParameters->PreviousEffectData = EffectTargets[0];
 		EffectParameters->ChildMask = FeatureMask;
+		// Neutral, and shared with every other structural effect: the peel's relief depth is
+		// carried by Thickness, Lift and Detail Strength, which is where it belongs.
+		EffectParameters->NormalStrength = ReliefNormalStrength;
 		EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
 		EffectParameters->HeightAmount = Effect.PeelHeightAmount;
 		EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;

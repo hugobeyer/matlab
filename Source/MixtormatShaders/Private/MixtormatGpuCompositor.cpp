@@ -150,6 +150,7 @@ public:
 		SHADER_PARAMETER(uint32, OverrideNormal)
 		SHADER_PARAMETER(uint32, FlipNormalY)
 		SHADER_PARAMETER(uint32, HeightBlendEnabled)
+		SHADER_PARAMETER(uint32, SmoothHeightMerge)
 		SHADER_PARAMETER(uint32, HeightSource)
 		SHADER_PARAMETER(uint32, InvertHeight)
 		SHADER_PARAMETER(uint32, DirectHeightComparison)
@@ -712,6 +713,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 		Parameters->HeightBlendEnabled = Layer.bHeightBlendEnabled ? 1u : 0u;
+		Parameters->SmoothHeightMerge = Layer.bSmoothHeightMerge ? 1u : 0u;
 		Parameters->HeightSource = Layer.HeightSource;
 		Parameters->InvertHeight = Layer.bInvertHeight ? 1u : 0u;
 		Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
@@ -1524,6 +1526,26 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				RandomData.Balance = FMath::Clamp(RandomId.Shaping.Balance, 0.0f, 1.0f);
 				RandomData.Contrast = FMath::Clamp(RandomId.Shaping.Contrast, 0.0f, 10.0f);
 				RandomData.Offset = FMath::Clamp(RandomId.Shaping.Offset, -1.0f, 1.0f);
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::CombineId)
+			{
+				const FMixtormatCombineIdFilter& Combine = LayerChild.CombineId;
+				if (!Layer.bEnabled || !Combine.bEnabled)
+				{
+					continue;
+				}
+
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::CombineId;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.CombineId.Amount = FMath::IsFinite(Combine.Amount)
+					? FMath::Clamp(Combine.Amount, 0.0f, 1.0f) : 0.0f;
+				ChildData.CombineId.Seed = static_cast<uint32>(FMath::Max(Combine.Seed, 0));
+				ChildData.CombineId.Passes = FMath::Clamp(Combine.Passes, 1, 8);
+				ChildData.CombineId.bSubtract =
+					Combine.Mode == EMixtormatIdCombineMode::Subtract;
 				continue;
 			}
 
@@ -2541,6 +2563,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.PeelAOStrength = LayerEffect.PeelAOStrength;
 				EffectData.PeelEdgeSharpness = LayerEffect.PeelEdgeSharpness;
 				EffectData.PeelLiftVariation = LayerEffect.PeelLiftVariation;
+				EffectData.PeelCornerLift =
+					FMath::Clamp(LayerEffect.PeelCornerLift, 0.0f, 1.0f);
+				EffectData.PeelCornerRadius =
+					FMath::Clamp(LayerEffect.PeelCornerRadius, 0.05f, 4.0f);
+				EffectData.PeelIDInfluence =
+					FMath::Clamp(LayerEffect.PeelIDInfluence, 0.0f, 1.0f);
 				EffectData.PeelSizeVariation = LayerEffect.PeelSizeVariation;
 				EffectData.PeelClusterPeriod = LayerEffect.PeelClusterPeriod;
 				EffectData.PeelSolveDivisor = LayerEffect.PeelSolveDivisor;
@@ -2593,12 +2621,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.Rotation = static_cast<int32>(Layer.Rotation);
 		Data.bFlipU = Layer.bFlipU;
 		Data.bFlipV = Layer.bFlipV;
-		// Height Booster owns the height and only the height. The authored normal map is micro
-		// detail in its own right, not a picture of the relief, so it stays neutral: tying it to
-		// the booster made a matching height+normal pair carry the same bump twice, once through
-		// the strengthened source normal and again through the normals the structural passes
-		// derive from the boosted height. See MixtormatReliefScaling.h.
-		Data.NormalIntensity = MixtormatRelief::SourceNormalScale(Layer.HeightBoost);
+		// Normal Strength is the authored normal map's own gain, and the only control that
+		// steepens it. Height Booster is deliberately absent: it owns the height and the normals
+		// derived from that height, and tying the two made a matching height+normal pair carry
+		// the same bump twice. Pinning this to a neutral 1.0 removed that double count but left
+		// no way to strengthen an authored map at all, since Normal Influence only attenuates.
+		// See MixtormatReliefScaling.h.
+		Data.NormalIntensity = MixtormatRelief::AuthoredNormalScale(Layer.NormalIntensity);
 		Data.HueShift = FMath::Clamp(Layer.HueShift, -180.0f, 180.0f);
 		Data.Saturation = FMath::Clamp(Layer.Saturation, 0.0f, 2.0f);
 		Data.Value = FMath::Clamp(Layer.Value, 0.0f, 2.0f);
@@ -2691,6 +2720,11 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.bHasNormal = Data.SourceOutputs.IsValid() || LayerNormal != nullptr;
 		Data.bNormalOnly = bNormalOnly;
 		Data.bOverrideNormal = Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override;
+		// The same two fields the layer badge reads for BLEND, so the word on the row and the
+		// height arithmetic can never disagree. Coat is excluded: it keeps its own semantics.
+		Data.bSmoothHeightMerge = !bNormalOnly
+			&& Layer.CompositionMode == EMixtormatCompositionMode::Replace
+			&& Layer.NormalBlendMode == EMixtormatNormalBlendMode::Combine;
 		Data.bFlipNormalY = Layer.bFlipNormalY;
 	}
 

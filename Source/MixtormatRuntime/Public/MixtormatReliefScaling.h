@@ -42,11 +42,27 @@ namespace MixtormatRelief
 		return FMath::Clamp(HeightBoost, 0.0f, MaxHeightBoost);
 	}
 
-	// Gain on the authored/source normal map. Neutral, deliberately independent of the booster:
-	// micro detail is not what the booster deepens.
+	// Gain the booster is allowed to put on the authored/source normal map. Neutral, always:
+	// micro detail is not what the booster deepens. Kept as a named function rather than inlined
+	// as 1.0 so the invariant has somewhere to be read and a reintroduced tie fails here first.
+	// No production call site consults the booster for normal strength any more.
 	inline float SourceNormalScale(const float /*HeightBoost*/)
 	{
 		return 1.0f;
+	}
+
+	// Upper bound on Normal Strength. Generous, because the control is a tangent-slope gain and
+	// the decode stays well conditioned at any positive value; this only stops a typed absurdity.
+	inline constexpr float MaxNormalStrength = 8.0f;
+
+	// The artist-facing strength of the authored normal map, as a tangent-slope gain: 0 is flat,
+	// 1 is the map as authored, 2 doubles its tilt. This is the only control that steepens an
+	// imported normal, and Height Booster is deliberately not in its signature -- the booster owns
+	// the height and the normals derived from that height, and joining the two here is precisely
+	// the double count this header exists to prevent.
+	inline float AuthoredNormalScale(const float NormalStrength)
+	{
+		return FMath::Clamp(NormalStrength, 0.0f, MaxNormalStrength);
 	}
 
 	// Extra gain applied to a height-derived normal on top of the boosted height it is

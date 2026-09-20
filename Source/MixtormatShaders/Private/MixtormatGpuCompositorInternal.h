@@ -151,6 +151,12 @@ namespace MixtormatGpuCompositor
 {
 	// Sobel passes divide this by eight; eight therefore follows the authored height exactly.
 	constexpr float HeightDerivedNormalStrength = 8.0f;
+
+	// Gain for passes that derive their normal through MixtormatHeightNormal.ush, which already
+	// carries the pixel-to-slope conversion. Neutral, because a structural effect's relief depth
+	// belongs in the height it writes rather than in a private gain on its own derivative --
+	// per-effect gains are how the conventions drifted three orders of magnitude apart.
+	constexpr float ReliefNormalStrength = 1.0f;
 	constexpr float BorderHeightDerivedNormalStrength = 1.0f;
 
 	struct FPublishedMaskKey
@@ -296,6 +302,9 @@ namespace MixtormatGpuCompositor
 		float PeelAOStrength = 0.8f;
 		float PeelEdgeSharpness = 1.0f;
 		float PeelLiftVariation = 0.6f;
+		float PeelCornerLift = 0.6f;
+		float PeelCornerRadius = 1.0f;
+		float PeelIDInfluence = 0.0f;
 		float PeelSizeVariation = 0.5f;
 		int32 PeelClusterPeriod = 4;
 		int32 PeelSolveDivisor = 4;
@@ -630,6 +639,17 @@ namespace MixtormatGpuCompositor
 		uint32 Seed = 1;
 	};
 
+	// Combine IDs. Both a consumer and a producer: it reads the nearest map above it and
+	// republishes a coarser one at its own index, so the nearest-producer rule downstream picks
+	// it up exactly as it would a cluster filter or a pattern.
+	struct FCombineIdRenderData
+	{
+		float Amount = 0.35f;
+		uint32 Seed = 0;
+		int32 Passes = 1;
+		bool bSubtract = false;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -646,6 +666,7 @@ namespace MixtormatGpuCompositor
 		FHsvIdFilterRenderData HsvFilter;
 		FRandomIdRenderData RandomId;
 		FRampIdRenderData RampId;
+		FCombineIdRenderData CombineId;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
@@ -750,6 +771,11 @@ namespace MixtormatGpuCompositor
 		bool bHasNormal = false;
 		bool bNormalOnly = false;
 		bool bOverrideNormal = false;
+		// BLEND, as the layer badge defines it: Replace composition with a reoriented normal.
+		// Merges the layer's height with what is below instead of cross-fading it, and touches
+		// no other channel. Distinct from bHeightBlendEnabled, which is Height Mask Blending --
+		// there the height decides coverage, and the artist arms it explicitly.
+		bool bSmoothHeightMerge = false;
 		bool bFlipNormalY = false;
 		bool bHeightBlendEnabled = false;
 		bool bHasPackedHeight = false;

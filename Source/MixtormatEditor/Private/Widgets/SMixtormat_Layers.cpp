@@ -110,6 +110,50 @@ namespace
 		return Depth;
 	}
 
+	// The producer an ID consumer at ChildIndex reads: the last Cluster IDs, Pattern IDs or
+	// Combine IDs node above it.
+	//
+	// The editor-side twin of FindRegionIdsAbove in MixtormatGpuCompositorInternal.h, and it has
+	// to stay in step with it, because what it is used for below is a claim about what the shader
+	// actually reads. Both take the last producer under the index rather than the nearest by
+	// distance, which is the same thing given the array is in child order.
+	int32 FindIdProducerAbove(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		int32 Found = INDEX_NONE;
+		const int32 Limit = FMath::Min(ChildIndex, Children.Num());
+		for (int32 Index = 0; Index < Limit; ++Index)
+		{
+			const EMixtormatLayerChildType Type = Children[Index].Type;
+			if (Type == EMixtormatLayerChildType::Filter
+				|| Type == EMixtormatLayerChildType::PatternId
+				|| Type == EMixtormatLayerChildType::CombineId)
+			{
+				Found = Index;
+			}
+		}
+		return Found;
+	}
+
+	// How far a row is indented, which is not always how deeply it is scoped.
+	//
+	// Scoped children carry a ScopeOwnerChildId and GetScopeDepth counts it. An ID combiner has
+	// no such link and deliberately does not get one: like every other ID consumer in the plugin
+	// it reads the nearest producer above it, so position in the stack is the wiring and there is
+	// nothing to store. Deriving the indent from that same rule gives the row the container read
+	// without inventing state that could fall out of step -- drag the combiner anywhere and the
+	// indent re-derives against whatever is now above it, which is what the compositor will read.
+	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		const int32 Depth = GetScopeDepth(Children, ChildIndex);
+		if (Children.IsValidIndex(ChildIndex)
+			&& Children[ChildIndex].Type == EMixtormatLayerChildType::CombineId
+			&& FindIdProducerAbove(Children, ChildIndex) != INDEX_NONE)
+		{
+			return Depth + 1;
+		}
+		return Depth;
+	}
+
 	bool IsDescendantOf(
 		const TArray<FMixtormatLayerChild>& Children,
 		const int32 ChildIndex,
@@ -1170,6 +1214,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RandomId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RampId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature))
 	{
@@ -1306,6 +1351,8 @@ void SMixtormat::SyncSelectedLayerControls()
 								? LOCTEXT("SelectedRampIdMaps", "RAMP FROM IDS · HEIGHT + NORMAL")
 							: Child.Type == EMixtormatLayerChildType::PatternId
 								? LOCTEXT("SelectedPatternIdMaps", "PATTERN IDS · INTEGER DATA · UV · RELIEF")
+							: Child.Type == EMixtormatLayerChildType::CombineId
+								? LOCTEXT("SelectedCombineIdMaps", "COMBINE IDS · INTEGER DATA")
 								: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
@@ -3029,7 +3076,7 @@ void SMixtormat::RebuildLayerList()
 				.AutoHeight()
 				.Padding(
 					MixtormatTokens::LayerScopeIndent
-						* (1 + GetScopeDepth(Group->Children, ChildIndex)),
+						* (1 + GetDisplayScopeDepth(Group->Children, ChildIndex)),
 					0.0f,
 					0.0f,
 					2.0f)
@@ -3511,6 +3558,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("PatternIdChildName", "Pattern IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::CombineId)
+	{
+		return LOCTEXT("CombineIdChildName", "Combine IDs");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Blur)
 	{
 		// Named for what it does rather than for the mask it is on: the row sits indented under
@@ -3596,7 +3647,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 					|| Child.Type == EMixtormatLayerChildType::HsvFilter
 					|| Child.Type == EMixtormatLayerChildType::RandomId
 					|| Child.Type == EMixtormatLayerChildType::RampId
-					|| Child.Type == EMixtormatLayerChildType::PatternId)
+					|| Child.Type == EMixtormatLayerChildType::PatternId
+					|| Child.Type == EMixtormatLayerChildType::CombineId)
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
@@ -3875,6 +3927,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::RandomId:    Child.RandomId.bEnabled = !Child.RandomId.bEnabled; break;
 	case EMixtormatLayerChildType::RampId:      Child.RampId.bEnabled = !Child.RampId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
+	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
 	default:                                    Child.Mask.bEnabled = !Child.Mask.bEnabled; break;
 	}
 	RefreshLayeredPreview();
@@ -3895,6 +3948,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::RandomId:    return Child.RandomId.bEnabled;
 	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
+	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
 	default:                                    return Child.Mask.bEnabled;
 	}
 }
@@ -4217,6 +4271,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAddFilterMenu(const FGuid GroupId)
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatLayerChildType::PatternId },
 		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatLayerChildType::HsvFilter },
 		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatLayerChildType::RampId },
+		{ LOCTEXT("AddCombineIdChild", "Combine IDs"), EMixtormatLayerChildType::CombineId },
 	};
 	for (const TPair<FText, EMixtormatLayerChildType>& Filter : Filters)
 	{
@@ -4539,13 +4594,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
 			|| Child.Type == EMixtormatLayerChildType::RandomId
 			|| Child.Type == EMixtormatLayerChildType::RampId
-			|| Child.Type == EMixtormatLayerChildType::PatternId;
+			|| Child.Type == EMixtormatLayerChildType::PatternId
+			|| Child.Type == EMixtormatLayerChildType::CombineId;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Container->AddChild(
 			SNew(SBox)
 			.Padding(FMargin(
-				GetScopeDepth(Layer.Children, ChildIndex) * MixtormatTokens::LayerScopeIndent,
+				GetDisplayScopeDepth(Layer.Children, ChildIndex) * MixtormatTokens::LayerScopeIndent,
 				0.0f,
 				0.0f,
 				0.0f))
@@ -4658,6 +4714,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
 	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
+	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
 	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
@@ -4877,6 +4934,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddFilterMenu(const int32 LayerIndex)
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRampIdToLayer(LayerIndex); }))
 		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	Menu.Item(
+		LOCTEXT("AddCombineIdChild", "Combine IDs"),
+		MixtormatIcons::Generated(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCombineIdToLayer(LayerIndex); }))
+		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
 	return Menu.Build();
 }
 
@@ -5046,7 +5108,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
-		|| RowType == EMixtormatLayerChildType::PatternId;
+		|| RowType == EMixtormatLayerChildType::PatternId
+		|| RowType == EMixtormatLayerChildType::CombineId;
 
 	if (RowType == EMixtormatLayerChildType::PatternId)
 	{
@@ -5066,6 +5129,17 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			LOCTEXT("GeneratedBlendModeContext", "Blend Mode"),
 			nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex));
+		Menu.Separator();
+	}
+	// Merge against Subtract is the one thing about a combiner worth switching without going to
+	// the inspector first, because the two read so differently on the same map.
+	if (RowType == EMixtormatLayerChildType::CombineId)
+	{
+		Menu.SubMenu(
+			LOCTEXT("CombineModeContext", "Combine Mode"),
+			nullptr,
+			FOnGetContent::CreateSP(
+				this, &SMixtormat::BuildCombineIdModeMenuFor, LayerIndex, ChildIndex));
 		Menu.Separator();
 	}
 	Menu.Item(
@@ -5106,6 +5180,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::PatternId:
 			RemoveLabel = LOCTEXT("RemovePatternIdChild", "Remove Pattern IDs");
+			break;
+		case EMixtormatLayerChildType::CombineId:
+			RemoveLabel = LOCTEXT("RemoveCombineIdChild", "Remove Combine IDs");
 			break;
 		default:
 			break;
@@ -5807,6 +5884,43 @@ const FMixtormatPatternFilter* SMixtormat::GetSelectedPatternId() const
 	return Child.Type == EMixtormatLayerChildType::PatternId ? &Child.PatternId : nullptr;
 }
 
+FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::CombineId;
+	SetLayerExpanded(LayerIndex, true);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId()
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::CombineId ? &Child.CombineId : nullptr;
+}
+
+const FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId() const
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::CombineId ? &Child.CombineId : nullptr;
+}
+
 FReply SMixtormat::AddRampIdToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -5991,7 +6105,8 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::HsvFilter
 		&& ChildType != EMixtormatLayerChildType::RandomId
 		&& ChildType != EMixtormatLayerChildType::RampId
-		&& ChildType != EMixtormatLayerChildType::PatternId)
+		&& ChildType != EMixtormatLayerChildType::PatternId
+		&& ChildType != EMixtormatLayerChildType::CombineId)
 	{
 		return FReply::Handled();
 	}
@@ -6066,6 +6181,9 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::PatternId:
 		Child.PatternId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::CombineId:
+		Child.CombineId.bEnabled = bEnabled;
 		break;
 	default:
 		return;

@@ -225,6 +225,12 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpShape", "Peel Shape")));
 	AddPeelSlider(Panel, LOCTEXT("PPeelLiftVar", "Lift Variation"), &FMixtormatLayerEffect::PeelLiftVariation, 0.0, 1.0, 0.6, 0.01);
+	AddPeelSlider(Panel, LOCTEXT("PPeelCornerLift", "Corner Lift"), &FMixtormatLayerEffect::PeelCornerLift, 0.0, 1.0, 0.6, 0.01,
+		LOCTEXT("PPeelCornerLiftHint", "Extra lift on corners and tongues of the remaining sheet. Measured by the structure tensor of the peel front, so it responds to the gradient direction actually changing rather than to curvature -- a long gentle arc is not a corner."));
+	AddPeelSlider(Panel, LOCTEXT("PPeelCornerRadius", "Corner Radius"), &FMixtormatLayerEffect::PeelCornerRadius, 0.05, 4.0, 1.0, 0.05,
+		LOCTEXT("PPeelCornerRadiusHint", "Size of the window the corner detector looks through, as a multiple of the curl length. Wider responds to broader features and spreads the boost further back from the tip, so bigger pieces of sheet lift rather than only their sharpest points."));
+	AddPeelSlider(Panel, LOCTEXT("PPeelIDInfluence", "ID Influence"), &FMixtormatLayerEffect::PeelIDInfluence, 0.0, 1.0, 0.0, 0.01,
+		LOCTEXT("PPeelIDInfluenceHint", "Bias the peel toward the boundaries of the ID map above it -- a cluster filter, a pattern, random or colour IDs. A weight rather than a gate: low values make the peel prefer seams, high values confine it to them. 0 ignores the ID map entirely."));
 	AddPeelSlider(Panel, LOCTEXT("PPeelSizeVar", "Size Variation"), &FMixtormatLayerEffect::PeelSizeVariation, 0.0, 1.0, 0.5, 0.01,
 		LOCTEXT("PPeelSizeVarHint", "Per-cell speed factor. Set this to 0 as well as the adhesion weights to check that the field dilates uniformly."));
 	AddPeelSliderInt(Panel, LOCTEXT("PPeelDamageScale", "Damage Scale"), &FMixtormatLayerEffect::PeelClusterPeriod, 1.0, 128.0, 4,
@@ -2391,6 +2397,139 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const TPair<FText, EMixtormatIdCombineMode> Modes[] = {
+		{ LOCTEXT("CombineModeMerge", "Merge"), EMixtormatIdCombineMode::Merge },
+		{ LOCTEXT("CombineModeSubtract", "Subtract"), EMixtormatIdCombineMode::Subtract },
+	};
+	for (const TPair<FText, EMixtormatIdCombineMode>& Entry : Modes)
+	{
+		Menu.Item(
+			Entry.Key,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode = Entry.Value]()
+			{
+				if (FMixtormatCombineIdFilter* C = GetSelectedCombineId())
+				{
+					C->Mode = Mode;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode = Entry.Value]()
+			{
+				const FMixtormatCombineIdFilter* C = GetSelectedCombineId();
+				return C && C->Mode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+// The same two choices, bound to a named row rather than to the selection. The row menu is
+// built on right-click for whatever row was clicked, which is not necessarily the selected one.
+TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenuFor(
+	const int32 LayerIndex,
+	const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TPair<FText, EMixtormatIdCombineMode> Modes[] = {
+		{ LOCTEXT("CombineModeMerge", "Merge"), EMixtormatIdCombineMode::Merge },
+		{ LOCTEXT("CombineModeSubtract", "Subtract"), EMixtormatIdCombineMode::Subtract },
+	};
+	for (const TPair<FText, EMixtormatIdCombineMode>& Entry : Modes)
+	{
+		Menu.Item(
+			Entry.Key,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode = Entry.Value]()
+			{
+				if (FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex))
+				{
+					if (Child->Type == EMixtormatLayerChildType::CombineId)
+					{
+						Child->CombineId.Mode = Mode;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode = Entry.Value]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex);
+				return Child
+					&& Child->Type == EMixtormatLayerChildType::CombineId
+					&& Child->CombineId.Mode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
+{
+	const auto Combine = [this]() { return GetSelectedCombineId(); };
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("CombineModeLabel", "Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatCombineIdFilter* C = GetSelectedCombineId();
+				if (!C)
+				{
+					return FText::GetEmpty();
+				}
+				return C->Mode == EMixtormatIdCombineMode::Subtract
+					? LOCTEXT("CombineModeSubtract", "Subtract")
+					: LOCTEXT("CombineModeMerge", "Merge");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCombineIdModeMenu)),
+		LOCTEXT("CombineModeHint", "Merge draws once per neighbouring pair and joins them, so the whole map comes out coarser with its shapes still in family. Subtract draws whole regions and dissolves the chosen ones into whatever they border, so the survivors keep their exact outline and the map reads as pieces removed from it.")));
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCombineIdFilter>(
+		LOCTEXT("CombineAmount", "Amount"), Combine, &FMixtormatCombineIdFilter::Amount, 0.0, 1.0, 0.35, 0.01,
+		LOCTEXT("CombineAmountHint", "Chance that any one candidate takes. 0 passes the ID map through untouched; 1 collapses every region that touches another into a single one.")));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatCombineIdFilter>(
+		LOCTEXT("CombinePasses", "Passes"), Combine, &FMixtormatCombineIdFilter::Passes, 1.0, 8.0, 1,
+		LOCTEXT("CombinePassesHint", "How many rounds of merging run -- the unsubdivide depth. Each round draws with its own salt and tests the regions the previous round produced, so raising it keeps coarsening rather than re-deciding the same pairs. Two rounds at a low Amount grows clusters of clusters; one round at a high Amount grows one big cluster.")));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatCombineIdFilter>(
+		LOCTEXT("CombineSeed", "Seed"), Combine, &FMixtormatCombineIdFilter::Seed, 0.0, 64.0, 0,
+		LOCTEXT("CombineSeedHint", "Reshuffles which regions join without changing how many do. Independent of the seed on whatever produced the IDs, so reseeding here does not re-segment.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedCombineId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("CombineIdHeading", "COMBINE IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatCombineIdFilter* Selected = GetSelectedCombineId();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						if (FMixtormatCombineIdFilter* Selected = GetSelectedCombineId())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("CombineEnabledHint", "Enable this ID combiner")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -3625,13 +3764,18 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
-	// Relief owns the layer's depth control plus its vertical offset. Depth, not normal strength:
-	// the booster shapes the height and the normals reconstructed from it, and deliberately
-	// leaves an authored normal map alone.
+	// Relief owns the layer's depth controls and, next to them, the authored normal map's own
+	// strength. The two sit together because the question "why is my normal map flat" is answered
+	// by one of them and not the other: Height Booster shapes the height and the normals
+	// reconstructed from it, Normal Strength shapes the imported map, and neither reaches the
+	// other's territory.
 	TSharedRef<SVerticalBox> Relief = AddCard(Panel, LOCTEXT("CardRelief", "Relief"));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("HeightBoostHint", "Gain on this layer's height. 1 is untouched; 0 flattens it; values above 1 deepen the relief and, with it, the normals derived from that height. An imported normal map is left at its authored strength, so a surface whose height and normal describe the same relief is not deepened twice. Applied before displacement, height blending, and derived normals. Not Height Influence, which controls how much of this layer reaches the composite.")));
+	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("NormalStrengthLabel", "Normal Strength"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("NormalStrengthHint", "Strength of this layer's imported normal map, as a slope gain. 1 is the map exactly as authored, 0 flattens it, and above 1 steepens its tilt. The only control that can strengthen an authored normal -- Normal Influence runs 0..1 and can only fade one out. Not Height Booster, which deepens this layer's height and the normals reconstructed from that height; a surface whose height and normal describe the same relief would otherwise carry it twice.")));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));
@@ -4078,7 +4222,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				NumericRow(LOCTEXT("HeightMaskStrength", "Mask Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
+				NumericRow(LOCTEXT("HeightMaskStrength", "Blend Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
@@ -4350,7 +4494,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectInspectorControls()
 	AddFloatControl(Panel, LOCTEXT("PeelingMicroWarp", "Micro Warp"), &FMixtormatLayerEffect::MicroWarp, -1.0f, 1.0f, 0.001f, 0.003f);
 	AddFloatControl(Panel, LOCTEXT("PeelingCurlLength", "Curl Length"), &FMixtormatLayerEffect::MicroMorph, 0.0f, 1.0f, 0.01f, 1.0f);
 	AddFloatControl(Panel, LOCTEXT("PeelingThickness", "Thickness"), &FMixtormatLayerEffect::Thickness, 0.0f, 1.0f, 0.005f, 0.04f);
-	AddFloatControl(Panel, LOCTEXT("PeelingLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0f, 1.0f, 0.005f, 0.04f);
+	AddFloatControl(Panel, LOCTEXT("PeelingLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0f, 1.0f, 0.01f, 0.2f);
 	AddFloatControl(Panel, LOCTEXT("PeelingDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0f, 1.0f, 0.005f, 0.02f);
 
 
@@ -4518,6 +4662,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildHsvFilterControls()]
 					+ SScrollBox::Slot()[BuildRandomIdControls()]
 					+ SScrollBox::Slot()[BuildRampIdControls()]
+					+ SScrollBox::Slot()[BuildCombineIdControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

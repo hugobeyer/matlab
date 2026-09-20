@@ -620,8 +620,16 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
 	float Thickness = 0.04f;
 
+	// How far the sheet rises where it is still attached beside a tear.
+	//
+	// Retuned from 0.04 together with the curl length it is spread over. The old pair described a
+	// rise of 0.04 across roughly 430 texels, a slope of 0.0001, which is geometrically flat --
+	// it only ever read because the peel's normal pass exaggerated its gradient about 256x. With
+	// that pass on the shared height->normal convention the lift has to be real relief, so it is
+	// now a few millimetres over a few centimetres of sheet rather than a hair over a fifth of
+	// the tile.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
-	float Lift = 0.04f;
+	float Lift = 0.2f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
 	float DetailStrength = 0.02f;
@@ -706,9 +714,40 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	float PeelEdgeSharpness = 1.0f;
 
 	// Spread of lift across flakes. 0 lifts every flake equally; 1 scales each by its own
-	// random value, so some sit almost flat and others stand well clear.
+	// random value, so some sit almost flat and others stand well clear. Centred on 1, so raising
+	// it redistributes lift between flakes without changing the average.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
 	float PeelLiftVariation = 0.6f;
+
+	// Extra lift on corners and tongues of the remaining sheet, from the convexity of the peel
+	// front. 0 lifts every point the same for its distance from the tear, which is what the peel
+	// did before this existed and which reads as a uniform rolled hem; 1 doubles the lift where
+	// the sheet is held on fewest sides. Paper fails at its corners, so this is most of what
+	// separates a peel that looks torn from one that looks hemmed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float PeelCornerLift = 0.6f;
+
+	// Size of the window the corner detector looks through, as a multiple of the curl length.
+	//
+	// A wider window responds to broader features and spreads the boost further back from the
+	// tip, so raising this lifts bigger pieces of sheet rather than only their sharpest points.
+	// Narrow it to pick out fine serrations along a tear.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "Corner Radius", ClampMin = "0.05", ClampMax = "4.0"))
+	float PeelCornerRadius = 1.0f;
+
+	// How strongly the peel starts at the boundaries of the ID map above it -- a cluster filter,
+	// a pattern, random IDs, colour IDs, whichever ran before this effect in the layer's chain.
+	//
+	// A weight, not a gate, which is what separates it from Worn Edges. There the ID boundary is
+	// the subject and the wear lives on it; here it biases the damage field, so a low value makes
+	// the peel merely prefer seams and a high one effectively confines it to them. Wallpaper lets
+	// go at its seams and tiling lets go at its joints, so this is usually closer to the truth
+	// than a hand-painted mask tracing a pattern the layer already knows about.
+	//
+	// 0 does not read the ID map at all, which is the default: an existing peel is unchanged
+	// until the control is deliberately raised.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "ID Influence", ClampMin = "0.0", ClampMax = "1.0"))
+	float PeelIDInfluence = 0.0f;
 
 	// Spread of extent across flakes. 0 grows every flake to the same radius.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
@@ -1900,6 +1939,59 @@ struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
 //
 // Reads the nearest enabled cluster filter above it in the child list. With none, it contributes
 // nothing.
+UENUM(BlueprintType)
+enum class EMixtormatIdCombineMode : uint8
+{
+	// A pair of neighbouring regions draws once between them and joins if it falls under Amount.
+	// Every boundary in the map is a candidate, so the result reads as a coarser version of the
+	// same pattern -- the shapes stay in family, there are simply fewer and bigger ones.
+	Merge UMETA(DisplayName = "Merge"),
+	// Whole regions are drawn instead, and a chosen one dissolves into whatever it borders. The
+	// survivors keep their original outline exactly, so this reads as pieces being taken out of
+	// the map rather than the whole map being coarsened.
+	Subtract UMETA(DisplayName = "Subtract")
+};
+
+// Fewer, larger regions, from the ID map above this node.
+//
+// Sits between an ID creator and whatever consumes it -- a cluster filter or a pattern upstream,
+// an HSV tint, random values, a ramp or a peel downstream -- and rewrites the map in place. It is
+// the only ID node that both reads and writes one, which is what makes it stackable: several in a
+// row keep coarsening, and everything downstream still just sees an ID map.
+//
+// Merges neighbours, never arbitrary pairs. Merging by hash bucket alone would give two regions
+// on opposite sides of the surface the same number without either becoming larger; joining
+// neighbours grows genuinely bigger contiguous cells, which is what an unsubdivide has to do if
+// the result is going to drive colour variation or relief.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs")
+	bool bEnabled = true;
+
+	// Chance that any one candidate takes. 0 passes the map through untouched, 1 collapses every
+	// region that touches another into a single one.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Amount = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "0"))
+	int32 Seed = 0;
+
+	// How many rounds of merging run, which is the unsubdivide depth.
+	//
+	// Each round draws with its own salt and tests the regions the previous round produced, so
+	// raising it keeps coarsening instead of re-deciding the same pairs. Two rounds at a low
+	// Amount is a different picture from one round at a high one: the first grows clusters of
+	// clusters, the second grows one big one.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 Passes = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs")
+	EMixtormatIdCombineMode Mode = EMixtormatIdCombineMode::Merge;
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 {
@@ -2358,7 +2450,10 @@ enum class EMixtormatLayerChildType : uint8
 	Blur UMETA(DisplayName = "Blur"),
 	// Scoped the same way and for the same reasons. Only ever keeps: its result multiplies
 	// into the coverage the mask already had, never widens it.
-	Curvature UMETA(DisplayName = "Curvature")
+	Curvature UMETA(DisplayName = "Curvature"),
+	// Appended, like everything below ColorId. Reads the ID map above it and republishes a
+	// coarser one, so it is the only ID node that is neither a pure creator nor a pure consumer.
+	CombineId UMETA(DisplayName = "Combine IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -2430,6 +2525,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Curvature"))
 	FMixtormatMaskCurvature Curvature;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::CombineId"))
+	FMixtormatCombineIdFilter CombineId;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
@@ -2609,7 +2707,20 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-0.5", UIMax = "0.5"))
 	float RoughnessOffset = 0.0f;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Authored normal maps keep their own strength; Height Booster shapes height and the normals derived from it."))
+	// Strength of this layer's authored normal map, as a tangent-slope gain: 0 is flat, 1 is the
+	// map exactly as authored, 2 doubles its tilt. The only control that can *strengthen* an
+	// imported normal -- Normal Influence runs 0..1 and can only fade one out.
+	//
+	// Reactivated rather than replaced. It carries the same name and type it has always been
+	// serialised under, so a layer authored while it was an editable 0..2 control keeps the value
+	// it was given; it was pinned neutral and hidden when Height Booster briefly owned normal
+	// strength, which left no way to steepen an authored map at all.
+	//
+	// Deliberately not Height Booster. The booster owns the height and the normals reconstructed
+	// from that height; this owns the authored map and nothing else. A surface whose height and
+	// normal describe the same relief is what separates them -- tying the two made it carry the
+	// same bump twice. See MixtormatReliefScaling.h.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (DisplayName = "Normal Strength", ClampMin = "0.0", UIMax = "4.0"))
 	float NormalIntensity = 1.0f;
 
 	// Degrees. The composite pass divides by 360 and wraps, so the clamp is a half turn either
@@ -2633,7 +2744,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
 	EMixtormatHeightSource HeightSource = EMixtormatHeightSource::LayerHeight;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Mask Strength", EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "4.0"))
+	// How much of the height contest happens, not how strong the mask is.
+	//
+	// 0 is ordinary OVER -- the mask alone decides coverage and the heights simply cross-fade --
+	// and 1 is the full contest gated by that mask. Past 1 the contest is already total, so the
+	// rest of the range sharpens the transition instead of widening anything, which keeps the
+	// slider monotone end to end.
+	//
+	// It used to multiply the placement mask, which made its bottom end meaningless: at 0 the
+	// mask vanished from the comparison and the layer appeared wherever it happened to be taller
+	// than what was beneath it, ignoring where it had been painted.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Strength", EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "4.0"))
 	float HeightBlendAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))

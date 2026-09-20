@@ -1,0 +1,218 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+// Fewer, larger regions, from the ID map above this node.
+//
+// Every other ID node in the plugin either creates a map or reads one. This one does both: it
+// sits between a creator and its consumers and rewrites the map itself, so a cluster filter or a
+// pattern can be coarsened without changing what produced it. That is what makes it composable --
+// several of these in a row keep coarsening, and anything downstream still just sees an ID map.
+//
+// The merge is between *adjacent* regions, which is the whole point. Merging by hash bucket alone
+// would give two regions on opposite sides of the surface the same number without either becoming
+// larger; joining neighbours grows genuinely bigger contiguous cells, which is what "unsubdivide"
+// has to mean if the result is going to drive colour variation or relief.
+//
+// Union-find keyed by ID value rather than by pixel, which is the one real departure from
+// MixtormatClusterIds.usf. Keying by pixel would split a region that is spatially disjoint -- a
+// pattern cell crossing the wrap, say -- into two output regions and *raise* the count, which is
+// the opposite of the node's job. Every pixel carrying an ID resolves through the same root, so a
+// region stays whole however it is scattered.
+//
+// IDs are bounded by the pixel count: the cluster filter emits a root pixel index and a pattern
+// emits a cell index, both below width*height. The parent array is sized to match and anything
+// outside it is passed through untouched rather than trusted.
+
+Texture2D<uint> SourceIds;
+globallycoherent RWStructuredBuffer<uint> Parents;
+RWTexture2D<uint> OutputIds;
+RWTexture2D<float4> OutputDebug;
+
+int2 OutputSize;
+uint Stage;
+uint Seed;
+uint WriteDebug;
+// 0 merges a pair when the pair draws under Amount; 1 picks whole regions and dissolves them
+// into whatever they touch.
+uint CombineMode;
+float Amount;
+
+#define MIXTORMAT_COMBINE_STAGE_INIT 0u
+#define MIXTORMAT_COMBINE_STAGE_UNION 1u
+#define MIXTORMAT_COMBINE_STAGE_RESOLVE 2u
+
+#define MIXTORMAT_SALT_COMBINE_PAIR   0x1b873593u
+#define MIXTORMAT_SALT_COMBINE_REGION 0x85ebca6bu
+
+// Which pass of the chain this is. Each pass draws with its own salt, so raising the pass count
+// keeps merging rather than re-deciding the same pairs: pass two tests the regions pass one
+// built, pass three the regions pass two built. That is the "unsubdivide depth".
+uint PassIndex;
+
+uint ParentCount()
+{
+	return uint(max(OutputSize.x, 1)) * uint(max(OutputSize.y, 1));
+}
+
+uint ReadParent(uint Index)
+{
+	return Index < ParentCount() ? Parents[Index] : Index;
+}
+
+// Two levels of pointer chasing per read, exactly as the cluster filter does. Full path
+// compression is not safe to do here because several threads rewrite the same chain at once;
+// the resolve stage walks to the true root instead.
+uint FindRoot(uint Index)
+{
+	uint Root = ReadParent(Index);
+	Root = ReadParent(Root);
+	Root = ReadParent(Root);
+	Root = ReadParent(Root);
+	return Root;
+}
+
+void Hook(uint A, uint B)
+{
+	uint PA = FindRoot(A);
+	uint PB = FindRoot(B);
+	uint High = max(PA, PB);
+	uint Low = min(PA, PB);
+	if (High != Low && High < ParentCount())
+	{
+		// Always toward the lower index, so the operation is order-independent: whichever thread
+		// wins the race, the pair ends up under the same root.
+		InterlockedMin(Parents[High], Low);
+	}
+}
+
+// The draw a pass makes for one root, decorrelated from the pass before it.
+float RegionDraw(uint Root, uint Salt)
+{
+	return MixtormatRegionRandomSalted(
+		MixtormatRegionSeed(Root, Seed + PassIndex * 0x9e3779b9u),
+		Salt);
+}
+
+bool ShouldMerge(uint RootA, uint RootB)
+{
+	if (CombineMode != 0)
+	{
+		// Subtract. A region is chosen, then loses its identity to whatever it borders, so the
+		// regions that survive keep their original shape and the chosen ones vanish into their
+		// surroundings. Merge instead grows every boundary it touches, which reads as a coarser
+		// version of the same map rather than as pieces being removed from it.
+		return RegionDraw(RootA, MIXTORMAT_SALT_COMBINE_REGION) < Amount
+			|| RegionDraw(RootB, MIXTORMAT_SALT_COMBINE_REGION) < Amount;
+	}
+
+	// Merge. One draw for the unordered pair, so both sides of a boundary agree without having
+	// to communicate: the hash is fed min then max, never the thread's own order.
+	const uint Low = min(RootA, RootB);
+	const uint High = max(RootA, RootB);
+	return MixtormatRegionRandomSalted(
+		MixtormatRegionSeed(
+			MixtormatRegionHash(Low) ^ High,
+			Seed + PassIndex * 0x9e3779b9u),
+		MIXTORMAT_SALT_COMBINE_PAIR) < Amount;
+}
+
+int2 WrapPixel(int2 P)
+{
+	P.x = (P.x % OutputSize.x + OutputSize.x) % OutputSize.x;
+	P.y = (P.y % OutputSize.y + OutputSize.y) % OutputSize.y;
+	return P;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const uint Index = Pixel.x + Pixel.y * uint(OutputSize.x);
+
+	if (Stage == MIXTORMAT_COMBINE_STAGE_INIT)
+	{
+		Parents[Index] = Index;
+		return;
+	}
+
+	const uint Here = SourceIds.Load(int3(Pixel, 0));
+
+	if (Stage == MIXTORMAT_COMBINE_STAGE_UNION)
+	{
+		// Nothing to merge at Amount 0, and a region-less pixel has no identity to merge.
+		if (Amount <= 0.0f || Here == MIXTORMAT_INVALID_REGION || Here >= ParentCount())
+		{
+			return;
+		}
+
+		// Right and down only. Every boundary is still visited once from one side or the other,
+		// and testing all four would just do the same union twice.
+		const int2 Neighbours[2] =
+		{
+			int2(Pixel) + int2(1, 0),
+			int2(Pixel) + int2(0, 1),
+		};
+
+		[unroll]
+		for (int i = 0; i < 2; ++i)
+		{
+			const uint Other = SourceIds.Load(int3(WrapPixel(Neighbours[i]), 0));
+			if (Other == MIXTORMAT_INVALID_REGION
+				|| Other == Here
+				|| Other >= ParentCount())
+			{
+				continue;
+			}
+
+			// Tested on the roots rather than the source IDs, so a pass decides between the
+			// regions the previous pass produced. Testing the originals would let one pass undo
+			// another's grouping and the pass count would stop meaning depth.
+			const uint RootA = FindRoot(Here);
+			const uint RootB = FindRoot(Other);
+			if (RootA == RootB)
+			{
+				continue;
+			}
+
+			if (ShouldMerge(RootA, RootB))
+			{
+				Hook(RootA, RootB);
+			}
+		}
+		return;
+	}
+
+	// Resolve. Walk to the true root and publish it as this pixel's ID.
+	uint Root = Here;
+	if (Here != MIXTORMAT_INVALID_REGION && Here < ParentCount())
+	{
+		[loop]
+		for (uint Step = 0; Step < 16; ++Step)
+		{
+			const uint Next = ReadParent(Root);
+			if (Next == Root)
+			{
+				break;
+			}
+			Root = Next;
+		}
+	}
+
+	OutputIds[Pixel] = Root;
+
+	if (WriteDebug != 0)
+	{
+		// The same decorrelating hash the consumers use, so the preview colours a merged region
+		// the way the variation nodes downstream will.
+		OutputDebug[Pixel] = Root == MIXTORMAT_INVALID_REGION
+			? float4(0.0f, 0.0f, 0.0f, 1.0f)
+			: float4(MixtormatDebugRamp(MixtormatRegionRandom(Root)), 1.0f);
+	}
+}

@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
 
@@ -60,6 +61,15 @@ float Thickness;
 float Lift;
 float DetailStrength;
 float LiftVariation;
+float CornerLift;
+float CornerRadius;
+
+// Whatever ID map was published above this peel in the layer's chain -- a cluster filter, a
+// pattern, random IDs, colour IDs. Always bound, a 1x1 dummy when the layer has none, because
+// RDG validates a binding whether the branch reading it runs or not.
+Texture2D<uint> RegionIds;
+uint HasRegionIds;
+float IDInfluence;
 float EdgeSharpness;
 
 #define PEEL_FAR 1024.0f
@@ -474,6 +484,81 @@ float PeelFiberNoise(float2 uv)
 			saturate(SizeVariation) * 0.45f);
 }
 
+// Boundaries of the ID map above this peel, as a weight on where the sheet lets go first.
+//
+// Wallpaper does not start peeling in the middle of a strip; it lets go at the seams, and a tiled
+// surface lets go at the joints. Whatever produced the IDs -- a cluster filter, a pattern, random
+// or colour IDs -- its boundaries are where those seams already are, so the peel can follow them
+// instead of the artist painting a mask that traces a pattern the layer already knows.
+//
+// A weight and not a gate, which is the difference from Worn Edges. There the ID boundary is the
+// subject and the effect lives on it; here it only biases the damage field, so at a low influence
+// the peel merely prefers seams and at a high one it is effectively confined to them. At 0 the ID
+// map is not read at all and the peel is exactly what it was.
+float PeelIdEdge(float2 uv, int2 res)
+{
+	if (HasRegionIds == 0 || IDInfluence <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// IDs are authored in output space while the seed and solve run at SolveSize, so the
+	// comparison steps by however many output texels one solve texel spans. Comparing adjacent
+	// output texels from a coarser pass would find boundaries that pass cannot resolve and alias
+	// them into the front.
+	int2 stride =
+		max(
+			OutputSize / max(res, int2(1, 1)),
+			int2(1, 1));
+
+	int2 centrePixel =
+		int2(
+			frac(uv + 1.0f)
+			* float2(OutputSize));
+
+	uint centre =
+		RegionIds.Load(
+			int3(centrePixel, 0));
+
+	if (centre == MIXTORMAT_INVALID_REGION)
+	{
+		return 0.0f;
+	}
+
+	float boundary = 0.0f;
+
+	[unroll]
+	for (int oy = -1; oy <= 1; ++oy)
+	{
+		[unroll]
+		for (int ox = -1; ox <= 1; ++ox)
+		{
+			if (ox == 0 && oy == 0)
+			{
+				continue;
+			}
+
+			int2 q =
+				centrePixel
+				+ int2(ox, oy) * stride;
+
+			q.x = (q.x % OutputSize.x + OutputSize.x) % OutputSize.x;
+			q.y = (q.y % OutputSize.y + OutputSize.y) % OutputSize.y;
+
+			uint other =
+				RegionIds.Load(
+					int3(q, 0));
+
+			boundary =
+				max(
+					boundary,
+					other != centre ? 1.0f : 0.0f);
+		}
+	}
+
+	return boundary;
+}
+
 float PeelDamage(
 	float2 uv,
 	int2 res,
@@ -591,6 +676,12 @@ float PeelDamage(
 		(mask - 0.5f)
 		* MaskWeight
 		* 0.25f;
+
+	// Added before the saturate and before the mask multiply below, so a seam still only peels
+	// where the layer's own mask allows it.
+	damage +=
+		PeelIdEdge(uv, res)
+		* saturate(IDInfluence);
 
 	damage =
 		saturate(
@@ -786,6 +877,132 @@ float PeelSolve(
 	return t;
 }
 
+// The peel front as a signed distance, reconstructed at an arbitrary UV.
+//
+// Same reconstruction the resolve pass does for its own texel: arrival time, signed by the side
+// flag, less the Front offset. Pulled out as a function so the corner field below can look around
+// a point rather than only at it.
+float PeelFrontAt(float2 uv)
+{
+	float2 a =
+		PreviousArrival.SampleLevel(
+			LinearWrapSampler,
+			uv,
+			0.0f);
+
+	float s =
+		min(
+			a.x,
+			PEEL_FAR)
+		* (
+			a.y < 0.0f
+			? -1.0f
+			: 1.0f);
+
+	return s - Front;
+}
+
+// Central difference of the peel front, at a spacing chosen by the caller.
+float2 PeelFrontGradient(float2 uv, float h)
+{
+	float sx =
+		PeelFrontAt(uv + float2(h, 0.0f))
+		- PeelFrontAt(uv - float2(h, 0.0f));
+
+	float sy =
+		PeelFrontAt(uv + float2(0.0f, h))
+		- PeelFrontAt(uv - float2(0.0f, h));
+
+	return float2(sx, sy) / (2.0f * h);
+}
+
+// Cornerness of the peel front, from the structure tensor of its gradient.
+//
+// Curl otherwise depends only on distance from the tear, so every point the same distance in
+// lifts identically whatever shape the front has. Paper does not behave that way: a straight edge
+// is held along its whole length and barely rises, a corner is held on fewer sides and peels up
+// far further. A sheet fails at its corners first, and a peel that ignores this reads as a
+// uniform rolled hem rather than as something torn.
+//
+// This replaces a Laplacian of the same field. The Laplacian measures curvature, which is real
+// but answers the wrong question -- a long gentle arc has curvature everywhere and no corners
+// anywhere, so it lifted whole curved edges as though they were points. The structure tensor asks
+// instead whether the gradient direction *varies* inside the window, which is what a corner is:
+//
+//     M = sum over window of [ dx*dx  dx*dy ]
+//                            [ dx*dy  dy*dy ]
+//
+// A straight front has every gradient pointing the same way, so M is rank one, det is zero and
+// the response vanishes however curved the edge is. A corner or a tongue fans its gradients out,
+// both eigenvalues grow, and det climbs.
+//
+// Noble's 2*det/trace rather than Harris's det - k*trace^2, because it needs no tuned k and is
+// bounded: the front is a distance field, so every gradient is near unit length and the trace is
+// near the sample count, which makes the response land in 0..1 after the normalisation below
+// without a magic constant that would have to be re-found whenever the window changed.
+//
+// The window is sized off the curl length and scaled by Corner Radius. A wider window responds to
+// broader features and over a larger area, which is the knob for "corners lift more, and further
+// back from the tip".
+float PeelCornerField(float2 uv, float radiusUV)
+{
+	float spacing =
+		max(radiusUV, 1.0e-5f);
+
+	float h =
+		max(spacing * 0.5f, 1.0e-5f);
+
+	float m00 = 0.0f;
+	float m01 = 0.0f;
+	float m11 = 0.0f;
+	const float Samples = 9.0f;
+
+	[unroll]
+	for (int j = -1; j <= 1; ++j)
+	{
+		[unroll]
+		for (int i = -1; i <= 1; ++i)
+		{
+			float2 g =
+				PeelFrontGradient(
+					uv
+					+ float2((float)i, (float)j) * spacing * 0.5f,
+					h);
+
+			m00 += g.x * g.x;
+			m01 += g.x * g.y;
+			m11 += g.y * g.y;
+		}
+	}
+
+	float trace = m00 + m11;
+	float det = m00 * m11 - m01 * m01;
+
+	// Peak response is Samples/2, when both eigenvalues are equal -- a perfectly isotropic corner.
+	// Dividing by it puts a clean 0..1 on the output whatever the window size.
+	return saturate(
+		(2.0f * det / max(trace, 1.0e-6f))
+		/ (Samples * 0.5f));
+}
+
+// How much this part of the sheet lifts, relative to the layer's Lift.
+//
+// Centred on 1 and symmetric, which the previous form was not. It interpolated between two
+// absolute bounds, 0.45 and 1.40, so the field averaged 0.925 rather than 1: turning Lift
+// Variation up quietly lowered the mean lift of the whole peel by about eight percent, and the
+// spread it bought was lopsided -- 0.55 down against 0.40 up. Raising a variation control should
+// redistribute an amount between places, never change how much of it there is in total.
+//
+// Signed noise makes that exact. At variation 0 every point returns 1 and Lift means precisely
+// what it says; at 1 the multiplier spans 0..2 about the same mean. The max() keeps a flake from
+// lifting through the substrate at the bottom of the range.
+//
+// The field is smooth rather than constant per flake, and that is a known limitation rather than
+// a choice: the peel front is one continuous SDF, not a set of flood-filled flakes, so there is
+// no per-flake identity here to key a hash to. A cell-constant multiplier would give crisper
+// per-piece variation but would also step the height at every cell boundary the tear crosses,
+// and a step in a height field is a vertical wall to everything downstream that differentiates
+// it. Flake-coherent lift needs a flake ID field first.
 float PeelLiftVariationField(float2 uv)
 {
 	int p =
@@ -797,17 +1014,17 @@ float PeelLiftVariationField(float2 uv)
 		PeelNoise(
 			uv,
 			int2(p, p),
-			0x9e3779b9u);
+			0x9e3779b9u)
+		* 2.0f
+		- 1.0f;
 
 	return
-		lerp(
-			1.0f,
-			lerp(
-				0.45f,
-				1.40f,
-				v),
-			saturate(
-				LiftVariation));
+		max(
+			1.0f
+				+ v
+				* saturate(
+					LiftVariation),
+			0.0f);
 }
 
 [numthreads(8, 8, 1)]
@@ -1137,12 +1354,23 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			finalSDF,
 			0.0f);
 
+	// How far the lift is spread back into the attached sheet.
+	//
+	// This used to run to 14x Width -- 0.21 UV, about 430 texels at 2K -- so the whole of Lift was
+	// distributed over a fifth of the tile. A rise of 0.04 across 430 texels is a slope of
+	// 0.0001, which is flat to any honest derivative; the only reason the curl ever read was the
+	// peel's own normal pass exaggerating its gradient by three orders of magnitude. With that
+	// pass on the shared convention the ramp has to be real geometry instead.
+	//
+	// A few millimetres of rise over a few centimetres of sheet is what wallpaper actually does,
+	// which on a one-metre tile at 2K is roughly 40-60 texels. That is what this range gives at
+	// the default Width, and Lift's default moved with it.
 	float curlLength =
 		max(
 			width
 			* lerp(
-				3.0f,
-				14.0f,
+				1.0f,
+				2.0f,
 				saturate(
 					MicroMorph)),
 			pixelSize * 4.0f);
@@ -1151,13 +1379,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		attachedDistance
 		/ curlLength;
 
-	// Starts at zero exactly on the tear, rises immediately
-	// into the remaining sheet, then relaxes to the flat film.
+	// Starts at zero on the tear, rolls up into the remaining sheet, then relaxes to the flat
+	// film. t^2 * e^(2 - 2t) rather than t * e^(1 - t): both peak at exactly 1 where the curl
+	// length says they should, but the old one left the tear at a slope of e and so stood the
+	// sheet up in the first texel, which is the abruptness. This leaves with zero slope, arrives
+	// at the peak with zero slope, and only then falls away -- a roll instead of a step.
 	float curl =
 		curlT < 10.0f
 		? curlT
+			* curlT
 			* exp(
-				1.0f - curlT)
+				2.0f - 2.0f * curlT)
 		: 0.0f;
 
 	curl =
@@ -1178,9 +1410,45 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		PeelLiftVariationField(
 			uv);
 
+	// Corners lift further than edges. The window is the curl length scaled by Corner Radius, so
+	// widening it both catches broader features and spreads the boost further back from the tip.
+	float cornerBoost =
+		1.0f
+		+ saturate(
+			CornerLift)
+		* PeelCornerField(
+			uv,
+			curlLength
+			* max(CornerRadius, 0.05f));
+
+	// Fine variation along the tear, so a single edge does not rise to one even height for its
+	// whole length. The cell noise above says how much this flake lifts; this says how unevenly
+	// it lifts across itself, which is the difference between a rolled hem and torn paper.
+	// Centred on 1 like the cell term, and scaled by the same control, so neither changes the
+	// average lift.
+	float liftDetail =
+		1.0f
+		+ (PeelFBM(
+			uv,
+			max(MicroPeriod, 2),
+			0x6c078965u)
+			* 2.0f
+			- 1.0f)
+		* 0.45f
+		* saturate(LiftVariation);
+
+	// The layer's own mask, so a peel fades out where it was painted out rather than ending on a
+	// full-height ridge at the mask boundary.
+	float liftMask =
+		saturate(
+			PeelMask(uv));
+
 	float localLift =
 		Lift
-		* liftVariation;
+		* liftVariation
+		* max(liftDetail, 0.0f)
+		* liftMask
+		* cornerBoost;
 
 	float fine =
 		PeelFBM(
