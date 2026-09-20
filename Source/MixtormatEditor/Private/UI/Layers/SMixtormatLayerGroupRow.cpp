@@ -19,11 +19,41 @@
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
 
+namespace
+{
+	// Tints Base toward Accent without changing how bright it is.
+	//
+	// A straight lerp toward a saturated colour would wash the row out and flatten the
+	// enabled/hover/selected ramp those palette colours exist to carry. So the accent is first
+	// rescaled to Base's own luminance -- which leaves only its hue and saturation to contribute --
+	// and the lerp happens against that. The row stays as dark as it was and simply leans.
+	FLinearColor TintTowards(const FLinearColor& Base, const FLinearColor& Accent, const float Strength)
+	{
+		if (Accent.A <= 0.0f || Strength <= 0.0f)
+		{
+			return Base;
+		}
+		const float AccentLuminance = Accent.GetLuminance();
+		if (AccentLuminance <= KINDA_SMALL_NUMBER)
+		{
+			return Base;
+		}
+		const float Scale = Base.GetLuminance() / AccentLuminance;
+		const FLinearColor Matched(
+			Accent.R * Scale,
+			Accent.G * Scale,
+			Accent.B * Scale,
+			Base.A);
+		return FMath::Lerp(Base, Matched, FMath::Clamp(Strength, 0.0f, 1.0f));
+	}
+}
+
 void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 {
 	bGroupEnabled = InArgs._bEnabled;
 	bExpanded = InArgs._bExpanded;
 	bSelected = InArgs._bSelected;
+	AccentColor = InArgs._AccentColor;
 	OnToggleExpanded = InArgs._OnToggleExpanded;
 	OnSelected = InArgs._OnSelected;
 	OnToggleEnabled = InArgs._OnToggleEnabled;
@@ -44,6 +74,11 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 			SNew(SMixtormatGradientBox)
 			.StartColor(this, &SMixtormatLayerGroupRow::GetBackgroundStart)
 			.EndColor(this, &SMixtormatLayerGroupRow::GetBackgroundEnd)
+			// The cross pass, left to right over the top-down one. Two axes is the group row's
+			// signature: a layer ramps top-down only and a child row left-right only, so a header
+			// doing both is distinguishable from either without a glyph to say so.
+			.MultiplyStart(this, &SMixtormatLayerGroupRow::GetCrossStart)
+			.MultiplyEnd(this, &SMixtormatLayerGroupRow::GetCrossEnd)
 			.Orientation(Orient_Vertical)
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			[
@@ -77,25 +112,9 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						.OnClicked(OnToggleEnabled)
 					]
 
-					// Where a layer carries its thumbnail. A folder at the same inset keeps the
-					// two kinds of row sharing one left edge.
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
-					[
-						// Eye-sized, not IconBrushSize: this row is child height, and a 20px glyph
-						// between a 15px eye and a 14px chevron reads as the loudest thing on a
-						// row whose whole job is to be quieter than a layer.
-						SNew(SBox)
-						.WidthOverride(MixtormatTokens::LayerEyeSize)
-						.HeightOverride(MixtormatTokens::LayerEyeSize)
-						[
-							SNew(SImage)
-							.Image(MixtormatIcons::Folder())
-							.ColorAndOpacity(this, &SMixtormatLayerGroupRow::GetNameColor)
-						]
-					]
+					// No folder glyph where a layer carries its thumbnail: the row is already
+					// unmistakably a group from its height, its inset and the layers nested under
+					// it, so the icon was repeating what the shape already said.
 
 					+ SHorizontalBox::Slot()
 					.FillWidth(1.0f)
@@ -155,17 +174,52 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 	];
 }
 
+// A hidden group is not tinted: "switched off" has to stay legible at a glance, and a colour is
+// the one thing that would argue with it. Selection tints harder than rest, so the accent
+// reinforces the highlight rather than competing with it.
+float SMixtormatLayerGroupRow::GetAccentStrength() const
+{
+	if (!bGroupEnabled.Get(true))
+	{
+		return 0.0f;
+	}
+	return bSelected.Get(false)
+		? MixtormatTokens::GroupAccentSelectedStrength
+		: MixtormatTokens::GroupAccentStrength;
+}
+
+// Grey by default, and tinted with the accent when there is one -- a neutral band sitting across
+// a coloured row would read as a fault rather than as a second axis.
+FLinearColor SMixtormatLayerGroupRow::GetCrossStart() const
+{
+	if (!bGroupEnabled.Get(true))
+	{
+		return FLinearColor::Transparent;
+	}
+	const FLinearColor Base = TintTowards(
+		MixtormatPalette::GroupRowCross(),
+		AccentColor.Get(FLinearColor::Transparent),
+		GetAccentStrength());
+	return FLinearColor(Base.R, Base.G, Base.B, MixtormatTokens::GroupRowCrossStrength);
+}
+
+// Transparent, so the pass fades out entirely and the vertical gradient is what the right-hand
+// side of the row shows.
+FLinearColor SMixtormatLayerGroupRow::GetCrossEnd() const
+{
+	return FLinearColor::Transparent;
+}
+
 FLinearColor SMixtormatLayerGroupRow::GetBackgroundStart() const
 {
 	if (!bGroupEnabled.Get(true))
 	{
 		return MixtormatPalette::LayerHiddenTop();
 	}
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerSelectedTop();
-	}
-	return IsHovered() ? MixtormatPalette::LayerHoverTop() : MixtormatPalette::Panel();
+	const FLinearColor Base = bSelected.Get(false)
+		? MixtormatPalette::LayerSelectedTop()
+		: (IsHovered() ? MixtormatPalette::LayerHoverTop() : MixtormatPalette::Panel());
+	return TintTowards(Base, AccentColor.Get(FLinearColor::Transparent), GetAccentStrength());
 }
 
 FLinearColor SMixtormatLayerGroupRow::GetBackgroundEnd() const
@@ -174,11 +228,10 @@ FLinearColor SMixtormatLayerGroupRow::GetBackgroundEnd() const
 	{
 		return MixtormatPalette::LayerHiddenEnd();
 	}
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerSelectedBottom();
-	}
-	return IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom();
+	const FLinearColor Base = bSelected.Get(false)
+		? MixtormatPalette::LayerSelectedBottom()
+		: (IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom());
+	return TintTowards(Base, AccentColor.Get(FLinearColor::Transparent), GetAccentStrength());
 }
 
 FSlateColor SMixtormatLayerGroupRow::GetNameColor() const

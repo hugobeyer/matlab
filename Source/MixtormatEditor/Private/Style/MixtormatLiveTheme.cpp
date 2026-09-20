@@ -88,6 +88,10 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Shell", StatusBarHeight, 14.0f, 48.0f),
 		THEME_NUMBER("Shell", BottomLibraryCollapseButtonWidth, 4.0f, 32.0f),
 		THEME_NUMBER("Shell", BottomLibraryCollapseButtonHeight, 1.0f, 12.0f),
+		THEME_NUMBER("Layers", IconButtonHitSlop, 0.0f, 24.0f),
+		THEME_NUMBER("Layers", GroupRowCrossStrength, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", GroupAccentStrength, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", GroupAccentSelectedStrength, 0.0f, 1.0f),
 		THEME_NUMBER("Layers", LayerRowHeight, 20.0f, 64.0f),
 		THEME_NUMBER("Layers", LayerChildRowHeight, 16.0f, 48.0f),
 		THEME_NUMBER("Layers", LayerThumbnailSize, 12.0f, 48.0f),
@@ -137,7 +141,8 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(Border), THEME_COLOR(BorderStrong), THEME_COLOR(WellTop),
 		THEME_COLOR(WellBottom), THEME_COLOR(FillTop), THEME_COLOR(FillBottom),
 		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified),
-		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint)
+		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
+		THEME_COLOR(IconRest), THEME_COLOR(IconHover), THEME_COLOR(GroupRowCross)
 	};
 #undef THEME_COLOR
 	return Entries;

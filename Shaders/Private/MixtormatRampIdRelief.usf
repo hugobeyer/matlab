@@ -61,6 +61,7 @@ float BevelRoundness;
 float BevelRoundnessRandom;
 float BevelInsetPixels;
 float GapHeight;
+float FeatherGain;
 
 // Pattern-only reduction. Positive structural elevation is limited against one maximum source
 // height per region, so every flat-face texel receives the same safe offset.
@@ -117,6 +118,44 @@ float RampDelta(int2 P)
 	const float Weight = saturate(HeightAmount * Field.y);
 	const float Blended = MixtormatApplyMaskOperation(BlendMode, Source, saturate(Field.x));
 	return (Blended - Source) * Weight;
+}
+
+// Feather Gain: what the feather's run-out does on the way up, rather than how wide it is.
+//
+// The published feather is a straight line -- saturate(interior distance / width) -- and a straight
+// line is the one shape a normal map cannot show. The Sobel reads a *change* in slope, and a ramp
+// of constant slope has none: the whole band comes out as one flat facet and then steps back to
+// level at its inner end. That is why feathering a cell can move real height and still look like
+// nothing happened.
+//
+//     Shape(T) = T + Gain * T * (1 - T)
+//
+// Still pinned at both ends for every Gain, so the grout wall and the flat face stay where they
+// are. What changes is everything in between: the slope leaving the wall goes from 1 to 1 + Gain,
+// and past Gain 1 the curve arcs above the face and leaves a raised lip just inside the edge --
+// the rolled-over rim of a settled tile, and the thing that actually catches light.
+//
+// Normalising by the curve's own peak is what keeps this safe. Up to Gain 1 the peak is still the
+// flat face, so the slope doubles for nothing; past it the peak moves inside the band and the face
+// gives up a little height to pay for the lip, which is the honest trade and is bounded by the
+// same per-region headroom as before rather than clipping against 1.
+float PatternFeatherShape(float T)
+{
+	const float Clamped = saturate(T);
+	return Clamped + max(FeatherGain, 0.0f) * Clamped * (1.0f - Clamped);
+}
+
+// The maximum of that curve on 0..1, in closed form. Below Gain 1 the turning point sits outside
+// the band and the maximum is the flat face itself.
+float PatternFeatherPeak()
+{
+	const float Gain = max(FeatherGain, 0.0f);
+	if (Gain <= 1.0f)
+	{
+		return 1.0f;
+	}
+	const float Turn = (1.0f + Gain) / (2.0f * Gain);
+	return Turn + Gain * Turn * (1.0f - Turn);
 }
 
 // The cell face's elevation across the chamfer band, from the grout line (T = 0, down at the
@@ -271,10 +310,16 @@ float PatternCellHeight(int2 P)
 		RegionId % uint(OutputSize.x),
 		RegionId / uint(OutputSize.x));
 	const float RegionMaxHeight = asfloat(PatternHeightMax.Load(int3(RegionPixel, 0)));
+
+	// The feather, shaped and then normalised by its own peak, so the elevation is still bounded
+	// once per region against the same headroom whatever Gain is doing to the curve. Gain 0 leaves
+	// Peak at 1 and both factors exactly as they were.
+	const float Shaped = PatternFeatherShape(Field.y);
+	const float Peak = PatternFeatherPeak();
 	const float SafeElevation = BoundedMove(
-		RequestedElevation,
+		RequestedElevation * Peak,
 		max(1.0f - RegionMaxHeight, 0.0f));
-	return SafeElevation * Field.y;
+	return SafeElevation * (Shaped / Peak);
 }
 
 // How far a relief delta is allowed to move the surface, given the room actually available.

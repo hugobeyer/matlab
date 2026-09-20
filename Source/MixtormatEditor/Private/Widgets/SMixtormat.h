@@ -357,6 +357,10 @@ private:
 
 	TSharedRef<SWidget> BuildLayerGroupRow(FGuid GroupId);
 	TSharedRef<SWidget> BuildLayerGroupContextMenu(FGuid GroupId);
+	// Editor-only tagging: the compositor never reads a group's colour, so this asks for no
+	// recomposite -- only a rebuild of the rows that draw it.
+	FReply SetLayerGroupAccentColor(FGuid GroupId, FLinearColor AccentColor);
+	TSharedRef<SWidget> BuildGroupAccentMenu(FGuid GroupId);
 	static int32 InsertIndexToMoveTarget(int32 SourceIndex, int32 InsertIndex);
 	FReply HandleLayerInsertedAt(int32 SourceLayerIndex, int32 InsertIndex);
 	FReply HandleGroupInsertedAt(FGuid GroupId, int32 InsertIndex);

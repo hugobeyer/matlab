@@ -541,6 +541,7 @@ namespace MixtormatGpuCompositor
 		float GapHeight = 0.0f;
 		float HeightRandom = 1.0f;
 		float FeatherRandom = 0.0f;
+		float FeatherGain = 0.0f;
 		float EdgeRoughness = 0.65f;
 		float EdgeRoughnessAmount = 0.0f;
 		float AOAmount = 0.0f;
@@ -859,6 +860,7 @@ namespace MixtormatGpuCompositor
 		float BevelRoundnessRandom = 0.0f;
 		float BevelInsetPixels = 0.0f;
 		float GapHeight = 0.0f;
+		float FeatherGain = 0.0f;
 		float EdgeRoughness = 0.65f;
 		float EdgeRoughnessAmount = 0.0f;
 		float AOAmount = 0.0f;

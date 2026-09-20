@@ -2,6 +2,7 @@
 
 #include "UI/Atoms/SMixtormatIconButton.h"
 
+#include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
@@ -16,15 +17,27 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 		SetToolTipText(InArgs._ToolTip);
 	}
 
+	// Two boxes: the outer one is the click target and the inner one is the glyph. Hit testing
+	// follows geometry, so growing the outer box alone makes the button easier to hit without
+	// making the icon bigger or the row louder.
+	const float GlyphSize = InArgs._Size;
+	const float TargetSize = GlyphSize + MixtormatTokens::IconButtonHitSlop;
 	ChildSlot
 	[
 		SNew(SBox)
-		.WidthOverride(InArgs._Size)
-		.HeightOverride(InArgs._Size)
+		.WidthOverride(TargetSize)
+		.HeightOverride(TargetSize)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
 		[
-			SNew(SImage)
-			.Image(InArgs._Icon)
-			.ColorAndOpacity(this, &SMixtormatIconButton::GetGlyphColor)
+			SNew(SBox)
+			.WidthOverride(GlyphSize)
+			.HeightOverride(GlyphSize)
+			[
+				SNew(SImage)
+				.Image(InArgs._Icon)
+				.ColorAndOpacity(this, &SMixtormatIconButton::GetGlyphColor)
+			]
 		]
 	];
 }
@@ -36,7 +49,7 @@ FSlateColor SMixtormatIconButton::GetGlyphColor() const
 	{
 		return IsHovered() ? MixtormatPalette::AccentBright() : MixtormatPalette::Accent();
 	}
-	return IsHovered() ? MixtormatPalette::IconHover() : MixtormatPalette::RowText();
+	return IsHovered() ? MixtormatPalette::IconHover() : MixtormatPalette::IconRest();
 }
 
 FCursorReply SMixtormatIconButton::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

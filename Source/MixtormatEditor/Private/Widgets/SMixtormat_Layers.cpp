@@ -4257,6 +4257,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
 		})
 		.bExpanded_Lambda([this, GroupId]() { return IsGroupExpanded(GroupId); })
 		.bSelected_Lambda([this, GroupId]() { return SelectedGroupId == GroupId; })
+		.AccentColor_Lambda([this, GroupId]()
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			return Group ? Group->AccentColor : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		})
 		.OnSelected_Lambda([this, GroupId]() { SelectLayerGroup(GroupId); })
 		.OnToggleExpanded_Lambda([this, GroupId]() { ToggleGroupExpanded(GroupId); })
 		.OnToggleEnabled_Lambda([this, GroupId]()
@@ -4281,6 +4287,74 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
 		.OnGetContextMenu(this, &SMixtormat::BuildLayerGroupContextMenu, GroupId);
 	GroupRowWidgets.Add(GroupId, Row);
 	return Row;
+}
+
+FReply SMixtormat::SetLayerGroupAccentColor(const FGuid GroupId, const FLinearColor AccentColor)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group)
+	{
+		return FReply::Handled();
+	}
+	Group->AccentColor = AccentColor;
+	// No RefreshLayeredPreview: the colour is editor organisation and the compositor never reads
+	// it, so asking for a new composite would be work for nothing. It is still an edit worth
+	// undoing and worth saving.
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+// A strip of swatches rather than a submenu of named colours or the engine's colour dialog: it is
+// one click from the menu that opened it, and a colour is a thing you point at, not a thing you
+// read the name of. The leftmost clears back to no colour.
+TSharedRef<SWidget> SMixtormat::BuildGroupAccentMenu(const FGuid GroupId)
+{
+	const TSharedRef<SHorizontalBox> Strip = SNew(SHorizontalBox);
+	const auto AddSwatch =
+		[this, &Strip, GroupId](const FLinearColor& Swatch, const FText& ToolTip)
+	{
+		Strip->AddSlot()
+		.AutoWidth()
+		.Padding(MixtormatTokens::GroupAccentSwatchGap * 0.5f, 0.0f)
+		[
+			SNew(SBox)
+			.WidthOverride(MixtormatTokens::GroupAccentSwatchSize)
+			.HeightOverride(MixtormatTokens::GroupAccentSwatchSize)
+			.ToolTipText(ToolTip)
+			[
+				SNew(SButton)
+				.ButtonStyle(FCoreStyle::Get(), TEXT("NoBorder"))
+				.ContentPadding(0.0f)
+				.OnClicked_Lambda([this, GroupId, Swatch]()
+				{
+					FSlateApplication::Get().DismissAllMenus();
+					return SetLayerGroupAccentColor(GroupId, Swatch);
+				})
+				[
+					SNew(SColorBlock)
+					.Color(Swatch.A > 0.0f ? Swatch : MixtormatPalette::RaisedPanel())
+					.ShowBackgroundForAlpha(false)
+					.Size(FVector2D(
+						MixtormatTokens::GroupAccentSwatchSize,
+						MixtormatTokens::GroupAccentSwatchSize))
+				]
+			]
+		];
+	};
+
+	AddSwatch(
+		FLinearColor(0.0f, 0.0f, 0.0f, 0.0f),
+		LOCTEXT("GroupAccentNone", "No colour"));
+	for (const FLinearColor& Swatch : MixtormatPalette::GroupAccents())
+	{
+		AddSwatch(Swatch, LOCTEXT("GroupAccentSwatch", "Tag this group with this colour"));
+	}
+
+	MixtormatMenu::FBuilder Menu;
+	Menu.Widget(SNew(SBox).Padding(MixtormatTokens::GroupAccentSwatchGap)[Strip]);
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
@@ -4346,6 +4420,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 			BeginRenameSelection();
 		}))
 		.Shortcut(LOCTEXT("RenameGroupShortcut", "F2"));
+	Menu.SubMenu(
+		LOCTEXT("GroupAccentContext", "Colour"),
+		nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAccentMenu, GroupId));
 	Menu.Separator();
 	Menu.Item(
 		bGroupEnabled

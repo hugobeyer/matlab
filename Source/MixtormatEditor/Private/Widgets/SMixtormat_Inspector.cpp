@@ -2144,6 +2144,9 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternFeatherHint", "Eases each cell's height out at its boundary so neighbouring pieces meet through a ramp rather than a one-texel cliff.")),
 		Slider(LOCTEXT("PatternFeatherRandom", "Feather Random"), &FMixtormatPatternFilter::FeatherRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternFeatherRandomHint", "Varies the feather width once per cell, so the run-out is not identical on every piece."))));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("PatternFeatherGain", "Feather Gain"), &FMixtormatPatternFilter::FeatherGain, 0.0, 4.0, 0.0, 0.01,
+			LOCTEXT("PatternFeatherGainHint", "What the feather does on the way up, rather than how wide it is. The run-out is a straight line, and a straight line is the one shape a normal map cannot show -- a normal reads a change in slope, and a constant ramp has none, so the band lights as a single flat facet however much height it moves. Gain bends the curve: the slope leaving the wall goes from 1 to 1 + Gain, and past 1 it arcs above the face and leaves a raised lip just inside the edge. Both ends stay pinned, so the grout wall and the flat face never move.")));
 
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));

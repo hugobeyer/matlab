@@ -26,12 +26,16 @@ public:
 		, _bExpanded(true)
 		, _bSelected(false)
 		, _MemberCount(0)
+		, _AccentColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f))
 	{}
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bExpanded)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		SLATE_ATTRIBUTE(int32, MemberCount)
+		// The group's tint, alpha zero meaning none. Applied to the row's own gradient rather than
+		// replacing it, so a coloured group still reads as enabled/hovered/selected.
+		SLATE_ATTRIBUTE(FLinearColor, AccentColor)
 
 		SLATE_EVENT(FSimpleDelegate, OnToggleExpanded)
 		SLATE_EVENT(FSimpleDelegate, OnSelected)
@@ -57,11 +61,15 @@ private:
 	FLinearColor GetBackgroundStart() const;
 	FLinearColor GetBackgroundEnd() const;
 	FSlateColor GetNameColor() const;
+	float GetAccentStrength() const;
+	FLinearColor GetCrossStart() const;
+	FLinearColor GetCrossEnd() const;
 	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);
 
 	TAttribute<bool> bGroupEnabled;
 	TAttribute<bool> bExpanded;
 	TAttribute<bool> bSelected;
+	TAttribute<FLinearColor> AccentColor;
 	FSimpleDelegate OnToggleExpanded;
 	FSimpleDelegate OnSelected;
 	FSimpleDelegate OnToggleEnabled;

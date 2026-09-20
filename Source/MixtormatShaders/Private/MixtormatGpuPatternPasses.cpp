@@ -277,6 +277,7 @@ public:
 		SHADER_PARAMETER(float, BevelRoundnessRandom)
 		SHADER_PARAMETER(float, BevelInsetPixels)
 		SHADER_PARAMETER(float, GapHeight)
+		SHADER_PARAMETER(float, FeatherGain)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RampField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
@@ -934,6 +935,7 @@ namespace MixtormatGpuCompositor
 				Tilt.BevelRoundnessRandom = Pattern.BevelRoundnessRandom;
 				Tilt.BevelInsetPixels = Pattern.BevelInsetPixels;
 				Tilt.GapHeight = Pattern.GapHeight;
+				Tilt.FeatherGain = Pattern.FeatherGain;
 				Tilt.EdgeRoughness = Pattern.EdgeRoughness;
 				Tilt.EdgeRoughnessAmount = Pattern.EdgeRoughnessAmount;
 				Tilt.AOAmount = Pattern.AOAmount;
@@ -1063,6 +1065,7 @@ namespace MixtormatGpuCompositor
 				TiltP->BevelRoundnessRandom = Tilt.BevelRoundnessRandom;
 				TiltP->BevelInsetPixels = Tilt.BevelInsetPixels;
 				TiltP->GapHeight = Tilt.GapHeight;
+				TiltP->FeatherGain = Tilt.FeatherGain;
 				TiltP->RampField = Tilt.Field;
 				TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
 				TiltP->SourceHeight = HeightTargets[WriteIndex];

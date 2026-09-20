@@ -124,9 +124,15 @@ namespace MixtormatPalette
 
 	// ---- Type -------------------------------------------------------------------------------
 	inline FLinearColor RowText()      { return FMixtormatLiveTheme::ResolveColor(TEXT("RowText"), Hex(0xC0C0C0)); }
-	// A glyph on hover, brighter still than RowText -- the icon button's only other state besides
+	// An icon button's resting glyph. White, not RowText: an icon carries no letterforms to read,
+	// so the contrast that makes body text comfortable makes a 14px glyph look switched off. This
+	// is the eye, the chevron and every toolbar button -- they all resolve here.
+	// A hair under white rather than at it, so hover still has somewhere brighter to go. The eye
+	// reads both as white; the difference only does work on the transition.
+	inline FLinearColor IconRest()     { return FMixtormatLiveTheme::ResolveColor(TEXT("IconRest"), Hex(0xF2F2F2)); }
+	// A glyph on hover, brighter still than IconRest -- the icon button's only other state besides
 	// Accent/AccentBright, which stay reserved for a control that is actually on.
-	inline FLinearColor IconHover()    { return Hex(0xE6E6E6); }
+	inline FLinearColor IconHover()    { return FMixtormatLiveTheme::ResolveColor(TEXT("IconHover"), Hex(0xFFFFFF)); }
 	inline FLinearColor HeaderText()   { return FMixtormatLiveTheme::ResolveColor(TEXT("HeaderText"), Hex(0xA8A8A8)); }
 	inline FLinearColor CaptionText()  { return FMixtormatLiveTheme::ResolveColor(TEXT("CaptionText"), Hex(0x6E6E6E)); }
 	// Between CaptionText and HeaderText on purpose: a card title outranks the captions inside
@@ -163,6 +169,23 @@ namespace MixtormatPalette
 	inline FLinearColor LayerHoverTop()      { return Hex(0x2D3134); }
 	inline FLinearColor LayerHoverBottom()   { return Hex(0x222629); }
 	inline FLinearColor LayerSelectedTop()   { return Hex(0x383E42); }
+	// The left-edge lift on a group header's cross-axis pass. A group is the only row painted on
+	// two axes, and this is the one that says so: layers ramp top-down, child rows ramp left-right,
+	// and a group does both. Mid-grey rather than black, because it lifts the left edge instead of
+	// darkening it -- the opposite direction to a child row, so the two never read as the same
+	// surface at different sizes.
+	inline FLinearColor GroupRowCross() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupRowCross"), Hex(0x33383C)); }
+
+	// The colours a group can be tagged with. Eight, spread around the wheel and matched in
+	// saturation, so two groups picked at random stay tellable apart -- the whole point of the
+	// feature. They are tinted into a dark row, so mid-bright is right: a near-black swatch would
+	// vanish and a near-white one would flatten the gradient.
+	inline TArray<FLinearColor> GroupAccents()
+	{
+		return {
+			Hex(0xE05252), Hex(0xE08A42), Hex(0xE0C24A), Hex(0x6FBF5A),
+			Hex(0x4FB0B5), Hex(0x5A8FD6), Hex(0x9B72D0), Hex(0xD066A5)};
+	}
 	inline FLinearColor LayerSelectedBottom(){ return Hex(0x2A2F32); }
 	// Children run horizontally and stay one value step below their owning layer.
 	inline FLinearColor LayerChildHoverLeft()    { return Hex(0x17191B, 0.72f); }

@@ -2038,6 +2038,16 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FeatherRandom = 0.5f;
 
+	// What the feather does on the way up, rather than how wide it is.
+	//
+	// The run-out is a straight line, and a straight line is the one shape a normal map cannot
+	// show -- a normal reads a change in slope, and a constant ramp has none, so the band lights
+	// as a single flat facet. Gain bends it: the slope leaving the wall goes from 1 to 1 + Gain,
+	// and past 1 the curve arcs above the face and leaves a raised lip just inside the edge. Both
+	// ends stay pinned, so the grout wall and the flat face never move.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	float FeatherGain = 0.0f;
+
 	// Edge relief and shading share one edge-distance field. Width is in output pixels, so the
 	// bevel remains visually even when Rows and Columns make non-square cells.
 	//
@@ -2383,6 +2393,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerGroup
 	// group returns each layer to the visibility the user gave it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Group")
 	bool bEnabled = true;
+
+	// Editor-only tint for this group's header and its members' rows. Alpha carries "set at all",
+	// so a group with no colour is one field at zero rather than a second bool to keep in step.
+	// Nothing in the compositor reads this -- it is organisation, not authoring.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Group", meta = (HideAlphaChannel))
+	FLinearColor AccentColor = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+	bool HasAccentColor() const { return AccentColor.A > 0.0f; }
 
 	// Reserved for group-level parameters. There are none yet, and these are deliberately not
 	// broadcast onto member layers: a group owns no layer parameter surface to bind against, and

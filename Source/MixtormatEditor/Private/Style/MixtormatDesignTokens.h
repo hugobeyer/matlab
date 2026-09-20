@@ -192,6 +192,10 @@ namespace MixtormatTokens
 	// Sized per role, not per pixel budget: the eye is the only thing in a layer row a user aims
 	// at, so it is the largest; a disclosure chevron is read, not clicked, and stays small.
 	constexpr float IconButtonSize = 14.0f;
+	// Added around an icon button's glyph, not to it: the box that takes the click grows by this
+	// while the drawn icon stays IconButtonSize. A 14px target is under half the ~24px a pointer
+	// reliably hits, and these are the most-clicked controls in the panel.
+	inline float IconButtonHitSlop = 8.0f;
 	constexpr float ChevronSize = 14.0f;
 	constexpr float StatusDotSize = 8.0f;
 
@@ -336,6 +340,15 @@ namespace MixtormatTokens
 	// mask "bar" any more. Zoom lands on 52 + 12n (MaskGalleryTileMinimum + n * step), so a
 	// default on that grid keeps every step after it on the same one.
 	inline float MaskBarTileSize = 88.0f;
+	// How far a group's row leans toward its accent colour. Low on purpose: the colour is there to
+	// tell two groups apart at a glance, not to become the row.
+	inline float GroupAccentStrength = 0.35f;
+	inline float GroupAccentSelectedStrength = 0.55f;
+	// Alpha of the group header's left-edge cross pass. Present whether or not the group carries
+	// an accent -- it is what makes a group row read as a group.
+	inline float GroupRowCrossStrength = 0.5f;
+	inline float GroupAccentSwatchSize = 18.0f;
+	inline float GroupAccentSwatchGap = 3.0f;
 	inline float ToolbarButtonMargin = 2.0f;
 	inline float ToolbarLabelPadding = 5.0f;
 	constexpr float LibraryBrowseButtonGap = 4.0f;

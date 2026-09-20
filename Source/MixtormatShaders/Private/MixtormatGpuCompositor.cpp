@@ -1602,6 +1602,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					? FMath::Clamp(Pattern.HeightRandom, 0.0f, 1.0f) : 1.0f;
 				PatternData.FeatherRandom = FMath::IsFinite(Pattern.FeatherRandom)
 					? FMath::Clamp(Pattern.FeatherRandom, 0.0f, 1.0f) : 0.0f;
+				// Floored, not range-clamped: an artistic amount, like the Bevel block above. The
+				// shader normalises the curve by its own peak, so a large value cannot clip.
+				PatternData.FeatherGain = FMath::IsFinite(Pattern.FeatherGain)
+					? FMath::Max(Pattern.FeatherGain, 0.0f) : 0.0f;
 				PatternData.BevelInsetPixels = FMath::IsFinite(Pattern.BevelInsetPixels)
 					? Pattern.BevelInsetPixels : 0.0f;
 				PatternData.GapHeight = FMath::IsFinite(Pattern.GapHeight)
