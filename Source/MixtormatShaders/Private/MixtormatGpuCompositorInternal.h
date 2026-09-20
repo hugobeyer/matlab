@@ -351,25 +351,38 @@ namespace MixtormatGpuCompositor
 		float GradeOutputMax = 1.0f;
 		FVector3f GradeChannelBias = FVector3f::ZeroVector;
 
-		float ChipAmount = 0.45f;
-		float ChipGroutLevel = 0.5f;
-		float ChipGroutSoftness = 0.08f;
-		float ChipSize = 0.6f;
-		float ChipDepth = 0.035f;
-		float ChipIrregularity = 0.6f;
-		int32 ChipIterations = 16;
-		float ChipMaskEdge = 0.0f;
-		float ChipCavityInfluence = 0.5f;
-		float ChipCavityOffset = 0.0f;
-		float ChipCavityRemapMin = 0.0f;
-		float ChipCavityRemapMax = 0.04f;
-		float ChipHeightInfluence = 1.0f;
-		float ChipHeightScale = 1.0f;
-		FTextureRHIRef ChipPlacementMask;
-		float ChipMaskTiling = 1.0f;
-		bool bChipInvertMask = false;
-		uint32 ChipSeed = 1;
-		float ChipRoughnessAmount = 0.0f;
+		// Breakup, already reduced to what the two dispatches need: the three cell counts and
+		// the size range are derived from Scale/Detail/Size/Size Variation once here rather than
+		// re-derived per pass.
+		float BreakupAmount = 1.0f;
+		int32 BreakupMacroCells = 6;
+		int32 BreakupMidCells = 11;
+		int32 BreakupDetailCells = 20;
+		float BreakupDensity = 0.72f;
+		float BreakupSizeMin = 0.22f;
+		float BreakupSizeMax = 0.42f;
+		float BreakupStretch = 1.6f;
+		float BreakupAngularity = 0.72f;
+		float BreakupIrregularity = 0.38f;
+		int32 BreakupMidOperation = 0;
+		int32 BreakupDetailOperation = 0;
+		float BreakupSmoothness = 0.30f;
+		float BreakupDistortion = 5.6f;
+		int32 BreakupDistortionFrequency = 3;
+		bool bBreakupInvert = false;
+		float BreakupRelief = -0.06f;
+		float BreakupFold = 0.025f;
+		float BreakupFoldWidth = 16.0f;
+		float BreakupCrease = 0.018f;
+		float BreakupCreaseWidth = 1.25f;
+		float BreakupPush = 0.0f;
+		float BreakupPushWidth = 24.0f;
+		float BreakupVariation = 0.25f;
+		float BreakupRoughnessAmount = 0.0f;
+		FTextureRHIRef BreakupPlacementMask;
+		float BreakupMaskTiling = 1.0f;
+		bool bBreakupInvertMask = false;
+		uint32 BreakupSeed = 1;
 
 		int32 EdgeWearRadius = 24;
 		float EdgeWearSlope = 0.35f;
@@ -802,6 +815,18 @@ namespace MixtormatGpuCompositor
 		bool bHasScopedMask = false;
 	};
 
+	// Breakup carries an optional Region ID map: when a Pattern IDs producer sits above it in the
+	// same layer its ids fold into the generated piece identity, giving per-brick variation on top
+	// of Breakup's own sub-fragments. Null is the normal case and is not an error -- unlike Worn
+	// Edges, Breakup generates its own ids and never needs an external producer.
+	struct FPendingBreakup
+	{
+		const FEffectRenderData* Effect = nullptr;
+		FRDGTextureRef FeatureMask = nullptr;
+		FRDGTextureRef RegionIds = nullptr;
+		bool bHasScopedMask = false;
+	};
+
 	struct FPendingWornEdges
 	{
 		const FEffectRenderData* Effect = nullptr;
@@ -952,7 +977,7 @@ namespace MixtormatGpuCompositor
 		int32 MaskPassIndex = 0;
 		int32 EffectPassIndex = 0;
 		FPendingEffect PendingErosion;
-		TArray<FPendingEffect, TInlineAllocator<2>> PendingChippings;
+		TArray<FPendingBreakup, TInlineAllocator<2>> PendingBreakups;
 		TArray<FPendingWornEdges, TInlineAllocator<2>> PendingWornEdges;
 		TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 		TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
@@ -978,7 +1003,7 @@ namespace MixtormatGpuCompositor
 			MaskPassIndex = 0;
 			EffectPassIndex = 0;
 			PendingErosion = FPendingEffect();
-			PendingChippings.Reset();
+			PendingBreakups.Reset();
 			PendingWornEdges.Reset();
 			PendingCraquelureReliefs.Reset();
 			PendingRampTilts.Reset();
@@ -1075,7 +1100,7 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
-	// MixtormatGpuEffectPasses.cpp -- Grade, Craquelure, Worn Edges, Chipping, Erosion,
+	// MixtormatGpuEffectPasses.cpp -- Grade, Craquelure, Worn Edges, Breakup, Erosion,
 	// owner-local Flow Warp and the shared height-derived normal.
 	void AddHeightDerivedNormalPass(
 		FMixtormatComposeContext& Ctx,
@@ -1105,7 +1130,7 @@ namespace MixtormatGpuCompositor
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
 
-	void QueuePendingChipping(
+	void QueuePendingBreakup(
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
@@ -1198,7 +1223,7 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
-	void AddChippingPasses(
+	void AddBreakupPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);

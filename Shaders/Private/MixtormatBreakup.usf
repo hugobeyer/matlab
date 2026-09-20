@@ -1,0 +1,481 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+
+// Multi-scale procedural SDF breakup. Two passes, no iteration, no state.
+//
+// FieldCS builds one tileable signed distance field out of three families of irregular cells --
+// macro, mid and detail -- combined through union/subtract/intersect, and publishes it alongside a
+// stable per-piece random. ApplyCS reads that field once and spends it four ways: relief inside
+// the shape, a fold on the outside lip, a crease along the zero crossing, and a push that warps
+// the incoming height along the field gradient.
+//
+// The field is the only thing that knows about cells. ApplyCS never regenerates it, and the
+// gradient it needs for the push comes from neighbouring texels of the published field rather than
+// from a second evaluation.
+
+#define BREAKUP_TAU 6.28318530717958647692f
+
+// Distances and widths are authored in pixels at 1K and scaled by the real resolution, so a
+// preview and a 4K export show the same physical breakup rather than the same pixel count.
+#define BREAKUP_REFERENCE_RES 1024.0f
+
+Texture2D<uint> RegionIds;
+Texture2D<float> SourceHeight;
+Texture2D<float2> BreakupField;
+Texture2D<float> LayerMask;
+Texture2D<float> PlacementMaskTexture;
+
+SamplerState LinearWrapSampler;
+
+RWTexture2D<float2> OutputField;
+RWTexture2D<float> OutputHeight;
+RWTexture2D<float> OutputCoverage;
+
+int2 OutputSize;
+
+uint Seed;
+
+int MacroCells;
+int MidCells;
+int DetailCells;
+
+float Density;
+float SizeMin;
+float SizeMax;
+float Stretch;
+float Angularity;
+float Jitter;
+
+int OperationMid;
+int OperationDetail;
+float BlendSmooth;
+
+float DistortAmount;
+int DistortFrequency;
+
+uint InvertField;
+
+uint HasRegionIds;
+
+float Relief;
+float FoldHeight;
+float FoldWidth;
+float CreaseWidth;
+float CreaseDepth;
+
+float PushAmount;
+float PushWidth;
+
+float Variation;
+float Strength;
+
+uint UsePlacementMask;
+float PlacementMaskTiling;
+uint InvertMask;
+
+uint BreakupHashU(uint x)
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+uint BreakupHashCoord(int x, int y, uint s)
+{
+	return BreakupHashU(
+		(uint)x * 73856093u ^
+		(uint)y * 19349663u ^
+		s * 83492791u);
+}
+
+float BreakupHash01(uint x)
+{
+	return (float)(BreakupHashU(x) & 0x00ffffffu) * (1.0f / 16777216.0f);
+}
+
+int BreakupWrapI(int x, int n)
+{
+	const int SafeN = max(n, 1);
+	const int r = x % SafeN;
+	return r < 0 ? r + SafeN : r;
+}
+
+int2 BreakupWrapPixel(int2 p)
+{
+	return int2(
+		BreakupWrapI(p.x, OutputSize.x),
+		BreakupWrapI(p.y, OutputSize.y));
+}
+
+float BreakupSmooth(float a, float b, float x)
+{
+	const float t = saturate((x - a) / max(b - a, 1.0e-6f));
+	return t * t * (3.0f - 2.0f * t);
+}
+
+// Polynomial smooth min. k = 0 falls back to a hard min, which is what keeps Smoothness 0 a
+// genuine boolean rather than a nearly-boolean.
+float BreakupSMin(float a, float b, float k)
+{
+	if (k <= 1.0e-6f)
+	{
+		return min(a, b);
+	}
+	const float h = saturate(0.5f + 0.5f * (b - a) / k);
+	return lerp(b, a, h) - k * h * (1.0f - h);
+}
+
+float BreakupSMax(float a, float b, float k)
+{
+	return -BreakupSMin(-a, -b, k);
+}
+
+float2 BreakupRotate(float2 p, float a)
+{
+	const float c = cos(a);
+	const float s = sin(a);
+	return float2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+// Integer-period sinusoids, so the warp closes on the UV square exactly. A noise-based warp would
+// have to be periodic by construction to tile, and this is cheaper than making one that is.
+float2 BreakupDistort(float2 uv, int frequency, float amount, uint seed)
+{
+	const int f = max(frequency, 1);
+
+	const float p0 = BreakupHash01(seed + 11u) * BREAKUP_TAU;
+	const float p1 = BreakupHash01(seed + 31u) * BREAKUP_TAU;
+	const float p2 = BreakupHash01(seed + 59u) * BREAKUP_TAU;
+	const float p3 = BreakupHash01(seed + 89u) * BREAKUP_TAU;
+
+	const float x =
+		sin(BREAKUP_TAU * uv.y * (float)f + p0) +
+		0.45f * sin(BREAKUP_TAU * (uv.x * (float)(f + 1) + uv.y * (float)f) + p1);
+
+	const float y =
+		sin(BREAKUP_TAU * uv.x * (float)f + p2) +
+		0.45f * sin(BREAKUP_TAU * (uv.x * (float)f - uv.y * (float)(f + 1)) + p3);
+
+	uv += float2(x, y) * (amount / BREAKUP_REFERENCE_RES);
+	return frac(uv);
+}
+
+// One cell's shape, as a signed distance. Angularity blends a box metric into a diamond one, which
+// is what turns rounded flakes into angular shards without a second shape primitive; shear leans
+// the result so pieces do not all sit square to their own axes.
+float BreakupShape(float2 q, float sx, float sy, float angularity, float shear)
+{
+	q.x += q.y * shear;
+
+	const float ax = abs(q.x) / max(sx, 1.0e-6f);
+	const float ay = abs(q.y) / max(sy, 1.0e-6f);
+
+	const float boxField = max(ax, ay);
+	const float diamond = ax + ay;
+	const float metric = lerp(boxField, diamond, saturate(angularity));
+
+	return (metric - 1.0f) * min(sx, sy);
+}
+
+struct FBreakupSample
+{
+	float Distance;
+	uint Id;
+};
+
+// One family: a jittered lattice of cells at `cells` per UV repeat, each with its own size,
+// aspect, rotation, angularity and shear, and each present or absent on a density draw.
+//
+// The hash uses the *wrapped* cell index while the centre uses the *unwrapped* one. That split is
+// what makes the field tile: the two integer cells naming the same piece across the UV repeat draw
+// identical parameters and sit exactly one period apart.
+FBreakupSample BreakupFamily(
+	float2 uv,
+	int cells,
+	uint seed,
+	float density,
+	float sizeMin,
+	float sizeMax,
+	float stretchAmount,
+	float angularity,
+	float jitter)
+{
+	FBreakupSample result;
+	result.Distance = 1000.0f;
+	result.Id = 0u;
+
+	cells = max(cells, 1);
+
+	const float2 p = uv * (float)cells;
+	const int bx = (int)floor(p.x);
+	const int by = (int)floor(p.y);
+
+	[unroll]
+	for (int oy = -1; oy <= 1; ++oy)
+	{
+		[unroll]
+		for (int ox = -1; ox <= 1; ++ox)
+		{
+			const int gx = bx + ox;
+			const int gy = by + oy;
+			const int hx = BreakupWrapI(gx, cells);
+			const int hy = BreakupWrapI(gy, cells);
+
+			const uint id = BreakupHashCoord(hx, hy, seed);
+
+			const float active = BreakupHash01(id ^ 0x9e3779b9u);
+			if (active > density)
+			{
+				continue;
+			}
+
+			const float rx = BreakupHash01(id ^ 0x243f6a88u);
+			const float ry = BreakupHash01(id ^ 0x85a308d3u);
+			const float rs = BreakupHash01(id ^ 0x13198a2eu);
+			const float ra = BreakupHash01(id ^ 0x03707344u);
+			const float rt = BreakupHash01(id ^ 0xa4093822u);
+			const float rg = BreakupHash01(id ^ 0x299f31d0u);
+			const float rang = BreakupHash01(id ^ 0x082efa98u);
+			const float rsh = BreakupHash01(id ^ 0xec4e6c89u);
+
+			const float2 center = float2(
+				(float)gx + 0.5f + (rx - 0.5f) * jitter,
+				(float)gy + 0.5f + (ry - 0.5f) * jitter) / (float)cells;
+
+			float2 q = uv - center;
+			q = BreakupRotate(q, ra * BREAKUP_TAU);
+
+			const float radius = lerp(sizeMin, sizeMax, rs) / (float)cells;
+
+			float stretch = lerp(1.0f, max(stretchAmount, 1.0f), rt);
+			if (rg > 0.5f)
+			{
+				stretch = 1.0f / stretch;
+			}
+
+			const float sx = radius * stretch;
+			const float sy = radius / stretch;
+
+			const float ang = saturate(angularity + (rang - 0.5f) * 0.30f);
+			const float shear = (rsh - 0.5f) * 0.75f;
+
+			const float d = BreakupShape(q, sx, sy, ang, shear);
+			if (d < result.Distance)
+			{
+				result.Distance = d;
+				result.Id = id;
+			}
+		}
+	}
+
+	return result;
+}
+
+// Union / Subtract / Intersect, carrying the piece id of whichever operand decided the result so
+// the published per-piece random stays attached to the piece that is actually visible.
+FBreakupSample BreakupCombine(FBreakupSample a, FBreakupSample b, float k, int operation)
+{
+	FBreakupSample result;
+
+	if (operation == 1)
+	{
+		const float db = -b.Distance;
+		result.Distance = BreakupSMax(a.Distance, db, k);
+		result.Id = a.Distance >= db ? a.Id : b.Id;
+		return result;
+	}
+
+	if (operation == 2)
+	{
+		result.Distance = BreakupSMax(a.Distance, b.Distance, k);
+		result.Id = a.Distance >= b.Distance ? a.Id : b.Id;
+		return result;
+	}
+
+	result.Distance = BreakupSMin(a.Distance, b.Distance, k);
+	result.Id = a.Distance <= b.Distance ? a.Id : b.Id;
+	return result;
+}
+
+float BreakupSamplePlacement(float2 uv)
+{
+	float value;
+
+	if (UsePlacementMask != 0u)
+	{
+		value = PlacementMaskTexture.SampleLevel(
+			LinearWrapSampler,
+			frac(uv * max(PlacementMaskTiling, 1.0f)),
+			0.0f);
+	}
+	else
+	{
+		value = LayerMask.SampleLevel(LinearWrapSampler, uv, 0.0f);
+	}
+
+	if (InvertMask != 0u)
+	{
+		value = 1.0f - value;
+	}
+
+	return saturate(value);
+}
+
+float BreakupLoadSDF(int2 pixel)
+{
+	return BreakupField.Load(int3(BreakupWrapPixel(pixel), 0)).x;
+}
+
+[numthreads(8, 8, 1)]
+void FieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 pixel = int2(DispatchThreadId.xy);
+
+	float2 uv = (float2(pixel) + 0.5f) / float2(OutputSize);
+	uv = BreakupDistort(uv, DistortFrequency, DistortAmount, Seed + 1001u);
+
+	const int mc = max(MacroCells, 1);
+	const int md = max(MidCells, 1);
+	const int dc = max(DetailCells, 1);
+
+	FBreakupSample d0 = BreakupFamily(
+		uv, mc, Seed + 11u,
+		Density, SizeMin, SizeMax, Stretch, Angularity, Jitter);
+
+	FBreakupSample d1 = BreakupFamily(
+		uv, md, Seed + 107u,
+		saturate(Density * 0.92f), SizeMin * 0.85f, SizeMax * 0.95f,
+		Stretch, Angularity, Jitter);
+
+	FBreakupSample d2 = BreakupFamily(
+		uv, dc, Seed + 251u,
+		saturate(Density * 0.72f), SizeMin * 0.65f, SizeMax * 0.82f,
+		Stretch, saturate(Angularity + 0.08f), Jitter);
+
+	// The blend radius is divided by the cell count of the coarser operand so Smoothness means the
+	// same fraction of a piece at every Scale rather than the same absolute distance.
+	FBreakupSample result = BreakupCombine(d0, d1, BlendSmooth / (float)mc, OperationMid);
+	result = BreakupCombine(result, d2, BlendSmooth / (float)md, OperationDetail);
+
+	float sd = result.Distance * BREAKUP_REFERENCE_RES;
+	if (InvertField != 0u)
+	{
+		sd = -sd;
+	}
+
+	// Pattern IDs, when a producer exists above this effect, fold into the piece identity rather
+	// than replacing it: Breakup keeps its own sub-fragments and inherits per-brick variation.
+	uint finalId = result.Id;
+	if (HasRegionIds != 0u)
+	{
+		const uint regionId = RegionIds.Load(int3(pixel, 0));
+		finalId = BreakupHashU(finalId ^ regionId * 0x9e3779b9u);
+	}
+
+	// Hashed into the second channel rather than published as its own R32_UINT target. The uint id
+	// is only needed here, and a full-resolution id texture would cost 64 MB of transient memory at
+	// 4K to carry information one float can.
+	const float idRandom = BreakupHash01(finalId ^ Seed * 0x85ebca6bu);
+
+	OutputField[pixel] = float2(clamp(sd, -4096.0f, 4096.0f), idRandom);
+}
+
+[numthreads(8, 8, 1)]
+void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 pixel = int2(DispatchThreadId.xy);
+	const float2 uv = (float2(pixel) + 0.5f) / float2(OutputSize);
+
+	const float sourceHeight = SourceHeight.Load(int3(pixel, 0));
+	const float2 field = BreakupField.Load(int3(pixel, 0));
+
+	const float sd = field.x;
+	const float r0 = field.y;
+
+	// Three more decorrelated draws off the one published random, so relief, fold, crease and push
+	// each vary independently per piece without a second field channel.
+	const float r1 = frac(r0 * 1.61803398875f + 0.173f);
+	const float r2 = frac(r0 * 2.41421356237f + 0.517f);
+	const float r3 = frac(r0 * 3.14159265359f + 0.731f);
+
+	const float placement = BreakupSamplePlacement(uv);
+
+	const float reliefWidth = max(CreaseWidth * 2.0f, 1.0f);
+	const float inside = BreakupSmooth(0.0f, reliefWidth, -sd);
+
+	// The fold lives strictly on the outside of the shape, which is what makes it read as the lip
+	// of a torn or peeled edge rather than as a second relief band.
+	float fold = 0.0f;
+	if (sd >= 0.0f)
+	{
+		fold = 1.0f - BreakupSmooth(0.0f, max(FoldWidth, 1.0e-4f), sd);
+		fold = fold * fold * (3.0f - 2.0f * fold);
+	}
+
+	const float crease = 1.0f - BreakupSmooth(0.0f, max(CreaseWidth, 1.0e-4f), abs(sd));
+	const float pushBand = 1.0f - BreakupSmooth(0.0f, max(PushWidth, 1.0e-4f), abs(sd));
+
+	// Gradient from the published field's neighbours, wrapped, so the push direction costs four
+	// loads instead of four more family evaluations.
+	const float sdfL = BreakupLoadSDF(pixel + int2(-1, 0));
+	const float sdfR = BreakupLoadSDF(pixel + int2(1, 0));
+	const float sdfD = BreakupLoadSDF(pixel + int2(0, -1));
+	const float sdfU = BreakupLoadSDF(pixel + int2(0, 1));
+
+	float2 gradient = float2(sdfR - sdfL, sdfU - sdfD);
+	const float gradientLength = length(gradient);
+	gradient = gradientLength > 1.0e-5f
+		? gradient / gradientLength
+		: float2(0.0f, 0.0f);
+
+	const float pieceVariation = lerp(
+		1.0f - saturate(Variation), 1.0f + saturate(Variation), r0);
+	const float foldVariation = lerp(
+		1.0f - saturate(Variation) * 0.5f, 1.0f + saturate(Variation) * 0.5f, r1);
+	const float creaseVariation = lerp(
+		1.0f - saturate(Variation) * 0.35f, 1.0f + saturate(Variation) * 0.35f, r2);
+	const float pushVariation = lerp(
+		1.0f - saturate(Variation) * 0.5f, 1.0f + saturate(Variation) * 0.5f, r3);
+
+	// Pushed outward on both sides of the boundary, so material moves away from the seam rather
+	// than sliding along it.
+	const float side = sd >= 0.0f ? 1.0f : -1.0f;
+	const float pushUV = PushAmount / BREAKUP_REFERENCE_RES;
+	const float2 warpedUV = frac(
+		uv + gradient * side * pushUV * pushBand * pushVariation);
+
+	float warpedHeight = sourceHeight;
+	if (abs(PushAmount) > 1.0e-6f)
+	{
+		warpedHeight = SourceHeight.SampleLevel(LinearWrapSampler, warpedUV, 0.0f);
+	}
+
+	const float delta =
+		inside * Relief * pieceVariation +
+		fold * FoldHeight * foldVariation -
+		crease * CreaseDepth * creaseVariation;
+
+	// Amount 0 returns exactly the input, which is the Filter contract every other effect here
+	// keeps. The C++ side skips the dispatches entirely at 0; this is the shader-side guarantee.
+	const float amount = saturate(Strength * placement);
+	const float result = lerp(sourceHeight, warpedHeight + delta, amount);
+
+	OutputHeight[pixel] = saturate(result);
+
+	OutputCoverage[pixel] = saturate(
+		max(inside, max(fold, max(crease, pushBand))) * amount);
+}

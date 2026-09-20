@@ -2212,40 +2212,96 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.bGradeInvertMask = LayerEffect.bGradeInvertMask;
 			}
 
-			if (ResolvedType == EMixtormatEffectType::Chipping)
+			if (ResolvedType == EMixtormatEffectType::Breakup)
 			{
-				EffectData.ChipAmount = LayerEffect.ChipAmount;
-				EffectData.ChipGroutLevel = LayerEffect.ChipGroutLevel;
-				EffectData.ChipGroutSoftness = LayerEffect.ChipGroutSoftness;
-				EffectData.ChipSize = LayerEffect.ChipSize;
-				EffectData.ChipDepth = LayerEffect.ChipDepth;
-				EffectData.ChipIrregularity = LayerEffect.ChipIrregularity;
-				EffectData.ChipIterations = FMath::Clamp(LayerEffect.ChipIterations, 1, 32);
-				EffectData.ChipMaskEdge = LayerEffect.ChipMaskEdge;
-				EffectData.ChipCavityInfluence = LayerEffect.ChipCavityInfluence;
-				EffectData.ChipCavityOffset = LayerEffect.ChipCavityOffset;
-				EffectData.ChipCavityRemapMin = LayerEffect.ChipCavityRemapMin;
-				EffectData.ChipCavityRemapMax = LayerEffect.ChipCavityRemapMax;
-				EffectData.ChipHeightInfluence = LayerEffect.ChipHeightInfluence;
-				EffectData.ChipHeightScale = LayerEffect.ChipHeightScale;
-				EffectData.ChipMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.ChipMaskTiling));
-				EffectData.bChipInvertMask = LayerEffect.bChipInvertMask;
+				EffectData.BreakupAmount = FMath::IsFinite(LayerEffect.BreakupAmount)
+					? FMath::Clamp(LayerEffect.BreakupAmount, 0.0f, 1.0f) : 1.0f;
+
+				// Mid and Detail are derived rather than authored, so the three families stay in
+				// a sensible ratio instead of being three sliders to keep in step by hand. Each
+				// is forced at least one cell above the family below it: two families at the same
+				// count would beat identically and the pair would read as one.
+				const int32 MacroCells = FMath::Clamp(LayerEffect.BreakupScale, 1, 64);
+				const float Detail = FMath::IsFinite(LayerEffect.BreakupDetail)
+					? FMath::Clamp(LayerEffect.BreakupDetail, 0.0f, 1.0f) : 0.5f;
+				const int32 MidCells = FMath::Max(
+					MacroCells + 1,
+					FMath::RoundToInt(MacroCells * FMath::Lerp(1.50f, 2.15f, Detail)));
+				const int32 DetailCells = FMath::Max(
+					MidCells + 1,
+					FMath::RoundToInt(MacroCells * FMath::Lerp(2.60f, 4.10f, Detail)));
+				EffectData.BreakupMacroCells = MacroCells;
+				EffectData.BreakupMidCells = MidCells;
+				EffectData.BreakupDetailCells = DetailCells;
+
+				const float Size = FMath::IsFinite(LayerEffect.BreakupSize)
+					? FMath::Clamp(LayerEffect.BreakupSize, 0.01f, 4.0f) : 0.32f;
+				const float SizeVariation = FMath::IsFinite(LayerEffect.BreakupSizeVariation)
+					? FMath::Clamp(LayerEffect.BreakupSizeVariation, 0.0f, 0.99f) : 0.3125f;
+				// Floored above zero: a zero or negative radius divides by itself in the shape
+				// metric, and a piece that cannot exist is not the same thing as Density 0.
+				EffectData.BreakupSizeMin = FMath::Max(Size * (1.0f - SizeVariation), 1.0e-4f);
+				EffectData.BreakupSizeMax = FMath::Max(Size * (1.0f + SizeVariation), EffectData.BreakupSizeMin);
+
+				EffectData.BreakupDensity = FMath::IsFinite(LayerEffect.BreakupDensity)
+					? FMath::Clamp(LayerEffect.BreakupDensity, 0.0f, 1.0f) : 0.72f;
+				EffectData.BreakupStretch = FMath::IsFinite(LayerEffect.BreakupStretch)
+					? FMath::Max(LayerEffect.BreakupStretch, 1.0f) : 1.6f;
+				EffectData.BreakupAngularity = FMath::IsFinite(LayerEffect.BreakupAngularity)
+					? FMath::Clamp(LayerEffect.BreakupAngularity, 0.0f, 1.0f) : 0.72f;
+				EffectData.BreakupIrregularity = FMath::IsFinite(LayerEffect.BreakupIrregularity)
+					? FMath::Clamp(LayerEffect.BreakupIrregularity, 0.0f, 1.0f) : 0.38f;
+
+				EffectData.BreakupMidOperation = static_cast<int32>(LayerEffect.BreakupMidOperation);
+				EffectData.BreakupDetailOperation = static_cast<int32>(LayerEffect.BreakupDetailOperation);
+				EffectData.BreakupSmoothness = FMath::IsFinite(LayerEffect.BreakupSmoothness)
+					? FMath::Max(LayerEffect.BreakupSmoothness, 0.0f) : 0.30f;
+
+				EffectData.BreakupDistortion = FMath::IsFinite(LayerEffect.BreakupDistortion)
+					? LayerEffect.BreakupDistortion : 5.6f;
+				EffectData.BreakupDistortionFrequency =
+					FMath::Clamp(LayerEffect.BreakupDistortionFrequency, 1, 16);
+				EffectData.bBreakupInvert = LayerEffect.bBreakupInvert;
+
+				// Structural amounts, finite-guarded and not range-clamped past what the shader
+				// needs to stay safe: these are artistic heights and widths, and every divisor
+				// they reach is floored in the shader.
+				EffectData.BreakupRelief = FMath::IsFinite(LayerEffect.BreakupRelief)
+					? LayerEffect.BreakupRelief : -0.06f;
+				EffectData.BreakupFold = FMath::IsFinite(LayerEffect.BreakupFold)
+					? LayerEffect.BreakupFold : 0.025f;
+				EffectData.BreakupFoldWidth = FMath::IsFinite(LayerEffect.BreakupFoldWidth)
+					? FMath::Max(LayerEffect.BreakupFoldWidth, 1.0e-4f) : 16.0f;
+				EffectData.BreakupCrease = FMath::IsFinite(LayerEffect.BreakupCrease)
+					? LayerEffect.BreakupCrease : 0.018f;
+				EffectData.BreakupCreaseWidth = FMath::IsFinite(LayerEffect.BreakupCreaseWidth)
+					? FMath::Max(LayerEffect.BreakupCreaseWidth, 1.0e-4f) : 1.25f;
+				EffectData.BreakupPush = FMath::IsFinite(LayerEffect.BreakupPush)
+					? LayerEffect.BreakupPush : 0.0f;
+				EffectData.BreakupPushWidth = FMath::IsFinite(LayerEffect.BreakupPushWidth)
+					? FMath::Max(LayerEffect.BreakupPushWidth, 1.0e-4f) : 24.0f;
+				EffectData.BreakupVariation = FMath::IsFinite(LayerEffect.BreakupVariation)
+					? FMath::Clamp(LayerEffect.BreakupVariation, 0.0f, 1.0f) : 0.25f;
+				EffectData.BreakupRoughnessAmount = FMath::IsFinite(LayerEffect.BreakupRoughnessAmount)
+					? FMath::Clamp(LayerEffect.BreakupRoughnessAmount, -1.0f, 1.0f) : 0.0f;
+
+				EffectData.BreakupMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.BreakupMaskTiling));
+				EffectData.bBreakupInvertMask = LayerEffect.bBreakupInvertMask;
 				{
-					UTexture2D* PlacementMask = LayerEffect.ChipMaskTexture.LoadSynchronous();
+					UTexture2D* PlacementMask = LayerEffect.BreakupMaskTexture.LoadSynchronous();
 					if (!PlacementMask)
 					{
-						if (const UMixtormatMask* MaskAsset = LayerEffect.ChipMask.LoadSynchronous())
+						if (const UMixtormatMask* MaskAsset = LayerEffect.BreakupMask.LoadSynchronous())
 						{
 							PlacementMask = MaskAsset->MaskTexture.Get();
 						}
 					}
 					if (PlacementMask)
 					{
-						EffectData.ChipPlacementMask = GetTextureRHI(PlacementMask);
+						EffectData.BreakupPlacementMask = GetTextureRHI(PlacementMask);
 					}
 				}
-				EffectData.ChipSeed = static_cast<uint32>(FMath::Max(LayerEffect.ChipSeed, 0));
-				EffectData.ChipRoughnessAmount = LayerEffect.ChipRoughnessAmount;
+				EffectData.BreakupSeed = static_cast<uint32>(FMath::Max(LayerEffect.BreakupSeed, 0));
 			}
 
 
@@ -3049,9 +3105,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 							continue;
 						}
 
-						if (Effect.Type == EMixtormatEffectType::Chipping)
+						if (Effect.Type == EMixtormatEffectType::Breakup)
 						{
-							QueuePendingChipping(LayerCtx, Layer, Child, Effect, FeatureMask);
+							QueuePendingBreakup(LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
@@ -3096,13 +3152,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 
 					// Keep preparation stable as Amount crosses zero; only the carve dispatches stop.
-					const bool bPrepareChipping = !LayerCtx.PendingChippings.IsEmpty();
+					const bool bPrepareBreakup = !LayerCtx.PendingBreakups.IsEmpty();
 					const int32 LocalWriteIndex = LayerIndex & 1;
 					FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
 					FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
 					FRDGTextureRef SavedRAM = Ctx.OutputRAM[LocalWriteIndex];
 					FRDGTextureRef SavedHeight = Ctx.OutputHeight[LocalWriteIndex];
-					if (bPrepareChipping)
+					if (bPrepareBreakup)
 					{
 						// Keep the read side intact for placement/height-reference evaluation.
 						// Relief filters write only the isolated incoming material channels.
@@ -3111,7 +3167,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						Ctx.OutputRAM[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedRAM->Desc, TEXT("Mixtormat.LocalRAM"));
 						Ctx.OutputHeight[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedHeight->Desc, TEXT("Mixtormat.LocalHeight"));
 					}
-					AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareChipping ? 1u : 0u);
+					AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareBreakup ? 1u : 0u);
 
 					AddErosionPasses(Ctx, LayerCtx, Layer);
 
@@ -3122,9 +3178,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 					AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 
-					AddChippingPasses(Ctx, LayerCtx, Layer);
+					AddBreakupPasses(Ctx, LayerCtx, Layer);
 
-					if (bPrepareChipping)
+					if (bPrepareBreakup)
 					{
 						LayerCtx.LayerInputBC = Ctx.OutputBC[LocalWriteIndex];
 						LayerCtx.LayerInputN = Ctx.OutputN[LocalWriteIndex];

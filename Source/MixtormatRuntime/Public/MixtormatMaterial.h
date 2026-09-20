@@ -1148,103 +1148,134 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
 	bool bGradeInvertMask = false;
 
-	// Chipping. A smooth height selection mixed with local cavity seeds chips, which grow
-	// inward over N iterations and carve the composited height.
+	// Breakup. One tileable multi-scale SDF, built from three families of irregular cells and
+	// spent four ways: relief inside the shape, a fold on its outside lip, a crease along the zero
+	// crossing, and a push that warps the incoming height along the field gradient.
 	//
-	// Raised material comes from thresholding that height at Grout Level, not from a generated
-	// lattice, so this works on whatever was actually built -- a tiled brick texture, a plank
-	// height map, or craquelure relief.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipAmount = 0.45f;
+	// It replaced Chipping in this slot. Chipping grew chips inward over N full-resolution
+	// iterations against a thresholded height; this is two passes and no iteration, and it does
+	// not need the surface to already contain raised material to find.
 
-	// The height that separates raised material from recess. Everything the filter does is a
-	// difference of the mask this produces.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipGroutLevel = 0.5f;
+	// Macro cell count across one UV repeat. Mid and Detail are derived from this and Detail
+	// rather than exposed, so the three families stay in a sensible ratio instead of being three
+	// sliders an artist has to keep in step by hand.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 BreakupScale = 6;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipGroutSoftness = 0.08f;
+	// How far apart the derived Mid and Detail families sit from Macro. Low keeps all three near
+	// the same size and the result reads as one population; high spreads them and gives large
+	// plates broken by much finer fragments.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupDetail = 0.5f;
 
-	// Optional seed gates, matching erosion's height and cavity controls. Grout Level still
-	// bounds propagation; these decide where inside that material chips are allowed to begin.
-	// Defaults preserve the height/cavity mix used before these controls were exposed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
-	float ChipCavityInfluence = 0.5f;
+	// Fraction of cells that are present at all. Below 1 the field has genuine gaps, which is what
+	// separates scattered flakes from continuous plating.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupDensity = 0.72f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
-	float ChipCavityOffset = 0.0f;
+	// Piece size as a fraction of its own cell, so it tracks Scale instead of fighting it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.05", ClampMax = "0.75"))
+	float BreakupSize = 0.32f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
-	float ChipCavityRemapMin = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.0", ClampMax = "0.75"))
+	float BreakupSizeVariation = 0.3125f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Cavity")
-	float ChipCavityRemapMax = 0.04f;
+	// Maximum aspect ratio a piece may be drawn at. Applied in both directions, so a single
+	// control gives both elongated and squat fragments rather than a directional bias.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "1.0", ClampMax = "2.0"))
+	float BreakupStretch = 1.6f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Height")
-	float ChipHeightInfluence = 1.0f;
+	// Blends each piece from a box metric toward a diamond one: rounded flakes at 0, angular
+	// shards at 1. A shape control rather than a second noise, so it changes what a fragment is
+	// instead of where it sits.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupAngularity = 0.72f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Height")
-	float ChipHeightScale = 1.0f;
+	// How far a piece may wander off its lattice cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupIrregularity = 0.38f;
 
-	// Optional mask owned by Chipping. When unset, the layer's accumulated mask children are used.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
-	TSoftObjectPtr<UMixtormatMask> ChipMask;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced")
+	EMixtormatBreakupOperation BreakupMidOperation = EMixtormatBreakupOperation::Union;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
-	TSoftObjectPtr<UTexture2D> ChipMaskTexture;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced")
+	EMixtormatBreakupOperation BreakupDetailOperation = EMixtormatBreakupOperation::Union;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement", meta = (ClampMin = "1"))
-	int32 ChipMaskTiling = 1;
+	// Blend radius of the CSG operations, as a fraction of a piece. 0 is a hard boolean.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupSmoothness = 0.30f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping|Placement")
-	bool bChipInvertMask = false;
+	// Warps the whole field before the cells are evaluated, in reference pixels at 1K. Built from
+	// integer-period sinusoids so the result still closes on the UV square exactly.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
+	float BreakupDistortion = 5.6f;
 
-	// How slowly a chip loses strength as it grows, and the only thing that attenuates a
-	// propagating tip. Spans roughly 7 pixels of reach at 0 to 240 at 1, so Iterations is what
-	// caps it in practice at the top of the range.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipSize = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 BreakupDistortionFrequency = 3;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipDepth = 0.035f;
+	// Signed, and the main structural control. Negative carves the pieces into the surface --
+	// torn, flaked, recessed. Zero leaves the surface alone and lets Fold and Crease do the work.
+	// Positive stands them proud, for rock foundations and raised plates.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-0.5", ClampMax = "0.5"))
+	float BreakupRelief = -0.06f;
 
-	// Weights a curl noise against the inward direction, so chips wander instead of running
-	// straight in from the edge. Also loosens the alignment test that grows them.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipIrregularity = 0.6f;
+	// Raises the material just outside each piece. The lip of torn paper, peeling paint, curled
+	// mud or a lifting ice plate.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float BreakupFold = 0.025f;
 
-	// A chip advances one pixel per iteration, so this is the hard bound on how far one can
-	// reach. Scaled internally by the render resolution against a 1024 reference, so a preview
-	// and an export show the same chip size rather than the same pixel count.
-	//
-	// Sized so it does not clip Size at its default: Size 0.6 decays to nothing at about 16
-	// pixels on its own, and a lower cap here would silently be the thing deciding chip size.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping", meta = (ClampMin = "1", ClampMax = "32"))
-	int32 ChipIterations = 16;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.25", ClampMax = "128.0"))
+	float BreakupFoldWidth = 16.0f;
 
-	// Stands in for the prototype's material-id input: the layer's own mask edge biases where
-	// chips start, how long they survive and how deep they cut. Zero by default, so the
-	// behaviour is opt-in; inert anyway on a layer whose mask is uniform.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipMaskEdge = 0.0f;
+	// Cuts a narrow depression along the zero crossing itself: cracks, plate separation, torn
+	// seams, rock joints. Works with Relief at 0, which is the crack-only configuration.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float BreakupCrease = 0.018f;
 
-	// Retained only so older assets deserialize; chip normals derive from the final carved height.
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chip normals derive from Chip Depth."))
-	float ChipNormalStrength = 8.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.25", ClampMax = "64.0"))
+	float BreakupCreaseWidth = 1.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping", meta = (ClampMin = "0"))
-	int32 ChipSeed = 1;
+	// Warps the incoming height along the field gradient instead of replacing it: compressed
+	// material, pushed rock, bulging, warped strata. In reference pixels at 1K, so the visual
+	// scale holds between a preview and a 4K bake.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-128.0", ClampMax = "128.0"))
+	float BreakupPush = 0.0f;
 
-	// Kept only so older recipes deserialize without losing fields. Chipping resolves coverage
-	// for height, normal and roughness and no longer authors base colour.
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chipping no longer authors base colour."))
-	FLinearColor ChipColor = FLinearColor(0.34f, 0.30f, 0.27f, 1.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "1.0", ClampMax = "256.0"))
+	float BreakupPushWidth = 24.0f;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Chipping no longer authors base colour."))
-	float ChipColorAmount = 0.0f;
+	// Per-piece variation of relief, fold, crease and push, off the field's own stable piece id.
+	// It is piece-stable by construction and can never become per-pixel noise.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupVariation = 0.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chipping")
-	float ChipRoughnessAmount = 0.0f;
+	// 0 is an exact rendering identity, and the passes are skipped entirely rather than run to
+	// reproduce their input.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupAmount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float BreakupRoughnessAmount = 0.0f;
+
+	// Flips the sign of the field, swapping which side of every boundary is the piece.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup")
+	bool bBreakupInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0"))
+	int32 BreakupSeed = 1;
+
+	// Optional mask owned by Breakup. When unset, the layer's accumulated mask children are used.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement")
+	TSoftObjectPtr<UMixtormatMask> BreakupMask;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement")
+	TSoftObjectPtr<UTexture2D> BreakupMaskTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement", meta = (ClampMin = "1"))
+	int32 BreakupMaskTiling = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement")
+	bool bBreakupInvertMask = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Worn Edges")
 	int32 EdgeWearRadius = 32;

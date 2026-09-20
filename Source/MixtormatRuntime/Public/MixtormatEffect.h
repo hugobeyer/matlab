@@ -9,7 +9,7 @@
 class UTexture2D;
 
 // Surface effects write coverage, normal and AO through the effect data target.
-// Filter effects write no effect data. Erosion and Chipping carve height and Grade transforms
+// Filter effects write no effect data. Erosion and Breakup carve height and Grade transforms
 // colour, all three after the layer composites and all three the identity at zero amount.
 // Stain is the exception inside this class: it writes no effect data either, but it resolves a
 // layer mask inside the child loop rather than transforming composited channels afterwards.
@@ -29,7 +29,11 @@ enum class EMixtormatEffectType : uint8
 	Stain = 1 UMETA(DisplayName = "Stain"),
 	Erosion = 2 UMETA(DisplayName = "Erosion"),
 	Grade = 3 UMETA(DisplayName = "Grade"),
-	Chipping = 4 UMETA(DisplayName = "Chipping"),
+	// Slot 4 was Chipping. Breakup replaces its implementation in place rather than being
+	// appended: serialized recipes store this enum by value, so keeping the number is what makes
+	// an existing asset load as the new effect. Config/DefaultMixtormat.ini carries the name
+	// redirect for anything that serialized it by name.
+	Breakup = 4 UMETA(DisplayName = "Breakup"),
 	WornEdges = 5 UMETA(DisplayName = "Worn Edges"),
 	// Appended: serialized recipes store this enum by value.
 	FlowWarp = 6 UMETA(DisplayName = "Flow Warp"),
@@ -66,6 +70,17 @@ enum class EMixtormatLayerBlurScope : uint8
 	Composite = 1 UMETA(DisplayName = "Whole Composite")
 };
 
+// How a Breakup family combines with the one coarser than it. The three are the standard CSG
+// set on a signed distance field, so they compose the way an artist expects: union adds fragments,
+// subtract cuts the finer family out of the coarser, intersect keeps only the overlap.
+UENUM(BlueprintType)
+enum class EMixtormatBreakupOperation : uint8
+{
+	Union = 0 UMETA(DisplayName = "Union"),
+	Subtract = 1 UMETA(DisplayName = "Subtract"),
+	Intersect = 2 UMETA(DisplayName = "Intersect")
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatFlowWarpBlendMode : uint8
 {
@@ -85,7 +100,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::Stain:
 	case EMixtormatEffectType::Erosion:
 	case EMixtormatEffectType::Grade:
-	case EMixtormatEffectType::Chipping:
+	case EMixtormatEffectType::Breakup:
 	case EMixtormatEffectType::WornEdges:
 	case EMixtormatEffectType::FlowWarp:
 	case EMixtormatEffectType::LayerBlur:
