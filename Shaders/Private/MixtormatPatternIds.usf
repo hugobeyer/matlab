@@ -770,7 +770,7 @@ FMixtormatPatternCell PatternFrenchAshlarCell(
 //
 // It is one additive competition, not a warped Voronoi:
 //
-//     Field_i(Q) = max(|Q - S_i| + A * N_i(UV) + B * M_i(UV), 0)^2 - W_i
+//     Field_i(Q) = |Q - S_i|^2 - W_i + A * N_i(UV) + B * M_i(UV)
 //
 // Q and S_i are in output pixels, so ownership stays isotropic on a rectangular texture. W_i is
 // an *additive* power weight, and additive is the whole point: the difference of two fields stays
@@ -784,14 +784,12 @@ FMixtormatPatternCell PatternFrenchAshlarCell(
 // controls, never from Rows/Columns, so the crack character does not stretch when the plate count
 // changes under it.
 //
-// The fracture term perturbs the *radius* rather than the squared field, and where it is applied
-// matters more than it looks. A radius displaced by A pixels moves the wall by about A pixels
-// whatever the two plates' separation, so Edge Irregularity reads directly in output pixels and
-// owes nothing to the cell count. Added to the squared field instead, the same amount would move
-// the wall by A / |S_j - S_i| -- which blows up exactly where two jittered sites happen to land
-// close together, and folds the level set into detached islands. Here the wall stays a single
-// curve as long as the displacement's slope, 2A / Edge Scale, stays under 1, which the control
-// ranges hold to comfortably.
+// The fracture term is added to the *squared* field, not to the radius, and that placement is what
+// makes the walls angular. The squared difference is linear in Q, so adding a piecewise-planar
+// term leaves the boundary equation piecewise-linear and its solution a chain of straight runs
+// with hard kinks. Added to the radius instead, the same displacement would leave the boundary
+// solving |Q - S_i| - |Q - S_j| = const -- a hyperbola -- and every wall would come out bowed,
+// which is the rounded-blob look this mode exists to avoid.
 //
 // Distance to the wall falls out of the same algebra. The boundary with competitor j is the zero
 // set of Field_j - Field_best, whose gradient is 2(S_best - S_j), so
@@ -831,7 +829,7 @@ struct FMixtormatFractureContext
 	int2 Period;             // primary lattice period in cells
 	int2 PrimaryNoisePeriod; // fracture lattice periods, sized off output pixels
 	int2 DetailNoisePeriod;
-	float PrimaryAmplitude;  // output pixels of radial displacement
+	float PrimaryAmplitude;  // field units (pixel^2); see the amplitude note below
 	float DetailAmplitude;
 	float MaxAmplitude;      // the bound the ownership early-out is sound against
 	float BasePixels;        // the short side of one primary cell
@@ -898,31 +896,30 @@ void FracturePrimaryTerms(
 	int2 Cell,
 	uint CellHash,
 	out float2 SitePixels,
-	out float Radius,
+	out float RadiusSq,
 	out float Weight)
 {
 	SitePixels = MixtormatCellPoint(Cell, Context.Period, Seed, Jitter) * Context.CellPixels;
-	Radius = length(Context.Query - SitePixels);
+	const float2 Delta = Context.Query - SitePixels;
+	// Squared throughout: the field is squared distance and the boundary algebra is linear in it,
+	// so the root is never needed and the scan does not pay for one per candidate.
+	RadiusSq = dot(Delta, Delta);
 	Weight = (MixtormatCellRandom01(MixtormatHashU(CellHash ^ 0x63d83595u)) * 2.0f - 1.0f)
 		* FractureSizeVariation * Context.BasePixels * Context.BasePixels;
 }
 
-// The field, once the fracture displacement for this site is known. Clamped at zero because a
-// displacement deeper than the radius would otherwise turn the square back into a rising function
-// on the wrong side of the site.
-float FractureCompose(float Radius, float Displacement, float Weight)
+// The field, once the fracture displacement for this site is known.
+float FractureCompose(float RadiusSq, float Displacement, float Weight)
 {
-	const float Perturbed = max(Radius + Displacement, 0.0f);
-	return Perturbed * Perturbed - Weight;
+	return RadiusSq + Displacement - Weight;
 }
 
 // The least this site's field can be under any displacement the fracture term could produce. Both
 // scans skip a candidate on this bound, so a plate that cannot win never costs its lattice
 // samples -- which is what keeps the neighbourhood scan affordable at 4K.
-float FractureFieldFloor(FMixtormatFractureContext Context, float Radius, float Weight)
+float FractureFieldFloor(FMixtormatFractureContext Context, float RadiusSq, float Weight)
 {
-	const float Floor = max(Radius - Context.MaxAmplitude, 0.0f);
-	return Floor * Floor - Weight;
+	return RadiusSq - Context.MaxAmplitude - Weight;
 }
 
 // How many final plates this primary plate resolves into. 1 means it stays whole, and a whole
@@ -993,18 +990,22 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 	Context.BasePixels = max(min(Context.CellPixels.x, Context.CellPixels.y), 1.0e-4f);
 	Context.PrimaryNoisePeriod = FractureNoisePeriod(AxisPixels, FractureEdgeScale);
 	Context.DetailNoisePeriod = FractureNoisePeriod(AxisPixels, FractureEdgeDetailScale);
-	// Output pixels, straight through. Nothing here is scaled by the cell, which is what keeps
-	// the crack character at the same physical size when Rows and Columns change under it.
-	Context.PrimaryAmplitude = abs(FractureEdgeIrregularity);
-	Context.DetailAmplitude = abs(FractureEdgeDetail);
+	// The field is squared distance, so an amplitude that is to read as *pixels of wall
+	// displacement* has to carry the cell through: the wall moves by amplitude / 2 |S_j - S_i|,
+	// and neighbouring sites sit about one cell apart. The lattice the term is sampled on stays
+	// absolute -- that is what holds the crack character at one physical size when Rows and
+	// Columns change -- and only this amplitude tracks the cell.
+	Context.PrimaryAmplitude = abs(FractureEdgeIrregularity) * Context.BasePixels * 2.0f;
+	Context.DetailAmplitude = abs(FractureEdgeDetail) * Context.BasePixels * 2.0f;
 	Context.MaxAmplitude = Context.PrimaryAmplitude + Context.DetailAmplitude;
 
 	// How far outside its own cell a plate can reach, in cells. Size Variation lets a heavy plate
-	// win about sqrt(Variation) cells further out, and the fracture term displaces a wall by at
-	// most MaxAmplitude pixels. Both are bounded by authored values, so the scan can be bounded
-	// too -- an unbounded search radius is what would make this mode unusable at 4K.
+	// win about sqrt(Variation) cells further out, and the fracture term lets one win from
+	// sqrt(2 A) pixels further again. Both are bounded by authored values, so the scan can be
+	// bounded too -- an unbounded search radius is what would make this mode unusable at 4K.
 	const float WeightReach = sqrt(max(FractureSizeVariation, 0.0f));
-	const float FractureReach = Context.MaxAmplitude / Context.BasePixels;
+	const float FractureReach =
+		sqrt(2.0f * Context.MaxAmplitude) / Context.BasePixels;
 	const int Search = clamp(2 + (int)floor(WeightReach + FractureReach), 2, 4);
 
 	const int2 BaseCell = (int2)floor(WorkUV * float2(Context.Period));
@@ -1024,21 +1025,21 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 			const int2 Cell = BaseCell + int2(Ox, Oy);
 			const uint CellHash = MixtormatCellHash(Cell, Context.Period, Seed);
 			float2 SitePixels;
-			float Radius;
+			float RadiusSq;
 			float Weight;
-			FracturePrimaryTerms(Context, Cell, CellHash, SitePixels, Radius, Weight);
+			FracturePrimaryTerms(Context, Cell, CellHash, SitePixels, RadiusSq, Weight);
 
 			// Exact, not an approximation: the floor is the least this candidate's field can be
 			// under any displacement, so one already at or behind the incumbent cannot come back
 			// and win. A tie keeps the earlier candidate, and the skip test is the same
 			// inequality, so ownership does not depend on how the scan is ordered.
-			if (FractureFieldFloor(Context, Radius, Weight) >= BestField)
+			if (FractureFieldFloor(Context, RadiusSq, Weight) >= BestField)
 			{
 				continue;
 			}
 
 			const float Field = FractureCompose(
-				Radius, FracturePerturbation(Context, CellHash), Weight);
+				RadiusSq, FracturePerturbation(Context, CellHash), Weight);
 			if (Field < BestField)
 			{
 				BestField = Field;
@@ -1062,8 +1063,9 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 		{
 			const float2 ChildSitePixels = FractureChildSitePixels(
 				Context, BestSitePixels, BestHash, Child, ChildCount);
+			const float2 ChildDelta = Context.Query - ChildSitePixels;
 			const float Field = FractureCompose(
-				length(Context.Query - ChildSitePixels),
+				dot(ChildDelta, ChildDelta),
 				FracturePerturbation(Context, FractureChildHash(BestHash, Child)),
 				0.0f);
 			if (Field < BestChildField)
@@ -1094,22 +1096,22 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 			}
 			const uint CellHash = MixtormatCellHash(Cell, Context.Period, Seed);
 			float2 SitePixels;
-			float Radius;
+			float RadiusSq;
 			float Weight;
-			FracturePrimaryTerms(Context, Cell, CellHash, SitePixels, Radius, Weight);
+			FracturePrimaryTerms(Context, Cell, CellHash, SitePixels, RadiusSq, Weight);
 			const float Separation = length(SitePixels - BestSitePixels);
 			if (Separation <= 1.0e-4f)
 			{
 				continue;
 			}
 			const float ToDistance = 1.0f / (2.0f * Separation);
-			if ((FractureFieldFloor(Context, Radius, Weight) - BestField) * ToDistance
+			if ((FractureFieldFloor(Context, RadiusSq, Weight) - BestField) * ToDistance
 				>= SecondEdge)
 			{
 				continue;
 			}
 			const float Field = FractureCompose(
-				Radius, FracturePerturbation(Context, CellHash), Weight);
+				RadiusSq, FracturePerturbation(Context, CellHash), Weight);
 			PatternInsertDistance(
 				max((Field - BestField) * ToDistance, 0.0f), NearestEdge, SecondEdge);
 		}
@@ -1131,8 +1133,9 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 			{
 				continue;
 			}
+			const float2 SiblingDelta = Context.Query - SiblingSitePixels;
 			const float Field = FractureCompose(
-				length(Context.Query - SiblingSitePixels),
+				dot(SiblingDelta, SiblingDelta),
 				FracturePerturbation(Context, FractureChildHash(BestHash, Sibling)),
 				0.0f);
 			PatternInsertDistance(

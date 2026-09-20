@@ -830,8 +830,6 @@ private:
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
 
-	TSharedRef<SWidget> BuildMaskReplacementGallery(int32 LayerIndex, int32 MaskIndex);
-	TSharedRef<SWidget> BuildMaskReplacementMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildNormalSourceMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskCard(
 		const FText& Name,

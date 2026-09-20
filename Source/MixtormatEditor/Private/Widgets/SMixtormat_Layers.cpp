@@ -4065,6 +4065,30 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 		&& Group->Children.IsValidIndex(ChildIndex)
 		&& !Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
 		&& !IsMaskFilter(Group->Children[ChildIndex]);
+	if (Group && Group->Children.IsValidIndex(ChildIndex)
+		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
+	{
+		// The same entry a layer's mask has, and the only way to replace one: a grid inside a
+		// context menu is not how a mask gets picked -- that is the gallery, or a drag from it.
+		const FSoftObjectPath ReplacementPath = SelectedMaskPath;
+		Menu.Item(
+			FText::Format(
+				LOCTEXT("ReplaceWithSelectedMask", "Replace with {0}"),
+				SelectedLibraryMaskName.IsEmpty()
+					? LOCTEXT("NoSelectedReplacementMask", "Select Mask from Gallery")
+					: SelectedLibraryMaskName),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex, ReplacementPath]()
+			{
+				// ReplaceMaskInLayer resolves through ResolveChild, which reaches a group's shared
+				// stack only when the layer lane is clear and SelectedGroupId names the group --
+				// so the selection is moved onto this child first rather than assumed.
+				SelectGroupChild(GroupId, ChildIndex);
+				ReplaceMaskInLayer(INDEX_NONE, ChildIndex, ReplacementPath);
+			}))
+			.Enabled(TAttribute<bool>(!ReplacementPath.IsNull()));
+		Menu.Separator();
+	}
 	if (bCanLeaveGroup && !WorkingLayers.IsEmpty())
 	{
 		// "Move to Layer", not "Unshare": the destination has to be named, and there is no
@@ -5100,25 +5124,6 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildMaskReplacementMenu(const int32 LayerIndex, const int32 MaskIndex)
-{
-	// The gallery keeps its own grid and its own scrolling; the panel gives it nothing but the
-	// ground, which is why it is added as a widget rather than as rows.
-	MixtormatMenu::FBuilder Menu;
-	Menu.Widget(
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				BuildMaskReplacementGallery(LayerIndex, MaskIndex)
-			]
-		]);
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildMaskBlendModeMenu(const int32 LayerIndex, const int32 MaskIndex)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -5325,14 +5330,6 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 	return Grid;
 }
 
-
-TSharedRef<SWidget> SMixtormat::BuildMaskReplacementGallery(const int32 LayerIndex, const int32 MaskIndex)
-{
-	return BuildMaskGallery([this, LayerIndex, MaskIndex](const FSoftObjectPath& Path)
-	{
-		ReplaceMaskInLayer(LayerIndex, MaskIndex, Path);
-	});
-}
 
 TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 	const FText& Name,
