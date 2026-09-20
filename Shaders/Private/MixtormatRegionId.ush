@@ -71,4 +71,10 @@ float MixtormatRegionRandomSalted(uint RegionSeed, uint Salt)
 #define MIXTORMAT_SALT_PATTERN_UV_FLIP_U   0x9e3779b9u
 #define MIXTORMAT_SALT_PATTERN_UV_FLIP_V   0x7f4a7c15u
 
+// Per-region grout. Gap is how far this piece pulls back from its own walls; Slide is the
+// direction it sits off-centre in the space that leaves. Separate salts so a piece with a wide
+// gap is not also always the one shoved hardest into a corner.
+#define MIXTORMAT_SALT_PATTERN_GAP         0x3c6ef372u
+#define MIXTORMAT_SALT_PATTERN_GAP_SLIDE   0xa54ff53au
+
 #endif

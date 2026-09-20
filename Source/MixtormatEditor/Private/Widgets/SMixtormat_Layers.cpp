@@ -63,26 +63,30 @@ namespace
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child);
 
-	int32 FindChildById(const FMixtormatLayer& Layer, const FGuid& ChildId)
+	// Scoping is a property of a child array, not of what owns one. A layer's Children and a
+	// group's shared Children are the same shape and obey the same rules, so these take the array
+	// -- which is what lets one set of creators serve both containers. (They were duplicated per
+	// container before, because the layer versions took an FMixtormatLayer a group cannot supply.)
+	int32 FindChildById(const TArray<FMixtormatLayerChild>& Children, const FGuid& ChildId)
 	{
 		return ChildId.IsValid()
-			? Layer.Children.IndexOfByPredicate([&ChildId](const FMixtormatLayerChild& Child)
+			? Children.IndexOfByPredicate([&ChildId](const FMixtormatLayerChild& Child)
 			{
 				return Child.ChildId == ChildId;
 			})
 			: INDEX_NONE;
 	}
 
-	int32 GetScopeDepth(const FMixtormatLayer& Layer, const int32 ChildIndex)
+	int32 GetScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
 	{
-		if (!Layer.Children.IsValidIndex(ChildIndex))
+		if (!Children.IsValidIndex(ChildIndex))
 		{
 			return 0;
 		}
 
 		int32 Depth = 0;
 		int32 CurrentIndex = ChildIndex;
-		FGuid OwnerId = Layer.Children[ChildIndex].ScopeOwnerChildId;
+		FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
 		TSet<FGuid> Visited;
 		while (OwnerId.IsValid())
 		{
@@ -91,32 +95,32 @@ namespace
 				return MaximumScopeDepth + 1;
 			}
 			Visited.Add(OwnerId);
-			const int32 OwnerIndex = FindChildById(Layer, OwnerId);
+			const int32 OwnerIndex = FindChildById(Children, OwnerId);
 			if (OwnerIndex == INDEX_NONE
 				|| !CanKeepScopedPlacement(
-					Layer.Children[OwnerIndex],
-					Layer.Children[CurrentIndex]))
+					Children[OwnerIndex],
+					Children[CurrentIndex]))
 			{
 				return MaximumScopeDepth + 1;
 			}
 			++Depth;
 			CurrentIndex = OwnerIndex;
-			OwnerId = Layer.Children[OwnerIndex].ScopeOwnerChildId;
+			OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
 		}
 		return Depth;
 	}
 
 	bool IsDescendantOf(
-		const FMixtormatLayer& Layer,
+		const TArray<FMixtormatLayerChild>& Children,
 		const int32 ChildIndex,
 		const FGuid& AncestorId)
 	{
-		if (!Layer.Children.IsValidIndex(ChildIndex) || !AncestorId.IsValid())
+		if (!Children.IsValidIndex(ChildIndex) || !AncestorId.IsValid())
 		{
 			return false;
 		}
 
-		FGuid OwnerId = Layer.Children[ChildIndex].ScopeOwnerChildId;
+		FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
 		TSet<FGuid> Visited;
 		while (OwnerId.IsValid() && !Visited.Contains(OwnerId))
 		{
@@ -125,41 +129,43 @@ namespace
 				return true;
 			}
 			Visited.Add(OwnerId);
-			const int32 OwnerIndex = FindChildById(Layer, OwnerId);
+			const int32 OwnerIndex = FindChildById(Children, OwnerId);
 			if (OwnerIndex == INDEX_NONE)
 			{
 				return false;
 			}
-			OwnerId = Layer.Children[OwnerIndex].ScopeOwnerChildId;
+			OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
 		}
 		return false;
 	}
 
-	int32 FindSubtreeEnd(const FMixtormatLayer& Layer, const int32 RootIndex)
+	int32 FindSubtreeEnd(const TArray<FMixtormatLayerChild>& Children, const int32 RootIndex)
 	{
-		if (!Layer.Children.IsValidIndex(RootIndex))
+		if (!Children.IsValidIndex(RootIndex))
 		{
 			return RootIndex;
 		}
-		const FGuid RootId = Layer.Children[RootIndex].ChildId;
+		const FGuid RootId = Children[RootIndex].ChildId;
 		int32 End = RootIndex + 1;
-		while (Layer.Children.IsValidIndex(End) && IsDescendantOf(Layer, End, RootId))
+		while (Children.IsValidIndex(End) && IsDescendantOf(Children, End, RootId))
 		{
 			++End;
 		}
 		return End;
 	}
 
+	// The ancestor of ChildIndex whose own owner is ParentId -- so FGuid() asks for the top-level
+	// root of whatever subtree the index lands in.
 	int32 FindSiblingRoot(
-		const FMixtormatLayer& Layer,
+		const TArray<FMixtormatLayerChild>& Children,
 		const int32 ChildIndex,
 		const FGuid& ParentId)
 	{
 		int32 CurrentIndex = ChildIndex;
 		TSet<FGuid> Visited;
-		while (Layer.Children.IsValidIndex(CurrentIndex))
+		while (Children.IsValidIndex(CurrentIndex))
 		{
-			const FMixtormatLayerChild& Current = Layer.Children[CurrentIndex];
+			const FMixtormatLayerChild& Current = Children[CurrentIndex];
 			if (Current.ScopeOwnerChildId == ParentId)
 			{
 				return CurrentIndex;
@@ -170,85 +176,57 @@ namespace
 				return INDEX_NONE;
 			}
 			Visited.Add(Current.ScopeOwnerChildId);
-			CurrentIndex = FindChildById(Layer, Current.ScopeOwnerChildId);
+			CurrentIndex = FindChildById(Children, Current.ScopeOwnerChildId);
 		}
 		return INDEX_NONE;
 	}
 
-	// Mirrors of IsDescendantOf/FindSubtreeEnd for a group's shared stack, which has no
-	// FMixtormatLayer to hand the layer versions. Reordering only ever moves a group child among
-	// its top-level siblings (BuildGroupChildRow renders no scope-depth indent to reorder within
-	// anyway), so unlike the layer side this needs no FindSiblingRoot or CanKeepScopedPlacement
-	// validation -- only enough to carry a scoped filter along with whatever owns it.
-	bool IsGroupDescendantOf(
-		const TArray<FMixtormatLayerChild>& Children,
-		const int32 ChildIndex,
-		const FGuid& AncestorId)
+	bool CanAddScopedChild(const TArray<FMixtormatLayerChild>& Children, const int32 OwnerIndex)
 	{
-		if (!Children.IsValidIndex(ChildIndex) || !AncestorId.IsValid())
-		{
-			return false;
-		}
-		FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
-		TSet<FGuid> Visited;
-		while (OwnerId.IsValid() && !Visited.Contains(OwnerId))
-		{
-			if (OwnerId == AncestorId)
-			{
-				return true;
-			}
-			Visited.Add(OwnerId);
-			const int32 OwnerIndex = Children.IndexOfByPredicate(
-				[&OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
-			if (OwnerIndex == INDEX_NONE)
-			{
-				return false;
-			}
-			OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
-		}
-		return false;
+		return Children.IsValidIndex(OwnerIndex)
+			&& GetScopeDepth(Children, OwnerIndex) < MaximumScopeDepth;
 	}
 
-	int32 FindGroupSubtreeEnd(const TArray<FMixtormatLayerChild>& Children, const int32 RootIndex)
+	// Puts Child under the owner at OwnerChildIndex and returns where it landed, or INDEX_NONE if
+	// that owner cannot take it. At the end of the owner's subtree, so the owner and everything
+	// already gating through it stay one contiguous block -- which is the invariant every walk
+	// here depends on.
+	//
+	// The type-pair rule is CanKeepScopedPlacement's, the same one a drag is validated against, so
+	// what the menus offer and what a drop accepts cannot drift apart.
+	int32 InsertScopedChild(
+		TArray<FMixtormatLayerChild>& Children,
+		const int32 OwnerChildIndex,
+		FMixtormatLayerChild&& Child)
 	{
-		if (!Children.IsValidIndex(RootIndex))
+		if (!Children.IsValidIndex(OwnerChildIndex)
+			|| !CanKeepScopedPlacement(Children[OwnerChildIndex], Child)
+			|| !CanAddScopedChild(Children, OwnerChildIndex))
 		{
-			return RootIndex;
+			return INDEX_NONE;
 		}
-		const FGuid RootId = Children[RootIndex].ChildId;
-		int32 End = RootIndex + 1;
-		while (Children.IsValidIndex(End) && IsGroupDescendantOf(Children, End, RootId))
-		{
-			++End;
-		}
-		return End;
+		const int32 InsertAt = FindSubtreeEnd(Children, OwnerChildIndex);
+		Child.ScopeOwnerChildId = Children[OwnerChildIndex].ChildId;
+		Children.Insert(MoveTemp(Child), InsertAt);
+		return InsertAt;
 	}
 
-	// Where BuildGroupChildRow renders no depth to aim a drop at a specific ancestor, so a release
-	// on any row inside a scoped subtree means the same thing a release on its root would: reorder
-	// that whole subtree relative to the group's other top-level children.
-	int32 FindGroupTopLevelRoot(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	// The three scoped things a mask can carry, as prototypes for InsertScopedChild. Flow Warp is
+	// an Effect with a procedural type rather than a type of its own, which is why this exists
+	// instead of the callers passing an enum.
+	FMixtormatLayerChild MakeScopedPrototype(const EMixtormatLayerChildType ChildType)
 	{
-		int32 CurrentIndex = ChildIndex;
-		TSet<FGuid> Visited;
-		while (Children.IsValidIndex(CurrentIndex) && Children[CurrentIndex].ScopeOwnerChildId.IsValid())
-		{
-			const FGuid OwnerId = Children[CurrentIndex].ScopeOwnerChildId;
-			if (Visited.Contains(OwnerId))
-			{
-				return INDEX_NONE;
-			}
-			Visited.Add(OwnerId);
-			CurrentIndex = Children.IndexOfByPredicate(
-				[&OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
-		}
-		return CurrentIndex;
+		FMixtormatLayerChild Child;
+		Child.Type = ChildType;
+		return Child;
 	}
 
-	bool CanAddScopedChild(const FMixtormatLayer& Layer, const int32 OwnerIndex)
+	FMixtormatLayerChild MakeFlowWarpPrototype()
 	{
-		return Layer.Children.IsValidIndex(OwnerIndex)
-			&& GetScopeDepth(Layer, OwnerIndex) < MaximumScopeDepth;
+		FMixtormatLayerChild Child;
+		Child.Type = EMixtormatLayerChildType::Effect;
+		Child.Effect.ProceduralType = EMixtormatEffectType::FlowWarp;
+		return Child;
 	}
 
 	bool CanKeepScopedPlacement(
@@ -1370,54 +1348,35 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 // order in the stack is the order they were added. It is a child rather than a field on the mask
 // for one reason: only a child can be a driver's destination, be published as a source, or stand
 // as one definition behind several instances.
+// Blur and Curvature are the two mask filters, inserted the same way and for the same reasons:
+// they gate the mask above them, so they live inside its subtree rather than beside it.
 FReply SMixtormat::AddBlurToMask(const int32 LayerIndex, const int32 OwnerChildIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
-		|| !CanOwnScopedBlurs(WorkingLayers[LayerIndex].Children[OwnerChildIndex])
-		|| !CanAddScopedChild(WorkingLayers[LayerIndex], OwnerChildIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
-	const int32 InsertAt = FindSubtreeEnd(Layer, OwnerChildIndex);
-
-	FMixtormatLayerChild BlurChild;
-	BlurChild.Type = EMixtormatLayerChildType::Blur;
-	BlurChild.ScopeOwnerChildId = OwnerId;
-	Layer.Children.Insert(MoveTemp(BlurChild), InsertAt);
-
-	SelectedLayerIndex = LayerIndex;
-	SelectedEffectIndex = INDEX_NONE;
-	SelectedMaskIndex = InsertAt;
-	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return AddMaskFilterToLayerChild(LayerIndex, OwnerChildIndex, EMixtormatLayerChildType::Blur);
 }
 
-// The other mask filter, inserted the same way and for the same reasons as a Blur.
 FReply SMixtormat::AddCurvatureToMask(const int32 LayerIndex, const int32 OwnerChildIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
-		|| !CanOwnScopedBlurs(WorkingLayers[LayerIndex].Children[OwnerChildIndex])
-		|| !CanAddScopedChild(WorkingLayers[LayerIndex], OwnerChildIndex))
+	return AddMaskFilterToLayerChild(LayerIndex, OwnerChildIndex, EMixtormatLayerChildType::Curvature);
+}
+
+FReply SMixtormat::AddMaskFilterToLayerChild(
+	const int32 LayerIndex,
+	const int32 OwnerChildIndex,
+	const EMixtormatLayerChildType ChildType)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		return FReply::Handled();
 	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
-	const int32 InsertAt = FindSubtreeEnd(Layer, OwnerChildIndex);
-
-	FMixtormatLayerChild CurvatureChild;
-	CurvatureChild.Type = EMixtormatLayerChildType::Curvature;
-	CurvatureChild.ScopeOwnerChildId = OwnerId;
-	Layer.Children.Insert(MoveTemp(CurvatureChild), InsertAt);
+	const int32 InsertAt = InsertScopedChild(
+		WorkingLayers[LayerIndex].Children,
+		OwnerChildIndex,
+		MakeScopedPrototype(ChildType));
+	if (InsertAt == INDEX_NONE)
+	{
+		return FReply::Handled();
+	}
 
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1437,7 +1396,7 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	if (!WorkingLayers.IsValidIndex(LayerIndex)
 		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
 		|| !CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[OwnerChildIndex])
-		|| !CanAddScopedChild(WorkingLayers[LayerIndex], OwnerChildIndex))
+		|| !CanAddScopedChild(WorkingLayers[LayerIndex].Children, OwnerChildIndex))
 	{
 		return FReply::Handled();
 	}
@@ -1456,7 +1415,7 @@ FReply SMixtormat::AssignScopedMaskToChild(
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
-	const int32 InsertAt = FindSubtreeEnd(Layer, OwnerChildIndex);
+	const int32 InsertAt = FindSubtreeEnd(Layer.Children, OwnerChildIndex);
 
 	FMixtormatLayerChild ScopedMask;
 	ScopedMask.Type = EMixtormatLayerChildType::Mask;
@@ -1597,14 +1556,14 @@ FReply SMixtormat::ClearLayerMask(const int32 LayerIndex)
 		if (Child.Type == EMixtormatLayerChildType::Mask
 			&& !Child.ScopeOwnerChildId.IsValid())
 		{
-			Layer.Children.RemoveAt(ChildIndex, FindSubtreeEnd(Layer, ChildIndex) - ChildIndex);
+			Layer.Children.RemoveAt(ChildIndex, FindSubtreeEnd(Layer.Children, ChildIndex) - ChildIndex);
 		}
 	}
 
 	if (SelectedLayerIndex == LayerIndex)
 	{
-		SelectedEffectIndex = FindChildById(Layer, SelectedEffectId);
-		SelectedMaskIndex = FindChildById(Layer, SelectedMaskId);
+		SelectedEffectIndex = FindChildById(Layer.Children, SelectedEffectId);
+		SelectedMaskIndex = FindChildById(Layer.Children, SelectedMaskId);
 		if ((SelectedEffectId.IsValid() && SelectedEffectIndex == INDEX_NONE)
 			|| (SelectedMaskId.IsValid() && SelectedMaskIndex == INDEX_NONE))
 		{
@@ -1631,7 +1590,7 @@ FReply SMixtormat::RemoveMaskFromLayer(const int32 LayerIndex, const int32 Child
 	if (bRemovable)
 	{
 		FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-		const int32 SubtreeEnd = FindSubtreeEnd(Layer, ChildIndex);
+		const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, ChildIndex);
 
 		// Selection is restored by identity rather than by shifting indices down one, because a
 		// mask takes its scoped filters with it and that is any number of children, not one.
@@ -1693,14 +1652,14 @@ FReply SMixtormat::ReorderLayerChild(
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FGuid SourceParentId = Layer.Children[SourceChildIndex].ScopeOwnerChildId;
-	const int32 TargetRootIndex = FindSiblingRoot(Layer, TargetChildIndex, SourceParentId);
+	const int32 TargetRootIndex = FindSiblingRoot(Layer.Children, TargetChildIndex, SourceParentId);
 	if (TargetRootIndex == INDEX_NONE || TargetRootIndex == SourceChildIndex)
 	{
 		return FReply::Unhandled();
 	}
 
-	const int32 SourceSubtreeEnd = FindSubtreeEnd(Layer, SourceChildIndex);
-	const int32 TargetSubtreeEnd = FindSubtreeEnd(Layer, TargetRootIndex);
+	const int32 SourceSubtreeEnd = FindSubtreeEnd(Layer.Children, SourceChildIndex);
+	const int32 TargetSubtreeEnd = FindSubtreeEnd(Layer.Children, TargetRootIndex);
 	if (TargetRootIndex < SourceSubtreeEnd && TargetSubtreeEnd > SourceChildIndex)
 	{
 		return FReply::Unhandled();
@@ -1739,8 +1698,8 @@ FReply SMixtormat::ReorderLayerChild(
 
 	if (SelectedLayerIndex == LayerIndex)
 	{
-		SelectedEffectIndex = FindChildById(Layer, SelectedEffectId);
-		SelectedMaskIndex = FindChildById(Layer, SelectedMaskId);
+		SelectedEffectIndex = FindChildById(Layer.Children, SelectedEffectId);
+		SelectedMaskIndex = FindChildById(Layer.Children, SelectedMaskId);
 	}
 	RefreshLayeredPreview();
 	RebuildLayerList();
@@ -1763,9 +1722,11 @@ FReply SMixtormat::ReorderGroupChild(
 	{
 		return FReply::Unhandled();
 	}
-	// The target can land inside a scoped subtree -- BuildGroupChildRow renders no depth to aim
-	// at a specific ancestor, so every row in that subtree means "reorder relative to its root."
-	TargetChildIndex = FindGroupTopLevelRoot(Group->Children, TargetChildIndex);
+	// The target can land inside a scoped subtree, and that still means "reorder relative to its
+	// root". The rows do render depth now, so this is a choice rather than a consequence: a scoped
+	// filter has exactly one valid place -- inside its owner's subtree -- so the only thing a drop
+	// aimed at one can sensibly mean is moving the subtree it belongs to.
+	TargetChildIndex = FindSiblingRoot(Group->Children, TargetChildIndex, FGuid());
 	if (TargetChildIndex == INDEX_NONE || TargetChildIndex == SourceChildIndex)
 	{
 		return FReply::Unhandled();
@@ -1780,10 +1741,10 @@ FReply SMixtormat::ReorderGroupChild(
 	// Contiguous by construction: a subtree only ever arrives as one intact block (AppendGroupChild
 	// adds a lone unscoped child, MoveChildToGroup inserts a whole extracted subtree), and removal
 	// (RemoveGroupChild) deletes matched children without reordering the survivors. Nothing in this
-	// function's own splice below breaks that either, so FindGroupSubtreeEnd's positional walk can
+	// function's own splice below breaks that either, so FindSubtreeEnd's positional walk can
 	// trust it.
-	const int32 SourceSubtreeEnd = FindGroupSubtreeEnd(Group->Children, SourceChildIndex);
-	const int32 TargetSubtreeEnd = FindGroupSubtreeEnd(Group->Children, TargetChildIndex);
+	const int32 SourceSubtreeEnd = FindSubtreeEnd(Group->Children, SourceChildIndex);
+	const int32 TargetSubtreeEnd = FindSubtreeEnd(Group->Children, TargetChildIndex);
 	const int32 SourceCount = SourceSubtreeEnd - SourceChildIndex;
 	TArray<FMixtormatLayerChild> MovedChildren;
 	MovedChildren.Reserve(SourceCount);
@@ -1841,7 +1802,7 @@ FReply SMixtormat::MoveGroupChildToLayer(
 		return FReply::Unhandled();
 	}
 
-	const int32 SubtreeEnd = FindGroupSubtreeEnd(Group->Children, ChildIndex);
+	const int32 SubtreeEnd = FindSubtreeEnd(Group->Children, ChildIndex);
 	const int32 MoveCount = SubtreeEnd - ChildIndex;
 	TArray<FMixtormatLayerChild> MovedChildren;
 	MovedChildren.Reserve(MoveCount);
@@ -1857,7 +1818,7 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	int32 InsertAt = DestLayer.Children.Num();
 	if (DestLayer.Children.IsValidIndex(DestChildIndex))
 	{
-		const int32 TopLevelRoot = FindSiblingRoot(DestLayer, DestChildIndex, FGuid());
+		const int32 TopLevelRoot = FindSiblingRoot(DestLayer.Children, DestChildIndex, FGuid());
 		InsertAt = TopLevelRoot == INDEX_NONE ? DestLayer.Children.Num() : TopLevelRoot;
 	}
 	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
@@ -1902,7 +1863,7 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	}
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const int32 InsertAt = FindSubtreeEnd(Layer, ChildIndex);
+	const int32 InsertAt = FindSubtreeEnd(Layer.Children, ChildIndex);
 	TArray<FMixtormatLayerChild> Copies;
 	for (int32 CopyIndex = ChildIndex; CopyIndex < InsertAt; ++CopyIndex)
 	{
@@ -1973,7 +1934,7 @@ FReply SMixtormat::MoveChildToLayer(
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
 	const FGuid NewLayerId = WorkingLayers[DestLayerIndex].LayerId;
-	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer, ChildIndex);
+	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer.Children, ChildIndex);
 	const int32 MoveCount = SubtreeEnd - ChildIndex;
 	TArray<FMixtormatLayerChild> MovedChildren;
 	MovedChildren.Reserve(MoveCount);
@@ -1988,7 +1949,7 @@ FReply SMixtormat::MoveChildToLayer(
 	int32 InsertAt = DestLayer.Children.Num();
 	if (DestLayer.Children.IsValidIndex(DestChildIndex))
 	{
-		const int32 TopLevelRoot = FindSiblingRoot(DestLayer, DestChildIndex, FGuid());
+		const int32 TopLevelRoot = FindSiblingRoot(DestLayer.Children, DestChildIndex, FGuid());
 		InsertAt = TopLevelRoot == INDEX_NONE ? DestLayer.Children.Num() : TopLevelRoot;
 	}
 	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
@@ -2027,7 +1988,7 @@ FReply SMixtormat::MoveChildToGroup(
 	}
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
-	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer, ChildIndex);
+	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer.Children, ChildIndex);
 	const int32 MoveCount = SubtreeEnd - ChildIndex;
 	TArray<FMixtormatLayerChild> MovedChildren;
 	MovedChildren.Reserve(MoveCount);
@@ -2284,10 +2245,10 @@ FReply SMixtormat::PasteChildInstance(const int32 LayerIndex, const int32 Anchor
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	if (Layer.Children.IsValidIndex(AnchorChildIndex)
-		&& CanAddScopedChild(Layer, AnchorChildIndex)
+		&& CanAddScopedChild(Layer.Children, AnchorChildIndex)
 		&& CanKeepScopedPlacement(Layer.Children[AnchorChildIndex], Instance))
 	{
-		const int32 ScopedInsert = FindSubtreeEnd(Layer, AnchorChildIndex);
+		const int32 ScopedInsert = FindSubtreeEnd(Layer.Children, AnchorChildIndex);
 		// Same-layer instances may have to remain below their source. Only attach when
 		// that ordering still permits a contiguous owner subtree.
 		if (Insert <= ScopedInsert)
@@ -2332,7 +2293,7 @@ void SMixtormat::SyncChildInstances()
 	if (SelectedChildId.IsValid() && WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		const FMixtormatLayer& SelectedLayer = WorkingLayers[SelectedLayerIndex];
-		const int32 SelectedChildIndex = FindChildById(SelectedLayer, SelectedChildId);
+		const int32 SelectedChildIndex = FindChildById(SelectedLayer.Children, SelectedChildId);
 		if (SelectedLayer.Children.IsValidIndex(SelectedChildIndex))
 		{
 			const bool bEffect = SelectedLayer.Children[SelectedChildIndex].Type
@@ -2576,7 +2537,7 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 	const FMixtormatLayerChild& Placement = Layer.Children[ChildIndex];
 	if (Placement.ScopeOwnerChildId.IsValid())
 	{
-		const int32 OwnerIndex = FindChildById(Layer, Placement.ScopeOwnerChildId);
+		const int32 OwnerIndex = FindChildById(Layer.Children, Placement.ScopeOwnerChildId);
 		const FMixtormatLayerChild* NewSource = MixtormatParameterBinding::FindChild(
 			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSourceLayerId, NewSourceChildId);
 		if (!Layer.Children.IsValidIndex(OwnerIndex)
@@ -2651,7 +2612,7 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const int32 Layer
 	const FMixtormatLayer& DestLayer = WorkingLayers[LayerIndex];
 	const FGuid DestLayerId = DestLayer.LayerId;
 	const FMixtormatLayerChild& Placement = DestLayer.Children[ChildIndex];
-	const int32 OwnerIndex = FindChildById(DestLayer, Placement.ScopeOwnerChildId);
+	const int32 OwnerIndex = FindChildById(DestLayer.Children, Placement.ScopeOwnerChildId);
 	const FMixtormatLayerChild* ScopeOwner = DestLayer.Children.IsValidIndex(OwnerIndex)
 		? &DestLayer.Children[OwnerIndex]
 		: nullptr;
@@ -2863,7 +2824,7 @@ FReply SMixtormat::RemoveLayerEffect(const int32 LayerIndex, const int32 ChildIn
 		&& ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Effect)
 	{
 		FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-		const int32 SubtreeEnd = FindSubtreeEnd(Layer, ChildIndex);
+		const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, ChildIndex);
 		FGuid SelectedEffectId;
 		FGuid SelectedMaskId;
 		if (SelectedLayerIndex == LayerIndex)
@@ -3061,9 +3022,17 @@ void SMixtormat::RebuildLayerList()
 		{
 			for (int32 ChildIndex = 0; ChildIndex < Group->Children.Num(); ++ChildIndex)
 			{
+				// One indent for being inside the group, plus one per scope level -- the same
+				// depth-times-indent a layer's own children get, so a blur under a shared mask
+				// reads as being under it rather than beside it.
 				LayerListBox->AddSlot()
 				.AutoHeight()
-				.Padding(MixtormatTokens::LayerScopeIndent, 0.0f, 0.0f, 2.0f)
+				.Padding(
+					MixtormatTokens::LayerScopeIndent
+						* (1 + GetScopeDepth(Group->Children, ChildIndex)),
+					0.0f,
+					0.0f,
+					2.0f)
 				[
 					BuildGroupChildRow(GroupId, ChildIndex)
 				];
@@ -3586,7 +3555,7 @@ FText SMixtormat::GetLayerChildSourceText(
 			: MixtormatLayerBadges::KindForChild(Child);
 	}
 
-	const int32 OwnerIndex = FindChildById(Layer, Child.ScopeOwnerChildId);
+	const int32 OwnerIndex = FindChildById(Layer.Children, Child.ScopeOwnerChildId);
 	if (!Layer.Children.IsValidIndex(OwnerIndex))
 	{
 		return LOCTEXT("MissingScopeOwner", "OWNER MISSING");
@@ -3729,7 +3698,9 @@ FMixtormatLayerChild* SMixtormat::AppendGroupChild(
 	return &Child;
 }
 
-void SMixtormat::FinishGroupChildEdit(const FGuid GroupId)
+// SelectIndex names the child to leave selected. INDEX_NONE means "the one just appended", which
+// is what every append path wants; a scoped insert lands in the middle and passes its own.
+void SMixtormat::FinishGroupChildEdit(const FGuid GroupId, const int32 SelectIndex)
 {
 	// A shared child is broadcast to every member, so unlike a rename this genuinely changes what
 	// the compositor draws and has to ask for a new composite.
@@ -3739,12 +3710,60 @@ void SMixtormat::FinishGroupChildEdit(const FGuid GroupId)
 	// panel with nothing to show, which is why a shared child added here appeared but could not be
 	// edited.
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	SelectGroupChild(GroupId, Group ? Group->Children.Num() - 1 : INDEX_NONE);
+	const int32 ResolvedIndex = SelectIndex != INDEX_NONE
+		? SelectIndex
+		: (Group ? Group->Children.Num() - 1 : INDEX_NONE);
+	SelectGroupChild(GroupId, ResolvedIndex);
 	CollapsedGroupIds.Remove(GroupId);
 	RecordEditHistory();
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
 	RebuildLayerList();
+}
+
+// The scoped children a group's shared mask can carry, and the reason the helpers above take a
+// child array rather than an FMixtormatLayer: a group's stack obeys the same scoping rules, and
+// the runtime already remaps ScopeOwnerChildId per member when it flattens the group (see
+// MixtormatLayerGroups). So a blur authored once on a shared mask gates that mask in every member.
+FReply SMixtormat::AddMaskFilterToGroupChild(
+	const FGuid GroupId,
+	const int32 OwnerChildIndex,
+	const EMixtormatLayerChildType ChildType)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group)
+	{
+		return FReply::Handled();
+	}
+	const int32 InsertAt = InsertScopedChild(
+		Group->Children,
+		OwnerChildIndex,
+		MakeScopedPrototype(ChildType));
+	if (InsertAt == INDEX_NONE)
+	{
+		return FReply::Handled();
+	}
+	// The insert index, not the appended default: a filter lands inside its owner's subtree, which
+	// is nowhere near the end of the stack.
+	FinishGroupChildEdit(GroupId, InsertAt);
+	return FReply::Handled();
+}
+
+FReply SMixtormat::AddFlowWarpToGroupChild(const FGuid GroupId, const int32 OwnerChildIndex)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group)
+	{
+		return FReply::Handled();
+	}
+	const int32 InsertAt =
+		InsertScopedChild(Group->Children, OwnerChildIndex, MakeFlowWarpPrototype());
+	if (InsertAt == INDEX_NONE)
+	{
+		return FReply::Handled();
+	}
+	FinishGroupChildEdit(GroupId, InsertAt);
+	return FReply::Handled();
 }
 
 FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath MaskPath)
@@ -4068,6 +4087,17 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
 		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
 	{
+		// INDEX_NONE for the layer lane throughout: ResolveChild reaches a group's shared stack
+		// only that way, and the row selected this child before opening the menu, so
+		// SelectedGroupId already names the group these resolve against.
+		// Typed, not INDEX_NONE inline: the delegate payload would deduce the literal's own type
+		// rather than the int32 the method takes.
+		const int32 NoLayerLane = INDEX_NONE;
+		Menu.SubMenu(
+			LOCTEXT("MaskBlendModeContext", "Blend Mode"),
+			nullptr,
+			FOnGetContent::CreateSP(
+				this, &SMixtormat::BuildMaskBlendModeMenu, NoLayerLane, ChildIndex));
 		// The same entry a layer's mask has, and the only way to replace one: a grid inside a
 		// context menu is not how a mask gets picked -- that is the gallery, or a drag from it.
 		const FSoftObjectPath ReplacementPath = SelectedMaskPath;
@@ -4087,6 +4117,35 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 				ReplaceMaskInLayer(INDEX_NONE, ChildIndex, ReplacementPath);
 			}))
 			.Enabled(TAttribute<bool>(!ReplacementPath.IsNull()));
+
+		// A shared mask carries the same scoped children a layer's mask does. The group is
+		// flattened into each member at compose time and ScopeOwnerChildId is rebound per member,
+		// so one blur authored here gates this mask in every one of them.
+		const bool bCanNestChild = CanAddScopedChild(Group->Children, ChildIndex);
+		Menu.Item(
+			LOCTEXT("AddBlurToMaskContext", "Add Blur"),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				AddMaskFilterToGroupChild(GroupId, ChildIndex, EMixtormatLayerChildType::Blur);
+			}))
+			.Enabled(TAttribute<bool>(bCanNestChild));
+		Menu.Item(
+			LOCTEXT("AddCurvatureToMaskContext", "Add Curvature"),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				AddMaskFilterToGroupChild(GroupId, ChildIndex, EMixtormatLayerChildType::Curvature);
+			}))
+			.Enabled(TAttribute<bool>(bCanNestChild));
+		Menu.Item(
+			LOCTEXT("AddFlowWarpToMask", "Add Flow Warp · Targets This Mask"),
+			MixtormatIcons::Effect(),
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				AddFlowWarpToGroupChild(GroupId, ChildIndex);
+			}))
+			.Enabled(TAttribute<bool>(bCanNestChild));
 		Menu.Separator();
 	}
 	if (bCanLeaveGroup && !WorkingLayers.IsEmpty())
@@ -4408,7 +4467,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		Container->AddChild(
 			SNew(SBox)
 			.Padding(FMargin(
-				GetScopeDepth(Layer, ChildIndex) * MixtormatTokens::LayerScopeIndent,
+				GetScopeDepth(Layer.Children, ChildIndex) * MixtormatTokens::LayerScopeIndent,
 				0.0f,
 				0.0f,
 				0.0f))
@@ -4829,7 +4888,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
 		const FMixtormatLayerChild& SourceChild = *ResolveChild(LayerIndex, ChildIndex);
-		bCanNestChild = CanAddScopedChild(WorkingLayers[LayerIndex], ChildIndex);
+		bCanNestChild = CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
 		bCanOwnFlowWarp = CanOwnFlowWarp(SourceChild);
 		if (SourceChild.Type == EMixtormatLayerChildType::Effect)
 		{
@@ -5062,7 +5121,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 	MixtormatMenu::FBuilder Menu;
 	const bool bCanNestChild = WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(MaskIndex)
-		&& CanAddScopedChild(WorkingLayers[LayerIndex], MaskIndex);
+		&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, MaskIndex);
 	Menu.SubMenu(
 		LOCTEXT("MaskBlendModeContext", "Blend Mode"),
 		nullptr,
@@ -5873,12 +5932,12 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 			SelectedMaskId = Layer.Children[SelectedMaskIndex].ChildId;
 		}
 	}
-	const int32 SubtreeEnd = FindSubtreeEnd(Layer, ChildIndex);
+	const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, ChildIndex);
 	Layer.Children.RemoveAt(ChildIndex, SubtreeEnd - ChildIndex);
 	if (SelectedLayerIndex == LayerIndex)
 	{
-		SelectedEffectIndex = FindChildById(Layer, SelectedEffectId);
-		SelectedMaskIndex = FindChildById(Layer, SelectedMaskId);
+		SelectedEffectIndex = FindChildById(Layer.Children, SelectedEffectId);
+		SelectedMaskIndex = FindChildById(Layer.Children, SelectedMaskId);
 		if ((SelectedEffectId.IsValid() && SelectedEffectIndex == INDEX_NONE)
 			|| (SelectedMaskId.IsValid() && SelectedMaskIndex == INDEX_NONE))
 		{
@@ -6264,22 +6323,26 @@ FReply SMixtormat::AddFlowWarpToLayer(
 	if (OwnerChildIndex != INDEX_NONE
 		&& (!bScoped
 			|| !CanOwnFlowWarp(Layer.Children[OwnerChildIndex])
-			|| !CanAddScopedChild(Layer, OwnerChildIndex)))
+			|| !CanAddScopedChild(Layer.Children, OwnerChildIndex)))
 	{
 		return FReply::Handled();
 	}
 
-	const int32 InsertAt = bScoped
-		? FindSubtreeEnd(Layer, OwnerChildIndex)
-		: Layer.Children.Num();
-	FMixtormatLayerChild Child;
-	Child.Type = EMixtormatLayerChildType::Effect;
-	Child.Effect.ProceduralType = EMixtormatEffectType::FlowWarp;
+	// Unscoped, a Flow Warp is an ordinary top-level effect; scoped, it targets the mask above it
+	// and goes inside that mask's subtree like any other filter.
+	int32 InsertAt = Layer.Children.Num();
 	if (bScoped)
 	{
-		Child.ScopeOwnerChildId = Layer.Children[OwnerChildIndex].ChildId;
+		InsertAt = InsertScopedChild(Layer.Children, OwnerChildIndex, MakeFlowWarpPrototype());
+		if (InsertAt == INDEX_NONE)
+		{
+			return FReply::Handled();
+		}
 	}
-	Layer.Children.Insert(MoveTemp(Child), InsertAt);
+	else
+	{
+		Layer.Children.Insert(MakeFlowWarpPrototype(), InsertAt);
+	}
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = InsertAt;
 	SelectedMaskIndex = INDEX_NONE;

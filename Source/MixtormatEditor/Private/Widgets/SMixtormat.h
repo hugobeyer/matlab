@@ -124,6 +124,11 @@ private:
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
 	FReply AddBlurToMask(int32 LayerIndex, int32 OwnerChildIndex);
+	FReply AddMaskFilterToLayerChild(int32 LayerIndex, int32 OwnerChildIndex, EMixtormatLayerChildType ChildType);
+	// The same two, on a group's shared stack. A group mask carries the scoped children a layer's
+	// mask does; the runtime rebinds them per member when it flattens the group.
+	FReply AddMaskFilterToGroupChild(FGuid GroupId, int32 OwnerChildIndex, EMixtormatLayerChildType ChildType);
+	FReply AddFlowWarpToGroupChild(FGuid GroupId, int32 OwnerChildIndex);
 	FReply AddCurvatureToMask(int32 LayerIndex, int32 OwnerChildIndex);
 	FMixtormatMaskCurvature* GetSelectedLayerCurvature();
 	const FMixtormatMaskCurvature* GetSelectedLayerCurvature() const;
@@ -329,7 +334,7 @@ private:
 	const FMixtormatLayerChild* ResolveChild(int32 LayerIndex, int32 ChildIndex) const;
 
 	FMixtormatLayerChild* AppendGroupChild(FGuid GroupId, EMixtormatLayerChildType ChildType);
-	void FinishGroupChildEdit(FGuid GroupId);
+	void FinishGroupChildEdit(FGuid GroupId, int32 SelectIndex = INDEX_NONE);
 	FReply AddMaskToGroup(FGuid GroupId, FSoftObjectPath MaskPath);
 	FReply AddEffectToGroup(FGuid GroupId, FSoftObjectPath EffectPath);
 	FReply AddProceduralChildToGroup(FGuid GroupId, EMixtormatLayerChildType ChildType);

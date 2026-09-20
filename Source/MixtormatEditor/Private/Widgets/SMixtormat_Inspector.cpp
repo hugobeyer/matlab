@@ -2039,6 +2039,11 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternGapRandom", "Gap Random"), &FMixtormatPatternFilter::GapRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternGapRandomHint", "Varies the grout once per piece, for every Pattern Mode. The wall never moves -- each side of it pulls back by its own draw, so the gap between two pieces is the sum of two independent amounts and no two boundaries come out the same width. Symmetric about Gap. A piece is never cut back so far that it disappears, however small it is. Needs a Gap above 0.")),
+		Slider(LOCTEXT("PatternGapSlide", "Piece Slide"), &FMixtormatPatternFilter::GapSlide, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("PatternGapSlideHint", "Spends that same grout unevenly around the piece instead of ringing it, so pieces sit off centre in their own sockets. Bounded by each piece's half-gap, so a piece slides only into the room it already has and can never cross into its neighbour. Needs a Gap above 0."))));
 
 	// Fracture Plates' own block, gated the same way Grid Mode is: the mode owns these controls,
 	// so they are only in the panel when it is selected. Cells X/Y, Jitter and Seed are the shared

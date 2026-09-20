@@ -1554,6 +1554,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				PatternData.bSwapAxes = Pattern.bSwapAxes;
 				PatternData.GapPixels = FMath::IsFinite(Pattern.GapPixels)
 					? FMath::Max(Pattern.GapPixels, 0.0f) : 0.0f;
+				// Both are fractions of the piece's own half-gap, so they are genuinely bounded
+				// rather than merely dragged -- past 1 a piece would invade its neighbour.
+				PatternData.GapRandom = FMath::IsFinite(Pattern.GapRandom)
+					? FMath::Clamp(Pattern.GapRandom, 0.0f, 1.0f) : 0.0f;
+				PatternData.GapSlide = FMath::IsFinite(Pattern.GapSlide)
+					? FMath::Clamp(Pattern.GapSlide, 0.0f, 1.0f) : 0.0f;
 				PatternData.Seed = static_cast<uint32>(FMath::Max(Pattern.Seed, 0));
 
 				PatternData.bUVVariation = Pattern.bUVVariation;

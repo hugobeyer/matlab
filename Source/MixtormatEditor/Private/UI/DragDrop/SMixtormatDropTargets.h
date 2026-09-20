@@ -52,8 +52,9 @@ DECLARE_DELEGATE_RetVal_FourParams(
 	int32,
 	int32);
 // Group, source child, destination child. A group's shared stack reorders among itself the same
-// way a layer's children do; there is no cross-container move here yet, so unlike the layer
-// version this takes no destination container.
+// way a layer's children do. Leaving the group is a different gesture with a different delegate
+// (FOnMixtormatGroupChildMovedToLayer), so unlike the layer version this takes no destination
+// container -- both ends are the same group.
 DECLARE_DELEGATE_RetVal_ThreeParams(
 	FReply,
 	FOnMixtormatGroupChildReordered,

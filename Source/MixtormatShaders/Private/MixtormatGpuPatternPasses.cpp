@@ -121,6 +121,8 @@ public:
 		SHADER_PARAMETER(float, Jitter)
 		SHADER_PARAMETER(uint32, SwapAxes)
 		SHADER_PARAMETER(float, GapPixels)
+		SHADER_PARAMETER(float, GapRandom)
+		SHADER_PARAMETER(float, GapSlide)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(float, Feather)
 		SHADER_PARAMETER(float, FeatherRandom)
@@ -459,6 +461,8 @@ namespace MixtormatGpuCompositor
 		Parameters->Jitter = Child.PatternId.Jitter;
 		Parameters->SwapAxes = Child.PatternId.bSwapAxes ? 1u : 0u;
 		Parameters->GapPixels = Child.PatternId.GapPixels;
+		Parameters->GapRandom = Child.PatternId.GapRandom;
+		Parameters->GapSlide = Child.PatternId.GapSlide;
 		Parameters->Seed = Child.PatternId.Seed;
 		Parameters->FeatherRandom = Child.PatternId.FeatherRandom;
 		Parameters->Rounding = Child.PatternId.Rounding;

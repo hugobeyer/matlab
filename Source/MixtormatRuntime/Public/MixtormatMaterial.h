@@ -1957,6 +1957,23 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float GapHeight = -1.0f;
 
+	// Varies the grout once per piece rather than once per surface, for every Pattern Mode.
+	//
+	// Cut per piece, not per wall: the wall stays exactly where the topology put it and each side
+	// of it pulls back by its own draw, so the visible grout between two pieces is the sum of two
+	// independent amounts. A per-wall gap would need a neighbour id, which only the cellular modes
+	// can produce; this asks nothing of the mode beyond the edge distance every one of them
+	// already publishes. Symmetric about Gap, the same convention as the bevel's Variation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GapRandom = 0.0f;
+
+	// Spends that same grout unevenly around the piece instead of ringing it: the piece sits off
+	// centre in its own socket, hard against one wall with the space behind it. Bounded by the
+	// piece's own half-gap, so a piece can never cross into its neighbour -- which is also why
+	// both of these are inert at Gap 0, where there is no space to sit off centre in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GapSlide = 0.0f;
+
 	// Per-region source UV variation. Pattern is the first producer that knows an analytic centre,
 	// so this stays Pattern-only until Cluster IDs exposes equivalent region bounds/centres.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")

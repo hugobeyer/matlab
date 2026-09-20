@@ -515,6 +515,8 @@ namespace MixtormatGpuCompositor
 		bool bRelativeEdgeWidth = false;
 		bool bSwapAxes = false;
 		float GapPixels = 0.0f;
+		float GapRandom = 0.0f;
+		float GapSlide = 0.0f;
 		uint32 Seed = 1;
 
 		bool bUVVariation = false;

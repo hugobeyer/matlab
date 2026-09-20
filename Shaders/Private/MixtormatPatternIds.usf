@@ -29,6 +29,10 @@ float RowOffset;
 float Jitter;
 uint SwapAxes;
 float GapPixels;
+// Per-region grout variation. Both are fractions of the piece's own half-gap, so both are
+// inert at Gap 0 -- with no space outside the IDs there is nothing to vary or to slide into.
+float GapRandom;
+float GapSlide;
 uint Seed;
 
 // Relief is per-cell elevation, not per-cell slope. A cell is a flat face that sits somewhere
@@ -1254,20 +1258,74 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		OutputSize - int2(1, 1));
 	const uint RegionId = uint(CentrePixel.x + CentrePixel.y * OutputSize.x);
 
+	const uint Seeded = MixtormatRegionSeed(RegionId, Seed);
+
 	// Ownership always uses the physical pixel distance, keeping Gap Pixels absolute even when
 	// consumers request the relative edge field for cell-proportional bevels.
-	const float HalfGapPixels = max(GapPixels, 0.0f) * 0.5f;
-	const bool bValidRegion = Cell.EdgePixels >= HalfGapPixels;
-	const float RawEdge = EdgeRelative != 0 ? Cell.EdgeRelative : Cell.EdgePixels;
+	//
+	// The grout is cut per piece rather than per wall, and that is what makes it vary at all. The
+	// wall itself never moves -- every pixel still belongs to whichever region won it -- but each
+	// side of that wall pulls back by its own draw, so the visible grout between two pieces is the
+	// sum of two independent amounts and no two boundaries come out the same width. Cutting it per
+	// *wall* instead would need a neighbour id, which only the cellular modes can produce; this
+	// works for every topology because it asks nothing of the mode beyond the edge distance it
+	// already publishes.
+	//
+	// Symmetric about the authored Gap, the same convention as the bevel's Width Variation.
+	const float GapVariation = saturate(GapRandom);
+	const float HalfGapDraw = lerp(
+		1.0f - GapVariation,
+		1.0f + GapVariation,
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_GAP));
+
+	// A ceiling, not an artistic clamp. PixelsPerRelativeUnit is this piece's distance from its
+	// wall to its deepest interior point, so a half-gap past it would swallow the piece whole and
+	// take its ID out of the map with it -- a region that exists in the topology but never reaches
+	// a pixel. Small pieces therefore keep a face however wide the draw wanted their grout.
+	const float PieceReach = max(Cell.PixelsPerRelativeUnit, 1.0e-4f);
+	const float HalfGapPixels = min(
+		max(GapPixels, 0.0f) * 0.5f * HalfGapDraw,
+		0.9f * PieceReach);
+
+	// Piece slide: the same grout, spent unevenly around the piece instead of ringing it.
+	//
+	// EdgePixels is a distance field with unit inward gradient, so reading it at Q - T is, to
+	// first order, EdgePixels(Q) + T . n_out. A translation therefore costs one dot product and no
+	// second solve. n_out comes from the piece centre measured across the torus, so a piece
+	// straddling the UV repeat still points the right way.
+	//
+	// Bounded by the piece's own half-gap, which is what "only where there is room" means: at
+	// Slide 1 the piece sits hard against one wall with the whole of its grout behind it, and it
+	// can never cross into a neighbour whatever the draw says.
+	const float2 CentreDelta =
+		(frac(WorkUV - Cell.CentreWorkUV + 0.5f) - 0.5f) * AxisPixels;
+	const float CentreDistanceSq = dot(CentreDelta, CentreDelta);
+	const float SlideAngle =
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_GAP_SLIDE) * 6.283185307f;
+	const float2 SlidePixels = float2(cos(SlideAngle), sin(SlideAngle))
+		* saturate(GapSlide) * HalfGapPixels;
+	const float SlideAlongNormal = CentreDistanceSq > 1.0e-8f
+		? dot(SlidePixels, CentreDelta * rsqrt(CentreDistanceSq))
+		: 0.0f;
+
+	// The face the rest of the pass works against: the lattice wall distance, moved by the slide.
+	const float FaceEdgePixels = Cell.EdgePixels + SlideAlongNormal;
+	const bool bValidRegion = FaceEdgePixels >= HalfGapPixels;
+	const float RawEdge = EdgeRelative != 0
+		? Cell.EdgeRelative + SlideAlongNormal / PieceReach
+		: FaceEdgePixels;
 	const float HalfGapOutput = EdgeRelative != 0
-		? HalfGapPixels / max(Cell.PixelsPerRelativeUnit, 1.0e-4f)
+		? HalfGapPixels / PieceReach
 		: HalfGapPixels;
 
 	// Signed in the selected edge unit: negative in grout, zero at its inner wall, positive on the
 	// cell face. Consumers that only want the face continue to clamp their read to zero.
+	//
+	// Every consumer of the grout -- the gap mask, Gap Height in the relief pass, the bevel, edge
+	// wear -- reads this one field, so varying the gap here is all it takes for the rest of the
+	// chain to follow. None of them need to know the gap is no longer uniform.
 	const float EdgeSignedPixels = RawEdge - HalfGapOutput;
 
-	const uint Seeded = MixtormatRegionSeed(RegionId, Seed);
 	const float BevelRandom =
 		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_BEVEL);
 
@@ -1318,7 +1376,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// units here rather than reusing HalfGapPixels -- that one is in whatever unit the edge
 		// field is published in, which is no longer always pixels.
 		const float InteriorEdgeCell =
-			max(Cell.EdgePixels - HalfGapPixels, 0.0f) / Cell.MinCellPixels;
+			max(FaceEdgePixels - HalfGapPixels, 0.0f) / Cell.MinCellPixels;
 		const float FeatherWeight = CellFeather > 0.0f
 			? saturate(InteriorEdgeCell / CellFeather)
 			: 1.0f;
