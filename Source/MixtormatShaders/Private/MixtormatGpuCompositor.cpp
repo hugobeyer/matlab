@@ -2256,6 +2256,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupDetailOperation = static_cast<int32>(LayerEffect.BreakupDetailOperation);
 				EffectData.BreakupSmoothness = FMath::IsFinite(LayerEffect.BreakupSmoothness)
 					? FMath::Max(LayerEffect.BreakupSmoothness, 0.0f) : 0.30f;
+				EffectData.BreakupInset = FMath::IsFinite(LayerEffect.BreakupInset)
+					? FMath::Clamp(LayerEffect.BreakupInset, -64.0f, 64.0f) : 0.0f;
 
 				EffectData.BreakupDistortion = FMath::IsFinite(LayerEffect.BreakupDistortion)
 					? LayerEffect.BreakupDistortion : 5.6f;
@@ -2268,6 +2270,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// they reach is floored in the shader.
 				EffectData.BreakupRelief = FMath::IsFinite(LayerEffect.BreakupRelief)
 					? LayerEffect.BreakupRelief : -0.06f;
+				EffectData.BreakupThicknessVariation = FMath::IsFinite(LayerEffect.BreakupThicknessVariation)
+					? FMath::Clamp(LayerEffect.BreakupThicknessVariation, 0.0f, 1.0f) : 0.30f;
+				EffectData.BreakupGapWidth = FMath::IsFinite(LayerEffect.BreakupGapWidth)
+					? FMath::Clamp(LayerEffect.BreakupGapWidth, 0.0f, 64.0f) : 2.0f;
+				EffectData.BreakupGapDepth = FMath::IsFinite(LayerEffect.BreakupGapDepth)
+					? FMath::Clamp(LayerEffect.BreakupGapDepth, 0.0f, 0.5f) : 0.02f;
+				EffectData.BreakupGapVariation = FMath::IsFinite(LayerEffect.BreakupGapVariation)
+					? FMath::Clamp(LayerEffect.BreakupGapVariation, 0.0f, 1.0f) : 0.35f;
 				EffectData.BreakupFold = FMath::IsFinite(LayerEffect.BreakupFold)
 					? LayerEffect.BreakupFold : 0.025f;
 				EffectData.BreakupFoldWidth = FMath::IsFinite(LayerEffect.BreakupFoldWidth)
@@ -2280,10 +2290,20 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					? LayerEffect.BreakupPush : 0.0f;
 				EffectData.BreakupPushWidth = FMath::IsFinite(LayerEffect.BreakupPushWidth)
 					? FMath::Max(LayerEffect.BreakupPushWidth, 1.0e-4f) : 24.0f;
+				EffectData.BreakupPushRelief = FMath::IsFinite(LayerEffect.BreakupPushRelief)
+					? FMath::Clamp(LayerEffect.BreakupPushRelief, 0.0f, 0.5f) : 0.035f;
 				EffectData.BreakupVariation = FMath::IsFinite(LayerEffect.BreakupVariation)
 					? FMath::Clamp(LayerEffect.BreakupVariation, 0.0f, 1.0f) : 0.25f;
 				EffectData.BreakupRoughnessAmount = FMath::IsFinite(LayerEffect.BreakupRoughnessAmount)
 					? FMath::Clamp(LayerEffect.BreakupRoughnessAmount, -1.0f, 1.0f) : 0.0f;
+				EffectData.BreakupNormalStrength = FMath::IsFinite(LayerEffect.BreakupNormalStrength)
+					? FMath::Clamp(LayerEffect.BreakupNormalStrength, 0.0f, 8.0f) : 2.0f;
+				EffectData.BreakupNormalSharpness = FMath::IsFinite(LayerEffect.BreakupNormalSharpness)
+					? FMath::Clamp(LayerEffect.BreakupNormalSharpness, 0.0f, 1.0f) : 0.75f;
+				EffectData.BreakupAOAmount = FMath::IsFinite(LayerEffect.BreakupAOAmount)
+					? FMath::Clamp(LayerEffect.BreakupAOAmount, 0.0f, 1.0f) : 0.35f;
+				EffectData.BreakupAORadius = FMath::IsFinite(LayerEffect.BreakupAORadius)
+					? FMath::Clamp(LayerEffect.BreakupAORadius, 1.0f, 64.0f) : 8.0f;
 
 				EffectData.BreakupMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.BreakupMaskTiling));
 				EffectData.bBreakupInvertMask = LayerEffect.bBreakupInvertMask;
@@ -3107,7 +3127,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 						if (Effect.Type == EMixtormatEffectType::Breakup)
 						{
-							QueuePendingBreakup(LayerCtx, Layer, Child, Effect, FeatureMask);
+							QueuePendingBreakup(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
 							continue;
 						}
 
@@ -3176,9 +3196,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
 
 
-					AddWornEdgesPasses(Ctx, LayerCtx, Layer);
-
+					// Breakup publishes structural IDs during child collection, then authors its relief here.
+					// Worn Edges follows it so a Worn Edges row below Breakup can wear the actual generated
+					// plate/flake boundaries instead of the pre-breakup surface.
 					AddBreakupPasses(Ctx, LayerCtx, Layer);
+
+					AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 
 					if (bPrepareBreakup)
 					{

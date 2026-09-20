@@ -367,18 +367,28 @@ namespace MixtormatGpuCompositor
 		int32 BreakupMidOperation = 0;
 		int32 BreakupDetailOperation = 0;
 		float BreakupSmoothness = 0.30f;
+		float BreakupInset = 0.0f;
 		float BreakupDistortion = 5.6f;
 		int32 BreakupDistortionFrequency = 3;
 		bool bBreakupInvert = false;
 		float BreakupRelief = -0.06f;
+		float BreakupThicknessVariation = 0.30f;
+		float BreakupGapWidth = 2.0f;
+		float BreakupGapDepth = 0.02f;
+		float BreakupGapVariation = 0.35f;
 		float BreakupFold = 0.025f;
 		float BreakupFoldWidth = 16.0f;
 		float BreakupCrease = 0.018f;
 		float BreakupCreaseWidth = 1.25f;
 		float BreakupPush = 0.0f;
 		float BreakupPushWidth = 24.0f;
+		float BreakupPushRelief = 0.035f;
 		float BreakupVariation = 0.25f;
 		float BreakupRoughnessAmount = 0.0f;
+		float BreakupNormalStrength = 2.0f;
+		float BreakupNormalSharpness = 0.75f;
+		float BreakupAOAmount = 0.35f;
+		float BreakupAORadius = 8.0f;
 		FTextureRHIRef BreakupPlacementMask;
 		float BreakupMaskTiling = 1.0f;
 		bool bBreakupInvertMask = false;
@@ -822,8 +832,10 @@ namespace MixtormatGpuCompositor
 	struct FPendingBreakup
 	{
 		const FEffectRenderData* Effect = nullptr;
+		int32 SourceChildIndex = INDEX_NONE;
 		FRDGTextureRef FeatureMask = nullptr;
-		FRDGTextureRef RegionIds = nullptr;
+		FRDGTextureRef Field = nullptr;
+		FRDGTextureRef GeneratedRegionIds = nullptr;
 		bool bHasScopedMask = false;
 	};
 
@@ -1131,6 +1143,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef FeatureMask);
 
 	void QueuePendingBreakup(
+		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,

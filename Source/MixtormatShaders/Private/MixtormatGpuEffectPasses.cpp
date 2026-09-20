@@ -620,9 +620,9 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Breakup is two dispatches: the first evaluates the three procedural SDF families once and
-// publishes signed distance + stable per-piece random; the second interprets that field against
-// the incoming height. No iterative state, min/max reduction or ping-pong.
+// Breakup is prepared while the child stack is being collected: FieldCS evaluates the SDF once,
+// publishes a real region-id texture immediately, and stores the field for the post-composite
+// structural passes. That makes Breakup a first-class ID producer for every later child.
 class FMixtormatBreakupFieldCS final : public FGlobalShader
 {
 public:
@@ -646,10 +646,20 @@ public:
 		SHADER_PARAMETER(float, BlendSmooth)
 		SHADER_PARAMETER(float, DistortAmount)
 		SHADER_PARAMETER(int32, DistortFrequency)
+		SHADER_PARAMETER(float, Inset)
+		SHADER_PARAMETER(float, GapWidth)
+		SHADER_PARAMETER(float, GapVariation)
 		SHADER_PARAMETER(uint32, InvertField)
 		SHADER_PARAMETER(uint32, HasRegionIds)
+		SHADER_PARAMETER(uint32, UsePlacementMask)
+		SHADER_PARAMETER(float, PlacementMaskTiling)
+		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PlacementMaskTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputRegionIds)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -673,12 +683,17 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Relief)
+		SHADER_PARAMETER(float, ThicknessVariation)
+		SHADER_PARAMETER(float, GapWidth)
+		SHADER_PARAMETER(float, GapDepth)
+		SHADER_PARAMETER(float, GapVariation)
 		SHADER_PARAMETER(float, FoldHeight)
 		SHADER_PARAMETER(float, FoldWidth)
 		SHADER_PARAMETER(float, CreaseWidth)
 		SHADER_PARAMETER(float, CreaseDepth)
 		SHADER_PARAMETER(float, PushAmount)
 		SHADER_PARAMETER(float, PushWidth)
+		SHADER_PARAMETER(float, PushRelief)
 		SHADER_PARAMETER(float, Variation)
 		SHADER_PARAMETER(float, Strength)
 		SHADER_PARAMETER(uint32, UsePlacementMask)
@@ -686,6 +701,7 @@ public:
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BreakupField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BreakupRegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PlacementMaskTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -705,7 +721,43 @@ IMPLEMENT_GLOBAL_SHADER(
 	"ApplyCS",
 	SF_Compute);
 
-// Worn Edges is a post-composite height filter.// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
+class FMixtormatBreakupShadeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBreakupShadeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBreakupShadeCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(float, NormalSharpness)
+		SHADER_PARAMETER(float, AOAmount)
+		SHADER_PARAMETER(float, AORadius)
+		SHADER_PARAMETER(float, RoughnessAmount)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BreakupField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BreakupRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BreakupCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatBreakupShadeCS,
+	"/Plugin/Mixtormat/Private/MixtormatBreakup.usf",
+	"ShadeCS",
+	SF_Compute);
+
+// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
 // localization passes, the Houdini directional-MIN solve, and final-height normal regeneration.
 class FMixtormatEdgeWearCS final : public FGlobalShader
 {
@@ -1372,22 +1424,108 @@ namespace MixtormatGpuCompositor
 
 	// Chipping runs on prepared owner channels after that owner's earlier relief filters.
 	void QueuePendingBreakup(
+		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask)
 	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
+
 		FPendingBreakup& Pending = LayerCtx.PendingBreakups.AddDefaulted_GetRef();
 		Pending.Effect = &Effect;
+		Pending.SourceChildIndex = Child.SourceChildIndex;
 		Pending.FeatureMask = FeatureMask;
-		Pending.RegionIds = FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
 		Pending.bHasScopedMask = Layer.Children.ContainsByPredicate(
 			[&Child](const FChildRenderData& Candidate)
 			{
 				return Candidate.Type == EMixtormatLayerChildType::Mask
 					&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
 			});
+
+		const FRDGTextureRef SourceRegionIds =
+			FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+		const bool bUsePlacementMask =
+			!Pending.bHasScopedMask && Effect.BreakupPlacementMask.IsValid();
+		FRDGTextureRef PlacementMask = bUsePlacementMask
+			? RegisterTexture(
+				GraphBuilder,
+				RegisteredTextures,
+				Effect.BreakupPlacementMask,
+				TEXT("Mixtormat.BreakupPlacementMask"))
+			: FeatureMask;
+
+		Pending.Field = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				Request.Resolution,
+				PF_G16R16F,
+				FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Breakup.Field"));
+		Pending.GeneratedRegionIds = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				Request.Resolution,
+				PF_R32_UINT,
+				FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Breakup.RegionIds"));
+
+		TShaderMapRef<FMixtormatBreakupFieldCS> FieldShader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatBreakupFieldCS::FParameters* FP =
+			GraphBuilder.AllocParameters<FMixtormatBreakupFieldCS::FParameters>();
+		FP->OutputSize = Request.Resolution;
+		FP->Seed = Effect.BreakupSeed;
+		FP->MacroCells = Effect.BreakupMacroCells;
+		FP->MidCells = Effect.BreakupMidCells;
+		FP->DetailCells = Effect.BreakupDetailCells;
+		FP->Density = Effect.BreakupDensity;
+		FP->SizeMin = Effect.BreakupSizeMin;
+		FP->SizeMax = Effect.BreakupSizeMax;
+		FP->Stretch = Effect.BreakupStretch;
+		FP->Angularity = Effect.BreakupAngularity;
+		FP->Jitter = Effect.BreakupIrregularity;
+		FP->OperationMid = Effect.BreakupMidOperation;
+		FP->OperationDetail = Effect.BreakupDetailOperation;
+		FP->BlendSmooth = Effect.BreakupSmoothness;
+		FP->DistortAmount = Effect.BreakupDistortion;
+		FP->DistortFrequency = Effect.BreakupDistortionFrequency;
+		FP->Inset = Effect.BreakupInset;
+		FP->GapWidth = Effect.BreakupGapWidth;
+		FP->GapVariation = Effect.BreakupGapVariation;
+		FP->InvertField = Effect.bBreakupInvert ? 1u : 0u;
+		FP->HasRegionIds = SourceRegionIds != nullptr ? 1u : 0u;
+		FP->UsePlacementMask = bUsePlacementMask ? 1u : 0u;
+		FP->PlacementMaskTiling = Effect.BreakupMaskTiling;
+		FP->InvertMask = !Pending.bHasScopedMask && Effect.bBreakupInvertMask ? 1u : 0u;
+		FP->RegionIds = SourceRegionIds ? SourceRegionIds : Ctx.EmptyRegionIds;
+		FP->LayerMask = FeatureMask;
+		FP->PlacementMaskTexture = PlacementMask;
+		FP->LinearWrapSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		FP->OutputField = GraphBuilder.CreateUAV(Pending.Field);
+		FP->OutputRegionIds = GraphBuilder.CreateUAV(Pending.GeneratedRegionIds);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME(
+				"Mixtormat.Breakup.L%d.Child%d.Field",
+				LayerCtx.LayerIndex,
+				Child.SourceChildIndex),
+			FieldShader,
+			FP,
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
+
+		// The generated piece map immediately becomes the nearest region producer for every later
+		// child in this layer. Amount may be zero: Breakup can intentionally be used as an ID-only
+		// structural generator without touching height.
+		LayerCtx.RegionIdMaps.Emplace(Child.SourceChildIndex, Pending.GeneratedRegionIds);
 	}
 
 
@@ -2619,11 +2757,11 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const int32 WriteIndex = LayerIndex & 1;
-		const FRDGTextureRef PlacementDummy = LayerCtx.PeelFieldDummy;
 
-		TShaderMapRef<FMixtormatBreakupFieldCS> FieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		TShaderMapRef<FMixtormatBreakupApplyCS> ApplyShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		TShaderMapRef<FMixtormatBreakupApplyCS> ApplyShader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		TShaderMapRef<FMixtormatBreakupShadeCS> ShadeShader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
 		const FIntVector Groups(
 			FMath::DivideAndRoundUp(Request.Resolution.X, 8),
@@ -2633,26 +2771,32 @@ namespace MixtormatGpuCompositor
 		for (int32 BreakupIndex = 0; BreakupIndex < LayerCtx.PendingBreakups.Num(); ++BreakupIndex)
 		{
 			const FPendingBreakup& PendingBreakup = LayerCtx.PendingBreakups[BreakupIndex];
-			if (!PendingBreakup.Effect || PendingBreakup.Effect->BreakupAmount <= 0.0f)
+			if (!PendingBreakup.Effect
+				|| !PendingBreakup.Field
+				|| !PendingBreakup.GeneratedRegionIds
+				|| PendingBreakup.Effect->BreakupAmount <= 0.0f)
+			{
 				continue;
+			}
 
 			const FEffectRenderData& Breakup = *PendingBreakup.Effect;
 			const bool bUsePlacementMask =
 				!PendingBreakup.bHasScopedMask && Breakup.BreakupPlacementMask.IsValid();
 			FRDGTextureRef PlacementMask = bUsePlacementMask
-				? RegisterTexture(GraphBuilder, RegisteredTextures, Breakup.BreakupPlacementMask,
+				? RegisterTexture(
+					GraphBuilder,
+					RegisteredTextures,
+					Breakup.BreakupPlacementMask,
 					TEXT("Mixtormat.BreakupPlacementMask"))
-				: PlacementDummy;
+				: PendingBreakup.FeatureMask;
 
-			const FRDGTextureDesc FieldDesc = FRDGTextureDesc::Create2D(
-				Request.Resolution, PF_G16R16F, FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV);
-			const FRDGTextureDesc CoverageDesc = FRDGTextureDesc::Create2D(
-				Request.Resolution, PF_R16F, FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV);
-
-			FRDGTextureRef Field = GraphBuilder.CreateTexture(FieldDesc, TEXT("Mixtormat.Breakup.Field"));
-			FRDGTextureRef Coverage = GraphBuilder.CreateTexture(CoverageDesc, TEXT("Mixtormat.Breakup.Coverage"));
+			FRDGTextureRef Coverage = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					Request.Resolution,
+					PF_R16F,
+					FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.Breakup.Coverage"));
 			FRDGTextureRef SourceH = GraphBuilder.CreateTexture(
 				HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.SourceH"));
 			FRDGTextureRef ResultH = GraphBuilder.CreateTexture(
@@ -2660,48 +2804,25 @@ namespace MixtormatGpuCompositor
 			FRDGTextureRef ResultN = GraphBuilder.CreateTexture(
 				OutputN[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.Normal"));
 			FRDGTextureRef ResultRAM = GraphBuilder.CreateTexture(
-				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.HeightDerivedRAM"));
+				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.RAM"));
 
 			AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], SourceH);
-
-			FMixtormatBreakupFieldCS::FParameters* FP =
-				GraphBuilder.AllocParameters<FMixtormatBreakupFieldCS::FParameters>();
-			FP->OutputSize = Request.Resolution;
-			FP->Seed = Breakup.BreakupSeed;
-			FP->MacroCells = Breakup.BreakupMacroCells;
-			FP->MidCells = Breakup.BreakupMidCells;
-			FP->DetailCells = Breakup.BreakupDetailCells;
-			FP->Density = Breakup.BreakupDensity;
-			FP->SizeMin = Breakup.BreakupSizeMin;
-			FP->SizeMax = Breakup.BreakupSizeMax;
-			FP->Stretch = Breakup.BreakupStretch;
-			FP->Angularity = Breakup.BreakupAngularity;
-			FP->Jitter = Breakup.BreakupIrregularity;
-			FP->OperationMid = Breakup.BreakupMidOperation;
-			FP->OperationDetail = Breakup.BreakupDetailOperation;
-			FP->BlendSmooth = Breakup.BreakupSmoothness;
-			FP->DistortAmount = Breakup.BreakupDistortion;
-			FP->DistortFrequency = Breakup.BreakupDistortionFrequency;
-			FP->InvertField = Breakup.bBreakupInvert ? 1u : 0u;
-			FP->HasRegionIds = PendingBreakup.RegionIds != nullptr ? 1u : 0u;
-			FP->RegionIds = PendingBreakup.RegionIds ? PendingBreakup.RegionIds : Ctx.EmptyRegionIds;
-			FP->OutputField = GraphBuilder.CreateUAV(Field);
-
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Field", LayerIndex, BreakupIndex),
-				FieldShader, FP, Groups);
 
 			FMixtormatBreakupApplyCS::FParameters* AP =
 				GraphBuilder.AllocParameters<FMixtormatBreakupApplyCS::FParameters>();
 			AP->OutputSize = Request.Resolution;
 			AP->Relief = Breakup.BreakupRelief;
+			AP->ThicknessVariation = Breakup.BreakupThicknessVariation;
+			AP->GapWidth = Breakup.BreakupGapWidth;
+			AP->GapDepth = Breakup.BreakupGapDepth;
+			AP->GapVariation = Breakup.BreakupGapVariation;
 			AP->FoldHeight = Breakup.BreakupFold;
 			AP->FoldWidth = Breakup.BreakupFoldWidth;
 			AP->CreaseWidth = Breakup.BreakupCreaseWidth;
 			AP->CreaseDepth = Breakup.BreakupCrease;
 			AP->PushAmount = Breakup.BreakupPush;
 			AP->PushWidth = Breakup.BreakupPushWidth;
+			AP->PushRelief = Breakup.BreakupPushRelief;
 			AP->Variation = Breakup.BreakupVariation;
 			AP->Strength = Breakup.BreakupAmount;
 			AP->UsePlacementMask = bUsePlacementMask ? 1u : 0u;
@@ -2709,7 +2830,8 @@ namespace MixtormatGpuCompositor
 			AP->InvertMask =
 				!PendingBreakup.bHasScopedMask && Breakup.bBreakupInvertMask ? 1u : 0u;
 			AP->SourceHeight = SourceH;
-			AP->BreakupField = Field;
+			AP->BreakupField = PendingBreakup.Field;
+			AP->BreakupRegionIds = PendingBreakup.GeneratedRegionIds;
 			AP->LayerMask = PendingBreakup.FeatureMask;
 			AP->PlacementMaskTexture = PlacementMask;
 			AP->LinearWrapSampler =
@@ -2720,41 +2842,38 @@ namespace MixtormatGpuCompositor
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Apply", LayerIndex, BreakupIndex),
-				ApplyShader, AP, Groups);
+				ApplyShader,
+				AP,
+				Groups);
 
-			AddHeightDerivedNormalPass(
-				Ctx, SourceH, ResultH, OutputN[WriteIndex], OutputRAM[WriteIndex],
-				ResultN, ResultRAM, Request.Resolution,
-				HeightDerivedNormalStrength, 0.35f, true, TEXT("Breakup"));
+			FMixtormatBreakupShadeCS::FParameters* SP =
+				GraphBuilder.AllocParameters<FMixtormatBreakupShadeCS::FParameters>();
+			SP->OutputSize = Request.Resolution;
+			SP->NormalStrength = Breakup.BreakupNormalStrength;
+			SP->NormalSharpness = Breakup.BreakupNormalSharpness;
+			SP->AOAmount = Breakup.BreakupAOAmount;
+			SP->AORadius = Breakup.BreakupAORadius;
+			SP->RoughnessAmount = Breakup.BreakupRoughnessAmount;
+			SP->SourceHeight = SourceH;
+			SP->CurrentHeight = ResultH;
+			SP->BreakupField = PendingBreakup.Field;
+			SP->BreakupRegionIds = PendingBreakup.GeneratedRegionIds;
+			SP->BreakupCoverage = Coverage;
+			SP->PreviousNormal = OutputN[WriteIndex];
+			SP->PreviousRAM = OutputRAM[WriteIndex];
+			SP->OutputNormal = GraphBuilder.CreateUAV(ResultN);
+			SP->OutputRAM = GraphBuilder.CreateUAV(ResultRAM);
 
-			FRDGTextureRef FinalRAM = ResultRAM;
-			if (Breakup.BreakupRoughnessAmount != 0.0f)
-			{
-				FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-					OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.RoughnessRAM"));
-				FMixtormatCarveShadeCS::FParameters* SP =
-					GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
-				SP->OutputSize = Request.Resolution;
-				SP->RoughnessAmount = Breakup.BreakupRoughnessAmount;
-				SP->CarveDepth = 1.0f;
-				SP->UseCoverageTexture = 1u;
-				SP->CoverageTexture = Coverage;
-				SP->SourceHeight = SourceH;
-				SP->CarvedHeight = ResultH;
-				SP->SourceRAM = FinalRAM;
-				SP->LinearWrapSampler =
-					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-				SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Roughness", LayerIndex, BreakupIndex),
-					CarveShadeShader, SP, Groups);
-				FinalRAM = ShadeRAM;
-			}
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Shade", LayerIndex, BreakupIndex),
+				ShadeShader,
+				SP,
+				Groups);
 
 			AddCopyTexturePass(GraphBuilder, ResultH, HeightTargets[WriteIndex]);
 			AddCopyTexturePass(GraphBuilder, ResultN, OutputN[WriteIndex]);
-			AddCopyTexturePass(GraphBuilder, FinalRAM, OutputRAM[WriteIndex]);
+			AddCopyTexturePass(GraphBuilder, ResultRAM, OutputRAM[WriteIndex]);
 		}
 	}
 

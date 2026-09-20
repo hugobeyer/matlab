@@ -1205,6 +1205,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float BreakupSmoothness = 0.30f;
 
+	// Signed offset of the final field in reference pixels. Positive shrinks pieces and opens
+	// space between them; negative grows them before relief is applied.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-64.0", ClampMax = "64.0"))
+	float BreakupInset = 0.0f;
+
 	// Warps the whole field before the cells are evaluated, in reference pixels at 1K. Built from
 	// integer-period sinusoids so the result still closes on the UV square exactly.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0"))
@@ -1218,6 +1223,20 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// Positive stands them proud, for rock foundations and raised plates.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-0.5", ClampMax = "0.5"))
 	float BreakupRelief = -0.06f;
+
+	// Dedicated per-piece relief scaling. Kept separate from Variation so plate/flake thickness can
+	// change without making crease, fold and push equally noisy.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupThicknessVariation = 0.30f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "64.0"))
+	float BreakupGapWidth = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float BreakupGapDepth = 0.02f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupGapVariation = 0.35f;
 
 	// Raises the material just outside each piece. The lip of torn paper, peeling paint, curled
 	// mud or a lifting ice plate.
@@ -1244,6 +1263,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "1.0", ClampMax = "256.0"))
 	float BreakupPushWidth = 24.0f;
 
+	// Height separation added by Push. This makes Push visible even when the incoming height is flat;
+	// the existing Push value still controls the signed UV advection distance.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float BreakupPushRelief = 0.035f;
+
 	// Per-piece variation of relief, fold, crease and push, off the field's own stable piece id.
 	// It is piece-stable by construction and can never become per-pixel noise.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -1256,6 +1280,18 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
 	float BreakupRoughnessAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", ClampMax = "8.0"))
+	float BreakupNormalStrength = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupNormalSharpness = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BreakupAOAmount = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "1.0", ClampMax = "64.0"))
+	float BreakupAORadius = 8.0f;
 
 	// Flips the sign of the field, swapping which side of every boundary is the piece.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup")

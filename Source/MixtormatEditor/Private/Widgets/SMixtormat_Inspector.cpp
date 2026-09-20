@@ -977,32 +977,71 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 1.0, 0.72, 0.01),
 		Slider(LOCTEXT("BreakupIrregularity", "Irregularity"), &FMixtormatLayerEffect::BreakupIrregularity,
 			0.0, 1.0, 0.38, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupInset", "Inset"), &FMixtormatLayerEffect::BreakupInset,
+			-64.0, 64.0, 0.0, 0.25,
+			LOCTEXT("BreakupInsetHint", "Positive shrinks pieces and opens spacing; negative grows them before relief.")),
+		Slider(LOCTEXT("BreakupDistortion", "Distortion"), &FMixtormatLayerEffect::BreakupDistortion,
+			0.0, 32.0, 5.6, 0.1,
+			LOCTEXT("BreakupDistortionHint", "Seamless multi-scale domain warp; no repeating sine-wave deformation."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpStructure", "Structure")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupRelief", "Relief"), &FMixtormatLayerEffect::BreakupRelief,
 			-0.5, 0.5, -0.06, 0.0025,
-			LOCTEXT("BreakupReliefHint", "Signed: negative carves/torns, positive raises rock or plates.")),
-		Slider(LOCTEXT("BreakupFold", "Fold"), &FMixtormatLayerEffect::BreakupFold,
-			0.0, 0.5, 0.025, 0.0025)));
+			LOCTEXT("BreakupReliefHint", "Signed interior level: negative tears/carves; positive builds plates and rock.")),
+		Slider(LOCTEXT("BreakupThicknessVariation", "Thickness Var"), &FMixtormatLayerEffect::BreakupThicknessVariation,
+			0.0, 1.0, 0.30, 0.01,
+			LOCTEXT("BreakupThicknessVariationHint", "Stable per-piece relief thickness variation from Breakup IDs."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupGapWidth", "Gap Width"), &FMixtormatLayerEffect::BreakupGapWidth,
+			0.0, 64.0, 2.0, 0.1,
+			LOCTEXT("BreakupGapWidthHint", "Opens seams at both SDF boundaries and internal piece-ID boundaries.")),
+		Slider(LOCTEXT("BreakupGapDepth", "Gap Depth"), &FMixtormatLayerEffect::BreakupGapDepth,
+			0.0, 0.5, 0.02, 0.001)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupFold", "Fold"), &FMixtormatLayerEffect::BreakupFold,
+			0.0, 0.5, 0.025, 0.0025),
 		Slider(LOCTEXT("BreakupCrease", "Crease"), &FMixtormatLayerEffect::BreakupCrease,
-			0.0, 0.5, 0.018, 0.001),
+			0.0, 0.5, 0.018, 0.001)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupPush", "Push"), &FMixtormatLayerEffect::BreakupPush,
-			-128.0, 128.0, 0.0, 0.25)));
+			-128.0, 128.0, 0.0, 0.25,
+			LOCTEXT("BreakupPushHint", "Signed height advection along the SDF gradient. Now also drives structural separation.")),
+		Slider(LOCTEXT("BreakupPushRelief", "Push Relief"), &FMixtormatLayerEffect::BreakupPushRelief,
+			0.0, 0.5, 0.035, 0.001,
+			LOCTEXT("BreakupPushReliefHint", "Adds real height separation so Push remains visible on a flat source."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpVariation", "Variation")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupDetail", "Detail"), &FMixtormatLayerEffect::BreakupDetail,
 			0.0, 1.0, 0.5, 0.01),
-		Slider(LOCTEXT("BreakupDistortion", "Distortion"), &FMixtormatLayerEffect::BreakupDistortion,
-			0.0, 32.0, 5.6, 0.1)));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupVariation", "Variation"), &FMixtormatLayerEffect::BreakupVariation,
-			0.0, 1.0, 0.25, 0.01),
+			0.0, 1.0, 0.25, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupGapVariation", "Gap Variation"), &FMixtormatLayerEffect::BreakupGapVariation,
+			0.0, 1.0, 0.35, 0.01),
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("BreakupSeed", "Seed"), Breakup,
 			&FMixtormatLayerEffect::BreakupSeed, 0.0, 9999.0, 1)));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpShading", "Shading")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupNormalStrength", "Normal"), &FMixtormatLayerEffect::BreakupNormalStrength,
+			0.0, 8.0, 2.0, 0.05,
+			LOCTEXT("BreakupNormalStrengthHint", "Strength of the normal contribution derived from Breakup's actual height delta.")),
+		Slider(LOCTEXT("BreakupNormalSharpness", "Sharpness"), &FMixtormatLayerEffect::BreakupNormalSharpness,
+			0.0, 1.0, 0.75, 0.01,
+			LOCTEXT("BreakupNormalSharpnessHint", "Blends broad fold normals toward a sharp one-pixel structural gradient."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupAO", "AO"), &FMixtormatLayerEffect::BreakupAOAmount,
+			0.0, 1.0, 0.35, 0.01,
+			LOCTEXT("BreakupAOHint", "Local contact occlusion from cavities, SDF seams and piece-ID boundaries.")),
+		Slider(LOCTEXT("BreakupAORadius", "AO Radius"), &FMixtormatLayerEffect::BreakupAORadius,
+			1.0, 64.0, 8.0, 0.25)));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
+		-1.0, 1.0, 0.0, 0.01));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpAdvanced", "Advanced")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -1012,7 +1051,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 1.0, 0.30, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("BreakupDistortionFrequency", "Distort Freq"), Breakup,
+			LOCTEXT("BreakupDistortionFrequency", "Distort Scale"), Breakup,
 			&FMixtormatLayerEffect::BreakupDistortionFrequency, 1.0, 16.0, 3),
 		MakeMemberToggle<FMixtormatLayerEffect>(
 			LOCTEXT("BreakupInvert", "Invert"), Breakup,
@@ -1029,16 +1068,14 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpOutput", "Output")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupAmount", "Amount"), &FMixtormatLayerEffect::BreakupAmount,
-			0.0, 1.0, 1.0, 0.01),
-		Slider(LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
-			-1.0, 1.0, 0.0, 0.01)));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+			0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("BreakupAmountHint", "Height/shading amount. The generated IDs remain available at zero so Breakup can be used as an ID-only producer.")),
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("BreakupMaskTiling", "Mask Tiling"), Breakup,
-			&FMixtormatLayerEffect::BreakupMaskTiling, 1.0, 16.0, 1),
-		MakeMemberToggle<FMixtormatLayerEffect>(
-			LOCTEXT("BreakupMaskInvert", "Invert Mask"), Breakup,
-			&FMixtormatLayerEffect::bBreakupInvertMask)));
+			&FMixtormatLayerEffect::BreakupMaskTiling, 1.0, 16.0, 1)));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatLayerEffect>(
+		LOCTEXT("BreakupMaskInvert", "Invert Mask"), Breakup,
+		&FMixtormatLayerEffect::bBreakupInvertMask));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedBreakup() ? EVisibility::Visible : EVisibility::Collapsed; })

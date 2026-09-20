@@ -759,7 +759,9 @@ namespace MixtormatGpuCompositor
 						{
 							if (Other.SourceChildIndex > Child.SourceChildIndex
 								&& (Other.Type == EMixtormatLayerChildType::Filter
-									|| Other.Type == EMixtormatLayerChildType::PatternId))
+									|| Other.Type == EMixtormatLayerChildType::PatternId
+									|| (Other.Type == EMixtormatLayerChildType::Effect
+										&& Other.Effect.Type == EMixtormatEffectType::Breakup)))
 							{
 								bLaterProducer = true;
 								break;
@@ -791,10 +793,14 @@ namespace MixtormatGpuCompositor
 						const bool bWornEdgesConsumer =
 							Other.Type == EMixtormatLayerChildType::Effect
 							&& Other.Effect.Type == EMixtormatEffectType::WornEdges;
+						const bool bBreakupConsumer =
+							Other.Type == EMixtormatLayerChildType::Effect
+							&& Other.Effect.Type == EMixtormatEffectType::Breakup;
 						if (Other.Type == EMixtormatLayerChildType::HsvFilter
 							|| Other.Type == EMixtormatLayerChildType::RandomId
 							|| Other.Type == EMixtormatLayerChildType::RampId
-							|| bWornEdgesConsumer)
+							|| bWornEdgesConsumer
+							|| bBreakupConsumer)
 						{
 							bWanted = true;
 							break;
