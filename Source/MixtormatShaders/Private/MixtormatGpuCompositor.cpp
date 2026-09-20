@@ -2235,7 +2235,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupDetailCells = DetailCells;
 
 				const float Size = FMath::IsFinite(LayerEffect.BreakupSize)
-					? FMath::Clamp(LayerEffect.BreakupSize, 0.01f, 4.0f) : 0.32f;
+					? FMath::Max(LayerEffect.BreakupSize, 0.001f) : 0.32f;
 				const float SizeVariation = FMath::IsFinite(LayerEffect.BreakupSizeVariation)
 					? FMath::Clamp(LayerEffect.BreakupSizeVariation, 0.0f, 0.99f) : 0.3125f;
 				// Floored above zero: a zero or negative radius divides by itself in the shape
@@ -2257,7 +2257,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupSmoothness = FMath::IsFinite(LayerEffect.BreakupSmoothness)
 					? FMath::Max(LayerEffect.BreakupSmoothness, 0.0f) : 0.30f;
 				EffectData.BreakupInset = FMath::IsFinite(LayerEffect.BreakupInset)
-					? FMath::Clamp(LayerEffect.BreakupInset, -64.0f, 64.0f) : 0.0f;
+					? LayerEffect.BreakupInset : 0.0f;
 
 				EffectData.BreakupDistortion = FMath::IsFinite(LayerEffect.BreakupDistortion)
 					? LayerEffect.BreakupDistortion : 5.6f;
@@ -2273,9 +2273,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupThicknessVariation = FMath::IsFinite(LayerEffect.BreakupThicknessVariation)
 					? FMath::Clamp(LayerEffect.BreakupThicknessVariation, 0.0f, 1.0f) : 0.30f;
 				EffectData.BreakupGapWidth = FMath::IsFinite(LayerEffect.BreakupGapWidth)
-					? FMath::Clamp(LayerEffect.BreakupGapWidth, 0.0f, 64.0f) : 2.0f;
+					? FMath::Max(LayerEffect.BreakupGapWidth, 0.0f) : 2.0f;
 				EffectData.BreakupGapDepth = FMath::IsFinite(LayerEffect.BreakupGapDepth)
-					? FMath::Clamp(LayerEffect.BreakupGapDepth, 0.0f, 0.5f) : 0.02f;
+					? LayerEffect.BreakupGapDepth : 0.02f;
 				EffectData.BreakupGapVariation = FMath::IsFinite(LayerEffect.BreakupGapVariation)
 					? FMath::Clamp(LayerEffect.BreakupGapVariation, 0.0f, 1.0f) : 0.35f;
 				EffectData.BreakupFold = FMath::IsFinite(LayerEffect.BreakupFold)
@@ -2291,19 +2291,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupPushWidth = FMath::IsFinite(LayerEffect.BreakupPushWidth)
 					? FMath::Max(LayerEffect.BreakupPushWidth, 1.0e-4f) : 24.0f;
 				EffectData.BreakupPushRelief = FMath::IsFinite(LayerEffect.BreakupPushRelief)
-					? FMath::Clamp(LayerEffect.BreakupPushRelief, 0.0f, 0.5f) : 0.035f;
+					? FMath::Max(LayerEffect.BreakupPushRelief, 0.0f) : 0.035f;
 				EffectData.BreakupVariation = FMath::IsFinite(LayerEffect.BreakupVariation)
 					? FMath::Clamp(LayerEffect.BreakupVariation, 0.0f, 1.0f) : 0.25f;
 				EffectData.BreakupRoughnessAmount = FMath::IsFinite(LayerEffect.BreakupRoughnessAmount)
 					? FMath::Clamp(LayerEffect.BreakupRoughnessAmount, -1.0f, 1.0f) : 0.0f;
 				EffectData.BreakupNormalStrength = FMath::IsFinite(LayerEffect.BreakupNormalStrength)
-					? FMath::Clamp(LayerEffect.BreakupNormalStrength, 0.0f, 8.0f) : 2.0f;
+					? FMath::Max(LayerEffect.BreakupNormalStrength, 0.0f) : 2.0f;
 				EffectData.BreakupNormalSharpness = FMath::IsFinite(LayerEffect.BreakupNormalSharpness)
 					? FMath::Clamp(LayerEffect.BreakupNormalSharpness, 0.0f, 1.0f) : 0.75f;
 				EffectData.BreakupAOAmount = FMath::IsFinite(LayerEffect.BreakupAOAmount)
 					? FMath::Clamp(LayerEffect.BreakupAOAmount, 0.0f, 1.0f) : 0.35f;
 				EffectData.BreakupAORadius = FMath::IsFinite(LayerEffect.BreakupAORadius)
-					? FMath::Clamp(LayerEffect.BreakupAORadius, 1.0f, 64.0f) : 8.0f;
+					? FMath::Max(LayerEffect.BreakupAORadius, 1.0f) : 8.0f;
 
 				EffectData.BreakupMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.BreakupMaskTiling));
 				EffectData.bBreakupInvertMask = LayerEffect.bBreakupInvertMask;

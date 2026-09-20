@@ -633,7 +633,7 @@ void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float amount = saturate(Strength * placement);
 	const float result = lerp(sourceHeight, warpedHeight + delta, amount);
 
-	OutputHeight[pixel] = saturate(result);
+	OutputHeight[pixel] = result;
 	OutputCoverage[pixel] = saturate(
 		max(
 			max(inside, fold),

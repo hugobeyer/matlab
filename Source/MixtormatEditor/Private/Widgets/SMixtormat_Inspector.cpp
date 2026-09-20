@@ -969,9 +969,9 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 1.0, 0.72, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupSize", "Size"), &FMixtormatLayerEffect::BreakupSize,
-			0.05, 0.75, 0.32, 0.005),
+			0.001, 1.0, 0.32, 0.005),
 		Slider(LOCTEXT("BreakupStretch", "Stretch"), &FMixtormatLayerEffect::BreakupStretch,
-			1.0, 2.0, 1.6, 0.01)));
+			0.05, 4.0, 1.6, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupAngularity", "Angularity"), &FMixtormatLayerEffect::BreakupAngularity,
 			0.0, 1.0, 0.72, 0.01),
@@ -998,12 +998,12 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 64.0, 2.0, 0.1,
 			LOCTEXT("BreakupGapWidthHint", "Opens seams at both SDF boundaries and internal piece-ID boundaries.")),
 		Slider(LOCTEXT("BreakupGapDepth", "Gap Depth"), &FMixtormatLayerEffect::BreakupGapDepth,
-			0.0, 0.5, 0.02, 0.001)));
+			-0.5, 0.5, 0.02, 0.001)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupFold", "Fold"), &FMixtormatLayerEffect::BreakupFold,
-			0.0, 0.5, 0.025, 0.0025),
+			-0.5, 0.5, 0.025, 0.0025),
 		Slider(LOCTEXT("BreakupCrease", "Crease"), &FMixtormatLayerEffect::BreakupCrease,
-			0.0, 0.5, 0.018, 0.001)));
+			-0.5, 0.5, 0.018, 0.001)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupPush", "Push"), &FMixtormatLayerEffect::BreakupPush,
 			-128.0, 128.0, 0.0, 0.25,
@@ -1028,7 +1028,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpShading", "Shading")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupNormalStrength", "Normal"), &FMixtormatLayerEffect::BreakupNormalStrength,
-			0.0, 8.0, 2.0, 0.05,
+			0.0, 4.0, 2.0, 0.05,
 			LOCTEXT("BreakupNormalStrengthHint", "Strength of the normal contribution derived from Breakup's actual height delta.")),
 		Slider(LOCTEXT("BreakupNormalSharpness", "Sharpness"), &FMixtormatLayerEffect::BreakupNormalSharpness,
 			0.0, 1.0, 0.75, 0.01,
@@ -1038,7 +1038,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 1.0, 0.35, 0.01,
 			LOCTEXT("BreakupAOHint", "Local contact occlusion from cavities, SDF seams and piece-ID boundaries.")),
 		Slider(LOCTEXT("BreakupAORadius", "AO Radius"), &FMixtormatLayerEffect::BreakupAORadius,
-			1.0, 64.0, 8.0, 0.25)));
+			1.0, 32.0, 8.0, 0.25)));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
 		-1.0, 1.0, 0.0, 0.01));
@@ -1058,12 +1058,12 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			&FMixtormatLayerEffect::bBreakupInvert)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupFoldWidth", "Fold Width"), &FMixtormatLayerEffect::BreakupFoldWidth,
-			0.25, 128.0, 16.0, 0.25),
+			0.001, 64.0, 16.0, 0.25),
 		Slider(LOCTEXT("BreakupCreaseWidth", "Crease Width"), &FMixtormatLayerEffect::BreakupCreaseWidth,
-			0.25, 64.0, 1.25, 0.05)));
+			0.001, 32.0, 1.25, 0.05)));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("BreakupPushWidth", "Push Width"), &FMixtormatLayerEffect::BreakupPushWidth,
-		1.0, 256.0, 24.0, 0.5));
+		0.001, 64.0, 24.0, 0.5));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpOutput", "Output")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
