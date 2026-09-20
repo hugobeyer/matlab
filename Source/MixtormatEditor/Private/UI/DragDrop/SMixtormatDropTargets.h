@@ -407,6 +407,9 @@ public:
 	DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnGroupInsertedAtGroupEdge, FGuid, int32);
 	DECLARE_DELEGATE_RetVal_FourParams(
 		FReply, FOnSurfaceInsertedAtGroup, FText, FSoftObjectPath, int32, FGuid);
+	// Source layer, source child, target group. A child dropped here leaves its layer and joins the
+	// group's shared stack, the same move FOnMixtormatChildMovedToLayer is for a layer target.
+	DECLARE_DELEGATE_RetVal_ThreeParams(FReply, FOnChildDroppedOnGroup, int32, int32, FGuid);
 
 	SLATE_BEGIN_ARGS(SMixtormatGroupRowDropTarget) {}
 		SLATE_DEFAULT_SLOT(FArguments, Content)
@@ -419,6 +422,7 @@ public:
 		SLATE_EVENT(FOnLayerInsertedAtGroupEdge, OnLayerInsertedAt)
 		SLATE_EVENT(FOnGroupInsertedAtGroupEdge, OnGroupInsertedAt)
 		SLATE_EVENT(FOnSurfaceInsertedAtGroup, OnSurfaceInsertedAt)
+		SLATE_EVENT(FOnChildDroppedOnGroup, OnChildDropped)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -430,6 +434,7 @@ public:
 		OnLayerInsertedAt = InArgs._OnLayerInsertedAt;
 		OnGroupInsertedAt = InArgs._OnGroupInsertedAt;
 		OnSurfaceInsertedAt = InArgs._OnSurfaceInsertedAt;
+		OnChildDropped = InArgs._OnChildDropped;
 		ChildSlot
 		[
 			SNew(SOverlay)
@@ -459,6 +464,11 @@ public:
 		{
 			Operation->ResetToDefaultToolTip();
 		}
+		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>())
+		{
+			Operation->ResetToDefaultToolTip();
+		}
 	}
 
 	virtual FReply OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& Event) override
@@ -467,6 +477,25 @@ public:
 		{
 			return FReply::Unhandled();
 		}
+
+		// A child dropped on the header means "make this shared", the same all-or-nothing meaning
+		// a child dropped on a layer body has -- not a position along the group's edges, so the
+		// whole row lights rather than one of its thirds.
+		if (const TSharedPtr<FMixtormatChildDragDropOp> ChildOp =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>())
+		{
+			if (!ChildOp->bCanLeaveLayer)
+			{
+				Zone = EMixtormatRowDropZone::None;
+				return FReply::Unhandled();
+			}
+			Zone = EMixtormatRowDropZone::Into;
+			ChildOp->SetToolTip(
+				FText::Format(LOCTEXT("MoveChildToGroupDrag", "Share {0} across this group"), ChildOp->Name),
+				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+			return FReply::Handled();
+		}
+
 		const TSharedPtr<FMixtormatLayerDragDropOp> LayerOp =
 			Event.GetOperationAs<FMixtormatLayerDragDropOp>();
 		const TSharedPtr<FMixtormatGroupDragDropOp> GroupOp =
@@ -522,6 +551,16 @@ public:
 		{
 			return FReply::Unhandled();
 		}
+
+		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>())
+		{
+			Operation->ResetToDefaultToolTip();
+			return OnChildDropped.IsBound()
+				? OnChildDropped.Execute(Operation->LayerIndex, Operation->ChildIndex, TargetGroupId)
+				: FReply::Unhandled();
+		}
+
 		// Before the group is its first member's slot; after it is one past the last.
 		const int32 EdgeIndex =
 			DropZone == EMixtormatRowDropZone::Before ? FirstMemberIndex : LastMemberIndex + 1;
@@ -581,6 +620,7 @@ private:
 	FOnLayerInsertedAtGroupEdge OnLayerInsertedAt;
 	FOnGroupInsertedAtGroupEdge OnGroupInsertedAt;
 	FOnSurfaceInsertedAtGroup OnSurfaceInsertedAt;
+	FOnChildDroppedOnGroup OnChildDropped;
 	EMixtormatRowDropZone Zone = EMixtormatRowDropZone::None;
 };
 

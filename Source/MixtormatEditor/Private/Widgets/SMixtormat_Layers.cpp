@@ -1737,11 +1737,65 @@ FReply SMixtormat::MoveChildToLayer(
 		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
 		DestLayer.Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
 		MixtormatParameterBinding::RemapChildParent(
-			WorkingLayers, MovedChildId, OldLayerId, NewLayerId);
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, OldLayerId, NewLayerId);
 	}
 
 	SetLayerExpanded(DestLayerIndex, true);
 	SelectWorkingChild(DestLayerIndex, InsertAt);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::MoveChildToGroup(
+	const int32 SourceLayerIndex,
+	const int32 ChildIndex,
+	const FGuid GroupId)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
+		|| !WorkingLayers[SourceLayerIndex].Children.IsValidIndex(ChildIndex)
+		|| !Group)
+	{
+		return FReply::Unhandled();
+	}
+
+	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex]))
+	{
+		return FReply::Unhandled();
+	}
+
+	const FGuid OldLayerId = SourceLayer.LayerId;
+	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer, ChildIndex);
+	const int32 MoveCount = SubtreeEnd - ChildIndex;
+	TArray<FMixtormatLayerChild> MovedChildren;
+	MovedChildren.Reserve(MoveCount);
+	for (int32 MoveIndex = 0; MoveIndex < MoveCount; ++MoveIndex)
+	{
+		MovedChildren.Add(MoveTemp(SourceLayer.Children[ChildIndex + MoveIndex]));
+	}
+	SourceLayer.Children.RemoveAt(ChildIndex, MoveCount);
+	MovedChildren[0].ScopeOwnerChildId.Invalidate();
+
+	// Appended, the same as every other way a shared child arrives (AddMaskToGroup and siblings):
+	// the group's stack has no reorder yet, so there is only one place to put it.
+	const int32 InsertAt = Group->Children.Num();
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
+		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
+		Group->Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
+		// GroupId, not a LayerId: a group's shared children are addressed by GroupId in the same
+		// slot a layer's are addressed by LayerId, so this is the same remap MoveChildToLayer does.
+		// The scope carries WorkingLayerGroups too, so a reference held by another shared child
+		// follows this one across exactly as a layer child's would.
+		MixtormatParameterBinding::RemapChildParent(
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, OldLayerId, GroupId);
+	}
+
+	CollapsedGroupIds.Remove(GroupId);
+	SelectGroupChild(GroupId, InsertAt);
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();
@@ -2728,6 +2782,7 @@ void SMixtormat::RebuildLayerList()
 				.OnLayerInsertedAt(this, &SMixtormat::HandleLayerInsertedAt)
 				.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)
 				.OnSurfaceInsertedAt(this, &SMixtormat::HandleSurfaceDroppedAt)
+				.OnChildDropped(this, &SMixtormat::MoveChildToGroup)
 				[
 					BuildLayerGroupRow(GroupId)
 				]
@@ -3669,9 +3724,10 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	return FReply::Handled();
 }
 
-// A shared child's row. Read-only compared with a layer's: no drop target and no reorder, because
-// moving children between containers is not built yet and a row that accepts a drag it cannot
-// honour is worse than one that does not offer it.
+// A shared child's row. Read-only compared with a layer's: no drop target and no reorder. A child
+// can arrive from a layer by dropping it on the group header (MoveChildToGroup, always appended),
+// but a position within the shared stack and a reorder there are not built yet -- a row that
+// accepts a drag it cannot honour is worse than one that does not offer it.
 TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const int32 ChildIndex)
 {
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);

@@ -833,7 +833,7 @@ namespace MixtormatParameterBinding
 	}
 
 	void RemapChildParent(
-		TArray<FMixtormatLayer>& Layers,
+		const FMixtormatMutableBindingScope& Scope,
 		const FGuid& ChildId,
 		const FGuid& OldLayerId,
 		const FGuid& NewLayerId)
@@ -855,7 +855,19 @@ namespace MixtormatParameterBinding
 				Binding.Driver.SourceLayerId = NewLayerId;
 			}
 		};
-		for (FMixtormatLayer& Layer : Layers)
+		// A mask that publishes from ChildId's output (Worn Edges' Wear, Pattern's Gap) names it the
+		// same way a reference does, just outside ParameterBindings -- so it has to follow the move
+		// too, or the mask silently goes back to reading nothing.
+		auto RemapPublishedSource = [&](FMixtormatLayerChild& Child)
+		{
+			if (Child.Type == EMixtormatLayerChildType::Mask
+				&& Child.Mask.PublishedSourceChildId == ChildId
+				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
+			{
+				Child.Mask.PublishedSourceLayerId = NewLayerId;
+			}
+		};
+		for (FMixtormatLayer& Layer : *Scope.Layers)
 		{
 			for (FMixtormatParameterBinding& Binding : Layer.ParameterBindings)
 			{
@@ -870,6 +882,29 @@ namespace MixtormatParameterBinding
 				if (Child.SourceChildId == ChildId && Child.SourceLayerId == OldLayerId)
 				{
 					Child.SourceLayerId = NewLayerId;
+				}
+				RemapPublishedSource(Child);
+			}
+		}
+		// No Group.ParameterBindings pass: that array is reserved for group-level parameters that
+		// nothing can address yet (see the FMixtormatLayerGroup declaration), so there is nothing
+		// there a reference could already be pointing at. A shared child's own bindings are real
+		// and addressable, so those still follow.
+		if (Scope.Groups)
+		{
+			for (FMixtormatLayerGroup& Group : *Scope.Groups)
+			{
+				for (FMixtormatLayerChild& Child : Group.Children)
+				{
+					for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
+					{
+						RemapBinding(Binding);
+					}
+					if (Child.SourceChildId == ChildId && Child.SourceLayerId == OldLayerId)
+					{
+						Child.SourceLayerId = NewLayerId;
+					}
+					RemapPublishedSource(Child);
 				}
 			}
 		}

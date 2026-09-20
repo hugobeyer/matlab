@@ -138,6 +138,10 @@ private:
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
 	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
+	// Same move, but the destination is a group's shared stack rather than another layer: the
+	// child leaves its layer and becomes something every member composites, instead of landing in
+	// one member in particular.
+	FReply MoveChildToGroup(int32 SourceLayerIndex, int32 ChildIndex, FGuid GroupId);
 
 	// Mirrors every instance's payload down from its source, so the inspector, the badges and the
 	// row names all read the resolved values without a second read path. Run on every refresh; the

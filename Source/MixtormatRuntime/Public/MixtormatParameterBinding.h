@@ -126,9 +126,12 @@ namespace MixtormatParameterBinding
 
 	// Rewrites every address in the stack that named ChildId under OldLayerId to name it under
 	// NewLayerId. A moved child is the same child, so the references, drivers and instances
-	// pointing at it have to follow it across rather than break.
+	// pointing at it have to follow it across rather than break. Takes the mutable scope, not a
+	// bare layer array, because a child can now move into a group's shared stack: a reference held
+	// by a group child is exactly as real as one held by a layer child, and has to follow the same
+	// way.
 	MIXTORMATRUNTIME_API void RemapChildParent(
-		TArray<FMixtormatLayer>& Layers,
+		const FMixtormatMutableBindingScope& Scope,
 		const FGuid& ChildId,
 		const FGuid& OldLayerId,
 		const FGuid& NewLayerId);
