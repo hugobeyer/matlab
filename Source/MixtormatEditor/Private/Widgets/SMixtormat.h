@@ -169,6 +169,7 @@ private:
 	// which of the two it uses.
 	void CopyLayerChild(int32 LayerIndex, int32 ChildIndex, bool bAsInstance);
 	void CopyInstanceMaskFromWear(int32 LayerIndex, int32 ChildIndex);
+	void CopyInstanceMaskFromBreakup(int32 LayerIndex, int32 ChildIndex, FName Output);
 	void CopyInstanceMaskFromPatternGap(int32 LayerIndex, int32 ChildIndex);
 	bool CanPasteLayerChild() const;
 	// Where an instance of the clipboard child may land in this layer, given the row the paste was

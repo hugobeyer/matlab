@@ -674,6 +674,38 @@ IMPLEMENT_GLOBAL_SHADER(
 	"FieldCS",
 	SF_Compute);
 
+// The scalar maps Breakup publishes. Reads back the field and IDs FieldCS wrote rather than
+// re-evaluating anything, so this costs a handful of loads.
+class FMixtormatBreakupMasksCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBreakupMasksCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBreakupMasksCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, GapWidth)
+		SHADER_PARAMETER(float, GapVariation)
+		SHADER_PARAMETER(float, CreaseWidth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BreakupField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BreakupRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputGap)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputPieces)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatBreakupMasksCS,
+	"/Plugin/Mixtormat/Private/MixtormatBreakup.usf",
+	"MasksCS",
+	SF_Compute);
+
 class FMixtormatBreakupApplyCS final : public FGlobalShader
 {
 public:
@@ -1526,6 +1558,61 @@ namespace MixtormatGpuCompositor
 		// child in this layer. Amount may be zero: Breakup can intentionally be used as an ID-only
 		// structural generator without touching height.
 		LayerCtx.RegionIdMaps.Emplace(Child.SourceChildIndex, Pending.GeneratedRegionIds);
+
+		// The scalar maps, published here rather than from ApplyCS. ApplyCS is deferred until
+		// after the layer composites -- it carves the accumulated height, so it has to be -- and
+		// a published mask has to exist before the child chain that reads it runs. Amount zero
+		// reaches this line for the same reason the IDs do.
+		const auto CreateMask = [&](const TCHAR* Name)
+		{
+			return GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					Request.Resolution,
+					PF_R16F,
+					FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				Name);
+		};
+		Pending.Gap = CreateMask(TEXT("Mixtormat.Breakup.Gap"));
+		Pending.Edge = CreateMask(TEXT("Mixtormat.Breakup.Edge"));
+		Pending.Pieces = CreateMask(TEXT("Mixtormat.Breakup.Pieces"));
+
+		TShaderMapRef<FMixtormatBreakupMasksCS> MasksShader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatBreakupMasksCS::FParameters* MP =
+			GraphBuilder.AllocParameters<FMixtormatBreakupMasksCS::FParameters>();
+		MP->OutputSize = Request.Resolution;
+		MP->GapWidth = Effect.BreakupGapWidth;
+		MP->GapVariation = Effect.BreakupGapVariation;
+		MP->CreaseWidth = Effect.BreakupCreaseWidth;
+		MP->BreakupField = Pending.Field;
+		MP->BreakupRegionIds = Pending.GeneratedRegionIds;
+		MP->OutputGap = GraphBuilder.CreateUAV(Pending.Gap);
+		MP->OutputEdge = GraphBuilder.CreateUAV(Pending.Edge);
+		MP->OutputPieces = GraphBuilder.CreateUAV(Pending.Pieces);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME(
+				"Mixtormat.Breakup.L%d.Child%d.Masks",
+				LayerCtx.LayerIndex,
+				Child.SourceChildIndex),
+			MasksShader,
+			MP,
+			FIntVector(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1));
+
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Gap"))},
+			Pending.Gap);
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Edge"))},
+			Pending.Edge);
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Pieces"))},
+			Pending.Pieces);
 	}
 
 

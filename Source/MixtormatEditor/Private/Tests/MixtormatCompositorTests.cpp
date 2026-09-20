@@ -632,6 +632,215 @@ bool FMixtormatBreakupIdentityTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatBreakupPublishedOutputsTest,
+	"Mixtormat.Compositor.BreakupPublishedOutputs",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatBreakupPublishedOutputsTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	// Breakup as a source rather than as a height effect. The three scalar maps are published
+	// from the field pass rather than from the deferred carve, so none of this depends on Amount
+	// -- a Breakup used purely as a structural generator still has to feed what reads it.
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+		return false;
+
+	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
+		nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+	if (!TestNotNull(TEXT("Breakup placement mask exists"), WhiteMask))
+		return false;
+
+	const auto BuildLayers = [WhiteMask](const FName Output, const float GapWidth)
+	{
+		FMixtormatLayer Layer;
+		Layer.Type = EMixtormatLayerType::Fill;
+
+		FMixtormatLayerChild BreakupChild;
+		BreakupChild.Type = EMixtormatLayerChildType::Effect;
+		BreakupChild.Effect.ProceduralType = EMixtormatEffectType::Breakup;
+		BreakupChild.Effect.BreakupAmount = 0.0f;
+		BreakupChild.Effect.BreakupGapWidth = GapWidth;
+		BreakupChild.Effect.BreakupMaskTexture =
+			TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
+		Layer.Children.Add(BreakupChild);
+
+		FMixtormatLayerChild MaskChild;
+		MaskChild.Type = EMixtormatLayerChildType::Mask;
+		MaskChild.Mask.bEnabled = true;
+		MaskChild.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+		MaskChild.Mask.Weight = 1.0f;
+		MaskChild.Mask.PublishedSourceLayerId = Layer.LayerId;
+		MaskChild.Mask.PublishedSourceChildId = Layer.Children[0].ChildId;
+		MaskChild.Mask.PublishedSourceOutput = Output;
+		Layer.Children.Add(MaskChild);
+
+		TArray<FMixtormatLayer> Layers;
+		Layers.Add(Layer);
+		return Layers;
+	};
+
+	FMixtormatDebugPreviewSettings MaskDebug = LayerMaskDebug();
+	MaskDebug.ChildIndex = 1;
+
+	// Edge. A boundary mask has to contain both a boundary and an interior; a flat result means
+	// the output never resolved and the mask chain fell through to white.
+	{
+		TArray<FMixtormatLayer> Layers = BuildLayers(FName(TEXT("Edge")), 4.0f);
+		TArray<FLinearColor> Pixels;
+		if (!TestTrue(TEXT("Breakup Edge composes"), ComposeAndWait(Compositor, Layers, MaskDebug))
+			|| !TestTrue(TEXT("Breakup Edge reads"), ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+			return false;
+		TestTrue(TEXT("Breakup publishes a structured Edge at Amount 0"),
+			HasBothExtremes(Pixels, 0.1f, 0.6f));
+	}
+
+	// Pieces, and it must not be the same picture as Edge: the interior and its boundary are
+	// different maps, and publishing one under both names would pass a laxer test than this.
+	TArray<FLinearColor> PiecePixels;
+	{
+		TArray<FMixtormatLayer> Layers = BuildLayers(FName(TEXT("Pieces")), 4.0f);
+		if (!TestTrue(TEXT("Breakup Pieces composes"), ComposeAndWait(Compositor, Layers, MaskDebug))
+			|| !TestTrue(TEXT("Breakup Pieces reads"),
+				ReadTarget(Compositor.GetDebugOutput(), PiecePixels)))
+			return false;
+		TestTrue(TEXT("Breakup publishes a structured Pieces at Amount 0"),
+			HasBothExtremes(PiecePixels, 0.1f, 0.6f));
+	}
+
+	// Gap with the grout open, driven by the same GapWidth and per-piece jitter the carve uses.
+	{
+		TArray<FMixtormatLayer> Layers = BuildLayers(FName(TEXT("Gap")), 6.0f);
+		TArray<FLinearColor> Pixels;
+		if (!TestTrue(TEXT("Breakup Gap composes"), ComposeAndWait(Compositor, Layers, MaskDebug))
+			|| !TestTrue(TEXT("Breakup Gap reads"), ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+			return false;
+		TestTrue(TEXT("Breakup publishes a structured Gap"), HasBothExtremes(Pixels, 0.1f, 0.6f));
+
+		int32 GapPieceDifferences = 0;
+		for (int32 Index = 0; Index < Pixels.Num() && Index < PiecePixels.Num(); ++Index)
+		{
+			GapPieceDifferences += FMath::IsNearlyEqual(
+				DebugValue(Pixels[Index]), DebugValue(PiecePixels[Index]), 1.0e-3f) ? 0 : 1;
+		}
+		TestTrue(TEXT("Gap and Pieces are different maps"), GapPieceDifferences > 0);
+	}
+
+	// Gap with the grout closed. The explicit contract: GapWidth 0 is a zero mask, not a
+	// hairline. Edge deliberately does not follow it -- a breakup with closed grout still has
+	// edges -- and checking that here is what stops a globally zeroed output passing by accident.
+	{
+		TArray<FMixtormatLayer> Layers = BuildLayers(FName(TEXT("Gap")), 0.0f);
+		TArray<FLinearColor> Pixels;
+		if (!TestTrue(TEXT("Breakup zero Gap composes"),
+				ComposeAndWait(Compositor, Layers, MaskDebug))
+			|| !TestTrue(TEXT("Breakup zero Gap reads"),
+				ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+			return false;
+
+		float MaximumGap = 0.0f;
+		for (const FLinearColor& Pixel : Pixels)
+		{
+			MaximumGap = FMath::Max(MaximumGap, DebugValue(Pixel));
+		}
+		TestTrue(TEXT("GapWidth 0 publishes a zero mask"), MaximumGap <= 0.02f);
+
+		TArray<FMixtormatLayer> EdgeLayers = BuildLayers(FName(TEXT("Edge")), 0.0f);
+		TArray<FLinearColor> EdgePixels;
+		if (!TestTrue(TEXT("Breakup Edge at zero gap composes"),
+				ComposeAndWait(Compositor, EdgeLayers, MaskDebug))
+			|| !TestTrue(TEXT("Breakup Edge at zero gap reads"),
+				ReadTarget(Compositor.GetDebugOutput(), EdgePixels)))
+			return false;
+		TestTrue(TEXT("Edge survives a closed gap"), HasBothExtremes(EdgePixels, 0.1f, 0.6f));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatBreakupRegionIdsTest,
+	"Mixtormat.Compositor.BreakupRegionIds",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatBreakupRegionIdsTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	// Breakup -> Random From IDs, the chain the piece IDs exist for. A consumer below Breakup has
+	// to find its map through the ordinary nearest-producer rule, at Amount 0 like everything else.
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+		return false;
+
+	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
+		nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+	if (!TestNotNull(TEXT("Breakup placement mask exists"), WhiteMask))
+		return false;
+
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+
+	FMixtormatLayerChild BreakupChild;
+	BreakupChild.Type = EMixtormatLayerChildType::Effect;
+	BreakupChild.Effect.ProceduralType = EMixtormatEffectType::Breakup;
+	BreakupChild.Effect.BreakupAmount = 0.0f;
+	BreakupChild.Effect.BreakupMaskTexture =
+		TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
+	Layer.Children.Add(BreakupChild);
+
+	FMixtormatLayerChild RandomChild;
+	RandomChild.Type = EMixtormatLayerChildType::RandomId;
+	RandomChild.RandomId.bEnabled = true;
+	RandomChild.RandomId.BlendMode = EMixtormatMaskBlendMode::Replace;
+	Layer.Children.Add(RandomChild);
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+
+	FMixtormatDebugPreviewSettings MaskDebug = LayerMaskDebug();
+	MaskDebug.ChildIndex = 1;
+
+	TArray<FLinearColor> Pixels;
+	if (!TestTrue(TEXT("Breakup to Random From IDs composes"),
+			ComposeAndWait(Compositor, Layers, MaskDebug))
+		|| !TestTrue(TEXT("Random From IDs reads"),
+			ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+		return false;
+
+	// Per-piece random values. Flat means the consumer found no ID map and fell through, which is
+	// exactly the regression this covers.
+	TestTrue(TEXT("Breakup piece IDs drive Random From IDs at Amount 0"),
+		HasBothExtremes(Pixels, 0.15f, 0.6f));
+
+	// Reseeding the breakup must reshuffle the pieces, or the IDs are not keyed to the field.
+	Layers[0].Children[0].Effect.BreakupSeed += 17;
+	TArray<FLinearColor> Reseeded;
+	if (!TestTrue(TEXT("Reseeded Breakup composes"), ComposeAndWait(Compositor, Layers, MaskDebug))
+		|| !TestTrue(TEXT("Reseeded reads"), ReadTarget(Compositor.GetDebugOutput(), Reseeded)))
+		return false;
+
+	int32 SeedDifferences = 0;
+	for (int32 Index = 0; Index < Pixels.Num() && Index < Reseeded.Num(); ++Index)
+	{
+		SeedDifferences += FMath::IsNearlyEqual(
+			DebugValue(Pixels[Index]), DebugValue(Reseeded[Index]), 1.0e-3f) ? 0 : 1;
+	}
+	TestTrue(TEXT("Breakup seed reshuffles the published IDs"), SeedDifferences > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatBlurScopeTest,
 	"Mixtormat.Compositor.BlurScope",
 	EAutomationTestFlags::EditorContext

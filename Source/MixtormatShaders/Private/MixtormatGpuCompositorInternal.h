@@ -862,6 +862,12 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef FeatureMask = nullptr;
 		FRDGTextureRef Field = nullptr;
 		FRDGTextureRef GeneratedRegionIds = nullptr;
+		// Published scalar outputs, written beside the IDs so a consumer in the same layer can
+		// read them: the grout between pieces, the boundary around and between them, and the
+		// piece interiors.
+		FRDGTextureRef Gap = nullptr;
+		FRDGTextureRef Edge = nullptr;
+		FRDGTextureRef Pieces = nullptr;
 		bool bHasScopedMask = false;
 	};
 

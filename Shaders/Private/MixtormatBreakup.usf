@@ -24,6 +24,9 @@ RWTexture2D<float> OutputHeight;
 RWTexture2D<float> OutputCoverage;
 RWTexture2D<float4> OutputNormal;
 RWTexture2D<float4> OutputRAM;
+RWTexture2D<float> OutputGap;
+RWTexture2D<float> OutputEdge;
+RWTexture2D<float> OutputPieces;
 
 int2 OutputSize;
 
@@ -639,6 +642,75 @@ void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			max(inside, fold),
 			max(max(crease, gap), pushBand * pushActivation))
 		* amount);
+}
+
+// The scalar maps Breakup publishes for other nodes to read.
+//
+// A separate entry point rather than extra outputs on ApplyCS, because ApplyCS is deferred until
+// after the layer composites -- it has to be, since it carves the accumulated height -- and a
+// published mask has to exist before the child chain that reads it runs. This dispatches right
+// after FieldCS instead, beside where the piece IDs are published.
+//
+// Nothing here re-evaluates the breakup field. Every value is read back out of the field and ID
+// maps FieldCS already wrote, so the cost is a handful of loads: the expensive part happened once.
+[numthreads(8, 8, 1)]
+void MasksCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 pixel = int2(DispatchThreadId.xy);
+	const float2 field = BreakupField.Load(int3(pixel, 0));
+	const float sd = field.x;
+	const float r0 = field.y;
+	const uint centerId = BreakupLoadId(pixel);
+
+	// Gap. The same construction ApplyCS carves the grout with, so the published mask and the
+	// height it produces cannot describe different gaps: the per-piece width jitter comes off the
+	// same r2 draw, and a GapWidth of zero collapses both to nothing rather than to a hairline.
+	const float r2 = frac(r0 * 2.41421356237f + 0.517f);
+	const float gapScale = lerp(
+		1.0f - saturate(GapVariation),
+		1.0f + saturate(GapVariation),
+		r2);
+	const float gapWidth = max(GapWidth * gapScale, 0.0f);
+
+	float gap = 0.0f;
+	if (gapWidth > 1.0e-5f)
+	{
+		const float gapSdf = 1.0f - BreakupSmooth(0.0f, gapWidth, abs(sd));
+		const int radius = max(1, (int)round(gapWidth * BreakupResolutionScale()));
+		const int nearRadius = max(1, radius / 2);
+		const float gapIds = saturate(
+			BreakupIdBoundary(pixel, centerId, radius) * 0.55f
+			+ BreakupIdBoundary(pixel, centerId, nearRadius) * 0.45f);
+		gap = saturate(max(gapSdf, gapIds));
+	}
+
+	// Edge. Where pieces end, including the joins between two pieces that touch -- those have no
+	// gap between them and no sign change in the field, so only the ID comparison finds them.
+	// This is what a Worn Edges downstream wants to localise against.
+	//
+	// Independent of GapWidth, unlike the gap above: a breakup with the grout closed still has
+	// edges. Two radii blended rather than one, because BreakupIdBoundary is a binary test per
+	// tap -- a single radius gives a one-texel on/off ring that reads as dither once anything
+	// downstream sharpens it.
+	const float edgeWidth = max(CreaseWidth, 2.0f);
+	const float edgeSdf = 1.0f - BreakupSmooth(0.0f, edgeWidth, abs(sd));
+	const int edgeRadius = max(1, (int)round(edgeWidth * BreakupResolutionScale()));
+	const float edgeIds = saturate(
+		BreakupIdBoundary(pixel, centerId, edgeRadius) * 0.55f
+		+ BreakupIdBoundary(pixel, centerId, max(1, edgeRadius / 2)) * 0.45f);
+
+	// Pieces. The interior, smooth rather than the ID map's hard nonzero test, so it is usable as
+	// a mask instead of only as an identity.
+	const float pieces = BreakupSmooth(0.0f, edgeWidth, -sd) * (centerId != 0u ? 1.0f : 0.0f);
+
+	OutputGap[pixel] = gap;
+	OutputEdge[pixel] = saturate(max(edgeSdf, edgeIds));
+	OutputPieces[pixel] = saturate(pieces);
 }
 
 [numthreads(8, 8, 1)]

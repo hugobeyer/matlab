@@ -2132,6 +2132,52 @@ void SMixtormat::CopyInstanceMaskFromWear(const int32 LayerIndex, const int32 Ch
 	WorkingStatusText = TEXT("Wear instance mask copied");
 }
 
+// Breakup publishes three scalar maps beside its piece IDs. One helper for all of them, because
+// they differ only by name -- the shape of a published-source mask is the same either way.
+void SMixtormat::CopyInstanceMaskFromBreakup(
+	const int32 LayerIndex,
+	const int32 ChildIndex,
+	const FName Output)
+{
+	if (!ResolveChild(LayerIndex, ChildIndex))
+	{
+		return;
+	}
+
+	const FMixtormatLayer& SourceLayer = WorkingLayers[LayerIndex];
+	const FMixtormatLayerChild& SourceChild = SourceLayer.Children[ChildIndex];
+	if (SourceChild.Type != EMixtormatLayerChildType::Effect)
+	{
+		return;
+	}
+
+	EMixtormatEffectType Type = SourceChild.Effect.ProceduralType;
+	if (const UMixtormatEffect* Asset = SourceChild.Effect.Effect.LoadSynchronous())
+	{
+		Type = Asset->EffectType;
+	}
+	if (Type != EMixtormatEffectType::Breakup)
+	{
+		return;
+	}
+
+	FMixtormatLayerChild PublishedMask;
+	PublishedMask.Type = EMixtormatLayerChildType::Mask;
+	PublishedMask.Mask.bEnabled = true;
+	PublishedMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	PublishedMask.Mask.Weight = 1.0f;
+	PublishedMask.Mask.PublishedSourceLayerId = SourceLayer.LayerId;
+	PublishedMask.Mask.PublishedSourceChildId = SourceChild.ChildId;
+	PublishedMask.Mask.PublishedSourceOutput = Output;
+
+	ChildClipboard = MoveTemp(PublishedMask);
+	ChildClipboardSourceLayerId.Invalidate();
+	ChildClipboardSourceChildId.Invalidate();
+	bChildClipboardIsInstance = false;
+	WorkingStatusText = FString::Printf(
+		TEXT("Breakup %s instance mask copied"), *Output.ToString());
+}
+
 void SMixtormat::CopyInstanceMaskFromPatternGap(
 	const int32 LayerIndex,
 	const int32 ChildIndex)
@@ -5022,6 +5068,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 {
 	MixtormatMenu::FBuilder Menu;
 	bool bWornEdges = false;
+	bool bBreakup = false;
 	bool bCanNestChild = false;
 	bool bCanOwnFlowWarp = false;
 	if (WorkingLayers.IsValidIndex(LayerIndex)
@@ -5038,6 +5085,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 				Type = Asset->EffectType;
 			}
 			bWornEdges = Type == EMixtormatEffectType::WornEdges;
+			bBreakup = Type == EMixtormatEffectType::Breakup;
 		}
 	}
 	if (bWornEdges)
@@ -5049,6 +5097,29 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 			{
 				CopyInstanceMaskFromWear(LayerIndex, ChildIndex);
 			}));
+		Menu.Separator();
+	}
+
+	if (bBreakup)
+	{
+		// Gap, Edge and Pieces, published beside the piece IDs. Gap is the grout, Edge is the
+		// boundary including the joins between touching pieces, Pieces is the interior.
+		const TPair<FText, FName> Outputs[] = {
+			{ LOCTEXT("CopyBreakupGapInstanceMask", "Copy Instance Mask from Gap"), FName(TEXT("Gap")) },
+			{ LOCTEXT("CopyBreakupEdgeInstanceMask", "Copy Instance Mask from Edge"), FName(TEXT("Edge")) },
+			{ LOCTEXT("CopyBreakupPiecesInstanceMask", "Copy Instance Mask from Pieces"), FName(TEXT("Pieces")) },
+		};
+		for (const TPair<FText, FName>& Entry : Outputs)
+		{
+			Menu.Item(
+				Entry.Key,
+				MixtormatIcons::Mask(),
+				FSimpleDelegate::CreateLambda(
+					[this, LayerIndex, ChildIndex, Output = Entry.Value]()
+				{
+					CopyInstanceMaskFromBreakup(LayerIndex, ChildIndex, Output);
+				}));
+		}
 		Menu.Separator();
 	}
 
