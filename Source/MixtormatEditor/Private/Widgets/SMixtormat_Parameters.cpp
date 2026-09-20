@@ -360,7 +360,7 @@ bool SMixtormat::IsParameterReferenceBroken(const FMixtormatParameterAddress& Ta
 {
 	const FMixtormatParameterBinding* Binding = FindParameterBinding(Target);
 	return Binding && Binding->Reference.bEnabled
-		&& !MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Binding->Reference.Source);
+		&& !MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Binding->Reference.Source);
 }
 
 bool SMixtormat::WouldCreateParameterReferenceCycle(
@@ -400,13 +400,13 @@ bool SMixtormat::CanPasteParameterReference(const FMixtormatParameterAddress& Ta
 {
 	return ParameterReferenceClipboard.IsSet()
 		&& MixtormatParameterBinding::AreReferenceTypesCompatible(Target, ParameterReferenceClipboard.GetValue())
-		&& MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, ParameterReferenceClipboard.GetValue())
+		&& MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, ParameterReferenceClipboard.GetValue())
 		&& !WouldCreateParameterReferenceCycle(Target, ParameterReferenceClipboard.GetValue());
 }
 
 void SMixtormat::CopyParameterReference(FMixtormatParameterAddress Source)
 {
-	if (MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Source))
+	if (MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Source))
 	{
 		ParameterReferenceClipboard = Source;
 		WorkingStatusText = FString::Printf(TEXT("Reference copied · %s"), *Source.Parameter.ToString());
@@ -491,25 +491,25 @@ EMixtormatReferenceMode SMixtormat::GetParameterReferenceMode(const FMixtormatPa
 bool SMixtormat::TryWriteLinkedFloat(const FMixtormatParameterAddress& Target, const float Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteFloat(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteFloat({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 bool SMixtormat::TryWriteLinkedInt(const FMixtormatParameterAddress& Target, const int32 Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteInt(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteInt({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 bool SMixtormat::TryWriteLinkedBool(const FMixtormatParameterAddress& Target, const bool Value)
 {
 	const FMixtormatParameterAddress Authority =
-		MixtormatParameterBinding::ResolveLinkTarget(WorkingLayers, Target);
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
-		&& MixtormatParameterBinding::TryWriteBool(WorkingLayers, Authority, Value);
+		&& MixtormatParameterBinding::TryWriteBool({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAddress Target)
@@ -545,7 +545,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			const FMixtormatParameterBinding* Binding = FindParameterBinding(Target);
 			return Binding
 				&& Binding->Reference.bEnabled
-				&& MixtormatParameterBinding::IsReferenceSourceValid(WorkingLayers, Binding->Reference.Source);
+				&& MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, Binding->Reference.Source);
 		}))
 		.Separator()
 		// Which way the reference runs, as the two words themselves rather than a lock glyph
@@ -639,7 +639,7 @@ double SMixtormat::GetEffectiveFloatParameter(
 	const double LocalValue) const
 {
 	float Value = static_cast<float>(LocalValue);
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveFloat(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveFloat({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? static_cast<double>(Value)
 		: LocalValue;
 }
@@ -649,7 +649,7 @@ int32 SMixtormat::GetEffectiveIntParameter(
 	const int32 LocalValue) const
 {
 	int32 Value = LocalValue;
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveInt(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveInt({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? Value
 		: LocalValue;
 }
@@ -659,7 +659,7 @@ bool SMixtormat::GetEffectiveBoolParameter(
 	const bool LocalValue) const
 {
 	bool Value = LocalValue;
-	return Target.IsValid() && MixtormatParameterBinding::TryResolveBool(WorkingLayers, Target, Value)
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveBool({WorkingLayers, WorkingLayerGroups}, Target, Value)
 		? Value
 		: LocalValue;
 }

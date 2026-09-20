@@ -1883,7 +1883,7 @@ int32 SMixtormat::ResolveInstanceInsertIndex(
 
 	// Still classified, never assumed. This only picks a candidate; the policy decides.
 	return MixtormatParameterBinding::ClassifyInstancePlacement(
-		WorkingLayers,
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 		ChildClipboardSourceLayerId,
 		ChildClipboardSourceChildId,
 		DestLayer.LayerId,
@@ -1916,7 +1916,7 @@ FText SMixtormat::GetChildInstancePasteReason(
 	}
 	using EPlacement = MixtormatParameterBinding::EInstancePlacement;
 	switch (MixtormatParameterBinding::ClassifyInstancePlacement(
-		WorkingLayers,
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 		ChildClipboardSourceLayerId,
 		ChildClipboardSourceChildId,
 		WorkingLayers[DestLayerIndex].LayerId,
@@ -2011,7 +2011,7 @@ void SMixtormat::SyncChildInstances()
 	for (FMixtormatLayer& Layer : WorkingLayers)
 	{
 		MixtormatParameterBinding::ResolveChildInstances(
-			Snapshot, Layer);
+			FMixtormatBindingScope{Snapshot, WorkingLayerGroups}, Layer);
 	}
 
 	// An instance source can change its payload kind. Keep selection on the same identity and move
@@ -2047,7 +2047,7 @@ bool SMixtormat::IsSelectedInstanceBroken() const
 	const FMixtormatLayerChild& Child =
 		WorkingLayers[SelectedLayerIndex].Children[GetSelectedChildIndex()];
 	return MixtormatParameterBinding::FindChild(
-		WorkingLayers, Child.SourceLayerId, Child.SourceChildId) == nullptr;
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Child.SourceLayerId, Child.SourceChildId) == nullptr;
 }
 
 FText SMixtormat::GetSelectedInstanceSourceText() const
@@ -2265,7 +2265,7 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 	{
 		const int32 OwnerIndex = FindChildById(Layer, Placement.ScopeOwnerChildId);
 		const FMixtormatLayerChild* NewSource = MixtormatParameterBinding::FindChild(
-			WorkingLayers, NewSourceLayerId, NewSourceChildId);
+			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSourceLayerId, NewSourceChildId);
 		if (!Layer.Children.IsValidIndex(OwnerIndex)
 			|| !NewSource
 			|| !CanKeepScopedPlacement(Layer.Children[OwnerIndex], *NewSource))
@@ -2274,7 +2274,7 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 		}
 	}
 	if (MixtormatParameterBinding::ClassifyInstancePlacement(
-		WorkingLayers,
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 		NewSourceLayerId,
 		NewSourceChildId,
 		Layer.LayerId,
@@ -2355,7 +2355,7 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const int32 Layer
 				continue;
 			}
 			if (MixtormatParameterBinding::ClassifyInstancePlacement(
-				WorkingLayers,
+				FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 				SourceLayer.LayerId,
 				Candidate.ChildId,
 				DestLayerId,
