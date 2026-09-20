@@ -142,6 +142,9 @@ private:
 	// child leaves its layer and becomes something every member composites, instead of landing in
 	// one member in particular.
 	FReply MoveChildToGroup(int32 SourceLayerIndex, int32 ChildIndex, FGuid GroupId);
+	// The reverse of MoveChildToGroup: the shared child leaves the group and becomes this one
+	// layer's own, so every other member loses it.
+	FReply MoveGroupChildToLayer(FGuid GroupId, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
 
 	// Mirrors every instance's payload down from its source, so the inspector, the badges and the
 	// row names all read the resolved values without a second read path. Run on every refresh; the
@@ -177,6 +180,7 @@ private:
 	FReply ReplaceChildInstanceSource(int32 LayerIndex, int32 ChildIndex, FGuid NewSourceLayerId, FGuid NewSourceChildId);
 	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMoveChildToLayerMenu(int32 LayerIndex, int32 ChildIndex);
+	TSharedRef<SWidget> BuildMoveGroupChildToLayerMenu(FGuid GroupId, int32 ChildIndex);
 
 	// The rows every child row shares, appended to whichever of the three child menus is open so
 	// the vocabulary does not drift between a mask, an effect and a filter.
@@ -335,6 +339,7 @@ private:
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
 	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
+	TSharedRef<SWidget> BuildGroupAddMaskMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddFilterMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupChildContextMenu(FGuid GroupId, int32 ChildIndex);
@@ -343,7 +348,7 @@ private:
 	// document dirty but deliberately does not ask for a new composite.
 	FReply RenameLayer(FGuid LayerId, FText NewName);
 	FReply RenameLayerGroup(FGuid GroupId, FText NewName);
-	// F2, and the context menu, on whichever of the two selections is live.
+	// F2 (or its F12 alias), and the context menu, on whichever of the two selections is live.
 	bool BeginRenameSelection();
 
 	TSharedRef<SWidget> BuildLayerGroupRow(FGuid GroupId);

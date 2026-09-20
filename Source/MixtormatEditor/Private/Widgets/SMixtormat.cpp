@@ -501,7 +501,12 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	}
 	// Rename the selected group or layer. Not double-click: that opens and shuts the row, and one
 	// gesture cannot mean both without the user having to guess which it will be this time.
-	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::F2 && BeginRenameSelection())
+	// F12 is an alias for F2, not a second gesture: on a laptop whose F-row is media keys by
+	// default, F2 is the one most likely to be stolen by the OS before Slate ever sees it.
+	// F2 stays the shortcut the menus advertise.
+	if (!bModifierDown
+		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12)
+		&& BeginRenameSelection())
 	{
 		return FReply::Handled();
 	}

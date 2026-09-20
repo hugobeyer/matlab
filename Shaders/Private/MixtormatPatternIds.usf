@@ -50,6 +50,19 @@ float Rounding;
 //      meant to belong to the cell wants.
 uint EdgeRelative;
 
+// Fracture Plates only. Inert for every other Pattern Mode -- the mode's branch is the sole
+// reader, so an existing asset that never selects it is bit-identical to before.
+float FractureSizeVariation;
+float FractureSecondaryAmount;
+int FractureSecondaryMin;
+int FractureSecondaryMax;
+float FractureSecondaryRadius;
+float FractureSecondaryJitter;
+float FractureEdgeIrregularity;
+float FractureEdgeScale;
+float FractureEdgeDetail;
+float FractureEdgeDetailScale;
+
 #define MIXTORMAT_PATTERN_GRID 0u
 #define MIXTORMAT_PATTERN_RUNNING_BOND 1u
 #define MIXTORMAT_PATTERN_HERRINGBONE 2u
@@ -60,6 +73,7 @@ uint EdgeRelative;
 #define MIXTORMAT_PATTERN_VORONOI 7u
 #define MIXTORMAT_PATTERN_HOPSCOTCH 8u
 #define MIXTORMAT_PATTERN_FRENCH_ASHLAR 9u
+#define MIXTORMAT_PATTERN_FRACTURE_PLATES 10u
 #define MIXTORMAT_GRID_STRAIGHT 0u
 #define MIXTORMAT_GRID_STAGGERED 1u
 #define MIXTORMAT_GRID_DIAMOND 2u

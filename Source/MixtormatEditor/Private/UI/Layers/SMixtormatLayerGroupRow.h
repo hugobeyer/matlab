@@ -49,7 +49,7 @@ public:
 	void BeginRename();
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	// Double-click collapses, the way it does on a layer row. Rename is F2 and the context menu.
+	// Double-click collapses, the way it does on a layer row. Rename is F2 (or F12) and the context menu.
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 

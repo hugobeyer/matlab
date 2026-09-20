@@ -1816,6 +1816,86 @@ FReply SMixtormat::ReorderGroupChild(
 	return FReply::Handled();
 }
 
+// The mirror of MoveChildToGroup: a shared child stops being shared and becomes one layer's own.
+//
+// Not a symmetric "move" in what it means to the user, even though the splice is the same shape.
+// A shared child applies to every member of the group; taking it out leaves every other member
+// without it. That is the point of the gesture -- "this one only" -- so nothing is copied to the
+// members left behind, which is also the one thing this cannot undo by dropping it back.
+FReply SMixtormat::MoveGroupChildToLayer(
+	const FGuid GroupId,
+	const int32 ChildIndex,
+	const int32 DestLayerIndex,
+	const int32 DestChildIndex)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group
+		|| !Group->Children.IsValidIndex(ChildIndex)
+		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
+		// Top-level only, the same rule ReorderGroupChild enforces: a scoped filter cannot be
+		// orphaned from the mask it filters, and it travels as part of that mask's subtree instead.
+		|| Group->Children[ChildIndex].ScopeOwnerChildId.IsValid())
+	{
+		return FReply::Unhandled();
+	}
+	if (IsMaskFilter(Group->Children[ChildIndex]))
+	{
+		return FReply::Unhandled();
+	}
+
+	const int32 SubtreeEnd = FindGroupSubtreeEnd(Group->Children, ChildIndex);
+	const int32 MoveCount = SubtreeEnd - ChildIndex;
+	TArray<FMixtormatLayerChild> MovedChildren;
+	MovedChildren.Reserve(MoveCount);
+	for (int32 MoveIndex = 0; MoveIndex < MoveCount; ++MoveIndex)
+	{
+		MovedChildren.Add(MoveTemp(Group->Children[ChildIndex + MoveIndex]));
+	}
+	Group->Children.RemoveAt(ChildIndex, MoveCount);
+	MovedChildren[0].ScopeOwnerChildId.Invalidate();
+
+	FMixtormatLayer& DestLayer = WorkingLayers[DestLayerIndex];
+	const FGuid NewLayerId = DestLayer.LayerId;
+	int32 InsertAt = DestLayer.Children.Num();
+	if (DestLayer.Children.IsValidIndex(DestChildIndex))
+	{
+		const int32 TopLevelRoot = FindSiblingRoot(DestLayer, DestChildIndex, FGuid());
+		InsertAt = TopLevelRoot == INDEX_NONE ? DestLayer.Children.Num() : TopLevelRoot;
+	}
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
+		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
+		DestLayer.Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
+		// GroupId as the old parent: a group's shared children are addressed by GroupId in the
+		// same slot a layer's are addressed by LayerId, which is what MoveChildToGroup wrote on the
+		// way in. RemapChildParent compares that id rather than resolving it, so the reverse
+		// direction works without it having to know a group from a layer.
+		MixtormatParameterBinding::RemapChildParent(
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, GroupId, NewLayerId);
+	}
+
+	// Both lanes, the way SelectWorkingLayer clears them: SelectWorkingChild below sets the layer
+	// lane but leaves the group lane alone, and a stale SelectedGroupId would keep the group header
+	// highlighted beside the newly selected child -- and would send the next F2 to the group's name
+	// rather than to the layer's (BeginRenameSelection branches on SelectedGroupId being valid).
+	if (SelectedGroupId == GroupId)
+	{
+		SelectedGroupId.Invalidate();
+		SelectedGroupChildIndex = INDEX_NONE;
+	}
+	SetLayerExpanded(DestLayerIndex, true);
+	SelectWorkingChild(DestLayerIndex, InsertAt);
+	// Recorded here, unlike MoveChildToLayer/MoveChildToGroup, which record nothing -- see the note
+	// on those two. Un-sharing is destructive to every other member of the group, so it is the last
+	// move that should be missing from the undo stack.
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
 FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 ChildIndex)
 {
 	if (!ResolveChild(LayerIndex, ChildIndex))
@@ -1869,6 +1949,10 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	return FReply::Handled();
 }
 
+// Note: neither this nor MoveChildToGroup calls RecordEditHistory or marks the document dirty,
+// so a move between two containers is currently absent from the undo stack. MoveGroupChildToLayer
+// does record, because leaving a group destroys the child for every other member -- but the
+// inconsistency is real and predates it.
 FReply SMixtormat::MoveChildToLayer(
 	const int32 SourceLayerIndex,
 	const int32 ChildIndex,
@@ -3902,10 +3986,11 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 }
 
 // A shared child's row. A child can arrive from a layer by dropping it on the group header
-// (MoveChildToGroup, always appended), and reorders among its top-level siblings the same way a
-// layer child does (ReorderGroupChild) -- but there is still no cross-container move out of a
-// group, so a scoped filter (which cannot leave its owner) and any drag aimed anywhere but this
-// group's own drop target both refuse rather than lighting up for a drop that would do nothing.
+// (MoveChildToGroup, always appended), reorders among its top-level siblings the same way a layer
+// child does (ReorderGroupChild), and leaves the group by being dropped on a layer or one of its
+// child rows (MoveGroupChildToLayer). A scoped filter does none of the three -- it cannot leave
+// the owner it filters -- and group-to-group is still not built, so a drag aimed at another
+// group's header refuses rather than lighting up for a drop that would do nothing.
 TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const int32 ChildIndex)
 {
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
@@ -3915,7 +4000,11 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	}
 	const FMixtormatLayerChild& Child = Group->Children[ChildIndex];
 	const FText ChildName = GetLayerChildName(Child);
-	const bool bCanReorder = !Child.ScopeOwnerChildId.IsValid();
+	// Doubles as "can leave the group" on the layer-side targets, so it has to match every guard
+	// MoveGroupChildToLayer applies -- otherwise a row lights up for a release that is then
+	// refused. A top-level mask filter is unreachable today (one only ever arrives scoped), but
+	// the two ends are kept in step rather than relying on that.
+	const bool bCanReorder = !Child.ScopeOwnerChildId.IsValid() && !IsMaskFilter(Child);
 
 	return SNew(SMixtormatGroupChildDropTarget)
 		.GroupId(GroupId)
@@ -3964,6 +4053,23 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 	const int32 ChildIndex)
 {
 	MixtormatMenu::FBuilder Menu;
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	// Same rule the drag has: a scoped filter travels with the child it filters, never alone.
+	const bool bCanLeaveGroup = Group
+		&& Group->Children.IsValidIndex(ChildIndex)
+		&& !Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
+		&& !IsMaskFilter(Group->Children[ChildIndex]);
+	if (bCanLeaveGroup && !WorkingLayers.IsEmpty())
+	{
+		// "Move to Layer", not "Unshare": the destination has to be named, and there is no
+		// sensible default for it -- the child belonged to every member equally.
+		Menu.SubMenu(
+			LOCTEXT("MoveGroupChildToLayerContext", "Move to Layer..."),
+			nullptr,
+			FOnGetContent::CreateSP(
+				this, &SMixtormat::BuildMoveGroupChildToLayerMenu, GroupId, ChildIndex));
+		Menu.Separator();
+	}
 	Menu.Item(
 		LOCTEXT("RemoveGroupChildContext", "Delete"),
 		MixtormatIcons::Trash(),
@@ -3972,6 +4078,54 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			RemoveGroupChild(GroupId, ChildIndex);
 		}))
 		.Destructive();
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
+	const FGuid GroupId,
+	const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("MoveGroupChildToLayerCaption", "Move To"));
+	// Every layer, including the group's own members: moving a shared child onto one member is
+	// exactly the "this one only" case, and refusing it there would be the surprising answer.
+	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
+	{
+		Menu.Item(
+			WorkingLayers[DestIndex].DisplayName,
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex, DestIndex]()
+			{
+				// INDEX_NONE: no row was aimed at, so it appends -- the same thing the menu
+				// version of the layer-to-layer move does.
+				MoveGroupChildToLayer(GroupId, ChildIndex, DestIndex, INDEX_NONE);
+			}));
+	}
+	return Menu.Build();
+}
+
+// Restored: this was removed alongside the ResolveChild recursion fix while a freeze was being
+// bisected, and the recursion was the cause -- the const ResolveChild called itself. The grid is
+// the same one every other mask picker opens.
+TSharedRef<SWidget> SMixtormat::BuildGroupAddMaskMenu(const FGuid GroupId)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (FMixtormatRegistry::GetMasks().IsEmpty())
+	{
+		Menu.Item(LOCTEXT("MasksUnavailable", "No masks available"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
+	Menu.Widget(
+		SNew(SBox)
+		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
+		[
+			BuildMaskGallery([this, GroupId](const FSoftObjectPath& Path)
+			{
+				AddMaskToGroup(GroupId, Path);
+			})
+		]);
 	return Menu.Build();
 }
 
@@ -4088,6 +4242,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 			AddMaskToGroup(GroupId, GroupMaskPath);
 		}))
 		.Enabled(TAttribute<bool>(!GroupMaskPath.IsNull()));
+	// The grid, so a mask can be picked here rather than only in the gallery. Without it the row
+	// above is disabled until something is selected elsewhere, which reads as "groups do not take
+	// masks" rather than as "pick one first".
+	Menu.SubMenu(
+		LOCTEXT("AddMaskToGroupSubMenu", "Mask"),
+		MixtormatIcons::Mask(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddMaskMenu, GroupId));
 	Menu.SubMenu(
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
@@ -4259,6 +4420,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.ChildIndex(ChildIndex)
 			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
 			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+			.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
 			[
 				SNew(SMixtormatLayerChildRow)
 				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
@@ -4336,6 +4498,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)
 		.OnSurfaceInsertedAt(this, &SMixtormat::HandleSurfaceDroppedAt)
 		.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+		.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
 		.OnMaskDropped(this, &SMixtormat::AssignMaskToLayer)
 		[
 			Container

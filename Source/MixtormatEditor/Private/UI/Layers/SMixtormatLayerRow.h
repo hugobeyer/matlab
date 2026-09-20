@@ -78,12 +78,12 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
-	// Swaps the name for an edit box and puts the caret in it. Driven from F2 and the context
-	// menu; deliberately not from double-click, which opens and shuts the layer.
+	// Swaps the name for an edit box and puts the caret in it. Driven from F2 (or its F12 alias)
+	// and the context menu; deliberately not from double-click, which opens and shuts the layer.
 	void BeginRename();
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	// Opens or shuts the layer, the same as the chevron. Rename is F2 and the context menu, never
+	// Opens or shuts the layer, the same as the chevron. Rename is F2/F12 and the context menu, never
 	// this -- a double-click that sometimes collapses and sometimes starts editing a name would
 	// have to be guessed at every time.
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;

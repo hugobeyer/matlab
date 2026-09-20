@@ -121,7 +121,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						// Name grows; source is right-aligned beside it so the two form columns.
 						// A switcher rather than SInlineEditableTextBlock: that widget enters
 						// editing on double-click, and double-click on this row opens and shuts
-						// the layer. Rename is F2 and the context menu, and only those.
+						// the layer. Rename is F2 (or F12) and the context menu, and only those.
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
 						.VAlign(VAlign_Center)

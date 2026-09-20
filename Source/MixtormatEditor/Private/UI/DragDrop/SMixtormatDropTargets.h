@@ -60,6 +60,17 @@ DECLARE_DELEGATE_RetVal_ThreeParams(
 	FGuid,
 	int32,
 	int32);
+// Source group, source child, destination layer, destination child. The mirror of
+// FOnMixtormatChildMovedToLayer: a shared child stops being shared and becomes that one layer's
+// own. INDEX_NONE for the destination child means "append", the same convention the layer version
+// uses.
+DECLARE_DELEGATE_RetVal_FourParams(
+	FReply,
+	FOnMixtormatGroupChildMovedToLayer,
+	FGuid,
+	int32,
+	int32,
+	int32);
 
 // Where in a row the cursor is, and therefore what a release there means.
 //
@@ -183,6 +194,7 @@ public:
 		SLATE_EVENT(FOnGroupInsertedAt, OnGroupInsertedAt)
 		SLATE_EVENT(FOnSurfaceInsertedAt, OnSurfaceInsertedAt)
 		SLATE_EVENT(FOnMixtormatChildMovedToLayer, OnChildMovedToLayer)
+		SLATE_EVENT(FOnMixtormatGroupChildMovedToLayer, OnGroupChildMovedToLayer)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -193,6 +205,7 @@ public:
 		OnGroupInsertedAt = InArgs._OnGroupInsertedAt;
 		OnSurfaceInsertedAt = InArgs._OnSurfaceInsertedAt;
 		OnChildMovedToLayer = InArgs._OnChildMovedToLayer;
+		OnGroupChildMovedToLayer = InArgs._OnGroupChildMovedToLayer;
 		ChildSlot
 		[
 			SNew(SOverlay)
@@ -270,18 +283,25 @@ public:
 		{
 			// A scoped filter cannot be orphaned from the mask it filters, and nothing moves to
 			// the layer it already lives on. Refused here rather than at the drop, so the row
-			// never lights up for a release that will not be honoured. A group-sourced child is
-			// refused the same way: group-to-layer is not built, only group-to-group reordering.
+			// never lights up for a release that will not be honoured. A group-sourced child has
+			// no layer index to compare, so only the scoped test applies to it -- every layer is a
+			// destination it is not already on.
+			const bool bFromGroup = ChildOp->GroupId.IsValid();
 			if (!ChildOp->bCanLeaveLayer
-				|| ChildOp->GroupId.IsValid()
-				|| ChildOp->LayerIndex == TargetLayerIndex)
+				|| (!bFromGroup && ChildOp->LayerIndex == TargetLayerIndex))
 			{
 				Zone = EMixtormatRowDropZone::None;
 				return FReply::Unhandled();
 			}
 			Zone = EMixtormatRowDropZone::Into;
 			ChildOp->SetToolTip(
-				FText::Format(LOCTEXT("MoveChildToLayer", "Move {0} to this layer"), ChildOp->Name),
+				FText::Format(
+					// Named differently on purpose: leaving a group is not a move between two
+					// equals, it is the child ceasing to be shared by every member.
+					bFromGroup
+						? LOCTEXT("UnshareChildToLayer", "Move {0} out of its group, into this layer")
+						: LOCTEXT("MoveChildToLayer", "Move {0} to this layer"),
+					ChildOp->Name),
 				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
 			return FReply::Handled();
 		}
@@ -357,6 +377,13 @@ public:
 			Operation->ResetToDefaultToolTip();
 			// INDEX_NONE for the destination child: released on the layer body rather than on one
 			// of its rows, so it lands on the end of that layer's stack.
+			if (Operation->GroupId.IsValid())
+			{
+				return OnGroupChildMovedToLayer.IsBound()
+					? OnGroupChildMovedToLayer.Execute(
+						Operation->GroupId, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE)
+					: FReply::Unhandled();
+			}
 			return OnChildMovedToLayer.IsBound()
 				? OnChildMovedToLayer.Execute(
 					Operation->LayerIndex, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE)
@@ -402,6 +429,7 @@ private:
 	FOnGroupInsertedAt OnGroupInsertedAt;
 	FOnSurfaceInsertedAt OnSurfaceInsertedAt;
 	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
+	FOnMixtormatGroupChildMovedToLayer OnGroupChildMovedToLayer;
 	EMixtormatRowDropZone Zone = EMixtormatRowDropZone::None;
 	bool bMaskDragOver = false;
 };
@@ -683,6 +711,7 @@ public:
 		SLATE_ARGUMENT(int32, ChildIndex)
 		SLATE_EVENT(FOnMixtormatChildReordered, OnChildReordered)
 		SLATE_EVENT(FOnMixtormatChildMovedToLayer, OnChildMovedToLayer)
+		SLATE_EVENT(FOnMixtormatGroupChildMovedToLayer, OnGroupChildMovedToLayer)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -691,6 +720,7 @@ public:
 		ChildIndex = InArgs._ChildIndex;
 		OnChildReordered = InArgs._OnChildReordered;
 		OnChildMovedToLayer = InArgs._OnChildMovedToLayer;
+		OnGroupChildMovedToLayer = InArgs._OnGroupChildMovedToLayer;
 		ChildSlot[InArgs._Content.Widget];
 	}
 
@@ -698,12 +728,17 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		// A group-sourced child has its own drop target (SMixtormatGroupChildDropTarget) for
-		// reordering within its group; landing one on an ordinary layer child row is not built, so
-		// it is refused here rather than lighting up for a drop that would do nothing.
-		if (!Operation.IsValid() || Operation->GroupId.IsValid())
+		if (!Operation.IsValid())
 		{
 			return FReply::Unhandled();
+		}
+		// A group-sourced child leaves its group and lands here, aimed at this row. It shares no
+		// layer with this target, so the "started from this row" test below cannot apply to it;
+		// bCanLeaveLayer is the only thing that can refuse it, and a scoped filter must stay with
+		// the owner it filters whichever container that owner sits in.
+		if (Operation->GroupId.IsValid())
+		{
+			return Operation->bCanLeaveLayer ? FReply::Handled() : FReply::Unhandled();
 		}
 		// A drop onto the row it started from is the only one with nothing to do.
 		return Operation->LayerIndex != LayerIndex || Operation->ChildIndex != ChildIndex
@@ -714,9 +749,16 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		if (!Operation.IsValid() || Operation->GroupId.IsValid())
+		if (!Operation.IsValid())
 		{
 			return FReply::Unhandled();
+		}
+		if (Operation->GroupId.IsValid())
+		{
+			return Operation->bCanLeaveLayer && OnGroupChildMovedToLayer.IsBound()
+				? OnGroupChildMovedToLayer.Execute(
+					Operation->GroupId, Operation->ChildIndex, LayerIndex, ChildIndex)
+				: FReply::Unhandled();
 		}
 		if (Operation->LayerIndex == LayerIndex)
 		{
@@ -734,11 +776,13 @@ private:
 	int32 ChildIndex = INDEX_NONE;
 	FOnMixtormatChildReordered OnChildReordered;
 	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
+	FOnMixtormatGroupChildMovedToLayer OnGroupChildMovedToLayer;
 };
 
 // A group's shared child row, keyed by (GroupId, ChildIndex) the way SMixtormatChildDropTarget is
-// keyed by (LayerIndex, ChildIndex). Reorder only -- there is no cross-container move for a group
-// child yet, so unlike the layer version this refuses anything not sourced from the same group.
+// keyed by (LayerIndex, ChildIndex). Reorder only: a group child leaves its group by being dropped
+// on a layer (which SMixtormatChildDropTarget and SMixtormatLayerRowDropTarget handle), and
+// group-to-group is still not built -- so this refuses anything not sourced from the same group.
 class SMixtormatGroupChildDropTarget final : public SCompoundWidget
 {
 public:
