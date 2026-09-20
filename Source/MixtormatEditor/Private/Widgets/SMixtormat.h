@@ -330,6 +330,7 @@ private:
 	FReply AddEffectToGroup(FGuid GroupId, FSoftObjectPath EffectPath);
 	FReply AddProceduralChildToGroup(FGuid GroupId, EMixtormatLayerChildType ChildType);
 	FReply RemoveGroupChild(FGuid GroupId, int32 ChildIndex);
+	FReply ReorderGroupChild(FGuid GroupId, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);

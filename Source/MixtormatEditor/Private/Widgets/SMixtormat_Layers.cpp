@@ -175,6 +175,76 @@ namespace
 		return INDEX_NONE;
 	}
 
+	// Mirrors of IsDescendantOf/FindSubtreeEnd for a group's shared stack, which has no
+	// FMixtormatLayer to hand the layer versions. Reordering only ever moves a group child among
+	// its top-level siblings (BuildGroupChildRow renders no scope-depth indent to reorder within
+	// anyway), so unlike the layer side this needs no FindSiblingRoot or CanKeepScopedPlacement
+	// validation -- only enough to carry a scoped filter along with whatever owns it.
+	bool IsGroupDescendantOf(
+		const TArray<FMixtormatLayerChild>& Children,
+		const int32 ChildIndex,
+		const FGuid& AncestorId)
+	{
+		if (!Children.IsValidIndex(ChildIndex) || !AncestorId.IsValid())
+		{
+			return false;
+		}
+		FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
+		TSet<FGuid> Visited;
+		while (OwnerId.IsValid() && !Visited.Contains(OwnerId))
+		{
+			if (OwnerId == AncestorId)
+			{
+				return true;
+			}
+			Visited.Add(OwnerId);
+			const int32 OwnerIndex = Children.IndexOfByPredicate(
+				[&OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
+			if (OwnerIndex == INDEX_NONE)
+			{
+				return false;
+			}
+			OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
+		}
+		return false;
+	}
+
+	int32 FindGroupSubtreeEnd(const TArray<FMixtormatLayerChild>& Children, const int32 RootIndex)
+	{
+		if (!Children.IsValidIndex(RootIndex))
+		{
+			return RootIndex;
+		}
+		const FGuid RootId = Children[RootIndex].ChildId;
+		int32 End = RootIndex + 1;
+		while (Children.IsValidIndex(End) && IsGroupDescendantOf(Children, End, RootId))
+		{
+			++End;
+		}
+		return End;
+	}
+
+	// Where BuildGroupChildRow renders no depth to aim a drop at a specific ancestor, so a release
+	// on any row inside a scoped subtree means the same thing a release on its root would: reorder
+	// that whole subtree relative to the group's other top-level children.
+	int32 FindGroupTopLevelRoot(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		int32 CurrentIndex = ChildIndex;
+		TSet<FGuid> Visited;
+		while (Children.IsValidIndex(CurrentIndex) && Children[CurrentIndex].ScopeOwnerChildId.IsValid())
+		{
+			const FGuid OwnerId = Children[CurrentIndex].ScopeOwnerChildId;
+			if (Visited.Contains(OwnerId))
+			{
+				return INDEX_NONE;
+			}
+			Visited.Add(OwnerId);
+			CurrentIndex = Children.IndexOfByPredicate(
+				[&OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
+		}
+		return CurrentIndex;
+	}
+
 	bool CanAddScopedChild(const FMixtormatLayer& Layer, const int32 OwnerIndex)
 	{
 		return Layer.Children.IsValidIndex(OwnerIndex)
@@ -509,6 +579,45 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 		return FReply::Handled();
 	}
 
+	// Groups do not nest, so a line drawn between two members of another group -- reachable by
+	// dropping on one of that group's ordinary member rows, which know nothing about the group
+	// they belong to -- is snapped to that group's nearer outer edge instead of spliced in. Left
+	// alone, the splice below would land the block mid-run and ValidateGroups would "fix" the
+	// split by ungrouping whichever of that group's members ended up on the far side.
+	//
+	// One pass is enough: every group here is already a contiguous, non-overlapping run (the same
+	// invariant ValidateGroups enforces after every structural edit, this one included), so a
+	// snapped edge is always either before the first group in the stack, after the last, or
+	// sitting exactly on the shared boundary between two adjacent ones -- never inside a second
+	// group's span.
+	int32 TargetIndex = InsertIndex;
+	for (const FMixtormatLayerGroup& OtherGroup : WorkingLayerGroups)
+	{
+		if (OtherGroup.GroupId == GroupId)
+		{
+			continue;
+		}
+		int32 OtherFirst = INDEX_NONE;
+		int32 OtherLast = INDEX_NONE;
+		if (!MixtormatLayerGroups::GetGroupRange(WorkingLayers, OtherGroup.GroupId, OtherFirst, OtherLast))
+		{
+			continue;
+		}
+		if (TargetIndex > OtherFirst && TargetIndex <= OtherLast)
+		{
+			TargetIndex = (TargetIndex - OtherFirst <= OtherLast + 1 - TargetIndex)
+				? OtherFirst
+				: OtherLast + 1;
+			break;
+		}
+	}
+	// The snap can land back on the dragged group's own edge (it sits right next to whichever
+	// group absorbed the line), which is the same no-op the raw-index check above exists for.
+	if (TargetIndex >= FirstIndex && TargetIndex <= LastIndex + 1)
+	{
+		return FReply::Handled();
+	}
+
 	// The block moves as one. Built the same way the group gather is: everything else in order,
 	// then the block spliced in at the slot the line was drawn on.
 	const int32 BlockCount = LastIndex - FirstIndex + 1;
@@ -521,7 +630,7 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 		{
 			continue;
 		}
-		if (Index < InsertIndex)
+		if (Index < TargetIndex)
 		{
 			++InsertAt;
 		}
@@ -543,8 +652,9 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 	SoloLayerIndex = INDEX_NONE;
 	const int32 DroppedReferences =
 		MixtormatUI::ReorderLayersByPermutation(WorkingLayers, NewOrder);
-	// The block carried its GroupId with it, so the run is still whole; validation is here to
-	// catch a group the block landed in the middle of.
+	// The block carried its GroupId with it, so the run is still whole, and the snap above already
+	// kept it out of another group's run. This is the general backstop for shapes that snap does
+	// not cover -- hand-edited data, a merge -- not the normal path for a group-on-group drop.
 	MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
 
 	SelectedGroupId = GroupId;
@@ -1633,6 +1743,73 @@ FReply SMixtormat::ReorderLayerChild(
 	{
 		SelectedEffectIndex = FindChildById(Layer, SelectedEffectId);
 		SelectedMaskIndex = FindChildById(Layer, SelectedMaskId);
+	}
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::ReorderGroupChild(
+	const FGuid GroupId,
+	const int32 SourceChildIndex,
+	int32 TargetChildIndex)
+{
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group
+		|| !Group->Children.IsValidIndex(SourceChildIndex)
+		|| !Group->Children.IsValidIndex(TargetChildIndex)
+		// The source has to be top-level: BuildGroupChildRow gives a scoped filter no drag source
+		// (bCanLeaveLayer is false for one), but a direct call is refused the same way a drag would
+		// have been.
+		|| Group->Children[SourceChildIndex].ScopeOwnerChildId.IsValid())
+	{
+		return FReply::Unhandled();
+	}
+	// The target can land inside a scoped subtree -- BuildGroupChildRow renders no depth to aim
+	// at a specific ancestor, so every row in that subtree means "reorder relative to its root."
+	TargetChildIndex = FindGroupTopLevelRoot(Group->Children, TargetChildIndex);
+	if (TargetChildIndex == INDEX_NONE || TargetChildIndex == SourceChildIndex)
+	{
+		return FReply::Unhandled();
+	}
+
+	FGuid SelectedChildId;
+	if (SelectedGroupId == GroupId && Group->Children.IsValidIndex(SelectedGroupChildIndex))
+	{
+		SelectedChildId = Group->Children[SelectedGroupChildIndex].ChildId;
+	}
+
+	// Contiguous by construction: a subtree only ever arrives as one intact block (AppendGroupChild
+	// adds a lone unscoped child, MoveChildToGroup inserts a whole extracted subtree), and removal
+	// (RemoveGroupChild) deletes matched children without reordering the survivors. Nothing in this
+	// function's own splice below breaks that either, so FindGroupSubtreeEnd's positional walk can
+	// trust it.
+	const int32 SourceSubtreeEnd = FindGroupSubtreeEnd(Group->Children, SourceChildIndex);
+	const int32 TargetSubtreeEnd = FindGroupSubtreeEnd(Group->Children, TargetChildIndex);
+	const int32 SourceCount = SourceSubtreeEnd - SourceChildIndex;
+	TArray<FMixtormatLayerChild> MovedChildren;
+	MovedChildren.Reserve(SourceCount);
+	for (int32 MoveIndex = 0; MoveIndex < SourceCount; ++MoveIndex)
+	{
+		MovedChildren.Add(MoveTemp(Group->Children[SourceChildIndex + MoveIndex]));
+	}
+	Group->Children.RemoveAt(SourceChildIndex, SourceCount);
+
+	const int32 InsertAt = TargetChildIndex < SourceChildIndex
+		? TargetChildIndex
+		: TargetSubtreeEnd - SourceCount;
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
+		Group->Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
+	}
+
+	if (SelectedChildId.IsValid())
+	{
+		SelectedGroupChildIndex = Group->Children.IndexOfByPredicate(
+			[&SelectedChildId](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.ChildId == SelectedChildId;
+			});
 	}
 	RefreshLayeredPreview();
 	RebuildLayerList();
@@ -3724,10 +3901,11 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	return FReply::Handled();
 }
 
-// A shared child's row. Read-only compared with a layer's: no drop target and no reorder. A child
-// can arrive from a layer by dropping it on the group header (MoveChildToGroup, always appended),
-// but a position within the shared stack and a reorder there are not built yet -- a row that
-// accepts a drag it cannot honour is worse than one that does not offer it.
+// A shared child's row. A child can arrive from a layer by dropping it on the group header
+// (MoveChildToGroup, always appended), and reorders among its top-level siblings the same way a
+// layer child does (ReorderGroupChild) -- but there is still no cross-container move out of a
+// group, so a scoped filter (which cannot leave its owner) and any drag aimed anywhere but this
+// group's own drop target both refuse rather than lighting up for a drop that would do nothing.
 TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const int32 ChildIndex)
 {
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
@@ -3736,33 +3914,49 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 		return SNullWidget::NullWidget;
 	}
 	const FMixtormatLayerChild& Child = Group->Children[ChildIndex];
+	const FText ChildName = GetLayerChildName(Child);
+	const bool bCanReorder = !Child.ScopeOwnerChildId.IsValid();
 
-	return SNew(SMixtormatLayerChildRow)
-		.Name(GetLayerChildName(Child))
-		// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
-		// a layer, and this child's container is a group.
-		.Kind(MixtormatLayerBadges::KindForChild(Child))
-		.Badge(MixtormatLayerBadges::ForChild(Child))
-		.bActive_Lambda([this, GroupId, ChildIndex]()
-		{
-			const FMixtormatLayerGroup* Current =
-				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-			return Current && Current->Children.IsValidIndex(ChildIndex)
-				&& IsGroupChildEnabled(Current->Children[ChildIndex]);
-		})
-		.bSelected_Lambda([this, GroupId, ChildIndex]()
-		{
-			return SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex;
-		})
-		.OnSelected_Lambda([this, GroupId, ChildIndex]() { SelectGroupChild(GroupId, ChildIndex); })
-		.OnToggleActive_Lambda([this, GroupId, ChildIndex]()
-		{
-			ToggleGroupChildEnabled(GroupId, ChildIndex);
-		})
-		.OnGetContextMenu_Lambda([this, GroupId, ChildIndex]()
-		{
-			return BuildGroupChildContextMenu(GroupId, ChildIndex);
-		});
+	return SNew(SMixtormatGroupChildDropTarget)
+		.GroupId(GroupId)
+		.ChildIndex(ChildIndex)
+		.OnChildReordered(this, &SMixtormat::ReorderGroupChild)
+		[
+			SNew(SMixtormatLayerChildRow)
+			.Name(ChildName)
+			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
+			// a layer, and this child's container is a group.
+			.Kind(MixtormatLayerBadges::KindForChild(Child))
+			.Badge(MixtormatLayerBadges::ForChild(Child))
+			.bActive_Lambda([this, GroupId, ChildIndex]()
+			{
+				const FMixtormatLayerGroup* Current =
+					MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				return Current && Current->Children.IsValidIndex(ChildIndex)
+					&& IsGroupChildEnabled(Current->Children[ChildIndex]);
+			})
+			.bSelected_Lambda([this, GroupId, ChildIndex]()
+			{
+				return SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex;
+			})
+			.OnSelected_Lambda([this, GroupId, ChildIndex]() { SelectGroupChild(GroupId, ChildIndex); })
+			.OnToggleActive_Lambda([this, GroupId, ChildIndex]()
+			{
+				ToggleGroupChildEnabled(GroupId, ChildIndex);
+			})
+			.OnGetContextMenu_Lambda([this, GroupId, ChildIndex]()
+			{
+				return BuildGroupChildContextMenu(GroupId, ChildIndex);
+			})
+			// Decided here, not in the lambda: Child is a reference into an array the row outlives,
+			// and the answer cannot change without the row being rebuilt anyway.
+			.OnDragDetected_Lambda([this, GroupId, ChildIndex, ChildName, bCanReorder]
+				(const FGeometry&, const FPointerEvent&)
+			{
+				return FReply::Handled().BeginDragDrop(
+					FMixtormatChildDragDropOp::NewFromGroup(GroupId, ChildIndex, ChildName, bCanReorder));
+			})
+		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(

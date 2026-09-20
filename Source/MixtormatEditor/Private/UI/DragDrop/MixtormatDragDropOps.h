@@ -170,6 +170,9 @@ public:
 
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
+	// Set instead of LayerIndex when the child came from a group's shared stack rather than a
+	// layer -- the same INDEX_NONE-plus-a-valid-id convention ResolveChild uses.
+	FGuid GroupId;
 	// Whether this child may leave its layer at all. Decided once by the owner, which knows what
 	// the child is; a target cannot work it out from the indices it was handed, and a target that
 	// lights up for a drop that will then be refused is worse than one that stays dark.
@@ -207,6 +210,19 @@ public:
 				]
 			];
 		Operation->Construct();
+		return Operation;
+	}
+
+	// A group's shared stack has no layer index; the source is named by GroupId instead.
+	static TSharedRef<FMixtormatChildDragDropOp> NewFromGroup(
+		const FGuid& InGroupId,
+		const int32 InChildIndex,
+		const FText& Name,
+		const bool bInCanLeaveLayer = true)
+	{
+		TSharedRef<FMixtormatChildDragDropOp> Operation =
+			New(INDEX_NONE, InChildIndex, Name, bInCanLeaveLayer);
+		Operation->GroupId = InGroupId;
 		return Operation;
 	}
 

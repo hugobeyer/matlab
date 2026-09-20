@@ -51,6 +51,15 @@ DECLARE_DELEGATE_RetVal_FourParams(
 	int32,
 	int32,
 	int32);
+// Group, source child, destination child. A group's shared stack reorders among itself the same
+// way a layer's children do; there is no cross-container move here yet, so unlike the layer
+// version this takes no destination container.
+DECLARE_DELEGATE_RetVal_ThreeParams(
+	FReply,
+	FOnMixtormatGroupChildReordered,
+	FGuid,
+	int32,
+	int32);
 
 // Where in a row the cursor is, and therefore what a release there means.
 //
@@ -261,8 +270,11 @@ public:
 		{
 			// A scoped filter cannot be orphaned from the mask it filters, and nothing moves to
 			// the layer it already lives on. Refused here rather than at the drop, so the row
-			// never lights up for a release that will not be honoured.
-			if (!ChildOp->bCanLeaveLayer || ChildOp->LayerIndex == TargetLayerIndex)
+			// never lights up for a release that will not be honoured. A group-sourced child is
+			// refused the same way: group-to-layer is not built, only group-to-group reordering.
+			if (!ChildOp->bCanLeaveLayer
+				|| ChildOp->GroupId.IsValid()
+				|| ChildOp->LayerIndex == TargetLayerIndex)
 			{
 				Zone = EMixtormatRowDropZone::None;
 				return FReply::Unhandled();
@@ -480,11 +492,12 @@ public:
 
 		// A child dropped on the header means "make this shared", the same all-or-nothing meaning
 		// a child dropped on a layer body has -- not a position along the group's edges, so the
-		// whole row lights rather than one of its thirds.
+		// whole row lights rather than one of its thirds. A child already shared by a group is
+		// refused: it has its own group to reorder within, and group-to-group is not built.
 		if (const TSharedPtr<FMixtormatChildDragDropOp> ChildOp =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>())
 		{
-			if (!ChildOp->bCanLeaveLayer)
+			if (!ChildOp->bCanLeaveLayer || ChildOp->GroupId.IsValid())
 			{
 				Zone = EMixtormatRowDropZone::None;
 				return FReply::Unhandled();
@@ -685,7 +698,10 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		if (!Operation.IsValid())
+		// A group-sourced child has its own drop target (SMixtormatGroupChildDropTarget) for
+		// reordering within its group; landing one on an ordinary layer child row is not built, so
+		// it is refused here rather than lighting up for a drop that would do nothing.
+		if (!Operation.IsValid() || Operation->GroupId.IsValid())
 		{
 			return FReply::Unhandled();
 		}
@@ -698,7 +714,7 @@ public:
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		if (!Operation.IsValid())
+		if (!Operation.IsValid() || Operation->GroupId.IsValid())
 		{
 			return FReply::Unhandled();
 		}
@@ -718,6 +734,61 @@ private:
 	int32 ChildIndex = INDEX_NONE;
 	FOnMixtormatChildReordered OnChildReordered;
 	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
+};
+
+// A group's shared child row, keyed by (GroupId, ChildIndex) the way SMixtormatChildDropTarget is
+// keyed by (LayerIndex, ChildIndex). Reorder only -- there is no cross-container move for a group
+// child yet, so unlike the layer version this refuses anything not sourced from the same group.
+class SMixtormatGroupChildDropTarget final : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SMixtormatGroupChildDropTarget) {}
+		SLATE_DEFAULT_SLOT(FArguments, Content)
+		SLATE_ARGUMENT(FGuid, GroupId)
+		SLATE_ARGUMENT(int32, ChildIndex)
+		SLATE_EVENT(FOnMixtormatGroupChildReordered, OnChildReordered)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
+	{
+		GroupId = InArgs._GroupId;
+		ChildIndex = InArgs._ChildIndex;
+		OnChildReordered = InArgs._OnChildReordered;
+		ChildSlot[InArgs._Content.Widget];
+	}
+
+	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
+	{
+		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>();
+		// bCanLeaveLayer doubles as "can reorder" here: a scoped filter cannot leave the child that
+		// owns it, and within a group that means it cannot reorder at all, not even among the
+		// group's other top-level children.
+		if (!Operation.IsValid() || Operation->GroupId != GroupId || !Operation->bCanLeaveLayer)
+		{
+			return FReply::Unhandled();
+		}
+		// A drop onto the row it started from is the only one with nothing to do.
+		return Operation->ChildIndex != ChildIndex ? FReply::Handled() : FReply::Unhandled();
+	}
+
+	virtual FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override
+	{
+		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>();
+		if (!Operation.IsValid() || Operation->GroupId != GroupId || !Operation->bCanLeaveLayer)
+		{
+			return FReply::Unhandled();
+		}
+		return OnChildReordered.IsBound()
+			? OnChildReordered.Execute(GroupId, Operation->ChildIndex, ChildIndex)
+			: FReply::Unhandled();
+	}
+
+private:
+	FGuid GroupId;
+	int32 ChildIndex = INDEX_NONE;
+	FOnMixtormatGroupChildReordered OnChildReordered;
 };
 
 #undef LOCTEXT_NAMESPACE
