@@ -429,6 +429,7 @@ namespace MixtormatUI
 		case EMixtormatPatternMode::Voronoi: return LOCTEXT("PatternModeVoronoi", "Voronoi");
 		case EMixtormatPatternMode::Hopscotch: return LOCTEXT("PatternModeHopscotch", "Hopscotch");
 		case EMixtormatPatternMode::FrenchAshlar: return LOCTEXT("PatternModeFrenchAshlar", "French / Modular Ashlar");
+		case EMixtormatPatternMode::FracturePlates: return LOCTEXT("PatternModeFracturePlates", "Fracture Plates");
 		default: return LOCTEXT("PatternModeGrid", "Grid");
 		}
 	}

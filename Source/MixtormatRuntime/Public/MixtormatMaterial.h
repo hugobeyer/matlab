@@ -1883,7 +1883,8 @@ enum class EMixtormatPatternMode : uint8
 	Flagstone = 6 UMETA(DisplayName = "Flagstone"),
 	Voronoi = 7 UMETA(DisplayName = "Voronoi"),
 	Hopscotch = 8 UMETA(DisplayName = "Hopscotch"),
-	FrenchAshlar = 9 UMETA(DisplayName = "French / Modular Ashlar")
+	FrenchAshlar = 9 UMETA(DisplayName = "French / Modular Ashlar"),
+	FracturePlates = 10 UMETA(DisplayName = "Fracture Plates")
 };
 
 UENUM(BlueprintType)
@@ -2060,6 +2061,66 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs", meta = (ClampMin = "0"))
 	int32 Seed = 1;
+
+	// ---------------------------------------------------------------------------------------
+	// Fracture Plates. Read only when PatternMode is FracturePlates; every other mode ignores
+	// them, so these are inert on an existing asset.
+	//
+	// The mode's primary lattice is the shared Columns/Rows pair above, its seed placement is the
+	// shared Jitter, and its shuffle is the shared Seed -- it is a Pattern topology like every
+	// other one, not a second pattern system bolted alongside.
+	// ---------------------------------------------------------------------------------------
+
+	// Spread of the additive power weights that decide how much territory a plate wins from its
+	// neighbours. This is where "some very large regions, some small" comes from: at 0 every plate
+	// is the same importance and the result is pavement, and raising it grows a few plates at the
+	// expense of the rest. Additive rather than multiplicative on purpose -- an additive weight
+	// moves a boundary while leaving it straight, a multiplicative one bows it into an arc.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float FractureSizeVariation = 0.3f;
+
+	// Probability that a primary plate fractures internally at all. A plate that does not stays
+	// whole and publishes one ID, so this is the control for how much of the surface reads as
+	// large unbroken pieces against locally shattered ones.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FractureSecondaryAmount = 0.5f;
+
+	// How many pieces a fracturing plate breaks into, drawn per plate. Both ends are structural
+	// indices rather than artistic amounts, so they are range-clamped: below 2 is not a fracture.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "2", ClampMax = "8"))
+	int32 FractureSecondaryMin = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "2", ClampMax = "8"))
+	int32 FractureSecondaryMax = 3;
+
+	// How far the secondary sites sit from their parent's, in cell fractions. Small values put
+	// the split near the middle of the plate; large ones push the pieces toward its walls.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", UIMin = "0.05", UIMax = "0.75"))
+	float FractureSecondaryRadius = 0.34f;
+
+	// Breaks up the even ring the secondary sites are laid on, in angle and in radius, so a split
+	// plate does not come out as a regular pie.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float FractureSecondaryJitter = 0.55f;
+
+	// How far, in output pixels, the fracture field displaces a plate wall from the straight line
+	// the power diagram would give it. The displacement field is piecewise planar, so the wall
+	// stays a chain of straight runs meeting at angles rather than becoming a curve.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "32.0"))
+	float FractureEdgeIrregularity = 8.0f;
+
+	// The run length of those straight segments, in output pixels. Absolute: Columns and Rows do
+	// not stretch it, so changing the plate count leaves the crack character alone.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "1.0", UIMin = "8.0", UIMax = "512.0"))
+	float FractureEdgeScale = 96.0f;
+
+	// A second, shorter octave of the same field: the small branching kinks that sit on the long
+	// primary fracture runs. Also absolute, in output pixels.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "16.0"))
+	float FractureEdgeDetail = 2.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "1.0", UIMin = "4.0", UIMax = "128.0"))
+	float FractureEdgeDetailScale = 24.0f;
 };
 
 // Per-region tilt from a gradient. Gives every region its own local frame, runs a linear ramp

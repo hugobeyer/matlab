@@ -1608,6 +1608,39 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					? FMath::Clamp(Pattern.AOAmount, 0.0f, 1.0f) : 0.0f;
 				PatternData.AOSpread = FMath::IsFinite(Pattern.AOSpread)
 					? FMath::Clamp(Pattern.AOSpread, 1.0f, 8.0f) : 2.0f;
+
+				// Fracture Plates. Size Variation and the four Edge controls are artistic
+				// amounts, so they are finite-guarded and not range-clamped -- a typed value
+				// above the slider's range goes through, exactly as the Bevel block above does.
+				// Secondary Amount is a probability and the child counts are indices, so those
+				// are genuinely bounded rather than merely dragged.
+				PatternData.FractureSizeVariation = FMath::IsFinite(Pattern.FractureSizeVariation)
+					? FMath::Max(Pattern.FractureSizeVariation, 0.0f) : 0.3f;
+				PatternData.FractureSecondaryAmount =
+					FMath::IsFinite(Pattern.FractureSecondaryAmount)
+						? FMath::Clamp(Pattern.FractureSecondaryAmount, 0.0f, 1.0f) : 0.5f;
+				PatternData.FractureSecondaryMin =
+					FMath::Clamp(Pattern.FractureSecondaryMin, 2, 8);
+				PatternData.FractureSecondaryMax = FMath::Clamp(
+					Pattern.FractureSecondaryMax, PatternData.FractureSecondaryMin, 8);
+				PatternData.FractureSecondaryRadius =
+					FMath::IsFinite(Pattern.FractureSecondaryRadius)
+						? FMath::Max(Pattern.FractureSecondaryRadius, 0.0f) : 0.34f;
+				PatternData.FractureSecondaryJitter =
+					FMath::IsFinite(Pattern.FractureSecondaryJitter)
+						? FMath::Max(Pattern.FractureSecondaryJitter, 0.0f) : 0.55f;
+				PatternData.FractureEdgeIrregularity =
+					FMath::IsFinite(Pattern.FractureEdgeIrregularity)
+						? Pattern.FractureEdgeIrregularity : 8.0f;
+				// Floored, not clamped: the scale is a divisor that sizes an integer lattice
+				// period, and a period of zero has no meaning to floor it into.
+				PatternData.FractureEdgeScale = FMath::IsFinite(Pattern.FractureEdgeScale)
+					? FMath::Max(Pattern.FractureEdgeScale, 1.0f) : 96.0f;
+				PatternData.FractureEdgeDetail = FMath::IsFinite(Pattern.FractureEdgeDetail)
+					? Pattern.FractureEdgeDetail : 2.5f;
+				PatternData.FractureEdgeDetailScale =
+					FMath::IsFinite(Pattern.FractureEdgeDetailScale)
+						? FMath::Max(Pattern.FractureEdgeDetailScale, 1.0f) : 24.0f;
 				continue;
 			}
 

@@ -332,7 +332,10 @@ namespace MixtormatTokens
 	inline float StatusBarHeight = 18.0f;
 	inline float BottomLibraryCollapseButtonWidth = 20.0f;
 	inline float BottomLibraryCollapseButtonHeight = 8.0f;
-	inline float MaskBarTileSize = 62.0f;
+	// The mask gallery's starting tile size, and only that -- despite the name, nothing draws a
+	// mask "bar" any more. Zoom lands on 52 + 12n (MaskGalleryTileMinimum + n * step), so a
+	// default on that grid keeps every step after it on the same one.
+	inline float MaskBarTileSize = 88.0f;
 	inline float ToolbarButtonMargin = 2.0f;
 	inline float ToolbarLabelPadding = 5.0f;
 	constexpr float LibraryBrowseButtonGap = 4.0f;

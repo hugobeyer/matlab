@@ -543,6 +543,18 @@ namespace MixtormatGpuCompositor
 		float EdgeRoughnessAmount = 0.0f;
 		float AOAmount = 0.0f;
 		float AOSpread = 2.0f;
+
+		// Fracture Plates only. Inert for every other PatternMode.
+		float FractureSizeVariation = 0.3f;
+		float FractureSecondaryAmount = 0.5f;
+		int32 FractureSecondaryMin = 2;
+		int32 FractureSecondaryMax = 3;
+		float FractureSecondaryRadius = 0.34f;
+		float FractureSecondaryJitter = 0.55f;
+		float FractureEdgeIrregularity = 8.0f;
+		float FractureEdgeScale = 96.0f;
+		float FractureEdgeDetail = 2.5f;
+		float FractureEdgeDetailScale = 24.0f;
 	};
 
 	inline bool HasIntrinsicPatternOrientation(const FPatternIdRenderData& Pattern)

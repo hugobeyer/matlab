@@ -339,7 +339,6 @@ private:
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
 	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
-	TSharedRef<SWidget> BuildGroupAddMaskMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupAddFilterMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupChildContextMenu(FGuid GroupId, int32 ChildIndex);
@@ -820,8 +819,6 @@ private:
 	FText GetLayerChildSourceText(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddLayerMenu();
-	TSharedRef<SWidget> BuildAddMaskMenu(int32 LayerIndex);
-	TSharedRef<SWidget> BuildAddScopedMaskMenu(int32 LayerIndex, int32 OwnerChildIndex);
 	TSharedRef<SWidget> BuildAddEffectMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();

@@ -126,6 +126,16 @@ public:
 		SHADER_PARAMETER(float, FeatherRandom)
 		SHADER_PARAMETER(float, Rounding)
 		SHADER_PARAMETER(uint32, EdgeRelative)
+		SHADER_PARAMETER(float, FractureSizeVariation)
+		SHADER_PARAMETER(float, FractureSecondaryAmount)
+		SHADER_PARAMETER(int32, FractureSecondaryMin)
+		SHADER_PARAMETER(int32, FractureSecondaryMax)
+		SHADER_PARAMETER(float, FractureSecondaryRadius)
+		SHADER_PARAMETER(float, FractureSecondaryJitter)
+		SHADER_PARAMETER(float, FractureEdgeIrregularity)
+		SHADER_PARAMETER(float, FractureEdgeScale)
+		SHADER_PARAMETER(float, FractureEdgeDetail)
+		SHADER_PARAMETER(float, FractureEdgeDetailScale)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputUV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
@@ -454,6 +464,16 @@ namespace MixtormatGpuCompositor
 		Parameters->Rounding = Child.PatternId.Rounding;
 		Parameters->EdgeRelative = Child.PatternId.bRelativeEdgeWidth ? 1u : 0u;
 		Parameters->Feather = Child.PatternId.Feather;
+		Parameters->FractureSizeVariation = Child.PatternId.FractureSizeVariation;
+		Parameters->FractureSecondaryAmount = Child.PatternId.FractureSecondaryAmount;
+		Parameters->FractureSecondaryMin = Child.PatternId.FractureSecondaryMin;
+		Parameters->FractureSecondaryMax = Child.PatternId.FractureSecondaryMax;
+		Parameters->FractureSecondaryRadius = Child.PatternId.FractureSecondaryRadius;
+		Parameters->FractureSecondaryJitter = Child.PatternId.FractureSecondaryJitter;
+		Parameters->FractureEdgeIrregularity = Child.PatternId.FractureEdgeIrregularity;
+		Parameters->FractureEdgeScale = Child.PatternId.FractureEdgeScale;
+		Parameters->FractureEdgeDetail = Child.PatternId.FractureEdgeDetail;
+		Parameters->FractureEdgeDetailScale = Child.PatternId.FractureEdgeDetailScale;
 		Parameters->OutputIds = GraphBuilder.CreateUAV(RegionIds);
 		Parameters->OutputUV = GraphBuilder.CreateUAV(OutUV);
 		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);

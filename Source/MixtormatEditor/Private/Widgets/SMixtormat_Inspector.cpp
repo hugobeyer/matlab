@@ -1855,7 +1855,8 @@ TSharedRef<SWidget> SMixtormat::BuildPatternModeMenu()
 		EMixtormatPatternMode::Flagstone,
 		EMixtormatPatternMode::Voronoi,
 		EMixtormatPatternMode::Hopscotch,
-		EMixtormatPatternMode::FrenchAshlar
+		EMixtormatPatternMode::FrenchAshlar,
+		EMixtormatPatternMode::FracturePlates
 	};
 	for (const EMixtormatPatternMode Mode : Modes)
 	{
@@ -1962,7 +1963,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 					: FText::GetEmpty();
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildPatternModeMenu)),
-		LOCTEXT("PatternModeHint", "Selects the procedural topology used to publish Pattern regions.")));
+		LOCTEXT("PatternModeHint", "Selects the procedural topology used to publish Pattern regions. Fracture Plates generates hierarchical irregular fracture plates for cracked plaster, concrete, asphalt, stone, and similar broken surfaces.")));
 	AddSliderRow(Panel,
 		SNew(SBox)
 		.Visibility_Lambda([this]()
@@ -2020,11 +2021,12 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			const FMixtormatPatternFilter* Pattern = GetSelectedPatternId();
 			return Pattern && (Pattern->PatternMode == EMixtormatPatternMode::RunningBond
 				|| Pattern->PatternMode == EMixtormatPatternMode::Flagstone
-				|| Pattern->PatternMode == EMixtormatPatternMode::Voronoi);
+				|| Pattern->PatternMode == EMixtormatPatternMode::Voronoi
+				|| Pattern->PatternMode == EMixtormatPatternMode::FracturePlates);
 		})
 		[
 			Slider(LOCTEXT("PatternJitter", "Jitter"), &FMixtormatPatternFilter::Jitter, 0.0, 1.0, 0.0, 0.01,
-				LOCTEXT("PatternJitterHint", "Varies Running Bond bricks or the feature points used by Flagstone and Voronoi."))
+				LOCTEXT("PatternJitterHint", "Varies Running Bond bricks, or the feature points used by Flagstone, Voronoi and Fracture Plates."))
 		]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternSwapAxes", "Swap Axes"), &FMixtormatPatternFilter::bSwapAxes,
@@ -2037,6 +2039,64 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
+
+	// Fracture Plates' own block, gated the same way Grid Mode is: the mode owns these controls,
+	// so they are only in the panel when it is selected. Cells X/Y, Jitter and Seed are the shared
+	// lattice rows above and stay there -- Fracture Plates is a Pattern topology like the others,
+	// not a second pattern system with its own copy of the lattice.
+	const TSharedRef<SVerticalBox> FractureRows = SNew(SVerticalBox);
+	AddSliderRow(FractureRows,
+		MixtormatRow::MakeCaption(LOCTEXT("PatternGrpFracture", "Fracture Plates")));
+	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternFractureSizeVariation", "Size Variation"),
+			&FMixtormatPatternFilter::FractureSizeVariation, 0.0, 1.0, 0.3, 0.01,
+			LOCTEXT("PatternFractureSizeVariationHint", "Spread of the additive power weights that decide how much territory a plate wins from its neighbours. At 0 every plate is the same importance and the result is even pavement; raising it grows a few plates at the expense of the rest, which is where the mix of very large and small pieces comes from. Additive rather than multiplicative, so a weight moves a boundary while leaving it straight.")),
+		Slider(LOCTEXT("PatternFractureSecondaryAmount", "Secondary Amount"),
+			&FMixtormatPatternFilter::FractureSecondaryAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("PatternFractureSecondaryAmountHint", "Probability that a primary plate fractures internally at all. A plate that does not stays whole and publishes one ID, so this is the control for how much of the surface reads as large unbroken pieces against locally shattered ones."))));
+	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatPatternFilter>(
+			LOCTEXT("PatternFractureSecondaryMin", "Secondary Min"), Pattern,
+			&FMixtormatPatternFilter::FractureSecondaryMin, 2.0, 8.0, 2,
+			LOCTEXT("PatternFractureSecondaryMinHint", "Fewest pieces a fracturing plate breaks into. Below 2 is not a fracture, so this end is bounded.")),
+		MakeMemberSliderInt<FMixtormatPatternFilter>(
+			LOCTEXT("PatternFractureSecondaryMax", "Secondary Max"), Pattern,
+			&FMixtormatPatternFilter::FractureSecondaryMax, 2.0, 8.0, 3,
+			LOCTEXT("PatternFractureSecondaryMaxHint", "Most pieces a fracturing plate breaks into. Raised below Secondary Min, it follows it."))));
+	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternFractureSecondaryRadius", "Secondary Radius"),
+			&FMixtormatPatternFilter::FractureSecondaryRadius, 0.05, 0.75, 0.34, 0.005,
+			LOCTEXT("PatternFractureSecondaryRadiusHint", "How far the secondary sites sit from their parent's, in cell fractions. Small values put the split near the middle of the plate; large ones push the pieces out toward its walls. The split is always clipped to its parent, whatever this is set to.")),
+		Slider(LOCTEXT("PatternFractureSecondaryJitter", "Secondary Jitter"),
+			&FMixtormatPatternFilter::FractureSecondaryJitter, 0.0, 1.0, 0.55, 0.01,
+			LOCTEXT("PatternFractureSecondaryJitterHint", "Breaks up the even ring the secondary sites are laid on, in angle and in radius, so a split plate does not come out as a regular pie."))));
+	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternFractureEdgeIrregularity", "Edge Irregularity"),
+			&FMixtormatPatternFilter::FractureEdgeIrregularity, 0.0, 32.0, 8.0, 0.1,
+			LOCTEXT("PatternFractureEdgeIrregularityHint", "How far, in output pixels, the fracture field displaces a plate wall from the straight line the power diagram would give it. The field is piecewise planar, so the wall stays a chain of straight runs meeting at angles rather than becoming a curve.")),
+		Slider(LOCTEXT("PatternFractureEdgeScale", "Edge Scale"),
+			&FMixtormatPatternFilter::FractureEdgeScale, 8.0, 512.0, 96.0, 1.0,
+			LOCTEXT("PatternFractureEdgeScaleHint", "The run length of those straight segments, in output pixels. Absolute: Rows and Columns do not stretch it, so changing the plate count leaves the crack character alone."))));
+	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+		Slider(LOCTEXT("PatternFractureEdgeDetail", "Edge Detail"),
+			&FMixtormatPatternFilter::FractureEdgeDetail, 0.0, 16.0, 2.5, 0.05,
+			LOCTEXT("PatternFractureEdgeDetailHint", "A second, shorter octave of the same field: the small branching kinks that sit on the long primary fracture runs.")),
+		Slider(LOCTEXT("PatternFractureEdgeDetailScale", "Edge Detail Scale"),
+			&FMixtormatPatternFilter::FractureEdgeDetailScale, 4.0, 128.0, 24.0, 0.5,
+			LOCTEXT("PatternFractureEdgeDetailScaleHint", "Run length of the detail octave, in output pixels. Also absolute."))));
+	AddSliderRow(Panel,
+		SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatPatternFilter* SelectedPattern = GetSelectedPatternId();
+			return SelectedPattern
+				&& SelectedPattern->PatternMode == EMixtormatPatternMode::FracturePlates
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			FractureRows
+		]);
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpUV", "UV Variation")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(

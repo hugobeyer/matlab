@@ -1347,18 +1347,12 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 		return FReply::Handled();
 	}
 
-	// Bisecting a freeze: back to the pre-session rule while the cause is narrowed down.
-	// First mask on the container replaces, later ones multiply. The chain seeds at black, so
-	// Multiply on a first mask would resolve to nothing -- hence the special case.
-	const bool bHasTopLevelMask = Layer.Children.ContainsByPredicate(
-		[](const FMixtormatLayerChild& Existing)
-		{
-			return Existing.Type == EMixtormatLayerChildType::Mask
-				&& !Existing.ScopeOwnerChildId.IsValid();
-		});
-	NewMask.BlendMode = bHasTopLevelMask
-		? EMixtormatMaskBlendMode::Multiply
-		: EMixtormatMaskBlendMode::Replace;
+	// Replace, whatever is already on the stack. A new mask is added to be looked at, and
+	// Multiply against an existing mask shows nothing wherever that mask is dark -- which reads
+	// as the mask having failed to load rather than as two masks combining. The chain starts from
+	// white, so Replace is what makes it visible on its own; combining is a deliberate second
+	// step through the row's Blend Mode.
+	NewMask.BlendMode = EMixtormatMaskBlendMode::Replace;
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Mask;
 	Child.Mask = MoveTemp(NewMask);
@@ -1453,8 +1447,12 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	{
 		return FReply::Handled();
 	}
-	// Bisecting a freeze: pre-session value while the cause is narrowed down.
-	NewMask.BlendMode = EMixtormatMaskBlendMode::Multiply;
+	// Replace, whatever is already on the stack. A new mask is added to be looked at, and
+	// Multiply against an existing mask shows nothing wherever that mask is dark -- which reads
+	// as the mask having failed to load rather than as two masks combining. The chain starts from
+	// white, so Replace is what makes it visible on its own; combining is a deliberate second
+	// step through the row's Blend Mode.
+	NewMask.BlendMode = EMixtormatMaskBlendMode::Replace;
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
@@ -3757,8 +3755,16 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 	{
 		return FReply::Handled();
 	}
-	// Bisecting a freeze: pre-session value while the cause is narrowed down.
-	NewMask.BlendMode = EMixtormatMaskBlendMode::Multiply;
+	// Replace, whatever is already on the stack. A new mask is added to be looked at, and
+	// Multiply against an existing mask shows nothing wherever that mask is dark -- which reads
+	// as the mask having failed to load rather than as two masks combining. The chain starts from
+	// white, so Replace is what makes it visible on its own; combining is a deliberate second
+	// step through the row's Blend Mode.
+	//
+	// Note this cuts deeper on a group than on a layer: a shared mask is appended after each
+	// member's own masks, so Replace discards what those members had. That is the same rule the
+	// row's Blend Mode exists to change, and it is consistent with every other way a mask arrives.
+	NewMask.BlendMode = EMixtormatMaskBlendMode::Replace;
 	if (FMixtormatLayerChild* Child = AppendGroupChild(GroupId, EMixtormatLayerChildType::Mask))
 	{
 		Child->Mask = MoveTemp(NewMask);
@@ -4104,31 +4110,6 @@ TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
 	return Menu.Build();
 }
 
-// Restored: this was removed alongside the ResolveChild recursion fix while a freeze was being
-// bisected, and the recursion was the cause -- the const ResolveChild called itself. The grid is
-// the same one every other mask picker opens.
-TSharedRef<SWidget> SMixtormat::BuildGroupAddMaskMenu(const FGuid GroupId)
-{
-	MixtormatMenu::FBuilder Menu;
-	if (FMixtormatRegistry::GetMasks().IsEmpty())
-	{
-		Menu.Item(LOCTEXT("MasksUnavailable", "No masks available"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
-	Menu.Widget(
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
-		[
-			BuildMaskGallery([this, GroupId](const FSoftObjectPath& Path)
-			{
-				AddMaskToGroup(GroupId, Path);
-			})
-		]);
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -4242,13 +4223,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 			AddMaskToGroup(GroupId, GroupMaskPath);
 		}))
 		.Enabled(TAttribute<bool>(!GroupMaskPath.IsNull()));
-	// The grid, so a mask can be picked here rather than only in the gallery. Without it the row
-	// above is disabled until something is selected elsewhere, which reads as "groups do not take
-	// masks" rather than as "pick one first".
-	Menu.SubMenu(
-		LOCTEXT("AddMaskToGroupSubMenu", "Mask"),
-		MixtormatIcons::Mask(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddMaskMenu, GroupId));
 	Menu.SubMenu(
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
@@ -4716,59 +4690,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
 		.Destructive();
 
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildAddMaskMenu(const int32 LayerIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	if (FMixtormatRegistry::GetMasks().IsEmpty())
-	{
-		Menu.Item(LOCTEXT("MasksUnavailable", "No masks available"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
-
-	// The same grid the replace menu opens: a mask is picked by looking at it.
-	Menu.Widget(
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
-		[
-			BuildMaskGallery([this, LayerIndex](const FSoftObjectPath& Path)
-			{
-				AssignMaskToLayer(LayerIndex, Path);
-			})
-		]);
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildAddScopedMaskMenu(
-	const int32 LayerIndex,
-	const int32 OwnerChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
-		|| !CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[OwnerChildIndex])
-		|| !CanAddScopedChild(WorkingLayers[LayerIndex], OwnerChildIndex)
-		|| FMixtormatRegistry::GetMasks().IsEmpty())
-	{
-		Menu.Item(LOCTEXT("ScopedMasksUnavailable", "No masks available"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
-
-	Menu.Widget(
-		SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
-		[
-			BuildMaskGallery([this, LayerIndex, OwnerChildIndex](const FSoftObjectPath& Path)
-			{
-				AssignScopedMaskToChild(LayerIndex, OwnerChildIndex, Path);
-			})
-		]);
 	return Menu.Build();
 }
 
@@ -5884,18 +5805,12 @@ FReply SMixtormat::AddLayerValuesMaskToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Mask;
 	Child.Mask.Source = EMixtormatMaskSource::LayerValues;
-	// Bisecting a freeze: back to the pre-session rule while the cause is narrowed down.
-	// First mask on the container replaces, later ones multiply. The chain seeds at black, so
-	// Multiply on a first mask would resolve to nothing -- hence the special case.
-	const bool bHasTopLevelMask = Layer.Children.ContainsByPredicate(
-		[](const FMixtormatLayerChild& Existing)
-		{
-			return Existing.Type == EMixtormatLayerChildType::Mask
-				&& !Existing.ScopeOwnerChildId.IsValid();
-		});
-	Child.Mask.BlendMode = bHasTopLevelMask
-		? EMixtormatMaskBlendMode::Multiply
-		: EMixtormatMaskBlendMode::Replace;
+	// Replace, whatever is already on the stack. A new mask is added to be looked at, and
+	// Multiply against an existing mask shows nothing wherever that mask is dark -- which reads
+	// as the mask having failed to load rather than as two masks combining. The chain starts from
+	// white, so Replace is what makes it visible on its own; combining is a deliberate second
+	// step through the row's Blend Mode.
+	Child.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
 	SelectedLayerIndex = LayerIndex;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
 	SelectedEffectIndex = INDEX_NONE;
