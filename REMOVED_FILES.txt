@@ -1,0 +1,2 @@
+Shaders/Private/MixtormatChipping.usf
+Shaders/Private/MixtormatReduceMinMax.usf

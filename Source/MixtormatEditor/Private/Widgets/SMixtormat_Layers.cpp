@@ -3459,7 +3459,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 					? LOCTEXT("DepositStainEffectName", "Stain Deposit")
 					: LOCTEXT("WetStainEffectName", "Wet Stain");
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
-			case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+			case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
@@ -3475,7 +3475,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 				: LOCTEXT("WetStainEffectName", "Wet Stain");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
-		case EMixtormatEffectType::Chipping: return LOCTEXT("ChippingEffectName", "Chipping");
+		case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
@@ -4931,9 +4931,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGradeToLayer(LayerIndex); }));
 	Menu.Item(
-		LOCTEXT("AddChippingEffect", "Chipping"),
+		LOCTEXT("AddBreakupEffect", "Breakup"),
 		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddChippingToLayer(LayerIndex); }));
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddBreakupToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddWornEdgesEffect", "Worn Edges"),
 		MixtormatIcons::Effect(),
@@ -6256,7 +6256,7 @@ FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)
 	return FReply::Handled();
 }
 
-FReply SMixtormat::AddChippingToLayer(const int32 LayerIndex)
+FReply SMixtormat::AddBreakupToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
 	{
@@ -6266,7 +6266,7 @@ FReply SMixtormat::AddChippingToLayer(const int32 LayerIndex)
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
-	Child.Effect.ProceduralType = EMixtormatEffectType::Chipping;
+	Child.Effect.ProceduralType = EMixtormatEffectType::Breakup;
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -6342,22 +6342,22 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedGrade() const
 	return Effect;
 }
 
-FMixtormatLayerEffect* SMixtormat::GetSelectedChipping()
+FMixtormatLayerEffect* SMixtormat::GetSelectedBreakup()
 {
 	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
 	if (!Effect || !Effect->Effect.IsNull()
-		|| Effect->ProceduralType != EMixtormatEffectType::Chipping)
+		|| Effect->ProceduralType != EMixtormatEffectType::Breakup)
 	{
 		return nullptr;
 	}
 	return Effect;
 }
 
-const FMixtormatLayerEffect* SMixtormat::GetSelectedChipping() const
+const FMixtormatLayerEffect* SMixtormat::GetSelectedBreakup() const
 {
 	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
 	if (!Effect || !Effect->Effect.IsNull()
-		|| Effect->ProceduralType != EMixtormatEffectType::Chipping)
+		|| Effect->ProceduralType != EMixtormatEffectType::Breakup)
 	{
 		return nullptr;
 	}

@@ -209,9 +209,9 @@ private:
 	FMixtormatLayerEffect* GetSelectedGrade();
 	const FMixtormatLayerEffect* GetSelectedGrade() const;
 
-	FMixtormatLayerEffect* GetSelectedChipping();
-	const FMixtormatLayerEffect* GetSelectedChipping() const;
-	FReply AddChippingToLayer(int32 LayerIndex);
+	FMixtormatLayerEffect* GetSelectedBreakup();
+	const FMixtormatLayerEffect* GetSelectedBreakup() const;
+	FReply AddBreakupToLayer(int32 LayerIndex);
 
 	FMixtormatLayerEffect* GetSelectedWornEdges();
 	const FMixtormatLayerEffect* GetSelectedWornEdges() const;
@@ -888,7 +888,7 @@ private:
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildErosionCurvatureModeMenu();
 	TSharedRef<SWidget> BuildGradeControls();
-	TSharedRef<SWidget> BuildChippingControls();
+	TSharedRef<SWidget> BuildBreakupControls();
 	TSharedRef<SWidget> BuildGradeTonemapMenu();
 
 

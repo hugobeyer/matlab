@@ -946,89 +946,105 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildChippingControls()
+TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 {
-	const auto Chip = [this]() { return GetSelectedChipping(); };
-
-	const auto Slider = [this, Chip](
-		const FText& Label,
-		float FMixtormatLayerEffect::* Member,
-		const double Min,
-		const double Max,
-		const double Default,
-		const double Snap,
-		const FText& Hint)
+	const auto Breakup = [this]() { return GetSelectedBreakup(); };
+	const auto Slider = [this, Breakup](
+		const FText& Label, float FMixtormatLayerEffect::* Member,
+		const double Min, const double Max, const double Default, const double Snap,
+		const FText& Hint = FText::GetEmpty())
 	{
-		return MakeMemberSlider<FMixtormatLayerEffect>(Label, Chip, Member, Min, Max, Default, Snap, Hint);
+		return MakeMemberSlider<FMixtormatLayerEffect>(
+			Label, Breakup, Member, Min, Max, Default, Snap, Hint);
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpSurface", "Surface")));
-
-	// The smooth height selection used by the cavity-biased chip picker. Chipping needs no
-	// cell lattice: raised material is wherever the current composited height clears this threshold.
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipGroutLevel", "Grout Level"), &FMixtormatLayerEffect::ChipGroutLevel, 0.0, 1.0, 0.5, 0.005,
-			LOCTEXT("ChipGroutLevelHint", "The height that separates raised material from recess. Chips only live above it, so this is what tells the filter where the bricks, planks or tiles are -- it reads the height you actually composited rather than a lattice of its own.")),
-		Slider(LOCTEXT("ChipGroutSoft", "Softness"), &FMixtormatLayerEffect::ChipGroutSoftness, 0.001, 0.5, 0.08, 0.001,
-			LOCTEXT("ChipGroutSoftHint", "Width of the transition around Grout Level. Wider softens where a chip is allowed to start and lets it fade out near a recess rather than stopping on a hard line."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpCavity", "Cavity")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipCavityInfluence", "Influence"), &FMixtormatLayerEffect::ChipCavityInfluence, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("ChipCavityInfluenceHint", "Mixes local cavity into chip placement. 0 ignores cavity; 1 restricts seeds to the cavity remap.")),
-		Slider(LOCTEXT("ChipCavityOffset", "Offset"), &FMixtormatLayerEffect::ChipCavityOffset, -1.0, 1.0, 0.0, 0.005,
-			LOCTEXT("ChipCavityOffsetHint", "Moves the measured cavity before it is remapped."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipCavityRemapMin", "In Low"), &FMixtormatLayerEffect::ChipCavityRemapMin, -1.0, 1.0, 0.0, 0.005,
-			LOCTEXT("ChipCavityRemapHint", "Cavity mapped to 0..1. Set Low above High to invert the gate.")),
-		Slider(LOCTEXT("ChipCavityRemapMax", "In High"), &FMixtormatLayerEffect::ChipCavityRemapMax, -1.0, 1.0, 0.04, 0.005,
-			LOCTEXT("ChipCavityRemapHint", "Cavity mapped to 0..1. Set Low above High to invert the gate."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpHeight", "Height")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipHeightInfluence", "Influence"), &FMixtormatLayerEffect::ChipHeightInfluence, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("ChipHeightInfluenceHint", "Mixes the layer's current height into seed placement. Grout Level still bounds propagation.")),
-		Slider(LOCTEXT("ChipHeightScale", "Contrast"), &FMixtormatLayerEffect::ChipHeightScale, 0.1, 8.0, 1.0, 0.05,
-			LOCTEXT("ChipHeightScaleHint", "Shapes the smooth height selection before it is mixed with cavity."))));
-
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpChips", "Chips")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipAmount", "Amount"), &FMixtormatLayerEffect::ChipAmount, 0.0, 1.0, 0.45, 0.01,
-			LOCTEXT("ChipAmountHint", "How readily chips start in the smooth height selection, biased toward cavities -- density, not depth. Raising it adds chips rather than deepening existing ones. Placement is gated by this layer's mask; with no mask the height and cavity picker covers the layer. 0 leaves the height untouched and skips the passes entirely.")),
-		Slider(LOCTEXT("ChipSize", "Size"), &FMixtormatLayerEffect::ChipSize, 0.0, 1.0, 0.6, 0.01,
-			LOCTEXT("ChipSizeHint", "How far a chip runs before it dies: about 7 pixels at 0, 16 at the default, and past 200 at 1. The only thing that attenuates a growing chip, so it is the size control -- but Iterations is a hard cap on top of it, and at the top of this range that cap is what you will hit."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ChipDepth", "Depth"), &FMixtormatLayerEffect::ChipDepth, 0.0, 0.25, 0.035, 0.001,
-			LOCTEXT("ChipDepthHint", "How far a fully formed chip cuts into the height. Also scales the normal, so the lighting follows the control.")),
-		Slider(LOCTEXT("ChipIrregularity", "Irregularity"), &FMixtormatLayerEffect::ChipIrregularity, 0.0, 1.0, 0.6, 0.01,
-			LOCTEXT("ChipIrregularityHint", "Weights a swirling noise against the straight-inward direction, and loosens the alignment test that grows a chip. 0 gives clean wedges driven straight in from the edge; 1 gives ragged wandering ones."))));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpShape", "Shape")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("ChipIterations", "Iterations"), Chip, &FMixtormatLayerEffect::ChipIterations, 1.0, 32.0, 16,
-			LOCTEXT("ChipIterationsHint", "A chip advances one pixel per pass, so this is the hard limit on how far one can reach. Set it above where Size runs out or this becomes the thing deciding chip size. Scaled internally by the render resolution, so a preview and an export show the same chip size rather than the same pixel count -- which also means this is the one filter whose cost grows with output size. At 4K the scaling caps at 96 full-resolution passes.")),
+			LOCTEXT("BreakupScale", "Scale"), Breakup,
+			&FMixtormatLayerEffect::BreakupScale, 1.0, 64.0, 6),
+		Slider(LOCTEXT("BreakupDensity", "Density"), &FMixtormatLayerEffect::BreakupDensity,
+			0.0, 1.0, 0.72, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupSize", "Size"), &FMixtormatLayerEffect::BreakupSize,
+			0.05, 0.75, 0.32, 0.005),
+		Slider(LOCTEXT("BreakupStretch", "Stretch"), &FMixtormatLayerEffect::BreakupStretch,
+			1.0, 2.0, 1.6, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupAngularity", "Angularity"), &FMixtormatLayerEffect::BreakupAngularity,
+			0.0, 1.0, 0.72, 0.01),
+		Slider(LOCTEXT("BreakupIrregularity", "Irregularity"), &FMixtormatLayerEffect::BreakupIrregularity,
+			0.0, 1.0, 0.38, 0.01)));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpStructure", "Structure")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupRelief", "Relief"), &FMixtormatLayerEffect::BreakupRelief,
+			-0.5, 0.5, -0.06, 0.0025,
+			LOCTEXT("BreakupReliefHint", "Signed: negative carves/torns, positive raises rock or plates.")),
+		Slider(LOCTEXT("BreakupFold", "Fold"), &FMixtormatLayerEffect::BreakupFold,
+			0.0, 0.5, 0.025, 0.0025)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupCrease", "Crease"), &FMixtormatLayerEffect::BreakupCrease,
+			0.0, 0.5, 0.018, 0.001),
+		Slider(LOCTEXT("BreakupPush", "Push"), &FMixtormatLayerEffect::BreakupPush,
+			-128.0, 128.0, 0.0, 0.25)));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpVariation", "Variation")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupDetail", "Detail"), &FMixtormatLayerEffect::BreakupDetail,
+			0.0, 1.0, 0.5, 0.01),
+		Slider(LOCTEXT("BreakupDistortion", "Distortion"), &FMixtormatLayerEffect::BreakupDistortion,
+			0.0, 32.0, 5.6, 0.1)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupVariation", "Variation"), &FMixtormatLayerEffect::BreakupVariation,
+			0.0, 1.0, 0.25, 0.01),
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
-			LOCTEXT("ChipSeed", "Seed"), Chip, &FMixtormatLayerEffect::ChipSeed, 0.0, 64.0, 1,
-			LOCTEXT("ChipSeedHint", "Reshuffles where chips start and which way they wander, without changing how many there are."))));
+			LOCTEXT("BreakupSeed", "Seed"), Breakup,
+			&FMixtormatLayerEffect::BreakupSeed, 0.0, 9999.0, 1)));
 
-	AddSliderRow(Panel,
-		Slider(LOCTEXT("ChipMaskEdge", "Mask Edge"), &FMixtormatLayerEffect::ChipMaskEdge, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("ChipMaskEdgeHint", "Biases chips toward the edge of this layer's own mask -- where they start, how long they survive and how deep they cut. Inert on a layer whose mask is uniform, and zero by default.")));
-
-	// Chipping contributes no base colour. Its resolved mask only weights surface channels.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ChipGrpOutput", "Output")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpAdvanced", "Advanced")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupSizeVariation", "Size Variation"), &FMixtormatLayerEffect::BreakupSizeVariation,
+			0.0, 0.75, 0.3125, 0.01),
+		Slider(LOCTEXT("BreakupSmoothness", "Smoothness"), &FMixtormatLayerEffect::BreakupSmoothness,
+			0.0, 1.0, 0.30, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("BreakupDistortionFrequency", "Distort Freq"), Breakup,
+			&FMixtormatLayerEffect::BreakupDistortionFrequency, 1.0, 16.0, 3),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("BreakupInvert", "Invert"), Breakup,
+			&FMixtormatLayerEffect::bBreakupInvert)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupFoldWidth", "Fold Width"), &FMixtormatLayerEffect::BreakupFoldWidth,
+			0.25, 128.0, 16.0, 0.25),
+		Slider(LOCTEXT("BreakupCreaseWidth", "Crease Width"), &FMixtormatLayerEffect::BreakupCreaseWidth,
+			0.25, 64.0, 1.25, 0.05)));
 	AddSliderRow(Panel, Slider(
-		LOCTEXT("ChipRoughAmount", "Roughness"), &FMixtormatLayerEffect::ChipRoughnessAmount,
-		-1.0, 1.0, 0.0, 0.01,
-		LOCTEXT("ChipRoughAmountHint", "Signed, mask-weighted offset on composited roughness; positive moves toward rough.")));
+		LOCTEXT("BreakupPushWidth", "Push Width"), &FMixtormatLayerEffect::BreakupPushWidth,
+		1.0, 256.0, 24.0, 0.5));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpOutput", "Output")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BreakupAmount", "Amount"), &FMixtormatLayerEffect::BreakupAmount,
+			0.0, 1.0, 1.0, 0.01),
+		Slider(LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
+			-1.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(
+			LOCTEXT("BreakupMaskTiling", "Mask Tiling"), Breakup,
+			&FMixtormatLayerEffect::BreakupMaskTiling, 1.0, 16.0, 1),
+		MakeMemberToggle<FMixtormatLayerEffect>(
+			LOCTEXT("BreakupMaskInvert", "Invert Mask"), Breakup,
+			&FMixtormatLayerEffect::bBreakupInvertMask)));
 
 	return SNew(SBox)
-		.Visibility_Lambda([this]() { return GetSelectedChipping() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		.Visibility_Lambda([this]() { return GetSelectedBreakup() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ChippingHeading", "CHIPPING"))
+			.Title(LOCTEXT("BreakupHeading", "BREAKUP"))
 			.InitiallyExpanded(true)
 			[
 				Panel
@@ -4452,7 +4468,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]
 					+ SScrollBox::Slot()[BuildLayerBlurControls()]
-					+ SScrollBox::Slot()[BuildChippingControls()]
+					+ SScrollBox::Slot()[BuildBreakupControls()]
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]
 					+ SScrollBox::Slot()[BuildLayerMaskControls()]

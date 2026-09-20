@@ -543,13 +543,13 @@ bool FMixtormatColorIdMaskTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FMixtormatChippingIdentityTest,
-	"Mixtormat.Compositor.ChippingIdentity",
+	FMixtormatBreakupIdentityTest,
+	"Mixtormat.Compositor.BreakupIdentity",
 	EAutomationTestFlags::EditorContext
 		| EAutomationTestFlags::EngineFilter
 		| EAutomationTestFlags::NonNullRHI)
 
-bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
+bool FMixtormatBreakupIdentityTest::RunTest(const FString& Parameters)
 {
 	using namespace MixtormatCompositorTests;
 	(void)Parameters;
@@ -557,270 +557,76 @@ bool FMixtormatChippingIdentityTest::RunTest(const FString& Parameters)
 	FMixtormatGpuCompositor Compositor;
 	if (!TestTrue(TEXT("Compositor initialises"),
 		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
-	{
 		return false;
-	}
-
-	// Craquelure relief carves a surface for chipping to find. Chipping thresholds the height it
-	// is handed against that height's own extent now, so it needs something with a range at all
-	// -- on the flat clear value there are no bricks and correctly nothing happens.
-	FMixtormatLayerChild CrackChild;
-	CrackChild.Type = EMixtormatLayerChildType::Craquelure;
-	CrackChild.Craquelure.Mode = EMixtormatCraquelureMode::Lattice;
-	CrackChild.Craquelure.Scale = 8;
-	CrackChild.Craquelure.Jitter = 0.0f;
-	CrackChild.Craquelure.Weight = 0.0f;
-	CrackChild.Craquelure.ReliefDepth = 0.30f;
-	CrackChild.Craquelure.ReliefWidth = 0.30f;
 
 	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
-		nullptr,
-		TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
-	if (!TestNotNull(TEXT("Chipping placement mask exists"), WhiteMask))
-	{
+		nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+	if (!TestNotNull(TEXT("Breakup placement mask exists"), WhiteMask))
 		return false;
-	}
 
-	FMixtormatLayerChild ChipChild;
-	ChipChild.Type = EMixtormatLayerChildType::Effect;
-	ChipChild.Effect.ProceduralType = EMixtormatEffectType::Chipping;
-	ChipChild.Effect.ChipAmount = 0.0f;
-	ChipChild.Effect.ChipDepth = 0.1f;
-	ChipChild.Effect.ChipMaskTexture =
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+
+	FMixtormatLayerChild BreakupChild;
+	BreakupChild.Type = EMixtormatLayerChildType::Effect;
+	BreakupChild.Effect.ProceduralType = EMixtormatEffectType::Breakup;
+	BreakupChild.Effect.BreakupAmount = 0.0f;
+	BreakupChild.Effect.BreakupRelief = -0.15f;
+	BreakupChild.Effect.BreakupFold = 0.05f;
+	BreakupChild.Effect.BreakupCrease = 0.02f;
+	BreakupChild.Effect.BreakupMaskTexture =
 		TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
-
-	FMixtormatLayer Layer = MakeLayerWithChild(CrackChild);
-	Layer.Children.Add(ChipChild);
+	Layer.Children.Add(BreakupChild);
 
 	TArray<FMixtormatLayer> Layers;
 	Layers.Add(Layer);
 
-	// Amount 0 seeds nothing, so the height has to come back exactly as the relief left it. This
-	// is the Filter contract, and it is the assertion the height normalisation could most easily
-	// have broken: the reduction runs on every composite whether or not anything is carved.
-	if (!TestTrue(TEXT("Chipping at zero composes"),
+	if (!TestTrue(TEXT("Breakup at zero composes"),
 		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
-	{
 		return false;
-	}
 
-	TArray<FLinearColor> WithChipping;
-	if (!TestTrue(TEXT("Height reads back"),
-		ReadHeight(Compositor.GetHeightOutput(), WithChipping)))
-	{
+	TArray<FLinearColor> ZeroHeight;
+	if (!TestTrue(TEXT("Breakup zero height reads"),
+		ReadHeight(Compositor.GetHeightOutput(), ZeroHeight)))
 		return false;
-	}
 
-	Layers[0].Children.RemoveAt(1);
+	Layers[0].Children.RemoveAt(0);
 	if (!TestTrue(TEXT("Reference composes"),
 		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
-	{
 		return false;
-	}
 
-	TArray<FLinearColor> WithoutChipping;
-	if (!TestTrue(TEXT("Reference height reads back"),
-		ReadHeight(Compositor.GetHeightOutput(), WithoutChipping)))
-	{
-		return false;
-	}
-
+	TArray<FLinearColor> ReferenceHeight;
 	TArray<FLinearColor> ReferenceBaseColor;
-	if (!TestTrue(TEXT("Reference base color reads back"),
-		ReadTarget(Compositor.GetBaseColorOutput(), ReferenceBaseColor)))
-	{
+	if (!ReadHeight(Compositor.GetHeightOutput(), ReferenceHeight)
+		|| !ReadTarget(Compositor.GetBaseColorOutput(), ReferenceBaseColor))
 		return false;
-	}
 
-	if (!TestEqual(TEXT("Both reads are the same size"),
-		WithChipping.Num(), WithoutChipping.Num()))
-	{
-		return false;
-	}
+	int32 IdentityDifferences = 0;
+	for (int32 Index = 0; Index < ZeroHeight.Num(); ++Index)
+		IdentityDifferences += ZeroHeight[Index].R == ReferenceHeight[Index].R ? 0 : 1;
+	TestEqual(TEXT("Breakup Amount 0 is exact identity"), IdentityDifferences, 0);
 
-	int32 Differences = 0;
-	float Minimum = TNumericLimits<float>::Max();
-	float Maximum = TNumericLimits<float>::Lowest();
-	for (int32 Index = 0; Index < WithChipping.Num(); ++Index)
-	{
-		const float Value = WithoutChipping[Index].R;
-		Minimum = FMath::Min(Minimum, Value);
-		Maximum = FMath::Max(Maximum, Value);
-		Differences += WithChipping[Index].R == Value ? 0 : 1;
-	}
-
-	// The fixture is only meaningful if the relief actually produced a range for chipping to have
-	// thresholded. Without this the identity check would pass on a flat image for the wrong
-	// reason.
-	TestTrue(TEXT("Relief produced a height range"), Maximum - Minimum > 0.05f);
-	TestEqual(TEXT("Chipping at Amount 0 is the identity"), Differences, 0);
-
-	ChipChild.Effect.ChipAmount = 1.0f;
-
-	// Legacy recipes may still deserialize these deprecated fields. They must be ignored: effects
-	// resolve masks for surface-channel weights and never author base colour.
-	ChipChild.Effect.ChipColor = FLinearColor(1.0f, 0.0f, 1.0f, 1.0f);
-	ChipChild.Effect.ChipColorAmount = 1.0f;
-	Layers[0].Children.Add(ChipChild);
-	if (!TestTrue(TEXT("Active chipping composes"),
+	BreakupChild.Effect.BreakupAmount = 1.0f;
+	Layers[0].Children.Add(BreakupChild);
+	if (!TestTrue(TEXT("Active Breakup composes"),
 		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings())))
-	{
 		return false;
-	}
 
-	TArray<FLinearColor> ActiveChipping;
-	if (!TestTrue(TEXT("Active chipping height reads back"),
-		ReadHeight(Compositor.GetHeightOutput(), ActiveChipping)))
-	{
-		return false;
-	}
-
+	TArray<FLinearColor> ActiveHeight;
 	TArray<FLinearColor> ActiveBaseColor;
-	if (!TestTrue(TEXT("Active chipping base color reads back"),
-		ReadTarget(Compositor.GetBaseColorOutput(), ActiveBaseColor)))
-	{
+	if (!ReadHeight(Compositor.GetHeightOutput(), ActiveHeight)
+		|| !ReadTarget(Compositor.GetBaseColorOutput(), ActiveBaseColor))
 		return false;
-	}
 
-	int32 BaseColorDifferences = 0;
-	for (int32 Index = 0; Index < ActiveBaseColor.Num(); ++Index)
+	int32 HeightChanges = 0;
+	int32 BaseColorChanges = 0;
+	for (int32 Index = 0; Index < ActiveHeight.Num(); ++Index)
 	{
-		BaseColorDifferences += ActiveBaseColor[Index] == ReferenceBaseColor[Index] ? 0 : 1;
+		HeightChanges += FMath::Abs(ActiveHeight[Index].R - ReferenceHeight[Index].R) > 1.0e-4f ? 1 : 0;
+		BaseColorChanges += ActiveBaseColor[Index].Equals(ReferenceBaseColor[Index], 1.0e-5f) ? 0 : 1;
 	}
-	TestEqual(TEXT("Chipping leaves base color unchanged"), BaseColorDifferences, 0);
-
-	int32 CarvedPixels = 0;
-	for (int32 Index = 0; Index < ActiveChipping.Num(); ++Index)
-	{
-		CarvedPixels += ActiveChipping[Index].R < WithoutChipping[Index].R - 1.0e-4f ? 1 : 0;
-	}
-	TestTrue(TEXT("Active chipping carves the height"), CarvedPixels > 0);
-
-	// A neutral later node must not replace an earlier active node in the pending queue.
-	FMixtormatLayerChild NeutralChip = ChipChild;
-	NeutralChip.ChildId = FGuid::NewGuid();
-	NeutralChip.Effect.ChipAmount = 0.0f;
-	Layers[0].Children.Add(NeutralChip);
-	TArray<FLinearColor> ChippingWithNeutral;
-	if (!TestTrue(TEXT("Chained chipping composes"),
-		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
-		|| !TestTrue(TEXT("Chained chipping reads back"),
-			ReadHeight(Compositor.GetHeightOutput(), ChippingWithNeutral)))
-	{
-		return false;
-	}
-	if (!TestEqual(TEXT("Chained height size matches"), ChippingWithNeutral.Num(), ActiveChipping.Num()))
-	{
-		return false;
-	}
-	int32 ChainedDifferences = 0;
-	for (int32 Index = 0; Index < ActiveChipping.Num(); ++Index)
-	{
-		ChainedDifferences += ChippingWithNeutral[Index].R == ActiveChipping[Index].R ? 0 : 1;
-	}
-	TestEqual(TEXT("Neutral chipping preserves earlier active chipping"), ChainedDifferences, 0);
-
-	TStrongObjectPtr<UTexture2D> ChipCoverage(MakeTwoToneIdMap(FColor::White, FColor::Black));
-	if (!TestNotNull(TEXT("Chip coverage exists"), ChipCoverage.Get()))
-	{
-		return false;
-	}
-	FMixtormatLayerChild Scope;
-	Scope.Type = EMixtormatLayerChildType::Mask;
-	Scope.ScopeOwnerChildId = ChipChild.ChildId;
-	Scope.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ChipCoverage.Get()));
-	Scope.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
-	Layers[0].Children.Insert(Scope, 2);
-	TArray<FLinearColor> MaskedChipping;
-	if (!TestTrue(TEXT("Masked chipping composes"),
-		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
-		|| !TestTrue(TEXT("Masked chipping reads back"),
-			ReadHeight(Compositor.GetHeightOutput(), MaskedChipping)))
-	{
-		return false;
-	}
-	if (!TestEqual(TEXT("Masked height size matches"), MaskedChipping.Num(), WithoutChipping.Num()))
-	{
-		return false;
-	}
-	int32 OutsideChanges = 0;
-	int32 InsideCarves = 0;
-	for (int32 Index = 0; Index < MaskedChipping.Num(); ++Index)
-	{
-		const int32 X = Index % TestResolution;
-		if (X >= TestResolution / 2 + 1 && X < TestResolution - 1)
-		{
-			OutsideChanges += MaskedChipping[Index].R == WithoutChipping[Index].R ? 0 : 1;
-		}
-		else if (X > 0 && X < TestResolution / 2 - 1)
-		{
-			InsideCarves += MaskedChipping[Index].R < WithoutChipping[Index].R - 1.0e-4f ? 1 : 0;
-		}
-	}
-	TestEqual(TEXT("Chip growth leaves excluded height unchanged"), OutsideChanges, 0);
-	TestTrue(TEXT("Chip mask still permits carving inside"), InsideCarves > 0);
-
-	// The same chipped owner must blend against, rather than carve into, another layer.
-	FMixtormatLayer Owner = Layer;
-	Owner.LayerId = FGuid::NewGuid();
-	Owner.Children[1].Effect.ChipAmount = 1.0f;
-	TArray<FMixtormatLayer> IsolationLayers = {Layer};
-	TArray<FLinearColor> UnderlyingNormal;
-	TArray<FLinearColor> UnderlyingRAM;
-	if (!ComposeAndWait(Compositor, IsolationLayers, FMixtormatDebugPreviewSettings())
-		|| !ReadTarget(Compositor.GetNormalOutput(), UnderlyingNormal)
-		|| !ReadTarget(Compositor.GetRAMOutput(), UnderlyingRAM))
-	{
-		AddError(TEXT("Could not read underlying channels for isolation test"));
-		return false;
-	}
-	IsolationLayers.Add(Owner);
-	for (const float OwnerOpacity : {0.0f, 0.5f, 1.0f, -1.0f})
-	{
-		IsolationLayers[1].bEnabled = OwnerOpacity >= 0.0f;
-		IsolationLayers[1].Opacity = FMath::Max(OwnerOpacity, 0.0f);
-		TArray<FLinearColor> IsolatedHeight;
-		if (!TestTrue(TEXT("Owner-local chipping composes"),
-			ComposeAndWait(Compositor, IsolationLayers, FMixtormatDebugPreviewSettings()))
-			|| !TestTrue(TEXT("Owner-local height reads back"),
-				ReadHeight(Compositor.GetHeightOutput(), IsolatedHeight)))
-		{
-			return false;
-		}
-		if (!TestEqual(TEXT("Owner-local height size matches"), IsolatedHeight.Num(), ActiveChipping.Num()))
-		{
-			return false;
-		}
-		float MaximumError = 0.0f;
-		for (int32 Index = 0; Index < IsolatedHeight.Num(); ++Index)
-		{
-			const float Expected = FMath::Lerp(
-				WithoutChipping[Index].R, ActiveChipping[Index].R, FMath::Max(OwnerOpacity, 0.0f));
-			MaximumError = FMath::Max(MaximumError, FMath::Abs(IsolatedHeight[Index].R - Expected));
-		}
-		TestTrue(FString::Printf(TEXT("Chipping obeys owner opacity %.1f"), OwnerOpacity),
-			MaximumError <= 0.001f);
-		if (OwnerOpacity <= 0.0f)
-		{
-			TArray<FLinearColor> HiddenNormal;
-			TArray<FLinearColor> HiddenRAM;
-			if (!ReadTarget(Compositor.GetNormalOutput(), HiddenNormal)
-				|| !ReadTarget(Compositor.GetRAMOutput(), HiddenRAM)
-				|| HiddenNormal.Num() != UnderlyingNormal.Num()
-				|| HiddenRAM.Num() != UnderlyingRAM.Num())
-			{
-				AddError(TEXT("Could not read hidden-owner channels"));
-				return false;
-			}
-			int32 ChangedPixels = 0;
-			for (int32 Index = 0; Index < HiddenNormal.Num(); ++Index)
-			{
-				ChangedPixels += HiddenNormal[Index].Equals(UnderlyingNormal[Index], 0.001f)
-					&& HiddenRAM[Index].Equals(UnderlyingRAM[Index], 0.001f) ? 0 : 1;
-			}
-			TestEqual(TEXT("Hidden chipped owner preserves underlying normal and RAM"), ChangedPixels, 0);
-		}
-	}
+	TestTrue(TEXT("Active Breakup changes height"), HeightChanges > 0);
+	TestEqual(TEXT("Breakup does not author base color"), BaseColorChanges, 0);
 
 	return true;
 }

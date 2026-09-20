@@ -620,23 +620,36 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Min/max of a scalar texture, folded to 1x1 over a few passes. Chipping thresholds the
-// composited height against this rather than against the nominal range of the format, which is
-// what makes its Grout Level a position inside the content instead of an absolute value that
-// lands on the clear colour.
-class FMixtormatReduceMinMaxCS final : public FGlobalShader
+// Breakup is two dispatches: the first evaluates the three procedural SDF families once and
+// publishes signed distance + stable per-piece random; the second interprets that field against
+// the incoming height. No iterative state, min/max reduction or ping-pong.
+class FMixtormatBreakupFieldCS final : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FMixtormatReduceMinMaxCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatReduceMinMaxCS, FGlobalShader);
+	DECLARE_GLOBAL_SHADER(FMixtormatBreakupFieldCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBreakupFieldCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, InputSize)
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, FirstPass)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRange)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRange)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(int32, MacroCells)
+		SHADER_PARAMETER(int32, MidCells)
+		SHADER_PARAMETER(int32, DetailCells)
+		SHADER_PARAMETER(float, Density)
+		SHADER_PARAMETER(float, SizeMin)
+		SHADER_PARAMETER(float, SizeMax)
+		SHADER_PARAMETER(float, Stretch)
+		SHADER_PARAMETER(float, Angularity)
+		SHADER_PARAMETER(float, Jitter)
+		SHADER_PARAMETER(int32, OperationMid)
+		SHADER_PARAMETER(int32, OperationDetail)
+		SHADER_PARAMETER(float, BlendSmooth)
+		SHADER_PARAMETER(float, DistortAmount)
+		SHADER_PARAMETER(int32, DistortFrequency)
+		SHADER_PARAMETER(uint32, InvertField)
+		SHADER_PARAMETER(uint32, HasRegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputField)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -646,59 +659,38 @@ public:
 };
 
 IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatReduceMinMaxCS,
-	"/Plugin/Mixtormat/Private/MixtormatReduceMinMax.usf",
-	"MainCS",
+	FMixtormatBreakupFieldCS,
+	"/Plugin/Mixtormat/Private/MixtormatBreakup.usf",
+	"FieldCS",
 	SF_Compute);
 
-// The fold factor the reduction shader uses. Declared here too because the pass count and the
-// intermediate sizes are worked out on this side.
-static constexpr int32 GMixtormatReduceFactor = 16;
-
-// Chipping. A smooth height selection mixed with local cavity seeds chips, which grow inward
-// over N iterations. One dispatch per iteration ping-pongs (core, tip, dirX, dirY); height stays
-// read-only so the selection remains defined by the surface chipping received.
-class FMixtormatChippingCS final : public FGlobalShader
+class FMixtormatBreakupApplyCS final : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FMixtormatChippingCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatChippingCS, FGlobalShader);
+	DECLARE_GLOBAL_SHADER(FMixtormatBreakupApplyCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBreakupApplyCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Iteration)
-		SHADER_PARAMETER(int32, NormalPass)
-		SHADER_PARAMETER(uint32, WriteSurface)
-		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, GroutLevel)
-		SHADER_PARAMETER(float, GroutSoftness)
-		SHADER_PARAMETER(float, ChipAmount)
-		SHADER_PARAMETER(float, ChipSize)
-		SHADER_PARAMETER(float, ChipDepth)
-		SHADER_PARAMETER(float, Irregularity)
-		SHADER_PARAMETER(float, MaskEdge)
-		SHADER_PARAMETER(float, CavityInfluence)
-		SHADER_PARAMETER(float, CavityOffset)
-		SHADER_PARAMETER(float, CavityRemapMin)
-		SHADER_PARAMETER(float, CavityRemapMax)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(float, Relief)
+		SHADER_PARAMETER(float, FoldHeight)
+		SHADER_PARAMETER(float, FoldWidth)
+		SHADER_PARAMETER(float, CreaseWidth)
+		SHADER_PARAMETER(float, CreaseDepth)
+		SHADER_PARAMETER(float, PushAmount)
+		SHADER_PARAMETER(float, PushWidth)
+		SHADER_PARAMETER(float, Variation)
+		SHADER_PARAMETER(float, Strength)
 		SHADER_PARAMETER(uint32, UsePlacementMask)
 		SHADER_PARAMETER(float, PlacementMaskTiling)
 		SHADER_PARAMETER(uint32, InvertMask)
-		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HeightRange)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BreakupField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PlacementMaskTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChipsTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputState)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputChips)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputCoverage)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -708,12 +700,12 @@ public:
 };
 
 IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatChippingCS,
-	"/Plugin/Mixtormat/Private/MixtormatChipping.usf",
-	"MainCS",
+	FMixtormatBreakupApplyCS,
+	"/Plugin/Mixtormat/Private/MixtormatBreakup.usf",
+	"ApplyCS",
 	SF_Compute);
 
-// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
+// Worn Edges is a post-composite height filter.// Worn Edges is a post-composite height filter. One shader layout serves the cheap ID-edge
 // localization passes, the Houdini directional-MIN solve, and final-height normal regeneration.
 class FMixtormatEdgeWearCS final : public FGlobalShader
 {
@@ -1379,19 +1371,18 @@ namespace MixtormatGpuCompositor
 	}
 
 	// Chipping runs on prepared owner channels after that owner's earlier relief filters.
-	void QueuePendingChipping(
+	void QueuePendingBreakup(
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask)
 	{
-		FPendingEffect& PendingChipping = LayerCtx.PendingChippings.AddDefaulted_GetRef();
-
-		// Keep every child and its scope; the local relief stage executes them in order.
-		PendingChipping.Effect = &Effect;
-		PendingChipping.FeatureMask = FeatureMask;
-		PendingChipping.bHasScopedMask = Layer.Children.ContainsByPredicate(
+		FPendingBreakup& Pending = LayerCtx.PendingBreakups.AddDefaulted_GetRef();
+		Pending.Effect = &Effect;
+		Pending.FeatureMask = FeatureMask;
+		Pending.RegionIds = FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+		Pending.bHasScopedMask = Layer.Children.ContainsByPredicate(
 			[&Child](const FChildRenderData& Candidate)
 			{
 				return Candidate.Type == EMixtormatLayerChildType::Mask
@@ -2324,7 +2315,7 @@ namespace MixtormatGpuCompositor
 	}
 
 	// Worn Edges: after Pattern/Ramp and craquelure relief so its input is the real structural
-	// height, before Chipping so later damage sees the rounded surface. Publishes its wear
+	// height, before Breakup so later damage sees the rounded surface. Publishes its wear
 	// coverage as a named mask output.
 	void AddWornEdgesPasses(
 		FMixtormatComposeContext& Ctx,
@@ -2345,7 +2336,7 @@ namespace MixtormatGpuCompositor
 		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatEdgeWearCS> EdgeWearShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		// Worn Edges runs after Pattern/Ramp and craquelure relief so its input is the
-		// actual structural + material height, and before Chipping so later damage sees
+		// actual structural + material height, and before Breakup so later damage sees
 		// the rounded surface. Multiple Worn Edges nodes chain in child order.
 		for (int32 WearIndex = 0; WearIndex < PendingWornEdges.Num(); ++WearIndex)
 		{
@@ -2615,7 +2606,7 @@ namespace MixtormatGpuCompositor
 
 	// Chipping: edge seeds grow against a fixed owner-local height. The caller routes
 	// the output slots to prepared layer channels until all local relief is finished.
-	void AddChippingPasses(
+	void AddBreakupPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer)
@@ -2627,318 +2618,143 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
 		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
-		const int32 WriteIndex = LayerCtx.LayerIndex & 1;
-		const FRDGTextureRef PeelFieldDummy = LayerCtx.PeelFieldDummy;
+		const int32 WriteIndex = LayerIndex & 1;
+		const FRDGTextureRef PlacementDummy = LayerCtx.PeelFieldDummy;
+
+		TShaderMapRef<FMixtormatBreakupFieldCS> FieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		TShaderMapRef<FMixtormatBreakupApplyCS> ApplyShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		TShaderMapRef<FMixtormatChippingCS> ChippingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		TShaderMapRef<FMixtormatReduceMinMaxCS> ReduceMinMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		// The local stage preserves relief order without reading accumulated surface channels.
-		// Amount 0 seeds nothing, so it should also cost nothing rather than run
-		// the iteration loop to produce an unchanged height.
-		for (const FPendingEffect& PendingChipping : LayerCtx.PendingChippings)
+
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+			FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+			1);
+
+		for (int32 BreakupIndex = 0; BreakupIndex < LayerCtx.PendingBreakups.Num(); ++BreakupIndex)
 		{
-			if (!PendingChipping.Effect || PendingChipping.Effect->ChipAmount <= 0.0f)
-			{
+			const FPendingBreakup& PendingBreakup = LayerCtx.PendingBreakups[BreakupIndex];
+			if (!PendingBreakup.Effect || PendingBreakup.Effect->BreakupAmount <= 0.0f)
 				continue;
-			}
 
-			const FEffectRenderData& Chip = *PendingChipping.Effect;
-			const bool bUseLegacyPlacementMask =
-				!PendingChipping.bHasScopedMask && Chip.ChipPlacementMask.IsValid();
-			FRDGTextureRef ChippingPlacementMask = bUseLegacyPlacementMask
-				? RegisterTexture(
-					GraphBuilder,
-					RegisteredTextures,
-					Chip.ChipPlacementMask,
-					TEXT("Mixtormat.ChippingPlacementMask"))
-				: PeelFieldDummy;
+			const FEffectRenderData& Breakup = *PendingBreakup.Effect;
+			const bool bUsePlacementMask =
+				!PendingBreakup.bHasScopedMask && Breakup.BreakupPlacementMask.IsValid();
+			FRDGTextureRef PlacementMask = bUsePlacementMask
+				? RegisterTexture(GraphBuilder, RegisteredTextures, Breakup.BreakupPlacementMask,
+					TEXT("Mixtormat.BreakupPlacementMask"))
+				: PlacementDummy;
 
-			// A chip advances one pixel per iteration, so the authored count is a
-			// reach in pixels. Scaled against a 1024 reference so a 512 preview and
-			// a 2048 export show the same chip size rather than the same pixel
-			// count -- otherwise the preview lies about the result.
-			//
-			// The obvious alternative, a dilated 3x3 gather at stride N, is cheaper
-			// and wrong: at stride 2 the four pixel-parity classes never read each
-			// other, so it produces four interleaved chip networks instead of one.
-			//
-			// This is the one filter whose dispatch count scales with output size.
-			// At 4K with Iterations 24 the clamp binds at 96 full-resolution passes,
-			// which is where a slow export will be coming from.
-			const int32 ChipIterations = FMath::Clamp(
-				FMath::RoundToInt(
-					Chip.ChipIterations *
-					FMath::Max(Request.Resolution.X, Request.Resolution.Y) / 1024.0f),
-				1,
-				96);
-
-			// The state is (core, tip, dirX, dirY) at full float, not half, for the
-			// reason the erosion height chain is R32F. Tip is a geometric decay --
-			// multiplied by 0.72..0.99 every iteration, read back, re-multiplied --
-			// and tested against a hard 0.001 cutoff, so half-float quantisation
-			// near that cutoff turns a chip stopping into a per-pixel coin flip.
-			// The stored direction is worse: it is renormalised every pass and fed
-			// to a hard alignment test at dot > -0.10.
-			const FRDGTextureDesc ChipStateDesc = FRDGTextureDesc::Create2D(
-				Request.Resolution,
-				PF_A32B32G32R32F,
-				FClearValueBinding::Black,
+			const FRDGTextureDesc FieldDesc = FRDGTextureDesc::Create2D(
+				Request.Resolution, PF_G16R16F, FClearValueBinding::Black,
 				TexCreate_ShaderResource | TexCreate_UAV);
-			const FRDGTextureDesc ChipMaskDesc = FRDGTextureDesc::Create2D(
-				Request.Resolution,
-				PF_R16F,
-				FClearValueBinding::Black,
+			const FRDGTextureDesc CoverageDesc = FRDGTextureDesc::Create2D(
+				Request.Resolution, PF_R16F, FClearValueBinding::Black,
 				TexCreate_ShaderResource | TexCreate_UAV);
 
-			FRDGTextureRef ChipState[2] = {
-				GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateA")),
-				GraphBuilder.CreateTexture(ChipStateDesc, TEXT("Mixtormat.ChipStateB"))};
+			FRDGTextureRef Field = GraphBuilder.CreateTexture(FieldDesc, TEXT("Mixtormat.Breakup.Field"));
+			FRDGTextureRef Coverage = GraphBuilder.CreateTexture(CoverageDesc, TEXT("Mixtormat.Breakup.Coverage"));
+			FRDGTextureRef SourceH = GraphBuilder.CreateTexture(
+				HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.SourceH"));
+			FRDGTextureRef ResultH = GraphBuilder.CreateTexture(
+				HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.Height"));
+			FRDGTextureRef ResultN = GraphBuilder.CreateTexture(
+				OutputN[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.Normal"));
+			FRDGTextureRef ResultRAM = GraphBuilder.CreateTexture(
+				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.HeightDerivedRAM"));
 
-			// Growth reads only state, so one full-resolution mask is enough for the
-			// final published coverage.
-			FRDGTextureRef FinalChipMask = GraphBuilder.CreateTexture(
-				ChipMaskDesc, TEXT("Mixtormat.ChipMask"));
+			AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], SourceH);
 
-			// The height the layer composited, held aside. Every iteration reads
-			// this rather than its own output, matching the read-only height bind in
-			// the prototype: a chip must not be able to carve its own brick down
-			// into grout and so stop itself.
-			FRDGTextureRef ChipSourceH = GraphBuilder.CreateTexture(
-				HeightTargets[WriteIndex]->Desc, TEXT("Mixtormat.ChipSourceH"));
-			AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], ChipSourceH);
+			FMixtormatBreakupFieldCS::FParameters* FP =
+				GraphBuilder.AllocParameters<FMixtormatBreakupFieldCS::FParameters>();
+			FP->OutputSize = Request.Resolution;
+			FP->Seed = Breakup.BreakupSeed;
+			FP->MacroCells = Breakup.BreakupMacroCells;
+			FP->MidCells = Breakup.BreakupMidCells;
+			FP->DetailCells = Breakup.BreakupDetailCells;
+			FP->Density = Breakup.BreakupDensity;
+			FP->SizeMin = Breakup.BreakupSizeMin;
+			FP->SizeMax = Breakup.BreakupSizeMax;
+			FP->Stretch = Breakup.BreakupStretch;
+			FP->Angularity = Breakup.BreakupAngularity;
+			FP->Jitter = Breakup.BreakupIrregularity;
+			FP->OperationMid = Breakup.BreakupMidOperation;
+			FP->OperationDetail = Breakup.BreakupDetailOperation;
+			FP->BlendSmooth = Breakup.BreakupSmoothness;
+			FP->DistortAmount = Breakup.BreakupDistortion;
+			FP->DistortFrequency = Breakup.BreakupDistortionFrequency;
+			FP->InvertField = Breakup.bBreakupInvert ? 1u : 0u;
+			FP->HasRegionIds = PendingBreakup.RegionIds != nullptr ? 1u : 0u;
+			FP->RegionIds = PendingBreakup.RegionIds ? PendingBreakup.RegionIds : Ctx.EmptyRegionIds;
+			FP->OutputField = GraphBuilder.CreateUAV(Field);
 
-			// The extent of that height, folded to a single texel. Every brick/grout
-			// decision in the filter is taken on the height remapped through this
-			// pair rather than on the composited value itself.
-			//
-			// Without it Grout Level is an absolute threshold on a target that is
-			// cleared to 0.5, so at its own default it sits exactly on the clear
-			// value, BrickMask comes out identically zero across the image, and the
-			// filter -- every term of which is multiplied by that mask -- returns its
-			// input unchanged. That is the whole reason chipping showed nothing.
-			//
-			// Folded on the GPU and consumed as a texture rather than read back:
-			// this runs inside the same graph as the passes that use it, and a
-			// readback here would stall the frame to move eight bytes.
-			FRDGTextureRef ChipHeightRange = nullptr;
-			{
-				const FRDGTextureDesc RangeDesc1x1 = FRDGTextureDesc::Create2D(
-					FIntPoint(1, 1),
-					PF_A32B32G32R32F,
-					FClearValueBinding::Black,
-					TexCreate_ShaderResource | TexCreate_UAV);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Field", LayerIndex, BreakupIndex),
+				FieldShader, FP, Groups);
 
-				FIntPoint ReduceSize = Request.Resolution;
-				FRDGTextureRef ReduceSource = nullptr;
-				int32 ReducePass = 0;
-				while (ReduceSource == nullptr || ReduceSize != FIntPoint(1, 1))
-				{
-					const FIntPoint NextSize(
-						FMath::DivideAndRoundUp(ReduceSize.X, GMixtormatReduceFactor),
-						FMath::DivideAndRoundUp(ReduceSize.Y, GMixtormatReduceFactor));
+			FMixtormatBreakupApplyCS::FParameters* AP =
+				GraphBuilder.AllocParameters<FMixtormatBreakupApplyCS::FParameters>();
+			AP->OutputSize = Request.Resolution;
+			AP->Relief = Breakup.BreakupRelief;
+			AP->FoldHeight = Breakup.BreakupFold;
+			AP->FoldWidth = Breakup.BreakupFoldWidth;
+			AP->CreaseWidth = Breakup.BreakupCreaseWidth;
+			AP->CreaseDepth = Breakup.BreakupCrease;
+			AP->PushAmount = Breakup.BreakupPush;
+			AP->PushWidth = Breakup.BreakupPushWidth;
+			AP->Variation = Breakup.BreakupVariation;
+			AP->Strength = Breakup.BreakupAmount;
+			AP->UsePlacementMask = bUsePlacementMask ? 1u : 0u;
+			AP->PlacementMaskTiling = Breakup.BreakupMaskTiling;
+			AP->InvertMask =
+				!PendingBreakup.bHasScopedMask && Breakup.bBreakupInvertMask ? 1u : 0u;
+			AP->SourceHeight = SourceH;
+			AP->BreakupField = Field;
+			AP->LayerMask = PendingBreakup.FeatureMask;
+			AP->PlacementMaskTexture = PlacementMask;
+			AP->LinearWrapSampler =
+				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			AP->OutputHeight = GraphBuilder.CreateUAV(ResultH);
+			AP->OutputCoverage = GraphBuilder.CreateUAV(Coverage);
 
-					const FRDGTextureDesc StepDesc = FRDGTextureDesc::Create2D(
-						NextSize,
-						PF_A32B32G32R32F,
-						FClearValueBinding::Black,
-						TexCreate_ShaderResource | TexCreate_UAV);
-					FRDGTextureRef StepTarget = GraphBuilder.CreateTexture(
-						StepDesc, TEXT("Mixtormat.ChipHeightRange"));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Apply", LayerIndex, BreakupIndex),
+				ApplyShader, AP, Groups);
 
-					FMixtormatReduceMinMaxCS::FParameters* RP =
-						GraphBuilder.AllocParameters<FMixtormatReduceMinMaxCS::FParameters>();
-					RP->InputSize = ReduceSize;
-					RP->OutputSize = NextSize;
-					RP->FirstPass = ReducePass == 0 ? 1 : 0;
-					RP->SourceHeight = ChipSourceH;
-
-					// Bound on every pass because the struct requires it and unread on
-					// the first, where the chain has produced nothing yet. Aiming it at
-					// the height would bind an R16F single-channel texture to a float4
-					// slot; the 1x1 is the cheapest thing of the right shape, and RDG
-					// rejects a transient nothing has written, so it is cleared.
-					if (ReducePass == 0)
-					{
-						FRDGTextureRef RangeDummy = GraphBuilder.CreateTexture(
-							RangeDesc1x1, TEXT("Mixtormat.ChipRangeDummy"));
-						AddClearUAVPass(
-							GraphBuilder,
-							GraphBuilder.CreateUAV(RangeDummy),
-							FVector4f(0.0f));
-						RP->SourceRange = RangeDummy;
-					}
-					else
-					{
-						RP->SourceRange = ReduceSource;
-					}
-					RP->OutputRange = GraphBuilder.CreateUAV(StepTarget);
-
-					FComputeShaderUtils::AddPass(
-						GraphBuilder,
-						RDG_EVENT_NAME(
-							"Mixtormat.Chipping.L%d.HeightRange%d", LayerIndex, ReducePass),
-						ReduceMinMaxShader,
-						RP,
-						FIntVector(
-							FMath::DivideAndRoundUp(NextSize.X, 8),
-							FMath::DivideAndRoundUp(NextSize.Y, 8),
-							1));
-
-					ReduceSource = StepTarget;
-					ReduceSize = NextSize;
-					++ReducePass;
-				}
-				ChipHeightRange = ReduceSource;
-			}
-
-			// Full-resolution surface outputs are published only by the final growth pass.
-			// Intermediate passes bind tiny UAVs and write state alone.
-			FRDGTextureRef ChipNormalScratch = GraphBuilder.CreateTexture(
-				OutputN[WriteIndex]->Desc, TEXT("Mixtormat.ChipNormalScratch"));
-			const FRDGTextureDesc TinyScalarDesc = FRDGTextureDesc::Create2D(
-				FIntPoint(1, 1), PF_R16F, FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV);
-			FRDGTextureRef UnusedHeight = GraphBuilder.CreateTexture(
-				TinyScalarDesc, TEXT("Mixtormat.ChipUnusedHeight"));
-			FRDGTextureRef UnusedMask = GraphBuilder.CreateTexture(
-				TinyScalarDesc, TEXT("Mixtormat.ChipUnusedMask"));
-			FRDGTextureRef MaskReadDummy = GraphBuilder.CreateTexture(
-				TinyScalarDesc, TEXT("Mixtormat.ChipMaskReadDummy"));
-			FRDGTextureDesc TinyNormalDesc = OutputN[WriteIndex]->Desc;
-			TinyNormalDesc.Extent = FIntPoint(1, 1);
-			FRDGTextureRef UnusedNormal = GraphBuilder.CreateTexture(
-				TinyNormalDesc, TEXT("Mixtormat.ChipUnusedNormal"));
-
-			// Seed pass writes state A completely but binds state B as its inactive read side.
-			AddClearUAVPass(
-				GraphBuilder, GraphBuilder.CreateUAV(ChipState[1]), FVector4f(0.0f));
-			AddClearUAVPass(
-				GraphBuilder, GraphBuilder.CreateUAV(MaskReadDummy), FVector4f(0.0f));
-
-			const FIntVector ChipGroups(
-				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-				1);
-
-			auto FillChipParameters = [&](FMixtormatChippingCS::FParameters* P)
-			{
-				P->OutputSize = Request.Resolution;
-				P->GroutLevel = Chip.ChipGroutLevel;
-				P->GroutSoftness = Chip.ChipGroutSoftness;
-				P->ChipAmount = Chip.ChipAmount;
-				P->ChipSize = Chip.ChipSize;
-				P->ChipDepth = Chip.ChipDepth;
-				P->Irregularity = Chip.ChipIrregularity;
-				P->MaskEdge = Chip.ChipMaskEdge;
-				P->NormalStrength = HeightDerivedNormalStrength;
-				P->CavityInfluence = Chip.ChipCavityInfluence;
-				P->CavityOffset = Chip.ChipCavityOffset;
-				P->CavityRemapMin = Chip.ChipCavityRemapMin;
-				P->CavityRemapMax = Chip.ChipCavityRemapMax;
-				P->HeightInfluence = Chip.ChipHeightInfluence;
-				P->HeightScale = Chip.ChipHeightScale;
-				P->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
-				P->PlacementMaskTiling = Chip.ChipMaskTiling;
-				P->InvertMask =
-					!PendingChipping.bHasScopedMask && Chip.bChipInvertMask ? 1u : 0u;
-				P->Seed = Chip.ChipSeed;
-				P->SourceHeight = ChipSourceH;
-				P->HeightRange = ChipHeightRange;
-				P->LayerMask = PendingChipping.FeatureMask;
-				P->PlacementMaskTexture = ChippingPlacementMask;
-				P->LinearWrapSampler =
-					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			};
-
-			int32 ChipWrite = 0;
-			for (int32 PassIndex = 0; PassIndex < ChipIterations; ++PassIndex)
-			{
-				ChipWrite = PassIndex & 1;
-				const int32 ChipRead = 1 - ChipWrite;
-
-				FMixtormatChippingCS::FParameters* CP =
-					GraphBuilder.AllocParameters<FMixtormatChippingCS::FParameters>();
-				FillChipParameters(CP);
-				const bool bFinalPass = PassIndex == ChipIterations - 1;
-				CP->Iteration = PassIndex;
-				CP->NormalPass = 0;
-				CP->WriteSurface = bFinalPass ? 1u : 0u;
-				CP->PreviousState = ChipState[ChipRead];
-				CP->ChipsTexture = MaskReadDummy;
-				CP->PreviousNormal = OutputN[WriteIndex];
-				CP->OutputState = GraphBuilder.CreateUAV(ChipState[ChipWrite]);
-				CP->OutputChips = GraphBuilder.CreateUAV(
-					bFinalPass ? FinalChipMask : UnusedMask);
-				CP->OutputHeight = GraphBuilder.CreateUAV(
-					bFinalPass ? HeightTargets[WriteIndex] : UnusedHeight);
-				CP->OutputNormal = GraphBuilder.CreateUAV(UnusedNormal);
-
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Chipping.L%d.P%d", LayerIndex, PassIndex),
-					ChippingShader,
-					CP,
-					ChipGroups);
-			}
-
-			FRDGTextureRef FinalChips = FinalChipMask;
-
-			// Height is authoritative. Derive the chip normal from the final
-			// height delta instead of maintaining a parallel chip-normal solve.
-			FRDGTextureRef ChipRAM = GraphBuilder.CreateTexture(
-				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Chipping.HeightDerivedRAM"));
 			AddHeightDerivedNormalPass(
-				Ctx,
-				ChipSourceH,
-				HeightTargets[WriteIndex],
-				OutputN[WriteIndex],
-				OutputRAM[WriteIndex],
-				ChipNormalScratch,
-				ChipRAM,
-				Request.Resolution,
-				HeightDerivedNormalStrength,
-				0.35f,
-				true,
-				TEXT("Chipping"));
-			AddCopyTexturePass(GraphBuilder, ChipNormalScratch, OutputN[WriteIndex]);
-			FRDGTextureRef FinalChipRAM = ChipRAM;
+				Ctx, SourceH, ResultH, OutputN[WriteIndex], OutputRAM[WriteIndex],
+				ResultN, ResultRAM, Request.Resolution,
+				HeightDerivedNormalStrength, 0.35f, true, TEXT("Breakup"));
 
-			// Roughness is weighted by the resolved chip mask directly, so it remains
-			// independent of chip depth and never touches base colour.
-			if (Chip.ChipRoughnessAmount != 0.0f)
+			FRDGTextureRef FinalRAM = ResultRAM;
+			if (Breakup.BreakupRoughnessAmount != 0.0f)
 			{
 				FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
-					OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.ChipShadeRAM"));
-
+					OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.Breakup.RoughnessRAM"));
 				FMixtormatCarveShadeCS::FParameters* SP =
 					GraphBuilder.AllocParameters<FMixtormatCarveShadeCS::FParameters>();
 				SP->OutputSize = Request.Resolution;
-				SP->RoughnessAmount = Chip.ChipRoughnessAmount;
-
-				// The chip mask is already normalized coverage, so no depth divisor is used.
+				SP->RoughnessAmount = Breakup.BreakupRoughnessAmount;
 				SP->CarveDepth = 1.0f;
-				SP->UseCoverageTexture = 1;
-				SP->CoverageTexture = FinalChips;
-
-				// Required by the erosion path, unread when coverage comes from a texture.
-				SP->SourceHeight = ChipSourceH;
-				SP->CarvedHeight = ChipSourceH;
-
-				SP->SourceRAM = FinalChipRAM;
+				SP->UseCoverageTexture = 1u;
+				SP->CoverageTexture = Coverage;
+				SP->SourceHeight = SourceH;
+				SP->CarvedHeight = ResultH;
+				SP->SourceRAM = FinalRAM;
 				SP->LinearWrapSampler =
 					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 				SP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);
-
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Chipping.L%d.Roughness", LayerIndex),
-					CarveShadeShader,
-					SP,
-					ChipGroups);
-
-				FinalChipRAM = ShadeRAM;
+					RDG_EVENT_NAME("Mixtormat.Breakup.L%d.%d.Roughness", LayerIndex, BreakupIndex),
+					CarveShadeShader, SP, Groups);
+				FinalRAM = ShadeRAM;
 			}
-			AddCopyTexturePass(GraphBuilder, FinalChipRAM, OutputRAM[WriteIndex]);
+
+			AddCopyTexturePass(GraphBuilder, ResultH, HeightTargets[WriteIndex]);
+			AddCopyTexturePass(GraphBuilder, ResultN, OutputN[WriteIndex]);
+			AddCopyTexturePass(GraphBuilder, FinalRAM, OutputRAM[WriteIndex]);
 		}
 	}
 
@@ -2955,7 +2771,7 @@ namespace MixtormatGpuCompositor
 		const int32 WriteIndex = LayerCtx.LayerIndex & 1;
 		TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
 		TShaderMapRef<FMixtormatGradeCS> GradeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		// Grade runs after erosion and chipping, so it grades the final weathered
+		// Grade runs after erosion and Breakup, so it grades the final weathered
 		// surface rather than the one either filter was about to change.
 		// That is the order the panel lists them in and the order a grade wants:
 		// last, over the finished result. Stain is no longer in this list at all --
