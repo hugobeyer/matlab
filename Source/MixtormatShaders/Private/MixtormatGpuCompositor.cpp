@@ -1529,6 +1529,88 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
+			if (LayerChild.Type == EMixtormatLayerChildType::Generator)
+			{
+				// Rewrites the layer's own input height before the composite, so a disabled
+				// layer must not gather it -- the same reason effects are skipped above. An
+				// enabled generator on a hidden layer would carve a surface nobody can see and
+				// still cost the whole solve.
+				const FMixtormatGenerator& Generator = LayerChild.Generator;
+				if (!Layer.bEnabled || !Generator.bEnabled)
+				{
+					continue;
+				}
+
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::Generator;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.Generator.Type = Generator.Type;
+
+				switch (Generator.Type)
+				{
+				case EMixtormatGeneratorType::StrataCarver:
+				{
+					const FMixtormatStrataCarver& Carver = Generator.StrataCarver;
+					FStrataCarverRenderData& Out = ChildData.Generator.StrataCarver;
+					Out.Seed = static_cast<uint32>(FMath::Max(Carver.Seed, 0));
+					Out.Depth = FMath::IsFinite(Carver.Depth)
+						? FMath::Clamp(Carver.Depth, 0.0f, 1.0f) : 0.05f;
+					// The same 1..64 the property and the slider carry, so a driver or a
+					// binding cannot push the solve somewhere the UI says is impossible.
+					// Nothing in the solver is keyed to this number -- the jump schedule is a
+					// function of JumpStart alone -- so the ceiling is a policy, not a limit.
+					Out.Iterations = FMath::Clamp(Carver.Iterations, 1, 64);
+					Out.SeedThreshold = FMath::IsFinite(Carver.SeedThreshold)
+						? FMath::Clamp(Carver.SeedThreshold, 0.0f, 1.0f) : 0.25f;
+					Out.WorleyCells = FMath::Clamp(Carver.Scale, 1, 64);
+					Out.SeedDetail = FMath::Clamp(Carver.SeedDetail, 1, 8);
+					Out.StrataFrequency = FMath::IsFinite(Carver.StrataFrequency)
+						? FMath::Clamp(Carver.StrataFrequency, 0.0f, 64.0f) : 4.0f;
+					Out.StrataAmount = FMath::IsFinite(Carver.StrataAmount)
+						? FMath::Clamp(Carver.StrataAmount, 0.0f, 16.0f) : 3.0f;
+					Out.StrataWarp = FMath::IsFinite(Carver.StrataWarp)
+						? FMath::Clamp(Carver.StrataWarp, 0.0f, 4.0f) : 0.54f;
+					Out.PushAmount = FMath::IsFinite(Carver.PushAmount)
+						? FMath::Clamp(Carver.PushAmount, 0.0f, 4.0f) : 0.5f;
+					Out.MaskInfluence = FMath::IsFinite(Carver.MaskInfluence)
+						? FMath::Clamp(Carver.MaskInfluence, 0.0f, 1.0f) : 1.0f;
+					Out.IDInfluence = FMath::IsFinite(Carver.IDInfluence)
+						? FMath::Clamp(Carver.IDInfluence, 0.0f, 1.0f) : 0.0f;
+
+					Out.StepScale = FMath::IsFinite(Carver.StepScale)
+						? FMath::Clamp(Carver.StepScale, 0.001f, 4.0f) : 0.3f;
+					Out.JumpStart = FMath::Clamp(Carver.JumpStart, 1, 256);
+					Out.MaxValue = FMath::IsFinite(Carver.MaxValue)
+						? FMath::Max(Carver.MaxValue, 1.0f) : 256.0f;
+					Out.WorleyJitter = FMath::IsFinite(Carver.WorleyJitter)
+						? FMath::Clamp(Carver.WorleyJitter, 0.0f, 1.0f) : 1.0f;
+					Out.BandFrequency = FMath::IsFinite(Carver.BandFrequency)
+						? FMath::Clamp(Carver.BandFrequency, 0.0f, 16.0f) : 1.0f;
+					Out.CostAmount = FMath::IsFinite(Carver.CostAmount)
+						? FMath::Clamp(Carver.CostAmount, 0.0f, 32.0f) : 5.0f;
+					Out.PushDecay = FMath::IsFinite(Carver.PushDecay)
+						? FMath::Clamp(Carver.PushDecay, 0.0f, 1.0f) : 0.2f;
+					Out.OperationSeed = static_cast<uint32>(FMath::Max(Carver.OperationSeed, 0));
+					Out.Bias = FMath::IsFinite(Carver.Bias)
+						? FMath::Clamp(Carver.Bias, 0.001f, 1.0f) : 0.68f;
+					Out.RemapInMin = FMath::IsFinite(Carver.RemapInMin)
+						? FMath::Clamp(Carver.RemapInMin, 0.0f, 1.0f) : 0.0f;
+					Out.RemapInMax = FMath::IsFinite(Carver.RemapInMax)
+						? FMath::Clamp(Carver.RemapInMax, 0.0f, 1.0f) : 1.0f;
+					Out.RemapOutMin = FMath::IsFinite(Carver.RemapOutMin)
+						? FMath::Clamp(Carver.RemapOutMin, 0.0f, 1.0f) : 0.0f;
+					Out.RemapOutMax = FMath::IsFinite(Carver.RemapOutMax)
+						? FMath::Clamp(Carver.RemapOutMax, 0.0f, 1.0f) : 1.0f;
+					Out.ClampMin = FMath::IsFinite(Carver.ClampMin)
+						? FMath::Clamp(Carver.ClampMin, 0.0f, 1.0f) : 0.0f;
+					Out.ClampMax = FMath::IsFinite(Carver.ClampMax)
+						? FMath::Clamp(Carver.ClampMax, 0.0f, 1.0f) : 1.0f;
+					break;
+				}
+				}
+				continue;
+			}
+
 			if (LayerChild.Type == EMixtormatLayerChildType::CombineId)
 			{
 				const FMixtormatCombineIdFilter& Combine = LayerChild.CombineId;
@@ -1824,7 +1906,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						});
 					if (Layer.Children.IsValidIndex(OwnerIndex)
 						&& OwnerIndex < SourceChildIndex
-						&& Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect)
+					&& (Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect
+						|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator))
 					{
 						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 					}
@@ -3071,6 +3154,21 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
 					DebugMask = CombinedMask;
 					AddLayerHeightSmoothPasses(Ctx, LayerCtx, Layer);
+
+					// GENERATORS, and this line is the whole reason the category is not an
+					// Effect. It runs against the layer's resolved input height -- after the
+					// height smooth has had its turn at it, after the region producers have
+					// published their ID maps, and before a single mask child or the composite
+					// itself has read it. A generator rewrites LayerCtx.LayerInputHeight and
+					// LayerCtx.LayerInputN in place, exactly as AddLayerHeightSmoothPasses does
+					// one line above, and the composite at AddLayerCompositePass then reads the
+					// carved surface as though it had been authored that way.
+					//
+					// Moving this below AddLayerCompositePass, where the deferred effect filters
+					// live, would make the carve a decal painted over a finished layer: the
+					// height blend, the mask chain's curvature and every height-driven mask
+					// would all have already run against the uncarved surface.
+					AddGeneratorPasses(Ctx, LayerCtx, Layer);
 					FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 
 
@@ -3107,6 +3205,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 					{
 						const FChildRenderData& Child = Layer.Children[ChildIndex];
+						if (Child.Type == EMixtormatLayerChildType::Generator)
+						{
+							// Already run, before this loop started. It has no mask to
+							// contribute and no effect target to write, so falling through to
+							// the effect branch below would read Child.Effect on a child that
+							// never had one.
+							continue;
+						}
 						if (Child.Type == EMixtormatLayerChildType::Filter
 							|| Child.Type == EMixtormatLayerChildType::PatternId
 							|| Child.Type == EMixtormatLayerChildType::HsvFilter

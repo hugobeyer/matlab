@@ -679,6 +679,13 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		{
 			Child.CombineId.bEnabled = false;
 		}
+		else if (Child.Type == EMixtormatLayerChildType::Generator)
+		{
+			// The wrapper, not the payload. Bypass means "this node does not run", and the
+			// gather branch tests FMixtormatGenerator::bEnabled before it looks at the kind --
+			// so one flag turns off every generator rather than one per payload.
+			Child.Generator.bEnabled = false;
+		}
 		else
 		{
 			Child.Mask.bEnabled = false;

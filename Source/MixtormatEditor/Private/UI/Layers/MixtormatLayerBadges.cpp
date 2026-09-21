@@ -205,6 +205,17 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.RandomId.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::Generator)
+		{
+			// The generator kind, not a blend mode -- a generator emits no coverage and never
+			// joins the mask chain, so the slot that would carry one names what is running.
+			switch (Child.Generator.Type)
+			{
+			case EMixtormatGeneratorType::StrataCarver:
+				return LOCTEXT("GeneratorBadgeStrataCarver", "STRATA");
+			}
+			return LOCTEXT("GeneratorBadgeUnknown", "GEN");
+		}
 		if (Child.Type == EMixtormatLayerChildType::Curvature)
 		{
 			// The field it reads, not the invariant: two curvature nodes on one mask most often
@@ -241,7 +252,12 @@ namespace MixtormatLayerBadges
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::Effect:    return LOCTEXT("ChildKindEffect", "FX");
-		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GEN");
+		// GMSK, not GEN. GEN now belongs to the GENERATORS category below, and the two nodes are
+		// easy to confuse in exactly the way a shared badge would encourage: a generated mask
+		// emits coverage into the mask chain, a generator rewrites the layer's input height
+		// before the composite. Badge text only -- EMixtormatLayerChildType::Generated is
+		// unchanged and nothing serialised moves.
+		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GMSK");
 		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
 		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
 		case EMixtormatLayerChildType::Filter:    return LOCTEXT("ChildKindFilter", "FILT");
@@ -252,6 +268,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
+		case EMixtormatLayerChildType::Generator: return LOCTEXT("ChildKindGenerator", "GEN");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

@@ -1,0 +1,652 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+// Strata Carver -- the first GENERATORS node.
+//
+// It removes material from the layer's input height:
+//
+//     CarvedHeight = SourceHeight - Carve * Depth
+//
+// SourceHeight is taken exactly as authored. Nothing normalises it first, deliberately: a plank
+// whose height lives in 0.4..0.6 and a cliff whose height covers 0..1 must produce the same
+// absolute groove for one Depth value, and normalising would redefine Depth as "a fraction of
+// whatever contrast this map happened to have". That is also what lets the node work on a
+// perfectly flat layer, where a normalised source has no range to be a fraction of at all.
+//
+// Three kernels:
+//
+//     SeedCS       builds the Worley family fractals, the propagation cost and the initial
+//                  distance state, once
+//     PropagateCS  one step of the solve, ping-ponged
+//     ResolveCS    raw distance -> display remap -> carve -> height, once
+//
+// The split matters. The OpenCL prototype keeps its raw recursive distance separate from the
+// remapping it displays, and so does this: Bias, the two remaps and the clamp live only in
+// ResolveCS. Scrubbing them reshapes a finished field rather than changing what propagated, so
+// the solve does not re-run and the picture does not reorganise under the slider.
+
+// ---------------------------------------------------------------------------------------------
+// Worley families
+//
+// Five of them, and they are not interchangeable -- each reads as a different rock. Euclidean
+// gives rounded nodules, F2-F1 gives the seams between them, Chebyshev gives blocky jointing,
+// Manhattan gives diagonal fracture, and the banded family gives concentric bedding rings, which
+// is the one that actually reads as sediment.
+//
+// All five come out of one 3x3 lattice scan: the offset to each feature point is computed once
+// and four metrics are taken off it, so four fractals cost barely more than one. The banded
+// family is derived from the Euclidean distance at read time and costs nothing to store.
+// ---------------------------------------------------------------------------------------------
+
+#define MIXTORMAT_STRATA_FAMILY_COUNT 5
+
+#define MIXTORMAT_STRATA_FAMILY_EUCLIDEAN 0
+#define MIXTORMAT_STRATA_FAMILY_F2F1      1
+#define MIXTORMAT_STRATA_FAMILY_CHEBYSHEV 2
+#define MIXTORMAT_STRATA_FAMILY_MANHATTAN 3
+#define MIXTORMAT_STRATA_FAMILY_BANDED    4
+
+// Normalisers so the four stored families land in roughly the same 0..1 range. A Chebyshev
+// distance inside a unit cell tops out near 1, a Manhattan one near 1.5, and leaving them
+// unscaled would make the family choice read as a brightness change rather than as a shape
+// change -- which is exactly what per-iteration family selection must not do.
+#define MIXTORMAT_STRATA_NORM_EUCLIDEAN 1.0f
+#define MIXTORMAT_STRATA_NORM_CHEBYSHEV 1.0f
+#define MIXTORMAT_STRATA_NORM_MANHATTAN 0.6666667f
+#define MIXTORMAT_STRATA_NORM_F2F1      1.4142136f
+
+// The four stored metrics at one point of one lattice. Wrapped by MixtormatCellPoint, so the
+// lattice closes on its period and the field tiles by construction rather than by a wrapped
+// input -- see the note at the top of MixtormatCellular.ush, which is explicit that the two are
+// different constructions and one cannot be retrofitted into the other.
+float4 MixtormatStrataFamilies(float2 P, int2 Period, uint Seed, float Jitter)
+{
+	const int2 Base = (int2)floor(P);
+
+	float BestEuclid = 1.0e30f;
+	float SecondEuclid = 1.0e30f;
+	float BestCheb = 1.0e30f;
+	float BestManh = 1.0e30f;
+
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Cell = Base + int2(x, y);
+			const float2 D = MixtormatCellPoint(Cell, Period, Seed, Jitter) - P;
+
+			const float Euclid = length(D);
+			if (Euclid < BestEuclid)
+			{
+				SecondEuclid = BestEuclid;
+				BestEuclid = Euclid;
+			}
+			else if (Euclid < SecondEuclid)
+			{
+				SecondEuclid = Euclid;
+			}
+
+			BestCheb = min(BestCheb, max(abs(D.x), abs(D.y)));
+			BestManh = min(BestManh, abs(D.x) + abs(D.y));
+		}
+	}
+
+	return float4(
+		saturate(BestEuclid * MIXTORMAT_STRATA_NORM_EUCLIDEAN),
+		saturate((SecondEuclid - BestEuclid) * MIXTORMAT_STRATA_NORM_F2F1),
+		saturate(BestCheb * MIXTORMAT_STRATA_NORM_CHEBYSHEV),
+		saturate(BestManh * MIXTORMAT_STRATA_NORM_MANHATTAN));
+}
+
+// The banded family, off the Euclidean channel. Rings inside each cell rather than a global
+// stripe: a global one would be a second strata control fighting StrataFrequency, whereas rings
+// that follow the cell read as a nodule's own growth layers.
+float MixtormatStrataBanded(float Euclidean, float BandFrequency)
+{
+	const float Rings = Euclidean * max(BandFrequency, 0.0f);
+	return abs(frac(Rings) * 2.0f - 1.0f);
+}
+
+float MixtormatStrataFamilyValue(float4 Families, int Family, float BandFrequency)
+{
+	if (Family == MIXTORMAT_STRATA_FAMILY_F2F1)
+	{
+		return Families.y;
+	}
+	if (Family == MIXTORMAT_STRATA_FAMILY_CHEBYSHEV)
+	{
+		return Families.z;
+	}
+	if (Family == MIXTORMAT_STRATA_FAMILY_MANHATTAN)
+	{
+		return Families.w;
+	}
+	if (Family == MIXTORMAT_STRATA_FAMILY_BANDED)
+	{
+		return MixtormatStrataBanded(Families.x, BandFrequency);
+	}
+	return Families.x;
+}
+
+// The length of a propagation step, measured in the family this iteration is using.
+//
+// This is the other half of automatic family selection, and the half that changes the *shape* of
+// the solve rather than the shape of the seed: under Chebyshev a diagonal step is as cheap as an
+// axial one and fronts spread as squares; under Manhattan diagonals are twice the price and
+// fronts spread as diamonds; under Euclidean they spread as circles. Cycling the metric is what
+// stops the finished field from carrying the signature of any one of them.
+float MixtormatStrataStepLength(float2 Offset, int Family)
+{
+	if (Family == MIXTORMAT_STRATA_FAMILY_CHEBYSHEV)
+	{
+		return max(abs(Offset.x), abs(Offset.y));
+	}
+	if (Family == MIXTORMAT_STRATA_FAMILY_MANHATTAN)
+	{
+		return abs(Offset.x) + abs(Offset.y);
+	}
+	// Euclidean, F2-F1 and banded all measure length the same way. The first two differ in what
+	// they *seed*, not in how far a step is, and a banded metric would make a step's cost depend
+	// on where the ring fell, which is a strata effect and already lives in the phase term.
+	return length(Offset);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Strata phase
+//
+// The bedding planes, as a 0..1 sawtooth across the tile. Frequency is rounded to a whole number
+// of bands, which is what makes the field tile exactly: a fractional band count leaves a partial
+// band at the wrap and the seam shows as a sheared stripe.
+//
+// The warp is MixtormatPeriodicCurlWarp -- periodic by construction, like everything else here,
+// so bending the bands cannot break the tile.
+// ---------------------------------------------------------------------------------------------
+float MixtormatStrataPhase(float2 UV, float Frequency, float Warp, uint Seed)
+{
+	const float Bands = max(round(Frequency), 1.0f);
+	float2 Warped = UV;
+	if (Warp > 0.0f)
+	{
+		Warped = MixtormatPeriodicCurlWarp(UV, (int)Bands, Seed + 7717u, Warp);
+	}
+	return frac(Warped.y * Bands);
+}
+
+// How far apart two phases are, on the circle. Plain subtraction reads 0.98 and 0.02 as almost a
+// whole band apart when they are neighbours across a wrap, which puts a false bedding plane at
+// every band boundary.
+float MixtormatStrataPhaseDelta(float A, float B)
+{
+	const float D = abs(A - B);
+	return min(D, 1.0f - D) * 2.0f;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Shared bindings
+// ---------------------------------------------------------------------------------------------
+
+int2 SolveSize;
+int2 OutputSize;
+
+uint Seed;
+float SeedThreshold;
+int WorleyCells;
+int SeedDetail;
+float WorleyJitter;
+float BandFrequency;
+
+float StrataFrequency;
+float StrataAmount;
+float StrataWarp;
+
+float StepScale;
+float MaxValue;
+float CostAmount;
+float PushAmount;
+float PushDecay;
+
+float MaskInfluence;
+float IDInfluence;
+uint HasScopedMask;
+uint HasRegionIds;
+
+SamplerState LinearWrapSampler;
+
+// ---------------------------------------------------------------------------------------------
+// Mask reduction
+//
+// The scoped mask is authored at composition resolution and the solve runs on a 512 grid, so at
+// 4K one solve texel covers an 8x8 block of it. Point-sampling that block -- which is what a
+// bilinear fetch at the solve grid amounts to when the ratio is this large -- reads one texel in
+// sixty-four, so a mask with detail finer than the block either aliases into a crawling pattern
+// or disappears entirely: a one-texel-wide painted line at 4K has a one-in-eight chance of being
+// seen at all, and which eighth it lands in changes with resolution.
+//
+// A box average over the whole footprint is the fix, and it is the right answer rather than a
+// cheap one. What the solve needs from the mask is coverage, not a sample: a thin line should
+// arrive as "an eighth of this cell is masked" and go on steering seed probability and cost in
+// proportion, which is exactly what the average gives. The mask is still read at full resolution
+// in ResolveCS, so the carve's own edge stays as sharp as the mask that shaped it -- only the
+// solve sees the reduced copy.
+//
+// The footprint is a power of two (the divisor is chosen that way), so the block tiles the image
+// exactly and every full-resolution texel is counted once.
+// ---------------------------------------------------------------------------------------------
+
+Texture2D<float> FullResMask;
+RWTexture2D<float> OutSolveMask;
+int2 MaskFootprint;
+
+[numthreads(8, 8, 1)]
+void MaskReduceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const int2 Footprint = max(MaskFootprint, int2(1, 1));
+	const int2 Base = P * Footprint;
+
+	float Sum = 0.0f;
+	for (int y = 0; y < Footprint.y; ++y)
+	{
+		for (int x = 0; x < Footprint.x; ++x)
+		{
+			// Wrapped, like every other fetch here. The footprint lands inside the image for
+			// every solve texel when the divisor divides the resolution, which it always does;
+			// the wrap is what keeps that true rather than assumed.
+			const int2 Q = int2(
+				MixtormatWrapI(Base.x + x, OutputSize.x),
+				MixtormatWrapI(Base.y + y, OutputSize.y));
+			Sum += FullResMask.Load(int3(Q, 0));
+		}
+	}
+
+	OutSolveMask[P] = saturate(Sum / float(max(Footprint.x * Footprint.y, 1)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Seed pass
+// ---------------------------------------------------------------------------------------------
+
+Texture2D<float> SeedMask;
+Texture2D<uint> SeedRegionIds;
+
+RWTexture2D<float4> OutFamilies;
+RWTexture2D<float2> OutAux;   // r = propagation cost, g = seed scalar
+RWTexture2D<float2> OutDist;  // r = raw distance, g = carried push
+
+// Salts. Four independent draws off one region seed, so a region that happens to carve deeply is
+// not also always the one that seeds first.
+#define MIXTORMAT_SALT_STRATA_SEED  0x3b9aca07u
+#define MIXTORMAT_SALT_STRATA_COST  0x5851f42du
+#define MIXTORMAT_SALT_STRATA_PHASE 0x14057b7eu
+#define MIXTORMAT_SALT_STRATA_DEPTH 0x9e3779b1u
+
+// The internal fractal seed: broad natural noise, not pixel noise.
+//
+// Octaves double the cell count, so every octave is still an integer lattice over the tile and
+// the sum tiles as exactly as the first term does. The lowest octave is WorleyCells across the
+// whole tile -- three by default -- which is what keeps the result geological instead of grainy.
+// Amplitude halves, so the first octave dominates and the detail octaves only roughen its edges.
+float4 MixtormatStrataSeedFractal(float2 UV, int Cells, int Octaves, uint NoiseSeed, float Jitter)
+{
+	float4 Sum = 0.0f;
+	float Amplitude = 1.0f;
+	float Norm = 0.0f;
+	int2 Period = int2(max(Cells, 1), max(Cells, 1));
+
+	for (int Octave = 0; Octave < Octaves; ++Octave)
+	{
+		Sum += MixtormatStrataFamilies(
+			UV * float2(Period), Period, NoiseSeed + (uint)Octave * 131u, Jitter) * Amplitude;
+		Norm += Amplitude;
+		Amplitude *= 0.5f;
+		Period *= 2;
+	}
+
+	return Sum / max(Norm, 1.0e-6f);
+}
+
+[numthreads(8, 8, 1)]
+void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(P) + 0.5f) / float2(SolveSize);
+
+	const float4 FamilyValues =
+		MixtormatStrataSeedFractal(UV, WorleyCells, SeedDetail, Seed, WorleyJitter);
+
+	// The seed scalar. Which family decides where carving starts is itself a function of Seed, so
+	// reseeding changes the character of the origins and not only their placement.
+	const int SeedFamily =
+		(int)(MixtormatHashU(Seed * 0x9e3779b9u + 0x2545f491u) % (uint)MIXTORMAT_STRATA_FAMILY_COUNT);
+	const float SeedScalar =
+		saturate(MixtormatStrataFamilyValue(FamilyValues, SeedFamily, BandFrequency));
+
+	// The scoped mask, already box-reduced to this grid by MaskReduceCS. Loaded, not sampled:
+	// the reduction has put one value per solve texel there that already accounts for every
+	// full-resolution texel under it, and sampling it again would only blur what is already
+	// correct. The full-resolution copy is read separately in ResolveCS, where it shapes the
+	// finished amplitude and its own edge has to stay sharp.
+	const float MaskValue = HasScopedMask != 0
+		? saturate(SeedMask.Load(int3(P, 0)))
+		: 1.0f;
+	const float MaskGate = lerp(1.0f, MaskValue, saturate(MaskInfluence));
+
+	// Region IDs. Branched, not multiplied by zero: the requirement is that influence 0 has
+	// *exactly* no effect, and a lerp against a hashed value still perturbs the last bits.
+	// Every pixel of one region draws the same numbers, because the draw is off the region id
+	// and nothing else -- this is per-region variation, never per-pixel noise.
+	float IdSeedBias = 0.0f;
+	float IdCostScale = 1.0f;
+	if (IDInfluence > 0.0f && HasRegionIds != 0)
+	{
+		// The ID map is produced at full resolution by a pattern or cluster node in the same
+		// layer. Point-sampled at the solve grid's pixel centre: interpolating ids would give a
+		// third id halfway between two regions that names neither of them.
+		const int2 IdPixel = (int2)(UV * float2(OutputSize));
+		const uint RegionId = SeedRegionIds.Load(int3(
+			clamp(IdPixel, int2(0, 0), OutputSize - 1), 0));
+		if (RegionId != MIXTORMAT_INVALID_REGION)
+		{
+			const uint RegionSeed = MixtormatRegionSeed(RegionId, Seed);
+			const float DrawSeed =
+				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_SEED);
+			const float DrawCost =
+				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_COST);
+			IdSeedBias = (DrawSeed - 0.5f) * 0.35f * IDInfluence;
+			IdCostScale = lerp(1.0f, 0.4f + 1.2f * DrawCost, IDInfluence);
+		}
+	}
+
+	// Seed probability. The mask raises the threshold past reachable where coverage is absent,
+	// so carving genuinely never starts outside it rather than starting and being masked away
+	// afterwards -- which is the difference between localised weathering and a cutout.
+	const float Threshold =
+		lerp(saturate(SeedThreshold) + IdSeedBias, 1.0001f, (1.0f - MaskGate));
+	const bool bSeeded = SeedScalar >= Threshold;
+
+	// Propagation cost. Cheap where the seed field is strong, so fronts run down the channels the
+	// noise already laid out; squared in the mask term so coverage confines the spread steeply
+	// while still fading rather than cutting.
+	float Cost = 1.0f + CostAmount * (1.0f - SeedScalar);
+	Cost /= max(MaskGate * MaskGate, 1.0e-3f);
+	Cost *= IdCostScale;
+
+	OutFamilies[P] = FamilyValues;
+	OutAux[P] = float2(Cost, SeedScalar);
+	OutDist[P] = float2(bSeeded ? 0.0f : MaxValue, 0.0f);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Propagation pass
+//
+// One iteration. The stride, the Worley family and the combining operation are chosen on the CPU
+// from OperationSeed and the iteration index and arrive as uniforms, so the inner loop carries no
+// per-pixel hashing at all.
+//
+// Sixteen taps: the eight local directions at this stride, and eight knight-style offsets. The
+// knights are what stop the field from crystallising onto the axes -- with only the eight
+// neighbours, a Chebyshev or Manhattan iteration lays down a visible square or diamond grain that
+// no amount of later smoothing removes.
+// ---------------------------------------------------------------------------------------------
+
+Texture2D<float2> PrevDist;
+Texture2D<float4> FamilyField;
+Texture2D<float2> Aux;
+
+RWTexture2D<float2> NextDist;
+
+int IterationStride;
+int IterationFamily;
+int IterationOp;
+
+#define MIXTORMAT_STRATA_OP_MIN        0
+#define MIXTORMAT_STRATA_OP_HYSTERESIS 1
+#define MIXTORMAT_STRATA_OP_SMOOTH     2
+#define MIXTORMAT_STRATA_OP_PAIR       3
+#define MIXTORMAT_STRATA_OP_COUNT      4
+
+int2 MixtormatStrataWrap(int2 P, int2 Size)
+{
+	return int2(MixtormatWrapI(P.x, Size.x), MixtormatWrapI(P.y, Size.y));
+}
+
+[numthreads(8, 8, 1)]
+void PropagateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(P) + 0.5f) / float2(SolveSize);
+
+	const float2 Current = PrevDist.Load(int3(P, 0));
+	const float2 CentreAux = Aux.Load(int3(P, 0));
+	const float CentreCost = CentreAux.x;
+	const float CentrePhase =
+		MixtormatStrataPhase(UV, StrataFrequency, StrataWarp, Seed);
+
+	// The family value at this pixel scales the local cost. This is where per-iteration family
+	// selection bites: the same seed field resists differently depending on which metric is
+	// being asked about it, so successive iterations carve along different grains.
+	const float4 CentreFamilies = FamilyField.Load(int3(P, 0));
+	const float CentreFamilyValue =
+		MixtormatStrataFamilyValue(CentreFamilies, IterationFamily, BandFrequency);
+	const float FamilyCost = lerp(0.75f, 1.75f, CentreFamilyValue);
+
+	const int Stride = max(IterationStride, 1);
+
+	// Eight local directions, then eight knights.
+	const int2 Offsets[16] =
+	{
+		int2(-1, -1), int2(0, -1), int2(1, -1),
+		int2(-1,  0),              int2(1,  0),
+		int2(-1,  1), int2(0,  1), int2(1,  1),
+		int2(-1, -2), int2(1, -2), int2(-2, -1), int2(2, -1),
+		int2(-2,  1), int2(2,  1), int2(-1,  2), int2(1,  2)
+	};
+
+	float Best = Current.x;
+	float BestPush = Current.y;
+	float SecondBest = Current.x;
+
+	[unroll]
+	for (int Tap = 0; Tap < 16; ++Tap)
+	{
+		const int2 Offset = Offsets[Tap] * Stride;
+		const int2 Q = MixtormatStrataWrap(P + Offset, SolveSize);
+		const float2 Neighbour = PrevDist.Load(int3(Q, 0));
+
+		// Nothing to carry from a cell the front has not reached. Skipping is not only cheaper,
+		// it is necessary: MaxValue plus a step is still an unreachable distance, and letting it
+		// compete would let rounding decide which unreached cell is "nearest".
+		if (Neighbour.x >= MaxValue)
+		{
+			continue;
+		}
+
+		const float2 QUV = (float2(Q) + 0.5f) / float2(SolveSize);
+		const float NeighbourCost = Aux.Load(int3(Q, 0)).x;
+		const float NeighbourPhase =
+			MixtormatStrataPhase(QUV, StrataFrequency, StrataWarp, Seed);
+
+		// Crossing a bedding plane is expensive; running along one is not. This is the whole
+		// mechanism behind the layered read -- without it the solve is an ordinary distance
+		// field and the strata controls only tint it afterwards.
+		const float PhaseDelta = MixtormatStrataPhaseDelta(CentrePhase, NeighbourPhase);
+		const float StrataTerm = StrataAmount * PhaseDelta;
+		const float Along = 1.0f - saturate(PhaseDelta);
+
+		const float StepLength = MixtormatStrataStepLength(float2(Offset), IterationFamily);
+		const float LocalCost = 0.5f * (CentreCost + NeighbourCost) * FamilyCost;
+		const float StepCost = StepLength * StepScale * LocalCost * (1.0f + StrataTerm);
+
+		// The recursive push. A front that has been running along a bedding plane accumulates
+		// credit and gets cheaper, so it keeps running along that plane instead of spreading
+		// evenly -- that recursion is what turns a distance field into strata.
+		//
+		// The credit is capped at three quarters of the step it is discounting. Without the cap
+		// a front with enough accumulated push would take negative steps, the field would
+		// descend without bound and the solve would never settle; with it every step still
+		// raises the distance by at least a quarter of its cost, so the field is monotone and
+		// converges however many iterations run.
+		const float PushIn = Neighbour.y * (1.0f - PushDecay) + PushAmount * Along;
+		const float Credit = min(PushIn * StepScale * 0.5f, StepCost * 0.75f);
+		const float Candidate = Neighbour.x + max(StepCost - Credit, 0.0f);
+
+		if (Candidate < Best)
+		{
+			SecondBest = Best;
+			Best = Candidate;
+			BestPush = PushIn;
+		}
+		else if (Candidate < SecondBest)
+		{
+			SecondBest = Candidate;
+		}
+	}
+
+	// Operation cycling. Which of these an iteration runs is drawn from OperationSeed, so the
+	// same seed field solves into a different rock without reseeding it.
+	float Result = Best;
+	if (IterationOp == MIXTORMAT_STRATA_OP_HYSTERESIS)
+	{
+		// A candidate has to beat what is already here by a margin before it takes. Fronts meet
+		// in a crisp seam instead of a gradient, which is what a fracture looks like.
+		const float Margin = StepScale * 0.25f;
+		Result = (Best < Current.x - Margin) ? Best : Current.x;
+	}
+	else if (IterationOp == MIXTORMAT_STRATA_OP_SMOOTH)
+	{
+		// Rounds where two fronts meet, using the same polynomial smooth-min the cellular
+		// header defines, so a smoothed junction here matches a rounded cell corner elsewhere.
+		Result = MixtormatSmoothMin(Best, Current.x, StepScale);
+	}
+	else if (IterationOp == MIXTORMAT_STRATA_OP_PAIR)
+	{
+		// Averages the two best arrivals. Where one front clearly wins this is a no-op; where
+		// two arrive together it widens the seam into a bed rather than a line.
+		Result = (SecondBest < MaxValue) ? 0.5f * (Best + SecondBest) : Best;
+	}
+
+	// The convergence guard, and the reason the three shaping operations above are safe. They
+	// decide *which* arrival wins and by how much; this keeps the field non-increasing over the
+	// solve, so an operation that would otherwise raise a settled distance cannot make the
+	// iteration count change the answer in an unbounded way.
+	Result = min(Result, Current.x);
+
+	NextDist[P] = float2(Result, (Result < Current.x) ? BestPush : Current.y);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Resolve pass
+//
+// Raw distance in, carved height out. Everything cosmetic happens here and only here.
+//
+// The solve runs on a coarse grid -- a propagated distance is a large-scale quantity and solving
+// it at 4K would cost sixteen times the work for a field that is smooth at that scale anyway --
+// so the distance is sampled up bilinearly. What that softens is the band edges, and those are
+// analytic: the same strata phase is re-evaluated here at full resolution and folded back into
+// the field, which puts the crisp edge back without re-solving anything.
+// ---------------------------------------------------------------------------------------------
+
+Texture2D<float2> SolvedDist;
+Texture2D<float> SourceHeight;
+Texture2D<float> ResolveMask;
+Texture2D<uint> ResolveRegionIds;
+
+RWTexture2D<float> OutHeight;
+
+float Depth;
+float Bias;
+float RemapInMin;
+float RemapInMax;
+float RemapOutMin;
+float RemapOutMax;
+float CarveClampMin;
+float CarveClampMax;
+
+// Gamma-style pull about the midpoint. 0.5 is the identity, below darkens, above brightens --
+// the same curve the prototype ends on, and the reason Bias is authored as 0..1 rather than as
+// an exponent nobody can picture.
+float MixtormatStrataBias(float X, float B)
+{
+	const float SafeB = clamp(B, 0.001f, 0.999f);
+	return pow(saturate(X), log(SafeB) / log(0.5f));
+}
+
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+
+	const float Distance = SolvedDist.SampleLevel(LinearWrapSampler, UV, 0.0f).x;
+
+	// Normalised once, at the end. Up to this point the field has been a raw recursive distance
+	// in solver units and nothing has rescaled it.
+	float Carve = 1.0f - saturate(Distance / max(MaxValue, 1.0e-4f));
+
+	// Full-resolution band detail, folded in before the remap so Bias and the remaps shape the
+	// banded field rather than a smooth one.
+	if (StrataAmount > 0.0f)
+	{
+		const float Phase = MixtormatStrataPhase(UV, StrataFrequency, StrataWarp, Seed);
+		const float Band = abs(Phase * 2.0f - 1.0f);
+		Carve = saturate(Carve + (Band - 0.5f) * saturate(StrataAmount * 0.0625f) * Carve);
+	}
+
+	Carve = MixtormatStrataBias(Carve, Bias);
+	Carve = saturate((Carve - RemapInMin) / max(RemapInMax - RemapInMin, 1.0e-5f));
+	Carve = lerp(RemapOutMin, RemapOutMax, Carve);
+	Carve = clamp(Carve, min(CarveClampMin, CarveClampMax), max(CarveClampMin, CarveClampMax));
+
+	// Amplitude. This is the third place Mask Influence acts -- it has already moved seed
+	// probability and propagation cost -- and it is the only one of the three that is a plain
+	// multiply. On its own it would be a cutout; on top of the other two it is what lets the
+	// carve fade out at the mask's own edge.
+	if (MaskInfluence > 0.0f && HasScopedMask != 0)
+	{
+		const float MaskValue = saturate(ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+		Carve *= lerp(1.0f, MaskValue, saturate(MaskInfluence));
+	}
+
+	// Per-region depth variation. Branched for the same reason as in the seed pass: at 0 the ID
+	// map must have exactly no effect, not an effect too small to see.
+	if (IDInfluence > 0.0f && HasRegionIds != 0)
+	{
+		const uint RegionId = ResolveRegionIds.Load(int3(P, 0));
+		if (RegionId != MIXTORMAT_INVALID_REGION)
+		{
+			const uint RegionSeed = MixtormatRegionSeed(RegionId, Seed);
+			const float DrawDepth =
+				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_DEPTH);
+			Carve *= lerp(1.0f, 0.5f + DrawDepth, IDInfluence);
+		}
+	}
+
+	// Subtracted, never added. A carver removes material, and the height it reads is the layer's
+	// own input taken exactly as authored -- see the note at the top of this file.
+	OutHeight[P] = SourceHeight.Load(int3(P, 0)) - saturate(Carve) * Depth;
+}

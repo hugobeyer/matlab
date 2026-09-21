@@ -37,7 +37,12 @@ namespace
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
-		return Child.Type == EMixtormatLayerChildType::Effect;
+		// Generators as well as effects. A mask scoped under a generator is the whole of its
+		// Mask Influence: it is the seed source when there is one, and it steers seed
+		// probability, propagation cost and carve amplitude. Without this the control exists
+		// with nothing to read.
+		return Child.Type == EMixtormatLayerChildType::Effect
+			|| Child.Type == EMixtormatLayerChildType::Generator;
 	}
 
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
@@ -1215,6 +1220,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RampId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature))
 	{
@@ -1353,6 +1359,8 @@ void SMixtormat::SyncSelectedLayerControls()
 								? LOCTEXT("SelectedPatternIdMaps", "PATTERN IDS · INTEGER DATA · UV · RELIEF")
 							: Child.Type == EMixtormatLayerChildType::CombineId
 								? LOCTEXT("SelectedCombineIdMaps", "COMBINE IDS · INTEGER DATA")
+							: Child.Type == EMixtormatLayerChildType::Generator
+								? LOCTEXT("SelectedGeneratorMaps", "GENERATOR · LAYER HEIGHT + NORMAL")
 								: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
@@ -3584,6 +3592,15 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("CraquelureChildName", "Craquelure");
 	}
+	if (Child.Type == EMixtormatLayerChildType::Generator)
+	{
+		switch (Child.Generator.Type)
+		{
+		case EMixtormatGeneratorType::StrataCarver:
+			return LOCTEXT("StrataCarverChildName", "Strata Carver");
+		}
+		return LOCTEXT("GeneratorChildName", "Generator");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Filter)
 	{
 		return LOCTEXT("ClusterFilterChildName", "Cluster IDs");
@@ -3666,6 +3683,14 @@ FText SMixtormat::GetLayerChildSourceText(
 	}
 	if (Child.Type == EMixtormatLayerChildType::Mask)
 	{
+		if (Owner.Type == EMixtormatLayerChildType::Generator)
+		{
+			// Not "GATES". A mask under an effect decides where that effect is allowed to act;
+			// a mask under a generator steers it -- seed placement, propagation cost, carve
+			// depth -- and only reaches a plain multiply at the very end. Calling both gating
+			// would teach the wrong thing about Mask Influence on the one row where it matters.
+			return LOCTEXT("GeneratorSteerMask", "STEERS · GEN");
+		}
 		return IsFlowWarp(Owner)
 			? LOCTEXT("FlowWarpGateMask", "GATES · WARP")
 			: LOCTEXT("EffectGateMask", "GATES · FX");
@@ -3686,6 +3711,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 	// mask it actually is now answers on hover, at a size worth looking at.
 	return SNew(SImage)
 		.Image(Child.Type == EMixtormatLayerChildType::Effect
+				// A generator takes the effect glyph rather than the generated-mask one. It is
+				// neither, but of the two it is the structural node -- it writes height -- and
+				// the generated glyph on this row would suggest coverage.
+				|| Child.Type == EMixtormatLayerChildType::Generator
 			? MixtormatIcons::Effect()
 			: (Child.Type == EMixtormatLayerChildType::Generated
 					|| Child.Type == EMixtormatLayerChildType::Craquelure
@@ -3974,6 +4003,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::RampId:      Child.RampId.bEnabled = !Child.RampId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
 	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
+	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
 	default:                                    Child.Mask.bEnabled = !Child.Mask.bEnabled; break;
 	}
 	RefreshLayeredPreview();
@@ -3995,6 +4025,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
+	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
 	default:                                    return Child.Mask.bEnabled;
 	}
 }
@@ -4309,6 +4340,35 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildGroupAddGeneratorMenu(const FGuid GroupId)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, GroupId]()
+		{
+			AddGeneratorToGroup(GroupId, EMixtormatGeneratorType::StrataCarver);
+		}));
+	return Menu.Build();
+}
+
+// Not AddProceduralChildToGroup: that one only sets Type, and a generator needs its kind set as
+// well before the child is of any use. AppendGroupChild hands back the child precisely so a
+// creator that has more than one field to fill can fill it.
+FReply SMixtormat::AddGeneratorToGroup(
+	const FGuid GroupId,
+	const EMixtormatGeneratorType GeneratorType)
+{
+	if (FMixtormatLayerChild* Child =
+		AppendGroupChild(GroupId, EMixtormatLayerChildType::Generator))
+	{
+		Child->Generator.Type = GeneratorType;
+		FinishGroupChildEdit(GroupId);
+	}
+	return FReply::Handled();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildGroupAddFilterMenu(const FGuid GroupId)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -4489,6 +4549,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 		LOCTEXT("AddFilterChild", "Filter"),
 		MixtormatIcons::Generated(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddFilterMenu, GroupId));
+	// The same category the layer menu offers, and it works for the same reason every other
+	// shared child does: BuildEffectiveLayers appends a remapped copy of the group's stack to
+	// each member before composition, so one generator authored here carves every member's own
+	// input height with that member's own scoped masks and region IDs rebound to it.
+	Menu.SubMenu(
+		LOCTEXT("AddGeneratorChild", "Generators"),
+		MixtormatIcons::Effect(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddGeneratorMenu, GroupId));
 	Menu.Item(
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
@@ -4641,7 +4709,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::RandomId
 			|| Child.Type == EMixtormatLayerChildType::RampId
 			|| Child.Type == EMixtormatLayerChildType::PatternId
-			|| Child.Type == EMixtormatLayerChildType::CombineId;
+			|| Child.Type == EMixtormatLayerChildType::CombineId
+			// A generator joins them for the row, not for the semantics. What the shared
+			// procedural row gives it is the right ones: an enable toggle that writes its own
+			// flag, a context menu with no blend mode on it, and the shared duplicate/instance
+			// items. It is not a mask and must not fall through to the mask row, which would
+			// toggle FMixtormatLayerChild::Mask on a child that has none.
+			|| Child.Type == EMixtormatLayerChildType::Generator;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Container->AddChild(
@@ -4763,6 +4837,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
 	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
+	case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
 	default:                                  return Child.Mask.bEnabled;
 	}
 }
@@ -4809,6 +4884,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		LOCTEXT("AddFilterChild", "Filter"),
 		MixtormatIcons::Generated(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFilterMenu, LayerIndex));
+	// Its own category beside Effect and Filter, not inside either. What separates it is *when*
+	// it runs: an effect filters the layer after it has composited, a generator rewrites the
+	// height the layer composites from. Filing it under Effect would be the first step toward
+	// implementing it as one.
+	Menu.SubMenu(
+		LOCTEXT("AddGeneratorChild", "Generators"),
+		MixtormatIcons::Effect(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorMenu, LayerIndex));
 	Menu.Item(
 		LOCTEXT("AddGeneratedChild", "Generated Mask"),
 		MixtormatIcons::Generated(),
@@ -4984,6 +5067,17 @@ TSharedRef<SWidget> SMixtormat::BuildAddFilterMenu(const int32 LayerIndex)
 		LOCTEXT("AddCombineIdChild", "Combine IDs"),
 		MixtormatIcons::Generated(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCombineIdToLayer(LayerIndex); }))
+		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddGeneratorMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddStrataCarverToLayer(LayerIndex); }))
 		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
 	return Menu.Build();
 }
@@ -5176,11 +5270,42 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
 			? ResolveChild(LayerIndex, ChildIndex)->Type
 			: EMixtormatLayerChildType::Mask;
+	// A generator has no blend mode either, and for a stronger reason than a filter does: a
+	// filter at least emits something into the layer, whereas a generator rewrites the height
+	// the layer is built from before any blending exists to take part in.
+	const bool bGenerator = RowType == EMixtormatLayerChildType::Generator;
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
 		|| RowType == EMixtormatLayerChildType::PatternId
-		|| RowType == EMixtormatLayerChildType::CombineId;
+		|| RowType == EMixtormatLayerChildType::CombineId
+		|| bGenerator;
+
+	// The scoped mask, which is the whole of Mask Influence. Offered here rather than in the
+	// effect menu because a generator uses the procedural row -- but it is the same
+	// AssignScopedMaskToChild an effect calls, validated through the same CanOwnScopedMasks, so
+	// a mask dragged onto a generator and a mask added from this menu land identically.
+	if (bGenerator)
+	{
+		const bool bCanNestChild = WorkingLayers.IsValidIndex(LayerIndex)
+			&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
+		const FSoftObjectPath SelectedGeneratorMaskPath = SelectedMaskPath;
+		const FText SelectedGeneratorMaskName = SelectedLibraryMaskName.IsEmpty()
+			? LOCTEXT("NoSelectedGeneratorMask", "Select Mask from Gallery")
+			: SelectedLibraryMaskName;
+		Menu.Item(
+			FText::Format(
+				LOCTEXT("AddSelectedMaskToGenerator", "Add Gating Mask · {0}"),
+				SelectedGeneratorMaskName),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda(
+				[this, LayerIndex, ChildIndex, SelectedGeneratorMaskPath]()
+			{
+				AssignScopedMaskToChild(LayerIndex, ChildIndex, SelectedGeneratorMaskPath);
+			}))
+			.Enabled(TAttribute<bool>(!SelectedGeneratorMaskPath.IsNull() && bCanNestChild));
+		Menu.Separator();
+	}
 
 	if (RowType == EMixtormatLayerChildType::PatternId)
 	{
@@ -5254,6 +5379,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::CombineId:
 			RemoveLabel = LOCTEXT("RemoveCombineIdChild", "Remove Combine IDs");
+			break;
+		case EMixtormatLayerChildType::Generator:
+			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
 			break;
 		default:
 			break;
@@ -5955,6 +6083,76 @@ const FMixtormatPatternFilter* SMixtormat::GetSelectedPatternId() const
 	return Child.Type == EMixtormatLayerChildType::PatternId ? &Child.PatternId : nullptr;
 }
 
+// A generator, added to the end of the layer's chain like any other child.
+//
+// Where it lands in the row order matters less than it does for a mask or an effect: every
+// generator on a layer runs together, before the child loop, in authored order among themselves.
+// What the row position does decide is which Region ID map it sees -- FindRegionIdsAbove takes
+// the nearest producer above it -- and which masks are scoped beneath it.
+FReply SMixtormat::AddStrataCarverToLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
+	Child.Type = EMixtormatLayerChildType::Generator;
+	Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
+	SetLayerExpanded(LayerIndex, true);
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver()
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::Generator
+		&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
+		? &Child.Generator.StrataCarver
+		: nullptr;
+}
+
+const FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver() const
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::Generator
+		&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
+		? &Child.Generator.StrataCarver
+		: nullptr;
+}
+
+// True for any generator, whatever kind. The inspector's two visibility lists ask this rather
+// than each generator's own getter, so adding a generator does not mean remembering to extend
+// two lambdas that fail silently -- a missed entry shows the new panel *and* the layer's own
+// sections at the same time, which is what a forgotten one looks like.
+bool SMixtormat::HasSelectedGenerator() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::Generator;
+}
+
+FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::Generator ? &Child.Generator : nullptr;
+}
+
 FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
 {
 	if (!WorkingLayers.IsValidIndex(LayerIndex))
@@ -6177,7 +6375,8 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::RandomId
 		&& ChildType != EMixtormatLayerChildType::RampId
 		&& ChildType != EMixtormatLayerChildType::PatternId
-		&& ChildType != EMixtormatLayerChildType::CombineId)
+		&& ChildType != EMixtormatLayerChildType::CombineId
+		&& ChildType != EMixtormatLayerChildType::Generator)
 	{
 		return FReply::Handled();
 	}
@@ -6255,6 +6454,12 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::CombineId:
 		Child.CombineId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::Generator:
+		// The wrapper's flag. The kind chooses a payload; whether the node runs at all is one
+		// question for the whole category, and the gather branch asks it before it looks at
+		// the kind.
+		Child.Generator.bEnabled = bEnabled;
 		break;
 	default:
 		return;

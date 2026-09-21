@@ -86,6 +86,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return EMixtormatParameterOwnerType::RampId;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
+		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
 	}
@@ -106,6 +107,15 @@ namespace
 		case EMixtormatLayerChildType::RampId: return &Child.RampId;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
 		case EMixtormatLayerChildType::Curvature: return &Child.Curvature;
+		// The payload, not the wrapper -- it has to be the same pointer ChildOwner exposes for
+		// EMixtormatParameterOwnerType::Generator, or an address built from a generator slider
+		// would fail to find the child it came from.
+		case EMixtormatLayerChildType::Generator:
+			switch (Child.Generator.Type)
+			{
+			case EMixtormatGeneratorType::StrataCarver: return &Child.Generator.StrataCarver;
+			}
+			return nullptr;
 		default: return nullptr;
 		}
 	}

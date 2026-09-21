@@ -271,6 +271,19 @@ private:
 	TSharedRef<SWidget> BuildPatternModeMenu();
 	TSharedRef<SWidget> BuildGridModeMenu();
 
+	// GENERATORS. One creator, one getter pair and one panel per generator; HasSelectedGenerator
+	// and GetSelectedGenerator are the category-wide pair the inspector's visibility lists and
+	// the header chip use, so adding a generator does not mean extending them.
+	FReply AddStrataCarverToLayer(int32 LayerIndex);
+	FMixtormatStrataCarver* GetSelectedStrataCarver();
+	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
+	TSharedRef<SWidget> BuildStrataCarverControls();
+	TSharedRef<SWidget> BuildAddGeneratorMenu(int32 LayerIndex);
+	TSharedRef<SWidget> BuildGroupAddGeneratorMenu(FGuid GroupId);
+	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
+	bool HasSelectedGenerator() const;
+	FMixtormatGenerator* GetSelectedGenerator();
+
 	FReply AddRampIdToLayer(int32 LayerIndex);
 	FReply AddCombineIdToLayer(int32 LayerIndex);
 	FMixtormatCombineIdFilter* GetSelectedCombineId();

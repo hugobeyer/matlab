@@ -650,6 +650,49 @@ namespace MixtormatGpuCompositor
 		bool bSubtract = false;
 	};
 
+	// Strata Carver, already reduced to what the four dispatches read. Worley Cells is derived
+	// from the artist-facing Scale here rather than per pass, and JumpStart is left in texels --
+	// the pass turns it into a schedule.
+	struct FStrataCarverRenderData
+	{
+		uint32 Seed = 3;
+		float Depth = 0.05f;
+		int32 Iterations = 64;
+		float SeedThreshold = 0.25f;
+		int32 WorleyCells = 3;
+		int32 SeedDetail = 3;
+		float StrataFrequency = 4.0f;
+		float StrataAmount = 3.0f;
+		float StrataWarp = 0.54f;
+		float PushAmount = 0.5f;
+		float MaskInfluence = 1.0f;
+		float IDInfluence = 0.0f;
+
+		float StepScale = 0.3f;
+		int32 JumpStart = 24;
+		float MaxValue = 256.0f;
+		float WorleyJitter = 1.0f;
+		float BandFrequency = 1.0f;
+		float CostAmount = 5.0f;
+		float PushDecay = 0.2f;
+		uint32 OperationSeed = 6;
+		float Bias = 0.68f;
+		float RemapInMin = 0.0f;
+		float RemapInMax = 1.0f;
+		float RemapOutMin = 0.0f;
+		float RemapOutMax = 1.0f;
+		float ClampMin = 0.0f;
+		float ClampMax = 1.0f;
+	};
+
+	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second
+	// generator adds a payload beside StrataCarver and a case in AddGeneratorPasses.
+	struct FGeneratorRenderData
+	{
+		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+		FStrataCarverRenderData StrataCarver;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -667,6 +710,7 @@ namespace MixtormatGpuCompositor
 		FRandomIdRenderData RandomId;
 		FRampIdRenderData RampId;
 		FCombineIdRenderData CombineId;
+		FGeneratorRenderData Generator;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
@@ -1297,6 +1341,21 @@ namespace MixtormatGpuCompositor
 		const int32 ChildIndex,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
+
+	// MixtormatGpuGeneratorPasses.cpp -- the GENERATORS category.
+	//
+	// One entry point for the whole category, called once per layer from the layer loop between
+	// AddRegionProducerPasses and the child loop. That position is the contract: region IDs and
+	// the layer's resolved input already exist, and nothing has composited yet, so a generator
+	// rewrites LayerCtx.LayerInputHeight and LayerCtx.LayerInputN in place and every later stage
+	// -- the mask chain, the composite, the deferred effect filters -- reads the modified
+	// surface. Running it from inside the child loop beside the effects would put it after some
+	// mask children and before others for no reason; running it after the composite would make
+	// it an Effect, which is the one thing this category is defined against.
+	void AddGeneratorPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
 
 	// MixtormatGpuRunoffPasses.cpp -- the procedural streak. Its own translation unit rather
 	// than joining the two above: Runoff is deliberately not a simulation, and filing it beside

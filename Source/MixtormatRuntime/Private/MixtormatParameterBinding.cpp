@@ -75,6 +75,7 @@ namespace
 		case EMixtormatParameterOwnerType::RampId: return Child.Type == EMixtormatLayerChildType::RampId;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
 		case EMixtormatParameterOwnerType::Curvature: return Child.Type == EMixtormatLayerChildType::Curvature;
+		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
 				|| Child.Type == EMixtormatLayerChildType::Craquelure
@@ -105,6 +106,20 @@ namespace
 		case EMixtormatParameterOwnerType::RampId: View.ConstData = &Child.RampId; View.Struct = FMixtormatRampIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
+		// The generator's *payload*, not the FMixtormatGenerator wrapper. A binding names a
+		// parameter by FName on a flat struct, so exposing the wrapper would put every
+		// generator's controls behind a nested property the address system cannot reach. The
+		// kind selects which payload is exposed, so two generators can both own a parameter
+		// called Depth without either address resolving to the other.
+		case EMixtormatParameterOwnerType::Generator:
+			switch (Child.Generator.Type)
+			{
+			case EMixtormatGeneratorType::StrataCarver:
+				View.ConstData = &Child.Generator.StrataCarver;
+				View.Struct = FMixtormatStrataCarver::StaticStruct();
+				break;
+			}
+			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) View.ConstData = &Child.Mask.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::Craquelure) View.ConstData = &Child.Craquelure.Shaping;
@@ -139,6 +154,16 @@ namespace
 		case EMixtormatParameterOwnerType::RampId: View.MutableData = &Child.RampId; View.ConstData = &Child.RampId; View.Struct = FMixtormatRampIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Blur: View.MutableData = &Child.Blur; View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Curvature: View.MutableData = &Child.Curvature; View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
+		case EMixtormatParameterOwnerType::Generator:
+			switch (Child.Generator.Type)
+			{
+			case EMixtormatGeneratorType::StrataCarver:
+				View.MutableData = &Child.Generator.StrataCarver;
+				View.ConstData = &Child.Generator.StrataCarver;
+				View.Struct = FMixtormatStrataCarver::StaticStruct();
+				break;
+			}
+			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) { View.MutableData = &Child.Mask.Shaping; View.ConstData = &Child.Mask.Shaping; }
 			else if (Child.Type == EMixtormatLayerChildType::Craquelure) { View.MutableData = &Child.Craquelure.Shaping; View.ConstData = &Child.Craquelure.Shaping; }

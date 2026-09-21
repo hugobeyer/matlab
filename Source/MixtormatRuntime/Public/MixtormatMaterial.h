@@ -141,7 +141,11 @@ enum class EMixtormatParameterOwnerType : uint8
 	RampId UMETA(DisplayName = "Ramp From IDs"),
 	MaskShaping UMETA(DisplayName = "Mask Shaping"),
 	Blur UMETA(DisplayName = "Blur"),
-	Curvature UMETA(DisplayName = "Curvature")
+	Curvature UMETA(DisplayName = "Curvature"),
+	// Appended, like everything above it. The owner names the *category*, not the generator
+	// kind: the parameter view resolves to whichever payload FMixtormatGenerator::Type selects,
+	// so a second generator gets its parameters bound without a second owner value.
+	Generator UMETA(DisplayName = "Generator")
 };
 
 UENUM(BlueprintType)
@@ -2387,6 +2391,199 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	int32 Seed = 1;
 };
 
+// Which generator an FMixtormatGenerator carries.
+//
+// Serialised by value on the child. Append only -- a new generator takes the next number and
+// brings its own payload struct; nothing existing moves.
+UENUM(BlueprintType)
+enum class EMixtormatGeneratorType : uint8
+{
+	StrataCarver UMETA(DisplayName = "Strata Carver")
+};
+
+// Strata Carver: sedimentary/weathered carving driven by a propagated distance solve.
+//
+// It modifies the layer's input height. It is not a mask generator that happens to be wired to
+// height -- the final height is
+//
+//     CarvedHeight = SourceHeight - CarveMask * Depth * Influence
+//
+// with SourceHeight taken exactly as authored. Nothing normalises the incoming height before
+// the carve, because a wood plank whose height sits in 0.4..0.6 and a rock whose height covers
+// 0..1 must come out with the same *absolute* groove depth for one Depth value; normalising
+// first would make Depth mean "a fraction of whatever contrast this map happened to have".
+//
+// The solver is a recursive distance propagation over a Worley-seeded field, ported in concept
+// from the Houdini/OpenCL prototype. Its raw recursive distance is kept separate from display
+// remapping throughout: Bias, the two remaps and the clamp are applied once at the very end, so
+// scrubbing them reshapes a finished field instead of changing what propagated.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
+{
+	GENERATED_BODY()
+
+	// ---- Main ----
+
+	// Drives both the internal fractal seed and every per-iteration draw the solver makes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0"))
+	int32 Seed = 3;
+
+	// How far the carve cuts, in the same units as the layer's height. Subtracted, never added:
+	// a carver removes material.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Depth = 0.05f;
+
+	// Propagation steps. The jump schedule halves its stride inside this budget rather than
+	// consuming one iteration per texel, so a high count buys depth of recursion, not reach.
+	//
+	// 1..64 everywhere -- the data model, the gather clamp and the inspector slider all agree,
+	// so the stored value and the one the slider can reach are the same number. 64 is the
+	// default because it is where the picture stops changing on every surface this was authored
+	// against, and nothing in the solver is keyed to the count: the jump schedule is a function
+	// of JumpStart alone, so raising the ceiling later is a one-line change here and in the
+	// gather, not an algorithm change.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 Iterations = 64;
+
+	// Where the seed field is cut into "carved" and "not carved". Higher leaves fewer, more
+	// isolated origins; lower floods the surface.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SeedThreshold = 0.25f;
+
+	// Feature size of the internal seed, as cells across the tile. Drives Worley Cells: the
+	// artist-facing dial is one number, and the solver's cell count follows it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 Scale = 3;
+
+	// Octaves of the internal fractal seed. Broad natural noise rather than pixel noise is the
+	// whole point of the default: a seed with detail turned up reads as dirt, not as strata.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 SeedDetail = 3;
+
+	// The banding. Frequency is how many strata cross the field, Amount how hard they bite into
+	// the propagated distance, Warp how far the bands wander off straight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "64.0"))
+	float StrataFrequency = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "16.0"))
+	float StrataAmount = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float StrataWarp = 0.54f;
+
+	// How hard a propagating front shoves its own strata phase into the next step. This is the
+	// recursion that makes the result read as layered rock rather than as a distance field.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float PushAmount = 0.5f;
+
+	// 0 ignores any mask scoped under this generator entirely. 1 lets it decide where carving
+	// starts, how cheaply it spreads and how deep it cuts.
+	//
+	// Not a final multiply. A mask applied only at the end gives a hard cutout with full-strength
+	// carving inside it; feeding seed probability and propagation cost as well is what produces
+	// localised weathering that fades at its own edges.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MaskInfluence = 1.0f;
+
+	// How much Region IDs above this generator vary the carve. Exactly zero at 0 -- the shader
+	// branches rather than multiplying by zero, so a stack with no ID producer and a stack with
+	// one at influence 0 are bit-identical.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float IDInfluence = 0.0f;
+
+	// ---- Advanced ----
+
+	// Distance added per propagation step, before cost. The solver's speed dial.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.001", ClampMax = "4.0"))
+	float StepScale = 0.3f;
+
+	// Widest jump stride, in texels at the reference resolution. The schedule halves from here
+	// to one, so this sets how far a front can reach in its first pass rather than how many
+	// passes run.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "1", ClampMax = "256"))
+	int32 JumpStart = 24;
+
+	// The unreachable distance. Anything still holding this when the solve ends never had a
+	// front arrive, and reads as uncarved.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "1.0"))
+	float MaxValue = 256.0f;
+
+	// Worley feature-point jitter. 0 puts the points on the lattice and the strata come out
+	// regular; 1 is full Voronoi.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float WorleyJitter = 1.0f;
+
+	// Frequency of the banded/ringed Worley family, which is the one that reads as bedding
+	// planes rather than as cells.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "16.0"))
+	float BandFrequency = 1.0f;
+
+	// How much the seed field resists propagation. High cost makes fronts hug the cheap
+	// channels and the carve comes out as veins; low cost floods.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "32.0"))
+	float CostAmount = 5.0f;
+
+	// How fast a push dies out behind the front. 0 would carry one push across the whole tile.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float PushDecay = 0.2f;
+
+	// Reshuffles which operation and which Worley family each iteration picks, without changing
+	// the seed field. The cheap dial: reseeding here re-solves, it does not re-seed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0"))
+	int32 OperationSeed = 6;
+
+	// Display shaping, all of it applied once after the solve. Bias is a gamma-style pull about
+	// the midpoint; the two remaps and the clamp follow it in that order.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.001", ClampMax = "1.0"))
+	float Bias = 0.68f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RemapInMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RemapInMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RemapOutMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RemapOutMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ClampMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ClampMax = 1.0f;
+};
+
+// One GENERATORS child, whatever kind it is.
+//
+// The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
+// one badge, one dispatch, one gather branch, one inspector slot -- and the kind is a field
+// inside it rather than a second discriminator bolted onto EMixtormatLayerChildType. Adding a
+// generator is then: a value on EMixtormatGeneratorType, a payload struct beside StrataCarver,
+// a case in AddGeneratorPasses, and an inspector panel. Nothing that already exists changes.
+//
+// This is the opposite of the trade EMixtormatLayerChildType makes for filters, and deliberately
+// so. Filters are discriminated at the top level because every dispatch in the plugin already
+// switches on Type and a nested branch would be invisible to the compiler. Generators run in one
+// place -- a single call before the composite -- so there is exactly one switch to keep honest,
+// and the flat alternative would add a child-type value per generator forever.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatGenerator
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
+	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
+	FMixtormatStrataCarver StrataCarver;
+};
+
 // How a layer's base colour combines with what is composited below it.
 //
 // Separate from EMixtormatMaskBlendMode, and it has to be. That one operates on 0..1 coverage in
@@ -2453,7 +2650,20 @@ enum class EMixtormatLayerChildType : uint8
 	Curvature UMETA(DisplayName = "Curvature"),
 	// Appended, like everything below ColorId. Reads the ID map above it and republishes a
 	// coarser one, so it is the only ID node that is neither a pure creator nor a pure consumer.
-	CombineId UMETA(DisplayName = "Combine IDs")
+	CombineId UMETA(DisplayName = "Combine IDs"),
+	// GENERATORS. Deliberately not Effect and deliberately not Generated -- those are the two
+	// things this is most likely to be mistaken for, and it is neither.
+	//
+	// Generated is a *mask* producer: it emits 0..1 coverage and joins the mask chain. Effect is
+	// a filter over the layer's finished composite -- Erosion, Breakup and Worn Edges all run
+	// after AddLayerCompositePass, because what they modify does not exist until then.
+	//
+	// A Generator is upstream of both. It rewrites the layer's own input height before the layer
+	// is composited at all, so everything that reads height afterwards -- the composite's height
+	// blend, the mask chain's curvature, a later effect's slope -- sees the modified surface
+	// rather than a carve painted over the top of a finished one. That is the whole reason the
+	// category exists and the one property that must not be traded away for convenience.
+	Generator UMETA(DisplayName = "Generator")
 };
 
 USTRUCT(BlueprintType)
@@ -2528,6 +2738,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::CombineId"))
 	FMixtormatCombineIdFilter CombineId;
+
+	// The GENERATORS payload. One field for the whole category rather than one per generator:
+	// the kind lives inside FMixtormatGenerator, so adding a second generator adds a payload
+	// struct there and touches nothing here, in the child dispatch, or in any saved asset.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Generator"))
+	FMixtormatGenerator Generator;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

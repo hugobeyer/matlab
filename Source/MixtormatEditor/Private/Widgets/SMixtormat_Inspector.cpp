@@ -2530,6 +2530,190 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 		];
 }
 
+// Strata Carver, the first GENERATORS panel.
+//
+// Deliberately smaller than the Houdini prototype. The prototype exposes every term of the
+// solver because it was being designed; an artist using it is choosing a rock, not tuning a
+// distance metric. Eleven rows carry the whole look -- how deep, how big, how banded, where --
+// and the twenty solver terms sit behind ADVANCED where they can be reached and are not in the
+// way. Scale is the clearest case: it is the artist's word for the Worley cell count, and the
+// gather derives the cells from it rather than asking anyone to think in lattices.
+TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
+{
+	const auto Carver = [this]() { return GetSelectedStrataCarver(); };
+
+	const auto Slider = [this, Carver](
+		const FText& Label,
+		float FMixtormatStrataCarver::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatStrataCarver>(Label, Carver, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	const auto SliderInt = [this, Carver](
+		const FText& Label,
+		int32 FMixtormatStrataCarver::* Member,
+		const double Min,
+		const double Max,
+		const int32 Default,
+		const FText& Hint)
+	{
+		return MakeMemberSliderInt<FMixtormatStrataCarver>(Label, Carver, Member, Min, Max, Default, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, SliderInt(
+		LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 64.0, 3,
+		LOCTEXT("StrataSeedHint", "Reshuffles the whole carve: where it starts, which Worley family decides that, and every per-region draw. Operation Seed under ADVANCED is the cheaper dial -- it re-solves the same seed field instead of laying down a new one.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataDepth", "Depth"), &FMixtormatStrataCarver::Depth, 0.0, 1.0, 0.05, 0.001,
+		LOCTEXT("StrataDepthHint", "How far the carve cuts, in the layer's own height units -- the same units the source map is in, not a fraction of its range. The incoming height is never normalised, so one value gives the same absolute groove on a flat layer, a wood plank and a cliff. 0 skips the entire solve rather than running it to produce nothing.")));
+
+	AddSliderRow(Panel, SliderInt(
+		LOCTEXT("StrataIterations", "Iterations"), &FMixtormatStrataCarver::Iterations, 1.0, 64.0, 64,
+		LOCTEXT("StrataIterationsHint", "How long the solve runs. The jump schedule halves its stride from Jump Start down to one texel and then restarts, so extra iterations buy depth of recursion rather than reach -- the wide passes carry a front across the tile, the narrow ones are where the strata push accumulates and the bands form. One iteration is a single wide jump and reads as blobs; the picture has stopped changing by 64.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataSeedThreshold", "Seed Threshold"), &FMixtormatStrataCarver::SeedThreshold, 0.0, 1.0, 0.25, 0.01,
+		LOCTEXT("StrataSeedThresholdHint", "Where the seed field is cut into carved and not carved. Low floods the surface from everywhere at once; high leaves a few isolated origins with long runs between them, which is the setting that reads as weathering rather than as texture.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		SliderInt(LOCTEXT("StrataScale", "Scale"), &FMixtormatStrataCarver::Scale, 1.0, 64.0, 3,
+			LOCTEXT("StrataScaleHint", "Feature size, as cells across the tile. This is the Worley cell count wearing a name an artist can act on: 3 is three broad formations, 20 is gravel.")),
+		SliderInt(LOCTEXT("StrataSeedDetail", "Seed Detail"), &FMixtormatStrataCarver::SeedDetail, 1.0, 8.0, 3,
+			LOCTEXT("StrataSeedDetailHint", "Octaves in the internal seed. Each doubles the cell count and halves its weight, so the first octave keeps the shape and the rest only roughen its edges. High values turn the seed into dirt rather than into strata."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StrataGrpBands", "Strata")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataFrequency", "Frequency"), &FMixtormatStrataCarver::StrataFrequency, 0.0, 64.0, 4.0, 0.5,
+		LOCTEXT("StrataFrequencyHint", "How many bedding planes cross the tile. Rounded to a whole number of bands before use -- a fractional count leaves a partial band at the wrap and the seam shows as a sheared stripe. Orientation comes from the layer's own UV rotation rather than from a second control here.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataAmount", "Amount"), &FMixtormatStrataCarver::StrataAmount, 0.0, 16.0, 3.0, 0.05,
+		LOCTEXT("StrataAmountHint", "How hard the bands bite. It is a propagation cost, not a texture: crossing a bedding plane is expensive and running along one is not, so raising it makes the carve follow the layering instead of spreading evenly. At 0 the solve is an ordinary distance field.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataWarp", "Warp"), &FMixtormatStrataCarver::StrataWarp, 0.0, 4.0, 0.54, 0.01,
+		LOCTEXT("StrataWarpHint", "How far the bands wander off straight. The warp is a periodic curl field, so bending them cannot break the tile however far this is pushed.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataPush", "Push"), &FMixtormatStrataCarver::PushAmount, 0.0, 4.0, 0.5, 0.01,
+		LOCTEXT("StrataPushHint", "The recursion. A front that has been running along a bedding plane builds credit and gets cheaper, so it keeps running along that plane -- which is what turns a distance field into layered rock. Push Decay under ADVANCED sets how fast that credit dies behind it.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StrataGrpInfluence", "Influence")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataMaskInfluence", "Mask Influence"), &FMixtormatStrataCarver::MaskInfluence, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("StrataMaskInfluenceHint", "How much a mask scoped under this generator controls it. 0 ignores the mask entirely; 1 lets it decide where carving starts, how cheaply it spreads and how deep it cuts. It is not a final multiply -- a mask applied only at the end gives a hard cutout with full-strength carving inside it, whereas steering the seed and the cost as well is what makes the weathering fade at its own edge. Add the mask by right-clicking this row.")));
+
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataIdInfluence", "ID Influence"), &FMixtormatStrataCarver::IDInfluence, 0.0, 1.0, 0.0, 0.01,
+		LOCTEXT("StrataIdInfluenceHint", "How much Region IDs above this generator vary it -- propagation cost, push, strata phase and depth, one draw each. Every pixel of a region gets the same numbers, so this is per-brick or per-plate variation and never noise. At 0 the ID map has exactly no effect: the shader branches past it rather than blending against it.")));
+
+	// ADVANCED. Collapsed, because none of it is reached while choosing a rock, and every one of
+	// these has a default that was arrived at rather than guessed.
+	TSharedRef<SVerticalBox> Advanced = SNew(SVerticalBox);
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataStepScale", "Step Scale"), &FMixtormatStrataCarver::StepScale, 0.001, 4.0, 0.3, 0.005,
+			LOCTEXT("StrataStepScaleHint", "Distance added per propagation step before cost. The solver's speed dial: lower spreads further in the same iteration count and softens the field, higher keeps the carve local.")),
+		SliderInt(LOCTEXT("StrataJumpStart", "Jump Start"), &FMixtormatStrataCarver::JumpStart, 1.0, 256.0, 24,
+			LOCTEXT("StrataJumpStartHint", "The widest stride the schedule starts from, in solve texels. It sets how far a front reaches in one pass, not how many passes run -- the schedule halves from here to one and restarts, so this also sets how often the cycle comes back round."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataMaxValue", "Max Value"), &FMixtormatStrataCarver::MaxValue, 1.0, 1024.0, 256.0, 1.0,
+			LOCTEXT("StrataMaxValueHint", "The unreachable distance. Anything still holding it when the solve ends never had a front arrive and reads as uncarved, and it is also what the raw distance is divided by once, at the very end, to become a 0..1 carve.")),
+		Slider(LOCTEXT("StrataWorleyJitter", "Worley Jitter"), &FMixtormatStrataCarver::WorleyJitter, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("StrataWorleyJitterHint", "Feature-point jitter in the seed lattice. 0 puts the points on the grid and the formations come out regular; 1 is full Voronoi."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataBandFrequency", "Band Frequency"), &FMixtormatStrataCarver::BandFrequency, 0.0, 16.0, 1.0, 0.05,
+			LOCTEXT("StrataBandFrequencyHint", "Rings inside each seed cell, for the banded Worley family. Distinct from Strata Frequency: those are bedding planes across the whole tile, these are one nodule's own growth layers.")),
+		Slider(LOCTEXT("StrataCost", "Cost"), &FMixtormatStrataCarver::CostAmount, 0.0, 32.0, 5.0, 0.1,
+			LOCTEXT("StrataCostHint", "How hard the seed field resists propagation. High makes fronts hug the cheap channels and the carve comes out as veins; low lets it flood and the carve comes out as patches."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataPushDecay", "Push Decay"), &FMixtormatStrataCarver::PushDecay, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("StrataPushDecayHint", "How fast accumulated push dies behind the front. At 0 one push would be carried across the whole tile and every band would run to the edge.")),
+		SliderInt(LOCTEXT("StrataOperationSeed", "Operation Seed"), &FMixtormatStrataCarver::OperationSeed, 0.0, 64.0, 6,
+			LOCTEXT("StrataOperationSeedHint", "Reshuffles which Worley family and which combining operation each iteration picks, leaving the seed field alone. The cheap dial: it re-solves the same origins into a different rock instead of moving them."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakeCaption(LOCTEXT("StrataGrpRemap", "Output")));
+	AddSliderRow(Advanced, MixtormatRow::MakeCaption(LOCTEXT("StrataGrpRemapNote", "Applied after the solve, never during it -- scrubbing these reshapes the finished field instead of re-running it.")));
+
+	AddSliderRow(Advanced, Slider(
+		LOCTEXT("StrataBias", "Bias"), &FMixtormatStrataCarver::Bias, 0.001, 1.0, 0.68, 0.01,
+		LOCTEXT("StrataBiasHint", "A gamma-style pull about the midpoint. 0.5 is the identity, below deepens the carve toward its origins, above spreads it out toward the edges of its reach.")));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataRemapInMin", "In Min"), &FMixtormatStrataCarver::RemapInMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("StrataRemapInMinHint", "Low end of the input window. Raising it discards the shallowest carve and leaves only the deepest runs.")),
+		Slider(LOCTEXT("StrataRemapInMax", "In Max"), &FMixtormatStrataCarver::RemapInMax, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("StrataRemapInMaxHint", "High end of the input window. Lowering it flattens the deepest carve into one level."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataRemapOutMin", "Out Min"), &FMixtormatStrataCarver::RemapOutMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("StrataRemapOutMinHint", "What the window's low end becomes. Above 0 carves everywhere, including where no front ever arrived.")),
+		Slider(LOCTEXT("StrataRemapOutMax", "Out Max"), &FMixtormatStrataCarver::RemapOutMax, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("StrataRemapOutMaxHint", "What the window's high end becomes. Below 1 scales the whole carve without touching Depth, which is the one to reach for when the shape is right and only the strength is not."))));
+
+	AddSliderRow(Advanced, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataClampMin", "Clamp Min"), &FMixtormatStrataCarver::ClampMin, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("StrataClampMinHint", "Floor on the finished carve, after the remap.")),
+		Slider(LOCTEXT("StrataClampMax", "Clamp Max"), &FMixtormatStrataCarver::ClampMax, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("StrataClampMaxHint", "Ceiling on the finished carve, after the remap."))));
+
+	Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
+	[
+		SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("StrataAdvancedHeading", "ADVANCED"))
+		.InitiallyExpanded(false)
+		[
+			Advanced
+		]
+	];
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedStrataCarver() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("StrataCarverHeading", "STRATA CARVER"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+						return Child && Child->Type == EMixtormatLayerChildType::Generator
+							&& Child->Generator.bEnabled
+							? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						// The wrapper's flag, not the payload's. One switch turns off the node
+						// whatever generator it is carrying, which is the same thing the bypass
+						// preview and the gather branch both test.
+						if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+						{
+							Generator->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("StrataEnabledHint", "Enable this generator")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -4639,6 +4823,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// The category, not the kind. A generator whose panel is not yet
+							// written still has to claim the inspector, or it would show the
+							// layer's own sections instead and read as a broken selection.
+							|| HasSelectedGenerator()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
@@ -4663,6 +4851,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildRandomIdControls()]
 					+ SScrollBox::Slot()[BuildRampIdControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
+					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
@@ -4690,6 +4879,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// The category, not the kind. A generator whose panel is not yet
+							// written still has to claim the inspector, or it would show the
+							// layer's own sections instead and read as a broken selection.
+							|| HasSelectedGenerator()
 							? EVisibility::Collapsed : EVisibility::Visible;
 					})
 					+ SScrollBox::Slot()
