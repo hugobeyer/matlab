@@ -1300,29 +1300,6 @@ void SMixtormat::SyncSelectedLayerControls()
 			SelectedStripThumbnail = LayerThumbnails.Pop();
 		}
 	}
-	if (SelectedMapsText.IsValid())
-	{
-		if (Layer.Type == EMixtormatLayerType::Fill)
-		{
-			SelectedMapsText->SetText(LOCTEXT("FillLayerMaps", "Generated BC · RAM"));
-		}
-		else if (!Layer.SourceComposition.IsNull())
-		{
-			SelectedMapsText->SetText(Layer.SourceComposition.LoadSynchronous()
-				? LOCTEXT("ReferenceLayerMaps", "Live composition channels")
-				: LOCTEXT("MissingReferenceLayerMaps", "Missing referenced composition"));
-		}
-		else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
-		{
-			SelectedMapsText->SetText(FText::FromString(FString::Printf(
-				TEXT("BC %s  N %s  %s %s"),
-				Surface->BaseColor ? TEXT("✓") : TEXT("—"),
-				Surface->Normal ? TEXT("✓") : TEXT("—"),
-				MixtormatUI::PackedMapLabel(*Surface),
-				Surface->RoughnessAOMetallic ? TEXT("✓") : TEXT("—"))));
-		}
-	}
-
 	const int32 SelectedChildIndex = GetSelectedChildIndex();
 	if (Layer.Children.IsValidIndex(SelectedChildIndex))
 	{
@@ -1336,32 +1313,6 @@ void SMixtormat::SyncSelectedLayerControls()
 			// Mirror the row's target/owner label so nested selection keeps its context.
 			SelectedIdentityText->SetText(
 				GetLayerChildSourceText(SelectedLayerIndex, SelectedChildIndex));
-		}
-		if (SelectedMapsText.IsValid())
-		{
-			SelectedMapsText->SetText(Child.Type == EMixtormatLayerChildType::Effect
-				? LOCTEXT("SelectedEffectMaps", "FX")
-				: Child.Type == EMixtormatLayerChildType::Generated
-					? LOCTEXT("SelectedGeneratedMaps", "GENERATED MASK")
-					: Child.Type == EMixtormatLayerChildType::Craquelure
-						? LOCTEXT("SelectedCraquelureMaps", "CRAQUELURE")
-						: Child.Type == EMixtormatLayerChildType::ColorId
-							? LOCTEXT("SelectedColorIdMaps", "COLOR ID")
-							: Child.Type == EMixtormatLayerChildType::Filter
-								? LOCTEXT("SelectedFilterMaps", "CLUSTER IDS · INTEGER DATA")
-							: Child.Type == EMixtormatLayerChildType::HsvFilter
-								? LOCTEXT("SelectedHsvFilterMaps", "HSV FROM IDS · ALBEDO")
-							: Child.Type == EMixtormatLayerChildType::RandomId
-								? LOCTEXT("SelectedRandomIdMaps", "RANDOM FROM IDS")
-							: Child.Type == EMixtormatLayerChildType::RampId
-								? LOCTEXT("SelectedRampIdMaps", "RAMP FROM IDS · HEIGHT + NORMAL")
-							: Child.Type == EMixtormatLayerChildType::PatternId
-								? LOCTEXT("SelectedPatternIdMaps", "PATTERN IDS · INTEGER DATA · UV · RELIEF")
-							: Child.Type == EMixtormatLayerChildType::CombineId
-								? LOCTEXT("SelectedCombineIdMaps", "COMBINE IDS · INTEGER DATA")
-							: Child.Type == EMixtormatLayerChildType::Generator
-								? LOCTEXT("SelectedGeneratorMaps", "GENERATOR · LAYER HEIGHT + NORMAL")
-								: LOCTEXT("SelectedMaskMaps", "MASK"));
 		}
 	}
 }

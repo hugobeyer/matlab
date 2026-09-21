@@ -4178,7 +4178,6 @@ TSharedRef<SWidget> SMixtormat::BuildColorAdjustmentCard()
 TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 {
 	// Every row in this panel goes through here, so the panel converts by changing one body.
-	// Its legacy and compatibility rows keep their own visibility rules untouched.
 	const auto NumericRow = [this](
 		const FText& Label,
 		float FMixtormatLayer::* Member,
@@ -4272,138 +4271,6 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				})
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-			[
-				SNew(SMixtormatChip)
-				.Visibility(EVisibility::Collapsed)
-				.ToolTip(LOCTEXT("HeightSourceTooltip", "Compatibility-only height source selector"))
-				.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
-				{
-					TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
-					const auto AddOption = [this, &Menu](
-						const EMixtormatHeightSource Source,
-						const FText& Label,
-						const FText& ToolTip)
-					{
-						Menu->AddSlot().AutoHeight()
-						[
-							SNew(SButton)
-							.Text(Label)
-							.ToolTipText(ToolTip)
-							.OnClicked_Lambda([this, Source]()
-							{
-								if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-								{
-									WorkingLayers[SelectedLayerIndex].HeightSource = Source;
-									RefreshLayeredPreview();
-								}
-								FSlateApplication::Get().DismissAllMenus();
-								return FReply::Handled();
-							})
-						];
-					};
-					AddOption(
-						EMixtormatHeightSource::LayerHeight,
-						LOCTEXT("LayerHeightSourceOption", "Layer Height (Recommended)"),
-						LOCTEXT("LayerHeightSourceHint", "Use RAMH alpha when available; otherwise use Constant Height"));
-					AddOption(
-						EMixtormatHeightSource::RAMHAlpha,
-						LOCTEXT("RAMHHeightSourceOption", "RAMH Height"),
-						LOCTEXT("RAMHHeightSourceHint", "Use authored RAMH alpha; falls back to Constant Height when unavailable"));
-					AddOption(
-						EMixtormatHeightSource::Constant,
-						LOCTEXT("ConstantHeightSourceOption", "Constant Height"),
-						LOCTEXT("ConstantHeightSourceHint", "Use one uniform height value for this layer"));
-					AddOption(
-						EMixtormatHeightSource::CombinedMask,
-						LOCTEXT("MaskHeightSourceOption", "Mask as Height (Optional)"),
-						LOCTEXT("MaskHeightSourceHint", "Explicitly use the ordered combined mask as height"));
-					AddOption(
-						EMixtormatHeightSource::Automatic,
-						LOCTEXT("LegacyAutomaticHeightSourceOption", "Automatic (Legacy)"),
-						LOCTEXT("LegacyAutomaticHeightSourceHint", "Compatibility mode: RAMH, then mask, then Constant Height"));
-					return SNew(SBox).WidthOverride(MixtormatTokens::OptionMenuWidth)[Menu];
-				})
-				.Text_Lambda([this]()
-					{
-						if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
-						{
-							return LOCTEXT("InvalidLayerHeightSource", "Current Height · Layer Height");
-						}
-						switch (WorkingLayers[SelectedLayerIndex].HeightSource)
-						{
-						case EMixtormatHeightSource::RAMHAlpha: return LOCTEXT("RAMHHeightSource", "Current Height · RAMH");
-						case EMixtormatHeightSource::CombinedMask: return LOCTEXT("MaskHeightSource", "Current Height · Mask");
-						case EMixtormatHeightSource::Constant: return LOCTEXT("ConstantHeightSource", "Current Height · Constant");
-						case EMixtormatHeightSource::Automatic: return LOCTEXT("AutomaticHeightSource", "Current Height · Automatic (Legacy)");
-						case EMixtormatHeightSource::LayerHeight:
-						default: return LOCTEXT("LayerHeightSource", "Current Height · Layer Height");
-						}
-				})
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-			[
-				SNew(SMixtormatChip)
-				.Visibility(EVisibility::Collapsed)
-				.ToolTip(LOCTEXT("HeightReferenceTooltip", "Compatibility-only height reference selector"))
-				.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
-				{
-					TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
-					Menu->AddSlot().AutoHeight()
-					[
-						SNew(SButton)
-						.Text(LOCTEXT("PreviousCompositeHeightReference", "Previous Composite"))
-						.OnClicked_Lambda([this]()
-						{
-							if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-							{
-								WorkingLayers[SelectedLayerIndex].HeightReferenceLayerIndex = INDEX_NONE;
-								RefreshLayeredPreview();
-							}
-							FSlateApplication::Get().DismissAllMenus();
-							return FReply::Handled();
-						})
-					];
-					for (int32 LayerIndex = 0; LayerIndex < SelectedLayerIndex; ++LayerIndex)
-					{
-						const FText LayerName = WorkingLayers[LayerIndex].DisplayName.IsEmpty()
-							? FText::Format(LOCTEXT("HeightReferenceLayerFallback", "Layer {0}"), FText::AsNumber(LayerIndex + 1))
-							: WorkingLayers[LayerIndex].DisplayName;
-						Menu->AddSlot().AutoHeight()
-						[
-							SNew(SButton)
-							.Text(LayerName)
-							.OnClicked_Lambda([this, LayerIndex]()
-							{
-								if (WorkingLayers.IsValidIndex(SelectedLayerIndex) && LayerIndex < SelectedLayerIndex)
-								{
-									WorkingLayers[SelectedLayerIndex].HeightReferenceLayerIndex = LayerIndex;
-									RefreshLayeredPreview();
-								}
-								FSlateApplication::Get().DismissAllMenus();
-								return FReply::Handled();
-							})
-						];
-					}
-					return SNew(SBox).WidthOverride(MixtormatTokens::OptionMenuWidth)[Menu];
-				})
-				.Text_Lambda([this]()
-					{
-						if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
-						{
-							return LOCTEXT("InvalidHeightReference", "Compare Against · Previous Composite");
-						}
-						const int32 ReferenceIndex = WorkingLayers[SelectedLayerIndex].HeightReferenceLayerIndex;
-						if (!WorkingLayers.IsValidIndex(ReferenceIndex) || ReferenceIndex >= SelectedLayerIndex)
-						{
-							return LOCTEXT("DefaultHeightReference", "Compare Against · Previous Composite");
-						}
-						return FText::Format(
-							LOCTEXT("SelectedHeightReference", "Compare Against · {0}"),
-							WorkingLayers[ReferenceIndex].DisplayName);
-				})
-			]
-
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				NumericRow(LOCTEXT("HeightMaskStrength", "Blend Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
@@ -4450,33 +4317,6 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				SNew(SBox)
-				.Visibility(EVisibility::Collapsed)
-				[
-					NumericRow(LOCTEXT("HeightThreshold", "Legacy Height Threshold"), &FMixtormatLayer::HeightThreshold, 0.0f, 1.0f, 0.01f, 0.5f)
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SBox).Visibility(EVisibility::Collapsed)
-				[NumericRow(LOCTEXT("HeightRange", "Blend Softness"), &FMixtormatLayer::HeightRange, 0.0001f, 1.0f, 0.005f, 0.1f)]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-			[
-				SNew(SBox)
-				.Visibility(EVisibility::Collapsed)
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightContrast", "Legacy Height Contrast"), &FMixtormatLayer::HeightContrast, 0.01f, 8.0f, 0.05f, 1.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightOffset", "Legacy Height Offset"), &FMixtormatLayer::HeightOffset, -1.0f, 1.0f, 0.01f, 0.0f)]
-					+ SVerticalBox::Slot().AutoHeight()
-					[NumericRow(LOCTEXT("HeightBias", "Legacy Comparison Bias"), &FMixtormatLayer::HeightBias, -1.0f, 1.0f, 0.01f, 0.0f)]
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-			[
-				SNew(SBox)
 				.Visibility_Lambda([this]()
 				{
 					if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
@@ -4491,14 +4331,6 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				})
 				[
 					NumericRow(LOCTEXT("ConstantHeight", "Layer Height (No RAMH)"), &FMixtormatLayer::ConstantHeight, 0.0f, 1.0f, 0.01f, 0.5f)
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-			[
-				SNew(SBox)
-				.Visibility(EVisibility::Collapsed)
-				[
-					NumericRow(LOCTEXT("MaskHeightInfluence", "Mask Modulation (Compatibility)"), &FMixtormatLayer::MaskHeightInfluence, 0.0f, 1.0f, 0.01f, 0.0f)
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
@@ -4784,18 +4616,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								SNew(SMixtormatBadge)
 								.Text_Lambda([this]() { return GetSelectedBadgeText(); })
 							]
-						]
-					]
-					// The channel-availability line ("BC · N · RAMH Authored") is gone: it restated
-					// what the layer's own maps already imply and cost a row of header height on
-					// every selection. The widget stays declared but unparented so the several
-					// call sites that push text into it keep working untouched.
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						SNew(SBox)
-						.Visibility(EVisibility::Collapsed)
-						[
-							SAssignNew(SelectedMapsText, STextBlock)
 						]
 					]
 				]

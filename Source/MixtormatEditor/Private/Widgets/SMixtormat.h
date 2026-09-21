@@ -935,7 +935,6 @@ private:
 	TSharedPtr<SWrapBox> MaskListBox;
 	TSharedPtr<STextBlock> SelectedSurfaceText;
 	TSharedPtr<STextBlock> SelectedIdentityText;
-	TSharedPtr<STextBlock> SelectedMapsText;
 	// The strip mirrors a layer row, so it carries the row's thumbnail too. Swapped on selection
 	// rather than bound, because a thumbnail is a widget from the pool and not a brush.
 	TSharedPtr<SBox> SelectedThumbnailBox;

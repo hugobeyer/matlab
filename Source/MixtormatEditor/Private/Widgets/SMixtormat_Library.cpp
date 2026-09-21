@@ -125,16 +125,6 @@ FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 		{
 			SelectedIdentityText->SetText(FText::FromName(Surface->Family));
 		}
-		if (SelectedMapsText.IsValid())
-		{
-			SelectedMapsText->SetText(FText::FromString(FString::Printf(
-				TEXT("BC %s  N %s  %s %s"),
-				Surface->BaseColor ? TEXT("✓") : TEXT("—"),
-				Surface->Normal ? TEXT("✓") : TEXT("—"),
-				MixtormatUI::PackedMapLabel(*Surface),
-				Surface->RoughnessAOMetallic ? TEXT("✓") : TEXT("—"))));
-		}
-
 		if (bPreviewDisplacementEnabled)
 		{
 			PreviewSelectedSurfaceWithDisplacement();
