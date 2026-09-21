@@ -873,8 +873,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainHeightWeight = 0.0f;
 
-	// SourceHeightBias, not HeightBias: StainHeightBias is taken by the deprecated gather-era
-	// control further down, and UHT rejects the shadow rather than resolving it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainSourceHeightBias = 0.0f;
 
@@ -967,47 +965,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// comes off this. Same seed, same runoff, at any resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0", ClampMax = "9999"))
 	int32 RunoffSeed = 1;
-
-	// Kept only so older recipes deserialize without losing fields. The solver resolves a layer
-	// mask and shades nothing, so none of the shading controls are read any more.
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
-	FLinearColor StainColor = FLinearColor(0.45f, 0.45f, 0.45f, 1.0f);
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
-	float StainColorAmount = 0.75f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Stain resolves a layer mask and shades nothing."))
-	float StainRoughness = 0.12f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "The stain solve is full resolution."))
-	int32 StainSolveDivisor = 4;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Merged into StainSurfaceResponse; use Absorption to control how much the material takes up."))
-	float StainPorosity = 1.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Renamed to StainSurfaceResponse, which now drives absorption as well."))
-	float StainRoughnessResponse = 1.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain transport controls."))
-	float StainHeightInfluence = 0.5f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain transport controls."))
-	float StainHeightWarp = 0.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain surface weights."))
-	float StainHeightBias = -1.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Replaced by stain surface weights."))
-	float StainHeightContrast = 1.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
-	float StainFlowAmount = 0.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
-	int32 StainFlowRadius = 4;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Flow is integrated into the stain solve."))
-	int32 StainFlowSmoothing = 3;
 
 	// Erosion. A tileable, stacked directional-stripe filter evaluated in one dispatch.
 	// The initial downhill vector is the steepest sampled direction around each texel, which
@@ -1105,17 +1062,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
 	bool bErosionInvertMask = false;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion normals derive from the final carved height."))
-	float ErosionNormalStrength = 8.0f;
-
-	// Kept only so older recipes deserialize without losing fields. Erosion resolves coverage
-	// for height, normal and roughness and no longer authors base colour.
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion no longer authors base colour."))
-	FLinearColor ErosionColor = FLinearColor(0.16f, 0.14f, 0.12f, 1.0f);
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Erosion no longer authors base colour."))
-	float ErosionColorAmount = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
 	float ErosionRoughnessAmount = 0.0f;
@@ -1650,9 +1596,6 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float ReliefDepth = 0.25f;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Craquelure normals derive from Relief Depth."))
-	float ReliefNormalStrength = 1.0f;
-
 	// The groove's mouth, and the curve of its wall between a straight V and a rounded U. Not
 	// merged: a wide V and a narrow U are both things you would ask for.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -2180,9 +2123,6 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeightRandom = 0.5f;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Pattern normals derive from the final pattern height."))
-	float NormalStrength = 4.0f;
-
 	// The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove
 	// that hugs the grout then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose
 	// that lifts away and rounds over onto the face. Both ends of the curve stay pinned, so this
@@ -2355,9 +2295,6 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	// rather than switching the node off.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float IntensityRandom = 0.0f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Ramp normals derive from Intensity."))
-	float NormalStrength = 8.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float AOAmount = 0.0f;
@@ -3008,9 +2945,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0001", ClampMax = "1.0"))
 	float HeightBorderWidth = 0.05f;
-
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Border normal strength derives from Border Lift."))
-	float HeightBorderNormalStrength = 1.0f;
 
 	// Gaussian radius, in texels, applied to the accumulated height that Contact AO and Border
 	// Normal are built from. 1 skips the two blur passes entirely.
