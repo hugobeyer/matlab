@@ -64,13 +64,21 @@ struct FMixtormatChildPreviewTarget
 	// already uses to read them.
 	FName OutputName;
 	EMixtormatPreviewOutputKind Kind = EMixtormatPreviewOutputKind::Mask;
+	// Only meaningful when Kind == RegionIds. Names a Mask-kind published output on the same
+	// child that the region-id colourist should read to force a pixel to black instead of a
+	// hashed colour -- Breakup's Region IDs know nothing about grout on their own, so the preview
+	// borrows Breakup's own Gap mask to say which pixels are invalid. NAME_None when the ID map
+	// already encodes its own invalid pixels (Cluster IDs has none; Pattern/Combine IDs blacken
+	// them inside their own kernel and need no second texture here).
+	FName GapMaskName;
 
 	bool IsValid() const { return OwnerId.IsValid() && ChildId.IsValid(); }
 
 	friend bool operator==(const FMixtormatChildPreviewTarget& A, const FMixtormatChildPreviewTarget& B)
 	{
 		return A.OwnerId == B.OwnerId && A.ChildId == B.ChildId
-			&& A.OutputName == B.OutputName && A.Kind == B.Kind;
+			&& A.OutputName == B.OutputName && A.Kind == B.Kind
+			&& A.GapMaskName == B.GapMaskName;
 	}
 };
 

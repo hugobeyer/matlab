@@ -619,7 +619,8 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	{
 		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
 		const bool bStillValid = Child
-			&& ChildPreviewTarget == ResolveChildPreviewTarget(ChildPreviewTarget.OutputName, ChildPreviewTarget.Kind)
+			&& ChildPreviewTarget == ResolveChildPreviewTarget(
+				ChildPreviewTarget.OutputName, ChildPreviewTarget.Kind, ChildPreviewTarget.GapMaskName)
 			&& IsChildOutputPreviewReady(*Child);
 		if (!bStillValid)
 		{

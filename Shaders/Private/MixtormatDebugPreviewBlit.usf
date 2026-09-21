@@ -5,12 +5,17 @@
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
 // Post-hoc debug blits for the generic child-output preview (Breakup's Region IDs/Gap/Edge/
-// Pieces, Worn Edges' Wear, Pattern IDs' Gap): these are already-produced textures, not values
-// the composite or a producer's own kernel computes, so rather than teach every producer shader
-// a WriteDebug branch of its own, one small pass colours whichever texture the target names,
-// after the fact. Cluster/Pattern/Combine Region IDs keep their own inline debug write instead of
-// switching to this: it already exists, already works, and matches the shape of this pass exactly
-// (the same hash below), so there is nothing this would replace, only risk to take on for no gain.
+// Pieces, Worn Edges' Wear): these are already-produced textures, not values the composite or a
+// producer's own kernel computes, so rather than teach every producer shader a WriteDebug branch
+// of its own, one small pass colours whichever texture the target names, after the fact.
+// Cluster/Pattern/Combine Region IDs keep their own inline debug write instead of switching to
+// this: they already exist and already work, and Pattern additionally blackens its own invalid
+// pixels inline, which this pass exists to do for Breakup instead.
+//
+// Scalar outputs (Wear, Edge, Pieces) go straight to grayscale rather than through the plum/green
+// coverage ramp every other feature preview uses: those are named, self-explanatory masks a user
+// is inspecting directly (0 = none, 1 = full), not a signal being related back to the same palette
+// as every other debug view.
 
 Texture2D<float> SourceMask;
 RWTexture2D<float4> OutputDebug;
@@ -25,10 +30,16 @@ void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		return;
 	}
-	OutputDebug[Pixel] = float4(MixtormatDebugRamp(SourceMask.Load(int3(Pixel, 0))), 1.0f);
+	const float Value = saturate(SourceMask.Load(int3(Pixel, 0)));
+	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
 }
 
 Texture2D<uint> SourceIds;
+// Bound whenever the target asks for gap-aware colouring; SourceHasGapMask is 0 and SourceGapMask
+// is a dummy otherwise, since RDG requires every declared texture parameter to be bound to
+// something whether or not the shader branches on it.
+uint SourceHasGapMask;
+Texture2D<float> SourceGapMask;
 
 [numthreads(8, 8, 1)]
 void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -36,6 +47,15 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const uint2 Pixel = DispatchThreadId.xy;
 	if (any(Pixel >= uint2(OutputSize)))
 	{
+		return;
+	}
+	// Gap pixels are grout, not a region -- coloured the same pure black an invalid id gets
+	// elsewhere (Pattern/Combine IDs), rather than as one more random hashed colour. 0.5 sits at
+	// the midpoint of Breakup's soft falloff, so a gap reads as a clean edge rather than a smeared
+	// fringe of near-black.
+	if (SourceHasGapMask != 0 && SourceGapMask.Load(int3(Pixel, 0)) >= 0.5f)
+	{
+		OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
 		return;
 	}
 	const uint Root = SourceIds.Load(int3(Pixel, 0));

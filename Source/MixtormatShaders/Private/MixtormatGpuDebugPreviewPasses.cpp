@@ -45,6 +45,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceIds)
+		SHADER_PARAMETER(uint32, SourceHasGapMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceGapMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -89,6 +91,7 @@ namespace MixtormatGpuCompositor
 	void AddDebugPreviewRegionIdsBlitPass(
 		FRDGBuilder& GraphBuilder,
 		const FRDGTextureRef SourceIds,
+		const FRDGTextureRef GapMask,
 		const FRDGTextureRef OutputDebug,
 		const FIntPoint Resolution)
 	{
@@ -96,6 +99,21 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatDebugPreviewRegionIdsCS::FParameters>();
 		Parameters->OutputSize = Resolution;
 		Parameters->SourceIds = SourceIds;
+		Parameters->SourceHasGapMask = GapMask ? 1u : 0u;
+		// RDG requires every declared texture parameter bound to something, whether or not the
+		// shader branches on it -- a 1x1 stand-in, cleared rather than left undefined, when there
+		// is no gap mask to combine.
+		FRDGTextureRef GapMaskOrDummy = GapMask;
+		if (!GapMaskOrDummy)
+		{
+			GapMaskOrDummy = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1), PF_R16F, FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.DebugPreview.EmptyGapMask"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(GapMaskOrDummy), FVector4f(0.0f));
+		}
+		Parameters->SourceGapMask = GapMaskOrDummy;
 		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
 
 		TShaderMapRef<FMixtormatDebugPreviewRegionIdsCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));

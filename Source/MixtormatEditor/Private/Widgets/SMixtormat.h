@@ -33,28 +33,42 @@ struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatSurfaceEntry;
 
-// One entry in a child's generic preview-eye menu: a named output plus how to colour it. Name is
-// NAME_None for RegionIds -- a child publishes at most one ID map, so it needs no name to
-// disambiguate, only a kind.
+// One entry in a child's generic preview: a named output, how to colour it, and (for a RegionIds
+// entry only) an optional Mask-kind output on the same child that blackens invalid/gap pixels
+// instead of letting them take a random hashed colour. Name is NAME_None for RegionIds -- a child
+// publishes at most one ID map, so it needs no name of its own to disambiguate.
 struct FMixtormatPreviewOutputDesc
 {
 	FName Name;
 	FText Label;
 	EMixtormatPreviewOutputKind Kind = EMixtormatPreviewOutputKind::Mask;
+	// Only meaningful when Kind == RegionIds and the compositor cannot already tell an invalid
+	// pixel from a valid one by itself (Breakup's Region IDs; Cluster IDs has no invalid pixels,
+	// Pattern/Combine IDs blacken their own inline and need nothing here).
+	FName GapMaskName;
 };
 
-// What a child can show through the generic child-output preview eye, driven entirely by its
-// type/procedural kind. This is the one place a future output gets taught to the preview system
-// -- the inspector's eye/menu widget and its readiness check both read this rather than naming a
-// child type themselves, so a new producer needs one case here and nothing else.
-TArray<FMixtormatPreviewOutputDesc> GetChildPreviewOutputs(const FMixtormatLayerChild& Child);
+// What a child can show through the generic preview eye: the one output the eye itself toggles
+// (empty when the child publishes nothing previewable), and any further outputs reachable only
+// through the small chevron beside the eye. A child with no secondary outputs gets no chevron.
+struct FMixtormatChildPreviewOutputSet
+{
+	TOptional<FMixtormatPreviewOutputDesc> Primary;
+	TArray<FMixtormatPreviewOutputDesc> Secondary;
+};
+
+// What a child can show through the generic preview, driven entirely by its type/procedural kind.
+// This is the one place a future output gets taught to the preview system -- the inspector's
+// eye/chevron widget and its status label both read this rather than naming a child type
+// themselves, so a new producer needs one case here and nothing else.
+FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child);
 
 // Convenience for an inspector group whose panel is built for one known, fixed child kind (the
-// panel is only ever visible while a child of that kind is selected): the descriptor list depends
+// panel is only ever visible while a child of that kind is selected): the descriptor set depends
 // only on the kind, never on which specific instance is selected, so there is nothing to resolve
 // against the live selection here.
-TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForChildType(EMixtormatLayerChildType Type);
-TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForEffectType(EMixtormatEffectType EffectType);
+FMixtormatChildPreviewOutputSet GetPreviewOutputSetForChildType(EMixtormatLayerChildType Type);
+FMixtormatChildPreviewOutputSet GetPreviewOutputSetForEffectType(EMixtormatEffectType EffectType);
 
 class SMixtormat final : public SCompoundWidget
 {
@@ -124,23 +138,24 @@ private:
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
 		EMixtormatDebugPreviewMode Mode,
 		const FText& ToolTip);
-	// The generic child-output preview eye/menu: one control for every named mask/ID output a
-	// child publishes (Cluster/Pattern/Combine Region IDs, Breakup's Region IDs/Gap/Edge/Pieces,
-	// Worn Edges' Wear, ...), built from GetChildPreviewOutputs rather than one dedicated button
-	// per producer. Empty Outputs (nothing to preview) returns SNullWidget.
+	// The generic child preview: a normal single-click eye for OutputSet.Primary (the same
+	// SMixtormatIconButton widget and toggle behaviour every other feature-preview eye uses), plus
+	// -- only when OutputSet.Secondary is non-empty -- a small chevron beside it opening a
+	// categorized menu of further outputs (Breakup's Edge/Pieces/Gap today). The eye never becomes
+	// a menu itself. An unset Primary (nothing to preview) returns SNullWidget.
 	TSharedRef<SWidget> MakeChildOutputPreviewButton(
-		const TArray<FMixtormatPreviewOutputDesc>& Outputs);
+		const FMixtormatChildPreviewOutputSet& OutputSet);
 	FReply ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target);
-	// Resolves the currently selected child to a preview target naming OutputName/Kind on it.
-	// A group-authored selection is flattened to one concrete enabled member layer and that
-	// member's effective child id here, so nothing downstream has to know what a group is.
-	// Returns an invalid target (OwnerId/ChildId unset) when nothing resolves.
+	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
+	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
+	// concrete enabled member layer and that member's effective child id here, so nothing
+	// downstream has to know what a group is. Returns an invalid target (OwnerId/ChildId unset)
+	// when nothing resolves.
 	FMixtormatChildPreviewTarget ResolveChildPreviewTarget(
-		FName OutputName, EMixtormatPreviewOutputKind Kind) const;
+		FName OutputName, EMixtormatPreviewOutputKind Kind, FName GapMaskName = NAME_None) const;
 	// The generic replacement for the old Pattern/Cluster-only CanPreviewSelectedFilter: enabled
 	// state plus whatever domain readiness a child's own output kind genuinely requires (Cluster
-	// IDs' packed-source requirement is the only one left; every other producer needs nothing
-	// beyond being enabled).
+	// IDs' packed-source requirement, Combine IDs needing a producer above it to combine).
 	bool IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const;
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	FReply StartNewMaterial();

@@ -1620,8 +1620,10 @@ namespace MixtormatGpuCompositor
 		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 			LayerCtx.LayerIndex, Child.SourceChildIndex))
 		{
+			// Default preview: Region IDs with Gap blacked out, so the broken-piece topology
+			// reads at a glance instead of every grout pixel getting its own random colour.
 			AddDebugPreviewRegionIdsBlitPass(
-				GraphBuilder, Pending.GeneratedRegionIds, DebugTarget, Request.Resolution);
+				GraphBuilder, Pending.GeneratedRegionIds, Pending.Gap, DebugTarget, Request.Resolution);
 		}
 		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
 			FName(TEXT("Gap")), LayerCtx.LayerIndex, Child.SourceChildIndex))

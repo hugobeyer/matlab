@@ -209,10 +209,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (WriteDebug != 0)
 	{
-		// The same decorrelating hash the consumers use, so the preview colours a merged region
-		// the way the variation nodes downstream will.
+		// Three independent hash channels, the same construction MixtormatClusterIds.usf uses --
+		// not the coverage ramp: that lerps along one line between two fixed colours, so distinct
+		// regions can land close enough together on it to look like the preview isn't doing
+		// anything. A full hashed colour spreads regions across the colour cube instead, which is
+		// the whole point of previewing an ID map rather than a scalar.
 		OutputDebug[Pixel] = Root == MIXTORMAT_INVALID_REGION
 			? float4(0.0f, 0.0f, 0.0f, 1.0f)
-			: float4(MixtormatDebugRamp(MixtormatRegionRandom(Root)), 1.0f);
+			: float4(MixtormatDebugColor(float3(
+				MixtormatRegionRandom(Root * 3u + 1u),
+				MixtormatRegionRandom(Root * 3u + 2u),
+				MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
 	}
 }

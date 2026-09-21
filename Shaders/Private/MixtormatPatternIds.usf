@@ -1387,7 +1387,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		if (!bValidRegion)
 		{
-			OutputDebug[Pixel] = float4(MixtormatDebugRamp(0.0f), 1.0f);
+			// Pure black, not the coverage ramp's low colour: grout is not a low value on the
+			// scale the ramp reads as low-to-high, it is the *absence* of a region, and colouring
+			// it as one more point on the ramp reads as a valid (if dim) region instead of a gap.
+			OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
 		}
 		else
 		{

@@ -1091,7 +1091,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeChildOutputPreviewButton(
-					GetPreviewOutputsForEffectType(EMixtormatEffectType::Breakup)))
+					GetPreviewOutputSetForEffectType(EMixtormatEffectType::Breakup)))
 			[
 				Panel
 			]
@@ -1198,7 +1198,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeChildOutputPreviewButton(
-					GetPreviewOutputsForEffectType(EMixtormatEffectType::WornEdges)))
+					GetPreviewOutputSetForEffectType(EMixtormatEffectType::WornEdges)))
 			[
 				Panel
 			]
@@ -2261,7 +2261,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
-						GetPreviewOutputsForChildType(EMixtormatLayerChildType::PatternId))
+						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::PatternId))
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
@@ -2517,7 +2517,7 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
-						GetPreviewOutputsForChildType(EMixtormatLayerChildType::CombineId))
+						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::CombineId))
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
@@ -2935,7 +2935,7 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
-						GetPreviewOutputsForChildType(EMixtormatLayerChildType::Filter))
+						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::Filter))
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[

@@ -1399,9 +1399,14 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 
+	// GapMask may be null: pass a Mask-kind published output on the same child to force its
+	// active pixels to black instead of a hashed colour (Breakup), or null when the id map has
+	// no separate gap concept to combine (Cluster IDs) or already blackens its own invalid
+	// pixels inline (Pattern/Combine IDs).
 	void AddDebugPreviewRegionIdsBlitPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceIds,
+		FRDGTextureRef GapMask,
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 }
