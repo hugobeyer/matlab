@@ -52,7 +52,7 @@ namespace
 	// ResolveCS re-evaluates the same strata phase at full resolution and folds it back in, so
 	// the detail that matters comes back without the solve paying for it. The same trade the
 	// peel front and the wet stain already make.
-	constexpr int32 StrataSolveMaxSize = 512;
+	constexpr int32 StrataSolveMaxSize = 1024;
 
 	// Divisor rather than a straight clamp, so a non-square tile keeps its aspect and the wrap
 	// stays exact on both axes. Rounded up to a power of two because every composition
