@@ -2604,7 +2604,7 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 		LOCTEXT("StrataWarpHint", "How far the bands wander off straight. The warp is a periodic curl field, so bending them cannot break the tile however far this is pushed.")));
 
 	AddSliderRow(Panel, Slider(
-		LOCTEXT("StrataPush", "Push"), &FMixtormatStrataCarver::PushAmount, 0.0, 4.0, 0.5, 0.01,
+		LOCTEXT("StrataPush", "Push"), &FMixtormatStrataCarver::PushAmount, 0.0, 8.0, 0.5, 0.01,
 		LOCTEXT("StrataPushHint", "The recursion. A front that has been running along a bedding plane builds credit and gets cheaper, so it keeps running along that plane -- which is what turns a distance field into layered rock. Push Decay under ADVANCED sets how fast that credit dies behind it.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StrataGrpInfluence", "Influence")));
