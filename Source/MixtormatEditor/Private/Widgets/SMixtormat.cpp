@@ -610,10 +610,22 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 	}
 
-	// Selection, enable state and source replacement can invalidate a data preview.
-	if (DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds && !CanPreviewSelectedFilter())
+	// Selection, enable state and source replacement can invalidate a data preview: a different
+	// child got selected, the previewed child (or its layer) got disabled, or it was deleted. The
+	// target is re-resolved from current selection rather than trusted as-is, so a reorder or a
+	// group re-broadcast that still names the same child leaves the preview showing, and anything
+	// else clears it.
+	if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
 	{
-		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+		const bool bStillValid = Child
+			&& ChildPreviewTarget == ResolveChildPreviewTarget(ChildPreviewTarget.OutputName, ChildPreviewTarget.Kind)
+			&& IsChildOutputPreviewReady(*Child);
+		if (!bStillValid)
+		{
+			DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+			ChildPreviewTarget = FMixtormatChildPreviewTarget();
+		}
 	}
 
 	TArray<FMixtormatLayer> PreviewOverrideLayers;
@@ -731,10 +743,14 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			FMixtormatDebugPreviewSettings DebugSettings;
 			DebugSettings.Mode = DebugPreviewMode;
 			DebugSettings.LayerIndex = SelectedLayerIndex;
-			DebugSettings.ChildIndex = (DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask
-				|| DebugPreviewMode == EMixtormatDebugPreviewMode::ClusterIds)
+			DebugSettings.ChildIndex = DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask
 				? GetSelectedChildIndex()
 				: INDEX_NONE;
+			// LayerIndex/ChildIndex above are meaningless for ChildOutput: ChildTarget already
+			// names the child by GUID, flattened to one concrete layer at click time (see
+			// ResolveChildPreviewTarget), and the compositor resolves it to indices itself, once,
+			// at the top of RequestComposeInternal.
+			DebugSettings.ChildTarget = ChildPreviewTarget;
 			Viewport->SetPreviewLayers(
 				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings);
 		}

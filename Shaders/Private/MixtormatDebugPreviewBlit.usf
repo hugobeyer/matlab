@@ -1,0 +1,47 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+// Post-hoc debug blits for the generic child-output preview (Breakup's Region IDs/Gap/Edge/
+// Pieces, Worn Edges' Wear, Pattern IDs' Gap): these are already-produced textures, not values
+// the composite or a producer's own kernel computes, so rather than teach every producer shader
+// a WriteDebug branch of its own, one small pass colours whichever texture the target names,
+// after the fact. Cluster/Pattern/Combine Region IDs keep their own inline debug write instead of
+// switching to this: it already exists, already works, and matches the shape of this pass exactly
+// (the same hash below), so there is nothing this would replace, only risk to take on for no gain.
+
+Texture2D<float> SourceMask;
+RWTexture2D<float4> OutputDebug;
+
+int2 OutputSize;
+
+[numthreads(8, 8, 1)]
+void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	OutputDebug[Pixel] = float4(MixtormatDebugRamp(SourceMask.Load(int3(Pixel, 0))), 1.0f);
+}
+
+Texture2D<uint> SourceIds;
+
+[numthreads(8, 8, 1)]
+void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const uint Root = SourceIds.Load(int3(Pixel, 0));
+	OutputDebug[Pixel] = float4(
+		MixtormatDebugColor(float3(
+			MixtormatRegionRandom(Root * 3u + 1u),
+			MixtormatRegionRandom(Root * 3u + 2u),
+			MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
+}

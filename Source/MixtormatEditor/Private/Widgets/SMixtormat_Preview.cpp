@@ -2,11 +2,67 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "MixtormatLayerGroups.h"
 
 
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+// Only outputs that already exist as real, named textures are listed: Cluster/Pattern/Combine
+// Region IDs, Breakup's Region IDs/Gap/Edge/Pieces, Worn Edges' Wear and Pattern IDs' Gap.
+// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Ramp/Random From
+// IDs, Strata Carver, Peeling) publishes nothing a preview eye could show, so it returns an empty
+// list rather than a button that does nothing.
+TArray<FMixtormatPreviewOutputDesc> GetChildPreviewOutputs(const FMixtormatLayerChild& Child)
+{
+	TArray<FMixtormatPreviewOutputDesc> Outputs;
+	const FText RegionIdsLabel = NSLOCTEXT("SMixtormat", "PreviewOutputRegionIds", "Region IDs");
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Filter:
+		Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds});
+		break;
+	case EMixtormatLayerChildType::PatternId:
+		Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds});
+		Outputs.Add({FName(TEXT("Gap")), NSLOCTEXT("SMixtormat", "PreviewOutputGap", "Gap"), EMixtormatPreviewOutputKind::Mask});
+		break;
+	case EMixtormatLayerChildType::CombineId:
+		Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds});
+		break;
+	case EMixtormatLayerChildType::Effect:
+		if (Child.Effect.ProceduralType == EMixtormatEffectType::Breakup)
+		{
+			Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds});
+			Outputs.Add({FName(TEXT("Gap")), NSLOCTEXT("SMixtormat", "PreviewOutputGap", "Gap"), EMixtormatPreviewOutputKind::Mask});
+			Outputs.Add({FName(TEXT("Edge")), NSLOCTEXT("SMixtormat", "PreviewOutputEdge", "Edge"), EMixtormatPreviewOutputKind::Mask});
+			Outputs.Add({FName(TEXT("Pieces")), NSLOCTEXT("SMixtormat", "PreviewOutputPieces", "Pieces"), EMixtormatPreviewOutputKind::Mask});
+		}
+		else if (Child.Effect.ProceduralType == EMixtormatEffectType::WornEdges)
+		{
+			Outputs.Add({FName(TEXT("Wear")), NSLOCTEXT("SMixtormat", "PreviewOutputWear", "Wear"), EMixtormatPreviewOutputKind::Mask});
+		}
+		break;
+	default:
+		break;
+	}
+	return Outputs;
+}
+
+TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForChildType(const EMixtormatLayerChildType Type)
+{
+	FMixtormatLayerChild Probe;
+	Probe.Type = Type;
+	return GetChildPreviewOutputs(Probe);
+}
+
+TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForEffectType(const EMixtormatEffectType EffectType)
+{
+	FMixtormatLayerChild Probe;
+	Probe.Type = EMixtormatLayerChildType::Effect;
+	Probe.Effect.ProceduralType = EffectType;
+	return GetChildPreviewOutputs(Probe);
+}
 
 FReply SMixtormat::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
@@ -185,12 +241,6 @@ FReply SMixtormat::ToggleFeaturePreview(const EMixtormatDebugPreviewMode Mode)
 		}
 	}
 
-	if (Mode == EMixtormatDebugPreviewMode::ClusterIds
-		&& DebugPreviewMode != Mode && !CanPreviewSelectedFilter())
-	{
-		return FReply::Handled();
-	}
-
 	DebugPreviewMode = DebugPreviewMode == Mode
 		? EMixtormatDebugPreviewMode::None
 		: Mode;
@@ -210,17 +260,212 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	return SNew(SMixtormatIconButton)
 		.Size(MixtormatTokens::LayerEyeSize)
 		.ToolTipText(ToolTip)
-		.IsEnabled_Lambda([this, Mode]()
-		{
-			return Mode != EMixtormatDebugPreviewMode::ClusterIds
-				|| DebugPreviewMode == Mode || CanPreviewSelectedFilter();
-		})
 		.bActive_Lambda([this, Mode]() { return DebugPreviewMode == Mode; })
 		.Icon_Lambda([this, Mode]()
 		{
 			return DebugPreviewMode == Mode ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
 		})
 		.OnClicked_Lambda([this, Mode]() { ToggleFeaturePreview(Mode); });
+}
+
+FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target)
+{
+	if (!Target.IsValid())
+	{
+		return FReply::Handled();
+	}
+	const bool bAlreadyActive =
+		DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput && ChildPreviewTarget == Target;
+	if (bAlreadyActive)
+	{
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		ChildPreviewTarget = FMixtormatChildPreviewTarget();
+	}
+	else
+	{
+		DebugPreviewMode = EMixtormatDebugPreviewMode::ChildOutput;
+		ChildPreviewTarget = Target;
+	}
+	RefreshLayeredPreview(false);
+	return FReply::Handled();
+}
+
+FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
+	const FName OutputName, const EMixtormatPreviewOutputKind Kind) const
+{
+	FMixtormatChildPreviewTarget Target;
+	Target.OutputName = OutputName;
+	Target.Kind = Kind;
+
+	if (SelectedLayerIndex != INDEX_NONE)
+	{
+		if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			return Target;
+		}
+		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+		if (!Child)
+		{
+			return Target;
+		}
+		Target.OwnerId = WorkingLayers[SelectedLayerIndex].LayerId;
+		Target.ChildId = Child->ChildId;
+		return Target;
+	}
+
+	if (!SelectedGroupId.IsValid())
+	{
+		return Target;
+	}
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
+	if (!Group || !Group->Children.IsValidIndex(SelectedGroupChildIndex))
+	{
+		return Target;
+	}
+	const FGuid AuthoredChildId = Group->Children[SelectedGroupChildIndex].ChildId;
+
+	// Flatten to one concrete member before this leaves the editor: the compositor never learns
+	// what a group is (groups become ordinary layers once, in RequestComposeInternal, and nowhere
+	// else), so a group-authored target has to already name one real member layer and that
+	// member's own effective (per-member) child id -- otherwise the same authored child would
+	// match every enabled member's clone of it at once, and whichever composited last would win.
+	int32 FirstIndex = INDEX_NONE, LastIndex = INDEX_NONE;
+	if (!MixtormatLayerGroups::GetGroupRange(WorkingLayers, SelectedGroupId, FirstIndex, LastIndex))
+	{
+		return Target;
+	}
+	for (int32 Index = FirstIndex; Index <= LastIndex; ++Index)
+	{
+		if (WorkingLayers.IsValidIndex(Index) && WorkingLayers[Index].bEnabled)
+		{
+			Target.OwnerId = WorkingLayers[Index].LayerId;
+			Target.ChildId = MixtormatLayerGroups::MakeEffectiveChildId(
+				SelectedGroupId, AuthoredChildId, WorkingLayers[Index].LayerId);
+			return Target;
+		}
+	}
+	// No enabled member: nothing would broadcast this child, so there is nothing to show.
+	return Target;
+}
+
+bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const
+{
+	if (bBypassSelectedChild)
+	{
+		return false;
+	}
+	if (WorkingLayers.IsValidIndex(SelectedLayerIndex) && !WorkingLayers[SelectedLayerIndex].bEnabled)
+	{
+		return false;
+	}
+	if (!IsGroupChildEnabled(Child))
+	{
+		return false;
+	}
+	if (Child.Type != EMixtormatLayerChildType::Filter)
+	{
+		return true;
+	}
+	// Cluster IDs' segmentation scan reads the owning layer's packed RAM + height; every other
+	// output kind either is procedural (Pattern IDs, Breakup) or only republishes an upstream map
+	// (Combine IDs), so this is the one place a producer can exist and still have nothing to show.
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		// Group-authored: no single owning layer's surface to check here. The per-member GPU pass
+		// leaves the debug output cleared if the member this resolves to has none.
+		return true;
+	}
+	const UMixtormatSurface* Surface = WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous();
+	return Surface && Surface->RoughnessAOMetallic;
+}
+
+TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
+	const TArray<FMixtormatPreviewOutputDesc>& Outputs)
+{
+	if (Outputs.IsEmpty())
+	{
+		return SNullWidget::NullWidget;
+	}
+
+	const auto IsAnyActive = [this, Outputs]()
+	{
+		if (DebugPreviewMode != EMixtormatDebugPreviewMode::ChildOutput || !ChildPreviewTarget.IsValid())
+		{
+			return false;
+		}
+		for (const FMixtormatPreviewOutputDesc& Desc : Outputs)
+		{
+			if (ChildPreviewTarget == ResolveChildPreviewTarget(Desc.Name, Desc.Kind))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	const auto IsReady = [this]()
+	{
+		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+		return Child != nullptr && IsChildOutputPreviewReady(*Child);
+	};
+
+	if (Outputs.Num() == 1)
+	{
+		const FMixtormatPreviewOutputDesc Desc = Outputs[0];
+		return SNew(SMixtormatIconButton)
+			.Size(MixtormatTokens::LayerEyeSize)
+			.ToolTipText(Desc.Label)
+			.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
+			.bActive_Lambda(IsAnyActive)
+			.Icon_Lambda([IsAnyActive]()
+			{
+				return IsAnyActive() ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
+			})
+			.OnClicked_Lambda([this, Desc]()
+			{
+				ToggleChildOutputPreview(ResolveChildPreviewTarget(Desc.Name, Desc.Kind));
+			});
+	}
+
+	// Multiple outputs: one combo. Its own icon lights when any of this child's outputs is the
+	// active target; its menu lists each by label, and clicking the one already active turns the
+	// preview off exactly like the single-eye case does.
+	return SNew(SComboButton)
+		.HasDownArrow(false)
+		.ContentPadding(FMargin(0.0f))
+		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
+		.ToolTipText(LOCTEXT("PreviewChildOutputHint", "Preview one of this child's published outputs"))
+		.ButtonContent()
+		[
+			SNew(SBox)
+			.WidthOverride(MixtormatTokens::LayerEyeSize)
+			.HeightOverride(MixtormatTokens::LayerEyeSize)
+			[
+				SNew(SImage)
+				.Image_Lambda([IsAnyActive]()
+				{
+					return IsAnyActive() ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
+				})
+			]
+		]
+		.OnGetMenuContent_Lambda([this, Outputs]() -> TSharedRef<SWidget>
+		{
+			TSharedRef<SVerticalBox> Menu = SNew(SVerticalBox);
+			for (const FMixtormatPreviewOutputDesc& Desc : Outputs)
+			{
+				Menu->AddSlot().AutoHeight()
+				[
+					SNew(SButton)
+					.Text(Desc.Label)
+					.OnClicked_Lambda([this, Desc]()
+					{
+						ToggleChildOutputPreview(ResolveChildPreviewTarget(Desc.Name, Desc.Kind));
+						FSlateApplication::Get().DismissAllMenus();
+						return FReply::Handled();
+					})
+				];
+			}
+			return SNew(SBox).WidthOverride(MixtormatTokens::OptionMenuWidth)[Menu];
+		});
 }
 
 void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
@@ -508,6 +753,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnClicked_Lambda([this]()
 			{
 				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+				ChildPreviewTarget = FMixtormatChildPreviewTarget();
 				RefreshLayeredPreview(false);
 				return FReply::Handled();
 			})
@@ -524,7 +770,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
 					case EMixtormatDebugPreviewMode::Stain: return LOCTEXT("DebugStain", "Stain ×");
 					case EMixtormatDebugPreviewMode::Runoff: return LOCTEXT("DebugRunoff", "Runoff ×");
-					case EMixtormatDebugPreviewMode::ClusterIds: return LOCTEXT("DebugClusterIds", "Cluster IDs ×");
+					case EMixtormatDebugPreviewMode::ChildOutput:
+					{
+						// Named after whichever output is active, not the mode: one mode covers
+						// every child-published output, so "Child output ×" would tell the user
+						// nothing "Gap ×" or "Region IDs ×" doesn't.
+						if (const FMixtormatLayerChild* Child =
+							ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
+						{
+							for (const FMixtormatPreviewOutputDesc& Desc : GetChildPreviewOutputs(*Child))
+							{
+								if (Desc.Name == ChildPreviewTarget.OutputName
+									&& Desc.Kind == ChildPreviewTarget.Kind)
+								{
+									return FText::Format(
+										LOCTEXT("DebugChildOutputFmt", "{0} ×"), Desc.Label);
+								}
+							}
+						}
+						return LOCTEXT("DebugChildOutput", "Preview ×");
+					}
 					default: return FText::GetEmpty();
 					}
 				})

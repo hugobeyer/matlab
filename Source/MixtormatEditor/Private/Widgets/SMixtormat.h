@@ -33,6 +33,29 @@ struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatSurfaceEntry;
 
+// One entry in a child's generic preview-eye menu: a named output plus how to colour it. Name is
+// NAME_None for RegionIds -- a child publishes at most one ID map, so it needs no name to
+// disambiguate, only a kind.
+struct FMixtormatPreviewOutputDesc
+{
+	FName Name;
+	FText Label;
+	EMixtormatPreviewOutputKind Kind = EMixtormatPreviewOutputKind::Mask;
+};
+
+// What a child can show through the generic child-output preview eye, driven entirely by its
+// type/procedural kind. This is the one place a future output gets taught to the preview system
+// -- the inspector's eye/menu widget and its readiness check both read this rather than naming a
+// child type themselves, so a new producer needs one case here and nothing else.
+TArray<FMixtormatPreviewOutputDesc> GetChildPreviewOutputs(const FMixtormatLayerChild& Child);
+
+// Convenience for an inspector group whose panel is built for one known, fixed child kind (the
+// panel is only ever visible while a child of that kind is selected): the descriptor list depends
+// only on the kind, never on which specific instance is selected, so there is nothing to resolve
+// against the live selection here.
+TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForChildType(EMixtormatLayerChildType Type);
+TArray<FMixtormatPreviewOutputDesc> GetPreviewOutputsForEffectType(EMixtormatEffectType EffectType);
+
 class SMixtormat final : public SCompoundWidget
 {
 public:
@@ -101,6 +124,24 @@ private:
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
 		EMixtormatDebugPreviewMode Mode,
 		const FText& ToolTip);
+	// The generic child-output preview eye/menu: one control for every named mask/ID output a
+	// child publishes (Cluster/Pattern/Combine Region IDs, Breakup's Region IDs/Gap/Edge/Pieces,
+	// Worn Edges' Wear, ...), built from GetChildPreviewOutputs rather than one dedicated button
+	// per producer. Empty Outputs (nothing to preview) returns SNullWidget.
+	TSharedRef<SWidget> MakeChildOutputPreviewButton(
+		const TArray<FMixtormatPreviewOutputDesc>& Outputs);
+	FReply ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target);
+	// Resolves the currently selected child to a preview target naming OutputName/Kind on it.
+	// A group-authored selection is flattened to one concrete enabled member layer and that
+	// member's effective child id here, so nothing downstream has to know what a group is.
+	// Returns an invalid target (OwnerId/ChildId unset) when nothing resolves.
+	FMixtormatChildPreviewTarget ResolveChildPreviewTarget(
+		FName OutputName, EMixtormatPreviewOutputKind Kind) const;
+	// The generic replacement for the old Pattern/Cluster-only CanPreviewSelectedFilter: enabled
+	// state plus whatever domain readiness a child's own output kind genuinely requires (Cluster
+	// IDs' packed-source requirement is the only one left; every other producer needs nothing
+	// beyond being enabled).
+	bool IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const;
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	FReply StartNewMaterial();
 	FReply NewWorkingMaterial();
@@ -253,7 +294,6 @@ private:
 	TSharedRef<SWidget> BuildFilterControls();
 	TSharedRef<SWidget> BuildClusterSourceMenu();
 	TSharedRef<SWidget> BuildAddFilterMenu(int32 LayerIndex);
-	bool CanPreviewSelectedFilter() const;
 
 	FReply AddHsvFilterToLayer(int32 LayerIndex);
 	FMixtormatHsvIdFilter* GetSelectedHsvFilter();
@@ -1016,6 +1056,8 @@ private:
 	bool bSavedGlobalUVRotation90 = false;
 	bool bIsBaking = false;
 	EMixtormatDebugPreviewMode DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+	// Only meaningful while DebugPreviewMode == ChildOutput.
+	FMixtormatChildPreviewTarget ChildPreviewTarget;
 	int32 SelectedLayerIndex = INDEX_NONE;
 	int32 SoloLayerIndex = INDEX_NONE;
 	int32 SelectedEffectIndex = INDEX_NONE;

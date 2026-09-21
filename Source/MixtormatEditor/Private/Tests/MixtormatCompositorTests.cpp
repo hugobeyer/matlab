@@ -264,10 +264,13 @@ bool FMixtormatClusterIdsTest::RunTest(const FString& Parameters)
 
 	// The filter publishes its own preview and the composite is told to leave the debug target
 	// alone for this mode, so the debug read below is the kernel's output and nothing else.
+	// LayerIndex/ChildIndex are resolved from ChildTarget by RequestComposeInternal itself; the
+	// test only has to name the child by (LayerId, ChildId), the same way the editor does.
 	FMixtormatDebugPreviewSettings Debug;
-	Debug.Mode = EMixtormatDebugPreviewMode::ClusterIds;
-	Debug.LayerIndex = 0;
-	Debug.ChildIndex = 0;
+	Debug.Mode = EMixtormatDebugPreviewMode::ChildOutput;
+	Debug.ChildTarget.OwnerId = Layer.LayerId;
+	Debug.ChildTarget.ChildId = Child.ChildId;
+	Debug.ChildTarget.Kind = EMixtormatPreviewOutputKind::RegionIds;
 
 	if (!TestTrue(TEXT("Cluster filter composes"), ComposeAndWait(Compositor, Layers, Debug)))
 	{

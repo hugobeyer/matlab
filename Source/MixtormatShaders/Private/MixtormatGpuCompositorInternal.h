@@ -852,6 +852,24 @@ namespace MixtormatGpuCompositor
 		TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;
 	};
 
+	// True when Kind/OutputName/LayerIndex/ChildIndex together name the active generic
+	// child-output preview target. LayerIndex/ChildIndex come from Request.DebugSettings, already
+	// resolved from ChildTarget's GUIDs once at the top of RequestComposeInternal -- callers here
+	// compare against them exactly the way every other debug mode already does.
+	inline bool IsChildOutputPreviewTarget(
+		const FRenderRequest& Request,
+		const EMixtormatPreviewOutputKind Kind,
+		const FName OutputName,
+		const int32 LayerIndex,
+		const int32 ChildIndex)
+	{
+		return Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput
+			&& Request.DebugSettings.LayerIndex == LayerIndex
+			&& Request.DebugSettings.ChildIndex == ChildIndex
+			&& Request.DebugSettings.ChildTarget.Kind == Kind
+			&& Request.DebugSettings.ChildTarget.OutputName == OutputName;
+	}
+
 	inline FRDGTextureRef RegisterTexture(
 		FRDGBuilder& GraphBuilder,
 		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures,
@@ -1368,4 +1386,22 @@ namespace MixtormatGpuCompositor
 		const int32 ChildIndex,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
+
+	// MixtormatGpuDebugPreviewPasses.cpp -- generic child-output preview.
+	//
+	// For a producer that has already built its texture and just needs to show it when the
+	// ChildOutput target names it: no WriteDebug branch of the producer's own kernel to gate, no
+	// permutation, just colour the finished texture into OutputDebug after the fact. Callers are
+	// expected to guard the call with IsChildOutputPreviewTarget first.
+	void AddDebugPreviewMaskBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceMask,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
+
+	void AddDebugPreviewRegionIdsBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceIds,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
 }

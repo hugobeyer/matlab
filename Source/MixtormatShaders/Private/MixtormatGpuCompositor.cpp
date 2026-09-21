@@ -729,7 +729,7 @@ namespace MixtormatGpuCompositor
 			Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Runoff
-			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ClusterIds
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ChildOutput
 			&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 		Parameters->Opacity = Layer.Opacity;
 		Parameters->Tiling = Layer.Tiling;
@@ -1257,6 +1257,30 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, ExpandedLayers);
 	}
 	const TArray<FMixtormatLayer>& EffectiveLayers = bExpandGroups ? ExpandedLayers : Layers;
+
+	// ChildTarget names a child by (LayerId, ChildId); every pass below still addresses a child
+	// by (LayerIndex, ChildIndex) the way LayerMask/ClusterIds always have, so resolve once here
+	// rather than teach each pass file a second, GUID-based comparison.
+	if (DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput)
+	{
+		DebugSettings.LayerIndex = INDEX_NONE;
+		DebugSettings.ChildIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < EffectiveLayers.Num(); ++Index)
+		{
+			if (EffectiveLayers[Index].LayerId != DebugSettings.ChildTarget.OwnerId)
+			{
+				continue;
+			}
+			DebugSettings.LayerIndex = Index;
+			const FGuid TargetChildId = DebugSettings.ChildTarget.ChildId;
+			DebugSettings.ChildIndex = EffectiveLayers[Index].Children.IndexOfByPredicate(
+				[TargetChildId](const FMixtormatLayerChild& Candidate)
+				{
+					return Candidate.ChildId == TargetChildId;
+				});
+			break;
+		}
+	}
 
 	if (!bInitialized && !Initialize())
 	{

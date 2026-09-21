@@ -1613,6 +1613,31 @@ namespace MixtormatGpuCompositor
 		Ctx.PublishedMaskOutputs.Add(
 			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Pieces"))},
 			Pending.Pieces);
+
+		// The generic child-output preview eye. Breakup always builds all four of these, so
+		// unlike Pattern IDs' Gap there is no demand-gating to extend -- only a debug blit to add.
+		const FRDGTextureRef DebugTarget = Ctx.OutputDebug[Request.PublishedTargetIndex];
+		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+			LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewRegionIdsBlitPass(
+				GraphBuilder, Pending.GeneratedRegionIds, DebugTarget, Request.Resolution);
+		}
+		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
+			FName(TEXT("Gap")), LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Gap, DebugTarget, Request.Resolution);
+		}
+		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
+			FName(TEXT("Edge")), LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Edge, DebugTarget, Request.Resolution);
+		}
+		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
+			FName(TEXT("Pieces")), LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Pieces, DebugTarget, Request.Resolution);
+		}
 	}
 
 
@@ -2771,6 +2796,14 @@ namespace MixtormatGpuCompositor
 					PendingWear.SourceChildIndex,
 					FName(TEXT("Wear"))},
 				EdgeWearMask);
+
+			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
+				FName(TEXT("Wear")), LayerIndex, PendingWear.SourceChildIndex))
+			{
+				AddDebugPreviewMaskBlitPass(
+					GraphBuilder, EdgeWearMask,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
+			}
 
 			FRDGTextureRef WornRAM = GraphBuilder.CreateTexture(
 				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.HeightDerivedRAM"));

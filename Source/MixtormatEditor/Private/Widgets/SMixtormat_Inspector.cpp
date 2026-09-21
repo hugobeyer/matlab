@@ -1089,6 +1089,9 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("BreakupHeading", "BREAKUP"))
 			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeChildOutputPreviewButton(
+					GetPreviewOutputsForEffectType(EMixtormatEffectType::Breakup)))
 			[
 				Panel
 			]
@@ -1193,6 +1196,9 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("WornEdgesHeading", "WORN EDGES"))
 			.InitiallyExpanded(true)
+			.HeaderAction(
+				MakeChildOutputPreviewButton(
+					GetPreviewOutputsForEffectType(EMixtormatEffectType::WornEdges)))
 			[
 				Panel
 			]
@@ -2254,9 +2260,8 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 				+ SHorizontalBox::Slot().AutoWidth()
 				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
-					MakeFeaturePreviewButton(
-						EMixtormatDebugPreviewMode::ClusterIds,
-						LOCTEXT("PreviewPatternIds", "Preview Pattern IDs as a hashed colour per region. Gap pixels show the invalid-region colour."))
+					MakeChildOutputPreviewButton(
+						GetPreviewOutputsForChildType(EMixtormatLayerChildType::PatternId))
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
@@ -2508,22 +2513,31 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 			.Title(LOCTEXT("CombineIdHeading", "COMBINE IDS"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
-				MixtormatRow::MakeCheckbox(
-					TAttribute<ECheckBoxState>::CreateLambda([this]()
-					{
-						const FMixtormatCombineIdFilter* Selected = GetSelectedCombineId();
-						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-					}),
-					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-					{
-						if (FMixtormatCombineIdFilter* Selected = GetSelectedCombineId())
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton(
+						GetPreviewOutputsForChildType(EMixtormatLayerChildType::CombineId))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
 						{
-							Selected->bEnabled = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-							RebuildLayerList();
-						}
-					}),
-					LOCTEXT("CombineEnabledHint", "Enable this ID combiner")))
+							const FMixtormatCombineIdFilter* Selected = GetSelectedCombineId();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatCombineIdFilter* Selected = GetSelectedCombineId())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("CombineEnabledHint", "Enable this ID combiner"))
+				])
 			[
 				Panel
 			]
@@ -2920,9 +2934,8 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
 				[
-					MakeFeaturePreviewButton(
-						EMixtormatDebugPreviewMode::ClusterIds,
-						LOCTEXT("PreviewClusterIds", "Preview the region ID map as a hashed colour per region. Debug only -- the IDs themselves are sparse integers and nothing consumes them yet."))
+					MakeChildOutputPreviewButton(
+						GetPreviewOutputsForChildType(EMixtormatLayerChildType::Filter))
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[

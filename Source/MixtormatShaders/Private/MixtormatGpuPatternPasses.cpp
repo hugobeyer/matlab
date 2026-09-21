@@ -786,9 +786,6 @@ namespace MixtormatGpuCompositor
 			LayerCtx.PatternOutputs;
 		if (Layer.bEnabled)
 		{
-			const bool bPreviewingThisLayer =
-				Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ClusterIds
-				&& Request.DebugSettings.LayerIndex == LayerIndex;
 			for (const FChildRenderData& Child : Layer.Children)
 			{
 				const bool bClusterProducer =
@@ -814,8 +811,9 @@ namespace MixtormatGpuCompositor
 					{
 						continue;
 					}
-					const bool bCombinePreview = bPreviewingThisLayer
-						&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
+					const bool bCombinePreview = IsChildOutputPreviewTarget(
+						Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+						LayerIndex, Child.SourceChildIndex);
 					RegionIdMaps.Emplace(
 						Child.SourceChildIndex,
 						AddCombineIdPasses(
@@ -831,8 +829,9 @@ namespace MixtormatGpuCompositor
 
 				// Gated separately from whether the producer runs at all: ordinary
 				// consumers must not overwrite a debug target owned by another layer.
-				const bool bIsSelectedPreview = bPreviewingThisLayer
-					&& Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
+				const bool bIsSelectedPreview = IsChildOutputPreviewTarget(
+					Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+					LayerIndex, Child.SourceChildIndex);
 				bool bWanted = bIsSelectedPreview;
 				if (bPatternProducer)
 				{
@@ -860,6 +859,16 @@ namespace MixtormatGpuCompositor
 								break;
 							}
 						}
+					}
+
+					// The Gap preview eye is a consumer too: without this, previewing Gap on a
+					// Pattern that has no relief control active and no Gap instance mask silently
+					// shows nothing, because the producer never ran to publish it.
+					if (!bWanted)
+					{
+						bWanted = IsChildOutputPreviewTarget(
+							Request, EMixtormatPreviewOutputKind::Mask, FName(TEXT("Gap")),
+							LayerIndex, Child.SourceChildIndex);
 					}
 				}
 
@@ -1011,6 +1020,14 @@ namespace MixtormatGpuCompositor
 							Child.SourceChildIndex,
 							FName(TEXT("Gap"))},
 						PatternOutput.Gap);
+					if (IsChildOutputPreviewTarget(
+						Request, EMixtormatPreviewOutputKind::Mask, FName(TEXT("Gap")),
+						LayerIndex, Child.SourceChildIndex))
+					{
+						AddDebugPreviewMaskBlitPass(
+							GraphBuilder, PatternOutput.Gap,
+							OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
+					}
 				}
 
 				RegionIdMaps.Emplace(Child.SourceChildIndex, RegionIds);

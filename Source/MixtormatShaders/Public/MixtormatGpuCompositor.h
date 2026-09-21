@@ -30,12 +30,48 @@ enum class EMixtormatDebugPreviewMode : uint8
 	// Written by the stain resolve rather than by the composite, because stain is a post-layer
 	// filter and runs after the composite has already published the layer.
 	Stain,
-	// Pre-mask filter preview; LayerIndex/ChildIndex address the original runtime arrays.
-	// Disabled filters/layers or a missing packed source leave the cleared Debug output.
-	ClusterIds,
 	// Written by the runoff resolve, for the same reason Stain writes its own: the composite
 	// would otherwise overwrite the child's published preview with a flat DebugValue.
-	Runoff
+	Runoff,
+	// One generic mode for every named mask/ID output a child publishes (Cluster/Pattern/Combine
+	// Region IDs, Breakup's Region IDs/Gap/Edge/Pieces, Worn Edges' Wear, ...), addressed by
+	// ChildTarget rather than by a dedicated mode per producer -- see FMixtormatChildPreviewTarget.
+	// LayerIndex/ChildIndex are resolved from ChildTarget once, at composite time.
+	ChildOutput
+};
+
+// What kind of thing a child-published output is, so the preview knows how to colour it: a
+// scalar mask goes through the same red/cyan coverage ramp every other feature preview uses, an
+// ID map is hashed to a per-region colour instead.
+enum class EMixtormatPreviewOutputKind : uint8
+{
+	Mask,
+	RegionIds
+};
+
+// Names one previewable output on one child, by stable identity rather than by array position --
+// a reorder or a group's broadcast must not retarget the preview to a different child.
+//
+// OwnerId is always a LayerId by the time this reaches the compositor: a group-authored child is
+// flattened to one concrete member layer and its effective (per-member) ChildId on the editor
+// side before the request is built, so the compositor itself never has to know what a group is.
+struct FMixtormatChildPreviewTarget
+{
+	FGuid OwnerId;
+	FGuid ChildId;
+	// Empty for RegionIds -- a child publishes at most one ID map. Named ("Gap", "Edge",
+	// "Pieces", "Wear", ...) for Mask, the same names FMixtormatMaskLayer::PublishedSourceOutput
+	// already uses to read them.
+	FName OutputName;
+	EMixtormatPreviewOutputKind Kind = EMixtormatPreviewOutputKind::Mask;
+
+	bool IsValid() const { return OwnerId.IsValid() && ChildId.IsValid(); }
+
+	friend bool operator==(const FMixtormatChildPreviewTarget& A, const FMixtormatChildPreviewTarget& B)
+	{
+		return A.OwnerId == B.OwnerId && A.ChildId == B.ChildId
+			&& A.OutputName == B.OutputName && A.Kind == B.Kind;
+	}
 };
 
 struct FMixtormatDebugPreviewSettings
@@ -43,6 +79,10 @@ struct FMixtormatDebugPreviewSettings
 	EMixtormatDebugPreviewMode Mode = EMixtormatDebugPreviewMode::None;
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
+	// Only meaningful when Mode == ChildOutput. LayerIndex/ChildIndex above are resolved from
+	// this once, at the top of RequestComposeInternal, and every pass below reads those exactly
+	// like it does for LayerMask -- only the resolution step is new.
+	FMixtormatChildPreviewTarget ChildTarget;
 };
 
 class MIXTORMATSHADERS_API FMixtormatGpuCompositor final
