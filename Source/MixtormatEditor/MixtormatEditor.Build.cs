@@ -22,6 +22,9 @@ public class MixtormatEditor : ModuleRules
 		{
 			"AdvancedPreviewScene",
 			"AppFramework",
+			// FPlatformApplicationMisc (clipboard) resolves to FWindowsPlatformApplicationMisc,
+			// implemented in ApplicationCore; without this the editor module fails to link it.
+			"ApplicationCore",
 			"AssetRegistry",
 			"AssetTools",
 			"ContentBrowser",

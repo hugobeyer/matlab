@@ -8,6 +8,7 @@
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMask.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterDefinition.h"
 #include "RendererInterface.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
@@ -323,8 +324,7 @@ namespace MixtormatGpuCompositor
 		float ErosionDepth = 1.0f;
 		int32 ErosionRadius = 2;
 		int32 ErosionIterations = 8;
-		float ErosionGravityAngle = 270.0f;
-		float ErosionVerticality = 0.6f;
+		float ErosionGravityForce = 0.6f;
 		float ErosionSlopePower = 1.0f;
 		float ErosionDeposit = 0.25f;
 		float ErosionPreserveFlats = 0.002f;
@@ -353,41 +353,71 @@ namespace MixtormatGpuCompositor
 		// Breakup, already reduced to what the two dispatches need: the three cell counts and
 		// the size range are derived from Scale/Detail/Size/Size Variation once here rather than
 		// re-derived per pass.
-		float BreakupAmount = 1.0f;
+		//
+		// Defaults come from the canonical parameter definitions rather than literals, so the
+		// table, the serialized struct initializers and this struct cannot drift apart. The
+		// trailing literals are fallbacks for a missing key only (dev-ensured in DefaultFloat).
+		float BreakupAmount = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAmount"), 1.0f);
 		int32 BreakupMacroCells = 6;
 		int32 BreakupMidCells = 11;
 		int32 BreakupDetailCells = 20;
-		float BreakupDensity = 0.72f;
+		float BreakupDensity = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupDensity"), 0.72f);
 		float BreakupSizeMin = 0.22f;
 		float BreakupSizeMax = 0.42f;
-		float BreakupStretch = 1.6f;
-		float BreakupAngularity = 0.72f;
-		float BreakupIrregularity = 0.38f;
+		float BreakupStretch = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupStretch"), 1.6f);
+		float BreakupAngularity = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAngularity"), 0.72f);
+		float BreakupIrregularity = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupIrregularity"), 0.38f);
 		int32 BreakupMidOperation = 0;
 		int32 BreakupDetailOperation = 0;
-		float BreakupSmoothness = 0.30f;
-		float BreakupInset = 0.0f;
-		float BreakupDistortion = 5.6f;
+		float BreakupSmoothness = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupSmoothness"), 0.30f);
+		float BreakupInset = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupInset"), 0.0f);
+		float BreakupDistortion = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupDistortion"), 5.6f);
 		int32 BreakupDistortionFrequency = 3;
 		bool bBreakupInvert = false;
-		float BreakupRelief = -0.06f;
-		float BreakupThicknessVariation = 0.30f;
-		float BreakupGapWidth = 2.0f;
-		float BreakupGapDepth = 0.02f;
-		float BreakupGapVariation = 0.35f;
-		float BreakupFold = 0.025f;
-		float BreakupFoldWidth = 16.0f;
-		float BreakupCrease = 0.018f;
-		float BreakupCreaseWidth = 1.25f;
-		float BreakupPush = 0.0f;
-		float BreakupPushWidth = 24.0f;
-		float BreakupPushRelief = 0.035f;
-		float BreakupVariation = 0.25f;
-		float BreakupRoughnessAmount = 0.0f;
-		float BreakupNormalStrength = 2.0f;
-		float BreakupNormalSharpness = 0.75f;
-		float BreakupAOAmount = 0.35f;
-		float BreakupAORadius = 8.0f;
+		float BreakupRelief = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupRelief"), -0.06f);
+		float BreakupThicknessVariation = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupThicknessVariation"), 0.30f);
+		float BreakupGapWidth = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapWidth"), 2.0f);
+		float BreakupGapDepth = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapDepth"), 0.02f);
+		float BreakupGapVariation = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapVariation"), 0.35f);
+		float BreakupFold = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupFold"), 0.025f);
+		float BreakupFoldWidth = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupFoldWidth"), 16.0f);
+		float BreakupCrease = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupCrease"), 0.018f);
+		float BreakupCreaseWidth = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupCreaseWidth"), 1.25f);
+		float BreakupPush = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPush"), 0.0f);
+		float BreakupPushWidth = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPushWidth"), 24.0f);
+		float BreakupPushRelief = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPushRelief"), 0.035f);
+		float BreakupVariation = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupVariation"), 0.25f);
+		float BreakupRoughnessAmount = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupRoughnessAmount"), 0.0f);
+		float BreakupNormalStrength = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupNormalStrength"), 2.0f);
+		float BreakupNormalSharpness = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupNormalSharpness"), 0.75f);
+		float BreakupAOAmount = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAOAmount"), 0.35f);
+		float BreakupAORadius = MixtormatParameterDefinitions::DefaultFloat(
+			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAORadius"), 8.0f);
 		FTextureRHIRef BreakupPlacementMask;
 		float BreakupMaskTiling = 1.0f;
 		bool bBreakupInvertMask = false;

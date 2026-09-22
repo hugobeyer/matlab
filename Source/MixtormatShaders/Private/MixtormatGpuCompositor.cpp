@@ -13,6 +13,7 @@
 #include "MixtormatMask.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatParameterDefinition.h"
 #include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -2455,8 +2456,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.ErosionDepth = LayerEffect.ErosionDepth;
 				EffectData.ErosionRadius = LayerEffect.ErosionRadius;
 				EffectData.ErosionIterations = LayerEffect.ErosionIterations;
-				EffectData.ErosionGravityAngle = LayerEffect.ErosionGravityAngle;
-				EffectData.ErosionVerticality = LayerEffect.ErosionVerticality;
+				EffectData.ErosionGravityForce = LayerEffect.ErosionGravityForce;
 				EffectData.ErosionSlopePower = LayerEffect.ErosionSlopePower;
 				EffectData.ErosionDeposit = LayerEffect.ErosionDeposit;
 				EffectData.ErosionPreserveFlats = LayerEffect.ErosionPreserveFlats;
@@ -2505,16 +2505,31 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (ResolvedType == EMixtormatEffectType::Breakup)
 			{
-				EffectData.BreakupAmount = FMath::IsFinite(LayerEffect.BreakupAmount)
-					? FMath::Clamp(LayerEffect.BreakupAmount, 0.0f, 1.0f) : 1.0f;
+				// Authored values are validated against the canonical parameter definitions
+				// (MixtormatParameterDefinition) rather than per-field literals: the hard bounds
+				// and NaN fallbacks live in one table the serialized defaults and the render data
+				// also read. Anything genuinely derived -- the cell-count ratios and the size
+				// range -- stays local to the derivation below.
+				const auto BreakupFloat = [](const FName Name, const float Value)
+				{
+					return MixtormatParameterDefinitions::SanitizeFloat(
+						EMixtormatParameterOwnerType::Effect, Name,
+						EMixtormatParameterValueType::Float, Value);
+				};
+				const auto BreakupInt = [](const FName Name, const int32 Value)
+				{
+					return MixtormatParameterDefinitions::SanitizeInt32(
+						EMixtormatParameterOwnerType::Effect, Name, Value);
+				};
+
+				EffectData.BreakupAmount = BreakupFloat(TEXT("BreakupAmount"), LayerEffect.BreakupAmount);
 
 				// Mid and Detail are derived rather than authored, so the three families stay in
 				// a sensible ratio instead of being three sliders to keep in step by hand. Each
 				// is forced at least one cell above the family below it: two families at the same
 				// count would beat identically and the pair would read as one.
-				const int32 MacroCells = FMath::Clamp(LayerEffect.BreakupScale, 1, 64);
-				const float Detail = FMath::IsFinite(LayerEffect.BreakupDetail)
-					? FMath::Clamp(LayerEffect.BreakupDetail, 0.0f, 1.0f) : 0.5f;
+				const int32 MacroCells = BreakupInt(TEXT("BreakupScale"), LayerEffect.BreakupScale);
+				const float Detail = BreakupFloat(TEXT("BreakupDetail"), LayerEffect.BreakupDetail);
 				const int32 MidCells = FMath::Max(
 					MacroCells + 1,
 					FMath::RoundToInt(MacroCells * FMath::Lerp(1.50f, 2.15f, Detail)));
@@ -2525,78 +2540,52 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.BreakupMidCells = MidCells;
 				EffectData.BreakupDetailCells = DetailCells;
 
-				const float Size = FMath::IsFinite(LayerEffect.BreakupSize)
-					? FMath::Max(LayerEffect.BreakupSize, 0.001f) : 0.32f;
-				const float SizeVariation = FMath::IsFinite(LayerEffect.BreakupSizeVariation)
-					? FMath::Clamp(LayerEffect.BreakupSizeVariation, 0.0f, 0.99f) : 0.3125f;
+				const float Size = BreakupFloat(TEXT("BreakupSize"), LayerEffect.BreakupSize);
+				const float SizeVariation = BreakupFloat(TEXT("BreakupSizeVariation"), LayerEffect.BreakupSizeVariation);
 				// Floored above zero: a zero or negative radius divides by itself in the shape
 				// metric, and a piece that cannot exist is not the same thing as Density 0.
 				EffectData.BreakupSizeMin = FMath::Max(Size * (1.0f - SizeVariation), 1.0e-4f);
 				EffectData.BreakupSizeMax = FMath::Max(Size * (1.0f + SizeVariation), EffectData.BreakupSizeMin);
 
-				EffectData.BreakupDensity = FMath::IsFinite(LayerEffect.BreakupDensity)
-					? FMath::Clamp(LayerEffect.BreakupDensity, 0.0f, 1.0f) : 0.72f;
-				EffectData.BreakupStretch = FMath::IsFinite(LayerEffect.BreakupStretch)
-					? FMath::Max(LayerEffect.BreakupStretch, 1.0f) : 1.6f;
-				EffectData.BreakupAngularity = FMath::IsFinite(LayerEffect.BreakupAngularity)
-					? FMath::Clamp(LayerEffect.BreakupAngularity, 0.0f, 1.0f) : 0.72f;
-				EffectData.BreakupIrregularity = FMath::IsFinite(LayerEffect.BreakupIrregularity)
-					? FMath::Clamp(LayerEffect.BreakupIrregularity, 0.0f, 1.0f) : 0.38f;
+				EffectData.BreakupDensity = BreakupFloat(TEXT("BreakupDensity"), LayerEffect.BreakupDensity);
+				EffectData.BreakupStretch = BreakupFloat(TEXT("BreakupStretch"), LayerEffect.BreakupStretch);
+				EffectData.BreakupAngularity = BreakupFloat(TEXT("BreakupAngularity"), LayerEffect.BreakupAngularity);
+				EffectData.BreakupIrregularity = BreakupFloat(TEXT("BreakupIrregularity"), LayerEffect.BreakupIrregularity);
 
 				EffectData.BreakupMidOperation = static_cast<int32>(LayerEffect.BreakupMidOperation);
 				EffectData.BreakupDetailOperation = static_cast<int32>(LayerEffect.BreakupDetailOperation);
-				EffectData.BreakupSmoothness = FMath::IsFinite(LayerEffect.BreakupSmoothness)
-					? FMath::Max(LayerEffect.BreakupSmoothness, 0.0f) : 0.30f;
-				EffectData.BreakupInset = FMath::IsFinite(LayerEffect.BreakupInset)
-					? LayerEffect.BreakupInset : 0.0f;
+				EffectData.BreakupSmoothness = BreakupFloat(TEXT("BreakupSmoothness"), LayerEffect.BreakupSmoothness);
+				EffectData.BreakupInset = BreakupFloat(TEXT("BreakupInset"), LayerEffect.BreakupInset);
 
-				EffectData.BreakupDistortion = FMath::IsFinite(LayerEffect.BreakupDistortion)
-					? LayerEffect.BreakupDistortion : 5.6f;
+				EffectData.BreakupDistortion = BreakupFloat(TEXT("BreakupDistortion"), LayerEffect.BreakupDistortion);
 				EffectData.BreakupDistortionFrequency =
-					FMath::Clamp(LayerEffect.BreakupDistortionFrequency, 1, 16);
+					BreakupInt(TEXT("BreakupDistortionFrequency"), LayerEffect.BreakupDistortionFrequency);
 				EffectData.bBreakupInvert = LayerEffect.bBreakupInvert;
 
-				// Structural amounts, finite-guarded and not range-clamped past what the shader
-				// needs to stay safe: these are artistic heights and widths, and every divisor
-				// they reach is floored in the shader.
-				EffectData.BreakupRelief = FMath::IsFinite(LayerEffect.BreakupRelief)
-					? LayerEffect.BreakupRelief : -0.06f;
-				EffectData.BreakupThicknessVariation = FMath::IsFinite(LayerEffect.BreakupThicknessVariation)
-					? FMath::Clamp(LayerEffect.BreakupThicknessVariation, 0.0f, 1.0f) : 0.30f;
-				EffectData.BreakupGapWidth = FMath::IsFinite(LayerEffect.BreakupGapWidth)
-					? FMath::Max(LayerEffect.BreakupGapWidth, 0.0f) : 2.0f;
-				EffectData.BreakupGapDepth = FMath::IsFinite(LayerEffect.BreakupGapDepth)
-					? LayerEffect.BreakupGapDepth : 0.02f;
-				EffectData.BreakupGapVariation = FMath::IsFinite(LayerEffect.BreakupGapVariation)
-					? FMath::Clamp(LayerEffect.BreakupGapVariation, 0.0f, 1.0f) : 0.35f;
-				EffectData.BreakupFold = FMath::IsFinite(LayerEffect.BreakupFold)
-					? LayerEffect.BreakupFold : 0.025f;
-				EffectData.BreakupFoldWidth = FMath::IsFinite(LayerEffect.BreakupFoldWidth)
-					? FMath::Max(LayerEffect.BreakupFoldWidth, 1.0e-4f) : 16.0f;
-				EffectData.BreakupCrease = FMath::IsFinite(LayerEffect.BreakupCrease)
-					? LayerEffect.BreakupCrease : 0.018f;
-				EffectData.BreakupCreaseWidth = FMath::IsFinite(LayerEffect.BreakupCreaseWidth)
-					? FMath::Max(LayerEffect.BreakupCreaseWidth, 1.0e-4f) : 1.25f;
-				EffectData.BreakupPush = FMath::IsFinite(LayerEffect.BreakupPush)
-					? LayerEffect.BreakupPush : 0.0f;
-				EffectData.BreakupPushWidth = FMath::IsFinite(LayerEffect.BreakupPushWidth)
-					? FMath::Max(LayerEffect.BreakupPushWidth, 1.0e-4f) : 24.0f;
-				EffectData.BreakupPushRelief = FMath::IsFinite(LayerEffect.BreakupPushRelief)
-					? FMath::Max(LayerEffect.BreakupPushRelief, 0.0f) : 0.035f;
-				EffectData.BreakupVariation = FMath::IsFinite(LayerEffect.BreakupVariation)
-					? FMath::Clamp(LayerEffect.BreakupVariation, 0.0f, 1.0f) : 0.25f;
-				EffectData.BreakupRoughnessAmount = FMath::IsFinite(LayerEffect.BreakupRoughnessAmount)
-					? FMath::Clamp(LayerEffect.BreakupRoughnessAmount, -1.0f, 1.0f) : 0.0f;
-				EffectData.BreakupNormalStrength = FMath::IsFinite(LayerEffect.BreakupNormalStrength)
-					? FMath::Max(LayerEffect.BreakupNormalStrength, 0.0f) : 2.0f;
-				EffectData.BreakupNormalSharpness = FMath::IsFinite(LayerEffect.BreakupNormalSharpness)
-					? FMath::Clamp(LayerEffect.BreakupNormalSharpness, 0.0f, 1.0f) : 0.75f;
-				EffectData.BreakupAOAmount = FMath::IsFinite(LayerEffect.BreakupAOAmount)
-					? FMath::Clamp(LayerEffect.BreakupAOAmount, 0.0f, 1.0f) : 0.35f;
-				EffectData.BreakupAORadius = FMath::IsFinite(LayerEffect.BreakupAORadius)
-					? FMath::Max(LayerEffect.BreakupAORadius, 1.0f) : 8.0f;
+				// Structural amounts, finite-guarded by SanitizeFloat and not range-clamped past
+				// what the shader needs to stay safe: these are artistic heights and widths, and
+				// every divisor they reach is floored in the shader.
+				EffectData.BreakupRelief = BreakupFloat(TEXT("BreakupRelief"), LayerEffect.BreakupRelief);
+				EffectData.BreakupThicknessVariation = BreakupFloat(TEXT("BreakupThicknessVariation"), LayerEffect.BreakupThicknessVariation);
+				EffectData.BreakupGapWidth = BreakupFloat(TEXT("BreakupGapWidth"), LayerEffect.BreakupGapWidth);
+				EffectData.BreakupGapDepth = BreakupFloat(TEXT("BreakupGapDepth"), LayerEffect.BreakupGapDepth);
+				EffectData.BreakupGapVariation = BreakupFloat(TEXT("BreakupGapVariation"), LayerEffect.BreakupGapVariation);
+				EffectData.BreakupFold = BreakupFloat(TEXT("BreakupFold"), LayerEffect.BreakupFold);
+				EffectData.BreakupFoldWidth = BreakupFloat(TEXT("BreakupFoldWidth"), LayerEffect.BreakupFoldWidth);
+				EffectData.BreakupCrease = BreakupFloat(TEXT("BreakupCrease"), LayerEffect.BreakupCrease);
+				EffectData.BreakupCreaseWidth = BreakupFloat(TEXT("BreakupCreaseWidth"), LayerEffect.BreakupCreaseWidth);
+				EffectData.BreakupPush = BreakupFloat(TEXT("BreakupPush"), LayerEffect.BreakupPush);
+				EffectData.BreakupPushWidth = BreakupFloat(TEXT("BreakupPushWidth"), LayerEffect.BreakupPushWidth);
+				EffectData.BreakupPushRelief = BreakupFloat(TEXT("BreakupPushRelief"), LayerEffect.BreakupPushRelief);
+				EffectData.BreakupVariation = BreakupFloat(TEXT("BreakupVariation"), LayerEffect.BreakupVariation);
+				EffectData.BreakupRoughnessAmount = BreakupFloat(TEXT("BreakupRoughnessAmount"), LayerEffect.BreakupRoughnessAmount);
+				EffectData.BreakupNormalStrength = BreakupFloat(TEXT("BreakupNormalStrength"), LayerEffect.BreakupNormalStrength);
+				EffectData.BreakupNormalSharpness = BreakupFloat(TEXT("BreakupNormalSharpness"), LayerEffect.BreakupNormalSharpness);
+				EffectData.BreakupAOAmount = BreakupFloat(TEXT("BreakupAOAmount"), LayerEffect.BreakupAOAmount);
+				EffectData.BreakupAORadius = BreakupFloat(TEXT("BreakupAORadius"), LayerEffect.BreakupAORadius);
 
-				EffectData.BreakupMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.BreakupMaskTiling));
+				EffectData.BreakupMaskTiling = static_cast<float>(
+					BreakupInt(TEXT("BreakupMaskTiling"), LayerEffect.BreakupMaskTiling));
 				EffectData.bBreakupInvertMask = LayerEffect.bBreakupInvertMask;
 				{
 					UTexture2D* PlacementMask = LayerEffect.BreakupMaskTexture.LoadSynchronous();
@@ -2612,7 +2601,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						EffectData.BreakupPlacementMask = GetTextureRHI(PlacementMask);
 					}
 				}
-				EffectData.BreakupSeed = static_cast<uint32>(FMath::Max(LayerEffect.BreakupSeed, 0));
+				EffectData.BreakupSeed = static_cast<uint32>(
+					BreakupInt(TEXT("BreakupSeed"), LayerEffect.BreakupSeed));
 			}
 
 

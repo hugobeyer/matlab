@@ -3900,7 +3900,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
 			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
-		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 2.0, 1.0, 0.01,
+		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 4.0, 1.0, 0.01,
 			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));

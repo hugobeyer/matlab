@@ -18,10 +18,10 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 {
 	Label = InArgs._Label;
 	ValueAttribute = InArgs._Value;
-	MinValue = InArgs._MinValue;
-	MaxValue = InArgs._MaxValue;
+	MinValueAttribute = InArgs._MinValue;
+	MaxValueAttribute = InArgs._MaxValue;
 	DefaultValue = InArgs._DefaultValue;
-	Delta = InArgs._Delta;
+	DeltaAttribute = InArgs._Delta;
 	Precision = InArgs._Precision;
 	bInteger = InArgs._bInteger;
 	OnValueChanged = InArgs._OnValueChanged;
@@ -78,7 +78,7 @@ void SMixtormatSlider::CommitValue(double Value, const bool bClampToRange)
 	// inspector constrains the scrub visually without constraining what reaches the shader.
 	if (bClampToRange)
 	{
-		Value = FMath::Clamp(Value, MinValue, MaxValue);
+		Value = FMath::Clamp(Value, MinValueAttribute.Get(0.0), MaxValueAttribute.Get(1.0));
 	}
 	if (bInteger)
 	{
@@ -187,12 +187,14 @@ FReply SMixtormatSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointer
 	// Absolute rather than incremental, so a scrub that reverses direction returns to where
 	// it started instead of drifting.
 	const float Width = FMath::Max(MyGeometry.GetLocalSize().X, 1.0f);
+	const double MinValue = MinValueAttribute.Get(0.0);
+	const double MaxValue = MaxValueAttribute.Get(1.0);
 	const double Range = MaxValue - MinValue;
 	const double Scale = MouseEvent.IsShiftDown() ? MixtormatTokens::FineDragScale : 1.0;
 	double NewValue = DragStartValue + (Range * (PixelDelta / Width)) * Scale;
-	if (MouseEvent.IsControlDown() && Delta > 0.0)
+	if (MouseEvent.IsControlDown() && DeltaAttribute.Get(0.0) > 0.0)
 	{
-		NewValue = FMath::RoundToDouble(NewValue / Delta) * Delta;
+		NewValue = FMath::RoundToDouble(NewValue / DeltaAttribute.Get(0.0)) * DeltaAttribute.Get(0.0);
 	}
 	CommitValue(NewValue, true);
 	return FReply::Handled();
@@ -262,6 +264,8 @@ int32 SMixtormatSlider::OnPaint(
 	}
 
 	const double Value = GetValue();
+	const double MinValue = MinValueAttribute.Get(0.0);
+	const double MaxValue = MaxValueAttribute.Get(1.0);
 	const double Range = MaxValue - MinValue;
 	const bool bValidRange = Range > UE_DOUBLE_SMALL_NUMBER;
 

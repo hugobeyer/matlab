@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterDefinition.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "Widgets/MixtormatChildAddress.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatSlider.h"
+#include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -595,14 +597,18 @@ private:
 	// One inspector row: label, fill and value in a single bar of fixed height. Every numeric
 	// control in the inspector goes through here, which is what makes the rows uniform.
 	// Registers itself for hover + Backspace reset like the spin boxes it replaces.
+	//
+	// Min/Max/Delta are attributes so migrated rows can resolve them from the parameter UI
+	// metadata -- including a session dev override -- on every paint. Plain doubles pass in
+	// unchanged and keep working via TAttribute's implicit conversion.
 	TSharedRef<SWidget> MakeSlider(
 		const FText& Label,
 		const TAttribute<double>& Value,
-		double MinValue,
-		double MaxValue,
-		double DefaultValue,
-		double SnapDelta,
-		bool bInteger,
+		const TAttribute<double>& MinValue,
+		const TAttribute<double>& MaxValue,
+		const double DefaultValue,
+		const TAttribute<double>& SnapDelta,
+		const bool bInteger,
 		const FMixtormatOnSliderValueChanged& OnValueChanged,
 		const FSimpleDelegate& ResetDelegate,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>());
@@ -660,6 +666,12 @@ private:
 		const TSharedRef<SWidget>& Control,
 		TFunction<FMixtormatParameterAddress()> ResolveTarget);
 	TSharedRef<SWidget> BuildParameterContextMenu(FMixtormatParameterAddress Target);
+	// Developer surface, gated by Mixtormat.Developer.ParameterMeta. The submenu exists only
+	// while that flag is on and only in the editor module.
+	TSharedRef<SWidget> BuildParameterDeveloperMenu(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildParameterInfoPanel(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildParameterUiRangeOverridePanel(FMixtormatParameterAddress Target);
+	void CopyParameterAddress(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterDriverPopover(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterContextMenuFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
 	TSharedRef<SWidget> BuildParameterDriverPopoverFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
@@ -728,18 +740,88 @@ private:
 		// untouched at zero.
 		checkSlow(ValueScale != 0.0);
 		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+
+		// The parameter-definition key behind this row. It is a property of the row's fixed
+		// member and owner struct, not of the selection, so it resolves once (nothing is
+		// selected at construct time) and is shared by every attribute getter below.
+		const TSharedRef<TOptional<FMixtormatParameterDefinitionKey>> CachedKey =
+			MakeShared<TOptional<FMixtormatParameterDefinitionKey>>();
+		const auto KeyFor = [ResolveTarget, CachedKey]() -> const FMixtormatParameterDefinitionKey*
+		{
+			if (!CachedKey->IsSet())
+			{
+				*CachedKey = MixtormatParameterUi::DefinitionKeyOf(ResolveTarget());
+			}
+			return CachedKey->IsSet() ? &CachedKey->GetValue() : nullptr;
+		};
+
+		// Drag range resolves per paint: dev override, then UiMeta, then the call site's
+		// literals. None of these are clamps -- a typed value past the range still reaches the
+		// member; only a runtime HardMin/HardMax restricts, and that happens in the compositor.
+		const auto RangeBound = [KeyFor](const double Fallback, const bool bMax)
+		{
+			return TAttribute<double>::CreateLambda([KeyFor, Fallback, bMax]() -> double
+			{
+				const FMixtormatParameterDefinitionKey* Key = KeyFor();
+				if (!Key)
+				{
+					return Fallback;
+				}
+				return static_cast<double>(
+					MixtormatParameterUi::ResolveUiBound(*Key, static_cast<float>(Fallback), bMax));
+			});
+		};
+		// Migration guard, runs from the min getter and warns once per parameter (guarded inside
+		// by a warned-set) when the literals and the UiMeta table disagree.
+		const float LiteralMin = static_cast<float>(MinValue);
+		const float LiteralMax = static_cast<float>(MaxValue);
+		const float LiteralSnap = static_cast<float>(SnapDelta);
+		const auto MigrationGuardBound = [KeyFor, LiteralMin, LiteralMax, LiteralSnap, RangeBound]()
+		{
+			return TAttribute<double>::CreateLambda([KeyFor, LiteralMin, LiteralMax, LiteralSnap,
+				Guard = RangeBound(LiteralMin, false)]() -> double
+			{
+				if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
+				{
+					MixtormatParameterUi::ReportLiteralMismatch(*Key, LiteralMin, LiteralMax, LiteralSnap);
+				}
+				return Guard.Get(0.0);
+			});
+		};
+
+		// Reset falls to the canonical definition's default once the row resolves, so the
+		// serialized struct initializer, the slider literal and the table cannot disagree.
+		const auto StoredDefault = [KeyFor, DefaultValue, ValueScale]() -> double
+		{
+			if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
+			{
+				if (const FMixtormatParameterDefinition* Definition =
+					MixtormatParameterDefinitions::TryGet(*Key))
+				{
+					return static_cast<double>(Definition->Default) * ValueScale;
+				}
+			}
+			return DefaultValue;
+		};
+
 		TSharedRef<SWidget> Slider = MakeSlider(
 			Label,
-			TAttribute<double>::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale, ResolveTarget]() -> double
+			TAttribute<double>::CreateLambda([this, Resolve, Member, StoredDefault, ValueScale, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
-				const double Local = Owner ? static_cast<double>(Owner->*Member) : DefaultValue * ValueScale;
+				const double Local = Owner ? static_cast<double>(Owner->*Member) : StoredDefault();
 				return GetEffectiveFloatParameter(ResolveTarget(), Local) / ValueScale;
 			}),
-			MinValue,
-			MaxValue,
+			MigrationGuardBound(),
+			RangeBound(MaxValue, true),
 			DefaultValue,
-			SnapDelta,
+			TAttribute<double>::CreateLambda([KeyFor, LiteralSnap]() -> double
+			{
+				const FMixtormatParameterDefinitionKey* Key = KeyFor();
+				return Key
+					? static_cast<double>(MixtormatParameterUi::ResolveUiSnap(*Key, LiteralSnap))
+					: static_cast<double>(LiteralSnap);
+			}),
 			false,
 			FMixtormatOnSliderValueChanged::CreateLambda(
 				[this, Resolve, Member, ValueScale, ResolveTarget](const double Value)
@@ -763,20 +845,20 @@ private:
 					RefreshLayeredPreview();
 				}
 			}),
-			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ValueScale, ResolveTarget]()
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, StoredDefault, ValueScale, ResolveTarget]()
 			{
 				TOwner* Owner = Resolve();
-				const float StoredDefault = static_cast<float>(DefaultValue * ValueScale);
-				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, StoredDefault))
+				const float ResetValue = static_cast<float>(StoredDefault());
+				if (Owner && !FMath::IsNearlyEqual(Owner->*Member, ResetValue))
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
 					if (IsParameterLocked(Address))
 					{
 						return;
 					}
-					if (!TryWriteLinkedFloat(Address, StoredDefault))
+					if (!TryWriteLinkedFloat(Address, ResetValue))
 					{
-						Owner->*Member = StoredDefault;
+						Owner->*Member = ResetValue;
 						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
 						{
 							Binding->Reference.bEnabled = false;
@@ -800,16 +882,52 @@ private:
 		const TAttribute<FText>& ToolTip = TAttribute<FText>())
 	{
 		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+
+		// Same metadata resolution as the float template: drag range per paint from the dev
+		// override / UiMeta / literals, reset from the canonical definition's default.
+		const TSharedRef<TOptional<FMixtormatParameterDefinitionKey>> CachedKey =
+			MakeShared<TOptional<FMixtormatParameterDefinitionKey>>();
+		const auto KeyFor = [ResolveTarget, CachedKey]() -> const FMixtormatParameterDefinitionKey*
+		{
+			if (!CachedKey->IsSet())
+			{
+				*CachedKey = MixtormatParameterUi::DefinitionKeyOf(ResolveTarget());
+			}
+			return CachedKey->IsSet() ? &CachedKey->GetValue() : nullptr;
+		};
+		const auto RangeBound = [KeyFor](const double Fallback, const bool bMax)
+		{
+			return TAttribute<double>::CreateLambda([KeyFor, Fallback, bMax]() -> double
+			{
+				const FMixtormatParameterDefinitionKey* Key = KeyFor();
+				return Key
+					? static_cast<double>(MixtormatParameterUi::ResolveUiBound(*Key, static_cast<float>(Fallback), bMax))
+					: Fallback;
+			});
+		};
+		const auto StoredDefault = [KeyFor, DefaultValue]() -> int32
+		{
+			if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
+			{
+				if (const FMixtormatParameterDefinition* Definition =
+					MixtormatParameterDefinitions::TryGet(*Key))
+				{
+					return FMath::RoundToInt(Definition->Default);
+				}
+			}
+			return DefaultValue;
+		};
+
 		TSharedRef<SWidget> Slider = MakeSlider(
 			Label,
-			TAttribute<double>::CreateLambda([this, Resolve, Member, DefaultValue, ResolveTarget]() -> double
+			TAttribute<double>::CreateLambda([this, Resolve, Member, StoredDefault, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
-				const int32 Local = Owner ? Owner->*Member : DefaultValue;
+				const int32 Local = Owner ? Owner->*Member : StoredDefault();
 				return static_cast<double>(GetEffectiveIntParameter(ResolveTarget(), Local));
 			}),
-			MinValue,
-			MaxValue,
+			RangeBound(MinValue, false),
+			RangeBound(MaxValue, true),
 			static_cast<double>(DefaultValue),
 			1.0,
 			true,
@@ -834,19 +952,20 @@ private:
 					RefreshLayeredPreview();
 				}
 			}),
-			FSimpleDelegate::CreateLambda([this, Resolve, Member, DefaultValue, ResolveTarget]()
+			FSimpleDelegate::CreateLambda([this, Resolve, Member, StoredDefault, ResolveTarget]()
 			{
 				TOwner* Owner = Resolve();
-				if (Owner && Owner->*Member != DefaultValue)
+				const int32 ResetValue = StoredDefault();
+				if (Owner && Owner->*Member != ResetValue)
 				{
 					const FMixtormatParameterAddress Address = ResolveTarget();
 					if (IsParameterLocked(Address))
 					{
 						return;
 					}
-					if (!TryWriteLinkedInt(Address, DefaultValue))
+					if (!TryWriteLinkedInt(Address, ResetValue))
 					{
-						Owner->*Member = DefaultValue;
+						Owner->*Member = ResetValue;
 						if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
 						{
 							Binding->Reference.bEnabled = false;

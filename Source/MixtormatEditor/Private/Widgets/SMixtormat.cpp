@@ -288,10 +288,10 @@ FReply SMixtormat::RedoMaterialEdit()
 TSharedRef<SWidget> SMixtormat::MakeSlider(
 	const FText& Label,
 	const TAttribute<double>& Value,
-	const double MinValue,
-	const double MaxValue,
+	const TAttribute<double>& MinValue,
+	const TAttribute<double>& MaxValue,
 	const double DefaultValue,
-	const double SnapDelta,
+	const TAttribute<double>& SnapDelta,
 	const bool bInteger,
 	const FMixtormatOnSliderValueChanged& OnValueChanged,
 	const FSimpleDelegate& ResetDelegate,

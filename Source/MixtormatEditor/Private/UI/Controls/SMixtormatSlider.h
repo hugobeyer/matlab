@@ -37,12 +37,15 @@ public:
 		SLATE_ATTRIBUTE(double, Value)
 		// Drag range. Typed entry deliberately is not clamped to it: the inspector constrains
 		// the scrub visually while a typed value reaches the shader intact, which is the rule
-		// the erosion work established.
-		SLATE_ARGUMENT(double, MinValue)
-		SLATE_ARGUMENT(double, MaxValue)
+		// the erosion work established. Attributes rather than arguments so a migrated row can
+		// resolve its range from the parameter UI metadata -- including a developer session
+		// override -- on every paint instead of freezing it at construct time, when nothing is
+		// selected yet.
+		SLATE_ATTRIBUTE(double, MinValue)
+		SLATE_ATTRIBUTE(double, MaxValue)
 		SLATE_ARGUMENT(double, DefaultValue)
-		// Snap step, used when Ctrl is held. 0 disables snapping.
-		SLATE_ARGUMENT(double, Delta)
+		// Snap step, used when Ctrl is held. 0 disables snapping. Attribute, same reason.
+		SLATE_ATTRIBUTE(double, Delta)
 		SLATE_ARGUMENT(int32, Precision)
 		SLATE_ARGUMENT(bool, bInteger)
 		SLATE_ATTRIBUTE(FText, ToolTip)
@@ -86,10 +89,10 @@ private:
 
 	FText Label;
 	TAttribute<double> ValueAttribute;
-	double MinValue = 0.0;
-	double MaxValue = 1.0;
+	TAttribute<double> MinValueAttribute;
+	TAttribute<double> MaxValueAttribute;
 	double DefaultValue = 0.0;
-	double Delta = 0.0;
+	TAttribute<double> DeltaAttribute;
 	int32 Precision = 3;
 	bool bInteger = false;
 

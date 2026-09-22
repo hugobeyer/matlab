@@ -10,9 +10,11 @@
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 #include "UI/Parameters/SMixtormatParameterControl.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -611,6 +613,43 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			nullptr,
 			FSimpleDelegate::CreateSP(this, &SMixtormat::ClearParameterDriver, Target));
 	}
+
+	// Developer-only surface. Gated by one console variable, compiled only into the editor
+	// module -- a packaged build carries neither the flag's consumer nor this code.
+	if (MixtormatParameterUi::IsDeveloperMetaEnabled() && Target.IsValid())
+	{
+		Menu.Separator()
+			.Caption(LOCTEXT("ParameterDeveloperCaption", "Developer"))
+			.SubMenu(
+				LOCTEXT("DevParameterInfo", "Parameter Info"),
+				nullptr,
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterInfoPanel, Target))
+			.SubMenu(
+				LOCTEXT("DevOverrideUiRange", "Override UI Range..."),
+				nullptr,
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterUiRangeOverridePanel, Target))
+			.Item(
+				LOCTEXT("DevRemoveUiRangeOverride", "Remove UI Range Override"),
+				nullptr,
+				FSimpleDelegate::CreateLambda([Target]()
+				{
+					if (const TOptional<FMixtormatParameterDefinitionKey> Key =
+						MixtormatParameterUi::DefinitionKeyOf(Target))
+					{
+						MixtormatParameterUi::ClearUiRangeOverride(Key.GetValue());
+					}
+				}))
+			.Enabled(TAttribute<bool>::CreateLambda([Target]()
+			{
+				const TOptional<FMixtormatParameterDefinitionKey> Key =
+					MixtormatParameterUi::DefinitionKeyOf(Target);
+				return Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
+			}))
+			.Item(
+				LOCTEXT("DevCopyParameterAddress", "Copy Parameter Address"),
+				nullptr,
+				FSimpleDelegate::CreateSP(this, &SMixtormat::CopyParameterAddress, Target));
+	}
 	return Menu.Build();
 }
 
@@ -642,6 +681,319 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenuFor(
 	TFunction<FMixtormatParameterAddress()> ResolveTarget)
 {
 	return BuildParameterContextMenu(ResolveTarget());
+}
+
+namespace
+{
+	UScriptStruct* PayloadStructForChild(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Mask: return FMixtormatMaskLayer::StaticStruct();
+		case EMixtormatLayerChildType::Effect: return FMixtormatLayerEffect::StaticStruct();
+		case EMixtormatLayerChildType::Generated: return FMixtormatGeneratedMask::StaticStruct();
+		case EMixtormatLayerChildType::Craquelure: return FMixtormatCraquelure::StaticStruct();
+		case EMixtormatLayerChildType::ColorId: return FMixtormatColorIdMask::StaticStruct();
+		case EMixtormatLayerChildType::Filter: return FMixtormatClusterFilter::StaticStruct();
+		case EMixtormatLayerChildType::HsvFilter: return FMixtormatHsvIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::RandomId: return FMixtormatRandomIdMask::StaticStruct();
+		case EMixtormatLayerChildType::PatternId: return FMixtormatPatternFilter::StaticStruct();
+		case EMixtormatLayerChildType::RampId: return FMixtormatRampIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::UvFromIds: return FMixtormatUvIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::ReliefFromIds: return FMixtormatReliefIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::CombineId: return FMixtormatCombineIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
+		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
+		case EMixtormatLayerChildType::Generator: return FMixtormatStrataCarver::StaticStruct();
+		default: return nullptr;
+		}
+	}
+
+	// The authored value behind an address, read straight off the member so Parameter Info can
+	// show it without a widget holding a member pointer. Effective (reference-resolved) display
+	// goes through GetEffectiveFloatParameter on top of this.
+	bool TryReadAuthoredScalar(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
+		const FMixtormatParameterAddress& Address,
+		double& OutValue)
+	{
+		const FMixtormatLayerChild* Child = MixtormatParameterBinding::FindChild(
+			{Layers, Groups}, Address.LayerId, Address.ChildId);
+		if (!Child)
+		{
+			return false;
+		}
+
+		const void* OwnerPtr = nullptr;
+		UScriptStruct* OwnerStruct = nullptr;
+		if (Address.Owner == EMixtormatParameterOwnerType::MaskShaping)
+		{
+			if (Child->Type == EMixtormatLayerChildType::Mask) OwnerPtr = &Child->Mask.Shaping;
+			else if (Child->Type == EMixtormatLayerChildType::Craquelure) OwnerPtr = &Child->Craquelure.Shaping;
+			else if (Child->Type == EMixtormatLayerChildType::RandomId) OwnerPtr = &Child->RandomId.Shaping;
+			OwnerStruct = FMixtormatMaskShaping::StaticStruct();
+		}
+		else if (Address.Owner == EMixtormatParameterOwnerType::Layer)
+		{
+			for (const FMixtormatLayer& Layer : Layers)
+			{
+				if (Layer.LayerId == Address.LayerId)
+				{
+					OwnerPtr = &Layer;
+					OwnerStruct = FMixtormatLayer::StaticStruct();
+					break;
+				}
+			}
+		}
+		else
+		{
+			OwnerPtr = OwnerPointer(*Child);
+			OwnerStruct = PayloadStructForChild(*Child);
+		}
+		if (!OwnerPtr || !OwnerStruct)
+		{
+			return false;
+		}
+
+		const FProperty* Property = OwnerStruct->FindPropertyByName(Address.Parameter);
+		if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+		{
+			OutValue = *Float->ContainerPtrToValuePtr<float>(OwnerPtr);
+			return true;
+		}
+		if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+		{
+			OutValue = *Int->ContainerPtrToValuePtr<int32>(OwnerPtr);
+			return true;
+		}
+		if (const FBoolProperty* Bool = CastField<FBoolProperty>(Property))
+		{
+			OutValue = *Bool->ContainerPtrToValuePtr<bool>(OwnerPtr) ? 1.0 : 0.0;
+			return true;
+		}
+		return false;
+	}
+
+	FText BoundText(const TOptional<float>& Bound, const FText& Unbounded)
+	{
+		return Bound.IsSet() ? FText::AsNumber(Bound.GetValue()) : Unbounded;
+	}
+
+	TSharedRef<SWidget> InfoRow(const FText& Label, const FText& Value, const FText& ToolTip = FText::GetEmpty())
+	{
+		return MixtormatRow::Make(
+			Label,
+			SNew(STextBlock).Text(Value),
+			ToolTip);
+	}
+}
+
+// Developer > Parameter Info: everything the tool knows about one parameter in one place. The
+// point is never having to open four files to answer "what does this slider actually do".
+TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParameterAddress Target)
+{
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	const auto AddInfo = [&Rows](const FText& Label, const FText& Value, const FText& ToolTip = FText::GetEmpty())
+	{
+		Rows->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				InfoRow(Label, Value, ToolTip)
+			];
+	};
+
+	AddInfo(LOCTEXT("DevInfoOwner", "Owner"),
+		StaticEnum<EMixtormatParameterOwnerType>()->GetDisplayNameTextByValue(static_cast<int64>(Target.Owner)));
+	AddInfo(LOCTEXT("DevInfoValueType", "Value Type"),
+		StaticEnum<EMixtormatParameterValueType>()->GetDisplayNameTextByValue(static_cast<int64>(Target.ValueType)));
+
+	const TOptional<FMixtormatParameterDefinitionKey> Key = MixtormatParameterUi::DefinitionKeyOf(Target);
+	const FMixtormatParameterDefinition* Definition =
+		Key.IsSet() ? MixtormatParameterDefinitions::TryGet(Key.GetValue()) : nullptr;
+
+	if (double Authored = 0.0; TryReadAuthoredScalar(WorkingLayers, WorkingLayerGroups, Target, Authored))
+	{
+		const double Effective = Target.ValueType == EMixtormatParameterValueType::Float
+			? GetEffectiveFloatParameter(Target, Authored)
+			: GetEffectiveIntParameter(Target, static_cast<int32>(Authored));
+		const bool bDriven = IsParameterDriven(Target);
+		AddInfo(
+			LOCTEXT("DevInfoCurrent", "Current"),
+			FText::AsNumber(Effective),
+			bDriven
+				? LOCTEXT("DevInfoCurrentDriven", "Effective value: a spatial driver is modulating the authored number below.")
+				: FText::GetEmpty());
+	}
+
+	AddInfo(
+		LOCTEXT("DevInfoDefault", "Default"),
+		Definition
+			? FText::AsNumber(Definition->Default)
+			: LOCTEXT("DevInfoNoDefinition", "no definition"),
+		LOCTEXT("DevInfoDefaultHint", "The canonical reset value. The serialized struct initializer matches it; the automation test asserts that."));
+
+	const FMixtormatParameterUiMeta* Meta = Key.IsSet() ? MixtormatParameterUi::TryGetUiMeta(Key.GetValue()) : nullptr;
+	const bool bOverridden = Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
+	const FText UiRange = Meta
+		? FText::Format(LOCTEXT("DevInfoUiRange", "{0} .. {1}"),
+			FText::AsNumber(Meta->UiMin), FText::AsNumber(Meta->UiMax))
+		: LOCTEXT("DevInfoNoUiMeta", "literal (unmigrated)");
+	AddInfo(
+		LOCTEXT("DevInfoUi", "UI"),
+		bOverridden
+			? FText::Format(LOCTEXT("DevInfoUiOverridden", "{0} (session override)"), UiRange)
+			: UiRange,
+		LOCTEXT("DevInfoUiHint", "Drag range only. A typed value outside it is legal; only Hard Min/Max restrict."));
+	if (Meta)
+	{
+		AddInfo(LOCTEXT("DevInfoSnap", "Snap"), FText::AsNumber(Meta->Snap));
+	}
+
+	if (Definition)
+	{
+		AddInfo(
+			LOCTEXT("DevInfoHard", "Hard"),
+			FText::Format(LOCTEXT("DevInfoHardRange", "{0} .. {1}"),
+				BoundText(Definition->HardMin, LOCTEXT("DevInfoUnbounded", "unbounded")),
+				BoundText(Definition->HardMax, LOCTEXT("DevInfoUnbounded2", "unbounded"))),
+			LOCTEXT("DevInfoHardHint", "Actual legal/runtime-safety bounds. The compositor clamps to these; nothing else does."));
+		AddInfo(
+			LOCTEXT("DevInfoNormalization", "Normalization"),
+			FMath::IsNearlyEqual(Definition->NormalizationScale, 1.0f)
+				? LOCTEXT("DevInfoNormalizationNone", "none")
+				: FText::Format(LOCTEXT("DevInfoNormalizationScale", "value / {0}"),
+					FText::AsNumber(Definition->NormalizationScale)),
+			LOCTEXT("DevInfoNormalizationHint", "How the shader consumes the number. The stored value and the effective scale differ by this factor."));
+		AddInfo(
+			LOCTEXT("DevInfoSaturates", "Shader Saturates"),
+			Definition->bShaderSaturates
+				? LOCTEXT("DevInfoSaturatesYes", "yes")
+				: LOCTEXT("DevInfoSaturatesNo", "no"),
+			LOCTEXT("DevInfoSaturatesHint", "The shader saturates this value (or the channel it feeds) after binding, so values past the range are legal but stop changing the result."));
+		if (Meta && Meta->ShaderNote)
+		{
+			AddInfo(
+				LOCTEXT("DevInfoShaderNote", "Shader Note"),
+				FText::FromString(Meta->ShaderNote));
+		}
+	}
+
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(FText::FromName(Target.Parameter))
+		.Widget(SNew(SBox)
+			.Padding(FMargin(
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap,
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap))
+			[
+				SNew(SBox).WidthOverride(260.0f)
+				[
+					Rows
+				]
+			]);
+	return Menu.Build();
+}
+
+// Developer > Override UI Range: a session-lifetime replacement for the drag range. Typed
+// values already bypass any UI range, so this is for making the *scrub* reach where you are
+// testing, not for unlocking new values.
+TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
+	const FMixtormatParameterAddress Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TOptional<FMixtormatParameterDefinitionKey> Key = MixtormatParameterUi::DefinitionKeyOf(Target);
+	if (!Key.IsSet())
+	{
+		Menu.Caption(LOCTEXT("DevOverrideCaption", "Override UI Range"))
+			.Item(LOCTEXT("DevOverrideNoTarget", "Nothing selected"), nullptr, FSimpleDelegate()).Enabled(false);
+		return Menu.Build();
+	}
+
+	const FMixtormatParameterDefinitionKey ParamKey = Key.GetValue();
+	const FMixtormatParameterUiMeta* Meta = MixtormatParameterUi::TryGetUiMeta(ParamKey);
+	const float MetaMin = Meta ? Meta->UiMin : 0.0f;
+	const float MetaMax = Meta ? Meta->UiMax : 1.0f;
+	const float MetaSnap = Meta ? Meta->Snap : 0.0f;
+
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	const auto AddBoundRow = [this, &Rows, ParamKey](
+		const FText& Label,
+		const float Fallback,
+		const bool bMax,
+		const float OtherFallback)
+	{
+		Rows->AddSlot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				MakeSlider(
+					Label,
+					TAttribute<double>::CreateLambda([ParamKey, Fallback, bMax]() -> double
+					{
+						return MixtormatParameterUi::ResolveUiBound(ParamKey, Fallback, bMax);
+					}),
+					-1.0e6,
+					1.0e6,
+					static_cast<double>(Fallback),
+					0.0,
+					false,
+					FMixtormatOnSliderValueChanged::CreateLambda(
+						[ParamKey, bMax, OtherFallback](const double Value)
+					{
+						if (bMax)
+						{
+							MixtormatParameterUi::SetUiRangeOverride(
+								ParamKey,
+								MixtormatParameterUi::ResolveUiBound(ParamKey, OtherFallback, false),
+								static_cast<float>(Value));
+						}
+						else
+						{
+							MixtormatParameterUi::SetUiRangeOverride(
+								ParamKey,
+								static_cast<float>(Value),
+								MixtormatParameterUi::ResolveUiBound(ParamKey, OtherFallback, true));
+						}
+					}),
+					FSimpleDelegate(),
+					LOCTEXT("DevOverrideBoundHint", "Session-only. Typed values were never restricted by the UI range."))
+			];
+	};
+	AddBoundRow(LOCTEXT("DevOverrideMin", "Override Min"), MetaMin, false, MetaMax);
+	AddBoundRow(LOCTEXT("DevOverrideMax", "Override Max"), MetaMax, true, MetaMin);
+
+	Menu.Caption(LOCTEXT("DevOverrideCaption", "Override UI Range"))
+		.Widget(SNew(SBox)
+			.Padding(FMargin(
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap,
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap))
+			[
+				SNew(SBox).WidthOverride(300.0f)
+				[
+					Rows
+				]
+			]);
+	return Menu.Build();
+}
+
+void SMixtormat::CopyParameterAddress(const FMixtormatParameterAddress Target)
+{
+	if (!Target.IsValid())
+	{
+		return;
+	}
+	const FString Text = FString::Printf(
+		TEXT("Owner=%s Parameter=%s ValueType=%s Layer=%s Child=%s"),
+		*StaticEnum<EMixtormatParameterOwnerType>()->GetNameByValue(static_cast<int64>(Target.Owner)).ToString(),
+		*Target.Parameter.ToString(),
+		*StaticEnum<EMixtormatParameterValueType>()->GetNameByValue(static_cast<int64>(Target.ValueType)).ToString(),
+		*Target.LayerId.ToString(),
+		*Target.ChildId.ToString());
+	FPlatformApplicationMisc::ClipboardCopy(*Text);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopoverFor(
