@@ -990,10 +990,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float ErosionDepth = 1.0f;
 
-	// Kuwahara analysis radius in texels, shared by both footprint axes. Deliberately small:
-	// 2 is the normal working value and 3-4 only broaden the analysis -- the quadrant pass is a
-	// 2D neighbourhood re-run every iteration, so cost grows quadratically. The solver clamps
-	// this internally to 1..4.
+	// Derivative span in texels for the slope and curvature readings, on both axes. 2 is the
+	// normal working value; 3-4 read broader structure. Cost is fixed whatever the span --
+	// the same four taps, farther apart -- and the analysis never replaces the height itself.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "4"))
 	int32 ErosionRadius = 2;
 
@@ -1032,10 +1031,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float ErosionPreserveFlats = 0.002f;
 
-	// Multi-scale slope smoothing. The slope field -- not the height -- is measured at 1- and
-	// 2-texel spans and blended, so high-frequency surface noise stops steering every
-	// iteration. 0 responds to the finest detail, 0.65 gives stable broad erosion directions,
-	// 1 strongly ignores single-texel steering.
+	// Flow momentum: how much direction memory the solver keeps between iterations. The slope
+	// reading is blended into a persistent velocity field, so per-texel noise averages out
+	// instead of steering every pass. 0 reacts to every texel, 0.65 gives stable broad
+	// erosion directions, 1 barely moves. The height itself is never touched by this.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ErosionSmoothing = 0.65f;
 

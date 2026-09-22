@@ -339,14 +339,14 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, NormalPass)
 		SHADER_PARAMETER(int32, ResamplePass)
 		SHADER_PARAMETER(int32, ResampleRidge)
-		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(uint32, WriteRidge)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, Depth)
 		SHADER_PARAMETER(int32, Radius)
 		SHADER_PARAMETER(int32, Iterations)
+		SHADER_PARAMETER(int32, Stride)
 		SHADER_PARAMETER(float, GravityAngle)
 		SHADER_PARAMETER(float, Verticality)
 		SHADER_PARAMETER(float, SlopePower)
@@ -360,6 +360,7 @@ public:
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousVelocity)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PlacementMaskTexture)
@@ -367,6 +368,7 @@ public:
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRidge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputVelocity)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -2078,6 +2080,31 @@ namespace MixtormatGpuCompositor
 		++LayerCtx.EffectPassIndex;
 	}
 
+	// The erosion jump schedule, the same construction the Strata Carver uses. Strides halve
+	// from the jump start down to 1 and then the cycle restarts, so a long iteration budget
+	// alternates reach and relaxation instead of spending everything past the first few
+	// iterations wearing at the same distance. The wide passes carry wear across the tile; the
+	// stride-1 passes are where the carve accumulates and detail forms.
+	//
+	// The schedule is a function of the jump start alone -- nothing is keyed to the iteration
+	// count, which is what lets Iterations be 1 or 32 without a special case: 1 runs the
+	// widest jump only, 8 runs most of a cycle, neither is a different algorithm. The stride
+	// multiplies the resolution-normalized wear distance, so the reach is identical at
+	// 1K/2K/4K.
+	constexpr int32 ErosionJumpStart = 8;
+
+	int32 ErosionJumpStride(const int32 Iteration, const int32 JumpStart)
+	{
+		const int32 Start = FMath::Max(JumpStart, 1);
+		int32 Halvings = 0;
+		while ((Start >> Halvings) > 1)
+		{
+			++Halvings;
+		}
+		const int32 CycleLength = Halvings + 1;
+		return FMath::Max(Start >> (Iteration % CycleLength), 1);
+	}
+
 	// Erosion filters the layer output: it reads the height and normal this layer just
 	// composited, carves the height, derives the normal change from what it removed, and writes
 	// both back. Also the one place every layer -- eroding or not -- hands the next layer a
@@ -2151,10 +2178,10 @@ namespace MixtormatGpuCompositor
 				: PeelFieldDummy;
 
 			// Erosion runs at twice the composition resolution, capped at 4096,
-			// then resamples back. Wear is high-frequency work: the Kuwahara radius
-			// and the slope stencil are texel-space, so at composition resolution
-			// the analysis would run out of samples before the wear could read as
-			// anything but noise. Above 4096 the cost stops buying visible detail.
+			// then resamples back. Wear is high-frequency work: the derivative spans
+			// are texel-space, so at composition resolution the readings would run
+			// out of samples before the wear could read as anything but noise.
+			// Above 4096 the cost stops buying visible detail.
 			const FIntPoint EroRes(
 				FMath::Min(Request.Resolution.X * 2, 4096),
 				FMath::Min(Request.Resolution.Y * 2, 4096));
@@ -2206,7 +2233,39 @@ namespace MixtormatGpuCompositor
 			// The layer normal every carving pass reads, lifted to erosion resolution.
 			FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
 
+			// The flow-momentum ping-pong pair. Velocity is internal to the solve: it is
+			// cleared once, seeded from zero on the first iteration, and never leaves the
+			// erosion block, so the resample path only ever binds the dummy.
+			const FRDGTextureDesc EroVelDesc = FRDGTextureDesc::Create2D(
+				EroRes,
+				PF_FloatRGBA,
+				FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV);
+			FRDGTextureRef EroVel[2] = {
+				GraphBuilder.CreateTexture(EroVelDesc, TEXT("Mixtormat.ErosionVelA")),
+				GraphBuilder.CreateTexture(EroVelDesc, TEXT("Mixtormat.ErosionVelB"))};
+			FRDGTextureRef EroVelDummy = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_FloatRGBA,
+					FClearValueBinding::Black,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.ErosionVelDummy"));
+			// Iterations never write normals -- the shared height-derived pass owns them,
+			// after the final iteration -- so they bind this 1x1 stand-in instead of
+			// paying a full-screen normal copy per pass.
+			FRDGTextureRef ErosionNormalDummy = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					EroNormalDesc.Format,
+					FClearValueBinding::White,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.ErosionNormalDummy"));
+
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroRidge), FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroVel[0]), FVector4f(0.0f));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroVelDummy), FVector4f(0.0f));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ErosionNormalDummy), FVector4f(0.0f));
 
 			// Stands in at both ends of the ridge plumbing: the UAV slot on the
 			// upsample, which must not be aimed at a composition-res target from an
@@ -2245,12 +2304,14 @@ namespace MixtormatGpuCompositor
 				FMixtormatErosionCS::FParameters* RP =
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 				RP->OutputSize = DestRes;
-				RP->NormalPass = 0;
 				RP->ResamplePass = 1;
 				RP->ResampleRidge = bCarryRidge ? 1 : 0;
+				RP->WriteRidge = 0u;
+				RP->Stride = 1;
 				RP->PreviousRidge = InRidge;
 				RP->PreviousHeight = InH;
 				RP->SourceHeight = InH;
+				RP->PreviousVelocity = EroVelDummy;
 				RP->LayerMask = PendingErosion.FeatureMask;
 				RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
@@ -2261,6 +2322,7 @@ namespace MixtormatGpuCompositor
 				RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
 				RP->OutputRidge = GraphBuilder.CreateUAV(
 					bCarryRidge ? OutRidgeTarget : ResampleRidgeDummy);
+				RP->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
 				RP->OutputNormal = GraphBuilder.CreateUAV(OutN);
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
@@ -2287,16 +2349,16 @@ namespace MixtormatGpuCompositor
 				AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 			}
 
-			// Each wear iteration re-derives its analysis from the current working height,
-			// so no pass can feed a masked boundary or quantized intermediate back into
-			// the next one; the Kuwahara surface is analysis-only either way.
+			// Each wear iteration re-derives its slope and curvature from the current
+			// working height, so no pass can feed a masked boundary or quantized
+			// intermediate back into the next one; every reading is analysis-only --
+			// nothing but the wear delta and the relax shave ever touch the height.
 			auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
 			{
 				Parameters->OutputSize = EroRes;
-				Parameters->NormalPass = 0;
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
-				Parameters->NormalStrength = HeightDerivedNormalStrength;
+				Parameters->WriteRidge = 1u;
 				Parameters->Amount = Ero.ErosionAmount;
 				Parameters->Depth = Ero.ErosionDepth;
 				Parameters->Radius = Ero.ErosionRadius;
@@ -2309,6 +2371,11 @@ namespace MixtormatGpuCompositor
 				Parameters->Smoothing = Ero.ErosionSmoothing;
 				Parameters->Variation = Ero.ErosionVariation;
 				Parameters->Seed = (uint32)Ero.ErosionSeed;
+				// Overwritten per iteration below; 1 is the accumulate-at-home stride the
+				// resample lambda and any pass that does not carry a schedule keeps.
+				Parameters->Stride = 1;
+				Parameters->PreviousVelocity = EroVelDummy;
+				Parameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
 				Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
 				Parameters->InvertMask =
@@ -2342,10 +2409,24 @@ namespace MixtormatGpuCompositor
 				FMixtormatErosionCS::FParameters* IterationParameters =
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 				SetErosionParameters(IterationParameters);
+				IterationParameters->Stride = ErosionJumpStride(Iteration, ErosionJumpStart);
 				IterationParameters->PreviousHeight =
 					Iteration == 0 ? SourceH : EroH[(Iteration - 1) & 1];
 				IterationParameters->OutputHeight =
 					GraphBuilder.CreateUAV(EroH[Iteration & 1]);
+				// The flow momentum ping-pongs beside the height, and the ridge is written
+				// once -- by the final iteration only. Normals are never written here; the
+				// shared height-derived pass owns them.
+				IterationParameters->PreviousVelocity =
+					Iteration == 0 ? EroVel[0] : EroVel[(Iteration - 1) & 1];
+				IterationParameters->OutputVelocity =
+					GraphBuilder.CreateUAV(EroVel[Iteration & 1]);
+				const bool bFinalIteration = Iteration == ErosionIterations - 1;
+				IterationParameters->WriteRidge = bFinalIteration ? 1u : 0u;
+				IterationParameters->OutputRidge = GraphBuilder.CreateUAV(
+					bFinalIteration ? EroRidge : ResampleRidgeDummy);
+				IterationParameters->OutputNormal =
+					GraphBuilder.CreateUAV(ErosionNormalDummy);
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
 					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Filter%d", LayerIndex, Iteration),

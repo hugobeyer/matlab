@@ -3906,7 +3906,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 4.0, 2,
-			LOCTEXT("EroRadiusHint", "Kuwahara analysis radius in texels. 2 is the normal working value; 3-4 only broaden the analysis. The analysis never replaces the height itself, and enlarging it is not how wear gets stronger.")),
+			LOCTEXT("EroRadiusHint", "Derivative span in texels for the slope and curvature readings. 2 is the normal working value; 3-4 read broader structure. Cost is fixed whatever the span.")),
 		MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 32.0, 8,
 			LOCTEXT("EroIterationsHint", "Ping-pong wear passes. Each pass analyses the previous pass's output, so wear propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an extreme stress case."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -3916,7 +3916,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroVerticalityHint", "Tangent protection: 0 lets erosion follow the terrain naturally, 1 increasingly protects cross-gravity structure while gravity-aligned channels develop, and upward-facing ledges catch more deposit."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroSmoothing", "Smoothing"), &FMixtormatLayerEffect::ErosionSmoothing, 0.0, 1.0, 0.65, 0.01,
-			LOCTEXT("EroSmoothingHint", "Blends the slope measure toward a wider 2-texel span, so surface noise stops steering the wear. The height itself is never blurred.")),
+			LOCTEXT("EroSmoothingHint", "Flow momentum: how much direction memory the solver keeps between iterations, so surface noise averages out instead of steering the wear. The height itself is never blurred.")),
 		MakeErosionSlider(LOCTEXT("EroSlopePower", "Slope Power"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 8.0, 1.0, 0.05,
 			LOCTEXT("EroSlopePowerHint", "Below 1 responds broadly to gentle slopes, above 1 concentrates wear on steep regions."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
