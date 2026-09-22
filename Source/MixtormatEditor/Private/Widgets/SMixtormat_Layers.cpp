@@ -285,6 +285,7 @@ namespace
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
 	}
@@ -325,6 +326,10 @@ namespace
 			break;
 		case EMixtormatChildCreation::StrataCarver:
 			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
+			break;
+		case EMixtormatChildCreation::Peeling:
+			Child.Effect.Effect.Reset();
+			Child.Effect.ProceduralType = EMixtormatEffectType::Peeling;
 			break;
 		default:
 			// Every remaining kind is fully described by its type.
@@ -2951,7 +2956,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	}
 
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect)
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -3662,7 +3667,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 		case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
-		default:                            return LOCTEXT("ProceduralPeelName", "Peeling (Procedural)");
+		default:                            return LOCTEXT("ProceduralPeelName", "Peeling");
 		}
 	}
 	if (Child.Type == EMixtormatLayerChildType::Generated)
@@ -4013,7 +4018,7 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath EffectPath)
 {
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect)
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -4437,6 +4442,13 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 				AddEffectToGroup(GroupId, EffectPath);
 			}));
 	}
+	Menu.Item(
+		LOCTEXT("AddPeelingEffect", "Peeling"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, GroupId]()
+		{
+			CreateChild(FMixtormatAddTarget::Group(GroupId), EMixtormatChildCreation::Peeling);
+		}));
 	return Menu.Build();
 }
 
@@ -5285,9 +5297,12 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddLayerBlurToLayer(LayerIndex); }));
 	Menu.Item(
-		LOCTEXT("AddProceduralPeelEffect", "Peeling (Procedural)"),
+		LOCTEXT("AddPeelingEffect", "Peeling"),
 		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddProceduralPeelingToLayer(LayerIndex); }));
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			CreateChild(FMixtormatAddTarget::Layer(LayerIndex), EMixtormatChildCreation::Peeling);
+		}));
 
 	return Menu.Build();
 }
@@ -6839,27 +6854,6 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedLayerBlurEffect() const
 		: nullptr;
 }
 
-FReply SMixtormat::AddProceduralPeelingToLayer(const int32 LayerIndex)
-{
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Effect;
-	// Null effect asset plus a Peeling procedural type is what selects the generated field.
-	Child.Effect.ProceduralType = EMixtormatEffectType::Peeling;
-	SelectedLayerIndex = LayerIndex;
-	SelectedEffectIndex = Layer.Children.Num() - 1;
-	SelectedMaskIndex = INDEX_NONE;
-	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
-}
 
 FMixtormatLayerEffect* SMixtormat::GetSelectedProceduralPeel()
 {

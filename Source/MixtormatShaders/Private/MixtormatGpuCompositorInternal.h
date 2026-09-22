@@ -285,9 +285,7 @@ namespace MixtormatGpuCompositor
 		float RunoffStrength = 0.25f;
 		uint32 RunoffSeed = 1;
 		int32 RunoffStrataCount = 4;
-		// Procedural peeling. bProceduralPeel selects the generated field over the
-		// authored maps; the shaping values above are shared by both paths.
-		bool bProceduralPeel = false;
+		// Procedural peeling.
 		int32 PeelType = 0;
 		int32 PeelMacroPeriod = 8;
 		int32 PeelMicroPeriod = 32;

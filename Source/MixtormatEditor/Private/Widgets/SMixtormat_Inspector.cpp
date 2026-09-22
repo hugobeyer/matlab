@@ -134,14 +134,13 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(SMixtormatChip)
-				.ToolTip(LOCTEXT("PPeelSeedMaskSlotHint", "Where this peel starts. Mask Influence scales it, Adhesion is the threshold it has to cross, and the procedural growth spreads outward from wherever it does -- so this seeds the effect rather than gating it.\n\n"
-					"A Mask child scoped under the Peeling row is the other thing: that one gates where the finished peel is allowed to show. Unset, the seed still falls back to the layer's accumulated child mask, which is the current behaviour and unchanged here."))
+				.ToolTip(LOCTEXT("PPeelSeedMaskSlotHint", "Where this peel starts. Mask Influence scales it, Adhesion is the threshold it has to cross, and procedural growth spreads outward from it. A scoped Mask child independently gates only the finished result."))
 				.Text_Lambda([this]()
 						{
 							const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
 							if (!E)
 							{
-								return LOCTEXT("PPeelSeedMaskNone", "Child Mask");
+								return LOCTEXT("PPeelSeedMaskNone", "None");
 							}
 							if (!E->PeelMask.IsNull())
 							{
@@ -151,7 +150,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 							{
 								return FText::FromString(E->PeelMaskTexture.ToSoftObjectPath().GetAssetName());
 							}
-							return LOCTEXT("PPeelSeedMaskNone", "Child Mask");
+							return LOCTEXT("PPeelSeedMaskNone", "None");
 						})
 				.OnGetMenuContent_Lambda([this]()
 				{
@@ -164,9 +163,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 								return;
 							}
 							// The registry lists UMixtormatMask assets and plain UTexture2D side
-							// by side, so the pick has to branch on the loaded class -- assigning
-							// a texture to the UMixtormatMask slot resolves to null and silently
-							// falls back to the child mask.
+							// by side, so the pick has to branch on the loaded class.
 							UObject* MaskObject = Path.TryLoad();
 							if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
 							{
@@ -194,8 +191,8 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 						},
 						SNew(SButton)
 						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-						.Text(LOCTEXT("PPeelSeedMaskClear", "Use the layer's child mask"))
-						.ToolTipText(LOCTEXT("PPeelSeedMaskClearHint", "Clear the Seed Mask and fall back to the layer's accumulated child mask as the seed. Current behaviour, unchanged."))
+						.Text(LOCTEXT("PPeelSeedMaskClear", "None"))
+						.ToolTipText(LOCTEXT("PPeelSeedMaskClearHint", "Clear the Seed Mask. No external mask contributes to seeding."))
 						.OnClicked_Lambda([this]()
 						{
 							if (FMixtormatLayerEffect* E = GetSelectedProceduralPeel())
@@ -241,8 +238,16 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSliderInt(LOCTEXT("PPeelCurvRadius", "Radius"), &FMixtormatLayerEffect::PeelCurvatureRadius, 1.0, 64.0, 2),
 		MakePeelSlider(LOCTEXT("PPeelPropagation", "Propagation"), &FMixtormatLayerEffect::PeelGrowthStrength, 0.05, 32.0, 1.0, 0.05)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakePeelSlider(LOCTEXT("PPeelFront", "Front"), &FMixtormatLayerEffect::Front, -1.0, 1.0, 0.08, 0.005),
+		MakePeelSlider(LOCTEXT("PPeelWidth", "Width"), &FMixtormatLayerEffect::Width, 0.000001, 0.25, 0.015, 0.001)));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpShape", "Peel Shape")));
+	AddPeelSlider(Panel, LOCTEXT("PPeelStrength", "Strength"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01);
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakePeelSlider(LOCTEXT("PPeelMacroWarp", "Macro Warp"), &FMixtormatLayerEffect::MacroWarp, -1.0, 1.0, 0.01, 0.005),
+		MakePeelSlider(LOCTEXT("PPeelMicroWarp", "Micro Warp"), &FMixtormatLayerEffect::MicroWarp, -1.0, 1.0, 0.003, 0.001)));
+	AddPeelSlider(Panel, LOCTEXT("PPeelCurlLength", "Curl Length"), &FMixtormatLayerEffect::MicroMorph, 0.0, 1.0, 1.0, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelLiftVar", "Lift Variation"), &FMixtormatLayerEffect::PeelLiftVariation, 0.0, 1.0, 0.6, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelCornerLift", "Corner Lift"), &FMixtormatLayerEffect::PeelCornerLift, 0.0, 1.0, 0.6, 0.01,
 		LOCTEXT("PPeelCornerLiftHint", "Extra lift on corners and tongues of the remaining sheet. Measured by the structure tensor of the peel front, so it responds to the gradient direction actually changing rather than to curvature -- a long gentle arc is not a corner."));
@@ -275,6 +280,10 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		LOCTEXT("PPeelTypeHint", "Checked lifts a flap ahead of the front and folds it back behind. Unchecked is the flat chip.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpRelief", "Relief")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakePeelSlider(LOCTEXT("PPeelThickness", "Thickness"), &FMixtormatLayerEffect::Thickness, 0.0, 1.0, 0.04, 0.005),
+		MakePeelSlider(LOCTEXT("PPeelLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0, 1.0, 0.2, 0.01)));
+	AddPeelSlider(Panel, LOCTEXT("PPeelDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0, 1.0, 0.02, 0.005);
 	AddPeelSlider(Panel, LOCTEXT("PPeelSharp", "Edge Sharpness"), &FMixtormatLayerEffect::PeelEdgeSharpness, 0.0, 4.0, 1.0, 0.01);
 	AddPeelSlider(Panel, LOCTEXT("PPeelAO", "Contact AO"), &FMixtormatLayerEffect::PeelAOStrength, 0.0, 1.0, 0.8, 0.01);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -286,7 +295,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		.Visibility_Lambda([this]() { return GetSelectedProceduralPeel() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ProcPeelHeading", "PEEL SEEDING"))
+			.Title(LOCTEXT("ProcPeelHeading", "PEELING"))
 			.InitiallyExpanded(true)
 			[
 				Panel
@@ -5381,7 +5390,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| HasSelectedGenerator()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					+ SScrollBox::Slot()[BuildEffectInspectorControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildRunoffControls()]

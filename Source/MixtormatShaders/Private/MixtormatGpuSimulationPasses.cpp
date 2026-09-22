@@ -124,7 +124,6 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelOwnMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousArrival)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthField)
@@ -561,12 +560,7 @@ namespace MixtormatGpuCompositor
 		++MaskPassIndex;
 	}
 
-	// Peeling, and the procedural peel field that can replace its authored maps.
-	//
-	// Reached by fall-through in the child dispatcher rather than by a positive test, exactly
-	// as before: every effect type the dispatcher names above it has already returned, and
-	// Peeling is what EMixtormatEffectType has left.
-	//
+	// Procedural Peeling is reached after every other effect type has dispatched.
 	// The field is an eikonal solve at reduced resolution -- seed, a chain of ping-ponged
 	// solve steps, then one full-resolution resolve that filters arrival back up. The two
 	// arrival halves and the growth field are graph transients owned by this pass alone.
@@ -591,10 +585,8 @@ namespace MixtormatGpuCompositor
 		const FRDGTextureRef PeelFieldDummy = LayerCtx.PeelFieldDummy;
 		TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		// A procedural peel builds its field first: seed the mask's threshold
-		// contour, then a chain of eikonal solve steps, then one resolve into
-		// the same channel layout the authored maps carry. The peel pass below
-		// is identical either way apart from which source it reads.
+		// Build the procedural field first: seed its threshold contour, propagate it, then
+		// resolve the finished field at full resolution.
 		FRDGTextureRef PeelFieldA = PeelFieldDummy;
 		FRDGTextureRef PeelFieldB = PeelFieldDummy;
 
@@ -607,7 +599,6 @@ namespace MixtormatGpuCompositor
 		{
 			PeelRegionIds = Ctx.EmptyRegionIds;
 		}
-		if (Effect.bProceduralPeel)
 		{
 			// Same accumulated state the generated mask reads: the surface
 			// composited below this layer.
@@ -658,7 +649,8 @@ namespace MixtormatGpuCompositor
 				FP->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
 				FP->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 				FP->Seed = Effect.PeelRandomSeed;
-				FP->MaskWeight = Effect.PeelSeedMaskWeight;
+				FP->MaskWeight = Effect.PeelOwnMask.IsValid()
+					? Effect.PeelSeedMaskWeight : 0.0f;
 				FP->PeelMaskTiling = Effect.PeelMaskTiling;
 				FP->PeelMaskInvert = Effect.bPeelMaskInvert ? 1u : 0u;
 				FP->UseOwnMask = Effect.PeelOwnMask.IsValid() ? 1u : 0u;
@@ -707,7 +699,6 @@ namespace MixtormatGpuCompositor
 				FP->SurfaceNormal = OutputN[PeelSurfaceIndex];
 				FP->SurfaceRAM = OutputRAM[PeelSurfaceIndex];
 				FP->SurfaceHeight = HeightTargets[PeelSurfaceIndex];
-				FP->ChildMask = FeatureMask;
 
 				FP->GrowthField = PeelGrowth;
 				FP->LinearWrapSampler =

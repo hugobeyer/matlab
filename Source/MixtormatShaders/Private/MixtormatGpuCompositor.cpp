@@ -2372,11 +2372,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			}
 
 			const UMixtormatEffect* EffectAsset = LayerEffect.Effect.LoadSynchronous();
+			// Peeling is procedural-only. Asset-backed Peeling children are intentionally ignored.
+			if (EffectAsset && EffectAsset->EffectType == EMixtormatEffectType::Peeling)
+			{
+				continue;
+			}
 
-			// Procedural effects carry no source maps and so have no asset to read a type
-			// from. Asset-backed effects are unchanged.
-			// Every Filter is procedural -- none of them read source maps -- and Peeling is
-			// the one Surface effect with a procedural path.
+			// Procedural effects carry no asset from which to read their type.
 			const bool bProcedural =
 				!EffectAsset
 				&& (MixtormatEffectClassOf(LayerEffect.ProceduralType) == EMixtormatEffectClass::Filter
@@ -2818,12 +2820,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
-			// Peeling is procedural, full stop. It used to have a second path driven by an
-			// authored map set on the effect asset -- a PDM plus coverage mask, height and SDF --
-			// and that is gone; an effect asset now names a type and carries defaults, nothing
-			// more. The bare scope is what is left of the branch that chose between them.
+			// Peeling is procedural-only.
 			{
-				EffectData.bProceduralPeel = true;
 				EffectData.PeelType = static_cast<int32>(LayerEffect.PeelType);
 				EffectData.PeelMacroPeriod = LayerEffect.PeelMacroPeriod;
 				EffectData.PeelMicroPeriod = LayerEffect.PeelMicroPeriod;
@@ -3480,7 +3478,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						FRDGTextureRef FeatureMask =
 							AddScopedFeatureMask(
 								Ctx, LayerCtx, Layer, Child.SourceChildIndex,
-								Effect.Type == EMixtormatEffectType::LayerBlur);
+								Effect.Type == EMixtormatEffectType::LayerBlur
+									|| Effect.Type == EMixtormatEffectType::Peeling);
 						if (Effect.Type == EMixtormatEffectType::Erosion)
 						{
 							QueuePendingErosion(LayerCtx, Layer, Child, Effect, FeatureMask);

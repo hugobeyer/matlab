@@ -56,6 +56,7 @@ enum class EMixtormatChildCreation : uint8
 	ColorIdMask,
 	RandomFromIds,
 	StrataCarver,
+	Peeling,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -319,12 +320,9 @@ private:
 
 	// THE ADD MENU. One taxonomy, two containers.
 	//
-	// AddCreationSections appends the whole Add tree -- IDs, Filter, Masks, Generators -- to a menu
-	// already opened over a layer or over a group, and the four submenu builders below are shared
-	// verbatim between them. Effect stays split (BuildAddEffectMenu / BuildGroupAddEffectMenu)
-	// because the two genuinely offer different sets: a layer can create the procedural effects, a
-	// group only the asset-backed ones, and pretending otherwise would put rows in the group menu
-	// that have nothing to call.
+	// AddCreationSections appends the shared non-effect Add tree to layer and group menus. Effect
+	// remains split because most procedural effects are layer-only; Peeling explicitly uses the same
+	// configured child creation path in both menus.
 	void AddCreationSections(MixtormatMenu::FBuilder& Menu, FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildAddIdsMenu(FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildAddFiltersMenu(FMixtormatAddTarget Target);
@@ -347,7 +345,6 @@ private:
 	FMixtormatLayerEffect* GetSelectedRunoff();
 	const FMixtormatLayerEffect* GetSelectedRunoff() const;
 	FReply AddErosionToLayer(int32 LayerIndex);
-	FReply AddProceduralPeelingToLayer(int32 LayerIndex);
 	FMixtormatLayerEffect* GetSelectedProceduralPeel();
 	const FMixtormatLayerEffect* GetSelectedProceduralPeel() const;
 	FMixtormatLayerEffect* GetSelectedErosion();

@@ -595,8 +595,7 @@ enum class EMixtormatStainMode : uint8
 	Deposit = 1 UMETA(DisplayName = "Deposit")
 };
 
-// Peel edge profile. Flat is the chip the authored maps ship. Curled lifts a flap ahead of
-// the front and folds it back behind, and exists only on the procedural path.
+	// Peel edge profile. Curled lifts a flap ahead of the front and folds it back behind.
 UENUM(BlueprintType)
 enum class EMixtormatPeelType : uint8
 {
@@ -660,10 +659,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
 	float DetailStrength = 0.02f;
 
-	// Procedural peeling. Active when the child references no effect asset, matching the
-	// way Erosion identifies itself. The peel field is then generated from noise and from
-	// the surface composited below instead of an imported PDM/MSK/H/SDF set; Front, Width,
-	// Thickness, Lift and Detail Strength above keep their meanings either way.
+	// Procedural peeling generates its field from noise and the surface composited below.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
 	EMixtormatPeelType PeelType = EMixtormatPeelType::Flat;
 
@@ -679,10 +675,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	// How much of the surface begins peeling. The mixed seed signal is thresholded here,
 	// then the peel grows outward from whatever survives.
-	// The peel's own mask. Independent of the layer's ordered mask children, so a layer
-	// can carry masks for its other work and still seed peeling from something else.
-	// Falls back to the accumulated child mask when unset, which is what existing recipes
-	// were built against.
+	// Optional seed mask. Independent of scoped mask children; unset means no external mask
+	// contributes to seeding.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
 	TSoftObjectPtr<UMixtormatMask> PeelMask;
 

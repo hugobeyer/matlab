@@ -283,9 +283,10 @@ TArray<FMixtormatEffectEntry> FMixtormatRegistry::GetEffects()
 	for (const FAssetData& Asset : Assets)
 	{
 		const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(Asset.GetAsset());
-		// Stain is procedural now. Ignore the old generated asset if it is still present in a
-		// project so the library offers only the two explicit procedural stain modes.
-		if (!Effect || Effect->EffectType == EMixtormatEffectType::Stain)
+		// Stain and Peeling are procedural-only and must not appear as asset-backed entries.
+		if (!Effect
+			|| Effect->EffectType == EMixtormatEffectType::Stain
+			|| Effect->EffectType == EMixtormatEffectType::Peeling)
 		{
 			continue;
 		}

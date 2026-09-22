@@ -8,7 +8,6 @@
 Texture2D<float4> SurfaceNormal;
 Texture2D<float4> SurfaceRAM;
 Texture2D<float> SurfaceHeight;
-Texture2D<float> ChildMask;
 Texture2D<float4> PeelOwnMask;
 Texture2D<float2> PreviousArrival;
 Texture2D<float> GrowthField;
@@ -180,11 +179,9 @@ float PeelMask(float2 uv)
 			: m;
 	}
 
-	return
-		ChildMask.SampleLevel(
-			LinearWrapSampler,
-			uv,
-			0.0f);
+	// No Seed Mask means no external contribution. 0.5 is neutral in the centred
+	// seed term, and C++ also zeros MaskWeight when no texture is bound.
+	return 0.5f;
 }
 
 float2 PeelSurfaceFlow(float2 uv, int2 res)
@@ -677,8 +674,6 @@ float PeelDamage(
 		* MaskWeight
 		* 0.25f;
 
-	// Added before the saturate and before the mask multiply below, so a seam still only peels
-	// where the layer's own mask allows it.
 	damage +=
 		PeelIdEdge(uv, res)
 		* saturate(IDInfluence);
@@ -686,9 +681,6 @@ float PeelDamage(
 	damage =
 		saturate(
 			damage);
-
-	damage *=
-		mask;
 
 	adhesion =
 		saturate(
@@ -1437,17 +1429,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* 0.45f
 		* saturate(LiftVariation);
 
-	// The layer's own mask, so a peel fades out where it was painted out rather than ending on a
-	// full-height ridge at the mask boundary.
-	float liftMask =
-		saturate(
-			PeelMask(uv));
-
 	float localLift =
 		Lift
 		* liftVariation
 		* max(liftDetail, 0.0f)
-		* liftMask
 		* cornerBoost;
 
 	float fine =

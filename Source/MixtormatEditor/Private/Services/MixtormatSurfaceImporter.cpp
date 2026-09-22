@@ -648,41 +648,6 @@ namespace MixtormatImporter
 			Factory));
 	}
 
-	UMixtormatEffect* CreateOrLoadEffect(
-		IAssetTools& AssetTools,
-		const FString& AssetName,
-		const FString& DestinationPath)
-	{
-		const FString ObjectPath = FString::Printf(
-			TEXT("%s/%s.%s"), *DestinationPath, *AssetName, *AssetName);
-		if (UMixtormatEffect* ExistingEffect = LoadObject<UMixtormatEffect>(nullptr, *ObjectPath))
-		{
-			return ExistingEffect;
-		}
-
-		UDataAssetFactory* Factory = NewObject<UDataAssetFactory>();
-		Factory->DataAssetClass = UMixtormatEffect::StaticClass();
-		return Cast<UMixtormatEffect>(AssetTools.CreateAsset(
-			AssetName,
-			DestinationPath,
-			UMixtormatEffect::StaticClass(),
-			Factory));
-	}
-
-	void SetEffectIdentity(UMixtormatEffect& Effect, const FString& BaseName)
-	{
-		FString Identity = BaseName;
-		Identity.RemoveFromStart(TEXT("TX_Effect_"));
-		TArray<FString> Parts;
-		Identity.ParseIntoArray(Parts, TEXT("_"), true);
-
-		Effect.DisplayName = FText::FromString(Parts.Num() > 1
-			? FString::Printf(TEXT("%s · %s"), *Parts[0], *Parts[1])
-			: Identity);
-		Effect.Category = Parts.IsEmpty() ? FName(TEXT("Effects")) : FName(*Parts[0]);
-		Effect.EffectType = EMixtormatEffectType::Peeling;
-		Effect.SourceTextureBaseName = BaseName;
-	}
 
 	UMaterial* LoadSubstrateMaster()
 	{

@@ -119,12 +119,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		(float2(p) + 0.5f)
 		/ float2(OutputSize);
 
+	// A scoped mask gates only the resolved effect. It never enters seed generation or growth.
+	float scope = saturate(ChildMask.SampleLevel(LinearWrapSampler, uv, 0.0f));
+
 	float4 field =
 		PeelFieldB.Load(
 			int3(p, 0));
 
 	float coverage =
-		saturate(field.r);
+		saturate(field.r)
+		* scope;
 
 	float strength =
 		saturate(Strength);
@@ -198,6 +202,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float hpp =
 		PeelScaledHeight(
 			p + int2(1, 1));
+
+	// Apply the final gate after field generation. Using the current pixel's scope for the local
+	// relief stencil avoids feeding the gate's contour back into the procedural peel shape.
+	hmm *= scope;
+	h0m *= scope;
+	hpm *= scope;
+	hm0 *= scope;
+	h00 *= scope;
+	hp0 *= scope;
+	hmp *= scope;
+	h0p *= scope;
+	hpp *= scope;
 
 	// The shared height->normal convention. See MixtormatHeightNormal.ush.
 	//
