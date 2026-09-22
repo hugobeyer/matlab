@@ -29,7 +29,14 @@ coverage test, derived C++ contract exclusions, and Parameter Info `Binding → 
 Phase 7 peeling batch is implemented: peeling contract rows and matching `@param` annotations
 were added for the existing runtime safety facts, and the procedural peeling gather was moved
 to `MixtormatEffectGather.{h,cpp}` with contract sanitization. Phase 7 is not complete;
-Stain and generator/mask-child families remain. S2/S3 from §6b remain undone.
+Stain and generator/mask-child families remain. S2 is complete; S3 from §6b remains undone.
+
+**Correction log 5 (S2 complete):** `MixtormatGpuComposePipeline.cpp` now owns the render-thread
+RDG dispatch, target registration, layer orchestration, snapshots, finalization, and completion
+callback. Shader class definitions and shader-bound dispatch helpers remain in
+`MixtormatGpuCompositor.cpp`. Target lifetime, pass order, ping-pong parity, event names,
+public APIs, and the existing peeling gather were preserved. The user reported a successful
+plugin build after the S2 syntax correction.
 
 Scope: the whole parameter pipeline — declaration, inspector UI, addressing/binding,
 authoring database, compositor gathering, shader contract — across `MixtormatRuntime`,
@@ -370,7 +377,7 @@ cleanup passes. "Pure move" = no behavior change; verify per §5.
 | # | Split | Rides with | Risk |
 |---|---|---|---|
 | S1 | `MixtormatEffectGather.{h,cpp}` — 8 effect-family gather blocks out of `RequestComposeInternal`; `GetTextureRHI` → inline in internal header | **Phase 3** (this IS the phase) | **DONE**; pure move verified |
-| S2 | `MixtormatGpuComposePipeline.cpp` — RDG dispatch/targets/layer orchestration (compositor L2990–3680) out of the monolith | **Phase 3**, immediately after S1 | Pure move |
+| S2 | `MixtormatGpuComposePipeline.cpp` — RDG dispatch/targets/layer orchestration out of the monolith | **Phase 3**, immediately after S1 | **DONE**; pure move |
 | S3 | `MixtormatGpuCompositeShaders.h` — the four composite shader classes (compositor L121–442) | **Phase 3** | Pure move |
 | S4 | `MixtormatGpuEffectPasses.<Family>.cpp` — Craquelure (~800), Erosion (~420), WornEdges (~300), Breakup (~260), Grade, LayerBlur, FlowWarp out of the 3,130-line passes file | **Phase 7** per family (migrate + split in the same pass) | Mechanical; shader-class-per-file preserves the rebuild-one-file property |
 | S5 | Inspector per-family panels: `Build*Controls` + menu builders out of `SMixtormat_Inspector.cpp` (~3,900) | **Phase 7** per family | Pure move |
@@ -384,6 +391,34 @@ cleanup passes. "Pure move" = no behavior change; verify per §5.
 Do NOT split: `MixtormatParameterDefinition.{h,cpp}` (small, single-purpose),
 `MixtormatMaskShaping.h` / `MixtormatReliefScaling.h` (exemplars of right-sized),
 internal-header pass contexts (would circularize).
+
+## 6c. Modular layer-graph handoff
+
+The four vertical audits are recorded in `Docs/modular_layer_graph_audit_handoff.md`.
+They establish the next architectural boundary without changing the current serialized model:
+
+- Generators produce form fields and channel contributions.
+- IDs produce topology and typed structural outputs.
+- Masks route, shape, gate, and publish reusable outputs.
+- Effects and filters operate on generated or composed channels.
+- Layers remain the artist-facing stack; each layer gains an internal compiled dependency graph.
+- `MixtormatGpuCompositor` should become a graph compiler/scheduler rather than the catalog of
+  every family, parameter, output, and dependency.
+
+Parameter-system consequences:
+
+1. Reflection remains the authored parameter catalog.
+2. Shader contracts remain the source of hard safety facts.
+3. Generator, ID, and Mask owners must use the same typed addressing and contract path as Effects.
+4. New family descriptors should provide parameter metadata, channel inputs/outputs, neutral state,
+   mask behavior, and dependencies together.
+5. Do not add manual registration lists for parameters already declared by reflection or shader
+   descriptors.
+6. UI ranges remain artist guidance; sanitization is limited to real shader invariants.
+7. Define channel-combine contracts before extending parameter completeness to new families.
+
+S2 is complete and provides the render-thread scheduling seam. S3–S5 remain deferred until the
+layer graph contracts are designed.
 
 ## 7. Working rules for the implementing agent
 
