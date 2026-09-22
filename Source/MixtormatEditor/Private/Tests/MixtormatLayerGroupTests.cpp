@@ -4,6 +4,7 @@
 
 #include "MixtormatLayerGroups.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatParameterBinding.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -350,6 +351,109 @@ bool FMixtormatLayerGroupChildEditTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("The members' own masks are untouched"),
 		Effective[0].Children[0].ChildId, Fixture.Layers[0].Children[0].ChildId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatGroupInstanceIdentityRemapTest,
+	"Mixtormat.LayerGroups.IdentityRemap.GroupChildInstance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatGroupInstanceIdentityRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FGroupFixture Fixture;
+	FMixtormatLayerGroup& Group = Fixture.Groups[0];
+	FMixtormatLayerChild& Instance = Group.Children.AddDefaulted_GetRef();
+	Instance.SourceLayerId = Group.GroupId;
+	Instance.SourceChildId = Group.Children[0].ChildId;
+
+	MixtormatParameterBinding::RegenerateLayerIdentities(Fixture.Layers, Fixture.Groups);
+	TestEqual(TEXT("Group instance owner follows regenerated group"), Instance.SourceLayerId, Group.GroupId);
+	TestEqual(TEXT("Group instance child follows regenerated child"), Instance.SourceChildId, Group.Children[0].ChildId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatGroupPublishedOutputIdentityRemapTest,
+	"Mixtormat.LayerGroups.IdentityRemap.GroupPublishedOutput",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatGroupPublishedOutputIdentityRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FGroupFixture Fixture;
+	FMixtormatLayerGroup& Group = Fixture.Groups[0];
+	FMixtormatLayerChild& Mask = Group.Children.AddDefaulted_GetRef();
+	Mask.Type = EMixtormatLayerChildType::Mask;
+	Mask.Mask.PublishedSourceLayerId = Group.GroupId;
+	Mask.Mask.PublishedSourceChildId = Group.Children[0].ChildId;
+	Mask.Mask.PublishedSourceOutput = TEXT("Wear");
+
+	MixtormatParameterBinding::RegenerateLayerIdentities(Fixture.Layers, Fixture.Groups);
+	TArray<FMixtormatLayer> Effective;
+	MixtormatLayerGroups::BuildEffectiveLayers(Fixture.Layers, Fixture.Groups, Effective);
+	TestEqual(TEXT("Published group owner becomes this effective member"),
+		Effective[0].Children[2].Mask.PublishedSourceLayerId, Effective[0].LayerId);
+	TestEqual(TEXT("Published group child becomes this effective child"),
+		Effective[0].Children[2].Mask.PublishedSourceChildId, Effective[0].Children[1].ChildId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatLayerToGroupIdentityRemapTest,
+	"Mixtormat.LayerGroups.IdentityRemap.LayerToGroup",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatLayerToGroupIdentityRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FGroupFixture Fixture;
+	FMixtormatLayerChild& Mask = Fixture.Layers[0].Children.AddDefaulted_GetRef();
+	Mask.Mask.PublishedSourceLayerId = Fixture.Groups[0].GroupId;
+	Mask.Mask.PublishedSourceChildId = Fixture.Groups[0].Children[0].ChildId;
+
+	MixtormatParameterBinding::RegenerateLayerIdentities(Fixture.Layers, Fixture.Groups);
+	TestEqual(TEXT("Layer published owner follows regenerated group"), Mask.Mask.PublishedSourceLayerId, Fixture.Groups[0].GroupId);
+	TestEqual(TEXT("Layer published child follows regenerated group child"), Mask.Mask.PublishedSourceChildId, Fixture.Groups[0].Children[0].ChildId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatGroupToLayerIdentityRemapTest,
+	"Mixtormat.LayerGroups.IdentityRemap.GroupToLayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatGroupToLayerIdentityRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FGroupFixture Fixture;
+	FMixtormatLayerChild& Mask = Fixture.Groups[0].Children.AddDefaulted_GetRef();
+	Mask.Mask.PublishedSourceLayerId = Fixture.Layers[0].LayerId;
+	Mask.Mask.PublishedSourceChildId = Fixture.Layers[0].Children[0].ChildId;
+
+	MixtormatParameterBinding::RegenerateLayerIdentities(Fixture.Layers, Fixture.Groups);
+	TestEqual(TEXT("Group published owner follows regenerated layer"), Mask.Mask.PublishedSourceLayerId, Fixture.Layers[0].LayerId);
+	TestEqual(TEXT("Group published child follows regenerated layer child"), Mask.Mask.PublishedSourceChildId, Fixture.Layers[0].Children[0].ChildId);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatEffectiveIdentityDeterminismAfterRemapTest,
+	"Mixtormat.LayerGroups.IdentityRemap.EffectiveIdsStayDeterministic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatEffectiveIdentityDeterminismAfterRemapTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	FGroupFixture Fixture;
+	MixtormatParameterBinding::RegenerateLayerIdentities(Fixture.Layers, Fixture.Groups);
+	TArray<FMixtormatLayer> First;
+	TArray<FMixtormatLayer> Again;
+	MixtormatLayerGroups::BuildEffectiveLayers(Fixture.Layers, Fixture.Groups, First);
+	MixtormatLayerGroups::BuildEffectiveLayers(Fixture.Layers, Fixture.Groups, Again);
+	TestEqual(TEXT("Regenerated authored data yields stable effective IDs"),
+		First[0].Children[1].ChildId, Again[0].Children[1].ChildId);
 	return true;
 }
 

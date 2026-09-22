@@ -2031,6 +2031,14 @@ FMixtormatChildAddress SMixtormat::MakeGroupChildAddress(const FGuid GroupId, co
 	return Address;
 }
 
+FMixtormatChildAddress SMixtormat::GetSelectedChildAddress() const
+{
+	const int32 ChildIndex = GetSelectedChildIndex();
+	return SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE
+		? MakeGroupChildAddress(SelectedGroupId, ChildIndex)
+		: MakeChildAddress(SelectedLayerIndex, ChildIndex);
+}
+
 TArray<FMixtormatLayerChild>* SMixtormat::ResolveContainer(const FMixtormatChildAddress& Address)
 {
 	return const_cast<TArray<FMixtormatLayerChild>*>(
@@ -2113,14 +2121,6 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 
 void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FName OutputName)
 {
-	// Only ever reads a layer child. A published-source mask naming a group as its owner cannot be
-	// resolved by the compositor: it looks PublishedSourceLayerId up in the group-expanded layer
-	// array (MixtormatGpuCompositor.cpp), where a GroupId never appears, only real LayerIds do.
-	// Offering this from a group child would silently paste a mask that always renders black.
-	if (Address.OwnerType != EMixtormatChildOwnerType::Layer)
-	{
-		return;
-	}
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	if (!Child)
 	{
@@ -2386,38 +2386,42 @@ void SMixtormat::SyncChildInstances()
 
 bool SMixtormat::IsSelectedChildInstance() const
 {
-	const int32 ChildIndex = GetSelectedChildIndex();
-	return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		&& WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(ChildIndex)
-		&& WorkingLayers[SelectedLayerIndex].Children[ChildIndex].IsInstance();
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+	return Child && Child->IsInstance();
 }
 
 
 FText SMixtormat::GetSelectedInstanceSourceText() const
 {
-	if (!IsSelectedChildInstance())
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	if (!Child || !Child->IsInstance())
 	{
 		return FText::GetEmpty();
 	}
-	const FMixtormatLayerChild& Child =
-		WorkingLayers[SelectedLayerIndex].Children[GetSelectedChildIndex()];
 	for (const FMixtormatLayer& Layer : WorkingLayers)
 	{
-		if (Layer.LayerId != Child.SourceLayerId)
+		if (Layer.LayerId == Child->SourceLayerId)
 		{
-			continue;
-		}
-		for (const FMixtormatLayerChild& Candidate : Layer.Children)
-		{
-			if (Candidate.ChildId == Child.SourceChildId)
+			if (const FMixtormatLayerChild* Source = Layer.Children.FindByPredicate(
+				[Child](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == Child->SourceChildId; }))
 			{
-				// Named whether or not the source layer is visible. Hiding a layer stops it
-				// compositing; it does not stop its children owning their data.
 				return FText::Format(
 					LOCTEXT("InstanceSourceLine", "Source: {0} / {1}"),
 					Layer.DisplayName,
-					GetLayerChildName(Candidate));
+					GetLayerChildName(*Source));
 			}
+		}
+	}
+	if (const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Child->SourceLayerId))
+	{
+		if (const FMixtormatLayerChild* Source = Group->Children.FindByPredicate(
+			[Child](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == Child->SourceChildId; }))
+		{
+			return FText::Format(
+				LOCTEXT("InstanceGroupSourceLine", "Source: {0} / {1}"),
+				Group->DisplayName,
+				GetLayerChildName(*Source));
 		}
 	}
 	return LOCTEXT("InstanceSourceBroken", "Source is missing. Showing the last values it gave.");
@@ -2513,14 +2517,14 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 						Action(
 							LOCTEXT("InstanceGoToSource", "Go to Source"),
 							LOCTEXT("InstanceGoToSourceHint", "Select the child this instance mirrors."),
-							[this]() { GoToChildInstanceSource(MakeChildAddress(SelectedLayerIndex, GetSelectedChildIndex())); })
+							[this]() { GoToChildInstanceSource(GetSelectedChildAddress()); })
 					]
 					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
 					[
 						Action(
 							LOCTEXT("InstanceBreak", "Break Instance"),
 							LOCTEXT("InstanceBreakHint", "Keep the values it is showing as this child's own and edit them here."),
-							[this]() { BreakChildInstanceAt(MakeChildAddress(SelectedLayerIndex, GetSelectedChildIndex())); })
+							[this]() { BreakChildInstanceAt(GetSelectedChildAddress()); })
 					]
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
@@ -2528,7 +2532,7 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 						.Text(LOCTEXT("InstanceReplaceSource", "Replace Source"))
 						.OnGetMenuContent_Lambda([this]()
 						{
-							return BuildReplaceInstanceSourceMenu(MakeChildAddress(SelectedLayerIndex, GetSelectedChildIndex()));
+							return BuildReplaceInstanceSourceMenu(GetSelectedChildAddress());
 						})
 					]
 				]
@@ -2804,20 +2808,15 @@ void SMixtormat::AddSharedChildMenuItems(
 		}));
 	if (Child)
 	{
-		// Only ever offered from a layer child -- see CopyChildOutput on why a group child cannot
-		// publish a mask the compositor can resolve today.
-		if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
+		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
 		{
-			for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
-			{
-				Menu.Item(
-					FText::Format(LOCTEXT("CopyChildOutputContext", "Copy Output · {0}"), Output.Label),
-					MixtormatIcons::Mask(),
-					FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
-					{
-						CopyChildOutput(Address, OutputName);
-					}));
-			}
+			Menu.Item(
+				FText::Format(LOCTEXT("CopyChildOutputContext", "Copy Output · {0}"), Output.Label),
+				MixtormatIcons::Mask(),
+				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
+				{
+					CopyChildOutput(Address, OutputName);
+				}));
 		}
 	}
 	Menu.Item(

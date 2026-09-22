@@ -268,15 +268,38 @@ namespace MixtormatLayerGroups
 			// A GUID naming a sibling shared child follows the clone into this member; one naming
 			// anything else is an authored address and stays exactly as written.
 			const FGuid MemberLayerId = Layer.LayerId;
+			const FGuid AuthoredGroupId = Group->GroupId;
 			const auto RemapPair =
-				[&ChildIdRemap, &MemberLayerId](FGuid& OwnerLayerId, FGuid& ChildId)
+				[&ChildIdRemap, &MemberLayerId, &AuthoredGroupId](FGuid& OwnerLayerId, FGuid& ChildId)
 			{
-				if (const FGuid* Effective = ChildIdRemap.Find(ChildId))
+				// Only an authored address to this group becomes member-local. A layer address that
+				// happens to name a matching child must stay external to this expansion.
+				if (OwnerLayerId == AuthoredGroupId)
 				{
-					ChildId = *Effective;
-					OwnerLayerId = MemberLayerId;
+					if (const FGuid* Effective = ChildIdRemap.Find(ChildId))
+					{
+						ChildId = *Effective;
+						OwnerLayerId = MemberLayerId;
+					}
 				}
 			};
+			const auto RemapChildReferences = [&RemapPair](FMixtormatLayerChild& Child)
+			{
+				RemapPair(Child.SourceLayerId, Child.SourceChildId);
+				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
+				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
+				{
+					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+					RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+				}
+			};
+
+			// A member's local child may deliberately read an authored group child. The compositor
+			// only sees effective layers, so convert that stable authored address for this member.
+			for (FMixtormatLayerChild& LocalChild : Layer.Children)
+			{
+				RemapChildReferences(LocalChild);
+			}
 
 			Layer.Children.Reserve(Layer.Children.Num() + Group->Children.Num());
 			for (const FMixtormatLayerChild& GroupChild : Group->Children)
@@ -301,13 +324,7 @@ namespace MixtormatLayerGroups
 					}
 				}
 
-				RemapPair(Clone.SourceLayerId, Clone.SourceChildId);
-				RemapPair(Clone.Mask.PublishedSourceLayerId, Clone.Mask.PublishedSourceChildId);
-				for (FMixtormatParameterBinding& Binding : Clone.ParameterBindings)
-				{
-					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
-					RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
-				}
+				RemapChildReferences(Clone);
 			}
 		}
 	}

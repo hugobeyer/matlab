@@ -67,6 +67,11 @@ namespace MixtormatParameterBinding
 {
 	// Ensures every layer/child has persistent identity. Existing valid IDs are preserved.
 	MIXTORMATRUNTIME_API void EnsureStableIds(TArray<FMixtormatLayer>& Layers);
+	// The document form includes authored groups. Group IDs share the owner-ID namespace with
+	// layers, and group children share the child-ID namespace with layer children.
+	MIXTORMATRUNTIME_API void EnsureStableIds(
+		TArray<FMixtormatLayer>& Layers,
+		TArray<FMixtormatLayerGroup>& Groups);
 
 	// A duplicated layer/child must not share identity with its source. References inside a
 	// duplicated layer are intentionally preserved; only the duplicated objects receive new IDs.
@@ -75,6 +80,9 @@ namespace MixtormatParameterBinding
 	// Copies a complete recipe into another document without sharing identity. Every reference,
 	// driver, instance and published mask source that points inside the batch follows the copy.
 	MIXTORMATRUNTIME_API void RegenerateLayerIdentities(TArray<FMixtormatLayer>& Layers);
+	MIXTORMATRUNTIME_API void RegenerateLayerIdentities(
+		TArray<FMixtormatLayer>& Layers,
+		TArray<FMixtormatLayerGroup>& Groups);
 	MIXTORMATRUNTIME_API void RegenerateChildIdentity(FMixtormatLayerChild& Child);
 
 	// Why an instance placement was refused. The editor turns these into the reason it shows on a

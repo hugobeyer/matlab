@@ -505,16 +505,41 @@ namespace MixtormatParameterBinding
 {
 	void EnsureStableIds(TArray<FMixtormatLayer>& Layers)
 	{
-		TSet<FGuid> LayerIds;
+		TArray<FMixtormatLayerGroup> NoGroups;
+		EnsureStableIds(Layers, NoGroups);
+	}
+
+	void EnsureStableIds(TArray<FMixtormatLayer>& Layers, TArray<FMixtormatLayerGroup>& Groups)
+	{
+		// Owner and child IDs are document-wide namespaces. Keep the first valid occurrence stable;
+		// an ambiguous duplicate cannot safely retarget existing references, so later owners receive
+		// fresh identities while references retain their established first-owner meaning.
+		TSet<FGuid> OwnerIds;
 		TSet<FGuid> ChildIds;
 		for (FMixtormatLayer& Layer : Layers)
 		{
-			if (!Layer.LayerId.IsValid() || LayerIds.Contains(Layer.LayerId))
+			if (!Layer.LayerId.IsValid() || OwnerIds.Contains(Layer.LayerId))
 			{
 				Layer.LayerId = FGuid::NewGuid();
 			}
-			LayerIds.Add(Layer.LayerId);
+			OwnerIds.Add(Layer.LayerId);
 			for (FMixtormatLayerChild& Child : Layer.Children)
+			{
+				if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
+				{
+					Child.ChildId = FGuid::NewGuid();
+				}
+				ChildIds.Add(Child.ChildId);
+			}
+		}
+		for (FMixtormatLayerGroup& Group : Groups)
+		{
+			if (!Group.GroupId.IsValid() || OwnerIds.Contains(Group.GroupId))
+			{
+				Group.GroupId = FGuid::NewGuid();
+			}
+			OwnerIds.Add(Group.GroupId);
+			for (FMixtormatLayerChild& Child : Group.Children)
 			{
 				if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
 				{
@@ -589,22 +614,46 @@ namespace MixtormatParameterBinding
 					Child.SourceChildId = *NewSourceChildId;
 				}
 			}
+			if (Child.Mask.PublishedSourceLayerId == OldLayerId)
+			{
+				Child.Mask.PublishedSourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.Mask.PublishedSourceChildId))
+				{
+					Child.Mask.PublishedSourceChildId = *NewSourceChildId;
+				}
+			}
 		}
 	}
 
 	void RegenerateLayerIdentities(TArray<FMixtormatLayer>& Layers)
 	{
-		EnsureStableIds(Layers);
+		TArray<FMixtormatLayerGroup> NoGroups;
+		RegenerateLayerIdentities(Layers, NoGroups);
+	}
 
-		TMap<FGuid, FGuid> LayerIdRemap;
+	void RegenerateLayerIdentities(TArray<FMixtormatLayer>& Layers, TArray<FMixtormatLayerGroup>& Groups)
+	{
+		EnsureStableIds(Layers, Groups);
+
+		TMap<FGuid, FGuid> OwnerIdRemap;
 		TMap<FGuid, FGuid> ChildIdRemap;
-		for (FMixtormatLayer& Layer : Layers)
+		const auto AddOwner = [&OwnerIdRemap](const FGuid& Id) { OwnerIdRemap.Add(Id, FGuid::NewGuid()); };
+		const auto AddChildren = [&ChildIdRemap](TArray<FMixtormatLayerChild>& Children)
 		{
-			LayerIdRemap.Add(Layer.LayerId, FGuid::NewGuid());
-			for (FMixtormatLayerChild& Child : Layer.Children)
+			for (FMixtormatLayerChild& Child : Children)
 			{
 				ChildIdRemap.Add(Child.ChildId, FGuid::NewGuid());
 			}
+		};
+		for (FMixtormatLayer& Layer : Layers)
+		{
+			AddOwner(Layer.LayerId);
+			AddChildren(Layer.Children);
+		}
+		for (FMixtormatLayerGroup& Group : Groups)
+		{
+			AddOwner(Group.GroupId);
+			AddChildren(Group.Children);
 		}
 
 		const auto RemapGuid = [](FGuid& Id, const TMap<FGuid, FGuid>& Remap)
@@ -614,34 +663,44 @@ namespace MixtormatParameterBinding
 				Id = *Replacement;
 			}
 		};
-		const auto RemapBinding = [&RemapGuid, &LayerIdRemap, &ChildIdRemap](FMixtormatParameterBinding& Binding)
+		const auto RemapBinding = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap](FMixtormatParameterBinding& Binding)
 		{
-			RemapGuid(Binding.Reference.Source.LayerId, LayerIdRemap);
+			RemapGuid(Binding.Reference.Source.LayerId, OwnerIdRemap);
 			RemapGuid(Binding.Reference.Source.ChildId, ChildIdRemap);
-			RemapGuid(Binding.Driver.SourceLayerId, LayerIdRemap);
+			RemapGuid(Binding.Driver.SourceLayerId, OwnerIdRemap);
 			RemapGuid(Binding.Driver.SourceChildId, ChildIdRemap);
 		};
-
-		for (FMixtormatLayer& Layer : Layers)
+		const auto RemapChildren = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap, &RemapBinding](TArray<FMixtormatLayerChild>& Children)
 		{
-			RemapGuid(Layer.LayerId, LayerIdRemap);
-			for (FMixtormatParameterBinding& Binding : Layer.ParameterBindings)
-			{
-				RemapBinding(Binding);
-			}
-			for (FMixtormatLayerChild& Child : Layer.Children)
+			for (FMixtormatLayerChild& Child : Children)
 			{
 				RemapGuid(Child.ChildId, ChildIdRemap);
 				RemapGuid(Child.ScopeOwnerChildId, ChildIdRemap);
-				RemapGuid(Child.SourceLayerId, LayerIdRemap);
+				RemapGuid(Child.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.Mask.PublishedSourceLayerId, LayerIdRemap);
+				RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapBinding(Binding);
 				}
 			}
+		};
+
+		for (FMixtormatLayer& Layer : Layers)
+		{
+			RemapGuid(Layer.LayerId, OwnerIdRemap);
+			RemapGuid(Layer.GroupId, OwnerIdRemap);
+			for (FMixtormatParameterBinding& Binding : Layer.ParameterBindings)
+			{
+				RemapBinding(Binding);
+			}
+			RemapChildren(Layer.Children);
+		}
+		for (FMixtormatLayerGroup& Group : Groups)
+		{
+			RemapGuid(Group.GroupId, OwnerIdRemap);
+			RemapChildren(Group.Children);
 		}
 	}
 

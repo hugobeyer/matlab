@@ -874,12 +874,14 @@ void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)
 	}
 
 	TArray<FMixtormatLayer> ImportedLayers = Composition->Layers;
-	MixtormatParameterBinding::RegenerateLayerIdentities(ImportedLayers);
+	TArray<FMixtormatLayerGroup> ImportedGroups = Composition->LayerGroups;
+	MixtormatParameterBinding::RegenerateLayerIdentities(ImportedLayers, ImportedGroups);
 	const int32 FirstImportedLayer = bHasWorkingMaterial ? WorkingLayers.Num() : 0;
 
 	if (bHasWorkingMaterial)
 	{
 		WorkingLayers.Append(MoveTemp(ImportedLayers));
+		WorkingLayerGroups.Append(MoveTemp(ImportedGroups));
 	}
 	else
 	{
@@ -887,6 +889,7 @@ void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)
 		WorkingMaterialAsset.Reset();
 		WorkingMaterialName = TEXT("Untitled Mixtormat Material");
 		WorkingLayers = MoveTemp(ImportedLayers);
+		WorkingLayerGroups = MoveTemp(ImportedGroups);
 		bGlobalUVRotation90 = Composition->bRotateUV90;
 		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 		{

@@ -196,7 +196,7 @@ void UMixtormatMaterial::PostLoad()
 	Super::PostLoad();
 	// Layer identity first: group validation reconciles group children against the layer child
 	// IDs, so those have to be settled before it looks at them.
-	MixtormatParameterBinding::EnsureStableIds(Layers);
+	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups);
 	MixtormatLayerGroups::ValidateGroups(Layers, LayerGroups);
 }
 

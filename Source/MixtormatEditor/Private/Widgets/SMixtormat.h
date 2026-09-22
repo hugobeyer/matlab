@@ -226,6 +226,7 @@ private:
 	// clipboard and instance placement now use.
 	FMixtormatChildAddress MakeChildAddress(int32 LayerIndex, int32 ChildIndex) const;
 	FMixtormatChildAddress MakeGroupChildAddress(FGuid GroupId, int32 ChildIndex) const;
+	FMixtormatChildAddress GetSelectedChildAddress() const;
 	// The child array an address names -- WorkingLayers[x].Children or a group's shared Children --
 	// so every clipboard/placement operation below reads and writes through one lookup rather than
 	// branching on OwnerType itself.
@@ -241,9 +242,7 @@ private:
 	// -- there is no separate "Paste Instance" destination command any more.
 	void CopyChild(const FMixtormatChildAddress& Address, bool bAsInstance);
 	// OutputName must name one of GetChildCapabilities(*ResolveChildAt(Address)).Outputs with
-	// bCopyableAsMask set. Copy Output only ever reads a layer child today: a published-source mask
-	// naming a group as its owner cannot be resolved by the compositor, which looks a mask's
-	// PublishedSourceLayerId up in the group-expanded layer array and never finds a GroupId there.
+	// bCopyableAsMask set.
 	void CopyChildOutput(const FMixtormatChildAddress& Address, FName OutputName);
 	// Where the clipboard's child may land at Dest, given the row the paste was asked from.
 	// INDEX_NONE when nothing in Dest can take it (wrong kind for Dest, or -- for Mode::Instance --
