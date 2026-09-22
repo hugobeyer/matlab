@@ -68,6 +68,9 @@ namespace MixtormatParameterContracts
 	MIXTORMATRUNTIME_API const FMixtormatParameterContract* TryGet(
 		EMixtormatParameterOwnerType Owner, FName Parameter);
 
+	// The complete sparse table, exposed for editor-time shader drift verification only.
+	MIXTORMATRUNTIME_API const TMap<FMixtormatParameterDefinitionKey, FMixtormatParameterContract>& GetAll();
+
 	// The single sanitization path the compositor uses for authored values: non-finite falls
 	// back to the parameter's CDO default (read through reflection), then HardMin/HardMax
 	// clamp where they exist. A parameter with no contract is still NaN-guarded to its

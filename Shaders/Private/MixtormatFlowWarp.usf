@@ -30,11 +30,17 @@ uint HasMask;
 uint Initialize;
 float Amount;
 float EffectWeight;
+// @param FlowWarpScale hardmin=1 hardmax=128
 int Scale;
 float Direction;
+// @param FlowWarpSeed hardmin=0
 uint Seed;
+// @param FlowWarpMaskSlopeInfluence hardmin=0
 float MaskSlopeInfluence;
+// @param FlowWarpHeightSlopeInfluence hardmin=0
 float HeightSlopeInfluence;
+// @param FlowWarpDerivativeKernelX hardmin=1 hardmax=64
+// @param FlowWarpDerivativeKernelY hardmin=1 hardmax=64
 float2 DerivativeKernel;
 uint BlendMode;
 

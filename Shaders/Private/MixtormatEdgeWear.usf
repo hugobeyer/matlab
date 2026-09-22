@@ -28,30 +28,52 @@ RWTexture2D<float4> OutputNormal;
 int2 OutputSize;
 int Mode;
 int EdgeStep;
+// @param EdgeWearRadius hardmin=1 hardmax=64
 int Radius;
+// @param EdgeWearSlope hardmin=0
 float Slope;
+// @param EdgeWearStrength saturates
 float Strength;
+// @param EdgeWearFeather hardmin=0
 float Feather;
+// @param EdgeWearDirections hardmin=8 hardmax=32
 int Directions;
 float AngularAA;
+// @param EdgeWearGravity hardmin=0
 float Gravity;
 float GravityAngle;
+// @param EdgeWearSeed hardmin=0
 uint Seed;
+// @param EdgeWearMacroScale hardmin=1
 int MacroScale;
+// @param EdgeWearMacroAmount hardmin=0
 float MacroAmount;
+// @param EdgeWearCellScale hardmin=1
 int CellScale;
+// @param EdgeWearCellAmount hardmin=0
 float CellAmount;
+// @param EdgeWearRidgeScale hardmin=1
 int RidgeScale;
+// @param EdgeWearRidgeAmount hardmin=0
 float RidgeAmount;
+// @param EdgeWearMicroScale hardmin=1
 int MicroScale;
+// @param EdgeWearMicroAmount hardmin=0
 float MicroAmount;
+// @param EdgeWearWarpScale hardmin=1
 int WarpScale;
+// @param EdgeWearWarpAmount hardmin=0
 float WarpAmount;
 float NoiseContrast;
+// @param EdgeWearIdVariation hardmin=0
 float IDVariation;
+// @param EdgeWearIdRadius hardmin=0
 float IDRadius;
+// @param EdgeWearIdSlope hardmin=0
 float IDSlope;
+// @param EdgeWearIdStrength hardmin=0
 float IDStrength;
+// @param EdgeWearIdNoise hardmin=0
 float IDNoise;
 uint HasPatternEdge;
 

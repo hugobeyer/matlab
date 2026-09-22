@@ -49,17 +49,23 @@ int SmearPass;
 uint WriteRidge;
 float Amount;
 float Depth;
+// @param ErosionRadius hardmin=1
 int Radius;
+// @param ErosionIterations hardmin=1
 int Iterations;
 int Stride;
+// @param ErosionGravityForce saturates
 float GravityForce;
+// @param ErosionSlopePower hardmin=0
 float SlopePower;
 float Deposit;
 float PreserveFlats;
 float Smoothing;
 float Variation;
+// @param ErosionSeed hardmin=0
 uint Seed;
 uint UsePlacementMask;
+// @param ErosionMaskTiling hardmin=1
 float PlacementMaskTiling;
 uint InvertMask;
 

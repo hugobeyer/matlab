@@ -131,6 +131,7 @@ uint FlipU;
 uint FlipV;
 int Rotation;
 float2 UVOffset;
+// @param NormalIntensity hardmin=0 hardmax=8
 float NormalIntensity;
 float HueShift;
 float Saturation;
@@ -147,9 +148,13 @@ float BaseColorInfluence;
 float RoughnessInfluence;
 float AOInfluence;
 float MetallicInfluence;
+// @param F0Influence hardmin=0 hardmax=1
 float F0Influence;
+// @param NormalInfluence hardmin=0 hardmax=1
 float NormalInfluence;
+// @param HeightInfluence hardmin=0 hardmax=1
 float HeightInfluence;
+// @param HeightBoost hardmin=0 hardmax=8
 float HeightBoost;
 float HeightLevelOffset;
 float HeightShape;

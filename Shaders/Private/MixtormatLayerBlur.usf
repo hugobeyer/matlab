@@ -26,6 +26,8 @@ RWTexture2D<float4> OutputTexture;
 
 int2 OutputSize;
 int Axis;
+// @param LayerBlurRadiusX hardmin=0 hardmax=32
+// @param LayerBlurRadiusY hardmin=0 hardmax=32
 float Radius;
 // Scoped masks gate either scope; layer coverage is an independent intersection.
 uint UseLayerCoverage;

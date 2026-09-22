@@ -22,10 +22,12 @@ int2 OutputSize;
 uint HasMask;
 uint InvertMask;
 int TonemapMode;
+// @param GradeTonemapStrength saturates
 float TonemapStrength;
 float Brightness;
 float Contrast;
 float ContrastPivot;
+// @param GradeGamma hardmin=0.05
 float Gamma;
 float Amount;
 float InputMin;

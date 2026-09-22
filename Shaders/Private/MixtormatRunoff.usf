@@ -64,17 +64,26 @@ uint Initialize;
 uint SurfaceValid;
 uint UseLayerMask;
 uint BlendMode;
+// @param RunoffSeed hardmin=0 hardmax=9999
 uint Seed;
 int StrataCount;
 
 float GravityAngle;
+// @param RunoffStreakRadius hardmin=8 hardmax=512
 float StreakRadius;
+// @param RunoffStreakSoftness hardmin=0.05 hardmax=1
 float StreakSoftness;
+// @param RunoffSurfaceInfluence hardmin=0 hardmax=1
 float SurfaceInfluence;
+// @param RunoffStrataAmount hardmin=0 hardmax=1
 float StrataAmount;
+// @param RunoffWarpScale hardmin=1 hardmax=64
 float WarpScale;
+// @param RunoffWarpAmount hardmin=0 hardmax=2
 float WarpAmount;
+// @param RunoffLipStrength hardmin=0 hardmax=1
 float LipStrength;
+// @param RunoffStrength hardmin=0 hardmax=1
 float Strength;
 
 // Full resolution.

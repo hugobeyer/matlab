@@ -31,6 +31,7 @@ SamplerState LinearWrapSampler;
 RWTexture2D<float4> OutputRAM;
 
 int2 OutputSize;
+// @param ErosionRoughnessAmount saturates
 float RoughnessAmount;
 float CarveDepth;
 uint UseCoverageTexture;

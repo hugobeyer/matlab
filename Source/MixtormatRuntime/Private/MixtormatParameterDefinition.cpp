@@ -234,6 +234,11 @@ namespace MixtormatParameterContracts
 		return Contracts().Find(Key);
 	}
 
+	const TMap<FMixtormatParameterDefinitionKey, FMixtormatParameterContract>& GetAll()
+	{
+		return Contracts();
+	}
+
 	float SanitizeFloat(
 		const EMixtormatParameterOwnerType Owner, const FName Parameter, const float Value)
 	{

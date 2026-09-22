@@ -30,24 +30,35 @@ RWTexture2D<float> OutputPieces;
 
 int2 OutputSize;
 
+// @param BreakupSeed hardmin=0
 uint Seed;
 
+// @param BreakupScale hardmin=1 hardmax=64
 int MacroCells;
+// @param BreakupScale hardmin=1 hardmax=64
 int MidCells;
+// @param BreakupScale hardmin=1 hardmax=64
 int DetailCells;
 
+// @param BreakupDensity saturates
 float Density;
+// @param BreakupSize hardmin=0.001
 float SizeMin;
+// @param BreakupSize hardmin=0.001
 float SizeMax;
+// @param BreakupStretch hardmin=1
 float Stretch;
+// @param BreakupAngularity saturates
 float Angularity;
 float Jitter;
 
 int OperationMid;
 int OperationDetail;
+// @param BreakupSmoothness hardmin=0
 float BlendSmooth;
 
 float DistortAmount;
+// @param BreakupDistortionFrequency hardmin=1 hardmax=16
 int DistortFrequency;
 float Inset;
 
@@ -57,29 +68,42 @@ uint HasRegionIds;
 float Relief;
 float ThicknessVariation;
 
+// @param BreakupGapWidth hardmin=0
 float GapWidth;
 float GapDepth;
 float GapVariation;
 
 float FoldHeight;
+// @param BreakupFoldWidth hardmin=1e-4 divisor
 float FoldWidth;
+// @param BreakupCreaseWidth hardmin=1e-4 divisor
 float CreaseWidth;
 float CreaseDepth;
 
 float PushAmount;
+// @param BreakupPushWidth hardmin=1e-4 divisor
 float PushWidth;
+// @param BreakupPushRelief hardmin=0
 float PushRelief;
 
+// @param BreakupVariation saturates
 float Variation;
+// @param BreakupAmount saturates
 float Strength;
 
+// @param BreakupNormalStrength hardmin=0
 float NormalStrength;
+// @param BreakupNormalSharpness saturates
 float NormalSharpness;
+// @param BreakupAOAmount saturates
 float AOAmount;
+// @param BreakupAORadius hardmin=1 divisor
 float AORadius;
+// @param BreakupRoughnessAmount saturates
 float RoughnessAmount;
 
 uint UsePlacementMask;
+// @param BreakupMaskTiling hardmin=1
 float PlacementMaskTiling;
 uint InvertMask;
 

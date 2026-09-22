@@ -7,6 +7,7 @@
 #include "MixtormatParameterDefinition.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
+#include "UI/Parameters/MixtormatShaderParamScanner.h"
 #include "UObject/UnrealType.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -101,6 +102,55 @@ bool FMixtormatMaskShapingRangeTest::RunTest(const FString& Parameters)
 			Property->GetMetaData(TEXT("UIMax")).IsEmpty());
 		TestFalse(*FString::Printf(TEXT("%s has Delta"), Field),
 			Property->GetMetaData(TEXT("Delta")).IsEmpty());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatShaderParamScannerTest,
+	"Mixtormat.Parameters.ShaderParamScanner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatShaderParamScannerTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	TArray<FMixtormatShaderParamTag> Tags;
+	TArray<FString> Errors;
+	TestTrue(TEXT("Shader parameter tags parse"), MixtormatShaderParamScanner::Scan(Tags, Errors));
+	for (const FString& Error : Errors)
+	{
+		AddError(Error);
+	}
+	TestTrue(TEXT("Breakup shader tags were found"), Tags.ContainsByPredicate(
+		[](const FMixtormatShaderParamTag& Tag)
+		{
+			return Tag.Parameter == TEXT("BreakupNormalStrength");
+		}));
+	for (const FMixtormatShaderParamTag& Tag : Tags)
+	{
+		const FMixtormatParameterContract* Contract =
+			MixtormatParameterContracts::TryGet(Tag.Owner, Tag.Parameter);
+		if (!Contract)
+		{
+			AddError(FString::Printf(TEXT("Shader tag %s has no contract row"), *Tag.Parameter.ToString()));
+			continue;
+		}
+		const auto SameOptional = [](const TOptional<float>& A, const TOptional<float>& B)
+		{
+			return A.IsSet() == B.IsSet()
+				&& (!A.IsSet() || FMath::IsNearlyEqual(A.GetValue(), B.GetValue()));
+		};
+		TestTrue(*FString::Printf(TEXT("%s hard-min matches"), *Tag.Parameter.ToString()),
+			SameOptional(Tag.HardMin, Contract->HardMin));
+		TestTrue(*FString::Printf(TEXT("%s hard-max matches"), *Tag.Parameter.ToString()),
+			SameOptional(Tag.HardMax, Contract->HardMax));
+		TestEqual(*FString::Printf(TEXT("%s saturation matches"), *Tag.Parameter.ToString()),
+			Tag.bSaturates, Contract->bShaderSaturates);
+		const bool bContractNormalized = !FMath::IsNearlyEqual(Contract->NormalizationScale, 1.0f);
+		TestTrue(*FString::Printf(TEXT("%s normalization matches"), *Tag.Parameter.ToString()),
+			Tag.Normalize.IsSet() == bContractNormalized
+				&& (!Tag.Normalize.IsSet()
+					|| FMath::IsNearlyEqual(Tag.Normalize.GetValue(), Contract->NormalizationScale)));
 	}
 	return true;
 }
