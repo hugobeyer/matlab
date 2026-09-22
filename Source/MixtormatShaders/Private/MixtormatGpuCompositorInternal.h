@@ -642,6 +642,48 @@ namespace MixtormatGpuCompositor
 		uint32 Seed = 1;
 	};
 
+	// UV From IDs. Everything the composite's source read needs to place a region's own copy of
+	// the layer texture, and nothing about how the regions were produced -- the centre and the
+	// frame come from MixtormatRegionFields.usf's bounds solve, not from the producer.
+	struct FUvIdRenderData
+	{
+		bool bOrthogonal = true;
+		float RotationMin = 0.0f;
+		float RotationMax = 360.0f;
+		float ScaleMin = 1.0f;
+		float ScaleMax = 1.0f;
+		float OffsetU = 0.0f;
+		float OffsetV = 0.0f;
+		bool bRandomFlipU = false;
+		bool bRandomFlipV = false;
+		uint32 Seed = 1;
+	};
+
+	// Relief From IDs. The same vocabulary FPatternIdRenderData's relief half carries, because the
+	// pass underneath is the same one -- what differs is only where the edge field came from.
+	struct FReliefIdRenderData
+	{
+		float HeightAmount = 0.0f;
+		float HeightRandom = 1.0f;
+		float Profile = 0.0f;
+		float ProfileRandom = 0.0f;
+		float Feather = 0.15f;
+		float FeatherRandom = 0.0f;
+		float FeatherGain = 0.0f;
+		float BevelHeight = 0.0f;
+		float BevelWidthPixels = 4.0f;
+		float BevelWidthCells = 0.25f;
+		bool bRelativeWidth = false;
+		float BevelVariation = 0.0f;
+		float BevelInsetPixels = 0.0f;
+		float GapHeight = 0.0f;
+		float EdgeRoughness = 0.65f;
+		float EdgeRoughnessAmount = 0.0f;
+		float AOAmount = 0.0f;
+		float AOSpread = 2.0f;
+		uint32 Seed = 1;
+	};
+
 	// Combine IDs. Both a consumer and a producer: it reads the nearest map above it and
 	// republishes a coarser one at its own index, so the nearest-producer rule downstream picks
 	// it up exactly as it would a cluster filter or a pattern.
@@ -714,6 +756,8 @@ namespace MixtormatGpuCompositor
 		FRampIdRenderData RampId;
 		FCombineIdRenderData CombineId;
 		FGeneratorRenderData Generator;
+		FUvIdRenderData UvId;
+		FReliefIdRenderData ReliefId;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
@@ -912,6 +956,34 @@ namespace MixtormatGpuCompositor
 		const FPatternIdRenderData* Settings = nullptr;
 	};
 
+	// One UV From IDs row, resolved before the composite because the composite's own source read
+	// is what it changes. Keyed by SourceChildIndex so ordinary stack order decides which one a
+	// consumer below sees.
+	struct FUvIdPassOutput
+	{
+		int32 SourceChildIndex = INDEX_NONE;
+		FRDGTextureRef Ids = nullptr;
+		FRDGTextureRef CentreUV = nullptr;
+		// Pattern's intrinsic quarter-turn field, bound only when the producer this node resolved
+		// to is a Herringbone/Basketweave Pattern in the same layer. Not an approximation for
+		// other producers -- they simply do not have one, and this stays null rather than
+		// inventing a basis. See FMixtormatUvIdFilter.
+		FRDGTextureRef Orientation = nullptr;
+		bool bIntrinsicOrientation = false;
+		const FUvIdRenderData* Settings = nullptr;
+	};
+
+	// The ID-map-only half of the region analysis, kept so several consumers of one producer pay
+	// for it once. Nothing here depends on the consumer's own controls: the jump flood and the
+	// per-region reach are functions of the Region IDs alone, and only the final field resolve --
+	// one dispatch -- reads a node's feather and width.
+	struct FRegionDistanceCacheEntry
+	{
+		int32 SourceChildIndex = INDEX_NONE;
+		FRDGTextureRef Record = nullptr;
+		FRDGTextureRef Extent = nullptr;
+	};
+
 	// Deferred filters retain the mask visible at their own row. Keeping the
 	// texture beside the effect prevents later layer masks from changing scope.
 	struct FPendingEffect
@@ -1085,6 +1157,8 @@ namespace MixtormatGpuCompositor
 		int32 LayerIndex = INDEX_NONE;
 		TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
 		TArray<FPatternIdPassOutput, TInlineAllocator<2>> PatternOutputs;
+		TArray<FUvIdPassOutput, TInlineAllocator<2>> UvIdOutputs;
+		TArray<FRegionDistanceCacheEntry, TInlineAllocator<2>> RegionDistanceCache;
 		FRDGTextureRef CombinedMask = nullptr;
 		FRDGTextureRef CombinedEffectData = nullptr;
 		FRDGTextureRef CombinedEffectHeight = nullptr;
@@ -1111,6 +1185,8 @@ namespace MixtormatGpuCompositor
 			LayerIndex = InLayerIndex;
 			RegionIdMaps.Reset();
 			PatternOutputs.Reset();
+			UvIdOutputs.Reset();
+			RegionDistanceCache.Reset();
 			CombinedMask = nullptr;
 			CombinedEffectData = nullptr;
 			CombinedEffectHeight = nullptr;
@@ -1215,6 +1291,13 @@ namespace MixtormatGpuCompositor
 		const int32 ChildIndex);
 
 	void AddRegionProducerPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
+	// UV From IDs. Scheduled immediately after the producers and before anything reads the layer's
+	// source, because the source read is the only thing it changes.
+	void AddUvIdPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);

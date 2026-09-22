@@ -2755,6 +2755,235 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
+{
+	const auto Uv = [this]() { return GetSelectedUvId(); };
+
+	const auto Slider = [this, Uv](
+		const FText& Label,
+		float FMixtormatUvIdFilter::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatUvIdFilter>(Label, Uv, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	const auto Checkbox = [this](
+		const FText& Label,
+		bool FMixtormatUvIdFilter::* Member,
+		const FText& Hint)
+	{
+		return MixtormatRow::Make(
+			Label,
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this, Member]()
+				{
+					const FMixtormatUvIdFilter* U = GetSelectedUvId();
+					return U && (U->*Member) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Member](const ECheckBoxState State)
+				{
+					if (FMixtormatUvIdFilter* U = GetSelectedUvId())
+					{
+						U->*Member = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpTransform", "Transform")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("UvIdRotationMin", "Rotation Min"), &FMixtormatUvIdFilter::RotationMin, -360.0, 360.0, 0.0, 1.0,
+			LOCTEXT("UvIdRotationMinHint", "The low end of each region's rotation draw, in degrees. Equal limits turn every region by the same fixed amount.")),
+		Slider(LOCTEXT("UvIdRotationMax", "Rotation Max"), &FMixtormatUvIdFilter::RotationMax, -360.0, 360.0, 360.0, 1.0,
+			LOCTEXT("UvIdRotationMaxHint", "The high end of that draw. The angle is taken about the region's own centre, which is measured from the ID map rather than supplied by the producer -- so this works after Pattern IDs, Cluster IDs or Combine IDs alike."))));
+	AddSliderRow(Panel, Checkbox(
+		LOCTEXT("UvIdOrthogonal", "Orthogonal"),
+		&FMixtormatUvIdFilter::bOrthogonal,
+		LOCTEXT("UvIdOrthogonalHint", "Snaps the drawn rotation to quarter turns. A quarter turn is a permutation of the unit square, so it never disturbs the source tiling; an arbitrary angle can. This is a snap on the random draw, not a recovered intrinsic axis -- an arbitrary region has no direction to recover.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("UvIdScaleMin", "Scale Min"), &FMixtormatUvIdFilter::ScaleMin, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("UvIdScaleMinHint", "The low end of each region's zoom on the source. Below 1 magnifies the texture inside the region; above 1 fits more of it in.")),
+		Slider(LOCTEXT("UvIdScaleMax", "Scale Max"), &FMixtormatUvIdFilter::ScaleMax, 0.05, 8.0, 1.0, 0.01,
+			LOCTEXT("UvIdScaleMaxHint", "The high end of that draw. Equal limits give every region the same zoom."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("UvIdOffsetU", "Offset X"), &FMixtormatUvIdFilter::OffsetU, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("UvIdOffsetUHint", "How far a region's source read may slip along U from its own centre, as a fraction of the source tile. This is what stops neighbouring regions showing the same patch of texture.")),
+		Slider(LOCTEXT("UvIdOffsetV", "Offset Y"), &FMixtormatUvIdFilter::OffsetV, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("UvIdOffsetVHint", "The same along V. Per-axis, unlike Pattern IDs' single Offset: a plank wants slip along its length and none across it."))));
+	AddSliderRow(Panel, Checkbox(
+		LOCTEXT("UvIdFlipU", "Random Flip U"),
+		&FMixtormatUvIdFilter::bRandomFlipU,
+		LOCTEXT("UvIdFlipUHint", "Mirrors roughly half the regions across U, drawn per region. A mirror maps the unit square onto itself exactly, so it never seams.")));
+	AddSliderRow(Panel, Checkbox(
+		LOCTEXT("UvIdFlipV", "Random Flip V"),
+		&FMixtormatUvIdFilter::bRandomFlipV,
+		LOCTEXT("UvIdFlipVHint", "The same across V.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpRandom", "Random")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatUvIdFilter>(
+		LOCTEXT("UvIdSeed", "Seed"), Uv, &FMixtormatUvIdFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("UvIdSeedHint", "Reshuffles which region gets which rotation, scale, offset and flip without changing any of the ranges. Independent of the producer's seed, so reseeding here does not re-generate the regions.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedUvId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("UvIdHeading", "UV FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatUvIdFilter* Selected = GetSelectedUvId();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						if (FMixtormatUvIdFilter* Selected = GetSelectedUvId())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("UvIdEnabledHint", "Enable this UV filter")))
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
+{
+	const auto Relief = [this]() { return GetSelectedReliefId(); };
+
+	const auto Slider = [this, Relief](
+		const FText& Label,
+		float FMixtormatReliefIdFilter::* Member,
+		const double Min,
+		const double Max,
+		const double Default,
+		const double Snap,
+		const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatReliefIdFilter>(Label, Relief, Member, Min, Max, Default, Snap, Hint);
+	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpHeight", "Height")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdHeight", "Amount"), &FMixtormatReliefIdFilter::HeightAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdHeightHint", "The elevation every region gets above the surface under it. Each region is a flat face at its own height -- tilting one is Ramp From IDs, which composites over this.")),
+		Slider(LOCTEXT("ReliefIdHeightRandom", "Variation"), &FMixtormatReliefIdFilter::HeightRandom, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdHeightRandomHint", "How far below Amount a region may be drawn, as a multiplier on it. One-sided: at 0 every region sits at full Amount, at 1 they spread down to the base. A region that went below the base would feather back up at its own boundary and read as a recessed panel in a raised frame."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpProfile", "Profile")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdProfile", "Profile"), &FMixtormatReliefIdFilter::Profile, -1.0, 1.0, 0.25, 0.01,
+			LOCTEXT("ReliefIdProfileHint", "The chamfer's cross-section. -1 is a cove that hugs the boundary then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose that rounds over onto it. Both ends stay pinned, so this changes the shape and never the width or height.")),
+		Slider(LOCTEXT("ReliefIdProfileRandom", "Variation"), &FMixtormatReliefIdFilter::ProfileRandom, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdProfileRandomHint", "Offsets the profile per region rather than scaling it, so one region's bullnose can be its neighbour's cove."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdFeather", "Feather"), &FMixtormatReliefIdFilter::Feather, 0.0, 0.5, 0.1, 0.005,
+			LOCTEXT("ReliefIdFeatherHint", "Eases each region's elevation out at its own boundary, so neighbours at different heights meet through a ramp rather than a one-texel cliff. In region fractions, measured against the region's own reach, so it means the same on a large region and a small one.")),
+		Slider(LOCTEXT("ReliefIdFeatherRandom", "Variation"), &FMixtormatReliefIdFilter::FeatherRandom, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdFeatherRandomHint", "Scales the run-out per region. One-sided: the draw only narrows the feather from the authored value, never widens it past what was asked for."))));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("ReliefIdFeatherGain", "Feather Gain"), &FMixtormatReliefIdFilter::FeatherGain, 0.0, 4.0, 0.0, 0.01,
+			LOCTEXT("ReliefIdFeatherGainHint", "What the run-out does on the way up, rather than how wide it is. A straight ramp has no change in slope and lights as one flat facet; Gain bends it, and past 1 leaves a raised lip just inside the edge -- the rolled-over rim of a settled tile.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpBevel", "Bevel")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("ReliefIdBevelHeight", "Height"), &FMixtormatReliefIdFilter::BevelHeight, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("ReliefIdBevelHeightHint", "Signed, and it lifts the region face: positive stands the region proud with the chamfer ramping down to the boundary, negative sinks the face instead. The region-less band is untouched either way -- that is Gap Height below.")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("ReliefIdRelativeWidth", "Relative Width"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				const FMixtormatReliefIdFilter* R = GetSelectedReliefId();
+				return R && R->bRelativeWidth ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				if (FMixtormatReliefIdFilter* R = GetSelectedReliefId())
+				{
+					R->bRelativeWidth = State == ECheckBoxState::Checked;
+					RefreshLayeredPreview();
+				}
+			})),
+		LOCTEXT("ReliefIdRelativeWidthHint", "Measures the chamfer as a fraction of the way from a region's boundary to its deepest interior point, rather than in output pixels. Relative frames every region the same way whatever its size; absolute keeps an even visual width across regions of different sizes.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("ReliefIdBevelWidthPixels", "Width"), &FMixtormatReliefIdFilter::BevelWidthPixels, 0.25, 64.0, 4.0, 0.25,
+			LOCTEXT("ReliefIdBevelWidthPixelsHint", "The chamfer's width in output pixels. Used when Relative Width is off.")));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("ReliefIdBevelWidthCells", "Width (Relative)"), &FMixtormatReliefIdFilter::BevelWidthCells, 0.0, 1.0, 0.25, 0.01,
+			LOCTEXT("ReliefIdBevelWidthCellsHint", "The same width as a region fraction. A separate control because a pixel width and a fraction need different ranges to be draggable at all.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdBevelVariation", "Variation"), &FMixtormatReliefIdFilter::BevelVariation, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("ReliefIdBevelVariationHint", "Narrows the chamfer per region. One-sided, like Height: the draw never widens one past the authored value.")),
+		Slider(LOCTEXT("ReliefIdBevelInset", "Inset"), &FMixtormatReliefIdFilter::BevelInsetPixels, -32.0, 32.0, 0.0, 0.25,
+			LOCTEXT("ReliefIdBevelInsetHint", "Slides the chamfer band across the boundary, in output pixels. Negative walks it outside the region, positive pulls it onto the face, zero starts it exactly at the boundary."))));
+	AddSliderRow(Panel,
+		Slider(LOCTEXT("ReliefIdGapHeight", "Gap Height"), &FMixtormatReliefIdFilter::GapHeight, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("ReliefIdGapHeightHint", "Where a region-less band sits relative to the regions -- Pattern IDs' grout, or any pixel the producer marked invalid. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Gap width is topology and stays on the producer; only its height lives here, so the two compose instead of fighting.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpEdge", "Edge")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdEdgeRoughness", "Roughness"), &FMixtormatReliefIdFilter::EdgeRoughness, 0.0, 1.0, 0.65, 0.01,
+			LOCTEXT("ReliefIdEdgeRoughnessHint", "The roughness written along region boundaries -- the scuffed, unpolished band a worn edge has.")),
+		Slider(LOCTEXT("ReliefIdEdgeRoughnessAmount", "Amount"), &FMixtormatReliefIdFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdEdgeRoughnessAmountHint", "How strongly that band replaces the roughness already there. At 0 the edge shading pass is skipped entirely."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpAO", "AO")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("ReliefIdAO", "Amount"), &FMixtormatReliefIdFilter::AOAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("ReliefIdAOHint", "Contact occlusion along region boundaries. Multiplies the existing AO rather than replacing it.")),
+		Slider(LOCTEXT("ReliefIdAOSpread", "Spread"), &FMixtormatReliefIdFilter::AOSpread, 1.0, 8.0, 1.0, 0.1,
+			LOCTEXT("ReliefIdAOSpreadHint", "How far that occlusion reaches in from the boundary, as a multiple of the chamfer width."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpRandom", "Random")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatReliefIdFilter>(
+		LOCTEXT("ReliefIdSeed", "Seed"), Relief, &FMixtormatReliefIdFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("ReliefIdSeedHint", "Reshuffles which region gets which height, chamfer width and profile without changing any of the ranges. Independent of the producer's seed, so reseeding here does not re-generate the regions.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedReliefId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("ReliefIdHeading", "RELIEF FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						const FMixtormatReliefIdFilter* Selected = GetSelectedReliefId();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+					{
+						if (FMixtormatReliefIdFilter* Selected = GetSelectedReliefId())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					}),
+					LOCTEXT("ReliefIdEnabledHint", "Enable this relief filter")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -5073,6 +5302,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// Both halves of the Pattern split. Missing from these lists, a new
+							// node shows the layer's own sections instead of its own -- which is
+							// exactly how Combine IDs' bug read.
+							|| GetSelectedUvId()
+							|| GetSelectedReliefId()
 							// Combine IDs was missing from both of these lists, which is why
 							// selecting one showed the layer's own sections instead of its Mode,
 							// Amount, Passes and Seed. Both lists have to name every child type.
@@ -5104,6 +5338,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildHsvFilterControls()]
 					+ SScrollBox::Slot()[BuildRandomIdControls()]
 					+ SScrollBox::Slot()[BuildRampIdControls()]
+					+ SScrollBox::Slot()[BuildUvIdControls()]
+					+ SScrollBox::Slot()[BuildReliefIdControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 				]
@@ -5133,6 +5369,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// Both halves of the Pattern split. Missing from these lists, a new
+							// node shows the layer's own sections instead of its own -- which is
+							// exactly how Combine IDs' bug read.
+							|| GetSelectedUvId()
+							|| GetSelectedReliefId()
 							// Combine IDs was missing from both of these lists, which is why
 							// selecting one showed the layer's own sections instead of its Mode,
 							// Amount, Passes and Seed. Both lists have to name every child type.

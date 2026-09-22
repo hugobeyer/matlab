@@ -195,7 +195,9 @@ namespace MixtormatLayerBadges
 		if (Child.Type == EMixtormatLayerChildType::Filter
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
-			|| Child.Type == EMixtormatLayerChildType::RampId)
+			|| Child.Type == EMixtormatLayerChildType::RampId
+			|| Child.Type == EMixtormatLayerChildType::UvFromIds
+			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds)
 		{
 			// Nothing. These have no blend mode -- they emit data and albedo, not coverage -- and
 			// the slot used to say "FILT", which every one of their names already says. A badge
@@ -272,6 +274,11 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");
+		// No kind mark, for the reason the three ID rows above carry none: the row name is
+		// already the shortest true description, and a UV or RLF abbreviation two columns to
+		// its right would only repeat it.
+		case EMixtormatLayerChildType::UvFromIds: return FText::GetEmpty();
+		case EMixtormatLayerChildType::ReliefFromIds: return FText::GetEmpty();
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		case EMixtormatLayerChildType::Generator: return LOCTEXT("ChildKindGenerator", "GEN");

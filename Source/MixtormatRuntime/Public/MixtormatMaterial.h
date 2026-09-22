@@ -162,7 +162,12 @@ enum class EMixtormatParameterOwnerType : uint8
 	// Appended, like everything above it. The owner names the *category*, not the generator
 	// kind: the parameter view resolves to whichever payload FMixtormatGenerator::Type selects,
 	// so a second generator gets its parameters bound without a second owner value.
-	Generator UMETA(DisplayName = "Generator")
+	Generator UMETA(DisplayName = "Generator"),
+	// Appended for the two nodes that took Pattern's UV and relief responsibilities. Their
+	// controls are ordinary bindable scalars, so they need an owner of their own for a reference
+	// or a driver to address; Pattern's own legacy fields keep PatternId.
+	UvId UMETA(DisplayName = "UV From IDs"),
+	ReliefId UMETA(DisplayName = "Relief From IDs")
 };
 
 UENUM(BlueprintType)
@@ -2360,6 +2365,183 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	int32 Seed = 1;
 };
 
+// Per-region source UV placement, from whatever Region IDs sit above it.
+//
+// The UV half of what Pattern IDs used to own, lifted out so it reads any producer: Pattern IDs,
+// Cluster IDs, Combine IDs, or anything else that publishes a sparse Region ID map. Pattern's own
+// UV block stays where it is for materials authored against it -- see FMixtormatPatternFilter --
+// and this node shadows it when both are present in one layer.
+//
+// The region frame is derived, not inherited. Every producer's ID is the linear index of its
+// region's root pixel, so the root's position comes for free; the bounding box measured relative
+// to it across the torus gives a centre for any region at all, without asking the producer for an
+// analytic one. That frame is axis-aligned by construction: this node does not claim to know
+// which way an arbitrary blob "points", and Orthogonal below is a snap on the *random* rotation
+// rather than a recovered intrinsic basis.
+//
+// Writes nothing but the source mapping. Region IDs, height, normal, AO and the mask chain are
+// all left exactly as they were.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatUvIdFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs")
+	bool bEnabled = true;
+
+	// Snaps the drawn rotation to quarter turns. On a lattice that reads as tiles laid square and
+	// turned, rather than scattered; off gives the full continuous draw between the two limits.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
+	bool bOrthogonal = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	float RotationMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	float RotationMax = 360.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float ScaleMin = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	float ScaleMax = 1.0f;
+
+	// How far a region's source read may wander from its own centre, per axis, as a fraction of
+	// the source tile. Per-axis where Pattern's single Offset was not: the two axes of a plank or
+	// a brick rarely want the same slip, and one scalar could only ever move both together.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float OffsetU = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float OffsetV = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
+	bool bRandomFlipU = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
+	bool bRandomFlipV = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+};
+
+// Per-region elevation, chamfer and edge shading, from whatever Region IDs sit above it.
+//
+// The relief half of what Pattern IDs used to own. Pattern published an analytic edge-distance
+// field alongside its IDs and the relief pass read that; an arbitrary producer publishes no such
+// thing, so this node derives the equivalent field from the ID map itself -- a jump-flooded
+// distance to the nearest pixel carrying a different (or invalid) ID. Downstream of that the
+// arithmetic is the same pass Pattern relief has always run through, so a Pattern source
+// reproduces the Pattern look and a Cluster or Combine source gets the same treatment honestly
+// rather than by approximation.
+//
+// Gap *width* is topology and stays on the producer. Gap Height is appearance and lives here:
+// the two compose instead of fighting over the same pixels.
+//
+// Writes height, the normal derived from it through the shared height-to-normal route, and the
+// roughness/AO the edge shading has always provided. Region IDs and UVs are left untouched.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs")
+	bool bEnabled = true;
+
+	// -- Height ---------------------------------------------------------------------------------
+
+	// The elevation every region gets, and how far below it a region may be drawn as a multiplier
+	// on that. One-sided on purpose, exactly as Pattern's pair is: a region that went below the
+	// base would feather back up at its own wall and read as a recessed panel in a raised frame.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float HeightAmount = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeightRandom = 0.5f;
+
+	// -- Profile --------------------------------------------------------------------------------
+
+	// The chamfer's cross-section, from the boundary up to the flat of the region. -1 is a cove,
+	// 0 a straight flat chamfer, +1 a bullnose. Both ends stay pinned, so this changes the
+	// chamfer's shape and never its width or height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float Profile = 0.25f;
+
+	// Offsets the roundness per region rather than scaling it, so one region's bullnose can be
+	// its neighbour's cove -- which scaling a signed control could never produce.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ProfileRandom = 0.5f;
+
+	// Eases each region's elevation out at its own boundary, so neighbours at different heights
+	// meet through a ramp rather than a one-texel cliff. In region fractions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	float Feather = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FeatherRandom = 0.5f;
+
+	// What the feather does on the way up, rather than how wide it is. The run-out is a straight
+	// line and a straight line is the one shape a normal map cannot show; Gain bends it, and past
+	// 1 leaves a raised lip just inside the edge. Both ends stay pinned.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	float FeatherGain = 0.0f;
+
+	// -- Bevel ----------------------------------------------------------------------------------
+
+	// Signed, and it lifts the region *face*: positive stands the region proud of the boundary
+	// with the chamfer ramping down to it, negative sinks the face instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BevelHeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0001", UIMin = "0.25", UIMax = "64.0"))
+	float BevelWidthPixels = 4.0f;
+
+	// The same width for Relative mode, as a fraction of the way from the region boundary to its
+	// deepest interior point. Separate from the pixel value because the two need different ranges
+	// to be draggable at all.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0001", UIMin = "0.0", UIMax = "1.0"))
+	float BevelWidthCells = 0.25f;
+
+	// Whether the chamfer width and the feather are measured as a fraction of the region rather
+	// than in output pixels. Relative frames every region the same way whatever its size;
+	// absolute keeps an even visual width across regions of different sizes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel")
+	bool bRelativeWidth = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BevelVariation = 0.0f;
+
+	// Slides the chamfer band across the region boundary, in output pixels. Negative puts it
+	// outside, positive pulls it onto the face, zero starts it exactly at the boundary.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "-32.0", UIMax = "32.0"))
+	float BevelInsetPixels = 0.0f;
+
+	// Where a region-less band -- Pattern's grout, or any pixel the producer marked invalid --
+	// sits relative to the regions. Negative sinks it into a trench, positive stands it proud.
+	// Inert when every pixel belongs to a region, since there is then nothing outside the IDs.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float GapHeight = 0.0f;
+
+	// -- Edge -----------------------------------------------------------------------------------
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EdgeRoughness = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float EdgeRoughnessAmount = 0.5f;
+
+	// -- AO -------------------------------------------------------------------------------------
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|AO", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AOAmount = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|AO", meta = (ClampMin = "1.0", ClampMax = "8.0"))
+	float AOSpread = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs", meta = (ClampMin = "0"))
+	int32 Seed = 1;
+};
+
 // Which generator an FMixtormatGenerator carries.
 //
 // Serialised by value on the child. Append only -- a new generator takes the next number and
@@ -2632,7 +2814,12 @@ enum class EMixtormatLayerChildType : uint8
 	// blend, the mask chain's curvature, a later effect's slope -- sees the modified surface
 	// rather than a carve painted over the top of a finished one. That is the whole reason the
 	// category exists and the one property that must not be traded away for convenience.
-	Generator UMETA(DisplayName = "Generator")
+	Generator UMETA(DisplayName = "Generator"),
+	// The two halves Pattern IDs used to carry itself, as ordinary Region-ID consumers. Appended,
+	// like everything below ColorId, and they read the nearest valid map above them rather than
+	// asking which node produced it -- Pattern, Cluster and Combine are all equally valid sources.
+	UvFromIds UMETA(DisplayName = "UV From IDs"),
+	ReliefFromIds UMETA(DisplayName = "Relief From IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -2713,6 +2900,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	// struct there and touches nothing here, in the child dispatch, or in any saved asset.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Generator"))
 	FMixtormatGenerator Generator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::UvFromIds"))
+	FMixtormatUvIdFilter UvId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::ReliefFromIds"))
+	FMixtormatReliefIdFilter ReliefId;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

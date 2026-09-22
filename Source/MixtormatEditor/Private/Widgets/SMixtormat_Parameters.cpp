@@ -84,6 +84,8 @@ namespace
 		case EMixtormatLayerChildType::RandomId: return EMixtormatParameterOwnerType::RandomId;
 		case EMixtormatLayerChildType::PatternId: return EMixtormatParameterOwnerType::PatternId;
 		case EMixtormatLayerChildType::RampId: return EMixtormatParameterOwnerType::RampId;
+		case EMixtormatLayerChildType::UvFromIds: return EMixtormatParameterOwnerType::UvId;
+		case EMixtormatLayerChildType::ReliefFromIds: return EMixtormatParameterOwnerType::ReliefId;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
@@ -105,6 +107,8 @@ namespace
 		case EMixtormatLayerChildType::RandomId: return &Child.RandomId;
 		case EMixtormatLayerChildType::PatternId: return &Child.PatternId;
 		case EMixtormatLayerChildType::RampId: return &Child.RampId;
+		case EMixtormatLayerChildType::UvFromIds: return &Child.UvId;
+		case EMixtormatLayerChildType::ReliefFromIds: return &Child.ReliefId;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
 		case EMixtormatLayerChildType::Curvature: return &Child.Curvature;
 		// The payload, not the wrapper -- it has to be the same pointer ChildOwner exposes for

@@ -1,0 +1,396 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+// Generic region analysis: everything a From-IDs consumer needs about the regions under it,
+// derived from a sparse Region ID map alone.
+//
+// This is the file that makes UV From IDs and Relief From IDs producer-agnostic. Pattern IDs
+// publishes an analytic feature centre and an analytic edge-distance field alongside its IDs,
+// because it knows the lattice it drew; Cluster IDs and Combine IDs know nothing of the kind, and
+// a consumer written against Pattern's extras can only ever work after Pattern. Everything here
+// is recovered from the ID map, so all three producers are equally good sources -- and for a
+// Pattern source the per-region draws below land on exactly the same salts Pattern uses, so the
+// treatment matches rather than merely resembling it.
+//
+// Two independent solves, in one file because they share the wrap helpers and the ID conventions:
+//
+//   bounds    -- min/max of each region, root-relative and toroidal, giving a centre and a size.
+//                The same reduction MixtormatRampIds.usf runs; kept separate rather than shared
+//                because the ramp resolves a gradient out of it and this resolves a UV.
+//   distance  -- jump-flooded distance to the nearest region boundary, signed so that a pixel in
+//                no region reads negative. Pattern's edge field in everything but provenance.
+//
+// An ID is the linear index of its region's root pixel, which is what carries the root's position
+// for free and why nothing anywhere compacts these to a dense range.
+
+Texture2D<uint> RegionIds;
+
+// Four ints per pixel -- min x, max x, min y, max y -- strided rather than a buffer of int4:
+// atomics on a struct member are the kind of thing dxc accepts and a driver disagrees about.
+RWStructuredBuffer<int> RegionBounds;
+
+// One record per pixel: xy is the absolute pixel of the nearest boundary seed found so far, z is
+// 1 once a seed has been found, w is unused. Absolute and not relative, because the wrap is taken
+// at comparison time and a relative representative would differ per reader.
+Texture2D<float4> PreviousRecord;
+RWTexture2D<float4> OutputRecord;
+
+// Per region, at the root pixel: the largest interior distance any of its pixels reached, as
+// asuint of a float. That is the region's "reach" -- the analogue of Pattern's distance from a
+// cell wall to its deepest interior point -- and it is what Relative width and the feather are
+// measured against.
+RWTexture2D<uint> RegionExtent;
+Texture2D<uint> RegionExtentIn;
+
+RWTexture2D<float2> OutputCentreUV;
+RWTexture2D<float2> OutputEdge;
+RWTexture2D<float2> OutputRamp;
+
+int2 OutputSize;
+int StepSize;
+
+// Relief shaping, applied once at resolve so the two fields cannot drift apart.
+uint FieldSeed;
+float Feather;
+float FeatherRandom;
+uint RelativeWidth;
+
+int RegionFieldWrap(int X, int Size)
+{
+	const int R = X % max(Size, 1);
+	return R < 0 ? R + Size : R;
+}
+
+int2 RegionFieldWrapPixel(int2 P)
+{
+	return int2(RegionFieldWrap(P.x, OutputSize.x), RegionFieldWrap(P.y, OutputSize.y));
+}
+
+// Offset from a reference the short way round the torus.
+//
+// This is what makes the bounding box tile, and it is why the box has to be built in root-relative
+// coordinates. A region straddling the seam has pixels at x=2 and x=1022; min/max over those spans
+// the image, and every centre derived from it is wrong. Measured as deltas, the same region gets a
+// small correct box.
+int RegionFieldDelta(int P, int A, int Size)
+{
+	int D = P - A;
+	const int Half = Size / 2;
+	if (D > Half)
+	{
+		D -= Size;
+	}
+	if (D < -Half)
+	{
+		D += Size;
+	}
+	return D;
+}
+
+float RegionToroidalDistance(int2 A, int2 B)
+{
+	float2 D = abs(float2(A - B));
+	D = min(D, float2(OutputSize) - D);
+	return length(D);
+}
+
+bool RegionIdValid(uint RawId)
+{
+	return RawId != MIXTORMAT_INVALID_REGION
+		&& RawId < uint(OutputSize.x * OutputSize.y);
+}
+
+// ------------------------------------------------------------------------------------------
+// Bounds: the region frame UV From IDs builds its transform in.
+// ------------------------------------------------------------------------------------------
+
+#define REGION_BOUNDS_STAGE_INIT    0
+#define REGION_BOUNDS_STAGE_REDUCE  1
+#define REGION_BOUNDS_STAGE_RESOLVE 2
+
+uint Stage;
+
+[numthreads(8, 8, 1)]
+void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const uint Index = Pixel.x + Pixel.y * uint(OutputSize.x);
+
+	if (Stage == REGION_BOUNDS_STAGE_INIT)
+	{
+		RegionBounds[Index * 4u + 0u] = 2147483647;
+		RegionBounds[Index * 4u + 1u] = -2147483647;
+		RegionBounds[Index * 4u + 2u] = 2147483647;
+		RegionBounds[Index * 4u + 3u] = -2147483647;
+		return;
+	}
+
+	const uint RawId = RegionIds.Load(int3(Pixel, 0));
+	const bool bValid = RegionIdValid(RawId);
+	const uint RootId = bValid ? RawId : Index;
+	const int RootX = int(RootId % uint(OutputSize.x));
+	const int RootY = int(RootId / uint(OutputSize.x));
+	const int DeltaX = RegionFieldDelta(int(Pixel.x), RootX, OutputSize.x);
+	const int DeltaY = RegionFieldDelta(int(Pixel.y), RootY, OutputSize.y);
+
+	if (Stage == REGION_BOUNDS_STAGE_REDUCE)
+	{
+		if (bValid)
+		{
+			InterlockedMin(RegionBounds[RootId * 4u + 0u], DeltaX);
+			InterlockedMax(RegionBounds[RootId * 4u + 1u], DeltaX);
+			InterlockedMin(RegionBounds[RootId * 4u + 2u], DeltaY);
+			InterlockedMax(RegionBounds[RootId * 4u + 3u], DeltaY);
+		}
+		return;
+	}
+
+	// A pixel in no region keeps the identity mapping: the consumer reads its own coordinate back
+	// and the transform collapses to nothing there, rather than dragging grout toward some
+	// neighbouring region's centre.
+	if (!bValid)
+	{
+		OutputCentreUV[Pixel] = (float2(Pixel) + 0.5f) / float2(OutputSize);
+		return;
+	}
+
+	const int MinX = RegionBounds[RootId * 4u + 0u];
+	const int MaxX = RegionBounds[RootId * 4u + 1u];
+	const int MinY = RegionBounds[RootId * 4u + 2u];
+	const int MaxY = RegionBounds[RootId * 4u + 3u];
+
+	// Axis-aligned, and deliberately so. The box says where a region is and how big it is; it says
+	// nothing about which way the region points, and an eigen-solve over a blob's second moments
+	// would invent an orientation that is meaningless for an equilateral one and unstable for a
+	// nearly-square one. UV From IDs' rotation is an honest draw off the region's own seed rather
+	// than a recovered intrinsic basis -- see FMixtormatUvIdFilter.
+	const float2 Centre = float2(
+		float(RootX) + float(MinX + MaxX) * 0.5f,
+		float(RootY) + float(MinY + MaxY) * 0.5f);
+	OutputCentreUV[Pixel] = frac((Centre + 0.5f) / float2(OutputSize) + 1.0f);
+}
+
+// ------------------------------------------------------------------------------------------
+// Distance: the boundary field Relief From IDs shapes its chamfer and feather from.
+// ------------------------------------------------------------------------------------------
+
+// Seeds are the *valid* pixels that touch a boundary, never the invalid ones.
+//
+// Asymmetric on purpose, and it buys two things at once. A pixel inside a region finds its own
+// boundary ring, which is the distance the chamfer wants; and a pixel in no region finds the
+// nearest region rather than the nearest hole in one, so the record it ends up holding names a
+// real region whose per-region draws the grout can then borrow. Seeding both sides would leave a
+// grout pixel pointing at another grout pixel and nothing to key its bevel draw off.
+[numthreads(8, 8, 1)]
+void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const uint RawId = RegionIds.Load(int3(Pixel, 0));
+	bool bSeed = false;
+	if (RegionIdValid(RawId))
+	{
+		const int2 P = int2(Pixel);
+		const int2 Neighbours[4] = {
+			int2(P.x - 1, P.y), int2(P.x + 1, P.y),
+			int2(P.x, P.y - 1), int2(P.x, P.y + 1)};
+		for (int I = 0; I < 4; ++I)
+		{
+			const uint NeighbourId =
+				RegionIds.Load(int3(RegionFieldWrapPixel(Neighbours[I]), 0));
+			if (NeighbourId != RawId)
+			{
+				bSeed = true;
+			}
+		}
+	}
+
+	OutputRecord[Pixel] = bSeed
+		? float4(float(Pixel.x), float(Pixel.y), 1.0f, 0.0f)
+		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+// One jump-flood step. Log2(N) of these converge to the unsigned distance to the seed set, which
+// is the eikonal solve |grad d| = 1 a chamfer profile is raised on -- the same mechanism, and the
+// same reasoning, as the craquelure distance field.
+[numthreads(8, 8, 1)]
+void JumpCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(Pixel);
+	float4 Best = PreviousRecord.Load(int3(P, 0));
+	float BestDistance = Best.z > 0.5f
+		? RegionToroidalDistance(P, int2(Best.xy))
+		: 3.4e38f;
+
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		for (int X = -1; X <= 1; ++X)
+		{
+			if (X == 0 && Y == 0)
+			{
+				continue;
+			}
+			const int2 Sample = RegionFieldWrapPixel(P + int2(X, Y) * StepSize);
+			const float4 Candidate = PreviousRecord.Load(int3(Sample, 0));
+			if (Candidate.z <= 0.5f)
+			{
+				continue;
+			}
+			const float Distance = RegionToroidalDistance(P, int2(Candidate.xy));
+			if (Distance < BestDistance)
+			{
+				BestDistance = Distance;
+				Best = Candidate;
+			}
+		}
+	}
+
+	OutputRecord[Pixel] = Best;
+}
+
+// The signed boundary distance at one pixel, from its record.
+//
+// Positive inside a region, negative outside one, zero on the wall between them. The half texel is
+// what puts the wall where it actually is: a seed pixel's own centre sits half a texel inside the
+// boundary, and the first grout pixel beyond it sits half a texel outside.
+float RegionSignedDistance(int2 P, float4 Record, bool bValid)
+{
+	if (Record.z <= 0.5f)
+	{
+		// No boundary anywhere: one region covering the image. Every pixel is interior, and
+		// nothing downstream has an edge to shape.
+		return bValid ? 3.4e38f : 0.0f;
+	}
+	const float Distance = RegionToroidalDistance(P, int2(Record.xy));
+	return bValid ? (Distance + 0.5f) : -(Distance - 0.5f);
+}
+
+// Per-region reach, reduced at the root pixel. Only interior pixels contribute: a grout pixel's
+// distance belongs to no region, and folding it in would inflate the reach of whichever region
+// happened to be nearest.
+[numthreads(8, 8, 1)]
+void ExtentCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const uint RawId = RegionIds.Load(int3(Pixel, 0));
+	if (!RegionIdValid(RawId))
+	{
+		return;
+	}
+
+	const float4 Record = PreviousRecord.Load(int3(Pixel, 0));
+	if (Record.z <= 0.5f)
+	{
+		return;
+	}
+	const float Distance = RegionToroidalDistance(int2(Pixel), int2(Record.xy)) + 0.5f;
+
+	const uint2 RootPixel = uint2(
+		RawId % uint(OutputSize.x),
+		RawId / uint(OutputSize.x));
+	InterlockedMax(RegionExtent[RootPixel], asuint(max(Distance, 0.0f)));
+}
+
+// The two fields the relief pass reads, written in the exact layout Pattern IDs writes them in so
+// that one downstream pass serves both:
+//
+//   Edge.x  signed boundary distance, in output pixels or in region fractions
+//   Edge.y  the region's chamfer-width draw
+//   Ramp.x  the region's elevation draw
+//   Ramp.y  the feather weight, 0 at the boundary rising to 1 across the feather band
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(Pixel);
+	const uint RawId = RegionIds.Load(int3(P, 0));
+	const bool bValid = RegionIdValid(RawId);
+	const float4 Record = PreviousRecord.Load(int3(P, 0));
+
+	// The region whose draws this pixel uses. Its own when it has one; otherwise the region its
+	// record points at, so a grout pixel's chamfer varies with the piece it borders instead of
+	// being uniform along every wall in the image.
+	uint OwnerId = RawId;
+	if (!bValid && Record.z > 0.5f)
+	{
+		const uint SeedId = RegionIds.Load(int3(int2(Record.xy), 0));
+		OwnerId = SeedId;
+	}
+
+	const bool bHasOwner = RegionIdValid(OwnerId);
+	const uint Seeded = MixtormatRegionSeed(bHasOwner ? OwnerId : 0u, FieldSeed);
+
+	float Reach = 1.0f;
+	if (bHasOwner)
+	{
+		const uint2 RootPixel = uint2(
+			OwnerId % uint(OutputSize.x),
+			OwnerId / uint(OutputSize.x));
+		Reach = max(asfloat(RegionExtentIn.Load(int3(RootPixel, 0))), 1.0e-4f);
+	}
+
+	float Signed = RegionSignedDistance(P, Record, bValid);
+	// One region covering the whole image: clamp the sentinel back to the region's own reach so
+	// nothing downstream divides by an infinity.
+	Signed = min(Signed, Reach);
+
+	const float EdgeOut = RelativeWidth != 0 ? (Signed / Reach) : Signed;
+	const float BevelRandom = bHasOwner
+		? MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_BEVEL)
+		: 0.0f;
+	OutputEdge[Pixel] = float2(EdgeOut, BevelRandom);
+
+	if (!bValid)
+	{
+		// Grout sits at the base height. 0.5 is the neutral point of the encoding the relief pass
+		// reads, and a zero feather keeps it there whatever the regions either side are doing.
+		OutputRamp[Pixel] = float2(0.5f, 0.0f);
+		return;
+	}
+
+	const float HeightDraw =
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_HEIGHT);
+
+	// One-sided, like the chamfer width: the draw only narrows the run-out from the authored
+	// value, never stretches it past what was asked for.
+	const float FeatherJitter = lerp(
+		1.0f - saturate(FeatherRandom),
+		1.0f,
+		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_FEATHER));
+
+	// In region fractions, so one Feather value means the same thing on a large region and a small
+	// one. Reach is the region's half-width -- the distance from its wall to its deepest interior
+	// point -- which is the generic reading of the cell size Pattern measures its feather against.
+	const float FeatherPixels = max(Feather * FeatherJitter * Reach, 0.0f);
+	const float FeatherWeight = FeatherPixels > 0.0f
+		? saturate(max(Signed, 0.0f) / FeatherPixels)
+		: 1.0f;
+
+	OutputRamp[Pixel] = float2(HeightDraw, FeatherWeight);
+}

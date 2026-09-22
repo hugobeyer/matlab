@@ -97,7 +97,7 @@ void SMixtormatLightGizmo::Construct(const FArguments& InArgs)
 	// SceneColorHDR stores inverse opacity: empty pixels must start at alpha one.
 	RenderTarget->ClearColor = FLinearColor(0, 0, 0, 1);
 	RenderTarget->bAutoGenerateMips = false;
-	RenderTarget->InitCustomFormat(480, 480, PF_FloatRGBA, true);
+	RenderTarget->InitCustomFormat(640, 640, PF_FloatRGBA, true);
 	RenderTarget->UpdateResourceImmediate(true);
 	Brush.SetResourceObject(RenderTarget.Get());
 	Brush.ImageSize = FVector2D(MixtormatLightGizmo::Size);
@@ -121,10 +121,10 @@ void SMixtormatLightGizmo::Construct(const FArguments& InArgs)
 	Capture->ShowFlags.SetBloom(false);
 	Capture->ShowFlags.SetEyeAdaptation(false);
 	Capture->ShowFlags.SetMotionBlur(false);
-	Capture->ShowFlags.SetAntiAliasing(false);
+	Capture->ShowFlags.SetAntiAliasing(true);
 	Capture->ShowFlags.SetTemporalAA(false);
 	Capture->ShowFlags.SetOnScreenDebug(false);
-	Scene.AddComponent(Capture, FTransform(FVector(-MixtormatLightGizmo::ObjectRadius * 4.0f, 0, 0)));
+	Scene.AddComponent(Capture, FTransform(FVector(-MixtormatLightGizmo::ObjectRadius * 1.0f, 0, 0)));
 }
 
 void SMixtormatLightGizmo::Tick(const FGeometry& AllottedGeometry, double CurrentTime, float DeltaTime)

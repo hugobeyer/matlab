@@ -73,6 +73,14 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	default:
 		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Ramp/Random
 		// From IDs, Strata Carver, Peeling) publishes nothing a preview or Copy Output could use.
+		//
+		// UV From IDs and Relief From IDs belong here too, and deliberately. Neither publishes a
+		// scalar another node could read: UV From IDs changes the coordinate the layer's source is
+		// sampled at, which the material preview already shows, and Relief From IDs writes into
+		// the composited height, normal and RAM through the shared relief path rather than
+		// emitting a field of its own. An eye on either would have to invent a texture to show,
+		// and a preview that shows something the node does not actually publish is worse than no
+		// preview -- see priorities.md on hardcoded preview tables.
 		break;
 	}
 	return Result;

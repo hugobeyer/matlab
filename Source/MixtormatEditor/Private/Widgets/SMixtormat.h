@@ -49,6 +49,8 @@ enum class EMixtormatChildCreation : uint8
 	CombineIds,
 	HsvFromIds,
 	RampFromIds,
+	UvFromIds,
+	ReliefFromIds,
 	LayerValuesMask,
 	GeneratedMask,
 	ColorIdMask,
@@ -431,6 +433,12 @@ private:
 	FMixtormatRampIdFilter* GetSelectedRampId();
 	const FMixtormatRampIdFilter* GetSelectedRampId() const;
 	TSharedRef<SWidget> BuildRampIdControls();
+	FMixtormatUvIdFilter* GetSelectedUvId();
+	const FMixtormatUvIdFilter* GetSelectedUvId() const;
+	TSharedRef<SWidget> BuildUvIdControls();
+	FMixtormatReliefIdFilter* GetSelectedReliefId();
+	const FMixtormatReliefIdFilter* GetSelectedReliefId() const;
+	TSharedRef<SWidget> BuildReliefIdControls();
 	TSharedRef<SWidget> BuildCombineIdControls();
 	TSharedRef<SWidget> BuildCombineIdModeMenu();
 	TSharedRef<SWidget> BuildCombineIdModeMenuFor(int32 LayerIndex, int32 ChildIndex);

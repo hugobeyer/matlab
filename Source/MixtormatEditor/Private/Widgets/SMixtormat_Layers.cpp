@@ -279,6 +279,8 @@ namespace
 		case EMixtormatChildCreation::CombineIds:      return EMixtormatLayerChildType::CombineId;
 		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
 		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
+		case EMixtormatChildCreation::UvFromIds:       return EMixtormatLayerChildType::UvFromIds;
+		case EMixtormatChildCreation::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
 		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
@@ -1222,6 +1224,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HsvFilter
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RandomId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RampId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::UvFromIds
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
@@ -3685,6 +3689,14 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("RampIdChildName", "Ramp From IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::UvFromIds)
+	{
+		return LOCTEXT("UvIdChildName", "UV From IDs");
+	}
+	if (Child.Type == EMixtormatLayerChildType::ReliefFromIds)
+	{
+		return LOCTEXT("ReliefIdChildName", "Relief From IDs");
+	}
 	if (Child.Type == EMixtormatLayerChildType::PatternId)
 	{
 		return LOCTEXT("PatternIdChildName", "Pattern IDs");
@@ -3790,6 +3802,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 					|| Child.Type == EMixtormatLayerChildType::HsvFilter
 					|| Child.Type == EMixtormatLayerChildType::RandomId
 					|| Child.Type == EMixtormatLayerChildType::RampId
+					|| Child.Type == EMixtormatLayerChildType::UvFromIds
+					|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 					|| Child.Type == EMixtormatLayerChildType::PatternId
 					|| Child.Type == EMixtormatLayerChildType::CombineId)
 				? MixtormatIcons::Generated()
@@ -4069,6 +4083,8 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::HsvFilter:   Child.HsvFilter.bEnabled = !Child.HsvFilter.bEnabled; break;
 	case EMixtormatLayerChildType::RandomId:    Child.RandomId.bEnabled = !Child.RandomId.bEnabled; break;
 	case EMixtormatLayerChildType::RampId:      Child.RampId.bEnabled = !Child.RampId.bEnabled; break;
+	case EMixtormatLayerChildType::UvFromIds:   Child.UvId.bEnabled = !Child.UvId.bEnabled; break;
+	case EMixtormatLayerChildType::ReliefFromIds: Child.ReliefId.bEnabled = !Child.ReliefId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
 	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
 	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
@@ -4091,6 +4107,8 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::HsvFilter:   return Child.HsvFilter.bEnabled;
 	case EMixtormatLayerChildType::RandomId:    return Child.RandomId.bEnabled;
 	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
+	case EMixtormatLayerChildType::UvFromIds:   return Child.UvId.bEnabled;
+	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
@@ -4704,6 +4722,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
 			|| Child.Type == EMixtormatLayerChildType::RandomId
 			|| Child.Type == EMixtormatLayerChildType::RampId
+			|| Child.Type == EMixtormatLayerChildType::UvFromIds
+			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::CombineId
 			// A generator joins them for the row, not for the semantics. What the shared
@@ -4829,6 +4849,8 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::HsvFilter: return Child.HsvFilter.bEnabled;
 	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
 	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
+	case EMixtormatLayerChildType::UvFromIds: return Child.UvId.bEnabled;
+	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
@@ -5107,6 +5129,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Ta
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
 		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
+		// The two halves Pattern IDs used to carry itself. Beside Ramp rather than under IDs,
+		// because they consume Region IDs and change something else -- which is what a Filter is.
+		{ LOCTEXT("AddUvIdChild", "UV From IDs"), EMixtormatChildCreation::UvFromIds },
+		{ LOCTEXT("AddReliefIdChild", "Relief From IDs"), EMixtormatChildCreation::ReliefFromIds },
 	};
 	const bool bEnabled = CanCreateChild(Target);
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
@@ -5335,6 +5361,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
+		|| RowType == EMixtormatLayerChildType::UvFromIds
+		|| RowType == EMixtormatLayerChildType::ReliefFromIds
 		|| RowType == EMixtormatLayerChildType::PatternId
 		|| RowType == EMixtormatLayerChildType::CombineId
 		|| bGenerator;
@@ -5423,6 +5451,12 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::RampId:
 			RemoveLabel = LOCTEXT("RemoveRampIdChild", "Remove Ramp From IDs");
+			break;
+		case EMixtormatLayerChildType::UvFromIds:
+			RemoveLabel = LOCTEXT("RemoveUvIdChild", "Remove UV From IDs");
+			break;
+		case EMixtormatLayerChildType::ReliefFromIds:
+			RemoveLabel = LOCTEXT("RemoveReliefIdChild", "Remove Relief From IDs");
 			break;
 		case EMixtormatLayerChildType::PatternId:
 			RemoveLabel = LOCTEXT("RemovePatternIdChild", "Remove Pattern IDs");
@@ -6153,6 +6187,30 @@ const FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId() const
 	return Child.Type == EMixtormatLayerChildType::RampId ? &Child.RampId : nullptr;
 }
 
+FMixtormatUvIdFilter* SMixtormat::GetSelectedUvId()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::UvFromIds ? &Child->UvId : nullptr;
+}
+
+const FMixtormatUvIdFilter* SMixtormat::GetSelectedUvId() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::UvFromIds ? &Child->UvId : nullptr;
+}
+
+FMixtormatReliefIdFilter* SMixtormat::GetSelectedReliefId()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::ReliefFromIds ? &Child->ReliefId : nullptr;
+}
+
+const FMixtormatReliefIdFilter* SMixtormat::GetSelectedReliefId() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::ReliefFromIds ? &Child->ReliefId : nullptr;
+}
+
 FReply SMixtormat::AddRandomIdToLayer(const int32 LayerIndex)
 {
 	return CreateChild(
@@ -6256,6 +6314,8 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::HsvFilter
 		&& ChildType != EMixtormatLayerChildType::RandomId
 		&& ChildType != EMixtormatLayerChildType::RampId
+		&& ChildType != EMixtormatLayerChildType::UvFromIds
+		&& ChildType != EMixtormatLayerChildType::ReliefFromIds
 		&& ChildType != EMixtormatLayerChildType::PatternId
 		&& ChildType != EMixtormatLayerChildType::CombineId
 		&& ChildType != EMixtormatLayerChildType::Generator)
@@ -6330,6 +6390,12 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::RampId:
 		Child.RampId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::UvFromIds:
+		Child.UvId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::ReliefFromIds:
+		Child.ReliefId.bEnabled = bEnabled;
 		break;
 	case EMixtormatLayerChildType::PatternId:
 		Child.PatternId.bEnabled = bEnabled;

@@ -336,6 +336,152 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Generic region analysis, shared by UV From IDs and Relief From IDs.
+//
+// Five entry points and five parameter layouts, in the style of the craquelure distance file:
+// each struct carries exactly what its own entry point references, which is what keeps a UAV and
+// an SRV of the same texture out of one pass. Nothing here knows which node produced the IDs.
+
+// Region bounding boxes, and the per-region centre UV resolved from them.
+class FMixtormatRegionBoundsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionBoundsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionBoundsCS, FGlobalShader);
+
+	static constexpr uint32 StageInit = 0;
+	static constexpr uint32 StageReduce = 1;
+	static constexpr uint32 StageResolve = 2;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Stage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputCentreUV)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionBoundsCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"BoundsCS",
+	SF_Compute);
+
+// Jump-flood seed: the valid pixels that touch a boundary.
+class FMixtormatRegionSeedCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionSeedCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionSeedCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionSeedCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"SeedCS",
+	SF_Compute);
+
+class FMixtormatRegionJumpCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionJumpCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionJumpCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, StepSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionJumpCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"JumpCS",
+	SF_Compute);
+
+// Per-region reach, reduced at the root pixel.
+class FMixtormatRegionExtentCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionExtentCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionExtentCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, RegionExtent)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionExtentCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"ExtentCS",
+	SF_Compute);
+
+// The edge and ramp fields, in the exact layout Pattern IDs publishes them in -- which is what
+// lets one relief pass serve a Pattern source and a Cluster source without branching.
+class FMixtormatRegionResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, FieldSeed)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(float, FeatherRandom)
+		SHADER_PARAMETER(uint32, RelativeWidth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionExtentIn)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"ResolveCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
 	// Produces one layer's ID map, and its debug preview alongside it.
@@ -603,6 +749,295 @@ namespace MixtormatGpuCompositor
 	// coexist -- a coarse one with its own consumers, then a fine one with its own -- which is
 	// how the micro/macro pairing in the design note is meant to be authored. Nothing above means
 	// no map, and the consumer is culled rather than guessing.
+
+	// The producer a From-IDs consumer resolves to: the nearest published map above its own row,
+	// and the row that published it.
+	//
+	// The index matters as well as the texture. The region-distance cache is keyed on it, so two
+	// consumers of one producer share a jump flood; and UV From IDs uses it to find out whether
+	// the producer it landed on happens to be a Pattern with an intrinsic quarter-turn field.
+	static FRDGTextureRef FindRegionIdsAboveWithIndex(
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const int32 ChildIndex,
+		int32& OutProducerIndex)
+	{
+		FRDGTextureRef Found = nullptr;
+		OutProducerIndex = INDEX_NONE;
+		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+		{
+			if (Entry.Key < ChildIndex)
+			{
+				Found = Entry.Value;
+				OutProducerIndex = Entry.Key;
+			}
+		}
+		return Found;
+	}
+
+	// Distance to the nearest region boundary, by jump flooding, plus each region's reach.
+	//
+	// Both are functions of the ID map alone, so the result is cached against the producer's row
+	// and reused by every Relief From IDs node reading that producer. Log2(N) passes and two
+	// full-resolution textures is the same order as the cluster segmentation, and paying it twice
+	// for two relief nodes over one pattern would be the obvious waste.
+	static FRegionDistanceCacheEntry AddRegionDistancePasses(
+		FRDGBuilder& GraphBuilder,
+		FMixtormatLayerPassContext& LayerCtx,
+		FRDGTextureRef RegionIds,
+		const int32 ProducerIndex,
+		const FIntPoint OutputSize,
+		const int32 LayerIndex)
+	{
+		for (const FRegionDistanceCacheEntry& Entry : LayerCtx.RegionDistanceCache)
+		{
+			if (Entry.SourceChildIndex == ProducerIndex)
+			{
+				return Entry;
+			}
+		}
+
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8),
+			FMath::DivideAndRoundUp(OutputSize.Y, 8),
+			1);
+
+		const FRDGTextureDesc RecordDesc = FRDGTextureDesc::Create2D(
+			OutputSize,
+			PF_A32B32G32R32F,
+			FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV);
+		FRDGTextureRef Record[2] = {
+			GraphBuilder.CreateTexture(RecordDesc, TEXT("Mixtormat.Region.JfaA")),
+			GraphBuilder.CreateTexture(RecordDesc, TEXT("Mixtormat.Region.JfaB"))};
+
+		TShaderMapRef<FMixtormatRegionSeedCS> SeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatRegionSeedCS::FParameters* SeedParameters =
+			GraphBuilder.AllocParameters<FMixtormatRegionSeedCS::FParameters>();
+		SeedParameters->OutputSize = OutputSize;
+		SeedParameters->RegionIds = RegionIds;
+		SeedParameters->OutputRecord = GraphBuilder.CreateUAV(Record[0]);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.RegionFields.Seed.L%d.C%d", LayerIndex, ProducerIndex),
+			SeedShader, SeedParameters, Groups);
+
+		// Strides halve from half the padded extent down to 1, then one more pass at 1 -- the
+		// JFA+1 variant, for the same reason the craquelure field uses it: plain jump flooding can
+		// lose a seed whose carrier was overwritten at a coarser stride, and the extra unit pass
+		// costs one dispatch and removes the islands that shows up as.
+		TShaderMapRef<FMixtormatRegionJumpCS> JumpShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		int32 RecordIndex = 0;
+		const int32 FirstStep = FMath::Max(
+			1,
+			static_cast<int32>(FMath::RoundUpToPowerOfTwo(
+				static_cast<uint32>(FMath::Max(OutputSize.X, OutputSize.Y)))) / 2);
+		for (int32 StepSize = FirstStep; StepSize >= 1; StepSize /= 2)
+		{
+			const int32 Read = RecordIndex;
+			const int32 Write = 1 - Read;
+			FMixtormatRegionJumpCS::FParameters* JumpParameters =
+				GraphBuilder.AllocParameters<FMixtormatRegionJumpCS::FParameters>();
+			JumpParameters->OutputSize = OutputSize;
+			JumpParameters->StepSize = StepSize;
+			JumpParameters->PreviousRecord = Record[Read];
+			JumpParameters->OutputRecord = GraphBuilder.CreateUAV(Record[Write]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME(
+					"Mixtormat.RegionFields.Jump%d.L%d.C%d", StepSize, LayerIndex, ProducerIndex),
+				JumpShader, JumpParameters, Groups);
+			RecordIndex = Write;
+		}
+		{
+			const int32 Read = RecordIndex;
+			const int32 Write = 1 - Read;
+			FMixtormatRegionJumpCS::FParameters* JumpParameters =
+				GraphBuilder.AllocParameters<FMixtormatRegionJumpCS::FParameters>();
+			JumpParameters->OutputSize = OutputSize;
+			JumpParameters->StepSize = 1;
+			JumpParameters->PreviousRecord = Record[Read];
+			JumpParameters->OutputRecord = GraphBuilder.CreateUAV(Record[Write]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME(
+					"Mixtormat.RegionFields.JumpFinal.L%d.C%d", LayerIndex, ProducerIndex),
+				JumpShader, JumpParameters, Groups);
+			RecordIndex = Write;
+		}
+
+		FRDGTextureRef Extent = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(
+				OutputSize,
+				PF_R32_UINT,
+				FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Region.Extent"));
+		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Extent), 0u);
+
+		TShaderMapRef<FMixtormatRegionExtentCS> ExtentShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatRegionExtentCS::FParameters* ExtentParameters =
+			GraphBuilder.AllocParameters<FMixtormatRegionExtentCS::FParameters>();
+		ExtentParameters->OutputSize = OutputSize;
+		ExtentParameters->RegionIds = RegionIds;
+		ExtentParameters->PreviousRecord = Record[RecordIndex];
+		ExtentParameters->RegionExtent = GraphBuilder.CreateUAV(Extent);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.RegionFields.Extent.L%d.C%d", LayerIndex, ProducerIndex),
+			ExtentShader, ExtentParameters, Groups);
+
+		FRegionDistanceCacheEntry& Entry = LayerCtx.RegionDistanceCache.AddDefaulted_GetRef();
+		Entry.SourceChildIndex = ProducerIndex;
+		Entry.Record = Record[RecordIndex];
+		Entry.Extent = Extent;
+		// By value. The cache is inline-allocated, so a reference into it would dangle the moment
+		// a second consumer of a different producer pushed its own entry.
+		return Entry;
+	}
+
+	// One Relief From IDs node's edge and ramp fields. Everything above this is shared; only this
+	// dispatch reads the node's own feather and width, which is why the cache above is worth
+	// having at all.
+	static void AddRegionReliefFieldPass(
+		FRDGBuilder& GraphBuilder,
+		const FRegionDistanceCacheEntry& Distance,
+		FRDGTextureRef RegionIds,
+		const FReliefIdRenderData& Relief,
+		const FIntPoint OutputSize,
+		const int32 LayerIndex,
+		const int32 ChildIndex,
+		FRDGTextureRef& OutEdge,
+		FRDGTextureRef& OutRamp)
+	{
+		const FRDGTextureDesc Float2Desc = FRDGTextureDesc::Create2D(
+			OutputSize,
+			PF_G16R16F,
+			FClearValueBinding::None,
+			TexCreate_ShaderResource | TexCreate_UAV);
+		OutEdge = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Region.Edge"));
+		OutRamp = GraphBuilder.CreateTexture(Float2Desc, TEXT("Mixtormat.Region.Ramp"));
+
+		TShaderMapRef<FMixtormatRegionResolveCS> ResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatRegionResolveCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatRegionResolveCS::FParameters>();
+		Parameters->OutputSize = OutputSize;
+		Parameters->FieldSeed = Relief.Seed;
+		Parameters->Feather = Relief.Feather;
+		Parameters->FeatherRandom = Relief.FeatherRandom;
+		Parameters->RelativeWidth = Relief.bRelativeWidth ? 1u : 0u;
+		Parameters->RegionIds = RegionIds;
+		Parameters->PreviousRecord = Distance.Record;
+		Parameters->RegionExtentIn = Distance.Extent;
+		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
+		Parameters->OutputRamp = GraphBuilder.CreateUAV(OutRamp);
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.RegionFields.Resolve.L%d.C%d", LayerIndex, ChildIndex),
+			ResolveShader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(OutputSize.X, 8),
+				FMath::DivideAndRoundUp(OutputSize.Y, 8),
+				1));
+	}
+
+	// UV From IDs: one bounds solve per node, resolved into the per-region centre the composite's
+	// source read frames its transform on.
+	//
+	// Culled cleanly when nothing above publishes IDs. No output is registered, so the composite
+	// falls back to the layer's ordinary placement -- the node does nothing rather than blackening
+	// the layer or inventing a region 0 to key off.
+	void AddUvIdPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer)
+	{
+		if (!Layer.bEnabled)
+		{
+			return;
+		}
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint OutputSize = Ctx.Request.Resolution;
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8),
+			FMath::DivideAndRoundUp(OutputSize.Y, 8),
+			1);
+
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type != EMixtormatLayerChildType::UvFromIds)
+			{
+				continue;
+			}
+			int32 ProducerIndex = INDEX_NONE;
+			FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
+				LayerCtx.RegionIdMaps, Child.SourceChildIndex, ProducerIndex);
+			if (!RegionIds)
+			{
+				continue;
+			}
+
+			const uint32 PixelCount =
+				static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
+			FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
+				FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 4u),
+				TEXT("Mixtormat.UvId.RegionBounds"));
+			const FRDGBufferUAVRef RegionBoundsUAV = GraphBuilder.CreateUAV(RegionBounds);
+
+			FRDGTextureRef CentreUV = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					OutputSize,
+					PF_G16R16F,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.UvId.CentreUV"));
+			const FRDGTextureUAVRef CentreUAV = GraphBuilder.CreateUAV(CentreUV);
+
+			TShaderMapRef<FMixtormatRegionBoundsCS> BoundsShader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			for (uint32 Stage = FMixtormatRegionBoundsCS::StageInit;
+				Stage <= FMixtormatRegionBoundsCS::StageResolve;
+				++Stage)
+			{
+				FMixtormatRegionBoundsCS::FParameters* Parameters =
+					GraphBuilder.AllocParameters<FMixtormatRegionBoundsCS::FParameters>();
+				Parameters->OutputSize = OutputSize;
+				Parameters->Stage = Stage;
+				Parameters->RegionIds = RegionIds;
+				Parameters->RegionBounds = RegionBoundsUAV;
+				Parameters->OutputCentreUV = CentreUAV;
+				// Default UAV barriers, deliberately: the reduction has to have finished for every
+				// pixel of a region before any pixel of it reads the box back.
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME(
+						"Mixtormat.UvIds.L%d.C%d.Stage%u",
+						LayerCtx.LayerIndex, Child.SourceChildIndex, Stage),
+					BoundsShader, Parameters, Groups);
+			}
+
+			FUvIdPassOutput& Output = LayerCtx.UvIdOutputs.AddDefaulted_GetRef();
+			Output.SourceChildIndex = Child.SourceChildIndex;
+			Output.Ids = RegionIds;
+			Output.CentreUV = CentreUV;
+			Output.Settings = &Child.UvId;
+			// Herringbone and Basketweave turn alternate pieces a quarter turn, and that basis is
+			// a property of the lattice rather than something recoverable from a blob. Carried
+			// through only when the producer this node actually resolved to is such a Pattern; any
+			// other producer leaves it null, and the node says so rather than guessing.
+			for (const FPatternIdPassOutput& PatternOutput : LayerCtx.PatternOutputs)
+			{
+				if (PatternOutput.SourceChildIndex == ProducerIndex
+					&& PatternOutput.Settings
+					&& HasIntrinsicPatternOrientation(*PatternOutput.Settings))
+				{
+					Output.Orientation = PatternOutput.Orientation;
+					Output.bIntrinsicOrientation = true;
+					break;
+				}
+			}
+		}
+	}
 
 	// Random value per region, blended into the mask chain like any other mask child.
 	void AddRandomIdMaskPass(
@@ -1014,6 +1449,8 @@ namespace MixtormatGpuCompositor
 						if (Other.Type == EMixtormatLayerChildType::HsvFilter
 							|| Other.Type == EMixtormatLayerChildType::RandomId
 							|| Other.Type == EMixtormatLayerChildType::RampId
+							|| Other.Type == EMixtormatLayerChildType::UvFromIds
+							|| Other.Type == EMixtormatLayerChildType::ReliefFromIds
 							|| bWornEdgesConsumer
 							|| bBreakupConsumer)
 						{
@@ -1169,6 +1606,70 @@ namespace MixtormatGpuCompositor
 				Tilt.EdgeRoughnessAmount = Pattern.EdgeRoughnessAmount;
 				Tilt.AOAmount = Pattern.AOAmount;
 				Tilt.AOSpread = Pattern.AOSpread;
+				continue;
+			}
+
+			if (Child.Type == EMixtormatLayerChildType::ReliefFromIds)
+			{
+				int32 ProducerIndex = INDEX_NONE;
+				FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
+					RegionIdMaps, Child.SourceChildIndex, ProducerIndex);
+				if (!RegionIds)
+				{
+					// Nothing above publishes IDs. Culled rather than defaulted: a relief with no
+					// regions has nothing to shape, and writing a flat field would still cost the
+					// jump flood and still touch the composited height.
+					continue;
+				}
+
+				const FReliefIdRenderData& Relief = Child.ReliefId;
+				const bool bNeedsRelief = Relief.HeightAmount > 0.0f
+					|| Relief.BevelHeight != 0.0f
+					|| Relief.GapHeight != 0.0f;
+				const bool bNeedsShade =
+					Relief.EdgeRoughnessAmount > 0.0f || Relief.AOAmount > 0.0f;
+				if (!bNeedsRelief && !bNeedsShade)
+				{
+					continue;
+				}
+
+				const FRegionDistanceCacheEntry Distance = AddRegionDistancePasses(
+					GraphBuilder, LayerCtx, RegionIds, ProducerIndex,
+					Request.Resolution, LayerIndex);
+				FRDGTextureRef EdgeField = nullptr;
+				FRDGTextureRef RampField = nullptr;
+				AddRegionReliefFieldPass(
+					GraphBuilder, Distance, RegionIds, Relief, Request.Resolution,
+					LayerIndex, Child.SourceChildIndex, EdgeField, RampField);
+
+				// From here down this is the Pattern relief path, unchanged. The fields carry the
+				// same meaning in the same channels, so the pass that consumes them neither knows
+				// nor needs to know which producer the regions came from.
+				FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
+				Tilt.Field = RampField;
+				Tilt.EdgeField = EdgeField;
+				Tilt.RegionIds = RegionIds;
+				// No tilt term: HeightAmount here is a per-region elevation range and rides
+				// CellHeightAmount, leaving the relief pass's tilt path -- which is Ramp From
+				// IDs' -- switched off. Ramp and Relief compose rather than overlap.
+				Tilt.HeightAmount = 0.0f;
+				Tilt.CellHeightAmount = Relief.HeightAmount;
+				Tilt.CellHeightRandom = Relief.HeightRandom;
+				Tilt.bUseEdge = true;
+				Tilt.BevelHeight = Relief.BevelHeight;
+				Tilt.BevelWidthPixels = Relief.BevelWidthPixels;
+				Tilt.BevelWidthCells = Relief.BevelWidthCells;
+				Tilt.bBevelRelative = Relief.bRelativeWidth;
+				Tilt.BevelVariation = Relief.BevelVariation;
+				Tilt.BevelRoundness = Relief.Profile;
+				Tilt.BevelRoundnessRandom = Relief.ProfileRandom;
+				Tilt.BevelInsetPixels = Relief.BevelInsetPixels;
+				Tilt.GapHeight = Relief.GapHeight;
+				Tilt.FeatherGain = Relief.FeatherGain;
+				Tilt.EdgeRoughness = Relief.EdgeRoughness;
+				Tilt.EdgeRoughnessAmount = Relief.EdgeRoughnessAmount;
+				Tilt.AOAmount = Relief.AOAmount;
+				Tilt.AOSpread = Relief.AOSpread;
 				continue;
 			}
 

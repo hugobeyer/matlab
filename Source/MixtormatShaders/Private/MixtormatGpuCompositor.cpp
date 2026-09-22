@@ -267,21 +267,21 @@ public:
 		SHADER_PARAMETER(float, RegionValMin)
 		SHADER_PARAMETER(float, RegionValMax)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER(uint32, PatternUVEnabled)
-		SHADER_PARAMETER(uint32, PatternUVSeed)
-		SHADER_PARAMETER(uint32, PatternUVOrthogonal)
-		SHADER_PARAMETER(float, PatternUVRotationMin)
-		SHADER_PARAMETER(float, PatternUVRotationMax)
-		SHADER_PARAMETER(float, PatternUVScaleMin)
-		SHADER_PARAMETER(float, PatternUVScaleMax)
-		SHADER_PARAMETER(float, PatternUVOffset)
-		SHADER_PARAMETER(uint32, PatternUVFlipU)
-		SHADER_PARAMETER(uint32, PatternUVFlipV)
-		SHADER_PARAMETER(uint32, PatternUVVariationEnabled)
-		SHADER_PARAMETER(uint32, PatternIntrinsicOrientationEnabled)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PatternUVField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternOrientationField)
+		SHADER_PARAMETER(uint32, RegionUVEnabled)
+		SHADER_PARAMETER(uint32, RegionUVSeed)
+		SHADER_PARAMETER(uint32, RegionUVOrthogonal)
+		SHADER_PARAMETER(float, RegionUVRotationMin)
+		SHADER_PARAMETER(float, RegionUVRotationMax)
+		SHADER_PARAMETER(float, RegionUVScaleMin)
+		SHADER_PARAMETER(float, RegionUVScaleMax)
+		SHADER_PARAMETER(FVector2f, RegionUVOffset)
+		SHADER_PARAMETER(uint32, RegionUVFlipU)
+		SHADER_PARAMETER(uint32, RegionUVFlipV)
+		SHADER_PARAMETER(uint32, RegionUVVariationEnabled)
+		SHADER_PARAMETER(uint32, RegionUVIntrinsicOrientation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RegionUVCentreField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVOrientationField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -330,21 +330,21 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerN)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerSourceHeight)
-		SHADER_PARAMETER(uint32, PatternUVEnabled)
-		SHADER_PARAMETER(uint32, PatternUVSeed)
-		SHADER_PARAMETER(uint32, PatternUVOrthogonal)
-		SHADER_PARAMETER(float, PatternUVRotationMin)
-		SHADER_PARAMETER(float, PatternUVRotationMax)
-		SHADER_PARAMETER(float, PatternUVScaleMin)
-		SHADER_PARAMETER(float, PatternUVScaleMax)
-		SHADER_PARAMETER(float, PatternUVOffset)
-		SHADER_PARAMETER(uint32, PatternUVFlipU)
-		SHADER_PARAMETER(uint32, PatternUVFlipV)
-		SHADER_PARAMETER(uint32, PatternUVVariationEnabled)
-		SHADER_PARAMETER(uint32, PatternIntrinsicOrientationEnabled)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PatternUVField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternOrientationField)
+		SHADER_PARAMETER(uint32, RegionUVEnabled)
+		SHADER_PARAMETER(uint32, RegionUVSeed)
+		SHADER_PARAMETER(uint32, RegionUVOrthogonal)
+		SHADER_PARAMETER(float, RegionUVRotationMin)
+		SHADER_PARAMETER(float, RegionUVRotationMax)
+		SHADER_PARAMETER(float, RegionUVScaleMin)
+		SHADER_PARAMETER(float, RegionUVScaleMax)
+		SHADER_PARAMETER(FVector2f, RegionUVOffset)
+		SHADER_PARAMETER(uint32, RegionUVFlipU)
+		SHADER_PARAMETER(uint32, RegionUVFlipV)
+		SHADER_PARAMETER(uint32, RegionUVVariationEnabled)
+		SHADER_PARAMETER(uint32, RegionUVIntrinsicOrientation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RegionUVCentreField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVOrientationField)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
@@ -487,6 +487,138 @@ namespace MixtormatGpuCompositor
 	}
 
 
+	// The per-region source placement the layer's texture reads through, resolved for one layer.
+	//
+	// Two producers of this binding, and the order between them is the whole point of Prompt 2's
+	// split. `UV From IDs` is the architecture: it consumes whatever Region IDs sit above its own
+	// row and publishes a transform, so the same node works after Pattern IDs, Cluster IDs or
+	// Combine IDs. Pattern IDs' own UV block is the legacy path, kept live and unchanged so a
+	// material authored before the split renders exactly as it did.
+	//
+	// A UV From IDs row anywhere in the layer shadows the legacy block entirely rather than
+	// compounding with it. Two competing per-region transforms over one source is not a picture
+	// anybody asked for, and "the newer node wins" is the rule that makes the migration in a later
+	// phase a no-op for anything already using the new node.
+	struct FRegionUVBinding
+	{
+		bool bEnabled = false;
+		bool bVariation = false;
+		bool bIntrinsicOrientation = false;
+		bool bOrthogonal = true;
+		bool bRandomFlipU = false;
+		bool bRandomFlipV = false;
+		uint32 Seed = 0;
+		float RotationMin = 0.0f;
+		float RotationMax = 0.0f;
+		float ScaleMin = 1.0f;
+		float ScaleMax = 1.0f;
+		FVector2f Offset = FVector2f::ZeroVector;
+		FRDGTextureRef Ids = nullptr;
+		FRDGTextureRef Centre = nullptr;
+		FRDGTextureRef Orientation = nullptr;
+	};
+
+	static FRegionUVBinding ResolveRegionUVBinding(const FMixtormatLayerPassContext& LayerCtx)
+	{
+		FRegionUVBinding Binding;
+
+		// Stack order, not first-found: the last applicable row wins, which is the same rule every
+		// other child follows.
+		const FUvIdPassOutput* ActiveUvId = nullptr;
+		for (const FUvIdPassOutput& Output : LayerCtx.UvIdOutputs)
+		{
+			if (Output.Settings && Output.CentreUV && Output.Ids)
+			{
+				ActiveUvId = &Output;
+			}
+		}
+		if (ActiveUvId)
+		{
+			const FUvIdRenderData& Uv = *ActiveUvId->Settings;
+			Binding.bEnabled = true;
+			// Always on for this node: unlike Pattern's block, its existence in the stack *is* the
+			// request. A neutral rotation/scale still costs nothing but the sample it was going to
+			// take anyway.
+			Binding.bVariation = true;
+			Binding.bIntrinsicOrientation = ActiveUvId->bIntrinsicOrientation;
+			Binding.bOrthogonal = Uv.bOrthogonal;
+			Binding.bRandomFlipU = Uv.bRandomFlipU;
+			Binding.bRandomFlipV = Uv.bRandomFlipV;
+			Binding.Seed = Uv.Seed;
+			Binding.RotationMin = Uv.RotationMin;
+			Binding.RotationMax = Uv.RotationMax;
+			Binding.ScaleMin = Uv.ScaleMin;
+			Binding.ScaleMax = Uv.ScaleMax;
+			Binding.Offset = FVector2f(Uv.OffsetU, Uv.OffsetV);
+			Binding.Ids = ActiveUvId->Ids;
+			Binding.Centre = ActiveUvId->CentreUV;
+			Binding.Orientation = ActiveUvId->Orientation;
+			return Binding;
+		}
+
+		// Legacy: Pattern IDs' own UV block. The last Pattern row that needs source-space work
+		// wins. Herringbone and Basketweave always need their intrinsic basis; other modes only
+		// enter when random Pattern UV variation is enabled.
+		const FPatternIdPassOutput* ActivePattern = nullptr;
+		for (const FPatternIdPassOutput& PatternOutput : LayerCtx.PatternOutputs)
+		{
+			if (PatternOutput.Settings
+				&& (PatternOutput.Settings->bUVVariation
+					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
+			{
+				ActivePattern = &PatternOutput;
+			}
+		}
+		if (!ActivePattern)
+		{
+			return Binding;
+		}
+
+		const FPatternIdRenderData& Pattern = *ActivePattern->Settings;
+		Binding.bEnabled = true;
+		Binding.bVariation = Pattern.bUVVariation;
+		Binding.bIntrinsicOrientation = HasIntrinsicPatternOrientation(Pattern);
+		Binding.bOrthogonal = Pattern.bOrthogonalUV;
+		Binding.bRandomFlipU = Pattern.bRandomFlipU;
+		Binding.bRandomFlipV = Pattern.bRandomFlipV;
+		Binding.Seed = Pattern.Seed;
+		Binding.RotationMin = Pattern.UVRotationMin;
+		Binding.RotationMax = Pattern.UVRotationMax;
+		Binding.ScaleMin = Pattern.UVScaleMin;
+		Binding.ScaleMax = Pattern.UVScaleMax;
+		// One authored scalar spread across both axes, which is exactly what the shader did with
+		// it before this became a float2. Bit-identical for every existing material.
+		Binding.Offset = FVector2f(Pattern.UVOffset, Pattern.UVOffset);
+		Binding.Ids = ActivePattern->Ids;
+		Binding.Centre = ActivePattern->UV;
+		Binding.Orientation = ActivePattern->Orientation;
+		return Binding;
+	}
+
+	template <typename TParameters>
+	static void ApplyRegionUVParameters(
+		TParameters& Parameters,
+		const FRegionUVBinding& Binding,
+		const FMixtormatComposeContext& Ctx)
+	{
+		Parameters.RegionUVEnabled = Binding.bEnabled ? 1u : 0u;
+		Parameters.RegionUVSeed = Binding.Seed;
+		Parameters.RegionUVOrthogonal = Binding.bOrthogonal ? 1u : 0u;
+		Parameters.RegionUVRotationMin = Binding.RotationMin;
+		Parameters.RegionUVRotationMax = Binding.RotationMax;
+		Parameters.RegionUVScaleMin = Binding.ScaleMin;
+		Parameters.RegionUVScaleMax = Binding.ScaleMax;
+		Parameters.RegionUVOffset = Binding.Offset;
+		Parameters.RegionUVFlipU = Binding.bRandomFlipU ? 1u : 0u;
+		Parameters.RegionUVFlipV = Binding.bRandomFlipV ? 1u : 0u;
+		Parameters.RegionUVVariationEnabled = Binding.bVariation ? 1u : 0u;
+		Parameters.RegionUVIntrinsicOrientation = Binding.bIntrinsicOrientation ? 1u : 0u;
+		Parameters.RegionUVIds = Binding.Ids ? Binding.Ids : Ctx.EmptyRegionIds;
+		Parameters.RegionUVCentreField = Binding.Centre ? Binding.Centre : Ctx.EmptyPatternUV;
+		Parameters.RegionUVOrientationField =
+			Binding.Orientation ? Binding.Orientation : Ctx.EmptyPatternOrientation;
+	}
+
 	void AddLayerInputPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -500,18 +632,7 @@ namespace MixtormatGpuCompositor
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
-		const FPatternIdPassOutput* ActivePatternUV = nullptr;
-		for (const FPatternIdPassOutput& PatternOutput : LayerCtx.PatternOutputs)
-		{
-			if (PatternOutput.Settings
-				&& (PatternOutput.Settings->bUVVariation
-					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
-			{
-				ActivePatternUV = &PatternOutput;
-			}
-		}
-		const FPatternIdRenderData* Pattern =
-			ActivePatternUV ? ActivePatternUV->Settings : nullptr;
+		const FRegionUVBinding RegionUV = ResolveRegionUVBinding(LayerCtx);
 
 		LayerCtx.LayerInputBC = GraphBuilder.CreateTexture(
 			Ctx.OutputBC[0]->Desc, TEXT("Mixtormat.LayerInputBC"));
@@ -548,25 +669,7 @@ namespace MixtormatGpuCompositor
 			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
 				TEXT("Mixtormat.LayerSourceHeight"))
 			: Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
-		Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
-		Parameters->PatternUVSeed = Pattern ? Pattern->Seed : 0u;
-		Parameters->PatternUVOrthogonal = Pattern && Pattern->bOrthogonalUV ? 1u : 0u;
-		Parameters->PatternUVRotationMin = Pattern ? Pattern->UVRotationMin : 0.0f;
-		Parameters->PatternUVRotationMax = Pattern ? Pattern->UVRotationMax : 0.0f;
-		Parameters->PatternUVScaleMin = Pattern ? Pattern->UVScaleMin : 1.0f;
-		Parameters->PatternUVScaleMax = Pattern ? Pattern->UVScaleMax : 1.0f;
-		Parameters->PatternUVOffset = Pattern ? Pattern->UVOffset : 0.0f;
-		Parameters->PatternUVFlipU = Pattern && Pattern->bRandomFlipU ? 1u : 0u;
-		Parameters->PatternUVFlipV = Pattern && Pattern->bRandomFlipV ? 1u : 0u;
-		Parameters->PatternUVVariationEnabled = Pattern && Pattern->bUVVariation ? 1u : 0u;
-		Parameters->PatternIntrinsicOrientationEnabled =
-			Pattern && HasIntrinsicPatternOrientation(*Pattern) ? 1u : 0u;
-		Parameters->PatternRegionIds =
-			ActivePatternUV ? ActivePatternUV->Ids : Ctx.EmptyRegionIds;
-		Parameters->PatternUVField =
-			ActivePatternUV ? ActivePatternUV->UV : Ctx.EmptyPatternUV;
-		Parameters->PatternOrientationField =
-			ActivePatternUV ? ActivePatternUV->Orientation : Ctx.EmptyPatternOrientation;
+		ApplyRegionUVParameters(*Parameters, RegionUV, Ctx);
 		Parameters->LinearWrapSampler = TStaticSamplerState<
 			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		Parameters->OutputBC = GraphBuilder.CreateUAV(LayerCtx.LayerInputBC);
@@ -1072,49 +1175,7 @@ namespace MixtormatGpuCompositor
 		Parameters->RegionValMin = ActiveHsv ? ActiveHsv->ValMin : 1.0f;
 		Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
 
-		// The last Pattern row that needs source-space work wins. Herringbone and
-		// Basketweave always need their intrinsic basis; other modes only enter when
-		// random Pattern UV variation is enabled.
-		const FPatternIdPassOutput* ActivePatternUV = nullptr;
-		for (const FPatternIdPassOutput& PatternOutput : PatternOutputs)
-		{
-			if (PatternOutput.Settings
-				&& (PatternOutput.Settings->bUVVariation
-					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
-			{
-				ActivePatternUV = &PatternOutput;
-			}
-		}
-		const FPatternIdRenderData* PatternUVSettings =
-			ActivePatternUV ? ActivePatternUV->Settings : nullptr;
-		Parameters->PatternUVEnabled = ActivePatternUV ? 1u : 0u;
-		Parameters->PatternUVSeed = PatternUVSettings ? PatternUVSettings->Seed : 0u;
-		Parameters->PatternUVOrthogonal =
-			PatternUVSettings && PatternUVSettings->bOrthogonalUV ? 1u : 0u;
-		Parameters->PatternUVRotationMin =
-			PatternUVSettings ? PatternUVSettings->UVRotationMin : 0.0f;
-		Parameters->PatternUVRotationMax =
-			PatternUVSettings ? PatternUVSettings->UVRotationMax : 0.0f;
-		Parameters->PatternUVScaleMin =
-			PatternUVSettings ? PatternUVSettings->UVScaleMin : 1.0f;
-		Parameters->PatternUVScaleMax =
-			PatternUVSettings ? PatternUVSettings->UVScaleMax : 1.0f;
-		Parameters->PatternUVOffset =
-			PatternUVSettings ? PatternUVSettings->UVOffset : 0.0f;
-		Parameters->PatternUVFlipU =
-			PatternUVSettings && PatternUVSettings->bRandomFlipU ? 1u : 0u;
-		Parameters->PatternUVFlipV =
-			PatternUVSettings && PatternUVSettings->bRandomFlipV ? 1u : 0u;
-		Parameters->PatternUVVariationEnabled =
-			PatternUVSettings && PatternUVSettings->bUVVariation ? 1u : 0u;
-		Parameters->PatternIntrinsicOrientationEnabled =
-			PatternUVSettings && HasIntrinsicPatternOrientation(*PatternUVSettings) ? 1u : 0u;
-		Parameters->PatternRegionIds =
-			ActivePatternUV ? ActivePatternUV->Ids : EmptyRegionIds;
-		Parameters->PatternUVField =
-			ActivePatternUV ? ActivePatternUV->UV : EmptyPatternUV;
-		Parameters->PatternOrientationField =
-			ActivePatternUV ? ActivePatternUV->Orientation : EmptyPatternOrientation;
+		ApplyRegionUVParameters(*Parameters, ResolveRegionUVBinding(LayerCtx), Ctx);
 
 		Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
@@ -1537,6 +1598,92 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				RampData.AngleStepDegrees = FMath::IsFinite(Ramp.AngleStepDegrees)
 					? FMath::Max(Ramp.AngleStepDegrees, 0.01f) : 5.0f;
 				RampData.Seed = static_cast<uint32>(FMath::Max(Ramp.Seed, 0));
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::UvFromIds)
+			{
+				// Changes the layer's own source read, so a disabled layer must not gather it --
+				// the same reason effects and the ramp tilt are skipped above.
+				const FMixtormatUvIdFilter& Uv = LayerChild.UvId;
+				if (!Layer.bEnabled || !Uv.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::UvFromIds;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FUvIdRenderData& UvData = ChildData.UvId;
+				UvData.bOrthogonal = Uv.bOrthogonal;
+				UvData.RotationMin = FMath::IsFinite(Uv.RotationMin)
+					? FMath::Clamp(Uv.RotationMin, -360.0f, 360.0f) : 0.0f;
+				UvData.RotationMax = FMath::IsFinite(Uv.RotationMax)
+					? FMath::Clamp(Uv.RotationMax, -360.0f, 360.0f) : 360.0f;
+				UvData.ScaleMin = FMath::IsFinite(Uv.ScaleMin)
+					? FMath::Clamp(Uv.ScaleMin, 0.05f, 8.0f) : 1.0f;
+				UvData.ScaleMax = FMath::IsFinite(Uv.ScaleMax)
+					? FMath::Clamp(Uv.ScaleMax, 0.05f, 8.0f) : 1.0f;
+				UvData.OffsetU = FMath::IsFinite(Uv.OffsetU)
+					? FMath::Clamp(Uv.OffsetU, 0.0f, 1.0f) : 0.0f;
+				UvData.OffsetV = FMath::IsFinite(Uv.OffsetV)
+					? FMath::Clamp(Uv.OffsetV, 0.0f, 1.0f) : 0.0f;
+				UvData.bRandomFlipU = Uv.bRandomFlipU;
+				UvData.bRandomFlipV = Uv.bRandomFlipV;
+				UvData.Seed = static_cast<uint32>(FMath::Max(Uv.Seed, 0));
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::ReliefFromIds)
+			{
+				// Its pass runs after the composite, so a disabled layer must not gather it.
+				const FMixtormatReliefIdFilter& Relief = LayerChild.ReliefId;
+				if (!Layer.bEnabled || !Relief.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::ReliefFromIds;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FReliefIdRenderData& ReliefData = ChildData.ReliefId;
+				// Finite-guarded rather than range-clamped wherever Pattern's equivalent is, and
+				// bounded wherever Pattern's is bounded: these feed the same shader, so a value
+				// that is safe there is safe here and one that is not is not.
+				ReliefData.HeightAmount = FMath::IsFinite(Relief.HeightAmount)
+					? FMath::Max(Relief.HeightAmount, 0.0f) : 0.0f;
+				ReliefData.HeightRandom = FMath::IsFinite(Relief.HeightRandom)
+					? FMath::Clamp(Relief.HeightRandom, 0.0f, 1.0f) : 1.0f;
+				ReliefData.Profile = FMath::IsFinite(Relief.Profile)
+					? FMath::Clamp(Relief.Profile, -1.0f, 1.0f) : 0.0f;
+				ReliefData.ProfileRandom = FMath::IsFinite(Relief.ProfileRandom)
+					? FMath::Clamp(Relief.ProfileRandom, 0.0f, 1.0f) : 0.0f;
+				ReliefData.Feather = FMath::IsFinite(Relief.Feather)
+					? FMath::Max(Relief.Feather, 0.0f) : 0.15f;
+				ReliefData.FeatherRandom = FMath::IsFinite(Relief.FeatherRandom)
+					? FMath::Clamp(Relief.FeatherRandom, 0.0f, 1.0f) : 0.0f;
+				ReliefData.FeatherGain = FMath::IsFinite(Relief.FeatherGain)
+					? FMath::Max(Relief.FeatherGain, 0.0f) : 0.0f;
+				ReliefData.BevelHeight = FMath::IsFinite(Relief.BevelHeight)
+					? Relief.BevelHeight : 0.0f;
+				ReliefData.BevelWidthPixels = FMath::IsFinite(Relief.BevelWidthPixels)
+					? FMath::Max(Relief.BevelWidthPixels, 0.0001f) : 4.0f;
+				ReliefData.BevelWidthCells = FMath::IsFinite(Relief.BevelWidthCells)
+					? FMath::Max(Relief.BevelWidthCells, 0.0001f) : 0.25f;
+				ReliefData.bRelativeWidth = Relief.bRelativeWidth;
+				ReliefData.BevelVariation = FMath::IsFinite(Relief.BevelVariation)
+					? FMath::Clamp(Relief.BevelVariation, 0.0f, 1.0f) : 0.0f;
+				ReliefData.BevelInsetPixels = FMath::IsFinite(Relief.BevelInsetPixels)
+					? Relief.BevelInsetPixels : 0.0f;
+				ReliefData.GapHeight = FMath::IsFinite(Relief.GapHeight)
+					? Relief.GapHeight : 0.0f;
+				ReliefData.EdgeRoughness = FMath::IsFinite(Relief.EdgeRoughness)
+					? FMath::Clamp(Relief.EdgeRoughness, 0.0f, 1.0f) : 0.65f;
+				ReliefData.EdgeRoughnessAmount = FMath::IsFinite(Relief.EdgeRoughnessAmount)
+					? FMath::Clamp(Relief.EdgeRoughnessAmount, 0.0f, 1.0f) : 0.0f;
+				ReliefData.AOAmount = FMath::IsFinite(Relief.AOAmount)
+					? FMath::Clamp(Relief.AOAmount, 0.0f, 1.0f) : 0.0f;
+				ReliefData.AOSpread = FMath::IsFinite(Relief.AOSpread)
+					? FMath::Clamp(Relief.AOSpread, 1.0f, 8.0f) : 2.0f;
+				ReliefData.Seed = static_cast<uint32>(FMath::Max(Relief.Seed, 0));
 				continue;
 			}
 
@@ -3195,6 +3342,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
 						LayerCtx.PatternOutputs;
 					AddRegionProducerPasses(Ctx, LayerCtx, Layer);
+					// Immediately after the producers and before anything reads the layer's
+					// source: the source read is the only thing this node changes, and both the
+					// layer-input resolve and the composite have to see the same answer.
+					AddUvIdPasses(Ctx, LayerCtx, Layer);
 
 					FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
 					CombinedMask = RegisterTexture(
@@ -3275,7 +3426,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						if (Child.Type == EMixtormatLayerChildType::Filter
 							|| Child.Type == EMixtormatLayerChildType::PatternId
 							|| Child.Type == EMixtormatLayerChildType::HsvFilter
-							|| Child.Type == EMixtormatLayerChildType::RampId)
+							|| Child.Type == EMixtormatLayerChildType::RampId
+							|| Child.Type == EMixtormatLayerChildType::UvFromIds
+							|| Child.Type == EMixtormatLayerChildType::ReliefFromIds)
 						{
 							// All three are handled outside this loop -- the cluster in the
 							// pre-mask phase, the HSV filter at the composite's albedo sample,

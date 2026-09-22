@@ -60,21 +60,23 @@ float RegionSatMax;
 float RegionValMin;
 float RegionValMax;
 
-Texture2D<uint> PatternRegionIds;
-Texture2D<float2> PatternUVField;
-Texture2D<uint> PatternOrientationField;
-uint PatternUVEnabled;
-uint PatternUVVariationEnabled;
-uint PatternIntrinsicOrientationEnabled;
-uint PatternUVSeed;
-uint PatternUVOrthogonal;
-float PatternUVRotationMin;
-float PatternUVRotationMax;
-float PatternUVScaleMin;
-float PatternUVScaleMax;
-float PatternUVOffset;
-uint PatternUVFlipU;
-uint PatternUVFlipV;
+Texture2D<uint> RegionUVIds;
+Texture2D<float2> RegionUVCentreField;
+Texture2D<uint> RegionUVOrientationField;
+uint RegionUVEnabled;
+uint RegionUVVariationEnabled;
+uint RegionUVIntrinsicOrientation;
+uint RegionUVSeed;
+uint RegionUVOrthogonal;
+float RegionUVRotationMin;
+float RegionUVRotationMax;
+float RegionUVScaleMin;
+float RegionUVScaleMax;
+// Per-axis: how far a region's source read may wander from its own centre, as a fraction of
+// the source tile. Pattern's legacy single Offset arrives here with both components equal.
+float2 RegionUVOffset;
+uint RegionUVFlipU;
+uint RegionUVFlipV;
 
 RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
@@ -455,57 +457,57 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 		max(Tiling, 0.0001f) * (float)max(UVScaleY, 1));
 	Orientation = MixtormatSourceOrientation(FlipU, FlipV, Rotation);
 	const float2 SourceUV = MixtormatSourceUV(UV, Scale, UVOffset, FlipU, FlipV, Rotation);
-	if (PatternUVEnabled == 0)
+	if (RegionUVEnabled == 0)
 	{
 		return SourceUV;
 	}
 
 	const int2 Pixel = PatternPixel(UV);
-	const uint RegionId = PatternRegionIds.Load(int3(Pixel, 0));
+	const uint RegionId = RegionUVIds.Load(int3(Pixel, 0));
 	if (RegionId == MIXTORMAT_INVALID_REGION)
 	{
 		return SourceUV;
 	}
 
-	const float2 CentreUV = PatternUVField.Load(int3(Pixel, 0));
+	const float2 CentreUV = RegionUVCentreField.Load(int3(Pixel, 0));
 	const float2 CentreSourceUV =
 		MixtormatSourceUV(CentreUV, Scale, UVOffset, FlipU, FlipV, Rotation);
 	float2 Delta = SourceUV - CentreSourceUV;
 	Delta -= floor(Delta + 0.5f);
 
-	const uint Seeded = MixtormatRegionSeed(RegionId, PatternUVSeed);
+	const uint Seeded = MixtormatRegionSeed(RegionId, RegionUVSeed);
 	float AngleDegrees = 0.0f;
 	float UVScale = 1.0f;
 	bool bPatternFlipU = false;
 	bool bPatternFlipV = false;
 	float2 RandomOffset = 0.0f;
-	if (PatternUVVariationEnabled != 0)
+	if (RegionUVVariationEnabled != 0)
 	{
 		AngleDegrees = lerp(
-			PatternUVRotationMin,
-			PatternUVRotationMax,
+			RegionUVRotationMin,
+			RegionUVRotationMax,
 			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_ROT));
-		if (PatternUVOrthogonal != 0)
+		if (RegionUVOrthogonal != 0)
 		{
 			AngleDegrees = round(AngleDegrees / 90.0f) * 90.0f;
 		}
 		UVScale = max(lerp(
-			PatternUVScaleMin,
-			PatternUVScaleMax,
+			RegionUVScaleMin,
+			RegionUVScaleMax,
 			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_SCALE)), 1.0e-4f);
-		bPatternFlipU = PatternUVFlipU != 0
+		bPatternFlipU = RegionUVFlipU != 0
 			&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_U) < 0.5f;
-		bPatternFlipV = PatternUVFlipV != 0
+		bPatternFlipV = RegionUVFlipV != 0
 			&& MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_FLIP_V) < 0.5f;
 		RandomOffset = (float2(
 			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_U),
 			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_UV_OFF_V)) - 0.5f)
-			* PatternUVOffset;
+			* RegionUVOffset;
 	}
 
 	float2 P = Delta * UVScale;
-	if (PatternIntrinsicOrientationEnabled != 0
-		&& PatternOrientationField.Load(int3(Pixel, 0)) != 0)
+	if (RegionUVIntrinsicOrientation != 0
+		&& RegionUVOrientationField.Load(int3(Pixel, 0)) != 0)
 	{
 		const float2x2 IntrinsicRotation = MixtormatRotation90Matrix(1);
 		P = mul(IntrinsicRotation, P);

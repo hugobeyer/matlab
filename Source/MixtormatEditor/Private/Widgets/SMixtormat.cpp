@@ -660,6 +660,14 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		{
 			Child.RampId.bEnabled = false;
 		}
+		else if (Child.Type == EMixtormatLayerChildType::UvFromIds)
+		{
+			Child.UvId.bEnabled = false;
+		}
+		else if (Child.Type == EMixtormatLayerChildType::ReliefFromIds)
+		{
+			Child.ReliefId.bEnabled = false;
+		}
 		else if (Child.Type == EMixtormatLayerChildType::PatternId)
 		{
 			Child.PatternId.bEnabled = false;
