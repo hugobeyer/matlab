@@ -1661,7 +1661,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ReliefData.ProfileRandom = FMath::IsFinite(Relief.ProfileRandom)
 					? FMath::Clamp(Relief.ProfileRandom, 0.0f, 1.0f) : 0.0f;
 				ReliefData.Feather = FMath::IsFinite(Relief.Feather)
-					? FMath::Max(Relief.Feather, 0.0f) : 0.15f;
+					? FMath::Max(Relief.Feather, 0.0f) : 0.1f;
 				ReliefData.FeatherRandom = FMath::IsFinite(Relief.FeatherRandom)
 					? FMath::Clamp(Relief.FeatherRandom, 0.0f, 1.0f) : 0.0f;
 				ReliefData.FeatherGain = FMath::IsFinite(Relief.FeatherGain)
@@ -1686,7 +1686,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ReliefData.AOAmount = FMath::IsFinite(Relief.AOAmount)
 					? FMath::Clamp(Relief.AOAmount, 0.0f, 1.0f) : 0.0f;
 				ReliefData.AOSpread = FMath::IsFinite(Relief.AOSpread)
-					? FMath::Clamp(Relief.AOSpread, 1.0f, 8.0f) : 2.0f;
+					? FMath::Clamp(Relief.AOSpread, 1.0f, 8.0f) : 1.0f;
 				ReliefData.Seed = static_cast<uint32>(FMath::Max(Relief.Seed, 0));
 				continue;
 			}

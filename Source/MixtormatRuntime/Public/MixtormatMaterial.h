@@ -167,7 +167,10 @@ enum class EMixtormatParameterOwnerType : uint8
 	// controls are ordinary bindable scalars, so they need an owner of their own for a reference
 	// or a driver to address; Pattern's own legacy fields keep PatternId.
 	UvId UMETA(DisplayName = "UV From IDs"),
-	ReliefId UMETA(DisplayName = "Relief From IDs")
+	ReliefId UMETA(DisplayName = "Relief From IDs"),
+	// Appended with its child type. Combine IDs arrived after this enum's last pass and its rows
+	// fell through to Layer, which stored their bindings on the layer and resolved to nothing.
+	CombineId UMETA(DisplayName = "Combine IDs")
 };
 
 UENUM(BlueprintType)

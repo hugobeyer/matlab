@@ -337,6 +337,80 @@ namespace
 		}
 	}
 
+	// Writes the Link-mode reference that makes Y the same value as X, using the existing
+	// reference system exactly as the context menu does -- Y holds a binding with Mode = Link
+	// naming X, so editing either side lands on X and unlinking is the existing Clear Reference.
+	// Creation-time only: old saved materials are never touched, and a pair that starts unequal
+	// by design gets no link at all.
+	void LinkChildPair(
+		FMixtormatLayerChild& Child,
+		const FGuid& ContainerId,
+		const EMixtormatParameterOwnerType Owner,
+		const FName XName,
+		const FName YName,
+		const EMixtormatParameterValueType ValueType)
+	{
+		FMixtormatParameterAddress Source;
+		Source.LayerId = ContainerId;
+		Source.ChildId = Child.ChildId;
+		Source.Owner = Owner;
+		Source.Parameter = XName;
+		Source.ValueType = ValueType;
+
+		FMixtormatParameterBinding& Binding = Child.ParameterBindings.AddDefaulted_GetRef();
+		Binding.DestinationOwner = Owner;
+		Binding.DestinationParameter = YName;
+		Binding.ValueType = ValueType;
+		Binding.Reference.bEnabled = true;
+		Binding.Reference.Mode = EMixtormatReferenceMode::Link;
+		Binding.Reference.Source = Source;
+	}
+
+	// Which of a new child's X/Y pairs are one uniform quantity split across axes, and therefore
+	// start linked. Deliberately short: offsets, Rows/Columns and every min/max range are
+	// independent by meaning and stay unlinked.
+	void ApplyLinkDefaults(FMixtormatLayerChild& Child, const FGuid& ContainerId)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Mask:
+			// Symmetric tiling. A Layer Values mask has no placement block at all, so it stays out.
+			if (Child.Mask.Source == EMixtormatMaskSource::Texture)
+			{
+				LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Mask,
+					GET_MEMBER_NAME_CHECKED(FMixtormatMaskLayer, TilingX),
+					GET_MEMBER_NAME_CHECKED(FMixtormatMaskLayer, TilingY),
+					EMixtormatParameterValueType::Int);
+			}
+			break;
+		case EMixtormatLayerChildType::ColorId:
+			// Same symmetric tiling as a texture mask.
+			LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::ColorId,
+				GET_MEMBER_NAME_CHECKED(FMixtormatColorIdMask, TilingX),
+				GET_MEMBER_NAME_CHECKED(FMixtormatColorIdMask, TilingY),
+				EMixtormatParameterValueType::Int);
+			break;
+		case EMixtormatLayerChildType::Blur:
+			// Equal radii are the ordinary Gaussian; the pair is anisotropic only on purpose.
+			LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Blur,
+				GET_MEMBER_NAME_CHECKED(FMixtormatMaskBlur, RadiusX),
+				GET_MEMBER_NAME_CHECKED(FMixtormatMaskBlur, RadiusY),
+				EMixtormatParameterValueType::Float);
+			break;
+		case EMixtormatLayerChildType::Effect:
+			if (Child.Effect.ProceduralType == EMixtormatEffectType::LayerBlur)
+			{
+				LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Effect,
+					GET_MEMBER_NAME_CHECKED(FMixtormatLayerEffect, LayerBlurRadiusX),
+					GET_MEMBER_NAME_CHECKED(FMixtormatLayerEffect, LayerBlurRadiusY),
+					EMixtormatParameterValueType::Float);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
 	bool BuildMaskLayerFromPath(const FSoftObjectPath& MaskPath, FMixtormatMaskLayer& OutMask)
 	{
 		UObject* MaskObject = MaskPath.TryLoad();
@@ -1362,6 +1436,7 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Mask;
 	Child.Mask = MoveTemp(NewMask);
+	ApplyLinkDefaults(Child, Layer.LayerId);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
@@ -1405,6 +1480,7 @@ FReply SMixtormat::AddMaskFilterToLayerChild(
 	{
 		return FReply::Handled();
 	}
+	ApplyLinkDefaults(WorkingLayers[LayerIndex].Children[InsertAt], WorkingLayers[LayerIndex].LayerId);
 
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1450,6 +1526,7 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	ScopedMask.ScopeOwnerChildId = OwnerId;
 	ScopedMask.Mask = MoveTemp(NewMask);
 	Layer.Children.Insert(MoveTemp(ScopedMask), InsertAt);
+	ApplyLinkDefaults(Layer.Children[InsertAt], Layer.LayerId);
 
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -5057,6 +5134,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			AppendGroupChild(Target.GroupId, ChildTypeForCreation(Kind)))
 		{
 			ApplyChildCreationDefaults(*Child, Kind);
+			ApplyLinkDefaults(*Child, Target.GroupId);
 			FinishGroupChildEdit(Target.GroupId);
 		}
 		return FReply::Handled();
@@ -5072,7 +5150,9 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	// same as before this function collapsed the ten of them into one. Left alone deliberately --
 	// changing it changes the undo stack, which is not this refactor's to move.
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
-	ApplyChildCreationDefaults(Layer.Children.AddDefaulted_GetRef(), Kind);
+	FMixtormatLayerChild& CreatedChild = Layer.Children.AddDefaulted_GetRef();
+	ApplyChildCreationDefaults(CreatedChild, Kind);
+	ApplyLinkDefaults(CreatedChild, Layer.LayerId);
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, Layer.Children.Num() - 1);
 	RefreshLayeredPreview();
@@ -6826,6 +6906,7 @@ FReply SMixtormat::AddLayerBlurToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
+	ApplyLinkDefaults(Child, Layer.LayerId);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;

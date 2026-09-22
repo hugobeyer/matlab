@@ -86,6 +86,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return EMixtormatParameterOwnerType::RampId;
 		case EMixtormatLayerChildType::UvFromIds: return EMixtormatParameterOwnerType::UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return EMixtormatParameterOwnerType::ReliefId;
+		case EMixtormatLayerChildType::CombineId: return EMixtormatParameterOwnerType::CombineId;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
@@ -109,6 +110,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return &Child.RampId;
 		case EMixtormatLayerChildType::UvFromIds: return &Child.UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return &Child.ReliefId;
+		case EMixtormatLayerChildType::CombineId: return &Child.CombineId;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
 		case EMixtormatLayerChildType::Curvature: return &Child.Curvature;
 		// The payload, not the wrapper -- it has to be the same pointer ChildOwner exposes for
@@ -766,6 +768,7 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 			{
 			case EMixtormatLayerChildType::Filter:
 			case EMixtormatLayerChildType::PatternId:
+			case EMixtormatLayerChildType::CombineId:
 				Kind = EMixtormatDriverSourceKind::RegionIds;
 				Output = FName(TEXT("RandomPerId"));
 				break;
