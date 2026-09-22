@@ -982,26 +982,26 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// deposition derive a wear delta from that analysis, and the delta is carved into the
 	// untouched working height -- so fine source detail survives the filter instead of being
 	// progressively Kuwahara-smoothed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "8.0", Delta = "0.01"))
 	float ErosionAmount = 1.5f;
 
 	// Final carve-depth multiplier on the wear delta. The result remains subtractive overall;
 	// above 1 the generated wear digs deeper than the analysis surface's own relief.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float ErosionDepth = 1.0f;
 
 	// Derivative span in texels for the slope and curvature readings, on both axes. 1 is the
 	// normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost
 	// is fixed whatever the span -- the same four taps, farther apart -- and the analysis never
 	// replaces the height itself.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "3"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "3", Delta = "1"))
 	int32 ErosionRadius = 1;
 
 	// Ping-pong wear iterations. Each pass re-analyses the previous pass's output, so wear
 	// propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an
 	// extreme stress case. Typed values below 1 are raised to 1 by the solver -- a zero or
 	// negative pass count has no meaning.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "16"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
 	int32 ErosionIterations = 8;
 
 	// Constant downhill force toward -Y in UV space, as a plain weight: how hard the flow is
@@ -1009,39 +1009,39 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// (1 - w) + (0, -1) * w). At 0 erosion follows terrain alone; at 1 wear streaks straight
 	// down the texture. Flat cross-gravity structure survives at any value -- material only
 	// ever moves downhill, so level mortar joints and ledges read no transport.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionGravityForce = 0.6f;
 
 	// Shapes slope sensitivity. Below 1 responds broadly to gentle slopes, above 1 concentrates
 	// wear increasingly on steep regions.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "1.0", Delta = "0.01"))
 	float ErosionSlopePower = 1.0f;
 
 	// How much removed material refills valleys and downstream depressions. 0 is pure erosion.
 	// Not a conservation ratio: deposition is clamped per iteration for stability.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float ErosionDeposit = 0.25f;
 
 	// Slope threshold below which wear is suppressed, in the filter's normalized slope space
 	// (height change per 1/256 of the tile, resolution-independent). 0 leaves every region
 	// eligible; higher values protect increasingly flat and subtle ones.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float ErosionPreserveFlats = 0.002f;
 
 	// Flow momentum: how much direction memory the solver keeps between iterations. The slope
 	// reading is blended into a persistent velocity field, so per-texel noise averages out
 	// instead of steering every pass. 0 reacts to every texel, 0.65 gives stable broad
 	// erosion directions, 1 barely moves. The height itself is never touched by this.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionSmoothing = 0.65f;
 
 	// Subtle seeded strength variation across the tile, from a smooth tileable lattice noise.
 	// Breaks up the uniformity of the carve the way material hardness differences do.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionVariation = 0.18f;
 
 	// Seeds the variation field. Same seed, same variation, at any resolution.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0", UIMax = "9999"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
 	int32 ErosionSeed = 1;
 
 	// Optional placement mask owned by Erosion. When unset, the filter keeps using the layer's
@@ -1052,16 +1052,16 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
 	TSoftObjectPtr<UTexture2D> ErosionMaskTexture;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
 	int32 ErosionMaskTiling = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion|Placement")
 	bool bErosionInvertMask = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionRoughnessAmount = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.001", UIMax = "1.0", Delta = "0.001"))
 	float ErosionCarveDepth = 0.05f;
 
 	// Grade. Transforms the base colour composited up to this layer, masked by the layer's
@@ -1071,7 +1071,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// operations and belong above the tonemap, gamma is display shaping and belongs below it.
 	//
 	//     Brightness -> Contrast (about Pivot) -> Tonemap -> Gamma
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
@@ -1079,54 +1079,54 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	// Blend between the untonemapped and tonemapped result, so an operator can be dialled in
 	// rather than only switched on.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeTonemapStrength = 1.0f;
 
 	// A gain, not an offset: scaling linear values behaves like exposure and leaves hue
 	// alone, where adding a constant washes saturation out of the darks.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float GradeBrightness = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float GradeContrast = 1.0f;
 
 	// The value contrast pivots about. 0.18 is linear mid grey and is correct for this data;
 	// 0.5 is what display-referred habits reach for, so it is a control rather than a
 	// constant.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeContrastPivot = 0.18f;
 
 	// Applied as pow(c, 1 / Gamma), so above 1 lifts the midtones. That is the convention
 	// every grading UI uses and the reciprocal is easy to get backwards.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade", meta = (UIMin = "0.05", UIMax = "4.0", Delta = "0.01"))
 	float GradeGamma = 1.0f;
 
 	// Levels remap, applied first and ahead of Brightness/Contrast: t = (value - Min) / (Max -
 	// Min), clamped to 0..1, then value = lerp(OutputMin, OutputMax, t). At the identity range
 	// (0..1 in, 0..1 out) this is a no-op, which is what keeps every grade already authored
 	// against Brightness/Contrast/Gamma unchanged.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeInputMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeInputMax = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeOutputMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeOutputMax = 1.0f;
 
 	// Per-channel offset, added after the levels remap and the linear Brightness/Contrast stage
 	// but ahead of the tonemap, so a colour cast can be dialled in on data the tonemap has not
 	// yet reshaped. Zero on every channel is the identity.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeBiasR = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeBiasG = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade|Levels", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float GradeBiasB = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Grade")

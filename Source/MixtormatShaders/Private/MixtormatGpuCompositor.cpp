@@ -2454,13 +2454,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			// definitions exactly as the Breakup block below does.
 			const auto EffectFloat = [](const FName Name, const float Value)
 			{
-				return MixtormatParameterDefinitions::SanitizeFloat(
-					EMixtormatParameterOwnerType::Effect, Name,
-					EMixtormatParameterValueType::Float, Value);
+				return MixtormatParameterContracts::SanitizeFloat(
+					EMixtormatParameterOwnerType::Effect, Name, Value);
 			};
 			const auto EffectInt = [](const FName Name, const int32 Value)
 			{
-				return MixtormatParameterDefinitions::SanitizeInt32(
+				return MixtormatParameterContracts::SanitizeInt32(
 					EMixtormatParameterOwnerType::Effect, Name, Value);
 			};
 			if (ResolvedType == EMixtormatEffectType::Erosion)
@@ -2530,13 +2529,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// range -- stays local to the derivation below.
 				const auto BreakupFloat = [](const FName Name, const float Value)
 				{
-					return MixtormatParameterDefinitions::SanitizeFloat(
-						EMixtormatParameterOwnerType::Effect, Name,
-						EMixtormatParameterValueType::Float, Value);
+					return MixtormatParameterContracts::SanitizeFloat(
+						EMixtormatParameterOwnerType::Effect, Name, Value);
 				};
 				const auto BreakupInt = [](const FName Name, const int32 Value)
 				{
-					return MixtormatParameterDefinitions::SanitizeInt32(
+					return MixtormatParameterContracts::SanitizeInt32(
 						EMixtormatParameterOwnerType::Effect, Name, Value);
 				};
 

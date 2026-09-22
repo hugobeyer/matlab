@@ -11,10 +11,10 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-// Completeness for a migrated family: every numeric Breakup property on the serialized struct
-// must have BOTH a runtime definition and UI metadata. This is the test the definition->struct
-// default check cannot be -- it catches an OMITTED definition (BreakupSizeVariation and
-// BreakupSmoothness both shipped that way), not a drifted one.
+// Completeness for the migrated families: every numeric property of a migrated family must
+// carry its UI meta (UIMin/UIMax/Delta) directly on the UPROPERTY. This is the test that
+// catches an unannotated field -- the reflection-resolved UI silently falls back to call-site
+// literals without it, and nothing else would notice.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatBreakupDefinitionCompletenessTest,
 	"Mixtormat.Parameters.BreakupDefinitionCompleteness",
@@ -24,9 +24,8 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 {
 	(void)Parameters;
 
-	// Every migrated effect family's field prefix. A new family migration adds its prefix
-	// here; the test then guarantees no numeric property of that family ships without a
-	// definition and UI metadata (the BreakupSizeVariation/Smoothness failure mode).
+	// The UPROPERTY Category prefix = the family. A new family migration adds its prefix
+	// here; the test then guarantees no numeric property of that family ships unannotated.
 	const TCHAR* MigratedPrefixes[] = {
 		TEXT("Breakup"),
 		TEXT("Erosion"),
@@ -42,41 +41,33 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 	for (TFieldIterator<FProperty> It(EffectStruct); It; ++It)
 	{
 		const FProperty* Property = *It;
-		const bool bMigratedPrefix = Algo::AnyOf(MigratedPrefixes,
-			[&Property](const TCHAR* Prefix)
-			{
-				return Property->GetName().StartsWith(Prefix);
-			});
-		if (!bMigratedPrefix)
+		if (CastField<FFloatProperty>(Property) == nullptr
+			&& CastField<FIntProperty>(Property) == nullptr)
 		{
-			continue;
-		}
-		EMixtormatParameterValueType ValueType;
-		if (CastField<FFloatProperty>(Property))
-		{
-			ValueType = EMixtormatParameterValueType::Float;
-		}
-		else if (CastField<FIntProperty>(Property))
-		{
-			ValueType = EMixtormatParameterValueType::Int;
-		}
-		else
-		{
-			// Assets, bools and enums are structural; they carry no numeric definition.
+			// Assets, bools and enums are structural; they carry no UI annotation.
 			continue;
 		}
 
-		const FMixtormatParameterDefinitionKey Key{
-			EMixtormatParameterOwnerType::Effect, Property->GetFName(), ValueType};
-		if (!MixtormatParameterDefinitions::TryGet(Key))
+		const FString Category = Property->GetMetaData(TEXT("Category"));
+		const bool bMigratedFamily = Algo::AnyOf(MigratedPrefixes,
+			[&Category](const TCHAR* Prefix)
+			{
+				return Category.StartsWith(Prefix);
+			});
+		if (!bMigratedFamily)
 		{
-			AddError(FString::Printf(
-				TEXT("Breakup property %s has no runtime definition"), *Property->GetName()));
+			continue;
 		}
-		if (!MixtormatParameterUi::TryGetUiMeta(Key))
+
+		const auto HasMeta = [&Property](const TCHAR* Field)
+		{
+			return !Property->GetMetaData(Field).IsEmpty();
+		};
+		if (!HasMeta(TEXT("UIMin")) || !HasMeta(TEXT("UIMax")) || !HasMeta(TEXT("Delta")))
 		{
 			AddError(FString::Printf(
-				TEXT("Breakup property %s has no UI metadata"), *Property->GetName()));
+				TEXT("Migrated property %s (Category %s) is missing UIMin/UIMax/Delta meta"),
+				*Property->GetName(), *Category));
 		}
 		++Checked;
 	}
@@ -196,10 +187,11 @@ bool FMixtormatAuthoringResolutionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Snap falls through to UiMeta"),
 		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringSnap(Key, 0.0f), 0.05f));
 
-	// Hard bounds are runtime-owned: the database's UI range never touches SanitizeFloat.
+	// Hard bounds are runtime-owned: the database's UI range never touches the contract.
 	TestTrue(TEXT("HardMin still clamps at 0 regardless of database"),
 		FMath::IsNearlyEqual(
-			MixtormatParameterDefinitions::TryGet(Key)->SanitizeFloat(-4.0f), 0.0f));
+			MixtormatParameterContracts::SanitizeFloat(
+				Key.Owner, Key.Parameter, -4.0f), 0.0f));
 
 	// Leave a clean in-memory database for other tests. No disk write: tests must never touch
 	// the plugin's real Config/MixtormatParameterAuthoring.json.

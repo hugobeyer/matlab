@@ -873,8 +873,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 		StaticEnum<EMixtormatParameterValueType>()->GetDisplayNameTextByValue(static_cast<int64>(Target.ValueType)));
 
 	const TOptional<FMixtormatParameterDefinitionKey> Key = MixtormatParameterUi::DefinitionKeyOf(Target);
-	const FMixtormatParameterDefinition* Definition =
-		Key.IsSet() ? MixtormatParameterDefinitions::TryGet(Key.GetValue()) : nullptr;
+	const FMixtormatParameterContract* Contract = Key.IsSet()
+		? MixtormatParameterContracts::TryGet(Key.GetValue().Owner, Key.GetValue().Parameter)
+		: nullptr;
 
 	if (double Authored = 0.0; TryReadAuthoredScalar(WorkingLayers, WorkingLayerGroups, Target, Authored))
 	{
@@ -892,32 +893,34 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 
 	AddInfo(
 		LOCTEXT("DevInfoDefault", "Default"),
-		Definition
-			? FText::AsNumber(Definition->Default)
+		Key.IsSet()
+			? FText::AsNumber(MixtormatParameterUi::ResolveUiDefault(Key.GetValue(), 0.0f))
 			: LOCTEXT("DevInfoNoDefinition", "no definition"),
-		LOCTEXT("DevInfoDefaultHint", "The compiled reset value. The serialized struct initializer matches it; the automation test asserts that."));
+		LOCTEXT("DevInfoDefaultHint", "The compiled reset value: the property's CDO initializer, read through reflection."));
 
-	const FMixtormatParameterUiMeta* Meta = Key.IsSet() ? MixtormatParameterUi::TryGetUiMeta(Key.GetValue()) : nullptr;
+	FMixtormatParameterUiResolution Shipped;
+	const bool bShippedResolved = Key.IsSet()
+		? MixtormatParameterUi::TryResolveUi(Key.GetValue(), Shipped)
+		: false;
 	if (Key.IsSet() && MixtormatParameterAuthoring::HasShippedAuthoring(Key.GetValue()))
 	{
 		AddInfo(
 			LOCTEXT("DevInfoAuthoringDefault", "Authoring Default"),
-			FText::AsNumber(MixtormatParameterAuthoring::ResolveAuthoringDefault(
-				Key.GetValue(), Definition ? Definition->Default : 0.0f)),
+			FText::AsNumber(MixtormatParameterAuthoring::ResolveAuthoringDefault(Key.GetValue(), 0.0f)),
 			LOCTEXT("DevInfoAuthoringDefaultHint", "The plugin authoring database's reset value -- what new instances and Reset use. Existing authored materials are untouched."));
 	}
 
 	const bool bSessionOverride = Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
-	const FText ShippedUi = Meta
+	const FText ShippedUi = bShippedResolved
 		? FText::Format(LOCTEXT("DevInfoUiRange", "{0} .. {1}"),
-			FText::AsNumber(Meta->UiMin), FText::AsNumber(Meta->UiMax))
+			FText::AsNumber(Shipped.UiMin), FText::AsNumber(Shipped.UiMax))
 		: LOCTEXT("DevInfoNoUiMeta", "literal (unmigrated)");
 	if (Key.IsSet())
 	{
 		const float ActiveMin = MixtormatParameterAuthoring::ResolveAuthoringUiBound(
-			Key.GetValue(), Meta ? Meta->UiMin : 0.0f, false);
+			Key.GetValue(), bShippedResolved ? Shipped.UiMin : 0.0f, false);
 		const float ActiveMax = MixtormatParameterAuthoring::ResolveAuthoringUiBound(
-			Key.GetValue(), Meta ? Meta->UiMax : 1.0f, true);
+			Key.GetValue(), bShippedResolved ? Shipped.UiMax : 1.0f, true);
 		FText ActiveUi = FText::Format(LOCTEXT("DevInfoActiveUiRange", "{0} .. {1}"),
 			FText::AsNumber(ActiveMin), FText::AsNumber(ActiveMax));
 		if (bSessionOverride)
@@ -932,42 +935,35 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 	AddInfo(
 		LOCTEXT("DevInfoShippedUi", "Shipped UI"),
 		ShippedUi,
-		LOCTEXT("DevInfoShippedUiHint", "The compiled UI range before any authoring-database or session change."));
-	if (Meta)
+		LOCTEXT("DevInfoShippedUiHint", "The property's UIMin/UIMax annotation before any authoring-database or session change."));
+	if (Key.IsSet())
 	{
-		const float ResolvedSnap = Key.IsSet()
-			? MixtormatParameterAuthoring::ResolveAuthoringSnap(Key.GetValue(), Meta->Snap)
-			: Meta->Snap;
+		const float ResolvedSnap = MixtormatParameterAuthoring::ResolveAuthoringSnap(
+			Key.GetValue(), bShippedResolved ? Shipped.Snap : 0.0f);
 		AddInfo(LOCTEXT("DevInfoSnap", "Snap"), FText::AsNumber(ResolvedSnap));
 	}
 
-	if (Definition)
+	if (Contract)
 	{
 		AddInfo(
 			LOCTEXT("DevInfoHard", "Hard"),
 			FText::Format(LOCTEXT("DevInfoHardRange", "{0} .. {1}"),
-				BoundText(Definition->HardMin, LOCTEXT("DevInfoUnbounded", "unbounded")),
-				BoundText(Definition->HardMax, LOCTEXT("DevInfoUnbounded2", "unbounded"))),
+				BoundText(Contract->HardMin, LOCTEXT("DevInfoUnbounded", "unbounded")),
+				BoundText(Contract->HardMax, LOCTEXT("DevInfoUnbounded2", "unbounded"))),
 			LOCTEXT("DevInfoHardHint", "Actual legal/runtime-safety bounds. The compositor clamps to these; nothing else does."));
 		AddInfo(
 			LOCTEXT("DevInfoNormalization", "Normalization"),
-			FMath::IsNearlyEqual(Definition->NormalizationScale, 1.0f)
+			FMath::IsNearlyEqual(Contract->NormalizationScale, 1.0f)
 				? LOCTEXT("DevInfoNormalizationNone", "none")
 				: FText::Format(LOCTEXT("DevInfoNormalizationScale", "value / {0}"),
-					FText::AsNumber(Definition->NormalizationScale)),
+					FText::AsNumber(Contract->NormalizationScale)),
 			LOCTEXT("DevInfoNormalizationHint", "How the shader consumes the number. The stored value and the effective scale differ by this factor."));
 		AddInfo(
 			LOCTEXT("DevInfoSaturates", "Shader Saturates"),
-			Definition->bShaderSaturates
+			Contract->bShaderSaturates
 				? LOCTEXT("DevInfoSaturatesYes", "yes")
 				: LOCTEXT("DevInfoSaturatesNo", "no"),
 			LOCTEXT("DevInfoSaturatesHint", "The shader saturates this value (or the channel it feeds) after binding, so values past the range are legal but stop changing the result."));
-		if (Meta && Meta->ShaderNote)
-		{
-			AddInfo(
-				LOCTEXT("DevInfoShaderNote", "Shader Note"),
-				FText::FromString(Meta->ShaderNote));
-		}
 	}
 
 	MixtormatMenu::FBuilder Menu;
@@ -1003,10 +999,10 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 	}
 
 	const FMixtormatParameterDefinitionKey ParamKey = Key.GetValue();
-	const FMixtormatParameterUiMeta* Meta = MixtormatParameterUi::TryGetUiMeta(ParamKey);
-	const float MetaMin = Meta ? Meta->UiMin : 0.0f;
-	const float MetaMax = Meta ? Meta->UiMax : 1.0f;
-	const float MetaSnap = Meta ? Meta->Snap : 0.0f;
+	FMixtormatParameterUiResolution Shipped;
+	const bool bShippedResolved = MixtormatParameterUi::TryResolveUi(ParamKey, Shipped);
+	const float MetaMin = bShippedResolved ? Shipped.UiMin : 0.0f;
+	const float MetaMax = bShippedResolved ? Shipped.UiMax : 1.0f;
 
 	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 	const auto AddBoundRow = [this, &Rows, ParamKey](
@@ -1086,8 +1082,8 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		return Menu.Build();
 	}
 	const FMixtormatParameterDefinitionKey Key = KeyOpt.GetValue();
-	const FMixtormatParameterDefinition* Definition = MixtormatParameterDefinitions::TryGet(Key);
-	const FMixtormatParameterUiMeta* Meta = MixtormatParameterUi::TryGetUiMeta(Key);
+	const FMixtormatParameterContract* Contract = MixtormatParameterContracts::TryGet(
+		Key.Owner, Key.Parameter);
 
 	// The panel edits a COMPLETE entry: unset fields seed from the effective current values,
 	// so what is saved is the whole setup, not a sparse diff.
@@ -1202,24 +1198,20 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 
 	// Hard bounds are runtime-owned and read-only here, by design.
 	AddInfo(LOCTEXT("DevAuthoringHardMin", "Hard Min"),
-		Definition && Definition->HardMin.IsSet()
-			? FText::AsNumber(Definition->HardMin.GetValue())
+		Contract && Contract->HardMin.IsSet()
+			? FText::AsNumber(Contract->HardMin.GetValue())
 			: LOCTEXT("DevAuthoringUnbounded", "unlimited"));
 	AddInfo(LOCTEXT("DevAuthoringHardMax", "Hard Max"),
-		Definition && Definition->HardMax.IsSet()
-			? FText::AsNumber(Definition->HardMax.GetValue())
+		Contract && Contract->HardMax.IsSet()
+			? FText::AsNumber(Contract->HardMax.GetValue())
 			: LOCTEXT("DevAuthoringUnbounded2", "unlimited"));
 
 	FString ShaderInfo = FString::Printf(
 		TEXT("normalization: %s | saturates: %s"),
-		Definition && !FMath::IsNearlyEqual(Definition->NormalizationScale, 1.0f)
-			? *FString::Printf(TEXT("/%g"), Definition->NormalizationScale)
+		Contract && !FMath::IsNearlyEqual(Contract->NormalizationScale, 1.0f)
+			? *FString::Printf(TEXT("/%g"), Contract->NormalizationScale)
 			: TEXT("none"),
-		Definition && Definition->bShaderSaturates ? TEXT("yes") : TEXT("no"));
-	if (Meta && Meta->ShaderNote)
-	{
-		ShaderInfo += FString::Printf(TEXT("\n%s"), Meta->ShaderNote);
-	}
+		Contract && Contract->bShaderSaturates ? TEXT("yes") : TEXT("no"));
 	AddInfo(LOCTEXT("DevAuthoringShader", "Shader"), FText::FromString(ShaderInfo));
 
 	Menu.Caption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup"))

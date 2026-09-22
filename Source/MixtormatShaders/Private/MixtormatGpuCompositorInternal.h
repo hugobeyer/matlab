@@ -277,20 +277,13 @@ namespace MixtormatGpuCompositor
 		// texels into a fraction of the longer side -- see the mapping in MixtormatGpuCompositor.
 		float RunoffGravityAngle = 0.0f;
 		float RunoffStreakRadius = 0.3125f;
-		float RunoffStreakSoftness = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffStreakSoftness"), 0.46f);
-		float RunoffSurfaceInfluence = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffSurfaceInfluence"), 0.95f);
-		float RunoffStrataAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffStrataAmount"), 0.75f);
-		float RunoffWarpScale = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffWarpScale"), 18.0f);
-		float RunoffWarpAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffWarpAmount"), 1.5f);
-		float RunoffLipStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffLipStrength"), 0.55f);
-		float RunoffStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("RunoffStrength"), 0.25f);
+		float RunoffStreakSoftness = 0.46f;
+		float RunoffSurfaceInfluence = 0.95f;
+		float RunoffStrataAmount = 0.75f;
+		float RunoffWarpScale = 18.0f;
+		float RunoffWarpAmount = 1.5f;
+		float RunoffLipStrength = 0.55f;
+		float RunoffStrength = 0.25f;
 		uint32 RunoffSeed = 1;
 		int32 RunoffStrataCount = 4;
 		// Procedural peeling.
@@ -327,54 +320,34 @@ namespace MixtormatGpuCompositor
 		float PeelHeightAmount = 1.0f;
 		bool bPeelHeightInvert = false;
 
-		float ErosionAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionAmount"), 1.5f);
-		float ErosionDepth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionDepth"), 1.0f);
+		float ErosionAmount = 1.5f;
+		float ErosionDepth = 1.0f;
 		int32 ErosionRadius = 2;
 		int32 ErosionIterations = 8;
-		float ErosionGravityForce = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionGravityForce"), 0.6f);
-		float ErosionSlopePower = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionSlopePower"), 1.0f);
-		float ErosionDeposit = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionDeposit"), 0.25f);
-		float ErosionPreserveFlats = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionPreserveFlats"), 0.002f);
-		float ErosionSmoothing = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionSmoothing"), 0.65f);
-		float ErosionVariation = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionVariation"), 0.18f);
+		float ErosionGravityForce = 0.6f;
+		float ErosionSlopePower = 1.0f;
+		float ErosionDeposit = 0.25f;
+		float ErosionPreserveFlats = 0.002f;
+		float ErosionSmoothing = 0.65f;
+		float ErosionVariation = 0.18f;
 		int32 ErosionSeed = 1;
 		FTextureRHIRef ErosionPlacementMask;
 		float ErosionMaskTiling = 1.0f;
 		bool bErosionInvertMask = false;
-		float ErosionRoughnessAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionRoughnessAmount"), 0.0f);
-		float ErosionCarveDepth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("ErosionCarveDepth"), 0.05f);
+		float ErosionRoughnessAmount = 0.0f;
+		float ErosionCarveDepth = 0.05f;
 
-		float GradeAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeAmount"), 1.0f);
+		float GradeAmount = 1.0f;
 		int32 GradeTonemap = 0;
-		float GradeTonemapStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeTonemapStrength"), 1.0f);
-		float GradeBrightness = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeBrightness"), 1.0f);
-		float GradeContrast = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeContrast"), 1.0f);
-		float GradeContrastPivot = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeContrastPivot"), 0.18f);
-		float GradeGamma = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeGamma"), 1.0f);
-		float GradeInputMin = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeInputMin"), 0.0f);
-		float GradeInputMax = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeInputMax"), 1.0f);
-		float GradeOutputMin = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeOutputMin"), 0.0f);
-		float GradeOutputMax = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("GradeOutputMax"), 1.0f);
+		float GradeTonemapStrength = 1.0f;
+		float GradeBrightness = 1.0f;
+		float GradeContrast = 1.0f;
+		float GradeContrastPivot = 0.18f;
+		float GradeGamma = 1.0f;
+		float GradeInputMin = 0.0f;
+		float GradeInputMax = 1.0f;
+		float GradeOutputMin = 0.0f;
+		float GradeOutputMax = 1.0f;
 		FVector3f GradeChannelBias = FVector3f::ZeroVector;
 
 		// Breakup, already reduced to what the two dispatches need: the three cell counts and
@@ -384,144 +357,87 @@ namespace MixtormatGpuCompositor
 		// Defaults come from the canonical parameter definitions rather than literals, so the
 		// table, the serialized struct initializers and this struct cannot drift apart. The
 		// trailing literals are fallbacks for a missing key only (dev-ensured in DefaultFloat).
-		float BreakupAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAmount"), 1.0f);
+		float BreakupAmount = 1.0f;
 		int32 BreakupMacroCells = 6;
 		int32 BreakupMidCells = 11;
 		int32 BreakupDetailCells = 20;
-		float BreakupDensity = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupDensity"), 0.72f);
+		float BreakupDensity = 0.72f;
 		float BreakupSizeMin = 0.22f;
 		float BreakupSizeMax = 0.42f;
-		float BreakupStretch = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupStretch"), 1.6f);
-		float BreakupAngularity = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAngularity"), 0.72f);
-		float BreakupIrregularity = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupIrregularity"), 0.38f);
+		float BreakupStretch = 1.6f;
+		float BreakupAngularity = 0.72f;
+		float BreakupIrregularity = 0.38f;
 		int32 BreakupMidOperation = 0;
 		int32 BreakupDetailOperation = 0;
-		float BreakupSmoothness = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupSmoothness"), 0.30f);
-		float BreakupInset = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupInset"), 0.0f);
-		float BreakupDistortion = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupDistortion"), 5.6f);
+		float BreakupSmoothness = 0.30f;
+		float BreakupInset = 0.0f;
+		float BreakupDistortion = 5.6f;
 		int32 BreakupDistortionFrequency = 3;
 		bool bBreakupInvert = false;
-		float BreakupRelief = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupRelief"), -0.06f);
-		float BreakupThicknessVariation = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupThicknessVariation"), 0.30f);
-		float BreakupGapWidth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapWidth"), 2.0f);
-		float BreakupGapDepth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapDepth"), 0.02f);
-		float BreakupGapVariation = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupGapVariation"), 0.35f);
-		float BreakupFold = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupFold"), 0.025f);
-		float BreakupFoldWidth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupFoldWidth"), 16.0f);
-		float BreakupCrease = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupCrease"), 0.018f);
-		float BreakupCreaseWidth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupCreaseWidth"), 1.25f);
-		float BreakupPush = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPush"), 0.0f);
-		float BreakupPushWidth = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPushWidth"), 24.0f);
-		float BreakupPushRelief = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupPushRelief"), 0.035f);
-		float BreakupVariation = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupVariation"), 0.25f);
-		float BreakupRoughnessAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupRoughnessAmount"), 0.0f);
-		float BreakupNormalStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupNormalStrength"), 2.0f);
-		float BreakupNormalSharpness = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupNormalSharpness"), 0.75f);
-		float BreakupAOAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAOAmount"), 0.35f);
-		float BreakupAORadius = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("BreakupAORadius"), 8.0f);
+		float BreakupRelief = -0.06f;
+		float BreakupThicknessVariation = 0.30f;
+		float BreakupGapWidth = 2.0f;
+		float BreakupGapDepth = 0.02f;
+		float BreakupGapVariation = 0.35f;
+		float BreakupFold = 0.025f;
+		float BreakupFoldWidth = 16.0f;
+		float BreakupCrease = 0.018f;
+		float BreakupCreaseWidth = 1.25f;
+		float BreakupPush = 0.0f;
+		float BreakupPushWidth = 24.0f;
+		float BreakupPushRelief = 0.035f;
+		float BreakupVariation = 0.25f;
+		float BreakupRoughnessAmount = 0.0f;
+		float BreakupNormalStrength = 2.0f;
+		float BreakupNormalSharpness = 0.75f;
+		float BreakupAOAmount = 0.35f;
+		float BreakupAORadius = 8.0f;
 		FTextureRHIRef BreakupPlacementMask;
 		float BreakupMaskTiling = 1.0f;
 		bool bBreakupInvertMask = false;
 		uint32 BreakupSeed = 1;
 
 		int32 EdgeWearRadius = 24;
-		float EdgeWearSlope = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearSlope"), 0.35f);
-		float EdgeWearStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearStrength"), 0.75f);
-		float EdgeWearFeather = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearFeather"), 1.0f);
+		float EdgeWearSlope = 0.35f;
+		float EdgeWearStrength = 0.75f;
+		float EdgeWearFeather = 1.0f;
 		int32 EdgeWearDirections = 16;
-		float EdgeWearAngularAA = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearAngularAA"), 0.35f);
-		float EdgeWearGravity = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearGravity"), 0.0f);
-		float EdgeWearGravityAngle = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearGravityAngle"), 90.0f);
+		float EdgeWearAngularAA = 0.35f;
+		float EdgeWearGravity = 0.0f;
+		float EdgeWearGravityAngle = 90.0f;
 		uint32 EdgeWearSeed = 1;
 		int32 EdgeWearMacroScale = 12;
-		float EdgeWearMacroAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearMacroAmount"), 0.75f);
+		float EdgeWearMacroAmount = 0.75f;
 		int32 EdgeWearCellScale = 8;
-		float EdgeWearCellAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearCellAmount"), 1.0f);
+		float EdgeWearCellAmount = 1.0f;
 		int32 EdgeWearRidgeScale = 8;
-		float EdgeWearRidgeAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearRidgeAmount"), 1.0f);
+		float EdgeWearRidgeAmount = 1.0f;
 		int32 EdgeWearMicroScale = 40;
-		float EdgeWearMicroAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearMicroAmount"), 0.5f);
+		float EdgeWearMicroAmount = 0.5f;
 		int32 EdgeWearWarpScale = 32;
-		float EdgeWearWarpAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearWarpAmount"), 0.25f);
-		float EdgeWearNoiseContrast = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearNoiseContrast"), 0.5f);
-		float EdgeWearIdVariation = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearIdVariation"), 1.0f);
-		float EdgeWearIdRadius = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearIdRadius"), 0.5f);
-		float EdgeWearIdSlope = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearIdSlope"), 0.3f);
-		float EdgeWearIdStrength = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearIdStrength"), 0.25f);
-		float EdgeWearIdNoise = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearIdNoise"), 1.0f);
-		float LayerBlurRadiusX = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("LayerBlurRadiusX"), 0.0f);
-		float LayerBlurRadiusY = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("LayerBlurRadiusY"), 0.0f);
+		float EdgeWearWarpAmount = 0.25f;
+		float EdgeWearNoiseContrast = 0.5f;
+		float EdgeWearIdVariation = 1.0f;
+		float EdgeWearIdRadius = 0.5f;
+		float EdgeWearIdSlope = 0.3f;
+		float EdgeWearIdStrength = 0.25f;
+		float EdgeWearIdNoise = 1.0f;
+		float LayerBlurRadiusX = 0.0f;
+		float LayerBlurRadiusY = 0.0f;
 		uint32 LayerBlurScope = 0;
-		float LayerBlurAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("LayerBlurAmount"), 1.0f);
+		float LayerBlurAmount = 1.0f;
 		bool bLayerBlurHeight = true;
-		float EdgeWearRoughnessWeight = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearRoughnessWeight"), 0.0f);
-		float EdgeWearRoughnessOffset = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearRoughnessOffset"), 0.0f);
+		float EdgeWearRoughnessWeight = 0.0f;
+		float EdgeWearRoughnessOffset = 0.0f;
 
-		float FlowWarpAmount = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpAmount"), 1.0f);
-		float FlowWarpWeight = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpWeight"), 1.0f);
+		float FlowWarpAmount = 1.0f;
+		float FlowWarpWeight = 1.0f;
 		int32 FlowWarpScale = 8;
-		float FlowWarpDirection = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpDirection"), 0.0f);
+		float FlowWarpDirection = 0.0f;
 		uint32 FlowWarpSeed = 1;
-		float FlowWarpMaskSlopeInfluence = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpMaskSlopeInfluence"), 0.0f);
-		float FlowWarpHeightSlopeInfluence = MixtormatParameterDefinitions::DefaultFloat(
-			EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpHeightSlopeInfluence"), 0.0f);
-		FVector2f FlowWarpDerivativeKernel = FVector2f(
-			MixtormatParameterDefinitions::DefaultFloat(
-				EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpDerivativeKernelX"), 2.0f),
-			MixtormatParameterDefinitions::DefaultFloat(
-				EMixtormatParameterOwnerType::Effect, TEXT("FlowWarpDerivativeKernelY"), 2.0f));
+		float FlowWarpMaskSlopeInfluence = 0.0f;
+		float FlowWarpHeightSlopeInfluence = 0.0f;
+		FVector2f FlowWarpDerivativeKernel = FVector2f(2.0f, 2.0f);
 		uint32 FlowWarpBlendMode = 0;
 		bool bGradeInvertMask = false;
 	};

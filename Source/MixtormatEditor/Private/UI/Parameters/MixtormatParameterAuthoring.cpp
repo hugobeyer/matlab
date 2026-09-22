@@ -103,9 +103,10 @@ namespace MixtormatParameterAuthoring
 {
 	bool IsPersistentlyEditable(const FMixtormatParameterDefinitionKey& Key)
 	{
-		const FMixtormatParameterDefinition* Definition = MixtormatParameterDefinitions::TryGet(Key);
-		return Definition
-			&& Definition->Policy == EMixtormatParameterAuthoringPolicy::PersistentDevTunable;
+		// Broadly open: any parameter the reflection can address as a numeric property is
+		// developer-editable. Structural fields (assets, bools, enums) simply have no numeric
+		// property and are excluded by construction.
+		return MixtormatParameterUi::TryFindNumericProperty(Key) != nullptr;
 	}
 
 	const FMixtormatParameterAuthoringEntry* TryGetShipped(const FMixtormatParameterDefinitionKey& Key)
@@ -209,11 +210,8 @@ namespace MixtormatParameterAuthoring
 				return Entry->Default.GetValue();
 			}
 		}
-		if (const FMixtormatParameterDefinition* Definition = MixtormatParameterDefinitions::TryGet(Key))
-		{
-			return Definition->Default;
-		}
-		return FallbackStored;
+		// The compiled default is the CDO initializer, read through reflection.
+		return MixtormatParameterUi::ResolveUiDefault(Key, FallbackStored);
 	}
 
 	float ResolveAuthoringUiBound(const FMixtormatParameterDefinitionKey& Key, const float Fallback, const bool bMax)
@@ -256,35 +254,42 @@ namespace MixtormatParameterAuthoring
 
 	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, const EMixtormatEffectType Family)
 	{
+		const FString FamilyName = StaticEnum<EMixtormatEffectType>()
+			->GetNameByValue(static_cast<int64>(Family)).ToString();
 		UScriptStruct* const EffectStruct = FMixtormatLayerEffect::StaticStruct();
-		MixtormatParameterDefinitions::ForEach(
-			[&Effect, EffectStruct, Family](const FMixtormatParameterDefinition& Definition)
+
+		// Genuinely-new instances of one family: apply every shipped database default whose
+		// property's Category names that family. The Category is the family grouping --
+		// "Breakup|Shading" belongs to Breakup -- read from reflection, so no parameter list
+		// is maintained anywhere.
+		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
+			: ShippedEntries())
 		{
-			// Only genuinely-new instances of the same family, and only params the database
-			// actually speaks for. The compiled struct initializer already holds every
-			// compiled default; the database layers persistent retunes on top of it.
-			if (Definition.EffectFamily != Family
-				|| Definition.Policy != EMixtormatParameterAuthoringPolicy::PersistentDevTunable)
+			if (!Pair.Value.Default.IsSet())
 			{
-				return;
+				continue;
 			}
-			const FMixtormatParameterAuthoringEntry* Entry = TryGetShipped(Definition.GetKey());
-			if (!Entry || !Entry->Default.IsSet())
+			const FProperty* Property = EffectStruct->FindPropertyByName(Pair.Key.Parameter);
+			if (!Property)
 			{
-				return;
+				continue;
+			}
+			const FString Category = Property->GetMetaData(TEXT("Category"));
+			if (!Category.StartsWith(FamilyName))
+			{
+				continue;
 			}
 
-			const FProperty* Property = EffectStruct->FindPropertyByName(Definition.Parameter);
 			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 			{
-				*Float->ContainerPtrToValuePtr<float>(&Effect) = Entry->Default.GetValue();
+				*Float->ContainerPtrToValuePtr<float>(&Effect) = Pair.Value.Default.GetValue();
 			}
 			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 			{
 				*Int->ContainerPtrToValuePtr<int32>(&Effect) =
-					FMath::RoundToInt(Entry->Default.GetValue());
+					FMath::RoundToInt(Pair.Value.Default.GetValue());
 			}
-		});
+		}
 	}
 
 	bool LoadFromString(const FString& Json)
@@ -367,11 +372,19 @@ namespace MixtormatParameterAuthoring
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: ShippedEntries())
 		{
-			const FMixtormatParameterDefinition* Definition =
-				MixtormatParameterDefinitions::TryGet(Pair.Key);
-			const FString Family = Definition
-				? FamilyNameOf(Definition->EffectFamily)
-				: TEXT("Unknown");
+			const FProperty* Property =
+				FMixtormatLayerEffect::StaticStruct()->FindPropertyByName(Pair.Key.Parameter);
+			// The Category prefix is the family grouping, straight off the reflection.
+			FString Family = TEXT("Unknown");
+			if (Property)
+			{
+				Family = Property->GetMetaData(TEXT("Category"));
+				const int32 Pipe = Family.Find(TEXT("|"));
+				if (Pipe != INDEX_NONE)
+				{
+					Family.LeftChopInline(Family.Len() - Pipe);
+				}
+			}
 
 			TSharedRef<FJsonObject>* FamilyObject = Families.Find(Family);
 			if (!FamilyObject)

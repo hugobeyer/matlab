@@ -6,9 +6,11 @@
 #include "MixtormatEffect.h"
 #include "MixtormatParameterDefinition.h"
 
-// The plugin-owned authoring database: persistent, opt-in overrides of an authoring setup --
-// display label, default/reset value, UI range and snap -- for parameters whose definition
-// says EMixtormatParameterAuthoringPolicy::PersistentDevTunable.
+// The plugin-owned authoring database: persistent overrides of an authoring setup --
+// display label, default/reset value, UI range and snap -- for any parameter reflection can
+// address as a numeric property. Everything else about a parameter (identity, type, default,
+// family, UI ergonomics) is discovered from the UPROPERTY itself; only the shader contract
+// lives in the runtime table (MixtormatParameterDefinition.h).
 //
 // Storage is a JSON file inside the plugin (Config/MixtormatParameterAuthoring.json),
 // source-controlled, shipped with Mixtormat, reloaded every editor session and re-editable in
