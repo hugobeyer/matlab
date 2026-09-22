@@ -2446,24 +2446,40 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			FEffectRenderData& EffectData = ChildData.Effect;
 			EffectData.Type = ResolvedType;
 			EffectData.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
+			// Shared enable/blend control across every effect family; not family-keyed, so
+			// it keeps its literal bound instead of a definition entry.
 			EffectData.Strength = FMath::Clamp(LayerEffect.Strength, 0.0f, 1.0f);
+
+			// Authoring-value validation for the migrated families, against the canonical
+			// definitions exactly as the Breakup block below does.
+			const auto EffectFloat = [](const FName Name, const float Value)
+			{
+				return MixtormatParameterDefinitions::SanitizeFloat(
+					EMixtormatParameterOwnerType::Effect, Name,
+					EMixtormatParameterValueType::Float, Value);
+			};
+			const auto EffectInt = [](const FName Name, const int32 Value)
+			{
+				return MixtormatParameterDefinitions::SanitizeInt32(
+					EMixtormatParameterOwnerType::Effect, Name, Value);
+			};
 			if (ResolvedType == EMixtormatEffectType::Erosion)
 			{
-				// Values pass through unclamped. The inspector constrains the scrub range
-				// visually, but a typed value outside it stays intact all the way to the
-				// shader, which keeps its own epsilon guards at the division sites.
-				EffectData.ErosionAmount = LayerEffect.ErosionAmount;
-				EffectData.ErosionDepth = LayerEffect.ErosionDepth;
-				EffectData.ErosionRadius = LayerEffect.ErosionRadius;
-				EffectData.ErosionIterations = LayerEffect.ErosionIterations;
-				EffectData.ErosionGravityForce = LayerEffect.ErosionGravityForce;
-				EffectData.ErosionSlopePower = LayerEffect.ErosionSlopePower;
-				EffectData.ErosionDeposit = LayerEffect.ErosionDeposit;
-				EffectData.ErosionPreserveFlats = LayerEffect.ErosionPreserveFlats;
-				EffectData.ErosionSmoothing = LayerEffect.ErosionSmoothing;
-				EffectData.ErosionVariation = LayerEffect.ErosionVariation;
-				EffectData.ErosionSeed = LayerEffect.ErosionSeed;
-				EffectData.ErosionMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.ErosionMaskTiling));
+				// The shader keeps its own epsilon guards at the division sites; SanitizeFloat
+				// adds the finite guard and the definition hard floors without clamping art.
+				EffectData.ErosionAmount = EffectFloat(TEXT("ErosionAmount"), LayerEffect.ErosionAmount);
+				EffectData.ErosionDepth = EffectFloat(TEXT("ErosionDepth"), LayerEffect.ErosionDepth);
+				EffectData.ErosionRadius = EffectInt(TEXT("ErosionRadius"), LayerEffect.ErosionRadius);
+				EffectData.ErosionIterations = EffectInt(TEXT("ErosionIterations"), LayerEffect.ErosionIterations);
+				EffectData.ErosionGravityForce = EffectFloat(TEXT("ErosionGravityForce"), LayerEffect.ErosionGravityForce);
+				EffectData.ErosionSlopePower = EffectFloat(TEXT("ErosionSlopePower"), LayerEffect.ErosionSlopePower);
+				EffectData.ErosionDeposit = EffectFloat(TEXT("ErosionDeposit"), LayerEffect.ErosionDeposit);
+				EffectData.ErosionPreserveFlats = EffectFloat(TEXT("ErosionPreserveFlats"), LayerEffect.ErosionPreserveFlats);
+				EffectData.ErosionSmoothing = EffectFloat(TEXT("ErosionSmoothing"), LayerEffect.ErosionSmoothing);
+				EffectData.ErosionVariation = EffectFloat(TEXT("ErosionVariation"), LayerEffect.ErosionVariation);
+				EffectData.ErosionSeed = EffectInt(TEXT("ErosionSeed"), LayerEffect.ErosionSeed);
+				EffectData.ErosionMaskTiling = static_cast<float>(
+					EffectInt(TEXT("ErosionMaskTiling"), LayerEffect.ErosionMaskTiling));
 				EffectData.bErosionInvertMask = LayerEffect.bErosionInvertMask;
 				{
 					UTexture2D* PlacementMask = LayerEffect.ErosionMaskTexture.LoadSynchronous();
@@ -2480,26 +2496,28 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 				}
 
-				EffectData.ErosionRoughnessAmount = LayerEffect.ErosionRoughnessAmount;
-				EffectData.ErosionCarveDepth = LayerEffect.ErosionCarveDepth;
+				EffectData.ErosionRoughnessAmount = EffectFloat(TEXT("ErosionRoughnessAmount"), LayerEffect.ErosionRoughnessAmount);
+				EffectData.ErosionCarveDepth = EffectFloat(TEXT("ErosionCarveDepth"), LayerEffect.ErosionCarveDepth);
 			}
 
 			if (ResolvedType == EMixtormatEffectType::Grade)
 			{
-				EffectData.GradeAmount = LayerEffect.GradeAmount;
+				EffectData.GradeAmount = EffectFloat(TEXT("GradeAmount"), LayerEffect.GradeAmount);
 				EffectData.GradeTonemap = static_cast<int32>(LayerEffect.GradeTonemap);
 				EffectData.GradeTonemapStrength =
-					FMath::Clamp(LayerEffect.GradeTonemapStrength, 0.0f, 1.0f);
-				EffectData.GradeBrightness = LayerEffect.GradeBrightness;
-				EffectData.GradeContrast = LayerEffect.GradeContrast;
-				EffectData.GradeContrastPivot = LayerEffect.GradeContrastPivot;
-				EffectData.GradeGamma = LayerEffect.GradeGamma;
-				EffectData.GradeInputMin = LayerEffect.GradeInputMin;
-				EffectData.GradeInputMax = LayerEffect.GradeInputMax;
-				EffectData.GradeOutputMin = LayerEffect.GradeOutputMin;
-				EffectData.GradeOutputMax = LayerEffect.GradeOutputMax;
+					EffectFloat(TEXT("GradeTonemapStrength"), LayerEffect.GradeTonemapStrength);
+				EffectData.GradeBrightness = EffectFloat(TEXT("GradeBrightness"), LayerEffect.GradeBrightness);
+				EffectData.GradeContrast = EffectFloat(TEXT("GradeContrast"), LayerEffect.GradeContrast);
+				EffectData.GradeContrastPivot = EffectFloat(TEXT("GradeContrastPivot"), LayerEffect.GradeContrastPivot);
+				EffectData.GradeGamma = EffectFloat(TEXT("GradeGamma"), LayerEffect.GradeGamma);
+				EffectData.GradeInputMin = EffectFloat(TEXT("GradeInputMin"), LayerEffect.GradeInputMin);
+				EffectData.GradeInputMax = EffectFloat(TEXT("GradeInputMax"), LayerEffect.GradeInputMax);
+				EffectData.GradeOutputMin = EffectFloat(TEXT("GradeOutputMin"), LayerEffect.GradeOutputMin);
+				EffectData.GradeOutputMax = EffectFloat(TEXT("GradeOutputMax"), LayerEffect.GradeOutputMax);
 				EffectData.GradeChannelBias = FVector3f(
-					LayerEffect.GradeBiasR, LayerEffect.GradeBiasG, LayerEffect.GradeBiasB);
+					EffectFloat(TEXT("GradeBiasR"), LayerEffect.GradeBiasR),
+					EffectFloat(TEXT("GradeBiasG"), LayerEffect.GradeBiasG),
+					EffectFloat(TEXT("GradeBiasB"), LayerEffect.GradeBiasB));
 				EffectData.bGradeInvertMask = LayerEffect.bGradeInvertMask;
 			}
 
@@ -2608,61 +2626,61 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (ResolvedType == EMixtormatEffectType::LayerBlur)
 			{
-				EffectData.LayerBlurRadiusX = FMath::Clamp(LayerEffect.LayerBlurRadiusX, 0.0f, 32.0f);
-				EffectData.LayerBlurRadiusY = FMath::Clamp(LayerEffect.LayerBlurRadiusY, 0.0f, 32.0f);
+				EffectData.LayerBlurRadiusX = EffectFloat(TEXT("LayerBlurRadiusX"), LayerEffect.LayerBlurRadiusX);
+				EffectData.LayerBlurRadiusY = EffectFloat(TEXT("LayerBlurRadiusY"), LayerEffect.LayerBlurRadiusY);
 				EffectData.LayerBlurScope = static_cast<uint32>(LayerEffect.LayerBlurScope);
-				EffectData.LayerBlurAmount = FMath::Clamp(LayerEffect.LayerBlurAmount, 0.0f, 1.0f);
+				EffectData.LayerBlurAmount = EffectFloat(TEXT("LayerBlurAmount"), LayerEffect.LayerBlurAmount);
 				EffectData.bLayerBlurHeight = LayerEffect.bLayerBlurHeight;
 			}
 
 			if (ResolvedType == EMixtormatEffectType::FlowWarp)
 			{
-				EffectData.FlowWarpAmount = LayerEffect.FlowWarpAmount;
-				EffectData.FlowWarpWeight = FMath::Clamp(LayerEffect.FlowWarpWeight, 0.0f, 1.0f);
-				EffectData.FlowWarpScale = FMath::Clamp(LayerEffect.FlowWarpScale, 1, 128);
-				EffectData.FlowWarpDirection = LayerEffect.FlowWarpDirection;
-				EffectData.FlowWarpSeed = static_cast<uint32>(FMath::Max(LayerEffect.FlowWarpSeed, 0));
+				EffectData.FlowWarpAmount = EffectFloat(TEXT("FlowWarpAmount"), LayerEffect.FlowWarpAmount);
+				EffectData.FlowWarpWeight = EffectFloat(TEXT("FlowWarpWeight"), LayerEffect.FlowWarpWeight);
+				EffectData.FlowWarpScale = EffectInt(TEXT("FlowWarpScale"), LayerEffect.FlowWarpScale);
+				EffectData.FlowWarpDirection = EffectFloat(TEXT("FlowWarpDirection"), LayerEffect.FlowWarpDirection);
+				EffectData.FlowWarpSeed = static_cast<uint32>(
+					EffectInt(TEXT("FlowWarpSeed"), LayerEffect.FlowWarpSeed));
 				EffectData.FlowWarpMaskSlopeInfluence =
-					FMath::Max(LayerEffect.FlowWarpMaskSlopeInfluence, 0.0f);
+					EffectFloat(TEXT("FlowWarpMaskSlopeInfluence"), LayerEffect.FlowWarpMaskSlopeInfluence);
 				EffectData.FlowWarpHeightSlopeInfluence =
-					FMath::Max(LayerEffect.FlowWarpHeightSlopeInfluence, 0.0f);
+					EffectFloat(TEXT("FlowWarpHeightSlopeInfluence"), LayerEffect.FlowWarpHeightSlopeInfluence);
 				EffectData.FlowWarpDerivativeKernel = FVector2f(
-					FMath::Clamp(LayerEffect.FlowWarpDerivativeKernelX, 1.0f, 64.0f),
-					FMath::Clamp(LayerEffect.FlowWarpDerivativeKernelY, 1.0f, 64.0f));
+					EffectFloat(TEXT("FlowWarpDerivativeKernelX"), LayerEffect.FlowWarpDerivativeKernelX),
+					EffectFloat(TEXT("FlowWarpDerivativeKernelY"), LayerEffect.FlowWarpDerivativeKernelY));
 				EffectData.FlowWarpBlendMode = static_cast<uint32>(LayerEffect.FlowWarpBlendMode);
 			}
 
 			if (ResolvedType == EMixtormatEffectType::WornEdges)
 			{
-				EffectData.EdgeWearRadius = FMath::Clamp(LayerEffect.EdgeWearRadius, 1, 64);
-				EffectData.EdgeWearSlope = LayerEffect.EdgeWearSlope;
-				EffectData.EdgeWearStrength = LayerEffect.EdgeWearStrength;
-				EffectData.EdgeWearFeather = LayerEffect.EdgeWearFeather;
-				EffectData.EdgeWearDirections = FMath::Clamp(LayerEffect.EdgeWearDirections, 8, 32);
-				EffectData.EdgeWearAngularAA = LayerEffect.EdgeWearAngularAA;
-				EffectData.EdgeWearGravity = LayerEffect.EdgeWearGravity;
-				EffectData.EdgeWearGravityAngle = LayerEffect.EdgeWearGravityAngle;
-				EffectData.EdgeWearSeed = static_cast<uint32>(FMath::Max(LayerEffect.EdgeWearSeed, 0));
-				EffectData.EdgeWearMacroScale = LayerEffect.EdgeWearMacroScale;
-				EffectData.EdgeWearMacroAmount = LayerEffect.EdgeWearMacroAmount;
-				EffectData.EdgeWearCellScale = LayerEffect.EdgeWearCellScale;
-				EffectData.EdgeWearCellAmount = LayerEffect.EdgeWearCellAmount;
-				EffectData.EdgeWearRidgeScale = LayerEffect.EdgeWearRidgeScale;
-				EffectData.EdgeWearRidgeAmount = LayerEffect.EdgeWearRidgeAmount;
-				EffectData.EdgeWearMicroScale = LayerEffect.EdgeWearMicroScale;
-				EffectData.EdgeWearMicroAmount = LayerEffect.EdgeWearMicroAmount;
-				EffectData.EdgeWearWarpScale = LayerEffect.EdgeWearWarpScale;
-				EffectData.EdgeWearWarpAmount = LayerEffect.EdgeWearWarpAmount;
-				EffectData.EdgeWearNoiseContrast = LayerEffect.EdgeWearNoiseContrast;
-				EffectData.EdgeWearIdVariation = LayerEffect.EdgeWearIdVariation;
-				EffectData.EdgeWearIdRadius = LayerEffect.EdgeWearIdRadius;
-				EffectData.EdgeWearIdSlope = LayerEffect.EdgeWearIdSlope;
-				EffectData.EdgeWearIdStrength = LayerEffect.EdgeWearIdStrength;
-				EffectData.EdgeWearIdNoise = LayerEffect.EdgeWearIdNoise;
-				EffectData.EdgeWearRoughnessWeight = FMath::Clamp(
-					LayerEffect.EdgeWearRoughnessWeight, 0.0f, 1.0f);
-				EffectData.EdgeWearRoughnessOffset = FMath::Clamp(
-					LayerEffect.EdgeWearRoughnessOffset, -1.0f, 1.0f);
+				EffectData.EdgeWearRadius = EffectInt(TEXT("EdgeWearRadius"), LayerEffect.EdgeWearRadius);
+				EffectData.EdgeWearSlope = EffectFloat(TEXT("EdgeWearSlope"), LayerEffect.EdgeWearSlope);
+				EffectData.EdgeWearStrength = EffectFloat(TEXT("EdgeWearStrength"), LayerEffect.EdgeWearStrength);
+				EffectData.EdgeWearFeather = EffectFloat(TEXT("EdgeWearFeather"), LayerEffect.EdgeWearFeather);
+				EffectData.EdgeWearDirections = EffectInt(TEXT("EdgeWearDirections"), LayerEffect.EdgeWearDirections);
+				EffectData.EdgeWearAngularAA = EffectFloat(TEXT("EdgeWearAngularAA"), LayerEffect.EdgeWearAngularAA);
+				EffectData.EdgeWearGravity = EffectFloat(TEXT("EdgeWearGravity"), LayerEffect.EdgeWearGravity);
+				EffectData.EdgeWearGravityAngle = EffectFloat(TEXT("EdgeWearGravityAngle"), LayerEffect.EdgeWearGravityAngle);
+				EffectData.EdgeWearSeed = static_cast<uint32>(
+					EffectInt(TEXT("EdgeWearSeed"), LayerEffect.EdgeWearSeed));
+				EffectData.EdgeWearMacroScale = EffectInt(TEXT("EdgeWearMacroScale"), LayerEffect.EdgeWearMacroScale);
+				EffectData.EdgeWearMacroAmount = EffectFloat(TEXT("EdgeWearMacroAmount"), LayerEffect.EdgeWearMacroAmount);
+				EffectData.EdgeWearCellScale = EffectInt(TEXT("EdgeWearCellScale"), LayerEffect.EdgeWearCellScale);
+				EffectData.EdgeWearCellAmount = EffectFloat(TEXT("EdgeWearCellAmount"), LayerEffect.EdgeWearCellAmount);
+				EffectData.EdgeWearRidgeScale = EffectInt(TEXT("EdgeWearRidgeScale"), LayerEffect.EdgeWearRidgeScale);
+				EffectData.EdgeWearRidgeAmount = EffectFloat(TEXT("EdgeWearRidgeAmount"), LayerEffect.EdgeWearRidgeAmount);
+				EffectData.EdgeWearMicroScale = EffectInt(TEXT("EdgeWearMicroScale"), LayerEffect.EdgeWearMicroScale);
+				EffectData.EdgeWearMicroAmount = EffectFloat(TEXT("EdgeWearMicroAmount"), LayerEffect.EdgeWearMicroAmount);
+				EffectData.EdgeWearWarpScale = EffectInt(TEXT("EdgeWearWarpScale"), LayerEffect.EdgeWearWarpScale);
+				EffectData.EdgeWearWarpAmount = EffectFloat(TEXT("EdgeWearWarpAmount"), LayerEffect.EdgeWearWarpAmount);
+				EffectData.EdgeWearNoiseContrast = EffectFloat(TEXT("EdgeWearNoiseContrast"), LayerEffect.EdgeWearNoiseContrast);
+				EffectData.EdgeWearIdVariation = EffectFloat(TEXT("EdgeWearIdVariation"), LayerEffect.EdgeWearIdVariation);
+				EffectData.EdgeWearIdRadius = EffectFloat(TEXT("EdgeWearIdRadius"), LayerEffect.EdgeWearIdRadius);
+				EffectData.EdgeWearIdSlope = EffectFloat(TEXT("EdgeWearIdSlope"), LayerEffect.EdgeWearIdSlope);
+				EffectData.EdgeWearIdStrength = EffectFloat(TEXT("EdgeWearIdStrength"), LayerEffect.EdgeWearIdStrength);
+				EffectData.EdgeWearIdNoise = EffectFloat(TEXT("EdgeWearIdNoise"), LayerEffect.EdgeWearIdNoise);
+				EffectData.EdgeWearRoughnessWeight = EffectFloat(TEXT("EdgeWearRoughnessWeight"), LayerEffect.EdgeWearRoughnessWeight);
+				EffectData.EdgeWearRoughnessOffset = EffectFloat(TEXT("EdgeWearRoughnessOffset"), LayerEffect.EdgeWearRoughnessOffset);
 			}
 
 			if (ResolvedType == EMixtormatEffectType::Stain)
@@ -2724,7 +2742,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// every texel and every stratum, so converting it per-pixel would be the one bit
 				// of arithmetic in the whole effect that is pure waste.
 				EffectData.RunoffGravityAngle = FMath::DegreesToRadians(
-					FMath::Clamp(LayerEffect.RunoffGravityAngle, -180.0f, 180.0f));
+					EffectFloat(TEXT("RunoffGravityAngle"), LayerEffect.RunoffGravityAngle));
 
 				// Texels to UV, and this is what makes the effect resolution-independent.
 				//
@@ -2743,25 +2761,25 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// which is what Streak Radius is already for.
 				constexpr float RunoffReferenceResolution = 1024.0f;
 				EffectData.RunoffStreakRadius =
-					FMath::Clamp(LayerEffect.RunoffStreakRadius, 8.0f, 512.0f)
+					EffectFloat(TEXT("RunoffStreakRadius"), LayerEffect.RunoffStreakRadius)
 					/ RunoffReferenceResolution;
 
 				EffectData.RunoffStreakSoftness =
-					FMath::Clamp(LayerEffect.RunoffStreakSoftness, 0.05f, 1.0f);
+					EffectFloat(TEXT("RunoffStreakSoftness"), LayerEffect.RunoffStreakSoftness);
 				EffectData.RunoffSurfaceInfluence =
-					FMath::Clamp(LayerEffect.RunoffSurfaceInfluence, 0.0f, 1.0f);
+					EffectFloat(TEXT("RunoffSurfaceInfluence"), LayerEffect.RunoffSurfaceInfluence);
 				EffectData.RunoffStrataAmount =
-					FMath::Clamp(LayerEffect.RunoffStrataAmount, 0.0f, 1.0f);
+					EffectFloat(TEXT("RunoffStrataAmount"), LayerEffect.RunoffStrataAmount);
 				EffectData.RunoffWarpScale =
-					FMath::Clamp(LayerEffect.RunoffWarpScale, 1.0f, 64.0f);
+					EffectFloat(TEXT("RunoffWarpScale"), LayerEffect.RunoffWarpScale);
 				EffectData.RunoffWarpAmount =
-					FMath::Clamp(LayerEffect.RunoffWarpAmount, 0.0f, 2.0f);
+					EffectFloat(TEXT("RunoffWarpAmount"), LayerEffect.RunoffWarpAmount);
 				EffectData.RunoffLipStrength =
-					FMath::Clamp(LayerEffect.RunoffLipStrength, 0.0f, 1.0f);
+					EffectFloat(TEXT("RunoffLipStrength"), LayerEffect.RunoffLipStrength);
 				EffectData.RunoffStrength =
-					FMath::Clamp(LayerEffect.RunoffStrength, 0.0f, 1.0f);
-				EffectData.RunoffSeed =
-					static_cast<uint32>(FMath::Clamp(LayerEffect.RunoffSeed, 0, 9999));
+					EffectFloat(TEXT("RunoffStrength"), LayerEffect.RunoffStrength);
+				EffectData.RunoffSeed = static_cast<uint32>(
+					EffectInt(TEXT("RunoffSeed"), LayerEffect.RunoffSeed));
 
 				// Strata count follows the reach rather than being a control of its own. A short
 				// run has no room to show five layered deposits -- they would land on top of each
@@ -2773,7 +2791,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// artist means by a long streak is the number they typed, and it should pick the
 				// same stratification at every composition size.
 				const float AuthoredRadius =
-					FMath::Clamp(LayerEffect.RunoffStreakRadius, 8.0f, 512.0f);
+					EffectFloat(TEXT("RunoffStreakRadius"), LayerEffect.RunoffStreakRadius);
 				int32 StrataCount = 2;
 				StrataCount += AuthoredRadius >= 160.0f ? 1 : 0;
 				StrataCount += AuthoredRadius >= 320.0f ? 1 : 0;

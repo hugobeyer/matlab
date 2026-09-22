@@ -24,6 +24,10 @@
 // dispatch budgets. They are not the slider range and must never grow to match one. The UI's
 // ergonomic range lives in the editor module (MixtormatParameterUiMeta); a slider may stop at
 // 4.0 while HardMax is unset, and a typed 8.0 or 16.0 then reaches the shader intact.
+// Shared shader-side divisor floor for the width/radius parameters whose falloff math
+// divides by them. Declared here because several family definition files need the same floor.
+constexpr float MixtormatParameterDivisorFloor = 1.0e-4f;
+
 struct MIXTORMATRUNTIME_API FMixtormatParameterDefinitionKey
 {
 	EMixtormatParameterOwnerType Owner = EMixtormatParameterOwnerType::Effect;
@@ -135,4 +139,10 @@ namespace MixtormatParameterDefinitions
 	// Enumerates every registered definition. Test and tooling surface; the compositor and UI
 	// paths use the keyed lookups above.
 	MIXTORMATRUNTIME_API void ForEach(TFunctionRef<void(const FMixtormatParameterDefinition&)> Visitor);
+
+	// How family definition files register their entries at module load. Each effect family
+	// owns one MixtormatParameterDefinitions.<Family>.cpp and calls this exactly once from a
+	// static initializer; the keyed lookups above are lazy, so every file is registered before
+	// the first query. Duplicate keys ensure in dev and keep the first registration.
+	MIXTORMATRUNTIME_API void Register(TConstArrayView<FMixtormatParameterDefinition> Entries);
 }

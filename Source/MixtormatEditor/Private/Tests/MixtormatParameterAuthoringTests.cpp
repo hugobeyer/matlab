@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "Algo/AnyOf.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterDefinition.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
@@ -23,12 +24,30 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 {
 	(void)Parameters;
 
+	// Every migrated effect family's field prefix. A new family migration adds its prefix
+	// here; the test then guarantees no numeric property of that family ships without a
+	// definition and UI metadata (the BreakupSizeVariation/Smoothness failure mode).
+	const TCHAR* MigratedPrefixes[] = {
+		TEXT("Breakup"),
+		TEXT("Erosion"),
+		TEXT("Grade"),
+		TEXT("EdgeWear"),
+		TEXT("FlowWarp"),
+		TEXT("LayerBlur"),
+		TEXT("Runoff"),
+	};
+
 	const UScriptStruct* EffectStruct = FMixtormatLayerEffect::StaticStruct();
 	int32 Checked = 0;
 	for (TFieldIterator<FProperty> It(EffectStruct); It; ++It)
 	{
 		const FProperty* Property = *It;
-		if (!Property->GetName().StartsWith(TEXT("Breakup")))
+		const bool bMigratedPrefix = Algo::AnyOf(MigratedPrefixes,
+			[&Property](const TCHAR* Prefix)
+			{
+				return Property->GetName().StartsWith(Prefix);
+			});
+		if (!bMigratedPrefix)
 		{
 			continue;
 		}
@@ -62,7 +81,7 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 		++Checked;
 	}
 
-	TestTrue(TEXT("Numeric Breakup properties were found"), Checked >= 30);
+	TestTrue(TEXT("Migrated numeric effect properties were found"), Checked >= 100);
 	return true;
 }
 

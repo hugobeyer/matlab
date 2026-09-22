@@ -26,6 +26,7 @@ namespace
 			using ET = EMixtormatParameterOwnerType;
 			using VT = EMixtormatParameterValueType;
 			using Policy = EMixtormatParameterAuthoringPolicy;
+			using EF = EMixtormatEffectType;
 
 			return TArray<FMixtormatParameterDefinition>({
 				// Shape. Scale's upper bound is the derived cell-count budget, not taste.
@@ -81,6 +82,101 @@ namespace
 				// Placement: authoring-tunable like everything else the developer may retune.
 				{ET::Effect, TEXT("BreakupMaskTiling"), VT::Int, 1.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable},
 				{ET::Effect, TEXT("BreakupSeed"), VT::Int, 1.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable},
+
+				// --------------------------------------------------------------- Erosion
+				// The compositor passes these through and the shader keeps its own epsilon
+				// guards, so hard bounds exist only where a divisor or a count demands one.
+				{ET::Effect, TEXT("ErosionAmount"), VT::Float, 1.5f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionDepth"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionRadius"), VT::Int, 2.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionIterations"), VT::Int, 8.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionGravityForce"), VT::Float, 0.6f, {}, {}, 1.0f, true, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionSlopePower"), VT::Float, 1.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionDeposit"), VT::Float, 0.25f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionPreserveFlats"), VT::Float, 0.002f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionSmoothing"), VT::Float, 0.65f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionVariation"), VT::Float, 0.18f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionSeed"), VT::Int, 1.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionMaskTiling"), VT::Int, 1.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionRoughnessAmount"), VT::Float, 0.0f, {}, {}, 1.0f, true, Policy::PersistentDevTunable, EF::Erosion},
+				{ET::Effect, TEXT("ErosionCarveDepth"), VT::Float, 0.05f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Erosion},
+
+				// ----------------------------------------------------------------- Grade
+				{ET::Effect, TEXT("GradeAmount"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeTonemapStrength"), VT::Float, 1.0f, {}, {}, 1.0f, true, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeBrightness"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeContrast"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeContrastPivot"), VT::Float, 0.18f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				// Applied as pow(c, 1/Gamma): gamma 0 has no reciprocal.
+				{ET::Effect, TEXT("GradeGamma"), VT::Float, 1.0f, 0.05f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeInputMin"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeInputMax"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeOutputMin"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeOutputMax"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeBiasR"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeBiasG"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+				{ET::Effect, TEXT("GradeBiasB"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Grade},
+
+				// ------------------------------------------------------------ Layer Blur
+				// Kernel radius is a real tap budget: 32 is the pass's allocation, not taste.
+				{ET::Effect, TEXT("LayerBlurRadiusX"), VT::Float, 4.0f, 0.0f, 32.0f, 0.1f, false, Policy::PersistentDevTunable, EF::LayerBlur},
+				{ET::Effect, TEXT("LayerBlurRadiusY"), VT::Float, 4.0f, 0.0f, 32.0f, 0.1f, false, Policy::PersistentDevTunable, EF::LayerBlur},
+				{ET::Effect, TEXT("LayerBlurAmount"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::LayerBlur},
+
+				// ------------------------------------------------------------- Flow Warp
+				{ET::Effect, TEXT("FlowWarpAmount"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpWeight"), VT::Float, 1.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpScale"), VT::Int, 8.0f, 1.0f, 128.0f, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpDirection"), VT::Float, 0.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpSeed"), VT::Int, 1.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpMaskSlopeInfluence"), VT::Float, 0.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpHeightSlopeInfluence"), VT::Float, 0.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				// Derivative radii are kernel taps: 1..64 is the pass's sampling budget.
+				{ET::Effect, TEXT("FlowWarpDerivativeKernelX"), VT::Float, 2.0f, 1.0f, 64.0f, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+				{ET::Effect, TEXT("FlowWarpDerivativeKernelY"), VT::Float, 2.0f, 1.0f, 64.0f, 1.0f, false, Policy::PersistentDevTunable, EF::FlowWarp},
+
+				// ---------------------------------------------------------------- Runoff
+				{ET::Effect, TEXT("RunoffGravityAngle"), VT::Float, -90.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::Runoff},
+				// Texel reach at 1K; the 8..512 span also picks the stratum count thresholds.
+				{ET::Effect, TEXT("RunoffStreakRadius"), VT::Float, 320.0f, 8.0f, 512.0f, 1.0f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffStreakSoftness"), VT::Float, 0.46f, 0.05f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffSurfaceInfluence"), VT::Float, 0.95f, 0.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffStrataAmount"), VT::Float, 0.75f, 0.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffWarpScale"), VT::Float, 18.0f, 1.0f, 64.0f, 1.0f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffWarpAmount"), VT::Float, 1.5f, 0.0f, 2.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffLipStrength"), VT::Float, 0.55f, 0.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffStrength"), VT::Float, 0.25f, 0.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::Runoff},
+				{ET::Effect, TEXT("RunoffSeed"), VT::Int, 1.0f, 0.0f, 9999.0f, 1.0f, false, Policy::PersistentDevTunable, EF::Runoff},
+
+				// ------------------------------------------------------------ Worn Edges
+				{ET::Effect, TEXT("EdgeWearRadius"), VT::Int, 24.0f, 1.0f, 64.0f, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearSlope"), VT::Float, 0.35f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearStrength"), VT::Float, 0.75f, {}, {}, 1.0f, true, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearFeather"), VT::Float, 1.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				// Ray count drives an unrolled loop: 8..32 is the dispatch budget.
+				{ET::Effect, TEXT("EdgeWearDirections"), VT::Int, 16.0f, 8.0f, 32.0f, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearAngularAA"), VT::Float, 0.35f, {}, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearGravity"), VT::Float, 0.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearGravityAngle"), VT::Float, 90.0f, {}, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearSeed"), VT::Int, 1.0f, 0.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearMacroScale"), VT::Int, 12.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearMacroAmount"), VT::Float, 0.75f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearCellScale"), VT::Int, 8.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearCellAmount"), VT::Float, 1.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearRidgeScale"), VT::Int, 8.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearRidgeAmount"), VT::Float, 1.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearMicroScale"), VT::Int, 40.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearMicroAmount"), VT::Float, 0.5f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearWarpScale"), VT::Int, 32.0f, 1.0f, {}, 1.0f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearWarpAmount"), VT::Float, 0.25f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearNoiseContrast"), VT::Float, 0.5f, {}, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearIdVariation"), VT::Float, 1.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearIdRadius"), VT::Float, 0.5f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearIdSlope"), VT::Float, 0.3f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearIdStrength"), VT::Float, 0.25f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearIdNoise"), VT::Float, 1.0f, 0.0f, {}, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearRoughnessWeight"), VT::Float, 0.0f, 0.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
+				{ET::Effect, TEXT("EdgeWearRoughnessOffset"), VT::Float, 0.0f, -1.0f, 1.0f, 0.01f, false, Policy::PersistentDevTunable, EF::WornEdges},
 			});
 		}();
 
