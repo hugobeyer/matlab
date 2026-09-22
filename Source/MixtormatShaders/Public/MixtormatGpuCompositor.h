@@ -160,7 +160,7 @@ private:
 
 	FTargetSet Targets[2];
 
-	// Craquelure networks keyed on the parameters that shape them. Growing one is by a wide
+	// Cache of generated networks keyed on the parameters that shape them. Growing one is by a wide
 	// margin the most expensive thing in the graph, and almost nothing a user touches while
 	// tuning actually changes it, so it is kept rather than regrown every frame of a drag.
 	TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;

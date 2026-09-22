@@ -18,6 +18,27 @@
 
 class UTexture2D;
 
+DECLARE_LOG_CATEGORY_EXTERN(LogMixtormatComposition, Log, All);
+
+// Render targets and UObject pins owned by one submitted composition. The pipeline translation
+// unit needs the complete type so it can resolve referenced outputs and register final targets;
+// destruction remains implemented beside the compositor's game-thread lifetime code.
+struct FMixtormatComposeResources
+{
+	TArray<TStrongObjectPtr<UTextureRenderTarget2D>> Pins;
+	FTextureRenderTargetResource* BaseColor[2] = {};
+	FTextureRenderTargetResource* Normal[2] = {};
+	FTextureRenderTargetResource* RAM[2] = {};
+	FTextureRenderTargetResource* Height[2] = {};
+	FTextureRenderTargetResource* Debug[2] = {};
+	FTextureRenderTargetResource* RegionIdPick[2] = {};
+	int32 PublishedIndex = 0;
+	// Only read/written on the render thread. A failed child must not publish stale pixels.
+	bool bSucceeded = false;
+
+	~FMixtormatComposeResources();
+};
+
 // Private shared surface between the compositor and its pass groups.
 //
 // Only what more than one translation unit genuinely needs: the render-data structs the game
@@ -1221,6 +1242,23 @@ namespace MixtormatGpuCompositor
 			PendingLayerBlurs.Reset();
 		}
 	};
+
+	// Shared compositor seams. Shader-bound implementations stay with their shader classes in
+	// MixtormatGpuCompositor.cpp; the pipeline owns graph construction and layer orchestration.
+	FLinearColor DebugClearColor();
+
+	void AddLayerCompositePass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		uint32 PreparedLayerMode);
+
+	void AddRotateOutputPass(
+		FMixtormatComposeContext& Ctx,
+		int32 InputTargetIndex,
+		int32 OutputTargetIndex);
+
+	void EnqueueCompose(FRenderRequest&& Request);
 
 	// Producers can publish in different phases; consumers still require source-child order.
 	inline void PublishRegionIds(
