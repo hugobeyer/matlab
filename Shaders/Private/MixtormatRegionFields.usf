@@ -27,15 +27,16 @@
 
 Texture2D<uint> RegionIds;
 
-// Four ints per pixel -- min x, max x, min y, max y -- strided rather than a buffer of int4:
-// atomics on a struct member are the kind of thing dxc accepts and a driver disagrees about.
+// Two ints per possible root -- min/max for one axis. X and Y are solved sequentially through
+// the same scratch allocation, halving the bounds solve's peak memory without changing its math.
 RWStructuredBuffer<int> RegionBounds;
 
-// One record per pixel: xy is the absolute pixel of the nearest boundary seed found so far, z is
-// 1 once a seed has been found, w is unused. Absolute and not relative, because the wrap is taken
-// at comparison time and a relative representative would differ per reader.
-Texture2D<float4> PreviousRecord;
-RWTexture2D<float4> OutputRecord;
+// One exact packed seed coordinate per pixel: low 16 bits X, high 16 bits Y. 0xffffffff means
+// no seed. Unreal's supported texture dimensions are well below 65535, so this preserves every
+// pixel coordinate exactly while taking 4 bytes instead of the old float4's 16.
+#define REGION_RECORD_INVALID 0xffffffffu
+Texture2D<uint> PreviousRecord;
+RWTexture2D<uint> OutputRecord;
 
 // Per region, at the root pixel: the largest interior distance any of its pixels reached, as
 // asuint of a float. That is the region's "reach" -- the analogue of Pattern's distance from a
@@ -50,6 +51,7 @@ RWTexture2D<float2> OutputRamp;
 
 int2 OutputSize;
 int StepSize;
+uint Axis;
 
 // Relief shaping, applied once at resolve so the two fields cannot drift apart.
 uint FieldSeed;
@@ -96,6 +98,21 @@ float RegionToroidalDistance(int2 A, int2 B)
 	return length(D);
 }
 
+uint RegionPackRecord(int2 P)
+{
+	return (uint(P.x) & 0xffffu) | ((uint(P.y) & 0xffffu) << 16u);
+}
+
+int2 RegionUnpackRecord(uint Record)
+{
+	return int2(int(Record & 0xffffu), int((Record >> 16u) & 0xffffu));
+}
+
+bool RegionRecordValid(uint Record)
+{
+	return Record != REGION_RECORD_INVALID;
+}
+
 bool RegionIdValid(uint RawId)
 {
 	return RawId != MIXTORMAT_INVALID_REGION
@@ -124,10 +141,8 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (Stage == REGION_BOUNDS_STAGE_INIT)
 	{
-		RegionBounds[Index * 4u + 0u] = 2147483647;
-		RegionBounds[Index * 4u + 1u] = -2147483647;
-		RegionBounds[Index * 4u + 2u] = 2147483647;
-		RegionBounds[Index * 4u + 3u] = -2147483647;
+		RegionBounds[Index * 2u + 0u] = 2147483647;
+		RegionBounds[Index * 2u + 1u] = -2147483647;
 		return;
 	}
 
@@ -136,17 +151,17 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const uint RootId = bValid ? RawId : Index;
 	const int RootX = int(RootId % uint(OutputSize.x));
 	const int RootY = int(RootId / uint(OutputSize.x));
-	const int DeltaX = RegionFieldDelta(int(Pixel.x), RootX, OutputSize.x);
-	const int DeltaY = RegionFieldDelta(int(Pixel.y), RootY, OutputSize.y);
+	const int RootCoord = Axis == 0u ? RootX : RootY;
+	const int PixelCoord = Axis == 0u ? int(Pixel.x) : int(Pixel.y);
+	const int AxisSize = Axis == 0u ? OutputSize.x : OutputSize.y;
+	const int Delta = RegionFieldDelta(PixelCoord, RootCoord, AxisSize);
 
 	if (Stage == REGION_BOUNDS_STAGE_REDUCE)
 	{
 		if (bValid)
 		{
-			InterlockedMin(RegionBounds[RootId * 4u + 0u], DeltaX);
-			InterlockedMax(RegionBounds[RootId * 4u + 1u], DeltaX);
-			InterlockedMin(RegionBounds[RootId * 4u + 2u], DeltaY);
-			InterlockedMax(RegionBounds[RootId * 4u + 3u], DeltaY);
+			InterlockedMin(RegionBounds[RootId * 2u + 0u], Delta);
+			InterlockedMax(RegionBounds[RootId * 2u + 1u], Delta);
 		}
 		return;
 	}
@@ -154,26 +169,40 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// A pixel in no region keeps the identity mapping: the consumer reads its own coordinate back
 	// and the transform collapses to nothing there, rather than dragging grout toward some
 	// neighbouring region's centre.
+	const float2 IdentityUV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	if (!bValid)
 	{
-		OutputCentreUV[Pixel] = (float2(Pixel) + 0.5f) / float2(OutputSize);
+		if (Axis == 0u)
+		{
+			OutputCentreUV[Pixel] = float2(IdentityUV.x, 0.0f);
+		}
+		else
+		{
+			const float2 Existing = OutputCentreUV[Pixel];
+			OutputCentreUV[Pixel] = float2(Existing.x, IdentityUV.y);
+		}
 		return;
 	}
 
-	const int MinX = RegionBounds[RootId * 4u + 0u];
-	const int MaxX = RegionBounds[RootId * 4u + 1u];
-	const int MinY = RegionBounds[RootId * 4u + 2u];
-	const int MaxY = RegionBounds[RootId * 4u + 3u];
+	const int MinCoord = RegionBounds[RootId * 2u + 0u];
+	const int MaxCoord = RegionBounds[RootId * 2u + 1u];
 
 	// Axis-aligned, and deliberately so. The box says where a region is and how big it is; it says
 	// nothing about which way the region points, and an eigen-solve over a blob's second moments
 	// would invent an orientation that is meaningless for an equilateral one and unstable for a
 	// nearly-square one. UV From IDs' rotation is an honest draw off the region's own seed rather
 	// than a recovered intrinsic basis -- see FMixtormatUvIdFilter.
-	const float2 Centre = float2(
-		float(RootX) + float(MinX + MaxX) * 0.5f,
-		float(RootY) + float(MinY + MaxY) * 0.5f);
-	OutputCentreUV[Pixel] = frac((Centre + 0.5f) / float2(OutputSize) + 1.0f);
+	const float CentreCoord = float(RootCoord) + float(MinCoord + MaxCoord) * 0.5f;
+	const float CentreUV = frac((CentreCoord + 0.5f) / float(AxisSize) + 1.0f);
+	if (Axis == 0u)
+	{
+		OutputCentreUV[Pixel] = float2(CentreUV, 0.0f);
+	}
+	else
+	{
+		const float2 Existing = OutputCentreUV[Pixel];
+		OutputCentreUV[Pixel] = float2(Existing.x, CentreUV);
+	}
 }
 
 // ------------------------------------------------------------------------------------------
@@ -215,9 +244,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	OutputRecord[Pixel] = bSeed
-		? float4(float(Pixel.x), float(Pixel.y), 1.0f, 0.0f)
-		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+	OutputRecord[Pixel] = bSeed ? RegionPackRecord(int2(Pixel)) : REGION_RECORD_INVALID;
 }
 
 // One jump-flood step. Log2(N) of these converge to the unsigned distance to the seed set, which
@@ -233,9 +260,9 @@ void JumpCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const int2 P = int2(Pixel);
-	float4 Best = PreviousRecord.Load(int3(P, 0));
-	float BestDistance = Best.z > 0.5f
-		? RegionToroidalDistance(P, int2(Best.xy))
+	uint Best = PreviousRecord.Load(int3(P, 0));
+	float BestDistance = RegionRecordValid(Best)
+		? RegionToroidalDistance(P, RegionUnpackRecord(Best))
 		: 3.4e38f;
 
 	for (int Y = -1; Y <= 1; ++Y)
@@ -247,12 +274,12 @@ void JumpCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				continue;
 			}
 			const int2 Sample = RegionFieldWrapPixel(P + int2(X, Y) * StepSize);
-			const float4 Candidate = PreviousRecord.Load(int3(Sample, 0));
-			if (Candidate.z <= 0.5f)
+			const uint Candidate = PreviousRecord.Load(int3(Sample, 0));
+			if (!RegionRecordValid(Candidate))
 			{
 				continue;
 			}
-			const float Distance = RegionToroidalDistance(P, int2(Candidate.xy));
+			const float Distance = RegionToroidalDistance(P, RegionUnpackRecord(Candidate));
 			if (Distance < BestDistance)
 			{
 				BestDistance = Distance;
@@ -269,15 +296,15 @@ void JumpCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 // Positive inside a region, negative outside one, zero on the wall between them. The half texel is
 // what puts the wall where it actually is: a seed pixel's own centre sits half a texel inside the
 // boundary, and the first grout pixel beyond it sits half a texel outside.
-float RegionSignedDistance(int2 P, float4 Record, bool bValid)
+float RegionSignedDistance(int2 P, uint Record, bool bValid)
 {
-	if (Record.z <= 0.5f)
+	if (!RegionRecordValid(Record))
 	{
 		// No boundary anywhere: one region covering the image. Every pixel is interior, and
 		// nothing downstream has an edge to shape.
 		return bValid ? 3.4e38f : 0.0f;
 	}
-	const float Distance = RegionToroidalDistance(P, int2(Record.xy));
+	const float Distance = RegionToroidalDistance(P, RegionUnpackRecord(Record));
 	return bValid ? (Distance + 0.5f) : -(Distance - 0.5f);
 }
 
@@ -299,12 +326,12 @@ void ExtentCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float4 Record = PreviousRecord.Load(int3(Pixel, 0));
-	if (Record.z <= 0.5f)
+	const uint Record = PreviousRecord.Load(int3(Pixel, 0));
+	if (!RegionRecordValid(Record))
 	{
 		return;
 	}
-	const float Distance = RegionToroidalDistance(int2(Pixel), int2(Record.xy)) + 0.5f;
+	const float Distance = RegionToroidalDistance(int2(Pixel), RegionUnpackRecord(Record)) + 0.5f;
 
 	const uint2 RootPixel = uint2(
 		RawId % uint(OutputSize.x),
@@ -331,15 +358,16 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(Pixel);
 	const uint RawId = RegionIds.Load(int3(P, 0));
 	const bool bValid = RegionIdValid(RawId);
-	const float4 Record = PreviousRecord.Load(int3(P, 0));
+	const uint Record = PreviousRecord.Load(int3(P, 0));
 
 	// The region whose draws this pixel uses. Its own when it has one; otherwise the region its
 	// record points at, so a grout pixel's chamfer varies with the piece it borders instead of
 	// being uniform along every wall in the image.
 	uint OwnerId = RawId;
-	if (!bValid && Record.z > 0.5f)
+	if (!bValid && RegionRecordValid(Record))
 	{
-		const uint SeedId = RegionIds.Load(int3(int2(Record.xy), 0));
+		const int2 SeedPixel = RegionUnpackRecord(Record);
+		const uint SeedId = RegionIds.Load(int3(SeedPixel, 0));
 		OwnerId = SeedId;
 	}
 

@@ -356,6 +356,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Stage)
+		SHADER_PARAMETER(uint32, Axis)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputCentreUV)
@@ -383,7 +384,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputRecord)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -407,8 +408,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, StepSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputRecord)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -433,7 +434,7 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, RegionExtent)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -464,7 +465,7 @@ public:
 		SHADER_PARAMETER(float, FeatherRandom)
 		SHADER_PARAMETER(uint32, RelativeWidth)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionExtentIn)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
@@ -801,10 +802,13 @@ namespace MixtormatGpuCompositor
 			FMath::DivideAndRoundUp(OutputSize.Y, 8),
 			1);
 
+		// A boundary seed is only an integer pixel coordinate. Pack X/Y into one R32_UINT
+		// (16 bits each) instead of carrying float4(x, y, valid, unused). At 4K this cuts
+		// the JFA ping-pong pair from 512 MiB to 128 MiB with exact pixel coordinates.
 		const FRDGTextureDesc RecordDesc = FRDGTextureDesc::Create2D(
 			OutputSize,
-			PF_A32B32G32R32F,
-			FClearValueBinding::Black,
+			PF_R32_UINT,
+			FClearValueBinding::None,
 			TexCreate_ShaderResource | TexCreate_UAV);
 		FRDGTextureRef Record[2] = {
 			GraphBuilder.CreateTexture(RecordDesc, TEXT("Mixtormat.Region.JfaA")),
@@ -941,8 +945,8 @@ namespace MixtormatGpuCompositor
 				1));
 	}
 
-	// UV From IDs: one bounds solve per node, resolved into the per-region centre the composite's
-	// source read frames its transform on.
+	// UV From IDs: one generic centre solve per Region-ID producer, reused by every UV node that
+	// resolves to that producer. The scratch reduction is one axis at a time to halve peak memory.
 	//
 	// Culled cleanly when nothing above publishes IDs. No output is registered, so the composite
 	// falls back to the layer's ordinary placement -- the node does nothing rather than blackening
@@ -977,43 +981,68 @@ namespace MixtormatGpuCompositor
 				continue;
 			}
 
-			const uint32 PixelCount =
-				static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
-			FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
-				FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 4u),
-				TEXT("Mixtormat.UvId.RegionBounds"));
-			const FRDGBufferUAVRef RegionBoundsUAV = GraphBuilder.CreateUAV(RegionBounds);
-
-			FRDGTextureRef CentreUV = GraphBuilder.CreateTexture(
-				FRDGTextureDesc::Create2D(
-					OutputSize,
-					PF_G16R16F,
-					FClearValueBinding::None,
-					TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.UvId.CentreUV"));
-			const FRDGTextureUAVRef CentreUAV = GraphBuilder.CreateUAV(CentreUV);
-
-			TShaderMapRef<FMixtormatRegionBoundsCS> BoundsShader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			for (uint32 Stage = FMixtormatRegionBoundsCS::StageInit;
-				Stage <= FMixtormatRegionBoundsCS::StageResolve;
-				++Stage)
+			FRDGTextureRef CentreUV = nullptr;
+			for (const FRegionCentreCacheEntry& Entry : LayerCtx.RegionCentreCache)
 			{
-				FMixtormatRegionBoundsCS::FParameters* Parameters =
-					GraphBuilder.AllocParameters<FMixtormatRegionBoundsCS::FParameters>();
-				Parameters->OutputSize = OutputSize;
-				Parameters->Stage = Stage;
-				Parameters->RegionIds = RegionIds;
-				Parameters->RegionBounds = RegionBoundsUAV;
-				Parameters->OutputCentreUV = CentreUAV;
-				// Default UAV barriers, deliberately: the reduction has to have finished for every
-				// pixel of a region before any pixel of it reads the box back.
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME(
-						"Mixtormat.UvIds.L%d.C%d.Stage%u",
-						LayerCtx.LayerIndex, Child.SourceChildIndex, Stage),
-					BoundsShader, Parameters, Groups);
+				if (Entry.SourceChildIndex == ProducerIndex)
+				{
+					CentreUV = Entry.CentreUV;
+					break;
+				}
+			}
+
+			if (!CentreUV)
+			{
+				const uint32 PixelCount =
+					static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
+
+				// Two ints per possible root instead of four. X and Y are reduced in sequence
+				// through the same scratch allocation. At 4K this is 128 MiB instead of 256 MiB.
+				FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 2u),
+					TEXT("Mixtormat.UvId.RegionBounds"));
+				const FRDGBufferUAVRef RegionBoundsUAV = GraphBuilder.CreateUAV(RegionBounds);
+
+				CentreUV = GraphBuilder.CreateTexture(
+					FRDGTextureDesc::Create2D(
+						OutputSize,
+						PF_G16R16F,
+						FClearValueBinding::None,
+						TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.UvId.CentreUV"));
+				const FRDGTextureUAVRef CentreUAV = GraphBuilder.CreateUAV(CentreUV);
+
+				TShaderMapRef<FMixtormatRegionBoundsCS> BoundsShader(
+					GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				for (uint32 Axis = 0; Axis < 2; ++Axis)
+				{
+					for (uint32 Stage = FMixtormatRegionBoundsCS::StageInit;
+						Stage <= FMixtormatRegionBoundsCS::StageResolve;
+						++Stage)
+					{
+						FMixtormatRegionBoundsCS::FParameters* Parameters =
+							GraphBuilder.AllocParameters<FMixtormatRegionBoundsCS::FParameters>();
+						Parameters->OutputSize = OutputSize;
+						Parameters->Stage = Stage;
+						Parameters->Axis = Axis;
+						Parameters->RegionIds = RegionIds;
+						Parameters->RegionBounds = RegionBoundsUAV;
+						Parameters->OutputCentreUV = CentreUAV;
+						// Default UAV barriers are intentional: each axis must finish its
+						// reduction before resolve, and X resolve must finish before Y writes.
+						FComputeShaderUtils::AddPass(
+							GraphBuilder,
+							RDG_EVENT_NAME(
+								"Mixtormat.UvIds.L%d.P%d.Axis%u.Stage%u",
+								LayerCtx.LayerIndex, ProducerIndex, Axis, Stage),
+							BoundsShader, Parameters, Groups);
+					}
+				}
+
+				FRegionCentreCacheEntry& Cache =
+					LayerCtx.RegionCentreCache.AddDefaulted_GetRef();
+				Cache.SourceChildIndex = ProducerIndex;
+				Cache.CentreUV = CentreUV;
 			}
 
 			FUvIdPassOutput& Output = LayerCtx.UvIdOutputs.AddDefaulted_GetRef();

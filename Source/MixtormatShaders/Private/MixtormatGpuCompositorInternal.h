@@ -973,6 +973,15 @@ namespace MixtormatGpuCompositor
 		const FUvIdRenderData* Settings = nullptr;
 	};
 
+	// Generic region centres are a function of the Region ID producer, not of a UV node's
+	// rotation/scale/offset controls. Cache them per producer so two UV From IDs rows reading
+	// the same map do not allocate and reduce another full-resolution bounds field.
+	struct FRegionCentreCacheEntry
+	{
+		int32 SourceChildIndex = INDEX_NONE;
+		FRDGTextureRef CentreUV = nullptr;
+	};
+
 	// The ID-map-only half of the region analysis, kept so several consumers of one producer pay
 	// for it once. Nothing here depends on the consumer's own controls: the jump flood and the
 	// per-region reach are functions of the Region IDs alone, and only the final field resolve --
@@ -1158,6 +1167,7 @@ namespace MixtormatGpuCompositor
 		TArray<TPair<int32, FRDGTextureRef>> RegionIdMaps;
 		TArray<FPatternIdPassOutput, TInlineAllocator<2>> PatternOutputs;
 		TArray<FUvIdPassOutput, TInlineAllocator<2>> UvIdOutputs;
+		TArray<FRegionCentreCacheEntry, TInlineAllocator<2>> RegionCentreCache;
 		TArray<FRegionDistanceCacheEntry, TInlineAllocator<2>> RegionDistanceCache;
 		FRDGTextureRef CombinedMask = nullptr;
 		FRDGTextureRef CombinedEffectData = nullptr;
@@ -1186,6 +1196,7 @@ namespace MixtormatGpuCompositor
 			RegionIdMaps.Reset();
 			PatternOutputs.Reset();
 			UvIdOutputs.Reset();
+			RegionCentreCache.Reset();
 			RegionDistanceCache.Reset();
 			CombinedMask = nullptr;
 			CombinedEffectData = nullptr;
