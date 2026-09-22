@@ -1030,7 +1030,7 @@ private:
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
 	TSharedRef<SWidget> BuildInspectorPanel();
-	TSharedRef<SWidget> BuildEffectInspectorControls();
+
 	TSharedRef<SWidget> BuildChannelInfluenceControls();
 	// A card rather than a group: colour adjustment is part of how a layer composites, so it
 	// lives inside Composition next to the blend mode and opacity that decide the same thing.
