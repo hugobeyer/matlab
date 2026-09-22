@@ -5,6 +5,9 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
+#include "Widgets/Dialogs/SMixtormatActionDialog.h"
+#include "Widgets/Dialogs/SMixtormatBakeResultDialog.h"
+#include "Widgets/Dialogs/SMixtormatBakeSettingsDialog.h"
 #include "Widgets/SMixtormatInternal.h"
 
 // Material lifecycle: new/open/save, import, composition resolution, and baking.

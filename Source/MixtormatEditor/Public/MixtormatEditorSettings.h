@@ -31,9 +31,8 @@ inline int32 MixtormatBakeResolutionToPixels(const EMixtormatBakeResolution Reso
 	}
 }
 
-// Same fixed-picker reasoning as EMixtormatBakeResolution above. AA is infrastructure only right
-// now -- see DefaultBakeAASamples -- but the option set is still fixed to what the bake dialog's
-// picker offers, not a free-typed int.
+// AA is infrastructure only right now -- see DefaultBakeAASamples. Keep the fixed option set
+// available for the existing settings plumbing without exposing unfinished controls.
 UENUM()
 enum class EMixtormatBakeAASamples : uint8
 {
@@ -73,10 +72,8 @@ public:
 	EMixtormatBakeResolution DefaultBakeResolution = EMixtormatBakeResolution::Res2048;
 
 	// Infrastructure only: nothing in FMixtormatBakeService or the GPU compositor implements
-	// supersampling yet, so this is deliberately NOT EditAnywhere -- a user who could pick 4x here
-	// would be choosing a value the bake ignores. The field stays so the plumbing through
-	// FMixtormatBakeSettings and the (disabled) bake-panel control keeps compiling ahead of that
-	// work; restore EditAnywhere in the same change that makes supersampling real.
+	// supersampling yet, so this is deliberately NOT EditAnywhere. The field stays for the existing
+	// FMixtormatBakeSettings plumbing; restore EditAnywhere when supersampling is implemented.
 	UPROPERTY(Config)
 	EMixtormatBakeAASamples DefaultBakeAASamples = EMixtormatBakeAASamples::Samples1x;
 

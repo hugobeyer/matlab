@@ -24,10 +24,9 @@
 
 namespace MixtormatBakeDialog
 {
-	// The fixed picker's own option set, in display order. Matches
-	// EMixtormatBakeResolution / EMixtormatBakeAASamples in UMixtormatEditorSettings.
+	// The fixed picker's own option set, in display order.
+	// Matches EMixtormatBakeResolution in UMixtormatEditorSettings.
 	constexpr int32 ResolutionOptions[] = {512, 1024, 2048, 4096};
-	constexpr int32 AASamplesOptions[] = {1, 2, 4, 8};
 
 	template <int32 N>
 	int32 ValueToIndex(const int32 (&Options)[N], const int32 Value, const int32 DefaultIndex)
@@ -104,7 +103,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 				.Text(LOCTEXT("BakeSettingsSectionLabel", "Bake Settings"))
 				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
@@ -128,32 +127,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 					})
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
-			[
-				SNew(SHorizontalBox)
-				.ToolTipText(LOCTEXT("BakeAASamplesDisabledHint", "Supersampling support is not available yet."))
-				.IsEnabled(false)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
-				[
-					SNew(SBox).WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)
-					[
-						SNew(STextBlock).Text(LOCTEXT("BakeAASamplesLabel", "AA Samples"))
-					]
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
-				[
-					SNew(SMixtormatSegmentedControl)
-					.Options({LOCTEXT("BakeAa1x", "1x"), LOCTEXT("BakeAa2x", "2x"), LOCTEXT("BakeAa4x", "4x"), LOCTEXT("BakeAa8x", "8x")})
-					.ActiveIndex_Lambda([this]()
-					{
-						return MixtormatBakeDialog::ValueToIndex(MixtormatBakeDialog::AASamplesOptions, Settings.AASamples, 0);
-					})
-					.OnChosen_Lambda([this](const int32 Index)
-					{
-						Settings.AASamples = MixtormatBakeDialog::AASamplesOptions[Index];
-					})
-				]
-			]
+
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(STextBlock)

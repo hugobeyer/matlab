@@ -25,25 +25,11 @@ FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 
 FReply SMixtormat::OpenDocumentation()
 {
-	const FString DocumentationPath = FPaths::Combine(
-		FMixtormatPaths::PluginBaseDir(),
-		TEXT("Docs/Documentation.html"));
-	if (!FPaths::FileExists(DocumentationPath))
-	{
-		FMessageDialog::Open(
-			EAppMsgType::Ok,
-			FText::Format(
-				LOCTEXT("DocumentationMissing", "Mixtormat documentation is missing:\n{0}"),
-				FText::FromString(DocumentationPath)));
-		return FReply::Handled();
-	}
-
-	FString DocumentationUrl = FPaths::ConvertRelativePathToFull(DocumentationPath);
-	DocumentationUrl.ReplaceInline(TEXT("\\"), TEXT("/"));
-	DocumentationUrl = TEXT("file:///") + DocumentationUrl;
-
 	FString LaunchError;
-	FPlatformProcess::LaunchURL(*DocumentationUrl, nullptr, &LaunchError);
+	FPlatformProcess::LaunchURL(
+		TEXT("https://hugobeyer.github.io/mixtormat/"),
+		nullptr,
+		&LaunchError);
 	if (!LaunchError.IsEmpty())
 	{
 		FMessageDialog::Open(

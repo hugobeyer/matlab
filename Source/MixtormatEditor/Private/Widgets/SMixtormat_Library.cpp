@@ -4,6 +4,8 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatParameterBinding.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
+#include "Widgets/Gallery/SMixtormatSurfaceCard.h"
 
 #include "ObjectTools.h"
 

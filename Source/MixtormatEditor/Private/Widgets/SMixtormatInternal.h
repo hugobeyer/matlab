@@ -8,10 +8,9 @@
 // helper widgets. The methods now live in SMixtormat_<Area>.cpp files -- all still
 // members of the same class, so the split needs no change to SMixtormat.h.
 //
-// The helper widgets themselves (the bake/action/result dialogs, the gallery cards and
-// tiles) have since moved out to their own files under Dialogs/ and Gallery/. This header
-// re-includes them below so every existing consumer keeps compiling unchanged; only the
-// MixtormatUI namespace of shared free functions is genuinely still declared here.
+// Helper widgets live in their own files under Dialogs/ and Gallery/. Consumers include
+// them directly where practical; the remaining gallery includes are retained temporarily
+// for the layer implementation while its clipboard/group work is in progress.
 
 #include "Widgets/SMixtormat.h"
 #include "AssetThumbnail.h"
@@ -24,7 +23,6 @@
 #include "Components/MeshComponent.h"
 #include "Engine/Selection.h"
 #include "GameFramework/Actor.h"
-#include "DragAndDrop/DecoratedDragDropOp.h"
 #include "InputCoreTypes.h"
 #include "Engine/Texture2D.h"
 
@@ -87,7 +85,6 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Images/SImage.h"
-#include "Widgets/SLeafWidget.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -99,13 +96,8 @@
 #include "Widgets/SWindow.h"
 #include "UObject/Package.h"
 
-#include "Widgets/Dialogs/SMixtormatActionDialog.h"
-#include "Widgets/Dialogs/SMixtormatBakeResultDialog.h"
-#include "Widgets/Dialogs/SMixtormatBakeSettingsDialog.h"
-#include "Widgets/Gallery/MixtormatGalleryDelegates.h"
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatMaskCard.h"
-#include "Widgets/Gallery/SMixtormatSurfaceCard.h"
 #include "Widgets/Gallery/SMixtormatTextureTile.h"
 
 // MixtormatUI's helpers use LOCTEXT, so the namespace has to be live while they are
