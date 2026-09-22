@@ -1,6 +1,6 @@
 # Mixtormat Parameter System — Refactor & Rewrite Plan
 
-Status: proposed, pre-implementation.
+Status: implementation in progress.
 **Correction log (post external audit):** D5 originally described the transitional alias as
 still present. In fact the alias and the 4-arg shim were already deleted from the runtime
 header, but their users in `MixtormatGpuCompositorInternal.h` (~45 `DefaultFloat`
@@ -20,6 +20,17 @@ Runoff take `bool& bHasMask` — both resolve into the mask chain. Grep gates ve
 fields remain by design). Phase 3.5 (budget-constant references in contract rows) is
 deferred to S4: no named constants exist for the LayerBlur tap budget yet, and contract rows
 (Runtime) cannot include Shaders-module headers — the dependency direction forbids it.
+**Correction log 4 (Phase 6 complete; Phase 7 peeling started):** Phase 6 shader-facing
+discovery is implemented: strict `.usf` scanner, bidirectional contract/tag
+coverage test, derived C++ contract exclusions, and Parameter Info `Binding → shader file
+(uniform)` display. The editor target built successfully and
+`Mixtormat.Parameters.ShaderParamScanner` completed with `Success`.
+
+Phase 7 peeling batch is implemented: peeling contract rows and matching `@param` annotations
+were added for the existing runtime safety facts, and the procedural peeling gather was moved
+to `MixtormatEffectGather.{h,cpp}` with contract sanitization. Phase 7 is not complete;
+Stain and generator/mask-child families remain. S2/S3 from §6b remain undone.
+
 Scope: the whole parameter pipeline — declaration, inspector UI, addressing/binding,
 authoring database, compositor gathering, shader contract — across `MixtormatRuntime`,
 `MixtormatEditor`, `MixtormatShaders`.
@@ -254,7 +265,9 @@ Tests: completeness test extended to the new owners/categories; shaping range te
 Risk: serialization shape change for the shaped structs — safe pre-release (user has
 wiped materials); would need `DeprecatedProperty` migration post-release.
 
-### Phase 6 — Shader-facing discovery (`@param` annotations)
+### Phase 6 — Shader-facing discovery (`@param` annotations) — **DONE**
+
+Verified: editor build succeeded and `Mixtormat.Parameters.ShaderParamScanner` passed.
 
 Files: `Shaders/Private/*.usf`, new editor parser (`MixtormatShaderParamScanner.*`),
 contract table, tests.
@@ -356,7 +369,7 @@ cleanup passes. "Pure move" = no behavior change; verify per §5.
 
 | # | Split | Rides with | Risk |
 |---|---|---|---|
-| S1 | `MixtormatEffectGather.{h,cpp}` — 8 effect-family gather blocks out of `RequestComposeInternal`; `GetTextureRHI` → inline in internal header | **Phase 3** (this IS the phase) | Pure move; pixel-verify |
+| S1 | `MixtormatEffectGather.{h,cpp}` — 8 effect-family gather blocks out of `RequestComposeInternal`; `GetTextureRHI` → inline in internal header | **Phase 3** (this IS the phase) | **DONE**; pure move verified |
 | S2 | `MixtormatGpuComposePipeline.cpp` — RDG dispatch/targets/layer orchestration (compositor L2990–3680) out of the monolith | **Phase 3**, immediately after S1 | Pure move |
 | S3 | `MixtormatGpuCompositeShaders.h` — the four composite shader classes (compositor L121–442) | **Phase 3** | Pure move |
 | S4 | `MixtormatGpuEffectPasses.<Family>.cpp` — Craquelure (~800), Erosion (~420), WornEdges (~300), Breakup (~260), Grade, LayerBlur, FlowWarp out of the 3,130-line passes file | **Phase 7** per family (migrate + split in the same pass) | Mechanical; shader-class-per-file preserves the rebuild-one-file property |

@@ -12,11 +12,11 @@
 
 namespace
 {
-	// Hidden until asked for: the whole Developer surface is behind this one flag, which
-	// ships only inside the editor module and never reaches a packaged game.
+	// Enabled by default for now: the whole Developer surface remains behind this one flag,
+	// ships only inside the editor module, and never reaches a packaged game.
 	TAutoConsoleVariable<int32> CVarMixtormatDevParameterMeta(
 		TEXT("Mixtormat.Developer.ParameterMeta"),
-		0,
+		1,
 		TEXT("Enable Mixtormat's developer parameter surface (Parameter Info, authoring editing) in the Inspector context menu."));
 
 	// Session-lifetime dev UI range overrides. Deliberately a function-local static: nothing
