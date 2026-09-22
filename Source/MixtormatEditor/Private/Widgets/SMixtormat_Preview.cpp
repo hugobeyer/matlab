@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
+#include "Preview/SMixtormatLightGizmo.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Widgets/Input/SComboButton.h"
 
@@ -1111,6 +1112,30 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[ComparisonControls]
+		]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Right)
+		.VAlign(VAlign_Top)
+		.Padding(MixtormatTokens::ViewportOverlayInset)
+		[
+			SNew(SBox)
+			.WidthOverride(MixtormatLightGizmo::Size)
+			.HeightOverride(MixtormatLightGizmo::Size)
+			.Visibility_Lambda([this]()
+			{
+				return bPreviewOverlayUiVisible ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatLightGizmo)
+				.CameraRotation_Lambda([PreviewViewport]()
+				{
+					return PreviewViewport->GetCameraRotation();
+				})
+				.LightDirection_Lambda([PreviewViewport]()
+				{
+					return PreviewViewport->GetLightDirection();
+				})
+			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
 		[

@@ -158,6 +158,8 @@ public:
 	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
+	FQuat GetCameraRotation() const;
+	FVector GetLightDirection() const;
 
 protected:
 	virtual TSharedRef<FEditorViewportClient> MakeEditorViewportClient() override;

@@ -1101,6 +1101,16 @@ void SMixtormatPreviewViewport::FocusCamera()
 	UpdateCamera();
 }
 
+FQuat SMixtormatPreviewViewport::GetCameraRotation() const
+{
+	return FRotator(CameraPitch, CameraYaw, 0.0f).Quaternion();
+}
+
+FVector SMixtormatPreviewViewport::GetLightDirection() const
+{
+	return FRotator(LightingPitch, LightingYaw, 0.0f).Vector();
+}
+
 void SMixtormatPreviewViewport::UpdateCamera()
 {
 	if (!PreviewViewportClient.IsValid())
