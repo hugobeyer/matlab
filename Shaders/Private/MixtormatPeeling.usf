@@ -23,12 +23,17 @@ float Front;
 float Width;
 float MacroWarp;
 float MicroWarp;
+// @param MicroMorph saturates
 float MicroMorph;
+// @param Thickness hardmin=0
 float Thickness;
+// @param Lift hardmin=0
 float Lift;
+// @param DetailStrength hardmin=0
 float DetailStrength;
 float NormalStrength;
 
+// @param PeelAOStrength saturates
 float ProceduralAOStrength;
 float HeightAmount;
 float HeightInvert;

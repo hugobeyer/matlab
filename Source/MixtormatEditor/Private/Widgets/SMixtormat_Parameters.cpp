@@ -9,6 +9,7 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 #include "UI/Parameters/SMixtormatParameterControl.h"
+#include "UI/Parameters/MixtormatShaderParamScanner.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "UObject/UnrealType.h"
@@ -886,6 +887,45 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 	const FMixtormatParameterContract* Contract = Key.IsSet()
 		? MixtormatParameterContracts::TryGet(Key.GetValue().Owner, Key.GetValue().Parameter)
 		: nullptr;
+
+	if (Key.IsSet())
+	{
+		TArray<FMixtormatShaderParamTag> ShaderTags;
+		TArray<FString> ScannerErrors;
+		MixtormatShaderParamScanner::Scan(ShaderTags, ScannerErrors);
+		TSet<FString> SeenBindings;
+		TArray<FString> Bindings;
+		for (const FMixtormatShaderParamTag& ShaderTag : ShaderTags)
+		{
+			if (ShaderTag.Owner != Key.GetValue().Owner || ShaderTag.Parameter != Key.GetValue().Parameter)
+			{
+				continue;
+			}
+			const FString Binding = FString::Printf(
+				TEXT("%s (%s)"), *ShaderTag.ShaderFile, *ShaderTag.UniformName);
+			if (!SeenBindings.Contains(Binding))
+			{
+				SeenBindings.Add(Binding);
+				Bindings.Add(Binding);
+			}
+		}
+		if (!Bindings.IsEmpty())
+		{
+			FString BindingText;
+			for (const FString& Binding : Bindings)
+			{
+				if (!BindingText.IsEmpty())
+				{
+					BindingText += TEXT("\n");
+				}
+				BindingText += Binding;
+			}
+			AddInfo(
+				LOCTEXT("DevInfoBinding", "Binding"),
+				FText::FromString(BindingText),
+				LOCTEXT("DevInfoBindingHint", "Shader source and uniform discovered from the adjacent @param annotation."));
+		}
+	}
 
 	if (double Authored = 0.0; TryReadAuthoredScalar(WorkingLayers, WorkingLayerGroups, Target, Authored))
 	{

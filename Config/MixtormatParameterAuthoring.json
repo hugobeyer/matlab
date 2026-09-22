@@ -8,5 +8,134 @@
 			"uiMax": 12,
 			"snap": 0.0024999999441206455
 		}
+	},
+	"Worn Edges":
+	{
+		"Effect.EdgeWearFeather":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearSlope":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearRadius:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"Effect.EdgeWearDirections:Int":
+		{
+			"default": 16,
+			"uiMin": 8,
+			"uiMax": 32,
+			"snap": 1
+		},
+		"Effect.EdgeWearMacroAmount":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearCellAmount":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearRidgeAmount":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearWarpAmount":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearMacroScale:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"Effect.EdgeWearCellScale:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"Effect.EdgeWearRidgeScale:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"Effect.EdgeWearMicroScale:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 128,
+			"snap": 1
+		},
+		"Effect.EdgeWearNoiseContrast":
+		{
+			"default": 1,
+			"uiMin": 0.05000000074505806,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearIdVariation":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearIdStrength":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearIdRadius":
+		{
+			"default": 2,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearRoughnessWeight":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"Effect.EdgeWearRoughnessOffset":
+		{
+			"default": 0.20000000298023224,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		}
 	}
 }

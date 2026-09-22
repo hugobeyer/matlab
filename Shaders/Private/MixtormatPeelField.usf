@@ -24,43 +24,65 @@ int Mode;
 uint SurfaceValid;
 uint FlipNormalY;
 
+// @param PeelRandomSeed hardmin=1
 uint Seed;
 float MaskWeight;
+// @param PeelMaskTiling hardmin=1
 float PeelMaskTiling;
 uint PeelMaskInvert;
 uint UseOwnMask;
+// @param PeelSeedThreshold saturates
 float SeedThreshold;
 
+// @param PeelCurvatureRadius hardmin=1
 int CurvatureRadius;
 int CurvatureSmoothing;
 float CurvatureWeight;
+// @param PeelSeedCurvatureBias saturates
 float CurvatureBias;
 float AOWeight;
 float HeightWeight;
 uint NormalizeWeights;
+// @param PeelGrowthStrength hardmin=0
 float GrowthStrength;
 
+// @param PeelMacroPeriod hardmin=1 hardmax=256
 int MacroPeriod;
+// @param PeelMicroPeriod hardmin=1 hardmax=512
 int MicroPeriod;
+// @param PeelSeedNoiseWeight hardmin=0
 float NoiseWeight;
+// @param PeelSizeVariation saturates
 float SizeVariation;
+// @param PeelClusterPeriod hardmin=1 hardmax=128
 int FlakeCells;
+// @param PeelClusterAmount saturates
 float ClusterAmount;
+// @param PeelWarpPeriod hardmin=1 hardmax=256
 int WarpPeriod;
 float WarpAmount;
+// @param PeelWarpSource saturates
 float WarpSource;
 
 int PeelType;
 float Front;
+// @param Width hardmin=1e-6
 float Width;
 float MacroWarp;
 float MicroWarp;
+// @param MicroMorph saturates
 float MicroMorph;
+// @param Thickness hardmin=0
 float Thickness;
+// @param Lift hardmin=0
 float Lift;
+// @param DetailStrength hardmin=0
 float DetailStrength;
+// @param PeelLiftVariation saturates
 float LiftVariation;
+// @param PeelCornerLift saturates
 float CornerLift;
+// @param PeelCornerRadius hardmin=0.05 hardmax=4
 float CornerRadius;
 
 // Whatever ID map was published above this peel in the layer's chain -- a cluster filter, a
@@ -68,6 +90,7 @@ float CornerRadius;
 // RDG validates a binding whether the branch reading it runs or not.
 Texture2D<uint> RegionIds;
 uint HasRegionIds;
+// @param PeelIDInfluence saturates
 float IDInfluence;
 float EdgeSharpness;
 

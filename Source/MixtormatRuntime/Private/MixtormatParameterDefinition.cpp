@@ -147,6 +147,32 @@ namespace
 			Add(ET::Effect, TEXT("EdgeWearRoughnessWeight"), {.HardMin = 0.0f, .HardMax = 1.0f});
 			Add(ET::Effect, TEXT("EdgeWearRoughnessOffset"), {.HardMin = -1.0f, .HardMax = 1.0f});
 
+			// ---- Procedural peeling.
+			Add(ET::Effect, TEXT("PeelRandomSeed"), {.HardMin = 1.0f});
+			Add(ET::Effect, TEXT("PeelMaskTiling"), {.HardMin = 1.0f});
+			Add(ET::Effect, TEXT("PeelSeedThreshold"), Saturated());
+			Add(ET::Effect, TEXT("PeelSeedCurvatureBias"), Saturated());
+			Add(ET::Effect, TEXT("PeelGrowthStrength"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("PeelMacroPeriod"), {.HardMin = 1.0f, .HardMax = 256.0f});
+			Add(ET::Effect, TEXT("PeelMicroPeriod"), {.HardMin = 1.0f, .HardMax = 512.0f});
+			Add(ET::Effect, TEXT("PeelSeedNoiseWeight"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("PeelSizeVariation"), Saturated());
+			Add(ET::Effect, TEXT("PeelClusterPeriod"), {.HardMin = 1.0f, .HardMax = 128.0f});
+			Add(ET::Effect, TEXT("PeelClusterAmount"), Saturated());
+			Add(ET::Effect, TEXT("PeelWarpPeriod"), {.HardMin = 1.0f, .HardMax = 256.0f});
+			Add(ET::Effect, TEXT("PeelWarpSource"), Saturated());
+			Add(ET::Effect, TEXT("PeelCurvatureRadius"), {.HardMin = 1.0f});
+			Add(ET::Effect, TEXT("Width"), {.HardMin = 1.0e-6f});
+			Add(ET::Effect, TEXT("MicroMorph"), Saturated());
+			Add(ET::Effect, TEXT("Thickness"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("Lift"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("DetailStrength"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("PeelLiftVariation"), Saturated());
+			Add(ET::Effect, TEXT("PeelCornerLift"), Saturated());
+			Add(ET::Effect, TEXT("PeelCornerRadius"), {.HardMin = 0.05f, .HardMax = 4.0f});
+			Add(ET::Effect, TEXT("PeelIDInfluence"), Saturated());
+			Add(ET::Effect, TEXT("PeelAOStrength"), Saturated());
+
 			return Built;
 		}();
 

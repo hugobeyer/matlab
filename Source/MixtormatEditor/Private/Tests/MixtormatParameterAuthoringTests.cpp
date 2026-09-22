@@ -126,6 +126,21 @@ bool FMixtormatShaderParamScannerTest::RunTest(const FString& Parameters)
 		{
 			return Tag.Parameter == TEXT("BreakupNormalStrength");
 		}));
+	const auto SameOptional = [](const TOptional<float>& A, const TOptional<float>& B)
+	{
+		return A.IsSet() == B.IsSet()
+			&& (!A.IsSet() || FMath::IsNearlyEqual(A.GetValue(), B.GetValue()));
+	};
+	const auto IsCppDerivedContract = [](const FMixtormatParameterDefinitionKey& Key)
+	{
+		// These values are derived or applied in C++, not represented by a direct .usf uniform.
+		return (Key.Owner == EMixtormatParameterOwnerType::Layer
+				&& (Key.Parameter == TEXT("IOR") || Key.Parameter == TEXT("FuzzInfluence")))
+			|| (Key.Owner == EMixtormatParameterOwnerType::Effect
+				&& (Key.Parameter == TEXT("EdgeWearRoughnessWeight")
+					|| Key.Parameter == TEXT("EdgeWearRoughnessOffset")));
+	};
+
 	for (const FMixtormatShaderParamTag& Tag : Tags)
 	{
 		const FMixtormatParameterContract* Contract =
@@ -135,11 +150,6 @@ bool FMixtormatShaderParamScannerTest::RunTest(const FString& Parameters)
 			AddError(FString::Printf(TEXT("Shader tag %s has no contract row"), *Tag.Parameter.ToString()));
 			continue;
 		}
-		const auto SameOptional = [](const TOptional<float>& A, const TOptional<float>& B)
-		{
-			return A.IsSet() == B.IsSet()
-				&& (!A.IsSet() || FMath::IsNearlyEqual(A.GetValue(), B.GetValue()));
-		};
 		TestTrue(*FString::Printf(TEXT("%s hard-min matches"), *Tag.Parameter.ToString()),
 			SameOptional(Tag.HardMin, Contract->HardMin));
 		TestTrue(*FString::Printf(TEXT("%s hard-max matches"), *Tag.Parameter.ToString()),
@@ -151,6 +161,23 @@ bool FMixtormatShaderParamScannerTest::RunTest(const FString& Parameters)
 			Tag.Normalize.IsSet() == bContractNormalized
 				&& (!Tag.Normalize.IsSet()
 					|| FMath::IsNearlyEqual(Tag.Normalize.GetValue(), Contract->NormalizationScale)));
+	}
+
+	for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterContract>& Pair
+		: MixtormatParameterContracts::GetAll())
+	{
+		const FMixtormatParameterDefinitionKey& Key = Pair.Key;
+		if (IsCppDerivedContract(Key))
+		{
+			continue;
+		}
+		const bool bHasTag = Tags.ContainsByPredicate([&Key](const FMixtormatShaderParamTag& Tag)
+		{
+			return Tag.Owner == Key.Owner && Tag.Parameter == Key.Parameter;
+		});
+		TestTrue(
+			*FString::Printf(TEXT("Contract %s has a shader tag"), *Key.Parameter.ToString()),
+			bHasTag);
 	}
 	return true;
 }

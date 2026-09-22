@@ -287,6 +287,69 @@ void GatherStain(
 	bHasMask = true;
 }
 
+void GatherPeeling(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect)
+{
+	EffectData.PeelType = static_cast<int32>(LayerEffect.PeelType);
+	EffectData.PeelMacroPeriod = EffectInt(TEXT("PeelMacroPeriod"), LayerEffect.PeelMacroPeriod);
+	EffectData.PeelMicroPeriod = EffectInt(TEXT("PeelMicroPeriod"), LayerEffect.PeelMicroPeriod);
+	EffectData.PeelRandomSeed = static_cast<uint32>(
+		EffectInt(TEXT("PeelRandomSeed"), LayerEffect.PeelRandomSeed));
+	EffectData.PeelSeedThreshold = EffectFloat(TEXT("PeelSeedThreshold"), LayerEffect.PeelSeedThreshold);
+	EffectData.PeelSeedNoiseWeight = EffectFloat(TEXT("PeelSeedNoiseWeight"), LayerEffect.PeelSeedNoiseWeight);
+	EffectData.PeelSeedCurvatureWeight =
+		EffectFloat(TEXT("PeelSeedCurvatureWeight"), LayerEffect.PeelSeedCurvatureWeight);
+	EffectData.PeelSeedCurvatureBias =
+		EffectFloat(TEXT("PeelSeedCurvatureBias"), LayerEffect.PeelSeedCurvatureBias);
+	EffectData.PeelSeedAOWeight = EffectFloat(TEXT("PeelSeedAOWeight"), LayerEffect.PeelSeedAOWeight);
+	EffectData.PeelSeedHeightWeight = EffectFloat(TEXT("PeelSeedHeightWeight"), LayerEffect.PeelSeedHeightWeight);
+	EffectData.PeelSeedMaskWeight = EffectFloat(TEXT("PeelSeedMaskWeight"), LayerEffect.PeelSeedMaskWeight);
+	EffectData.bPeelNormalizeSeedWeights = LayerEffect.bPeelNormalizeSeedWeights;
+	EffectData.PeelCurvatureRadius =
+		EffectInt(TEXT("PeelCurvatureRadius"), LayerEffect.PeelCurvatureRadius);
+	EffectData.PeelGrowthStrength = EffectFloat(TEXT("PeelGrowthStrength"), LayerEffect.PeelGrowthStrength);
+	EffectData.PeelAOStrength = EffectFloat(TEXT("PeelAOStrength"), LayerEffect.PeelAOStrength);
+	EffectData.PeelEdgeSharpness = EffectFloat(TEXT("PeelEdgeSharpness"), LayerEffect.PeelEdgeSharpness);
+	EffectData.PeelLiftVariation = EffectFloat(TEXT("PeelLiftVariation"), LayerEffect.PeelLiftVariation);
+	EffectData.PeelCornerLift = EffectFloat(TEXT("PeelCornerLift"), LayerEffect.PeelCornerLift);
+	EffectData.PeelCornerRadius = EffectFloat(TEXT("PeelCornerRadius"), LayerEffect.PeelCornerRadius);
+	EffectData.PeelIDInfluence = EffectFloat(TEXT("PeelIDInfluence"), LayerEffect.PeelIDInfluence);
+	EffectData.PeelSizeVariation = EffectFloat(TEXT("PeelSizeVariation"), LayerEffect.PeelSizeVariation);
+	EffectData.PeelClusterPeriod = EffectInt(TEXT("PeelClusterPeriod"), LayerEffect.PeelClusterPeriod);
+	EffectData.PeelSolveDivisor = EffectInt(TEXT("PeelSolveDivisor"), LayerEffect.PeelSolveDivisor);
+	EffectData.PeelMaskTiling = static_cast<float>(
+		EffectInt(TEXT("PeelMaskTiling"), LayerEffect.PeelMaskTiling));
+	EffectData.bPeelMaskInvert = LayerEffect.bPeelMaskInvert;
+	{
+		// Direct texture wins over the asset, matching how mask children resolve.
+		UTexture2D* OwnMask = LayerEffect.PeelMaskTexture.LoadSynchronous();
+		if (!OwnMask)
+		{
+			if (const UMixtormatMask* MaskAsset = LayerEffect.PeelMask.LoadSynchronous())
+			{
+				OwnMask = MaskAsset->MaskTexture.Get();
+			}
+		}
+		if (OwnMask)
+		{
+			EffectData.PeelOwnMask = GetTextureRHI(OwnMask);
+		}
+	}
+	EffectData.PeelClusterAmount = EffectFloat(TEXT("PeelClusterAmount"), LayerEffect.PeelClusterAmount);
+	EffectData.PeelWarpPeriod = EffectInt(TEXT("PeelWarpPeriod"), LayerEffect.PeelWarpPeriod);
+	EffectData.PeelWarpAmount = EffectFloat(TEXT("PeelWarpAmount"), LayerEffect.PeelWarpAmount);
+	EffectData.PeelWarpSource = EffectFloat(TEXT("PeelWarpSource"), LayerEffect.PeelWarpSource);
+	EffectData.Front = EffectFloat(TEXT("Front"), LayerEffect.Front);
+	EffectData.Width = EffectFloat(TEXT("Width"), LayerEffect.Width);
+	EffectData.MacroWarp = EffectFloat(TEXT("MacroWarp"), LayerEffect.MacroWarp);
+	EffectData.MicroWarp = EffectFloat(TEXT("MicroWarp"), LayerEffect.MicroWarp);
+	EffectData.MicroMorph = EffectFloat(TEXT("MicroMorph"), LayerEffect.MicroMorph);
+	EffectData.Thickness = EffectFloat(TEXT("Thickness"), LayerEffect.Thickness);
+	EffectData.Lift = EffectFloat(TEXT("Lift"), LayerEffect.Lift);
+	EffectData.DetailStrength = EffectFloat(TEXT("DetailStrength"), LayerEffect.DetailStrength);
+	EffectData.PeelHeightAmount = EffectFloat(TEXT("PeelHeightAmount"), LayerEffect.PeelHeightAmount);
+	EffectData.bPeelHeightInvert = LayerEffect.bPeelHeightInvert;
+}
+
 void GatherRunoff(
 	FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect, bool& bHasMask)
 {

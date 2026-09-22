@@ -13,8 +13,8 @@
 // RequestComposeInternal, in the same order as that if-chain; no behavior change.
 //
 // The mask-child gathers stay in the compositor: they interleave with palette and HasMask
-// scheduling logic (plan §3 Phase 3), and the procedural-peel gather migrates with its family
-// in Phase 7.
+// scheduling logic (plan §3 Phase 3). Procedural peeling is gathered here with the other effect
+// families.
 namespace MixtormatGpuCompositor
 {
 	void GatherErosion(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
@@ -30,4 +30,5 @@ namespace MixtormatGpuCompositor
 		FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect, bool& bHasMask);
 	void GatherRunoff(
 		FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect, bool& bHasMask);
+	void GatherPeeling(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 }

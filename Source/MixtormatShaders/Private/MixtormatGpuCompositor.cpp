@@ -2503,68 +2503,11 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
-			// Peeling is procedural-only.
-			{
-				EffectData.PeelType = static_cast<int32>(LayerEffect.PeelType);
-				EffectData.PeelMacroPeriod = LayerEffect.PeelMacroPeriod;
-				EffectData.PeelMicroPeriod = LayerEffect.PeelMicroPeriod;
-				EffectData.PeelRandomSeed = static_cast<uint32>(FMath::Max(LayerEffect.PeelRandomSeed, 1));
-				EffectData.PeelSeedThreshold = LayerEffect.PeelSeedThreshold;
-				EffectData.PeelSeedNoiseWeight = LayerEffect.PeelSeedNoiseWeight;
-				EffectData.PeelSeedCurvatureWeight = LayerEffect.PeelSeedCurvatureWeight;
-				EffectData.PeelSeedCurvatureBias = LayerEffect.PeelSeedCurvatureBias;
-				EffectData.PeelSeedAOWeight = LayerEffect.PeelSeedAOWeight;
-				EffectData.PeelSeedHeightWeight = LayerEffect.PeelSeedHeightWeight;
-				EffectData.PeelSeedMaskWeight = LayerEffect.PeelSeedMaskWeight;
-				EffectData.bPeelNormalizeSeedWeights = LayerEffect.bPeelNormalizeSeedWeights;
-				EffectData.PeelCurvatureRadius = LayerEffect.PeelCurvatureRadius;
-				EffectData.PeelGrowthStrength = LayerEffect.PeelGrowthStrength;
-				EffectData.PeelAOStrength = LayerEffect.PeelAOStrength;
-				EffectData.PeelEdgeSharpness = LayerEffect.PeelEdgeSharpness;
-				EffectData.PeelLiftVariation = LayerEffect.PeelLiftVariation;
-				EffectData.PeelCornerLift =
-					FMath::Clamp(LayerEffect.PeelCornerLift, 0.0f, 1.0f);
-				EffectData.PeelCornerRadius =
-					FMath::Clamp(LayerEffect.PeelCornerRadius, 0.05f, 4.0f);
-				EffectData.PeelIDInfluence =
-					FMath::Clamp(LayerEffect.PeelIDInfluence, 0.0f, 1.0f);
-				EffectData.PeelSizeVariation = LayerEffect.PeelSizeVariation;
-				EffectData.PeelClusterPeriod = LayerEffect.PeelClusterPeriod;
-				EffectData.PeelSolveDivisor = LayerEffect.PeelSolveDivisor;
-				EffectData.PeelMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.PeelMaskTiling));
-				EffectData.bPeelMaskInvert = LayerEffect.bPeelMaskInvert;
-				{
-					// Direct texture wins over the asset, matching how mask children resolve.
-					UTexture2D* OwnMask = LayerEffect.PeelMaskTexture.LoadSynchronous();
-					if (!OwnMask)
-					{
-						if (const UMixtormatMask* MaskAsset = LayerEffect.PeelMask.LoadSynchronous())
-						{
-							OwnMask = MaskAsset->MaskTexture.Get();
-						}
-					}
-					if (OwnMask)
-					{
-						EffectData.PeelOwnMask = GetTextureRHI(OwnMask);
-					}
-				}
-				EffectData.PeelClusterAmount = LayerEffect.PeelClusterAmount;
-				EffectData.PeelWarpPeriod = LayerEffect.PeelWarpPeriod;
-				EffectData.PeelWarpAmount = LayerEffect.PeelWarpAmount;
-				EffectData.PeelWarpSource = LayerEffect.PeelWarpSource;
-				EffectData.Front = LayerEffect.Front;
-				EffectData.Width = FMath::Max(LayerEffect.Width, 1.0e-6f);
-				EffectData.MacroWarp = LayerEffect.MacroWarp;
-				EffectData.MicroWarp = LayerEffect.MicroWarp;
-				EffectData.MicroMorph = FMath::Clamp(LayerEffect.MicroMorph, 0.0f, 1.0f);
-				EffectData.Thickness = FMath::Max(LayerEffect.Thickness, 0.0f);
-				EffectData.Lift = FMath::Max(LayerEffect.Lift, 0.0f);
-				EffectData.DetailStrength = FMath::Max(LayerEffect.DetailStrength, 0.0f);
-				EffectData.PeelHeightAmount = LayerEffect.PeelHeightAmount;
-				EffectData.bPeelHeightInvert = LayerEffect.bPeelHeightInvert;
-				Data.bHasEffects = true;
-				continue;
-			}
+			// Peeling is procedural-only. Its authored values are gathered through the same
+			// contract sanitizer as the migrated effect families.
+			GatherPeeling(EffectData, LayerEffect);
+			Data.bHasEffects = true;
+			continue;
 
 		}
 
