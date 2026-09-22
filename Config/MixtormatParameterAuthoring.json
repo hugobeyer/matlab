@@ -1,0 +1,12 @@
+{
+	"EMixtormatEffectType::Breakup":
+	{
+		"EMixtormatParameterOwnerType::Effect.BreakupRelief":
+		{
+			"default": -0.059999998658895493,
+			"uiMin": -12,
+			"uiMax": 12,
+			"snap": 0.0024999999441206455
+		}
+	}
+}
