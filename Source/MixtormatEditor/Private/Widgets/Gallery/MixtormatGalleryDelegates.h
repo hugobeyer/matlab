@@ -6,8 +6,7 @@
 // because FOnMixtormatSurfaceGalleryZoom crosses all three widgets -- a card including the scroll
 // box header just for that one typedef would be a stranger dependency than this.
 //
-// Moved out of SMixtormatInternal.h unchanged. FOnMixtormatChildSelected is declared here as it was
-// there but is currently unused by any widget.
+
 
 #include "CoreMinimal.h"
 #include "Input/Events.h"
@@ -21,7 +20,6 @@ DECLARE_DELEGATE_RetVal_TwoParams(
 	FSoftObjectPath);
 DECLARE_DELEGATE_OneParam(FOnMixtormatSurfaceGalleryZoom, int32);
 DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatMaskSelected, FText, FSoftObjectPath);
-DECLARE_DELEGATE_RetVal_TwoParams(FReply, FOnMixtormatChildSelected, int32, int32);
 
 namespace MixtormatGallery
 {

@@ -3,6 +3,8 @@
 #ifndef MIXTORMAT_DEBUG_COLOR_USH
 #define MIXTORMAT_DEBUG_COLOR_USH
 
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
 // The one debug palette, and the one place it is converted.
 //
 // Four copies of these two constants had drifted into the composite, the stain resolve, the
@@ -50,6 +52,14 @@ float3 MixtormatDebugRamp(float Value)
 float3 MixtormatDebugColor(float3 SrgbColor)
 {
 	return MixtormatSrgbToLinear(saturate(SrgbColor));
+}
+
+float3 MixtormatRegionDebugColor(uint Root)
+{
+	return MixtormatDebugColor(float3(
+		MixtormatRegionRandom(Root * 3u + 1u),
+		MixtormatRegionRandom(Root * 3u + 2u),
+		MixtormatRegionRandom(Root * 3u + 3u)));
 }
 
 #endif

@@ -174,7 +174,6 @@ private:
 	FReply AddWorkingLayer(EMixtormatLayerType LayerType);
 	FReply DuplicateSelectedLayer();
 	FReply DeleteSelectedLayer();
-	FReply MoveSelectedLayer(int32 Direction);
 	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex);
 	FReply SelectWorkingLayer(int32 LayerIndex);
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
@@ -212,7 +211,6 @@ private:
 	// compositor resolves again on its own copy regardless.
 	void SyncChildInstances();
 	bool IsSelectedChildInstance() const;
-	bool IsSelectedInstanceBroken() const;
 	FText GetSelectedInstanceSourceText() const;
 	TSharedRef<SWidget> BuildInstanceBanner();
 
@@ -852,27 +850,8 @@ private:
 		int32 DefaultValue,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>());
 
-	void AddErosionSlider(
-		const TSharedRef<SVerticalBox>& TargetPanel,
-		const FText& Label,
-		float FMixtormatLayerEffect::* Member,
-		double MinValue,
-		double MaxValue,
-		double DefaultValue,
-		double SnapDelta,
-		const TAttribute<FText>& ToolTip = TAttribute<FText>());
-
-	void AddErosionSliderInt(
-		const TSharedRef<SVerticalBox>& TargetPanel,
-		const FText& Label,
-		int32 FMixtormatLayerEffect::* Member,
-		double MinValue,
-		double MaxValue,
-		int32 DefaultValue,
-		const TAttribute<FText>& ToolTip = TAttribute<FText>());
 
 	bool ResetHoveredNumericControl();
-	void PreviewSurfaceScalarParameter(FName ParameterName, float Value);
 	void HandleSearchChanged(const FText& SearchTextValue);
 	void HandleUserLibrarySearchChanged(const FText& SearchTextValue);
 	void RebuildCategoryList();
@@ -886,7 +865,6 @@ private:
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	FReply ToggleBottomLibraryCollapsed();
-	TSharedRef<SWidget> BuildWorkflowMenu();
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -902,7 +880,6 @@ private:
 	FText GetLayerChildName(const FMixtormatLayerChild& Child) const;
 	FText GetLayerChildSourceText(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
-	TSharedRef<SWidget> BuildAddLayerMenu();
 	TSharedRef<SWidget> BuildAddEffectMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
@@ -936,7 +913,6 @@ private:
 	void RefreshBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
-	TSharedRef<SWidget> BuildCompositionResolutionMenu();
 	TSharedRef<SWidget> BuildInspectorPanel();
 	TSharedRef<SWidget> BuildEffectInspectorControls();
 	TSharedRef<SWidget> BuildChannelInfluenceControls();

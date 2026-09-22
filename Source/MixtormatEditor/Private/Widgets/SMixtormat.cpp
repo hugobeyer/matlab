@@ -447,30 +447,6 @@ void SMixtormat::AddPeelSliderInt(
 	AddSliderRow(TargetPanel, MakePeelSliderInt(Label, Member, MinValue, MaxValue, DefaultValue, ToolTip));
 }
 
-void SMixtormat::AddErosionSlider(
-	const TSharedRef<SVerticalBox>& TargetPanel,
-	const FText& Label,
-	float FMixtormatLayerEffect::* Member,
-	const double MinValue,
-	const double MaxValue,
-	const double DefaultValue,
-	const double SnapDelta,
-	const TAttribute<FText>& ToolTip)
-{
-	AddSliderRow(TargetPanel, MakeErosionSlider(Label, Member, MinValue, MaxValue, DefaultValue, SnapDelta, ToolTip));
-}
-
-void SMixtormat::AddErosionSliderInt(
-	const TSharedRef<SVerticalBox>& TargetPanel,
-	const FText& Label,
-	int32 FMixtormatLayerEffect::* Member,
-	const double MinValue,
-	const double MaxValue,
-	const int32 DefaultValue,
-	const TAttribute<FText>& ToolTip)
-{
-	AddSliderRow(TargetPanel, MakeErosionSliderInt(Label, Member, MinValue, MaxValue, DefaultValue, ToolTip));
-}
 
 bool SMixtormat::ResetHoveredNumericControl()
 {

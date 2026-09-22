@@ -42,13 +42,7 @@ void SMixtormatActionDialog::Construct(const FArguments& InArgs)
 					.Text(InArgs._CancelLabel)
 					.OnClicked(this, &SMixtormatActionDialog::Cancel)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-					.Visibility(InArgs._AlternateLabel.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
-					.Text(InArgs._AlternateLabel)
-					.OnClicked(this, &SMixtormatActionDialog::Alternate)
-				]
+
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
@@ -62,17 +56,11 @@ void SMixtormatActionDialog::Construct(const FArguments& InArgs)
 
 FReply SMixtormatActionDialog::Confirm()
 {
-	Result = EMixtormatActionDialogResult::Confirm;
+	bConfirmed = true;
 	CloseWindow();
 	return FReply::Handled();
 }
 
-FReply SMixtormatActionDialog::Alternate()
-{
-	Result = EMixtormatActionDialogResult::Alternate;
-	CloseWindow();
-	return FReply::Handled();
-}
 
 FReply SMixtormatActionDialog::Cancel()
 {
@@ -114,32 +102,5 @@ bool ShowMixtormatActionDialog(
 	return Dialog->WasConfirmed();
 }
 
-EMixtormatActionDialogResult ShowMixtormatThreeActionDialog(
-	const TSharedRef<SWidget>& Owner,
-	const FText& Title,
-	const FText& Message,
-	const FText& ConfirmLabel,
-	const FText& AlternateLabel,
-	const FText& CancelLabel)
-{
-	TSharedPtr<SMixtormatActionDialog> Dialog;
-	const TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(Title)
-		.ClientSize(FVector2D(MixtormatTokens::ActionDialogWidth, MixtormatTokens::ActionDialogHeight))
-		.SupportsMaximize(false)
-		.SupportsMinimize(false)
-		[
-			SAssignNew(Dialog, SMixtormatActionDialog)
-			.Message(Message)
-			.ConfirmLabel(ConfirmLabel)
-			.AlternateLabel(AlternateLabel)
-			.CancelLabel(CancelLabel)
-		];
-	FSlateApplication::Get().AddModalWindow(
-		Window,
-		FSlateApplication::Get().FindWidgetWindow(Owner),
-		false);
-	return Dialog->GetResult();
-}
 
 #undef LOCTEXT_NAMESPACE

@@ -608,13 +608,6 @@ FReply SMixtormat::SetStudioLighting(const EMixtormatStudioLighting LightingPres
 }
 
 
-void SMixtormat::PreviewSurfaceScalarParameter(const FName ParameterName, const float Value)
-{
-	(void)ParameterName;
-	(void)Value;
-	RefreshLayeredPreview();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
 	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();

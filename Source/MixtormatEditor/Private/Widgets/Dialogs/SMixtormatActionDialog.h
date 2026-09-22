@@ -8,12 +8,6 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-enum class EMixtormatActionDialogResult : uint8
-{
-	Cancel,
-	Confirm,
-	Alternate
-};
 
 class SMixtormatActionDialog final : public SCompoundWidget
 {
@@ -22,21 +16,18 @@ public:
 		SLATE_ARGUMENT(FText, Message)
 		SLATE_ARGUMENT(FText, ConfirmLabel)
 		SLATE_ARGUMENT(FText, CancelLabel)
-		SLATE_ARGUMENT(FText, AlternateLabel)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
-	bool WasConfirmed() const { return Result == EMixtormatActionDialogResult::Confirm; }
-	EMixtormatActionDialogResult GetResult() const { return Result; }
+	bool WasConfirmed() const { return bConfirmed; }
 
 private:
 	FReply Confirm();
-	FReply Alternate();
 	FReply Cancel();
 	void CloseWindow();
 
-	EMixtormatActionDialogResult Result = EMixtormatActionDialogResult::Cancel;
+	bool bConfirmed = false;
 };
 
 bool ShowMixtormatActionDialog(
@@ -46,10 +37,3 @@ bool ShowMixtormatActionDialog(
 	const FText& ConfirmLabel,
 	const FText& CancelLabel);
 
-EMixtormatActionDialogResult ShowMixtormatThreeActionDialog(
-	const TSharedRef<SWidget>& Owner,
-	const FText& Title,
-	const FText& Message,
-	const FText& ConfirmLabel,
-	const FText& AlternateLabel,
-	const FText& CancelLabel);

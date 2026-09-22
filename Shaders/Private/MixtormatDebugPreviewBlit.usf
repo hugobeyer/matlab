@@ -59,9 +59,5 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 	const uint Root = SourceIds.Load(int3(Pixel, 0));
-	OutputDebug[Pixel] = float4(
-		MixtormatDebugColor(float3(
-			MixtormatRegionRandom(Root * 3u + 1u),
-			MixtormatRegionRandom(Root * 3u + 2u),
-			MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
+	OutputDebug[Pixel] = float4(MixtormatRegionDebugColor(Root), 1.0f);
 }

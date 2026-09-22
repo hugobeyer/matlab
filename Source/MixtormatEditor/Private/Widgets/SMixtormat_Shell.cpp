@@ -2,7 +2,6 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
-#include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
 #include "HAL/PlatformProcess.h"
 #include "ISettingsModule.h"
@@ -65,26 +64,6 @@ FReply SMixtormat::OpenSettings()
 	return FReply::Handled();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildCompositionResolutionMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const int32 Resolutions[] = {1024, 2048, 4096};
-	for (const int32 Resolution : Resolutions)
-	{
-		Menu.Item(
-			FText::Format(
-				LOCTEXT("CompositionResolutionOption", "{0}K ({1} × {1})"),
-				FText::AsNumber(Resolution / 1024),
-				FText::AsNumber(Resolution)),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Resolution]() { SetCompositionResolution(Resolution); }))
-			.Checked(TAttribute<bool>::CreateLambda([this, Resolution]()
-			{
-				return CompositionResolution == Resolution;
-			}));
-	}
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildTopBar()
 {
@@ -481,28 +460,5 @@ FReply SMixtormat::ToggleBottomLibraryCollapsed()
 	return FReply::Handled();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildWorkflowMenu()
-{
-	return SNew(SBorder)
-		.Padding(6.0f)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel")))
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SButton)
-				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-				.Text(LOCTEXT("NewMaterialMenu", "New Material"))
-				.OnClicked(this, &SMixtormat::NewWorkingMaterial)
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SButton)
-				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-				.Text(LOCTEXT("OpenMaterialMenu", "Open Material..."))
-				.OnClicked(this, &SMixtormat::OpenWorkingMaterial)
-			]
-		];
-}
 
 #undef LOCTEXT_NAMESPACE

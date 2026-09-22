@@ -286,9 +286,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// the whole point of previewing an ID map rather than a scalar.
 		OutputDebug[Pixel] = !IsRegion(Root)
 			? float4(0.0f, 0.0f, 0.0f, 1.0f)
-			: float4(MixtormatDebugColor(float3(
-				MixtormatRegionRandom(Root * 3u + 1u),
-				MixtormatRegionRandom(Root * 3u + 2u),
-				MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
+			: float4(MixtormatRegionDebugColor(Root), 1.0f);
 	}
 }

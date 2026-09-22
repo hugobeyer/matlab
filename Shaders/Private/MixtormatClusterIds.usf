@@ -235,10 +235,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Visualization only. Hashing is why sparse IDs look like regions rather than like a
 		// gradient, and it goes through the same conversion the coverage previews use so a region
 		// map and a mask preview sit at one brightness.
-		OutputDebug[Pixel] = float4(
-			MixtormatDebugColor(float3(
-				MixtormatRegionRandom(Root * 3u + 1u),
-				MixtormatRegionRandom(Root * 3u + 2u),
-				MixtormatRegionRandom(Root * 3u + 3u))), 1.0f);
+		OutputDebug[Pixel] = float4(MixtormatRegionDebugColor(Root), 1.0f);
 	}
 }

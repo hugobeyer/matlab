@@ -416,30 +416,6 @@ FReply SMixtormat::DeleteSelectedLayer()
 	return FReply::Handled();
 }
 
-FReply SMixtormat::MoveSelectedLayer(const int32 Direction)
-{
-	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	// Clamped to 0, not 1. Position 0 is an ordinary position a layer may be moved into.
-	const int32 TargetIndex = FMath::Clamp(
-		SelectedLayerIndex + Direction,
-		0,
-		WorkingLayers.Num() - 1);
-	if (TargetIndex != SelectedLayerIndex)
-	{
-		SoloLayerIndex = INDEX_NONE;
-		const int32 SourceIndex = SelectedLayerIndex;
-		WorkingLayers.Swap(SourceIndex, TargetIndex);
-		MixtormatUI::RemapHeightReferencesAfterMove(WorkingLayers, SourceIndex, TargetIndex);
-		SelectedLayerIndex = TargetIndex;
-		RefreshLayeredPreview();
-		RebuildLayerList();
-	}
-	return FReply::Handled();
-}
 
 FReply SMixtormat::HandleLayerDropped(
 	const int32 SourceLayerIndex,
@@ -2364,17 +2340,6 @@ bool SMixtormat::IsSelectedChildInstance() const
 		&& WorkingLayers[SelectedLayerIndex].Children[ChildIndex].IsInstance();
 }
 
-bool SMixtormat::IsSelectedInstanceBroken() const
-{
-	if (!IsSelectedChildInstance())
-	{
-		return false;
-	}
-	const FMixtormatLayerChild& Child =
-		WorkingLayers[SelectedLayerIndex].Children[GetSelectedChildIndex()];
-	return MixtormatParameterBinding::FindChild(
-		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Child.SourceLayerId, Child.SourceChildId) == nullptr;
-}
 
 FText SMixtormat::GetSelectedInstanceSourceText() const
 {
@@ -5571,25 +5536,6 @@ TSharedRef<SWidget> SMixtormat::BuildNormalSourceMenu(const int32 LayerIndex)
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddLayerMenu()
-{
-	// Two kinds of layer, since Effect stopped being one and Normal Detail became a composition.
-	MixtormatMenu::FBuilder Menu;
-	Menu.Item(
-		FText::Format(
-			LOCTEXT("AddSelectedMaterialLayer", "Material · {0}"),
-			SelectedLibrarySurfaceName.IsEmpty()
-				? LOCTEXT("NoSelectedLibraryMaterial", "Select from Library")
-				: SelectedLibrarySurfaceName),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); }))
-		.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
-	Menu.Item(
-		LOCTEXT("AddFillLayer", "Fill"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); }));
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 {
