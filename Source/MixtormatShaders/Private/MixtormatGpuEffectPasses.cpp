@@ -340,42 +340,24 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, NormalPass)
-		SHADER_PARAMETER(int32, BlurPass)
-		SHADER_PARAMETER(int32, BlurAxis)
 		SHADER_PARAMETER(int32, ResamplePass)
 		SHADER_PARAMETER(int32, ResampleRidge)
-		SHADER_PARAMETER(float, BlurRadius)
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(int32, Octaves)
-		SHADER_PARAMETER(int32, Period)
-		SHADER_PARAMETER(float, Gain)
-		SHADER_PARAMETER(float, Detail)
-		SHADER_PARAMETER(float, GullyWeight)
-		SHADER_PARAMETER(float, Normalization)
-		SHADER_PARAMETER(float, RidgeRounding)
-		SHADER_PARAMETER(float, CreaseRounding)
-		SHADER_PARAMETER(float, SlopeOnset)
-		SHADER_PARAMETER(float, FeatureOnset)
-		SHADER_PARAMETER(float, AssumedSlope)
-		SHADER_PARAMETER(float, AssumedSlopeAmount)
-		SHADER_PARAMETER(int32, SlopeRadius)
-		SHADER_PARAMETER(int32, CurvatureMode)
-		SHADER_PARAMETER(float, CavityInfluence)
-		SHADER_PARAMETER(float, CavityOffset)
-		SHADER_PARAMETER(float, CavityRemapMin)
-		SHADER_PARAMETER(float, CavityRemapMax)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(int32, Radius)
+		SHADER_PARAMETER(int32, Iterations)
+		SHADER_PARAMETER(float, GravityAngle)
+		SHADER_PARAMETER(float, Verticality)
+		SHADER_PARAMETER(float, SlopePower)
+		SHADER_PARAMETER(float, Deposit)
+		SHADER_PARAMETER(float, PreserveFlats)
 		SHADER_PARAMETER(uint32, UsePlacementMask)
 		SHADER_PARAMETER(float, PlacementMaskTiling)
 		SHADER_PARAMETER(uint32, InvertMask)
-		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GuideHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PlacementMaskTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousRidge)
@@ -2115,9 +2097,9 @@ namespace MixtormatGpuCompositor
 		FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatErosionCS> ErosionShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		// Amount 0 is an exact identity in the erosion shader: Placement falls to
-		// zero, the height comes back as it went in and the normal is copied
-		// through. It was still costing the full filter -- six passes at twice the
+		// Amount 0 is an exact identity in the erosion shader: the wear delta falls to
+		// zero, the height comes back as it went in and the normal is copied through.
+		// It was still costing the full filter -- up to 32 wear iterations at twice the
 		// composition resolution, so four times the pixels, plus the resample pair
 		// -- which is the single most expensive thing a material could carry while
 		// doing nothing at all. An erosion node parked at 0, or a mask that has
@@ -2166,10 +2148,10 @@ namespace MixtormatGpuCompositor
 				: PeelFieldDummy;
 
 			// Erosion runs at twice the composition resolution, capped at 4096,
-			// then resamples back. Carving is high-frequency work: at composition
-			// resolution the octave loop hits the two-pixels-per-cell floor with
-			// passes still to run, so the finest gullies have nowhere to cut.
-			// Above 4096 the cost stops buying visible detail.
+			// then resamples back. Wear is high-frequency work: the Kuwahara radius
+			// and the slope stencil are texel-space, so at composition resolution
+			// the analysis would run out of samples before the wear could read as
+			// anything but noise. Above 4096 the cost stops buying visible detail.
 			const FIntPoint EroRes(
 				FMath::Min(Request.Resolution.X * 2, 4096),
 				FMath::Min(Request.Resolution.Y * 2, 4096));
@@ -2179,14 +2161,11 @@ namespace MixtormatGpuCompositor
 			// Every quantity this filter derives is a difference of two nearly
 			// equal heights, and half floats do not survive that.
 			//
-			// A half around mid height has a ULP of 2^-11, about 4.9e-4. The slope
-			// Sobel sums six taps and scales by Res/(8R) -- 128 at 2K with radius 2
-			// -- so quantisation alone puts roughly 0.25 of noise on a slope the
-			// repose gate thresholds at 0.30 with a 0.25 transition. The gate is
-			// then close to a coin flip per pixel and it multiplies the carve, so
-			// the height comes out dithered before the normal pass amplifies
-			// anything. Slope Blur cannot help: the blur averages correctly and the
-			// R16F write throws the result straight back to one ULP.
+			// A half around mid height has a ULP of 2^-11, about 4.9e-4. The wear
+			// response thresholds a slope built from differences of neighbouring
+			// heights, so quantisation alone puts visible noise on that slope and
+			// the threshold turns it into dithered carve before the normal pass
+			// amplifies anything.
 			//
 			// The normal pass is the second victim: it differences the carve depth
 			// between neighbours, and those differences are far smaller than the
@@ -2195,8 +2174,10 @@ namespace MixtormatGpuCompositor
 			// a second difference divided by StepUV squared multiplies its error by
 			// about a million.
 			//
-			// EroGuide has to be R32F for the same reason as the rest: it is what
-			// the slope and curvature stencils actually read.
+			// The wear analysis reads the same chain, so it keeps the R32F format too:
+			// its quadrant means and central differences are differences of nearly equal
+			// heights, and half floats would quantize the slope response before the
+			// threshold ever sees it.
 			const FRDGTextureDesc EroDesc = FRDGTextureDesc::Create2D(
 				EroRes,
 				PF_R32_FLOAT,
@@ -2218,13 +2199,6 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionA")),
 				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionB"))};
 			FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroRidgeDesc, TEXT("Mixtormat.ErosionRidge"));
-			FRDGTextureRef EroGuide = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionGuide"));
-
-			// The horizontal half of the separable slope blur. Allocated here with
-			// the rest rather than per pass: it is another full erosion-resolution
-			// R32F transient, 64MB at the 4096 cap.
-			FRDGTextureRef EroGuideX = GraphBuilder.CreateTexture(
-				EroDesc, TEXT("Mixtormat.ErosionGuideX"));
 			FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionN"));
 			// The layer normal every carving pass reads, lifted to erosion resolution.
 			FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
@@ -2269,14 +2243,11 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 				RP->OutputSize = DestRes;
 				RP->NormalPass = 0;
-				RP->BlurPass = 0;
-				RP->BlurAxis = 0;
 				RP->ResamplePass = 1;
 				RP->ResampleRidge = bCarryRidge ? 1 : 0;
 				RP->PreviousRidge = InRidge;
 				RP->PreviousHeight = InH;
 				RP->SourceHeight = InH;
-				RP->GuideHeight = InH;
 				RP->LayerMask = PendingErosion.FeatureMask;
 				RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
@@ -2313,45 +2284,29 @@ namespace MixtormatGpuCompositor
 				AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 			}
 
-			// All octaves are evaluated together, so steering is analytical and no pass
-			// can feed a masked boundary or quantized intermediate back into the next band.
+			// Each wear iteration re-derives its analysis from the current working height,
+			// so no pass can feed a masked boundary or quantized intermediate back into
+			// the next one; the Kuwahara surface is analysis-only either way.
 			auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
 			{
 				Parameters->OutputSize = EroRes;
 				Parameters->NormalPass = 0;
-				Parameters->BlurPass = 0;
-				Parameters->BlurAxis = 0;
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
-				Parameters->BlurRadius = Ero.ErosionSlopeBlur;
 				Parameters->NormalStrength = HeightDerivedNormalStrength;
 				Parameters->Amount = Ero.ErosionAmount;
-				Parameters->Strength = Ero.ErosionStrength;
-				Parameters->Octaves = Ero.ErosionOctaves;
-				Parameters->Period = Ero.ErosionPeriod;
-				Parameters->Gain = Ero.ErosionGain;
-				Parameters->Detail = Ero.ErosionDetail;
-				Parameters->GullyWeight = Ero.ErosionGullyWeight;
-				Parameters->Normalization = Ero.ErosionNormalization;
-				Parameters->RidgeRounding = Ero.ErosionRidgeRounding;
-				Parameters->CreaseRounding = Ero.ErosionCreaseRounding;
-				Parameters->SlopeOnset = Ero.ErosionSlopeOnset;
-				Parameters->FeatureOnset = Ero.ErosionFeatureOnset;
-				Parameters->AssumedSlope = Ero.ErosionAssumedSlope;
-				Parameters->AssumedSlopeAmount = Ero.ErosionAssumedSlopeAmount;
-				Parameters->SlopeRadius = Ero.ErosionSlopeRadius;
-				Parameters->CurvatureMode = Ero.ErosionCurvatureMode;
-				Parameters->CavityInfluence = Ero.ErosionCavityInfluence;
-				Parameters->CavityOffset = Ero.ErosionCavityOffset;
-				Parameters->CavityRemapMin = Ero.ErosionCavityRemapMin;
-				Parameters->CavityRemapMax = Ero.ErosionCavityRemapMax;
-				Parameters->HeightInfluence = Ero.ErosionHeightInfluence;
-				Parameters->HeightScale = Ero.ErosionHeightScale;
+				Parameters->Depth = Ero.ErosionDepth;
+				Parameters->Radius = Ero.ErosionRadius;
+				Parameters->Iterations = Ero.ErosionIterations;
+				Parameters->GravityAngle = Ero.ErosionGravityAngle;
+				Parameters->Verticality = Ero.ErosionVerticality;
+				Parameters->SlopePower = Ero.ErosionSlopePower;
+				Parameters->Deposit = Ero.ErosionDeposit;
+				Parameters->PreserveFlats = Ero.ErosionPreserveFlats;
 				Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
 				Parameters->InvertMask =
 					!PendingErosion.bHasScopedMask && Ero.bErosionInvertMask ? 1u : 0u;
-				Parameters->Seed = 1u;
 				Parameters->SourceHeight = SourceH;
 				Parameters->PreviousNormal = EroSrcN;
 				Parameters->LayerMask = PendingErosion.FeatureMask;
@@ -2368,53 +2323,32 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(EroRes.Y, 8),
 				1);
 
-			FRDGTextureRef Guidance = SourceH;
-			if (Ero.ErosionSlopeBlur > 0.0f)
-			{
-				FMixtormatErosionCS::FParameters* BlurX =
-					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-				SetErosionParameters(BlurX);
-				BlurX->BlurPass = 1;
-				BlurX->BlurAxis = 0;
-				BlurX->PreviousHeight = SourceH;
-				BlurX->GuideHeight = SourceH;
-				BlurX->OutputHeight = GraphBuilder.CreateUAV(EroGuideX);
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurX", LayerIndex),
-					ErosionShader,
-					BlurX,
-					ErosionGroups);
+			// The wear loop runs the exposed iteration count, ping-ponging between the
+			// two height targets: every pass analyses the previous pass's output, never
+			// the original input, so wear propagates and deepens with iteration count.
+			// Max, not clamp: a typed count below 1 has no meaning -- the loop and the
+			// ping-pong indexing both need at least one pass -- but nothing above is
+			// restricted.
+			const int32 ErosionIterations = FMath::Max(Ero.ErosionIterations, 1);
 
-				FMixtormatErosionCS::FParameters* BlurY =
+			for (int32 Iteration = 0; Iteration < ErosionIterations; ++Iteration)
+			{
+				FMixtormatErosionCS::FParameters* IterationParameters =
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-				*BlurY = *BlurX;
-				BlurY->BlurAxis = 1;
-				BlurY->PreviousHeight = EroGuideX;
-				BlurY->OutputHeight = GraphBuilder.CreateUAV(EroGuide);
+				SetErosionParameters(IterationParameters);
+				IterationParameters->PreviousHeight =
+					Iteration == 0 ? SourceH : EroH[(Iteration - 1) & 1];
+				IterationParameters->OutputHeight =
+					GraphBuilder.CreateUAV(EroH[Iteration & 1]);
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.BlurY", LayerIndex),
+					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Filter%d", LayerIndex, Iteration),
 					ErosionShader,
-					BlurY,
+					IterationParameters,
 					ErosionGroups);
-				Guidance = EroGuide;
 			}
 
-			FMixtormatErosionCS::FParameters* ErosionParameters =
-				GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-			SetErosionParameters(ErosionParameters);
-			ErosionParameters->PreviousHeight = SourceH;
-			ErosionParameters->GuideHeight = Guidance;
-			ErosionParameters->OutputHeight = GraphBuilder.CreateUAV(EroH[0]);
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Filter", LayerIndex),
-				ErosionShader,
-				ErosionParameters,
-				ErosionGroups);
-
-			FRDGTextureRef Result = EroH[0];
+			FRDGTextureRef Result = EroH[(ErosionIterations - 1) & 1];
 			AddHeightDerivedNormalPass(
 				Ctx,
 				SourceH,

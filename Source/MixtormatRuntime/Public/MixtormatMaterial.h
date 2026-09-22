@@ -581,14 +581,6 @@ enum class EMixtormatGradeTonemap : uint8
 	Filmic = 3 UMETA(DisplayName = "Filmic")
 };
 
-UENUM(BlueprintType)
-enum class EMixtormatErosionCurvatureMode : uint8
-{
-	Mean = 0 UMETA(DisplayName = "Mean"),
-	Valley = 1 UMETA(DisplayName = "Valley"),
-	Ridge = 2 UMETA(DisplayName = "Ridge")
-};
-
 // Both stain looks use the same transport solve. Wet exposes absorbed liquid; Deposit exposes
 // the dried dirt/mineral residue left behind by that liquid.
 UENUM(BlueprintType)
@@ -985,88 +977,57 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0", ClampMax = "9999"))
 	int32 RunoffSeed = 1;
 
-	// Erosion. A tileable, stacked directional-stripe filter evaluated in one dispatch.
-	// The initial downhill vector is the steepest sampled direction around each texel, which
-	// keeps mortar joints, cut stone edges and other hard material features from averaging away.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionAmount = 1.0f;
+	// Erosion. A post-layer directional wear filter. An anisotropic Kuwahara pass builds an
+	// analysis surface from the composited height, slope-aware peak shaving and valley
+	// deposition derive a wear delta from that analysis, and the delta is carved into the
+	// untouched working height -- so fine source detail survives the filter instead of being
+	// progressively Kuwahara-smoothed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "8.0"))
+	float ErosionAmount = 1.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionStrength = 0.5f;
+	// Final carve-depth multiplier on the wear delta. The result remains subtractive overall;
+	// above 1 the generated wear digs deeper than the analysis surface's own relief.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
+	float ErosionDepth = 1.0f;
 
-	// Detail bands. The compositor clamps this to the shader's fixed loop bound.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionOctaves = 2;
+	// Kuwahara analysis radius in texels. Larger values read broader coherent wear structures;
+	// the analysis never replaces the height itself.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "32"))
+	int32 ErosionRadius = 6;
 
-	// Stripe cells across one UV repeat at the coarsest octave. It remains integral so every
-	// octave tiles after its frequency doubles.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionPeriod = 4;
+	// Ping-pong wear iterations. Each pass re-analyses the previous pass's output, so wear
+	// propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an
+	// extreme stress case. Typed values below 1 are raised to 1 by the solver -- a zero or
+	// negative pass count has no meaning.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "32"))
+	int32 ErosionIterations = 8;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionGain = 0.5f;
+	// Preferred flow direction in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V. The default
+	// points down the texture so wear visually travels downward on walls and cliffs.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "360.0", Units = "deg"))
+	float ErosionGravityAngle = 270.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionDetail = 1.5f;
+	// Directional bias strength. 0 follows the natural local slope; 1 strongly favours the
+	// gravity direction and elongates the Kuwahara analysis along it. This shapes direction,
+	// not amplitude.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float ErosionVerticality = 0.6f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionGullyWeight = 0.65f;
+	// Shapes slope sensitivity. Below 1 responds broadly to gentle slopes, above 1 concentrates
+	// wear increasingly on steep regions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "8.0"))
+	float ErosionSlopePower = 1.0f;
 
-	// Partial phase normalization. 0 preserves blended amplitudes; 1 fully normalizes them.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionNormalization = 0.5f;
+	// How much removed material refills valleys and downstream depressions. 0 is pure erosion.
+	// Not a conservation ratio: deposition is clamped per iteration for stability.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
+	float ErosionDeposit = 0.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionRidgeRounding = 0.10f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionCreaseRounding = 0.0f;
-
-	// Controls how far from the input flats and generated ridge/crease flats new gullies act.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionSlopeOnset = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionFeatureOnset = 1.25f;
-
-	// Magnitude used for internal straight-gully steering. Direction always comes from the
-	// measured maximum slope; this only prevents rounded source profiles from weakening it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionAssumedSlope = 0.7f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionAssumedSlopeAmount = 1.0f;
-
-	// Pixel radius of the sixteen-direction maximum-slope search.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	int32 ErosionSlopeRadius = 2;
-
-	// Optional low-pass for noisy stone. Zero retains sharp brick and masonry boundaries.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionSlopeBlur = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	EMixtormatErosionCurvatureMode ErosionCurvatureMode = EMixtormatErosionCurvatureMode::Valley;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionCavityInfluence = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionCavityOffset = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionCavityRemapMin = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionCavityRemapMax = 1.0f;
-
-	// The height signal supplies the valley-to-peak fade target. Influence also gates where
-	// the final carve is allowed, independently of the layer mask and cavity gate.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionHeightInfluence = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion")
-	float ErosionHeightScale = 1.0f;
+	// Slope threshold below which wear is suppressed, in the filter's normalized slope space
+	// (height change per 1/256 of the tile, resolution-independent). 0 leaves every region
+	// eligible; higher values protect increasingly flat and subtle ones.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5"))
+	float ErosionPreserveFlats = 0.002f;
 
 	// Optional placement mask owned by Erosion. When unset, the filter keeps using the layer's
 	// accumulated authored, generated, and craquelure mask children.

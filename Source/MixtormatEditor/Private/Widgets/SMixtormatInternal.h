@@ -509,16 +509,6 @@ namespace MixtormatUI
 		}
 	}
 
-	inline FText ErosionCurvatureModeText(const EMixtormatErosionCurvatureMode Mode)
-	{
-		switch (Mode)
-		{
-		case EMixtormatErosionCurvatureMode::Valley: return LOCTEXT("EroCurvValley", "Valley");
-		case EMixtormatErosionCurvatureMode::Ridge: return LOCTEXT("EroCurvRidge", "Ridge");
-		default: return LOCTEXT("EroCurvMean", "Mean");
-		}
-	}
-
 	inline FText StainModeText(const EMixtormatStainMode Mode)
 	{
 		return Mode == EMixtormatStainMode::Deposit

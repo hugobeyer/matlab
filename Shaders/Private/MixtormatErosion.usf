@@ -1,17 +1,18 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
-// Tileable stacked-gully erosion for material height fields. The filter is evaluated once per
-// pixel: the source slope chooses the first direction, and analytical stripe derivatives steer
-// every finer octave. Placement gates are applied only to the final result so a hard mask edge
-// cannot bend gullies or feed itself back into the slope.
+// Directional wear erosion for material height fields. An anisotropic Kuwahara pass builds an
+// analysis surface from the working height, directional slope analysis derives a wear delta
+// from that analysis, and the delta is applied to the untouched working height. The Kuwahara
+// surface never replaces the height, so fine source detail survives instead of being
+// progressively smoothed away. The filter runs as a fixed number of ping-pong iterations;
+// placement gates apply to the final delta so a hard mask edge cannot feed itself back
+// through the analysis.
 
 Texture2D<float> PreviousHeight;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
-Texture2D<float> GuideHeight;
 Texture2D<float> LayerMask;
 Texture2D<float4> PlacementMaskTexture;
 Texture2D<float> PreviousRidge;
@@ -22,108 +23,33 @@ RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
 int NormalPass;
-int BlurPass;
-int BlurAxis;
 int ResamplePass;
 int ResampleRidge;
-float BlurRadius;
 float NormalStrength;
 float Amount;
-float Strength;
-int Octaves;
-int Period;
-float Gain;
-float Detail;
-float GullyWeight;
-float Normalization;
-float RidgeRounding;
-float CreaseRounding;
-float SlopeOnset;
-float FeatureOnset;
-float AssumedSlope;
-float AssumedSlopeAmount;
-int SlopeRadius;
-int CurvatureMode;
-float CavityInfluence;
-float CavityOffset;
-float CavityRemapMin;
-float CavityRemapMax;
-float HeightInfluence;
-float HeightScale;
+float Depth;
+int Radius;
+int Iterations;
+float GravityAngle;
+float Verticality;
+float SlopePower;
+float Deposit;
+float PreserveFlats;
 uint UsePlacementMask;
 float PlacementMaskTiling;
 uint InvertMask;
-uint Seed;
+
+// Internal constant. The ridge scale shapes the crest signal consumed by the generated-mask
+// drainage path. The per-iteration step clamp is derived from Depth, Amount, Deposit and the
+// iteration count below -- it is a safety mechanism against catastrophic single-pass deltas,
+// not an artistic limiter, and it is sized so the full effect can still develop across the
+// exposed iterations.
+static const float ErosionRidgeScale = 2.0;
 
 int WrapI(int X, int Size)
 {
 	X = X % max(Size, 1);
 	return X < 0 ? X + Size : X;
-}
-
-float RemapSmooth(float Lo, float Hi, float Value)
-{
-	const float Range = Hi - Lo;
-	const float T = abs(Range) > 1.0e-6f
-		? saturate((Value - Lo) / Range)
-		: (Value >= Lo ? 1.0f : 0.0f);
-	return T * T * (3.0f - 2.0f * T);
-}
-
-float EaseOut(float Value)
-{
-	const float Inverse = 1.0f - saturate(Value);
-	return 1.0f - Inverse * Inverse;
-}
-
-float PowInverse(float Value, float Power)
-{
-	return 1.0f - pow(1.0f - saturate(Value), max(Power, 1.0e-4f));
-}
-
-float SmoothStart(float Value, float Radius)
-{
-	if (Radius <= 1.0e-6f || Value >= Radius)
-	{
-		return Value - 0.5f * Radius;
-	}
-	return 0.5f * Value * Value / Radius;
-}
-
-float2 SafeNormalize(float2 Value, float2 Fallback)
-{
-	const float Length2 = dot(Value, Value);
-	return Length2 > 1.0e-12f ? Value * rsqrt(Length2) : Fallback;
-}
-
-// Samples sixteen rays and returns the single steepest downhill direction and its slope.
-// A Sobel average is useful on smooth terrain but weakens thin mortar joints and bevels by
-// combining unrelated neighbours. The directional maximum keeps those material boundaries.
-float3 MaximumDirectionalSlope(float2 UV, float CenterHeight)
-{
-	const float2 Resolution = float2(OutputSize);
-	const float Radius = max((float)SlopeRadius, 1.0f);
-	float BestSlope = 0.0f;
-	float2 BestDirection = float2(0.0f, 1.0f);
-
-	[unroll(16)]
-	for (int DirectionIndex = 0; DirectionIndex < 16; ++DirectionIndex)
-	{
-		const float Angle = (6.28318530718f / 16.0f) * (float)DirectionIndex;
-		const float2 PixelDirection = float2(cos(Angle), sin(Angle));
-		const float2 DeltaUV = PixelDirection * Radius / Resolution;
-		const float DistanceUV = max(length(DeltaUV), 1.0e-6f);
-		const float NeighbourHeight = GuideHeight.SampleLevel(
-			LinearWrapSampler, UV + DeltaUV, 0.0f);
-		const float Candidate = (CenterHeight - NeighbourHeight) / DistanceUV;
-		if (Candidate > BestSlope)
-		{
-			BestSlope = Candidate;
-			BestDirection = SafeNormalize(DeltaUV, BestDirection);
-		}
-	}
-
-	return float3(BestDirection, BestSlope);
 }
 
 [numthreads(8, 8, 1)]
@@ -151,32 +77,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float Source = SourceHeight.Load(int3(Pixel, 0));
 	const float Height = PreviousHeight.Load(int3(Pixel, 0));
-
-	if (BlurPass != 0)
-	{
-		const float2 Axis = BlurAxis == 0 ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f);
-		const float2 Texel = Axis / Resolution;
-		const float Sigma = max(BlurRadius * 0.5f, 1.0e-4f);
-		const int Taps = clamp((int)ceil(BlurRadius), 1, 16);
-		float Sum = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
-		float WeightSum = 1.0f;
-
-		[unroll(16)]
-		for (int Tap = 1; Tap <= Taps; ++Tap)
-		{
-			const float NormalizedDistance = (float)Tap / Sigma;
-			const float Weight = exp(-0.5f * NormalizedDistance * NormalizedDistance);
-			const float2 Offset = Texel * (float)Tap;
-			Sum += PreviousHeight.SampleLevel(LinearWrapSampler, UV + Offset, 0.0f) * Weight;
-			Sum += PreviousHeight.SampleLevel(LinearWrapSampler, UV - Offset, 0.0f) * Weight;
-			WeightSum += 2.0f * Weight;
-		}
-
-		OutputHeight[Pixel] = Sum / WeightSum;
-		return;
-	}
 
 	if (NormalPass != 0)
 	{
@@ -212,117 +113,151 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const int Radius = max(SlopeRadius, 1);
-	const int XMinus = WrapI(Pixel.x - Radius, OutputSize.x);
-	const int XPlus = WrapI(Pixel.x + Radius, OutputSize.x);
-	const int YMinus = WrapI(Pixel.y - Radius, OutputSize.y);
-	const int YPlus = WrapI(Pixel.y + Radius, OutputSize.y);
+	const float Source = SourceHeight.Load(int3(Pixel, 0));
 
-	const float Hmm = GuideHeight.Load(int3(XMinus, YMinus, 0));
-	const float H0m = GuideHeight.Load(int3(Pixel.x, YMinus, 0));
-	const float Hpm = GuideHeight.Load(int3(XPlus, YMinus, 0));
-	const float Hm0 = GuideHeight.Load(int3(XMinus, Pixel.y, 0));
-	const float Hp0 = GuideHeight.Load(int3(XPlus, Pixel.y, 0));
-	const float Hmp = GuideHeight.Load(int3(XMinus, YPlus, 0));
-	const float H0p = GuideHeight.Load(int3(Pixel.x, YPlus, 0));
-	const float Hpp = GuideHeight.Load(int3(XPlus, YPlus, 0));
-	const float GuideCenter = GuideHeight.Load(int3(Pixel, 0));
-
-	const float2 StepUV = (float)Radius / Resolution;
-	const float Hxx = (Hp0 - 2.0f * GuideCenter + Hm0) / (StepUV.x * StepUV.x);
-	const float Hyy = (H0p - 2.0f * GuideCenter + H0m) / (StepUV.y * StepUV.y);
-	const float Hxy = (Hpp - Hpm - Hmp + Hmm) / (4.0f * StepUV.x * StepUV.y);
-	const float HalfTrace = 0.5f * (Hxx + Hyy);
-	const float Spread = 0.5f * (Hxx - Hyy);
-	const float Discriminant = sqrt(max(Spread * Spread + Hxy * Hxy, 0.0f));
-	float Curvature = CurvatureMode == 1
-		? HalfTrace + Discriminant
-		: (CurvatureMode == 2 ? -(HalfTrace - Discriminant) : HalfTrace);
-	Curvature *= 0.5f * (StepUV.x + StepUV.y);
-
-	const float CavityWeight = RemapSmooth(
-		CavityRemapMin, CavityRemapMax, Curvature + CavityOffset);
-	const float CavityGate = saturate(lerp(1.0f, CavityWeight, CavityInfluence));
-
-	const float HeightWeight = RemapSmooth(
-		-1.0f, 1.0f, (Height - 0.5f) * HeightScale * 2.0f);
-	const float HeightGate = saturate(lerp(1.0f, HeightWeight, HeightInfluence));
-
-	float PlacementMask = UsePlacementMask != 0
+	float Mask = UsePlacementMask != 0
 		? PlacementMaskTexture.SampleLevel(
 			LinearWrapSampler, frac(UV * max(PlacementMaskTiling, 1.0f)), 0.0f).r
 		: LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	PlacementMask = InvertMask != 0 ? 1.0f - PlacementMask : PlacementMask;
-	const float Placement = saturate(Amount) * saturate(PlacementMask) * CavityGate * HeightGate;
+	Mask = InvertMask != 0 ? 1.0f - Mask : Mask;
+	const float Gate = saturate(Mask);
 
-	const float3 InitialSlope = MaximumDirectionalSlope(UV, GuideCenter);
-	const float2 Downhill = InitialSlope.xy;
-	const float MeasuredSlope = InitialSlope.z;
-	const float SteeringMagnitude = lerp(
-		MeasuredSlope, max(AssumedSlope, 0.0f), saturate(AssumedSlopeAmount));
-	float2 WorkingGradient = -Downhill * SteeringMagnitude;
+	// Gravity frame. The angle is degrees in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V.
+	const float AngleRadians = radians(GravityAngle);
+	const float2 GravityDir = float2(cos(AngleRadians), sin(AngleRadians));
+	const float2 GravityPerp = float2(-GravityDir.y, GravityDir.x);
 
-	float FadeTarget = saturate((Height - 0.5f) * HeightScale + 0.5f) * 2.0f - 1.0f;
-	const float InputRounding = lerp(
-		CreaseRounding, RidgeRounding, saturate(FadeTarget * 0.5f + 0.5f));
-	float CombinedMask = EaseOut(SmoothStart(
-		MeasuredSlope * SlopeOnset, InputRounding * SlopeOnset));
-	float RidgeCombinedMask = EaseOut(MeasuredSlope * SlopeOnset);
-	float RidgeTarget = FadeTarget;
-	float HeightDelta = 0.0f;
-	float MaximumMagnitude = 0.0f;
-	float Amplitude = max(Strength, 0.0f);
-	float RoundingScale = 1.0f;
-	int Cells = max(Period, 1);
-	const int OctaveCount = clamp(Octaves, 1, 12);
+	// Anisotropic Kuwahara analysis of the working height. The footprint stretches along the
+	// gravity direction as Verticality rises and thins across it; at zero it is the isotropic
+	// four-quadrant filter. Typed values outside 0..1 extrapolate: the footprint keeps its
+	// one-texel floors and the direction blend renormalizes, so nothing degenerates. Only the
+	// selected low-variance mean is consumed -- never written back -- so this is analysis,
+	// not a filter pass over the height chain.
+	const int AlongRadius = max(1, (int)round((float)max(Radius, 1) * (1.0f + Verticality)));
+	const int CrossRadius = max(1, (int)round((float)max(Radius, 1) * (1.0f - 0.75f * Verticality)));
 
-	[loop]
-	for (int Octave = 0; Octave < 12; ++Octave)
+	float QuadrantMean[4];
+	float QuadrantSqr[4];
+	float QuadrantCount[4];
+
+	[unroll(4)]
+	for (int Q = 0; Q < 4; ++Q)
 	{
-		if (Octave >= OctaveCount || Cells > max(OutputSize.x, OutputSize.y))
-		{
-			break;
-		}
-
-		const float2 GullyDirection = SafeNormalize(-WorkingGradient, Downhill);
-		const float4 Stripe = MixtormatPeriodicStripeField(
-			UV * (float)Cells,
-			GullyDirection,
-			Cells,
-			Seed + (uint)Octave * 977u,
-			Normalization);
-		const float2 PhaseGradient = Stripe.zw * (float)Cells;
-
-		// Constant-magnitude feedback treats each cosine band as a triangle only while steering.
-		// The visible height remains smooth, while finer bands branch cleanly at crests and troughs.
-		const float SineSign = Stripe.y >= 0.0f ? 1.0f : -1.0f;
-		WorkingGradient += -SineSign * PhaseGradient * Amplitude * GullyWeight;
-
-		const float RawGully = Stripe.x * GullyWeight;
-		const float FadedGully = lerp(FadeTarget, RawGully, CombinedMask);
-		HeightDelta += FadedGully * Amplitude;
-		MaximumMagnitude += Amplitude * max(1.0f, abs(GullyWeight));
-		FadeTarget = FadedGully;
-
-		const float Rounding = lerp(
-			CreaseRounding, RidgeRounding, saturate(Stripe.x * 0.5f + 0.5f))
-			* RoundingScale;
-		const float FeatureMask = EaseOut(SmoothStart(
-			abs(Stripe.y) * FeatureOnset, Rounding * FeatureOnset));
-		CombinedMask = PowInverse(CombinedMask, Detail) * FeatureMask;
-
-		RidgeTarget = lerp(RidgeTarget, Stripe.x, RidgeCombinedMask);
-		RidgeCombinedMask *= EaseOut(abs(Stripe.y) * FeatureOnset);
-
-		Amplitude *= saturate(Gain);
-		RoundingScale *= 2.0f;
-		Cells *= 2;
+		QuadrantMean[Q] = 0.0f;
+		QuadrantSqr[Q] = 0.0f;
+		QuadrantCount[Q] = 0.0f;
 	}
 
-	// Shift the signed stacked field down by its maximum positive excursion. The relative
-	// ridge/crease structure remains intact, but a material filter never creates new volume.
-	const float CarveDelta = min(0.5f * (HeightDelta - MaximumMagnitude), 0.0f);
-	OutputHeight[Pixel] = Height + CarveDelta * Placement;
-	OutputRidge[Pixel] = saturate(abs(RidgeTarget) * (1.0f - RidgeCombinedMask)) * Placement;
+	[loop]
+	for (int iv = -CrossRadius; iv <= CrossRadius; ++iv)
+	{
+		[loop]
+		for (int iu = -AlongRadius; iu <= AlongRadius; ++iu)
+		{
+			// Sample in the rotated gravity frame: the footprint is a box aligned to the
+			// flow direction, snapped back to texel centres. Duplicate taps from rounding
+			// only reweight the means, which is harmless for an analysis surface.
+			const float2 Offset = (float)iu * GravityDir + (float)iv * GravityPerp;
+			const int2 TexelOffset = (int2)round(Offset);
+			const float Sample = PreviousHeight.SampleLevel(
+				LinearWrapSampler, UV + (float2)TexelOffset / Resolution, 0.0f);
+
+			const int Quadrant = (iu >= 0 ? 1 : 0) + (iv >= 0 ? 2 : 0);
+			QuadrantMean[Quadrant] += Sample;
+			QuadrantSqr[Quadrant] += Sample * Sample;
+			QuadrantCount[Quadrant] += 1.0f;
+		}
+	}
+
+	float Analysis = Height;
+	float BestVariance = 1.0e30f;
+
+	[unroll]
+	for (int Q = 0; Q < 4; ++Q)
+	{
+		const float Count = max(QuadrantCount[Q], 1.0e-6f);
+		const float Mean = QuadrantMean[Q] / Count;
+		const float Variance = max(QuadrantSqr[Q] / Count - Mean * Mean, 0.0f);
+		if (Variance < BestVariance)
+		{
+			BestVariance = Variance;
+			Analysis = Mean;
+		}
+	}
+	const float Filtered = Analysis;
+
+	// Local gradient of the working height, in per-texel units -- the same pixel-space
+	// convention the shared height-derived normal pass uses.
+	const float HL = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(-1.0f, 0.0f) / Resolution, 0.0f);
+	const float HR = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(1.0f, 0.0f) / Resolution, 0.0f);
+	const float HD = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, -1.0f) / Resolution, 0.0f);
+	const float HU = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, 1.0f) / Resolution, 0.0f);
+	const float2 Gradient = 0.5f * float2(HR - HL, HU - HD);
+	const float GradientMagnitude = length(Gradient);
+
+	// Resolution normalization. A per-texel gradient shrinks as resolution rises, which would
+	// make the same surface erode less at 4K than at 1K. The slope measure and the wear
+	// sampling distance are therefore expressed per a fixed fraction of the tile -- height
+	// change per 1/256 UV -- so the response, the wear scale and the Preserve Flats threshold
+	// all keep their meaning across 1K/2K/4K. Typical material slopes then land in a 0..1+
+	// range instead of starving the response with thousandths.
+	const float SlopeNorm = max(max(Resolution.x, Resolution.y), 1.0f) / 256.0f;
+	const float SlopeMeasure = GradientMagnitude * SlopeNorm;
+
+	// Flow direction: the natural slope biased toward gravity. Erosion samples symmetrically
+	// forward and backward, so only the orientation matters; align the natural direction with
+	// gravity before blending so the lerp cannot pass through zero and explode the normalize.
+	float2 NaturalDir = GradientMagnitude > 1.0e-6f
+		? Gradient / GradientMagnitude
+		: GravityDir;
+	if (dot(NaturalDir, GravityDir) < 0.0f)
+	{
+		NaturalDir = -NaturalDir;
+	}
+	const float2 Blended = lerp(NaturalDir, GravityDir, Verticality);
+	const float BlendLength = length(Blended);
+	const float2 FlowDir = BlendLength > 1.0e-6f ? Blended / BlendLength : GravityDir;
+
+	// Slope-controlled wear, sampled over the same normalized distance as the slope measure,
+	// so the peak/valley read and the slope that gates it describe the same scale of surface.
+	const float2 FlowUV = FlowDir * (SlopeNorm / Resolution);
+	const float Forward = PreviousHeight.SampleLevel(LinearWrapSampler, UV + FlowUV, 0.0f);
+	const float Backward = PreviousHeight.SampleLevel(LinearWrapSampler, UV - FlowUV, 0.0f);
+	const float LocalMean = 0.5f * (Forward + Backward);
+
+	const float SlopeResponse = pow(
+		max(SlopeMeasure - max(PreserveFlats, 0.0f), 0.0f),
+		max(SlopePower, 0.01f));
+
+	const float Peak = max(Filtered - LocalMean, 0.0f);
+	const float Valley = max(LocalMean - Filtered, 0.0f);
+
+	// Amount and Depth are the artistic controls and are applied at face value: Amount scales
+	// how aggressively wear is generated, Depth how deeply that wear modifies the relief.
+	// Neither is remapped down internally.
+	const float ErosionDelta = Peak * SlopeResponse * max(Amount, 0.0f);
+	float DepositDelta = Valley * SlopeResponse * max(Deposit, 0.0f);
+	// Deposit stability: one iteration's refill cannot outrun the relief the same analysis
+	// says is movable, so repeated iterations cannot pump valleys upward without bound.
+	DepositDelta = min(DepositDelta, max(ErosionDelta * 2.0f, 0.01f));
+
+	// The step clamp is numerical stability only, sized from the effect's own scale spread
+	// over the iteration count -- so at high Amount/Depth it still permits meaningful
+	// per-pass displacement and only catches catastrophic spikes.
+	const float MaxStep = max(
+		0.01f,
+		max(Depth, 0.0f) * max(max(Amount, Deposit), 0.0f) / max((float)Iterations, 1.0f));
+
+	float Delta = (DepositDelta - ErosionDelta) * max(Depth, 0.0f) * Gate;
+	Delta = clamp(Delta, -MaxStep, MaxStep);
+
+	// A material filter never creates new volume: deposition may only refill toward what the
+	// layer actually composited, never above it.
+	float NewHeight = Height + Delta;
+	NewHeight = min(NewHeight, max(Source, Height));
+	OutputHeight[Pixel] = max(NewHeight, 0.0f);
+
+	// Crest/exposed response for the generated-mask drainage signal, gated like the carve.
+	OutputRidge[Pixel] = saturate(Peak * SlopeResponse * ErosionRidgeScale) * Gate;
 	OutputNormal[Pixel] = PreviousNormal.Load(int3(Pixel, 0));
 }

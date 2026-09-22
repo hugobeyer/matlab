@@ -2452,28 +2452,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// visually, but a typed value outside it stays intact all the way to the
 				// shader, which keeps its own epsilon guards at the division sites.
 				EffectData.ErosionAmount = LayerEffect.ErosionAmount;
-				EffectData.ErosionStrength = LayerEffect.ErosionStrength;
-				EffectData.ErosionOctaves = FMath::Clamp(LayerEffect.ErosionOctaves, 1, 12);
-				EffectData.ErosionPeriod = FMath::Clamp(LayerEffect.ErosionPeriod, 1, 1024);
-				EffectData.ErosionGain = LayerEffect.ErosionGain;
-				EffectData.ErosionDetail = LayerEffect.ErosionDetail;
-				EffectData.ErosionGullyWeight = LayerEffect.ErosionGullyWeight;
-				EffectData.ErosionNormalization = LayerEffect.ErosionNormalization;
-				EffectData.ErosionRidgeRounding = LayerEffect.ErosionRidgeRounding;
-				EffectData.ErosionCreaseRounding = LayerEffect.ErosionCreaseRounding;
-				EffectData.ErosionSlopeOnset = LayerEffect.ErosionSlopeOnset;
-				EffectData.ErosionFeatureOnset = LayerEffect.ErosionFeatureOnset;
-				EffectData.ErosionAssumedSlope = LayerEffect.ErosionAssumedSlope;
-				EffectData.ErosionAssumedSlopeAmount = LayerEffect.ErosionAssumedSlopeAmount;
-				EffectData.ErosionSlopeRadius = FMath::Clamp(LayerEffect.ErosionSlopeRadius, 1, 32);
-				EffectData.ErosionSlopeBlur = LayerEffect.ErosionSlopeBlur;
-				EffectData.ErosionCurvatureMode = static_cast<int32>(LayerEffect.ErosionCurvatureMode);
-				EffectData.ErosionCavityInfluence = LayerEffect.ErosionCavityInfluence;
-				EffectData.ErosionCavityOffset = LayerEffect.ErosionCavityOffset;
-				EffectData.ErosionCavityRemapMin = LayerEffect.ErosionCavityRemapMin;
-				EffectData.ErosionCavityRemapMax = LayerEffect.ErosionCavityRemapMax;
-				EffectData.ErosionHeightInfluence = LayerEffect.ErosionHeightInfluence;
-				EffectData.ErosionHeightScale = LayerEffect.ErosionHeightScale;
+				EffectData.ErosionDepth = LayerEffect.ErosionDepth;
+				EffectData.ErosionRadius = LayerEffect.ErosionRadius;
+				EffectData.ErosionIterations = LayerEffect.ErosionIterations;
+				EffectData.ErosionGravityAngle = LayerEffect.ErosionGravityAngle;
+				EffectData.ErosionVerticality = LayerEffect.ErosionVerticality;
+				EffectData.ErosionSlopePower = LayerEffect.ErosionSlopePower;
+				EffectData.ErosionDeposit = LayerEffect.ErosionDeposit;
+				EffectData.ErosionPreserveFlats = LayerEffect.ErosionPreserveFlats;
 				EffectData.ErosionMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.ErosionMaskTiling));
 				EffectData.bErosionInvertMask = LayerEffect.bErosionInvertMask;
 				{

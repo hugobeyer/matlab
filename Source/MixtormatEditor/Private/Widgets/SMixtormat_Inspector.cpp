@@ -3892,112 +3892,35 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRotationMenu()
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildErosionCurvatureModeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatErosionCurvatureMode Modes[] = {
-		EMixtormatErosionCurvatureMode::Mean,
-		EMixtormatErosionCurvatureMode::Valley,
-		EMixtormatErosionCurvatureMode::Ridge
-	};
-	for (const EMixtormatErosionCurvatureMode Mode : Modes)
-	{
-		Menu.Item(
-			MixtormatUI::ErosionCurvatureModeText(Mode),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
-			{
-				if (FMixtormatLayerEffect* E = GetSelectedErosion())
-				{
-					E->ErosionCurvatureMode = Mode;
-					RefreshLayeredPreview();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedErosion();
-				return E && E->ErosionCurvatureMode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-
-	const auto Ero = [this]() { return GetSelectedErosion(); };
-
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpFilter", "Filter")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 1.0, 1.0, 0.01),
-		MakeErosionSlider(LOCTEXT("EroStrength", "Depth"), &FMixtormatLayerEffect::ErosionStrength, 0.0, 0.5, 0.08, 0.005,
-			LOCTEXT("EroStrengthHint", "Total height removed by the largest erosion band. The result remains subtractive."))));
+		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
+			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
+		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 4.0, 1.0, 0.01,
+			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpField", "Gullies")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroOctaves", "Octaves"), &FMixtormatLayerEffect::ErosionOctaves, 1.0, 12.0, 5,
-			LOCTEXT("EroOctavesHint", "Stacked detail bands evaluated together. Later bands branch from the straightened slope created by earlier gullies.")),
-		MakeErosionSliderInt(LOCTEXT("EroPeriod", "Period"), &FMixtormatLayerEffect::ErosionPeriod, 1.0, 128.0, 12,
-			LOCTEXT("EroPeriodHint", "Cells across one UV repeat at the coarsest octave. Integral periods preserve seamless tiling."))));
+		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 32.0, 6,
+			LOCTEXT("EroRadiusHint", "Kuwahara analysis radius in texels. Larger values read broader coherent wear structures; the analysis never replaces the height itself.")),
+		MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 32.0, 8,
+			LOCTEXT("EroIterationsHint", "Ping-pong wear passes. Each pass analyses the previous pass's output, so wear propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an extreme stress case."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroGain", "Gain"), &FMixtormatLayerEffect::ErosionGain, 0.0, 1.0, 0.5, 0.01),
-		MakeErosionSlider(LOCTEXT("EroDetail", "Detail"), &FMixtormatLayerEffect::ErosionDetail, 0.1, 4.0, 1.5, 0.05,
-			LOCTEXT("EroDetailHint", "Controls how strongly existing ridges and creases suppress finer gullies."))));
+		MakeErosionSlider(LOCTEXT("EroGravityAngle", "Gravity Angle"), &FMixtormatLayerEffect::ErosionGravityAngle, 0.0, 360.0, 270.0, 1.0,
+			LOCTEXT("EroGravityAngleHint", "Preferred flow direction in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V. The default travels down the texture.")),
+		MakeErosionSlider(LOCTEXT("EroVerticality", "Verticality"), &FMixtormatLayerEffect::ErosionVerticality, 0.0, 1.0, 0.6, 0.01,
+			LOCTEXT("EroVerticalityHint", "Directional bias: 0 follows the local slope, 1 strongly favours the gravity angle and stretches the analysis along it. Shapes direction, not strength."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroGullyWeight", "Gully Weight"), &FMixtormatLayerEffect::ErosionGullyWeight, 0.0, 1.5, 0.65, 0.01),
-		MakeErosionSlider(LOCTEXT("EroNormalization", "Normalization"), &FMixtormatLayerEffect::ErosionNormalization, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("EroNormalizationHint", "Restores weak blended stripes without fully normalizing cancellation points into spikes."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpSlope", "Directional Max Slope")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroSlopeRadius", "Radius"), &FMixtormatLayerEffect::ErosionSlopeRadius, 1.0, 32.0, 2,
-			LOCTEXT("EroSlopeRadiusHint", "Search radius for the steepest downhill direction across sixteen rays. Small values retain brick and stone edges.")),
-		MakeErosionSlider(LOCTEXT("EroSlopeBlur", "Blur"), &FMixtormatLayerEffect::ErosionSlopeBlur, 0.0, 16.0, 0.0, 0.05,
-			LOCTEXT("EroSlopeBlurHint", "Optional guidance blur for noisy stone. Leave at zero for masonry and sharp joints."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroAssumedSlope", "Assumed"), &FMixtormatLayerEffect::ErosionAssumedSlope, 0.0, 4.0, 0.7, 0.01),
-		MakeErosionSlider(LOCTEXT("EroAssumedSlopeMix", "Assume Mix"), &FMixtormatLayerEffect::ErosionAssumedSlopeAmount, 0.0, 1.0, 1.0, 0.01)));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroSlopeOnset", "Surface Onset"), &FMixtormatLayerEffect::ErosionSlopeOnset, 0.0, 8.0, 1.0, 0.05),
-		MakeErosionSlider(LOCTEXT("EroFeatureOnset", "Feature Onset"), &FMixtormatLayerEffect::ErosionFeatureOnset, 0.0, 8.0, 1.25, 0.05)));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpRounding", "Rounding")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroRidgeRound", "Ridges"), &FMixtormatLayerEffect::ErosionRidgeRounding, 0.0, 1.0, 0.10, 0.01),
-		MakeErosionSlider(LOCTEXT("EroCreaseRound", "Creases"), &FMixtormatLayerEffect::ErosionCreaseRounding, 0.0, 1.0, 0.0, 0.01)));
-
-	// Cavity is an offset and a window, not a bias and a contrast. Contrast around a fixed
-	// centre could only widen or narrow the transition; it could not say which curvatures
-	// count as a channel, which is the decision this gate is actually making.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpCavity", "Cavity")));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("EroCurvatureMode", "Curvature"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedErosion();
-				return E ? MixtormatUI::ErosionCurvatureModeText(E->ErosionCurvatureMode) : FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildErosionCurvatureModeMenu)),
-		LOCTEXT("EroCurvatureModeHint", "Mean is the trace of the Hessian. Valley is its larger principal curvature, which reads an elongated channel at full depth where the trace halves it and a saddle cancels it. Ridge is the negated smaller one, which finds crests rather than the same signal inverted.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroCavityInfluence", "Influence"), &FMixtormatLayerEffect::ErosionCavityInfluence, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("EroCavityInfluenceHint", "How much the gate participates. 0 opens it fully and is the identity, 1 applies it as measured, and negative inverts it onto the opposite curvature. Nothing clamps it, so a typed value past 1 still extrapolates and expands the gate's contrast -- the slider just stops where the control stays predictable.")),
-		MakeErosionSlider(LOCTEXT("EroCavityOffset", "Offset"), &FMixtormatLayerEffect::ErosionCavityOffset, -4.0, 4.0, 0.0, 0.01,
-			LOCTEXT("EroCavityOffsetHint", "Added to the curvature before the remap, so the window moves without respecifying both ends."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroCavityRemapMin", "In Low"), &FMixtormatLayerEffect::ErosionCavityRemapMin, -4.0, 4.0, 0.0, 0.01,
-			LOCTEXT("EroCavityRemapHint", "Curvature mapped to 0..1. Setting Low above High inverts the gate.")),
-		MakeErosionSlider(LOCTEXT("EroCavityRemapMax", "In High"), &FMixtormatLayerEffect::ErosionCavityRemapMax, -4.0, 4.0, 1.0, 0.01,
-			LOCTEXT("EroCavityRemapHint", "Curvature mapped to 0..1. Setting Low above High inverts the gate."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpHeight", "Height")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroHeightInfluence", "Influence"), &FMixtormatLayerEffect::ErosionHeightInfluence, -1.0, 1.0, 0.0, 0.05),
-		MakeErosionSlider(LOCTEXT("EroHeightScale", "Peak / Valley"), &FMixtormatLayerEffect::ErosionHeightScale, 0.0, 8.0, 1.0, 0.05,
-			LOCTEXT("EroHeightScaleHint", "Shapes the fade target: low material becomes a crease and high material becomes a ridge."))));
+		MakeErosionSlider(LOCTEXT("EroSlopePower", "Slope Power"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 8.0, 1.0, 0.05,
+			LOCTEXT("EroSlopePowerHint", "Below 1 responds broadly to gentle slopes, above 1 concentrates wear on steep regions.")),
+		MakeErosionSlider(LOCTEXT("EroDeposit", "Deposit"), &FMixtormatLayerEffect::ErosionDeposit, 0.0, 4.0, 0.25, 0.01,
+			LOCTEXT("EroDepositHint", "How much removed material refills valleys and depressions. Zero is pure erosion."))));
+	AddSliderRow(Panel, MakeErosionSlider(LOCTEXT("EroPreserveFlats", "Preserve Flats"), &FMixtormatLayerEffect::ErosionPreserveFlats, 0.0, 0.5, 0.002, 0.001,
+		LOCTEXT("EroPreserveFlatsHint", "Slope threshold below which wear is suppressed, in normalized gradient space (height change per 1/256 of the tile). Zero leaves every region eligible; higher values protect increasingly flat ones.")));
 
 
 	// Erosion contributes no base colour. Its resolved mask only weights surface channels.

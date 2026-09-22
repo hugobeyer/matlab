@@ -1053,7 +1053,6 @@ private:
 	TSharedRef<SWidget> BuildProceduralPeelControls();
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
-	TSharedRef<SWidget> BuildErosionCurvatureModeMenu();
 	TSharedRef<SWidget> BuildGradeControls();
 	TSharedRef<SWidget> BuildBreakupControls();
 	TSharedRef<SWidget> BuildGradeTonemapMenu();
