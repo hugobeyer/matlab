@@ -321,13 +321,16 @@ namespace MixtormatGpuCompositor
 
 		float ErosionAmount = 1.5f;
 		float ErosionDepth = 1.0f;
-		int32 ErosionRadius = 6;
+		int32 ErosionRadius = 2;
 		int32 ErosionIterations = 8;
 		float ErosionGravityAngle = 270.0f;
 		float ErosionVerticality = 0.6f;
 		float ErosionSlopePower = 1.0f;
 		float ErosionDeposit = 0.25f;
 		float ErosionPreserveFlats = 0.002f;
+		float ErosionSmoothing = 0.65f;
+		float ErosionVariation = 0.18f;
+		int32 ErosionSeed = 1;
 		FTextureRHIRef ErosionPlacementMask;
 		float ErosionMaskTiling = 1.0f;
 		bool bErosionInvertMask = false;

@@ -352,6 +352,9 @@ public:
 		SHADER_PARAMETER(float, SlopePower)
 		SHADER_PARAMETER(float, Deposit)
 		SHADER_PARAMETER(float, PreserveFlats)
+		SHADER_PARAMETER(float, Smoothing)
+		SHADER_PARAMETER(float, Variation)
+		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(uint32, UsePlacementMask)
 		SHADER_PARAMETER(float, PlacementMaskTiling)
 		SHADER_PARAMETER(uint32, InvertMask)
@@ -2303,6 +2306,9 @@ namespace MixtormatGpuCompositor
 				Parameters->SlopePower = Ero.ErosionSlopePower;
 				Parameters->Deposit = Ero.ErosionDeposit;
 				Parameters->PreserveFlats = Ero.ErosionPreserveFlats;
+				Parameters->Smoothing = Ero.ErosionSmoothing;
+				Parameters->Variation = Ero.ErosionVariation;
+				Parameters->Seed = (uint32)Ero.ErosionSeed;
 				Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
 				Parameters->InvertMask =

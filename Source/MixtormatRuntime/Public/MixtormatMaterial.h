@@ -990,10 +990,12 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float ErosionDepth = 1.0f;
 
-	// Kuwahara analysis radius in texels. Larger values read broader coherent wear structures;
-	// the analysis never replaces the height itself.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "32"))
-	int32 ErosionRadius = 6;
+	// Kuwahara analysis radius in texels, shared by both footprint axes. Deliberately small:
+	// 2 is the normal working value and 3-4 only broaden the analysis -- the quadrant pass is a
+	// 2D neighbourhood re-run every iteration, so cost grows quadratically. The solver clamps
+	// this internally to 1..4.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "4"))
+	int32 ErosionRadius = 2;
 
 	// Ping-pong wear iterations. Each pass re-analyses the previous pass's output, so wear
 	// propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an
@@ -1007,9 +1009,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "360.0", Units = "deg"))
 	float ErosionGravityAngle = 270.0f;
 
-	// Directional bias strength. 0 follows the natural local slope; 1 strongly favours the
-	// gravity direction and elongates the Kuwahara analysis along it. This shapes direction,
-	// not amplitude.
+	// Tangent protection. The Kuwahara footprint no longer changes with this control; instead
+	// it scales how much cross-gravity structure survives: 0 lets erosion follow the terrain
+	// naturally, 1 increasingly protects tangent structures while gravity-aligned channels
+	// develop. A mild flow-direction bias remains internally.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ErosionVerticality = 0.6f;
 
@@ -1028,6 +1031,22 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// eligible; higher values protect increasingly flat and subtle ones.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float ErosionPreserveFlats = 0.002f;
+
+	// Multi-scale slope smoothing. The slope field -- not the height -- is measured at 1- and
+	// 2-texel spans and blended, so high-frequency surface noise stops steering every
+	// iteration. 0 responds to the finest detail, 0.65 gives stable broad erosion directions,
+	// 1 strongly ignores single-texel steering.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float ErosionSmoothing = 0.65f;
+
+	// Subtle seeded strength variation across the tile, from a smooth tileable lattice noise.
+	// Breaks up the uniformity of the carve the way material hardness differences do.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float ErosionVariation = 0.18f;
+
+	// Seeds the variation field. Same seed, same variation, at any resolution.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0", UIMax = "9999"))
+	int32 ErosionSeed = 1;
 
 	// Optional placement mask owned by Erosion. When unset, the filter keeps using the layer's
 	// accumulated authored, generated, and craquelure mask children.

@@ -2460,6 +2460,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				EffectData.ErosionSlopePower = LayerEffect.ErosionSlopePower;
 				EffectData.ErosionDeposit = LayerEffect.ErosionDeposit;
 				EffectData.ErosionPreserveFlats = LayerEffect.ErosionPreserveFlats;
+				EffectData.ErosionSmoothing = LayerEffect.ErosionSmoothing;
+				EffectData.ErosionVariation = LayerEffect.ErosionVariation;
+				EffectData.ErosionSeed = LayerEffect.ErosionSeed;
 				EffectData.ErosionMaskTiling = FMath::Max(1.0f, static_cast<float>(LayerEffect.ErosionMaskTiling));
 				EffectData.bErosionInvertMask = LayerEffect.bErosionInvertMask;
 				{
