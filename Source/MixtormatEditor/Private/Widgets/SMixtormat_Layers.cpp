@@ -6,6 +6,7 @@
 #include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Parameters/MixtormatParameterAuthoring.h"
 
 #include "ObjectTools.h"
 #include "Style/MixtormatDesignTokens.h"
@@ -334,6 +335,15 @@ namespace
 		default:
 			// Every remaining kind is fully described by its type.
 			break;
+		}
+
+		// Genuinely-new effect children receive the current persistent plugin defaults;
+		// duplication and instance resolve never pass through here, so authored values on
+		// copies and serialized assets are untouched.
+		if (Child.Type == EMixtormatLayerChildType::Effect)
+		{
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(
+				Child.Effect, Child.Effect.ProceduralType);
 		}
 	}
 
@@ -3057,6 +3067,8 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 		LayerEffect.Lift = Effect->DefaultLift;
 		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
 	}
+	// The database speaks per family; an asset child's family is the asset's type.
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(LayerEffect, Effect->EffectType);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -4119,6 +4131,8 @@ FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath E
 		LayerEffect.Lift = Effect->DefaultLift;
 		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
 	}
+	// The database speaks per family; an asset child's family is the asset's type.
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(LayerEffect, Effect->EffectType);
 	FinishGroupChildEdit(GroupId);
 	return FReply::Handled();
 }

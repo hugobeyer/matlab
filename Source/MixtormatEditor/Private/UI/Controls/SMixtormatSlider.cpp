@@ -16,11 +16,11 @@
 
 void SMixtormatSlider::Construct(const FArguments& InArgs)
 {
-	Label = InArgs._Label;
+	LabelAttribute = InArgs._Label;
 	ValueAttribute = InArgs._Value;
 	MinValueAttribute = InArgs._MinValue;
 	MaxValueAttribute = InArgs._MaxValue;
-	DefaultValue = InArgs._DefaultValue;
+	DefaultValueAttribute = InArgs._DefaultValue;
 	DeltaAttribute = InArgs._Delta;
 	Precision = InArgs._Precision;
 	bInteger = InArgs._bInteger;
@@ -343,8 +343,8 @@ int32 SMixtormatSlider::OnPaint(
 	// Leading stripe when the value differs from its default. Survives at this row height where a
 	// dot or an italic label would not, and does not compete with the blue fill.
 	const bool bModified = bInteger
-		? FMath::RoundToInt(Value) != FMath::RoundToInt(DefaultValue)
-		: !FMath::IsNearlyEqual(Value, DefaultValue, 1.0e-6);
+		? FMath::RoundToInt(Value) != FMath::RoundToInt(DefaultValueAttribute.Get(0.0))
+		: !FMath::IsNearlyEqual(Value, DefaultValueAttribute.Get(0.0), 1.0e-6);
 	if (bModified && bEnabled)
 	{
 		FSlateDrawElement::MakeBox(
@@ -388,7 +388,7 @@ int32 SMixtormatSlider::OnPaint(
 			AllottedGeometry.ToPaintGeometry(
 				FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y)),
 				FSlateLayoutTransform(FVector2f(LabelX, TextY))),
-			Label,
+			LabelAttribute.Get(FText::GetEmpty()),
 			LabelStyle.Font,
 			ESlateDrawEffect::None,
 			LabelStyle.ColorAndOpacity.GetSpecifiedColor());

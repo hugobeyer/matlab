@@ -12,6 +12,7 @@
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatSlider.h"
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
+#include "UI/Parameters/MixtormatParameterAuthoring.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -602,11 +603,11 @@ private:
 	// metadata -- including a session dev override -- on every paint. Plain doubles pass in
 	// unchanged and keep working via TAttribute's implicit conversion.
 	TSharedRef<SWidget> MakeSlider(
-		const FText& Label,
+		const TAttribute<FText>& Label,
 		const TAttribute<double>& Value,
 		const TAttribute<double>& MinValue,
 		const TAttribute<double>& MaxValue,
-		const double DefaultValue,
+		const TAttribute<double>& DefaultValue,
 		const TAttribute<double>& SnapDelta,
 		const bool bInteger,
 		const FMixtormatOnSliderValueChanged& OnValueChanged,
@@ -671,6 +672,9 @@ private:
 	TSharedRef<SWidget> BuildParameterDeveloperMenu(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterInfoPanel(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterUiRangeOverridePanel(FMixtormatParameterAddress Target);
+	// Persistent authoring editor for PersistentDevTunable parameters: label/default/UI range/
+	// snap with live preview; edits stay unsaved until Save to Plugin Defaults.
+	TSharedRef<SWidget> BuildAuthoringSetupPanel(FMixtormatParameterAddress Target);
 	void CopyParameterAddress(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterDriverPopover(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterContextMenuFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
@@ -768,7 +772,7 @@ private:
 					return Fallback;
 				}
 				return static_cast<double>(
-					MixtormatParameterUi::ResolveUiBound(*Key, static_cast<float>(Fallback), bMax));
+					MixtormatParameterAuthoring::ResolveAuthoringUiBound(*Key, static_cast<float>(Fallback), bMax));
 			});
 		};
 		// Migration guard, runs from the min getter and warns once per parameter (guarded inside
@@ -789,23 +793,36 @@ private:
 			});
 		};
 
-		// Reset falls to the canonical definition's default once the row resolves, so the
-		// serialized struct initializer, the slider literal and the table cannot disagree.
+		// Reset and the modified-value stripe resolve the SAME default: unsaved dev edit ->
+		// shipped plugin default -> compiled definition, all in STORED units. Only the legacy
+		// literal fallback is in UI units and needs ValueScale; multiplying an already-stored
+		// canonical default by ValueScale would double-scale it.
 		const auto StoredDefault = [KeyFor, DefaultValue, ValueScale]() -> double
 		{
 			if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
 			{
-				if (const FMixtormatParameterDefinition* Definition =
-					MixtormatParameterDefinitions::TryGet(*Key))
-				{
-					return static_cast<double>(Definition->Default) * ValueScale;
-				}
+				return MixtormatParameterAuthoring::ResolveAuthoringDefault(
+					*Key, DefaultValue * ValueScale);
 			}
-			return DefaultValue;
+			return DefaultValue * ValueScale;
+		};
+		// The display default for the stripe: stored units converted back to UI units.
+		const auto DisplayDefault = [StoredDefault, ValueScale]() -> double
+		{
+			return StoredDefault() / ValueScale;
+		};
+		// The persistent label override, when the authoring database carries one.
+		const auto ResolvedLabel = [KeyFor, Label]() -> FText
+		{
+			if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
+			{
+				return MixtormatParameterAuthoring::ResolveAuthoringLabel(*Key, Label);
+			}
+			return Label;
 		};
 
 		TSharedRef<SWidget> Slider = MakeSlider(
-			Label,
+			TAttribute<FText>::CreateLambda(ResolvedLabel),
 			TAttribute<double>::CreateLambda([this, Resolve, Member, StoredDefault, ValueScale, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
@@ -814,12 +831,12 @@ private:
 			}),
 			MigrationGuardBound(),
 			RangeBound(MaxValue, true),
-			DefaultValue,
+			TAttribute<double>::CreateLambda(DisplayDefault),
 			TAttribute<double>::CreateLambda([KeyFor, LiteralSnap]() -> double
 			{
 				const FMixtormatParameterDefinitionKey* Key = KeyFor();
 				return Key
-					? static_cast<double>(MixtormatParameterUi::ResolveUiSnap(*Key, LiteralSnap))
+					? static_cast<double>(MixtormatParameterAuthoring::ResolveAuthoringSnap(*Key, LiteralSnap))
 					: static_cast<double>(LiteralSnap);
 			}),
 			false,
@@ -901,7 +918,7 @@ private:
 			{
 				const FMixtormatParameterDefinitionKey* Key = KeyFor();
 				return Key
-					? static_cast<double>(MixtormatParameterUi::ResolveUiBound(*Key, static_cast<float>(Fallback), bMax))
+					? static_cast<double>(MixtormatParameterAuthoring::ResolveAuthoringUiBound(*Key, static_cast<float>(Fallback), bMax))
 					: Fallback;
 			});
 		};
@@ -909,17 +926,25 @@ private:
 		{
 			if (const FMixtormatParameterDefinitionKey* Key = KeyFor())
 			{
-				if (const FMixtormatParameterDefinition* Definition =
-					MixtormatParameterDefinitions::TryGet(*Key))
-				{
-					return FMath::RoundToInt(Definition->Default);
-				}
+				return FMath::RoundToInt(
+					MixtormatParameterAuthoring::ResolveAuthoringDefault(
+						*Key, static_cast<float>(DefaultValue)));
 			}
 			return DefaultValue;
 		};
+		const auto DisplayDefault = [StoredDefault]() -> double
+		{
+			return static_cast<double>(StoredDefault());
+		};
 
 		TSharedRef<SWidget> Slider = MakeSlider(
-			Label,
+			TAttribute<FText>::CreateLambda([KeyFor, Label]() -> FText
+			{
+				const FMixtormatParameterDefinitionKey* Key = KeyFor();
+				return Key
+					? MixtormatParameterAuthoring::ResolveAuthoringLabel(*Key, Label)
+					: Label;
+			}),
 			TAttribute<double>::CreateLambda([this, Resolve, Member, StoredDefault, ResolveTarget]() -> double
 			{
 				const TOwner* Owner = Resolve();
@@ -928,7 +953,7 @@ private:
 			}),
 			RangeBound(MinValue, false),
 			RangeBound(MaxValue, true),
-			static_cast<double>(DefaultValue),
+			TAttribute<double>::CreateLambda(DisplayDefault),
 			1.0,
 			true,
 			FMixtormatOnSliderValueChanged::CreateLambda([this, Resolve, Member, ResolveTarget](const double Value)

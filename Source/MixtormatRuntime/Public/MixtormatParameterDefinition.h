@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MixtormatEffect.h"
 #include "MixtormatMaterial.h"
 #include "UObject/NameTypes.h"
 
@@ -43,6 +44,22 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterDefinitionKey
 	}
 };
 
+// How a parameter participates in authoring. Only PersistentDevTunable parameters get the
+// Developer menu's persistent editing UI (label/default/UI range/snap, saved into the plugin's
+// authoring database and shipped with Mixtormat). Structural plumbing, identity, placement and
+// enum/bool fields have no definitions at all, so they are excluded by construction; Fixed
+// exists for the numeric fields that are real parameters but whose shipped numbers are final
+// (placement tiling, seeds).
+enum class EMixtormatParameterAuthoringPolicy : uint8
+{
+	// Engineering value: compiled default only, no authoring UI.
+	Fixed,
+	// Migrated: has a definition and UI metadata, but the shipped numbers are final.
+	Tunable,
+	// Authoring-tunable: persistently editable through the plugin authoring database.
+	PersistentDevTunable
+};
+
 struct MIXTORMATRUNTIME_API FMixtormatParameterDefinition
 {
 	EMixtormatParameterOwnerType Owner = EMixtormatParameterOwnerType::Effect;
@@ -67,6 +84,11 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterDefinition
 	// contract note, never enforced editor-side: values past 1.0 remain legal, they just stop
 	// changing the result.
 	bool bShaderSaturates = false;
+
+	// Authoring participation. Tunable unless a family migration says otherwise; every
+	// definition today is Breakup, so the family default follows.
+	EMixtormatParameterAuthoringPolicy Policy = EMixtormatParameterAuthoringPolicy::Tunable;
+	EMixtormatEffectType EffectFamily = EMixtormatEffectType::Breakup;
 
 	FMixtormatParameterDefinitionKey GetKey() const
 	{

@@ -15,6 +15,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Input/SEditableTextBox.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -618,37 +619,99 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 	// module -- a packaged build carries neither the flag's consumer nor this code.
 	if (MixtormatParameterUi::IsDeveloperMetaEnabled() && Target.IsValid())
 	{
+		const TOptional<FMixtormatParameterDefinitionKey> DevKey =
+			MixtormatParameterUi::DefinitionKeyOf(Target);
+		const bool bPersistentlyEditable = DevKey.IsSet()
+			&& MixtormatParameterAuthoring::IsPersistentlyEditable(*DevKey);
+
 		Menu.Separator()
 			.Caption(LOCTEXT("ParameterDeveloperCaption", "Developer"))
 			.SubMenu(
 				LOCTEXT("DevParameterInfo", "Parameter Info"),
 				nullptr,
-				FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterInfoPanel, Target))
-			.SubMenu(
-				LOCTEXT("DevOverrideUiRange", "Override UI Range..."),
-				nullptr,
-				FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterUiRangeOverridePanel, Target))
-			.Item(
-				LOCTEXT("DevRemoveUiRangeOverride", "Remove UI Range Override"),
-				nullptr,
-				FSimpleDelegate::CreateLambda([Target]()
-				{
-					if (const TOptional<FMixtormatParameterDefinitionKey> Key =
-						MixtormatParameterUi::DefinitionKeyOf(Target))
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterInfoPanel, Target));
+
+		if (bPersistentlyEditable)
+		{
+			Menu.SubMenu(
+					LOCTEXT("DevEditAuthoring", "Edit Authoring Setup..."),
+					nullptr,
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAuthoringSetupPanel, Target))
+				.Item(
+					LOCTEXT("DevSaveAuthoring", "Save to Plugin Defaults"),
+					nullptr,
+					FSimpleDelegate::CreateLambda([this]()
 					{
-						MixtormatParameterUi::ClearUiRangeOverride(Key.GetValue());
-					}
+						if (MixtormatParameterAuthoring::SavePendingToPluginDefaults())
+						{
+							WorkingStatusText = TEXT("Authoring defaults saved to the plugin database");
+						}
+						else
+						{
+							WorkingStatusText = TEXT("Authoring save FAILED -- plugin directory may be read-only. Edits kept unsaved.");
+						}
+					}))
+				.Enabled(TAttribute<bool>::CreateLambda([]()
+				{
+					return MixtormatParameterAuthoring::HasAnyPendingAuthoring();
 				}))
-			.Enabled(TAttribute<bool>::CreateLambda([Target]()
-			{
-				const TOptional<FMixtormatParameterDefinitionKey> Key =
-					MixtormatParameterUi::DefinitionKeyOf(Target);
-				return Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
-			}))
-			.Item(
-				LOCTEXT("DevCopyParameterAddress", "Copy Parameter Address"),
-				nullptr,
-				FSimpleDelegate::CreateSP(this, &SMixtormat::CopyParameterAddress, Target));
+				.Item(
+					LOCTEXT("DevRevertAuthoring", "Revert Unsaved Changes"),
+					nullptr,
+					FSimpleDelegate::CreateLambda([DevKey]()
+					{
+						MixtormatParameterAuthoring::RevertPendingAuthoring(DevKey.GetValue());
+					}))
+				.Enabled(TAttribute<bool>::CreateLambda([DevKey]()
+				{
+					return MixtormatParameterAuthoring::HasPendingAuthoring(DevKey.GetValue());
+				}))
+				.Item(
+					LOCTEXT("DevRestoreShipped", "Restore Compiled Defaults"),
+					nullptr,
+					FSimpleDelegate::CreateLambda([this, DevKey]()
+					{
+						if (!MixtormatParameterAuthoring::RestoreShippedAuthoring(DevKey.GetValue()))
+						{
+							WorkingStatusText = TEXT("Authoring restore FAILED -- plugin directory may be read-only.");
+						}
+					}))
+				.Enabled(TAttribute<bool>::CreateLambda([DevKey]()
+				{
+					return MixtormatParameterAuthoring::HasShippedAuthoring(DevKey.GetValue());
+				}));
+		}
+		else
+		{
+			// Session-only range override remains the tool for parameters that are not opted in
+			// to persistent authoring.
+			Menu.SubMenu(
+					LOCTEXT("DevOverrideUiRange", "Override UI Range..."),
+					nullptr,
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterUiRangeOverridePanel, Target))
+				.Item(
+					LOCTEXT("DevRemoveUiRangeOverride", "Remove UI Range Override"),
+					nullptr,
+					FSimpleDelegate::CreateLambda([Target]()
+					{
+						if (const TOptional<FMixtormatParameterDefinitionKey> Key =
+							MixtormatParameterUi::DefinitionKeyOf(Target))
+						{
+							MixtormatParameterUi::ClearUiRangeOverride(Key.GetValue());
+						}
+					}))
+				.Enabled(TAttribute<bool>::CreateLambda([Target]()
+				{
+					const TOptional<FMixtormatParameterDefinitionKey> Key =
+						MixtormatParameterUi::DefinitionKeyOf(Target);
+					return Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
+				}));
+		}
+
+		Menu.Item(
+			LOCTEXT("DevCopyParameterAddress", "Copy Parameter Address"),
+			nullptr,
+			FSimpleDelegate::CreateSP(this, &SMixtormat::CopyParameterAddress, Target));
 	}
 	return Menu.Build();
 }
@@ -832,23 +895,50 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 		Definition
 			? FText::AsNumber(Definition->Default)
 			: LOCTEXT("DevInfoNoDefinition", "no definition"),
-		LOCTEXT("DevInfoDefaultHint", "The canonical reset value. The serialized struct initializer matches it; the automation test asserts that."));
+		LOCTEXT("DevInfoDefaultHint", "The compiled reset value. The serialized struct initializer matches it; the automation test asserts that."));
 
 	const FMixtormatParameterUiMeta* Meta = Key.IsSet() ? MixtormatParameterUi::TryGetUiMeta(Key.GetValue()) : nullptr;
-	const bool bOverridden = Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
-	const FText UiRange = Meta
+	if (Key.IsSet() && MixtormatParameterAuthoring::HasShippedAuthoring(Key.GetValue()))
+	{
+		AddInfo(
+			LOCTEXT("DevInfoAuthoringDefault", "Authoring Default"),
+			FText::AsNumber(MixtormatParameterAuthoring::ResolveAuthoringDefault(
+				Key.GetValue(), Definition ? Definition->Default : 0.0f)),
+			LOCTEXT("DevInfoAuthoringDefaultHint", "The plugin authoring database's reset value -- what new instances and Reset use. Existing authored materials are untouched."));
+	}
+
+	const bool bSessionOverride = Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
+	const FText ShippedUi = Meta
 		? FText::Format(LOCTEXT("DevInfoUiRange", "{0} .. {1}"),
 			FText::AsNumber(Meta->UiMin), FText::AsNumber(Meta->UiMax))
 		: LOCTEXT("DevInfoNoUiMeta", "literal (unmigrated)");
+	if (Key.IsSet())
+	{
+		const float ActiveMin = MixtormatParameterAuthoring::ResolveAuthoringUiBound(
+			Key.GetValue(), Meta ? Meta->UiMin : 0.0f, false);
+		const float ActiveMax = MixtormatParameterAuthoring::ResolveAuthoringUiBound(
+			Key.GetValue(), Meta ? Meta->UiMax : 1.0f, true);
+		FText ActiveUi = FText::Format(LOCTEXT("DevInfoActiveUiRange", "{0} .. {1}"),
+			FText::AsNumber(ActiveMin), FText::AsNumber(ActiveMax));
+		if (bSessionOverride)
+		{
+			ActiveUi = FText::Format(LOCTEXT("DevInfoActiveUiOverridden", "{0} (session override)"), ActiveUi);
+		}
+		AddInfo(
+			LOCTEXT("DevInfoActiveUi", "Active UI"),
+			ActiveUi,
+			LOCTEXT("DevInfoUiHint", "Drag range only. A typed value outside it is legal; only Hard Min/Max restrict."));
+	}
 	AddInfo(
-		LOCTEXT("DevInfoUi", "UI"),
-		bOverridden
-			? FText::Format(LOCTEXT("DevInfoUiOverridden", "{0} (session override)"), UiRange)
-			: UiRange,
-		LOCTEXT("DevInfoUiHint", "Drag range only. A typed value outside it is legal; only Hard Min/Max restrict."));
+		LOCTEXT("DevInfoShippedUi", "Shipped UI"),
+		ShippedUi,
+		LOCTEXT("DevInfoShippedUiHint", "The compiled UI range before any authoring-database or session change."));
 	if (Meta)
 	{
-		AddInfo(LOCTEXT("DevInfoSnap", "Snap"), FText::AsNumber(Meta->Snap));
+		const float ResolvedSnap = Key.IsSet()
+			? MixtormatParameterAuthoring::ResolveAuthoringSnap(Key.GetValue(), Meta->Snap)
+			: Meta->Snap;
+		AddInfo(LOCTEXT("DevInfoSnap", "Snap"), FText::AsNumber(ResolvedSnap));
 	}
 
 	if (Definition)
@@ -973,6 +1063,174 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 				MixtormatTokens::DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(300.0f)
+				[
+					Rows
+				]
+			]);
+	return Menu.Build();
+}
+
+// Developer > Edit Authoring Setup: live-preview editing of one parameter's persistent
+// authoring setup. Every change lands in the unsaved pending set immediately (so the
+// Inspector, reset and stripe all preview it) and reaches the plugin database only through
+// Developer > Save to Plugin Defaults.
+TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParameterAddress Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TOptional<FMixtormatParameterDefinitionKey> KeyOpt = MixtormatParameterUi::DefinitionKeyOf(Target);
+	if (!KeyOpt.IsSet() || !MixtormatParameterAuthoring::IsPersistentlyEditable(KeyOpt.GetValue()))
+	{
+		Menu.Caption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup"))
+			.Item(LOCTEXT("DevAuthoringNotOptedIn", "Parameter is not persistently editable"), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
+	const FMixtormatParameterDefinitionKey Key = KeyOpt.GetValue();
+	const FMixtormatParameterDefinition* Definition = MixtormatParameterDefinitions::TryGet(Key);
+	const FMixtormatParameterUiMeta* Meta = MixtormatParameterUi::TryGetUiMeta(Key);
+
+	// The panel edits a COMPLETE entry: unset fields seed from the effective current values,
+	// so what is saved is the whole setup, not a sparse diff.
+	const auto EffectiveEntry = [Key]() -> FMixtormatParameterAuthoringEntry
+	{
+		FMixtormatParameterAuthoringEntry Entry;
+		if (const FMixtormatParameterAuthoringEntry* Pending = MixtormatParameterAuthoring::TryGetPending(Key))
+		{
+			Entry = *Pending;
+		}
+		else if (const FMixtormatParameterAuthoringEntry* Shipped = MixtormatParameterAuthoring::TryGetShipped(Key))
+		{
+			Entry = *Shipped;
+		}
+		if (!Entry.Default.IsSet())
+		{
+			Entry.Default = MixtormatParameterAuthoring::ResolveAuthoringDefault(Key, 0.0f);
+		}
+		if (!Entry.UiMin.IsSet())
+		{
+			Entry.UiMin = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 0.0f, false);
+		}
+		if (!Entry.UiMax.IsSet())
+		{
+			Entry.UiMax = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 1.0f, true);
+		}
+		if (!Entry.Snap.IsSet())
+		{
+			Entry.Snap = MixtormatParameterAuthoring::ResolveAuthoringSnap(Key, 0.0f);
+		}
+		return Entry;
+	};
+	const auto Update = [Key, EffectiveEntry](const TFunctionRef<void(FMixtormatParameterAuthoringEntry&)>& Mutate)
+	{
+		FMixtormatParameterAuthoringEntry Entry = EffectiveEntry();
+		Mutate(Entry);
+		MixtormatParameterAuthoring::SetPendingAuthoring(Key, Entry);
+	};
+
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	const auto AddInfo = [&Rows](const FText& Label, const FText& Value)
+	{
+		Rows->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				MixtormatRow::Make(Label, SNew(STextBlock).Text(Value))
+			];
+	};
+	// Numeric authoring row: typing is the primary interaction; the wide drag range is a
+	// convenience, not a restriction. EffectiveEntry/Update are captured BY VALUE -- the
+	// sliders outlive this function's stack frame for as long as the menu is open.
+	const auto AddEditRow = [this, &Rows, Key, EffectiveEntry, Update](
+		const FText& Label,
+		const float Value,
+		const TFunctionRef<void(FMixtormatParameterAuthoringEntry&, float)>& Mutate)
+	{
+		Rows->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				MakeSlider(
+					Label,
+					TAttribute<double>::CreateLambda([Value]() { return static_cast<double>(Value); }),
+					-1.0e4, 1.0e4,
+					static_cast<double>(Value),
+					0.0,
+					false,
+					FMixtormatOnSliderValueChanged::CreateLambda(
+						[Update, Mutate](const double NewValue)
+					{
+						Update([&Mutate, NewValue](FMixtormatParameterAuthoringEntry& Entry)
+						{
+							Mutate(Entry, static_cast<float>(NewValue));
+						});
+					}),
+					FSimpleDelegate(),
+					LOCTEXT("DevAuthoringRowHint", "Live preview. Unsaved until Save to Plugin Defaults."))
+			];
+	};
+
+	const FMixtormatParameterAuthoringEntry Current = EffectiveEntry();
+
+	// Label override. Presentation only: the property FName, binding address, serialization
+	// and shader uniforms are untouched.
+	Rows->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+		[
+			MixtormatRow::Make(
+				LOCTEXT("DevAuthoringLabel", "Label"),
+				SNew(SEditableTextBox)
+				.Text(FText::FromString(Current.Label))
+				.HintText(LOCTEXT("DevAuthoringLabelHint", "Display label override"))
+				.OnTextChanged(FOnTextChanged::CreateLambda([Update](const FText& Text)
+				{
+					Update([&Text](FMixtormatParameterAuthoringEntry& Entry)
+					{
+						Entry.Label = Text.ToString();
+					});
+				})))
+		];
+
+	AddEditRow(LOCTEXT("DevAuthoringDefault", "Default/Reset"), Current.Default.GetValue(),
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Default = Value; });
+	AddEditRow(LOCTEXT("DevAuthoringUiMin", "UI Min"), Current.UiMin.GetValue(),
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMin = Value; });
+	AddEditRow(LOCTEXT("DevAuthoringUiMax", "UI Max"), Current.UiMax.GetValue(),
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMax = Value; });
+	AddEditRow(LOCTEXT("DevAuthoringSnap", "Snap"), Current.Snap.GetValue(),
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Snap = Value; });
+
+	// Hard bounds are runtime-owned and read-only here, by design.
+	AddInfo(LOCTEXT("DevAuthoringHardMin", "Hard Min"),
+		Definition && Definition->HardMin.IsSet()
+			? FText::AsNumber(Definition->HardMin.GetValue())
+			: LOCTEXT("DevAuthoringUnbounded", "unlimited"));
+	AddInfo(LOCTEXT("DevAuthoringHardMax", "Hard Max"),
+		Definition && Definition->HardMax.IsSet()
+			? FText::AsNumber(Definition->HardMax.GetValue())
+			: LOCTEXT("DevAuthoringUnbounded2", "unlimited"));
+
+	FString ShaderInfo = FString::Printf(
+		TEXT("normalization: %s | saturates: %s"),
+		Definition && !FMath::IsNearlyEqual(Definition->NormalizationScale, 1.0f)
+			? *FString::Printf(TEXT("/%g"), Definition->NormalizationScale)
+			: TEXT("none"),
+		Definition && Definition->bShaderSaturates ? TEXT("yes") : TEXT("no"));
+	if (Meta && Meta->ShaderNote)
+	{
+		ShaderInfo += FString::Printf(TEXT("\n%s"), Meta->ShaderNote);
+	}
+	AddInfo(LOCTEXT("DevAuthoringShader", "Shader"), FText::FromString(ShaderInfo));
+
+	Menu.Caption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup"))
+		.Widget(SNew(SBox)
+			.Padding(FMargin(
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap,
+				MixtormatTokens::MenuItemInset,
+				MixtormatTokens::DriverPopoverInnerGap))
+			[
+				SNew(SBox).WidthOverride(320.0f)
 				[
 					Rows
 				]

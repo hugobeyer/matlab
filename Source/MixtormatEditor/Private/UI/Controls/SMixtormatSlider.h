@@ -33,7 +33,7 @@ public:
 		, _Precision(3)
 		, _bInteger(false)
 	{}
-		SLATE_ARGUMENT(FText, Label)
+		SLATE_ATTRIBUTE(FText, Label)
 		SLATE_ATTRIBUTE(double, Value)
 		// Drag range. Typed entry deliberately is not clamped to it: the inspector constrains
 		// the scrub visually while a typed value reaches the shader intact, which is the rule
@@ -43,7 +43,9 @@ public:
 		// selected yet.
 		SLATE_ATTRIBUTE(double, MinValue)
 		SLATE_ATTRIBUTE(double, MaxValue)
-		SLATE_ARGUMENT(double, DefaultValue)
+		// Attribute like the range: the modified-value stripe and the reset comparison must
+		// resolve the SAME default the row's reset delegate uses, not a stale literal.
+		SLATE_ATTRIBUTE(double, DefaultValue)
 		// Snap step, used when Ctrl is held. 0 disables snapping. Attribute, same reason.
 		SLATE_ATTRIBUTE(double, Delta)
 		SLATE_ARGUMENT(int32, Precision)
@@ -87,11 +89,11 @@ private:
 	void EndTextEntry();
 	void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitType);
 
-	FText Label;
+	TAttribute<FText> LabelAttribute;
 	TAttribute<double> ValueAttribute;
 	TAttribute<double> MinValueAttribute;
 	TAttribute<double> MaxValueAttribute;
-	double DefaultValue = 0.0;
+	TAttribute<double> DefaultValueAttribute;
 	TAttribute<double> DeltaAttribute;
 	int32 Precision = 3;
 	bool bInteger = false;
