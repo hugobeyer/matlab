@@ -35,7 +35,9 @@ namespace MixtormatLightGizmo
 }
 
 SMixtormatLightGizmo::SMixtormatLightGizmo()
-	: Scene(FPreviewScene::ConstructionValues().SetCreateDefaultLighting(false))
+	: Scene(FPreviewScene::ConstructionValues()
+		.SetLightBrightness(4.0f)
+		.SetSkyBrightness(1.0f))
 {
 }
 
@@ -109,7 +111,7 @@ void SMixtormatLightGizmo::Construct(const FArguments& InArgs)
 	Capture->ProjectionType = ECameraProjectionMode::Orthographic;
 	Capture->OrthoWidth = MixtormatLightGizmo::FootprintRadius * 2.0f * 1.04f;
 	Capture->PostProcessBlendWeight = 0.0f;
-	Capture->ShowFlags.SetLighting(false);
+	Capture->ShowFlags.SetLighting(true);
 	Capture->ShowFlags.SetDynamicShadows(false);
 	Capture->ShowFlags.SetPostProcessing(false);
 	Capture->ShowFlags.SetAtmosphere(false);
