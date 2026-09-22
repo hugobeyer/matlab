@@ -2,6 +2,7 @@
 
 #include "MixtormatParameterBinding.h"
 
+#include "MixtormatLayerGroups.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -726,6 +727,25 @@ namespace MixtormatParameterBinding
 			}
 			return nullptr;
 		}
+		// Not a layer id -- may be a group's. A group's shared children are addressed by GroupId
+		// in the same slot a layer's are addressed by LayerId (see FMixtormatBindingScope), the
+		// same convention LocateGroupOwner uses for a direct parameter reference.
+		if (!Scope.Groups)
+		{
+			return nullptr;
+		}
+		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(*Scope.Groups, LayerId);
+		if (!Group)
+		{
+			return nullptr;
+		}
+		for (const FMixtormatLayerChild& Child : Group->Children)
+		{
+			if (Child.ChildId == ChildId)
+			{
+				return &Child;
+			}
+		}
 		return nullptr;
 	}
 
@@ -814,7 +834,45 @@ namespace MixtormatParameterBinding
 					});
 			}
 		}
-		if (SourceLayerIndex == INDEX_NONE || SourceChildIndex == INDEX_NONE || DestLayerIndex == INDEX_NONE)
+
+		// Neither id named a layer -- try a group. A group has no single position in composite
+		// order: its authored children are appended to the tail of every member layer's own list
+		// (see MixtormatLayerGroups::BuildEffectiveLayers), so its effective range spans its first
+		// to its last member layer index.
+		const FMixtormatLayerGroup* SourceGroup = nullptr;
+		int32 SourceGroupFirst = INDEX_NONE, SourceGroupLast = INDEX_NONE;
+		if (SourceLayerIndex == INDEX_NONE && Scope.Groups)
+		{
+			SourceGroup = MixtormatLayerGroups::FindGroup(*Scope.Groups, SourceLayerId);
+			if (SourceGroup)
+			{
+				SourceChildIndex = SourceGroup->Children.IndexOfByPredicate(
+					[&SourceChildId](const FMixtormatLayerChild& Child)
+					{
+						return Child.ChildId == SourceChildId;
+					});
+				MixtormatLayerGroups::GetGroupRange(Layers, SourceLayerId, SourceGroupFirst, SourceGroupLast);
+			}
+		}
+		const bool bSourceIsGroup = SourceGroup != nullptr;
+
+		const FMixtormatLayerGroup* DestGroup = nullptr;
+		int32 DestGroupFirst = INDEX_NONE, DestGroupLast = INDEX_NONE;
+		if (DestLayerIndex == INDEX_NONE && Scope.Groups)
+		{
+			DestGroup = MixtormatLayerGroups::FindGroup(*Scope.Groups, DestLayerId);
+			if (DestGroup)
+			{
+				MixtormatLayerGroups::GetGroupRange(Layers, DestLayerId, DestGroupFirst, DestGroupLast);
+			}
+		}
+		const bool bDestIsGroup = DestGroup != nullptr;
+
+		const bool bSourceFound = bSourceIsGroup
+			? (SourceGroupFirst != INDEX_NONE && SourceChildIndex != INDEX_NONE)
+			: (SourceLayerIndex != INDEX_NONE && SourceChildIndex != INDEX_NONE);
+		const bool bDestFound = bDestIsGroup ? (DestGroupFirst != INDEX_NONE) : (DestLayerIndex != INDEX_NONE);
+		if (!bSourceFound || !bDestFound)
 		{
 			return EInstancePlacement::SourceMissing;
 		}
@@ -822,17 +880,43 @@ namespace MixtormatParameterBinding
 		{
 			return EInstancePlacement::SelfReference;
 		}
-		// Layers composite in array order and children within a layer in theirs, so "earlier" is
-		// simply a smaller index. Equal layer means the source has to sit above the instance.
-		if (SourceLayerIndex < DestLayerIndex)
+
+		// Same container (both the same layer, or both the same group): ordering is the container's
+		// own child order, exactly as it always was for two children of one layer.
+		if (SourceLayerId == DestLayerId)
 		{
-			return EInstancePlacement::Valid;
+			return SourceChildIndex < DestChildIndex
+				? EInstancePlacement::Valid
+				: EInstancePlacement::SourceEvaluatesLater;
 		}
-		if (SourceLayerIndex == DestLayerIndex && SourceChildIndex < DestChildIndex)
+
+		// Cross-container. A plain layer's position is its own index; a group's is the [First,Last]
+		// range of layer indices its children get appended onto. The rule below is conservative
+		// where a group is involved -- it requires the whole member range to be strictly on one
+		// side -- rather than reasoning about a source or destination that only partially precedes
+		// the other, which BuildEffectiveLayers' per-member broadcast makes ambiguous in general.
+		if (!bSourceIsGroup && !bDestIsGroup)
 		{
-			return EInstancePlacement::Valid;
+			return SourceLayerIndex < DestLayerIndex
+				? EInstancePlacement::Valid
+				: EInstancePlacement::SourceEvaluatesLater;
 		}
-		return EInstancePlacement::SourceEvaluatesLater;
+		if (!bSourceIsGroup && bDestIsGroup)
+		{
+			return SourceLayerIndex < DestGroupFirst
+				? EInstancePlacement::Valid
+				: EInstancePlacement::SourceEvaluatesLater;
+		}
+		if (bSourceIsGroup && !bDestIsGroup)
+		{
+			return SourceGroupLast < DestLayerIndex
+				? EInstancePlacement::Valid
+				: EInstancePlacement::SourceEvaluatesLater;
+		}
+		// Both different groups.
+		return SourceGroupLast < DestGroupFirst
+			? EInstancePlacement::Valid
+			: EInstancePlacement::SourceEvaluatesLater;
 	}
 
 	bool BreakChildInstance(

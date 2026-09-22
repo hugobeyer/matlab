@@ -6,6 +6,8 @@
 #include "MixtormatMaterial.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
+#include "Widgets/MixtormatChildCapabilities.h"
+#include "Widgets/MixtormatChildAddress.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatSlider.h"
 #include "Widgets/SCompoundWidget.h"
@@ -33,18 +35,18 @@ struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatSurfaceEntry;
 
-// One entry in a child's generic preview: a named output, how to colour it, and (for a RegionIds
-// entry only) an optional Mask-kind output on the same child that blackens invalid/gap pixels
-// instead of letting them take a random hashed colour. Name is NAME_None for RegionIds -- a child
-// publishes at most one ID map, so it needs no name of its own to disambiguate.
+// FMixtormatPreviewOutputDesc/FMixtormatChildPreviewOutputSet used to be preview-only and hardcode
+// their own notion of what a child publishes, separately from the clipboard's Copy Instance Mask
+// menus. Both now read one shared FMixtormatChildCapabilities descriptor (a publish/copy/preview
+// distinction the old preview-only struct could not express -- Pattern IDs' Gap is copyable but
+// deliberately not a second preview option, since the default Region IDs preview already renders
+// it). FMixtormatPreviewOutputDesc/Set below are kept as the preview system's own view, now derived
+// from capabilities rather than hand-authored a second time.
 struct FMixtormatPreviewOutputDesc
 {
 	FName Name;
 	FText Label;
 	EMixtormatPreviewOutputKind Kind = EMixtormatPreviewOutputKind::Mask;
-	// Only meaningful when Kind == RegionIds and the compositor cannot already tell an invalid
-	// pixel from a valid one by itself (Breakup's Region IDs; Cluster IDs has no invalid pixels,
-	// Pattern/Combine IDs blacken their own inline and need nothing here).
 	FName GapMaskName;
 };
 
@@ -57,10 +59,10 @@ struct FMixtormatChildPreviewOutputSet
 	TArray<FMixtormatPreviewOutputDesc> Secondary;
 };
 
-// What a child can show through the generic preview, driven entirely by its type/procedural kind.
-// This is the one place a future output gets taught to the preview system -- the inspector's
-// eye/chevron widget and its status label both read this rather than naming a child type
-// themselves, so a new producer needs one case here and nothing else.
+// Derived from GetChildCapabilities: the entry with bPreviewable && !bSecondaryPreview becomes
+// Primary, every bPreviewable && bSecondaryPreview entry becomes Secondary. The inspector's
+// eye/chevron widget and its status label read this rather than naming a child type themselves,
+// so a new producer needs one case in GetChildCapabilities and nothing else.
 FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child);
 
 // Convenience for an inspector group whose panel is built for one known, fixed child kind (the
@@ -219,32 +221,52 @@ private:
 	// user who only meant to drag a slider.
 	bool IsParameterLocked(const FMixtormatParameterAddress& Target) const;
 
-	// Copy takes the payload; Copy as Instance takes the address as well, and the paste decides
-	// which of the two it uses.
-	void CopyLayerChild(int32 LayerIndex, int32 ChildIndex, bool bAsInstance);
-	void CopyInstanceMaskFromWear(int32 LayerIndex, int32 ChildIndex);
-	void CopyInstanceMaskFromBreakup(int32 LayerIndex, int32 ChildIndex, FName Output);
-	void CopyInstanceMaskFromPatternGap(int32 LayerIndex, int32 ChildIndex);
-	bool CanPasteLayerChild() const;
-	// Where an instance of the clipboard child may land in this layer, given the row the paste was
-	// asked from. INDEX_NONE when no position in the layer can read the source.
-	int32 ResolveInstanceInsertIndex(int32 DestLayerIndex, int32 AnchorChildIndex) const;
-	bool CanPasteChildInstance(int32 DestLayerIndex, int32 AnchorChildIndex) const;
-	FText GetChildInstancePasteReason(int32 DestLayerIndex, int32 AnchorChildIndex) const;
-	FReply PasteLayerChild(int32 LayerIndex);
-	FReply PasteChildInstance(int32 LayerIndex, int32 AnchorChildIndex = INDEX_NONE);
+	// A child is addressed by (LayerIndex, ChildIndex) throughout most of SMixtormat; these turn
+	// that pair, or a group child's (GroupId, ChildIndex), into the owner-agnostic address the
+	// clipboard and instance placement now use.
+	FMixtormatChildAddress MakeChildAddress(int32 LayerIndex, int32 ChildIndex) const;
+	FMixtormatChildAddress MakeGroupChildAddress(FGuid GroupId, int32 ChildIndex) const;
+	// The child array an address names -- WorkingLayers[x].Children or a group's shared Children --
+	// so every clipboard/placement operation below reads and writes through one lookup rather than
+	// branching on OwnerType itself.
+	TArray<FMixtormatLayerChild>* ResolveContainer(const FMixtormatChildAddress& Address);
+	const TArray<FMixtormatLayerChild>* ResolveContainer(const FMixtormatChildAddress& Address) const;
+	FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address);
+	const FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address) const;
+	int32 ResolveChildIndexAt(const FMixtormatChildAddress& Address) const;
 
-	FReply GoToChildInstanceSource(int32 LayerIndex, int32 ChildIndex);
-	FReply BreakChildInstanceAt(int32 LayerIndex, int32 ChildIndex);
-	void CopyChildInstanceReference(int32 LayerIndex, int32 ChildIndex);
-	FReply ReplaceChildInstanceSource(int32 LayerIndex, int32 ChildIndex, FGuid NewSourceLayerId, FGuid NewSourceChildId);
-	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(int32 LayerIndex, int32 ChildIndex);
+	// Copy takes the payload; Copy as Instance takes the address as well; Copy Output takes one of
+	// Address's published outputs (see MixtormatChildCapabilities.h) and builds a published-source
+	// mask from it. Paste reads FMixtormatChildClipboard::Mode to decide which of the three it does
+	// -- there is no separate "Paste Instance" destination command any more.
+	void CopyChild(const FMixtormatChildAddress& Address, bool bAsInstance);
+	// OutputName must name one of GetChildCapabilities(*ResolveChildAt(Address)).Outputs with
+	// bCopyableAsMask set. Copy Output only ever reads a layer child today: a published-source mask
+	// naming a group as its owner cannot be resolved by the compositor, which looks a mask's
+	// PublishedSourceLayerId up in the group-expanded layer array and never finds a GroupId there.
+	void CopyChildOutput(const FMixtormatChildAddress& Address, FName OutputName);
+	// Where the clipboard's child may land at Dest, given the row the paste was asked from.
+	// INDEX_NONE when nothing in Dest can take it (wrong kind for Dest, or -- for Mode::Instance --
+	// no position in Dest can read the source). Valid for every clipboard mode, not only Instance.
+	int32 ResolvePasteInsertIndex(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
+	bool CanPasteChild(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
+	FText GetChildPasteReason(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
+	FReply PasteChild(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex = INDEX_NONE);
+
+	FReply GoToChildInstanceSource(const FMixtormatChildAddress& Address);
+	FReply BreakChildInstanceAt(const FMixtormatChildAddress& Address);
+	void CopyChildInstanceReference(const FMixtormatChildAddress& Address);
+	FReply ReplaceChildInstanceSource(const FMixtormatChildAddress& Address, FMixtormatChildAddress NewSource);
+	// By value, not const&: FOnGetContent::CreateSP binds this as an extra Vars arg, whose deduced
+	// target signature decays a reference away -- a by-ref parameter here fails to match the bound
+	// pointer-to-member type.
+	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(FMixtormatChildAddress Address);
 	TSharedRef<SWidget> BuildMoveChildToLayerMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMoveGroupChildToLayerMenu(FGuid GroupId, int32 ChildIndex);
 
-	// The rows every child row shares, appended to whichever of the three child menus is open so
-	// the vocabulary does not drift between a mask, an effect and a filter.
-	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, int32 LayerIndex, int32 ChildIndex);
+	// The rows every child row shares, appended to whichever child menu is open (layer or group) so
+	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
+	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Address);
 	FReply ToggleLayerExpanded(int32 LayerIndex);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
@@ -1011,11 +1033,10 @@ private:
 	TOptional<FMixtormatParameterAddress> ParameterReferenceClipboard;
 
 	// The child clipboard keeps the payload, so a Copy still pastes after its source is deleted,
-	// and separately the address it was taken from, which is all Paste Instance needs.
-	TOptional<FMixtormatLayerChild> ChildClipboard;
-	FGuid ChildClipboardSourceLayerId;
-	FGuid ChildClipboardSourceChildId;
-	bool bChildClipboardIsInstance = false;
+	// and separately the address it was taken from, which is all an Instance paste needs. Mode
+	// replaces the old bChildClipboardIsInstance bool -- PublishedOutput is a third state that bool
+	// could not express without a second flag.
+	TOptional<FMixtormatChildClipboard> ChildClipboard;
 	FEditHistoryState CurrentHistoryState;
 	FSoftObjectPath SelectedSurfacePath;
 	FText SelectedLibrarySurfaceName;

@@ -96,6 +96,8 @@ namespace MixtormatParameterBinding
 		const FMixtormatLayerChild& From,
 		FMixtormatLayerChild& To);
 
+	// LayerId names a layer, or -- when Layers.Groups is set and no layer matches -- a group's
+	// shared children, the same convention every address in this file already uses.
 	MIXTORMATRUNTIME_API const FMixtormatLayerChild* FindChild(
 		const FMixtormatBindingScope& Layers,
 		const FGuid& LayerId,
@@ -112,6 +114,11 @@ namespace MixtormatParameterBinding
 	// Whether an instance of Source may sit at DestChildIndex in DestLayerId. Placement is checked
 	// when the instance is made; a later reorder can invalidate it, and that case falls back to the
 	// resolve-time behaviour above rather than being prevented here.
+	//
+	// SourceLayerId/DestLayerId each name a layer or (when Layers.Groups is set) a group. A group
+	// has no single position in composite order -- BuildEffectiveLayers appends its children onto
+	// every member layer's own tail -- so ordering against one is conservative: valid only when the
+	// whole member range is strictly on one side, never when it partially overlaps.
 	MIXTORMATRUNTIME_API EInstancePlacement ClassifyInstancePlacement(
 		const FMixtormatBindingScope& Layers,
 		const FGuid& SourceLayerId,

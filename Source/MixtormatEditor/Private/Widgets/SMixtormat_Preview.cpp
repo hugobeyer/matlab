@@ -12,52 +12,29 @@
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
 // The eye always toggles the primary; the chevron (built only when Secondary is non-empty) offers
-// the rest. Only outputs that already exist as real, named textures are listed. Everything else
-// (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Ramp/Random From IDs, Strata
-// Carver, Peeling) publishes nothing a preview could show, so both are empty and the inspector
-// group gets no preview control at all rather than one that does nothing.
+// the rest. Derived from GetChildCapabilities rather than hand-authored here a second time: the
+// entry with bPreviewable && !bSecondaryPreview becomes Primary, every bPreviewable &&
+// bSecondaryPreview entry becomes Secondary. A capability that is copyable but not previewable
+// (Pattern IDs' Gap -- the default Region IDs preview already renders it, blackened) contributes
+// nothing here, which is the whole reason capabilities keeps the two flags separate.
 FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child)
 {
-	const FText RegionIdsLabel = NSLOCTEXT("SMixtormat", "PreviewOutputRegionIds", "Region IDs");
-	const FText GapLabel = NSLOCTEXT("SMixtormat", "PreviewOutputGap", "Gap");
-	const FName GapName(TEXT("Gap"));
-
 	FMixtormatChildPreviewOutputSet Result;
-	switch (Child.Type)
+	for (const FMixtormatPublishedOutputDesc& Output : GetChildCapabilities(Child).Outputs)
 	{
-	case EMixtormatLayerChildType::Filter:
-		// No invalid pixels to black out: every pixel in a cluster segmentation belongs to some
-		// region, so there is no separate gap concept here to combine in.
-		Result.Primary = FMixtormatPreviewOutputDesc{NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds, NAME_None};
-		break;
-	case EMixtormatLayerChildType::PatternId:
-		// Pattern IDs blackens its own grout inline (see MixtormatPatternIds.usf's WriteDebug
-		// branch) -- GapMaskName stays empty because the compositor needs no second texture to
-		// combine, the one ID map already encodes it. No chevron: one image already shows
-		// everything Pattern IDs has to show.
-		Result.Primary = FMixtormatPreviewOutputDesc{NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds, NAME_None};
-		break;
-	case EMixtormatLayerChildType::CombineId:
-		Result.Primary = FMixtormatPreviewOutputDesc{NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds, NAME_None};
-		break;
-	case EMixtormatLayerChildType::Effect:
-		if (Child.Effect.ProceduralType == EMixtormatEffectType::Breakup)
+		if (!Output.bPreviewable)
 		{
-			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
-			// Gap -- so GapMaskName tells the compositor which published output to borrow to
-			// blacken grout. This is the one case the generic gap-combine machinery exists for.
-			Result.Primary = FMixtormatPreviewOutputDesc{NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds, GapName};
-			Result.Secondary.Add({GapName, GapLabel, EMixtormatPreviewOutputKind::Mask, NAME_None});
-			Result.Secondary.Add({FName(TEXT("Edge")), NSLOCTEXT("SMixtormat", "PreviewOutputEdge", "Edge"), EMixtormatPreviewOutputKind::Mask, NAME_None});
-			Result.Secondary.Add({FName(TEXT("Pieces")), NSLOCTEXT("SMixtormat", "PreviewOutputPieces", "Pieces"), EMixtormatPreviewOutputKind::Mask, NAME_None});
+			continue;
 		}
-		else if (Child.Effect.ProceduralType == EMixtormatEffectType::WornEdges)
+		const FMixtormatPreviewOutputDesc Desc{Output.Name, Output.Label, Output.Kind, Output.PreviewGapMaskName};
+		if (Output.bSecondaryPreview)
 		{
-			Result.Primary = FMixtormatPreviewOutputDesc{FName(TEXT("Wear")), NSLOCTEXT("SMixtormat", "PreviewOutputWear", "Wear"), EMixtormatPreviewOutputKind::Mask, NAME_None};
+			Result.Secondary.Add(Desc);
 		}
-		break;
-	default:
-		break;
+		else
+		{
+			Result.Primary = Desc;
+		}
 	}
 	return Result;
 }

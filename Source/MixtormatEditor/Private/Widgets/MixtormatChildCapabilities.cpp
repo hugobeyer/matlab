@@ -1,0 +1,95 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "Widgets/MixtormatChildCapabilities.h"
+
+FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child)
+{
+	const FText RegionIdsLabel = NSLOCTEXT("SMixtormat", "PreviewOutputRegionIds", "Region IDs");
+	const FText GapLabel = NSLOCTEXT("SMixtormat", "PreviewOutputGap", "Gap");
+	const FName GapName(TEXT("Gap"));
+
+	FMixtormatChildCapabilities Result;
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Filter:
+		// No invalid pixels to black out: every pixel in a cluster segmentation belongs to some
+		// region, so there is no separate gap concept here to combine in. Not copyable: an ID map
+		// is not a mask a Replace blend could read.
+		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+			false, true, false, NAME_None});
+		break;
+	case EMixtormatLayerChildType::PatternId:
+		// Region IDs blackens its own grout inline (see MixtormatPatternIds.usf's WriteDebug
+		// branch) -- PreviewGapMaskName stays empty because the compositor needs no second texture
+		// to combine, the one ID map already encodes it.
+		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+			false, true, false, NAME_None});
+		// Gap is still a real, separately-published scalar output -- Copy Instance Mask from Gap
+		// has always been able to lift it into a mask -- it is simply not a second preview option,
+		// because the Region IDs eye above already shows it (blackened grout).
+		Result.Outputs.Add({GapName, GapLabel, EMixtormatPreviewOutputKind::Mask,
+			true, false, false, NAME_None});
+		break;
+	case EMixtormatLayerChildType::CombineId:
+		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+			false, true, false, NAME_None});
+		break;
+	case EMixtormatLayerChildType::Effect:
+		if (Child.Effect.ProceduralType == EMixtormatEffectType::Breakup)
+		{
+			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
+			// Gap -- so PreviewGapMaskName tells the compositor which published output to borrow
+			// to blacken grout. This is the one case the generic gap-combine machinery exists for.
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, GapName});
+			Result.Outputs.Add({GapName, GapLabel, EMixtormatPreviewOutputKind::Mask,
+				true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("Edge")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputEdge", "Edge"), EMixtormatPreviewOutputKind::Mask,
+				true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("Pieces")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputPieces", "Pieces"), EMixtormatPreviewOutputKind::Mask,
+				true, true, true, NAME_None});
+		}
+		else if (Child.Effect.ProceduralType == EMixtormatEffectType::WornEdges)
+		{
+			Result.Outputs.Add({FName(TEXT("Wear")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputWear", "Wear"), EMixtormatPreviewOutputKind::Mask,
+				true, true, false, NAME_None});
+		}
+		break;
+	default:
+		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Ramp/Random
+		// From IDs, Strata Carver, Peeling) publishes nothing a preview or Copy Output could use.
+		break;
+	}
+	return Result;
+}
+
+FMixtormatChildCapabilities GetChildCapabilitiesForChildType(const EMixtormatLayerChildType Type)
+{
+	FMixtormatLayerChild Probe;
+	Probe.Type = Type;
+	return GetChildCapabilities(Probe);
+}
+
+FMixtormatChildCapabilities GetChildCapabilitiesForEffectType(const EMixtormatEffectType EffectType)
+{
+	FMixtormatLayerChild Probe;
+	Probe.Type = EMixtormatLayerChildType::Effect;
+	Probe.Effect.ProceduralType = EffectType;
+	return GetChildCapabilities(Probe);
+}
+
+TArray<FMixtormatPublishedOutputDesc> GetCopyableOutputs(const FMixtormatChildCapabilities& Capabilities)
+{
+	TArray<FMixtormatPublishedOutputDesc> Copyable;
+	for (const FMixtormatPublishedOutputDesc& Output : Capabilities.Outputs)
+	{
+		if (Output.bCopyableAsMask)
+		{
+			Copyable.Add(Output);
+		}
+	}
+	return Copyable;
+}
