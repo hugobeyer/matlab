@@ -1557,7 +1557,7 @@ namespace MixtormatGpuCompositor
 		// The generated piece map immediately becomes the nearest region producer for every later
 		// child in this layer. Amount may be zero: Breakup can intentionally be used as an ID-only
 		// structural generator without touching height.
-		LayerCtx.RegionIdMaps.Emplace(Child.SourceChildIndex, Pending.GeneratedRegionIds);
+		PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Pending.GeneratedRegionIds);
 
 		// The scalar maps, published here rather than from ApplyCS. ApplyCS is deferred until
 		// after the layer composites -- it carves the accumulated height, so it has to be -- and

@@ -22,12 +22,13 @@
 // the opposite of the node's job. Every pixel carrying an ID resolves through the same root, so a
 // region stays whole however it is scattered.
 //
-// IDs are bounded by the pixel count: the cluster filter emits a root pixel index and a pattern
-// emits a cell index, both below width*height. The parent array is sized to match and anything
-// outside it is passed through untouched rather than trusted.
+// Cluster/Pattern IDs index parents directly. Breakup publishes full-width hashes instead,
+// so those chains use an open-addressed key table while retaining the original IDs as parents.
+// Zero is a valid Cluster/Pattern ID, but is background in a Breakup-derived map.
 
 Texture2D<uint> SourceIds;
 globallycoherent RWStructuredBuffer<uint> Parents;
+globallycoherent RWStructuredBuffer<uint> RegionKeys;
 RWTexture2D<uint> OutputIds;
 RWTexture2D<float4> OutputDebug;
 
@@ -38,11 +39,13 @@ uint WriteDebug;
 // 0 merges a pair when the pair draws under Amount; 1 picks whole regions and dissolves them
 // into whatever they touch.
 uint CombineMode;
+uint UseHashedIds;
 float Amount;
 
 #define MIXTORMAT_COMBINE_STAGE_INIT 0u
 #define MIXTORMAT_COMBINE_STAGE_UNION 1u
 #define MIXTORMAT_COMBINE_STAGE_RESOLVE 2u
+#define MIXTORMAT_COMBINE_STAGE_INDEX 3u
 
 #define MIXTORMAT_SALT_COMBINE_PAIR   0x1b873593u
 #define MIXTORMAT_SALT_COMBINE_REGION 0x85ebca6bu
@@ -57,9 +60,40 @@ uint ParentCount()
 	return uint(max(OutputSize.x, 1)) * uint(max(OutputSize.y, 1));
 }
 
-uint ReadParent(uint Index)
+bool IsRegion(uint Id)
 {
-	return Index < ParentCount() ? Parents[Index] : Index;
+	return Id != MIXTORMAT_INVALID_REGION && (UseHashedIds == 0u || Id != 0u);
+}
+
+uint ParentSlot(uint Id)
+{
+	if (UseHashedIds == 0u)
+	{
+		return Id < ParentCount() ? Id : MIXTORMAT_INVALID_REGION;
+	}
+	const uint Capacity = ParentCount() * 2u;
+	uint Slot = MixtormatRegionHash(Id) % Capacity;
+	[loop]
+	for (uint Probe = 0u; Probe < Capacity; ++Probe)
+	{
+		const uint Key = RegionKeys[Slot];
+		if (Key == Id)
+		{
+			return Slot;
+		}
+		if (Key == MIXTORMAT_INVALID_REGION)
+		{
+			break;
+		}
+		Slot = (Slot + 1u) % Capacity;
+	}
+	return MIXTORMAT_INVALID_REGION;
+}
+
+uint ReadParent(uint Id)
+{
+	const uint Slot = ParentSlot(Id);
+	return Slot != MIXTORMAT_INVALID_REGION ? Parents[Slot] : Id;
 }
 
 // Two levels of pointer chasing per read, exactly as the cluster filter does. Full path
@@ -80,11 +114,11 @@ void Hook(uint A, uint B)
 	uint PB = FindRoot(B);
 	uint High = max(PA, PB);
 	uint Low = min(PA, PB);
-	if (High != Low && High < ParentCount())
+	const uint Slot = ParentSlot(High);
+	if (High != Low && Slot != MIXTORMAT_INVALID_REGION)
 	{
-		// Always toward the lower index, so the operation is order-independent: whichever thread
-		// wins the race, the pair ends up under the same root.
-		InterlockedMin(Parents[High], Low);
+		// Always toward the lower ID, independent of hash-table slot placement.
+		InterlockedMin(Parents[Slot], Low);
 	}
 }
 
@@ -139,15 +173,51 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (Stage == MIXTORMAT_COMBINE_STAGE_INIT)
 	{
 		Parents[Index] = Index;
+		if (UseHashedIds != 0u)
+		{
+			RegionKeys[Index] = MIXTORMAT_INVALID_REGION;
+			RegionKeys[Index + ParentCount()] = MIXTORMAT_INVALID_REGION;
+			Parents[Index + ParentCount()] = Index + ParentCount();
+		}
+		else if (Index == 0u)
+		{
+			RegionKeys[0] = MIXTORMAT_INVALID_REGION;
+		}
 		return;
 	}
 
 	const uint Here = SourceIds.Load(int3(Pixel, 0));
+	if (Stage == MIXTORMAT_COMBINE_STAGE_INDEX)
+	{
+		if (!IsRegion(Here))
+		{
+			return;
+		}
+		const uint Capacity = ParentCount() * 2u;
+		uint Slot = MixtormatRegionHash(Here) % Capacity;
+		[loop]
+		for (uint Probe = 0u; Probe < Capacity; ++Probe)
+		{
+			uint Previous;
+			InterlockedCompareExchange(RegionKeys[Slot], MIXTORMAT_INVALID_REGION, Here, Previous);
+			if (Previous == MIXTORMAT_INVALID_REGION)
+			{
+				Parents[Slot] = Here;
+				break;
+			}
+			if (Previous == Here)
+			{
+				break;
+			}
+			Slot = (Slot + 1u) % Capacity;
+		}
+		return;
+	}
 
 	if (Stage == MIXTORMAT_COMBINE_STAGE_UNION)
 	{
 		// Nothing to merge at Amount 0, and a region-less pixel has no identity to merge.
-		if (Amount <= 0.0f || Here == MIXTORMAT_INVALID_REGION || Here >= ParentCount())
+		if (Amount <= 0.0f || !IsRegion(Here) || ParentSlot(Here) == MIXTORMAT_INVALID_REGION)
 		{
 			return;
 		}
@@ -164,9 +234,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		for (int i = 0; i < 2; ++i)
 		{
 			const uint Other = SourceIds.Load(int3(WrapPixel(Neighbours[i]), 0));
-			if (Other == MIXTORMAT_INVALID_REGION
+			if (!IsRegion(Other)
 				|| Other == Here
-				|| Other >= ParentCount())
+				|| ParentSlot(Other) == MIXTORMAT_INVALID_REGION)
 			{
 				continue;
 			}
@@ -191,7 +261,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Resolve. Walk to the true root and publish it as this pixel's ID.
 	uint Root = Here;
-	if (Here != MIXTORMAT_INVALID_REGION && Here < ParentCount())
+	if (IsRegion(Here))
 	{
 		[loop]
 		for (uint Step = 0; Step < 16; ++Step)
@@ -214,7 +284,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// regions can land close enough together on it to look like the preview isn't doing
 		// anything. A full hashed colour spreads regions across the colour cube instead, which is
 		// the whole point of previewing an ID map rather than a scalar.
-		OutputDebug[Pixel] = Root == MIXTORMAT_INVALID_REGION
+		OutputDebug[Pixel] = !IsRegion(Root)
 			? float4(0.0f, 0.0f, 0.0f, 1.0f)
 			: float4(MixtormatDebugColor(float3(
 				MixtormatRegionRandom(Root * 3u + 1u),

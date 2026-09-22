@@ -3216,7 +3216,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					// surface they modify does not exist until after it.
 					TArray<FPendingRampTilt, TInlineAllocator<2>>& PendingRampTilts =
 						LayerCtx.PendingRampTilts;
-					CollectPendingRampTilts(Ctx, LayerCtx, Layer);
+
 
 					// An array where erosion keeps a single pointer. Two erosions on one layer
 					// is nonsense, but a brightness grade and a separate tonemap grade is an
@@ -3246,6 +3246,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 							// pre-mask phase, the HSV filter at the composite's albedo sample,
 							// the ramp tilt after the composite. None may fall through to the
 							// effect branch below.
+							continue;
+						}
+						if (Child.Type == EMixtormatLayerChildType::CombineId)
+						{
+							// Breakup-dependent chains become available at their authored row.
+							AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
 							continue;
 						}
 						if (Child.Type == EMixtormatLayerChildType::Generated)
@@ -3334,6 +3340,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 						AddPeelingEffectPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 					}
+
+					// All IDs, including Breakup-dependent Combine chains, now exist.
+					CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
 					// Keep preparation stable as Amount crosses zero; only the carve dispatches stop.
 					const bool bPrepareBreakup = !LayerCtx.PendingBreakups.IsEmpty();

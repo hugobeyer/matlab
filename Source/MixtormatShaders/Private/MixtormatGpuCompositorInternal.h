@@ -1123,6 +1123,20 @@ namespace MixtormatGpuCompositor
 		}
 	};
 
+	// Producers can publish in different phases; consumers still require source-child order.
+	inline void PublishRegionIds(
+		TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const int32 SourceChildIndex,
+		FRDGTextureRef RegionIds)
+	{
+		int32 InsertIndex = 0;
+		while (InsertIndex < RegionIdMaps.Num() && RegionIdMaps[InsertIndex].Key < SourceChildIndex)
+		{
+			++InsertIndex;
+		}
+		RegionIdMaps.Insert(TPair<int32, FRDGTextureRef>(SourceChildIndex, RegionIds), InsertIndex);
+	}
+
 	inline FRDGTextureRef FindRegionIdsAbove(
 		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
 		int32 ChildIndex)
@@ -1195,6 +1209,12 @@ namespace MixtormatGpuCompositor
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
+
+	void AddCombineIdProducerPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child);
 
 	void CollectPendingRampTilts(
 		FMixtormatComposeContext& Ctx,

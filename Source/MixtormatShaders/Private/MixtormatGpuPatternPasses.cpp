@@ -267,10 +267,12 @@ public:
 		SHADER_PARAMETER(uint32, PassIndex)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(uint32, CombineMode)
+		SHADER_PARAMETER(uint32, UseHashedIds)
 		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceIds)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Parents)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RegionKeys)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
@@ -688,9 +690,7 @@ namespace MixtormatGpuCompositor
 		++MaskPassIndex;
 	}
 
-	// Every region producer in the layer, run before the mask/effect chain regardless of row
-	// order because masks, composite colour and deferred relief can all read them. The scan
-	// walks Layer.Children in order, which is what leaves RegionIdMaps ascending by
+
 	// Fewer, larger regions from the map above. Union-find keyed by ID value rather than by
 	// pixel, so a region that is spatially disjoint still resolves through one root instead of
 	// being split in two -- which would raise the region count, the opposite of the node's job.
@@ -698,6 +698,7 @@ namespace MixtormatGpuCompositor
 		FMixtormatComposeContext& Ctx,
 		const FRDGTextureRef SourceIds,
 		const FCombineIdRenderData& Combine,
+		const bool bUseHashedIds,
 		const bool bWriteDebug,
 		const FRDGTextureRef DebugTarget,
 		const FIntPoint Resolution,
@@ -714,12 +715,15 @@ namespace MixtormatGpuCompositor
 				TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.CombineIds"));
 
-		// One parent slot per pixel, because an ID is bounded by the pixel count: the cluster
-		// filter emits a root pixel index and a pattern a cell index, both below width*height.
-		const int32 ParentCount = Resolution.X * Resolution.Y;
+		// Breakup IDs are full-width hashes, not pixel indices. Its table has at most
+		// one distinct key per pixel and a load factor no greater than one half.
+		const int32 ParentCount = Resolution.X * Resolution.Y * (bUseHashedIds ? 2 : 1);
 		FRDGBufferRef Parents = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), ParentCount),
 			TEXT("Mixtormat.CombineIds.Parents"));
+		FRDGBufferRef RegionKeys = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), bUseHashedIds ? ParentCount : 1),
+			TEXT("Mixtormat.CombineIds.RegionKeys"));
 
 		const FIntVector Groups(
 			FMath::DivideAndRoundUp(Resolution.X, 8),
@@ -736,9 +740,11 @@ namespace MixtormatGpuCompositor
 			P->Seed = Combine.Seed;
 			P->Amount = Combine.Amount;
 			P->CombineMode = Combine.bSubtract ? 1u : 0u;
+			P->UseHashedIds = bUseHashedIds ? 1u : 0u;
 			P->WriteDebug = bWriteDebug ? 1u : 0u;
 			P->SourceIds = SourceIds;
 			P->Parents = GraphBuilder.CreateUAV(Parents);
+			P->RegionKeys = GraphBuilder.CreateUAV(RegionKeys);
 			P->OutputIds = GraphBuilder.CreateUAV(OutputIds);
 			P->OutputDebug = GraphBuilder.CreateUAV(DebugTarget);
 			FComputeShaderUtils::AddPass(
@@ -750,6 +756,10 @@ namespace MixtormatGpuCompositor
 		};
 
 		Dispatch(0u, 0u, TEXT("Init"));
+		if (bUseHashedIds)
+		{
+			Dispatch(3u, 0u, TEXT("IndexRegions"));
+		}
 
 		// Each authored pass is several union dispatches, because one dispatch only propagates a
 		// hook one link along the chain. The inner count matches the cluster filter's, which is
@@ -767,7 +777,79 @@ namespace MixtormatGpuCompositor
 		return OutputIds;
 	}
 
-	// SourceChildIndex -- FindRegionIdsAbove and the Worn Edges scan both depend on that.
+	void AddCombineIdProducerPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child)
+	{
+		if (!Layer.bEnabled)
+		{
+			return;
+		}
+		for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+		{
+			if (Entry.Key == Child.SourceChildIndex)
+			{
+				return; // Already scheduled in the pre-mask phase.
+			}
+		}
+
+		// Resolve the authored producer first, not whichever map happens to exist yet.
+		// A pending Breakup (or Combine) must shadow an older Pattern/Cluster map.
+		int32 ProducerIndex = INDEX_NONE;
+		bool bUseHashedIds = false;
+		for (int32 Index = Layer.Children.Num() - 1; Index >= 0; --Index)
+		{
+			const FChildRenderData& Candidate = Layer.Children[Index];
+			if (Candidate.SourceChildIndex >= Child.SourceChildIndex)
+			{
+				continue;
+			}
+			const bool bBreakup = Candidate.Type == EMixtormatLayerChildType::Effect
+				&& Candidate.Effect.Type == EMixtormatEffectType::Breakup;
+			if (Candidate.Type != EMixtormatLayerChildType::Filter
+				&& Candidate.Type != EMixtormatLayerChildType::PatternId
+				&& Candidate.Type != EMixtormatLayerChildType::CombineId && !bBreakup)
+			{
+				continue;
+			}
+			if (ProducerIndex == INDEX_NONE)
+			{
+				ProducerIndex = Candidate.SourceChildIndex;
+			}
+			if (Candidate.Type != EMixtormatLayerChildType::CombineId)
+			{
+				bUseHashedIds = bBreakup;
+				break;
+			}
+		}
+		FRDGTextureRef Upstream = nullptr;
+		for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+		{
+			if (Entry.Key == ProducerIndex)
+			{
+				Upstream = Entry.Value;
+				break;
+			}
+		}
+		if (!Upstream)
+		{
+			return;
+		}
+		const FRenderRequest& Request = Ctx.Request;
+		const bool bPreview = IsChildOutputPreviewTarget(
+			Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+			LayerCtx.LayerIndex, Child.SourceChildIndex);
+		PublishRegionIds(
+			LayerCtx.RegionIdMaps, Child.SourceChildIndex,
+			AddCombineIdPasses(
+				Ctx, Upstream, Child.CombineId, bUseHashedIds, bPreview,
+				Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution, LayerCtx.LayerIndex));
+	}
+
+	// Schedule independent producers early for generators. Breakup-dependent Combine
+	// chains wait for the child loop; publication keeps maps sorted by SourceChildIndex.
 	void AddRegionProducerPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -799,31 +881,9 @@ namespace MixtormatGpuCompositor
 					continue;
 				}
 
-				// Combine reads the map above it and republishes it coarsened, so it is handled
-				// here rather than in a second sweep: RegionIdMaps has to stay in child order for
-				// FindRegionIdsAbove, which takes the last entry below an index rather than the
-				// highest one. With nothing above it there is nothing to coarsen.
 				if (bCombineProducer)
 				{
-					FRDGTextureRef Upstream =
-						FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
-					if (!Upstream)
-					{
-						continue;
-					}
-					const bool bCombinePreview = IsChildOutputPreviewTarget(
-						Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-						LayerIndex, Child.SourceChildIndex);
-					RegionIdMaps.Emplace(
-						Child.SourceChildIndex,
-						AddCombineIdPasses(
-							Ctx,
-							Upstream,
-							Child.CombineId,
-							bCombinePreview,
-							OutputDebug[Request.PublishedTargetIndex],
-							Request.Resolution,
-							LayerIndex));
+					AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
 					continue;
 				}
 
@@ -1030,7 +1090,7 @@ namespace MixtormatGpuCompositor
 					}
 				}
 
-				RegionIdMaps.Emplace(Child.SourceChildIndex, RegionIds);
+				PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, RegionIds);
 			}
 		}
 	}

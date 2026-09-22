@@ -844,6 +844,132 @@ bool FMixtormatBreakupRegionIdsTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatBreakupCombineIdsTest,
+	"Mixtormat.Compositor.BreakupCombineIds",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatBreakupCombineIdsTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+		return false;
+
+	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
+		nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+	if (!TestNotNull(TEXT("Breakup placement mask exists"), WhiteMask))
+		return false;
+
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+
+	// An older producer makes the silent-stale-map regression observable: Combine must consume
+	// Breakup immediately above it, not this Pattern that happened to run in the early prepass.
+	FMixtormatLayerChild PatternChild;
+	PatternChild.Type = EMixtormatLayerChildType::PatternId;
+	Layer.Children.Add(PatternChild);
+
+	FMixtormatLayerChild BreakupChild;
+	BreakupChild.Type = EMixtormatLayerChildType::Effect;
+	BreakupChild.Effect.ProceduralType = EMixtormatEffectType::Breakup;
+	BreakupChild.Effect.BreakupAmount = 0.0f;
+	BreakupChild.Effect.BreakupGapWidth = 0.0f;
+	BreakupChild.Effect.BreakupMaskTexture =
+		TSoftObjectPtr<UTexture2D>(FSoftObjectPath(WhiteMask));
+	Layer.Children.Add(BreakupChild);
+
+	FMixtormatLayerChild CombineChild;
+	CombineChild.Type = EMixtormatLayerChildType::CombineId;
+	CombineChild.CombineId.Amount = 0.0f; // Exact pass-through exposes which producer was selected.
+	Layer.Children.Add(CombineChild);
+
+	TArray<FMixtormatLayer> Layers;
+	Layers.Add(Layer);
+	const auto RegionPreview = [&Layer](const FMixtormatLayerChild& Child)
+	{
+		FMixtormatDebugPreviewSettings Debug;
+		Debug.Mode = EMixtormatDebugPreviewMode::ChildOutput;
+		Debug.ChildTarget.OwnerId = Layer.LayerId;
+		Debug.ChildTarget.ChildId = Child.ChildId;
+		Debug.ChildTarget.Kind = EMixtormatPreviewOutputKind::RegionIds;
+		return Debug;
+	};
+
+	TArray<FLinearColor> BreakupPixels;
+	if (!TestTrue(TEXT("Breakup preview composes"),
+			ComposeAndWait(Compositor, Layers, RegionPreview(Layers[0].Children[1])))
+		|| !TestTrue(TEXT("Breakup preview reads"),
+			ReadTarget(Compositor.GetDebugOutput(), BreakupPixels)))
+		return false;
+
+	TArray<FLinearColor> CombinePixels;
+	if (!TestTrue(TEXT("Breakup to Combine IDs composes"),
+			ComposeAndWait(Compositor, Layers, RegionPreview(Layers[0].Children[2])))
+		|| !TestTrue(TEXT("Combine IDs preview reads"),
+			ReadTarget(Compositor.GetDebugOutput(), CombinePixels)))
+		return false;
+
+	int32 ComparedRegions = 0;
+	int32 Differences = 0;
+	for (int32 Index = 0; Index < BreakupPixels.Num() && Index < CombinePixels.Num(); ++Index)
+	{
+		// Breakup uses ID 0 for empty space; Combine correctly previews that as black.
+		const FLinearColor& Combined = CombinePixels[Index];
+		if (Combined.R <= 1.0e-5f && Combined.G <= 1.0e-5f && Combined.B <= 1.0e-5f)
+		{
+			continue;
+		}
+		++ComparedRegions;
+		Differences += BreakupPixels[Index].Equals(Combined, 1.0e-5f) ? 0 : 1;
+	}
+	TestTrue(TEXT("Breakup IDs are structured"), HasBothExtremes(BreakupPixels, 0.1f, 0.6f));
+	TestTrue(TEXT("Combine receives Breakup regions"), ComparedRegions > 0);
+	TestEqual(TEXT("Combine consumes the nearest Breakup map"), Differences, 0);
+
+	// Also cover Breakup as the only producer; removing Pattern must not make Combine unavailable.
+	Layers[0].Children.RemoveAt(0);
+	CombinePixels.Reset();
+	if (!TestTrue(TEXT("Direct Breakup to Combine IDs composes"),
+			ComposeAndWait(Compositor, Layers, RegionPreview(Layers[0].Children[1])))
+		|| !TestTrue(TEXT("Direct Combine IDs preview reads"),
+			ReadTarget(Compositor.GetDebugOutput(), CombinePixels)))
+		return false;
+	TestTrue(TEXT("Direct Breakup drives Combine IDs"),
+		HasBothExtremes(CombinePixels, 0.1f, 0.6f));
+
+	const auto CountPreviewColors = [](const TArray<FLinearColor>& Pixels)
+	{
+		TSet<FColor> Colors;
+		for (const FLinearColor& Pixel : Pixels)
+		{
+			const FColor Color = Pixel.ToFColor(false);
+			if (Color.R != 0 || Color.G != 0 || Color.B != 0)
+			{
+				Colors.Add(Color);
+			}
+		}
+		return Colors.Num();
+	};
+	const int32 UncombinedColorCount = CountPreviewColors(CombinePixels);
+	Layers[0].Children[1].CombineId.Amount = 1.0f;
+	CombinePixels.Reset();
+	if (!TestTrue(TEXT("Active Breakup Combine IDs composes"),
+			ComposeAndWait(Compositor, Layers, RegionPreview(Layers[0].Children[1])))
+		|| !TestTrue(TEXT("Active Combine IDs preview reads"),
+			ReadTarget(Compositor.GetDebugOutput(), CombinePixels)))
+		return false;
+	TestTrue(TEXT("Combine merges full-width Breakup IDs"),
+		CountPreviewColors(CombinePixels) < UncombinedColorCount);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatBlurScopeTest,
 	"Mixtormat.Compositor.BlurScope",
 	EAutomationTestFlags::EditorContext
