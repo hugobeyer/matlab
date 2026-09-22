@@ -581,7 +581,7 @@ pre{
 <div class="section-head"><h2>Procedural Peeling</h2></div>
 <p>Procedural Peeling is for material that separates from the surface below: old paint, coatings, plaster, labels, thin crusts, or similar layered damage.</p>
 <h3>Source mask</h3>
-<p>The peel can use its own Peel Mask. If none is assigned, it can fall back to the layer's accumulated child mask. Mask tiling, inversion, gain, and threshold define the initial peel contour.</p>
+<p>The peel can use its own Seed Mask, which is where peeling starts: Mask Influence scales it, Adhesion is the threshold it has to cross, and growth spreads outward from wherever it does. If none is assigned, it falls back to the layer's accumulated child mask. This is separate from a Mask child scoped under the Peeling row, which gates where the finished effect is allowed to show. Seed tiling, inversion, influence, and adhesion define the initial peel contour.</p>
 <h3>Growth</h3>
 <p>Growth can respond to Convexity, Occlusion, and Height. These signals bias where peel propagation is more likely rather than producing a completely uniform expansion.</p>
 <h3>Flakes</h3>

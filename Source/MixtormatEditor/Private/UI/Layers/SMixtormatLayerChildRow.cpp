@@ -80,12 +80,31 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						SNew(STextBlock)
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
 						.Text(InArgs._Kind)
+						// Same reason as the badge below: a child with no kind mark should not
+						// spend the slot's padding saying nothing.
+						.Visibility_Lambda([Kind = InArgs._Kind]()
+						{
+							return Kind.Get(FText::GetEmpty()).IsEmpty()
+								? EVisibility::Collapsed
+								: EVisibility::Visible;
+						})
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
-						SNew(SMixtormatBadge).Text(InArgs._Badge)
+						SNew(SMixtormatBadge)
+						.Text(InArgs._Badge)
+						// Collapsed rather than drawn empty. A badge is a fixed-width pill, so a
+						// child whose slot has nothing to say -- an ID node, whose name already
+						// says it -- would otherwise print a blank box down the column. The row's
+						// height is pinned by the SBox above, so removing it changes only width.
+						.Visibility_Lambda([Badge = InArgs._Badge]()
+						{
+							return Badge.Get(FText::GetEmpty()).IsEmpty()
+								? EVisibility::Collapsed
+								: EVisibility::Visible;
+						})
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

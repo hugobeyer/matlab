@@ -112,6 +112,23 @@ enum class EMixtormatLayerValueChannel : uint8
 	Roughness = 4 UMETA(DisplayName = "Roughness")
 };
 
+// How a Color ID Mask decides which pixels it selects.
+//
+// Color Range is what the node has always done: sample an authored ID map and accept whatever
+// lands within Threshold of a chosen colour, feathered by Width. Exact ID skips colour entirely
+// and compares the integer Region ID produced by the nearest ID node above it -- Pattern IDs,
+// Cluster IDs or Combine IDs -- so the selection is stable regardless of what colour the preview
+// happens to paint that region.
+//
+// ColorRange is 0 so every mask authored before this enum existed loads with the behaviour it
+// already had. Appended only; never reorder.
+UENUM(BlueprintType)
+enum class EMixtormatColorIdMode : uint8
+{
+	ColorRange = 0 UMETA(DisplayName = "Color Range"),
+	ExactId = 1 UMETA(DisplayName = "Exact ID")
+};
+
 // Quarter turns only. The compositor wraps every source read in a frac(), so a transform has
 // to map the unit square onto itself or it seams at the repeat; an arbitrary angle drags the
 // corners of the tile outside the domain. Same reason per-axis scale is an integer.
@@ -1653,6 +1670,21 @@ struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
 	bool bEnabled = true;
+
+	// Which of the two selections this node runs. Appended and defaulted to Color Range, which is
+	// what every mask authored before the mode existed was doing, so nothing needs migrating.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
+	EMixtormatColorIdMode Mode = EMixtormatColorIdMode::ColorRange;
+
+	// Exact ID only: the Region ID to select, compared as an integer against the map published by
+	// the nearest ID node above this one. Deliberately not derived from a colour -- a region's
+	// preview colour is a hash of its ID chosen for legibility, and reading it back would make
+	// the selection depend on the display.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0", EditCondition = "Mode == EMixtormatColorIdMode::ExactId"))
+	// int32, not uint32: a Region ID is a pixel index into the composition, so even a 4096 square
+	// tops out around 16.7 million, and every editor control and parameter binding in the plugin
+	// speaks int32.
+	int32 ExactRegionId = 0;
 
 	// Import this with sRGB off and no compression. Both settings move the colours the map
 	// stores, and a selection is a comparison against a colour the artist chose in a picker: DXT

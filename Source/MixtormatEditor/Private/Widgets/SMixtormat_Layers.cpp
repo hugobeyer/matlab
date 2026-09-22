@@ -115,48 +115,17 @@ namespace
 		return Depth;
 	}
 
-	// The producer an ID consumer at ChildIndex reads: the last Cluster IDs, Pattern IDs or
-	// Combine IDs node above it.
+	// How far a row is indented.
 	//
-	// The editor-side twin of FindRegionIdsAbove in MixtormatGpuCompositorInternal.h, and it has
-	// to stay in step with it, because what it is used for below is a claim about what the shader
-	// actually reads. Both take the last producer under the index rather than the nearest by
-	// distance, which is the same thing given the array is in child order.
-	int32 FindIdProducerAbove(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
-	{
-		int32 Found = INDEX_NONE;
-		const int32 Limit = FMath::Min(ChildIndex, Children.Num());
-		for (int32 Index = 0; Index < Limit; ++Index)
-		{
-			const EMixtormatLayerChildType Type = Children[Index].Type;
-			if (Type == EMixtormatLayerChildType::Filter
-				|| Type == EMixtormatLayerChildType::PatternId
-				|| Type == EMixtormatLayerChildType::CombineId)
-			{
-				Found = Index;
-			}
-		}
-		return Found;
-	}
-
-	// How far a row is indented, which is not always how deeply it is scoped.
-	//
-	// Scoped children carry a ScopeOwnerChildId and GetScopeDepth counts it. An ID combiner has
-	// no such link and deliberately does not get one: like every other ID consumer in the plugin
-	// it reads the nearest producer above it, so position in the stack is the wiring and there is
-	// nothing to store. Deriving the indent from that same rule gives the row the container read
-	// without inventing state that could fall out of step -- drag the combiner anywhere and the
-	// indent re-derives against whatever is now above it, which is what the compositor will read.
+	// Real scope and nothing else. Combine IDs used to be indented one extra level whenever an ID
+	// producer sat above it, on the theory that the indent showed what it reads -- but every ID
+	// consumer in the plugin reads the nearest producer above it, Combine included, and indenting
+	// only this one claimed a containment that does not exist. Pattern IDs, Cluster IDs and
+	// Combine IDs are siblings in the stack, and the row now says so. A genuine ScopeOwnerChildId
+	// still indents, here as everywhere.
 	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
 	{
-		const int32 Depth = GetScopeDepth(Children, ChildIndex);
-		if (Children.IsValidIndex(ChildIndex)
-			&& Children[ChildIndex].Type == EMixtormatLayerChildType::CombineId
-			&& FindIdProducerAbove(Children, ChildIndex) != INDEX_NONE)
-		{
-			return Depth + 1;
-		}
-		return Depth;
+		return GetScopeDepth(Children, ChildIndex);
 	}
 
 	bool IsDescendantOf(
@@ -291,6 +260,65 @@ namespace
 			return CanOwnScopedBlurs(Owner);
 		}
 		return IsFlowWarp(Child) && CanOwnFlowWarp(Owner);
+	}
+
+	// Everything a newly created child needs beyond its Type, in one place.
+	//
+	// Both Add menus and both containers come through here, which is the point: the red first
+	// colour on a Color ID mask and the LayerValues source on a Layer Values mask used to exist
+	// only on the layer path, so the same entry on a group produced a differently configured node.
+	// The serialised child type one menu entry produces. Several kinds share one: Texture Mask and
+	// Layer Values Mask are both Mask, and Strata Carver is a Generator. That collapse is exactly
+	// why EMixtormatChildCreation exists alongside the type.
+	EMixtormatLayerChildType ChildTypeForCreation(const EMixtormatChildCreation Kind)
+	{
+		switch (Kind)
+		{
+		case EMixtormatChildCreation::PatternIds:      return EMixtormatLayerChildType::PatternId;
+		case EMixtormatChildCreation::ClusterIds:      return EMixtormatLayerChildType::Filter;
+		case EMixtormatChildCreation::CombineIds:      return EMixtormatLayerChildType::CombineId;
+		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
+		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
+		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
+		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
+		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
+		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
+		default:                                       return EMixtormatLayerChildType::Mask;
+		}
+	}
+
+	void ApplyChildCreationDefaults(
+		FMixtormatLayerChild& Child,
+		const EMixtormatChildCreation Kind)
+	{
+		Child.Type = ChildTypeForCreation(Kind);
+		switch (Kind)
+		{
+		case EMixtormatChildCreation::LayerValuesMask:
+			// Fixed at creation and never offered as a switch afterwards. What a mask reads is
+			// its identity -- a Layer Values mask has no asset to name and is told apart from a
+			// Texture mask by exactly this -- so flipping it on a live node would silently turn
+			// one kind of node into another, and an instance of it would change kind with it.
+			Child.Mask.Source = EMixtormatMaskSource::LayerValues;
+			// Replace, whatever is already on the stack. A new mask is added to be looked at, and
+			// Multiply against an existing mask shows nothing wherever that mask is dark -- which
+			// reads as the mask having failed to load rather than as two masks combining.
+			Child.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+			break;
+		case EMixtormatChildCreation::ColorIdMask:
+			// One entry to start. A Color Range mask with an empty set selects nothing and is
+			// dropped before it reaches the graph, so a new node would otherwise sit in the stack
+			// looking broken until the first colour was added by hand. Exact ID ignores the list,
+			// and an unused red entry there costs nothing.
+			Child.ColorId.Colors.Add(FLinearColor::Red);
+			break;
+		case EMixtormatChildCreation::StrataCarver:
+			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
+			break;
+		default:
+			// Every remaining kind is fully described by its type.
+			break;
+		}
 	}
 
 	bool BuildMaskLayerFromPath(const FSoftObjectPath& MaskPath, FMixtormatMaskLayer& OutMask)
@@ -4385,19 +4413,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildGroupAddGeneratorMenu(const FGuid GroupId)
-{
-	MixtormatMenu::FBuilder Menu;
-	Menu.Item(
-		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, GroupId]()
-		{
-			AddGeneratorToGroup(GroupId, EMixtormatGeneratorType::StrataCarver);
-		}));
-	return Menu.Build();
-}
-
 // Not AddProceduralChildToGroup: that one only sets Type, and a generator needs its kind set as
 // well before the child is of any use. AppendGroupChild hands back the child precisely so a
 // creator that has more than one field to fill can fill it.
@@ -4412,29 +4427,6 @@ FReply SMixtormat::AddGeneratorToGroup(
 		FinishGroupChildEdit(GroupId);
 	}
 	return FReply::Handled();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildGroupAddFilterMenu(const FGuid GroupId)
-{
-	MixtormatMenu::FBuilder Menu;
-	const TPair<FText, EMixtormatLayerChildType> Filters[] = {
-		{ LOCTEXT("AddClusterFilterChild", "Cluster IDs"), EMixtormatLayerChildType::Filter },
-		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatLayerChildType::PatternId },
-		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatLayerChildType::HsvFilter },
-		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatLayerChildType::RampId },
-		{ LOCTEXT("AddCombineIdChild", "Combine IDs"), EMixtormatLayerChildType::CombineId },
-	};
-	for (const TPair<FText, EMixtormatLayerChildType>& Filter : Filters)
-	{
-		Menu.Item(
-			Filter.Key,
-			MixtormatIcons::Generated(),
-			FSimpleDelegate::CreateLambda([this, GroupId, Type = Filter.Value]()
-			{
-				AddProceduralChildToGroup(GroupId, Type);
-			}));
-	}
-	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
@@ -4573,56 +4565,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 	// Everything added here is authored once and applies to every member. That is the reason a
 	// group exists -- the alternative is the same effect copied into each layer by hand.
 	Menu.Caption(LOCTEXT("GroupAddSection", "Add · Shared"));
-	const FSoftObjectPath GroupMaskPath = SelectedMaskPath;
-	Menu.Item(
-		FText::Format(
-			LOCTEXT("AddSelectedMaskToGroup", "Add Mask · {0}"),
-			SelectedLibraryMaskName.IsEmpty()
-				? LOCTEXT("NoSelectedLibraryMask", "Select Mask from Gallery")
-				: SelectedLibraryMaskName),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, GroupId, GroupMaskPath]()
-		{
-			AddMaskToGroup(GroupId, GroupMaskPath);
-		}))
-		.Enabled(TAttribute<bool>(!GroupMaskPath.IsNull()));
 	Menu.SubMenu(
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddEffectMenu, GroupId));
-	Menu.SubMenu(
-		LOCTEXT("AddFilterChild", "Filter"),
-		MixtormatIcons::Generated(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddFilterMenu, GroupId));
-	// The same category the layer menu offers, and it works for the same reason every other
-	// shared child does: BuildEffectiveLayers appends a remapped copy of the group's stack to
-	// each member before composition, so one generator authored here carves every member's own
-	// input height with that member's own scoped masks and region IDs rebound to it.
-	Menu.SubMenu(
-		LOCTEXT("AddGeneratorChild", "Generators"),
-		MixtormatIcons::Effect(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAddGeneratorMenu, GroupId));
-	Menu.Item(
-		LOCTEXT("AddGeneratedChild", "Generated Mask"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, GroupId]()
-		{
-			AddProceduralChildToGroup(GroupId, EMixtormatLayerChildType::Generated);
-		}));
-	Menu.Item(
-		LOCTEXT("AddColorIdChild", "Color ID Mask"),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, GroupId]()
-		{
-			AddProceduralChildToGroup(GroupId, EMixtormatLayerChildType::ColorId);
-		}));
-	Menu.Item(
-		LOCTEXT("AddRandomIdChild", "Random From IDs"),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, GroupId]()
-		{
-			AddProceduralChildToGroup(GroupId, EMixtormatLayerChildType::RandomId);
-		}));
+	// The same four submenus the layer menu builds, from the same four functions. A shared child
+	// works here for the reason every other one does: BuildEffectiveLayers appends a remapped copy
+	// of the group's stack to each member before composition, so one node authored here runs over
+	// every member's own input with that member's own scoped masks and region IDs rebound to it.
+	AddCreationSections(Menu, FMixtormatAddTarget::Group(GroupId));
 
 	Menu.Separator();
 	Menu.Item(
@@ -4909,54 +4860,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	// bottom of every expanded layer, which cost a row of height per layer to say something the
 	// right button already implies.
 	Menu.Caption(LOCTEXT("LayerAddSection", "Add"));
-	const FSoftObjectPath SelectedLayerMaskPath = SelectedMaskPath;
-	const FText SelectedLayerMaskName = SelectedLibraryMaskName.IsEmpty()
-		? LOCTEXT("NoSelectedLibraryMask", "Select Mask from Gallery")
-		: SelectedLibraryMaskName;
-	Menu.Item(
-		FText::Format(LOCTEXT("AddSelectedMaskToLayer", "Add Mask · {0}"), SelectedLayerMaskName),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex, SelectedLayerMaskPath]()
-		{
-			AssignMaskToLayer(LayerIndex, SelectedLayerMaskPath);
-		}))
-		.Enabled(TAttribute<bool>(!SelectedLayerMaskPath.IsNull()));
 	Menu.SubMenu(
 		LOCTEXT("AddEffectChild", "Effect"),
 		MixtormatIcons::Effect(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
-	Menu.SubMenu(
-		LOCTEXT("AddFilterChild", "Filter"),
-		MixtormatIcons::Generated(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFilterMenu, LayerIndex));
-	// Its own category beside Effect and Filter, not inside either. What separates it is *when*
-	// it runs: an effect filters the layer after it has composited, a generator rewrites the
-	// height the layer composites from. Filing it under Effect would be the first step toward
-	// implementing it as one.
-	Menu.SubMenu(
-		LOCTEXT("AddGeneratorChild", "Generators"),
-		MixtormatIcons::Effect(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorMenu, LayerIndex));
-	Menu.Item(
-		LOCTEXT("AddGeneratedChild", "Generated Mask"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGeneratedMaskToLayer(LayerIndex); }));
-	// Beside the other mask producers rather than under the asset picker above, because it needs
-	// no asset: it reads the layer it is added to.
-	Menu.Item(
-		LOCTEXT("AddLayerValuesChild", "Layer Values Mask"),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddLayerValuesMaskToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddColorIdChild", "Color ID Mask"),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddColorIdMaskToLayer(LayerIndex); }));
-	// Listed with the mask producers rather than under Filter, because that is what it is: it
-	// emits 0..1 coverage and blends like any other mask. Only what it reads is unusual.
-	Menu.Item(
-		LOCTEXT("AddRandomIdChild", "Random From IDs"),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRandomIdToLayer(LayerIndex); }));
+	// IDs / Filter / Masks / Generators, built by the same four functions the group menu calls.
+	AddCreationSections(Menu, FMixtormatAddTarget::Layer(LayerIndex));
 
 	Menu.Separator();
 
@@ -5088,45 +4997,189 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddFilterMenu(const int32 LayerIndex)
+bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
+{
+	return Target.IsGroup()
+		? MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId) != nullptr
+		: WorkingLayers.IsValidIndex(Target.LayerIndex);
+}
+
+FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
+{
+	if (Target.IsGroup())
+	{
+		// AppendGroupChild takes a type and hands the child back precisely so a creator with more
+		// than one field to fill can fill it, which is what ApplyChildCreationDefaults does here.
+		if (FMixtormatLayerChild* Child =
+			AppendGroupChild(Target.GroupId, ChildTypeForCreation(Kind)))
+		{
+			ApplyChildCreationDefaults(*Child, Kind);
+			FinishGroupChildEdit(Target.GroupId);
+		}
+		return FReply::Handled();
+	}
+
+	if (!WorkingLayers.IsValidIndex(Target.LayerIndex))
+	{
+		return FReply::Handled();
+	}
+	// Note the asymmetry with the group branch above, which is pre-existing rather than a choice
+	// made here: FinishGroupChildEdit records edit history and marks the document dirty, and no
+	// Add*ToLayer creator ever has. Creating a layer child is therefore still not undoable, the
+	// same as before this function collapsed the ten of them into one. Left alone deliberately --
+	// changing it changes the undo stack, which is not this refactor's to move.
+	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
+	ApplyChildCreationDefaults(Layer.Children.AddDefaulted_GetRef(), Kind);
+	SetLayerExpanded(Target.LayerIndex, true);
+	SelectWorkingChild(Target.LayerIndex, Layer.Children.Num() - 1);
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::AddTextureMask(const FMixtormatAddTarget Target, const FSoftObjectPath MaskPath)
+{
+	// Straight through to the two creators the gallery's drag-and-drop already calls, rather than
+	// a third way of building a mask child. "Texture Mask..." in the menu and a mask dragged out
+	// of the gallery have to produce the same node, and the cheapest guarantee of that is that
+	// they are the same call.
+	return Target.IsGroup()
+		? AddMaskToGroup(Target.GroupId, MaskPath)
+		: AssignMaskToLayer(Target.LayerIndex, MaskPath);
+}
+
+// The Add tree, authored once.
+//
+// IDs create or modify Region IDs; Filters consume them and transform something else; Masks make
+// coverage; Generators write structural height. The categories are the plugin's own taxonomy and
+// the submenu each node sits in is the claim the inspector and the compositor make about it -- an
+// ID node buried under Filter said the opposite of what it does.
+void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixtormatAddTarget Target)
+{
+	Menu.SubMenu(
+		LOCTEXT("AddIdsChild", "IDs"),
+		MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddIdsMenu, Target));
+	Menu.SubMenu(
+		LOCTEXT("AddFilterChild", "Filter"),
+		MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFiltersMenu, Target));
+	Menu.SubMenu(
+		LOCTEXT("AddMasksChild", "Masks"),
+		MixtormatIcons::Mask(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Target));
+	// Its own category beside Effect and Filter, not inside either. What separates it is *when*
+	// it runs: an effect filters the layer after it has composited, a generator rewrites the
+	// height the layer composites from. Filing it under Effect would be the first step toward
+	// implementing it as one.
+	Menu.SubMenu(
+		LOCTEXT("AddGeneratorChild", "Generators"),
+		MixtormatIcons::Effect(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorsMenu, Target));
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
-	Menu.Item(
-		LOCTEXT("AddClusterFilterChild", "Cluster IDs"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFilterToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
-	Menu.Item(
-		LOCTEXT("AddPatternIdChild", "Pattern IDs"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddPatternIdToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
-	Menu.Item(
-		LOCTEXT("AddHsvFilterChild", "HSV From IDs"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddHsvFilterToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
-	Menu.Item(
-		LOCTEXT("AddRampIdChild", "Ramp From IDs"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRampIdToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
-	Menu.Item(
-		LOCTEXT("AddCombineIdChild", "Combine IDs"),
-		MixtormatIcons::Generated(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCombineIdToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
+		{ LOCTEXT("AddClusterFilterChild", "Cluster IDs"), EMixtormatChildCreation::ClusterIds },
+		{ LOCTEXT("AddCombineIdChild", "Combine IDs"), EMixtormatChildCreation::CombineIds },
+	};
+	const bool bEnabled = CanCreateChild(Target);
+	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
+	{
+		Menu.Item(
+			Entry.Key,
+			MixtormatIcons::Generated(),
+			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
+			{
+				CreateChild(Target, Kind);
+			}))
+			.Enabled(TAttribute<bool>(bEnabled));
+	}
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddGeneratorMenu(const int32 LayerIndex)
+TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
+		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
+	};
+	const bool bEnabled = CanCreateChild(Target);
+	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
+	{
+		Menu.Item(
+			Entry.Key,
+			MixtormatIcons::Generated(),
+			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
+			{
+				CreateChild(Target, Kind);
+			}))
+			.Enabled(TAttribute<bool>(bEnabled));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const bool bEnabled = CanCreateChild(Target);
+
+	// Texture Mask first, and it takes whatever the gallery has selected. The ellipsis is the
+	// honest part of the label: unlike everything below it, this one cannot create anything until
+	// a mask has been picked downstairs.
+	const FSoftObjectPath MaskPath = SelectedMaskPath;
+	Menu.Item(
+		FText::Format(
+			LOCTEXT("AddTextureMaskChild", "Texture Mask · {0}"),
+			SelectedLibraryMaskName.IsEmpty()
+				? LOCTEXT("NoSelectedLibraryMask", "Select Mask from Gallery")
+				: SelectedLibraryMaskName),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, Target, MaskPath]()
+		{
+			AddTextureMask(Target, MaskPath);
+		}))
+		.Enabled(TAttribute<bool>(bEnabled && !MaskPath.IsNull()));
+
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		// Beside the other mask producers rather than under the asset picker above, because it
+		// needs no asset: it reads the layer it is added to.
+		{ LOCTEXT("AddLayerValuesChild", "Layer Values Mask"), EMixtormatChildCreation::LayerValuesMask },
+		{ LOCTEXT("AddGeneratedChild", "Generated Mask"), EMixtormatChildCreation::GeneratedMask },
+		{ LOCTEXT("AddColorIdChild", "Color ID Mask"), EMixtormatChildCreation::ColorIdMask },
+		// Listed with the mask producers rather than under Filter, because that is what it is: it
+		// emits 0..1 coverage and blends like any other mask. Only what it reads is unusual.
+		{ LOCTEXT("AddRandomIdChild", "Random From IDs"), EMixtormatChildCreation::RandomFromIds },
+	};
+	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
+	{
+		Menu.Item(
+			Entry.Key,
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
+			{
+				CreateChild(Target, Kind);
+			}))
+			.Enabled(TAttribute<bool>(bEnabled));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
 	Menu.Item(
 		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
 		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddStrataCarverToLayer(LayerIndex); }))
-		.Enabled(WorkingLayers.IsValidIndex(LayerIndex));
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			CreateChild(Target, EMixtormatChildCreation::StrataCarver);
+		}))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	return Menu.Build();
 }
 
@@ -5881,28 +5934,9 @@ void SMixtormat::RemoveImportedMask(const FSoftObjectPath AssetPath)
 
 FReply SMixtormat::AddColorIdMaskToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::ColorId;
-
-	// One entry to start. An id mask with an empty set selects nothing and is dropped before it
-	// reaches the graph, so a new node would otherwise sit in the stack looking broken until the
-	// first colour was added by hand.
-	Child.ColorId.Colors.Add(FLinearColor::Red);
-
-	SelectedLayerIndex = LayerIndex;
-	SelectedMaskIndex = Layer.Children.Num() - 1;
-	SelectedEffectIndex = INDEX_NONE;
-	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::ColorIdMask);
 }
 
 FMixtormatColorIdMask* SMixtormat::GetSelectedColorId()
@@ -5927,19 +5961,9 @@ const FMixtormatColorIdMask* SMixtormat::GetSelectedColorId() const
 
 FReply SMixtormat::AddFilterToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Filter;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::ClusterIds);
 }
 
 FMixtormatClusterFilter* SMixtormat::GetSelectedFilter()
@@ -5964,19 +5988,9 @@ const FMixtormatClusterFilter* SMixtormat::GetSelectedFilter() const
 
 FReply SMixtormat::AddHsvFilterToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::HsvFilter;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::HsvFromIds);
 }
 
 FMixtormatHsvIdFilter* SMixtormat::GetSelectedHsvFilter()
@@ -6001,19 +6015,9 @@ const FMixtormatHsvIdFilter* SMixtormat::GetSelectedHsvFilter() const
 
 FReply SMixtormat::AddPatternIdToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::PatternId;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::PatternIds);
 }
 
 FMixtormatPatternFilter* SMixtormat::GetSelectedPatternId()
@@ -6044,20 +6048,9 @@ const FMixtormatPatternFilter* SMixtormat::GetSelectedPatternId() const
 // the nearest producer above it -- and which masks are scoped beneath it.
 FReply SMixtormat::AddStrataCarverToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Generator;
-	Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::StrataCarver);
 }
 
 FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver()
@@ -6108,19 +6101,9 @@ FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
 
 FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::CombineId;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::CombineIds);
 }
 
 FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId()
@@ -6145,19 +6128,9 @@ const FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId() const
 
 FReply SMixtormat::AddRampIdToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::RampId;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::RampFromIds);
 }
 
 FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId()
@@ -6182,19 +6155,9 @@ const FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId() const
 
 FReply SMixtormat::AddRandomIdToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::RandomId;
-	SetLayerExpanded(LayerIndex, true);
-	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::RandomFromIds);
 }
 
 FMixtormatRandomIdMask* SMixtormat::GetSelectedRandomId()
@@ -6265,50 +6228,16 @@ const FMixtormatCraquelure* SMixtormat::GetSelectedCraquelure() const
 // re-earn all of it. This sets one enum.
 FReply SMixtormat::AddLayerValuesMaskToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Mask;
-	Child.Mask.Source = EMixtormatMaskSource::LayerValues;
-	// Replace, whatever is already on the stack. A new mask is added to be looked at, and
-	// Multiply against an existing mask shows nothing wherever that mask is dark -- which reads
-	// as the mask having failed to load rather than as two masks combining. The chain starts from
-	// white, so Replace is what makes it visible on its own; combining is a deliberate second
-	// step through the row's Blend Mode.
-	Child.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
-	SelectedLayerIndex = LayerIndex;
-	SelectedMaskIndex = Layer.Children.Num() - 1;
-	SelectedEffectIndex = INDEX_NONE;
-	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::LayerValuesMask);
 }
 
 FReply SMixtormat::AddGeneratedMaskToLayer(const int32 LayerIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		return FReply::Handled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Generated;
-	SelectedLayerIndex = LayerIndex;
-	SelectedMaskIndex = Layer.Children.Num() - 1;
-	SelectedEffectIndex = INDEX_NONE;
-	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	return CreateChild(
+		FMixtormatAddTarget::Layer(LayerIndex),
+		EMixtormatChildCreation::GeneratedMask);
 }
 
 FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 ChildIndex)

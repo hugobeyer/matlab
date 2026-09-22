@@ -152,6 +152,10 @@ public:
 	UTextureRenderTarget2D* GetCompositedNormal() const;
 	UTextureRenderTarget2D* GetCompositedRAM() const;
 	UTextureRenderTarget2D* GetCompositedHeight() const;
+	// The debug view the preview is currently showing, and the raw Region IDs behind it. The
+	// second is what the Exact ID picker reads: one float per pixel, -1 where no region covers it.
+	UTextureRenderTarget2D* GetCompositedDebug() const;
+	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
 

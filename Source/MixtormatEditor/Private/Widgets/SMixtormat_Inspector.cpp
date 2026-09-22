@@ -10,10 +10,62 @@
 #include "UI/Atoms/SMixtormatToggle.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatTile.h"
+#include "Widgets/Input/SSpinBox.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "UnrealClient.h"
+#include "Widgets/Images/SImage.h"
 
 // The inspector column: every per-selection parameter panel.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+// The Exact ID picker's click surface: the Region IDs preview drawn at a fixed square size, with
+// the whole image as one target. Local position over local size is the UV, which is the entire
+// reason the picker is a flat image rather than a click in the 3D viewport -- recovering a UV
+// from a mesh hit needs a project-wide setting this plugin cannot guarantee, and fails silently
+// where it is off.
+class SMixtormatRegionIdPickSurface final : public SCompoundWidget
+{
+public:
+	DECLARE_DELEGATE_OneParam(FOnPicked, FVector2D);
+
+	SLATE_BEGIN_ARGS(SMixtormatRegionIdPickSurface) {}
+		SLATE_ARGUMENT(TSharedPtr<FSlateBrush>, Brush)
+		SLATE_EVENT(FOnPicked, OnPicked)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
+	{
+		OnPicked = InArgs._OnPicked;
+		ChildSlot
+		[
+			SNew(SImage).Image(InArgs._Brush.IsValid() ? InArgs._Brush.Get() : nullptr)
+		];
+	}
+
+	virtual FReply OnMouseButtonDown(
+		const FGeometry& MyGeometry,
+		const FPointerEvent& MouseEvent) override
+	{
+		if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+		{
+			return FReply::Unhandled();
+		}
+		const FVector2D Local = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+		const FVector2D Size = MyGeometry.GetLocalSize();
+		if (Size.X <= 0.0 || Size.Y <= 0.0)
+		{
+			return FReply::Unhandled();
+		}
+		OnPicked.ExecuteIfBound(FVector2D(
+			FMath::Clamp(Local.X / Size.X, 0.0, 1.0),
+			FMath::Clamp(Local.Y / Size.Y, 0.0, 1.0)));
+		return FReply::Handled();
+	}
+
+private:
+	FOnPicked OnPicked;
+};
 
 // Quarter turns, shared shape between the mask and the layer. Rotation is offered at all only
 // because 90 degree steps are permutations of the unit square: the compositor wraps every source
@@ -59,26 +111,37 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpSource", "Source")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpSeeding", "Seeding")));
 
-	// The peel's own seed mask. Kept as a bespoke row because it picks an asset, not a value.
+	// Seed Mask, not "Peel Mask" and emphatically not "Mask". Two different masks reach a peel and
+	// they do opposite things:
+	//
+	//   Seed Mask   -- this one. It seeds the procedural growth: it is scaled by Mask Influence,
+	//                  tested against Adhesion, and wherever it crosses, peeling *starts*. It
+	//                  decides where the effect originates.
+	//   Scoped mask -- a Mask child dragged under the Peeling row. That one gates the finished
+	//                  effect: it decides where the result is allowed to show.
+	//
+	// Calling both "Mask" is what made the pair unreadable. They are deliberately not merged.
+	// Kept as a bespoke row because it picks an asset, not a value.
 	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-			[SNew(STextBlock).Text(LOCTEXT("PPeelMaskSlot", "Peel Mask"))]
+			[SNew(STextBlock).Text(LOCTEXT("PPeelSeedMaskSlot", "Seed Mask"))]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(SMixtormatChip)
-				.ToolTip(LOCTEXT("PPeelMaskSlotHint", "The mask that seeds this peel. Independent of the layer's mask children; unset falls back to the accumulated child mask."))
+				.ToolTip(LOCTEXT("PPeelSeedMaskSlotHint", "Where this peel starts. Mask Influence scales it, Adhesion is the threshold it has to cross, and the procedural growth spreads outward from wherever it does -- so this seeds the effect rather than gating it.\n\n"
+					"A Mask child scoped under the Peeling row is the other thing: that one gates where the finished peel is allowed to show. Unset, the seed still falls back to the layer's accumulated child mask, which is the current behaviour and unchanged here."))
 				.Text_Lambda([this]()
 						{
 							const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
 							if (!E)
 							{
-								return LOCTEXT("PPeelMaskNone", "Child Mask");
+								return LOCTEXT("PPeelSeedMaskNone", "Child Mask");
 							}
 							if (!E->PeelMask.IsNull())
 							{
@@ -88,105 +151,61 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 							{
 								return FText::FromString(E->PeelMaskTexture.ToSoftObjectPath().GetAssetName());
 							}
-							return LOCTEXT("PPeelMaskNone", "Child Mask");
+							return LOCTEXT("PPeelSeedMaskNone", "Child Mask");
 						})
 				.OnGetMenuContent_Lambda([this]()
 				{
-					// A grid, not a list. Masks are images, and picking "Grunge_Fine" over
-					// "Grunge_Coarse" by filename meant assigning one, looking at the viewport
-					// and coming back. The popover is wider than the 300px inspector on purpose:
-					// a menu is its own window and is not clipped by the panel that opened it.
-					TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
-						.UseAllottedSize(true)
-						.InnerSlotPadding(FVector2D(
-							MixtormatTokens::MaskGalleryTileGap,
-							MixtormatTokens::MaskGalleryTileGap));
-
-					for (const FMixtormatMaskEntry& Entry : FMixtormatRegistry::GetMasks())
-					{
-						const FSoftObjectPath Path = Entry.AssetPath;
-						Grid->AddSlot()
-						[
-							SNew(SMixtormatTile)
-							.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
-							.DisplayName(Entry.DisplayName)
-							.ThumbnailAsset(Entry.ThumbnailAsset)
-							.ThumbnailPool(ThumbnailPool)
-							.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
-							.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
-							.bSelected_Lambda([this, Path]()
+					return BuildMaskAssetPicker(
+						[this](const FSoftObjectPath Path)
+						{
+							FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
+							if (!E)
 							{
-								const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
-								if (!E)
-								{
-									return false;
-								}
-								return E->PeelMask.ToSoftObjectPath() == Path
-									|| E->PeelMaskTexture.ToSoftObjectPath() == Path;
-							})
-							.OnActivated(FMixtormatOnTileActivated::CreateLambda([this, Path]()
+								return;
+							}
+							// The registry lists UMixtormatMask assets and plain UTexture2D side
+							// by side, so the pick has to branch on the loaded class -- assigning
+							// a texture to the UMixtormatMask slot resolves to null and silently
+							// falls back to the child mask.
+							UObject* MaskObject = Path.TryLoad();
+							if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
 							{
-								FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
-								if (!E)
-								{
-									return;
-								}
-
-								// The registry lists UMixtormatMask assets and plain UTexture2D
-								// side by side, so the pick has to branch on the loaded class --
-								// assigning a texture to the UMixtormatMask slot resolves to null
-								// and silently falls back to the child mask.
-								UObject* MaskObject = Path.TryLoad();
-								if (const UMixtormatMask* Mask = Cast<UMixtormatMask>(MaskObject))
-								{
-									E->PeelMask = TSoftObjectPtr<UMixtormatMask>(Path);
-									E->PeelMaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-								}
-								else if (Cast<UTexture2D>(MaskObject))
-								{
-									E->PeelMask.Reset();
-									E->PeelMaskTexture = TSoftObjectPtr<UTexture2D>(Path);
-								}
-								else
-								{
-									return;
-								}
+								E->PeelMask = TSoftObjectPtr<UMixtormatMask>(Path);
+								E->PeelMaskTexture =
+									TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
+							}
+							else if (Cast<UTexture2D>(MaskObject))
+							{
+								E->PeelMask.Reset();
+								E->PeelMaskTexture = TSoftObjectPtr<UTexture2D>(Path);
+							}
+							else
+							{
+								return;
+							}
+							RefreshLayeredPreview();
+						},
+						[this](const FSoftObjectPath Path)
+						{
+							const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
+							return E
+								&& (E->PeelMask.ToSoftObjectPath() == Path
+									|| E->PeelMaskTexture.ToSoftObjectPath() == Path);
+						},
+						SNew(SButton)
+						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+						.Text(LOCTEXT("PPeelSeedMaskClear", "Use the layer's child mask"))
+						.ToolTipText(LOCTEXT("PPeelSeedMaskClearHint", "Clear the Seed Mask and fall back to the layer's accumulated child mask as the seed. Current behaviour, unchanged."))
+						.OnClicked_Lambda([this]()
+						{
+							if (FMixtormatLayerEffect* E = GetSelectedProceduralPeel())
+							{
+								E->PeelMask.Reset();
+								E->PeelMaskTexture.Reset();
 								RefreshLayeredPreview();
-							}))
-						];
-					}
-
-					return SNew(SBox)
-						.WidthOverride(MixtormatTokens::MaskPickerWidth)
-						.Padding(MixtormatTokens::TileGap)
-						[
-							SNew(SVerticalBox)
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
-							[
-								SNew(SScrollBox) + SScrollBox::Slot()[Grid]
-							]
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
-							[
-								SNew(SButton)
-								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-								.Text(LOCTEXT("PPeelMaskClear", "Use the layer's child mask"))
-								.ToolTipText(LOCTEXT("PPeelMaskClearHint", "Fall back to the layer's accumulated child mask."))
-								.OnClicked_Lambda([this]()
-								{
-									if (FMixtormatLayerEffect* E = GetSelectedProceduralPeel())
-									{
-										E->PeelMask.Reset();
-										E->PeelMaskTexture.Reset();
-										RefreshLayeredPreview();
-									}
-									return FReply::Handled();
-								})
-							]
-						];
+							}
+							return FReply::Handled();
+						}));
 				})
 			]
 		]
@@ -195,15 +214,15 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	// Paired: both labels are one short word, and at the inspector's width each half is about
 	// 139px. Anything longer would clip, which is why Adhesion's weights below are not paired.
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakePeelSliderInt(LOCTEXT("PPeelMaskTiling", "Tiling"), &FMixtormatLayerEffect::PeelMaskTiling, 1.0, 16.0, 1),
+		MakePeelSliderInt(LOCTEXT("PPeelSeedMaskTiling", "Seed Tiling"), &FMixtormatLayerEffect::PeelMaskTiling, 1.0, 16.0, 1),
 		MakeMemberToggle<FMixtormatLayerEffect>(
-			LOCTEXT("PPeelMaskInv", "Invert"),
+			LOCTEXT("PPeelSeedMaskInv", "Seed Invert"),
 			[this]() { return GetSelectedProceduralPeel(); },
 			&FMixtormatLayerEffect::bPeelMaskInvert)));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpAdhesion", "Adhesion")));
-	AddPeelSlider(Panel, LOCTEXT("PPeelMaskW", "Mask Gain"), &FMixtormatLayerEffect::PeelSeedMaskWeight, 0.0, 4.0, 0.0, 0.01,
-		LOCTEXT("PPeelMaskWHint", "Scales the mask before the threshold. At 0 nothing crosses it and there is no peel at all, whichever mask is chosen."));
+	AddPeelSlider(Panel, LOCTEXT("PPeelMaskW", "Mask Influence"), &FMixtormatLayerEffect::PeelSeedMaskWeight, 0.0, 4.0, 0.0, 0.01,
+		LOCTEXT("PPeelMaskWHint", "Scales the Seed Mask before the Adhesion threshold. At 0 nothing crosses it and there is no peel at all, whichever mask is chosen. This is a seeding weight -- it has no effect on a scoped mask gating the result."));
 	AddPeelSlider(Panel, LOCTEXT("PPeelAdhesion", "Adhesion"), &FMixtormatLayerEffect::PeelSeedThreshold, 0.0, 1.0, 0.62, 0.01,
 		LOCTEXT("PPeelAdhesionHint", "How easily the peel nucleates. Lower values make peeling start more readily; higher values require stronger surface features."));
 
@@ -1373,6 +1392,235 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdRotationMenu()
 	return Menu.Build();
 }
 
+// Exact ID first, Color Range second -- the order the node is explained in, not the order the
+// enum happens to be numbered. Color Range is still value 0 and still the default, so nothing
+// saved before the mode existed changes behaviour.
+TSharedRef<SWidget> SMixtormat::BuildColorIdModeMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatColorIdMode Modes[] = {
+		EMixtormatColorIdMode::ExactId,
+		EMixtormatColorIdMode::ColorRange,
+	};
+	for (const EMixtormatColorIdMode Mode : Modes)
+	{
+		Menu.Item(
+			MixtormatUI::ColorIdModeText(Mode),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Mode]()
+			{
+				if (FMixtormatColorIdMask* C = GetSelectedColorId())
+				{
+					C->Mode = Mode;
+					RefreshLayeredPreview();
+					// The row's own kind text does not move, but the inspector swaps a whole
+					// section either way, and the preview has to be asked for again.
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
+			{
+				const FMixtormatColorIdMask* C = GetSelectedColorId();
+				return C && C->Mode == Mode;
+			}));
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
+	TFunction<void(FSoftObjectPath)> OnPicked,
+	TFunction<bool(FSoftObjectPath)> IsSelected,
+	TSharedPtr<SWidget> Footer)
+{
+	// A grid, not a list. Masks are images, and picking "Grunge_Fine" over "Grunge_Coarse" by
+	// filename meant assigning one, looking at the viewport and coming back. The popover is wider
+	// than the 300px inspector on purpose: a menu is its own window and is not clipped by the
+	// panel that opened it.
+	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
+		.UseAllottedSize(true)
+		.InnerSlotPadding(FVector2D(
+			MixtormatTokens::MaskGalleryTileGap,
+			MixtormatTokens::MaskGalleryTileGap));
+
+	for (const FMixtormatMaskEntry& Entry : FMixtormatRegistry::GetMasks())
+	{
+		const FSoftObjectPath Path = Entry.AssetPath;
+		Grid->AddSlot()
+		[
+			SNew(SMixtormatTile)
+			.TileSize_Lambda([this]() { return MaskGalleryTileSize; })
+			.DisplayName(Entry.DisplayName)
+			.ThumbnailAsset(Entry.ThumbnailAsset)
+			.ThumbnailPool(ThumbnailPool)
+			.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+			.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
+			.bSelected_Lambda([IsSelected, Path]() { return IsSelected(Path); })
+			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnPicked, Path]()
+			{
+				OnPicked(Path);
+			}))
+		];
+	}
+
+	TSharedRef<SVerticalBox> Body = SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.MaxHeight(MixtormatTokens::InspectorMaskGalleryMaxHeight)
+		[
+			SNew(SScrollBox) + SScrollBox::Slot()[Grid]
+		];
+	if (Footer.IsValid())
+	{
+		Body->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
+		[
+			Footer.ToSharedRef()
+		];
+	}
+
+	return SNew(SBox)
+		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.Padding(MixtormatTokens::TileGap)
+		[
+			Body
+		];
+}
+
+bool SMixtormat::CanPickRegionId() const
+{
+	// The pick buffer is written only while a Region IDs preview is being composited, and cleared
+	// to the sentinel otherwise, so offering the picker at any other time would hand the artist a
+	// black square and a value of -1. The message the popover shows instead names the eye to turn
+	// on, which is the actual next step.
+	return DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
+		&& ChildPreviewTarget.Kind == EMixtormatPreviewOutputKind::RegionIds
+		&& ChildPreviewTarget.IsValid()
+		&& !PreviewViewports.IsEmpty()
+		&& PreviewViewports[0].IsValid();
+}
+
+bool SMixtormat::ReadRegionIdAtUV(const FVector2D UV, int32& OutRegionId) const
+{
+	if (PreviewViewports.IsEmpty() || !PreviewViewports[0].IsValid())
+	{
+		return false;
+	}
+	UTextureRenderTarget2D* Pick = PreviewViewports[0]->GetRegionIdPick();
+	FTextureRenderTargetResource* Resource =
+		Pick ? Pick->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Resource)
+	{
+		return false;
+	}
+
+	const int32 X = FMath::Clamp(
+		FMath::FloorToInt(UV.X * static_cast<double>(Pick->SizeX)), 0, Pick->SizeX - 1);
+	const int32 Y = FMath::Clamp(
+		FMath::FloorToInt(UV.Y * static_cast<double>(Pick->SizeY)), 0, Pick->SizeY - 1);
+
+	// One texel, read as FLinearColor: the target is PF_R32_FLOAT, so the red channel comes back
+	// as the exact float the pick pass wrote. ReadPixels would quantise it to 8 bits, which would
+	// turn every id into the same handful of values.
+	TArray<FLinearColor> Pixels;
+	if (!Resource->ReadLinearColorPixels(
+		Pixels, FReadSurfaceDataFlags(), FIntRect(X, Y, X + 1, Y + 1))
+		|| Pixels.IsEmpty())
+	{
+		return false;
+	}
+
+	const float Raw = Pixels[0].R;
+	if (Raw < 0.0f)
+	{
+		// The no-region sentinel. Grout, or a pixel outside every region -- there is no id to
+		// take, so the field keeps whatever it had.
+		return false;
+	}
+	OutRegionId = FMath::RoundToInt(Raw);
+	return true;
+}
+
+void SMixtormat::PickRegionIdAtUV(const FVector2D UV)
+{
+	int32 PickedId = 0;
+	if (!ReadRegionIdAtUV(UV, PickedId))
+	{
+		return;
+	}
+	if (FMixtormatColorIdMask* C = GetSelectedColorId())
+	{
+		C->ExactRegionId = PickedId;
+		RefreshLayeredPreview();
+	}
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
+{
+	if (!CanPickRegionId())
+	{
+		return SNew(SBox)
+			.Padding(MixtormatTokens::TileGap)
+			.WidthOverride(MixtormatTokens::MaskPickerWidth * 0.5f)
+			[
+				SNew(STextBlock)
+				.AutoWrapText(true)
+				.Text(LOCTEXT("RegionIdPickerUnavailable",
+					"Turn on the Region IDs preview on the Pattern IDs, Cluster IDs or Combine IDs "
+					"node above this mask -- the eye in its inspector header -- then open this "
+					"again. The picker reads the ID map that preview is built from."))
+			];
+	}
+
+	// The composite's own debug target: exactly the pixels the viewport is showing, so the region
+	// clicked here is the region seen there. The brush is held on the panel rather than rebuilt
+	// per open, because a brush pointing at a render target has to outlive the widget drawing it.
+	if (!RegionIdPreviewBrush.IsValid())
+	{
+		RegionIdPreviewBrush = MakeShared<FSlateBrush>();
+	}
+	UTextureRenderTarget2D* DebugTarget = PreviewViewports[0]->GetCompositedDebug();
+	RegionIdPreviewBrush->SetResourceObject(DebugTarget);
+	RegionIdPreviewBrush->ImageSize = FVector2D(
+		MixtormatTokens::MaskPickerWidth, MixtormatTokens::MaskPickerWidth);
+
+	const float ViewSize = MixtormatTokens::MaskPickerWidth;
+	return SNew(SBox)
+		.Padding(MixtormatTokens::TileGap)
+		.WidthOverride(ViewSize)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+			[
+				SNew(STextBlock)
+				.AutoWrapText(true)
+				.Text(LOCTEXT("RegionIdPickerHint",
+					"Click a region to take its ID. Anywhere with no region -- grout, or a gap -- "
+					"leaves the current ID alone, and so does closing this without clicking."))
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBox)
+				.WidthOverride(ViewSize)
+				.HeightOverride(ViewSize)
+				[
+					// The whole image is one click target. Local position over local size is the
+					// UV directly -- the debug target is the composition, square and unrotated
+					// relative to itself, and the pick buffer went through the same quarter turn
+					// the debug view did, so the two are always in the same frame.
+					SNew(SMixtormatRegionIdPickSurface)
+					.Brush(RegionIdPreviewBrush)
+					.OnPicked_Lambda([this](const FVector2D UV)
+					{
+						PickRegionIdAtUV(UV);
+						FSlateApplication::Get().DismissAllMenus();
+					})
+				]
+			]
+		];
+}
+
 FReply SMixtormat::AddColorIdEntry()
 {
 	if (FMixtormatColorIdMask* C = GetSelectedColorId())
@@ -1474,11 +1722,111 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
+	// SELECTION first, because it decides what the rest of this panel is even about.
+	//
+	// Exact ID compares the integer Region ID published by the nearest ID node above this mask --
+	// Pattern IDs, Cluster IDs or Combine IDs -- and is the mode to reach for when the regions
+	// were generated in this stack. Color Range samples an authored ID map and accepts whatever
+	// lands within Threshold of a chosen colour, which is the mode for a map that arrived with the
+	// mesh. The two share nothing but the blend and shaping tail, so each hides the other's rows
+	// rather than leaving half the panel inert.
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpSelection", "Selection")));
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("IdSelectionMode", "Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatColorIdMask* C = GetSelectedColorId();
+				return C ? MixtormatUI::ColorIdModeText(C->Mode) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdModeMenu)),
+		LOCTEXT("IdSelectionModeHint",
+			"Exact ID selects one discrete Region ID from the ID node above this mask, as an "
+			"integer comparison -- so the selection is unaffected by whatever colour the Region "
+			"IDs preview happens to paint that region, and unaffected by re-seeding the preview. "
+			"Color Range compares the sampled colour of an authored ID map against a chosen "
+			"colour, within Threshold and feathered by Width.")));
+
+	// Exact ID only. A numeric entry rather than a slider: Region IDs are pixel indices, so the
+	// useful range runs to the square of the composition resolution and no slider can address it
+	// meaningfully. Turn on the Region IDs preview eye on the node above to see which regions
+	// exist while you set this.
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatColorIdMask* C = GetSelectedColorId();
+			return C && C->Mode == EMixtormatColorIdMode::ExactId
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::Make(
+				LOCTEXT("IdExactRegion", "Region ID"),
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, MixtormatTokens::TileGap, 0.0f)
+				[
+					// The eyedropper. Opens the live Region IDs preview and takes the integer id
+					// of whatever is clicked -- never a colour, and never a guess at which id a
+					// colour came from.
+					SNew(SMixtormatChip)
+					.Text(LOCTEXT("IdExactPick", "Pick"))
+					.ToolTip(LOCTEXT("IdExactPickHint",
+						"Click a region in the Region IDs preview to take its ID. Needs that "
+						"preview turned on, from the eye in the inspector header of the ID node "
+						"above this mask. Closing the popover without clicking changes nothing."))
+					.OnGetMenuContent(
+						FOnGetContent::CreateSP(this, &SMixtormat::BuildRegionIdPickerPopup))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::RowFieldMinWidth)
+				[
+				SNew(SSpinBox<int32>)
+				.MinValue(0)
+				.MinSliderValue(0)
+				.MaxSliderValue(4096)
+				.Delta(1)
+				.Value_Lambda([this]()
+				{
+					const FMixtormatColorIdMask* C = GetSelectedColorId();
+					return C ? C->ExactRegionId : 0;
+				})
+				.OnValueChanged_Lambda([this](const int32 NewValue)
+				{
+					if (FMixtormatColorIdMask* C = GetSelectedColorId())
+					{
+						C->ExactRegionId = FMath::Max(NewValue, 0);
+						RefreshLayeredPreview();
+					}
+				})
+				]
+				],
+				LOCTEXT("IdExactRegionHint",
+					"The Region ID to select. Compared as an integer against the map published by "
+					"the nearest ID node above -- never reconstructed from a preview colour, so it "
+					"survives a change of seed or of preview palette. A mask in this mode with no "
+					"ID node above it is skipped rather than blended, the same as Random From IDs."))
+		]);
+
+	// Everything from here to the end of Placement belongs to Color Range. An Exact ID mask has
+	// no map to pick, no colours to list and nothing to place: it reads the Region IDs at the
+	// composition's own resolution, where a UV transform would interpolate labels.
+	const TSharedRef<SVerticalBox> Range = SNew(SVerticalBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatColorIdMask* C = GetSelectedColorId();
+			return C && C->Mode == EMixtormatColorIdMode::ExactId
+				? EVisibility::Collapsed
+				: EVisibility::Visible;
+		});
+
 	// The map. Any Texture2D rather than the library gallery the other mask slots offer: an ID
 	// map arrives with the mesh from whatever built it, and it is not a Mixtormat asset and never
 	// will be.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpSource", "ID Map")));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpSource", "ID Map")));
+	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
 	[
 		SNew(SObjectPropertyEntryBox)
 		.AllowedClass(UTexture2D::StaticClass())
@@ -1503,7 +1851,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// The selection. One row per colour: a swatch that opens a picker, and a button that drops
 	// it. Rebuilt rather than bound, because the row count is the data here -- adding an ID adds
 	// a widget, which no attribute can express.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpColors", "Selected IDs")));
+	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpColors", "Selected IDs")));
 
 	// Every row that could exist is laid out once and shows itself when the selection reaches it.
 	// The panel is built at construction, long before anything is selected, so a loop over the
@@ -1511,7 +1859,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	for (int32 ColorIndex = 0; ColorIndex < FMixtormatColorIdMask::MaxColors; ++ColorIndex)
 	{
 		{
-			Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+			Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
 			[
 				SNew(SHorizontalBox)
 				.Visibility_Lambda([this, ColorIndex]()
@@ -1549,7 +1897,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		}
 	}
 
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
 	[
 		SNew(SButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -1562,33 +1910,36 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		.OnClicked_Lambda([this]() { return AddColorIdEntry(); })
 	];
 
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("IdTolerance", "Tolerance"), &FMixtormatColorIdMask::Tolerance, 0.0, 1.0, 0.10, 0.001,
-			LOCTEXT("IdToleranceHint", "How far from a selected colour still counts, as a distance in RGB. The diagonal of the colour cube is about 1.73, so this is small by nature: the default admits the wobble a compressed map leaves across a flat region without reaching a neighbouring ID. Raise it until the part fills in; if it starts claiming its neighbours, the map wants a cleaner import rather than a wider tolerance.")),
-		Slider(LOCTEXT("IdSoftness", "Softness"), &FMixtormatColorIdMask::Softness, 0.0, 0.5, 0.02, 0.001,
-			LOCTEXT("IdSoftnessHint", "Width of the transition either side of Tolerance. The map is point sampled -- the average of two IDs is a third colour that names neither -- so the selection edge is a hard texel boundary, and this is what feathers it."))));
+	AddSliderRow(Range, MixtormatRow::MakePair(
+		// Threshold and Width, not Tolerance and Softness. The fields keep their serialised names
+		// -- nothing saved moves -- but the labels say what they do: one sets where acceptance
+		// cuts off, the other how wide the transition around it is.
+		Slider(LOCTEXT("IdThreshold", "Threshold"), &FMixtormatColorIdMask::Tolerance, 0.0, 1.0, 0.10, 0.001,
+			LOCTEXT("IdThresholdHint", "How far from a selected colour still counts, as a distance in RGB. The diagonal of the colour cube is about 1.73, so this is small by nature: the default admits the wobble a compressed map leaves across a flat region without reaching a neighbouring ID. Raise it until the part fills in; if it starts claiming its neighbours, the map wants a cleaner import rather than a wider tolerance.")),
+		Slider(LOCTEXT("IdWidth", "Width"), &FMixtormatColorIdMask::Softness, 0.0, 0.5, 0.02, 0.001,
+			LOCTEXT("IdWidthHint", "Width of the transition either side of Threshold. The map is point sampled -- the average of two IDs is a third colour that names neither -- so the selection edge is a hard texel boundary, and this is what feathers it."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpPlacement", "Placement")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpPlacement", "Placement")));
+	AddSliderRow(Range, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatColorIdMask>(
 			LOCTEXT("IdTilingX", "Tiling X"), Id, &FMixtormatColorIdMask::TilingX, 1.0, 16.0, 1,
 			LOCTEXT("IdTilingXHint", "Integer only. A fractional scale lands mid-texel at the UV wrap and seams.")),
 		MakeMemberSliderInt<FMixtormatColorIdMask>(
 			LOCTEXT("IdTilingY", "Tiling Y"), Id, &FMixtormatColorIdMask::TilingY, 1.0, 16.0, 1,
 			LOCTEXT("IdTilingYHint", "Integer only, for the same reason as Tiling X."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Range, MixtormatRow::MakePair(
 		Slider(LOCTEXT("IdOffsetU", "Offset U"), &FMixtormatColorIdMask::UVOffsetX, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("IdOffsetUHint", "Moves where the map is read from, in UV. Unrelated to Offset under Blend, which lifts the mask value instead.")),
 		Slider(LOCTEXT("IdOffsetV", "Offset V"), &FMixtormatColorIdMask::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("IdOffsetVHint", "Moves where the map is read from, in UV."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Range, MixtormatRow::MakePair(
 		MakeMemberToggle<FMixtormatColorIdMask>(
 			LOCTEXT("IdFlipU", "Flip U"), Id, &FMixtormatColorIdMask::bFlipU,
 			LOCTEXT("IdFlipUHint", "Mirrors the map horizontally before it is tiled.")),
 		MakeMemberToggle<FMixtormatColorIdMask>(
 			LOCTEXT("IdFlipV", "Flip V"), Id, &FMixtormatColorIdMask::bFlipV,
 			LOCTEXT("IdFlipVHint", "Mirrors the map vertically before it is tiled. The usual fix when a map was authored under the other texture-coordinate convention."))));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Range, MixtormatRow::Make(
 		LOCTEXT("IdRotation", "Rotation"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1598,6 +1949,8 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdRotationMenu)),
 		LOCTEXT("IdRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams.")));
+
+	AddSliderRow(Panel, Range);
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpBlend", "Blend")));
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -3722,34 +4075,83 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontBody))
 	];
 
-	// Where the scalar comes from, ahead of everything that shapes it -- the rows below are the
-	// same for either source, which is the point of offering it here rather than as a separate
-	// kind of mask node.
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("SelectedMaskSource", "Source"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
-				return M ? MixtormatUI::MaskSourceText(M->Source) : FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskSourceMenu)),
-		LOCTEXT("SelectedMaskSourceHint",
-			"Texture reads the authored map. Layer Values reads the layer this mask is on -- its "
-			"own resolved albedo and roughness -- so the mask is the shape of the material rather "
-			"than a painted map, and it follows the layer as its colour, fill, instance "
-			"parameters or referenced composition change.\n\n"
-			"It sees the layer's resolved input: the source maps through the layer's UV "
-			"transform, its fill overrides and its HSV. What sibling children do to the layer "
-			"afterwards -- a Grade child, an HSV From IDs tint, the mask chain itself -- is not "
-			"in it, which is what keeps a mask from depending on its own output.")));
-
-	// Collapsed for a texture mask, where it would be a control over nothing.
+	// The asset, on the node itself. Before this the only way to change a texture mask's map was
+	// the row's context menu, which swapped in whatever the bottom gallery happened to have
+	// selected -- an action with no visible state on the thing it changed. Straight through to
+	// ReplaceMaskInLayer, the same call that menu makes and the same one a gallery drag lands on,
+	// so there is one mask representation and one way it is built.
+	//
+	// Texture masks only: a Layer Values mask has no asset, and a mask wired to another child's
+	// published output has one that is not an asset at all.
 	AddSliderRow(Panel, SNew(SBox)
 		.Visibility_Lambda([this]()
 		{
 			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
-			return M && M->Source == EMixtormatMaskSource::LayerValues
+			return M && !M->UsesLayerValues() && !M->HasPublishedSource()
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::Make(
+				LOCTEXT("SelectedMaskAsset", "Mask"),
+				MixtormatRow::MakeChip(
+					TAttribute<FText>::CreateLambda([this]()
+					{
+						const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+						if (!M)
+						{
+							return FText::GetEmpty();
+						}
+						const FSoftObjectPath Path = !M->Mask.IsNull()
+							? M->Mask.ToSoftObjectPath()
+							: M->MaskTexture.ToSoftObjectPath();
+						return Path.IsNull()
+							? LOCTEXT("SelectedMaskAssetNone", "Choose Mask...")
+							: FText::FromString(Path.GetAssetName());
+					}),
+					FOnGetContent::CreateLambda([this]()
+					{
+						// Captured at open time, like every other menu here: the selection is
+						// what it was when the popover was asked for.
+						const int32 LayerIndex = SelectedLayerIndex;
+						const int32 ChildIndex = GetSelectedChildIndex();
+						return BuildMaskAssetPicker(
+							[this, LayerIndex, ChildIndex](const FSoftObjectPath Path)
+							{
+								ReplaceMaskInLayer(LayerIndex, ChildIndex, Path);
+							},
+							[this](const FSoftObjectPath Path)
+							{
+								const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+								return M
+									&& (M->Mask.ToSoftObjectPath() == Path
+										|| M->MaskTexture.ToSoftObjectPath() == Path);
+							});
+					})),
+				LOCTEXT("SelectedMaskAssetHint",
+					"The map this mask reads. Picking one here is the same operation as dragging "
+					"a mask onto the layer from the gallery -- same child, same defaults taken "
+					"from the asset -- so a mask built either way behaves identically."))
+		]);
+
+	// No Source row. What a mask reads is its identity, not a setting on it: a Texture Mask names
+	// an asset and places it, a Layer Values Mask names a channel of the layer it sits on and has
+	// nothing to place. Offering the two as one switchable field meant an instance could change
+	// semantic kind under whoever flipped it, and it put a page of placement controls on a node
+	// that ignores every one of them. Creation fixes the source -- Masks > Texture Mask, or a mask
+	// dragged from the gallery; Masks > Layer Values Mask -- and the rows below follow from it.
+	//
+	// EMixtormatMaskSource and FMixtormatMaskLayer::Source are untouched. The two kinds still
+	// share one serialised struct, so nothing saved needs migrating and no compositor branch moves.
+
+	// Layer Values only, and collapsed on a texture mask where it would be a control over nothing.
+	// UsesLayerValues(), not the raw field: an explicit published source wins over either, and a
+	// mask wired to another child's output is reading neither the asset nor the layer.
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->UsesLayerValues()
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
@@ -3795,27 +4197,40 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 
 	// Source placement. Every transform here maps the unit square onto itself, which is the
 	// constraint: the read is wrapped in a frac(), so anything else seams at the repeat.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpPlacement", "Placement")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	//
+	// Texture masks only. A Layer Values mask reads the layer it is on at the composition's own
+	// resolution -- there is no map to tile, offset, flip or turn -- so the whole block is
+	// collapsed rather than shown inert. This is the other half of removing the Source dropdown:
+	// the inspector is now specific to what the mask actually reads.
+	const TSharedRef<SVerticalBox> Placement = SNew(SVerticalBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->UsesLayerValues()
+				? EVisibility::Collapsed
+				: EVisibility::Visible;
+		});
+	AddSliderRow(Placement, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpPlacement", "Placement")));
+	AddSliderRow(Placement, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatMaskLayer>(
 			LOCTEXT("MaskTilingXLabel", "Tiling X"), Mask, &FMixtormatMaskLayer::TilingX, 1.0, 16.0, 1,
 			LOCTEXT("MaskTilingHint", "Repeats across the axis. Integer only: a fractional scale lands mid-cell at the UV wrap and seams.")),
 		MakeMemberSliderInt<FMixtormatMaskLayer>(
 			LOCTEXT("MaskTilingYLabel", "Tiling Y"), Mask, &FMixtormatMaskLayer::TilingY, 1.0, 16.0, 1,
 			LOCTEXT("MaskTilingHint", "Repeats across the axis. Integer only: a fractional scale lands mid-cell at the UV wrap and seams."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Placement, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskLayer>(
 			LOCTEXT("MaskUVOffsetXLabel", "Offset X"), Mask, &FMixtormatMaskLayer::UVOffsetX, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("MaskUVOffsetHint", "Shifts where the mask is read from. Safe at any value: translating a periodic function leaves it periodic. Unrelated to Offset under Shaping, which lifts the mask value instead.")),
 		MakeMemberSlider<FMixtormatMaskLayer>(
 			LOCTEXT("MaskUVOffsetYLabel", "Offset Y"), Mask, &FMixtormatMaskLayer::UVOffsetY, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("MaskUVOffsetHint", "Shifts where the mask is read from. Safe at any value: translating a periodic function leaves it periodic. Unrelated to Offset under Shaping, which lifts the mask value instead."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Placement, MixtormatRow::MakePair(
 		MakeMemberToggle<FMixtormatMaskLayer>(
 			LOCTEXT("MaskFlipULabel", "Flip U"), Mask, &FMixtormatMaskLayer::bFlipU),
 		MakeMemberToggle<FMixtormatMaskLayer>(
 			LOCTEXT("MaskFlipVLabel", "Flip V"), Mask, &FMixtormatMaskLayer::bFlipV)));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Placement, MixtormatRow::Make(
 		LOCTEXT("MaskRotationLabel", "Rotate"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -3825,6 +4240,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu)),
 		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
+
+	AddSliderRow(Panel, Placement);
 
 	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
 	{
@@ -4656,6 +5073,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// Combine IDs was missing from both of these lists, which is why
+							// selecting one showed the layer's own sections instead of its Mode,
+							// Amount, Passes and Seed. Both lists have to name every child type.
+							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.
@@ -4712,6 +5133,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
+							// Combine IDs was missing from both of these lists, which is why
+							// selecting one showed the layer's own sections instead of its Mode,
+							// Amount, Passes and Seed. Both lists have to name every child type.
+							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.

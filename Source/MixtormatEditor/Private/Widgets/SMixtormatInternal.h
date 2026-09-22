@@ -354,6 +354,15 @@ namespace MixtormatUI
 		}
 	}
 
+	inline FText ColorIdModeText(const EMixtormatColorIdMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatColorIdMode::ExactId: return LOCTEXT("ColorIdModeExact", "Exact ID");
+		default: return LOCTEXT("ColorIdModeRange", "Color Range");
+		}
+	}
+
 	inline FText LayerValueChannelText(const EMixtormatLayerValueChannel Channel)
 	{
 		switch (Channel)

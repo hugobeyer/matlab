@@ -138,6 +138,8 @@ public:
 		SHADER_PARAMETER(uint32, Initialize)
 		SHADER_PARAMETER_ARRAY(FVector4f, TargetColors, [MaxColors])
 		SHADER_PARAMETER(int32, ColorCount)
+		SHADER_PARAMETER(uint32, Mode)
+		SHADER_PARAMETER(uint32, ExactRegionId)
 		SHADER_PARAMETER(float, Tolerance)
 		SHADER_PARAMETER(float, Softness)
 		SHADER_PARAMETER(uint32, BlendMode)
@@ -153,6 +155,7 @@ public:
 		SHADER_PARAMETER(int32, Rotation)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IdTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PointSampler)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
@@ -731,6 +734,7 @@ namespace MixtormatGpuCompositor
 		TShaderMapRef<FMixtormatColorIdCS> ColorIdShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
 		const FColorIdRenderData& ColorId = Child.ColorId;
+		const bool bExactId = ColorId.Mode == EMixtormatColorIdMode::ExactId;
 
 		// The same identity as the other mask children: at Weight 0 the tail
 		// returns Previous unchanged, and skipping from the second child on
@@ -738,6 +742,33 @@ namespace MixtormatGpuCompositor
 		if (MaskPassIndex > 0 && ColorId.Weight == 0.0f)
 		{
 			return;
+		}
+
+		// Exact ID reads the Region IDs published above it, and is culled rather
+		// than defaulted when there is no producer there -- the same rule Random
+		// From IDs follows, and for the same reason: a mask with no regions to
+		// select from has nothing to say, and emitting a flat zero would silently
+		// replace whatever the chain had accumulated.
+		FRDGTextureRef RegionIds =
+			FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+		if (bExactId && !RegionIds)
+		{
+			return;
+		}
+		if (!RegionIds)
+		{
+			// Colour Range never samples the slot, but RDG refuses a pass whose
+			// SRV has no resource, and it refuses a transient texture nothing has
+			// written -- so the placeholder is created and cleared rather than
+			// left undefined.
+			RegionIds = GraphBuilder.CreateTexture(
+				FRDGTextureDesc::Create2D(
+					FIntPoint(1, 1),
+					PF_R32_UINT,
+					FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.ColorIdRegionDummy"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RegionIds), 0u);
 		}
 
 		const int32 MaskWriteIndex = MaskPassIndex & 1;
@@ -748,6 +779,8 @@ namespace MixtormatGpuCompositor
 		IdParameters->OutputSize = Request.Resolution;
 		IdParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
 		IdParameters->ColorCount = ColorId.Colors.Num();
+		IdParameters->Mode = static_cast<uint32>(ColorId.Mode);
+		IdParameters->ExactRegionId = ColorId.ExactRegionId;
 		for (int32 ColorIndex = 0; ColorIndex < FMixtormatColorIdCS::MaxColors; ++ColorIndex)
 		{
 			// The unused tail is filled rather than left alone. A shader
@@ -778,6 +811,7 @@ namespace MixtormatGpuCompositor
 			RegisteredTextures,
 			ColorId.IdTexture,
 			TEXT("Mixtormat.ColorIdMap"));
+		IdParameters->RegionIds = RegionIds;
 
 		// Point, and the only point sampler in the compositor. Every other
 		// map here is a continuous signal that wants filtering; an id map is

@@ -3,6 +3,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // Colour ID mask. Isolates the regions of an ID map that carry one of a set of chosen colours.
 //
@@ -17,6 +18,11 @@
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IdTexture;
+
+// Exact ID mode only: the Region IDs published by the nearest ID node above this mask. Bound to a
+// cleared 1x1 in Color Range mode, where nothing reads it -- RDG rejects a pass whose SRV slot has
+// no resource, so the slot is always filled even when the branch never touches it.
+Texture2D<uint> RegionIds;
 
 // Point, not linear. Filtering an ID map is meaningless: halfway between two ids is a third
 // colour that names neither of them, and at a tolerance wide enough to keep the boundary it
@@ -33,6 +39,11 @@ uint Initialize;
 #define MIXTORMAT_MAX_COLOR_IDS 8
 float4 TargetColors[MIXTORMAT_MAX_COLOR_IDS];
 int ColorCount;
+
+// 0 = Color Range, 1 = Exact ID. Matches EMixtormatColorIdMode, which is appended-only, so the
+// numbering here is not free to change.
+uint Mode;
+uint ExactRegionId;
 
 float Tolerance;
 float Softness;
@@ -62,6 +73,23 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Previous = Initialize != 0
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+
+	// Exact ID: an integer comparison against the Region IDs above, with no colour and no UV
+	// transform in the way. The ID map is produced at this exact resolution by the node that
+	// published it, so a pixel load is the correct read -- sampling it through the placement
+	// transform would interpolate labels, and halfway between two IDs is a third ID that names
+	// neither region. The placement controls stay collapsed in this mode for the same reason.
+	if (Mode == 1u)
+	{
+		const uint RegionId = RegionIds.Load(int3(DispatchThreadId.xy, 0));
+		float ExactIncoming = (RegionId != MIXTORMAT_INVALID_REGION && RegionId == ExactRegionId)
+			? 1.0f
+			: 0.0f;
+		ExactIncoming = MixtormatShapeMask(ExactIncoming, Contrast, Offset, Balance, Invert);
+		const float ExactResult = MixtormatApplyMaskOperation(BlendMode, Previous, ExactIncoming);
+		OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, ExactResult, Weight));
+		return;
+	}
 
 	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
 	const float3 Id = IdTexture.SampleLevel(PointSampler, SourceUV, 0.0f).rgb;

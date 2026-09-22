@@ -215,6 +215,9 @@ namespace MixtormatGpuCompositor
 	struct FColorIdRenderData
 	{
 		FTextureRHIRef IdTexture;
+		EMixtormatColorIdMode Mode = EMixtormatColorIdMode::ColorRange;
+		// Exact ID only, and already widened to what the shader compares against.
+		uint32 ExactRegionId = 0;
 		TArray<FVector4f, TInlineAllocator<FMixtormatColorIdMask::MaxColors>> Colors;
 		float Tolerance = 0.10f;
 		float Softness = 0.02f;
@@ -842,6 +845,11 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef OutputRAM[2];
 		FTextureRHIRef OutputHeight[2];
 		FTextureRHIRef OutputDebug[2];
+		// The raw Region IDs behind whatever the Region IDs preview is showing, one float per
+		// pixel, so the editor can read an exact integer ID back off a click. Deliberately not
+		// derived from OutputDebug: that one holds a hashed colour chosen to be legible, and
+		// inverting it is impossible -- the hash is not injective and the buffer is half float.
+		FTextureRHIRef OutputRegionIdPick[2];
 		FMixtormatDebugPreviewSettings DebugSettings;
 		FSimpleDelegate OnComplete;
 		int32 PublishedTargetIndex = 0;
@@ -1019,6 +1027,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputRAM[2] = {};
 		FRDGTextureRef OutputHeight[2] = {};
 		FRDGTextureRef OutputDebug[2] = {};
+		FRDGTextureRef OutputRegionIdPick[2] = {};
 
 		FRDGTextureRef EmptyRegionIds = nullptr;
 		FRDGTextureRef EmptyPatternUV = nullptr;
@@ -1423,6 +1432,16 @@ namespace MixtormatGpuCompositor
 	// active pixels to black instead of a hashed colour (Breakup), or null when the id map has
 	// no separate gap concept to combine (Cluster IDs) or already blackens its own invalid
 	// pixels inline (Pattern/Combine IDs).
+	// Writes the raw Region ID of every pixel into OutputPick as a float, and the no-region
+	// sentinel as -1. Float rather than uint because a UTextureRenderTarget2D reads back cleanly
+	// as FLinearColor, and the composition tops out at 4096 squared -- 16,777,216 ids, which is
+	// exactly the last integer float32 represents without loss.
+	void AddRegionIdPickPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceIds,
+		FRDGTextureRef OutputPick,
+		FIntPoint Resolution);
+
 	void AddDebugPreviewRegionIdsBlitPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceIds,

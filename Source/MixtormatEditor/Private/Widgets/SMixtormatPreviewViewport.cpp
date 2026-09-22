@@ -560,6 +560,16 @@ UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedHeight() const
 	return LayerCompositor ? LayerCompositor->GetHeightOutput() : nullptr;
 }
 
+UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedDebug() const
+{
+	return LayerCompositor ? LayerCompositor->GetDebugOutput() : nullptr;
+}
+
+UTextureRenderTarget2D* SMixtormatPreviewViewport::GetRegionIdPick() const
+{
+	return LayerCompositor ? LayerCompositor->GetRegionIdPickOutput() : nullptr;
+}
+
 void SMixtormatPreviewViewport::SetPreviewScalarParameter(
 	const FName ParameterName,
 	const float Value)

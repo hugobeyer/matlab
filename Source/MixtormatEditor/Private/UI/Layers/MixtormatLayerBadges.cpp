@@ -197,9 +197,11 @@ namespace MixtormatLayerBadges
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
 			|| Child.Type == EMixtormatLayerChildType::RampId)
 		{
-			// Filters have no blend mode -- they emit data and albedo, not coverage -- so the
-			// slot that would carry one names the category instead.
-			return LOCTEXT("ChildKindFilter", "FILT");
+			// Nothing. These have no blend mode -- they emit data and albedo, not coverage -- and
+			// the slot used to say "FILT", which every one of their names already says. A badge
+			// that repeats the row it sits on is a column of noise to scan past; the row collapses
+			// the slot when the text is empty, so this costs no width and no height either.
+			return FText::GetEmpty();
 		}
 		if (Child.Type == EMixtormatLayerChildType::RandomId)
 		{
@@ -260,9 +262,13 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GMSK");
 		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
 		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
-		case EMixtormatLayerChildType::Filter:    return LOCTEXT("ChildKindFilter", "FILT");
-		case EMixtormatLayerChildType::PatternId: return LOCTEXT("ChildKindPatternId", "PAT");
-		case EMixtormatLayerChildType::CombineId: return LOCTEXT("ChildKindCombineId", "CMB");
+		// Cluster IDs, Pattern IDs and Combine IDs carry no kind mark. FILT, PAT and CMB each
+		// abbreviated a name the row spells out in full two columns to the left, and the three of
+		// them stacked read as a hierarchy that is not there. Combine keeps its right-hand badge,
+		// which says MERGE or SUB -- the one thing about that row the name does not.
+		case EMixtormatLayerChildType::Filter:    return FText::GetEmpty();
+		case EMixtormatLayerChildType::PatternId: return FText::GetEmpty();
+		case EMixtormatLayerChildType::CombineId: return FText::GetEmpty();
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");

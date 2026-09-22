@@ -61,3 +61,26 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const uint Root = SourceIds.Load(int3(Pixel, 0));
 	OutputDebug[Pixel] = float4(MixtormatRegionDebugColor(Root), 1.0f);
 }
+
+// The raw ids behind whatever the Region IDs preview is showing, one float per pixel.
+//
+// Separate from MainRegionIdsCS on purpose. That one produces a colour chosen to be legible --
+// a hash, which is neither injective nor recoverable -- and it lands in a half-float target.
+// Reading an id back out of it would be guessing. This writes the integer itself, so the Exact ID
+// picker compares the value the compositor actually used.
+Texture2D<uint> PickSourceIds;
+RWTexture2D<float> OutputRegionIdPick;
+
+[numthreads(8, 8, 1)]
+void MainRegionIdPickCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const uint Root = PickSourceIds.Load(int3(Pixel, 0));
+	// -1 for a pixel that belongs to no region, which no valid id can collide with. The editor
+	// treats it as "nothing to pick here" and leaves the field alone.
+	OutputRegionIdPick[Pixel] = Root == MIXTORMAT_INVALID_REGION ? -1.0f : float(Root);
+}

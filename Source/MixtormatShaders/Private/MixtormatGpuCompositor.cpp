@@ -35,6 +35,7 @@ struct FMixtormatComposeResources
 	FTextureRenderTargetResource* RAM[2] = {};
 	FTextureRenderTargetResource* Height[2] = {};
 	FTextureRenderTargetResource* Debug[2] = {};
+	FTextureRenderTargetResource* RegionIdPick[2] = {};
 	int32 PublishedIndex = 0;
 	// Only read/written on the render thread. A failed child must not publish stale pixels.
 	bool bSucceeded = false;
@@ -420,11 +421,13 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputDebug)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InputRegionIdPick)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRegionIdPick)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1181,6 +1184,12 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 		Set.RAM.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 1.0f, 0.0f, 0.04f)));
 		Set.Height.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.0f, 0.0f, 0.0f), PF_R16F));
 		Set.Debug.Reset(CreateTarget(Resolution, DebugClearColor()));
+		// One channel of full float, cleared to the no-region sentinel. Not half: the ids are
+		// pixel indices, so a 4096 composite reaches 16,777,215 and half float is exact only to
+		// 2048. Not uint either -- a render target reads back as FLinearColor, and float32 holds
+		// every id this tool can produce without loss.
+		Set.RegionIdPick.Reset(CreateTarget(
+			Resolution, FLinearColor(-1.0f, -1.0f, -1.0f, -1.0f), PF_R32_FLOAT));
 	}
 	if (NetworkCache.IsValid())
 	{
@@ -1339,9 +1348,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Request.Targets->RAM[Index] = CaptureTarget(Targets[Index].RAM.Get());
 		Request.Targets->Height[Index] = CaptureTarget(Targets[Index].Height.Get());
 		Request.Targets->Debug[Index] = CaptureTarget(Targets[Index].Debug.Get());
+		Request.Targets->RegionIdPick[Index] = CaptureTarget(Targets[Index].RegionIdPick.Get());
 		if (!Request.Targets->BaseColor[Index] || !Request.Targets->Normal[Index]
 			|| !Request.Targets->RAM[Index] || !Request.Targets->Height[Index]
-			|| !Request.Targets->Debug[Index])
+			|| !Request.Targets->Debug[Index] || !Request.Targets->RegionIdPick[Index])
 		{
 			return false;
 		}
@@ -1810,13 +1820,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					continue;
 				}
 
+				const bool bExactId = ColorIdMask.Mode == EMixtormatColorIdMode::ExactId;
 				UTexture2D* IdTexture = ColorIdMask.IdTexture.LoadSynchronous();
 
 				// A node with no map or no colours selects nothing, and selecting nothing is not
 				// the same as being the identity: it would blend a mask of zero. Dropping it
 				// entirely is what an unconfigured node should do, and matches how a painted mask
 				// with no texture behaves.
-				if (!IdTexture || ColorIdMask.Colors.IsEmpty())
+				//
+				// Exact ID reads neither: it compares the Region IDs published above it, so an
+				// unset map and an empty colour list are its normal state. Whether it has a
+				// producer above it to read is decided in the pass, where the child list has
+				// already been walked -- the same place Random From IDs decides it.
+				if (!bExactId && (!IdTexture || ColorIdMask.Colors.IsEmpty()))
 				{
 					continue;
 				}
@@ -1825,7 +1841,11 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.Type = EMixtormatLayerChildType::ColorId;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FColorIdRenderData& IdData = ChildData.ColorId;
-				IdData.IdTexture = GetTextureRHI(IdTexture);
+				IdData.Mode = ColorIdMask.Mode;
+				IdData.ExactRegionId = static_cast<uint32>(FMath::Max(ColorIdMask.ExactRegionId, 0));
+				// White in Exact ID, where the slot is never sampled. The shader parameter still
+				// has to be bound, and the cached white texture is already resident.
+				IdData.IdTexture = GetTextureRHI(IdTexture ? IdTexture : WhiteTexture);
 				if (!IdData.IdTexture.IsValid())
 				{
 					return false;
@@ -2877,9 +2897,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Request.OutputRAM[Index] = Request.Targets->RAM[Index]->GetRenderTargetTexture();
 					Request.OutputHeight[Index] = Request.Targets->Height[Index]->GetRenderTargetTexture();
 					Request.OutputDebug[Index] = Request.Targets->Debug[Index]->GetRenderTargetTexture();
+					Request.OutputRegionIdPick[Index] =
+						Request.Targets->RegionIdPick[Index]->GetRenderTargetTexture();
 					if (!Request.OutputBC[Index].IsValid() || !Request.OutputN[Index].IsValid()
 						|| !Request.OutputRAM[Index].IsValid() || !Request.OutputHeight[Index].IsValid()
-						|| !Request.OutputDebug[Index].IsValid())
+						|| !Request.OutputDebug[Index].IsValid()
+						|| !Request.OutputRegionIdPick[Index].IsValid())
 					{
 						UE_LOG(LogMixtormatComposition, Error, TEXT("Composition target initialization failed."));
 						return;
@@ -2893,6 +2916,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
 			FRDGTextureRef* const OutputHeight = Ctx.OutputHeight;
 			FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
+			FRDGTextureRef* const OutputRegionIdPick = Ctx.OutputRegionIdPick;
 			for (int32 Index = 0; Index < 2; ++Index)
 			{
 				OutputBC[Index] = RegisterTexture(
@@ -2920,12 +2944,23 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					RegisteredTextures,
 					Request.OutputDebug[Index],
 					TEXT("Mixtormat.OutputDebug"));
+				OutputRegionIdPick[Index] = RegisterTexture(
+					GraphBuilder,
+					RegisteredTextures,
+					Request.OutputRegionIdPick[Index],
+					TEXT("Mixtormat.OutputRegionIdPick"));
 			}
 
 			AddClearUAVPass(
 				GraphBuilder,
 				GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]),
 				FVector4f(DebugClearColor()));
+			// Cleared to the sentinel every composite, so a preview that is switched off leaves
+			// nothing behind for the picker to read as a real id.
+			AddClearUAVPass(
+				GraphBuilder,
+				GraphBuilder.CreateUAV(OutputRegionIdPick[Request.PublishedTargetIndex]),
+				FVector4f(-1.0f, -1.0f, -1.0f, -1.0f));
 
 			// Stand-in for the composite's RegionIds slot on every layer without a cluster
 			// filter. RDG validates a binding whether the shader branches on it or not, so the
@@ -3395,6 +3430,33 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					// running after it would be sharpening detail the blur was asked to remove.
 					AddLayerBlurPasses(Ctx, LayerCtx, Layer);
 
+					// The raw ids behind the Region IDs preview, for the Exact ID picker.
+					//
+					// Here rather than inside each producer: Cluster, Pattern and Combine write
+					// their debug colour inline in their own kernels and Breakup goes through the
+					// blit pass, so there is no one place a producer colours itself. There is one
+					// place they all publish -- LayerCtx.RegionIdMaps -- and by the end of the
+					// layer every one of them has. Keyed on the same child index the preview
+					// already resolved, so the map read back is exactly the map on screen.
+					if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput
+						&& Request.DebugSettings.ChildTarget.Kind
+							== EMixtormatPreviewOutputKind::RegionIds
+						&& Request.DebugSettings.LayerIndex == LayerIndex)
+					{
+						for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+						{
+							if (Entry.Key == Request.DebugSettings.ChildIndex)
+							{
+								AddRegionIdPickPass(
+									GraphBuilder,
+									Entry.Value,
+									OutputRegionIdPick[Request.PublishedTargetIndex],
+									Request.Resolution);
+								break;
+							}
+						}
+					}
+
 					// The half this layer wrote. Same parity the composite used; taken here because
 					// a later layer's ReferenceHeight must see this layer's finished height, after
 					// every filter above has had its turn at it.
@@ -3424,11 +3486,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				Rotate->InputRAM = OutputRAM[Request.PublishedTargetIndex];
 				Rotate->InputHeight = OutputHeight[Request.PublishedTargetIndex];
 				Rotate->InputDebug = OutputDebug[Request.PublishedTargetIndex];
+				Rotate->InputRegionIdPick = OutputRegionIdPick[Request.PublishedTargetIndex];
 				Rotate->OutputBC = GraphBuilder.CreateUAV(OutputBC[FinalTargetIndex]);
 				Rotate->OutputN = GraphBuilder.CreateUAV(OutputN[FinalTargetIndex]);
 				Rotate->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[FinalTargetIndex]);
 				Rotate->OutputHeight = GraphBuilder.CreateUAV(OutputHeight[FinalTargetIndex]);
 				Rotate->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[FinalTargetIndex]);
+				Rotate->OutputRegionIdPick =
+					GraphBuilder.CreateUAV(OutputRegionIdPick[FinalTargetIndex]);
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
 					RDG_EVENT_NAME("Mixtormat.RotateOutput90"),
@@ -3445,6 +3510,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			GraphBuilder.SetTextureAccessFinal(OutputRAM[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.SetTextureAccessFinal(OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.SetTextureAccessFinal(OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
+			GraphBuilder.SetTextureAccessFinal(
+				OutputRegionIdPick[FinalTargetIndex], ERHIAccess::SRVMask);
 			GraphBuilder.Execute();
 			Request.Targets->bSucceeded = true;
 			if (Request.OnComplete.IsBound())
@@ -3495,6 +3562,11 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRAMOutput() const
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetHeightOutput() const
 {
 	return Targets[PublishedTargetIndex].Height.Get();
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRegionIdPickOutput() const
+{
+	return Targets[PublishedTargetIndex].RegionIdPick.Get();
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDebugOutput() const

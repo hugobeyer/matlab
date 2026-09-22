@@ -130,6 +130,10 @@ public:
 	UTextureRenderTarget2D* GetRAMOutput() const;
 	UTextureRenderTarget2D* GetHeightOutput() const;
 	UTextureRenderTarget2D* GetDebugOutput() const;
+	// The raw Region IDs behind the current Region IDs preview, one float per pixel, -1 where no
+	// region covers it. Written only while such a preview is up, and cleared to -1 otherwise, so
+	// the Exact ID picker can never read a stale id from a preview that has been switched off.
+	UTextureRenderTarget2D* GetRegionIdPickOutput() const;
 
 private:
 	bool InitializeTargets(FIntPoint InResolution, bool bWaitForResources);
@@ -151,6 +155,7 @@ private:
 		TStrongObjectPtr<UTextureRenderTarget2D> RAM;
 		TStrongObjectPtr<UTextureRenderTarget2D> Height;
 		TStrongObjectPtr<UTextureRenderTarget2D> Debug;
+		TStrongObjectPtr<UTextureRenderTarget2D> RegionIdPick;
 	};
 
 	FTargetSet Targets[2];

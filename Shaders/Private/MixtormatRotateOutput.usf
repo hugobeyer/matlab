@@ -9,11 +9,15 @@ Texture2D<float4> InputN;
 Texture2D<float4> InputRAM;
 Texture2D<float> InputHeight;
 Texture2D<float4> InputDebug;
+// Carried through the same quarter turn as the debug view it belongs to. The Exact ID picker
+// clicks on what the preview shows, so the two have to stay in the same orientation.
+Texture2D<float> InputRegionIdPick;
 RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
 RWTexture2D<float4> OutputRAM;
 RWTexture2D<float> OutputHeight;
 RWTexture2D<float4> OutputDebug;
+RWTexture2D<float> OutputRegionIdPick;
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -31,6 +35,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputRAM[Pixel] = InputRAM.Load(int3(SourcePixel, 0));
 	OutputHeight[Pixel] = InputHeight.Load(int3(SourcePixel, 0));
 	OutputDebug[Pixel] = InputDebug.Load(int3(SourcePixel, 0));
+	OutputRegionIdPick[Pixel] = InputRegionIdPick.Load(int3(SourcePixel, 0));
 
 	float4 EncodedNormal = InputN.Load(int3(SourcePixel, 0));
 	const float2 TangentXY = EncodedNormal.xy * 2.0f - 1.0f;

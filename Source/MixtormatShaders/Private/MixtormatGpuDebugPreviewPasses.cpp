@@ -62,8 +62,63 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainRegionIdsCS",
 	SF_Compute);
 
+class FMixtormatRegionIdPickCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionIdPickCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionIdPickCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PickSourceIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRegionIdPick)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionIdPickCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf",
+	"MainRegionIdPickCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
+	// One dispatch per composite, and only while a Region IDs preview is actually up: the editor
+	// reads a single texel out of the result when the artist clicks, so the cost is one full-
+	// resolution copy on a frame that was already rendering the preview.
+	void AddRegionIdPickPass(
+		FRDGBuilder& GraphBuilder,
+		const FRDGTextureRef SourceIds,
+		const FRDGTextureRef OutputPick,
+		const FIntPoint Resolution)
+	{
+		if (!SourceIds || !OutputPick)
+		{
+			return;
+		}
+		FMixtormatRegionIdPickCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatRegionIdPickCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->PickSourceIds = SourceIds;
+		Parameters->OutputRegionIdPick = GraphBuilder.CreateUAV(OutputPick);
+
+		TShaderMapRef<FMixtormatRegionIdPickCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.RegionIdPick"),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8),
+				1));
+	}
+
 	void AddDebugPreviewMaskBlitPass(
 		FRDGBuilder& GraphBuilder,
 		const FRDGTextureRef SourceMask,

@@ -35,6 +35,54 @@ struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatSurfaceEntry;
 
+// What an Add-menu entry creates.
+//
+// Not the same thing as EMixtormatLayerChildType, and deliberately so: Texture Mask and Layer
+// Values Mask are both EMixtormatLayerChildType::Mask, and Strata Carver is a Generator with its
+// kind set. This names what the artist picked, which is what both Add menus are authored against,
+// and MixtormatChildCreate::ApplyDefaults turns one of these into a configured child. Editor-only
+// and never serialised, so it is free to be reordered.
+enum class EMixtormatChildCreation : uint8
+{
+	PatternIds,
+	ClusterIds,
+	CombineIds,
+	HsvFromIds,
+	RampFromIds,
+	LayerValuesMask,
+	GeneratedMask,
+	ColorIdMask,
+	RandomFromIds,
+	StrataCarver,
+};
+
+// Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
+//
+// The whole reason the layer and group Add menus can share a taxonomy. Everything above the
+// creation call -- the submenu tree, the labels, the icons, the ordering -- is identical for both,
+// and this is the only thing that differs.
+struct FMixtormatAddTarget
+{
+	int32 LayerIndex = INDEX_NONE;
+	FGuid GroupId;
+
+	static FMixtormatAddTarget Layer(const int32 InLayerIndex)
+	{
+		FMixtormatAddTarget Target;
+		Target.LayerIndex = InLayerIndex;
+		return Target;
+	}
+
+	static FMixtormatAddTarget Group(const FGuid InGroupId)
+	{
+		FMixtormatAddTarget Target;
+		Target.GroupId = InGroupId;
+		return Target;
+	}
+
+	bool IsGroup() const { return GroupId.IsValid(); }
+};
+
 // FMixtormatPreviewOutputDesc/FMixtormatChildPreviewOutputSet used to be preview-only and hardcode
 // their own notion of what a child publishes, separately from the clipboard's Copy Instance Mask
 // menus. Both now read one shared FMixtormatChildCapabilities descriptor (a publish/copy/preview
@@ -266,6 +314,27 @@ private:
 	// The rows every child row shares, appended to whichever child menu is open (layer or group) so
 	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
 	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Address);
+
+	// THE ADD MENU. One taxonomy, two containers.
+	//
+	// AddCreationSections appends the whole Add tree -- IDs, Filter, Masks, Generators -- to a menu
+	// already opened over a layer or over a group, and the four submenu builders below are shared
+	// verbatim between them. Effect stays split (BuildAddEffectMenu / BuildGroupAddEffectMenu)
+	// because the two genuinely offer different sets: a layer can create the procedural effects, a
+	// group only the asset-backed ones, and pretending otherwise would put rows in the group menu
+	// that have nothing to call.
+	void AddCreationSections(MixtormatMenu::FBuilder& Menu, FMixtormatAddTarget Target);
+	TSharedRef<SWidget> BuildAddIdsMenu(FMixtormatAddTarget Target);
+	TSharedRef<SWidget> BuildAddFiltersMenu(FMixtormatAddTarget Target);
+	TSharedRef<SWidget> BuildAddMasksMenu(FMixtormatAddTarget Target);
+	TSharedRef<SWidget> BuildAddGeneratorsMenu(FMixtormatAddTarget Target);
+	// The one creation path both menus call. Appends the child, applies the defaults that kind
+	// wants, and leaves it selected in whichever container it landed in.
+	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
+	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
+	// Texture Mask, from the gallery selection. The same call the gallery's drag-and-drop makes, so
+	// the menu entry and the drop cannot drift into two different kinds of mask.
+	FReply AddTextureMask(FMixtormatAddTarget Target, FSoftObjectPath MaskPath);
 	FReply ToggleLayerExpanded(int32 LayerIndex);
 	FReply AssignNormalTexture(int32 LayerIndex, FSoftObjectPath NormalPath);
 	FReply AddEffectToLayer(int32 LayerIndex, FSoftObjectPath EffectPath);
@@ -327,7 +396,6 @@ private:
 	const FMixtormatClusterFilter* GetSelectedFilter() const;
 	TSharedRef<SWidget> BuildFilterControls();
 	TSharedRef<SWidget> BuildClusterSourceMenu();
-	TSharedRef<SWidget> BuildAddFilterMenu(int32 LayerIndex);
 
 	FReply AddHsvFilterToLayer(int32 LayerIndex);
 	FMixtormatHsvIdFilter* GetSelectedHsvFilter();
@@ -352,8 +420,6 @@ private:
 	FMixtormatStrataCarver* GetSelectedStrataCarver();
 	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
 	TSharedRef<SWidget> BuildStrataCarverControls();
-	TSharedRef<SWidget> BuildAddGeneratorMenu(int32 LayerIndex);
-	TSharedRef<SWidget> BuildGroupAddGeneratorMenu(FGuid GroupId);
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
@@ -382,6 +448,31 @@ private:
 	TSharedRef<SWidget> BuildBaseColorBlendModeMenu();
 	TSharedRef<SWidget> BuildColorIdBlendModeMenu();
 	TSharedRef<SWidget> BuildColorIdRotationMenu();
+	TSharedRef<SWidget> BuildColorIdModeMenu();
+	// THE EXACT ID PICKER.
+	//
+	// A popover of the live Region IDs preview, clicked to sample. The image is the composite's
+	// own debug target -- the same pixels the viewport is showing -- so what is clicked and what
+	// is read are the same frame; the value written comes from the parallel pick buffer, which
+	// holds the integer id rather than the hashed colour standing in for it.
+	TSharedRef<SWidget> BuildRegionIdPickerPopup();
+	// The mask gallery as a popover grid of thumbnails. One implementation for every slot that
+	// picks a mask asset -- the Texture Mask row in the inspector and Peeling's Seed Mask -- so
+	// the two cannot drift into different pickers over the same library. Footer is an optional
+	// row under the grid for a slot that has a "none" of its own to offer.
+	TSharedRef<SWidget> BuildMaskAssetPicker(
+		TFunction<void(FSoftObjectPath)> OnPicked,
+		TFunction<bool(FSoftObjectPath)> IsSelected,
+		TSharedPtr<SWidget> Footer = nullptr);
+	// True when a Region IDs preview is up, which is the only time the pick buffer holds anything.
+	bool CanPickRegionId() const;
+	// UV in [0,1] over the composition. Returns false -- leaving ExactRegionId untouched -- for a
+	// pixel belonging to no region, an unavailable buffer, or a failed readback.
+	bool ReadRegionIdAtUV(FVector2D UV, int32& OutRegionId) const;
+	void PickRegionIdAtUV(FVector2D UV);
+	// Held for the lifetime of the panel so the popover's SImage has something stable to point at.
+	// The render target itself is owned by the compositor.
+	TSharedPtr<FSlateBrush> RegionIdPreviewBrush;
 	FReply AddColorIdEntry();
 	FReply RemoveColorIdEntry(int32 ColorIndex);
 	FReply OpenColorIdPicker(int32 ColorIndex);
@@ -439,7 +530,6 @@ private:
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
 	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
-	TSharedRef<SWidget> BuildGroupAddFilterMenu(FGuid GroupId);
 	TSharedRef<SWidget> BuildGroupChildContextMenu(FGuid GroupId, int32 ChildIndex);
 
 	// Rename. Names do not reach the compositor, so committing one records history and marks the
