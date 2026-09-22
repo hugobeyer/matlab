@@ -987,37 +987,34 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	// Final carve-depth multiplier on the wear delta. The result remains subtractive overall;
 	// above 1 the generated wear digs deeper than the analysis surface's own relief.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "2.0"))
 	float ErosionDepth = 1.0f;
 
-	// Derivative span in texels for the slope and curvature readings, on both axes. 2 is the
-	// normal working value; 3-4 read broader structure. Cost is fixed whatever the span --
-	// the same four taps, farther apart -- and the analysis never replaces the height itself.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "4"))
-	int32 ErosionRadius = 2;
+	// Derivative span in texels for the slope and curvature readings, on both axes. 1 is the
+	// normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost
+	// is fixed whatever the span -- the same four taps, farther apart -- and the analysis never
+	// replaces the height itself.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "3"))
+	int32 ErosionRadius = 1;
 
 	// Ping-pong wear iterations. Each pass re-analyses the previous pass's output, so wear
 	// propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an
 	// extreme stress case. Typed values below 1 are raised to 1 by the solver -- a zero or
 	// negative pass count has no meaning.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "16"))
 	int32 ErosionIterations = 8;
 
-	// Preferred flow direction in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V. The default
-	// points down the texture so wear visually travels downward on walls and cliffs.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "360.0", Units = "deg"))
-	float ErosionGravityAngle = 270.0f;
-
-	// Tangent protection. The Kuwahara footprint no longer changes with this control; instead
-	// it scales how much cross-gravity structure survives: 0 lets erosion follow the terrain
-	// naturally, 1 increasingly protects tangent structures while gravity-aligned channels
-	// develop. A mild flow-direction bias remains internally.
+	// Constant downhill force toward -Y in UV space, as a plain weight: how hard the flow is
+	// pulled down regardless of local slope. Flow direction is normalize(downhill slope *
+	// (1 - w) + (0, -1) * w). At 0 erosion follows terrain alone; at 1 wear streaks straight
+	// down the texture. Flat cross-gravity structure survives at any value -- material only
+	// ever moves downhill, so level mortar joints and ledges read no transport.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float ErosionVerticality = 0.6f;
+	float ErosionGravityForce = 0.6f;
 
 	// Shapes slope sensitivity. Below 1 responds broadly to gentle slopes, above 1 concentrates
 	// wear increasingly on steep regions.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "1.0"))
 	float ErosionSlopePower = 1.0f;
 
 	// How much removed material refills valleys and downstream depressions. 0 is pure erosion.
