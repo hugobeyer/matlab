@@ -41,7 +41,7 @@ namespace
 		{
 			return EMixtormatParameterValueType::Enum;
 		}
-		return EMixtormatParameterValueType::Float;
+		return EMixtormatParameterValueType::Invalid;
 	}
 
 	FName TypeNameForProperty(const FProperty* Property)
@@ -178,7 +178,9 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 			{
 				const void* Shaping = nullptr;
 				if (Child.Type == EMixtormatLayerChildType::Mask) Shaping = &Child.Mask.Shaping;
+				else if (Child.Type == EMixtormatLayerChildType::Generated) Shaping = &Child.Generated.Shaping;
 				else if (Child.Type == EMixtormatLayerChildType::Craquelure) Shaping = &Child.Craquelure.Shaping;
+				else if (Child.Type == EMixtormatLayerChildType::ColorId) Shaping = &Child.ColorId.Shaping;
 				else if (Child.Type == EMixtormatLayerChildType::RandomId) Shaping = &Child.RandomId.Shaping;
 				if (Owner == Shaping)
 				{
@@ -529,6 +531,14 @@ bool SMixtormat::TryWriteLinkedBool(const FMixtormatParameterAddress& Target, co
 		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
 	return Authority.IsValid()
 		&& MixtormatParameterBinding::TryWriteBool({WorkingLayers, WorkingLayerGroups}, Authority, Value);
+}
+
+bool SMixtormat::TryWriteLinkedEnum(const FMixtormatParameterAddress& Target, const int64 Value)
+{
+	const FMixtormatParameterAddress Authority =
+		MixtormatParameterBinding::ResolveLinkTarget({WorkingLayers, WorkingLayerGroups}, Target);
+	return Authority.IsValid()
+		&& MixtormatParameterBinding::TryWriteEnum({WorkingLayers, WorkingLayerGroups}, Authority, Value);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAddress Target)
@@ -1250,6 +1260,52 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopoverFor(
 	TFunction<FMixtormatParameterAddress()> ResolveTarget)
 {
 	return BuildParameterDriverPopover(ResolveTarget());
+}
+
+TSharedRef<SWidget> SMixtormat::BuildEnumMenu(
+	const UEnum* Enum,
+	TFunction<int64()> ActiveValue,
+	TFunction<void(int64)> WriteValue,
+	const FSimpleDelegate& AfterWrite)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (!Enum)
+	{
+		return Menu.Build();
+	}
+
+	for (int32 Index = 0; Index < Enum->NumEnums(); ++Index)
+	{
+		const int64 Value = Enum->GetValueByIndex(Index);
+		if (Value == INDEX_NONE || Enum->HasMetaData(TEXT("Hidden"), Index))
+		{
+			continue;
+		}
+
+		Menu.Item(
+			Enum->GetDisplayNameTextByIndex(Index),
+			nullptr,
+			FSimpleDelegate::CreateLambda([WriteValue, AfterWrite, Value]()
+			{
+				WriteValue(Value);
+				AfterWrite.ExecuteIfBound();
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([ActiveValue, Value]()
+			{
+				return ActiveValue() == Value;
+			}));
+	}
+	return Menu.Build();
+}
+
+int64 SMixtormat::GetEffectiveEnumParameter(
+	const FMixtormatParameterAddress& Target,
+	const int64 LocalValue) const
+{
+	int64 Value = LocalValue;
+	return Target.IsValid() && MixtormatParameterBinding::TryResolveEnum({WorkingLayers, WorkingLayerGroups}, Target, Value)
+		? Value
+		: LocalValue;
 }
 
 double SMixtormat::GetEffectiveFloatParameter(

@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatParameterDefinition.h"
+#include "MixtormatReliefScaling.h"
 
 #include "Misc/AssertionMacros.h"
 #include "UObject/Class.h"
@@ -37,6 +38,15 @@ namespace
 				C.bShaderSaturates = true;
 				return C;
 			};
+
+			// ---- Layer-owned shader facts.
+			Add(ET::Layer, TEXT("HeightBoost"), {.HardMin = 0.0f, .HardMax = MixtormatRelief::MaxHeightBoost});
+			Add(ET::Layer, TEXT("NormalIntensity"), {.HardMin = 0.0f, .HardMax = MixtormatRelief::MaxNormalStrength});
+			Add(ET::Layer, TEXT("FuzzInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Layer, TEXT("F0Influence"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Layer, TEXT("NormalInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Layer, TEXT("HeightInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Layer, TEXT("IOR"), {.HardMin = 1.0f, .HardMax = 3.0f});
 
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.
@@ -165,12 +175,29 @@ namespace
 		}
 
 		FReflectedDefault Result;
-		// Only effect parameters carry contracts today; extend per owner struct as needed.
 		if (Owner == EMixtormatParameterOwnerType::Effect)
 		{
 			static const FMixtormatLayerEffect CDODefaults;
 			if (const FProperty* Property =
 				FMixtormatLayerEffect::StaticStruct()->FindPropertyByName(Parameter))
+			{
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(&CDODefaults);
+					Result.bFound = true;
+				}
+				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&CDODefaults));
+					Result.bFound = true;
+				}
+			}
+		}
+		else if (Owner == EMixtormatParameterOwnerType::Layer)
+		{
+			static const FMixtormatLayer CDODefaults;
+			if (const FProperty* Property =
+				FMixtormatLayer::StaticStruct()->FindPropertyByName(Parameter))
 			{
 				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 				{

@@ -26,13 +26,14 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 
 	// The UPROPERTY Category prefix = the family. A new family migration adds its prefix
 	// here; the test then guarantees no numeric property of that family ships unannotated.
+	// Spellings are the Categories as declared: display spaces included ("Worn Edges").
 	const TCHAR* MigratedPrefixes[] = {
 		TEXT("Breakup"),
 		TEXT("Erosion"),
 		TEXT("Grade"),
-		TEXT("EdgeWear"),
-		TEXT("FlowWarp"),
-		TEXT("LayerBlur"),
+		TEXT("Worn Edges"),
+		TEXT("Flow Warp"),
+		TEXT("Layer Blur"),
 		TEXT("Runoff"),
 	};
 
@@ -73,6 +74,34 @@ bool FMixtormatBreakupDefinitionCompletenessTest::RunTest(const FString& Paramet
 	}
 
 	TestTrue(TEXT("Migrated numeric effect properties were found"), Checked >= 100);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatMaskShapingRangeTest,
+	"Mixtormat.Parameters.MaskShapingRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatMaskShapingRangeTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	const UScriptStruct* Struct = FMixtormatMaskShaping::StaticStruct();
+	const TCHAR* Fields[] = { TEXT("Balance"), TEXT("Contrast"), TEXT("Offset") };
+	for (const TCHAR* Field : Fields)
+	{
+		const FProperty* Property = Struct->FindPropertyByName(Field);
+		TestNotNull(*FString::Printf(TEXT("Mask shaping field %s exists"), Field), Property);
+		if (!Property)
+		{
+			continue;
+		}
+		TestFalse(*FString::Printf(TEXT("%s has UIMin"), Field),
+			Property->GetMetaData(TEXT("UIMin")).IsEmpty());
+		TestFalse(*FString::Printf(TEXT("%s has UIMax"), Field),
+			Property->GetMetaData(TEXT("UIMax")).IsEmpty());
+		TestFalse(*FString::Printf(TEXT("%s has Delta"), Field),
+			Property->GetMetaData(TEXT("Delta")).IsEmpty());
+	}
 	return true;
 }
 
@@ -192,6 +221,31 @@ bool FMixtormatAuthoringResolutionTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(
 			MixtormatParameterContracts::SanitizeFloat(
 				Key.Owner, Key.Parameter, -4.0f), 0.0f));
+
+	// D1 round-trip: the Category-prefix spelling with its display space ("Worn Edges") is
+	// the canonical family section. It must load, resolve, apply at creation, and survive a
+	// write -> reload cycle (the old enum-name validation dropped sections like this one).
+	const FMixtormatParameterDefinitionKey WornKey{
+		EMixtormatParameterOwnerType::Effect, TEXT("EdgeWearStrength"),
+		EMixtormatParameterValueType::Float};
+	const FString WornJson = TEXT(R"( { "Worn Edges": { "Effect.EdgeWearStrength": { "default": 0.9 } } } )");
+	TestTrue(TEXT("Category-spelled family section loads"),
+		MixtormatParameterAuthoring::LoadFromString(WornJson));
+	TestTrue(TEXT("Worn Edges entry resolves"),
+		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringDefault(WornKey, 0.0f), 0.9f));
+
+	FMixtormatLayerEffect NewWorn;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewWorn, EMixtormatEffectType::WornEdges);
+	TestTrue(TEXT("Worn Edges creation default applies"),
+		FMath::IsNearlyEqual(NewWorn.EdgeWearStrength, 0.9f));
+
+	const FString WornWritten = MixtormatParameterAuthoring::WriteToString();
+	TestTrue(TEXT("Written section keeps the Category spelling"),
+		WornWritten.Contains(TEXT("Worn Edges")));
+	TestTrue(TEXT("Round-trip reload keeps the entry"),
+		MixtormatParameterAuthoring::LoadFromString(WornWritten)
+		&& FMath::IsNearlyEqual(
+			MixtormatParameterAuthoring::ResolveAuthoringDefault(WornKey, 0.0f), 0.9f));
 
 	// Leave a clean in-memory database for other tests. No disk write: tests must never touch
 	// the plugin's real Config/MixtormatParameterAuthoring.json.

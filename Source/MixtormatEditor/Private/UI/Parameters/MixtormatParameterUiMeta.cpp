@@ -102,6 +102,17 @@ namespace
 						Resolved.bUiMetaFound = true;
 					}
 				}
+				// ClampMax mirrors ClampMin: Runoff-style fields carry ClampMin/ClampMax as
+				// their full drag range and no UIMin/UIMax at all.
+				if (!bMax)
+				{
+					float ClampMax = 0.0f;
+					if (ReadMeta(TEXT("ClampMax"), ClampMax))
+					{
+						Resolved.UiMax = ClampMax;
+						Resolved.bUiMetaFound = true;
+					}
+				}
 				Resolved.bUiMetaFound |= bMin || bMax || bSnap;
 			}
 		}

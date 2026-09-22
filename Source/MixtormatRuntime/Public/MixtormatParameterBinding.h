@@ -204,4 +204,15 @@ namespace MixtormatParameterBinding
 		const FMixtormatBindingScope& Layers,
 		const FMixtormatParameterAddress& Address,
 		bool& OutValue);
+
+	// Enums are written by their integer value. The address's TypeName must match the property's
+	// enum, so a mismatched address fails rather than reinterpreting the value.
+	MIXTORMATRUNTIME_API bool TryWriteEnum(
+		const FMixtormatMutableBindingScope& Layers,
+		const FMixtormatParameterAddress& Address,
+		int64 Value);
+	MIXTORMATRUNTIME_API bool TryResolveEnum(
+		const FMixtormatBindingScope& Layers,
+		const FMixtormatParameterAddress& Address,
+		int64& OutValue);
 }

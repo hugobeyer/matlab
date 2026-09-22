@@ -8,16 +8,18 @@ initializers) were never repointed — the Shaders module did not compile in tha
 Fixed: those initializers are now plain literals (they are write-before-read dead; the
 per-family gather is the only observer). Phase 2 is therefore **done** as of this correction.
 D10's location for `FMixtormatChildCapabilities` corrected to `MixtormatEditor/Private/Widgets/`.
-
-**Correction log 2 (first build of the reflection rewrite):** two Editor-module breaks,
-both fixed — (a) `MixtormatParameterUi::DefinitionKeyOf` was dropped from the rewritten
-UiMeta header while still called from both slider templates and six panel sites
-(re-added: builds `(Owner, FName, ValueType)` from an address, unset on `None`);
-(b) `Misc/LexicalConversion.h` does not exist in UE 5.8 — `LexTryParseString` comes from
-`Misc/Parse.h` (include swapped). Runtime and Shaders modules compiled and linked clean
-before these Editor fixes. Expected on first green build: mismatch warnings for fields
-where the parallel agent's meta disagrees with inspector literals (e.g. `ErosionDepth`
-0..2 vs 0..4) — that is D8's warning working as designed.
+**Correction log 3 (Phase 3 / S1 implemented):** the eight migrated-family gather blocks
+are extracted to `MixtormatShaders/Private/Compositing/MixtormatEffectGather.{h,cpp}` as
+pure moves (if-chain order preserved); `RequestComposeInternal` now dispatches one call per
+family. `GetTextureRHI` is `inline` in `MixtormatGpuCompositorInternal.h` (namespace
+`MixtormatGpuCompositor`); the file-static is deleted. `EffectFloat/EffectInt` are file-local
+to the gather cpp (the identical `BreakupFloat/Int` lambdas folded into them). Stain and
+Runoff take `bool& bHasMask` — both resolve into the mask chain. Grep gates verified: zero
+`EffectFloat/EffectInt/BreakupFloat/BreakupInt` in the compositor cpp; zero
+`FMath::Clamp(LayerEffect.` for migrated families (Strength's shared clamp and the Peel
+fields remain by design). Phase 3.5 (budget-constant references in contract rows) is
+deferred to S4: no named constants exist for the LayerBlur tap budget yet, and contract rows
+(Runtime) cannot include Shaders-module headers — the dependency direction forbids it.
 Scope: the whole parameter pipeline — declaration, inspector UI, addressing/binding,
 authoring database, compositor gathering, shader contract — across `MixtormatRuntime`,
 `MixtormatEditor`, `MixtormatShaders`.

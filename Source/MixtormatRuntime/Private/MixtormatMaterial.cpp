@@ -3,6 +3,7 @@
 #include "MixtormatMaterial.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatParameterDefinition.h"
 
 namespace
 {
@@ -122,7 +123,8 @@ float MixtormatCompositionReferences::ComputeFuzzInfluence(
 				continue;
 			}
 
-			float Target = FMath::Clamp(Layer.FuzzInfluence, 0.0f, 1.0f);
+			float Target = MixtormatParameterContracts::SanitizeFloat(
+							EMixtormatParameterOwnerType::Layer, TEXT("FuzzInfluence"), Layer.FuzzInfluence);
 			if (!Layer.SourceComposition.IsNull())
 			{
 				const UMixtormatMaterial* Source = Layer.SourceComposition.LoadSynchronous();
@@ -179,7 +181,8 @@ TOptional<FLinearColor> MixtormatCompositionReferences::ComputeFuzzColor(
 				}
 				continue;
 			}
-			const float Influence = FMath::Clamp(Layer.FuzzInfluence, 0.0f, 1.0f);
+			const float Influence = MixtormatParameterContracts::SanitizeFloat(
+							EMixtormatParameterOwnerType::Layer, TEXT("FuzzInfluence"), Layer.FuzzInfluence);
 			if (Influence > 0.0f && Influence >= Strongest)
 			{
 				Strongest = Influence;

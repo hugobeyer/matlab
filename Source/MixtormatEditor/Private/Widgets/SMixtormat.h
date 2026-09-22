@@ -372,9 +372,7 @@ private:
 	FMixtormatLayerEffect* GetSelectedLayerBlurEffect();
 	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
 	TSharedRef<SWidget> BuildLayerBlurControls();
-	TSharedRef<SWidget> BuildLayerBlurScopeMenu();
 	TSharedRef<SWidget> BuildFlowWarpControls();
-	TSharedRef<SWidget> BuildFlowWarpBlendModeMenu();
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
@@ -715,9 +713,11 @@ private:
 	bool TryWriteLinkedFloat(const FMixtormatParameterAddress& Target, float Value);
 	bool TryWriteLinkedInt(const FMixtormatParameterAddress& Target, int32 Value);
 	bool TryWriteLinkedBool(const FMixtormatParameterAddress& Target, bool Value);
+	bool TryWriteLinkedEnum(const FMixtormatParameterAddress& Target, int64 Value);
 	double GetEffectiveFloatParameter(const FMixtormatParameterAddress& Target, double LocalValue) const;
 	int32 GetEffectiveIntParameter(const FMixtormatParameterAddress& Target, int32 LocalValue) const;
 	bool GetEffectiveBoolParameter(const FMixtormatParameterAddress& Target, bool LocalValue) const;
+	int64 GetEffectiveEnumParameter(const FMixtormatParameterAddress& Target, int64 LocalValue) const;
 
 	// One binding for every parameter row in the inspector, whatever owns it.
 	//
@@ -1051,6 +1051,75 @@ private:
 		return WrapParameterControl(Toggle, ResolveTarget);
 	}
 
+	// The one enum menu builder behind every MakeMemberEnum row: entries from the member's
+	// UEnum, checked state from the effective (link-resolved) value, writes through the caller's
+	// linked path. Defined in SMixtormat_Parameters.cpp, where the menu builder lives.
+	TSharedRef<SWidget> BuildEnumMenu(
+		const UEnum* Enum,
+		TFunction<int64()> ActiveValue,
+		TFunction<void(int64)> WriteValue,
+		const FSimpleDelegate& AfterWrite);
+
+	// The enum equivalent of the rows above, and the replacement for the hand-built chip+menu
+	// pairs (plan D7): one control idiom for every reflected-enum member. The chip shows the
+	// effective (link-resolved) value under the authoring label override; the menu is built from
+	// the member's UEnum; every write routes through the linked path so a Link survives the edit,
+	// falling back to the member exactly as the sliders do. AfterWrite lets a panel keep a side
+	// effect its old hand menu carried (Stain rebuilt the layer list).
+	template <typename TOwner, typename TEnum>
+	TSharedRef<SWidget> MakeMemberEnum(
+		const FText& Label,
+		TFunction<TOwner*()> Resolve,
+		TEnum TOwner::* Member,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>(),
+		FSimpleDelegate AfterWrite = FSimpleDelegate())
+	{
+		const UEnum* Enum = StaticEnum<TEnum>();
+		const TFunction<FMixtormatParameterAddress()> ResolveTarget = MakeAddressResolver(Resolve, Member);
+
+		const auto ActiveValue = [this, Resolve, Member, ResolveTarget]() -> int64
+		{
+			const TOwner* Owner = Resolve();
+			const int64 Local = Owner ? static_cast<int64>(Owner->*Member) : 0;
+			return GetEffectiveEnumParameter(ResolveTarget(), Local);
+		};
+
+		const auto WriteValue = [this, Resolve, Member, ResolveTarget](const int64 Value)
+		{
+			if (TOwner* Owner = Resolve())
+			{
+				const FMixtormatParameterAddress Address = ResolveTarget();
+				if (IsParameterLocked(Address))
+				{
+					return;
+				}
+				if (!TryWriteLinkedEnum(Address, Value))
+				{
+					Owner->*Member = static_cast<TEnum>(Value);
+					if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+					{
+						Binding->Reference.bEnabled = false;
+					}
+				}
+				RefreshLayeredPreview();
+			}
+		};
+
+		TSharedRef<SWidget> Row = MixtormatRow::Make(
+			Label,
+			MixtormatRow::MakeChip(
+				TAttribute<FText>::CreateLambda([Enum, ActiveValue]() -> FText
+				{
+					return Enum->GetDisplayNameTextByValue(ActiveValue());
+				}),
+				FOnGetContent::CreateLambda([this, Enum, ActiveValue, WriteValue, AfterWrite]()
+				{
+					return BuildEnumMenu(Enum, ActiveValue, WriteValue, AfterWrite);
+				})),
+			ToolTip);
+		return WrapParameterControl(Row, ResolveTarget);
+	}
+
 	// Procedural peel and erosion rows all read and write one member of the selected effect, so
 	// they collapse to a single call each.
 	//
@@ -1192,14 +1261,12 @@ private:
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
 	TSharedRef<SWidget> BuildStainControls();
 	TSharedRef<SWidget> BuildRunoffControls();
-	TSharedRef<SWidget> BuildStainModeMenu();
 	TSharedRef<SWidget> BuildErosionControls();
 	TSharedRef<SWidget> BuildProceduralPeelControls();
 	TSharedRef<SWidget> BuildGeneratedContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGeneratedBlendModeMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGradeControls();
 	TSharedRef<SWidget> BuildBreakupControls();
-	TSharedRef<SWidget> BuildGradeTonemapMenu();
 
 
 	TWeakPtr<SWindow> LiveThemeWindow;

@@ -1,7 +1,7 @@
 {
-	"EMixtormatEffectType::Breakup":
+	"Breakup":
 	{
-		"EMixtormatParameterOwnerType::Effect.BreakupRelief":
+		"Effect.BreakupRelief":
 		{
 			"default": -0.059999998658895493,
 			"uiMin": -12,

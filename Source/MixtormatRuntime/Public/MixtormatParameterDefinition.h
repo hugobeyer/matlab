@@ -19,8 +19,8 @@
 // from packaged builds, while the compositor sanitizes with these bounds in every target.
 // (UI ergonomics have no such constraint, which is why THEY live in meta.)
 //
-// Keys are (Owner, FName) -- the parameter definition, never an instance. No LayerId, no
-// ChildId, no family: the family a field belongs to is its UPROPERTY Category.
+// Keys are (Owner, FName, ValueType) -- the parameter definition, never an instance. No
+// LayerId, no ChildId, no family: the family a field belongs to is its UPROPERTY Category.
 struct MIXTORMATRUNTIME_API FMixtormatParameterContract
 {
 	// Unset means unbounded in that direction. Set only where the math or the pass demands

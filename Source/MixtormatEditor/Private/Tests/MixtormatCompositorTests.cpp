@@ -521,7 +521,7 @@ bool FMixtormatColorIdMaskTest::RunTest(const FString& Parameters)
 
 	// Inverted, the same node has to answer the other way round. This is the mask tail running
 	// on the selection, which is the half of the node that is shared with every other mask child.
-	Layers[0].Children[0].ColorId.bInvert = true;
+	Layers[0].Children[0].ColorId.Shaping.bInvert = true;
 	if (!TestTrue(TEXT("Inverted colour id composes"),
 		ComposeAndWait(Compositor, Layers, LayerMaskDebug())))
 	{

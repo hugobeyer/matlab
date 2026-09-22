@@ -82,7 +82,9 @@ namespace
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
+				|| Child.Type == EMixtormatLayerChildType::Generated
 				|| Child.Type == EMixtormatLayerChildType::Craquelure
+				|| Child.Type == EMixtormatLayerChildType::ColorId
 				|| Child.Type == EMixtormatLayerChildType::RandomId;
 		default: return false;
 		}
@@ -129,7 +131,9 @@ namespace
 			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) View.ConstData = &Child.Mask.Shaping;
+			else if (Child.Type == EMixtormatLayerChildType::Generated) View.ConstData = &Child.Generated.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::Craquelure) View.ConstData = &Child.Craquelure.Shaping;
+			else if (Child.Type == EMixtormatLayerChildType::ColorId) View.ConstData = &Child.ColorId.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::RandomId) View.ConstData = &Child.RandomId.Shaping;
 			View.Struct = FMixtormatMaskShaping::StaticStruct();
 			break;
@@ -176,7 +180,9 @@ namespace
 			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) { View.MutableData = &Child.Mask.Shaping; View.ConstData = &Child.Mask.Shaping; }
+			else if (Child.Type == EMixtormatLayerChildType::Generated) { View.MutableData = &Child.Generated.Shaping; View.ConstData = &Child.Generated.Shaping; }
 			else if (Child.Type == EMixtormatLayerChildType::Craquelure) { View.MutableData = &Child.Craquelure.Shaping; View.ConstData = &Child.Craquelure.Shaping; }
+			else if (Child.Type == EMixtormatLayerChildType::ColorId) { View.MutableData = &Child.ColorId.Shaping; View.ConstData = &Child.ColorId.Shaping; }
 			else if (Child.Type == EMixtormatLayerChildType::RandomId) { View.MutableData = &Child.RandomId.Shaping; View.ConstData = &Child.RandomId.Shaping; }
 			View.Struct = FMixtormatMaskShaping::StaticStruct();
 			break;
@@ -1252,7 +1258,6 @@ namespace MixtormatParameterBinding
 		const FMixtormatParameterAddress& Address,
 		bool& OutValue)
 	{
-		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (Address.ValueType != EMixtormatParameterValueType::Bool)
 		{
 			return false;
@@ -1264,6 +1269,60 @@ namespace MixtormatParameterBinding
 			return false;
 		}
 		OutValue = Value.BoolValue;
+		return true;
+	}
+
+	bool TryWriteEnum(
+		const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address,
+		const int64 Value)
+	{
+		if (!Address.IsValid() || Address.ValueType != EMixtormatParameterValueType::Enum)
+		{
+			return false;
+		}
+		const FOwnerView Owner = LocateMutableOwnerByAddress(Scope, Address);
+		if (!Owner.MutableData || !Owner.Struct)
+		{
+			return false;
+		}
+		FProperty* Property = Owner.Struct->FindPropertyByName(Address.Parameter);
+		if (!PropertyMatchesAddress(Property, Address))
+		{
+			return false;
+		}
+		// The two property shapes an enum address can name, mirroring ReadLocalValue: a reflected
+		// enum property, written through its underlying numeric, and a byte property with an enum.
+		if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+		{
+			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(
+				EnumProperty->ContainerPtrToValuePtr<void>(Owner.MutableData), Value);
+			return true;
+		}
+		if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+		{
+			ByteProperty->SetPropertyValue_InContainer(Owner.MutableData, static_cast<uint8>(Value));
+			return true;
+		}
+		return false;
+	}
+
+	bool TryResolveEnum(
+		const FMixtormatBindingScope& Scope,
+		const FMixtormatParameterAddress& Address,
+		int64& OutValue)
+	{
+		if (Address.ValueType != EMixtormatParameterValueType::Enum)
+		{
+			return false;
+		}
+		FResolvedValue Value;
+		TSet<FString> Visiting;
+		if (!ResolveValue(Scope, Address, Visiting, Value))
+		{
+			return false;
+		}
+		OutValue = Value.EnumValue;
 		return true;
 	}
 

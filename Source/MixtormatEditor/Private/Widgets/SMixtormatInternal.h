@@ -469,24 +469,6 @@ namespace MixtormatUI
 		}
 	}
 
-	inline FText GradeTonemapText(const EMixtormatGradeTonemap Mode)
-	{
-		switch (Mode)
-		{
-		case EMixtormatGradeTonemap::Reinhard: return LOCTEXT("GradeTmReinhard", "Reinhard");
-		case EMixtormatGradeTonemap::ACES: return LOCTEXT("GradeTmACES", "ACES");
-		case EMixtormatGradeTonemap::Filmic: return LOCTEXT("GradeTmFilmic", "Filmic");
-		default: return LOCTEXT("GradeTmNone", "None");
-		}
-	}
-
-
-	inline FText LayerBlurScopeText(const EMixtormatLayerBlurScope Scope)
-	{
-		return Scope == EMixtormatLayerBlurScope::Layer
-			? LOCTEXT("LayerBlurScopeLayer", "Layer Coverage")
-			: LOCTEXT("LayerBlurScopeComposite", "Whole Composite");
-	}
 
 	inline FText CurvatureSourceText(const EMixtormatCurvatureSource Source)
 	{
@@ -509,12 +491,7 @@ namespace MixtormatUI
 		}
 	}
 
-	inline FText StainModeText(const EMixtormatStainMode Mode)
-	{
-		return Mode == EMixtormatStainMode::Deposit
-			? LOCTEXT("StainModeDeposit", "Deposit")
-			: LOCTEXT("StainModeWet", "Wet");
-	}
+
 }
 
 #undef LOCTEXT_NAMESPACE

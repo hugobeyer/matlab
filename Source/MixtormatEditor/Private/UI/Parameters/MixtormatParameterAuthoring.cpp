@@ -15,26 +15,43 @@
 
 namespace
 {
-	// Family name in the database and in debug keys: the enum's own name ("Breakup",
-	// "WornEdges", ...) -- stable, serialization-safe, and distinct from the display name.
-	FString FamilyNameOf(EMixtormatEffectType Family)
+	// UEnum entry names are fully qualified ("EMixtormatEffectType::Breakup"); the inner
+	// name is the stable short spelling used in serialized keys and Category prefixes.
+	FString InnerNameOf(const UEnum* Enum, const int64 Value)
 	{
-		return StaticEnum<EMixtormatEffectType>()->GetNameByValue(static_cast<int64>(Family)).ToString();
+		const FString FullName = Enum->GetNameByValue(Value).ToString();
+		const int32 Separator = FullName.Find(TEXT("::"));
+		return Separator != INDEX_NONE ? FullName.Mid(Separator + 2) : FullName;
 	}
 
-	// "Effect.BreakupNormalStrength" / "Effect.BreakupSeed:Int" -- value type only annotated
-	// when it is not the float default, so existing keys stay short and stable.
+	// The canonical family spelling: the enum's inner name, which for every family is also
+	// the UPROPERTY Category prefix the database sections use.
+	FString FamilyKeyOf(EMixtormatEffectType Family)
+	{
+		return InnerNameOf(StaticEnum<EMixtormatEffectType>(), static_cast<int64>(Family));
+	}
+
+	// Category prefixes name families. Comparison also ignores the display space so the
+	// enum's inner name ("WornEdges") matches the Category spelling ("Worn Edges|Output").
+	bool CategoryMatchesFamily(const FString& Category, const FString& Family)
+	{
+		return Category.StartsWith(Family)
+			|| Category.Replace(TEXT(" "), TEXT("")).StartsWith(Family);
+	}
+
+	// "Effect.BreakupNormalStrength" / "Effect.BreakupSeed:Int" -- owner segment and short
+	// inner value-type spelling, matching LoadFromString's last-dot + ":Int" parse.
 	FString KeyNameOf(const FMixtormatParameterDefinitionKey& Key)
 	{
-		FString Name = StaticEnum<EMixtormatParameterOwnerType>()
-			->GetNameByValue(static_cast<int64>(Key.Owner)).ToString();
+		FString Name = InnerNameOf(
+			StaticEnum<EMixtormatParameterOwnerType>(), static_cast<int64>(Key.Owner));
 		Name += TEXT(".");
 		Name += Key.Parameter.ToString();
 		if (Key.ValueType != EMixtormatParameterValueType::Float)
 		{
 			Name += TEXT(":");
-			Name += StaticEnum<EMixtormatParameterValueType>()
-				->GetNameByValue(static_cast<int64>(Key.ValueType)).ToString();
+			Name += InnerNameOf(
+				StaticEnum<EMixtormatParameterValueType>(), static_cast<int64>(Key.ValueType));
 		}
 		return Name;
 	}
@@ -254,8 +271,7 @@ namespace MixtormatParameterAuthoring
 
 	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, const EMixtormatEffectType Family)
 	{
-		const FString FamilyName = StaticEnum<EMixtormatEffectType>()
-			->GetNameByValue(static_cast<int64>(Family)).ToString();
+		const FString FamilyName = FamilyKeyOf(Family);
 		UScriptStruct* const EffectStruct = FMixtormatLayerEffect::StaticStruct();
 
 		// Genuinely-new instances of one family: apply every shipped database default whose
@@ -275,7 +291,7 @@ namespace MixtormatParameterAuthoring
 				continue;
 			}
 			const FString Category = Property->GetMetaData(TEXT("Category"));
-			if (!Category.StartsWith(FamilyName))
+			if (!CategoryMatchesFamily(Category, FamilyName))
 			{
 				continue;
 			}
@@ -314,15 +330,24 @@ namespace MixtormatParameterAuthoring
 				continue;
 			}
 
-			// Family -> EMixtormatEffectType by enum name, so keys stay stable across
-			// display-name changes and the definition table can match them back.
-			const UEnum* FamilyEnum = StaticEnum<EMixtormatEffectType>();
-			int64 FamilyValue = FamilyEnum->GetValueByNameString(FamilyPair.Key);
-			if (FamilyValue == INDEX_NONE)
+			// The section name is only a grouping key; its canonical spelling is the UPROPERTY
+			// Category prefix, which is exactly what WriteToString emits. Accept it verbatim.
+			// Warn when no property answers to it: such entries still load (they key by
+			// parameter), but no family can ever match them at apply time.
+			bool bSectionMatchesAnyCategory = false;
+			for (TFieldIterator<FProperty> It(FMixtormatLayerEffect::StaticStruct()); It; ++It)
+			{
+				if (CategoryMatchesFamily(It->GetMetaData(TEXT("Category")), FamilyPair.Key))
+				{
+					bSectionMatchesAnyCategory = true;
+					break;
+				}
+			}
+			if (!bSectionMatchesAnyCategory)
 			{
 				UE_LOG(LogTemp, Warning,
-					TEXT("Mixtormat authoring database: unknown family '%s' skipped."), *FamilyPair.Key);
-				continue;
+					TEXT("Mixtormat authoring database: family section '%s' matches no Category prefix; entries load but apply to no family."),
+					*FamilyPair.Key);
 			}
 
 			for (const TPair<FString, TSharedPtr<FJsonValue>>& ParamPair : (*FamilyObject)->Values)
@@ -347,6 +372,14 @@ namespace MixtormatParameterAuthoring
 				{
 					ValueType = EMixtormatParameterValueType::Int;
 					ParameterName.LeftChopInline(4);
+				}
+
+				// KeyNameOf writes the owner-qualified spelling ("Effect.BreakupSeed"); the
+				// parameter itself is the segment after the last dot. Bare names load unchanged.
+				int32 DotIndex = INDEX_NONE;
+				if (ParameterName.FindLastChar(TEXT('.'), DotIndex))
+				{
+					ParameterName.RightChopInline(DotIndex + 1);
 				}
 
 				FMixtormatParameterDefinitionKey Key;

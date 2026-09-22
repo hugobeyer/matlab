@@ -13,6 +13,8 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RHIResources.h"
+#include "Engine/Texture2D.h"
+#include "TextureResource.h"
 
 class UTexture2D;
 
@@ -159,6 +161,16 @@ namespace MixtormatGpuCompositor
 	// per-effect gains are how the conventions drifted three orders of magnitude apart.
 	constexpr float ReliefNormalStrength = 1.0f;
 	constexpr float BorderHeightDerivedNormalStrength = 1.0f;
+
+	// Shared by every gather: resolves an authored texture's RHI reference, or null when the
+	// asset has no streaming texture yet. Was a file-static in MixtormatGpuCompositor.cpp;
+	// the gather file and the pass groups all need it.
+	inline FTextureRHIRef GetTextureRHI(UTexture2D* Texture)
+	{
+		return Texture && Texture->GetResource()
+			? Texture->GetResource()->TextureRHI
+			: FTextureRHIRef();
+	}
 
 	struct FPublishedMaskKey
 	{

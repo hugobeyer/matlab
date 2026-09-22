@@ -92,18 +92,7 @@ namespace
 		EMixtormatLayerValueChannel::Roughness
 	};
 
-	FText FlowWarpBlendModeText(const EMixtormatFlowWarpBlendMode Mode)
-	{
-		switch (Mode)
-		{
-		case EMixtormatFlowWarpBlendMode::MinHeight:
-			return LOCTEXT("FlowWarpBlendMin", "Min Height");
-		case EMixtormatFlowWarpBlendMode::MaxHeight:
-			return LOCTEXT("FlowWarpBlendMax", "Max Height");
-		default:
-			return LOCTEXT("FlowWarpBlendReplace", "Replace");
-		}
-	}
+
 }
 
 TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
@@ -259,25 +248,10 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		LOCTEXT("PPeelSizeVarHint", "Per-cell speed factor. Set this to 0 as well as the adhesion weights to check that the field dilates uniformly."));
 	AddPeelSliderInt(Panel, LOCTEXT("PPeelDamageScale", "Damage Scale"), &FMixtormatLayerEffect::PeelClusterPeriod, 1.0, 128.0, 4,
 		LOCTEXT("PPeelDamageScaleHint", "Cell count for per-flake variation. One random value per cell, so adjacent flakes differ in size and lift."));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("PPeelType", "Curled"),
-		MixtormatRow::MakeCheckbox(
-			TAttribute<ECheckBoxState>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedProceduralPeel();
-				return E && E->PeelType == EMixtormatPeelType::Curled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-			}),
-			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-			{
-				if (FMixtormatLayerEffect* E = GetSelectedProceduralPeel())
-				{
-					E->PeelType = State == ECheckBoxState::Checked
-						? EMixtormatPeelType::Curled
-						: EMixtormatPeelType::Flat;
-					RefreshLayeredPreview();
-				}
-			})),
-		LOCTEXT("PPeelTypeHint", "Checked lifts a flap ahead of the front and folds it back behind. Unchecked is the flat chip.")));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("PPeelType", "Peel Type"), [this]() { return GetSelectedProceduralPeel(); },
+		&FMixtormatLayerEffect::PeelType,
+		LOCTEXT("PPeelTypeHint", "Curled lifts a flap ahead of the front and folds it back behind. Flat is the chip.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpRelief", "Relief")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -303,35 +277,6 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildStainModeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatStainMode Modes[] = {
-		EMixtormatStainMode::Wet,
-		EMixtormatStainMode::Deposit
-	};
-	for (const EMixtormatStainMode Mode : Modes)
-	{
-		Menu.Item(
-			MixtormatUI::StainModeText(Mode),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
-			{
-				if (FMixtormatLayerEffect* E = GetSelectedStain())
-				{
-					E->StainMode = Mode;
-					RefreshLayeredPreview();
-					RebuildLayerList();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedStain();
-				return E && E->StainMode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildStainControls()
 {
@@ -447,15 +392,8 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("StainMode", "Output Mask"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedStain();
-				return E ? MixtormatUI::StainModeText(E->StainMode) : FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildStainModeMenu)),
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("StainMode", "Output Mask"), Stain, &FMixtormatLayerEffect::StainMode,
 		LOCTEXT("StainModeHint", "Wet outputs absorbed liquid. Deposit outputs dried dirt and mineral residue. Both come from the same transport solve.")));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("StainStrength", "Amount"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01,
@@ -637,7 +575,7 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 		LOCTEXT("RunoffStrataAmountHint", "How strongly the stacked layers read as separate deposits. Not a count: it widens their spacing, spreads their lengths and flattens their opacity falloff together, so 0 is one coherent run and 1 is a visibly layered buildup. The count itself follows from Streak Radius, since a short run has no room to show five strata.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("RunoffWarpScale", "Warp Scale"),
-			&FMixtormatLayerEffect::RunoffWarpScale, 1.0, 64.0, 18.0, 1.0,
+			&FMixtormatLayerEffect::RunoffWarpScale, 1.0, 32.0, 18.0, 1.0,
 			LOCTEXT("RunoffWarpScaleHint", "Feature size of the internal noise, as cells across the texture. The same field breaks up the source before the smear and warps each stratum's length, so this one control sets the grain of the whole effect.")),
 		Slider(LOCTEXT("RunoffWarpAmount", "Warp Amount"),
 			&FMixtormatLayerEffect::RunoffWarpAmount, 0.0, 2.0, 1.5, 0.01,
@@ -677,36 +615,6 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildGradeTonemapMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatGradeTonemap Modes[] = {
-		EMixtormatGradeTonemap::None,
-		EMixtormatGradeTonemap::Reinhard,
-		EMixtormatGradeTonemap::ACES,
-		EMixtormatGradeTonemap::Filmic
-	};
-	for (const EMixtormatGradeTonemap Mode : Modes)
-	{
-		Menu.Item(
-			MixtormatUI::GradeTonemapText(Mode),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
-			{
-				if (FMixtormatLayerEffect* E = GetSelectedGrade())
-				{
-					E->GradeTonemap = Mode;
-					RefreshLayeredPreview();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedGrade();
-				return E && E->GradeTonemap == Mode;
-			}));
-	}
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 {
@@ -760,16 +668,10 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradeBiasBHint", "Added after the levels remap and the linear stage, ahead of the tonemap. 0 is the identity.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpTonemap", "Tonemap")));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("GradeTonemapMode", "Operator"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* E = GetSelectedGrade();
-				return E ? MixtormatUI::GradeTonemapText(E->GradeTonemap) : FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildGradeTonemapMenu)),
-		LOCTEXT("GradeTonemapHint", "Reinhard never clips but desaturates highlights and only reaches white at infinity, so bright areas go pale. ACES is contrastier with a filmic toe and is closest to what a renderer will do to this surface later. Filmic is Hable's Uncharted 2 curve.")));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("GradeTonemap", "Tonemap"), [this]() { return GetSelectedGrade(); },
+		&FMixtormatLayerEffect::GradeTonemap,
+		LOCTEXT("GradeTonemapHint", "Applies a tonemap to the graded base color.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(
 		LOCTEXT("GradeTonemapStrength", "Strength"), Grade, &FMixtormatLayerEffect::GradeTonemapStrength, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("GradeTonemapStrengthHint", "Blend between the untonemapped and tonemapped result, so an operator can be dialled in rather than only switched on.")));
@@ -792,64 +694,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildFlowWarpBlendModeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatFlowWarpBlendMode Modes[] = {
-		EMixtormatFlowWarpBlendMode::Replace,
-		EMixtormatFlowWarpBlendMode::MinHeight,
-		EMixtormatFlowWarpBlendMode::MaxHeight
-	};
-	for (const EMixtormatFlowWarpBlendMode Mode : Modes)
-	{
-		Menu.Item(
-			FlowWarpBlendModeText(Mode),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode]()
-			{
-				if (FMixtormatLayerEffect* Flow = GetSelectedFlowWarp())
-				{
-					Flow->FlowWarpBlendMode = Mode;
-					RefreshLayeredPreview();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
-			{
-				const FMixtormatLayerEffect* Flow = GetSelectedFlowWarp();
-				return Flow && Flow->FlowWarpBlendMode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
 
-TSharedRef<SWidget> SMixtormat::BuildLayerBlurScopeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatLayerBlurScope Scopes[] = {
-		EMixtormatLayerBlurScope::Layer,
-		EMixtormatLayerBlurScope::Composite};
-	for (const EMixtormatLayerBlurScope Scope : Scopes)
-	{
-		Menu.Item(
-			MixtormatUI::LayerBlurScopeText(Scope),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Scope]()
-			{
-				if (FMixtormatLayerEffect* Effect = GetSelectedLayerBlurEffect())
-				{
-					Effect->LayerBlurScope = Scope;
-					RefreshLayeredPreview();
-					RebuildLayerList();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Scope]()
-			{
-				const FMixtormatLayerEffect* Effect = GetSelectedLayerBlurEffect();
-				return Effect && Effect->LayerBlurScope == Scope;
-			}));
-	}
-	return Menu.Build();
-}
 
 // The mask blur's opposite number, so the controls deliberately read the same: two radii, and a
 // weight. Scope is the one thing it has that the mask blur cannot, because a mask has no notion
@@ -860,17 +705,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerBlurControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("LayerBlurScopeLabel", "Scope"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* Selected = GetSelectedLayerBlurEffect();
-				return Selected
-					? MixtormatUI::LayerBlurScopeText(Selected->LayerBlurScope)
-					: FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerBlurScopeMenu)),
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("LayerBlurScopeLabel", "Scope"), Blur, &FMixtormatLayerEffect::LayerBlurScope,
 		LOCTEXT("LayerBlurScopeHint", "Blurs the accumulated composite. Layer Coverage intersects layer coverage with scoped masks. Whole Composite uses scoped masks only, or affects everything when none are present.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -955,17 +791,8 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 			&FMixtormatLayerEffect::FlowWarpDerivativeKernelY, 1.0, 64.0, 2.0, 1.0,
 			LOCTEXT("FlowWarpKernelYHint", "Vertical derivative radius in pixels. Larger values smooth finer slope detail."))));
 
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("FlowWarpBlend", "Blend"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatLayerEffect* Selected = GetSelectedFlowWarp();
-				return Selected
-					? FlowWarpBlendModeText(Selected->FlowWarpBlendMode)
-					: FText::GetEmpty();
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildFlowWarpBlendModeMenu)),
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("FlowWarpBlend", "Blend"), Flow, &FMixtormatLayerEffect::FlowWarpBlendMode,
 		LOCTEXT("FlowWarpBlendHint", "Replace uses the warped sample. Min or Max Height chooses between original and warped height, then keeps every material channel from that same sample.")));
 
 	return SNew(SBox)
@@ -1032,12 +859,12 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 64.0, 2.0, 0.1,
 			LOCTEXT("BreakupGapWidthHint", "Opens seams at both SDF boundaries and internal piece-ID boundaries.")),
 		Slider(LOCTEXT("BreakupGapDepth", "Gap Depth"), &FMixtormatLayerEffect::BreakupGapDepth,
-			-0.5, 0.5, 0.02, 0.001)));
+			0.0, 0.5, 0.02, 0.001)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupFold", "Fold"), &FMixtormatLayerEffect::BreakupFold,
-			-0.5, 0.5, 0.025, 0.0025),
+			0.0, 0.5, 0.025, 0.0025),
 		Slider(LOCTEXT("BreakupCrease", "Crease"), &FMixtormatLayerEffect::BreakupCrease,
-			-0.5, 0.5, 0.018, 0.001)));
+			0.0, 0.5, 0.018, 0.001)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupPush", "Push"), &FMixtormatLayerEffect::BreakupPush,
 			-128.0, 128.0, 0.0, 0.25,
@@ -1080,7 +907,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpAdvanced", "Advanced")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupSizeVariation", "Size Variation"), &FMixtormatLayerEffect::BreakupSizeVariation,
-			0.0, 0.75, 0.3125, 0.01),
+			0.0, 1.0, 0.3125, 0.01),
 		Slider(LOCTEXT("BreakupSmoothness", "Smoothness"), &FMixtormatLayerEffect::BreakupSmoothness,
 			0.0, 1.0, 0.30, 0.01)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -1972,33 +1799,13 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdBlendModeMenu)),
 		LOCTEXT("IdBlendModeHint", "How the selection combines with the mask accumulated above it in this layer. Max is what unions two ID nodes; Multiply is what intersects one with a painted mask.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("IdWeight", "Weight"), &FMixtormatColorIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("IdWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")),
-		Slider(LOCTEXT("IdContrast", "Contrast"), &FMixtormatColorIdMask::Contrast, 0.0, 10.0, 1.0, 0.01,
-			LOCTEXT("IdContrastHint", "Scales the selection about its midpoint before it is blended. Only does anything inside the softness band, since the rest of the mask is already flat 0 or 1."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("IdBalance", "Balance"), &FMixtormatColorIdMask::Balance, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("IdBalanceHint", "Pushes the softness band toward the selection or away from it without moving its midpoint.")),
-		Slider(LOCTEXT("IdOffset", "Offset"), &FMixtormatColorIdMask::Offset, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("IdOffsetHint", "Lifts or lowers the whole mask after contrast. Above 0 the unselected regions stop being fully masked out."))));
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("IdInvert", "Invert"),
-		MixtormatRow::MakeCheckbox(
-			TAttribute<ECheckBoxState>::CreateLambda([this]()
-			{
-				const FMixtormatColorIdMask* C = GetSelectedColorId();
-				return C && C->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-			}),
-			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-			{
-				if (FMixtormatColorIdMask* C = GetSelectedColorId())
-				{
-					C->bInvert = State == ECheckBoxState::Checked;
-					RefreshLayeredPreview();
-				}
-			})),
-		LOCTEXT("IdInvertHint", "Selects everything except the chosen IDs. Usually shorter than listing the other seven.")));
+	AddSliderRow(Panel, Slider(LOCTEXT("IdWeight", "Weight"), &FMixtormatColorIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("IdWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")));
+	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatColorIdMask* ColorId = GetSelectedColorId();
+		return ColorId ? &ColorId->Shaping : nullptr;
+	});
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedColorId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3900,7 +3707,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
 			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
-		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 4.0, 1.0, 0.01,
+		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));
@@ -4006,7 +3813,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenHeightBiasCtl", "Height Bias"), Gen, &FMixtormatGeneratedMask::HeightBias, -1.0, 1.0, 0.0, 0.01));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GenHdrShaping", "Shaping")));
+	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatGeneratedMask* Generated = GetSelectedGeneratedMask();
+		return Generated ? &Generated->Shaping : nullptr;
+	});
 	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratedMask>(
 		LOCTEXT("GenNormalizeWeights", "Normalize Weights"), Gen, &FMixtormatGeneratedMask::bNormalizeWeights));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -4025,18 +3836,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 		LOCTEXT("GenWarpSource", "Warp Flow (Normal to Height)"), Gen, &FMixtormatGeneratedMask::WarpSource, 0.0, 1.0, 0.0, 0.01));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GenHdrBlend", "Blend")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenGenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01),
-		MakeMemberToggle<FMixtormatGeneratedMask>(
-			LOCTEXT("GenGenInvert", "Invert"), Gen, &FMixtormatGeneratedMask::bInvert)));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenGenBalance", "Balance"), Gen, &FMixtormatGeneratedMask::Balance, 0.0, 2.0, 0.5, 0.01),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenGenContrast", "Contrast"), Gen, &FMixtormatGeneratedMask::Contrast, 0.0, 10.0, 1.0, 0.01)));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
-		LOCTEXT("GenGenOffset", "Offset"), Gen, &FMixtormatGeneratedMask::Offset, -1.0, 1.0, 0.0, 0.01));
+		LOCTEXT("GenGenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -5467,23 +5268,21 @@ void SMixtormat::AddMaskShapingRows(
 	const TSharedRef<SVerticalBox>& TargetPanel,
 	TFunction<FMixtormatMaskShaping*()> Resolve)
 {
-	using namespace MixtormatMaskShapingRange;
-
 	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
 	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
 		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
 	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskShaping>(
 			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,
-			BalanceMin, BalanceMax, BalanceDefault, SnapDelta,
+			0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("MaskBalanceHint", "Thins the mask toward black above the middle and thickens it toward white below, as a power curve -- so it erodes what is there rather than fading it out. The ends are aggressive but never flatten the mask.")),
 		MakeMemberSlider<FMixtormatMaskShaping>(
 			LOCTEXT("MaskContrastLabel", "Contrast"), Resolve, &FMixtormatMaskShaping::Contrast,
-			ContrastMin, ContrastMax, ContrastDefault, SnapDelta,
+			0.0, 4.0, 1.0, 0.01,
 			LOCTEXT("MaskContrastHint", "Hardens the transition about the mask's midpoint. Masks are stored raw rather than sRGB, so that midpoint really is the 50% grey you painted."))));
 	AddSliderRow(TargetPanel, MakeMemberSlider<FMixtormatMaskShaping>(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
-		OffsetMin, OffsetMax, OffsetDefault, SnapDelta,
+		-1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("MaskOffsetHint", "Lifts the whole mask after contrast. Plus one reaches full white and minus one full black from any input, whatever the contrast is set to.")));
 }
 
