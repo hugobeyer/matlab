@@ -2367,7 +2367,47 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			Hint);
 	};
 
+	// Amounts are neutral at zero, not at the legacy struct defaults (which apply relief
+	// and shading). Keep authored, currently dormant modifiers accessible as well.
+	const auto HasLegacyTreatment = [Pattern]()
+	{
+		const FMixtormatPatternFilter* P = Pattern();
+		if (!P)
+		{
+			return false;
+		}
+		const FMixtormatPatternFilter Defaults;
+		return P->bUVVariation
+			|| P->bOrthogonalUV != Defaults.bOrthogonalUV
+			|| P->UVRotationMin != Defaults.UVRotationMin
+			|| P->UVRotationMax != Defaults.UVRotationMax
+			|| P->UVScaleMin != Defaults.UVScaleMin
+			|| P->UVScaleMax != Defaults.UVScaleMax
+			|| P->UVOffset != Defaults.UVOffset
+			|| P->bRandomFlipU != Defaults.bRandomFlipU
+			|| P->bRandomFlipV != Defaults.bRandomFlipV
+			|| P->HeightAmount != 0.0f
+			|| P->GapHeight != 0.0f
+			|| P->BevelHeight != 0.0f
+			|| P->EdgeRoughnessAmount != 0.0f
+			|| P->AOAmount != 0.0f
+			|| P->HeightRandom != Defaults.HeightRandom
+			|| P->Profile != Defaults.Profile
+			|| P->ProfileRandom != Defaults.ProfileRandom
+			|| P->Feather != Defaults.Feather
+			|| P->FeatherRandom != Defaults.FeatherRandom
+			|| P->FeatherGain != Defaults.FeatherGain
+			|| P->bRelativeEdgeWidth != Defaults.bRelativeEdgeWidth
+			|| P->BevelWidthPixels != Defaults.BevelWidthPixels
+			|| P->BevelWidthCells != Defaults.BevelWidthCells
+			|| P->BevelVariation != Defaults.BevelVariation
+			|| P->BevelInsetPixels != Defaults.BevelInsetPixels
+			|| P->EdgeRoughness != Defaults.EdgeRoughness
+			|| P->AOSpread != Defaults.AOSpread;
+	};
+
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	const TSharedRef<SVerticalBox> LegacyTreatment = SNew(SVerticalBox);
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpLattice", "Lattice")));
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -2454,9 +2494,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("PatternRounding", "Rounding"), &FMixtormatPatternFilter::Rounding, 0.0, 1.0, 0.0, 0.005,
 			LOCTEXT("PatternRoundingHint", "Rounds the cell corners by blending the two nearest walls instead of taking a hard minimum, so a chamfer fillets into the corner rather than creasing. In cell fractions. 0 is the true Voronoi corner.")));
-	AddSliderRow(Panel,
-		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
-			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
+
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternGapRandom", "Gap Random"), &FMixtormatPatternFilter::GapRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternGapRandomHint", "Varies the grout once per piece, for every Pattern Mode. The wall never moves -- each side of it pulls back by its own draw, so the gap between two pieces is the sum of two independent amounts and no two boundaries come out the same width. Symmetric about Gap. A piece is never cut back so far that it disappears, however small it is. Needs a Gap above 0.")),
@@ -2521,83 +2559,109 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			FractureRows
 		]);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpUV", "UV Variation")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatPatternFilter>(
+		LOCTEXT("PatternSeed", "Seed"), Pattern, &FMixtormatPatternFilter::Seed, 0.0, 64.0, 1,
+		LOCTEXT("PatternSeedHint", "Reshuffles feature jitter and every per-region UV, height and bevel draw while preserving the lattice.")));
+
+	const FText LegacyHint = LOCTEXT("PatternLegacyTreatmentHint", "Legacy Pattern UV/relief settings are preserved for compatibility. New setups should use UV From IDs and Relief From IDs.");
+	AddSliderRow(LegacyTreatment,
+		SNew(STextBlock)
+		.AutoWrapText(true)
+		.Text(LegacyHint));
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpUV", "UV Variation")));
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternUVEnable", "Enable"), &FMixtormatPatternFilter::bUVVariation,
 			LOCTEXT("PatternUVEnableHint", "Transforms the layer source independently around each pattern region centre.")),
 		Toggle(LOCTEXT("PatternUVOrthogonal", "90° Only"), &FMixtormatPatternFilter::bOrthogonalUV,
 			LOCTEXT("PatternUVOrthogonalHint", "Snaps random region rotation to 90-degree steps, preserving the source tile's periodic orientation."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternUVRotMin", "Rot Min"), &FMixtormatPatternFilter::UVRotationMin, -360.0, 360.0, 0.0, 1.0,
 			LOCTEXT("PatternUVRotMinHint", "Low end of the per-region source rotation range in degrees.")),
 		Slider(LOCTEXT("PatternUVRotMax", "Rot Max"), &FMixtormatPatternFilter::UVRotationMax, -360.0, 360.0, 360.0, 1.0,
 			LOCTEXT("PatternUVRotMaxHint", "High end of the per-region source rotation range in degrees."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternUVScaleMin", "Scale Min"), &FMixtormatPatternFilter::UVScaleMin, 0.05, 8.0, 1.0, 0.01,
 			LOCTEXT("PatternUVScaleMinHint", "Low end of the per-region source scale multiplier.")),
 		Slider(LOCTEXT("PatternUVScaleMax", "Scale Max"), &FMixtormatPatternFilter::UVScaleMax, 0.05, 8.0, 1.0, 0.01,
 			LOCTEXT("PatternUVScaleMaxHint", "High end of the per-region source scale multiplier."))));
-	AddSliderRow(Panel, Slider(
+	AddSliderRow(LegacyTreatment, Slider(
 		LOCTEXT("PatternUVOffset", "Offset"), &FMixtormatPatternFilter::UVOffset, 0.0, 1.0, 0.0, 0.01,
 		LOCTEXT("PatternUVOffsetHint", "Maximum random source translation per region, as a fraction of one source repeat.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternFlipU", "Flip U"), &FMixtormatPatternFilter::bRandomFlipU,
 			LOCTEXT("PatternFlipUHint", "Randomly mirrors the source across U per region.")),
 		Toggle(LOCTEXT("PatternFlipV", "Flip V"), &FMixtormatPatternFilter::bRandomFlipV,
 			LOCTEXT("PatternFlipVHint", "Randomly mirrors the source across V per region."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpRelief", "Relief")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpRelief", "Relief")));
+	AddSliderRow(LegacyTreatment,
+		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
+			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternHeight", "Height"), &FMixtormatPatternFilter::HeightAmount, 0.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternHeightHint", "How far each cell stands off the base. The face stays flat -- for a slope across each cell, stack Ramp From IDs over this.")),
 		Slider(LOCTEXT("PatternHeightRandom", "Height Random"), &FMixtormatPatternFilter::HeightRandom, 0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("PatternHeightRandomHint", "How far below Height a cell may be drawn, as a multiplier. At 0 every cell sits at full Height; at 1 they spread the whole way down to the base. Never negative -- a cell below the base would feather back up at its wall and read as a recessed panel in a raised frame."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternProfile", "Profile"), &FMixtormatPatternFilter::Profile, -1.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternProfileHint", "The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove that hugs the grout then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose that lifts away and rounds over. Never changes the chamfer's width or height.")),
 		Slider(LOCTEXT("PatternProfileRandom", "Profile Random"), &FMixtormatPatternFilter::ProfileRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternProfileRandomHint", "Offsets the roundness per cell, so one cell's bullnose can be its neighbour's cove."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternFeather", "Feather"), &FMixtormatPatternFilter::Feather, 0.0, 0.5, 0.15, 0.005,
 			LOCTEXT("PatternFeatherHint", "Eases each cell's height out at its boundary so neighbouring pieces meet through a ramp rather than a one-texel cliff.")),
 		Slider(LOCTEXT("PatternFeatherRandom", "Feather Random"), &FMixtormatPatternFilter::FeatherRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternFeatherRandomHint", "Varies the feather width once per cell, so the run-out is not identical on every piece."))));
-	AddSliderRow(Panel,
+	AddSliderRow(LegacyTreatment,
 		Slider(LOCTEXT("PatternFeatherGain", "Feather Gain"), &FMixtormatPatternFilter::FeatherGain, 0.0, 4.0, 0.0, 0.01,
 			LOCTEXT("PatternFeatherGainHint", "What the feather does on the way up, rather than how wide it is. The run-out is a straight line, and a straight line is the one shape a normal map cannot show -- a normal reads a change in slope, and a constant ramp has none, so the band lights as a single flat facet however much height it moves. Gain bends the curve: the slope leaving the wall goes from 1 to 1 + Gain, and past 1 it arcs above the face and leaves a raised lip just inside the edge. Both ends stay pinned, so the grout wall and the flat face never move.")));
 
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternBevelHeight", "Height"), &FMixtormatPatternFilter::BevelHeight, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternBevelHeightHint", "Stands each cell proud of the grout, with the chamfer ramping down to it. Negative sinks the cell face below the grout instead. The gap itself is untouched either way -- that is Gap Height.")),
 		Slider(LOCTEXT("PatternBevelWidth", "Width"), &FMixtormatPatternFilter::BevelWidthPixels, 0.25, 64.0, 4.0, 0.25,
 			LOCTEXT("PatternBevelWidthHint", "Chamfer width, in output pixels or as a fraction of the cell depending on Relative Width below."))));
-	AddSliderRow(Panel, Toggle(
+	AddSliderRow(LegacyTreatment, Toggle(
 		LOCTEXT("PatternRelativeEdge", "Relative Width"), &FMixtormatPatternFilter::bRelativeEdgeWidth,
 		LOCTEXT("PatternRelativeEdgeHint", "Measures the chamfer as a fraction of the cell instead of in output pixels: 0 at the wall, 1 at the point furthest inside. Frames every cell the same way whatever its size or aspect, and is normalised against how far jitter pushes the deepest interior point. Off keeps an even visual width across cells of different sizes. Width comes from Width (Cells) when on and Width when off.")));
-	AddSliderRow(Panel,
+	AddSliderRow(LegacyTreatment,
 		Slider(LOCTEXT("PatternBevelWidthCells", "Width (Cells)"), &FMixtormatPatternFilter::BevelWidthCells, 0.0, 1.0, 0.25, 0.005,
 			LOCTEXT("PatternBevelWidthCellsHint", "The chamfer width used in Relative mode, as a fraction of the way from the cell wall to its deepest interior point. 1 runs the chamfer all the way in, leaving no flat face.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternBevelVariation", "Variation"), &FMixtormatPatternFilter::BevelVariation, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternBevelVariationHint", "Varies bevel width once per region.")),
 		Slider(LOCTEXT("PatternBevelInset", "Inset"), &FMixtormatPatternFilter::BevelInsetPixels, -32.0, 32.0, 0.0, 0.25,
 			LOCTEXT("PatternBevelInsetHint", "Slides the chamfer across the grout line in output pixels. Negative puts it out in the gap, positive pulls it onto the cell face."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternEdgeRoughness", "Roughness"), &FMixtormatPatternFilter::EdgeRoughness, 0.0, 1.0, 0.65, 0.01,
 			LOCTEXT("PatternEdgeRoughnessHint", "Roughness value approached at region edges. Applied after the layer composite, so it intentionally bypasses the layer Roughness Influence control.")),
 		Slider(LOCTEXT("PatternEdgeRoughnessAmount", "Amount"), &FMixtormatPatternFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternEdgeRoughnessAmountHint", "Strength of edge roughness. 0 leaves the packed roughness channel unchanged."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternAOAmount", "AO"), &FMixtormatPatternFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternAOAmountHint", "Darkens packed AO at region creases. Applied after the layer composite, so it intentionally bypasses the layer AO Influence control.")),
 		Slider(LOCTEXT("PatternAOSpread", "Spread"), &FMixtormatPatternFilter::AOSpread, 1.0, 8.0, 2.0, 0.05,
 			LOCTEXT("PatternAOSpreadHint", "How much farther the edge AO reaches relative to the bevel width."))));
 
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatPatternFilter>(
-		LOCTEXT("PatternSeed", "Seed"), Pattern, &FMixtormatPatternFilter::Seed, 0.0, 64.0, 1,
-		LOCTEXT("PatternSeedHint", "Reshuffles feature jitter and every per-region UV, height and bevel draw while preserving the lattice.")));
+	Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
+	[
+		SNew(SBox)
+		.Visibility_Lambda([HasLegacyTreatment]()
+		{
+			return HasLegacyTreatment() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("PatternLegacyTreatmentHeading", "LEGACY TREATMENT"))
+			.InitiallyExpanded(false)
+			.ToolTipText(LegacyHint)
+			[
+				LegacyTreatment
+			]
+		]
+	];
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()

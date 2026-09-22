@@ -23,6 +23,10 @@
 #include "ShaderParameterStruct.h"
 #include "TextureResource.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
+
 // Render commands retain the exact target generation, including isolated child outputs.
 // UObject pins are released on the game thread; RDG/RHI retain GPU resources until queued work
 // retires. Resource pointers are captured on the game thread but dereferenced only after their
@@ -495,10 +499,8 @@ namespace MixtormatGpuCompositor
 	// Combine IDs. Pattern IDs' own UV block is the legacy path, kept live and unchanged so a
 	// material authored before the split renders exactly as it did.
 	//
-	// A UV From IDs row anywhere in the layer shadows the legacy block entirely rather than
-	// compounding with it. Two competing per-region transforms over one source is not a picture
-	// anybody asked for, and "the newer node wins" is the rule that makes the migration in a later
-	// phase a no-op for anything already using the new node.
+	// Both paths compete in authored child order. Select one treatment rather than compounding
+	// transforms; a later neutral Pattern does not shadow an applicable UV From IDs row.
 	struct FRegionUVBinding
 	{
 		bool bEnabled = false;
@@ -527,12 +529,24 @@ namespace MixtormatGpuCompositor
 		const FUvIdPassOutput* ActiveUvId = nullptr;
 		for (const FUvIdPassOutput& Output : LayerCtx.UvIdOutputs)
 		{
-			if (Output.Settings && Output.CentreUV && Output.Ids)
+			if (Output.Settings && Output.CentreUV && Output.Ids
+			&& (!ActiveUvId || Output.SourceChildIndex > ActiveUvId->SourceChildIndex))
 			{
 				ActiveUvId = &Output;
 			}
 		}
-		if (ActiveUvId)
+		const FPatternIdPassOutput* ActivePattern = nullptr;
+		for (const FPatternIdPassOutput& Output : LayerCtx.PatternOutputs)
+		{
+			if (Output.Settings && Output.Ids && Output.UV
+				&& (Output.Settings->bUVVariation || HasIntrinsicPatternOrientation(*Output.Settings))
+				&& (!ActivePattern || Output.SourceChildIndex > ActivePattern->SourceChildIndex))
+			{
+				ActivePattern = &Output;
+			}
+		}
+		if (ActiveUvId && (!ActivePattern
+			|| ActiveUvId->SourceChildIndex > ActivePattern->SourceChildIndex))
 		{
 			const FUvIdRenderData& Uv = *ActiveUvId->Settings;
 			Binding.bEnabled = true;
@@ -559,16 +573,6 @@ namespace MixtormatGpuCompositor
 		// Legacy: Pattern IDs' own UV block. The last Pattern row that needs source-space work
 		// wins. Herringbone and Basketweave always need their intrinsic basis; other modes only
 		// enter when random Pattern UV variation is enabled.
-		const FPatternIdPassOutput* ActivePattern = nullptr;
-		for (const FPatternIdPassOutput& PatternOutput : LayerCtx.PatternOutputs)
-		{
-			if (PatternOutput.Settings
-				&& (PatternOutput.Settings->bUVVariation
-					|| HasIntrinsicPatternOrientation(*PatternOutput.Settings)))
-			{
-				ActivePattern = &PatternOutput;
-			}
-		}
 		if (!ActivePattern)
 		{
 			return Binding;
@@ -3726,3 +3730,222 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDebugOutput() const
 {
 	return Targets[PublishedTargetIndex].Debug.Get();
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+IMPLEMENT_COMPLEX_AUTOMATION_TEST(
+	FMixtormatPrompt2RegionUVTest,
+	"Mixtormat.Prompt2.RegionUV",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+void FMixtormatPrompt2RegionUVTest::GetTests(
+	TArray<FString>& OutBeautifiedNames, TArray<FString>& OutTestCommands) const
+{
+	for (const TCHAR* Name : {
+		TEXT("LegacyOnly"), TEXT("LegacyThenUV"), TEXT("UVThenLaterLegacy"),
+		TEXT("UVThenLaterUV"), TEXT("LaterNeutralPatternIgnored"),
+		TEXT("NoProducerNoOp"), TEXT("RegionSources"), TEXT("LegacyIntrinsicOrientation") })
+	{
+		OutBeautifiedNames.Add(Name);
+		OutTestCommands.Add(Name);
+	}
+}
+
+bool FMixtormatPrompt2RegionUVTest::RunTest(const FString& Parameters)
+{
+	// Keep RDG resources and comparisons on the render thread; report only after the flush.
+	TArray<FString> Failures;
+	ENQUEUE_RENDER_COMMAND(MixtormatPrompt2RegionUV)(
+		[Parameters, &Failures](FRHICommandListImmediate& RHICmdList)
+		{
+			using namespace MixtormatGpuCompositor;
+			const auto Check = [&Failures](bool bCondition, const TCHAR* Message)
+			{
+				if (!bCondition)
+				{
+					Failures.Add(Message);
+				}
+			};
+			FRDGBuilder GraphBuilder(RHICmdList);
+			FRenderRequest Request;
+			Request.Resolution = FIntPoint(4, 4);
+			FMixtormatComposeContext Ctx(GraphBuilder, Request);
+			FMixtormatLayerPassContext LayerCtx(Ctx);
+			LayerCtx.BeginLayer(0);
+			const auto Texture = [&GraphBuilder](EPixelFormat Format, const TCHAR* Name)
+			{
+				return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					FIntPoint(4, 4), Format, FClearValueBinding::None,
+					TexCreate_ShaderResource | TexCreate_UAV), Name);
+			};
+			const FRDGTextureRef PatternIds = Texture(PF_R32_UINT, TEXT("Prompt2.PatternIds"));
+			const FRDGTextureRef UvIds = Texture(PF_R32_UINT, TEXT("Prompt2.UvIds"));
+			const FRDGTextureRef LaterIds = Texture(PF_R32_UINT, TEXT("Prompt2.LaterIds"));
+			const FRDGTextureRef PatternUV = Texture(PF_G32R32F, TEXT("Prompt2.PatternUV"));
+			const FRDGTextureRef CentreUV = Texture(PF_G32R32F, TEXT("Prompt2.CentreUV"));
+			const FRDGTextureRef Orientation = Texture(PF_R32_FLOAT, TEXT("Prompt2.Orientation"));
+
+			if (Parameters == TEXT("RegionSources"))
+			{
+				// Exercise the real publication/lookup helpers, not producer shader generation.
+				PublishRegionIds(LayerCtx.RegionIdMaps, 6, LaterIds); // Combine
+				PublishRegionIds(LayerCtx.RegionIdMaps, 1, PatternIds); // Pattern
+				PublishRegionIds(LayerCtx.RegionIdMaps, 3, UvIds); // Cluster
+				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 1) == nullptr,
+					TEXT("A producer cannot source itself or a consumer above it"));
+				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 3) == PatternIds,
+					TEXT("Pattern is the nearest earlier source"));
+				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 6) == UvIds,
+					TEXT("Cluster is the nearest earlier source"));
+				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 7) == LaterIds,
+					TEXT("Combine is the nearest earlier source despite publication order"));
+				GraphBuilder.Execute();
+				return;
+			}
+
+			FPatternIdRenderData Pattern;
+			Pattern.bUVVariation = true;
+			Pattern.bOrthogonalUV = false;
+			Pattern.bRandomFlipU = true;
+			Pattern.Seed = 11;
+			Pattern.UVRotationMin = -30.0f;
+			Pattern.UVRotationMax = 60.0f;
+			Pattern.UVScaleMin = 0.5f;
+			Pattern.UVScaleMax = 2.0f;
+			Pattern.UVOffset = 0.25f;
+			FPatternIdRenderData NeutralPattern;
+			FUvIdRenderData Uv;
+			Uv.bOrthogonal = true;
+			Uv.bRandomFlipV = true;
+			Uv.Seed = 22;
+			Uv.RotationMin = -90.0f;
+			Uv.RotationMax = 180.0f;
+			Uv.ScaleMin = 0.75f;
+			Uv.ScaleMax = 1.5f;
+			Uv.OffsetU = 0.1f;
+			Uv.OffsetV = 0.3f;
+			FUvIdRenderData LaterUv = Uv;
+			LaterUv.Seed = 33;
+			const auto AddPattern = [&](int32 Index, const FPatternIdRenderData& Settings,
+				FRDGTextureRef Ids)
+			{
+				FPatternIdPassOutput& Output = LayerCtx.PatternOutputs.AddDefaulted_GetRef();
+				Output.SourceChildIndex = Index;
+				Output.Settings = &Settings;
+				Output.Ids = Ids;
+				Output.UV = PatternUV;
+				Output.Orientation = Orientation;
+			};
+			const auto AddUv = [&](int32 Index, const FUvIdRenderData& Settings,
+				FRDGTextureRef Ids)
+			{
+				FUvIdPassOutput& Output = LayerCtx.UvIdOutputs.AddDefaulted_GetRef();
+				Output.SourceChildIndex = Index;
+				Output.Settings = &Settings;
+				Output.Ids = Ids;
+				Output.CentreUV = CentreUV;
+			};
+			const bool bNoProducer = Parameters == TEXT("NoProducerNoOp");
+			const bool bIntrinsic = Parameters == TEXT("LegacyIntrinsicOrientation");
+			const bool bLegacy = Parameters == TEXT("LegacyOnly")
+				|| Parameters == TEXT("UVThenLaterLegacy") || bIntrinsic;
+			const bool bLaterUv = Parameters == TEXT("UVThenLaterUV");
+			if (bNoProducer)
+			{
+				FLayerRenderData Layer;
+				Layer.bEnabled = true;
+				FChildRenderData& UvChild = Layer.Children.AddDefaulted_GetRef();
+				UvChild.Type = EMixtormatLayerChildType::UvFromIds;
+				UvChild.SourceChildIndex = 1;
+				FChildRenderData& ReliefChild = Layer.Children.AddDefaulted_GetRef();
+				ReliefChild.Type = EMixtormatLayerChildType::ReliefFromIds;
+				ReliefChild.SourceChildIndex = 2;
+				ReliefChild.ReliefId.HeightAmount = 0.5f;
+				AddUvIdPasses(Ctx, LayerCtx, Layer);
+				CollectPendingRampTilts(Ctx, LayerCtx, Layer);
+				Check(LayerCtx.UvIdOutputs.IsEmpty(), TEXT("Missing IDs publish no UV output"));
+				Check(LayerCtx.PendingRampTilts.IsEmpty(), TEXT("Missing IDs queue no relief"));
+				Check(LayerCtx.RegionCentreCache.IsEmpty() && LayerCtx.RegionDistanceCache.IsEmpty(),
+					TEXT("Missing IDs allocate no centre or distance fields"));
+			}
+			else if (bLegacy)
+			{
+				if (Parameters == TEXT("UVThenLaterLegacy"))
+				{
+					AddUv(3, Uv, UvIds);
+				}
+				if (bIntrinsic)
+				{
+					Pattern.bUVVariation = false;
+					Pattern.PatternMode = EMixtormatPatternMode::Herringbone;
+				}
+				AddPattern(5, Pattern, PatternIds);
+				AddPattern(1, Pattern, LaterIds); // Array order must not override child order.
+			}
+			else
+			{
+				AddPattern(1, Pattern, PatternIds);
+				if (bLaterUv)
+				{
+					AddUv(5, LaterUv, LaterIds);
+				}
+				AddUv(3, Uv, UvIds);
+				if (Parameters == TEXT("LaterNeutralPatternIgnored"))
+				{
+					AddPattern(7, NeutralPattern, LaterIds);
+				}
+			}
+
+			// Each required input is independently absent on a later row of each producer type.
+			for (int32 Missing = 0; Missing < 3; ++Missing)
+			{
+				AddPattern(10 + Missing, Pattern, PatternIds);
+				FPatternIdPassOutput& P = LayerCtx.PatternOutputs.Last();
+				AddUv(20 + Missing, Uv, UvIds);
+				FUvIdPassOutput& U = LayerCtx.UvIdOutputs.Last();
+				if (Missing == 0) { P.Settings = nullptr; U.Settings = nullptr; }
+				if (Missing == 1) { P.Ids = nullptr; U.Ids = nullptr; }
+				if (Missing == 2) { P.UV = nullptr; U.CentreUV = nullptr; }
+			}
+			const FRegionUVBinding Binding = ResolveRegionUVBinding(LayerCtx);
+			Check(Binding.bEnabled == !bNoProducer, TEXT("Binding enabled only for a valid producer"));
+			if (bNoProducer)
+			{
+				Check(!Binding.bVariation && !Binding.bIntrinsicOrientation,
+					TEXT("No producer enables no UV treatment"));
+				Check(!Binding.Ids && !Binding.Centre && !Binding.Orientation,
+					TEXT("No producer binds no textures"));
+				Check(Binding.ScaleMin == 1.0f && Binding.ScaleMax == 1.0f
+					&& Binding.RotationMin == 0.0f && Binding.RotationMax == 0.0f
+					&& Binding.Offset == FVector2f::ZeroVector,
+					TEXT("No producer leaves an identity transform"));
+			}
+			else
+			{
+				Check(Binding.Ids == (bLegacy ? PatternIds : (bLaterUv ? LaterIds : UvIds)),
+					TEXT("Highest valid SourceChildIndex wins across both output arrays"));
+				Check(Binding.Centre == (bLegacy ? PatternUV : CentreUV), TEXT("Winner supplies centre"));
+				Check(Binding.Orientation == (bLegacy ? Orientation : nullptr), TEXT("Winner supplies orientation"));
+				Check(Binding.bVariation == !bIntrinsic && Binding.bIntrinsicOrientation == bIntrinsic,
+					TEXT("Variation and intrinsic orientation remain independent"));
+				Check(Binding.Seed == (bLegacy ? 11u : (bLaterUv ? 33u : 22u)), TEXT("Winner supplies seed"));
+				Check(Binding.bOrthogonal == !bLegacy && Binding.bRandomFlipU == bLegacy
+					&& Binding.bRandomFlipV == !bLegacy, TEXT("Winner supplies orthogonal and flip flags"));
+				Check(Binding.RotationMin == (bLegacy ? -30.0f : -90.0f)
+					&& Binding.RotationMax == (bLegacy ? 60.0f : 180.0f), TEXT("Winner supplies rotation"));
+				Check(Binding.ScaleMin == (bLegacy ? 0.5f : 0.75f)
+					&& Binding.ScaleMax == (bLegacy ? 2.0f : 1.5f), TEXT("Transforms are selected, not compounded"));
+				Check(Binding.Offset == (bLegacy ? FVector2f(0.25f, 0.25f) : FVector2f(0.1f, 0.3f)),
+					TEXT("Legacy scalar offset expands to both axes; UV offsets stay independent"));
+			}
+			GraphBuilder.Execute();
+		});
+	FlushRenderingCommands();
+	for (const FString& Failure : Failures)
+	{
+		AddError(Failure);
+	}
+	return Failures.IsEmpty();
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

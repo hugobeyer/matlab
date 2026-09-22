@@ -296,6 +296,15 @@ namespace
 		Child.Type = ChildTypeForCreation(Kind);
 		switch (Kind)
 		{
+		case EMixtormatChildCreation::PatternIds:
+			// New Patterns own topology only; keep serialized defaults for existing nodes.
+			Child.PatternId.bUVVariation = false;
+			Child.PatternId.HeightAmount = 0.0f;
+			Child.PatternId.BevelHeight = 0.0f;
+			Child.PatternId.GapHeight = 0.0f;
+			Child.PatternId.EdgeRoughnessAmount = 0.0f;
+			Child.PatternId.AOAmount = 0.0f;
+			break;
 		case EMixtormatChildCreation::LayerValuesMask:
 			// Fixed at creation and never offered as a switch afterwards. What a mask reads is
 			// its identity -- a Layer Values mask has no asset to name and is told apart from a
