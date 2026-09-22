@@ -2,6 +2,17 @@
 
 #include "Widgets/MixtormatChildCapabilities.h"
 
+#include "MixtormatEffect.h"
+
+namespace
+{
+	EMixtormatEffectType ResolveChildEffectType(const FMixtormatLayerChild& Child)
+	{
+		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
+		return Asset ? Asset->EffectType : Child.Effect.ProceduralType;
+	}
+}
+
 FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child)
 {
 	const FText RegionIdsLabel = NSLOCTEXT("SMixtormat", "PreviewOutputRegionIds", "Region IDs");
@@ -9,6 +20,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	const FName GapName(TEXT("Gap"));
 
 	FMixtormatChildCapabilities Result;
+	const EMixtormatEffectType EffectType = ResolveChildEffectType(Child);
 	switch (Child.Type)
 	{
 	case EMixtormatLayerChildType::Filter:
@@ -35,7 +47,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			false, true, false, NAME_None});
 		break;
 	case EMixtormatLayerChildType::Effect:
-		if (Child.Effect.ProceduralType == EMixtormatEffectType::Breakup)
+		if (EffectType == EMixtormatEffectType::Breakup)
 		{
 			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
 			// Gap -- so PreviewGapMaskName tells the compositor which published output to borrow
@@ -51,7 +63,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputPieces", "Pieces"), EMixtormatPreviewOutputKind::Mask,
 				true, true, true, NAME_None});
 		}
-		else if (Child.Effect.ProceduralType == EMixtormatEffectType::WornEdges)
+		else if (EffectType == EMixtormatEffectType::WornEdges)
 		{
 			Result.Outputs.Add({FName(TEXT("Wear")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputWear", "Wear"), EMixtormatPreviewOutputKind::Mask,

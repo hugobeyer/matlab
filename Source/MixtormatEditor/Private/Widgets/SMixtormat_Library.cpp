@@ -899,6 +899,7 @@ void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)
 			}
 		}
 		SavedLayers.Reset();
+		SavedLayerGroups.Reset();
 		ResetEditHistory(false);
 	}
 
