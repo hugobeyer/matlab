@@ -341,14 +341,14 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(int32, ResamplePass)
 		SHADER_PARAMETER(int32, ResampleRidge)
+		SHADER_PARAMETER(int32, SmearPass)
 		SHADER_PARAMETER(uint32, WriteRidge)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, Depth)
 		SHADER_PARAMETER(int32, Radius)
 		SHADER_PARAMETER(int32, Iterations)
 		SHADER_PARAMETER(int32, Stride)
-		SHADER_PARAMETER(float, GravityAngle)
-		SHADER_PARAMETER(float, Verticality)
+		SHADER_PARAMETER(float, GravityForce)
 		SHADER_PARAMETER(float, SlopePower)
 		SHADER_PARAMETER(float, Deposit)
 		SHADER_PARAMETER(float, PreserveFlats)
@@ -2306,6 +2306,7 @@ namespace MixtormatGpuCompositor
 				RP->OutputSize = DestRes;
 				RP->ResamplePass = 1;
 				RP->ResampleRidge = bCarryRidge ? 1 : 0;
+				RP->SmearPass = 0;
 				RP->WriteRidge = 0u;
 				RP->Stride = 1;
 				RP->PreviousRidge = InRidge;
@@ -2358,13 +2359,13 @@ namespace MixtormatGpuCompositor
 				Parameters->OutputSize = EroRes;
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
+				Parameters->SmearPass = 0;
 				Parameters->WriteRidge = 1u;
 				Parameters->Amount = Ero.ErosionAmount;
 				Parameters->Depth = Ero.ErosionDepth;
 				Parameters->Radius = Ero.ErosionRadius;
 				Parameters->Iterations = Ero.ErosionIterations;
-				Parameters->GravityAngle = Ero.ErosionGravityAngle;
-				Parameters->Verticality = Ero.ErosionVerticality;
+				Parameters->GravityForce = Ero.ErosionGravityForce;
 				Parameters->SlopePower = Ero.ErosionSlopePower;
 				Parameters->Deposit = Ero.ErosionDeposit;
 				Parameters->PreserveFlats = Ero.ErosionPreserveFlats;
@@ -2435,7 +2436,34 @@ namespace MixtormatGpuCompositor
 					ErosionGroups);
 			}
 
+			// Post-iteration deposit smear: one downstream drag of the settled height along the
+			// flow the solve converged to. Refill-only in the shader and volume-clamped, and an
+			// exact skip at Deposit 0 -- tails are part of deposition, not a separate effect.
 			FRDGTextureRef Result = EroH[(ErosionIterations - 1) & 1];
+			if (Ero.ErosionDeposit > 0.0f)
+			{
+				FMixtormatErosionCS::FParameters* SmearParameters =
+					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+				SetErosionParameters(SmearParameters);
+				SmearParameters->SmearPass = 1;
+				SmearParameters->WriteRidge = 0u;
+				SmearParameters->PreviousHeight = Result;
+				SmearParameters->SourceHeight = SourceH;
+				SmearParameters->PreviousVelocity = EroVel[(ErosionIterations - 1) & 1];
+				SmearParameters->OutputHeight =
+					GraphBuilder.CreateUAV(EroH[ErosionIterations & 1]);
+				SmearParameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
+				SmearParameters->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
+				SmearParameters->OutputNormal = GraphBuilder.CreateUAV(ErosionNormalDummy);
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Smear", LayerIndex),
+					ErosionShader,
+					SmearParameters,
+					ErosionGroups);
+				Result = EroH[ErosionIterations & 1];
+			}
+
 			AddHeightDerivedNormalPass(
 				Ctx,
 				SourceH,

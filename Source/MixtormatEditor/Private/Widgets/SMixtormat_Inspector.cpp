@@ -3900,28 +3900,25 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
 			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
-		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 4.0, 1.0, 0.01,
+		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 4.0, 2,
-			LOCTEXT("EroRadiusHint", "Derivative span in texels for the slope and curvature readings. 2 is the normal working value; 3-4 read broader structure. Cost is fixed whatever the span.")),
-		MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 32.0, 8,
-			LOCTEXT("EroIterationsHint", "Ping-pong wear passes. Each pass analyses the previous pass's output, so wear propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an extreme stress case."))));
+		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 3.0, 1,
+			LOCTEXT("EroRadiusHint", "Derivative span in texels for the slope and curvature readings. 1 is the normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost is fixed whatever the span.")),
+		MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 16.0, 8,
+			LOCTEXT("EroIterationsHint", "Ping-pong wear passes. Each pass analyses the previous pass's output, so wear propagates and deepens with count: 1 is a single local pass, 8 a mature result."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroGravityAngle", "Gravity Angle"), &FMixtormatLayerEffect::ErosionGravityAngle, 0.0, 360.0, 270.0, 1.0,
-			LOCTEXT("EroGravityAngleHint", "Preferred flow direction in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V. The default travels down the texture.")),
-		MakeErosionSlider(LOCTEXT("EroVerticality", "Verticality"), &FMixtormatLayerEffect::ErosionVerticality, 0.0, 1.0, 0.6, 0.01,
-			LOCTEXT("EroVerticalityHint", "Tangent protection: 0 lets erosion follow the terrain naturally, 1 increasingly protects cross-gravity structure while gravity-aligned channels develop, and upward-facing ledges catch more deposit."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroGravityForce", "Gravity Force"), &FMixtormatLayerEffect::ErosionGravityForce, 0.0, 1.0, 0.6, 0.01,
+			LOCTEXT("EroGravityForceHint", "Constant downhill force toward -Y, as a weight over the local slope. 0 follows terrain alone, 1 streaks straight down. Material only ever moves downhill, so flat joints and ledges survive at any value.")),
 		MakeErosionSlider(LOCTEXT("EroSmoothing", "Smoothing"), &FMixtormatLayerEffect::ErosionSmoothing, 0.0, 1.0, 0.65, 0.01,
-			LOCTEXT("EroSmoothingHint", "Flow momentum: how much direction memory the solver keeps between iterations, so surface noise averages out instead of steering the wear. The height itself is never blurred.")),
-		MakeErosionSlider(LOCTEXT("EroSlopePower", "Slope Power"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 8.0, 1.0, 0.05,
-			LOCTEXT("EroSlopePowerHint", "Below 1 responds broadly to gentle slopes, above 1 concentrates wear on steep regions."))));
+			LOCTEXT("EroSmoothingHint", "Flow momentum: how much direction memory the solver keeps between iterations, so surface noise averages out instead of steering the wear. The height itself is never blurred."))));
+	AddSliderRow(Panel, MakeErosionSlider(LOCTEXT("EroSlopePower", "Slope Power"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 1.0, 1.0, 0.01,
+			LOCTEXT("EroSlopePowerHint", "Below 1 responds broadly to gentle slopes, 1 keeps the raw slope response.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroDeposit", "Deposit"), &FMixtormatLayerEffect::ErosionDeposit, 0.0, 4.0, 0.25, 0.01,
-			LOCTEXT("EroDepositHint", "How much removed material refills valleys and depressions. With Verticality, upward-facing ledges catch more. Zero is pure erosion.")),
+			LOCTEXT("EroDepositHint", "How much removed material refills valleys and depressions, and the strength of the downstream deposit tail left below eroded runs. Upward-facing ledges catch more with Gravity Force. Zero is pure erosion.")),
 		MakeErosionSlider(LOCTEXT("EroPreserveFlats", "Preserve Flats"), &FMixtormatLayerEffect::ErosionPreserveFlats, 0.0, 0.5, 0.002, 0.001,
 			LOCTEXT("EroPreserveFlatsHint", "Slope threshold below which wear is suppressed, in normalized gradient space (height change per 1/256 of the tile). Zero leaves every region eligible; higher values protect increasingly flat ones."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(

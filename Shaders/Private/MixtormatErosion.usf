@@ -2,24 +2,30 @@
 
 #include "/Engine/Public/Platform.ush"
 
-// Directional wear erosion for material height fields -- brick, stone, plaster. A curvature
-// and slope solve run as ping-pong iterations with a jump schedule:
+// Directional wear erosion for material height fields -- brick, stone, plaster. A gravity-
+// advected slope solve runs as ping-pong iterations with a jump schedule:
 //
+//     Flow        downhill = -slope, blended toward a constant -Y gravity by Gravity Force.
+//                 Material only ever travels DOWNHILL: a texel loses height only when a
+//                 higher one sits upstream of it along the flow, so streaks cannot run up and
+//                 flat cross-gravity structure (mortar joints, ledges) survives untouched.
 //     dx, dy      central differences of the working height at the pass span
 //     Laplacian   4-neighbour curvature at the same span -- convex (peaks) erodes,
-//                 concave (pits) receives deposit
-//     Momentum    the flow direction is a damped memory of the slope field (Smoothing),
-//                 so per-texel noise cannot steer the wear
+//                 concave (pits) receive deposit, and only where flow actually passes
+//     Momentum    the flow direction is a damped memory of the slope+gravity blend
+//                 (Smoothing), so per-texel noise cannot steer the wear
 //     Relax       a one-sided Jacobi term shaves protrusions toward their neighbours,
 //                 eating iteration dither without ever filling detail back in
-//     Variation   seeded fractal lattice noise varies wear strength in material patches
+//     Smear       one post-iteration pass drags the height downstream along the settled
+//                 flow -- deposit tails and runoff runs, gated by Deposit and clamped to
+//                 the composited layer so it can only refill, never erode or add volume
+//     Variation   seeded broad fractal lattice noise varies wear strength in material
+//                 patches -- two large octaves, not per-texel speckle
 //
 // Every derivative reads the height at one span, so the pass costs a fixed handful of taps
 // whatever the radius or stride -- wide passes measure broad structure, stride-1 passes
-// measure fine, and both cost the same. Verticality protects cross-gravity structure,
-// deposition gains a gravity-catching component, and placement gates apply to the final
-// delta so a hard mask edge cannot feed the solver. The carve pair goes to the shared
-// height-derived normal pass; the convexity response goes to the generated-mask ridge.
+// measure fine, and both cost the same. The carve pair goes to the shared height-derived
+// normal pass; the convexity response goes to the generated-mask ridge.
 
 Texture2D<float> PreviousHeight;
 Texture2D<float> SourceHeight;
@@ -39,14 +45,14 @@ RWTexture2D<float4> OutputNormal;
 int2 OutputSize;
 int ResamplePass;
 int ResampleRidge;
+int SmearPass;
 uint WriteRidge;
 float Amount;
 float Depth;
 int Radius;
 int Iterations;
 int Stride;
-float GravityAngle;
-float Verticality;
+float GravityForce;
 float SlopePower;
 float Deposit;
 float PreserveFlats;
@@ -59,16 +65,17 @@ uint InvertMask;
 
 // Internal constants. RidgeScale shapes the crest signal consumed by the generated-mask
 // drainage path; DepositDirectionScale how strongly upward-facing ledges catch deposit;
-// VariationScale the swing of the seeded wear-strength noise; FlowBiasScale the mild
-// gravity bias the flow direction keeps now that Verticality's primary meaning is tangent
-// protection; RelaxOmega the per-iteration strength of the protrusion shave; RadiusBound
-// the cheap analysis-span ceiling. The step clamp is derived from Depth, Amount, Deposit
-// and the iteration count -- a safety mechanism, not an artistic limiter.
+// VariationScale the swing of the seeded wear-strength noise; TransportGateScale how much
+// through-flow a texel needs before it counts as a deposition site; RelaxOmega the
+// per-iteration strength of the protrusion shave; SmearLength the post-pass tail reach in
+// texels; RadiusBound the cheap analysis-span ceiling. The step clamp is derived from Depth,
+// Amount, Deposit and the iteration count -- a safety mechanism, not an artistic limiter.
 static const float ErosionRidgeScale = 2.0;
 static const float ErosionDepositDirectionScale = 1.25;
 static const float ErosionVariationScale = 0.75;
-static const float ErosionFlowBiasScale = 0.35;
+static const float ErosionTransportGateScale = 8.0;
 static const float ErosionRelaxOmega = 0.25;
+static const float ErosionSmearLength = 8.0;
 static const int ErosionRadiusBound = 4;
 
 // Tileable lattice hash for the variation field. The cell wraps on a 32-period lattice so
@@ -88,8 +95,8 @@ float ErosionHashCell(int2 Cell, uint Seed)
 	return (float)(H & 0x00FFFFFFu) * (1.0f / 16777216.0f);
 }
 
-// Fractal value noise over that lattice: three bilinear octaves, so the variation reads as
-// material patches at two scales rather than per-pixel speckle.
+// Fractal value noise over that lattice: two bilinear octaves at large periods, so the
+// variation reads as broad material-hardness patches rather than per-pixel dither.
 float ErosionVariationField(float2 UV, uint Seed)
 {
 	float Field = 0.0f;
@@ -97,9 +104,9 @@ float ErosionVariationField(float2 UV, uint Seed)
 	float Amplitude = 0.5f;
 
 	[unroll]
-	for (int Octave = 0; Octave < 3; ++Octave)
+	for (int Octave = 0; Octave < 2; ++Octave)
 	{
-		const float Period = 16.0f * (float)(1 << Octave);
+		const float Period = 8.0f * (float)(1 << Octave);
 		const float2 P = UV * Period;
 		const int2 I = (int2)floor(P);
 		const float2 F = P - (float2)I;
@@ -115,6 +122,24 @@ float ErosionVariationField(float2 UV, uint Seed)
 	}
 
 	return Field / Total;
+}
+
+// The mask gate the solve and the smear share. Placement mask wins over the layer feature
+// mask when the effect owns one; invert applies to the authored mask only.
+float ErosionReadGate(
+	float2 UV,
+	Texture2D<float> MaskTex,
+	Texture2D<float4> PlacementTex,
+	uint bUsePlacement,
+	float PlacementTiling,
+	uint bInvert)
+{
+	float Mask = bUsePlacement != 0
+		? PlacementTex.SampleLevel(
+			LinearWrapSampler, frac(UV * max(PlacementTiling, 1.0f)), 0.0f).r
+		: MaskTex.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	Mask = bInvert != 0 ? 1.0f - Mask : Mask;
+	return saturate(Mask);
 }
 
 [numthreads(8, 8, 1)]
@@ -144,13 +169,44 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float Height = PreviousHeight.Load(int3(Pixel, 0));
 	const float Source = SourceHeight.Load(int3(Pixel, 0));
+	const float Gate = ErosionReadGate(
+		UV, LayerMask, PlacementMaskTexture, UsePlacementMask, PlacementMaskTiling, InvertMask);
 
-	float Mask = UsePlacementMask != 0
-		? PlacementMaskTexture.SampleLevel(
-			LinearWrapSampler, frac(UV * max(PlacementMaskTiling, 1.0f)), 0.0f).r
-		: LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	Mask = InvertMask != 0 ? 1.0f - Mask : Mask;
-	const float Gate = saturate(Mask);
+	// Post-iteration deposit smear: drag the settled height downstream along the flow the
+	// solve converged to. Refill-only -- the blend can only raise toward the upstream
+	// average, and the volume clamp keeps it under what the layer composited -- so tails
+	// and runoff runs form below eroded areas and the pass is an exact no-op at Deposit 0.
+	if (SmearPass != 0)
+	{
+		if (Gate <= 0.0f)
+		{
+			OutputHeight[Pixel] = Height;
+			return;
+		}
+
+		const float2 Flow = PreviousVelocity.Load(int3(Pixel, 0)).xy;
+		const float FlowLength = length(Flow);
+		const float2 FlowDir = FlowLength > 1.0e-6f ? Flow / FlowLength : float2(0.0f, -1.0f);
+
+		float SmearSum = 0.0f;
+		float WeightSum = 0.0f;
+		[unroll]
+		for (int Tap = 0; Tap < 6; ++Tap)
+		{
+			const float T = (float)Tap / 5.0f;
+			const float2 SampleUV = UV + FlowDir * (ErosionSmearLength * T / Resolution);
+			const float Weight = 1.0f - T;
+			SmearSum += Weight * PreviousHeight.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
+			WeightSum += Weight;
+		}
+		const float SmearHeight = SmearSum / WeightSum;
+
+		const float Blend = saturate(Deposit) * Gate;
+		float NewHeight = Height + Blend * max(SmearHeight - Height, 0.0f);
+		NewHeight = min(NewHeight, max(Source, Height));
+		OutputHeight[Pixel] = max(NewHeight, 0.0f);
+		return;
+	}
 
 	// Momentum state for this pixel. Gated-out pixels pass it through untouched so the
 	// ping-pong stays aligned even where the mask fades the effect out entirely.
@@ -167,10 +223,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	// Gravity frame. The angle is degrees in UV space: 0 = +U, 90 = +V, 180 = -U, 270 = -V.
-	const float AngleRadians = radians(GravityAngle);
-	const float2 GravityDir = float2(cos(AngleRadians), sin(AngleRadians));
-	const float2 GravityPerp = float2(-GravityDir.y, GravityDir.x);
+	// Gravity is a constant downhill force in UV space: -Y, no angle. Gravity Force is a
+	// plain weight -- how hard flow is pulled down regardless of the local slope.
+	const float2 GravityDir = float2(0.0f, -1.0f);
+	const float GravityWeight = saturate(GravityForce);
 
 	// Resolution normalization: slopes and curvature are expressed per a fixed fraction of
 	// the tile -- height change per 1/256 UV -- so the response, the wear scale and the
@@ -188,34 +244,35 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float HD = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, -SpanStep.y), 0.0f);
 	const float HU = PreviousHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SpanStep.y), 0.0f);
 
-	// Slope in per-texel units, then momentum: the flow memory is a damped lerp toward the
-	// measured slope, so noise that would re-steer every pass averages out over iterations
-	// instead. Smoothing is that memory -- 0 reacts to every texel, 1 barely moves.
 	const float2 SpanSlope = 0.5f * float2(HR - HL, HU - HD) / (float)Span;
+	const float SlopeLength = length(SpanSlope);
+
+	// Flow direction: downhill is minus the slope, blended toward constant gravity by
+	// Gravity Force. Momentum stores this unit flow (not the raw slope), damped by
+	// Smoothing, so the direction read and the carve both stay stable while the slope
+	// magnitude below drives the response.
+	const float2 Downhill = SlopeLength > 1.0e-6f ? -SpanSlope / SlopeLength : GravityDir;
+	const float2 FlowBlend = lerp(Downhill, GravityDir, GravityWeight);
+	const float FlowBlendLength = length(FlowBlend);
+	const float2 InstantFlow = FlowBlendLength > 1.0e-6f
+		? FlowBlend / FlowBlendLength
+		: GravityDir;
 	const float UpdateRate = 1.0f - saturate(Smoothing);
-	const float2 VelocityNew = lerp(Velocity, SpanSlope, UpdateRate);
+	const float2 VelocityNew = lerp(Velocity, InstantFlow, UpdateRate);
 	OutputVelocity[Pixel] = float4(VelocityNew, 0.0f, 0.0f);
 
 	const float VelocityLength = length(VelocityNew);
-	const float SlopeMeasure = VelocityLength * SlopeNorm;
-
-	// Direction decomposition on the momentum, not the instantaneous slope, so tangent
-	// protection is stable while the carve develops. Verticality's primary meaning: how much
-	// cross-gravity structure survives. The flow direction keeps a mild gravity bias; the
-	// align step keeps that blend away from zero length.
-	float2 VDir = VelocityLength > 1.0e-6f
+	float2 FlowDir = VelocityLength > 1.0e-6f
 		? VelocityNew / VelocityLength
-		: GravityDir;
-	if (dot(VDir, GravityDir) < 0.0f)
-	{
-		VDir = -VDir;
-	}
-	const float Across = abs(dot(VDir, GravityPerp));
-	const float TangentProtection = 1.0f - Verticality * Across;
+		: InstantFlow;
+	const float SlopeMeasure = SlopeLength * SlopeNorm;
 
-	const float2 Blended = lerp(VDir, GravityDir, Verticality * ErosionFlowBiasScale);
-	const float BlendLength = length(Blended);
-	const float2 FlowDir = BlendLength > 1.0e-6f ? Blended / BlendLength : GravityDir;
+	// Downhill advection: the only new material a texel can wear away is what sits upstream
+	// of it along the flow. Flat cross-gravity structure reads zero transport -- protection
+	// falls out of the transport term instead of a separate formula.
+	const float2 UpstreamUV = UV - FlowDir * SpanStep;
+	const float HeightUpstream = PreviousHeight.SampleLevel(LinearWrapSampler, UpstreamUV, 0.0f);
+	const float Transport = max(HeightUpstream - Height, 0.0f);
 
 	// Curvature in the same normalized space. A discrete Laplacian at span k is k-squared
 	// the per-texel curvature, so dividing the span back out and scaling by the normalized
@@ -233,33 +290,33 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		max(SlopeMeasure - max(PreserveFlats, 0.0f), 0.0f),
 		max(SlopePower, 0.01f));
 
-	// Seeded wear-strength variation: fractal lattice noise, so the carve breaks up like
-	// material hardness patches instead of eroding uniformly. Zero Variation is an exact
-	// no-op.
+	// Seeded wear-strength variation: broad fractal lattice noise, so the carve breaks up
+	// like material hardness patches instead of dithering per texel. Zero Variation is an
+	// exact no-op.
 	const float StrengthJitter = 1.0f
 		+ saturate(Variation)
 			* (ErosionVariationField(UV, Seed) * 2.0f - 1.0f)
 			* ErosionVariationScale;
 
-	// Amount and Depth are the artistic controls and are applied at face value. Tangent
-	// protection scales how much cross-gravity relief the wear is allowed to take.
+	// Amount and Depth are the artistic controls and are applied at face value. Wear needs
+	// through-flow AND exposure: transport says material is arriving from uphill, convexity
+	// says this texel is a protrusion the flow bites into.
 	const float ErosionDelta =
-		Convexity
+		Transport
+		* Convexity
 		* SlopeResponse
 		* max(Amount, 0.0f)
-		* TangentProtection
 		* StrengthJitter;
 
+	// Deposition only where flow actually passes -- a pit off the flow path does not catch
+	// runoff -- with the catch weighted by how squarely the site faces uphill against
+	// gravity (ledges and backslopes). A gain, not a mask: ordinary valley refill continues
+	// everywhere the flow reaches.
 	float DepositDelta = Concavity * SlopeResponse * max(Deposit, 0.0f);
-
-	// Directional deposition. As Verticality rises, material increasingly collects on
-	// surfaces that face upward against gravity -- ledges and backslopes that catch the
-	// flow. A gain, not a mask: ordinary valley refill continues everywhere.
-	const float2 UphillDir = length(SpanSlope) > 1.0e-6f
-		? SpanSlope / length(SpanSlope)
-		: -GravityDir;
+	DepositDelta *= saturate(Transport * SlopeNorm * ErosionTransportGateScale);
+	const float2 UphillDir = SlopeLength > 1.0e-6f ? SpanSlope / SlopeLength : -GravityDir;
 	const float UpFacing = saturate(dot(UphillDir, -GravityDir));
-	DepositDelta *= 1.0f + Verticality * UpFacing * ErosionDepositDirectionScale;
+	DepositDelta *= 1.0f + GravityWeight * UpFacing * ErosionDepositDirectionScale;
 
 	// Deposit stability: one iteration's refill cannot outrun the relief the same pass says
 	// is movable, so repeated iterations -- and the directional gain -- cannot pump valleys
