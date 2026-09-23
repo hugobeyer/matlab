@@ -765,6 +765,7 @@ namespace MixtormatGpuCompositor
 		float Width = 0.28f;
 		float Depth = 0.08f;
 		float Profile = 1.0f;
+		float Chamfer = 0.25f;
 		float Variation = 0.38f;
 	};
 

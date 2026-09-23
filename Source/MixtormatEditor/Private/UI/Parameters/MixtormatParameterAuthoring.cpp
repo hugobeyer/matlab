@@ -31,6 +31,41 @@ namespace
 		return InnerNameOf(StaticEnum<EMixtormatEffectType>(), static_cast<int64>(Family));
 	}
 
+	const UStruct* StructForKey(const FMixtormatParameterDefinitionKey& Key)
+	{
+		switch (Key.Owner)
+		{
+		case EMixtormatParameterOwnerType::Effect:
+			return FMixtormatLayerEffect::StaticStruct();
+		case EMixtormatParameterOwnerType::Generator:
+			return FMixtormatFracture::StaticStruct();
+		default:
+			return nullptr;
+		}
+	}
+
+	const FProperty* PropertyForKey(const FMixtormatParameterDefinitionKey& Key)
+	{
+		const UStruct* Struct = StructForKey(Key);
+		return Struct ? Struct->FindPropertyByName(Key.Parameter) : nullptr;
+	}
+
+	FString FamilyForKey(const FMixtormatParameterDefinitionKey& Key)
+	{
+		if (const FProperty* Property = PropertyForKey(Key))
+		{
+			FString Family = Property->GetMetaData(TEXT("Category"));
+			const int32 Pipe = Family.Find(TEXT("|"));
+			if (Pipe != INDEX_NONE)
+			{
+				Family.LeftChopInline(Family.Len() - Pipe);
+			}
+			return Family;
+		}
+		return Key.Owner == EMixtormatParameterOwnerType::Generator
+			? TEXT("Generator") : TEXT("Unknown");
+	}
+
 	// Category prefixes name families. Comparison also ignores the display space so the
 	// enum's inner name ("WornEdges") matches the Category spelling ("Worn Edges|Output").
 	bool CategoryMatchesFamily(const FString& Category, const FString& Family)
@@ -269,8 +304,33 @@ namespace MixtormatParameterAuthoring
 		return Fallback;
 	}
 
+	void ApplyAuthoringDefaults(FMixtormatFracture& Fracture)
+	{
+		LoadFromDisk();
+		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
+			: ShippedEntries())
+		{
+			if (Pair.Key.Owner != EMixtormatParameterOwnerType::Generator
+				|| !Pair.Value.Default.IsSet())
+			{
+				continue;
+			}
+			if (const FFloatProperty* Float = CastField<FFloatProperty>(
+				FMixtormatFracture::StaticStruct()->FindPropertyByName(Pair.Key.Parameter)))
+			{
+				*Float->ContainerPtrToValuePtr<float>(&Fracture) = Pair.Value.Default.GetValue();
+			}
+			else if (const FIntProperty* Int = CastField<FIntProperty>(
+				FMixtormatFracture::StaticStruct()->FindPropertyByName(Pair.Key.Parameter)))
+			{
+				*Int->ContainerPtrToValuePtr<int32>(&Fracture) = FMath::RoundToInt(Pair.Value.Default.GetValue());
+			}
+		}
+	}
+
 	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, const EMixtormatEffectType Family)
 	{
+		LoadFromDisk();
 		const FString FamilyName = FamilyKeyOf(Family);
 		UScriptStruct* const EffectStruct = FMixtormatLayerEffect::StaticStruct();
 
@@ -335,11 +395,19 @@ namespace MixtormatParameterAuthoring
 			// Warn when no property answers to it: such entries still load (they key by
 			// parameter), but no family can ever match them at apply time.
 			bool bSectionMatchesAnyCategory = false;
-			for (TFieldIterator<FProperty> It(FMixtormatLayerEffect::StaticStruct()); It; ++It)
+			for (const UStruct* Struct : {static_cast<const UStruct*>(FMixtormatLayerEffect::StaticStruct()),
+				static_cast<const UStruct*>(FMixtormatFracture::StaticStruct())})
 			{
-				if (CategoryMatchesFamily(It->GetMetaData(TEXT("Category")), FamilyPair.Key))
+				for (TFieldIterator<FProperty> It(Struct); It; ++It)
 				{
-					bSectionMatchesAnyCategory = true;
+					if (CategoryMatchesFamily(It->GetMetaData(TEXT("Category")), FamilyPair.Key))
+					{
+						bSectionMatchesAnyCategory = true;
+						break;
+					}
+				}
+				if (bSectionMatchesAnyCategory)
+				{
 					break;
 				}
 			}
@@ -375,15 +443,21 @@ namespace MixtormatParameterAuthoring
 				}
 
 				// KeyNameOf writes the owner-qualified spelling ("Effect.BreakupSeed"); the
-				// parameter itself is the segment after the last dot. Bare names load unchanged.
+				// parameter itself is the segment after the last dot. Bare names remain Effect.
+				EMixtormatParameterOwnerType Owner = EMixtormatParameterOwnerType::Effect;
 				int32 DotIndex = INDEX_NONE;
 				if (ParameterName.FindLastChar(TEXT('.'), DotIndex))
 				{
+					const FString OwnerName = ParameterName.Left(DotIndex);
+					if (OwnerName == TEXT("Generator"))
+					{
+						Owner = EMixtormatParameterOwnerType::Generator;
+					}
 					ParameterName.RightChopInline(DotIndex + 1);
 				}
 
 				FMixtormatParameterDefinitionKey Key;
-				Key.Owner = EMixtormatParameterOwnerType::Effect;
+				Key.Owner = Owner;
 				Key.Parameter = FName(*ParameterName);
 				Key.ValueType = ValueType;
 				if (!Entry.IsEmpty())
@@ -405,19 +479,8 @@ namespace MixtormatParameterAuthoring
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: ShippedEntries())
 		{
-			const FProperty* Property =
-				FMixtormatLayerEffect::StaticStruct()->FindPropertyByName(Pair.Key.Parameter);
-			// The Category prefix is the family grouping, straight off the reflection.
-			FString Family = TEXT("Unknown");
-			if (Property)
-			{
-				Family = Property->GetMetaData(TEXT("Category"));
-				const int32 Pipe = Family.Find(TEXT("|"));
-				if (Pipe != INDEX_NONE)
-				{
-					Family.LeftChopInline(Family.Len() - Pipe);
-				}
-			}
+			// The Category prefix is the family grouping, straight off the reflected owner struct.
+			const FString Family = FamilyForKey(Pair.Key);
 
 			TSharedRef<FJsonObject>* FamilyObject = Families.Find(Family);
 			if (!FamilyObject)

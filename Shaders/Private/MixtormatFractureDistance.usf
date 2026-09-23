@@ -58,7 +58,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				[unroll]
 				for (int Tap = 1; Tap <= 3; ++Tap)
 				{
-					const int2 Q = P + int2(round(Inward * max(FractureWidthPixels, 1.0f) * float(Tap)));
+					const int2 Q = P + int2(round(Inward * FractureWidthPixels * float(Tap)));
 					if (all(OwnerAt(Q) == Owner))
 					{
 						Top = max(Top, HeightAt(Q));
@@ -87,12 +87,10 @@ void StepCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(DispatchThreadId.xy);
 	const uint2 Owner = OwnerAt(P);
 	float4 Best = PreviousRecord.Load(int3(P, 0));
-	float BestD = Best.w > 0.5f ? length(FractureDelta(float2(P), Best.xy, OutputSize)) : 1.0e20f;
-	bool BestOwns = false;
-	if (Best.w > 0.5f)
-	{
-		BestOwns = all(OwnerAt(RecordOrigin(Best)) == Owner);
-	}
+	bool BestOwns = Best.w > 0.5f && all(OwnerAt(RecordOrigin(Best)) == Owner);
+	float BestD = BestOwns
+		? length(FractureDelta(float2(P), Best.xy, OutputSize))
+		: 1.0e20f;
 	[unroll]
 	for (int Y = -1; Y <= 1; ++Y)
 	{
@@ -105,15 +103,18 @@ void StepCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			{
 				continue;
 			}
-			const float D = length(FractureDelta(float2(P), Candidate.xy, OutputSize));
 			const bool Owns = all(OwnerAt(RecordOrigin(Candidate)) == Owner);
+			if (!Owns)
+			{
+				continue;
+			}
+			const float D = length(FractureDelta(float2(P), Candidate.xy, OutputSize));
 			const bool Tie = abs(D - BestD) < 1.0e-5f;
-			if (D < BestD - 1.0e-5f || (Tie && ((Owns && !BestOwns)
-				|| (Owns == BestOwns && asuint(Candidate.z) < asuint(Best.z)))))
+			if (D < BestD - 1.0e-5f || (Tie && asuint(Candidate.z) < asuint(Best.z)))
 			{
 				Best = Candidate;
 				BestD = D;
-				BestOwns = Owns;
+				BestOwns = true;
 			}
 		}
 	}

@@ -51,11 +51,12 @@ namespace
 			// ---- Fracture module.
 			Add(ET::Generator, TEXT("FractureSeed"), {.HardMin = 0.0f});
 			Add(ET::Generator, TEXT("FractureScale"), {.HardMin = 2.0f, .HardMax = 64.0f});
-			Add(ET::Generator, TEXT("FractureAmount"), Saturated());
-			Add(ET::Generator, TEXT("FractureWidth"), Saturated());
+			Add(ET::Generator, TEXT("FractureAmount"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Generator, TEXT("FractureWidth"), {.HardMin = 0.001f, .HardMax = 1.0f});
 			Add(ET::Generator, TEXT("FractureDepth"), {.HardMin = 0.0f});
 			Add(ET::Generator, TEXT("FractureProfile"), {.HardMin = 0.05f});
-			Add(ET::Generator, TEXT("FractureVariation"), Saturated());
+		Add(ET::Generator, TEXT("FractureChamfer"), {.HardMin = 0.0f});
+			Add(ET::Generator, TEXT("FractureVariation"), {.HardMin = 0.0f, .HardMax = 1.0f});
 
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.

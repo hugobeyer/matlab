@@ -57,23 +57,34 @@ namespace
 		}
 
 		FReflectedUi Resolved;
-		// Only effect parameters are UI-resolved today; extend per owner struct as families
-		// beyond FMixtormatLayerEffect migrate.
+		const UScriptStruct* Struct = nullptr;
+		const void* Defaults = nullptr;
 		if (Key.Owner == EMixtormatParameterOwnerType::Effect)
 		{
 			static const FMixtormatLayerEffect CDODefaults;
-			const UScriptStruct* Struct = FMixtormatLayerEffect::StaticStruct();
+			Struct = FMixtormatLayerEffect::StaticStruct();
+			Defaults = &CDODefaults;
+		}
+		else if (Key.Owner == EMixtormatParameterOwnerType::Generator)
+		{
+			static const FMixtormatFracture CDODefaults;
+			Struct = FMixtormatFracture::StaticStruct();
+			Defaults = &CDODefaults;
+		}
+
+		if (Struct && Defaults)
+		{
 			if (const FProperty* Property = Struct->FindPropertyByName(Key.Parameter))
 			{
 				Resolved.bPropertyFound = true;
 
 				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 				{
-					Resolved.Default = *Float->ContainerPtrToValuePtr<float>(&CDODefaults);
+					Resolved.Default = *Float->ContainerPtrToValuePtr<float>(const_cast<void*>(Defaults));
 				}
 				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 				{
-					Resolved.Default = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&CDODefaults));
+					Resolved.Default = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(const_cast<void*>(Defaults)));
 				}
 
 				const auto ReadMeta = [&Property](const TCHAR* Field, float& Out) -> bool
@@ -141,12 +152,19 @@ namespace MixtormatParameterUi
 
 	FProperty* TryFindNumericProperty(const FMixtormatParameterDefinitionKey& Key)
 	{
-		if (Key.Owner != EMixtormatParameterOwnerType::Effect || Key.Parameter.IsNone())
+		if (Key.Parameter.IsNone())
 		{
 			return nullptr;
 		}
-		const FProperty* Property =
-			FMixtormatLayerEffect::StaticStruct()->FindPropertyByName(Key.Parameter);
+		const UScriptStruct* Struct = Key.Owner == EMixtormatParameterOwnerType::Effect
+			? FMixtormatLayerEffect::StaticStruct()
+			: (Key.Owner == EMixtormatParameterOwnerType::Generator
+				? FMixtormatFracture::StaticStruct() : nullptr);
+		if (!Struct)
+		{
+			return nullptr;
+		}
+		const FProperty* Property = Struct->FindPropertyByName(Key.Parameter);
 		return Property && (CastField<FFloatProperty>(Property) || CastField<FIntProperty>(Property))
 			? const_cast<FProperty*>(Property)
 			: nullptr;

@@ -331,6 +331,7 @@ namespace
 			break;
 		case EMixtormatChildCreation::Fracture:
 			Child.Generator.Type = EMixtormatGeneratorType::Fracture;
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Generator.Fracture);
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();

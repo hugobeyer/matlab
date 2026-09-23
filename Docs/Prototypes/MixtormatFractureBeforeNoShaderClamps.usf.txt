@@ -10,10 +10,10 @@ int2 OutputSize;
 uint FractureSeed;
 // @param FractureScale hardmin=2 hardmax=64
 float FractureScale;
-// @param FractureAmount hardmin=0 hardmax=1
+// @param FractureAmount saturates
 float FractureAmount;
 // Stored Width is 0..1; gather converts it to output pixels.
-// @param FractureWidth hardmin=0.001 hardmax=1
+// @param FractureWidth saturates
 float FractureWidthPixels;
 // @param FractureDepth hardmin=0
 float FractureDepth;
@@ -21,7 +21,7 @@ float FractureDepth;
 float FractureProfile;
 // @param FractureChamfer hardmin=0
 float FractureChamfer;
-// @param FractureVariation hardmin=0 hardmax=1
+// @param FractureVariation saturates
 float FractureVariation;
 Texture2D<uint2> PieceIds;
 Texture2D<float2> SourcePosition;
@@ -68,12 +68,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const uint Seed = FractureOwnerSeed(SeedOwner, FractureSeed);
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
-	const int Period = (int)round(FractureScale);
-	const float Variation = FractureVariation;
+	const int Period = max((int)round(FractureScale), 2);
+	const float Variation = saturate(FractureVariation);
 	const float Bands = FractureBand(UV, int2(1, 1), Period * 2, Seed ^ 0x27d4eb2du);
 	const float CrossBands = FractureBand(UV, int2(1, -1), Period * 3, Seed ^ 0xc2b2ae35u);
-	const float Width = FractureWidthPixels * (1.0f + Variation * (0.65f * Bands
-		+ 0.2f * (MixtormatRegionRandom(Seed) * 2.0f - 1.0f)));
+	const float Width = max(FractureWidthPixels * (1.0f + Variation * (0.65f * Bands
+		+ 0.2f * (MixtormatRegionRandom(Seed) * 2.0f - 1.0f))), 0.5f);
 	// Signed offset: positive erodes, negative dilates. Variation changes the piece contour,
 	// independently of the width of the slope raised on that contour.
 	const float Offset = FractureWidthPixels * (0.12f + 0.9f * Variation * CrossBands);
@@ -97,7 +97,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			SameOwner = SameOwner && all(SampleOwner == Owner);
 		}
 	}
-	const float FieldScale = FractureWidthPixels / Width;
+	const float FieldScale = max(FractureWidthPixels, 0.5f) / Width;
 	const float A = ShapeField.Load(int3(P, 0)) * FieldScale;
 	// The current pixel's field is the region-distance threshold. If the
 	// displaced UV crosses an ID, keep A; do not let B push through the edge.
@@ -105,16 +105,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? MixtormatSampleScalarField(ShapeField, LinearWrapSampler, SampleUV)
 			* FieldScale + Offset / Width
 		: A;
-	const float Chamfer = FractureChamfer;
+	const float Chamfer = max(FractureChamfer, 0.0f);
 	const float CombinedField = SameOwner
 		? MixtormatSdfIntersectChamfer(A, B, Chamfer)
 		: A;
 	const float SignedDistance = -CombinedField * Width;
 
 	const float4 Boundary = BoundarySurface.Load(int3(SeedP, 0));
-	const float Depth = FractureDepth
+	const float Depth = max(FractureDepth, 0.0f)
 		* (1.0f + Variation * 0.4f * (MixtormatRegionRandom(Seed ^ 0x85ebca6bu) * 2.0f - 1.0f));
-	const float Profile = FractureProfile * (1.0f + Variation * 0.35f * Bands);
+	const float Profile = max(FractureProfile * (1.0f + Variation * 0.35f * Bands), 0.05f);
 	const float U = saturate(SignedDistance / Width);
 	const float Surface = SameOwner
 		? MixtormatSampleScalarField(SourceHeight, LinearWrapSampler, SampleUV)
@@ -126,8 +126,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Base = Shoulder - Depth;
 	const float Plane = Base + Depth * FractureFace(U, Profile);
 	float Shaped = min(Surface, max(Base, Plane));
-	const float Result = lerp(Original, Shaped, FractureAmount);
+	const float Result = lerp(Original, Shaped, saturate(FractureAmount));
 	OutHeight[P] = Result;
-	const float MaskDepth = FractureDepth == 0.0f ? 1.0e-5f : FractureDepth;
-	OutFractureMask[P] = saturate(abs(Result - Original) / MaskDepth);
+	OutFractureMask[P] = saturate(abs(Result - Original) / max(FractureDepth, 1.0e-5f));
 }

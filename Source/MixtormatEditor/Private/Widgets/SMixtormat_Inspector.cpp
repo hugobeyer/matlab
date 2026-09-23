@@ -3227,6 +3227,10 @@ TSharedRef<SWidget> SMixtormat::BuildFractureControls()
 			&FMixtormatFracture::FractureProfile, 0.25, 4.0, 1.0, 0.01,
 			LOCTEXT("FractureProfileHint", "Shapes three planar slope sections. One is linear; lower or higher changes the slope breaks."))));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatFracture>(
+		LOCTEXT("FractureChamfer", "Chamfer"), Fracture,
+		&FMixtormatFracture::FractureChamfer, 0.0, 3.0, 0.25, 0.01,
+		LOCTEXT("FractureChamferHint", "SDF intersection chamfer in normalized field units. Zero uses a hard intersection. Independent of Slope Profile; no re-normalization.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatFracture>(
 		LOCTEXT("FractureVariation", "Variation"), Fracture,
 		&FMixtormatFracture::FractureVariation, 0.0, 1.0, 0.38, 0.01,
 		LOCTEXT("FractureVariationHint", "Directional zigzags, signed boundary offsets, shoulder width and broken slope variation; no micro noise.")));

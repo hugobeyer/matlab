@@ -25,5 +25,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? length(FractureDelta(float2(P), Record.xy, OutputSize))
 		: float(OutputSize.x + OutputSize.y);
 	// One shoulder width is one field unit, independent of output resolution.
-	OutField[P] = (Gap ? Distance : -Distance) / max(FractureWidthPixels, 0.5f);
+	OutField[P] = (Gap ? Distance : -Distance) / FractureWidthPixels;
 }

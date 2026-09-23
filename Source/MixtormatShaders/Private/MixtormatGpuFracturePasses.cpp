@@ -120,6 +120,7 @@ public:
 		SHADER_PARAMETER(float, FractureWidthPixels)
 		SHADER_PARAMETER(float, FractureDepth)
 		SHADER_PARAMETER(float, FractureProfile)
+		SHADER_PARAMETER(float, FractureChamfer)
 		SHADER_PARAMETER(float, FractureVariation)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint2>, PieceIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourcePosition)
@@ -256,6 +257,7 @@ namespace
 			P->FractureWidthPixels = WidthPixels;
 			P->FractureDepth = Fracture.Depth;
 			P->FractureProfile = Fracture.Profile;
+			P->FractureChamfer = Fracture.Chamfer;
 			P->FractureVariation = Fracture.Variation;
 			P->PieceIds = PieceIds;
 			P->SourcePosition = SourcePosition;

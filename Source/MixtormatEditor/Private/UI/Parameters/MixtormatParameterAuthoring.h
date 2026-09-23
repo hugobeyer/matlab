@@ -75,11 +75,10 @@ namespace MixtormatParameterAuthoring
 	float ResolveAuthoringSnap(const FMixtormatParameterDefinitionKey& Key, float Fallback);
 	FText ResolveAuthoringLabel(const FMixtormatParameterDefinitionKey& Key, const FText& Fallback);
 
-	// Creation-time defaults: applies every persistently-editable Default of the family that
-	// the shipped database (or, absent an entry, nothing -- the compiled struct initializer
-	// already holds the compiled default) defines, to a GENUINELY NEW effect. Never called on
-	// duplication or instance resolve; existing authored values are not rewritten.
+	// Creation-time defaults: applies persisted entries to genuinely new effect or Fracture
+	// payloads. Duplication and instance resolve never call these; authored values are untouched.
 	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, EMixtormatEffectType Family);
+	void ApplyAuthoringDefaults(FMixtormatFracture& Fracture);
 
 	// Database serialization. LoadFromString replaces the entire shipped database and is the
 	// corruption boundary: malformed input returns false and leaves the database empty rather

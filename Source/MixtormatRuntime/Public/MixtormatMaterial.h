@@ -2709,6 +2709,10 @@ struct MIXTORMATRUNTIME_API FMixtormatFracture
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
 	float FractureProfile = 1.0f;
 
+	// Chamfer intersection radius in normalized field units, independent of slope profile.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float FractureChamfer = 0.25f;
+
 	// Coherent directional deformation, signed offsets, width and face variation.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float FractureVariation = 0.38f;

@@ -1808,6 +1808,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						EMixtormatParameterOwnerType::Generator, TEXT("FractureDepth"), Fracture.FractureDepth);
 					Out.Profile = SanitizeFloat(
 						EMixtormatParameterOwnerType::Generator, TEXT("FractureProfile"), Fracture.FractureProfile);
+					Out.Chamfer = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureChamfer"), Fracture.FractureChamfer);
 					Out.Variation = SanitizeFloat(
 						EMixtormatParameterOwnerType::Generator, TEXT("FractureVariation"), Fracture.FractureVariation);
 					break;

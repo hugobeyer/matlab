@@ -177,9 +177,12 @@ namespace MixtormatShaderParamScanner
 				FMixtormatShaderParamTag Tag;
 				const FString RelativeFile = File.RightChop(PluginRoot.Len() + 1);
 				Tag.ShaderFile = RelativeFile;
-				Tag.Owner = RelativeFile.EndsWith(TEXT("MixtormatComposite.usf"))
+				const FString ShaderName = FPaths::GetCleanFilename(RelativeFile);
+				Tag.Owner = ShaderName == TEXT("MixtormatComposite.usf")
 					? EMixtormatParameterOwnerType::Layer
-					: EMixtormatParameterOwnerType::Effect;
+					: (ShaderName.StartsWith(TEXT("MixtormatFracture"))
+						? EMixtormatParameterOwnerType::Generator
+						: EMixtormatParameterOwnerType::Effect);
 
 				FString Error;
 				if (!ParseTag(Comment.RightChop(3).TrimStart(), Tag, Error))

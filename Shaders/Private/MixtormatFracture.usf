@@ -42,22 +42,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const int2 P = int2(DispatchThreadId.xy);
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
-	const int Period = max((int)round(FractureScale), 2);
-	const float Radius = max(FractureWidthPixels * 2.0f, 1.0f);
+	const int Period = (int)round(FractureScale);
+	const float Radius = FractureWidthPixels * 2.0f;
 	const float H = HeightAt(float2(P));
 	const float Lower = min(min(HeightAt(float2(P) + float2(Radius, 0)),
 		HeightAt(float2(P) - float2(Radius, 0))),
 		min(HeightAt(float2(P) + float2(0, Radius)),
 		HeightAt(float2(P) - float2(0, Radius))));
-	const float HighEdge = smoothstep(0.0f, max(FractureDepth, 1.0e-5f), H - Lower);
+	const float HighEdge = smoothstep(0.0f, FractureDepth, H - Lower);
 	const float2 Shear = float2(
 		FractureBand(UV, int2(0, 1), Period, FractureSeed ^ 0x9e3779b9u),
 		FractureBand(UV, int2(1, 1), Period, FractureSeed ^ 0x85ebca6bu));
 	const float2 Breaks = float2(
 		FractureBand(UV, int2(1, -1), Period * 3, FractureSeed ^ 0x27d4eb2du),
 		FractureBand(UV, int2(1, 0), Period * 2, FractureSeed ^ 0xc2b2ae35u));
-	const float2 Q = float2(P) + FractureWidthPixels * saturate(FractureAmount)
-		* saturate(FractureVariation) * (0.35f + 0.65f * HighEdge)
+	const float2 Q = float2(P) + FractureWidthPixels * FractureAmount
+		* FractureVariation * (0.35f + 0.65f * HighEdge)
 		* (1.5f * Shear + 0.45f * Breaks);
 
 	uint Parent = 0u;
