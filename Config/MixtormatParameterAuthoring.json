@@ -137,5 +137,15 @@
 			"uiMax": 1,
 			"snap": 0.0099999997764825821
 		}
+	},
+	"Fracture":
+	{
+		"Generator.FractureScale":
+		{
+			"default": 7,
+			"uiMin": 2,
+			"uiMax": 256,
+			"snap": 1
+		}
 	}
 }
