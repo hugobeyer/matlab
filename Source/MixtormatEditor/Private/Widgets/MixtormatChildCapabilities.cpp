@@ -52,6 +52,12 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("Fracture")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputFracture", "Fracture"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FaceProgress")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputFractureFaceProgress", "Face Progress"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FractureHeight")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputFractureHeight", "Fracture Height"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		break;
 	case EMixtormatLayerChildType::Effect:

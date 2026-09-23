@@ -22,15 +22,26 @@ uint FractureOwnerSeed(uint2 Owner, uint Seed)
 	return MixtormatRegionHash(Owner.x ^ MixtormatRegionHash(Owner.y) ^ Seed);
 }
 
-// Periodic, piecewise-linear bands: straight shears separated by angular breaks,
-// not smooth noise warping. Integer directions close across both tile seams.
-float FractureBand(float2 UV, int2 Direction, int Period, uint Seed)
+// Three low-roughness octaves retain broad variation without global stripe directions.
+// Integer lacunarity preserves tile seams. Unit-gradient noise is bounded by sqrt(2);
+// normalizing that bound and the octave weights keeps the derived width positive.
+float FractureFractal(float2 UV, int Period, uint Seed)
 {
-	const float T = dot(UV, float2(Direction)) * float(Period);
-	const int Knot = (int)floor(T);
-	const float A = MixtormatRegionRandom(uint(MixtormatWrapI(Knot, Period)) ^ Seed);
-	const float B = MixtormatRegionRandom(uint(MixtormatWrapI(Knot + 1, Period)) ^ Seed);
-	return lerp(A, B, frac(T)) * 2.0f - 1.0f;
+	const float Coarse = MixtormatPeriodicNoiseD(UV * float(Period), Period, Seed).x;
+	const float Medium = MixtormatPeriodicNoiseD(
+		UV * float(Period * 2), Period * 2, Seed ^ 0x9e3779b9u).x;
+	const float Fine = MixtormatPeriodicNoiseD(
+		UV * float(Period * 4), Period * 4, Seed ^ 0x85ebca6bu).x;
+	return (Coarse + 0.18f * Medium + 0.0324f * Fine) * (0.70710678118f / 1.2124f);
+}
+
+float2 FractureShapeFields(float2 UV, int Period, uint Seed)
+{
+	const float2 Curl = MixtormatPeriodicCurlField(UV, Period, Seed);
+	const float2 WarpedUV = UV + Curl * (0.125f / float(Period));
+	return float2(
+		FractureFractal(WarpedUV, Period, Seed ^ 0x27d4eb2du),
+		FractureFractal(WarpedUV, Period, Seed ^ 0xc2b2ae35u));
 }
 
 // Three planar sections retain slope breaks instead of rounding every face with pow(distance).

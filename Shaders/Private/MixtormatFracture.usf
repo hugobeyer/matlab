@@ -27,8 +27,25 @@ SamplerState LinearWrapSampler;
 RWTexture2D<uint2> OutPieceIds;
 RWTexture2D<float2> OutSourcePosition;
 
-float HeightAt(float2 P)
+float HeightAt(float2 P, uint Parent, float LocalHeight)
 {
+	if (HasRegionIds != 0u)
+	{
+		const int2 Base = int2(floor(P));
+		[unroll]
+		for (int Y = 0; Y <= 1; ++Y)
+		{
+			[unroll]
+			for (int X = 0; X <= 1; ++X)
+			{
+				const uint Id = RegionIds.Load(int3(FractureWrap(Base + int2(X, Y), OutputSize), 0));
+				if (Id == MIXTORMAT_INVALID_REGION || Id != Parent)
+				{
+					return LocalHeight;
+				}
+			}
+		}
+	}
 	return SourceHeight.SampleLevel(LinearWrapSampler, (P + 0.5f) / float2(OutputSize), 0);
 }
 
@@ -44,27 +61,32 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
 	const int Period = (int)round(FractureScale);
 	const float Radius = FractureWidthPixels * 2.0f;
-	const float H = HeightAt(float2(P));
-	const float Lower = min(min(HeightAt(float2(P) + float2(Radius, 0)),
-		HeightAt(float2(P) - float2(Radius, 0))),
-		min(HeightAt(float2(P) + float2(0, Radius)),
-		HeightAt(float2(P) - float2(0, Radius))));
-	const float HighEdge = smoothstep(0.0f, FractureDepth, H - Lower);
-	const float2 Shear = float2(
-		FractureBand(UV, int2(0, 1), Period, FractureSeed ^ 0x9e3779b9u),
-		FractureBand(UV, int2(1, 1), Period, FractureSeed ^ 0x85ebca6bu));
-	const float2 Breaks = float2(
-		FractureBand(UV, int2(1, -1), Period * 3, FractureSeed ^ 0x27d4eb2du),
-		FractureBand(UV, int2(1, 0), Period * 2, FractureSeed ^ 0xc2b2ae35u));
-	const float2 Q = float2(P) + FractureWidthPixels * FractureAmount
-		* FractureVariation * (0.35f + 0.65f * HighEdge)
-		* (1.5f * Shear + 0.45f * Breaks);
-
-	uint Parent = 0u;
-	if (FractureSource != 0u && HasRegionIds != 0u)
+	// Keep Pattern/Ramp identity in its original pixel domain, including gaps.
+	// Generated mode adds sub-pieces; it must not borrow another parent's height.
+	const uint Parent = HasRegionIds != 0u ? RegionIds.Load(int3(P, 0)) : 0u;
+	if (Parent == MIXTORMAT_INVALID_REGION)
 	{
-		Parent = RegionIds.Load(int3(FractureWrap(int2(floor(Q + 0.5f)), OutputSize), 0));
+		OutPieceIds[P] = uint2(Parent, 0u);
+		OutSourcePosition[P] = float2(P);
+		return;
 	}
+	const float H = SourceHeight.Load(int3(P, 0));
+	const float Lower = min(min(HeightAt(float2(P) + float2(Radius, 0), Parent, H),
+		HeightAt(float2(P) - float2(Radius, 0), Parent, H)),
+		min(HeightAt(float2(P) + float2(0, Radius), Parent, H),
+		HeightAt(float2(P) - float2(0, Radius), Parent, H)));
+	const float HighEdge = smoothstep(0.0f, FractureDepth, H - Lower);
+	const uint WarpSeed = FractureOwnerSeed(uint2(Parent, 0u), FractureSeed);
+	const float2 Curl = MixtormatPeriodicCurlField(UV, Period, WarpSeed);
+	const float Fractal = FractureFractal(UV, Period, WarpSeed ^ 0x27d4eb2du);
+	// Fixed pixel displacement folds increasingly short wavelengths at high Scale.
+	// Bound derived displacement relative to wavelength, not the bound parameters.
+	const float WavelengthPixels = float(min(OutputSize.x, OutputSize.y)) / float(Period);
+	const float WarpPixels = FractureWidthPixels / (1.0f + 2.0f * FractureWidthPixels / WavelengthPixels);
+	const float2 Q = float2(P) + WarpPixels * FractureAmount
+		* FractureVariation * (0.35f + 0.65f * HighEdge)
+		* Curl * (1.0f + 0.35f * Fractal);
+
 
 	uint Piece = 0u;
 	if (FractureSource != 1u)

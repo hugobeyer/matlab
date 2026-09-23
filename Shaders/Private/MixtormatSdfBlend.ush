@@ -14,4 +14,15 @@ float MixtormatSdfIntersectChamfer(float A, float B, float Radius)
 	return max(max(A, B), (A + B + Radius) * 0.7071067811865475f);
 }
 
+// Fracture intersects correlated samples of one field, not independent solids.
+// Bound the extra chamfer cut by field disagreement: continuous as B approaches A,
+// symmetric, never below max(A,B), and exactly unchanged when A == B.
+// This is deliberately NOT Houdini's unmodified sdfOpIntersectChamfer.
+float MixtormatSdfIntersectChamferCorrelated(float A, float B, float Radius)
+{
+	const float Intersection = max(A, B);
+	const float Chamfer = MixtormatSdfIntersectChamfer(A, B, Radius);
+	return Intersection + min(Chamfer - Intersection, abs(A - B));
+}
+
 #endif

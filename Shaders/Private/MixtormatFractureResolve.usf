@@ -26,12 +26,68 @@ float FractureVariation;
 Texture2D<uint2> PieceIds;
 Texture2D<float2> SourcePosition;
 Texture2D<float4> BoundaryRecord;
-Texture2D<float4> BoundarySurface;
+
 Texture2D<float> SourceHeight;
 Texture2D<float> ShapeField;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutHeight;
 RWTexture2D<float> OutFractureMask;
+RWTexture2D<float> OutFaceProgress;
+
+// Manual bilinear gather: xy are coverage-weighted field/height, z is owned
+// coverage. A gap corner loses only its own weight, not the entire footprint.
+float3 FractureSampleFields(float2 Q, uint2 Owner)
+{
+	const int2 Base = int2(floor(Q));
+	const float2 F = frac(Q);
+	float3 Sum = 0.0f;
+	[unroll]
+	for (int Y = 0; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = 0; X <= 1; ++X)
+		{
+			const int2 Tap = FractureWrap(Base + int2(X, Y), OutputSize);
+			const uint2 TapOwner = PieceIds.Load(int3(Tap, 0));
+			if (TapOwner.x != MIXTORMAT_INVALID_REGION && all(TapOwner == Owner))
+			{
+				const float Weight = (X == 0 ? 1.0f - F.x : F.x)
+					* (Y == 0 ? 1.0f - F.y : F.y);
+				Sum += float3(ShapeField.Load(int3(Tap, 0)),
+					SourceHeight.Load(int3(Tap, 0)), 1.0f) * Weight;
+			}
+		}
+	}
+	return Sum;
+}
+
+// Carry coverage through the tent filter instead of renormalizing a changing
+// set of accepted footprints. This avoids hard switches beside one-pixel gaps.
+float3 FractureFilteredFields(float2 Q, uint2 Owner, float Radius)
+{
+	const float3 Center = FractureSampleFields(Q, Owner);
+	if (Radius <= 0.0f)
+	{
+		return Center;
+	}
+	float3 Sum = Center * 4.0f;
+	[unroll]
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = -1; X <= 1; ++X)
+		{
+			if (X == 0 && Y == 0)
+			{
+				continue;
+			}
+			const float2 Tap = Q + float2(X, Y) * Radius;
+			const float Weight = (X == 0 || Y == 0) ? 2.0f : 1.0f;
+			Sum += FractureSampleFields(Tap, Owner) * Weight;
+		}
+	}
+	return Sum / 16.0f;
+}
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -45,6 +101,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float4 Record = BoundaryRecord.Load(int3(P, 0));
 	OutHeight[P] = Original;
 	OutFractureMask[P] = 0.0f;
+	OutFaceProgress[P] = PieceIds.Load(int3(P, 0)).x == MIXTORMAT_INVALID_REGION ? 0.0f : 1.0f;
 	if (Record.w <= 0.5f)
 	{
 		return;
@@ -70,62 +127,53 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
 	const int Period = (int)round(FractureScale);
 	const float Variation = FractureVariation;
-	const float Bands = FractureBand(UV, int2(1, 1), Period * 2, Seed ^ 0x27d4eb2du);
-	const float CrossBands = FractureBand(UV, int2(1, -1), Period * 3, Seed ^ 0xc2b2ae35u);
-	const float Width = FractureWidthPixels * (1.0f + Variation * (0.65f * Bands
+	const float2 Fields = FractureShapeFields(UV, Period, Seed);
+	const float Width = FractureWidthPixels * (1.0f + Variation * (0.65f * Fields.x
 		+ 0.2f * (MixtormatRegionRandom(Seed) * 2.0f - 1.0f)));
 	// Signed offset: positive erodes, negative dilates. Variation changes the piece contour,
 	// independently of the width of the slope raised on that contour.
-	const float Offset = FractureWidthPixels * (0.12f + 0.9f * Variation * CrossBands);
+	const float Offset = FractureWidthPixels * (0.12f + 0.9f * Variation * Fields.y);
 	// A is the base field; B is the SAME field sampled through displaced UVs.
 	// Blend signed values before shaping height, not a groove mask or two heights.
 	const float2 Q = SourcePosition.Load(int3(P, 0));
-	const float2 SampleUV = (Q + 0.5f) / float2(OutputSize);
-	// Bilinear sampling touches a 2x2 footprint. A center-point ID check is
-	// insufficient: one tap can still come from a gap or neighbour and create
-	// a false SDF peak at the crossing.
-	const int2 SampleBase = int2(floor(Q));
-	bool SameOwner = true;
-	[unroll]
-	for (int Y = 0; Y <= 1; ++Y)
-	{
-		[unroll]
-		for (int X = 0; X <= 1; ++X)
-		{
-			const uint2 SampleOwner = PieceIds.Load(int3(
-				FractureWrap(SampleBase + int2(X, Y), OutputSize), 0));
-			SameOwner = SameOwner && all(SampleOwner == Owner);
-		}
-	}
+
+	// Actual displacement includes Amount, Variation and local warp strength.
+	// This is intensity-driven smoothing, not a UV-Jacobian antialiasing solve.
+	// A bounded two-texel radius keeps nine bilinear taps from becoming sparse
+	// at high intensity. No bound parameter is clamped here.
+	const float Displacement = length(Q - float2(P));
+	const float FilterRadius = 2.0f * (Displacement / (Displacement + 4.0f));
+	const float LocalField = ShapeField.Load(int3(P, 0));
+	// The unmodified owner-distance field masks smoothing to ID/gap edges,
+	// not fracture-face intensity. Interiors retain ordinary owner-aware bilinear sampling.
+	const float EdgeDistancePixels = -LocalField * FractureWidthPixels;
+	const float EdgeFilterMask = 1.0f - smoothstep(
+		0.5f, 1.5f + FilterRadius, EdgeDistancePixels);
+	const float3 Filtered = FractureFilteredFields(Q, Owner, FilterRadius * EdgeFilterMask);
+	// Keep the existing local-value policy for missing ownership, but apply it
+	// by coverage rather than switching an entire sample on or off.
+	const float Coverage = saturate(Filtered.z);
+	const float2 SampledFields = Filtered.xy
+		+ float2(LocalField, Original) * (1.0f - Coverage);
 	const float FieldScale = FractureWidthPixels / Width;
-	const float A = ShapeField.Load(int3(P, 0)) * FieldScale;
-	// The current pixel's field is the region-distance threshold. If the
-	// displaced UV crosses an ID, keep A; do not let B push through the edge.
-	const float B = SameOwner
-		? MixtormatSampleScalarField(ShapeField, LinearWrapSampler, SampleUV)
-			* FieldScale + Offset / Width
-		: A;
+	const float A = LocalField * FieldScale;
+	// With zero owned coverage B equals A exactly, including the contour offset.
+	const float B = SampledFields.x * FieldScale + (Offset / Width) * Coverage;
 	const float Chamfer = FractureChamfer;
-	const float CombinedField = SameOwner
-		? MixtormatSdfIntersectChamfer(A, B, Chamfer)
-		: A;
+	const float CombinedField = MixtormatSdfIntersectChamferCorrelated(A, B, Chamfer);
 	const float SignedDistance = -CombinedField * Width;
 
-	const float4 Boundary = BoundarySurface.Load(int3(SeedP, 0));
+
 	const float Depth = FractureDepth
 		* (1.0f + Variation * 0.4f * (MixtormatRegionRandom(Seed ^ 0x85ebca6bu) * 2.0f - 1.0f));
-	const float Profile = FractureProfile * (1.0f + Variation * 0.35f * Bands);
+	const float Profile = FractureProfile * (1.0f + Variation * 0.35f * Fields.x);
 	const float U = saturate(SignedDistance / Width);
-	const float Surface = SameOwner
-		? MixtormatSampleScalarField(SourceHeight, LinearWrapSampler, SampleUV)
-		: Original;
-	// The face must meet the sampled surface continuously at U=1. A seed's
-	// shoulder can be lower than this pixel; switching to Surface there created
-	// a height step. Raise only the face ceiling, keeping the final surface cap.
-	const float Shoulder = max(Boundary.z, Surface);
-	const float Base = Shoulder - Depth;
-	const float Plane = Base + Depth * FractureFace(U, Profile);
-	float Shaped = min(Surface, max(Base, Plane));
+	OutFaceProgress[P] = U;
+	const float Surface = SampledFields.y;
+	// A nearest seed's max shoulder jumps whenever the winning seed changes.
+	// Anchor the broad, three-section face to the owner-local surface instead:
+	// U=0 removes Depth and U=1 meets Surface exactly, without seed-height peaks.
+	const float Shaped = Surface - Depth * (1.0f - FractureFace(U, Profile));
 	const float Result = lerp(Original, Shaped, FractureAmount);
 	OutHeight[P] = Result;
 	const float MaskDepth = FractureDepth == 0.0f ? 1.0e-5f : FractureDepth;

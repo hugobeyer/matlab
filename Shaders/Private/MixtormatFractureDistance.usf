@@ -5,25 +5,19 @@
 
 int2 OutputSize;
 int StepSize;
-float FractureWidthPixels;
+
 Texture2D<uint2> PieceIds;
-Texture2D<float2> SourcePosition;
-Texture2D<float> SourceHeight;
+
 Texture2D<float4> PreviousRecord;
-SamplerState LinearWrapSampler;
+
 RWTexture2D<float4> OutputRecord;
-RWTexture2D<float4> OutputBoundary;
+
 
 uint2 OwnerAt(int2 P)
 {
 	return PieceIds.Load(int3(FractureWrap(P, OutputSize), 0));
 }
 
-float HeightAt(int2 P)
-{
-	const float2 Q = SourcePosition.Load(int3(FractureWrap(P, OutputSize), 0));
-	return SourceHeight.SampleLevel(LinearWrapSampler, (Q + 0.5f) / float2(OutputSize), 0);
-}
 
 int2 RecordOrigin(float4 Record)
 {
@@ -32,7 +26,7 @@ int2 RecordOrigin(float4 Record)
 }
 
 // Seed actual owned footprints, including valid-to-gap interfaces. The seed lies halfway
-// between texels; z carries its owning texel, not a crack-line hash. Boundary.xy points inward.
+// between texels; z carries its owning texel, not a crack-line hash.
 [numthreads(8, 8, 1)]
 void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -43,7 +37,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(DispatchThreadId.xy);
 	const uint2 Owner = OwnerAt(P);
 	float4 Record = 0.0f;
-	float4 Boundary = 0.0f;
+
 	if (Owner.x != MIXTORMAT_INVALID_REGION)
 	{
 		const int2 Offsets[4] = {int2(1, 0), int2(0, 1), int2(-1, 0), int2(0, -1)};
@@ -52,27 +46,16 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			if (any(OwnerAt(P + Offsets[I]) != Owner))
 			{
-				const float2 Inward = -float2(Offsets[I]);
-				float Top = HeightAt(P);
-				// Anchor the cut to the piece's shoulder, not to each pixel being carved.
-				[unroll]
-				for (int Tap = 1; Tap <= 3; ++Tap)
-				{
-					const int2 Q = P + int2(round(Inward * FractureWidthPixels * float(Tap)));
-					if (all(OwnerAt(Q) == Owner))
-					{
-						Top = max(Top, HeightAt(Q));
-					}
-				}
+
 				Record = float4(float2(P) + float2(Offsets[I]) * 0.5f,
 					asfloat(uint(P.y * OutputSize.x + P.x)), 1.0f);
-				Boundary = float4(Inward, Top, 0.0f);
+
 				break;
 			}
 		}
 	}
 	OutputRecord[P] = Record;
-	OutputBoundary[P] = Boundary;
+
 }
 
 // Approximate Euclidean redistance AFTER directional deformation. JFA is not an exact
@@ -118,5 +101,5 @@ void StepCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 		}
 	}
-	OutputRecord[P] = Best;
+	OutputRecord[P] = BestOwns && Owner.x != MIXTORMAT_INVALID_REGION ? Best : 0.0f;
 }

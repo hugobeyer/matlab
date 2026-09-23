@@ -2701,7 +2701,7 @@ struct MIXTORMATRUNTIME_API FMixtormatFracture
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float FractureWidth = 0.28f;
 
-	// Face depth below the piece shoulder, in layer-height units.
+	// Face depth below the owner-local sampled surface, in layer-height units.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float FractureDepth = 0.08f;
 
@@ -2709,7 +2709,7 @@ struct MIXTORMATRUNTIME_API FMixtormatFracture
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
 	float FractureProfile = 1.0f;
 
-	// Chamfer intersection radius in normalized field units, independent of slope profile.
+	// Correlated-field chamfer radius in normalized field units; identical fields stay unchanged.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
 	float FractureChamfer = 0.25f;
 

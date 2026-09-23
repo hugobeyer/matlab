@@ -51,13 +51,8 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureSeedCS, FGlobalShader);
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, FractureWidthPixels)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint2>, PieceIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourcePosition)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBoundary)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -125,12 +120,13 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint2>, PieceIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourcePosition)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BoundaryRecord)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BoundarySurface)
+
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ShapeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFractureMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFaceProgress)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -159,6 +155,11 @@ namespace
 				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
 		FRDGTextureRef OutputMask = MakeTexture(PF_R16F, TEXT("Mixtormat.Fracture.Mask"));
+		FRDGTextureRef FaceProgress = MakeTexture(PF_R16F, TEXT("Mixtormat.Fracture.FaceProgress"));
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("FaceProgress"))}, FaceProgress);
+		const FPublishedMaskKey HeightKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("FractureHeight"))};
+		Ctx.PublishedMaskOutputs.Add(HeightKey, SourceHeight);
 		Ctx.PublishedMaskOutputs.Add(
 			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Fracture"))}, OutputMask);
 		FRDGTextureRef RegionIds = FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
@@ -166,6 +167,7 @@ namespace
 			|| (!RegionIds && Fracture.Source == EMixtormatFractureSource::RegionIds))
 		{
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputMask), FVector4f(0.0f));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(FaceProgress), FVector4f(0.0f));
 			return SourceHeight;
 		}
 
@@ -173,7 +175,7 @@ namespace
 			* static_cast<float>(FMath::Min(Size.X, Size.Y)) / 1024.0f;
 		FRDGTextureRef PieceIds = MakeTexture(PF_R32G32_UINT, TEXT("Mixtormat.Fracture.Pieces"));
 		FRDGTextureRef SourcePosition = MakeTexture(PF_G32R32F, TEXT("Mixtormat.Fracture.SourcePosition"));
-		FRDGTextureRef Boundary = MakeTexture(PF_A32B32G32R32F, TEXT("Mixtormat.Fracture.Boundary"));
+
 		FRDGTextureRef Record[2] = {
 			MakeTexture(PF_A32B32G32R32F, TEXT("Mixtormat.Fracture.DistanceA")),
 			MakeTexture(PF_A32B32G32R32F, TEXT("Mixtormat.Fracture.DistanceB"))};
@@ -206,13 +208,8 @@ namespace
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureSeedCS::FParameters>();
 			P->OutputSize = Size;
-			P->FractureWidthPixels = WidthPixels;
 			P->PieceIds = PieceIds;
-			P->SourcePosition = SourcePosition;
-			P->SourceHeight = SourceHeight;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->OutputRecord = GraphBuilder.CreateUAV(Record[0]);
-			P->OutputBoundary = GraphBuilder.CreateUAV(Boundary);
 			TShaderMapRef<FMixtormatFractureSeedCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Fracture.Boundaries"), Shader, P, Groups);
 		}
@@ -262,15 +259,17 @@ namespace
 			P->PieceIds = PieceIds;
 			P->SourcePosition = SourcePosition;
 			P->BoundaryRecord = Record[ReadIndex];
-			P->BoundarySurface = Boundary;
+
 			P->ShapeField = ShapeField;
 			P->SourceHeight = SourceHeight;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->OutHeight = GraphBuilder.CreateUAV(OutputHeight);
 			P->OutFractureMask = GraphBuilder.CreateUAV(OutputMask);
+			P->OutFaceProgress = GraphBuilder.CreateUAV(FaceProgress);
 			TShaderMapRef<FMixtormatFractureResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Fracture.FaceIntersection"), Shader, P, Groups);
 		}
+		Ctx.PublishedMaskOutputs.Add(HeightKey, OutputHeight);
 		return OutputHeight;
 	}
 }

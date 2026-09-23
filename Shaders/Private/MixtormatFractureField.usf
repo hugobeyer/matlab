@@ -20,8 +20,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	const int2 P = int2(DispatchThreadId.xy);
 	const float4 Record = BoundaryRecord.Load(int3(P, 0));
-	const bool Gap = PieceIds.Load(int3(P, 0)).x == MIXTORMAT_INVALID_REGION;
-	const float Distance = Record.w > 0.5f
+	const uint2 Owner = PieceIds.Load(int3(P, 0));
+	const bool Gap = Owner.x == MIXTORMAT_INVALID_REGION;
+	const uint Index = asuint(Record.z);
+	const int2 SeedP = int2(Index % uint(OutputSize.x), Index / uint(OutputSize.x));
+	const bool Owns = Record.w > 0.5f && all(PieceIds.Load(int3(SeedP, 0)) == Owner);
+	const float Distance = Owns
 		? length(FractureDelta(float2(P), Record.xy, OutputSize))
 		: float(OutputSize.x + OutputSize.y);
 	// One shoulder width is one field unit, independent of output resolution.
