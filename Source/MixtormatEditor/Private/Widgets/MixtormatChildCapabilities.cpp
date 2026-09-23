@@ -46,6 +46,13 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
 			false, true, false, NAME_None});
 		break;
+	case EMixtormatLayerChildType::IdGroup:
+		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+			false, true, false, NAME_None});
+		Result.Outputs.Add({FName(TEXT("Boundary")),
+			NSLOCTEXT("SMixtormat", "PreviewOutputIdGroupBoundary", "Boundary"),
+			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		break;
 	case EMixtormatLayerChildType::Generator:
 		if (Child.Generator.Type == EMixtormatGeneratorType::Fracture)
 		{

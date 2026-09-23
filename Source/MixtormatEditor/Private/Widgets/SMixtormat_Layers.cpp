@@ -276,13 +276,15 @@ namespace
 		switch (Kind)
 		{
 		case EMixtormatChildCreation::PatternIds:      return EMixtormatLayerChildType::PatternId;
+		case EMixtormatChildCreation::IdGroup:         return EMixtormatLayerChildType::IdGroup;
 		case EMixtormatChildCreation::ClusterIds:      return EMixtormatLayerChildType::Filter;
 		case EMixtormatChildCreation::CombineIds:      return EMixtormatLayerChildType::CombineId;
 		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
 		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
 		case EMixtormatChildCreation::UvFromIds:       return EMixtormatLayerChildType::UvFromIds;
-		case EMixtormatChildCreation::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
-		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
+		case EMixtormatLayerChildType::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
+		case EMixtormatLayerChildType::IdGroup:         return EMixtormatLayerChildType::IdGroup;
+		case EMixtormatLayerChildType::GeneratedMask:   return EMixtormatLayerChildType::Generated;
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
@@ -5601,6 +5603,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::CombineId:
 			RemoveLabel = LOCTEXT("RemoveCombineIdChild", "Remove Combine IDs");
+			break;
+		case EMixtormatLayerChildType::IdGroup:
+			RemoveLabel = LOCTEXT("RemoveIdGroupChild", "Remove ID Group");
 			break;
 		case EMixtormatLayerChildType::Generator:
 			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");

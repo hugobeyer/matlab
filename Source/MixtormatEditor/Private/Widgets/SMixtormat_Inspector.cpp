@@ -2864,6 +2864,127 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildIdGroupFeatureMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const auto Entry = [this](const EMixtormatIdGroupFeature Mode, const FText Label, const FText Hint)
+	{
+		Menu.Item(Label, nullptr, FSimpleDelegate::CreateLambda([this, Mode]()
+		{
+			if (FMixtormatIdGroup* G = GetSelectedIdGroup())
+			{
+				G->Feature = Mode;
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		}))
+		.Enabled(TAttribute<bool>::CreateLambda([this, Mode]()
+		{
+			const FMixtormatIdGroup* G = GetSelectedIdGroup();
+			return G && G->Feature != Mode;
+		}))
+		.Hint(Hint);
+	};
+
+	Entry(EMixtormatIdGroupFeature::Height, LOCTEXT("IdGroupFeatureHeight", "Height"),
+		LOCTEXT("IdGroupFeatureHeightHint", "Selects regions based on the source height."));
+	Entry(EMixtormatIdGroupFeature::Curvature, LOCTEXT("IdGroupFeatureCurvature", "Curvature"),
+		LOCTEXT("IdGroupFeatureCurvatureHint", "Selects regions based on surface curvature (recesses vs peaks)."));
+
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
+{
+	const auto Group = [this]() { return GetSelectedIdGroup(); };
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::Make(
+		LOCTEXT("IdGroupFeatureLabel", "Feature"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatIdGroup* G = GetSelectedIdGroup();
+				if (!G) return FText::GetEmpty();
+				return G->Feature == EMixtormatIdGroupFeature::Curvature
+					? LOCTEXT("IdGroupFeatureCurvature", "Curvature")
+					: LOCTEXT("IdGroupFeatureHeight", "Height");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu)),
+		LOCTEXT("IdGroupFeatureHint", "The surface feature used to select between the two input ID maps.")));
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatIdGroup>(
+		LOCTEXT("IdGroupThreshold", "Threshold"), Group, &FMixtormatIdGroup::Threshold, 0.0, 1.0, 0.08, 0.01,
+		LOCTEXT("IdGroupThresholdHint", "Selection threshold for the chosen feature.")));
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatIdGroup>(
+		LOCTEXT("IdGroupFeatureScale", "Feature Scale"), Group, &FMixtormatIdGroup::FeatureScale, 0.0, 64.0, 8.0, 0.1,
+		LOCTEXT("IdGroupFeatureScaleHint", "Contrast multiplier for the feature guide.")));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
+		LOCTEXT("IdGroupSmoothRadius", "Smooth Radius"), Group, &FMixtormatIdGroup::SmoothRadius, 0.0, 8.0, 2,
+		LOCTEXT("IdGroupSmoothRadiusHint", "Pre-selection smoothing radius for the feature guide.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCheckboxRow(Panel,
+		LOCTEXT("IdGroupInvert", "Invert Selection"),
+		TAttribute<ECheckBoxState>::CreateLambda([this]()
+		{
+			const FMixtormatIdGroup* G = GetSelectedIdGroup();
+			return G && G->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+		}),
+		FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+		{
+			if (FMixtormatIdGroup* G = GetSelectedIdGroup())
+			{
+				G->bInvert = State == ECheckBoxState::Checked;
+				RefreshLayeredPreview();
+			}
+		}),
+		LOCTEXT("IdGroupInvertHint", "Swaps which map is used for high vs low feature values.")));
+
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
+		LOCTEXT("IdGroupOutlineWidth", "Outline Width"), Group, &FMixtormatIdGroup::OutlineWidth, 1.0, 8.0, 2,
+		LOCTEXT("IdGroupOutlineWidthHint", "Width of the published Boundary mask in pixels.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedIdGroup() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("IdGroupHeading", "ID GROUP"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton(
+						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::IdGroup))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatIdGroup* Selected = GetSelectedIdGroup();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatIdGroup* Selected = GetSelectedIdGroup())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("IdGroupEnabledHint", "Enable this ID group"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -5081,6 +5202,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildRampIdControls()]
 					+ SScrollBox::Slot()[BuildUvIdControls()]
 					+ SScrollBox::Slot()[BuildReliefIdControls()]
+					+ SScrollBox::Slot()[BuildIdGroupControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 					+ SScrollBox::Slot()[BuildFractureControls()]
