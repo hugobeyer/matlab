@@ -2,8 +2,6 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatFractureShape.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatFieldSample.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatSdfBlend.ush"
 
 int2 OutputSize;
 uint FractureSeed;
@@ -18,7 +16,6 @@ Texture2D<float2> SourcePosition;
 Texture2D<float4> BoundaryRecord;
 Texture2D<float4> BoundarySurface;
 Texture2D<float> SourceHeight;
-Texture2D<float> ShapeField;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutHeight;
 RWTexture2D<float> OutFractureMask;
@@ -63,17 +60,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Signed offset: positive erodes, negative dilates. Variation changes the piece contour,
 	// independently of the width of the slope raised on that contour.
 	const float Offset = FractureWidthPixels * (0.12f + 0.9f * Variation * CrossBands);
-	// A is the base field; B is the SAME field sampled through displaced UVs.
-	// Blend signed values before shaping height, not a groove mask or two heights.
-	const float2 Q = SourcePosition.Load(int3(P, 0));
-	const float2 SampleUV = (Q + 0.5f) / float2(OutputSize);
-	const float FieldScale = max(FractureWidthPixels, 0.5f) / Width;
-	const float A = ShapeField.Load(int3(P, 0)) * FieldScale;
-	const float B = MixtormatSampleScalarField(ShapeField, LinearWrapSampler, SampleUV)
-		* FieldScale + Offset / Width;
-	const float Chamfer = 0.25f * max(FractureProfile, 0.05f);
-	const float CombinedField = MixtormatSdfIntersectChamfer(A, B, Chamfer);
-	const float SignedDistance = -CombinedField * Width;
+	const float Distance = length(FractureDelta(float2(P), Record.xy, OutputSize));
+	const float SignedDistance = (Inside ? Distance : -Distance) - Offset;
 	if (Gap && SignedDistance <= -0.5f)
 	{
 		return;
@@ -84,15 +72,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* (1.0f + Variation * 0.4f * (MixtormatRegionRandom(Seed ^ 0x85ebca6bu) * 2.0f - 1.0f));
 	const float Profile = max(FractureProfile * (1.0f + Variation * 0.35f * Bands), 0.05f);
 	const float U = saturate(SignedDistance / Width);
-	const float Surface = Gap ? Boundary.z
-		: MixtormatSampleScalarField(SourceHeight, LinearWrapSampler, SampleUV);
-	// The face must meet the sampled surface continuously at U=1. A seed's
-	// shoulder can be lower than this pixel; switching to Surface there created
-	// a height step. Raise only the face ceiling, keeping the final surface cap.
-	const float Shoulder = max(Boundary.z, Surface);
-	const float Base = Shoulder - Depth;
+	const float Base = Boundary.z - Depth;
 	const float Plane = Base + Depth * FractureFace(U, Profile);
-	float Shaped = min(Surface, max(Base, Plane));
+	const float2 Q = SourcePosition.Load(int3(P, 0));
+	const float Surface = Gap ? Boundary.z : SourceHeight.SampleLevel(
+		LinearWrapSampler, (Q + 0.5f) / float2(OutputSize), 0);
+	// Intersect the piece with fractured face planes. No per-pixel groove subtraction,
+	// and no saturation of height: upstream relief and signed intermediates remain intact.
+	const float BlendRadius = Depth * Variation * 0.06f * (1.0f - U);
+	float Shaped = U >= 1.0f ? Surface : min(Surface,
+		max(Base, MixtormatSmoothMin(Surface, Plane, BlendRadius)));
 	if (Gap)
 	{
 		Shaped = lerp(Original, Shaped, saturate(SignedDistance + 0.5f));

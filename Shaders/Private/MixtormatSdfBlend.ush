@@ -1,0 +1,17 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_SDF_BLEND_USH
+#define MIXTORMAT_SDF_BLEND_USH
+
+// Negative inside. A, B and Radius must share a field scale. This combines scalar
+// fields; it does not restore unit gradients after warping or extract an isosurface.
+float MixtormatSdfIntersectChamfer(float A, float B, float Radius)
+{
+	if (Radius <= 0.0f)
+	{
+		return max(A, B);
+	}
+	return max(max(A, B), (A + B + Radius) * 0.7071067811865475f);
+}
+
+#endif

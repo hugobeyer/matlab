@@ -84,15 +84,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* (1.0f + Variation * 0.4f * (MixtormatRegionRandom(Seed ^ 0x85ebca6bu) * 2.0f - 1.0f));
 	const float Profile = max(FractureProfile * (1.0f + Variation * 0.35f * Bands), 0.05f);
 	const float U = saturate(SignedDistance / Width);
+	const float Base = Boundary.z - Depth;
+	const float Plane = Base + Depth * FractureFace(U, Profile);
 	const float Surface = Gap ? Boundary.z
 		: MixtormatSampleScalarField(SourceHeight, LinearWrapSampler, SampleUV);
-	// The face must meet the sampled surface continuously at U=1. A seed's
-	// shoulder can be lower than this pixel; switching to Surface there created
-	// a height step. Raise only the face ceiling, keeping the final surface cap.
-	const float Shoulder = max(Boundary.z, Surface);
-	const float Base = Shoulder - Depth;
-	const float Plane = Base + Depth * FractureFace(U, Profile);
-	float Shaped = min(Surface, max(Base, Plane));
+	// The chamfer is already in the field. Final min limits the shaped relief to
+	// the sampled surface without replacing the field operation with height smoothing.
+	float Shaped = U >= 1.0f ? Surface : min(Surface, max(Base, Plane));
 	if (Gap)
 	{
 		Shaped = lerp(Original, Shaped, saturate(SignedDistance + 0.5f));

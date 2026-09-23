@@ -1,0 +1,14 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_FIELD_SAMPLE_USH
+#define MIXTORMAT_FIELD_SAMPLE_USH
+
+// Normalized texture UVs, with texel centres at (pixel + 0.5) / size.
+// The caller supplies border/filter policy. Only continuous fields belong here:
+// IDs and packed nearest-seed records must use integer loads, not interpolation.
+float MixtormatSampleScalarField(Texture2D<float> Field, SamplerState FieldSampler, float2 UV)
+{
+	return Field.SampleLevel(FieldSampler, UV, 0.0f);
+}
+
+#endif

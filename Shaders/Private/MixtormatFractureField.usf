@@ -1,0 +1,29 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatFractureShape.ush"
+
+int2 OutputSize;
+float FractureWidthPixels;
+Texture2D<uint2> PieceIds;
+Texture2D<float4> BoundaryRecord;
+RWTexture2D<float> OutField;
+
+// Materialize a continuous field before UV sampling. Interpolating the JFA
+// records themselves would corrupt their packed seed indices and distances.
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const int2 P = int2(DispatchThreadId.xy);
+	const float4 Record = BoundaryRecord.Load(int3(P, 0));
+	const bool Gap = PieceIds.Load(int3(P, 0)).x == MIXTORMAT_INVALID_REGION;
+	const float Distance = Record.w > 0.5f
+		? length(FractureDelta(float2(P), Record.xy, OutputSize))
+		: float(OutputSize.x + OutputSize.y);
+	// One shoulder width is one field unit, independent of output resolution.
+	OutField[P] = (Gap ? Distance : -Distance) / max(FractureWidthPixels, 0.5f);
+}

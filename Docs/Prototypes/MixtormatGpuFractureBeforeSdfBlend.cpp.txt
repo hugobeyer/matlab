@@ -87,26 +87,6 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatFractureStepCS,
 	"/Plugin/Mixtormat/Private/MixtormatFractureDistance.usf", "StepCS", SF_Compute);
 
-class FMixtormatFractureFieldCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatFractureFieldCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureFieldCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, FractureWidthPixels)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint2>, PieceIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BoundaryRecord)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutField)
-	END_SHADER_PARAMETER_STRUCT()
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-IMPLEMENT_GLOBAL_SHADER(FMixtormatFractureFieldCS,
-	"/Plugin/Mixtormat/Private/MixtormatFractureField.usf", "MainCS", SF_Compute);
-
 class FMixtormatFractureResolveCS final : public FGlobalShader
 {
 public:
@@ -125,7 +105,6 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourcePosition)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BoundaryRecord)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BoundarySurface)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ShapeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
@@ -236,17 +215,6 @@ namespace
 			AddDistanceStep(StepSize);
 		}
 		AddDistanceStep(1);
-		FRDGTextureRef ShapeField = MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Fracture.ShapeField"));
-		{
-			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureFieldCS::FParameters>();
-			P->OutputSize = Size;
-			P->FractureWidthPixels = WidthPixels;
-			P->PieceIds = PieceIds;
-			P->BoundaryRecord = Record[ReadIndex];
-			P->OutField = GraphBuilder.CreateUAV(ShapeField);
-			TShaderMapRef<FMixtormatFractureFieldCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Fracture.ShapeField"), Shader, P, Groups);
-		}
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureResolveCS::FParameters>();
 			P->OutputSize = Size;
@@ -261,7 +229,6 @@ namespace
 			P->SourcePosition = SourcePosition;
 			P->BoundaryRecord = Record[ReadIndex];
 			P->BoundarySurface = Boundary;
-			P->ShapeField = ShapeField;
 			P->SourceHeight = SourceHeight;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->OutHeight = GraphBuilder.CreateUAV(OutputHeight);
