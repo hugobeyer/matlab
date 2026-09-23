@@ -808,6 +808,13 @@ void SMixtormatPreviewViewport::ApplyLightIntensities()
 		BaseSkyBrightness
 		* SkylightIntensityScale
 		* MixtormatPreviewSceneSettings::CubemapReflectionBoost);
+	if (StudioReflectionCapture)
+	{
+		StudioReflectionCapture->Brightness =
+			MixtormatPreviewSceneSettings::ReflectionCaptureBrightness
+			* SkylightIntensityScale;
+		StudioReflectionCapture->MarkRenderStateDirty();
+	}
 }
 
 void SMixtormatPreviewViewport::SetPreviewLightIntensity(const float Scale)

@@ -1790,6 +1790,28 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						? FMath::Clamp(Carver.ClampMax, 0.0f, 1.0f) : 1.0f;
 					break;
 				}
+				case EMixtormatGeneratorType::Fracture:
+				{
+					const FMixtormatFracture& Fracture = Generator.Fracture;
+					FFractureRenderData& Out = ChildData.Generator.Fracture;
+					using namespace MixtormatParameterContracts;
+					Out.Source = Fracture.FractureSource;
+					Out.Seed = static_cast<uint32>(SanitizeInt32(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureSeed"), Fracture.FractureSeed));
+					Out.Scale = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureScale"), Fracture.FractureScale);
+					Out.Amount = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureAmount"), Fracture.FractureAmount);
+					Out.Width = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureWidth"), Fracture.FractureWidth);
+					Out.Depth = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureDepth"), Fracture.FractureDepth);
+					Out.Profile = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureProfile"), Fracture.FractureProfile);
+					Out.Variation = SanitizeFloat(
+						EMixtormatParameterOwnerType::Generator, TEXT("FractureVariation"), Fracture.FractureVariation);
+					break;
+				}
 				}
 				continue;
 			}

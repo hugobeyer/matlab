@@ -1,0 +1,134 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+
+// Fracture topology only. This pass emits a one-pixel skeleton plus a stable lineage ID.
+// MixtormatCraquelureDistance then turns that skeleton into an eikonal SDF, and the fracture
+// resolve raises a sloped profile on the distance. Width, depth, normal and AO never come from
+// this binary topology pass.
+
+int2 OutputSize;
+uint FractureSource;
+uint HasRegionIds;
+uint FractureSeed;
+float FractureScale;
+float FractureAmount;
+
+float LayerTiling;
+int2 LayerUVScale;
+float2 LayerUVOffset;
+uint LayerFlipU;
+uint LayerFlipV;
+int LayerRotation;
+
+Texture2D<uint> RegionIds;
+RWTexture2D<float4> OutCrackState;
+
+#define MIXTORMAT_FRACTURE_GENERATED 0u
+#define MIXTORMAT_FRACTURE_IDS       1u
+
+float2 FractureUV(int2 Pixel)
+{
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	return MixtormatSourceUV(
+		UV,
+		max(float2(LayerUVScale) * max(LayerTiling, 1.0e-4f), float2(1.0f, 1.0f)),
+		LayerUVOffset,
+		LayerFlipU,
+		LayerFlipV,
+		LayerRotation);
+}
+
+int2 FractureWrapPixel(int2 Pixel)
+{
+	return int2(
+		MixtormatWrapI(Pixel.x, OutputSize.x),
+		MixtormatWrapI(Pixel.y, OutputSize.y));
+}
+
+uint RegionAt(int2 Pixel)
+{
+	return RegionIds.Load(int3(FractureWrapPixel(Pixel), 0));
+}
+
+uint PairId(uint A, uint B)
+{
+	return MixtormatHashU(
+		min(A, B) * 0x9e3779b9u ^ max(A, B) * 0x85ebca6bu ^ FractureSeed);
+}
+
+bool KeepLineage(uint Lineage)
+{
+	const float Draw = MixtormatCellRandom01(Lineage ^ 0x27d4eb2du);
+	return Draw <= saturate(FractureAmount);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	bool Cracked = false;
+	uint Lineage = 0u;
+
+	if (FractureSource != MIXTORMAT_FRACTURE_IDS)
+	{
+		// Same exact cellular boundary distance used by Pattern IDs. The threshold is one output
+		// texel expressed in cell units, so this remains a skeleton at every resolution.
+		const int Cells = max((int)round(FractureScale), 2);
+		const float2 UV = FractureUV(Pixel);
+		const FMixtormatCellularResult Joint = MixtormatCellularMetric(
+			UV * float(Cells),
+			int2(Cells, Cells),
+			FractureSeed + 211u,
+			0.96f,
+			0.08f,
+			float2(0.82f, 1.18f));
+		const float CellUnitsPerTexel =
+			float(Cells) / float(max(min(OutputSize.x, OutputSize.y), 1));
+		if (Joint.EdgeDistance <= CellUnitsPerTexel * 0.85f && KeepLineage(Joint.EdgeId))
+		{
+			Cracked = true;
+			Lineage = Joint.EdgeId;
+		}
+	}
+
+	if (FractureSource != MIXTORMAT_FRACTURE_GENERATED && HasRegionIds != 0)
+	{
+		// Pattern/Cluster/Combine IDs already solved the useful structure. Fracture only extracts
+		// their exact one-pixel boundary and gives each region pair one symmetric lineage ID.
+		const uint Center = RegionAt(Pixel);
+		if (Center != MIXTORMAT_INVALID_REGION)
+		{
+			const int2 Offsets[4] = {
+				int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1)};
+			[unroll]
+			for (int Direction = 0; Direction < 4; ++Direction)
+			{
+				const uint Other = RegionAt(Pixel + Offsets[Direction]);
+				if (Other == MIXTORMAT_INVALID_REGION || Other == Center)
+				{
+					continue;
+				}
+				const uint BoundaryId = PairId(Center, Other);
+				if (KeepLineage(BoundaryId))
+				{
+					Cracked = true;
+					Lineage = BoundaryId;
+					break;
+				}
+			}
+		}
+	}
+
+	OutCrackState[Pixel] = Cracked
+		? float4(1.0f, 0.0f, asfloat(Lineage), 1.0f)
+		: float4(0.0f, 0.0f, 0.0f, 0.0f);
+}

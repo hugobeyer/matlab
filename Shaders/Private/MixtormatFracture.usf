@@ -1,0 +1,84 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatFractureShape.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+
+int2 OutputSize;
+uint FractureSource;
+uint HasRegionIds;
+uint FractureSeed;
+float FractureScale;
+float FractureAmount;
+float FractureWidthPixels;
+float FractureDepth;
+float FractureVariation;
+float LayerTiling;
+int2 LayerUVScale;
+float2 LayerUVOffset;
+uint LayerFlipU;
+uint LayerFlipV;
+int LayerRotation;
+
+Texture2D<uint> RegionIds;
+Texture2D<float> SourceHeight;
+SamplerState LinearWrapSampler;
+// Parent identity and generated sub-piece identity stay separate; neither is blended numerically.
+RWTexture2D<uint2> OutPieceIds;
+RWTexture2D<float2> OutSourcePosition;
+
+float HeightAt(float2 P)
+{
+	return SourceHeight.SampleLevel(LinearWrapSampler, (P + 0.5f) / float2(OutputSize), 0);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 P = int2(DispatchThreadId.xy);
+	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	const int Period = max((int)round(FractureScale), 2);
+	const float Radius = max(FractureWidthPixels * 2.0f, 1.0f);
+	const float H = HeightAt(float2(P));
+	const float Lower = min(min(HeightAt(float2(P) + float2(Radius, 0)),
+		HeightAt(float2(P) - float2(Radius, 0))),
+		min(HeightAt(float2(P) + float2(0, Radius)),
+		HeightAt(float2(P) - float2(0, Radius))));
+	const float HighEdge = smoothstep(0.0f, max(FractureDepth, 1.0e-5f), H - Lower);
+	const float2 Shear = float2(
+		FractureBand(UV, int2(0, 1), Period, FractureSeed ^ 0x9e3779b9u),
+		FractureBand(UV, int2(1, 1), Period, FractureSeed ^ 0x85ebca6bu));
+	const float2 Breaks = float2(
+		FractureBand(UV, int2(1, -1), Period * 3, FractureSeed ^ 0x27d4eb2du),
+		FractureBand(UV, int2(1, 0), Period * 2, FractureSeed ^ 0xc2b2ae35u));
+	const float2 Q = float2(P) + FractureWidthPixels * saturate(FractureAmount)
+		* saturate(FractureVariation) * (0.35f + 0.65f * HighEdge)
+		* (1.5f * Shear + 0.45f * Breaks);
+
+	uint Parent = 0u;
+	if (FractureSource != 0u && HasRegionIds != 0u)
+	{
+		Parent = RegionIds.Load(int3(FractureWrap(int2(floor(Q + 0.5f)), OutputSize), 0));
+	}
+
+	uint Piece = 0u;
+	if (FractureSource != 1u)
+	{
+		const float2 SourceUV = MixtormatSourceUV(
+			(Q + 0.5f) / float2(OutputSize),
+			max(float2(LayerUVScale) * max(LayerTiling, 1.0e-4f), float2(1.0f, 1.0f)),
+			LayerUVOffset, LayerFlipU, LayerFlipV, LayerRotation);
+		const FMixtormatCellularResult Cell = MixtormatCellularMetric(
+			SourceUV * float(Period), int2(Period, Period), FractureSeed + 211u,
+			0.96f, 0.08f, float2(0.82f, 1.18f));
+		Piece = Cell.CellId;
+	}
+
+	OutPieceIds[P] = uint2(Parent, Piece);
+	OutSourcePosition[P] = Q;
+}

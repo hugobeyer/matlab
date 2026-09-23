@@ -233,8 +233,8 @@ private:
 	// keeps the multipliers rather than resetting them.
 	float BaseLightBrightness = 2.0f;
 	float BaseSkyBrightness = 0.45f;
-	float LightIntensityScale = 1.0f;
-	float SkylightIntensityScale = 1.0f;
+	float LightIntensityScale = 0.5f;
+	float SkylightIntensityScale = 0.5f;
 	void ApplyLightIntensities();
 	float EnvironmentYaw = 0.0f;
 	FVector PreviewTarget = FVector(0.0f, 0.0f, 50.0f);

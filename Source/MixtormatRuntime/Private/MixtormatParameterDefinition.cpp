@@ -48,6 +48,15 @@ namespace
 			Add(ET::Layer, TEXT("HeightInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
 			Add(ET::Layer, TEXT("IOR"), {.HardMin = 1.0f, .HardMax = 3.0f});
 
+			// ---- Fracture module.
+			Add(ET::Generator, TEXT("FractureSeed"), {.HardMin = 0.0f});
+			Add(ET::Generator, TEXT("FractureScale"), {.HardMin = 2.0f, .HardMax = 64.0f});
+			Add(ET::Generator, TEXT("FractureAmount"), Saturated());
+			Add(ET::Generator, TEXT("FractureWidth"), Saturated());
+			Add(ET::Generator, TEXT("FractureDepth"), {.HardMin = 0.0f});
+			Add(ET::Generator, TEXT("FractureProfile"), {.HardMin = 0.05f});
+			Add(ET::Generator, TEXT("FractureVariation"), Saturated());
+
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.
 			Add(ET::Effect, TEXT("BreakupScale"), {.HardMin = 1.0f, .HardMax = 64.0f});
@@ -233,6 +242,26 @@ namespace
 				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 				{
 					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&CDODefaults));
+					Result.bFound = true;
+				}
+			}
+		}
+		else if (Owner == EMixtormatParameterOwnerType::Generator)
+		{
+			// Generator parameter names are unique across payloads. The owner address remains the
+			// stable category while reflection still supplies the payload's compiled default.
+			static const FMixtormatFracture FractureDefaults;
+			if (const FProperty* Property =
+				FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter))
+			{
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(&FractureDefaults);
+					Result.bFound = true;
+				}
+				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&FractureDefaults));
 					Result.bFound = true;
 				}
 			}

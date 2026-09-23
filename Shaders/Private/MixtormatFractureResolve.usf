@@ -1,0 +1,92 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatFractureShape.ush"
+
+int2 OutputSize;
+uint FractureSeed;
+float FractureScale;
+float FractureAmount;
+float FractureWidthPixels;
+float FractureDepth;
+float FractureProfile;
+float FractureVariation;
+Texture2D<uint2> PieceIds;
+Texture2D<float2> SourcePosition;
+Texture2D<float4> BoundaryRecord;
+Texture2D<float4> BoundarySurface;
+Texture2D<float> SourceHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutFractureMask;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const int2 P = int2(DispatchThreadId.xy);
+	const float Original = SourceHeight.Load(int3(P, 0));
+	const float4 Record = BoundaryRecord.Load(int3(P, 0));
+	OutHeight[P] = Original;
+	OutFractureMask[P] = 0.0f;
+	if (Record.w <= 0.5f)
+	{
+		return;
+	}
+
+	const uint Index = asuint(Record.z);
+	const int2 SeedP = int2(Index % uint(OutputSize.x), Index / uint(OutputSize.x));
+	const uint2 SeedOwner = PieceIds.Load(int3(SeedP, 0));
+	const uint2 Owner = PieceIds.Load(int3(P, 0));
+	const bool Inside = all(Owner == SeedOwner);
+	const bool Gap = Owner.x == MIXTORMAT_INVALID_REGION;
+	// Never borrow a neighbouring piece's shoulder to cut the wrong region.
+	if (!Inside && !Gap)
+	{
+		return;
+	}
+
+	const uint Seed = FractureOwnerSeed(SeedOwner, FractureSeed);
+	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	const int Period = max((int)round(FractureScale), 2);
+	const float Variation = saturate(FractureVariation);
+	const float Bands = FractureBand(UV, int2(1, 1), Period * 2, Seed ^ 0x27d4eb2du);
+	const float CrossBands = FractureBand(UV, int2(1, -1), Period * 3, Seed ^ 0xc2b2ae35u);
+	const float Width = max(FractureWidthPixels * (1.0f + Variation * (0.65f * Bands
+		+ 0.2f * (MixtormatRegionRandom(Seed) * 2.0f - 1.0f))), 0.5f);
+	// Signed offset: positive erodes, negative dilates. Variation changes the piece contour,
+	// independently of the width of the slope raised on that contour.
+	const float Offset = FractureWidthPixels * (0.12f + 0.9f * Variation * CrossBands);
+	const float Distance = length(FractureDelta(float2(P), Record.xy, OutputSize));
+	const float SignedDistance = (Inside ? Distance : -Distance) - Offset;
+	if (Gap && SignedDistance <= -0.5f)
+	{
+		return;
+	}
+
+	const float4 Boundary = BoundarySurface.Load(int3(SeedP, 0));
+	const float Depth = max(FractureDepth, 0.0f)
+		* (1.0f + Variation * 0.4f * (MixtormatRegionRandom(Seed ^ 0x85ebca6bu) * 2.0f - 1.0f));
+	const float Profile = max(FractureProfile * (1.0f + Variation * 0.35f * Bands), 0.05f);
+	const float U = saturate(SignedDistance / Width);
+	const float Base = Boundary.z - Depth;
+	const float Plane = Base + Depth * FractureFace(U, Profile);
+	const float2 Q = SourcePosition.Load(int3(P, 0));
+	const float Surface = Gap ? Boundary.z : SourceHeight.SampleLevel(
+		LinearWrapSampler, (Q + 0.5f) / float2(OutputSize), 0);
+	// Intersect the piece with fractured face planes. No per-pixel groove subtraction,
+	// and no saturation of height: upstream relief and signed intermediates remain intact.
+	const float BlendRadius = Depth * Variation * 0.06f * (1.0f - U);
+	float Shaped = U >= 1.0f ? Surface : min(Surface,
+		max(Base, MixtormatSmoothMin(Surface, Plane, BlendRadius)));
+	if (Gap)
+	{
+		Shaped = lerp(Original, Shaped, saturate(SignedDistance + 0.5f));
+	}
+	const float Result = lerp(Original, Shaped, saturate(FractureAmount));
+	OutHeight[P] = Result;
+	OutFractureMask[P] = saturate(abs(Result - Original) / max(FractureDepth, 1.0e-5f));
+}

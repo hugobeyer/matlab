@@ -535,14 +535,21 @@ namespace MixtormatGpuCompositor
 						// All IDs, including Breakup-dependent Combine chains, now exist.
 						CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
-						// Keep preparation stable as Amount crosses zero; only the carve dispatches stop.
-						const bool bPrepareBreakup = !LayerCtx.PendingBreakups.IsEmpty();
+						// Structural operators consume local ramp relief, never the already-blended substrate.
+						// Keep preparation stable as Amount crosses zero.
+						const bool bHasFracture = Layer.Children.ContainsByPredicate(
+							[](const FChildRenderData& Child)
+							{
+								return Child.Type == EMixtormatLayerChildType::Generator
+									&& Child.Generator.Type == EMixtormatGeneratorType::Fracture;
+							});
+						const bool bPrepareStructure = !LayerCtx.PendingBreakups.IsEmpty() || bHasFracture;
 						const int32 LocalWriteIndex = LayerIndex & 1;
 						FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
 						FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
 						FRDGTextureRef SavedRAM = Ctx.OutputRAM[LocalWriteIndex];
 						FRDGTextureRef SavedHeight = Ctx.OutputHeight[LocalWriteIndex];
-						if (bPrepareBreakup)
+						if (bPrepareStructure)
 						{
 							// Keep the read side intact for placement/height-reference evaluation.
 							// Relief filters write only the isolated incoming material channels.
@@ -551,10 +558,11 @@ namespace MixtormatGpuCompositor
 							Ctx.OutputRAM[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedRAM->Desc, TEXT("Mixtormat.LocalRAM"));
 							Ctx.OutputHeight[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedHeight->Desc, TEXT("Mixtormat.LocalHeight"));
 						}
-						AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareBreakup ? 1u : 0u);
+						AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareStructure ? 1u : 0u);
 
 						AddErosionPasses(Ctx, LayerCtx, Layer);
 						AddRampReliefPasses(Ctx, LayerCtx, Layer);
+						AddFracturePasses(Ctx, LayerCtx, Layer);
 						AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
 
 						// Breakup publishes structural IDs during child collection, then authors its relief here.
@@ -564,7 +572,7 @@ namespace MixtormatGpuCompositor
 
 						AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 
-						if (bPrepareBreakup)
+						if (bPrepareStructure)
 						{
 							LayerCtx.LayerInputBC = Ctx.OutputBC[LocalWriteIndex];
 							LayerCtx.LayerInputN = Ctx.OutputN[LocalWriteIndex];

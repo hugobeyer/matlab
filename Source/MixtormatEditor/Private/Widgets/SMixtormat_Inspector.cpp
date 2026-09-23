@@ -3190,6 +3190,76 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildFractureControls()
+{
+	const auto Fracture = [this]() { return GetSelectedFracture(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatFracture>(
+		LOCTEXT("FractureSource", "Source"), Fracture,
+		&FMixtormatFracture::FractureSource,
+		LOCTEXT("FractureSourceHint", "Generated creates pieces. Region IDs reshapes Pattern/Cluster/Combine footprints. Combined subdivides those pieces.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatFracture>(
+			LOCTEXT("FractureScale", "Scale"), Fracture,
+			&FMixtormatFracture::FractureScale, 2.0, 32.0, 7.0, 1.0,
+			LOCTEXT("FractureScaleHint", "Broad generated fracture regions across one repeat.")),
+		MakeMemberSliderInt<FMixtormatFracture>(
+			LOCTEXT("FractureSeed", "Seed"), Fracture,
+			&FMixtormatFracture::FractureSeed, 0.0, 9999.0, 11,
+			LOCTEXT("FractureSeedHint", "Changes piece layout, directional breaks and face variation."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatFracture>(
+			LOCTEXT("FractureAmount", "Amount"), Fracture,
+			&FMixtormatFracture::FractureAmount, 0.0, 1.0, 0.62, 0.01,
+			LOCTEXT("FractureAmountHint", "Blends the boundary deformation and face shaping. Zero preserves the input height.")),
+		MakeMemberSlider<FMixtormatFracture>(
+			LOCTEXT("FractureWidth", "Width"), Fracture,
+			&FMixtormatFracture::FractureWidth, 0.0, 1.0, 0.28, 0.01,
+			LOCTEXT("FractureWidthHint", "Width of the fractured shoulder; Variation breaks up its contour and slope width."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatFracture>(
+			LOCTEXT("FractureDepth", "Depth"), Fracture,
+			&FMixtormatFracture::FractureDepth, 0.0, 0.5, 0.08, 0.001,
+			LOCTEXT("FractureDepthHint", "Depth of fracture faces measured from the piece shoulder, in layer-height units.")),
+		MakeMemberSlider<FMixtormatFracture>(
+			LOCTEXT("FractureProfile", "Slope Profile"), Fracture,
+			&FMixtormatFracture::FractureProfile, 0.25, 4.0, 1.0, 0.01,
+			LOCTEXT("FractureProfileHint", "Shapes three planar slope sections. One is linear; lower or higher changes the slope breaks."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatFracture>(
+		LOCTEXT("FractureVariation", "Variation"), Fracture,
+		&FMixtormatFracture::FractureVariation, 0.0, 1.0, 0.38, 0.01,
+		LOCTEXT("FractureVariationHint", "Directional zigzags, signed boundary offsets, shoulder width and broken slope variation; no micro noise.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedFracture() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("FractureHeading", "FRACTURE"))
+			.InitiallyExpanded(true)
+			.HeaderAction(MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatGenerator* Generator = GetSelectedGenerator();
+					return Generator && Generator->bEnabled
+						? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+					{
+						Generator->bEnabled = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}),
+				LOCTEXT("FractureEnabledHint", "Enable this fracture module")))
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -5009,6 +5079,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildReliefIdControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
+					+ SScrollBox::Slot()[BuildFractureControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

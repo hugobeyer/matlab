@@ -1025,26 +1025,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		MakeSlider(
 			LOCTEXT("PreviewLightIntensityLabel", "Light"),
 			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewLightIntensity); }),
-			0.0, 2.0, 1.0, 0.01, false,
+			0.0, 2.0, 0.5, 0.01, false,
 			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
 			{
 				SetPreviewLightIntensity(static_cast<float>(Value));
 			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(1.0f); }),
-			LOCTEXT("PreviewLightIntensityHint", "Scales the preset key light. A value of 1 uses that preset's authored brightness."))
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(0.5f); }),
+			LOCTEXT("PreviewLightIntensityHint", "Scales the preset key light. The default 0.5 uses half of the preset's authored brightness."))
 	];
 	SceneControls->AddSlot().AutoHeight()
 	[
 		MakeSlider(
 			LOCTEXT("PreviewSkylightIntensityLabel", "Skylight"),
 			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewSkylightIntensity); }),
-			0.0, 2.0, 1.0, 0.01, false,
+			0.0, 2.0, 0.5, 0.01, false,
 			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
 			{
 				SetPreviewSkylightIntensity(static_cast<float>(Value));
 			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(1.0f); }),
-			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflections. Lower values preserve stronger directional relief shadows."))
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(0.5f); }),
+			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflection capture. The default is half intensity."))
 	];
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
 	CameraControls->AddSlot().AutoHeight()

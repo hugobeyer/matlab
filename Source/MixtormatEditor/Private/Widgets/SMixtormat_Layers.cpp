@@ -286,6 +286,7 @@ namespace
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::Fracture:        return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -327,6 +328,9 @@ namespace
 			break;
 		case EMixtormatChildCreation::StrataCarver:
 			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
+			break;
+		case EMixtormatChildCreation::Fracture:
+			Child.Generator.Type = EMixtormatGeneratorType::Fracture;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -3773,6 +3777,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		{
 		case EMixtormatGeneratorType::StrataCarver:
 			return LOCTEXT("StrataCarverChildName", "Strata Carver");
+		case EMixtormatGeneratorType::Fracture:
+			return LOCTEXT("FractureChildName", "Fracture");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}
@@ -5321,6 +5327,14 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			CreateChild(Target, EMixtormatChildCreation::StrataCarver);
 		}))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+	Menu.Item(
+		LOCTEXT("AddFractureChild", "Fracture"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			CreateChild(Target, EMixtormatChildCreation::Fracture);
+		}))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	return Menu.Build();
 }
 
@@ -6228,6 +6242,26 @@ const FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver() const
 	return Child.Type == EMixtormatLayerChildType::Generator
 		&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
 		? &Child.Generator.StrataCarver
+		: nullptr;
+}
+
+FMixtormatFracture* SMixtormat::GetSelectedFracture()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::Fracture
+		? &Child->Generator.Fracture
+		: nullptr;
+}
+
+const FMixtormatFracture* SMixtormat::GetSelectedFracture() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::Fracture
+		? &Child->Generator.Fracture
 		: nullptr;
 }
 

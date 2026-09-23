@@ -59,6 +59,7 @@ enum class EMixtormatChildCreation : uint8
 	ColorIdMask,
 	RandomFromIds,
 	StrataCarver,
+	Fracture,
 	Peeling,
 };
 
@@ -420,6 +421,9 @@ private:
 	FMixtormatStrataCarver* GetSelectedStrataCarver();
 	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
 	TSharedRef<SWidget> BuildStrataCarverControls();
+	FMixtormatFracture* GetSelectedFracture();
+	const FMixtormatFracture* GetSelectedFracture() const;
+	TSharedRef<SWidget> BuildFractureControls();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
@@ -1394,9 +1398,9 @@ private:
 	int32 PreviewScreenPercentage = MixtormatPreviewScreenPercentage::Default;
 	float PreviewFov = MixtormatPreviewCamera::FovDefault;
 	float PreviewDisplacementAmount = 1.0f;
-	// Multipliers on the active lighting mode's own brightness; 1 is what that mode intended.
-	float PreviewLightIntensity = 1.0f;
-	float PreviewSkylightIntensity = 1.0f;
+	// Start the overlay preview at half of each preset's authored lighting.
+	float PreviewLightIntensity = 0.5f;
+	float PreviewSkylightIntensity = 0.5f;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;
 	FString BakeOutputBaseName;

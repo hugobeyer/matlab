@@ -1,0 +1,192 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+
+// Layered Rock is a compact formation recipe, not a shading effect:
+//
+//     LayerFieldCS -> FractureCS -> ChippingCS -> shared height surface resolve
+//
+// Every stage writes height or structural coverage only. Normal and AO are derived once from the
+// final height by MixtormatHeightDeltaNormal, so the three operations cannot disagree about the
+// surface they shade. All fields are periodic by construction and retain their physical scale at
+// every output resolution.
+
+int2 OutputSize;
+uint RockSeed;
+float RockScale;
+float RockLayering;
+float RockWarp;
+float RockFracture;
+float RockChipping;
+float RockRelief;
+
+float LayerTiling;
+int2 LayerUVScale;
+float2 LayerUVOffset;
+uint LayerFlipU;
+uint LayerFlipV;
+int LayerRotation;
+
+Texture2D<float> SourceHeight;
+Texture2D<float2> LayerField;
+Texture2D<float2> FractureField;
+RWTexture2D<float2> OutLayerField;
+RWTexture2D<float2> OutFractureField;
+RWTexture2D<float> OutHeight;
+
+float2 RockUV(int2 Pixel)
+{
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	return MixtormatSourceUV(
+		UV,
+		max(float2(LayerUVScale) * max(LayerTiling, 1.0e-4f), float2(1.0f, 1.0f)),
+		LayerUVOffset,
+		LayerFlipU,
+		LayerFlipV,
+		LayerRotation);
+}
+
+float PeriodicNoise01(float2 UV, int Period, uint Seed)
+{
+	return saturate(MixtormatPeriodicNoiseD(UV * float(max(Period, 1)), max(Period, 1), Seed).x * 0.75f + 0.5f);
+}
+
+float LayerRandom(int LayerIndex, int LayerCount, uint Seed)
+{
+	const uint Wrapped = (uint)MixtormatWrapI(LayerIndex, max(LayerCount, 1));
+	return (float)(MixtormatHashU(Wrapped * 0x9e3779b9u ^ Seed) & 0x00ffffffu)
+		* (1.0f / 16777215.0f);
+}
+
+[numthreads(8, 8, 1)]
+void LayerFieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = RockUV(Pixel);
+	const int FormationPeriod = max((int)round(RockScale), 1);
+	const int LayerCount = max(FormationPeriod * 3, 3);
+
+	// Two coherent scales bend the bedding without adding micro-noise. Curl is periodic, so broad
+	// folds never open a seam; the finer scalar only varies local thickness.
+	const float2 Warped = MixtormatPeriodicCurlWarp(
+		UV, FormationPeriod, RockSeed + 101u, saturate(RockWarp) * 1.6f);
+	const float Broad = PeriodicNoise01(UV, FormationPeriod, RockSeed + 211u) - 0.5f;
+	const float Fine = PeriodicNoise01(UV, FormationPeriod * 2, RockSeed + 307u) - 0.5f;
+	const float LayerCoordinate =
+		Warped.y * float(LayerCount) + Broad * RockWarp * 1.8f + Fine * RockWarp * 0.55f;
+	const int LayerIndex = (int)floor(LayerCoordinate);
+	const float InLayer = frac(LayerCoordinate);
+
+	// A shelf profile produces cleavage planes rather than sine stripes. Per-layer hardness changes
+	// the ledge depth coherently across the whole layer, removing the repeated stamped look.
+	const float Hardness = LayerRandom(LayerIndex, LayerCount, RockSeed + 401u);
+	const float Shelf = 1.0f - smoothstep(
+		lerp(0.18f, 0.34f, Hardness),
+		lerp(0.70f, 0.90f, Hardness),
+		InLayer);
+	const float PlaneDistance = min(InLayer, 1.0f - InLayer);
+	const float PlaneWidth = lerp(0.035f, 0.12f, saturate(RockLayering));
+	const float LayerEdge = 1.0f - smoothstep(PlaneWidth * 0.35f, PlaneWidth, PlaneDistance);
+
+	const float Strata = (Shelf - 0.5f) * lerp(0.45f, 1.0f, Hardness);
+	const float Foundation = Broad * 0.65f + Fine * 0.18f;
+	const float Formation = lerp(Foundation, Strata + Foundation * 0.35f, saturate(RockLayering));
+	const float Height = SourceHeight.Load(int3(Pixel, 0)) + Formation * max(RockRelief, 0.0f);
+
+	OutLayerField[Pixel] = float2(Height, LayerEdge);
+}
+
+[numthreads(8, 8, 1)]
+void FractureCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = RockUV(Pixel);
+	const int Cells = max((int)round(RockScale * 0.85f), 2);
+	const float2 Warped = MixtormatPeriodicCurlWarp(
+		UV, Cells, RockSeed + 503u, saturate(RockWarp) * 0.75f);
+	const FMixtormatCellularResult Joint = MixtormatCellularMetric(
+		Warped * float(Cells),
+		int2(Cells, Cells),
+		RockSeed + 601u,
+		0.92f,
+		0.16f,
+		float2(0.72f, 1.35f));
+
+	// Edge IDs choose whole connected joint segments. Fracture therefore changes topology, not
+	// opacity: low values keep a sparse set of major joints and high values progressively connect
+	// the network without turning every cell boundary on at once.
+	const float EdgeChoice = MixtormatCellRandom01(Joint.EdgeId);
+	const float Enabled = saturate((saturate(RockFracture) * 1.35f - EdgeChoice * 0.92f) * 8.0f);
+	const float CrackWidth = lerp(0.018f, 0.075f, saturate(RockFracture));
+	const float Crack =
+		(1.0f - smoothstep(CrackWidth * 0.2f, CrackWidth, Joint.EdgeDistance)) * Enabled;
+
+	const float2 Layer = LayerField.Load(int3(Pixel, 0));
+	const float DepthVariation = lerp(0.55f, 1.0f, MixtormatCellRandom01(Joint.CellId));
+	const float FracturedHeight = Layer.x
+		- Crack * max(RockRelief, 0.0f) * saturate(RockFracture) * 0.72f * DepthVariation;
+
+	OutFractureField[Pixel] = float2(FracturedHeight, max(Crack, Layer.y * 0.55f));
+}
+
+float ExposedEdgeAt(int2 Pixel)
+{
+	Pixel.x = MixtormatWrapI(Pixel.x, OutputSize.x);
+	Pixel.y = MixtormatWrapI(Pixel.y, OutputSize.y);
+	return FractureField.Load(int3(Pixel, 0)).y;
+}
+
+[numthreads(8, 8, 1)]
+void ChippingCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 UV = RockUV(Pixel);
+	const int FormationPeriod = max((int)round(RockScale), 1);
+	const int ChipCells = max(FormationPeriod * 3, 3);
+	const FMixtormatCellularResult ChipCell = MixtormatCellular(
+		UV * float(ChipCells), ChipCells, RockSeed + 701u, 1.0f);
+
+	// A fixed tap count with a scale-derived radius makes chipping stable at 1K and 4K. It grows
+	// out from real cleavage or fracture exposure instead of appearing as unrelated surface noise.
+	const int Radius = max(
+		(int)round(float(min(OutputSize.x, OutputSize.y)) / float(max(ChipCells * 18, 1))),
+		1);
+	float Exposure = ExposedEdgeAt(Pixel);
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2( Radius, 0)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2(-Radius, 0)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2(0,  Radius)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2(0, -Radius)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2( Radius,  Radius)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2(-Radius,  Radius)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2( Radius, -Radius)));
+	Exposure = max(Exposure, ExposedEdgeAt(Pixel + int2(-Radius, -Radius)));
+
+	const float CellChoice = MixtormatCellRandom01(ChipCell.CellId);
+	const float Selected = saturate((saturate(RockChipping) * 1.25f - CellChoice * 0.88f) * 9.0f);
+	const float Bite = 1.0f - smoothstep(
+		lerp(0.16f, 0.10f, RockChipping),
+		lerp(0.48f, 0.62f, RockChipping),
+		ChipCell.F1);
+	const float Chip = Bite * Selected * smoothstep(0.08f, 0.72f, Exposure);
+
+	const float BaseHeight = FractureField.Load(int3(Pixel, 0)).x;
+	OutHeight[Pixel] = BaseHeight
+		- Chip * max(RockRelief, 0.0f) * saturate(RockChipping) * 0.58f;
+}

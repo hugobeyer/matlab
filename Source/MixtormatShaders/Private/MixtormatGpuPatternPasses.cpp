@@ -1475,13 +1475,18 @@ namespace MixtormatGpuCompositor
 						const bool bBreakupConsumer =
 							Other.Type == EMixtormatLayerChildType::Effect
 							&& Other.Effect.Type == EMixtormatEffectType::Breakup;
+						const bool bFractureConsumer =
+							Other.Type == EMixtormatLayerChildType::Generator
+							&& Other.Generator.Type == EMixtormatGeneratorType::Fracture
+							&& Other.Generator.Fracture.Source != EMixtormatFractureSource::Generated;
 						if (Other.Type == EMixtormatLayerChildType::HsvFilter
 							|| Other.Type == EMixtormatLayerChildType::RandomId
 							|| Other.Type == EMixtormatLayerChildType::RampId
 							|| Other.Type == EMixtormatLayerChildType::UvFromIds
 							|| Other.Type == EMixtormatLayerChildType::ReliefFromIds
 							|| bWornEdgesConsumer
-							|| bBreakupConsumer)
+							|| bBreakupConsumer
+							|| bFractureConsumer)
 						{
 							bWanted = true;
 							break;

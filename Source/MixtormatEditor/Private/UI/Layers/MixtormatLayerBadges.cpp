@@ -217,6 +217,8 @@ namespace MixtormatLayerBadges
 			{
 			case EMixtormatGeneratorType::StrataCarver:
 				return LOCTEXT("GeneratorBadgeStrataCarver", "STRATA");
+			case EMixtormatGeneratorType::Fracture:
+				return LOCTEXT("GeneratorBadgeFracture", "FRACT");
 			}
 			return LOCTEXT("GeneratorBadgeUnknown", "GEN");
 		}

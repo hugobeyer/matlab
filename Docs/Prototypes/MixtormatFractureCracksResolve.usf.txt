@@ -1,0 +1,55 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+
+// Eikonal fracture resolve. CrackDistance is produced by the shared toroidal JFA used by
+// Craquelure: x is distance to the skeleton in pixels, y is the stable lineage ID as float bits.
+// A profile raised on that distance has an explicit mouth, centreline and wall slope.
+
+int2 OutputSize;
+float FractureWidthPixels;
+float FractureDepth;
+float FractureProfile;
+float FractureVariation;
+
+Texture2D<float4> CrackDistance;
+Texture2D<float> SourceHeight;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutFractureMask;
+
+float SymmetricVariation(uint Id, uint Salt, float Amount)
+{
+	const float Draw = MixtormatCellRandom01(Id ^ Salt);
+	return lerp(1.0f - Amount, 1.0f + Amount, Draw);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	const float2 Nearby = CrackDistance.Load(int3(Pixel, 0)).xy;
+	const uint Lineage = asuint(Nearby.y);
+	const float Variation = saturate(FractureVariation);
+
+	// Width, wall profile and depth vary independently but remain coherent for the entire lineage.
+	// No pixel noise is applied to the SDF, so the wall keeps a real slope instead of boiling.
+	const float WidthMul = SymmetricVariation(Lineage, 0xC2B2AE35u, Variation * 0.72f);
+	const float DepthMul = SymmetricVariation(Lineage, 0x27D4EB2Fu, Variation * 0.55f);
+	const float ProfileMul = SymmetricVariation(Lineage, 0x9E3779B9u, Variation * 0.35f);
+	const float Width = max(FractureWidthPixels * WidthMul, 0.5f);
+	const float Profile = max(FractureProfile * ProfileMul, 0.05f);
+
+	const float NormalizedDistance = saturate(Nearby.x / Width);
+	const float Groove = pow(saturate(1.0f - NormalizedDistance), Profile);
+	const float Source = SourceHeight.Load(int3(Pixel, 0));
+	const float Carved = Source - max(FractureDepth, 0.0f) * DepthMul * Groove;
+
+	OutHeight[Pixel] = min(Source, Carved);
+	OutFractureMask[Pixel] = Groove;
+}

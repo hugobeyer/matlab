@@ -2509,7 +2509,8 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 UENUM(BlueprintType)
 enum class EMixtormatGeneratorType : uint8
 {
-	StrataCarver UMETA(DisplayName = "Strata Carver")
+	StrataCarver UMETA(DisplayName = "Strata Carver"),
+	Fracture UMETA(DisplayName = "Fracture")
 };
 
 // Strata Carver: sedimentary/weathered carving driven by a propagated distance solve.
@@ -2667,6 +2668,52 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	float ClampMax = 1.0f;
 };
 
+// Fracture reshapes owned footprints and intersects their height with fractured face planes.
+// It consumes local Ramp From IDs relief before the layer's final blend.
+UENUM(BlueprintType)
+enum class EMixtormatFractureSource : uint8
+{
+	Generated UMETA(DisplayName = "Generated"),
+	RegionIds UMETA(DisplayName = "Region IDs"),
+	Combined UMETA(DisplayName = "Generated + IDs")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatFracture
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture")
+	EMixtormatFractureSource FractureSource = EMixtormatFractureSource::Combined;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
+	int32 FractureSeed = 11;
+
+	// Number of broad fracture regions across one repeat.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "2.0", UIMax = "32.0", Delta = "1.0"))
+	float FractureScale = 7.0f;
+
+	// Blends structural deformation and face intersection; zero is an exact identity.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float FractureAmount = 0.62f;
+
+	// Relative shoulder width, converted to output pixels by the structural pass.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float FractureWidth = 0.28f;
+
+	// Face depth below the piece shoulder, in layer-height units.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
+	float FractureDepth = 0.08f;
+
+	// Shapes the three planar slope sections; 1 makes their combined profile linear.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
+	float FractureProfile = 1.0f;
+
+	// Coherent directional deformation, signed offsets, width and face variation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float FractureVariation = 0.38f;
+};
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -2693,6 +2740,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
 	FMixtormatStrataCarver StrataCarver;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Fracture"))
+	FMixtormatFracture Fracture;
 };
 
 // How a layer's base colour combines with what is composited below it.

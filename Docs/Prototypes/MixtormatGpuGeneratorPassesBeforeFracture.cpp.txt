@@ -293,6 +293,143 @@ IMPLEMENT_GLOBAL_SHADER(
 	"ResolveCS",
 	SF_Compute);
 
+class FMixtormatFractureTopologyCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFractureTopologyCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureTopologyCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, FractureSource)
+		SHADER_PARAMETER(uint32, HasRegionIds)
+		SHADER_PARAMETER(uint32, FractureSeed)
+		SHADER_PARAMETER(float, FractureScale)
+		SHADER_PARAMETER(float, FractureAmount)
+		SHADER_PARAMETER(float, LayerTiling)
+		SHADER_PARAMETER(FIntPoint, LayerUVScale)
+		SHADER_PARAMETER(FVector2f, LayerUVOffset)
+		SHADER_PARAMETER(uint32, LayerFlipU)
+		SHADER_PARAMETER(uint32, LayerFlipV)
+		SHADER_PARAMETER(int32, LayerRotation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutCrackState)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFractureTopologyCS,
+	"/Plugin/Mixtormat/Private/MixtormatFracture.usf",
+	"MainCS",
+	SF_Compute);
+
+class FMixtormatFractureDistanceSeedCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFractureDistanceSeedCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureDistanceSeedCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFractureDistanceSeedCS,
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
+	"SeedCS",
+	SF_Compute);
+
+class FMixtormatFractureDistanceStepCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFractureDistanceStepCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureDistanceStepCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, StepSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRecord)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFractureDistanceStepCS,
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
+	"StepCS",
+	SF_Compute);
+
+class FMixtormatFractureDistanceResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFractureDistanceResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureDistanceResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDistance)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFractureDistanceResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatCraquelureDistance.usf",
+	"ResolveDistanceCS",
+	SF_Compute);
+
+class FMixtormatFractureResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFractureResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFractureResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, FractureWidthPixels)
+		SHADER_PARAMETER(float, FractureDepth)
+		SHADER_PARAMETER(float, FractureProfile)
+		SHADER_PARAMETER(float, FractureVariation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CrackDistance)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFractureMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFractureResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatFractureResolve.usf",
+	"MainCS",
+	SF_Compute);
 
 namespace
 {
@@ -535,7 +672,177 @@ namespace
 		return CarvedHeight;
 	}
 
+	FRDGTextureRef AddFracturePass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		FRDGTextureRef SourceHeight)
+	{
+		const FFractureRenderData& Fracture = Child.Generator.Fracture;
+		if (Fracture.Amount <= 0.0f || Fracture.Depth <= 0.0f)
+		{
+			return SourceHeight;
+		}
 
+		FRDGTextureRef RegionIds =
+			FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+		const bool bHasRegionIds = RegionIds != nullptr;
+		if (!bHasRegionIds
+			&& Fracture.Source == EMixtormatFractureSource::RegionIds)
+		{
+			return SourceHeight;
+		}
+		if (!bHasRegionIds)
+		{
+			RegionIds = Ctx.EmptyRegionIds;
+		}
+
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint OutputSize = Ctx.Request.Resolution;
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8),
+			FMath::DivideAndRoundUp(OutputSize.Y, 8),
+			1);
+		const float WidthPixels = FMath::Lerp(1.5f, 32.0f, Fracture.Width)
+			* static_cast<float>(FMath::Min(OutputSize.X, OutputSize.Y)) / 1024.0f;
+		const FRDGTextureDesc Float4Desc = FRDGTextureDesc::Create2D(
+			OutputSize, PF_A32B32G32R32F, FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV);
+		const FRDGTextureDesc MaskDesc = FRDGTextureDesc::Create2D(
+			OutputSize, PF_R16F, FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV);
+		FRDGTextureRef CrackState =
+			GraphBuilder.CreateTexture(Float4Desc, TEXT("Mixtormat.Fracture.Topology"));
+		FRDGTextureRef Record[2] = {
+			GraphBuilder.CreateTexture(Float4Desc, TEXT("Mixtormat.Fracture.JfaA")),
+			GraphBuilder.CreateTexture(Float4Desc, TEXT("Mixtormat.Fracture.JfaB"))};
+		FRDGTextureRef CrackDistance =
+			GraphBuilder.CreateTexture(Float4Desc, TEXT("Mixtormat.Fracture.Distance"));
+		FRDGTextureRef OutputHeight = GraphBuilder.CreateTexture(
+			SourceHeight->Desc, TEXT("Mixtormat.Fracture.Height"));
+		FRDGTextureRef OutputMask =
+			GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.Fracture.Mask"));
+
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureTopologyCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->FractureSource = static_cast<uint32>(Fracture.Source);
+			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
+			P->FractureSeed = Fracture.Seed;
+			P->FractureScale = Fracture.Scale;
+			P->FractureAmount = Fracture.Amount;
+			P->LayerTiling = Layer.Tiling;
+			P->LayerUVScale = FIntPoint(Layer.UVScaleX, Layer.UVScaleY);
+			P->LayerUVOffset = Layer.UVOffset;
+			P->LayerFlipU = Layer.bFlipU ? 1u : 0u;
+			P->LayerFlipV = Layer.bFlipV ? 1u : 0u;
+			P->LayerRotation = Layer.Rotation;
+			P->RegionIds = RegionIds;
+			P->OutCrackState = GraphBuilder.CreateUAV(CrackState);
+			TShaderMapRef<FMixtormatFractureTopologyCS> Shader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.Topology.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureDistanceSeedCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->CrackState = CrackState;
+			P->OutputRecord = GraphBuilder.CreateUAV(Record[0]);
+			TShaderMapRef<FMixtormatFractureDistanceSeedCS> Shader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.DistanceSeed.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+
+		int32 RecordIndex = 0;
+		// Only distances inside the widest possible groove are consumed. Starting JFA at the next
+		// power of two above that radius preserves the exact local SDF without flooding the tile at
+		// image scale for a 32-pixel fracture.
+		const int32 FirstStep = FMath::Max(
+			1,
+			static_cast<int32>(FMath::RoundUpToPowerOfTwo(
+				static_cast<uint32>(FMath::CeilToInt(WidthPixels)))));
+		TShaderMapRef<FMixtormatFractureDistanceStepCS> StepShader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		for (int32 StepSize = FirstStep; StepSize >= 1; StepSize /= 2)
+		{
+			const int32 WriteIndex = 1 - RecordIndex;
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureDistanceStepCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->StepSize = StepSize;
+			P->PreviousRecord = Record[RecordIndex];
+			P->OutputRecord = GraphBuilder.CreateUAV(Record[WriteIndex]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.DistanceStep%d.L%d.C%d",
+					StepSize, LayerCtx.LayerIndex, Child.SourceChildIndex),
+				StepShader, P, Groups);
+			RecordIndex = WriteIndex;
+		}
+		{
+			const int32 WriteIndex = 1 - RecordIndex;
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureDistanceStepCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->StepSize = 1;
+			P->PreviousRecord = Record[RecordIndex];
+			P->OutputRecord = GraphBuilder.CreateUAV(Record[WriteIndex]);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.DistanceStepFinal.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex),
+				StepShader, P, Groups);
+			RecordIndex = WriteIndex;
+		}
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureDistanceResolveCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->PreviousRecord = Record[RecordIndex];
+			P->OutputDistance = GraphBuilder.CreateUAV(CrackDistance);
+			TShaderMapRef<FMixtormatFractureDistanceResolveCS> Shader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.DistanceResolve.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFractureResolveCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->FractureWidthPixels = WidthPixels;
+			P->FractureDepth = Fracture.Depth;
+			P->FractureProfile = Fracture.Profile;
+			P->FractureVariation = Fracture.Variation;
+			P->CrackDistance = CrackDistance;
+			P->SourceHeight = SourceHeight;
+			P->OutHeight = GraphBuilder.CreateUAV(OutputHeight);
+			P->OutFractureMask = GraphBuilder.CreateUAV(OutputMask);
+			TShaderMapRef<FMixtormatFractureResolveCS> Shader(
+				GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Fracture.Resolve.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{
+				Layer.LayerId,
+				Child.SourceChildIndex,
+				FName(TEXT("Fracture"))},
+			OutputMask);
+		return OutputHeight;
+	}
 }
 
 void AddGeneratorPasses(
@@ -546,8 +853,7 @@ void AddGeneratorPasses(
 	const bool bHasGenerator = Layer.Children.ContainsByPredicate(
 		[](const FChildRenderData& Child)
 		{
-			return Child.Type == EMixtormatLayerChildType::Generator
-							&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver;
+			return Child.Type == EMixtormatLayerChildType::Generator;
 		});
 	if (!bHasGenerator)
 	{
@@ -588,7 +894,8 @@ void AddGeneratorPasses(
 				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
 			break;
 		case EMixtormatGeneratorType::Fracture:
-			// Fracture consumes ramp relief in the isolated structural stage.
+			LayerCtx.LayerInputHeight = AddFracturePass(
+				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
 			break;
 		}
 	}
@@ -627,7 +934,8 @@ void AddGeneratorPasses(
 	// and write the same resource, and the composite reads whichever one this leaves behind.
 	FRDGTextureRef FormedNormal = Ctx.GraphBuilder.CreateTexture(
 		LayerCtx.LayerInputN->Desc, TEXT("Mixtormat.FormationNormal"));
-
+	FRDGTextureRef FormedRAM = Ctx.GraphBuilder.CreateTexture(
+		LayerCtx.LayerInputRAM->Desc, TEXT("Mixtormat.FormationRAM"));
 	AddHeightDerivedNormalPass(
 		Ctx,
 		SourceHeight,
@@ -635,13 +943,14 @@ void AddGeneratorPasses(
 		LayerCtx.LayerInputN,
 		LayerCtx.LayerInputRAM,
 		FormedNormal,
-		nullptr,
+		FormedRAM,
 		Ctx.Request.Resolution,
 		HeightDerivedNormalStrength,
-		0.0f,
-		false,
+		1.0f,
+		true,
 		TEXT("FormationRecipe"));
 	LayerCtx.LayerInputN = FormedNormal;
+	LayerCtx.LayerInputRAM = FormedRAM;
 }
 
 }

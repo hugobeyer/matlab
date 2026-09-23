@@ -124,6 +124,7 @@ namespace
 			switch (Child.Generator.Type)
 			{
 			case EMixtormatGeneratorType::StrataCarver: return &Child.Generator.StrataCarver;
+			case EMixtormatGeneratorType::Fracture: return &Child.Generator.Fracture;
 			}
 			return nullptr;
 		default: return nullptr;

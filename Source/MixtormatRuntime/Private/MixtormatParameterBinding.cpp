@@ -127,6 +127,10 @@ namespace
 				View.ConstData = &Child.Generator.StrataCarver;
 				View.Struct = FMixtormatStrataCarver::StaticStruct();
 				break;
+			case EMixtormatGeneratorType::Fracture:
+				View.ConstData = &Child.Generator.Fracture;
+				View.Struct = FMixtormatFracture::StaticStruct();
+				break;
 			}
 			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
@@ -175,6 +179,11 @@ namespace
 				View.MutableData = &Child.Generator.StrataCarver;
 				View.ConstData = &Child.Generator.StrataCarver;
 				View.Struct = FMixtormatStrataCarver::StaticStruct();
+				break;
+			case EMixtormatGeneratorType::Fracture:
+				View.MutableData = &Child.Generator.Fracture;
+				View.ConstData = &Child.Generator.Fracture;
+				View.Struct = FMixtormatFracture::StaticStruct();
 				break;
 			}
 			break;

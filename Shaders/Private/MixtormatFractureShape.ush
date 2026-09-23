@@ -1,0 +1,52 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_FRACTURE_SHAPE_USH
+#define MIXTORMAT_FRACTURE_SHAPE_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+int2 FractureWrap(int2 P, int2 Size)
+{
+	return int2(MixtormatWrapI(P.x, Size.x), MixtormatWrapI(P.y, Size.y));
+}
+
+float2 FractureDelta(float2 A, float2 B, int2 Size)
+{
+	const float2 D = A - B;
+	return D - round(D / float2(Size)) * float2(Size);
+}
+
+uint FractureOwnerSeed(uint2 Owner, uint Seed)
+{
+	return MixtormatRegionHash(Owner.x ^ MixtormatRegionHash(Owner.y) ^ Seed);
+}
+
+// Periodic, piecewise-linear bands: straight shears separated by angular breaks,
+// not smooth noise warping. Integer directions close across both tile seams.
+float FractureBand(float2 UV, int2 Direction, int Period, uint Seed)
+{
+	const float T = dot(UV, float2(Direction)) * float(Period);
+	const int Knot = (int)floor(T);
+	const float A = MixtormatRegionRandom(uint(MixtormatWrapI(Knot, Period)) ^ Seed);
+	const float B = MixtormatRegionRandom(uint(MixtormatWrapI(Knot + 1, Period)) ^ Seed);
+	return lerp(A, B, frac(T)) * 2.0f - 1.0f;
+}
+
+// Three planar sections retain slope breaks instead of rounding every face with pow(distance).
+float FractureFace(float U, float Profile)
+{
+	const float H1 = pow(0.35f, Profile);
+	const float H2 = pow(0.72f, Profile);
+	if (U < 0.35f)
+	{
+		return lerp(0.0f, H1, U / 0.35f);
+	}
+	if (U < 0.72f)
+	{
+		return lerp(H1, H2, (U - 0.35f) / 0.37f);
+	}
+	return lerp(H2, 1.0f, (U - 0.72f) / 0.28f);
+}
+
+#endif

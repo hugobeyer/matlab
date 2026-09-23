@@ -756,10 +756,23 @@ namespace MixtormatGpuCompositor
 
 	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second
 	// generator adds a payload beside StrataCarver and a case in AddGeneratorPasses.
+	struct FFractureRenderData
+	{
+		EMixtormatFractureSource Source = EMixtormatFractureSource::Combined;
+		uint32 Seed = 11;
+		float Scale = 7.0f;
+		float Amount = 0.62f;
+		float Width = 0.28f;
+		float Depth = 0.08f;
+		float Profile = 1.0f;
+		float Variation = 0.38f;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		FStrataCarverRenderData StrataCarver;
+		FFractureRenderData Fracture;
 	};
 
 	struct FChildRenderData
@@ -1524,17 +1537,15 @@ namespace MixtormatGpuCompositor
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
 
-	// MixtormatGpuGeneratorPasses.cpp -- the GENERATORS category.
-	//
-	// One entry point for the whole category, called once per layer from the layer loop between
-	// AddRegionProducerPasses and the child loop. That position is the contract: region IDs and
-	// the layer's resolved input already exist, and nothing has composited yet, so a generator
-	// rewrites LayerCtx.LayerInputHeight and LayerCtx.LayerInputN in place and every later stage
-	// -- the mask chain, the composite, the deferred effect filters -- reads the modified
-	// surface. Running it from inside the child loop beside the effects would put it after some
-	// mask children and before others for no reason; running it after the composite would make
-	// it an Effect, which is the one thing this category is defined against.
+	// MixtormatGpuGeneratorPasses.cpp -- source-height generators (Strata).
+	// Fracture has a later dependency: the isolated layer's Ramp From IDs relief.
 	void AddGeneratorPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
+	// MixtormatGpuFracturePasses.cpp -- owned footprints, redistance and face intersection.
+	void AddFracturePasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
