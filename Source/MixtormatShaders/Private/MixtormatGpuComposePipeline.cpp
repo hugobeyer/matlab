@@ -431,7 +431,8 @@ namespace MixtormatGpuCompositor
 								|| Child.Type == EMixtormatLayerChildType::HsvFilter
 								|| Child.Type == EMixtormatLayerChildType::RampId
 								|| Child.Type == EMixtormatLayerChildType::UvFromIds
-								|| Child.Type == EMixtormatLayerChildType::ReliefFromIds)
+								|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+								|| Child.Type == EMixtormatLayerChildType::IdGroup)
 							{
 								// All three are handled outside this loop -- the cluster in the
 								// pre-mask phase, the HSV filter at the composite's albedo sample,

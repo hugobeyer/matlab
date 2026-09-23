@@ -48,6 +48,7 @@ struct FMixtormatSurfaceEntry;
 enum class EMixtormatChildCreation : uint8
 {
 	PatternIds,
+	IdGroup,
 	ClusterIds,
 	CombineIds,
 	HsvFromIds,
@@ -430,6 +431,8 @@ private:
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 	FReply AddCombineIdToLayer(int32 LayerIndex);
+	FMixtormatIdGroup* GetSelectedIdGroup();
+	const FMixtormatIdGroup* GetSelectedIdGroup() const;
 	FMixtormatCombineIdFilter* GetSelectedCombineId();
 	const FMixtormatCombineIdFilter* GetSelectedCombineId() const;
 	FMixtormatRampIdFilter* GetSelectedRampId();
@@ -441,6 +444,8 @@ private:
 	FMixtormatReliefIdFilter* GetSelectedReliefId();
 	const FMixtormatReliefIdFilter* GetSelectedReliefId() const;
 	TSharedRef<SWidget> BuildReliefIdControls();
+	TSharedRef<SWidget> BuildIdGroupControls();
+	TSharedRef<SWidget> BuildIdGroupFeatureMenu();
 	TSharedRef<SWidget> BuildCombineIdControls();
 	TSharedRef<SWidget> BuildCombineIdModeMenu();
 	TSharedRef<SWidget> BuildCombineIdModeMenuFor(int32 LayerIndex, int32 ChildIndex);

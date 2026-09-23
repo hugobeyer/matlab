@@ -1818,6 +1818,27 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
+			if (LayerChild.Type == EMixtormatLayerChildType::IdGroup)
+			{
+				const FMixtormatIdGroup& Group = LayerChild.IdGroup;
+				if (!Layer.bEnabled || !Group.bEnabled)
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::IdGroup;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.IdGroup.Feature = Group.Feature;
+				ChildData.IdGroup.Threshold = FMath::IsFinite(Group.Threshold)
+					? FMath::Clamp(Group.Threshold, 0.0f, 1.0f) : 0.08f;
+				ChildData.IdGroup.FeatureScale = FMath::IsFinite(Group.FeatureScale)
+					? FMath::Clamp(Group.FeatureScale, 0.0f, 64.0f) : 8.0f;
+				ChildData.IdGroup.SmoothRadius = FMath::Clamp(Group.SmoothRadius, 0, 8);
+				ChildData.IdGroup.bInvert = Group.bInvert;
+				ChildData.IdGroup.OutlineWidth = FMath::Clamp(Group.OutlineWidth, 1, 8);
+				continue;
+			}
+
 			if (LayerChild.Type == EMixtormatLayerChildType::CombineId)
 			{
 				const FMixtormatCombineIdFilter& Combine = LayerChild.CombineId;

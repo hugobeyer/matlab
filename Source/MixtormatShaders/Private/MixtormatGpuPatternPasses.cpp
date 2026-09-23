@@ -62,6 +62,58 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+class FMixtormatIdGroupResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatIdGroupResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatIdGroupResolveCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, FeatureSource)
+		SHADER_PARAMETER(uint32, InvertSelection)
+		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(float, Threshold)
+		SHADER_PARAMETER(float, FeatureScale)
+		SHADER_PARAMETER(int32, SmoothRadius)
+		SHADER_PARAMETER(FVector2f, SourceTiling)
+		SHADER_PARAMETER(FVector2f, SourceOffset)
+		SHADER_PARAMETER(uint32, FlipU)
+		SHADER_PARAMETER(uint32, FlipV)
+		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceAIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceBIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatIdGroupResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatIdGroup.usf", "ResolveCS", SF_Compute);
+
+class FMixtormatIdGroupBoundaryCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatIdGroupBoundaryCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatIdGroupBoundaryCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, OutlineWidth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, GroupIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputBoundary)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatIdGroupBoundaryCS,
+	"/Plugin/Mixtormat/Private/MixtormatIdGroupBoundary.usf", "MainCS", SF_Compute);
+
 // Random value per region. A mask, so it ends in the same PreviousMask/BlendMode/Weight tail
 // every other mask child uses -- the only thing that makes it different is where the value
 // comes from.
@@ -1312,6 +1364,92 @@ namespace MixtormatGpuCompositor
 				Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution, LayerCtx.LayerIndex));
 	}
 
+	FRDGTextureRef AddIdGroupPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child)
+	{
+		FRDGTextureRef SourceA = nullptr;
+		FRDGTextureRef SourceB = nullptr;
+		for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+		{
+			if (Entry.Key >= Child.SourceChildIndex)
+			{
+				break;
+			}
+			SourceA = SourceB;
+			SourceB = Entry.Value;
+		}
+		if (!SourceA || !SourceB)
+		{
+			return nullptr;
+		}
+
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		FRDGTextureRef GroupIds = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Size, PF_R32_UINT, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.IdGroup.Ids"));
+		FRDGTextureRef Boundary = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Size, PF_R16F, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.IdGroup.Boundary"));
+		const bool bPreview = IsChildOutputPreviewTarget(
+			Ctx.Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+			LayerCtx.LayerIndex, Child.SourceChildIndex);
+		FRDGTextureRef SourceHeight = Layer.Height.IsValid()
+			? RegisterTexture(Ctx.GraphBuilder, Ctx.RegisteredTextures, Layer.Height,
+				TEXT("Mixtormat.IdGroup.SourceHeight"))
+			: Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
+
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupResolveCS::FParameters>();
+			P->OutputSize = Size;
+			P->FeatureSource = static_cast<uint32>(Child.IdGroup.Feature);
+			P->InvertSelection = Child.IdGroup.bInvert ? 1u : 0u;
+			P->WriteDebug = bPreview ? 1u : 0u;
+			P->Threshold = Child.IdGroup.Threshold;
+			P->FeatureScale = Child.IdGroup.FeatureScale;
+			P->SmoothRadius = Child.IdGroup.SmoothRadius;
+			P->SourceTiling = FVector2f(Layer.UVScaleX, Layer.UVScaleY) * Layer.Tiling;
+			P->SourceOffset = Layer.UVOffset;
+			P->FlipU = Layer.bFlipU ? 1u : 0u;
+			P->FlipV = Layer.bFlipV ? 1u : 0u;
+			P->Rotation = Layer.Rotation;
+			P->SourceAIds = SourceA;
+			P->SourceBIds = SourceB;
+			P->SourceHeight = SourceHeight;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			P->OutputIds = GraphBuilder.CreateUAV(GroupIds);
+			P->OutputDebug = GraphBuilder.CreateUAV(Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex]);
+			TShaderMapRef<FMixtormatIdGroupResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.IdGroup.Resolve"), Shader, P, Groups);
+		}
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupBoundaryCS::FParameters>();
+			P->OutputSize = Size;
+			P->OutlineWidth = Child.IdGroup.OutlineWidth;
+			P->GroupIds = GroupIds;
+			P->OutputBoundary = GraphBuilder.CreateUAV(Boundary);
+			TShaderMapRef<FMixtormatIdGroupBoundaryCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.IdGroup.Boundary"), Shader, P, Groups);
+		}
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Boundary"))}, Boundary);
+		if (IsChildOutputPreviewTarget(
+			Ctx.Request, EMixtormatPreviewOutputKind::Mask, FName(TEXT("Boundary")),
+			LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewMaskBlitPass(GraphBuilder, Boundary,
+				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
+		}
+		return GroupIds;
+	}
+
 	// Schedule independent producers early for generators. Breakup-dependent Combine
 	// chains wait for the child loop; publication keeps maps sorted by SourceChildIndex.
 	void AddRegionProducerPasses(
@@ -1340,7 +1478,9 @@ namespace MixtormatGpuCompositor
 					Child.Type == EMixtormatLayerChildType::PatternId;
 				const bool bCombineProducer =
 					Child.Type == EMixtormatLayerChildType::CombineId;
-				if (!bClusterProducer && !bPatternProducer && !bCombineProducer)
+				const bool bIdGroupProducer =
+					Child.Type == EMixtormatLayerChildType::IdGroup;
+				if (!bClusterProducer && !bPatternProducer && !bCombineProducer && !bIdGroupProducer)
 				{
 					continue;
 				}
@@ -1350,6 +1490,14 @@ namespace MixtormatGpuCompositor
 					AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
 					continue;
 				}
+				if (bIdGroupProducer)
+				{
+					if (FRDGTextureRef GroupIds = AddIdGroupPasses(Ctx, LayerCtx, Layer, Child))
+					{
+						PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, GroupIds);
+					}
+					continue;
+				}
 
 				// Gated separately from whether the producer runs at all: ordinary
 				// consumers must not overwrite a debug target owned by another layer.
@@ -1357,6 +1505,20 @@ namespace MixtormatGpuCompositor
 					Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 					LayerIndex, Child.SourceChildIndex);
 				bool bWanted = bIsSelectedPreview;
+				if (bPatternProducer)
+				{
+					// ID Group explicitly consumes the two nearest maps. Keep earlier Pattern
+					// producers available even when another Pattern sits between this one and the group.
+					for (const FChildRenderData& Other : Layer.Children)
+					{
+						if (Other.SourceChildIndex > Child.SourceChildIndex
+							&& Other.Type == EMixtormatLayerChildType::IdGroup)
+						{
+							bWanted = true;
+							break;
+						}
+					}
+				}
 				if (bPatternProducer)
 				{
 					const FPatternIdRenderData& Pattern = Child.PatternId;
@@ -1433,6 +1595,7 @@ namespace MixtormatGpuCompositor
 								&& (Other.Type == EMixtormatLayerChildType::Filter
 									|| Other.Type == EMixtormatLayerChildType::PatternId
 									|| Other.Type == EMixtormatLayerChildType::CombineId
+									|| Other.Type == EMixtormatLayerChildType::IdGroup
 									|| (Other.Type == EMixtormatLayerChildType::Effect
 										&& Other.Effect.Type == EMixtormatEffectType::Breakup)))
 							{

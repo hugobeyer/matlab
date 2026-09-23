@@ -641,6 +641,16 @@ namespace MixtormatGpuCompositor
 		uint32 Seed = 1;
 	};
 
+	struct FIdGroupRenderData
+	{
+		EMixtormatIdGroupFeature Feature = EMixtormatIdGroupFeature::Curvature;
+		float Threshold = 0.08f;
+		float FeatureScale = 8.0f;
+		int32 SmoothRadius = 2;
+		bool bInvert = false;
+		int32 OutlineWidth = 2;
+	};
+
 	struct FRandomIdRenderData
 	{
 		float MinValue = 0.0f;
@@ -793,6 +803,7 @@ namespace MixtormatGpuCompositor
 		FRandomIdRenderData RandomId;
 		FRampIdRenderData RampId;
 		FCombineIdRenderData CombineId;
+		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;

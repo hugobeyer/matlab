@@ -5147,6 +5147,12 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
+	// Retired authoring operations. Keep their serialized payloads and evaluation
+	// intact until existing materials can migrate to explicit ID composition.
+	if (Kind == EMixtormatChildCreation::ClusterIds || Kind == EMixtormatChildCreation::CombineIds)
+	{
+		return FReply::Handled();
+	}
 	if (Target.IsGroup())
 	{
 		// AppendGroupChild takes a type and hands the child back precisely so a creator with more
@@ -5227,8 +5233,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	MixtormatMenu::FBuilder Menu;
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
-		{ LOCTEXT("AddClusterFilterChild", "Cluster IDs"), EMixtormatChildCreation::ClusterIds },
-		{ LOCTEXT("AddCombineIdChild", "Combine IDs"), EMixtormatChildCreation::CombineIds },
+
 	};
 	const bool bEnabled = CanCreateChild(Target);
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)

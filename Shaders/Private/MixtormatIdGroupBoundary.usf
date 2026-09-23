@@ -1,0 +1,41 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+int2 OutputSize;
+int OutlineWidth;
+Texture2D<uint> GroupIds;
+RWTexture2D<float> OutputBoundary;
+
+int2 GroupBoundaryWrap(int2 P)
+{
+	return int2(MixtormatWrapI(P.x, OutputSize.x), MixtormatWrapI(P.y, OutputSize.y));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const int2 P = int2(DispatchThreadId.xy);
+	const uint Center = GroupIds.Load(int3(P, 0));
+	float Boundary = 0.0f;
+	[loop]
+	for (int Y = -OutlineWidth; Y <= OutlineWidth && Boundary == 0.0f; ++Y)
+	{
+		[loop]
+		for (int X = -OutlineWidth; X <= OutlineWidth; ++X)
+		{
+			if ((X != 0 || Y != 0)
+				&& GroupIds.Load(int3(GroupBoundaryWrap(P + int2(X, Y)), 0)) != Center)
+			{
+				Boundary = 1.0f;
+				break;
+			}
+		}
+	}
+	OutputBoundary[P] = Boundary;
+}

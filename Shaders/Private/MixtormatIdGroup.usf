@@ -1,0 +1,99 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+int2 OutputSize;
+uint FeatureSource;
+uint InvertSelection;
+uint WriteDebug;
+float Threshold;
+float FeatureScale;
+int SmoothRadius;
+float2 SourceTiling;
+float2 SourceOffset;
+uint FlipU;
+uint FlipV;
+int Rotation;
+
+Texture2D<uint> SourceAIds;
+Texture2D<uint> SourceBIds;
+
+Texture2D<float> SourceHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<uint> OutputIds;
+
+RWTexture2D<float4> OutputDebug;
+
+int2 GroupWrap(int2 P)
+{
+	return int2(MixtormatWrapI(P.x, OutputSize.x), MixtormatWrapI(P.y, OutputSize.y));
+}
+
+float SmoothedHeight(int2 P)
+{
+	float Sum = 0.0f;
+	float Weight = 0.0f;
+	[loop]
+	for (int Y = -SmoothRadius; Y <= SmoothRadius; ++Y)
+	{
+		[loop]
+		for (int X = -SmoothRadius; X <= SmoothRadius; ++X)
+		{
+			const float W = float((SmoothRadius + 1 - abs(X)) * (SmoothRadius + 1 - abs(Y)));
+			const float2 UV = (float2(GroupWrap(P + int2(X, Y))) + 0.5f) / float2(OutputSize);
+			const float2 SourceUV = MixtormatSourceUV(
+				UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
+			Sum += SourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f) * W;
+			Weight += W;
+		}
+	}
+	return Sum / Weight;
+}
+
+[numthreads(8, 8, 1)]
+void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const int2 P = int2(DispatchThreadId.xy);
+	const float Center = SmoothedHeight(P);
+	float Feature = Center;
+	if (FeatureSource != 0u)
+	{
+		const float Neighbours = SmoothedHeight(P + int2(1, 0))
+			+ SmoothedHeight(P + int2(-1, 0))
+			+ SmoothedHeight(P + int2(0, 1))
+			+ SmoothedHeight(P + int2(0, -1));
+		Feature = abs(Center - Neighbours * 0.25f) * FeatureScale;
+	}
+	else
+	{
+		Feature *= FeatureScale;
+	}
+	bool ChooseB = Feature >= Threshold;
+	ChooseB = InvertSelection != 0u ? !ChooseB : ChooseB;
+	const uint A = SourceAIds.Load(int3(P, 0));
+	const uint B = SourceBIds.Load(int3(P, 0));
+	uint Chosen = ChooseB ? B : A;
+	uint Slot = ChooseB ? 1u : 0u;
+	if (Chosen == MIXTORMAT_INVALID_REGION)
+	{
+		Chosen = ChooseB ? A : B;
+		Slot = ChooseB ? 0u : 1u;
+	}
+	const uint GroupId = Chosen == MIXTORMAT_INVALID_REGION
+		? MIXTORMAT_INVALID_REGION
+		: MixtormatRegionHash(Chosen ^ (Slot == 0u ? 0x9e3779b9u : 0x85ebca6bu));
+	OutputIds[P] = GroupId;
+	if (WriteDebug != 0u)
+	{
+		OutputDebug[P] = GroupId == MIXTORMAT_INVALID_REGION
+			? 0.0f : float4(MixtormatRegionDebugColor(GroupId), 1.0f);
+	}
+}
+

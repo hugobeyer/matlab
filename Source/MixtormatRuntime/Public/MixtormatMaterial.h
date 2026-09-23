@@ -1936,6 +1936,44 @@ struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
 	EMixtormatIdCombineMode Mode = EMixtormatIdCombineMode::Merge;
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatIdGroupFeature : uint8
+{
+	Height UMETA(DisplayName = "Height"),
+	Curvature UMETA(DisplayName = "Curvature")
+};
+
+// Selects between the two nearest Region-ID producers above this node. Source A
+// is the older/macro map and Source B is the newer/micro map. The guide is
+// continuous, but output identity is always selected discretely and re-hashed
+// with its source slot so equal numeric IDs from different maps never collide.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatIdGroup
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
+	EMixtormatIdGroupFeature Feature = EMixtormatIdGroupFeature::Curvature;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Threshold = 0.08f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0.0", UIMax = "64.0"))
+	float FeatureScale = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0", UIMax = "8"))
+	int32 SmoothRadius = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
+	bool bInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "1", UIMax = "8"))
+	int32 OutlineWidth = 2;
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 {
@@ -2833,7 +2871,9 @@ enum class EMixtormatLayerChildType : uint8
 	// like everything below ColorId, and they read the nearest valid map above them rather than
 	// asking which node produced it -- Pattern, Cluster and Combine are all equally valid sources.
 	UvFromIds UMETA(DisplayName = "UV From IDs"),
-	ReliefFromIds UMETA(DisplayName = "Relief From IDs")
+	ReliefFromIds UMETA(DisplayName = "Relief From IDs"),
+	// Appended for serialization safety. Consumes the two nearest producers above it.
+	IdGroup UMETA(DisplayName = "ID Group")
 };
 
 USTRUCT(BlueprintType)
@@ -2920,6 +2960,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::ReliefFromIds"))
 	FMixtormatReliefIdFilter ReliefId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::IdGroup"))
+	FMixtormatIdGroup IdGroup;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
