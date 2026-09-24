@@ -2867,85 +2867,50 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 TSharedRef<SWidget> SMixtormat::BuildIdGroupFeatureMenu()
 {
 	MixtormatMenu::FBuilder Menu;
-	const auto Entry = [this](const EMixtormatIdGroupFeature Mode, const FText Label, const FText Hint)
+	const auto Entry = [this, &Menu](const EMixtormatIdGroupMode Mode, const FText Label)
 	{
 		Menu.Item(Label, nullptr, FSimpleDelegate::CreateLambda([this, Mode]()
 		{
-			if (FMixtormatIdGroup* G = GetSelectedIdGroup())
+			if (FMixtormatIdGroup* Group = GetSelectedIdGroup())
 			{
-				G->Feature = Mode;
+				Group->Mode = Mode;
 				RefreshLayeredPreview();
 				RebuildLayerList();
 			}
 		}))
-		.Enabled(TAttribute<bool>::CreateLambda([this, Mode]()
+		.Checked(TAttribute<bool>::CreateLambda([this, Mode]()
 		{
-			const FMixtormatIdGroup* G = GetSelectedIdGroup();
-			return G && G->Feature != Mode;
-		}))
-		.Hint(Hint);
+			const FMixtormatIdGroup* Group = GetSelectedIdGroup();
+			return Group && Group->Mode == Mode;
+		}));
 	};
 
-	Entry(EMixtormatIdGroupFeature::Height, LOCTEXT("IdGroupFeatureHeight", "Height"),
-		LOCTEXT("IdGroupFeatureHeightHint", "Selects regions based on the source height."));
-	Entry(EMixtormatIdGroupFeature::Curvature, LOCTEXT("IdGroupFeatureCurvature", "Curvature"),
-		LOCTEXT("IdGroupFeatureCurvatureHint", "Selects regions based on surface curvature (recesses vs peaks)."));
-
+	Entry(EMixtormatIdGroupMode::Difference, LOCTEXT("IdGroupModeDifference", "Difference"));
+	Entry(EMixtormatIdGroupMode::MaxId, LOCTEXT("IdGroupModeMaxId", "Max ID"));
 	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 {
-	const auto Group = [this]() { return GetSelectedIdGroup(); };
-
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-
 	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("IdGroupFeatureLabel", "Feature"),
+		LOCTEXT("IdGroupModeLabel", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
 			{
-				const FMixtormatIdGroup* G = GetSelectedIdGroup();
-				if (!G) return FText::GetEmpty();
-				return G->Feature == EMixtormatIdGroupFeature::Curvature
-					? LOCTEXT("IdGroupFeatureCurvature", "Curvature")
-					: LOCTEXT("IdGroupFeatureHeight", "Height");
+				const FMixtormatIdGroup* Group = GetSelectedIdGroup();
+				if (!Group)
+				{
+					return FText::GetEmpty();
+				}
+				return Group->Mode == EMixtormatIdGroupMode::MaxId
+					? LOCTEXT("IdGroupModeMaxId", "Max ID")
+					: LOCTEXT("IdGroupModeDifference", "Difference");
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu)),
-		LOCTEXT("IdGroupFeatureHint", "The surface feature used to select between the two input ID maps.")));
-
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatIdGroup>(
-		LOCTEXT("IdGroupThreshold", "Threshold"), Group, &FMixtormatIdGroup::Threshold, 0.0, 1.0, 0.08, 0.01,
-		LOCTEXT("IdGroupThresholdHint", "Selection threshold for the chosen feature.")));
-
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatIdGroup>(
-		LOCTEXT("IdGroupFeatureScale", "Feature Scale"), Group, &FMixtormatIdGroup::FeatureScale, 0.0, 64.0, 8.0, 0.1,
-		LOCTEXT("IdGroupFeatureScaleHint", "Contrast multiplier for the feature guide.")));
-
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
-		LOCTEXT("IdGroupSmoothRadius", "Smooth Radius"), Group, &FMixtormatIdGroup::SmoothRadius, 0.0, 8.0, 2,
-		LOCTEXT("IdGroupSmoothRadiusHint", "Pre-selection smoothing radius for the feature guide.")));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCheckboxRow(Panel,
-		LOCTEXT("IdGroupInvert", "Invert Selection"),
-		TAttribute<ECheckBoxState>::CreateLambda([this]()
-		{
-			const FMixtormatIdGroup* G = GetSelectedIdGroup();
-			return G && G->bInvert ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-		}),
-		FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-		{
-			if (FMixtormatIdGroup* G = GetSelectedIdGroup())
-			{
-				G->bInvert = State == ECheckBoxState::Checked;
-				RefreshLayeredPreview();
-			}
-		}),
-		LOCTEXT("IdGroupInvertHint", "Swaps which map is used for high vs low feature values.")));
-
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
-		LOCTEXT("IdGroupOutlineWidth", "Outline Width"), Group, &FMixtormatIdGroup::OutlineWidth, 1.0, 8.0, 2,
-		LOCTEXT("IdGroupOutlineWidthHint", "Width of the published Boundary mask in pixels.")));
+		LOCTEXT("IdGroupModeHint",
+			"Difference creates a new ID where both children overlap with different IDs. "
+			"Max ID keeps the larger valid ID at each pixel.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedIdGroup() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -5170,9 +5135,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// exactly how Combine IDs' bug read.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
-							// Combine IDs was missing from both of these lists, which is why
-							// selecting one showed the layer's own sections instead of its Mode,
-							// Amount, Passes and Seed. Both lists have to name every child type.
+							|| GetSelectedIdGroup()
 							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the
@@ -5238,9 +5201,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// exactly how Combine IDs' bug read.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
-							// Combine IDs was missing from both of these lists, which is why
-							// selecting one showed the layer's own sections instead of its Mode,
-							// Amount, Passes and Seed. Both lists have to name every child type.
+							|| GetSelectedIdGroup()
 							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the

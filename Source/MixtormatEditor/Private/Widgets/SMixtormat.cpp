@@ -676,6 +676,10 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		{
 			Child.CombineId.bEnabled = false;
 		}
+		else if (Child.Type == EMixtormatLayerChildType::IdGroup)
+		{
+			Child.IdGroup.bEnabled = false;
+		}
 		else if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
 			// The wrapper, not the payload. Bypass means "this node does not run", and the

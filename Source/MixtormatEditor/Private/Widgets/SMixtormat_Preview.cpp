@@ -352,21 +352,24 @@ namespace
 	// MixtormatGpuPatternPasses.cpp's FindRegionIdsAbove enforces at compose time. Mirrored here,
 	// on the authored (not effective/expanded) array the editor already has, purely to disable the
 	// eye cleanly instead of leaving it clickable with nothing to show.
-	bool HasRegionIdProducerAbove(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	int32 CountRegionIdProducersAbove(
+		const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
 	{
+		int32 Count = 0;
 		for (int32 Index = ChildIndex - 1; Index >= 0; --Index)
 		{
 			const EMixtormatLayerChildType Type = Children[Index].Type;
 			if (Type == EMixtormatLayerChildType::Filter
 				|| Type == EMixtormatLayerChildType::PatternId
 				|| Type == EMixtormatLayerChildType::CombineId
+				|| Type == EMixtormatLayerChildType::IdGroup
 				|| (Type == EMixtormatLayerChildType::Effect
 					&& Children[Index].Effect.ProceduralType == EMixtormatEffectType::Breakup))
 			{
-				return true;
+				++Count;
 			}
 		}
-		return false;
+		return Count;
 	}
 }
 
@@ -384,7 +387,8 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	{
 		return false;
 	}
-	if (Child.Type == EMixtormatLayerChildType::CombineId)
+	if (Child.Type == EMixtormatLayerChildType::CombineId
+		|| Child.Type == EMixtormatLayerChildType::IdGroup)
 	{
 		// A group-authored Combine IDs child is checked against its own authored array (Group's
 		// shared stack), same as a plain layer's Children -- the producer-above requirement is
@@ -402,12 +406,21 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 			Siblings = &Group->Children;
 			ChildIndex = SelectedGroupChildIndex;
 		}
-		if (!Siblings || !Siblings->IsValidIndex(ChildIndex)
-			|| !HasRegionIdProducerAbove(*Siblings, ChildIndex))
+		if (!Siblings || !Siblings->IsValidIndex(ChildIndex))
 		{
 			return false;
 		}
-		return true;
+		if (Child.Type == EMixtormatLayerChildType::IdGroup)
+		{
+			const FGuid GroupChildId = (*Siblings)[ChildIndex].ChildId;
+			return Siblings->CountByPredicate([&GroupChildId](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.Type == EMixtormatLayerChildType::PatternId
+					&& Candidate.ScopeOwnerChildId == GroupChildId
+					&& Candidate.PatternId.bEnabled;
+			}) == 2;
+		}
+		return CountRegionIdProducersAbove(*Siblings, ChildIndex) >= 1;
 	}
 	if (Child.Type != EMixtormatLayerChildType::Filter)
 	{

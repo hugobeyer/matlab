@@ -197,7 +197,8 @@ namespace MixtormatLayerBadges
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
 			|| Child.Type == EMixtormatLayerChildType::RampId
 			|| Child.Type == EMixtormatLayerChildType::UvFromIds
-			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds)
+			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Child.Type == EMixtormatLayerChildType::IdGroup)
 		{
 			// Nothing. These have no blend mode -- they emit data and albedo, not coverage -- and
 			// the slot used to say "FILT", which every one of their names already says. A badge
@@ -273,6 +274,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Filter:    return FText::GetEmpty();
 		case EMixtormatLayerChildType::PatternId: return FText::GetEmpty();
 		case EMixtormatLayerChildType::CombineId: return FText::GetEmpty();
+		case EMixtormatLayerChildType::IdGroup:   return FText::GetEmpty();
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");
 		case EMixtormatLayerChildType::RampId:    return LOCTEXT("ChildKindRampId", "RAMP");

@@ -170,7 +170,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	ReliefId UMETA(DisplayName = "Relief From IDs"),
 	// Appended with its child type. Combine IDs arrived after this enum's last pass and its rows
 	// fell through to Layer, which stored their bindings on the layer and resolved to nothing.
-	CombineId UMETA(DisplayName = "Combine IDs")
+	CombineId UMETA(DisplayName = "Combine IDs"),
+	IdGroup UMETA(DisplayName = "ID Group")
 };
 
 UENUM(BlueprintType)
@@ -1937,16 +1938,14 @@ struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
 };
 
 UENUM(BlueprintType)
-enum class EMixtormatIdGroupFeature : uint8
+enum class EMixtormatIdGroupMode : uint8
 {
-	Height UMETA(DisplayName = "Height"),
-	Curvature UMETA(DisplayName = "Curvature")
+	Difference UMETA(DisplayName = "Difference"),
+	MaxId UMETA(DisplayName = "Max ID")
 };
 
-// Selects between the two nearest Region-ID producers above this node. Source A
-// is the older/macro map and Source B is the newer/micro map. The guide is
-// continuous, but output identity is always selected discretely and re-hashed
-// with its source slot so equal numeric IDs from different maps never collide.
+// Combines exactly two Region-ID children. Difference creates a stable extra ID where
+// both children overlap with different IDs. Max ID selects the larger valid ID per pixel.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatIdGroup
 {
@@ -1956,22 +1955,7 @@ struct MIXTORMATRUNTIME_API FMixtormatIdGroup
 	bool bEnabled = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
-	EMixtormatIdGroupFeature Feature = EMixtormatIdGroupFeature::Curvature;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float Threshold = 0.08f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0.0", UIMax = "64.0"))
-	float FeatureScale = 8.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "0", UIMax = "8"))
-	int32 SmoothRadius = 2;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
-	bool bInvert = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (UIMin = "1", UIMax = "8"))
-	int32 OutlineWidth = 2;
+	EMixtormatIdGroupMode Mode = EMixtormatIdGroupMode::Difference;
 };
 
 USTRUCT(BlueprintType)
@@ -2872,7 +2856,7 @@ enum class EMixtormatLayerChildType : uint8
 	// asking which node produced it -- Pattern, Cluster and Combine are all equally valid sources.
 	UvFromIds UMETA(DisplayName = "UV From IDs"),
 	ReliefFromIds UMETA(DisplayName = "Relief From IDs"),
-	// Appended for serialization safety. Consumes the two nearest producers above it.
+	// Appended for serialization safety. Owns exactly two nested Region-ID producers.
 	IdGroup UMETA(DisplayName = "ID Group")
 };
 

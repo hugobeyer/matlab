@@ -1828,14 +1828,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::IdGroup;
 				ChildData.SourceChildIndex = SourceChildIndex;
-				ChildData.IdGroup.Feature = Group.Feature;
-				ChildData.IdGroup.Threshold = FMath::IsFinite(Group.Threshold)
-					? FMath::Clamp(Group.Threshold, 0.0f, 1.0f) : 0.08f;
-				ChildData.IdGroup.FeatureScale = FMath::IsFinite(Group.FeatureScale)
-					? FMath::Clamp(Group.FeatureScale, 0.0f, 64.0f) : 8.0f;
-				ChildData.IdGroup.SmoothRadius = FMath::Clamp(Group.SmoothRadius, 0, 8);
-				ChildData.IdGroup.bInvert = Group.bInvert;
-				ChildData.IdGroup.OutlineWidth = FMath::Clamp(Group.OutlineWidth, 1, 8);
+				ChildData.IdGroup.Mode = Group.Mode;
 				continue;
 			}
 
@@ -1862,7 +1855,17 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (LayerChild.Type == EMixtormatLayerChildType::PatternId)
 			{
 				const FMixtormatPatternFilter& Pattern = LayerChild.PatternId;
-				if (!Layer.bEnabled || !Pattern.bEnabled)
+				const int32 ScopeOwnerIndex = LayerChild.ScopeOwnerChildId.IsValid()
+					? Layer.Children.IndexOfByPredicate(
+						[&LayerChild](const FMixtormatLayerChild& Candidate)
+						{
+							return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
+						})
+					: INDEX_NONE;
+				const bool bDisabledIdGroupChild = Layer.Children.IsValidIndex(ScopeOwnerIndex)
+					&& Layer.Children[ScopeOwnerIndex].Type == EMixtormatLayerChildType::IdGroup
+					&& !Layer.Children[ScopeOwnerIndex].IdGroup.bEnabled;
+				if (!Layer.bEnabled || !Pattern.bEnabled || bDisabledIdGroupChild)
 				{
 					continue;
 				}
@@ -1870,6 +1873,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::PatternId;
 				ChildData.SourceChildIndex = SourceChildIndex;
+				ChildData.ScopeOwnerSourceChildIndex = ScopeOwnerIndex;
 				FPatternIdRenderData& PatternData = ChildData.PatternId;
 
 				PatternData.PatternMode = Pattern.PatternMode;

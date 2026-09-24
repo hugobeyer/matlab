@@ -77,6 +77,7 @@ namespace
 		case EMixtormatParameterOwnerType::UvId: return Child.Type == EMixtormatLayerChildType::UvFromIds;
 		case EMixtormatParameterOwnerType::ReliefId: return Child.Type == EMixtormatLayerChildType::ReliefFromIds;
 		case EMixtormatParameterOwnerType::CombineId: return Child.Type == EMixtormatLayerChildType::CombineId;
+		case EMixtormatParameterOwnerType::IdGroup: return Child.Type == EMixtormatLayerChildType::IdGroup;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
 		case EMixtormatParameterOwnerType::Curvature: return Child.Type == EMixtormatLayerChildType::Curvature;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
@@ -113,6 +114,7 @@ namespace
 		case EMixtormatParameterOwnerType::UvId: View.ConstData = &Child.UvId; View.Struct = FMixtormatUvIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::ReliefId: View.ConstData = &Child.ReliefId; View.Struct = FMixtormatReliefIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; View.Struct = FMixtormatCombineIdFilter::StaticStruct(); break;
+		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; View.Struct = FMixtormatIdGroup::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
 		// The generator's *payload*, not the FMixtormatGenerator wrapper. A binding names a
@@ -170,6 +172,7 @@ namespace
 		case EMixtormatParameterOwnerType::UvId: View.MutableData = &Child.UvId; View.ConstData = &Child.UvId; View.Struct = FMixtormatUvIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::ReliefId: View.MutableData = &Child.ReliefId; View.ConstData = &Child.ReliefId; View.Struct = FMixtormatReliefIdFilter::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::CombineId: View.MutableData = &Child.CombineId; View.ConstData = &Child.CombineId; View.Struct = FMixtormatCombineIdFilter::StaticStruct(); break;
+		case EMixtormatParameterOwnerType::IdGroup: View.MutableData = &Child.IdGroup; View.ConstData = &Child.IdGroup; View.Struct = FMixtormatIdGroup::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Blur: View.MutableData = &Child.Blur; View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Curvature: View.MutableData = &Child.Curvature; View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
 		case EMixtormatParameterOwnerType::Generator:

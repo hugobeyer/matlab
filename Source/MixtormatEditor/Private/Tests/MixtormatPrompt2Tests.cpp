@@ -30,7 +30,8 @@ bool FMixtormatPrompt2ChildEnumTest::RunTest(const FString&)
 		EMixtormatLayerChildType::CombineId,
 		EMixtormatLayerChildType::Generator,
 		EMixtormatLayerChildType::UvFromIds,
-		EMixtormatLayerChildType::ReliefFromIds
+		EMixtormatLayerChildType::ReliefFromIds,
+		EMixtormatLayerChildType::IdGroup
 	};
 	const UEnum* Enum = StaticEnum<EMixtormatLayerChildType>();
 	if (!TestNotNull(TEXT("Child type remains reflected"), Enum))

@@ -202,8 +202,20 @@ namespace
 
 	bool CanAddScopedChild(const TArray<FMixtormatLayerChild>& Children, const int32 OwnerIndex)
 	{
-		return Children.IsValidIndex(OwnerIndex)
-			&& GetScopeDepth(Children, OwnerIndex) < MaximumScopeDepth;
+		if (!Children.IsValidIndex(OwnerIndex)
+			|| GetScopeDepth(Children, OwnerIndex) >= MaximumScopeDepth)
+		{
+			return false;
+		}
+		if (Children[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup)
+		{
+			const FGuid OwnerId = Children[OwnerIndex].ChildId;
+			return Children.CountByPredicate([&OwnerId](const FMixtormatLayerChild& Child)
+			{
+				return Child.ScopeOwnerChildId == OwnerId;
+			}) < 2;
+		}
+		return true;
 	}
 
 	// Puts Child under the owner at OwnerChildIndex and returns where it landed, or INDEX_NONE if
@@ -252,6 +264,10 @@ namespace
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::PatternId)
+		{
+			return Owner.Type == EMixtormatLayerChildType::IdGroup;
+		}
 		if (Child.Type == EMixtormatLayerChildType::Mask)
 		{
 			return CanOwnScopedMasks(Owner);
@@ -282,9 +298,8 @@ namespace
 		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
 		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
 		case EMixtormatChildCreation::UvFromIds:       return EMixtormatLayerChildType::UvFromIds;
-		case EMixtormatLayerChildType::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
-		case EMixtormatLayerChildType::IdGroup:         return EMixtormatLayerChildType::IdGroup;
-		case EMixtormatLayerChildType::GeneratedMask:   return EMixtormatLayerChildType::Generated;
+		case EMixtormatChildCreation::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
+		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
@@ -1333,6 +1348,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::IdGroup
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature))
@@ -3817,6 +3833,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("CombineIdChildName", "Combine IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::IdGroup)
+	{
+		return LOCTEXT("IdGroupChildName", "ID Group");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Blur)
 	{
 		// Named for what it does rather than for the mask it is on: the row sits indented under
@@ -3917,7 +3937,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, cons
 					|| Child.Type == EMixtormatLayerChildType::UvFromIds
 					|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 					|| Child.Type == EMixtormatLayerChildType::PatternId
-					|| Child.Type == EMixtormatLayerChildType::CombineId)
+					|| Child.Type == EMixtormatLayerChildType::CombineId
+					|| Child.Type == EMixtormatLayerChildType::IdGroup)
 				? MixtormatIcons::Generated()
 				: MixtormatIcons::Mask())
 		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
@@ -4201,6 +4222,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::ReliefFromIds: Child.ReliefId.bEnabled = !Child.ReliefId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
 	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
+	case EMixtormatLayerChildType::IdGroup:     Child.IdGroup.bEnabled = !Child.IdGroup.bEnabled; break;
 	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
 	default:                                    Child.Mask.bEnabled = !Child.Mask.bEnabled; break;
 	}
@@ -4225,6 +4247,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
+	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
 	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
 	default:                                    return Child.Mask.bEnabled;
 	}
@@ -4847,6 +4870,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::CombineId
+			|| Child.Type == EMixtormatLayerChildType::IdGroup
 			// A generator joins them for the row, not for the semantics. What the shared
 			// procedural row gives it is the right ones: an enable toggle that writes its own
 			// flag, a context menu with no blend mode on it, and the shared duplicate/instance
@@ -4974,6 +4998,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
+	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
 	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
 	case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
@@ -5149,12 +5174,23 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
-	// Retired authoring operations. Keep their serialized payloads and evaluation
-	// intact until existing materials can migrate to explicit ID composition.
-	if (Kind == EMixtormatChildCreation::ClusterIds || Kind == EMixtormatChildCreation::CombineIds)
+	// Retired authoring operations. Keep their serialized payloads intact while their
+	// replacements are designed around explicit ID composition and real hierarchy.
+	if (Kind == EMixtormatChildCreation::ClusterIds
+		|| Kind == EMixtormatChildCreation::CombineIds)
 	{
 		return FReply::Handled();
 	}
+	const auto AddIdGroupChildren = [](TArray<FMixtormatLayerChild>& Children, const int32 ParentIndex)
+	{
+		for (int32 ChildSlot = 0; ChildSlot < 2; ++ChildSlot)
+		{
+			FMixtormatLayerChild Pattern;
+			ApplyChildCreationDefaults(Pattern, EMixtormatChildCreation::PatternIds);
+			InsertScopedChild(Children, ParentIndex, MoveTemp(Pattern));
+		}
+	};
+
 	if (Target.IsGroup())
 	{
 		// AppendGroupChild takes a type and hands the child back precisely so a creator with more
@@ -5164,7 +5200,17 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		{
 			ApplyChildCreationDefaults(*Child, Kind);
 			ApplyLinkDefaults(*Child, Target.GroupId);
-			FinishGroupChildEdit(Target.GroupId);
+			int32 CreatedIndex = INDEX_NONE;
+			if (FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId))
+			{
+				CreatedIndex = Group->Children.Num() - 1;
+				if (Kind == EMixtormatChildCreation::IdGroup)
+				{
+					AddIdGroupChildren(Group->Children, CreatedIndex);
+				}
+			}
+			FinishGroupChildEdit(Target.GroupId, CreatedIndex);
 		}
 		return FReply::Handled();
 	}
@@ -5179,11 +5225,15 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	// same as before this function collapsed the ten of them into one. Left alone deliberately --
 	// changing it changes the undo stack, which is not this refactor's to move.
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
-	FMixtormatLayerChild& CreatedChild = Layer.Children.AddDefaulted_GetRef();
-	ApplyChildCreationDefaults(CreatedChild, Kind);
-	ApplyLinkDefaults(CreatedChild, Layer.LayerId);
+	const int32 CreatedIndex = Layer.Children.AddDefaulted();
+	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
+	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
+	if (Kind == EMixtormatChildCreation::IdGroup)
+	{
+		AddIdGroupChildren(Layer.Children, CreatedIndex);
+	}
 	SetLayerExpanded(Target.LayerIndex, true);
-	SelectWorkingChild(Target.LayerIndex, Layer.Children.Num() - 1);
+	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();
@@ -5235,7 +5285,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	MixtormatMenu::FBuilder Menu;
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
-
+		{ LOCTEXT("AddIdGroupChild", "ID Group"), EMixtormatChildCreation::IdGroup },
 	};
 	const bool bEnabled = CanCreateChild(Target);
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
@@ -5505,6 +5555,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::ReliefFromIds
 		|| RowType == EMixtormatLayerChildType::PatternId
 		|| RowType == EMixtormatLayerChildType::CombineId
+		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| bGenerator;
 
 	// The scoped mask, which is the whole of Mask Influence. Offered here rather than in the
@@ -6303,6 +6354,26 @@ FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
 		EMixtormatChildCreation::CombineIds);
 }
 
+FMixtormatIdGroup* SMixtormat::GetSelectedIdGroup()
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::IdGroup ? &Child.IdGroup : nullptr;
+}
+
+const FMixtormatIdGroup* SMixtormat::GetSelectedIdGroup() const
+{
+	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	{
+		return nullptr;
+	}
+	const FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child.Type == EMixtormatLayerChildType::IdGroup ? &Child.IdGroup : nullptr;
+}
+
 FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId()
 {
 	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
@@ -6481,6 +6552,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::ReliefFromIds
 		&& ChildType != EMixtormatLayerChildType::PatternId
 		&& ChildType != EMixtormatLayerChildType::CombineId
+		&& ChildType != EMixtormatLayerChildType::IdGroup
 		&& ChildType != EMixtormatLayerChildType::Generator)
 	{
 		return FReply::Handled();
@@ -6565,6 +6637,9 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::CombineId:
 		Child.CombineId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::IdGroup:
+		Child.IdGroup.bEnabled = bEnabled;
 		break;
 	case EMixtormatLayerChildType::Generator:
 		// The wrapper's flag. The kind chooses a payload; whether the node runs at all is one

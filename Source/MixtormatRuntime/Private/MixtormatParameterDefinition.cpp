@@ -58,6 +58,7 @@ namespace
 		Add(ET::Generator, TEXT("FractureChamfer"), {.HardMin = 0.0f});
 			Add(ET::Generator, TEXT("FractureVariation"), {.HardMin = 0.0f, .HardMax = 1.0f});
 
+
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.
 			Add(ET::Effect, TEXT("BreakupScale"), {.HardMin = 1.0f, .HardMax = 64.0f});
@@ -243,6 +244,23 @@ namespace
 				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 				{
 					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&CDODefaults));
+					Result.bFound = true;
+				}
+			}
+		}
+		else if (Owner == EMixtormatParameterOwnerType::IdGroup)
+		{
+			static const FMixtormatIdGroup Defaults;
+			if (const FProperty* Property = FMixtormatIdGroup::StaticStruct()->FindPropertyByName(Parameter))
+			{
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+					Result.bFound = true;
+				}
+				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
 					Result.bFound = true;
 				}
 			}

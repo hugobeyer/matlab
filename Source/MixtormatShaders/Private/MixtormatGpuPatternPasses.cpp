@@ -69,21 +69,10 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatIdGroupResolveCS, FGlobalShader);
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, FeatureSource)
-		SHADER_PARAMETER(uint32, InvertSelection)
+		SHADER_PARAMETER(uint32, Mode)
 		SHADER_PARAMETER(uint32, WriteDebug)
-		SHADER_PARAMETER(float, Threshold)
-		SHADER_PARAMETER(float, FeatureScale)
-		SHADER_PARAMETER(int32, SmoothRadius)
-		SHADER_PARAMETER(FVector2f, SourceTiling)
-		SHADER_PARAMETER(FVector2f, SourceOffset)
-		SHADER_PARAMETER(uint32, FlipU)
-		SHADER_PARAMETER(uint32, FlipV)
-		SHADER_PARAMETER(int32, Rotation)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceAIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceBIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
@@ -1326,7 +1315,8 @@ namespace MixtormatGpuCompositor
 				&& Candidate.Effect.Type == EMixtormatEffectType::Breakup;
 			if (Candidate.Type != EMixtormatLayerChildType::Filter
 				&& Candidate.Type != EMixtormatLayerChildType::PatternId
-				&& Candidate.Type != EMixtormatLayerChildType::CombineId && !bBreakup)
+				&& Candidate.Type != EMixtormatLayerChildType::CombineId
+				&& Candidate.Type != EMixtormatLayerChildType::IdGroup && !bBreakup)
 			{
 				continue;
 			}
@@ -1336,7 +1326,7 @@ namespace MixtormatGpuCompositor
 			}
 			if (Candidate.Type != EMixtormatLayerChildType::CombineId)
 			{
-				bUseHashedIds = bBreakup;
+				bUseHashedIds = bBreakup || Candidate.Type == EMixtormatLayerChildType::IdGroup;
 				break;
 			}
 		}
@@ -1372,14 +1362,34 @@ namespace MixtormatGpuCompositor
 	{
 		FRDGTextureRef SourceA = nullptr;
 		FRDGTextureRef SourceB = nullptr;
-		for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+		for (const FChildRenderData& Candidate : Layer.Children)
 		{
-			if (Entry.Key >= Child.SourceChildIndex)
+			if (Candidate.Type != EMixtormatLayerChildType::PatternId
+				|| Candidate.ScopeOwnerSourceChildIndex != Child.SourceChildIndex)
 			{
-				break;
+				continue;
 			}
-			SourceA = SourceB;
-			SourceB = Entry.Value;
+			FRDGTextureRef ChildIds = nullptr;
+			for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+			{
+				if (Entry.Key == Candidate.SourceChildIndex)
+				{
+					ChildIds = Entry.Value;
+					break;
+				}
+			}
+			if (!SourceA)
+			{
+				SourceA = ChildIds;
+			}
+			else if (!SourceB)
+			{
+				SourceB = ChildIds;
+			}
+			else
+			{
+				return nullptr;
+			}
 		}
 		if (!SourceA || !SourceB)
 		{
@@ -1399,29 +1409,13 @@ namespace MixtormatGpuCompositor
 		const bool bPreview = IsChildOutputPreviewTarget(
 			Ctx.Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 			LayerCtx.LayerIndex, Child.SourceChildIndex);
-		FRDGTextureRef SourceHeight = Layer.Height.IsValid()
-			? RegisterTexture(Ctx.GraphBuilder, Ctx.RegisteredTextures, Layer.Height,
-				TEXT("Mixtormat.IdGroup.SourceHeight"))
-			: Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
-
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupResolveCS::FParameters>();
 			P->OutputSize = Size;
-			P->FeatureSource = static_cast<uint32>(Child.IdGroup.Feature);
-			P->InvertSelection = Child.IdGroup.bInvert ? 1u : 0u;
+			P->Mode = static_cast<uint32>(Child.IdGroup.Mode);
 			P->WriteDebug = bPreview ? 1u : 0u;
-			P->Threshold = Child.IdGroup.Threshold;
-			P->FeatureScale = Child.IdGroup.FeatureScale;
-			P->SmoothRadius = Child.IdGroup.SmoothRadius;
-			P->SourceTiling = FVector2f(Layer.UVScaleX, Layer.UVScaleY) * Layer.Tiling;
-			P->SourceOffset = Layer.UVOffset;
-			P->FlipU = Layer.bFlipU ? 1u : 0u;
-			P->FlipV = Layer.bFlipV ? 1u : 0u;
-			P->Rotation = Layer.Rotation;
 			P->SourceAIds = SourceA;
 			P->SourceBIds = SourceB;
-			P->SourceHeight = SourceHeight;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->OutputIds = GraphBuilder.CreateUAV(GroupIds);
 			P->OutputDebug = GraphBuilder.CreateUAV(Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex]);
 			TShaderMapRef<FMixtormatIdGroupResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1431,7 +1425,7 @@ namespace MixtormatGpuCompositor
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupBoundaryCS::FParameters>();
 			P->OutputSize = Size;
-			P->OutlineWidth = Child.IdGroup.OutlineWidth;
+			P->OutlineWidth = 1;
 			P->GroupIds = GroupIds;
 			P->OutputBoundary = GraphBuilder.CreateUAV(Boundary);
 			TShaderMapRef<FMixtormatIdGroupBoundaryCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1492,10 +1486,8 @@ namespace MixtormatGpuCompositor
 				}
 				if (bIdGroupProducer)
 				{
-					if (FRDGTextureRef GroupIds = AddIdGroupPasses(Ctx, LayerCtx, Layer, Child))
-					{
-						PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, GroupIds);
-					}
+					// A parent precedes its nested children in the flat serialized array. Resolve it
+					// after this loop, once both child ID maps have been produced.
 					continue;
 				}
 
@@ -1504,21 +1496,9 @@ namespace MixtormatGpuCompositor
 				const bool bIsSelectedPreview = IsChildOutputPreviewTarget(
 					Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 					LayerIndex, Child.SourceChildIndex);
-				bool bWanted = bIsSelectedPreview;
-				if (bPatternProducer)
-				{
-					// ID Group explicitly consumes the two nearest maps. Keep earlier Pattern
-					// producers available even when another Pattern sits between this one and the group.
-					for (const FChildRenderData& Other : Layer.Children)
-					{
-						if (Other.SourceChildIndex > Child.SourceChildIndex
-							&& Other.Type == EMixtormatLayerChildType::IdGroup)
-						{
-							bWanted = true;
-							break;
-						}
-					}
-				}
+				bool bWanted = bIsSelectedPreview
+					|| (bPatternProducer && Child.ScopeOwnerSourceChildIndex != INDEX_NONE);
+
 				if (bPatternProducer)
 				{
 					const FPatternIdRenderData& Pattern = Child.PatternId;
@@ -1725,6 +1705,29 @@ namespace MixtormatGpuCompositor
 				}
 
 				PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, RegionIds);
+			}
+
+			for (const FChildRenderData& GroupChild : Layer.Children)
+			{
+				if (GroupChild.Type != EMixtormatLayerChildType::IdGroup)
+				{
+					continue;
+				}
+				FRDGTextureRef GroupIds = AddIdGroupPasses(Ctx, LayerCtx, Layer, GroupChild);
+				if (!GroupIds)
+				{
+					continue;
+				}
+				RegionIdMaps.RemoveAll([&Layer, &GroupChild](const TPair<int32, FRDGTextureRef>& Entry)
+				{
+					return Layer.Children.ContainsByPredicate([&Entry, &GroupChild](
+						const FChildRenderData& Candidate)
+					{
+						return Candidate.SourceChildIndex == Entry.Key
+							&& Candidate.ScopeOwnerSourceChildIndex == GroupChild.SourceChildIndex;
+					});
+				});
+				PublishRegionIds(RegionIdMaps, GroupChild.SourceChildIndex, GroupIds);
 			}
 		}
 	}

@@ -91,6 +91,7 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return EMixtormatParameterOwnerType::UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return EMixtormatParameterOwnerType::ReliefId;
 		case EMixtormatLayerChildType::CombineId: return EMixtormatParameterOwnerType::CombineId;
+		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
@@ -115,6 +116,7 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return &Child.UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return &Child.ReliefId;
 		case EMixtormatLayerChildType::CombineId: return &Child.CombineId;
+		case EMixtormatLayerChildType::IdGroup: return &Child.IdGroup;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
 		case EMixtormatLayerChildType::Curvature: return &Child.Curvature;
 		// The payload, not the wrapper -- it has to be the same pointer ChildOwner exposes for
@@ -777,6 +779,7 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return FMixtormatUvIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::ReliefFromIds: return FMixtormatReliefIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::CombineId: return FMixtormatCombineIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
 		case EMixtormatLayerChildType::Generator: return FMixtormatStrataCarver::StaticStruct();
@@ -1468,6 +1471,7 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 			case EMixtormatLayerChildType::Filter:
 			case EMixtormatLayerChildType::PatternId:
 			case EMixtormatLayerChildType::CombineId:
+			case EMixtormatLayerChildType::IdGroup:
 				Kind = EMixtormatDriverSourceKind::RegionIds;
 				Output = FName(TEXT("RandomPerId"));
 				break;

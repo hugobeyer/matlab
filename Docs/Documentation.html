@@ -289,16 +289,19 @@ pre{
 <div class="sidebar-label">Contents</div>
 <nav aria-label="Documentation sections" class="nav">
 <a class="active" href="#overview">Overview</a>
+<a href="#requirements">Requirements &amp; Install</a>
 <a href="#quick-start">Quick Start</a>
 <a href="#workspace">Workspace</a>
 <a href="#library">Material Library</a>
 <a href="#importing">Importing Surfaces</a>
 <a href="#layer-stack">Layer Stack</a>
 <a href="#layer-types">Layer Types</a>
+<a href="#layer-groups">Layer Groups</a>
 <a href="#composition">Composition &amp; Channels</a>
 <a href="#height">Height System</a>
 <a href="#masks">Masks</a>
 <a href="#generated-masks">Generated Masks</a>
+<a href="#generators">Generators</a>
 <a href="#ids">Region &amp; ID Tools</a>
 <a href="#effects">Effects</a>
 <a href="#peeling">Procedural Peeling</a>
@@ -338,6 +341,22 @@ pre{
 <div class="kicker">A useful mental model</div>
           Materials define <strong>what the surface is</strong>. Masks define <strong>where something happens</strong>. Effects define <strong>what changes</strong>. IDs define <strong>which regions can behave differently</strong>.
         </div>
+<div class="grid">
+<div class="mini"><strong>Ships in Mixtormat 1.0</strong>65 source surfaces across 18 families, 47 reusable masks, and a worked example recipe — all evaluated on the GPU while you edit.</div>
+<div class="mini"><strong>Nine effects</strong>Peeling, Stain, Erosion, Grade, Breakup, Worn Edges, Flow Warp, Layer Blur, and Runoff, plus Craquelure as its own mask child.</div>
+<div class="mini"><strong>Complete ID toolchain</strong>Pattern IDs lays out regions; the From-IDs filters — Random, Ramp, HSV, Color ID, UV From IDs, Relief From IDs — turn them into per-region variation and drive parameter drivers.</div>
+<div class="mini"><strong>Generators &amp; groups</strong>Strata Carver and Fracture rewrite layer height before compositing; layer groups broadcast one shared child stack across members.</div>
+</div>
+</section>
+<section id="requirements">
+<div class="section-head"><h2>Requirements &amp; Install</h2></div>
+<p>Mixtormat 1.0 targets <strong>Unreal Engine 5.8</strong> on <strong>Windows 64-bit</strong>. The compositor is a GPU pipeline and requires an SM5-class graphics adapter; there is no software fallback.</p>
+<h3>Install</h3>
+<p>Install from Fab, or copy the <code>Mixtormat</code> plugin folder into your project's <code>Plugins/</code> directory. Mixtormat ships as a code plugin, so the editor compiles it on startup — restart the editor when prompted.</p>
+<h3>Enable and open</h3>
+<p>The plugin is enabled by default once installed. Open the workspace from <strong>Window → Mixtormat</strong> or the Mixtormat toolbar button. The whole tool lives in one dockable window: layers and library on the left, live preview in the center, inspector on the right, shipped content along the bottom.</p>
+<h3>Where your content goes</h3>
+<p>Shipped surfaces and masks are read-only plugin content. Your imports, saved mixes, and bakes are written into the <strong>project</strong> under <code>/Game/Mixtormat/...</code>, so they survive plugin updates and travel with the project rather than the engine install.</p>
 </section>
 <section id="quick-start">
 <div class="section-head"><h2>Quick Start</h2></div>
@@ -425,6 +444,7 @@ pre{
 <section id="layer-stack">
 <div class="section-head"><h2>Layer Stack</h2></div>
 <p>The stack is the actual material recipe. Layers are evaluated in order, and each layer can contain an ordered list of children such as masks, effects, generated masks, IDs, and filters.</p>
+<p>Adjacent layers can also be grouped so one shared child stack drives all of them — see <strong>Layer Groups</strong>.</p>
 <h3>Selecting and reordering</h3>
 <p>Click a layer to edit it in the Inspector. Drag a layer row to reorder it. The first layer is not a permanently locked “base” layer; layers can be moved and the stack can even be emptied.</p>
 <h3>Visibility</h3>
@@ -447,7 +467,23 @@ pre{
 </div>
 <h3>New layer versus child effect</h3>
 <p>Effects are not a layer type — they are children you add to an existing layer. Add a new Material or Fill Layer when a different physical surface is being introduced; add a child effect when the surface already in the stack is being changed. Keeping that distinction usually makes complex stacks easier to read later.</p>
-<figure class="doc-shot"><img alt="" loading="lazy" src="docs-assets/07-layer-types.png"/></figure>
+</figure>
+</section>
+<section id="layer-groups">
+<div class="section-head"><h2>Layer Groups</h2></div>
+<p>A group is a named, colour-tagged set of adjacent layers that shares one child stack. Instead of copying the same mask or effect onto every layer, author it once on the group: every member evaluates the shared children, and one edit updates all of them.</p>
+<div class="card">
+<h3>Create and manage</h3>
+<p>Select adjacent layers and create a group, or right-click a layer to group it. Groups can be renamed, tagged with an accent colour, ungrouped, and moved as a single block by dragging the group header.</p>
+</div>
+<div class="card">
+<h3>Shared children</h3>
+<p>The <strong>Add — Shared</strong> section of a group's add menu places children on the group itself. At evaluation time the shared children are appended after each member's own children, so a member can keep private layers of detail while the group drives the common weathering.</p>
+</div>
+<div class="card">
+<h3>Enable gating</h3>
+<p>The group's eye toggle gates the whole group for the render without rewriting member visibility — re-enabling the group returns each layer to the enabled state it had. Disabling one member never changes what the other members render.</p>
+</div>
 </section>
 <section id="composition">
 <div class="section-head"><h2>Composition &amp; Channels</h2></div>
@@ -525,22 +561,42 @@ pre{
 <p>Height weighting lets coverage prefer higher or lower parts of the current surface structure. Combined with curvature and AO, it can create more believable placement than any one signal alone.</p>
 <h3>Combining signals</h3>
 <p>Generated Masks use signal weights, so several cues can contribute at once. A practical example is “mostly cavities, slightly biased by height, with a small directional influence.”</p>
-<figure class="doc-shot"><img alt="" loading="lazy" src="docs-assets/11-generated-masks.png"/></figure>
+</figure>
+</section>
+<section id="generators">
+<div class="section-head"><h2>Generators</h2></div>
+<p>Generators rewrite a layer's input height before anything else reads it — before the mask chain, before height blending, before the composite. Everything downstream then sees the carved surface as if it had been authored that way. That is what separates a Generator from an Effect: an effect modifies the finished layer; a generator changes the surface the layer is made of.</p>
+<div class="card">
+<h3>Strata Carver</h3>
+<p>Sedimentary, weathered carving driven by a propagated distance solve over a Worley-seeded field. Depth sets the absolute groove depth — the same value means the same physical depth on a subtle wood and on a full-contrast rock — and seeded variation keeps neighbouring grooves independent. Display remapping and the clamp are applied to the finished field, so scrubbing them reshapes the carve without changing what propagated.</p>
+</div>
+<div class="card">
+<h3>Fracture</h3>
+<p>Authors a fracture lattice and resolves it into interlocking pieces with distance-based ownership, blended fields at the boundaries, and optional chamfer. Cells can subdivide into smaller cells, so a single node covers multi-scale fracture without stacking copies.</p>
+</div>
+<div class="note">
+<div class="kicker">Order matters</div>
+          A generator runs before its layer composites regardless of where it sits in the child list. Its position among the masks only decides which masks and effects later modify the carved result.
+        </div>
 </section>
 <section id="ids">
 <div class="section-head"><h2>Region &amp; ID Tools</h2></div>
 <p>ID tools divide a surface into discrete regions. Unlike a soft grayscale mask, every region can have a stable identity. This is useful when you want variation per brick, stone, flake, tile, crack island, or procedural cell.</p>
 <div class="card">
+<h3>ID Group</h3>
+<p>A hierarchical ID container: give it ID producers as inputs and it composes them into one map — a coarse layout from one source subdivided by a finer one where a height or curvature feature clears a threshold, with an outline <strong>Boundary</strong> mask it publishes for reuse. Authoring is being rebuilt around this explicit hierarchy in 1.0; the node stays inert in saved recipes until then, and new work starts from Pattern IDs plus the From-IDs filters.</p>
+</div>
+<div class="card">
 <h3>Color ID</h3>
 <p>Build regions from color information. This is useful when an authored ID texture or color-coded source already contains the segmentation you need.</p>
 </div>
 <div class="card">
-<h3>Cluster IDs</h3>
-<p>Cluster a surface into region labels instead of producing soft coverage. Because the result is discrete IDs, it is intended to feed later ID-aware variation rather than behaving like a normal mask.</p>
+<h3>Cluster IDs &amp; Combine IDs (legacy)</h3>
+<p>Earlier nodes that coarsened and merged region maps. Authoring is retired in 1.0 — existing recipes keep evaluating exactly as authored, so nothing visually changes on load — but new materials compose IDs from Pattern IDs and the From-IDs filters instead.</p>
 </div>
 <div class="card">
 <h3>Pattern IDs</h3>
-<p>Create structured, tileable region layouts. Pattern Height, Gap Height, and bevel relief write the final surface shape; their normal response is derived automatically from that height. Right-click Pattern IDs and choose <strong>Copy Instance Mask from Gap</strong>, then paste it on a layer or effect to reuse the live gap region as a mask.</p>
+<p>Create structured, tileable region layouts. Pattern Height, Gap Height, and bevel relief write the final surface shape; their normal response is derived automatically from that height. Right-click Pattern IDs and choose <strong>Copy Output — Gap</strong>, then paste it as a mask anywhere in the recipe to reuse the live gap region.</p>
 </div>
 <div class="card">
 <h3>Random From IDs</h3>
@@ -570,6 +626,9 @@ pre{
 <div class="mini"><strong>Procedural Peeling</strong>Grow and shape lifted or detached material regions.</div>
 <div class="mini"><strong>Breakup</strong>Fragment, tear or separate surface regions into irregular damage.</div>
 <div class="mini"><strong>Worn Edges</strong>Target edge wear and exposed regions.</div>
+<div class="mini"><strong>Flow Warp</strong>Bend surface, mask, or effect data along a periodic flow field while staying tileable.</div>
+<div class="mini"><strong>Layer Blur</strong>Soften the finished surface — one layer's coverage or the whole composite — after everything else has run.</div>
+<div class="mini"><strong>Runoff</strong>Smear a source field along gravity into streaks, drips, and mineral buildup at a fraction of Stain's cost.</div>
 </div>
 <h3>Effect order</h3>
 <p>Effects are evaluated in sequence. A Grade before a Stain does not necessarily produce the same result as the Grade after it. Height-changing effects can also change what later effects see.</p>
@@ -686,15 +745,15 @@ pre{
 </section>
 <section id="instances">
 <div class="section-head"><h2>Instances &amp; Reuse</h2></div>
-<p>Layer children can be copied either as independent copies or as live instances. This is useful when the same procedural setup needs to appear in several places without manually matching every parameter.</p>
+<p>Layer children can be copied as independent copies, pasted as live instances, or contribute a published output to the clipboard as a mask. These cover the three common cases: reusing a setup elsewhere, keeping several copies synchronized, and reusing a map a child produces.</p>
 <h3>Copy / Paste</h3>
 <p>A normal Copy and Paste creates another child that can be edited independently.</p>
-<h3>Copy as Instance / Paste Instance</h3>
-<p>An instance keeps a relationship to its source child. Use this when several layers should share the same mask, generated setup, ID tool, or effect configuration.</p>
-<h3>Instance actions</h3>
-<p>Instance context actions include Go to Source, Break Instance, Replace Instance Source, and Copy Instance Reference. These help manage larger recipes where the same authored child is reused repeatedly.</p>
-<h3>When to use an instance</h3>
-<p>Use an instance when the repeated setup should remain synchronized. Use a normal copy when the new child is only a starting point and should immediately diverge.</p>
+<h3>Copy as Instance</h3>
+<p>Pasting an instance keeps a live relationship to its source child — the payload and parameter bindings are re-read from the source on every composite. Use this when several layers should share the same mask, generated setup, ID tool, or effect configuration. Instance actions are <strong>Go to Source</strong>, <strong>Break Instance</strong> (freeze the values it is showing as this child's own), <strong>Replace Source</strong> (re-point it at another compatible child), and <strong>Copy Instance Reference</strong>. If the source child disappears, the instance keeps showing the last values it received rather than going blank.</p>
+<h3>Copy Output</h3>
+<p>Children that publish named outputs — Pattern IDs' Gap, Breakup's Region IDs, Gap, Edge and Pieces, Worn Edges' Wear — can be right-clicked with <strong>Copy Output</strong> and pasted as a mask anywhere in the recipe. The pasted mask reads the live output, so it keeps following the source child as you tune it.</p>
+<h3>When to use which</h3>
+<p>Use an instance when the repeated setup should stay synchronized. Use a normal copy when the new child should immediately diverge. Use Copy Output when what you want is not the setup but one of the maps it produces.</p>
 <figure class="doc-shot"><img alt="" loading="lazy" src="docs-assets/22-instances.png"/></figure>
 </section>
 <section id="preview">
@@ -709,7 +768,7 @@ pre{
 <h3>Bypass child</h3>
 <p>Temporarily removes the selected Mask, Generated Mask, or Effect from the preview only. It is useful for A/B checking one operation without changing the saved recipe structure.</p>
 <h3>Debug views</h3>
-<p>Feature-preview controls can show information such as the selected Layer Mask or Cluster IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
+<p>Feature-preview controls can show information such as the selected Layer Mask or an ID child's Region IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
 <h3>Channel preview</h3>
 <p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited output at a time: <strong>Material</strong> (the normal shaded result) → <strong>Base Color</strong> → <strong>Normal</strong> → <strong>Roughness</strong> → <strong>AO</strong> → <strong>Metallic</strong> → <strong>F0</strong> → <strong>Height</strong> → <strong>Fuzz Influence</strong>, then back to Material. This is a diagnostic view with no toolbar control — it shows the channel exactly as it was composited, with no lighting applied, which is the quickest way to tell whether a problem is in the channel data or in how it is being lit.</p>
 <h3>Displacement and UV orientation</h3>

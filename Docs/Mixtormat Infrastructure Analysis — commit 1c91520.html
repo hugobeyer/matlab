@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<!-- saved from url=(0117)file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mixtormat Infrastructure Analysis — commit 1c91520</title>
+<style>
+  :root {
+    --bg: #0e1113;
+    --bg-raised: #12161a;
+    --ink: #e8ecef;
+    --ink-dim: #9aa5ad;
+    --ink-faint: #5c676f;
+    --line: rgba(255,255,255,0.09);
+    --line-strong: rgba(255,255,255,0.16);
+    --accent: #56c8a2;
+    --accent-dim: rgba(86,200,162,0.14);
+    --warn: #d9a45b;
+    --mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", Menlo, monospace;
+    --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1140px; margin: 0 auto; padding: 0 40px 120px; }
+
+  /* ---------- header ---------- */
+  header { padding: 72px 0 40px; border-bottom: 1px solid var(--line-strong); }
+  .kicker {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 20px;
+  }
+  h1 {
+    font-family: var(--mono); font-weight: 600; font-size: 34px;
+    line-height: 1.15; letter-spacing: -0.02em; max-width: 900px;
+  }
+  .lede { margin-top: 18px; font-size: 16.5px; color: var(--ink-dim); max-width: 820px; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 28px; margin-top: 32px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+  }
+  .meta b { color: var(--ink-dim); font-weight: 500; display: block; margin-bottom: 2px; }
+
+  /* ---------- toc ---------- */
+  nav.toc { padding: 30px 0 8px; border-bottom: 1px solid var(--line); }
+  nav.toc .toc-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 14px;
+  }
+  nav.toc ol { list-style: none; columns: 2; column-gap: 56px; }
+  nav.toc li {
+    font-family: var(--mono); font-size: 13px; padding: 5px 0;
+    break-inside: avoid; border-bottom: 1px dashed var(--line);
+  }
+  nav.toc li a { color: var(--ink-dim); text-decoration: none; }
+  nav.toc li a:hover { color: var(--accent); }
+  nav.toc .n { color: var(--accent); margin-right: 10px; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 26px; }
+  .sec-num {
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    letter-spacing: 0.06em; white-space: nowrap;
+  }
+  h2 {
+    font-family: var(--mono); font-weight: 600; font-size: 21px;
+    letter-spacing: -0.01em; line-height: 1.25;
+  }
+  h3 {
+    font-family: var(--mono); font-weight: 500; font-size: 15px;
+    margin: 34px 0 12px; color: var(--ink);
+  }
+  h3::before { content: "· "; color: var(--accent); }
+  p { margin: 0 0 14px; max-width: 88ch; }
+  p.dim { color: var(--ink-dim); }
+  ul.plain { margin: 0 0 14px 18px; max-width: 88ch; }
+  ul.plain li { margin-bottom: 7px; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { color: var(--ink-dim); font-style: italic; }
+
+  code, .id {
+    font-family: var(--mono); font-size: 0.88em; color: var(--ink);
+    background: var(--bg-raised); border: 1px solid var(--line);
+    padding: 1px 5px; border-radius: 2px; white-space: nowrap;
+  }
+  code.long { white-space: normal; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  table { width: 100%; border-collapse: collapse; margin: 18px 0 26px; font-size: 13.5px; }
+  th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--ink-faint); font-weight: 500;
+    text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-strong);
+  }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-dim); }
+  td:first-child { color: var(--ink); }
+  td code, td .id { background: none; border: none; padding: 0; color: var(--ink); font-size: 12.5px; }
+  td .dimtxt { color: var(--ink-faint); }
+  tr:last-child td { border-bottom: 1px solid var(--line-strong); }
+
+  /* ---------- callout ---------- */
+  .note {
+    border: 1px solid var(--line-strong); border-left: 2px solid var(--accent);
+    background: var(--bg-raised); padding: 14px 18px; margin: 20px 0 26px; max-width: 92ch;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note .note-tag {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 6px;
+  }
+  .note.warn .note-tag { color: var(--warn); }
+  .note p { margin: 0; font-size: 13.5px; color: var(--ink-dim); }
+
+  /* ---------- pipeline diagram ---------- */
+  .flow {
+    font-family: var(--mono); font-size: 12.5px; line-height: 2.05;
+    background: var(--bg-raised); border: 1px solid var(--line);
+    padding: 20px 24px; margin: 18px 0 26px; overflow-x: auto; color: var(--ink-dim);
+    white-space: pre;
+  }
+  .flow b { color: var(--ink); font-weight: 500; }
+  .flow .acc { color: var(--accent); }
+
+  footer {
+    margin-top: 90px; padding-top: 24px; border-top: 1px solid var(--line-strong);
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); line-height: 1.9;
+  }
+  @media (max-width: 760px) {
+    .page { padding: 0 20px 80px; }
+    nav.toc ol { columns: 1; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="kicker">Mixtormat · Unreal Engine Plugin · Infrastructure Review</div>
+  <h1>Full-codebase infrastructure analysis, and what the ID&nbsp;Group commit changed</h1>
+  <p class="lede">Every <code class="long">.cpp</code>, <code class="long">.h</code>, <code class="long">.usf</code> and <code class="long">.ush</code> in the primary tree was read to build this picture — three modules, ~180 source files, ~2.5&nbsp;MB — with the latest commit (<span class="id">1c91520</span>, <em>Add ID Group feature to Mixtormat</em>) diffed in full as the entry point.</p>
+  <div class="meta">
+    <div><b>Commit</b>1c91520 · hugobeyer · 2026-09-23 09:43 GMT-3</div>
+    <div><b>Workspace</b>C:\Tools\MaterialLab\MatLab\Plugins\Mixtormat</div>
+    <div><b>Diff</b>9 files · +394 / −5</div>
+    <div><b>Authoring state</b>Cluster/Combine IDs retired · ID Group live</div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="toc-label">Contents</div>
+  <ol>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s1"><span class="n">01</span>The ID Group commit</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s2"><span class="n">02</span>Module map</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s3"><span class="n">03</span>Data model</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s4"><span class="n">04</span>Parameter system</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s5"><span class="n">05</span>GPU compositor pipeline</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s6"><span class="n">06</span>Region-ID contract</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s7"><span class="n">07</span>Shader catalog</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s8"><span class="n">08</span>Effect families</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s9"><span class="n">09</span>Editor architecture</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s10"><span class="n">10</span>Tests</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s11"><span class="n">11</span>Fragile spots</a></li>
+    <li><a href="file:///C:/Users/hugob/.openclaw-autoclaw/agents/auto-coder/workspace/delivery/mixtormat-infrastructure-analysis.html#s12"><span class="n">12</span>Coverage &amp; evidence</a></li>
+  </ol>
+</nav>
+
+<!-- ============ 01 ============ -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>The ID Group commit — what shipped and why</h2></div>
+  <p>The commit replaces how <em>cluster combining</em> is authored. The old <span class="id">Cluster&nbsp;IDs</span> and <span class="id">Combine&nbsp;IDs</span> nodes were two separate authoring operations with overlapping jobs: cluster coarsened an ID map, combine merged/selected between maps. ID&nbsp;Group collapses the "combine two maps" half into one guided node: it takes the <strong>two nearest Region-ID producers above it</strong> in the child stack, picks per-pixel between the older/macro map (Source&nbsp;A) and the newer/micro map (Source&nbsp;B) using a continuous feature signal sampled from the layer's height, and republishes the selection as a new Region-ID map. Source B wins wherever the feature clears a threshold — high areas by default, or high-curvature areas — so a macro brick layout keeps its large regions while micro detail (peel, stain, fracture) subdivides them exactly where the surface actually says so.</p>
+  <p>Three things make the design sound rather than naive:</p>
+  <ul class="plain">
+    <li><strong>Identity stays discrete.</strong> The guide (height/curvature) is continuous, but the output is always one of the two input region IDs, re-hashed with its source slot: <span class="id">GroupId = MixtormatRegionHash(Chosen ^ (Slot==0 ? 0x9e3779b9 : 0x85ebca6b))</span>. Equal numeric IDs coming from different maps can therefore never collide downstream — a Pattern region&nbsp;7 and a Combine region&nbsp;7 become different identities.</li>
+    <li><strong>Invalid-pixel fallback.</strong> If the chosen map has <span class="id">MIXTORMAT_INVALID_REGION</span> at a pixel, the other source is used before the sentinel is allowed through.</li>
+    <li><strong>Evaluation order is explicit.</strong> The node consumes the two nearest producers <em>by child index</em>; the pass scheduler keeps earlier Pattern producers alive specifically when a later ID&nbsp;Group would otherwise consume them.</li>
+  </ul>
+
+  <h3>Files changed</h3>
+  <table>
+    <tbody><tr><th>File</th><th>Change</th></tr>
+    <tr><td><code>Shaders/Private/MixtormatIdGroup.usf</code></td><td>New — <span class="id">ResolveCS</span>: tent-smoothed height feature (Height or Curvature mode), threshold/invert pick between SourceA/SourceB, slot-salted rehash, debug colouring.</td></tr>
+    <tr><td><code>Shaders/Private/MixtormatIdGroupBoundary.usf</code></td><td>New — <span class="id">MainCS</span>: ≤<span class="id">OutlineWidth</span> neighbourhood compare, publishes a 0/1 boundary mask named <span class="id">"Boundary"</span>.</td></tr>
+    <tr><td><code>MixtormatRuntime/Public/MixtormatMaterial.h</code></td><td><span class="id">EMixtormatIdGroupFeature</span> (Height/Curvature), <span class="id">FMixtormatIdGroup</span> struct (Threshold 0.08, FeatureScale 8, SmoothRadius 2, OutlineWidth 2, Invert), <span class="id">EMixtormatLayerChildType::IdGroup</span> appended for serialization safety, <span class="id">FMixtormatLayerChild::IdGroup</span> payload.</td></tr>
+    <tr><td><code>MixtormatShaders/Private/MixtormatGpuCompositor.cpp</code></td><td>Gather: ID Group children collected with clamps (Threshold 0–1, FeatureScale 0–64, SmoothRadius 0–8, OutlineWidth 1–8).</td></tr>
+    <tr><td><code>MixtormatShaders/Private/MixtormatGpuCompositorInternal.h</code></td><td><span class="id">FIdGroupRenderData</span> + union member on <span class="id">FChildRenderData</span>.</td></tr>
+    <tr><td><code>MixtormatShaders/Private/MixtormatGpuPatternPasses.cpp</code></td><td>Two global shaders, <span class="id">AddIdGroupPasses</span>, producer registration in <span class="id">AddRegionProducerPasses</span>, Pattern keep-alive rule, Filter-chain propagation.</td></tr>
+    <tr><td><code>MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp</code></td><td>IdGroup added to the "handled outside the child loop" set.</td></tr>
+    <tr><td><code>MixtormatEditor/Private/Widgets/SMixtormat.h</code> / <code>SMixtormat_Layers.cpp</code></td><td><span class="id">IdGroup</span> child creation, <span class="id">BuildIdGroupControls</span>/<span class="id">BuildIdGroupFeatureMenu</span>; <span class="id">CreateChild</span> early-returns for ClusterIds/CombineIds; add-menu entries removed.</td></tr>
+  </tbody></table>
+  <div class="note warn">
+    <span class="note-tag">Deprecation shape — worth knowing before you build on it</span>
+    <p>The retired authoring is a silent early-return: <span class="id">CreateChild</span> returns <span class="id">FReply::Handled()</span> for ClusterIds/CombineIds without any log or toast. Serialized payloads and the whole evaluation path remain live (old materials still render correctly), and Combine chains that depend on Breakup still run — only new authoring is blocked. The menu entries are gone, so the early-return is a belt-and-suspenders path, but anything that programmatically calls <span class="id">CreateChild</span> with those kinds will appear to do nothing.</p>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>Module map</h2></div>
+  <table>
+    <tbody><tr><th>Module</th><th>Role</th><th>Depends on</th></tr>
+    <tr><td><code>MixtormatRuntime</code></td><td>Everything authorable: <span class="id">UMixtormatMaterial</span> (UPrimaryDataAsset), layers/children/groups, effect &amp; mask structs, parameter contracts, binding engine, group expansion. No rendering code.</td><td>Engine core only</td></tr>
+    <tr><td><code>MixtormatShaders</code></td><td>The GPU compositor: <span class="id">FMixtormatGpuCompositor</span> façade, render-data model, ~90 global compute shaders over 8 pass files, RDG graph assembly, network cache.</td><td>Runtime (reads its structs), RenderCore/RDG</td></tr>
+    <tr><td><code>MixtormatEditor</code></td><td>Slate workspace (<span class="id">SMixtormat</span> family), undo/document, layer &amp; inspector UI, parameter authoring, bake service, import/thumbnail/preview services, ~18 automation test files.</td><td>Runtime + Shaders, UnrealEd</td></tr>
+  </tbody></table>
+  <p class="dim">Data flow at runtime: editor mutates <span class="id">UMixtormatMaterial</span> → compositor gathers render data on the game thread → one RDG graph per composite on the render thread → outputs bound onto <span class="id">UMaterialInstanceDynamic</span> (<span class="id">DA_BaseColor/DA_Normal/DA_RAMH/DA_Height</span>) that the preview viewport material samples.</p>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>Data model</h2></div>
+  <p><span class="id">UMixtormatMaterial</span> holds <span class="id">Layers</span> (render-order array), <span class="id">LayerGroups</span> (storage order only — a group's stack position is its first member's), and bake outputs (<span class="id">BakedBaseColor/Normal/RAM/Height</span>, <span class="id">BakedMaterial</span>, and <span class="id">BakedSurface</span> — a repacked RAMH copy with <span class="id">DefaultIOR</span> so a layer can source its own bake). <span class="id">PostLoad</span> stabilizes binding IDs <em>then</em> validates groups, in that order.</p>
+
+  <h3>Layer</h3>
+  <p><span class="id">FMixtormatLayer</span> carries identity (<span class="id">LayerId</span>, <span class="id">GroupId</span> — membership lives on the layer, so a layer is in at most one group and nothing re-syncs when layers move), source (<span class="id">SourceSurface</span> or a live <span class="id">SourceComposition</span> reference to another material), channel mode (complete surface / normal-detail), surface overrides, UV placement, color adjustments, and the height-blend block. Two recurring invariants are enforced by convention and documented in-place:</p>
+  <ul class="plain">
+    <li><strong>The frac() domain.</strong> Every source read is wrapped in <span class="id">frac()</span>, so UV transforms must map the unit square onto itself: per-axis scale is integer (1–16), rotation is quarter-turns only, offset/flip are free. Applied flip → rotate → tile, so the texture turns and the lattice replicates the turned result.</li>
+    <li><strong>Normal strength vs height boost.</strong> <span class="id">NormalIntensity</span> is the authored map's tangent-slope gain; <span class="id">HeightBoost</span> owns the height field only, and derived passes get boosted height once by differentiation (<span class="id">MixtormatReliefScaling.h</span> keeps tripwire functions so the two can't be conflated again — the header comments record that they once were, double-counting the same bump).</li>
+  </ul>
+
+  <h3>Children — the whole node vocabulary</h3>
+  <p><span class="id">FMixtormatLayerChild</span> is a flat tagged union: <span class="id">Type</span> selects exactly one payload struct. Every dispatch in the plugin switches on <span class="id">Type</span> alone. Children also carry <span class="id">ScopeOwnerChildId</span> (scoped beneath another child, gating only its owner) and whole-child instancing (<span class="id">SourceLayerId</span>/<span class="id">SourceChildId</span>, payload re-read from source every composite).</p>
+  <table>
+    <tbody><tr><th>Type value</th><th>Payload</th><th>Family / job</th></tr>
+    <tr><td>Mask</td><td><code>FMixtormatMaskLayer</code></td><td>Coverage: texture, published output, or Layer-Values scalar (albedo RGB + roughness in alpha)</td></tr>
+    <tr><td>Effect</td><td><code>FMixtormatLayerEffect</code></td><td>Post-composite surface filter (Erosion, Breakup, WornEdges, Stain, Runoff, Peeling, Craquelure-relief family via dedicated child, Grade, LayerBlur, FlowWarp)</td></tr>
+    <tr><td>Generated</td><td><code>FMixtormatGeneratedMask</code></td><td>Procedural mask producer (cellular noise, erosion runoff/ridge readers, gully…)</td></tr>
+    <tr><td>Craquelure</td><td><code>FMixtormatCraquelure</code></td><td>Crack-network mask with cached propagated distance field</td></tr>
+    <tr><td>ColorId</td><td><code>FMixtormatColorIdMask</code></td><td>Mask from colour range, or Exact-ID mode against the nearest ID map</td></tr>
+    <tr><td>Filter <span class="dimtxt">(Cluster IDs)</span></td><td><code>FMixtormatClusterFilter</code></td><td>Coarsens the ID map above it — <em>authoring retired, evaluation live</em></td></tr>
+    <tr><td>HsvFilter</td><td><code>FMixtormatHsvIdFilter</code></td><td>Per-region HSV variation applied at the composite's albedo sample</td></tr>
+    <tr><td>RandomId</td><td><code>FMixtormatRandomIdMask</code></td><td>Random scalar per region</td></tr>
+    <tr><td>RampId</td><td><code>FMixtormatRampIdFilter</code></td><td>Per-region ramp/tilt; relief deferred to post-composite</td></tr>
+    <tr><td>PatternId</td><td><code>FMixtormatPatternFilter</code></td><td>Region-ID producer: grid modes, fracture plates, running-boundary randomness</td></tr>
+    <tr><td>Blur</td><td><code>FMixtormatMaskBlur</code></td><td>Scoped beneath its mask; radii summed, cap 32 (shader unroll limit)</td></tr>
+    <tr><td>Curvature</td><td><code>FMixtormatMaskCurvature</code></td><td>Scoped, only-ever-keeps: multiplies into existing coverage</td></tr>
+    <tr><td>CombineId</td><td><code>FMixtormatCombineIdFilter</code></td><td>Only ID node that both reads and writes a map — <em>authoring retired, evaluation live</em></td></tr>
+    <tr><td>Generator</td><td><code>FMixtormatGenerator</code></td><td>Rewrites layer input height pre-composite (StrataCarver, Fracture)</td></tr>
+    <tr><td>UvFromIds</td><td><code>FMixtormatUvIdFilter</code></td><td>Per-region random rotation/scale/offset/flip of the layer's source read</td></tr>
+    <tr><td>ReliefFromIds</td><td><code>FMixtormatReliefIdFilter</code></td><td>Per-region relief: bevel, gap, edge roughness, AO</td></tr>
+    <tr><td><strong>IdGroup</strong></td><td><code>FMixtormatIdGroup</code></td><td><strong>New.</strong> Guided selection between the two nearest ID producers; publishes a new ID map + a "Boundary" outline mask</td></tr>
+  </tbody></table>
+
+  <h3>Groups</h3>
+  <p><span class="id">FMixtormatLayerGroup</span> stores one authored child stack that broadcasts. <span class="id">MixtormatLayerGroups::BuildEffectiveLayers</span> is the <em>only</em> place groups exist: it copies the layer array, ANDs member enable with group enable, and appends group children after local children with derived, deterministic per-member child IDs (<span class="id">MakeEffectiveChildId</span>). Everything downstream sees a flat array. <span class="id">ValidateGroups</span> keeps each group's first contiguous run and ungroups strays rather than reordering a user's stack.</p>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Parameter system — reflection first, contracts sparse</h2></div>
+  <p>The system deliberately avoids a hand-maintained master table. Identity, type, default, family and UI ergonomics are <em>discovered from reflection</em>: the UPROPERTY's name, type, CDO initializer, Category and UIMin/UIMax/Delta meta. Only what the shader implies and reflection cannot express lives in the runtime <span class="id">MixtormatParameterContracts</span> table (<span class="id">FMixtormatParameterContract</span>: HardMin/HardMax, NormalizationScale, bShaderSaturates) — and a parameter without an entry is legal, not an omission. Contracts must be runtime code because packaged builds strip editor meta, and the compositor sanitizes with them in every target.</p>
+  <ul class="plain">
+    <li><strong>Sanitization is one path:</strong> <span class="id">SanitizeFloat</span> — non-finite falls back to the reflected CDO default, then HardMin/HardMax clamp. Defaults never need a second copy of the number.</li>
+    <li><strong>Bindings</strong> (<span class="id">FMixtormatParameterBinding</span>) address parameters by <span class="id">FMixtormatParameterAddress</span> (Owner type + FName), support direct references and scalar drivers. Only two driven scalars exist today (<span class="id">RoughnessInfluence</span>, <span class="id">HeightBlendAmount</span>), sourced from CombinedMask or RegionIds; a driver that can't resolve contributes nothing and the authored value survives.</li>
+    <li><strong>Authoring side</strong> (<span class="id">MixtormatParameterAuthoring</span>, <span class="id">MixtormatParameterUiMeta</span>, <span class="id">MixtormatShaderParamScanner</span>): persistent authoring defaults, UI metadata tables, and a scanner that reads the .usf files so drift tests can verify shader ↔ C++ ↔ contract agreement (commits <span class="id">30c1f1e</span>, <span class="id">0f9277e</span> made dev metadata default-on).</li>
+  </ul>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>GPU compositor pipeline</h2></div>
+
+  <h3>Game thread — gather (<span class="id">MixtormatGpuCompositor.cpp</span>)</h3>
+  <ul class="plain">
+    <li><span class="id">RequestCompose</span> validates live-composition references (<span class="id">MixtormatCompositionReferences::Validate</span> — depth 32, self-reference even through redirectors, cycles), then <span class="id">RequestComposeInternal</span>.</li>
+    <li>Groups expand once, here and nowhere else. Preview targets (<span class="id">FMixtormatChildPreviewTarget</span>: OwnerId, ChildId, OutputName, Kind, GapMaskName) resolve by GUID to LayerIndex/ChildIndex exactly once; every pass uses <span class="id">IsChildOutputPreviewTarget</span>.</li>
+    <li>Reference layers (<span class="id">SourceComposition</span>) recurse through a fresh stack-allocated child compositor per occurrence — own IDs, own ping-pong, own drivers — depth-limited and cycle-checked; the child's published targets ride along as <span class="id">SourceOutputs</span>.</li>
+    <li>Per layer: direct reference application, source texture resolution (static-cached engine whites/normals), scalar-driver extraction, then the child gather loop — one branch per child type, each with its own clamp set and disabled-layer policy. Mask children still resolve on disabled layers so others can reference them; effects, generators, UV/relief/ramp filters don't gather on disabled layers because each would otherwise cost work nothing can see.</li>
+  </ul>
+
+  <h3>Render thread — the graph (<span class="id">MixtormatGpuComposePipeline.cpp</span>)</h3>
+  <div class="flow"><b>per composite</b>
+├─ register 6 output pairs (BC / N / RAM / Height / Debug / RegionIdPick)
+├─ clear Debug + RegionIdPick of the published half (picker sentinel = −1)
+├─ 1×1 dummies: EmptyRegionIds(0xffffffff) · EmptyPatternUV(.5) · EmptyPatternOrientation · EmptyDriverSignal
+├─ seed <b>substrate</b> into BC/N/RAM/Height[<span class="acc">1</span>]        <span class="acc">// layer 0 writes half 0, reads half 1</span>
+├─ per-graph ping-pong pairs, <b>both halves cleared</b>: Mask(R16F) · Ridge · Effect(RGBA) · EffectHeight(R16F signed)
+├─ <b>per layer</b> (WriteIndex = LayerIndex &amp; 1):
+│   ├─ AddRegionProducerPasses      <span class="acc">// Cluster / Pattern / Combine / IdGroup → RegionIdMaps, sorted by child idx</span>
+│   ├─ AddUvIdPasses                <span class="acc">// per-region source-UV rewrite, before any source read</span>
+│   ├─ AddLayerHeightSmoothPasses
+│   ├─ AddGeneratorPasses           <span class="acc">// rewrites LayerInputHeight/N in place — pre-mask, pre-composite</span>
+│   ├─ child loop                   <span class="acc">// masks, craquelure, random/color IDs, effects (some queued pending)</span>
+│   │     CombineId producer runs at its authored row   <span class="acc">// breakup-dependent chains become available here</span>
+│   ├─ CollectPendingRampTilts
+│   ├─ [bPrepareStructure] isolate Local BC/N/RAM/Height when Breakups or Fracture exist
+│   ├─ <b>AddLayerCompositePass</b>       <span class="acc">// height contest, normals, HSV variation, grades, pattern UV</span>
+│   ├─ deferred: Erosion → RampRelief → Fracture → CraquelureRelief → Breakup → WornEdges
+│   ├─ [structure-prepared] <b>second AddLayerCompositePass</b> with the carved channels as input
+│   └─ AddLayerBlurPasses           <span class="acc">// last — nothing may sharpen what blur was asked to remove</span>
+└─ publish: PublishedTargetIndex = (LayerCount−1) &amp; 1   <span class="acc">// bRotateOutput90 swaps the published half</span></div>
+
+  <p>Design decisions worth internalizing before touching this file:</p>
+  <ul class="plain">
+    <li><strong>Layer 0 is not special.</strong> The substrate is cleared into half 1, so layer 0 composites onto it exactly like every other layer composites onto its predecessor. Comment history: when layer 0 seeded its own buffers it ignored its own mask/feature/height-blend, so a layer couldn't be dragged to the bottom without changing what it did.</li>
+    <li><strong>RDG validates bindings, not uses.</strong> Hence both halves of every ping-pong pair are cleared, and 1×1 dummies fill every conditional slot. The ensure-once RDG errors this avoids are recorded in comments.</li>
+    <li><strong>The erosion ridge pair ping-pongs across layers</strong> (drainage + crest lines): a generated mask on layer N sees accumulation below N, and non-eroding layers copy read→write so nobody inherits a stale ridge from two layers back.</li>
+    <li><strong>Height snapshots are demand-driven</strong> — only layers actually named by another layer's <span class="id">HeightReferenceLayerIndex</span> get their height copied aside.</li>
+    <li><strong>Network cache</strong> (<span class="id">FMixtormatNetworkCache</span>): craquelure propagated distance fields only, keyed by FNV-1a over exactly the parameters growth reads (everything post-field is deliberately excluded so slider drags hit), byte-bounded at 512&nbsp;MB, LRU. Render-thread-only, shared with in-flight requests.</li>
+    <li><strong>Effects that modify the finished surface are deferred</strong> past the composite (Erosion, Breakup, WornEdges, craquelure/ramp relief, fracture); effects that only shape the layer's <em>mask</em> run in the child loop. Stain and Runoff write their own debug previews because the composite would otherwise overwrite them.</li>
+  </ul>
+
+  <h3>The composite kernel (<span class="id">MixtormatComposite.usf</span>)</h3>
+  <p>Three entry points: <span class="id">ResolveLayerInputCS</span> (per-layer source resolve incl. UvFromIds), <span class="id">ResolveLayerValuesCS</span> (albedo+HSV/roughness signature other nodes read), and <span class="id">MainCS</span> — the ~50&nbsp;KB heart that does the height contest (<span class="id">SampleHeightBlendFieldEx</span>, contact/border fields with pre-smoothed texture feeds), normal decode + RNM combine, per-region HSV variation, up to 8 grades, fill/coat modes, and all debug modes. The pre-smoothing rationale is documented: blurring the field in a texture beats widening the derivative, which reaches further into noise instead of averaging it.</p>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>The Region-ID contract</h2></div>
+  <p><span class="id">MixtormatRegionId.ush</span> is the single source of truth: the <span class="id">MIXTORMAT_INVALID_REGION</span> sentinel (0xffffffff — currently never written, union-find gives every pixel a root, but consumers must decide), the murmur-style <span class="id">MixtormatRegionHash</span>, the multiply-decorrelated <span class="id">MixtormatRegionSeed</span> (adjacent regions carry numerically adjacent IDs; a plain xor would show a visible gradient), and ~16 named salts so one region's height, feather, bevel, UV draw, gap and slide all move independently under one Seed control. One file because a preview coloured from a drifted copy of the hash would not match the variation it previews.</p>
+  <table>
+    <tbody><tr><th>Producers → <span class="id">RegionIdMaps</span></th><th>Consumers</th></tr>
+    <tr>
+      <td>
+        <code>ClusterIds</code> (union-find coarsen) · <code>PatternIds</code> (grids, fracture plates, boundary randomness) · <code>CombineId</code> (merge/selection; breakup-dependent chains) · <code>IdGroup</code> (guided two-source pick — new)
+      </td>
+      <td>
+        <code>RandomId</code> · <code>RampId</code> · <code>HsvFilter</code> · <code>ColorId</code> Exact-ID mode · <code>UvFromIds</code> · <code>ReliefFromIds</code> · <code>RampIdRelief</code> (+EdgeShade) · RegionIds drivers · <code>RegionIdPick</code> (Exact ID picker reads the raw map only while its preview is up)
+      </td>
+    </tr>
+  </tbody></table>
+  <p>Consumers ask for "the nearest valid map above me" and never which node produced it — Pattern, Cluster, Combine and now ID&nbsp;Group are equally valid sources. Publication is kept sorted by <span class="id">SourceChildIndex</span>; ID&nbsp;Group's <span class="id">AddIdGroupPasses</span> walks that array and keeps the last two entries below its own index. A producer whose only purpose is to feed a later ID&nbsp;Group is force-kept alive even if nothing else would want it. The <span class="id">"Boundary"</span> mask ID&nbsp;Group publishes joins the same named-mask publication channel (<span class="id">FPublishedMaskKey</span>) that Breakup's Gap/Edge/Pieces and Worn Edges' Wear use — one mechanism, addressed by name.</p>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Shader catalog (<span class="code">Shaders/Private</span> — 56 files)</h2></div>
+  <p>All kernels are <span class="id">[numthreads(8,8,1)]</span>. Shared helpers carry the load: <span class="id">MixtormatUV.ush</span> (unit-square placement + the tangent transform that intentionally does <em>not</em> reuse the position path — a 1-ULP difference could flip a region ID on a boundary texel), <span class="id">MixtormatCellular.ush</span> (periodic Voronoi with F1/F2/edge distance and order-independent wall identity — periodic-by-construction, not wrapped input, which is documented as un-retrofittable), <span class="id">MixtormatGully.ush</span>, <span class="id">MixtormatDriver.ush</span> (signal → invert → remap → amount → combine, 7 modes), <span class="id">MixtormatHeightNormal.ush</span>, <span class="id">MixtormatColorOps.ush</span>, <span class="id">MixtormatSdfBlend.ush</span>, <span class="id">MixtormatDebugColor.ush</span>.</p>
+  <table>
+    <tbody><tr><th>Family</th><th>Files</th><th>Technique</th></tr>
+    <tr><td>Composite</td><td>MixtormatComposite.usf, Grade, RotateOutput, DebugPreviewBlit</td><td>Height contest, RNM normals, HSV variation, Hable + tonemap family, quarter-turn output</td></tr>
+    <tr><td>Region IDs</td><td>PatternIds (52&nbsp;KB), ClusterIds, CombineIds, IdGroup, IdGroupBoundary, RandomId, RampIds, RampIdRelief, ColorId, RegionFields</td><td>Union-find, periodic grids + fracture-plate lattice, JFA-style distance in RegionFields, guided selection (new)</td></tr>
+    <tr><td>Masks</td><td>Mask, MaskBlur, MaskCurvature, GeneratedMask, MaskOps.ush</td><td>Blend tail lerp(Previous, Result, Weight); scoped blur/curvature; Layer-Values channels</td></tr>
+    <tr><td>Surface effects</td><td>Erosion, EdgeWear, FlowWarp, LayerBlur, Breakup, CarveShade, EdgeShade, Flow (+.ush), Gully.ush, Curvature.ush</td><td>Momentum slope/curvature erosion; cellular breakup pieces; flow-warped surface/mask/effect variants</td></tr>
+    <tr><td>Growth sims</td><td>Stain, Peeling, PeelField, Runoff</td><td>Iterated stain growth (default 20, clamp 4–64); signed peel relief accumulating across layers; droplet runoff at downsampled resolution</td></tr>
+    <tr><td>Cracks</td><td>Craquelure, CraquelureGrow, CraquelureDistance, CraquelureRelief, Cellular.ush</td><td>Propagated distance-field crack growth (the cached "network"), lattice vs propagated modes</td></tr>
+    <tr><td>Fracture</td><td>StrataCarver, Fracture, FractureDistance, FractureField, FractureResolve, FractureShape.ush</td><td>Strata carve propagate/resolve; fracture lattice with hierarchical child sites, JFA distance resolve, blended-field ownership, chamfer</td></tr>
+    <tr><td>Height/normal</td><td>NormalHeight, HeightDeltaNormal, HeightNormal.ush</td><td>Resolution-aware shared height→normal helper</td></tr>
+  </tbody></table>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Effect pass layer — one authoring pattern, ~40 passes</h2></div>
+  <p>Every effect follows the same shape: an <span class="id">FGlobalShader</span> class with a <span class="id">FParameters</span> struct, an <span class="id">IMPLEMENT_GLOBAL_SHADER</span> pointing at a .usf entry point, an <span class="id">Add…Passes</span>/<span class="id">Add…Pass</span> function per family, and a gather function in <span class="id">Compositing/MixtormatEffectGather.cpp</span> that sanitizes authored values through the contract table before they reach render data. Families: <span class="id">GpuEffectPasses</span> (Erosion 2.9k lines incl., Craquelure×5, Grade, FlowWarp×3, Breakup×4, EdgeWear, LayerBlur, EffectMerge, CarveShade, HeightDeltaNormal), <span class="id">GpuPatternPasses</span> (Cluster, Pattern, Combine, Random, Ramp, UV, EdgeShade, ID Group, region JFA set), <span class="id">GpuMaskPasses</span> (Mask/Resolve/Merge, ColorId, Generated, Blur, Curvature, height-smoothing blurs), <span class="id">GpuSimulationPasses</span> (Peeling, PeelField, Stain), <span class="id">GpuRunoffPasses</span> (Downsample/Prepare/Resolve/Apply), <span class="id">GpuGeneratorPasses</span> (StrataCarver×4), <span class="id">GpuFracturePasses</span> (Topology/Seed/Step/Field/Resolve), <span class="id">GpuDebugPreviewPasses</span> (mask blit, region-ID colourist, RegionIdPick).</p>
+  <p class="dim">Notable per-family state: Erosion is a momentum slope/curvature solver rewritten across four commits (steering → momentum solver → downhill transport → gravity rework) and publishes the ridge pair; Breakup authors structural IDs during child collection but applies relief after the composite, deliberately ordered before Worn&nbsp;Edges so wear reads real plate boundaries; PeelField relief is signed around zero so stacked peels accumulate.</p>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Editor architecture</h2></div>
+  <p><span class="id">SMixtormat</span> is one widget class split across focus files: <span class="id">SMixtormat.h</span> (67&nbsp;KB — the class contract), <code>_Shell</code> (layout, tabs, theme wiring), <code>_Document</code> (undo/transaction model, asset save/load, bake entry), <code>_Layers</code> (255&nbsp;KB — rows, groups, drag-drop, child creation incl. the retired-authoring early-return), <code>_Inspector</code> (270&nbsp;KB — per-type control builders, now including <span class="id">BuildIdGroupControls</span>/<span class="id">BuildIdGroupFeatureMenu</span>), <code>_Parameters</code> (driver + parameter-authoring UI), <code>_Preview</code> (viewport + debug-preview menu), <code>_Library</code> (surface/mask gallery), <code>_Theme</code> (live theme). Supporting services: <span class="id">MixtormatLayerPreview</span> (isolated per-layer composites so the preview shows one layer against the substrate), <span class="id">SMixtormatPreviewViewport</span> + light gizmo, <span class="id">MixtormatThumbnailRenderer</span>, <span class="id">MixtormatSurfaceImporter</span> (44&nbsp;KB import path), <span class="id">MixtormatRegistry</span>/<span class="id">Paths</span>/<span class="id">AssetMigration</span>, <span class="id">MixtormatBakeService</span> (bake → textures + repacked RAMH <span class="id">UMixtormatSurface</span>), bake dialogs, and gallery cards. A child-addressing (<span class="id">MixtormatChildAddress.h</span>) and child-capabilities module decouples rows from concrete child types.</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Tests — what is pinned</h2></div>
+  <table>
+    <tbody><tr><th>Test file</th><th>Pins</th></tr>
+    <tr><td>CompositorTests (63&nbsp;KB)</td><td>Compositor lifecycle, target publication, rotate, reference layers</td></tr>
+    <tr><td>LayerGroupTests (19&nbsp;KB)</td><td>Validate/expand semantics, effective child IDs, enable gating</td></tr>
+    <tr><td>CompositionBlendTests / LayerPermutationTests</td><td>Blend-mode math and order-independence of the layer stack</td></tr>
+    <tr><td>RunoffTests / StainTests (47/31&nbsp;KB)</td><td>The two iterative sims, parameter-for-parameter</td></tr>
+    <tr><td>LayerValuesMaskTests / MaskInstanceTests / MaskCurvatureTests</td><td>Layer-Values channels, instancing identity, curvature chain</td></tr>
+    <tr><td>ReliefScalingTests / NormalHeightTests</td><td>The HeightBoost/NormalIntensity separation contract</td></tr>
+    <tr><td>ParameterAuthoringTests / ParameterDefinitionTests</td><td>Authoring defaults, contract table, shader drift detection</td></tr>
+    <tr><td>ChildOutputPreviewTests</td><td>Named child-output preview addressing (the channel ID Group's Boundary uses)</td></tr>
+    <tr><td>LayerPreviewTests, LibraryPathTests, Prompt2Tests</td><td>Per-layer preview isolation, library paths, misc contracts</td></tr>
+  </tbody></table>
+</section>
+
+<!-- ============ 11 ============ -->
+<section id="s11">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Fragile spots &amp; conventions to respect</h2></div>
+  <table>
+    <tbody><tr><th>Spot</th><th>Why it bites</th></tr>
+    <tr><td>Enum serialization is by value</td><td>Every child-type / blend-mode / height-source enum is append-only. Inserting above the marked line silently retypes every saved asset. The rule is restated in comments at each site — keep obeying it.</td></tr>
+    <tr><td>ID Group needs two producers above it</td><td><span class="id">AddIdGroupPasses</span> returns null when fewer than two earlier maps exist — silently, no log, no preview explanation. An ID Group placed at the top of a stack does nothing with no diagnostic.</td></tr>
+    <tr><td>Retired authoring early-return</td><td><span class="id">CreateChild</span> swallows ClusterIds/CombineIds clicks (<span class="id">Handled()</span>, no warning). Fine for UI (menu entries removed), a trap for programmatic callers.</td></tr>
+    <tr><td>Grade hard limit</td><td>More than 8 Grade effects on one layer fails the whole compose (<span class="id">return false</span>), not a fallback. Deliberate, but user-visible as "preview stops updating".</td></tr>
+    <tr><td>ID Group feature cost</td><td><span class="id">SmoothedHeight</span> is a full (2r+1)² tent per tap; Curvature mode evaluates it 5× per pixel (r=2 → 125 samples/px, r=8 → 405). Unmeasured — flagging as a candidate cost center, not a confirmed problem.</td></tr>
+    <tr><td>Rotate output</td><td>Requires square resolution; rejected otherwise with no UI surface explaining why.</td></tr>
+    <tr><td>Ping-pong parity</td><td>Substrate in half 1, WriteIndex = LayerIndex &amp; 1, ridge pair copy rules, published-half swap on rotate — all correct today and all easy to break by adding a pass that reads the wrong half. The comments in <span class="id">MixtormatGpuComposePipeline.cpp</span> are the spec; read them before touching scheduling.</td></tr>
+    <tr><td>Network cache budget</td><td>512&nbsp;MB byte-bounded LRU on craquelure distance fields; 4K entries are 268&nbsp;MB each, so one 4K network evicts everything else.</td></tr>
+    <tr><td>Group broadcast order</td><td>Group children append <em>after</em> local children. ID Group inside a group sees the member's local producers — consistent, but "nearest above" jumps the local/group boundary at a fixed place.</td></tr>
+  </tbody></table>
+</section>
+
+<!-- ============ 12 ============ -->
+<section id="s12">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Coverage &amp; evidence</h2></div>
+  <p><strong>Read first-hand by the coordinator:</strong> the full <span class="id">1c91520</span> diff; <span class="id">MixtormatIdGroup.usf</span>, <span class="id">MixtormatIdGroupBoundary.usf</span>, <span class="id">MixtormatRegionId.ush</span>, <span class="id">MixtormatUV.ush</span>, <span class="id">MixtormatLayerGroups.h</span>, <span class="id">MixtormatGpuCompositor.h</span>, <span class="id">MixtormatParameterDefinition.h</span> (all complete); <span class="id">MixtormatMaterial.h</span> type/enum/struct skeleton incl. the full child-type and layer/group/asset definitions; <span class="id">MixtormatGpuCompositor.cpp</span> lifecycle + gather + composite-pass internals; <span class="id">MixtormatGpuComposePipeline.cpp</span> essentially in full; <span class="id">MixtormatGpuCompositorInternal.h</span> struct inventory; complete shader-class/function inventories for all eight pass files; entry-point inventories for <span class="id">MixtormatComposite.usf</span> and <span class="id">MixtormatPatternIds.usf</span>; git log (25 commits).</p>
+  <p><strong>Read by delegated coverage passes</strong> (three readers over the remaining ~1.8&nbsp;MB, spot-cross-checked against the first-hand reads above with no contradictions found): all 56 .usf/.ush shader files, the full <span class="id">MixtormatShaders</span> module, the full <span class="id">MixtormatRuntime</span> module, and the <span class="id">MixtormatEditor</span> module structurally (including function-level extraction of the two 250&nbsp;KB+ widget files and all test files). Stale duplicate trees (<span class="id">.claude/worktrees/</span>, <span class="id">Intermediate/</span>) were identified and excluded everywhere.</p>
+  <p class="dim">Status: analysis complete; no code was modified. Two reader digests were truncated in delivery; their surviving content was consistent with the first-hand evidence at every point where the two overlap, and no claim in this report rests solely on truncated material. The ID&nbsp;Group performance note and the group-boundary ordering note are the two items marked as candidates rather than confirmed facts.</p>
+</section>
+
+<footer>
+  Mixtormat infrastructure analysis · commit 1c91520 "Add ID Group feature to Mixtormat" · workspace C:\Tools\MaterialLab\MatLab\Plugins\Mixtormat<br>
+  Compiled from full-tree source reading, 2026-09-23 · read-only, no code modified
+</footer>
+
+</div>
+
+
+</body></html>

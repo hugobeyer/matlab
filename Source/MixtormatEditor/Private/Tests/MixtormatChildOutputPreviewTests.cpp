@@ -401,4 +401,104 @@ bool FMixtormatChildOutputPreviewGateTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatHierarchicalIdGroupTest,
+	"Mixtormat.Compositor.HierarchicalIdGroup",
+	EAutomationTestFlags::EditorContext
+		| EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatHierarchicalIdGroupTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatChildOutputPreviewTests;
+	(void)Parameters;
+
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(Resolution, Resolution))))
+	{
+		return false;
+	}
+	const TArray<FMixtormatLayerGroup> NoGroups;
+	FMixtormatLayer Layer;
+	Layer.Type = EMixtormatLayerType::Fill;
+	FMixtormatLayerChild& Group = Layer.Children.AddDefaulted_GetRef();
+	Group.Type = EMixtormatLayerChildType::IdGroup;
+	const FGuid GroupId = Group.ChildId;
+
+	FMixtormatLayerChild& PatternA = Layer.Children.AddDefaulted_GetRef();
+	PatternA.Type = EMixtormatLayerChildType::PatternId;
+	PatternA.ScopeOwnerChildId = GroupId;
+	PatternA.PatternId.Rows = 1;
+	PatternA.PatternId.Columns = 1;
+	PatternA.PatternId.GapPixels = 0.0f;
+
+	FMixtormatLayerChild& PatternB = Layer.Children.AddDefaulted_GetRef();
+	PatternB.Type = EMixtormatLayerChildType::PatternId;
+	PatternB.ScopeOwnerChildId = GroupId;
+	PatternB.PatternId.Rows = 1;
+	PatternB.PatternId.Columns = 2;
+	PatternB.PatternId.GapPixels = 0.0f;
+
+	const auto ReadPreview = [&Compositor, &NoGroups](
+		const FMixtormatLayer& InLayer,
+		const FMixtormatLayerChild& Child,
+		const EMixtormatPreviewOutputKind Kind,
+		TArray<FLinearColor>& Pixels,
+		const FName Output = NAME_None)
+	{
+		return ComposeAndWait(Compositor, {InLayer}, NoGroups, ChildOutput(InLayer, Child, Kind, Output))
+			&& ReadDebug(Compositor, Pixels);
+	};
+
+	TArray<FLinearColor> A;
+	TArray<FLinearColor> B;
+	TArray<FLinearColor> Difference;
+	if (!TestTrue(TEXT("First nested Pattern previews"), ReadPreview(Layer, Layer.Children[1],
+			EMixtormatPreviewOutputKind::RegionIds, A))
+		|| !TestTrue(TEXT("Second nested Pattern previews"), ReadPreview(Layer, Layer.Children[2],
+			EMixtormatPreviewOutputKind::RegionIds, B))
+		|| !TestTrue(TEXT("Difference ID Group previews"), ReadPreview(Layer, Layer.Children[0],
+			EMixtormatPreviewOutputKind::RegionIds, Difference)))
+	{
+		return false;
+	}
+
+	int32 DifferentOverlapPixels = 0;
+	int32 NewDifferenceIds = 0;
+	for (int32 Index = 0; Index < Difference.Num(); ++Index)
+	{
+		if (!A[Index].Equals(B[Index], 1.0e-5f))
+		{
+			++DifferentOverlapPixels;
+			NewDifferenceIds += !Difference[Index].Equals(A[Index], 1.0e-5f)
+				&& !Difference[Index].Equals(B[Index], 1.0e-5f) ? 1 : 0;
+		}
+	}
+	TestTrue(TEXT("Nested patterns overlap with different IDs"), DifferentOverlapPixels > 0);
+	TestEqual(TEXT("Difference creates an extra ID for every differing overlap"),
+		NewDifferenceIds, DifferentOverlapPixels);
+
+	Layer.Children[0].IdGroup.Mode = EMixtormatIdGroupMode::MaxId;
+	TArray<FLinearColor> MaxIds;
+	if (!TestTrue(TEXT("Max ID Group previews"), ReadPreview(Layer, Layer.Children[0],
+		EMixtormatPreviewOutputKind::RegionIds, MaxIds)))
+	{
+		return false;
+	}
+	int32 NonSourcePixels = 0;
+	for (int32 Index = 0; Index < MaxIds.Num(); ++Index)
+	{
+		NonSourcePixels += !MaxIds[Index].Equals(A[Index], 1.0e-5f)
+			&& !MaxIds[Index].Equals(B[Index], 1.0e-5f) ? 1 : 0;
+	}
+	TestEqual(TEXT("Max ID always routes one child ID"), NonSourcePixels, 0);
+
+	TArray<FLinearColor> Boundary;
+	TestTrue(TEXT("ID Group Boundary previews"), ReadPreview(Layer, Layer.Children[0],
+		EMixtormatPreviewOutputKind::Mask, Boundary, FName(TEXT("Boundary"))));
+	TestTrue(TEXT("ID Group publishes a structured Boundary"), HasMaskRange(Boundary));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

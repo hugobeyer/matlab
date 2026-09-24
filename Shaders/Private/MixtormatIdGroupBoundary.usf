@@ -2,6 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 int2 OutputSize;
 int OutlineWidth;
@@ -22,15 +23,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	const int2 P = int2(DispatchThreadId.xy);
 	const uint Center = GroupIds.Load(int3(P, 0));
+	const int2 Directions[8] = {
+		int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1),
+		int2(1, 1), int2(-1, 1), int2(1, -1), int2(-1, -1)};
 	float Boundary = 0.0f;
 	[loop]
-	for (int Y = -OutlineWidth; Y <= OutlineWidth && Boundary == 0.0f; ++Y)
+	for (int Radius = 1; Radius <= OutlineWidth && Boundary == 0.0f; ++Radius)
 	{
-		[loop]
-		for (int X = -OutlineWidth; X <= OutlineWidth; ++X)
+		[unroll]
+		for (int Direction = 0; Direction < 8; ++Direction)
 		{
-			if ((X != 0 || Y != 0)
-				&& GroupIds.Load(int3(GroupBoundaryWrap(P + int2(X, Y)), 0)) != Center)
+			if (GroupIds.Load(int3(GroupBoundaryWrap(
+				P + Directions[Direction] * Radius), 0)) != Center)
 			{
 				Boundary = 1.0f;
 				break;
