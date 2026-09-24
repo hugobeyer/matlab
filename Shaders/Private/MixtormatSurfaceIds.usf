@@ -1,0 +1,279 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+// Matches EMixtormatSurfaceIdFeature. Only continuous guides are filtered.
+#define FEATURE_HEIGHT 0
+#define FEATURE_CURVATURE 1
+#define FEATURE_CONVEX 2
+#define FEATURE_CONCAVE 3
+#define FEATURE_FLATNESS 4
+#define FEATURE_LUMINANCE 5
+#define FEATURE_ROUGHNESS 6
+#define FEATURE_AO 7
+#define FEATURE_METALLIC 8
+
+Texture2D<float4> SourceRAMH;
+Texture2D<float> SourceHeight;
+Texture2D<float4> SourceNormal;
+Texture2D<float4> SourceColor;
+SamplerState LinearWrapSampler;
+Texture2D<float4> InputSamples;
+Texture2D<float2> FeatureGuide;
+Texture2D<float2> DilatedGuide;
+Texture2D<uint> InputIds;
+RWTexture2D<float4> OutputSamples;
+RWTexture2D<float2> OutputGuide;
+RWTexture2D<uint> OutputIds;
+RWTexture2D<float4> OutputDebug;
+// Four range slots, then eight occupancy bitsets. Group-local reductions avoid
+// contending on a handful of global atomics for every pixel of a large texture.
+RWStructuredBuffer<uint> Statistics;
+RWStructuredBuffer<uint> CompactIds;
+
+int2 OutputSize;
+float2 SourceTiling;
+float2 SourceOffset;
+uint FlipU;
+uint FlipV;
+int Rotation;
+uint SourceMode;
+uint HasSeparateHeight;
+uint PrimaryFeature;
+uint SecondaryFeature;
+float FeatureMix;
+int FormScale;
+int GuideBlur;
+uint MaxIds;
+int EdgeClose;
+uint WriteDebug;
+
+#if SURFACE_ID_STAGE == 2
+groupshared uint LocalRange[4];
+#elif SURFACE_ID_STAGE == 5
+groupshared uint LocalBands[8];
+#endif
+
+int2 SurfaceWrap(int2 P)
+{
+    return (P % OutputSize + OutputSize) % OutputSize;
+}
+
+float ScalarFeature(uint Feature, float Height, float4 RAM, float Luminance)
+{
+    if (Feature <= FEATURE_CONCAVE) return Height;
+    if (Feature == FEATURE_LUMINANCE) return Luminance;
+    if (Feature == FEATURE_ROUGHNESS) return RAM.r;
+    if (Feature == FEATURE_AO) return RAM.g;
+    if (Feature == FEATURE_METALLIC) return RAM.b;
+    return 0.0f;
+}
+
+float4 SampleGuide(int2 P)
+{
+    float2 UV = (float2(SurfaceWrap(P)) + 0.5f) / float2(OutputSize);
+    if (SourceMode == 0)
+        UV = MixtormatSourceUV(UV, SourceTiling, SourceOffset, FlipU, FlipV, Rotation);
+
+    uint Secondary = FeatureMix > 0.0f ? SecondaryFeature : PrimaryFeature;
+    bool NeedsHeight = PrimaryFeature <= FEATURE_CONCAVE || Secondary <= FEATURE_CONCAVE;
+    bool NeedsRAM = NeedsHeight || PrimaryFeature >= FEATURE_ROUGHNESS || Secondary >= FEATURE_ROUGHNESS;
+    float4 RAM = NeedsRAM ? SourceRAMH.SampleLevel(LinearWrapSampler, UV, 0.0f) : 0.0f;
+    float Height = NeedsHeight && HasSeparateHeight != 0
+        ? SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) : RAM.a;
+    float Luminance = 0.0f;
+    if (PrimaryFeature == FEATURE_LUMINANCE || Secondary == FEATURE_LUMINANCE)
+        Luminance = dot(SourceColor.SampleLevel(LinearWrapSampler, UV, 0.0f).rgb,
+            float3(0.2126f, 0.7152f, 0.0722f));
+    float2 NormalXY = 0.0f;
+    if (PrimaryFeature == FEATURE_FLATNESS || Secondary == FEATURE_FLATNESS)
+        NormalXY = SourceNormal.SampleLevel(LinearWrapSampler, UV, 0.0f).xy * 2.0f - 1.0f;
+
+    float4 Value = float4(
+        ScalarFeature(PrimaryFeature, Height, RAM, Luminance),
+        ScalarFeature(Secondary, Height, RAM, Luminance), NormalXY);
+    // Sanitize before filtering: one NaN must not contaminate a whole neighborhood.
+    return float4(isfinite(Value.x) ? saturate(Value.x) : 0.0f,
+        isfinite(Value.y) ? saturate(Value.y) : 0.0f,
+        isfinite(Value.z) ? clamp(Value.z, -1.0f, 1.0f) : 0.0f,
+        isfinite(Value.w) ? clamp(Value.w, -1.0f, 1.0f) : 0.0f);
+}
+
+float BlurWeight(int Offset)
+{
+    // Separable binomial kernels: [1,2,1] or [1,4,6,4,1].
+    if (GuideBlur == 2) return Offset == 0 ? 6.0f : (abs(Offset) == 1 ? 4.0f : 1.0f);
+    return Offset == 0 ? 2.0f : 1.0f;
+}
+
+float3 GuideNormal(float2 XY)
+{
+    return normalize(float3(XY, sqrt(saturate(1.0f - dot(XY, XY)))));
+}
+
+float EvaluateFeature(uint Feature, uint Channel, int2 P)
+{
+    float4 C = InputSamples.Load(int3(P, 0));
+    if (Feature == FEATURE_HEIGHT || Feature >= FEATURE_LUMINANCE) return C[Channel];
+    int2 DX = int2(FormScale, 0);
+    int2 DY = int2(0, FormScale);
+    float4 L = InputSamples.Load(int3(SurfaceWrap(P - DX), 0));
+    float4 R = InputSamples.Load(int3(SurfaceWrap(P + DX), 0));
+    float4 U = InputSamples.Load(int3(SurfaceWrap(P - DY), 0));
+    float4 D = InputSamples.Load(int3(SurfaceWrap(P + DY), 0));
+    if (Feature == FEATURE_FLATNESS)
+    {
+        // Agreement, not normal Z: a tilted but flat patch must also count as flat.
+        float3 N = GuideNormal(C.zw);
+        float Agreement = min(min(dot(N, GuideNormal(L.zw)), dot(N, GuideNormal(R.zw))),
+            min(dot(N, GuideNormal(U.zw)), dot(N, GuideNormal(D.zw))));
+        return saturate(Agreement);
+    }
+    float Laplacian = (L[Channel] + R[Channel] + U[Channel] + D[Channel] - 4.0f * C[Channel])
+        / float(max(FormScale * FormScale, 1));
+    // Nonnegative encodings preserve ordering for the range reduction. Each feature
+    // is normalized independently before mixing, so a large radius stays usable.
+    if (Feature == FEATURE_CONVEX) return saturate(-Laplacian * 0.25f);
+    if (Feature == FEATURE_CONCAVE) return saturate(Laplacian * 0.25f);
+    return saturate(0.5f + Laplacian * 0.125f);
+}
+
+float NormalizeFeature(float Value, uint Channel)
+{
+    float Low = asfloat(~Statistics[Channel * 2u]);
+    float High = asfloat(Statistics[Channel * 2u + 1u]);
+    // Do not stretch nearly constant normal/height noise across the entire ID budget.
+    return High - Low > 1.0e-6f ? saturate((Value - Low) / (High - Low)) : 0.0f;
+}
+
+float MixedGuide(int2 P)
+{
+    float2 Value = FeatureGuide.Load(int3(SurfaceWrap(P), 0));
+    return lerp(NormalizeFeature(Value.x, 0u), NormalizeFeature(Value.y, 1u), FeatureMix);
+}
+
+uint Quantize(float Value)
+{
+    return min((uint)floor(saturate(Value) * float(MaxIds)), MaxIds - 1u);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID, uint GroupIndex : SV_GroupIndex)
+{
+#if SURFACE_ID_STAGE == 6
+    // Fixed-size compaction, not connected components or per-pixel parent chasing.
+    if (any(DispatchThreadId != uint3(0, 0, 0))) return;
+    uint NextId = 0u;
+    for (uint Band = 0u; Band < 256u; ++Band)
+    {
+        CompactIds[Band] = NextId;
+        NextId += (Statistics[4u + Band / 32u] >> (Band % 32u)) & 1u;
+    }
+#else
+    int2 P = int2(DispatchThreadId.xy);
+    bool ValidPixel = all(P < OutputSize);
+#if SURFACE_ID_STAGE == 2
+    if (GroupIndex < 4u) LocalRange[GroupIndex] = 0u;
+    GroupMemoryBarrierWithGroupSync();
+#elif SURFACE_ID_STAGE == 5
+    if (GroupIndex < 8u) LocalBands[GroupIndex] = 0u;
+    GroupMemoryBarrierWithGroupSync();
+#else
+    if (!ValidPixel) return;
+#endif
+#if SURFACE_ID_STAGE == 0 || SURFACE_ID_STAGE == 1
+    float4 Sum = 0.0f;
+    float WeightSum = 0.0f;
+    for (int I = -GuideBlur; I <= GuideBlur; ++I)
+    {
+        float Weight = BlurWeight(I);
+#if SURFACE_ID_STAGE == 0
+        Sum += Weight * SampleGuide(P + int2(I, 0));
+#else
+        Sum += Weight * InputSamples.Load(int3(SurfaceWrap(P + int2(0, I)), 0));
+#endif
+        WeightSum += Weight;
+    }
+    OutputSamples[P] = Sum / WeightSum;
+#elif SURFACE_ID_STAGE == 2
+    if (ValidPixel)
+    {
+        float A = EvaluateFeature(PrimaryFeature, 0u, P);
+        float B = FeatureMix > 0.0f ? EvaluateFeature(SecondaryFeature, 1u, P) : A;
+        OutputGuide[P] = float2(A, B);
+        InterlockedMax(LocalRange[0], ~asuint(A));
+        InterlockedMax(LocalRange[1], asuint(A));
+        InterlockedMax(LocalRange[2], ~asuint(B));
+        InterlockedMax(LocalRange[3], asuint(B));
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (GroupIndex < 4u) InterlockedMax(Statistics[GroupIndex], LocalRange[GroupIndex]);
+#elif SURFACE_ID_STAGE == 3
+    float Dilated = 0.0f;
+    for (int Y = -EdgeClose; Y <= EdgeClose; ++Y)
+        for (int X = -EdgeClose; X <= EdgeClose; ++X)
+            Dilated = max(Dilated, MixedGuide(P + int2(X, Y)));
+    OutputGuide[P] = float2(Dilated, 0.0f);
+#elif SURFACE_ID_STAGE == 4
+    float Original = MixedGuide(P);
+    uint OriginalId = Quantize(Original);
+    float Closed = 1.0f;
+    bool IsEdge = false;
+    if (EdgeClose > 0)
+    {
+        for (int Y = -EdgeClose; Y <= EdgeClose; ++Y)
+        {
+            for (int X = -EdgeClose; X <= EdgeClose; ++X)
+            {
+                int2 Q = SurfaceWrap(P + int2(X, Y));
+                Closed = min(Closed, DilatedGuide.Load(int3(Q, 0)).x);
+                IsEdge = IsEdge || Quantize(MixedGuide(Q)) != OriginalId;
+            }
+        }
+    }
+    // Close small dark breaks in the continuous guide, never min/max integer labels.
+    // Interior pixels retain their exact original band.
+    OutputIds[P] = IsEdge ? Quantize(Closed) : OriginalId;
+#elif SURFACE_ID_STAGE == 5
+    if (ValidPixel)
+    {
+    uint Neighborhood[9];
+    uint Center = InputIds.Load(int3(P, 0));
+    bool IsEdge = false;
+    uint Index = 0u;
+    [unroll] for (int Y = -1; Y <= 1; ++Y)
+    {
+        [unroll] for (int X = -1; X <= 1; ++X)
+        {
+            uint Id = InputIds.Load(int3(SurfaceWrap(P + int2(X, Y)), 0));
+            Neighborhood[Index++] = Id;
+            IsEdge = IsEdge || Id != Center;
+        }
+    }
+    uint Result = Center;
+    if (IsEdge)
+    {
+        // Strict majority only. Ties and multi-region junctions keep the center ID;
+        // voting selects an existing label and can never synthesize a new one.
+        [unroll] for (uint I = 0u; I < 9u; ++I)
+        {
+            uint Votes = 0u;
+            [unroll] for (uint J = 0u; J < 9u; ++J)
+                Votes += Neighborhood[I] == Neighborhood[J] ? 1u : 0u;
+            if (Votes >= 5u) Result = Neighborhood[I];
+        }
+    }
+    OutputIds[P] = Result;
+    InterlockedOr(LocalBands[Result / 32u], 1u << (Result % 32u));
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (GroupIndex < 8u) InterlockedOr(Statistics[4u + GroupIndex], LocalBands[GroupIndex]);
+#elif SURFACE_ID_STAGE == 7
+    uint Id = CompactIds[InputIds.Load(int3(P, 0))];
+    OutputIds[P] = Id;
+    if (WriteDebug != 0) OutputDebug[P] = float4(MixtormatRegionDebugColor(Id), 1.0f);
+#endif
+#endif
+}

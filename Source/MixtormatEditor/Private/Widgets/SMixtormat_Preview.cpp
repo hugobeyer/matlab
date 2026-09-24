@@ -413,12 +413,17 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 		if (Child.Type == EMixtormatLayerChildType::IdGroup)
 		{
 			const FGuid GroupChildId = (*Siblings)[ChildIndex].ChildId;
-			return Siblings->CountByPredicate([&GroupChildId](const FMixtormatLayerChild& Candidate)
+			int32 EnabledPatternCount = 0;
+			for (const FMixtormatLayerChild& Candidate : *Siblings)
 			{
-				return Candidate.Type == EMixtormatLayerChildType::PatternId
+				if (Candidate.Type == EMixtormatLayerChildType::PatternId
 					&& Candidate.ScopeOwnerChildId == GroupChildId
-					&& Candidate.PatternId.bEnabled;
-			}) == 2;
+					&& Candidate.PatternId.bEnabled)
+				{
+					++EnabledPatternCount;
+				}
+			}
+			return EnabledPatternCount == 2;
 		}
 		return CountRegionIdProducersAbove(*Siblings, ChildIndex) >= 1;
 	}
@@ -426,15 +431,21 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	{
 		return true;
 	}
-	// Cluster IDs' segmentation scan reads the owning layer's packed RAM + height.
+	// Legacy Cluster reads RAMH; Surface IDs only require maps used by the selected guides.
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		// Group-authored: no single owning layer's surface to check here. The per-member GPU pass
 		// leaves the debug output cleared if the member this resolves to has none.
 		return true;
 	}
-	const UMixtormatSurface* Surface = WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous();
-	return Surface && Surface->RoughnessAOMetallic;
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	if (Child.Filter.bSurfaceIds
+		&& ((Child.Filter.Source == EMixtormatClusterSource::CompositeBelow && SelectedLayerIndex > 0)
+			|| !Layer.SourceComposition.IsNull()))
+	{
+		return true;
+	}
+	return Child.Filter.CanSampleSurface(Layer.SourceSurface.LoadSynchronous());
 }
 
 TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(

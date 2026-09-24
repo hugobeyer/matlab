@@ -1642,7 +1642,11 @@ namespace MixtormatGpuCompositor
 				}
 
 				FRDGTextureRef RegionIds = nullptr;
-				if (bClusterProducer)
+				if (bClusterProducer && Child.Filter.bSurfaceIds)
+				{
+					RegionIds = AddSurfaceIdPasses(Ctx, Layer, Child, LayerIndex, bIsSelectedPreview);
+				}
+				else if (bClusterProducer)
 				{
 					// The same ping-pong slot the layer composite and generated masks
 					// read: what every layer below this one has accumulated.

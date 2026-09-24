@@ -4,6 +4,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "MixtormatParameterDefinition.h"
+#include "MixtormatSurface.h"
 
 namespace
 {
@@ -20,6 +21,33 @@ namespace
 		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, Layer.GroupId);
 		return !Group || Group->bEnabled;
 	}
+}
+
+bool FMixtormatClusterFilter::CanSampleSurface(const UMixtormatSurface* Surface) const
+{
+	if (!Surface)
+	{
+		return false;
+	}
+	if (!bSurfaceIds)
+	{
+		return Surface->RoughnessAOMetallic != nullptr;
+	}
+	const auto HasFeature = [Surface](const EMixtormatSurfaceIdFeature Feature)
+	{
+		switch (Feature)
+		{
+		case EMixtormatSurfaceIdFeature::NormalFlatness:
+			return Surface->Normal != nullptr;
+		case EMixtormatSurfaceIdFeature::Luminance:
+			return Surface->BaseColor != nullptr;
+		default:
+			return Surface->RoughnessAOMetallic != nullptr;
+		}
+	};
+	const float Mix = FMath::IsFinite(FeatureMix) ? FMath::Clamp(FeatureMix, 0.0f, 1.0f) : 0.0f;
+	return (Mix >= 1.0f || HasFeature(PrimaryFeature))
+		&& (Mix <= 0.0f || HasFeature(SecondaryFeature));
 }
 
 bool MixtormatCompositionReferences::Validate(

@@ -210,10 +210,15 @@ namespace
 		if (Children[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup)
 		{
 			const FGuid OwnerId = Children[OwnerIndex].ChildId;
-			return Children.CountByPredicate([&OwnerId](const FMixtormatLayerChild& Child)
+			int32 ScopedChildCount = 0;
+			for (const FMixtormatLayerChild& Child : Children)
 			{
-				return Child.ScopeOwnerChildId == OwnerId;
-			}) < 2;
+				if (Child.ScopeOwnerChildId == OwnerId)
+				{
+					++ScopedChildCount;
+				}
+			}
+			return ScopedChildCount < 2;
 		}
 		return true;
 	}
@@ -293,6 +298,7 @@ namespace
 		{
 		case EMixtormatChildCreation::PatternIds:      return EMixtormatLayerChildType::PatternId;
 		case EMixtormatChildCreation::IdGroup:         return EMixtormatLayerChildType::IdGroup;
+		case EMixtormatChildCreation::SurfaceIds:      return EMixtormatLayerChildType::Filter;
 		case EMixtormatChildCreation::ClusterIds:      return EMixtormatLayerChildType::Filter;
 		case EMixtormatChildCreation::CombineIds:      return EMixtormatLayerChildType::CombineId;
 		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
@@ -324,6 +330,9 @@ namespace
 			Child.PatternId.GapHeight = 0.0f;
 			Child.PatternId.EdgeRoughnessAmount = 0.0f;
 			Child.PatternId.AOAmount = 0.0f;
+			break;
+		case EMixtormatChildCreation::SurfaceIds:
+			Child.Filter.bSurfaceIds = true;
 			break;
 		case EMixtormatChildCreation::LayerValuesMask:
 			// Fixed at creation and never offered as a switch afterwards. What a mask reads is
@@ -3803,7 +3812,9 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	}
 	if (Child.Type == EMixtormatLayerChildType::Filter)
 	{
-		return LOCTEXT("ClusterFilterChildName", "Cluster IDs");
+		return Child.Filter.bSurfaceIds
+			? LOCTEXT("SurfaceIdsChildName", "Surface IDs")
+			: LOCTEXT("ClusterFilterChildName", "Cluster IDs");
 	}
 	if (Child.Type == EMixtormatLayerChildType::HsvFilter)
 	{
@@ -5285,6 +5296,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	MixtormatMenu::FBuilder Menu;
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
+		{ LOCTEXT("AddSurfaceIdsChild", "Surface IDs"), EMixtormatChildCreation::SurfaceIds },
 		{ LOCTEXT("AddIdGroupChild", "ID Group"), EMixtormatChildCreation::IdGroup },
 	};
 	const bool bEnabled = CanCreateChild(Target);
@@ -5632,7 +5644,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			RemoveLabel = LOCTEXT("RemoveColorIdChild", "Remove Color ID Mask");
 			break;
 		case EMixtormatLayerChildType::Filter:
-			RemoveLabel = LOCTEXT("RemoveFilterChild", "Remove Cluster IDs");
+			RemoveLabel = ResolveChild(LayerIndex, ChildIndex)->Filter.bSurfaceIds
+				? LOCTEXT("RemoveSurfaceIdsChild", "Remove Surface IDs")
+				: LOCTEXT("RemoveFilterChild", "Remove Cluster IDs");
 			break;
 		case EMixtormatLayerChildType::HsvFilter:
 			RemoveLabel = LOCTEXT("RemoveHsvFilterChild", "Remove HSV From IDs");
@@ -6191,7 +6205,7 @@ FReply SMixtormat::AddFilterToLayer(const int32 LayerIndex)
 {
 	return CreateChild(
 		FMixtormatAddTarget::Layer(LayerIndex),
-		EMixtormatChildCreation::ClusterIds);
+		EMixtormatChildCreation::SurfaceIds);
 }
 
 FMixtormatClusterFilter* SMixtormat::GetSelectedFilter()

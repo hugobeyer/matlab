@@ -556,6 +556,14 @@ namespace MixtormatGpuCompositor
 
 	struct FClusterFilterRenderData
 	{
+		bool bSurfaceIds = false;
+		EMixtormatSurfaceIdFeature PrimaryFeature = EMixtormatSurfaceIdFeature::Height;
+		EMixtormatSurfaceIdFeature SecondaryFeature = EMixtormatSurfaceIdFeature::Roughness;
+		float FeatureMix = 0.0f;
+		int32 FormScale = 4;
+		int32 GuideBlur = 1;
+		int32 MaxIds = 64;
+		int32 EdgeClose = 1;
 		EMixtormatClusterSource Source = EMixtormatClusterSource::LayerSurface;
 		float Threshold = 0.33f;
 		float Offset = 0.0f;
@@ -1361,6 +1369,13 @@ namespace MixtormatGpuCompositor
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const int32 ChildIndex);
+
+	FRDGTextureRef AddSurfaceIdPasses(
+		FMixtormatComposeContext& Ctx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		int32 LayerIndex,
+		bool bWriteDebug);
 
 	void AddRegionProducerPasses(
 		FMixtormatComposeContext& Ctx,

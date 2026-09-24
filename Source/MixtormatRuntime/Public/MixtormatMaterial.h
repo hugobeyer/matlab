@@ -1755,6 +1755,21 @@ enum class EMixtormatClusterSource : uint8
 	CompositeBelow UMETA(DisplayName = "Composite Below")
 };
 
+// Scalar guides for bounded Surface IDs. Values are also the shader's feature indices.
+UENUM(BlueprintType)
+enum class EMixtormatSurfaceIdFeature : uint8
+{
+	Height = 0 UMETA(DisplayName = "Height"),
+	Curvature = 1 UMETA(DisplayName = "Curvature / Shape"),
+	Convex = 2 UMETA(DisplayName = "Convex Curvature"),
+	Concave = 3 UMETA(DisplayName = "Concave Curvature"),
+	NormalFlatness = 4 UMETA(DisplayName = "Normal Flatness"),
+	Luminance = 5 UMETA(DisplayName = "Color / Luminance"),
+	Roughness = 6 UMETA(DisplayName = "Roughness"),
+	AO = 7 UMETA(DisplayName = "Ambient Occlusion"),
+	Metallic = 8 UMETA(DisplayName = "Metallic")
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 {
@@ -1768,6 +1783,37 @@ struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 	// the layer's own surface there rather than silently producing nothing.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs")
 	EMixtormatClusterSource Source = EMixtormatClusterSource::LayerSurface;
+
+	// False on existing assets: keep the serialized Cluster algorithm unchanged.
+	// New Surface IDs use the same producer slot and downstream ID consumers.
+	UPROPERTY()
+	bool bSurfaceIds = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs")
+	EMixtormatSurfaceIdFeature PrimaryFeature = EMixtormatSurfaceIdFeature::Height;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs")
+	EMixtormatSurfaceIdFeature SecondaryFeature = EMixtormatSurfaceIdFeature::Roughness;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FeatureMix = 0.0f;
+
+	// Stencil radius, not a dense 64x64 convolution. Used by curvature and normal flatness.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 FormScale = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0", ClampMax = "2"))
+	int32 GuideBlur = 1;
+
+	// Occupied bands are compacted to consecutive IDs. Disconnected equal bands share an ID.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "2", ClampMax = "256"))
+	int32 MaxIds = 64;
+
+	// Grayscale closing of the continuous guide, applied only at quantized ID edges.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0", ClampMax = "2"))
+	int32 EdgeClose = 1;
+
+	bool CanSampleSurface(const UMixtormatSurface* Surface) const;
 
 	// Band width, and so region granularity: the scale control, and the only one there is.
 	//

@@ -49,6 +49,7 @@ enum class EMixtormatChildCreation : uint8
 {
 	PatternIds,
 	IdGroup,
+	SurfaceIds,
 	ClusterIds,
 	CombineIds,
 	HsvFromIds,

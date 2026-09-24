@@ -3512,9 +3512,9 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 {
 	const auto Filter = [this]() { return GetSelectedFilter(); };
 
-	// No blend mode, no weight and no shaping block. Those are the mask vocabulary, and this node
-	// emits integer region labels rather than coverage -- there is nothing meaningful to contrast
-	// or invert about a label. The eye on the header is the only consumer that exists so far.
+	// Integer producers do not use mask blending or weight. Surface guides are mixed before IDs exist.
+	const FMixtormatClusterFilter* SelectedFilter = GetSelectedFilter();
+	const bool bSurfaceIds = SelectedFilter && SelectedFilter->bSurfaceIds;
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -3529,8 +3529,69 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 					: LOCTEXT("ClusterSourceLayerChip", "Layer Surface");
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildClusterSourceMenu)),
-		LOCTEXT("ClusterSourceHint", "What gets segmented. Layer Surface reads this layer's own packed map -- the bricks in the brick texture -- through its UV transform. Composite Below reads the surface already accumulated underneath, at full resolution and untiled, so the regions follow what is actually visible there. Composite Below is usually the calmer of the two: a raw scan can be busy enough to shatter into far more regions than the eye reads as pieces, while the surface below has been through blending and grading already. On the bottom layer there is nothing below, so it falls back to the layer's own map.")));
+		LOCTEXT("SurfaceIdSourceHint", "Layer Surface reads this layer's maps through its UV transform. Composite Below reads the accumulated surface beneath it without retilling. On the bottom layer, the layer's own maps are used.")));
 
+	if (bSurfaceIds)
+	{
+		const auto FeatureRow = [this](const FText& Label,
+			EMixtormatSurfaceIdFeature FMixtormatClusterFilter::* Member)
+		{
+			return MixtormatRow::Make(Label, MixtormatRow::MakeChip(
+				TAttribute<FText>::CreateLambda([this, Member]()
+				{
+					const FMixtormatClusterFilter* C = GetSelectedFilter();
+					return C ? StaticEnum<EMixtormatSurfaceIdFeature>()->GetDisplayNameTextByValue(
+						static_cast<int64>(C->*Member)) : FText::GetEmpty();
+				}),
+				FOnGetContent::CreateLambda([this, Member]()
+				{
+					MixtormatMenu::FBuilder Menu;
+					for (int64 Value = 0; Value <= static_cast<int64>(EMixtormatSurfaceIdFeature::Metallic); ++Value)
+					{
+						const auto Feature = static_cast<EMixtormatSurfaceIdFeature>(Value);
+						Menu.Item(StaticEnum<EMixtormatSurfaceIdFeature>()->GetDisplayNameTextByValue(Value),
+							nullptr, FSimpleDelegate::CreateLambda([this, Member, Feature]()
+							{
+								if (FMixtormatClusterFilter* C = GetSelectedFilter())
+								{
+									C->*Member = Feature;
+									RefreshLayeredPreview();
+								}
+							}))
+							.Checked(TAttribute<bool>::CreateLambda([this, Member, Feature]()
+							{
+								const FMixtormatClusterFilter* C = GetSelectedFilter();
+								return C && C->*Member == Feature;
+							}));
+					}
+					return Menu.Build();
+				})),
+				LOCTEXT("SurfaceIdFeatureHint", "Choose a continuous surface guide. Curvature reads height; Normal Flatness measures neighboring normal agreement, including tilted flat patches. Matching bands share an ID even across disconnected areas."));
+		};
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			FeatureRow(LOCTEXT("SurfaceIdsPrimary", "Primary"), &FMixtormatClusterFilter::PrimaryFeature),
+			FeatureRow(LOCTEXT("SurfaceIdsSecondary", "Secondary"), &FMixtormatClusterFilter::SecondaryFeature)));
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsMix", "Mix"),
+				Filter, &FMixtormatClusterFilter::FeatureMix, 0.0, 1.0, 0.0, 0.01,
+				LOCTEXT("SurfaceIdsMixHint", "Mix normalized guides before quantizing: 0 is Primary, 1 is Secondary. Integer IDs are never blended.")),
+			MakeMemberSliderInt<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsBudget", "Max IDs"),
+				Filter, &FMixtormatClusterFilter::MaxIds, 2.0, 256.0, 64,
+				LOCTEXT("SurfaceIdsBudgetHint", "Maximum occupied bands, not a target island count. Unused bands collapse to consecutive IDs with no hash collisions. Changing the guides can renumber IDs."))));
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsScale", "Form Scale"),
+				Filter, &FMixtormatClusterFilter::FormScale, 1.0, 64.0, 4,
+				LOCTEXT("SurfaceIdsScaleHint", "Sampling radius in output pixels for curvature and normal flatness. A sparse stencil, not a dense convolution. Direct height, color and material channels do not use this radius.")),
+			MakeMemberSliderInt<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsBlur", "Guide Blur"),
+				Filter, &FMixtormatClusterFilter::GuideBlur, 0.0, 2.0, 1,
+				LOCTEXT("SurfaceIdsBlurHint", "0, 1 or 2 pixel smoothing before feature extraction. Only continuous source samples are blurred, never IDs."))));
+		AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatClusterFilter>(
+			LOCTEXT("SurfaceIdsClose", "Edge Close"), Filter, &FMixtormatClusterFilter::EdgeClose,
+			0.0, 2.0, 1,
+			LOCTEXT("SurfaceIdsCloseHint", "Closes small dark breaks in the guide at ID edges using dilation then erosion. 0 disables closing. A final 3x3 strict-majority cleanup removes edge speckles without changing region interiors or inventing IDs.")));
+	}
+	else
+	{
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
 		LOCTEXT("ClusterThreshold", "Threshold"), Filter, &FMixtormatClusterFilter::Threshold,
 		0.0, 1.0, 0.33, 0.005,
@@ -3545,12 +3606,13 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 		LOCTEXT("ClusterHeightInfluence", "Height Influence"), Filter, &FMixtormatClusterFilter::HeightInfluence,
 		0.0, 8.0, 1.0, 0.01,
 		LOCTEXT("ClusterHeightInfluenceHint", "How strongly a step in height blocks a merge roughness would otherwise allow. The criterion is two-channel: same roughness band and no height step. At 0 it falls back to roughness bands alone.")));
+	}
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedFilter() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ClusterFilterHeading", "CLUSTER IDS"))
+			.Title(bSurfaceIds ? LOCTEXT("SurfaceIdsHeading", "SURFACE IDS") : LOCTEXT("ClusterFilterHeading", "CLUSTER IDS"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -3576,7 +3638,7 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 								RebuildLayerList();
 							}
 						}),
-						LOCTEXT("ClusterEnabledHint", "Enable this cluster filter"))
+						LOCTEXT("RegionFilterEnabledHint", "Enable this ID producer"))
 				])
 			[
 				Panel

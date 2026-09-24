@@ -1992,9 +1992,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (LayerChild.Type == EMixtormatLayerChildType::Filter)
 			{
-				// A missing authored packed map is not a request to segment the white fallback.
 				const FMixtormatClusterFilter& Filter = LayerChild.Filter;
-				if (!Layer.bEnabled || !Filter.bEnabled || !Surface || !Surface->RoughnessAOMetallic)
+				const bool bSurfaceInputAvailable = Filter.bSurfaceIds
+					&& ((Filter.Source == EMixtormatClusterSource::CompositeBelow && LayerIndex > 0)
+						|| Data.SourceOutputs.IsValid());
+				if (!Layer.bEnabled || !Filter.bEnabled
+					|| (!bSurfaceInputAvailable && !Filter.CanSampleSurface(Surface)))
 				{
 					continue;
 				}
@@ -2002,6 +2005,17 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.Type = EMixtormatLayerChildType::Filter;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				ChildData.Filter.Source = Filter.Source;
+				ChildData.Filter.bSurfaceIds = Filter.bSurfaceIds;
+				ChildData.Filter.PrimaryFeature = static_cast<EMixtormatSurfaceIdFeature>(
+					FMath::Clamp(static_cast<int32>(Filter.PrimaryFeature), 0, 8));
+				ChildData.Filter.SecondaryFeature = static_cast<EMixtormatSurfaceIdFeature>(
+					FMath::Clamp(static_cast<int32>(Filter.SecondaryFeature), 0, 8));
+				ChildData.Filter.FeatureMix = FMath::IsFinite(Filter.FeatureMix)
+					? FMath::Clamp(Filter.FeatureMix, 0.0f, 1.0f) : 0.0f;
+				ChildData.Filter.FormScale = FMath::Clamp(Filter.FormScale, 1, 64);
+				ChildData.Filter.GuideBlur = FMath::Clamp(Filter.GuideBlur, 0, 2);
+				ChildData.Filter.MaxIds = FMath::Clamp(Filter.MaxIds, 2, 256);
+				ChildData.Filter.EdgeClose = FMath::Clamp(Filter.EdgeClose, 0, 2);
 				ChildData.Filter.Threshold = FMath::IsFinite(Filter.Threshold)
 					? FMath::Clamp(Filter.Threshold, 0.0f, 1.0f) : 0.33f;
 				ChildData.Filter.Offset = FMath::IsFinite(Filter.Offset) ? Filter.Offset : 0.0f;
