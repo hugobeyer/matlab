@@ -900,7 +900,9 @@ namespace MixtormatGpuCompositor
 		FMixtormatHeightDeltaNormalCS::FParameters* P =
 			GraphBuilder.AllocParameters<FMixtormatHeightDeltaNormalCS::FParameters>();
 		P->OutputSize = Resolution;
-		P->NormalStrength = NormalStrength;
+		// With the final normal on, relief comes from the final height alone: a zero gradient
+		// makes the reorientation return PreviousNormal unchanged, so every caller passes through.
+		P->NormalStrength = Ctx.Request.bFinalNormalFromHeight ? 0.0f : NormalStrength;
 		P->WriteRAM = bWriteRAM ? 1u : 0u;
 		P->PreviousHeight = PreviousHeight;
 		P->CurrentHeight = CurrentHeight;
@@ -3009,7 +3011,7 @@ namespace MixtormatGpuCompositor
 			FMixtormatBreakupShadeCS::FParameters* SP =
 				GraphBuilder.AllocParameters<FMixtormatBreakupShadeCS::FParameters>();
 			SP->OutputSize = Request.Resolution;
-			SP->NormalStrength = Breakup.BreakupNormalStrength;
+			SP->NormalStrength = Request.bFinalNormalFromHeight ? 0.0f : Breakup.BreakupNormalStrength;
 			SP->NormalSharpness = Breakup.BreakupNormalSharpness;
 			SP->RoughnessAmount = Breakup.BreakupRoughnessAmount;
 			SP->SourceHeight = SourceH;

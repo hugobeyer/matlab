@@ -228,6 +228,10 @@ float HeightContactAOWidth;
 float HeightBorderLift;
 float HeightBorderWidth;
 float HeightBorderNormalStrength;
+// Set while the document builds its normal from the final height (MixtormatFinalNormal.usf).
+// Effect and border relief then reach the surface through height alone; their own normals are
+// dropped here so that slope is not counted twice.
+uint SuppressReliefNormals;
 float FeatureInfluence;
 float FeatureBias;
 float HeightFeatureInfluence;
@@ -1063,6 +1067,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		EffectKeep = SampledEffect.r;
 		EffectNormal = DecodeEffectNormal(SampledEffect.gb);
 		EffectAO = SampledEffect.a;
+		if (SuppressReliefNormals != 0)
+		{
+			EffectNormal = float3(0.0f, 0.0f, 1.0f);
+		}
 	}
 
 	float PlacementMask = SamplePlacementMask(UV);
@@ -1231,7 +1239,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float GeneratedAO = 1.0f - HeightContactAOAmount * Contact;
 		ResultAO *= lerp(1.0f, GeneratedAO, ContactAOVisibility);
 	}
-	if (BorderNormalVisibility > 0.0f
+	if (SuppressReliefNormals == 0
+		&& BorderNormalVisibility > 0.0f
 		&& abs(HeightBorderLift) > 1.0e-4f
 		&& HeightBorderNormalStrength > 0.0f)
 	{

@@ -1010,6 +1010,10 @@ namespace MixtormatGpuCompositor
 		// Final-surface passes (see FMixtormatFinalSettings).
 		float FinalAOAmount = 0.0f;
 		float FinalAORadius = 8.0f;
+		// Normal rebuilt from the final height. While set, every per-effect relief normal is
+		// suppressed (height only) so the final pass is the one place slope comes from.
+		bool bFinalNormalFromHeight = false;
+		float FinalNormalStrength = 1.0f;
 		TArray<uint64> PrefixHashes;
 		// The layer whose finished state is worth keeping: the one just below the lowest layer
 		// that changed since the previous composite. INDEX_NONE saves nothing.

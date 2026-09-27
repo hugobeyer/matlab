@@ -529,7 +529,11 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
-	LayerCompositor->SetFinalSettings(FinalSettings.HeightAOAmount, FinalSettings.HeightAORadius);
+	LayerCompositor->SetFinalSettings(
+		FinalSettings.HeightAOAmount,
+		FinalSettings.HeightAORadius,
+		FinalSettings.bNormalFromHeight,
+		FinalSettings.HeightNormalStrength);
 	if (!LayerCompositor->RequestCompose(
 		Layers,
 		Groups,

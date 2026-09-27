@@ -2931,9 +2931,21 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "0.5"))
 	float HeightAORadius = 8.0f;
 
+	// The normal is built from the final height, with the layers' authored normal detail
+	// reoriented on top. Effects then write only height; their per-effect relief normals are
+	// suppressed so no slope is counted twice.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final")
+	bool bNormalFromHeight = true;
+
+	// Slope gain on the final-height normal. 1 is the plugin's shared height->normal scale.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float HeightNormalStrength = 1.0f;
+
 	bool operator==(const FMixtormatFinalSettings& Other) const
 	{
-		return HeightAOAmount == Other.HeightAOAmount && HeightAORadius == Other.HeightAORadius;
+		return HeightAOAmount == Other.HeightAOAmount && HeightAORadius == Other.HeightAORadius
+			&& bNormalFromHeight == Other.bNormalFromHeight
+			&& HeightNormalStrength == Other.HeightNormalStrength;
 	}
 	bool operator!=(const FMixtormatFinalSettings& Other) const { return !(*this == Other); }
 };
@@ -3653,7 +3665,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Canvas")
 	bool bRotateUV90 = false;
 
-	// Passes on the finished surface (final height AO).
+	// Passes on the finished surface (final height AO and normal).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Final")
 	FMixtormatFinalSettings FinalSettings;
 };

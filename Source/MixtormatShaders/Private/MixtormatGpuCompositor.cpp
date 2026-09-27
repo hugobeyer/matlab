@@ -194,6 +194,7 @@ public:
 		SHADER_PARAMETER(float, HeightBorderLift)
 		SHADER_PARAMETER(float, HeightBorderWidth)
 		SHADER_PARAMETER(float, HeightBorderNormalStrength)
+		SHADER_PARAMETER(uint32, SuppressReliefNormals)
 		SHADER_PARAMETER(float, FeatureInfluence)
 		SHADER_PARAMETER(float, FeatureBias)
 		SHADER_PARAMETER(float, HeightFeatureInfluence)
@@ -869,6 +870,7 @@ namespace MixtormatGpuCompositor
 		Parameters->HeightBorderLift = Layer.HeightBorderLift;
 		Parameters->HeightBorderWidth = Layer.HeightBorderWidth;
 		Parameters->HeightBorderNormalStrength = BorderHeightDerivedNormalStrength;
+		Parameters->SuppressReliefNormals = Ctx.Request.bFinalNormalFromHeight ? 1u : 0u;
 
 		// Contact and border smoothing. The same separable Gaussian the mask smoothing
 		// uses, run over the accumulated height the two fields are built from.
@@ -2999,6 +3001,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	}
 	Request.FinalAOAmount = FMath::IsFinite(FinalAOAmount) ? FinalAOAmount : 0.0f;
 	Request.FinalAORadius = FMath::IsFinite(FinalAORadius) ? FinalAORadius : 8.0f;
+	Request.bFinalNormalFromHeight = bFinalNormalFromHeight;
+	Request.FinalNormalStrength = FMath::IsFinite(FinalNormalStrength) ? FinalNormalStrength : 1.0f;
 	Request.InFlight = InFlight;
 	InFlight->store(true);
 	EnqueueCompose(MoveTemp(Request));

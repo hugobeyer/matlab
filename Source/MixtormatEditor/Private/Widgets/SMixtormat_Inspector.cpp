@@ -3345,6 +3345,13 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 		MakeMemberSlider<FMixtormatFinalSettings>(
 			LOCTEXT("FinalAORadius", "AO Radius"), Final, &FMixtormatFinalSettings::HeightAORadius, 1.0, 64.0, 8.0, 0.5,
 			LOCTEXT("FinalAORadiusHint", "How far the occlusion reaches, in pixels at 1024. Scales with resolution."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberToggle<FMixtormatFinalSettings>(
+			LOCTEXT("FinalNormalFromHeight", "Normal From Height"), Final, &FMixtormatFinalSettings::bNormalFromHeight,
+			LOCTEXT("FinalNormalFromHeightHint", "Build the normal from the final height, with the layers' normal maps as detail on top. Effects then shape height only, so relief is never counted twice.")),
+		MakeMemberSlider<FMixtormatFinalSettings>(
+			LOCTEXT("FinalNormalStrength", "Normal Strength"), Final, &FMixtormatFinalSettings::HeightNormalStrength, 0.0, 4.0, 1.0, 0.01,
+			LOCTEXT("FinalNormalStrengthHint", "Slope of the final-height normal. 1 matches the height exactly (same scale as the AO)."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })

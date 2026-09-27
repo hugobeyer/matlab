@@ -23,6 +23,30 @@ DECLARE_GPU_STAT_NAMED(MixtormatComposite, TEXT("Mixtormat Composite"));
 DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Fracture Breakup Wear"));
 DECLARE_GPU_STAT_NAMED(MixtormatLayerBlur, TEXT("Mixtormat Layer Blur"));
 DECLARE_GPU_STAT_NAMED(MixtormatFinalAO, TEXT("Mixtormat Final AO"));
+DECLARE_GPU_STAT_NAMED(MixtormatFinalNormal, TEXT("Mixtormat Final Normal"));
+
+// Normal from the finished height with the composited detail on top. See MixtormatFinalNormal.usf.
+class FMixtormatFinalNormalCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFinalNormalCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFinalNormalCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FinalHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, DetailNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatFinalNormalCS, "/Plugin/Mixtormat/Private/MixtormatFinalNormal.usf", "MainCS", SF_Compute);
 
 // AO from the finished height, once, after every layer. See MixtormatFinalAO.usf.
 class FMixtormatFinalAOCS final : public FGlobalShader
@@ -976,6 +1000,30 @@ namespace MixtormatGpuCompositor
 						FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
 					AddCopyTexturePass(GraphBuilder, Occluded, FinalRAM);
+				}
+
+				// Final normal: slope from the finished height, the layers' authored normal
+				// detail reoriented on top. Effects wrote height only (see bFinalNormalFromHeight).
+				if (Request.bFinalNormalFromHeight && !Request.Layers.IsEmpty())
+				{
+					RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatFinalNormal, "Mixtormat.FinalNormal");
+					const int32 Final = Request.PublishedTargetIndex;
+					FRDGTextureRef FinalN = Ctx.OutputN[Final];
+					FRDGTextureRef Rebuilt = GraphBuilder.CreateTexture(
+						FRDGTextureDesc::Create2D(Request.Resolution, FinalN->Desc.Format,
+							FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_UAV),
+						TEXT("Mixtormat.FinalNormal.N"));
+					auto* P = GraphBuilder.AllocParameters<FMixtormatFinalNormalCS::FParameters>();
+					P->OutputSize = Request.Resolution;
+					P->Strength = FMath::Max(Request.FinalNormalStrength, 0.0f);
+					P->FinalHeight = Ctx.OutputHeight[Final];
+					P->DetailNormal = FinalN;
+					P->OutputNormal = GraphBuilder.CreateUAV(Rebuilt);
+					TShaderMapRef<FMixtormatFinalNormalCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FinalNormal"), Shader, P,
+						FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
+					AddCopyTexturePass(GraphBuilder, Rebuilt, FinalN);
 				}
 				}
 

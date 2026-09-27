@@ -137,10 +137,23 @@ public:
 	bool IsComposeInFlight() const;
 	// Document-level passes on the finished surface. Off (zero AO) until a caller sets them, so a
 	// referenced composition never applies them a second time inside its parent.
-	void SetFinalSettings(float HeightAOAmount, float HeightAORadius)
+	// The final normal likewise: off until set, so a reference keeps its own relief normals and
+	// its parent rebuilds from the height once. Toggling it changes what every effect writes to
+	// the normal, so cached layer results are dropped.
+	void SetFinalSettings(
+		float HeightAOAmount,
+		float HeightAORadius,
+		bool bNormalFromHeight = false,
+		float HeightNormalStrength = 1.0f)
 	{
 		FinalAOAmount = HeightAOAmount;
 		FinalAORadius = HeightAORadius;
+		FinalNormalStrength = HeightNormalStrength;
+		if (bFinalNormalFromHeight != bNormalFromHeight)
+		{
+			bFinalNormalFromHeight = bNormalFromHeight;
+			ResetCaches();
+		}
 	}
 	// Drops every cached layer prefix and referenced composition. Called on resolution change;
 	// safe to call any time -- the next composite simply runs in full.
@@ -207,6 +220,8 @@ private:
 	bool bCacheLayerResults = true;
 	float FinalAOAmount = 0.0f;
 	float FinalAORadius = 8.0f;
+	bool bFinalNormalFromHeight = false;
+	float FinalNormalStrength = 1.0f;
 
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	int32 PublishedTargetIndex = 0;

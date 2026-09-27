@@ -1,0 +1,61 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Final normal from the finished height, with the authored detail on top.
+//
+// The height is the one authoritative description of the surface's shape: every layer, effect
+// and generator ends up in it. Deriving the normal from it once, here, is what makes the lighting
+// agree with the height exactly -- the same slope wherever it came from, no effect with its own
+// gain, no relief counted twice. While this pass is on, the compositor suppresses every per-effect
+// relief normal, so what arrives in DetailNormal is only what height cannot carry: the layers'
+// authored normal maps (and their weights, flips and rotations), already composited.
+//
+//     final height --Sobel (MixtormatHeightNormal.ush)--> base normal
+//     composited normal -------------------------------> detail normal
+//     RNM(base, detail) -------------------------------> final normal
+//
+// Units follow the shared convention: Sobel scaled by resolution / 1024, the same slope the final
+// AO assumes. Tileable: taps wrap.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHeightNormal.ush"
+
+Texture2D<float> FinalHeight;
+Texture2D<float4> DetailNormal;
+RWTexture2D<float4> OutputNormal;
+
+int2 OutputSize;
+float Strength;
+
+float FinalNormalHeightAt(int2 P)
+{
+	P = (P % OutputSize + OutputSize) % OutputSize;
+	return FinalHeight.Load(int3(P, 0));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 P = int2(DispatchThreadId.xy);
+	if (any(P >= OutputSize))
+	{
+		return;
+	}
+
+	const float2 G = MixtormatHeightGradient(
+		FinalNormalHeightAt(P + int2(-1, -1)), FinalNormalHeightAt(P + int2(0, -1)), FinalNormalHeightAt(P + int2(1, -1)),
+		FinalNormalHeightAt(P + int2(-1,  0)),                                       FinalNormalHeightAt(P + int2(1,  0)),
+		FinalNormalHeightAt(P + int2(-1,  1)), FinalNormalHeightAt(P + int2(0,  1)), FinalNormalHeightAt(P + int2(1,  1)),
+		OutputSize,
+		Strength);
+	const float3 HeightNormal = MixtormatNormalFromHeightGradient(G);
+
+	const float4 EncodedDetail = DetailNormal.Load(int3(P, 0));
+	const float3 Detail = normalize(EncodedDetail.xyz * 2.0f - 1.0f);
+
+	// Reoriented normal mapping: the detail is bent to follow the height's surface rather than
+	// averaged with it, so a flat detail (0,0,1) returns HeightNormal exactly.
+	const float3 T = HeightNormal + float3(0.0f, 0.0f, 1.0f);
+	const float3 U = Detail * float3(-1.0f, -1.0f, 1.0f);
+	const float3 Combined = normalize(T * dot(T, U) / max(T.z, 1.0e-5f) - U);
+	OutputNormal[P] = float4(Combined * 0.5f + 0.5f, EncodedDetail.w);
+}
