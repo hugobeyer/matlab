@@ -3,6 +3,8 @@
 #include "MixtormatGpuCompositorInternal.h"
 
 #include "Async/Async.h"
+#include "GlobalShader.h"
+#include "ShaderParameterStruct.h"
 #include "Misc/ScopeExit.h"
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
 #include "RenderGraphBuilder.h"
@@ -20,6 +22,31 @@ DECLARE_GPU_STAT_NAMED(MixtormatChildren, TEXT("Mixtormat Masks and Effects"));
 DECLARE_GPU_STAT_NAMED(MixtormatComposite, TEXT("Mixtormat Composite"));
 DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Fracture Breakup Wear"));
 DECLARE_GPU_STAT_NAMED(MixtormatLayerBlur, TEXT("Mixtormat Layer Blur"));
+DECLARE_GPU_STAT_NAMED(MixtormatFinalAO, TEXT("Mixtormat Final AO"));
+
+// AO from the finished height, once, after every layer. See MixtormatFinalAO.usf.
+class FMixtormatFinalAOCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFinalAOCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFinalAOCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, RadiusPixels)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FinalHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatFinalAOCS, "/Plugin/Mixtormat/Private/MixtormatFinalAO.usf", "MainCS", SF_Compute);
 
 // The ground every stack composites onto. Values are the neutral read for each buffer, in that
 // buffer's own encoding: BaseColor is mid gray, Normal is encoded +Z, PackedRAM is roughness 0.5
@@ -924,6 +951,32 @@ namespace MixtormatGpuCompositor
 					}
 				}
 
+
+				// Final AO: from the finished height, into the finished AO channel. Last, so every
+				// layer, effect and generator has shaped the height it reads.
+				if (Request.FinalAOAmount != 0.0f && !Request.Layers.IsEmpty())
+				{
+					RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatFinalAO, "Mixtormat.FinalAO");
+					const int32 Final = Request.PublishedTargetIndex;
+					FRDGTextureRef FinalRAM = Ctx.OutputRAM[Final];
+					FRDGTextureRef Occluded = GraphBuilder.CreateTexture(
+						FRDGTextureDesc::Create2D(Request.Resolution, FinalRAM->Desc.Format,
+							FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_UAV),
+						TEXT("Mixtormat.FinalAO.RAM"));
+					auto* P = GraphBuilder.AllocParameters<FMixtormatFinalAOCS::FParameters>();
+					P->OutputSize = Request.Resolution;
+					P->Amount = Request.FinalAOAmount;
+					P->RadiusPixels = Request.FinalAORadius
+						* static_cast<float>(FMath::Max(Request.Resolution.X, Request.Resolution.Y)) / 1024.0f;
+					P->FinalHeight = Ctx.OutputHeight[Final];
+					P->SourceRAM = FinalRAM;
+					P->OutputRAM = GraphBuilder.CreateUAV(Occluded);
+					TShaderMapRef<FMixtormatFinalAOCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FinalAO"), Shader, P,
+						FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+							FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
+					AddCopyTexturePass(GraphBuilder, Occluded, FinalRAM);
+				}
 				}
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;

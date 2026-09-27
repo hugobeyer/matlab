@@ -893,6 +893,7 @@ void SMixtormat::AddCompositionLayers(const FSoftObjectPath AssetPath)
 		WorkingLayers = MoveTemp(ImportedLayers);
 		WorkingLayerGroups = MoveTemp(ImportedGroups);
 		bGlobalUVRotation90 = Composition->bRotateUV90;
+		WorkingFinalSettings = Composition->FinalSettings;
 		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 		{
 			if (Viewport.IsValid())

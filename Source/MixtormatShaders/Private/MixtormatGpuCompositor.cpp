@@ -2997,6 +2997,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	{
 		Request.NodeCache = NodeCache;
 	}
+	Request.FinalAOAmount = FMath::IsFinite(FinalAOAmount) ? FinalAOAmount : 0.0f;
+	Request.FinalAORadius = FMath::IsFinite(FinalAORadius) ? FinalAORadius : 8.0f;
 	Request.InFlight = InFlight;
 	InFlight->store(true);
 	EnqueueCompose(MoveTemp(Request));

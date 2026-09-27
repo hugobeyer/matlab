@@ -3331,6 +3331,33 @@ TSharedRef<SWidget> SMixtormat::BuildFractureControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
+{
+	const auto Final = [this]() -> FMixtormatFinalSettings*
+	{
+		return bHasWorkingMaterial ? &WorkingFinalSettings : nullptr;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatFinalSettings>(
+			LOCTEXT("FinalAOAmount", "AO"), Final, &FMixtormatFinalSettings::HeightAOAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("FinalAOAmountHint", "Ambient occlusion from the final height, applied once after every layer. Layers and effects never write AO.")),
+		MakeMemberSlider<FMixtormatFinalSettings>(
+			LOCTEXT("FinalAORadius", "AO Radius"), Final, &FMixtormatFinalSettings::HeightAORadius, 1.0, 64.0, 8.0, 0.5,
+			LOCTEXT("FinalAORadiusHint", "How far the occlusion reaches, in pixels at 1024. Scales with resolution."))));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("FinalHeading", "FINAL"))
+			.InitiallyExpanded(true)
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 {
 	const auto Pebble = [this]() { return GetSelectedPebbles(); };
@@ -5513,6 +5540,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| HasSelectedGenerator()
 							? EVisibility::Collapsed : EVisibility::Visible;
 					})
+					+ SScrollBox::Slot()
+					[
+						BuildFinalSettingsControls()
+					]
 					+ SScrollBox::Slot()
 					[
 						// No wrapping LAYER group. Selecting a layer shows its sections --

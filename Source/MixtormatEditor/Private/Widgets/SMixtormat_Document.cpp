@@ -69,6 +69,7 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	SoloLayerIndex = INDEX_NONE;
 	bShowCompositionBefore = false;
 	bGlobalUVRotation90 = false;
+	WorkingFinalSettings = FMixtormatFinalSettings();
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
 	WorkingLayerGroups.Reset();
@@ -203,6 +204,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 	WorkingLayers = MaterialAsset->Layers;
 	WorkingLayerGroups = MaterialAsset->LayerGroups;
 	bGlobalUVRotation90 = MaterialAsset->bRotateUV90;
+	WorkingFinalSettings = MaterialAsset->FinalSettings;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -267,6 +269,7 @@ FReply SMixtormat::SaveWorkingMaterial()
 	MaterialAsset->Layers = WorkingLayers;
 	MaterialAsset->LayerGroups = WorkingLayerGroups;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
+	MaterialAsset->FinalSettings = WorkingFinalSettings;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
 	if (UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>())
@@ -279,6 +282,7 @@ FReply SMixtormat::SaveWorkingMaterial()
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
+		SavedFinalSettings = WorkingFinalSettings;
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
@@ -346,6 +350,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	MaterialAsset->Layers = WorkingLayers;
 	MaterialAsset->LayerGroups = WorkingLayerGroups;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
+	MaterialAsset->FinalSettings = WorkingFinalSettings;
 	MaterialAsset->MarkPackageDirty();
 	bool bSaved = false;
 	if (UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>())
@@ -358,6 +363,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
+		SavedFinalSettings = WorkingFinalSettings;
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;

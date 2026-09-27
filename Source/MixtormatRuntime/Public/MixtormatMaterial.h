@@ -2917,6 +2917,27 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	float PebbleAmount = 1.0f;
 };
 
+// Document-level passes that run once on the finished surface, after every layer.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
+{
+	GENERATED_BODY()
+
+	// Ambient occlusion from the final height. AO is never written per layer or effect.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float HeightAOAmount = 0.5f;
+
+	// How far the occlusion reaches, in pixels at 1024 (scales with resolution).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "0.5"))
+	float HeightAORadius = 8.0f;
+
+	bool operator==(const FMixtormatFinalSettings& Other) const
+	{
+		return HeightAOAmount == Other.HeightAOAmount && HeightAORadius == Other.HeightAORadius;
+	}
+	bool operator!=(const FMixtormatFinalSettings& Other) const { return !(*this == Other); }
+};
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -3631,4 +3652,8 @@ public:
 	// tangent-space normal XY, so the baked normal remains aligned with the rotated channels.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Canvas")
 	bool bRotateUV90 = false;
+
+	// Passes on the finished surface (final height AO).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Final")
+	FMixtormatFinalSettings FinalSettings;
 };

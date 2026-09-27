@@ -1,0 +1,69 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Final ambient occlusion from the finished height.
+//
+// AO is a property of the final surface, not of any one layer or effect: a crevice is dark because
+// of the shape that ends up around it, whichever layer or effect made that shape. So it runs once,
+// after every layer has composited, on the final height, and multiplies the final AO channel.
+//
+// Horizon-style: for each pixel, rings of neighbours in eight directions; a neighbour higher than
+// the pixel occludes it in proportion to the slope up to it. Height-to-pixel scale follows the
+// plugin's height->normal convention (a height of 1 spans 1/128 of the tile), so AO and the
+// normals agree about how steep a feature is. Tileable: taps wrap.
+
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> FinalHeight;
+Texture2D<float4> SourceRAM;
+RWTexture2D<float4> OutputRAM;
+
+int2 OutputSize;
+float Amount;
+float RadiusPixels;
+
+int2 FinalAOWrap(int2 P)
+{
+	return (P % OutputSize + OutputSize) % OutputSize;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+
+	float4 RAM = SourceRAM.Load(int3(Pixel, 0));
+	if (Amount != 0.0f && RadiusPixels > 0.0f)
+	{
+		const float H = FinalHeight.Load(int3(Pixel, 0));
+		// Height units to pixels: a height of 1 spans 1/128 of the tile width.
+		const float PixelsPerHeight = float(OutputSize.x) / 128.0f;
+		const float2 Directions[8] = {
+			float2(1.0f, 0.0f), float2(0.7071f, 0.7071f), float2(0.0f, 1.0f), float2(-0.7071f, 0.7071f),
+			float2(-1.0f, 0.0f), float2(-0.7071f, -0.7071f), float2(0.0f, -1.0f), float2(0.7071f, -0.7071f)};
+
+		float Occlusion = 0.0f;
+		float Weight = 0.0f;
+		[unroll] for (int Ring = 1; Ring <= 3; ++Ring)
+		{
+			const float Distance = max(RadiusPixels * (float)Ring / 3.0f, 1.0f);
+			// Near rings matter more: contact shadow reads stronger than distant walls.
+			const float RingWeight = 1.0f / (float)Ring;
+			[unroll] for (int D = 0; D < 8; ++D)
+			{
+				const int2 Q = FinalAOWrap(Pixel + int2(round(Directions[D] * Distance)));
+				const float Rise = (FinalHeight.Load(int3(Q, 0)) - H) * PixelsPerHeight;
+				// Slope to the neighbour, as the sine of its elevation angle: 0 flat, 1 vertical.
+				const float Elevation = Rise > 0.0f ? Rise / sqrt(Rise * Rise + Distance * Distance) : 0.0f;
+				Occlusion += Elevation * RingWeight;
+				Weight += RingWeight;
+			}
+		}
+		const float AO = 1.0f - Amount * saturate(Occlusion / max(Weight, 1.0e-4f) * 2.0f);
+		RAM.g *= AO;
+	}
+	OutputRAM[Pixel] = RAM;
+}

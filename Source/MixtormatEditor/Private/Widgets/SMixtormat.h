@@ -152,6 +152,7 @@ private:
 		// layer, so restoring one without the other leaves a layer in a group that is not there.
 		TArray<FMixtormatLayerGroup> Groups;
 		bool bRotateUV90 = false;
+		FMixtormatFinalSettings FinalSettings;
 	};
 
 	struct FNumericResetBinding
@@ -225,6 +226,7 @@ private:
 	// Adds a layer, starting a recipe first if none is open.
 	FReply AddLayerOrStartMaterial(EMixtormatLayerType LayerType);
 	TSharedRef<SWidget> BuildLayerColumnContextMenu();
+	TSharedRef<SWidget> BuildFinalSettingsControls();
 	// True when the selected child is an instance whose source is (OwnerId, ChildId).
 	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
 	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
@@ -1397,6 +1399,9 @@ private:
 	bool bPreviewDisplacementEnabled = false;
 	bool bGlobalUVRotation90 = false;
 	bool bSavedGlobalUVRotation90 = false;
+	// Document-level final passes (final height AO), saved with the recipe.
+	FMixtormatFinalSettings WorkingFinalSettings;
+	FMixtormatFinalSettings SavedFinalSettings;
 	bool bIsBaking = false;
 	EMixtormatDebugPreviewMode DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	// Only meaningful while DebugPreviewMode == ChildOutput.

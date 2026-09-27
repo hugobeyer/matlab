@@ -142,6 +142,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
+	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	bHistoryInitialized = true;
 	bApplyingHistory = false;
 	LastHistoryRecordTime = 0.0;
@@ -150,6 +151,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
+		SavedFinalSettings = WorkingFinalSettings;
 	}
 }
 
@@ -166,7 +168,8 @@ void SMixtormat::RecordEditHistory()
 	}
 	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
-		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90)
+		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90
+		&& CurrentHistoryState.FinalSettings == WorkingFinalSettings)
 	{
 		return;
 	}
@@ -190,6 +193,7 @@ void SMixtormat::RecordEditHistory()
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
+	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	RedoHistory.Reset();
 	LastHistoryRecordTime = Now;
 }
@@ -199,7 +203,8 @@ bool SMixtormat::IsCurrentStateSaved() const
 	return WorkingMaterialAsset.IsValid()
 		&& AreLayerStacksEqual(WorkingLayers, SavedLayers)
 		&& AreLayerGroupsEqual(WorkingLayerGroups, SavedLayerGroups)
-		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90;
+		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90
+		&& WorkingFinalSettings == SavedFinalSettings;
 }
 
 void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
@@ -208,6 +213,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	WorkingLayers = State.Layers;
 	WorkingLayerGroups = State.Groups;
 	bGlobalUVRotation90 = State.bRotateUV90;
+	WorkingFinalSettings = State.FinalSettings;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -248,10 +254,12 @@ void SMixtormat::SynchronizeHistoryAfterCancelledEdit()
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
+	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	if (!UndoHistory.IsEmpty()
 		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(UndoHistory.Last().Groups, WorkingLayerGroups)
-		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90)
+		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90
+		&& UndoHistory.Last().FinalSettings == WorkingFinalSettings)
 	{
 		UndoHistory.Pop();
 	}
@@ -740,6 +748,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			// ResolveChildPreviewTarget), and the compositor resolves it to indices itself, once,
 			// at the top of RequestComposeInternal.
 			DebugSettings.ChildTarget = ChildPreviewTarget;
+			Viewport->SetFinalSettings(WorkingFinalSettings);
 			Viewport->SetPreviewLayers(
 				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings);
 		}

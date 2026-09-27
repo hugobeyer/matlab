@@ -1007,6 +1007,9 @@ namespace MixtormatGpuCompositor
 		// every global input; empty disables both resume and save for this request.
 		TSharedPtr<FMixtormatPrefixCache, ESPMode::ThreadSafe> PrefixCache;
 		TSharedPtr<FMixtormatNodeCache, ESPMode::ThreadSafe> NodeCache;
+		// Final-surface passes (see FMixtormatFinalSettings).
+		float FinalAOAmount = 0.0f;
+		float FinalAORadius = 8.0f;
 		TArray<uint64> PrefixHashes;
 		// The layer whose finished state is worth keeping: the one just below the lowest layer
 		// that changed since the previous composite. INDEX_NONE saves nothing.

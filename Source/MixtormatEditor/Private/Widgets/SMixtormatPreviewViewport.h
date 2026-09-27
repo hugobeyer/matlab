@@ -132,6 +132,7 @@ public:
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
+	void SetFinalSettings(const FMixtormatFinalSettings& Settings) { FinalSettings = Settings; }
 	void SetGlobalUVRotation90(bool bEnabled);
 
 	// Multipliers on whatever the current lighting mode chose, not absolute brightnesses.
@@ -238,6 +239,7 @@ private:
 	bool bDisplacementEnabled = false;
 	bool bGlobalUVRotation90 = false;
 	float DisplacementAmount = 1.0f;
+	FMixtormatFinalSettings FinalSettings;
 	float CompositedFuzzInfluence = 0.0f;
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;

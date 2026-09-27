@@ -135,6 +135,13 @@ public:
 	// True from RequestCompose until the render thread has submitted that composite. A caller
 	// that recomposites every frame can skip a request while this is set and keep only its latest.
 	bool IsComposeInFlight() const;
+	// Document-level passes on the finished surface. Off (zero AO) until a caller sets them, so a
+	// referenced composition never applies them a second time inside its parent.
+	void SetFinalSettings(float HeightAOAmount, float HeightAORadius)
+	{
+		FinalAOAmount = HeightAOAmount;
+		FinalAORadius = HeightAORadius;
+	}
 	// Drops every cached layer prefix and referenced composition. Called on resolution change;
 	// safe to call any time -- the next composite simply runs in full.
 	void ResetCaches();
@@ -198,6 +205,8 @@ private:
 	// False for compositors created for a reference layer. They recomposite only when their source
 	// changes, so layer-prefix and node caches inside them would hold memory for nothing.
 	bool bCacheLayerResults = true;
+	float FinalAOAmount = 0.0f;
+	float FinalAORadius = 8.0f;
 
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	int32 PublishedTargetIndex = 0;
