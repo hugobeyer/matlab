@@ -62,6 +62,21 @@ FReply SMixtormat::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent
 	{
 		return FReply::Handled();
 	}
+	if (!bModifierDown && !InKeyEvent.IsAltDown()
+		&& InKeyEvent.IsShiftDown() && InKeyEvent.GetKey() == EKeys::V)
+	{
+		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+		{
+			if (Viewport.IsValid())
+			{
+				Viewport->ResetChannelPreview();
+			}
+		}
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		ChildPreviewTarget = FMixtormatChildPreviewTarget();
+		RefreshLayeredPreview(false);
+		return FReply::Handled();
+	}
 	return SCompoundWidget::OnPreviewKeyDown(MyGeometry, InKeyEvent);
 }
 
@@ -921,13 +936,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	// render. Put in the inspector they scroll away with the selection and change meaning
 	// depending on what happens to be selected, which is what sent them back here.
 	const TArray<FText> QualityOptions = {
-		LOCTEXT("PreviewQualityLow", "LOW"),
-		LOCTEXT("PreviewQualityMedium", "MED"),
-		LOCTEXT("PreviewQualityHigh", "HIGH")};
+		LOCTEXT("PreviewQualityDefault", "DEFAULT"),
+		LOCTEXT("PreviewQualityLumen", "LUMEN")};
 	const TArray<FText> QualityToolTips = {
-		LOCTEXT("PreviewQualityLowHint", "Key light and plugin-cubemap skylight. No AO, SSR, or Lumen."),
-		LOCTEXT("PreviewQualityMediumHint", "Lumen GI and reflections with reduced final gather. No viewport AO."),
-		LOCTEXT("PreviewQualityHighHint", "Full-quality Lumen GI and reflections with viewport AO.")};
+		LOCTEXT("PreviewQualityDefaultHint", "Stable studio key and cubemap lighting with screen-space AO; no Lumen or screen-space reflections."),
+		LOCTEXT("PreviewQualityLumenHint", "Enable Lumen global illumination and reflections for an optional lighting check.")};
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
 	//
@@ -993,20 +1006,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		.ToolTips(QualityToolTips)
 		.ActiveIndex_Lambda([this]()
 		{
-			switch (PreviewQuality)
-			{
-			case EMixtormatPreviewQuality::Low: return 0;
-			case EMixtormatPreviewQuality::Medium: return 1;
-			default: return 2;
-			}
+			return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
 		})
 		.OnChosen_Lambda([this](const int32 Index)
 		{
-			SetPreviewQuality(Index == 0
-				? EMixtormatPreviewQuality::Low
-				: Index == 1
-					? EMixtormatPreviewQuality::Medium
-					: EMixtormatPreviewQuality::High);
+			SetPreviewQuality(Index == 1
+				? EMixtormatPreviewQuality::Lumen
+				: EMixtormatPreviewQuality::Default);
 		})
 	];
 	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
@@ -1136,7 +1142,28 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.EndColor(MixtormatPalette::OverlayPlateBottom())
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
-			[ComparisonControls]
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[ComparisonControls]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(MixtormatTokens::ViewportOverlayItemGap, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SComboButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
+					.Method(EPopupMethod::UseCurrentWindow)
+					.ContentPadding(MixtormatTokens::ViewportOverlayTogglePadding)
+					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+					.ToolTipText(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
+					.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
+					.ButtonContent()
+					[
+						SNew(STextBlock)
+						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+						.Text(LOCTEXT("FinalCompositeButton", "Final"))
+					]
+				]
+			]
 		]
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Right)

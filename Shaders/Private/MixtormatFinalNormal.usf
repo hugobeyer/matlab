@@ -13,8 +13,9 @@
 //     composited normal -------------------------------> detail normal
 //     RNM(base, detail) -------------------------------> final normal
 //
-// Units follow the shared convention: Sobel scaled by resolution / 1024, the same slope the final
-// AO assumes. Tileable: taps wrap.
+// Calibrated to the authored displacement baseline: Nanite magnitude 4, Amount 1,
+// and one UV tile across a 200-unit surface. The shared gradient uses legacy slope units;
+// convert those to world-height / world-distance here. Tileable: taps wrap.
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatHeightNormal.ush"
@@ -25,6 +26,14 @@ RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
 float Strength;
+
+// Sobel is eight times the per-texel derivative. The shared helper multiplies it by
+// resolution / 1024; physical slope instead needs resolution / 8 * magnitude / tile span.
+// Keep this conversion local to the final pass, not the legacy per-effect normal paths.
+static const float DisplacementMagnitude = 4.0f;
+static const float SurfaceUnitsPerTile = 200.0f;
+static const float FinalHeightSlopeScale =
+	(MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES / 8.0f) * (DisplacementMagnitude / SurfaceUnitsPerTile);
 
 float FinalNormalHeightAt(int2 P)
 {
@@ -46,7 +55,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		FinalNormalHeightAt(P + int2(-1,  0)),                                       FinalNormalHeightAt(P + int2(1,  0)),
 		FinalNormalHeightAt(P + int2(-1,  1)), FinalNormalHeightAt(P + int2(0,  1)), FinalNormalHeightAt(P + int2(1,  1)),
 		OutputSize,
-		Strength);
+		Strength * FinalHeightSlopeScale);
 	const float3 HeightNormal = MixtormatNormalFromHeightGradient(G);
 
 	const float4 EncodedDetail = DetailNormal.Load(int3(P, 0));

@@ -2931,14 +2931,11 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "0.5"))
 	float HeightAORadius = 8.0f;
 
-	// The normal is built from the final height, with the layers' authored normal detail
-	// reoriented on top. Effects then write only height; their per-effect relief normals are
-	// suppressed so no slope is counted twice.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final")
+	// Retained for saved recipes. Final-height normals are now always enabled at unit strength.
+	UPROPERTY()
 	bool bNormalFromHeight = true;
 
-	// Slope gain on the final-height normal. 1 is the plugin's shared height->normal scale.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY()
 	float HeightNormalStrength = 1.0f;
 
 	bool operator==(const FMixtormatFinalSettings& Other) const

@@ -58,9 +58,8 @@ enum class EMixtormatStudioLighting : uint8
 
 enum class EMixtormatPreviewQuality : uint8
 {
-	Low,
-	Medium,
-	High
+	Default,
+	Lumen
 };
 
 // Anti-aliasing for the preview, chosen per viewport rather than for the editor.
@@ -160,6 +159,7 @@ public:
 	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
+	void ResetChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;
 
@@ -235,7 +235,7 @@ private:
 	int32 bDebugChildIndex = INDEX_NONE;
 	bool bUsingStudioEnvironment = false;
 	EMixtormatPreviewMesh CurrentPreviewMesh = EMixtormatPreviewMesh::Sphere;
-	EMixtormatPreviewQuality CurrentPreviewQuality = EMixtormatPreviewQuality::Medium;
+	EMixtormatPreviewQuality CurrentPreviewQuality = EMixtormatPreviewQuality::Default;
 	bool bDisplacementEnabled = false;
 	bool bGlobalUVRotation90 = false;
 	float DisplacementAmount = 1.0f;

@@ -109,42 +109,16 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	// volume that Lumen samples, which fogs the traced reflections themselves -- the sky is what
 	// those are for. Off at every quality level, including the ones that trace.
 	ShowFlags.SetVolumetricFog(false);
-	switch (Quality)
-	{
-	case EMixtormatPreviewQuality::Low:
-		ShowFlags.SetGlobalIllumination(true);
-		ShowFlags.SetSkyLighting(true);
-		ShowFlags.SetLumenGlobalIllumination(false);
-		ShowFlags.SetLumenReflections(false);
-		ShowFlags.SetReflectionEnvironment(true);
-		ShowFlags.SetAmbientOcclusion(false);
-		ShowFlags.SetScreenSpaceAO(false);
-		ShowFlags.SetScreenSpaceReflections(false);
-		break;
-	case EMixtormatPreviewQuality::High:
-		ShowFlags.SetGlobalIllumination(true);
-		ShowFlags.SetSkyLighting(true);
-		ShowFlags.SetLumenGlobalIllumination(true);
-		ShowFlags.SetLumenReflections(true);
-		ShowFlags.SetReflectionEnvironment(true);
-		ShowFlags.SetAmbientOcclusion(true);
-		ShowFlags.SetScreenSpaceAO(true);
-		ShowFlags.SetScreenSpaceReflections(true);
-		break;
-	case EMixtormatPreviewQuality::Medium:
-	default:
-		ShowFlags.SetGlobalIllumination(true);
-		ShowFlags.SetSkyLighting(true);
-		ShowFlags.SetLumenGlobalIllumination(true);
-		ShowFlags.SetLumenReflections(true);
-		ShowFlags.SetReflectionEnvironment(true);
-		// AmbientOcclusion is the master viewport AO flag; leaving it enabled can still run GTAO
-		// even when ScreenSpaceAO is false, producing the same dark contact halos.
-		ShowFlags.SetAmbientOcclusion(false);
-		ShowFlags.SetScreenSpaceAO(false);
-		ShowFlags.SetScreenSpaceReflections(true);
-		break;
-	}
+	const bool bLumen = Quality == EMixtormatPreviewQuality::Lumen;
+	ShowFlags.SetGlobalIllumination(true);
+	ShowFlags.SetSkyLighting(true);
+	ShowFlags.SetReflectionEnvironment(true);
+	ShowFlags.SetLumenGlobalIllumination(bLumen);
+	ShowFlags.SetLumenReflections(bLumen);
+	ShowFlags.SetScreenSpaceReflections(bLumen);
+	// Studio mode gets contact from AO; Lumen supplies its own occlusion.
+	ShowFlags.SetAmbientOcclusion(!bLumen);
+	ShowFlags.SetScreenSpaceAO(!bLumen);
 }
 
 float MixtormatPreviewSceneSettings::CalculateFocusDistance(

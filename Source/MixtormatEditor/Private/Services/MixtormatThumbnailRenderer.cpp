@@ -490,7 +490,7 @@ public:
 		FEngineShowFlags ShowFlags(ESFIM_Editor);
 		MixtormatPreviewSceneSettings::ConfigureQuality(
 			ShowFlags,
-			EMixtormatPreviewQuality::Medium);
+			EMixtormatPreviewQuality::Default);
 		ShowFlags.SetAntiAliasing(false);
 		ShowFlags.SetTemporalAA(false);
 		ShowFlags.SetMotionBlur(false);

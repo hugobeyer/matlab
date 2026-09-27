@@ -784,7 +784,15 @@ namespace
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
-		case EMixtormatLayerChildType::Generator: return FMixtormatStrataCarver::StaticStruct();
+		case EMixtormatLayerChildType::Generator:
+			switch (Child.Generator.Type)
+			{
+			case EMixtormatGeneratorType::StrataCarver: return FMixtormatStrataCarver::StaticStruct();
+			case EMixtormatGeneratorType::Fracture: return FMixtormatFracture::StaticStruct();
+			case EMixtormatGeneratorType::RockFormation: return FMixtormatRockFormation::StaticStruct();
+			case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();
+			default: return nullptr;
+			}
 		default: return nullptr;
 		}
 	}

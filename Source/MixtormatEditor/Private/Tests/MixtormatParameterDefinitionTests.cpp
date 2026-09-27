@@ -47,6 +47,12 @@ bool FMixtormatParameterSanitizeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("DefaultFloat reflects the CDO"),
 		MixtormatParameterContracts::DefaultFloat(ET::Effect, Name(TEXT("BreakupNormalStrength")), 0.0f),
 		2.0f);
+	TestEqual(TEXT("Pebbles default reflects Pebble Cells"),
+		MixtormatParameterContracts::DefaultFloat(ET::Generator, Name(TEXT("PebbleCells")), 0.0f),
+		4.0f);
+	TestEqual(TEXT("Strata Carver default reflects Seed"),
+		MixtormatParameterContracts::DefaultFloat(ET::Generator, Name(TEXT("Seed")), 0.0f),
+		3.0f);
 
 	return true;
 }

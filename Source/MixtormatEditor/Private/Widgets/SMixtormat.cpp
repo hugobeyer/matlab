@@ -483,6 +483,35 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	{
 		return FReply::Handled();
 	}
+	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
+		&& !InKeyEvent.IsRepeat() && InKeyEvent.GetKey() == EKeys::I)
+	{
+		if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
+			&& ChildPreviewTarget.Kind == EMixtormatPreviewOutputKind::RegionIds)
+		{
+			return ToggleChildOutputPreview(ChildPreviewTarget);
+		}
+		if (const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress()))
+		{
+			const FMixtormatChildPreviewOutputSet Outputs = GetChildPreviewOutputSet(*Child);
+			if (Outputs.Primary.IsSet()
+				&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds
+				&& IsChildOutputPreviewReady(*Child))
+			{
+				for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+				{
+					if (Viewport.IsValid())
+					{
+						Viewport->ResetChannelPreview();
+					}
+				}
+				const FMixtormatPreviewOutputDesc& Output = Outputs.Primary.GetValue();
+				return ToggleChildOutputPreview(
+					ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.GapMaskName));
+			}
+		}
+		return FReply::Handled();
+	}
 	// Rename the selected group or layer. Not double-click: that opens and shuts the row, and one
 	// gesture cannot mean both without the user having to guess which it will be this time.
 	// F12 is an alias for F2, not a second gesture: on a laptop whose F-row is media keys by

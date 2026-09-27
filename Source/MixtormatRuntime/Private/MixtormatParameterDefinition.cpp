@@ -266,11 +266,17 @@ namespace
 		{
 			// Generator parameter names are unique across payloads. The owner address remains the
 			// stable category while reflection still supplies the payload's compiled default.
+			static const FMixtormatStrataCarver StrataDefaults;
 			static const FMixtormatFracture FractureDefaults;
 			static const FMixtormatRockFormation RockDefaults;
 			static const FMixtormatPebbles PebbleDefaults;
-			const void* Defaults = &FractureDefaults;
-			const FProperty* Property = FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter);
+			const void* Defaults = &StrataDefaults;
+			const FProperty* Property = FMixtormatStrataCarver::StaticStruct()->FindPropertyByName(Parameter);
+			if (!Property)
+			{
+				Property = FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &FractureDefaults;
+			}
 			if (!Property)
 			{
 				Property = FMixtormatRockFormation::StaticStruct()->FindPropertyByName(Parameter);

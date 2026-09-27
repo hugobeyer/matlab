@@ -424,11 +424,9 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 						SNew(STextBlock)
 						.Text_Lambda([this]()
 						{
-							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::High
-								? LOCTEXT("StatusQualityHigh", "High · Lumen GI")
-								: PreviewQuality == EMixtormatPreviewQuality::Medium
-									? LOCTEXT("StatusQualityMedium", "Medium · Lumen GI")
-									: LOCTEXT("StatusQualityLow", "Low");
+							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::Lumen
+								? LOCTEXT("StatusQualityLumen", "Lumen On")
+								: LOCTEXT("StatusQualityDefault", "Default · Studio AO");
 							return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
 						})
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))

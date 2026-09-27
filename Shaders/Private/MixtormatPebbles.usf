@@ -252,10 +252,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutPebbleRandom[Pixel] = bestRandom;
 	OutPebbleIds[Pixel] = bestId;
 #else
-	// Stones replace the layer's height where they are; the surface stays everywhere else.
+	// Height union: buried stones cannot cut into the existing surface.
 	const float Source = SourceHeight.Load(int3(Pixel, 0));
 	const float Stone = PebbleHeight.Load(int3(Pixel, 0));
 	const float Coverage = PebbleCoverage.Load(int3(Pixel, 0));
-	OutHeight[Pixel] = lerp(Source, Stone, Amount * Coverage);
+	OutHeight[Pixel] = lerp(Source, max(Source, Stone), Amount * Coverage);
 #endif
 }

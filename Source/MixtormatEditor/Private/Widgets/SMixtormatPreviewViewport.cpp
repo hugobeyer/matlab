@@ -242,7 +242,16 @@ public:
 		Settings.MotionBlurAmount = 0.0f;
 		Settings.bOverride_MotionBlurMax = true;
 		Settings.MotionBlurMax = 0.0f;
-		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Medium)
+		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Default)
+		{
+			// Keep contact shading restrained: the engine defaults make the sphere's lower
+			// silhouette accumulate a broad, blotchy AO halo.
+			Settings.bOverride_AmbientOcclusionIntensity = true;
+			Settings.AmbientOcclusionIntensity = 0.25f;
+			Settings.bOverride_AmbientOcclusionRadius = true;
+			Settings.AmbientOcclusionRadius = 40.0f;
+		}
+		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Lumen)
 		{
 			Settings.bOverride_LumenFinalGatherQuality = true;
 			Settings.LumenFinalGatherQuality = 0.5f;
@@ -532,8 +541,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	LayerCompositor->SetFinalSettings(
 		FinalSettings.HeightAOAmount,
 		FinalSettings.HeightAORadius,
-		FinalSettings.bNormalFromHeight,
-		FinalSettings.HeightNormalStrength);
+		true,
+		1.0f);
 	if (!LayerCompositor->RequestCompose(
 		Layers,
 		Groups,
@@ -1013,6 +1022,13 @@ void SMixtormatPreviewViewport::ToggleOverlayUi()
 	OnToggleOverlayUi.ExecuteIfBound();
 }
 
+void SMixtormatPreviewViewport::ResetChannelPreview()
+{
+	ChannelPreview = EMixtormatChannelPreview::Material;
+	ApplyChannelPreview();
+	OnChannelPreviewChanged.ExecuteIfBound();
+}
+
 void SMixtormatPreviewViewport::CycleChannelPreview()
 {
 	const uint8 NextMode = (static_cast<uint8>(ChannelPreview) + 1)
@@ -1196,7 +1212,7 @@ TSharedRef<FEditorViewportClient> SMixtormatPreviewViewport::MakeEditorViewportC
 	// movement smears exactly the high-frequency detail -- crack width, chip edges, grain --
 	// that the move was made to inspect.
 	PreviewViewportClient->EngineShowFlags.SetMotionBlur(false);
-	SetPreviewQuality(EMixtormatPreviewQuality::Medium);
+	SetPreviewQuality(EMixtormatPreviewQuality::Default);
 	PreviewScene.SetLightDirection(FRotator(-35.0f, LightingYaw, 0.0f));
 	UpdateCamera();
 	return PreviewViewportClient.ToSharedRef();

@@ -3345,23 +3345,12 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 		MakeMemberSlider<FMixtormatFinalSettings>(
 			LOCTEXT("FinalAORadius", "AO Radius"), Final, &FMixtormatFinalSettings::HeightAORadius, 1.0, 64.0, 8.0, 0.5,
 			LOCTEXT("FinalAORadiusHint", "How far the occlusion reaches, in pixels at 1024. Scales with resolution."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberToggle<FMixtormatFinalSettings>(
-			LOCTEXT("FinalNormalFromHeight", "Normal From Height"), Final, &FMixtormatFinalSettings::bNormalFromHeight,
-			LOCTEXT("FinalNormalFromHeightHint", "Build the normal from the final height, with the layers' normal maps as detail on top. Effects then shape height only, so relief is never counted twice.")),
-		MakeMemberSlider<FMixtormatFinalSettings>(
-			LOCTEXT("FinalNormalStrength", "Normal Strength"), Final, &FMixtormatFinalSettings::HeightNormalStrength, 0.0, 4.0, 1.0, 0.01,
-			LOCTEXT("FinalNormalStrengthHint", "Slope of the final-height normal. 1 matches the height exactly (same scale as the AO)."))));
-
 	return SNew(SBox)
-		.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+		.WidthOverride(MixtormatTokens::InspectorWidth)
+		.Padding(MixtormatTokens::ViewportOverlayClusterInset)
+		.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("FinalHeading", "FINAL"))
-			.InitiallyExpanded(true)
-			[
-				Panel
-			]
+			Panel
 		];
 }
 
@@ -3431,7 +3420,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 			LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")),
 		MakeMemberSlider<FMixtormatPebbles>(
 			LOCTEXT("PebbleAmount", "Amount"), Pebble, &FMixtormatPebbles::PebbleAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("PebbleAmountHint", "How much the stones replace the layer's height where they sit. Does not re-evaluate them."))));
+			LOCTEXT("PebbleAmountHint", "Blends toward the higher of the surface and stone heights. Buried stones do not cut into the surface. Does not re-evaluate them."))));
 	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
 		LOCTEXT("PebbleFacetIds", "Facet IDs"),
 		MixtormatRow::MakeCheckbox(
@@ -4900,18 +4889,16 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	AddSliderRow(Roughness, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessOffsetLabel", "Offset"), Layer(), &FMixtormatLayer::RoughnessOffset, -0.5, 0.5, 0.0, 0.01));
 
-	// Relief owns the layer's depth controls and, next to them, the authored normal map's own
-	// strength. The two sit together because the question "why is my normal map flat" is answered
-	// by one of them and not the other: Height Booster shapes the height and the normals
-	// reconstructed from it, Normal Strength shapes the imported map, and neither reaches the
-	// other's territory.
+	TSharedRef<SVerticalBox> AuthoredNormal = AddCard(
+		Panel, LOCTEXT("CardAuthoredMaterialNormal", "Authored Material Normal"));
+	AddSliderRow(AuthoredNormal, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("AuthoredMaterialNormalStrengthLabel", "Strength"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("AuthoredMaterialNormalStrengthHint", "Strength of this layer's authored material normal map. 1 preserves the source, 0 flattens it, and above 1 strengthens its slope. Does not control relief normals generated from the final height.")));
 	TSharedRef<SVerticalBox> Relief = AddCard(Panel, LOCTEXT("CardRelief", "Relief"));
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightBoostLabel", "Height Booster"), Layer(), &FMixtormatLayer::HeightBoost, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("HeightBoostHint", "Gain on this layer's height. 1 is untouched; 0 flattens it; values above 1 deepen the relief and, with it, the normals derived from that height. An imported normal map is left at its authored strength, so a surface whose height and normal describe the same relief is not deepened twice. Applied before displacement, height blending, and derived normals. Not Height Influence, which controls how much of this layer reaches the composite.")));
-	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("NormalStrengthLabel", "Normal Strength"), Layer(), &FMixtormatLayer::NormalIntensity, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("NormalStrengthHint", "Strength of this layer's imported normal map, as a slope gain. 1 is the map exactly as authored, 0 flattens it, and above 1 steepens its tilt. The only control that can strengthen an authored normal -- Normal Influence runs 0..1 and can only fade one out. Not Height Booster, which deepens this layer's height and the normals reconstructed from that height; a surface whose height and normal describe the same relief would otherwise carry it twice.")));
+
 	AddSliderRow(Relief, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("HeightLevelOffsetLabel", "Height Offset"), Layer(), &FMixtormatLayer::HeightLevelOffset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightLevelOffsetHint", "Adds to only this layer's boosted height before compositing. Positive values raise it; negative values sink it. Displacement, height blending, and derived normals all use the shifted result.")));
@@ -5547,10 +5534,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| HasSelectedGenerator()
 							? EVisibility::Collapsed : EVisibility::Visible;
 					})
-					+ SScrollBox::Slot()
-					[
-						BuildFinalSettingsControls()
-					]
+
 					+ SScrollBox::Slot()
 					[
 						// No wrapping LAYER group. Selecting a layer shows its sections --
