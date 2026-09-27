@@ -1,6 +1,7 @@
 ﻿// Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "Compositing/MixtormatComposeHash.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
@@ -39,7 +40,6 @@ public:
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousEffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ChildMask)
-		SHADER_PARAMETER(float, ProceduralAOStrength)
 		SHADER_PARAMETER(float, HeightAmount)
 		SHADER_PARAMETER(float, HeightInvert)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PeelFieldA)
@@ -599,6 +599,87 @@ namespace MixtormatGpuCompositor
 		{
 			PeelRegionIds = Ctx.EmptyRegionIds;
 		}
+		// Field cache. The seed + solve (up to 256 dispatches) + resolve depend only on what the
+		// field shader reads: the peel's field settings, the surface composited below (the prefix
+		// hash of the layer below), this layer's Region IDs, the own mask and the resolution.
+		// Settings read only by the final Peeling pass -- strength, shading -- leave the key alone,
+		// so tuning them no longer re-solves. Anything it cannot key exactly is simply not cached.
+		uint64 PeelFieldKey = 0;
+		FMixtormatNodeCache* const PeelNodeCache = Request.NodeCache.Get();
+		if (PeelNodeCache && (LayerIndex == 0 || Request.PrefixHashes.IsValidIndex(LayerIndex - 1)))
+		{
+			uint64 ProducerKey = 1;
+			if (bPeelHasRegionIds)
+			{
+				ProducerKey = 0;
+				int32 ProducerIndex = INDEX_NONE;
+				for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+				{
+					if (Entry.Key < ChildIndex)
+					{
+						ProducerIndex = Entry.Key;
+					}
+				}
+				for (const FChildRenderData& Candidate : Layer.Children)
+				{
+					if (Candidate.SourceChildIndex != ProducerIndex)
+					{
+						continue;
+					}
+					if (Candidate.Type == EMixtormatLayerChildType::PatternId)
+					{
+						ProducerKey = Candidate.CacheKey;
+					}
+					else if (Candidate.Type == EMixtormatLayerChildType::Filter && Candidate.CacheKey != 0)
+					{
+						ProducerKey = MixtormatComposeHash::Combine(Candidate.CacheKey, Layer.SourceCacheKey);
+					}
+					else if (Candidate.Type == EMixtormatLayerChildType::Generator)
+					{
+						ProducerKey = Candidate.Generator.Type == EMixtormatGeneratorType::RockFormation
+							? Candidate.Generator.RockFormation.FieldKey
+							: (Candidate.Generator.Type == EMixtormatGeneratorType::Pebbles
+								? Candidate.Generator.Pebbles.FieldKey : 0);
+					}
+					break;
+				}
+			}
+			if (ProducerKey != 0)
+			{
+				MixtormatComposeHash::FHasher Hasher;
+				const auto F = [&Hasher](const float Value) { Hasher.Bytes(&Value, sizeof(Value)); };
+				const auto I = [&Hasher](const int64 Value) { Hasher.Value(static_cast<uint64>(Value)); };
+				I(Request.Resolution.X); I(Request.Resolution.Y);
+				I(LayerIndex > 0 ? static_cast<int64>(Request.PrefixHashes[LayerIndex - 1]) : 0);
+				I(static_cast<int64>(ProducerKey));
+				I(static_cast<int64>(reinterpret_cast<UPTRINT>(Effect.PeelOwnMask.GetReference())));
+				I(Layer.bFlipNormalY ? 1 : 0);
+				I(Effect.PeelSolveDivisor); I(Effect.PeelRandomSeed);
+				F(Effect.PeelSeedMaskWeight); F(Effect.PeelMaskTiling); I(Effect.bPeelMaskInvert ? 1 : 0);
+				F(Effect.PeelSeedThreshold); F(Effect.PeelCurvatureRadius);
+				F(Effect.PeelSeedCurvatureWeight); F(Effect.PeelSeedCurvatureBias);
+				F(Effect.PeelSeedAOWeight); F(Effect.PeelSeedHeightWeight);
+				I(Effect.bPeelNormalizeSeedWeights ? 1 : 0); F(Effect.PeelGrowthStrength);
+				I(Effect.PeelMacroPeriod); I(Effect.PeelMicroPeriod); F(Effect.PeelSeedNoiseWeight);
+				F(Effect.PeelSizeVariation); I(Effect.PeelClusterPeriod); F(Effect.PeelClusterAmount);
+				I(Effect.PeelWarpPeriod); F(Effect.PeelWarpAmount); F(Effect.PeelWarpSource);
+				I(static_cast<int64>(Effect.PeelType)); F(Effect.Front); F(Effect.Width);
+				F(Effect.MacroWarp); F(Effect.MicroWarp); F(Effect.MicroMorph); F(Effect.Thickness);
+				F(Effect.Lift); F(Effect.DetailStrength); F(Effect.PeelLiftVariation);
+				F(Effect.PeelCornerLift); F(Effect.PeelCornerRadius); F(Effect.PeelIDInfluence);
+				F(Effect.PeelEdgeSharpness);
+				PeelFieldKey = Hasher.Get() | 1ull;
+			}
+		}
+		const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> PeelHit = PeelFieldKey != 0
+			? PeelNodeCache->Find(PeelFieldKey, Request.Resolution)
+			: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+		if (PeelHit.IsValid() && PeelHit->Outputs[1].IsValid())
+		{
+			PeelFieldA = GraphBuilder.RegisterExternalTexture(PeelHit->Outputs[0], TEXT("Mixtormat.PeelFieldA.Cached"));
+			PeelFieldB = GraphBuilder.RegisterExternalTexture(PeelHit->Outputs[1], TEXT("Mixtormat.PeelFieldB.Cached"));
+		}
+		else
 		{
 			// Same accumulated state the generated mask reads: the surface
 			// composited below this layer.
@@ -607,7 +688,7 @@ namespace MixtormatGpuCompositor
 			// The solve dominates cost, and halving the side both quarters
 			// the texels and halves the passes the front needs to cross
 			// them. Arrival is smooth enough to filter back up afterwards.
-			const int32 SolveDivisor = FMath::Clamp(Effect.PeelSolveDivisor, 1, 32);
+			const int32 SolveDivisor = FMath::Max(Effect.PeelSolveDivisor, 1);
 			const FIntPoint SolveRes(
 				FMath::Max(Request.Resolution.X / SolveDivisor, 64),
 				FMath::Max(Request.Resolution.Y / SolveDivisor, 64));
@@ -667,13 +748,13 @@ namespace MixtormatGpuCompositor
 				FP->NormalizeWeights = Effect.bPeelNormalizeSeedWeights ? 1u : 0u;
 				FP->GrowthStrength = Effect.PeelGrowthStrength;
 
-				FP->MacroPeriod = FMath::Clamp(Effect.PeelMacroPeriod, 1, 256);
-				FP->MicroPeriod = FMath::Clamp(Effect.PeelMicroPeriod, 1, 512);
+				FP->MacroPeriod = FMath::Max(Effect.PeelMacroPeriod, 1);
+				FP->MicroPeriod = FMath::Max(Effect.PeelMicroPeriod, 1);
 				FP->NoiseWeight = Effect.PeelSeedNoiseWeight;
 				FP->SizeVariation = Effect.PeelSizeVariation;
-				FP->FlakeCells = FMath::Clamp(Effect.PeelClusterPeriod, 1, 128);
+				FP->FlakeCells = FMath::Max(Effect.PeelClusterPeriod, 1);
 				FP->ClusterAmount = Effect.PeelClusterAmount;
-				FP->WarpPeriod = FMath::Clamp(Effect.PeelWarpPeriod, 1, 256);
+				FP->WarpPeriod = FMath::Max(Effect.PeelWarpPeriod, 1);
 				FP->WarpAmount = Effect.PeelWarpAmount;
 				FP->WarpSource = Effect.PeelWarpSource;
 
@@ -750,7 +831,7 @@ namespace MixtormatGpuCompositor
 				* FMath::Lerp(
 					2.0f,
 					10.0f,
-					FMath::Clamp(Effect.MicroMorph, 0.0f, 1.0f));
+					Effect.MicroMorph);
 
 			const float Reach =
 				FMath::Abs(Effect.Front)
@@ -769,6 +850,17 @@ namespace MixtormatGpuCompositor
 
 			PeelFieldA = FieldA;
 			PeelFieldB = FieldB;
+
+			if (PeelFieldKey != 0)
+			{
+				TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+					MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+				Entry->Key = PeelFieldKey;
+				Entry->Resolution = Request.Resolution;
+				GraphBuilder.QueueTextureExtraction(FieldA, &Entry->Outputs[0]);
+				GraphBuilder.QueueTextureExtraction(FieldB, &Entry->Outputs[1]);
+				Ctx.PendingNodeEntries.Add(Entry);
+			}
 		}
 
 		FRDGTextureRef LocalEffectData = GraphBuilder.CreateTexture(
@@ -794,7 +886,6 @@ namespace MixtormatGpuCompositor
 		// Neutral, and shared with every other structural effect: the peel's relief depth is
 		// carried by Thickness, Lift and Detail Strength, which is where it belongs.
 		EffectParameters->NormalStrength = ReliefNormalStrength;
-		EffectParameters->ProceduralAOStrength = Effect.PeelAOStrength;
 		EffectParameters->HeightAmount = Effect.PeelHeightAmount;
 		EffectParameters->HeightInvert = Effect.bPeelHeightInvert ? 1.0f : 0.0f;
 		EffectParameters->PreviousEffectHeight = EffectHeightTargets[0];

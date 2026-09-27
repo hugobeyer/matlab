@@ -146,6 +146,51 @@
 			"uiMin": 2,
 			"uiMax": 256,
 			"snap": 1
+		},
+		"Generator.FractureDepth":
+		{
+			"default": 0.079999998211860657,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0.0010000000474974513
+		},
+		"Generator.FractureAmount":
+		{
+			"default": 0.62000000476837158,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.FractureProfile":
+		{
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.FractureChamfer":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		}
+	},
+	"Peeling":
+	{
+		"Effect.Width":
+		{
+			"default": 0.014999999664723873,
+			"uiMin": 9.9999999747524271e-07,
+			"uiMax": 0.10000000149011612,
+			"snap": 0
+		},
+		"Effect.Front":
+		{
+			"default": 0.079999998211860657,
+			"uiMin": -0.10000000149011612,
+			"uiMax": 0.10000000149011612,
+			"snap": 0
 		}
 	}
 }

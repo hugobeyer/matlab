@@ -408,7 +408,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
@@ -416,10 +416,10 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 
 	// Source placement. Integer per axis, because a fractional scale lands mid-cell at the UV
 	// wrap and seams.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (UIMin = "1"))
 	int32 TilingX = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (UIMin = "1"))
 	int32 TilingY = 1;
 
 	// In UV, and unrelated to Offset below, which lifts the mask value rather than moving
@@ -468,78 +468,78 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratedMask
 	bool bEnabled = true;
 
 	// Signal weights. All default to zero so a new node is neutral until authored.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float CurvatureWeight = 0.0f;
 
 	// 0 = cavity, 1 = convex.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float CurvatureBias = 0.0f;
 
 	// Raw curvature is a normal difference over 2 x radius, so it is small. Strength is gain.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0"))
 	float CurvatureStrength = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.001"))
 	float CurvaturePower = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float DirectionWeight = 0.0f;
 
 	// Tangent-space direction in degrees. 90 is +Y.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "360.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0", UIMax = "360.0"))
 	float DirectionAngle = 90.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.001", ClampMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.001", UIMax = "64.0"))
 	float DirectionBroadness = 1.0f;
 
 	// Positive weight uses inverted AO, concentrating in occluded areas.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float AOWeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float HeightWeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float HeightBias = 0.0f;
 
 	// Drainage and crest lines from an erosion filter on a layer below. Unlike the other
 	// signals this is not derived here: erosion already computes where its passes agree on a
 	// crest, and this is the first thing to consume that output. Zero everywhere when nothing
 	// below erodes, so a weight on it is inert rather than wrong.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "-8.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-8.0", UIMax = "8.0"))
 	float RidgeWeight = 0.0f;
 
 	// Shaping.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping")
 	bool bNormalizeWeights = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "1", UIMax = "32"))
 	int32 Broadness = 2;
 
 	// Averages curvature over this many widening rings. 1 is a single kernel.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "1", UIMax = "4"))
 	int32 Smoothing = 2;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.001", ClampMax = "0.999"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "0.001", UIMax = "0.999"))
 	float Bias = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float WarpAmount = 0.0f;
 
 	// Flow source: 0 samples the accumulated normal slope, 1 the accumulated height
 	// gradient. Both point downhill, so intermediate values blend two flow fields.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float WarpSource = 0.0f;
 
 	// Gradient sample radius in pixels. Larger values follow broader slopes.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (ClampMin = "1", ClampMax = "16"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping", meta = (UIMin = "1", UIMax = "16"))
 	int32 WarpRadius = 1;
 
 	// Accumulator controls, matching FMixtormatMaskLayer.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Multiply;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping")
@@ -612,17 +612,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
 	EMixtormatEffectType ProceduralType = EMixtormatEffectType::Peeling;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Strength = 1.0f;
 
 	// Negative erodes inside the mask contour, positive dilates outside it. The procedural
 	// field is a signed distance, so both directions are meaningful; the lower bound used to
 	// be 0 because the field could only ever dilate. Widening a clamp changes no serialized
 	// value, so the authored path still resolves identically for any input it already held.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float Front = 0.08f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.000001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "0.000001"))
 	float Width = 0.015f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling")
@@ -631,10 +631,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling")
 	float MicroWarp = 0.003f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MicroMorph = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "0.0"))
 	float Thickness = 0.04f;
 
 	// How far the sheet rises where it is still attached beside a tear.
@@ -645,10 +645,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// that pass on the shared height->normal convention the lift has to be real relief, so it is
 	// now a few millimetres over a few centimetres of sheet rather than a hair over a fifth of
 	// the tile.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "0.0"))
 	float Lift = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling", meta = (UIMin = "0.0"))
 	float DetailStrength = 0.02f;
 
 	// Procedural peeling generates its field from noise and the surface composited below.
@@ -716,10 +716,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
 	float PeelGrowthStrength = 1.0f;
 
-	// Contact occlusion under the lifted edge. The authored path derives this from the
-	// map's encoded height range, which a generated field does not have.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
-	float PeelAOStrength = 0.8f;
 
 	// Exponent on the crest term. 1 is the authored profile; higher tightens the edge.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural")
@@ -736,7 +732,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// did before this existed and which reads as a uniform rolled hem; 1 doubles the lift where
 	// the sheet is held on fewest sides. Paper fails at its corners, so this is most of what
 	// separates a peel that looks torn from one that looks hemmed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float PeelCornerLift = 0.6f;
 
 	// Size of the window the corner detector looks through, as a multiple of the curl length.
@@ -744,7 +740,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// A wider window responds to broader features and spreads the boost further back from the
 	// tip, so raising this lifts bigger pieces of sheet rather than only their sharpest points.
 	// Narrow it to pick out fine serrations along a tear.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "Corner Radius", ClampMin = "0.05", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "Corner Radius", UIMin = "0.05", UIMax = "4.0"))
 	float PeelCornerRadius = 1.0f;
 
 	// How strongly the peel starts at the boundaries of the ID map above it -- a cluster filter,
@@ -758,7 +754,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	//
 	// 0 does not read the ID map at all, which is the default: an existing peel is unchanged
 	// until the control is deliberately raised.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "ID Influence", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Peeling|Procedural", meta = (DisplayName = "ID Influence", UIMin = "0.0", UIMax = "1.0"))
 	float PeelIDInfluence = 0.0f;
 
 	// Spread of extent across flakes. 0 grows every flake to the same radius.
@@ -915,7 +911,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// Which way runoff runs, in degrees. -90 is straight down the texture, which is what gravity
 	// means on a wall. Runoff is strictly one-directional: it never spreads sideways off its own
 	// axis the way a transport solve does, which is exactly what makes it a smear and not a solve.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "-180.0", ClampMax = "180.0", UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
 	float RunoffGravityAngle = -90.0f;
 
 	// How far runoff reaches from its source, in texels at 1K. Read as a fraction of the longer
@@ -924,54 +920,54 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	//
 	// This is the reach of the strongest source. A weaker mask value reaches proportionally less,
 	// which is what makes the incoming mask a length control and not only an opacity.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "8.0", ClampMax = "512.0", UIMin = "8.0", UIMax = "512.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "8.0", UIMax = "512.0", Delta = "1.0"))
 	float RunoffStreakRadius = 320.0f;
 
 	// The Gaussian's sigma as a fraction of reach. Low values keep a run tight and defined and
 	// stop it abruptly; high values let it fade out over most of its length. It also widens the
 	// terminal lip, because a soft run deposits over a longer stretch than a sharp one does.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.05", ClampMax = "1.0", UIMin = "0.05", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.05", UIMax = "1.0", Delta = "0.01"))
 	float RunoffStreakSoftness = 0.46f;
 
 	// How much the height underneath decides where runoff starts. At 1 only cavities and the
 	// upper edges of ledges source it, which is where dirt actually collects. At 0 the height is
 	// ignored and the incoming mask alone is the source, which is how to streak from a painted
 	// mark rather than from the surface's own shape.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RunoffSurfaceInfluence = 0.95f;
 
 	// How strongly the stacked layers read as separate deposits. Not a count: it widens their
 	// spacing, spreads their lengths and flattens their opacity falloff all at once, so 0 is a
 	// single coherent run and 1 is a visibly layered, uneven buildup. The count itself follows
 	// from Streak Radius -- a short run has no room to show five strata.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RunoffStrataAmount = 0.75f;
 
 	// Feature size of the internal fractal noise, as cells across the texture. It does double
 	// duty deliberately: the same field breaks up the source before the smear and warps each
 	// stratum's length, so one control changes the grain of the whole effect rather than needing
 	// a separate noise scale nobody would match to it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "1.0", UIMin = "1.0", UIMax = "32.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "1.0", UIMax = "32.0", Delta = "1.0"))
 	float RunoffWarpScale = 18.0f;
 
 	// How far that noise pushes each stratum's endpoint along gravity. Only along gravity -- a
 	// sideways push would turn a run into a smudge. Above 1 the strata pull apart far enough to
 	// read as independent runs from the same source.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "2.0", UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float RunoffWarpAmount = 1.5f;
 
 	// The narrow deposit left where a run stops, the way a drying streak leaves a tidemark. 0
 	// ends every run on a clean fade; 1 puts a defined crust at the end of each stratum.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RunoffLipStrength = 0.55f;
 
 	// Overall weight of the resolved runoff in the layer's mask chain. 0 is the identity.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RunoffStrength = 0.25f;
 
 	// Every random choice the effect makes -- the noise field, the per-stratum decorrelation --
 	// comes off this. Same seed, same runoff, at any resolution.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (ClampMin = "0", ClampMax = "9999", UIMin = "0", UIMax = "9999", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
 	int32 RunoffSeed = 1;
 
 	// Erosion. A post-layer directional wear filter. An anisotropic Kuwahara pass builds an
@@ -1140,40 +1136,40 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// Macro cell count across one UV repeat. Mid and Detail are derived from this and Detail
 	// rather than exposed, so the three families stay in a sensible ratio instead of being three
 	// sliders an artist has to keep in step by hand.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "1", UIMin = "1", UIMax = "64", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
 	int32 BreakupScale = 6;
 
 	// How far apart the derived Mid and Detail families sit from Macro. Low keeps all three near
 	// the same size and the result reads as one population; high spreads them and gives large
 	// plates broken by much finer fragments.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupDetail = 0.5f;
 
 	// Fraction of cells that are present at all. Below 1 the field has genuine gaps, which is what
 	// separates scattered flakes from continuous plating.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupDensity = 0.72f;
 
 	// Piece size as a fraction of its own cell, so it tracks Scale instead of fighting it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.001", UIMin = "0.001", UIMax = "1.0", Delta = "0.005"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.001", UIMax = "1.0", Delta = "0.005"))
 	float BreakupSize = 0.32f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupSizeVariation = 0.3125f;
 
 	// Maximum aspect ratio a piece may be drawn at. Applied in both directions, so a single
 	// control gives both elongated and squat fragments rather than a directional bias.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.05", UIMin = "0.05", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.05", UIMax = "4.0", Delta = "0.01"))
 	float BreakupStretch = 1.6f;
 
 	// Blends each piece from a box metric toward a diamond one: rounded flakes at 0, angular
 	// shards at 1. A shape control rather than a second noise, so it changes what a fragment is
 	// instead of where it sits.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupAngularity = 0.72f;
 
 	// How far a piece may wander off its lattice cell.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupIrregularity = 0.38f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced")
@@ -1183,102 +1179,98 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	EMixtormatBreakupOperation BreakupDetailOperation = EMixtormatBreakupOperation::Union;
 
 	// Blend radius of the CSG operations, as a fraction of a piece. 0 is a hard boolean.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupSmoothness = 0.30f;
 
 	// Signed offset of the final field in reference pixels. Positive shrinks pieces and opens
 	// space between them; negative grows them before relief is applied.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-64.0", UIMin = "-64.0", UIMax = "64.0", Delta = "0.25"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "-64.0", UIMax = "64.0", Delta = "0.25"))
 	float BreakupInset = 0.0f;
 
 	// Warps the whole field before the cells are evaluated, in reference pixels at 1K. Built from
 	// integer-period sinusoids so the result still closes on the UV square exactly.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
 	float BreakupDistortion = 5.6f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "1", ClampMax = "16", UIMin = "1", UIMax = "16", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
 	int32 BreakupDistortionFrequency = 3;
 
 	// Signed, and the main structural control. Negative carves the pieces into the surface --
 	// torn, flaked, recessed. Zero leaves the surface alone and lets Fold and Crease do the work.
 	// Positive stands them proud, for rock foundations and raised plates.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-0.5", UIMin = "-0.5", UIMax = "0.5", Delta = "0.0025"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "-0.5", UIMax = "0.5", Delta = "0.0025"))
 	float BreakupRelief = -0.06f;
 
 	// Dedicated per-piece relief scaling. Kept separate from Variation so plate/flake thickness can
 	// change without making crease, fold and push equally noisy.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupThicknessVariation = 0.30f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "64.0", Delta = "0.1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "64.0", Delta = "0.1"))
 	float BreakupGapWidth = 2.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float BreakupGapDepth = 0.02f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupGapVariation = 0.35f;
 
 	// Raises the material just outside each piece. The lip of torn paper, peeling paint, curled
 	// mud or a lifting ice plate.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5", Delta = "0.0025"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.0025"))
 	float BreakupFold = 0.025f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.001", UIMin = "0.001", UIMax = "64.0", Delta = "0.25"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "0.001", UIMax = "64.0", Delta = "0.25"))
 	float BreakupFoldWidth = 16.0f;
 
 	// Cuts a narrow depression along the zero crossing itself: cracks, plate separation, torn
 	// seams, rock joints. Works with Relief at 0, which is the crack-only configuration.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float BreakupCrease = 0.018f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.001", UIMin = "0.001", UIMax = "32.0", Delta = "0.05"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "0.001", UIMax = "32.0", Delta = "0.05"))
 	float BreakupCreaseWidth = 1.25f;
 
 	// Warps the incoming height along the field gradient instead of replacing it: compressed
 	// material, pushed rock, bulging, warped strata. In reference pixels at 1K, so the visual
 	// scale holds between a preview and a 4K bake.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-128.0", UIMin = "-128.0", UIMax = "128.0", Delta = "0.25"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "-128.0", UIMax = "128.0", Delta = "0.25"))
 	float BreakupPush = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (ClampMin = "0.001", UIMin = "0.001", UIMax = "64.0", Delta = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Advanced", meta = (UIMin = "0.001", UIMax = "64.0", Delta = "0.5"))
 	float BreakupPushWidth = 24.0f;
 
 	// Height separation added by Push. This makes Push visible even when the incoming height is flat;
 	// the existing Push value still controls the signed UV advection distance.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float BreakupPushRelief = 0.035f;
 
 	// Per-piece variation of relief, fold, crease and push, off the field's own stable piece id.
 	// It is piece-stable by construction and can never become per-pixel noise.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupVariation = 0.25f;
 
 	// 0 is an exact rendering identity, and the passes are skipped entirely rather than run to
 	// reproduce their input.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupAmount = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "-1.0", ClampMax = "1.0", UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupRoughnessAmount = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.05"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.05"))
 	float BreakupNormalStrength = 2.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float BreakupNormalSharpness = 0.75f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float BreakupAOAmount = 0.35f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Shading", meta = (ClampMin = "1.0", UIMin = "1.0", UIMax = "32.0", Delta = "0.25"))
-	float BreakupAORadius = 8.0f;
 
 	// Flips the sign of the field, swapping which side of every boundary is the piece.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup")
 	bool bBreakupInvert = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (ClampMin = "0", UIMin = "0", UIMax = "9999", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
 	int32 BreakupSeed = 1;
 
 	// Optional mask owned by Breakup. When unset, the layer's accumulated mask children are used.
@@ -1288,7 +1280,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement")
 	TSoftObjectPtr<UTexture2D> BreakupMaskTexture;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement", meta = (ClampMin = "1", UIMin = "1", UIMax = "16", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
 	int32 BreakupMaskTiling = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Breakup|Placement")
@@ -1382,32 +1374,32 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float FlowWarpAmount = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float FlowWarpWeight = 1.0f;
 
 	// Integer cells per UV repeat keep the generated vector field seamless.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "1", UIMin = "1", UIMax = "128", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (UIMin = "1", UIMax = "128", Delta = "1"))
 	int32 FlowWarpScale = 8;
 
 	// Rotates the curl vectors without rotating their periodic sampling lattice.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
 	float FlowWarpDirection = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (ClampMin = "0", UIMin = "0", UIMax = "1024", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp", meta = (UIMin = "0", UIMax = "1024", Delta = "1"))
 	int32 FlowWarpSeed = 1;
 
 	// Scoped-mask and current-height gradients steer the curl downhill. Zero preserves curl V1.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float FlowWarpMaskSlopeInfluence = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float FlowWarpHeightSlopeInfluence = 0.0f;
 
 	// Pixel radii for the wrapped derivative kernel. Larger values reject finer slope detail.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "1.0", UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
 	float FlowWarpDerivativeKernelX = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (ClampMin = "1.0", UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Slope", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
 	float FlowWarpDerivativeKernelY = 4.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Output")
@@ -1417,10 +1409,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// Per axis, like the mask blur, and for the same reasons: the shader runs a dispatch per
 	// direction so a zero radius costs nothing, an unequal pair is anisotropic, and each axis
 	// can be driven on its own where a direction enum could not be driven at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius X", ClampMin = "0.0", ClampMax = "32.0", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius X", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
 	float LayerBlurRadiusX = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius Y", ClampMin = "0.0", ClampMax = "32.0", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius Y", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
 	float LayerBlurRadiusY = 4.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur")
@@ -1428,7 +1420,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	// Lerped against the unblurred source, so 0 is the identity and the pass is skipped
 	// outright rather than paying for a dispatch that reproduces its own input.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float LayerBlurAmount = 1.0f;
 
 	// Height last, and optional, because it is the one channel where softening changes what
@@ -1480,37 +1472,37 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// Propagated called it SeedCells and counted nucleation sites. They answer the same question --
 	// how big is a piece of the broken surface -- so they are one number now, read by whichever
 	// mode is running. Any integer tiles, because both lattices wrap on it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "1", ClampMax = "128"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "1", UIMax = "128"))
 	int32 Scale = 80;
 
 	// 0 puts the cells on a regular lattice and gives grout: brick, tile, plank. 1 gives organic
 	// crazing. Also one control from two -- Lattice jittered its cell points and Propagated its
 	// nuclei, and hiding the lattice is the same intent either way.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Jitter = 1.0f;
 
 	// In cell units, so it means the same thing at any Scale.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Width = 0.05f;
 
 	// Thins individual cracks, so the network reads as breaks that opened at different times
 	// rather than as a uniform lattice. Keyed on the whole crack, not on either side of it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Variation = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "0"))
 	int32 Seed = 1;
 
 	// -- Warp ---------------------------------------------------------------------------------
 	// Bends the finished network rather than steering how it grows, so it costs a resolve pass and
 	// rebuilds nothing. Periodic curl noise: divergence-free, and it wraps on its own period, so
 	// the result still tiles.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Warp = 0.25f;
 
 	// Size of the warp's swirls, in repeats across the UV. Its seed comes off Seed, so reseeding
 	// the network reseeds the warp with it rather than leaving a second seed to remember.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure", meta = (UIMin = "1", UIMax = "32"))
 	int32 WarpScale = 32;
 
 	// -- Growth (Propagated mode) ---------------------------------------------------------------
@@ -1519,12 +1511,12 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// How far a crack can reach, in pixels at a 1024 reference, scaled by the render resolution so
 	// a preview and an export grow the same network rather than the same pixel count. The dispatch
 	// count scales with it, so this is the control that costs.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "1", ClampMax = "1024"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "1", UIMax = "1024"))
 	int32 Iterations = 32;
 
 	// Fraction of cells that get a nucleus at all: how many separate cracks there are, as opposed
 	// to how far each one runs.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Density = 0.5f;
 
 	// Size of the stress, toughness and flow fields as a multiple of Scale, rather than as a
@@ -1533,7 +1525,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// It used to be NoiseCells, an absolute number that fought Scale: moving either changed the
 	// character, because what decides it is the field's size *relative* to the pieces. Under 1 the
 	// fields steer whole regions; over 1 they roughen individual cracks.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.1", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.1", UIMax = "8.0"))
 	float Detail = 4.0f;
 
 	// How far the stress and toughness fields depart from uniform. At 0 the network is steered
@@ -1542,18 +1534,18 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// One dial where there were two. Stress driving cracking on and toughness holding it back are
 	// two ends of one balance, they read from independent noise either way, and a uniform stress
 	// field over a varying toughness one is not a thing anyone reached for.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FieldContrast = 0.2f;
 
 	// How strongly those fields win against a tip's own heading. Was StressGain and ToughnessCost:
 	// two weights on opposite signs of the same comparison.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float FractureBias = 0.5f;
 
 	// How much a crack is a line rather than a blob. Was Persistence, weighting a tip's preference
 	// to carry straight on, and TurnResponse, setting how fast its stored heading caught up -- how
 	// hard it resists turning and what happens when it does. They only ever moved together.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Straightness = 1.0f;
 
 	// Coherent wander: how much the curl-flow field bends a running crack. At 1 cracks follow the
@@ -1561,12 +1553,12 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	//
 	// Deliberately not merged with Roughness. Flow is directional and continuous, Roughness is
 	// per-step noise; combed and ragged are different looks and one dial cannot do both.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Flow = 0.25f;
 
 	// Incoherent wander: random jitter in the choice of next step. Roughens a crack's edge without
 	// giving it anywhere to go.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Growth", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float Roughness = 0.1f;
 
 	// -- Advanced -------------------------------------------------------------------------------
@@ -1574,26 +1566,26 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// whether the network terminates like a drying film or keeps running.
 
 	// Score a step has to beat before a tip advances at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Advanced", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Advanced", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float GrowthThreshold = 0.0f;
 
 	// How many existing cracks a tip may touch before it stops. This is what makes the network meet
 	// at right angles like a drying film instead of at the 120 degrees a bisector diagram gives,
 	// and it is the whole reason the propagated mode exists.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Advanced", meta = (ClampMin = "1", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Advanced", meta = (UIMin = "1", UIMax = "8"))
 	int32 CollisionLimit = 4;
 
 	// -- Relief -----------------------------------------------------------------------------------
 	// The generated groove is authoritative for both height and its derived normal.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ReliefDepth = 0.25f;
 
 	// The groove's mouth, and the curve of its wall between a straight V and a rounded U. Not
 	// merged: a wide V and a narrow U are both things you would ask for.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ReliefWidth = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.05", UIMax = "8.0"))
 	float ReliefProfile = 2.0f;
 
 	// Per-crack variation on the relief, keyed off the same lineage id the crack network already
@@ -1601,20 +1593,20 @@ struct MIXTORMATRUNTIME_API FMixtormatCraquelure
 	// exists so it never touches which cracks grow or where. Each is its own multiplier on top
 	// of Height/Groove/Profile above and is neutral at 0, so an authored relief looks the same
 	// until one of these is raised.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ReliefGrooveVariation = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ReliefProfileVariation = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ReliefWidthVariation = 0.0f;
 
 	// -- Output -----------------------------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Craquelure|Blend")
@@ -1655,7 +1647,7 @@ struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
 	// the nearest ID node above this one. Deliberately not derived from a colour -- a region's
 	// preview colour is a hash of its ID chosen for legibility, and reading it back would make
 	// the selection depend on the display.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0", EditCondition = "Mode == EMixtormatColorIdMode::ExactId"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "0", EditCondition = "Mode == EMixtormatColorIdMode::ExactId"))
 	// int32, not uint32: a Region ID is a pixel index into the composition, so even a 4096 square
 	// tops out around 16.7 million, and every editor control and parameter binding in the plugin
 	// speaks int32.
@@ -1677,26 +1669,26 @@ struct MIXTORMATRUNTIME_API FMixtormatColorIdMask
 	// How far from a chosen colour still counts, as a distance in RGB. The diagonal of the cube
 	// is about 1.73, so this is small by nature: the default admits the compression wobble in a
 	// flat region without reaching a neighbouring id.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "1.732"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "0.0", UIMax = "1.732"))
 	float Tolerance = 0.10f;
 
 	// Width of the transition either side of Tolerance. The map is point sampled, so the
 	// selection edge is a hard pixel boundary; this is what feathers it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float Softness = 0.02f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Weight = 1.0f;
 
 	// Source placement, matching the painted mask. Integer tiling per axis, because a fractional
 	// scale lands mid-texel at the UV wrap and seams.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "1"))
 	int32 TilingX = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID", meta = (UIMin = "1"))
 	int32 TilingY = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color ID")
@@ -1789,28 +1781,33 @@ struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 	UPROPERTY()
 	bool bSurfaceIds = false;
 
+	// Each connected island gets its own ID. Off: every area in the same band shares one ID,
+	// even where the areas do not touch.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs")
+	bool bSplitIslands = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs")
 	EMixtormatSurfaceIdFeature PrimaryFeature = EMixtormatSurfaceIdFeature::Height;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs")
 	EMixtormatSurfaceIdFeature SecondaryFeature = EMixtormatSurfaceIdFeature::Roughness;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatureMix = 0.0f;
 
 	// Stencil radius, not a dense 64x64 convolution. Used by curvature and normal flatness.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "1", ClampMax = "64"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (UIMin = "1", UIMax = "64"))
 	int32 FormScale = 4;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0", ClampMax = "2"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (UIMin = "0", UIMax = "2"))
 	int32 GuideBlur = 1;
 
 	// Occupied bands are compacted to consecutive IDs. Disconnected equal bands share an ID.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "2", ClampMax = "256"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (UIMin = "2", UIMax = "256"))
 	int32 MaxIds = 64;
 
 	// Grayscale closing of the continuous guide, applied only at quantized ID edges.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (ClampMin = "0", ClampMax = "2"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface IDs", meta = (UIMin = "0", UIMax = "2"))
 	int32 EdgeClose = 1;
 
 	bool CanSampleSurface(const UMixtormatSurface* Surface) const;
@@ -1822,19 +1819,19 @@ struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 	// renormalised, which is what makes one number mean the same thing on every scan instead of
 	// drifting with whatever range that particular texture's height happened to occupy. Scaled by
 	// 0.25 inside the kernel, so the dial spans roughly four bands to hundreds.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Threshold = 0.33f;
 
 	// Where the band boundaries fall. Same granularity, different partition -- a reseed that moves
 	// every boundary without changing the character, which is the control Threshold cannot be.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float Offset = 0.0f;
 
 	// How strongly a step in height blocks a merge that roughness would otherwise allow. The
 	// criterion is two-channel: same roughness band *and* |dHeight| * this <= Threshold, so a
 	// region has to be uniform in roughness and not step in height. At 0 it is roughness bands
 	// alone, which is the right answer on a surface whose height carries no region structure.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cluster IDs", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float HeightInfluence = 1.0f;
 };
 
@@ -1876,10 +1873,10 @@ struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
 	// How far a region tints toward the colour it sampled, as a random amount in this range.
 	// A range rather than one number so most regions can sit near the texture's own colour with
 	// a few pulled much further toward the palette.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RampMixMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RampMixMax = 0.15f;
 
 	// -- Jitter ---------------------------------------------------------------------------------
@@ -1891,28 +1888,28 @@ struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
 	// a flat surface, and the target is "same kiln, different firing", not a rainbow.
 
 	// -1..1 maps to +/-180 degrees, the same convention as FMixtormatLayer::HueShift.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float HueMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float HueMax = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float SaturationMin = 0.95f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float SaturationMax = 1.05f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float ValueMin = 0.75f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float ValueMax = 1.0f;
 
 	// Reshuffles which region gets which colour without changing the ranges. Five decorrelated
 	// randoms come off one hash of the ID and this seed -- palette position, tint amount, hue,
 	// saturation and value -- so moving it moves all five together.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 };
 
@@ -1964,10 +1961,10 @@ struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
 
 	// Chance that any one candidate takes. 0 passes the map through untouched, 1 collapses every
 	// region that touches another into a single one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Amount = 0.35f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (UIMin = "0"))
 	int32 Seed = 0;
 
 	// How many rounds of merging run, which is the unsubdivide depth.
@@ -1976,7 +1973,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
 	// raising it keeps coarsening instead of re-deciding the same pairs. Two rounds at a low
 	// Amount is a different picture from one round at a high one: the first grows clusters of
 	// clusters, the second grows one big one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (ClampMin = "1", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs", meta = (UIMin = "1", UIMax = "8"))
 	int32 Passes = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combine IDs")
@@ -2014,10 +2011,10 @@ struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 
 	// The range a region's value is drawn from, before shaping. Min above Max is not an error --
 	// it inverts the draw, which is the same picture as bInvert and costs nothing to allow.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MinValue = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MaxValue = 1.0f;
 
 	// No zeroinvalid dial, deliberately. The prototype needs one because Houdini hands it an
@@ -2025,13 +2022,13 @@ struct MIXTORMATRUNTIME_API FMixtormatRandomIdMask
 	// pixel outside every region and the control would be a dial that never fires. The shaders
 	// still carry the sentinel check, so the day something can produce a region-less pixel --
 	// a minimum region size, say -- the handling is already in place.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Random From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Weight = 1.0f;
 
 	// The shared block, embedded rather than redeclared. Contrast above 1 about the 0.5 midpoint
@@ -2087,19 +2084,19 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice")
 	EMixtormatGridMode GridMode = EMixtormatGridMode::Straight;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "1", ClampMax = "256"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "1", UIMax = "256"))
 	int32 Rows = 8;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "1", ClampMax = "256"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "1", UIMax = "256"))
 	int32 Columns = 8;
 
 	// Fraction of one cell shifted per row. The shader quantises this just enough for the final row
 	// to meet the first row periodically; 0.5 is running bond when the row count closes on it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RowOffset = 0.0f;
 
 	// 0 keeps feature points at cell centres; 1 gives the full periodic Voronoi solve.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Jitter = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice")
@@ -2109,7 +2106,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	// so a chamfer run off the edge distance fillets into the corner instead of creasing. In cell
 	// fractions, so it means the same thing on a large lattice and a small one. 0 is the true
 	// Voronoi corner.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Rounding = 0.0f;
 
 	// Whether Edge Width and the chamfer are measured as a fraction of the cell rather than in
@@ -2119,7 +2116,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	bool bRelativeEdgeWidth = false;
 
 	// Region-less grout. Consumers already treat MIXTORMAT_INVALID_REGION as pass-through/no mask.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "64.0"))
 	float GapPixels = 1.0f;
 
 	// Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands
@@ -2135,14 +2132,14 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	// independent amounts. A per-wall gap would need a neighbour id, which only the cellular modes
 	// can produce; this asks nothing of the mode beyond the edge distance every one of them
 	// already publishes. Symmetric about Gap, the same convention as the bevel's Variation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float GapRandom = 0.0f;
 
 	// Spends that same grout unevenly around the piece instead of ringing it: the piece sits off
 	// centre in its own socket, hard against one wall with the space behind it. Bounded by the
 	// piece's own half-gap, so a piece can never cross into its neighbour -- which is also why
 	// both of these are inert at Gap 0, where there is no space to sit off centre in.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Lattice", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float GapSlide = 0.0f;
 
 	// Per-region source UV variation. Pattern is the first producer that knows an analytic centre,
@@ -2153,19 +2150,19 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
 	bool bOrthogonalUV = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (UIMin = "-360.0", UIMax = "360.0"))
 	float UVRotationMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (UIMin = "-360.0", UIMax = "360.0"))
 	float UVRotationMax = 360.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (UIMin = "0.05", UIMax = "8.0"))
 	float UVScaleMin = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (UIMin = "0.05", UIMax = "8.0"))
 	float UVScaleMax = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float UVOffset = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|UV")
@@ -2182,28 +2179,28 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	// drawn, as a multiplier on Height. One-sided on purpose: a cell that went below the base
 	// would feather back up at its own wall and read as a recessed panel in a raised frame.
 	// At Height Random 0 every cell sits at full Height; at 1 they spread down to the base.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightAmount = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightRandom = 0.5f;
 
 	// The chamfer's cross-section, from the grout line up to the flat of the cell. -1 is a cove
 	// that hugs the grout then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose
 	// that lifts away and rounds over onto the face. Both ends of the curve stay pinned, so this
 	// changes the chamfer's shape and never its width or height.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float Profile = 0.25f;
 
 	// Offsets the roundness per cell rather than scaling it, so one cell's bullnose can be its
 	// neighbour's cove -- which scaling a signed control could never produce.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ProfileRandom = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float Feather = 0.1f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatherRandom = 0.5f;
 
 	// What the feather does on the way up, rather than how wide it is.
@@ -2213,7 +2210,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	// as a single flat facet. Gain bends it: the slope leaving the wall goes from 1 to 1 + Gain,
 	// and past 1 the curve arcs above the face and leaves a raised lip just inside the edge. Both
 	// ends stay pinned, so the grout wall and the flat face never move.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Relief", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float FeatherGain = 0.0f;
 
 	// Edge relief and shading share one edge-distance field. Width is in output pixels, so the
@@ -2225,16 +2222,16 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float BevelHeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0001", UIMin = "0.25", UIMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "0.25", UIMax = "64.0"))
 	float BevelWidthPixels = 4.0f;
 
 	// The same width for Relative mode, as a fraction of the way from the cell wall to its
 	// deepest interior point. Separate from the pixel value because the two need different
 	// ranges to be draggable at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0001", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BevelWidthCells = 0.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BevelVariation = 0.0f;
 
 	// Slides the chamfer band across the grout line, in output pixels. Negative puts it out in
@@ -2242,19 +2239,15 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "-32.0", UIMax = "32.0"))
 	float BevelInsetPixels = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float EdgeRoughness = 0.65f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float EdgeRoughnessAmount = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float AOAmount = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Edges", meta = (ClampMin = "1.0", ClampMax = "8.0"))
-	float AOSpread = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 
 	// ---------------------------------------------------------------------------------------
@@ -2277,25 +2270,25 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	// Probability that a primary plate fractures internally at all. A plate that does not stays
 	// whole and publishes one ID, so this is the control for how much of the surface reads as
 	// large unbroken pieces against locally shattered ones.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FractureSecondaryAmount = 0.5f;
 
 	// How many pieces a fracturing plate breaks into, drawn per plate. Both ends are structural
 	// indices rather than artistic amounts, so they are range-clamped: below 2 is not a fracture.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "2", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "2", UIMax = "8"))
 	int32 FractureSecondaryMin = 2;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "2", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "2", UIMax = "8"))
 	int32 FractureSecondaryMax = 3;
 
 	// How far the secondary sites sit from their parent's, in cell fractions. Small values put
 	// the split near the middle of the plate; large ones push the pieces toward its walls.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", UIMin = "0.05", UIMax = "0.75"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.05", UIMax = "0.75"))
 	float FractureSecondaryRadius = 0.34f;
 
 	// Breaks up the even ring the secondary sites are laid on, in angle and in radius, so a split
 	// plate does not come out as a regular pie.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FractureSecondaryJitter = 0.55f;
 
 	// How far, in output pixels, the fracture field displaces a plate wall from the straight line
@@ -2306,7 +2299,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 
 	// The run length of those straight segments, in output pixels. Absolute: Columns and Rows do
 	// not stretch it, so changing the plate count leaves the crack character alone.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "1.0", UIMin = "8.0", UIMax = "512.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "8.0", UIMax = "512.0"))
 	float FractureEdgeScale = 96.0f;
 
 	// A second, shorter octave of the same field: the small branching kinks that sit on the long
@@ -2314,7 +2307,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPatternFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "0.0", UIMax = "16.0"))
 	float FractureEdgeDetail = 2.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (ClampMin = "1.0", UIMin = "4.0", UIMax = "128.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pattern IDs|Fracture", meta = (UIMin = "4.0", UIMax = "128.0"))
 	float FractureEdgeDetailScale = 24.0f;
 };
 
@@ -2351,18 +2344,16 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 
 	// How strongly each region's ramp meets the surface. A blend weight, not a tilt amount: at 0
 	// the surface is untouched under every blend mode, not only the additive ones.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float HeightAmount = 0.05f;
 
 	// Per-region jitter on that strength. Base plus jitter rather than range times amount, unlike
 	// Pattern IDs' Height pair: a uniform ramp strength is meaningful on its own -- every region
 	// tilts equally, each in its own direction -- so 0 here leaves every region at full strength
 	// rather than switching the node off.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float IntensityRandom = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Relief", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float AOAmount = 0.0f;
 
 	// How the ramp meets the height under it. AddSub is the centred case this node used to
 	// hard-code, and is the default so existing materials keep their look.
@@ -2386,10 +2377,10 @@ struct MIXTORMATRUNTIME_API FMixtormatRampIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient")
 	bool bAngleStepping = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (ClampMin = "0.01", UIMin = "1.0", UIMax = "90.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs|Gradient", meta = (UIMin = "1.0", UIMax = "90.0"))
 	float AngleStepDegrees = 10.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ramp From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 };
 
@@ -2422,25 +2413,25 @@ struct MIXTORMATRUNTIME_API FMixtormatUvIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
 	bool bOrthogonal = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "-360.0", UIMax = "360.0"))
 	float RotationMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "-360.0", ClampMax = "360.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "-360.0", UIMax = "360.0"))
 	float RotationMax = 360.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "0.05", UIMax = "8.0"))
 	float ScaleMin = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.05", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "0.05", UIMax = "8.0"))
 	float ScaleMax = 1.0f;
 
 	// How far a region's source read may wander from its own centre, per axis, as a fraction of
 	// the source tile. Per-axis where Pattern's single Offset was not: the two axes of a plank or
 	// a brick rarely want the same slip, and one scalar could only ever move both together.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float OffsetU = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float OffsetV = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
@@ -2449,7 +2440,7 @@ struct MIXTORMATRUNTIME_API FMixtormatUvIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs|Transform")
 	bool bRandomFlipV = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UV From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 };
 
@@ -2481,10 +2472,10 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 	// The elevation every region gets, and how far below it a region may be drawn as a multiplier
 	// on that. One-sided on purpose, exactly as Pattern's pair is: a region that went below the
 	// base would feather back up at its own wall and read as a recessed panel in a raised frame.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightAmount = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Height", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightRandom = 0.5f;
 
 	// -- Profile --------------------------------------------------------------------------------
@@ -2492,26 +2483,26 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 	// The chamfer's cross-section, from the boundary up to the flat of the region. -1 is a cove,
 	// 0 a straight flat chamfer, +1 a bullnose. Both ends stay pinned, so this changes the
 	// chamfer's shape and never its width or height.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float Profile = 0.25f;
 
 	// Offsets the roundness per region rather than scaling it, so one region's bullnose can be
 	// its neighbour's cove -- which scaling a signed control could never produce.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ProfileRandom = 0.5f;
 
 	// Eases each region's elevation out at its own boundary, so neighbours at different heights
 	// meet through a ramp rather than a one-texel cliff. In region fractions.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (UIMin = "0.0", UIMax = "0.5"))
 	float Feather = 0.1f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatherRandom = 0.5f;
 
 	// What the feather does on the way up, rather than how wide it is. The run-out is a straight
 	// line and a straight line is the one shape a normal map cannot show; Gain bends it, and past
 	// 1 leaves a raised lip just inside the edge. Both ends stay pinned.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Profile", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float FeatherGain = 0.0f;
 
 	// -- Bevel ----------------------------------------------------------------------------------
@@ -2521,13 +2512,13 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float BevelHeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0001", UIMin = "0.25", UIMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "0.25", UIMax = "64.0"))
 	float BevelWidthPixels = 4.0f;
 
 	// The same width for Relative mode, as a fraction of the way from the region boundary to its
 	// deepest interior point. Separate from the pixel value because the two need different ranges
 	// to be draggable at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0001", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BevelWidthCells = 0.25f;
 
 	// Whether the chamfer width and the feather are measured as a fraction of the region rather
@@ -2536,7 +2527,7 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel")
 	bool bRelativeWidth = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Bevel", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BevelVariation = 0.0f;
 
 	// Slides the chamfer band across the region boundary, in output pixels. Negative puts it
@@ -2552,21 +2543,14 @@ struct MIXTORMATRUNTIME_API FMixtormatReliefIdFilter
 
 	// -- Edge -----------------------------------------------------------------------------------
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float EdgeRoughness = 0.65f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|Edge", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float EdgeRoughnessAmount = 0.5f;
 
-	// -- AO -------------------------------------------------------------------------------------
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|AO", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float AOAmount = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs|AO", meta = (ClampMin = "1.0", ClampMax = "8.0"))
-	float AOSpread = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Relief From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 };
 
@@ -2578,7 +2562,21 @@ UENUM(BlueprintType)
 enum class EMixtormatGeneratorType : uint8
 {
 	StrataCarver UMETA(DisplayName = "Strata Carver"),
-	Fracture UMETA(DisplayName = "Fracture")
+	Fracture UMETA(DisplayName = "Fracture"),
+	// Appended: serialized by value.
+	RockFormation UMETA(DisplayName = "Rock Formation"),
+	Pebbles UMETA(DisplayName = "Pebbles")
+};
+
+// How a pebble's cut planes are oriented.
+UENUM(BlueprintType)
+enum class EMixtormatPebbleDirection : uint8
+{
+	Stratified UMETA(DisplayName = "Stratified"),
+	Random UMETA(DisplayName = "Random"),
+	OpposedPairs UMETA(DisplayName = "Opposed Pairs"),
+	Golden UMETA(DisplayName = "Golden Angle"),
+	Axis UMETA(DisplayName = "Axis Biased")
 };
 
 // Strata Carver: sedimentary/weathered carving driven by a propagated distance solve.
@@ -2605,12 +2603,12 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	// ---- Main ----
 
 	// Drives both the internal fractal seed and every per-iteration draw the solver makes.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0"))
 	int32 Seed = 3;
 
 	// How far the carve cuts, in the same units as the layer's height. Subtracted, never added:
 	// a carver removes material.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Depth = 0.05f;
 
 	// Propagation steps. The jump schedule halves its stride inside this budget rather than
@@ -2622,38 +2620,38 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	// against, and nothing in the solver is keyed to the count: the jump schedule is a function
 	// of JumpStart alone, so raising the ceiling later is a one-line change here and in the
 	// gather, not an algorithm change.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "64"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "64"))
 	int32 Iterations = 64;
 
 	// Where the seed field is cut into "carved" and "not carved". Higher leaves fewer, more
 	// isolated origins; lower floods the surface.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float SeedThreshold = 0.25f;
 
 	// Feature size of the internal seed, as cells across the tile. Drives Worley Cells: the
 	// artist-facing dial is one number, and the solver's cell count follows it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "64"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "64"))
 	int32 Scale = 3;
 
 	// Octaves of the internal fractal seed. Broad natural noise rather than pixel noise is the
 	// whole point of the default: a seed with detail turned up reads as dirt, not as strata.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "1", ClampMax = "8"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "8"))
 	int32 SeedDetail = 3;
 
 	// The banding. Frequency is how many strata cross the field, Amount how hard they bite into
 	// the propagated distance, Warp how far the bands wander off straight.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "64.0"))
 	float StrataFrequency = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "16.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "16.0"))
 	float StrataAmount = 3.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float StrataWarp = 0.54f;
 
 	// How hard a propagating front shoves its own strata phase into the next step. This is the
 	// recursion that makes the result read as layered rock rather than as a distance field.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float PushAmount = 0.5f;
 
 	// 0 ignores any mask scoped under this generator entirely. 1 lets it decide where carving
@@ -2662,77 +2660,77 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	// Not a final multiply. A mask applied only at the end gives a hard cutout with full-strength
 	// carving inside it; feeding seed probability and propagation cost as well is what produces
 	// localised weathering that fades at its own edges.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MaskInfluence = 1.0f;
 
 	// How much Region IDs above this generator vary the carve. Exactly zero at 0 -- the shader
 	// branches rather than multiplying by zero, so a stack with no ID producer and a stack with
 	// one at influence 0 are bit-identical.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float IDInfluence = 0.0f;
 
 	// ---- Advanced ----
 
 	// Distance added per propagation step, before cost. The solver's speed dial.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.001", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.001", UIMax = "4.0"))
 	float StepScale = 0.3f;
 
 	// Widest jump stride, in texels at the reference resolution. The schedule halves from here
 	// to one, so this sets how far a front can reach in its first pass rather than how many
 	// passes run.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "1", ClampMax = "256"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "1", UIMax = "256"))
 	int32 JumpStart = 24;
 
 	// The unreachable distance. Anything still holding this when the solve ends never had a
 	// front arrive, and reads as uncarved.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "1.0"))
 	float MaxValue = 256.0f;
 
 	// Worley feature-point jitter. 0 puts the points on the lattice and the strata come out
 	// regular; 1 is full Voronoi.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float WorleyJitter = 1.0f;
 
 	// Frequency of the banded/ringed Worley family, which is the one that reads as bedding
 	// planes rather than as cells.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "16.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "16.0"))
 	float BandFrequency = 1.0f;
 
 	// How much the seed field resists propagation. High cost makes fronts hug the cheap
 	// channels and the carve comes out as veins; low cost floods.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "32.0"))
 	float CostAmount = 5.0f;
 
 	// How fast a push dies out behind the front. 0 would carry one push across the whole tile.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float PushDecay = 0.2f;
 
 	// Reshuffles which operation and which Worley family each iteration picks, without changing
 	// the seed field. The cheap dial: reseeding here re-solves, it does not re-seed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0"))
 	int32 OperationSeed = 6;
 
 	// Display shaping, all of it applied once after the solve. Bias is a gamma-style pull about
 	// the midpoint; the two remaps and the clamp follow it in that order.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.001", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.001", UIMax = "1.0"))
 	float Bias = 0.68f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RemapInMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RemapInMax = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RemapOutMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RemapOutMax = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ClampMin = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ClampMax = 1.0f;
 };
 
@@ -2786,6 +2784,139 @@ struct MIXTORMATRUNTIME_API FMixtormatFracture
 	float FractureVariation = 0.38f;
 };
 
+// Rock Formation: a tileable sloped rock surface built from BSP-fractured, tilted slab chunks
+// with chipped tops, chamfers and walls. Style blends four presets (0 cliff, 1 layered,
+// 2 boulder, 3 rubble). Warp, Bend and Fault move chunks rigidly. The field depends on these
+// settings only, so it is cached and re-evaluated only when one of them changes.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatRockFormation
+{
+	GENERATED_BODY()
+
+	// 0 cliff, 1 layered, 2 boulder, 3 rubble; fractional values blend neighbours.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float RockStyle = 0.0f;
+
+	// Cells across the tile.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "32"))
+	int32 RockCells = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
+	int32 RockSeed = 0;
+
+	// Scales the preset's BSP split count per cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float RockFracture = 1.0f;
+
+	// Scales dip and per-chunk slope randomness.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float RockSlope = 1.0f;
+
+	// Scales the chamfer width along chunk edges.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float RockChamfer = 1.0f;
+
+	// Scales the gaps between cells and between fractured pieces.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	float RockGap = 1.0f;
+
+	// Low-frequency rigid drift, in cell widths.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockWarp = 0.2f;
+
+	// Kink folds: straight limbs, sharp hinges; blocks tilt with the limb they sit on.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float RockBend = 0.6f;
+
+	// Wavy fault bands stepping blocks up and down.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float RockFault = 0.4f;
+
+	// How much of the layer's height the rock replaces. 1 = the layer's height is the rock.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockAmount = 1.0f;
+
+	// Multiplies the rock height (0-1, 1 = highest possible top) before it is mixed in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float RockHeightScale = 1.0f;
+};
+
+// Pebbles: faceted, chamfered stones scattered on a tileable jittered grid. Each stone has its
+// own seed, size, rotation and height; overlaps keep the highest. The field depends on these
+// settings only (not Amount), so it is cached.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatPebbles
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
+	int32 PebbleSeed = 1;
+
+	// Stones per row; the tile is Cells x Cells.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "1", UIMax = "32"))
+	int32 PebbleCells = 4;
+
+	// Chance a cell has a stone.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleDensity = 1.0f;
+
+	// Position randomness inside the cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleJitter = 0.7f;
+
+	// Stone size; 1 fills a cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "0.1", UIMax = "2.0", Delta = "0.01"))
+	float PebbleScale = 1.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleScaleVariation = 0.5f;
+
+	// Maximum random rotation, degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles", meta = (UIMin = "0.0", UIMax = "180.0", Delta = "1.0"))
+	float PebbleRotation = 180.0f;
+
+	// Planes per stone; more reads rounder.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Shape", meta = (UIMin = "3", UIMax = "24"))
+	int32 PebbleCuts = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Shape")
+	EMixtormatPebbleDirection PebbleDirection = EMixtormatPebbleDirection::Stratified;
+
+	// Master jitter: radius, chamfer, cut angle and cut count.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Shape", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleIrregularity = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Shape", meta = (UIMin = "0.0", UIMax = "0.2", Delta = "0.001"))
+	float PebbleChamfer = 0.02f;
+
+	// Facet rise per unit inward.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "16.0", Delta = "0.05"))
+	float PebbleSteepness = 5.6f;
+
+	// Log2 spread of steepness per facet.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float PebbleSteepnessVariation = 1.7f;
+
+	// Random facet offset.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	float PebbleBiasVariation = 0.08f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float PebbleHeightGain = 1.0f;
+
+	// Random height drop per stone.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleHeightVariation = 0.3f;
+
+	// Region IDs per facet (stone * 64 + facet) instead of per stone.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
+	bool bPebbleFacetIds = false;
+
+	// How much the stones replace the layer's height where they sit. Does not re-evaluate them.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float PebbleAmount = 1.0f;
+};
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -2815,6 +2946,12 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Fracture"))
 	FMixtormatFracture Fracture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::RockFormation"))
+	FMixtormatRockFormation RockFormation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Pebbles"))
+	FMixtormatPebbles Pebbles;
 };
 
 // How a layer's base colour combines with what is composited below it.
@@ -3098,7 +3235,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatCompositionMode CompositionMode = EMixtormatCompositionMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Opacity = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
@@ -3110,22 +3247,22 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
 	bool bOverrideRoughness = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideRoughness", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideRoughness", UIMin = "0.0", UIMax = "1.0"))
 	float Roughness = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
 	bool bOverrideIOR = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideIOR", ClampMin = "1.0", ClampMax = "3.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideIOR", UIMin = "1.0", UIMax = "3.0"))
 	float IOR = 1.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
 	bool bOverrideMetallic = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideMetallic", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideMetallic", UIMin = "0.0", UIMax = "1.0"))
 	float Metallic = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "1.0", ClampMax = "8.0", Delta = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "1.0", UIMax = "8.0", Delta = "1.0"))
 	float Tiling = 1.0f;
 
 	// UV placement for the layer's source, on top of Tiling.
@@ -3138,16 +3275,16 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// There is deliberately no rotation. It breaks the repeat at every angle that is not a
 	// multiple of 90 degrees, and a control that seams across most of its range is worse than
 	// no control, so rotation is offered as quarter turns only -- see Rotation below.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "1", ClampMax = "16"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "1", UIMax = "16"))
 	int32 UVScaleX = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "1", ClampMax = "16"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "1", UIMax = "16"))
 	int32 UVScaleY = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float UVOffsetX = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float UVOffsetY = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
@@ -3163,13 +3300,13 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
 	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RoughnessBias = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-1.0", ClampMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "-1.0", UIMax = "2.0"))
 	float RoughnessContrast = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (ClampMin = "-0.5", UIMax = "0.5"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "-0.5", UIMax = "0.5"))
 	float RoughnessOffset = 0.0f;
 
 	// Strength of this layer's authored normal map, as a tangent-slope gain: 0 is flat, 1 is the
@@ -3185,19 +3322,19 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// from that height; this owns the authored map and nothing else. A surface whose height and
 	// normal describe the same relief is what separates them -- tying the two made it carry the
 	// same bump twice. See MixtormatReliefScaling.h.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (DisplayName = "Normal Strength", ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (DisplayName = "Normal Strength", UIMin = "0.0", UIMax = "4.0"))
 	float NormalIntensity = 1.0f;
 
 	// Degrees. The composite pass divides by 360 and wraps, so the clamp is a half turn either
 	// way -- past that a shift is indistinguishable from the shorter rotation the other side.
 	// Editor rows are normalised -1..1 and scale by MixtormatHue::DegreesPerUnit to get here.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (ClampMin = "-180.0", ClampMax = "180.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (UIMin = "-180.0", UIMax = "180.0"))
 	float HueShift = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (UIMin = "0.0", UIMax = "2.0"))
 	float Saturation = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Adjustments", meta = (UIMin = "0.0", UIMax = "2.0"))
 	float Value = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
@@ -3219,43 +3356,43 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// It used to multiply the placement mask, which made its bottom end meaningless: at 0 the
 	// mask vanished from the comparison and the layer appeared wherever it happened to be taller
 	// than what was beneath it, ignoring where it had been painted.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Strength", EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Strength", EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "4.0"))
 	float HeightBlendAmount = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
 	float HeightThreshold = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Softness", EditCondition = "bHeightBlendEnabled", ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Softness", EditCondition = "bHeightBlendEnabled", UIMin = "0.0"))
 	float HeightRange = 0.1f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.01"))
 	float HeightContrast = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Height Bias", EditCondition = "bHeightBlendEnabled", ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Height Bias", EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightOffset = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Base Height Bias", EditCondition = "bHeightBlendEnabled", ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Base Height Bias", EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightBias = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
 	bool bInvertHeight = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
 	float ConstantHeight = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
 	float MaskHeightInfluence = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
 	float HeightContactAOAmount = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0001", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0001", UIMax = "1.0"))
 	float HeightContactAOWidth = 0.05f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightBorderLift = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0001", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0001", UIMax = "1.0"))
 	float HeightBorderWidth = 0.05f;
 
 	// Gaussian radius, in texels, applied to the accumulated height that Contact AO and Border
@@ -3265,16 +3402,16 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// is sampled, so raising it gave a wider band that was just as noisy. This smooths the height
 	// before the field is derived from it, and only those two effects read the smoothed copy --
 	// coverage, layer height and blend weight all keep the sharp one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "1.0", ClampMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "1.0", UIMax = "32.0"))
 	float HeightBorderSmoothing = 1.0f;
 
 	// Rounds the height the placement mask produces, in texels. 0 skips the two blur passes
 	// entirely. Wide enough and the interior of a shape domes rather than only its rim softening,
 	// which is the difference between an anti-aliased edge and a filleted one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "32.0"))
 	float HeightSmoothRadius = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
 	float HeightSmoothAmount = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
@@ -3283,35 +3420,35 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Children", meta = (TitleProperty = "Type"))
 	TArray<FMixtormatLayerChild> Children;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatureInfluence = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatureBias = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightFeatureInfluence = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bInvertHeightFeature = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float AOFeatureInfluence = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
 	bool bInvertAOFeature = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "1", UIMax = "32"))
 	int32 CurvatureRadius = 2;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0"))
 	float CurvatureStrength = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.001"))
 	float CurvaturePower = 1.0f;
 
 	// Averages curvature over this many widening rings. 1 is a single kernel.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "1", UIMax = "4"))
 	int32 CurvatureSmoothing = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")
@@ -3340,11 +3477,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// well made a surface whose height and normal describe the same relief carry that relief
 	// twice. The normals the structural passes derive still respond, because they differentiate
 	// the boosted height -- once. See MixtormatReliefScaling.h.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float HeightBoost = 1.0f;
 
 	// Adds to this layer's boosted source height before blending, displacement, and derived normals.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Offset", ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Offset", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightLevelOffset = 0.0f;
 
 	// Redistributes the source height between its own ends rather than moving or scaling it: a
@@ -3355,7 +3492,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// Named Shape rather than Bias because HeightBias is already taken, by the height-blend
 	// comparison offset further up. That one moves where two layers cross; this one reshapes one
 	// layer's own relief. Applied before HeightBoost, so the curve always sees a clean 0..1.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Shape", ClampMin = "-1.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Shape", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightShape = 0.0f;
 
 	// Softens this layer's own source height before anything reads it -- and only this
@@ -3367,7 +3504,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// In output texels, both axes together: a height smooth that was anisotropic would be a
 	// different feature, and one radius is what takes the stair-stepping off a low-resolution
 	// height or the hard edge off a tiling seam.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Smooth", ClampMin = "0.0", ClampMax = "8.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Smooth", UIMin = "0.0", UIMax = "8.0"))
 	float HeightSmooth = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
@@ -3377,35 +3514,35 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// controls doing coverage: Opacity, the mask chain, and BaseColorInfluence. This one lerps
 	// between the layer's plain colour and the blended result, so it says how much of the *mode*
 	// happens -- and at Normal there is nothing to fade, so it does nothing at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BaseColorBlendAmount = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float BaseColorInfluence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RoughnessInfluence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float AOInfluence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MetallicInfluence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (DisplayName = "IOR / F0 Influence", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (DisplayName = "IOR / F0 Influence", UIMin = "0.0", UIMax = "1.0"))
 	float F0Influence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float NormalInfluence = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightInfluence = 1.0f;
 
 	// How much this layer pushes the substrate's Fuzz Slab amount. Neutral at 0, unlike the other
 	// Channel Influence rows: fuzz has no underlying value every layer already carries, so a
 	// layer that never touches it must leave the substrate's own default alone rather than
 	// zeroing it out. Roughness remains on the master material's DA_FuzzRoughness.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FuzzInfluence = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence")

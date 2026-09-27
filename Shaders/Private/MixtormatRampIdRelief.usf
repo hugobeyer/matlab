@@ -142,14 +142,14 @@ float RampDelta(int2 P)
 float PatternFeatherShape(float T)
 {
 	const float Clamped = saturate(T);
-	return Clamped + max(FeatherGain, 0.0f) * Clamped * (1.0f - Clamped);
+	return Clamped + FeatherGain * Clamped * (1.0f - Clamped);
 }
 
 // The maximum of that curve on 0..1, in closed form. Below Gain 1 the turning point sits outside
 // the band and the maximum is the flat face itself.
 float PatternFeatherPeak()
 {
-	const float Gain = max(FeatherGain, 0.0f);
+	const float Gain = FeatherGain;
 	if (Gain <= 1.0f)
 	{
 		return 1.0f;
@@ -228,7 +228,7 @@ float PatternBevelDelta(int2 P)
 	// width, never widens it past what was asked for. Straddling the value the way this used to
 	// meant half the cells came out wider than the control said, so the control read as a centre
 	// point rather than as the width.
-	const float WidthVariation = saturate(BevelVariation);
+	const float WidthVariation = BevelVariation;
 	const float BaseWidth = BevelRelative != 0 ? BevelWidthCells : BevelWidthPixels;
 	const float Width = max(
 		BaseWidth * lerp(1.0f - WidthVariation, 1.0f, WidthRandom),
@@ -304,7 +304,7 @@ float PatternCellHeight(int2 P)
 	}
 
 	const float2 Field = RampField.Load(int3(W, 0)).xy;
-	const float Multiplier = lerp(1.0f - saturate(CellHeightRandom), 1.0f, saturate(Field.x));
+	const float Multiplier = lerp(1.0f - CellHeightRandom, 1.0f, saturate(Field.x));
 	const float RequestedElevation = CellHeightAmount * Multiplier;
 	const int2 RegionPixel = int2(
 		RegionId % uint(OutputSize.x),

@@ -1,11 +1,13 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "Compositing/MixtormatComposeHash.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
 #include "ShaderParameterStruct.h"
+#include "ShaderPermutation.h"
 
 // The GENERATORS category.
 //
@@ -293,6 +295,119 @@ IMPLEMENT_GLOBAL_SHADER(
 	"ResolveCS",
 	SF_Compute);
 
+class FMixtormatRockFormationCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRockFormationCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRockFormationCS, FGlobalShader);
+
+	// 0 = build chunk geometry (one thread per cell), 1 = field (cached), 2 = combine.
+	class FStage : SHADER_PERMUTATION_INT("ROCK_STAGE", 3);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Style)
+		SHADER_PARAMETER(int32, Cells)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, FractureAmount)
+		SHADER_PARAMETER(float, SlopeAmount)
+		SHADER_PARAMETER(float, ChamferAmount)
+		SHADER_PARAMETER(float, GapAmount)
+		SHADER_PARAMETER(float, WarpAmount)
+		SHADER_PARAMETER(float, BendAmount)
+		SHADER_PARAMETER(float, FaultAmount)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(int32, MaxLeaves)
+		SHADER_PARAMETER(int32, CellsV)
+		SHADER_PARAMETER(float, RowHeight)
+		SHADER_PARAMETER(float, WallSlope)
+		SHADER_PARAMETER(float, ChamferSlope)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRockLeaf>, OutLeaves)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, OutEdges)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, OutVertices)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutLeafCounts)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FRockLeaf>, Leaves)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, Edges)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float2>, Vertices)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, LeafCounts)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RockHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockTop)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamfer)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockWall)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockEdgeDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRockIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRockFormationCS,
+	"/Plugin/Mixtormat/Private/MixtormatRockFormation.usf",
+	"MainCS",
+	SF_Compute);
+
+class FMixtormatPebblesCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatPebblesCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatPebblesCS, FGlobalShader);
+
+	// 0 = field (cached), 1 = combine into the layer's input height.
+	class FStage : SHADER_PERMUTATION_INT("PEBBLE_STAGE", 2);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Seed)
+		SHADER_PARAMETER(int32, Cells)
+		SHADER_PARAMETER(float, Density)
+		SHADER_PARAMETER(float, Jitter)
+		SHADER_PARAMETER(float, StoneScale)
+		SHADER_PARAMETER(float, ScaleVariation)
+		SHADER_PARAMETER(float, RotationDegrees)
+		SHADER_PARAMETER(int32, Cuts)
+		SHADER_PARAMETER(int32, DirectionMode)
+		SHADER_PARAMETER(float, Irregularity)
+		SHADER_PARAMETER(float, Chamfer)
+		SHADER_PARAMETER(float, Steepness)
+		SHADER_PARAMETER(float, SteepnessVariation)
+		SHADER_PARAMETER(float, BiasVariation)
+		SHADER_PARAMETER(float, HeightGain)
+		SHADER_PARAMETER(float, HeightVariation)
+		SHADER_PARAMETER(uint32, FacetIds)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleEdgeDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleRandom)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutPebbleIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatPebblesCS,
+	"/Plugin/Mixtormat/Private/MixtormatPebbles.usf",
+	"MainCS",
+	SF_Compute);
+
 
 namespace
 {
@@ -535,7 +650,465 @@ namespace
 		return CarvedHeight;
 	}
 
+	// One Rock Formation child.
+	//
+	// The field (height, top / chamfer / wall coverage, edge distance, chunk IDs) is a function
+	// of the field settings and the resolution only, so it goes through the node cache and is
+	// evaluated again only when one of those settings changes. It is the most expensive pass in
+	// the plugin per pixel -- polygon clipping for every nearby cell and BSP node -- which is
+	// exactly why editing anything else must not re-run it.
+	//
+	// The combine is separate and cheap: Amount and Height Scale mix the cached rock into the
+	// layer's input height, so those two stay live without touching the field.
+	// Mirrors the shader's preset table for the three values the C++ side needs to size buffers
+	// and bind constants: row multiplier, split count and wall angle.
+	struct FRockLayout
+	{
+		int32 CellsU = 1;
+		int32 CellsV = 1;
+		float RowHeight = 1.0f;
+		int32 MaxLeaves = 1;
+		float WallSlope = 1.0f;
+		float ChamferSlope = 1.0f;
+	};
 
+	FRockLayout ResolveRockLayout(const FRockFormationRenderData& Rock)
+	{
+		// row_mul, splits, wall angle for cliff, layered, boulder, rubble.
+		static const float Preset[4][3] = {
+			{1.0f, 3.0f, 72.0f}, {2.0f, 2.0f, 72.0f}, {1.0f, 2.0f, 58.0f}, {1.0f, 1.0f, 60.0f}};
+		// Style indexes the four-row table, so it is bounded to it (the shader does the same).
+		const float Style = FMath::Clamp(Rock.Style, 0.0f, 3.0f);
+		const int32 Row = FMath::Min(static_cast<int32>(Style), 2);
+		const float T = Style - static_cast<float>(Row);
+		const auto Blend = [&](const int32 Column)
+		{
+			return FMath::Lerp(Preset[Row][Column], Preset[Row + 1][Column], T);
+		};
+
+		FRockLayout Layout;
+		Layout.CellsU = FMath::Max(Rock.Cells, 1);
+		Layout.CellsV = FMath::Max(FMath::RoundToInt(static_cast<float>(Layout.CellsU) * Blend(0)), 1);
+		Layout.RowHeight = static_cast<float>(Layout.CellsU) / static_cast<float>(Layout.CellsV);
+		const int32 Splits = FMath::Max(FMath::RoundToInt(Blend(1) * Rock.Fracture), 0);
+		// Every internal BSP node has two children, so a tree with Splits internal nodes has
+		// Splits + 1 leaves. Bounded by the per-cell buffer slot count, not by taste.
+		Layout.MaxLeaves = FMath::Clamp(Splits + 1, 1, 256);
+		Layout.WallSlope = FMath::Tan(FMath::DegreesToRadians(Blend(2)));
+		Layout.ChamferSlope = FMath::Min(FMath::Tan(FMath::DegreesToRadians(42.0f)), Layout.WallSlope);
+		return Layout;
+	}
+
+	// GPU mirror of FRockLeaf in MixtormatRockFormation.usf, for the buffer stride only.
+	struct FRockLeafStride
+	{
+		float Floats[20];
+		uint32 Uints[4];
+	};
+	static constexpr int32 RockMaxVertices = 24;
+
+	FRDGTextureRef AddRockFormationPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		FRDGTextureRef SourceHeight,
+		const bool bFieldOnly = false)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		const FRockFormationRenderData& Rock = Child.Generator.RockFormation;
+		const FIntPoint Size = Request.Resolution;
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+
+		const FRockLayout Layout = ResolveRockLayout(Rock);
+		const auto FillParameters = [&Rock, &Layout, Size](FMixtormatRockFormationCS::FParameters* P)
+		{
+			P->OutputSize = Size;
+			P->MaxLeaves = Layout.MaxLeaves;
+			P->CellsV = Layout.CellsV;
+			P->RowHeight = Layout.RowHeight;
+			P->WallSlope = Layout.WallSlope;
+			P->ChamferSlope = Layout.ChamferSlope;
+			P->Style = Rock.Style;
+			P->Cells = Rock.Cells;
+			P->Seed = Rock.Seed;
+			P->FractureAmount = Rock.Fracture;
+			P->SlopeAmount = Rock.Slope;
+			P->ChamferAmount = Rock.Chamfer;
+			P->GapAmount = Rock.Gap;
+			P->WarpAmount = Rock.Warp;
+			P->BendAmount = Rock.Bend;
+			P->FaultAmount = Rock.Fault;
+			P->Amount = Rock.Amount;
+			P->HeightScale = Rock.HeightScale;
+		};
+
+		// Outputs in fixed node-cache slots: height, top, chamfer, wall, edge distance, IDs.
+		FRDGTextureRef Outputs[6] = {};
+		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
+		if (const TArray<FRDGTextureRef, TInlineAllocator<6>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Slot = 0; Slot < 6; ++Slot)
+			{
+				Outputs[Slot] = (*Memo)[Slot];
+			}
+		}
+		else
+		{
+			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
+				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636Bull)
+				: 0;
+			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
+				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
+					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			if (Hit.IsValid())
+			{
+				static const TCHAR* const Names[6] = {
+					TEXT("Mixtormat.Rock.Height"), TEXT("Mixtormat.Rock.Top"), TEXT("Mixtormat.Rock.Chamfer"),
+					TEXT("Mixtormat.Rock.Wall"), TEXT("Mixtormat.Rock.EdgeDistance"), TEXT("Mixtormat.Rock.Ids")};
+				for (int32 Slot = 0; Slot < 6; ++Slot)
+				{
+					Outputs[Slot] = Hit->Outputs[Slot].IsValid()
+						? GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot])
+						: nullptr;
+				}
+			}
+			if (!Outputs[0] || !Outputs[1] || !Outputs[2] || !Outputs[3] || !Outputs[4] || !Outputs[5])
+			{
+				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
+				{
+					return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+						Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+				};
+				Outputs[0] = Make(PF_R32_FLOAT, TEXT("Mixtormat.Rock.Height"));
+				Outputs[1] = Make(PF_R16F, TEXT("Mixtormat.Rock.Top"));
+				Outputs[2] = Make(PF_R16F, TEXT("Mixtormat.Rock.Chamfer"));
+				Outputs[3] = Make(PF_R16F, TEXT("Mixtormat.Rock.Wall"));
+				Outputs[4] = Make(PF_R32_FLOAT, TEXT("Mixtormat.Rock.EdgeDistance"));
+				Outputs[5] = Make(PF_R32_UINT, TEXT("Mixtormat.Rock.Ids"));
+
+				// Build: each cell's chunk geometry, once, into buffers the field reads.
+				const uint32 CellCount = static_cast<uint32>(Layout.CellsU) * static_cast<uint32>(Layout.CellsV);
+				const uint32 LeafSlots = CellCount * static_cast<uint32>(Layout.MaxLeaves);
+				FRDGBufferRef LeafBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRockLeafStride), LeafSlots), TEXT("Mixtormat.Rock.Leaves"));
+				FRDGBufferRef EdgeBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4f), LeafSlots * RockMaxVertices), TEXT("Mixtormat.Rock.Edges"));
+				FRDGBufferRef VertexBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector2f), LeafSlots * RockMaxVertices), TEXT("Mixtormat.Rock.Vertices"));
+				FRDGBufferRef CountBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), CellCount), TEXT("Mixtormat.Rock.LeafCounts"));
+				{
+					FMixtormatRockFormationCS::FPermutationDomain BuildPermutation;
+					BuildPermutation.Set<FMixtormatRockFormationCS::FStage>(0);
+					TShaderMapRef<FMixtormatRockFormationCS> BuildShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), BuildPermutation);
+					auto* B = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
+					FillParameters(B);
+					B->OutLeaves = GraphBuilder.CreateUAV(LeafBuffer);
+					B->OutEdges = GraphBuilder.CreateUAV(EdgeBuffer);
+					B->OutVertices = GraphBuilder.CreateUAV(VertexBuffer);
+					B->OutLeafCounts = GraphBuilder.CreateUAV(CountBuffer);
+					ClearUnusedGraphResources(BuildShader, B);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.RockFormation.Build.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+						BuildShader, B, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(CellCount), 64), 1, 1));
+				}
+
+				FMixtormatRockFormationCS::FPermutationDomain Permutation;
+				Permutation.Set<FMixtormatRockFormationCS::FStage>(1);
+				TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
+				FillParameters(P);
+				P->Leaves = GraphBuilder.CreateSRV(LeafBuffer);
+				P->Edges = GraphBuilder.CreateSRV(EdgeBuffer);
+				P->Vertices = GraphBuilder.CreateSRV(VertexBuffer);
+				P->LeafCounts = GraphBuilder.CreateSRV(CountBuffer);
+				P->OutRockHeight = GraphBuilder.CreateUAV(Outputs[0]);
+				P->OutRockTop = GraphBuilder.CreateUAV(Outputs[1]);
+				P->OutRockChamfer = GraphBuilder.CreateUAV(Outputs[2]);
+				P->OutRockWall = GraphBuilder.CreateUAV(Outputs[3]);
+				P->OutRockEdgeDistance = GraphBuilder.CreateUAV(Outputs[4]);
+				P->OutRockIds = GraphBuilder.CreateUAV(Outputs[5]);
+				// The field stage reads no texture; the combine-only bindings stay unset.
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.RockFormation.Field.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+					Shader, P, Groups);
+
+				if (NodeKey != 0)
+				{
+					TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = NodeKey;
+					Entry->Resolution = Size;
+					for (int32 Slot = 0; Slot < 6; ++Slot)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+
+			// Reusable outputs: chunk IDs for the ID consumers below this row, and the four masks
+			// for Copy Output / published-source masks anywhere downstream.
+			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
+			static const TCHAR* const MaskNames[4] = {
+				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance")};
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				const FName OutputName(MaskNames[Index]);
+				Ctx.PublishedMaskOutputs.Add(
+					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[1 + Index]);
+				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
+					LayerCtx.LayerIndex, Child.SourceChildIndex))
+				{
+					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
+						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+				}
+			}
+			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+				LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[5], nullptr,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+			}
+
+			TArray<FRDGTextureRef, TInlineAllocator<6>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			Stored.Append(Outputs, 6);
+		}
+		if (bFieldOnly)
+		{
+			return nullptr;
+		}
+
+		// A neutral node passes its input through, like every other generator.
+		if (Rock.Amount == 0.0f)
+		{
+			return SourceHeight;
+		}
+
+		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Rock.LayerHeight"));
+		{
+			FMixtormatRockFormationCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatRockFormationCS::FStage>(2);
+			TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
+			FillParameters(P);
+			P->RockHeight = Outputs[0];
+			P->SourceHeight = SourceHeight;
+			P->OutHeight = GraphBuilder.CreateUAV(Combined);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.RockFormation.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+		return Combined;
+	}
+
+	// One Pebbles child. Same shape as Rock Formation: the scatter field is cached against its
+	// settings and resolution, and Amount mixes it into the layer's height without re-running it.
+	FRDGTextureRef AddPebblesPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		FRDGTextureRef SourceHeight,
+		const bool bFieldOnly = false)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		const FPebblesRenderData& Pebbles = Child.Generator.Pebbles;
+		const FIntPoint Size = Request.Resolution;
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+
+		const auto FillParameters = [&Pebbles, Size](FMixtormatPebblesCS::FParameters* P)
+		{
+			P->OutputSize = Size;
+			P->Seed = Pebbles.Seed;
+			P->Cells = Pebbles.Cells;
+			P->Density = Pebbles.Density;
+			P->Jitter = Pebbles.Jitter;
+			P->StoneScale = Pebbles.Scale;
+			P->ScaleVariation = Pebbles.ScaleVariation;
+			P->RotationDegrees = Pebbles.Rotation;
+			P->Cuts = Pebbles.Cuts;
+			P->DirectionMode = Pebbles.Direction;
+			P->Irregularity = Pebbles.Irregularity;
+			P->Chamfer = Pebbles.Chamfer;
+			P->Steepness = Pebbles.Steepness;
+			P->SteepnessVariation = Pebbles.SteepnessVariation;
+			P->BiasVariation = Pebbles.BiasVariation;
+			P->HeightGain = Pebbles.HeightGain;
+			P->HeightVariation = Pebbles.HeightVariation;
+			P->FacetIds = Pebbles.bFacetIds ? 1u : 0u;
+			P->Amount = Pebbles.Amount;
+		};
+
+		// Node-cache slots: height, coverage, edge distance, random, IDs.
+		constexpr int32 SlotCount = 5;
+		FRDGTextureRef Outputs[SlotCount] = {};
+		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
+		if (const TArray<FRDGTextureRef, TInlineAllocator<6>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+			{
+				Outputs[Slot] = (*Memo)[Slot];
+			}
+		}
+		else
+		{
+			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+			const uint64 NodeKey = NodeCache && Pebbles.FieldKey != 0
+				? MixtormatComposeHash::Combine(Pebbles.FieldKey, 0x506562626C65ull)
+				: 0;
+			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
+				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
+					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			static const TCHAR* const Names[SlotCount] = {
+				TEXT("Mixtormat.Pebbles.Height"), TEXT("Mixtormat.Pebbles.Coverage"),
+				TEXT("Mixtormat.Pebbles.EdgeDistance"), TEXT("Mixtormat.Pebbles.Random"),
+				TEXT("Mixtormat.Pebbles.Ids")};
+			bool bComplete = Hit.IsValid();
+			for (int32 Slot = 0; bComplete && Slot < SlotCount; ++Slot)
+			{
+				bComplete = Hit->Outputs[Slot].IsValid();
+			}
+			if (bComplete)
+			{
+				for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+				{
+					Outputs[Slot] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot]);
+				}
+			}
+			else
+			{
+				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
+				{
+					return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+						Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+				};
+				Outputs[0] = Make(PF_R32_FLOAT, Names[0]);
+				Outputs[1] = Make(PF_R16F, Names[1]);
+				Outputs[2] = Make(PF_R32_FLOAT, Names[2]);
+				Outputs[3] = Make(PF_R16F, Names[3]);
+				Outputs[4] = Make(PF_R32_UINT, Names[4]);
+
+				FMixtormatPebblesCS::FPermutationDomain Permutation;
+				Permutation.Set<FMixtormatPebblesCS::FStage>(0);
+				TShaderMapRef<FMixtormatPebblesCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatPebblesCS::FParameters>();
+				FillParameters(P);
+				P->OutPebbleHeight = GraphBuilder.CreateUAV(Outputs[0]);
+				P->OutPebbleCoverage = GraphBuilder.CreateUAV(Outputs[1]);
+				P->OutPebbleEdgeDistance = GraphBuilder.CreateUAV(Outputs[2]);
+				P->OutPebbleRandom = GraphBuilder.CreateUAV(Outputs[3]);
+				P->OutPebbleIds = GraphBuilder.CreateUAV(Outputs[4]);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.Pebbles.Field.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+					Shader, P, Groups);
+
+				if (NodeKey != 0)
+				{
+					TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = NodeKey;
+					Entry->Resolution = Size;
+					for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+
+			// Stone (or facet) IDs for the ID consumers below this row; masks for Copy Output.
+			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[4]);
+			static const TCHAR* const MaskNames[3] = {
+				TEXT("PebbleCoverage"), TEXT("PebbleEdgeDistance"), TEXT("PebbleRandom")};
+			for (int32 Index = 0; Index < 3; ++Index)
+			{
+				const FName OutputName(MaskNames[Index]);
+				Ctx.PublishedMaskOutputs.Add(
+					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[1 + Index]);
+				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
+					LayerCtx.LayerIndex, Child.SourceChildIndex))
+				{
+					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
+						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+				}
+			}
+			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+				LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[4], nullptr,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+			}
+
+			TArray<FRDGTextureRef, TInlineAllocator<6>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			Stored.Append(Outputs, SlotCount);
+		}
+		if (bFieldOnly)
+		{
+			return nullptr;
+		}
+
+		if (Pebbles.Amount == 0.0f)
+		{
+			return SourceHeight;
+		}
+
+		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Pebbles.LayerHeight"));
+		{
+			FMixtormatPebblesCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatPebblesCS::FStage>(1);
+			TShaderMapRef<FMixtormatPebblesCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatPebblesCS::FParameters>();
+			FillParameters(P);
+			P->PebbleHeight = Outputs[0];
+			P->PebbleCoverage = Outputs[1];
+			P->SourceHeight = SourceHeight;
+			P->OutHeight = GraphBuilder.CreateUAV(Combined);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Pebbles.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+		return Combined;
+	}
+
+
+}
+
+void AddGeneratorFieldPasses(
+	FMixtormatComposeContext& Ctx,
+	FMixtormatLayerPassContext& LayerCtx,
+	const FLayerRenderData& Layer)
+{
+	// Generators whose field depends only on their own settings publish their Region IDs here,
+	// in the ID phase, so UV From IDs -- which resolves before the layer's source is read --
+	// can key off them. Their height is still mixed in later by AddGeneratorPasses.
+	if (!Layer.bEnabled)
+	{
+		return;
+	}
+	for (const FChildRenderData& Child : Layer.Children)
+	{
+		if (Child.Type != EMixtormatLayerChildType::Generator)
+		{
+			continue;
+		}
+		if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)
+		{
+			AddRockFormationPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
+		{
+			AddPebblesPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+		}
+	}
 }
 
 void AddGeneratorPasses(
@@ -547,7 +1120,9 @@ void AddGeneratorPasses(
 		[](const FChildRenderData& Child)
 		{
 			return Child.Type == EMixtormatLayerChildType::Generator
-							&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver;
+							&& (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
+								|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
+								|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles);
 		});
 	if (!bHasGenerator)
 	{
@@ -590,10 +1165,19 @@ void AddGeneratorPasses(
 		case EMixtormatGeneratorType::Fracture:
 			// Fracture consumes ramp relief in the isolated structural stage.
 			break;
+		case EMixtormatGeneratorType::RockFormation:
+			LayerCtx.LayerInputHeight = AddRockFormationPasses(
+				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+			break;
+		case EMixtormatGeneratorType::Pebbles:
+			LayerCtx.LayerInputHeight = AddPebblesPasses(
+				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+			break;
 		}
 	}
 
 	FRDGTextureRef CarvedHeight = LayerCtx.LayerInputHeight;
+	LayerCtx.bGeneratedHeight = CarvedHeight != SourceHeight;
 	if (CarvedHeight == SourceHeight)
 	{
 		// Every generator on this layer was neutral. Nothing carved, so nothing to re-derive --
@@ -638,7 +1222,6 @@ void AddGeneratorPasses(
 		nullptr,
 		Ctx.Request.Resolution,
 		HeightDerivedNormalStrength,
-		0.0f,
 		false,
 		TEXT("FormationRecipe"));
 	LayerCtx.LayerInputN = FormedNormal;

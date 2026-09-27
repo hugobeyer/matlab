@@ -14,7 +14,7 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatSurfaceIdsCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatSurfaceIdsCS, FGlobalShader);
 
-	class FStage : SHADER_PERMUTATION_INT("SURFACE_ID_STAGE", 8);
+	class FStage : SHADER_PERMUTATION_INT("SURFACE_ID_STAGE", 12);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -34,6 +34,7 @@ public:
 		SHADER_PARAMETER(uint32, MaxIds)
 		SHADER_PARAMETER(int32, EdgeClose)
 		SHADER_PARAMETER(uint32, WriteDebug)
+		SHADER_PARAMETER(uint32, SplitIslands)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceNormal)
@@ -49,6 +50,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Statistics)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, CompactIds)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Labels)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -110,12 +112,14 @@ namespace MixtormatGpuCompositor
 		AddClearUAVPass(GraphBuilder, StatisticsUAV, 0u);
 
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-		for (int32 Stage = 0; Stage < 8; ++Stage)
+		const bool bSplitIslands = Settings.bSplitIslands;
+		FRDGTextureRef Islands = bSplitIslands ? Texture(PF_R32_UINT, TEXT("Mixtormat.SurfaceIds.Islands")) : nullptr;
+		FRDGBufferRef Labels = bSplitIslands
+			? GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32),
+				static_cast<uint32>(Size.X) * static_cast<uint32>(Size.Y)), TEXT("Mixtormat.SurfaceIds.IslandLabels"))
+			: nullptr;
+		const auto AddStage = [&](const int32 Stage)
 		{
-			if ((Stage == 1 && Settings.GuideBlur == 0) || (Stage == 3 && Settings.EdgeClose == 0))
-			{
-				continue;
-			}
 			FMixtormatSurfaceIdsCS::FPermutationDomain Permutation;
 			Permutation.Set<FMixtormatSurfaceIdsCS::FStage>(Stage);
 			TShaderMapRef<FMixtormatSurfaceIdsCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
@@ -138,6 +142,7 @@ namespace MixtormatGpuCompositor
 			Parameters->MaxIds = static_cast<uint32>(Settings.MaxIds);
 			Parameters->EdgeClose = Settings.EdgeClose;
 			Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
+			Parameters->SplitIslands = bSplitIslands ? 1u : 0u;
 			Parameters->SourceRAMH = RAM;
 			Parameters->SourceHeight = Height;
 			Parameters->SourceNormal = Normal;
@@ -146,20 +151,49 @@ namespace MixtormatGpuCompositor
 			Parameters->InputSamples = Stage == 1 ? RawSamples : SmoothedSamples;
 			Parameters->FeatureGuide = Guide;
 			Parameters->DilatedGuide = Dilated;
-			Parameters->InputIds = Stage == 5 ? Quantized : Cleaned;
+			// Island stages read the finished band ids and write the island ids.
+			Parameters->InputIds = Stage >= 8 ? Result : (Stage == 5 ? Quantized : Cleaned);
 			Parameters->OutputSamples = GraphBuilder.CreateUAV(Stage == 0 ? RawSamples : SmoothedSamples);
 			Parameters->OutputGuide = GraphBuilder.CreateUAV(Stage == 2 ? Guide : Dilated);
-			Parameters->OutputIds = GraphBuilder.CreateUAV(Stage == 4 ? Quantized : (Stage == 5 ? Cleaned : Result));
+			Parameters->OutputIds = GraphBuilder.CreateUAV(Stage == 11 ? Islands
+				: (Stage == 4 ? Quantized : (Stage == 5 ? Cleaned : Result)));
 			Parameters->OutputDebug = GraphBuilder.CreateUAV(Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex]);
 			Parameters->Statistics = StatisticsUAV;
 			Parameters->CompactIds = GraphBuilder.CreateUAV(CompactIds);
+			Parameters->Labels = Labels ? GraphBuilder.CreateUAV(Labels) : nullptr;
 			// Stage permutations strip unused bindings. Clear them so RDG tracks only real
 			// dependencies, never an unwritten future texture or a spurious read/write alias.
 			ClearUnusedGraphResources(Shader, Parameters);
 			FComputeShaderUtils::AddPass(GraphBuilder,
 				RDG_EVENT_NAME("Mixtormat.SurfaceIds.Layer%d.Child%d.Stage%d", LayerIndex, Child.SourceChildIndex, Stage),
 				Shader, Parameters, Stage == 6 ? FIntVector(1, 1, 1) : Groups);
+		};
+
+		for (int32 Stage = 0; Stage < 8; ++Stage)
+		{
+			if ((Stage == 1 && Settings.GuideBlur == 0) || (Stage == 3 && Settings.EdgeClose == 0))
+			{
+				continue;
+			}
+			AddStage(Stage);
 		}
-		return Result;
+		if (!bSplitIslands)
+		{
+			return Result;
+		}
+
+		// Connected components over the bands: hook neighbours, then pointer-jump twice, per
+		// round. Label chains halve every jump, so a fixed budget converges for ordinary shapes;
+		// a very long winding island can still end split, the same limit Cluster IDs has.
+		constexpr int32 IslandRounds = 24;
+		AddStage(8);
+		for (int32 Round = 0; Round < IslandRounds; ++Round)
+		{
+			AddStage(9);
+			AddStage(10);
+			AddStage(10);
+		}
+		AddStage(11);
+		return Islands;
 	}
 }

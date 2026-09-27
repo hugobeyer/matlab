@@ -15,8 +15,14 @@
 #include "RHIResources.h"
 #include "Engine/Texture2D.h"
 #include "TextureResource.h"
+#include "Templates/Function.h"
+
+#include <atomic>
 
 class UTexture2D;
+struct FMixtormatPrefixCache;
+struct FMixtormatNodeCache;
+struct FMixtormatNodeCacheEntry;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMixtormatComposition, Log, All);
 
@@ -334,7 +340,6 @@ namespace MixtormatGpuCompositor
 		bool bPeelNormalizeSeedWeights = true;
 		int32 PeelCurvatureRadius = 2;
 		float PeelGrowthStrength = 1.0f;
-		float PeelAOStrength = 0.8f;
 		float PeelEdgeSharpness = 1.0f;
 		float PeelLiftVariation = 0.6f;
 		float PeelCornerLift = 0.6f;
@@ -423,8 +428,6 @@ namespace MixtormatGpuCompositor
 		float BreakupRoughnessAmount = 0.0f;
 		float BreakupNormalStrength = 2.0f;
 		float BreakupNormalSharpness = 0.75f;
-		float BreakupAOAmount = 0.35f;
-		float BreakupAORadius = 8.0f;
 		FTextureRHIRef BreakupPlacementMask;
 		float BreakupMaskTiling = 1.0f;
 		bool bBreakupInvertMask = false;
@@ -557,6 +560,7 @@ namespace MixtormatGpuCompositor
 	struct FClusterFilterRenderData
 	{
 		bool bSurfaceIds = false;
+		bool bSplitIslands = false;
 		EMixtormatSurfaceIdFeature PrimaryFeature = EMixtormatSurfaceIdFeature::Height;
 		EMixtormatSurfaceIdFeature SecondaryFeature = EMixtormatSurfaceIdFeature::Roughness;
 		float FeatureMix = 0.0f;
@@ -611,8 +615,6 @@ namespace MixtormatGpuCompositor
 		float FeatherGain = 0.0f;
 		float EdgeRoughness = 0.65f;
 		float EdgeRoughnessAmount = 0.0f;
-		float AOAmount = 0.0f;
-		float AOSpread = 2.0f;
 
 		// Fracture Plates only. Inert for every other PatternMode.
 		float FractureSizeVariation = 0.3f;
@@ -670,7 +672,6 @@ namespace MixtormatGpuCompositor
 	struct FRampIdRenderData
 	{
 		float HeightAmount = 0.05f;
-		float AOAmount = 0.0f;
 		float IntensityRandom = 0.0f;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::AddSub;
 		bool bRotateRandom = true;
@@ -716,8 +717,6 @@ namespace MixtormatGpuCompositor
 		float GapHeight = 0.0f;
 		float EdgeRoughness = 0.65f;
 		float EdgeRoughnessAmount = 0.0f;
-		float AOAmount = 0.0f;
-		float AOSpread = 2.0f;
 		uint32 Seed = 1;
 	};
 
@@ -782,17 +781,63 @@ namespace MixtormatGpuCompositor
 		float Variation = 0.38f;
 	};
 
+	struct FRockFormationRenderData
+	{
+		float Style = 0.0f;
+		int32 Cells = 4;
+		uint32 Seed = 0;
+		float Fracture = 1.0f;
+		float Slope = 1.0f;
+		float Chamfer = 1.0f;
+		float Gap = 1.0f;
+		float Warp = 0.2f;
+		float Bend = 0.6f;
+		float Fault = 0.4f;
+		float Amount = 1.0f;
+		float HeightScale = 1.0f;
+		// Hash of the field-shaping settings only (not Amount / HeightScale), for the node cache.
+		uint64 FieldKey = 0;
+	};
+
+	struct FPebblesRenderData
+	{
+		int32 Seed = 1;
+		int32 Cells = 4;
+		float Density = 1.0f;
+		float Jitter = 0.7f;
+		float Scale = 1.1f;
+		float ScaleVariation = 0.5f;
+		float Rotation = 180.0f;
+		int32 Cuts = 10;
+		int32 Direction = 0;
+		float Irregularity = 0.5f;
+		float Chamfer = 0.02f;
+		float Steepness = 5.6f;
+		float SteepnessVariation = 1.7f;
+		float BiasVariation = 0.08f;
+		float HeightGain = 1.0f;
+		float HeightVariation = 0.3f;
+		bool bFacetIds = false;
+		float Amount = 1.0f;
+		// Hash of the field-shaping settings only (not Amount), for the node cache.
+		uint64 FieldKey = 0;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		FStrataCarverRenderData StrataCarver;
 		FFractureRenderData Fracture;
+		FRockFormationRenderData RockFormation;
+		FPebblesRenderData Pebbles;
 	};
 
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
+		// Hash of this child's own settings for FMixtormatNodeCache; 0 when caching is off.
+		uint64 CacheKey = 0;
 		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
 		int32 ScopeOwnerSourceChildIndex = INDEX_NONE;
 		FMaskRenderData Mask;
@@ -838,6 +883,9 @@ namespace MixtormatGpuCompositor
 	struct FLayerRenderData
 	{
 		FGuid LayerId;
+		// Hash of the layer without its children: everything a producer reading the layer's own
+		// maps can see (surface, reference source, UV transform). 0 when caching is off.
+		uint64 SourceCacheKey = 0;
 		FScalarDriverRenderData ScalarDrivers[2];
 		FTextureRHIRef BaseColor;
 		FTextureRHIRef Normal;
@@ -954,6 +1002,21 @@ namespace MixtormatGpuCompositor
 		// Shared rather than raw, so a composite still in flight holds the cache alive even if
 		// the panel that owns it has gone.
 		TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;
+
+		// Layer-prefix cache (see FMixtormatPrefixCache). PrefixHashes[i] covers layers 0..i and
+		// every global input; empty disables both resume and save for this request.
+		TSharedPtr<FMixtormatPrefixCache, ESPMode::ThreadSafe> PrefixCache;
+		TSharedPtr<FMixtormatNodeCache, ESPMode::ThreadSafe> NodeCache;
+		TArray<uint64> PrefixHashes;
+		// The layer whose finished state is worth keeping: the one just below the lowest layer
+		// that changed since the previous composite. INDEX_NONE saves nothing.
+		int32 SnapshotLayer = INDEX_NONE;
+		// Resume and save are only allowed strictly below this layer. A debug view writes from
+		// inside the loop, so the layers up to the one it inspects have to actually run.
+		int32 CacheLayerLimit = MAX_int32;
+		uint64 CacheBudgetBytes = 0;
+		// Cleared on the render thread once the graph is submitted; see IsComposeInFlight.
+		TSharedPtr<std::atomic<bool>, ESPMode::ThreadSafe> InFlight;
 	};
 
 	// True when Kind/OutputName/LayerIndex/ChildIndex together name the active generic
@@ -1135,8 +1198,6 @@ namespace MixtormatGpuCompositor
 		float FeatherGain = 0.0f;
 		float EdgeRoughness = 0.65f;
 		float EdgeRoughnessAmount = 0.0f;
-		float AOAmount = 0.0f;
-		float AOSpread = 2.0f;
 	};
 
 	// Graph-wide state for one composite.
@@ -1173,6 +1234,9 @@ namespace MixtormatGpuCompositor
 		TSet<int32> RequiredHeightSnapshots;
 		TMap<int32, FRDGTextureRef> HeightSnapshots;
 
+		// Node-cache entries whose targets are extracted by this graph; stored after Execute.
+		TArray<TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>> PendingNodeEntries;
+
 		FMixtormatComposeContext(FRDGBuilder& InGraphBuilder, const FRenderRequest& InRequest)
 			: GraphBuilder(InGraphBuilder)
 			, Request(InRequest)
@@ -1208,6 +1272,12 @@ namespace MixtormatGpuCompositor
 		// shared by every Layer Values mask on it.
 		FRDGTextureRef LayerValues = nullptr;
 		FRDGTextureRef LayerInputHeight = nullptr;
+		// Set when a generator rewrote LayerInputHeight: the composite then reads it as this
+		// layer's height even when the layer has no packed height of its own.
+		bool bGeneratedHeight = false;
+		// Per-layer generator field outputs, keyed by source child index, so the ID phase and the
+		// height phase share one evaluation.
+		TMap<int32, TArray<FRDGTextureRef, TInlineAllocator<6>>> GeneratorFields;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1267,6 +1337,8 @@ namespace MixtormatGpuCompositor
 			LayerInputRAM = nullptr;
 			LayerValues = nullptr;
 			LayerInputHeight = nullptr;
+			bGeneratedHeight = false;
+			GeneratorFields.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};
@@ -1417,7 +1489,6 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputRAM,
 		const FIntPoint Resolution,
 		const float NormalStrength,
-		const float AOAmount,
 		const bool bWriteRAM,
 		const TCHAR* DebugName);
 
@@ -1559,6 +1630,13 @@ namespace MixtormatGpuCompositor
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);
 
+	// MixtormatGpuGeneratorPasses.cpp -- ID-phase fields of settings-only generators (Rock
+	// Formation, Pebbles): publishes their Region IDs before UV From IDs resolves.
+	void AddGeneratorFieldPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
 	// MixtormatGpuGeneratorPasses.cpp -- source-height generators (Strata).
 	// Fracture has a later dependency: the isolated layer's Ramp From IDs relief.
 	void AddGeneratorPasses(
@@ -1617,3 +1695,251 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 }
+
+// The finished state of the stack after one layer, kept between composites.
+//
+// Every edit used to recomposite the whole stack. Layers below the one being edited produce the
+// same pixels every frame of a drag, so their result is kept here and the next composite starts
+// just above it. An entry is keyed on a hash of every input to layers 0..K
+// (FRenderRequest::PrefixHashes), and holds what a later layer is meant to read from below K --
+// the four accumulation channels and the ridge the pipeline carries layer to layer, plus the
+// dedicated snapshots later layers name explicitly (height references, Driver signals, published
+// Copy Output masks). A published output that aliases a ping-pong slot refuses the save.
+//
+// Not carried: the effect pair (EffectTargets / EffectHeightTargets). Every reader of it on a
+// layer is gated on that layer's own first write (the merge's and peel's Initialize), so nothing
+// should read another layer's leftovers -- but a layer flagged bHasEffects whose effects all skip
+// their contribution would read slot 0 from whatever ran before it, and after a resume that is
+// the cleared slot instead. Mixtormat.DisableComposeCache 1 is the reference to compare against.
+//
+// Render thread only, like FMixtormatNetworkCache. Byte-bounded because one entry is five
+// full-resolution targets: about 120MB at 2K and 470MB at 4K.
+struct FMixtormatPrefixCache
+{
+	struct FEntry
+	{
+		uint64 Key = 0;
+		int32 LayerIndex = INDEX_NONE;
+		FIntPoint Resolution = FIntPoint::ZeroValue;
+		TRefCountPtr<IPooledRenderTarget> BaseColor;
+		TRefCountPtr<IPooledRenderTarget> Normal;
+		TRefCountPtr<IPooledRenderTarget> RAM;
+		TRefCountPtr<IPooledRenderTarget> Height;
+		TRefCountPtr<IPooledRenderTarget> Ridge;
+		TArray<TPair<int32, TRefCountPtr<IPooledRenderTarget>>> HeightSnapshots;
+		TArray<TPair<FGuid, TRefCountPtr<IPooledRenderTarget>>> DriverSnapshots;
+		// Driver sources at or below LayerIndex that were demanded when this was saved. Not every
+		// demanded source produces a snapshot (only signal-shaped masks do), so presence of the
+		// snapshot cannot be the test; being considered is.
+		TSet<FGuid> DriverDemandCovered;
+		TArray<TPair<MixtormatGpuCompositor::FPublishedMaskKey, TRefCountPtr<IPooledRenderTarget>>> PublishedMasks;
+		uint64 Bytes = 0;
+		uint64 LastUsed = 0;
+	};
+
+	static constexpr int32 MaxEntries = 2;
+
+	TArray<TSharedPtr<FEntry, ESPMode::ThreadSafe>> Entries;
+	uint64 Tick = 0;
+
+	static uint64 TargetBytes(const TRefCountPtr<IPooledRenderTarget>& Target)
+	{
+		if (!Target.IsValid())
+		{
+			return 0;
+		}
+		const FPooledRenderTargetDesc& Desc = Target->GetDesc();
+		return static_cast<uint64>(Desc.Extent.X) * static_cast<uint64>(Desc.Extent.Y)
+			* static_cast<uint64>(GPixelFormats[Desc.Format].BlockBytes);
+	}
+
+	// Deepest usable entry: its key matches the current prefix at its layer, the layer is below
+	// the limit, and it holds every snapshot the current stack will ask for.
+	TSharedPtr<FEntry, ESPMode::ThreadSafe> FindDeepest(
+		const TArray<uint64>& PrefixHashes,
+		const FIntPoint InResolution,
+		const int32 LayerLimit,
+		const TFunctionRef<bool(const FEntry&)> HasRequiredSnapshots)
+	{
+		check(IsInRenderingThread());
+		++Tick;
+		TSharedPtr<FEntry, ESPMode::ThreadSafe> Best;
+		for (const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Entry : Entries)
+		{
+			if (Entry->Resolution != InResolution
+				|| !PrefixHashes.IsValidIndex(Entry->LayerIndex)
+				|| Entry->LayerIndex >= LayerLimit
+				|| PrefixHashes[Entry->LayerIndex] != Entry->Key
+				|| !HasRequiredSnapshots(*Entry))
+			{
+				continue;
+			}
+			if (!Best.IsValid() || Entry->LayerIndex > Best->LayerIndex)
+			{
+				Best = Entry;
+			}
+		}
+		if (Best.IsValid())
+		{
+			Best->LastUsed = Tick;
+		}
+		return Best;
+	}
+
+	bool Contains(const uint64 Key, const int32 LayerIndex, const FIntPoint InResolution) const
+	{
+		for (const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Entry : Entries)
+		{
+			if (Entry->Key == Key && Entry->LayerIndex == LayerIndex && Entry->Resolution == InResolution)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Called after the graph that filled Incoming's targets has executed.
+	void Store(const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Incoming, const uint64 BudgetBytes)
+	{
+		check(IsInRenderingThread());
+		if (!Incoming.IsValid() || !Incoming->BaseColor.IsValid() || !Incoming->Normal.IsValid()
+			|| !Incoming->RAM.IsValid() || !Incoming->Height.IsValid() || !Incoming->Ridge.IsValid())
+		{
+			return;
+		}
+		uint64 Bytes = TargetBytes(Incoming->BaseColor) + TargetBytes(Incoming->Normal)
+			+ TargetBytes(Incoming->RAM) + TargetBytes(Incoming->Height) + TargetBytes(Incoming->Ridge);
+		for (const auto& Pair : Incoming->HeightSnapshots) { Bytes += TargetBytes(Pair.Value); }
+		for (const auto& Pair : Incoming->DriverSnapshots) { Bytes += TargetBytes(Pair.Value); }
+		for (const auto& Pair : Incoming->PublishedMasks) { Bytes += TargetBytes(Pair.Value); }
+		Incoming->Bytes = Bytes;
+		if (Bytes > BudgetBytes)
+		{
+			return;
+		}
+
+		Entries.RemoveAll([&Incoming](const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Entry)
+		{
+			return Entry->LayerIndex == Incoming->LayerIndex || Entry->Resolution != Incoming->Resolution;
+		});
+		const auto TotalBytes = [this]()
+		{
+			uint64 Total = 0;
+			for (const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Entry : Entries)
+			{
+				Total += Entry->Bytes;
+			}
+			return Total;
+		};
+		while (!Entries.IsEmpty() && (Entries.Num() >= MaxEntries || TotalBytes() + Bytes > BudgetBytes))
+		{
+			int32 OldestIndex = 0;
+			for (int32 Index = 1; Index < Entries.Num(); ++Index)
+			{
+				if (Entries[Index]->LastUsed < Entries[OldestIndex]->LastUsed)
+				{
+					OldestIndex = Index;
+				}
+			}
+			Entries.RemoveAtSwap(OldestIndex);
+		}
+		Incoming->LastUsed = ++Tick;
+		Entries.Add(Incoming);
+	}
+
+	void Reset()
+	{
+		check(IsInRenderingThread());
+		Entries.Reset();
+	}
+};
+
+// Outputs of one self-contained producer node, kept between composites.
+//
+// Region ID producers are a function of their own settings and of what they read -- nothing
+// else. Pattern IDs reads nothing at all; Surface/Cluster IDs read the layer's maps or the
+// composite below. Keyed on exactly that (see the call sites), a hit is the map a miss would have
+// produced, so editing a mask, an effect or the composite on the same layer no longer re-runs them.
+struct FMixtormatNodeCacheEntry
+{
+	uint64 Key = 0;
+	FIntPoint Resolution = FIntPoint::ZeroValue;
+	// Fixed slots per producer kind; unused slots stay null.
+	TRefCountPtr<IPooledRenderTarget> Outputs[6];
+	uint64 Bytes = 0;
+	uint64 LastUsed = 0;
+};
+
+struct FMixtormatNodeCache
+{
+	static constexpr uint64 MaxBytes = 256ull * 1024ull * 1024ull;
+
+	TArray<TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>> Entries;
+	uint64 Tick = 0;
+
+	TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Find(const uint64 Key, const FIntPoint InResolution)
+	{
+		check(IsInRenderingThread());
+		for (const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>& Entry : Entries)
+		{
+			if (Entry->Key == Key && Entry->Resolution == InResolution && Entry->Outputs[0].IsValid())
+			{
+				Entry->LastUsed = ++Tick;
+				return Entry;
+			}
+		}
+		return nullptr;
+	}
+
+	void Store(const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>& Incoming)
+	{
+		check(IsInRenderingThread());
+		if (!Incoming.IsValid() || !Incoming->Outputs[0].IsValid())
+		{
+			return;
+		}
+		uint64 Bytes = 0;
+		for (const TRefCountPtr<IPooledRenderTarget>& Output : Incoming->Outputs)
+		{
+			Bytes += FMixtormatPrefixCache::TargetBytes(Output);
+		}
+		Incoming->Bytes = Bytes;
+		if (Bytes > MaxBytes)
+		{
+			return;
+		}
+		Entries.RemoveAll([&Incoming](const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>& Entry)
+		{
+			return Entry->Key == Incoming->Key || Entry->Resolution != Incoming->Resolution;
+		});
+		const auto TotalBytes = [this]()
+		{
+			uint64 Total = 0;
+			for (const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>& Entry : Entries)
+			{
+				Total += Entry->Bytes;
+			}
+			return Total;
+		};
+		while (!Entries.IsEmpty() && TotalBytes() + Bytes > MaxBytes)
+		{
+			int32 OldestIndex = 0;
+			for (int32 Index = 1; Index < Entries.Num(); ++Index)
+			{
+				if (Entries[Index]->LastUsed < Entries[OldestIndex]->LastUsed)
+				{
+					OldestIndex = Index;
+				}
+			}
+			Entries.RemoveAtSwap(OldestIndex);
+		}
+		Incoming->LastUsed = ++Tick;
+		Entries.Add(Incoming);
+	}
+
+	void Reset()
+	{
+		check(IsInRenderingThread());
+		Entries.Reset();
+	}
+};

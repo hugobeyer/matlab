@@ -64,26 +64,26 @@ uint Initialize;
 uint SurfaceValid;
 uint UseLayerMask;
 uint BlendMode;
-// @param RunoffSeed hardmin=0 hardmax=9999
+// @param RunoffSeed
 uint Seed;
 int StrataCount;
 
 float GravityAngle;
-// @param RunoffStreakRadius hardmin=8 hardmax=512
+// @param RunoffStreakRadius
 float StreakRadius;
-// @param RunoffStreakSoftness hardmin=0.05 hardmax=1
+// @param RunoffStreakSoftness
 float StreakSoftness;
-// @param RunoffSurfaceInfluence hardmin=0 hardmax=1
+// @param RunoffSurfaceInfluence
 float SurfaceInfluence;
-// @param RunoffStrataAmount hardmin=0 hardmax=1
+// @param RunoffStrataAmount
 float StrataAmount;
-// @param RunoffWarpScale hardmin=1 hardmax=64
+// @param RunoffWarpScale
 float WarpScale;
-// @param RunoffWarpAmount hardmin=0 hardmax=2
+// @param RunoffWarpAmount
 float WarpAmount;
-// @param RunoffLipStrength hardmin=0 hardmax=1
+// @param RunoffLipStrength
 float LipStrength;
-// @param RunoffStrength hardmin=0 hardmax=1
+// @param RunoffStrength
 float Strength;
 
 // Full resolution.
@@ -331,7 +331,7 @@ float SurfaceResponseAt(float2 UV)
 	// "ignore the height", so the incoming mask alone drives the runoff. That is the reading the
 	// control's name promises and the one that is actually useful -- streaking from a painted
 	// mark on a flat surface is a thing people want.
-	return lerp(1.0f, saturate(Cavity + Ledge), saturate(SurfaceInfluence));
+	return lerp(1.0f, saturate(Cavity + Ledge), SurfaceInfluence);
 }
 
 // Pass one. The composition's height and mask, reduced onto the analysis grid.
@@ -445,7 +445,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// make sense together: widening the spacing without spreading the lengths just moves the
 	// stack, and flattening the opacity without either makes it uniformly muddier. Separating
 	// them would be four controls with one useful diagonal through them.
-	const float SafeStrataAmount = saturate(StrataAmount);
+	const float SafeStrataAmount = StrataAmount;
 	const float StrataSpacing = lerp(0.55f, 1.15f, SafeStrataAmount);
 	const float StrataLengthStep = 0.08f + 0.04f * SafeStrataAmount;
 	const float StrataOpacityFalloff = lerp(1.15f, 0.75f, SafeStrataAmount);
@@ -453,7 +453,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// A soft run deposits over a longer stretch than a sharp one, so the terminal lip widens with
 	// the same control that softens the streak. Derived rather than exposed for that reason: a
 	// lip width that did not track softness would need re-tuning every time the streak moved.
-	const float LipWidth = 0.35f + saturate(StreakSoftness) * 0.35f;
+	const float LipWidth = 0.35f + StreakSoftness * 0.35f;
 	const float InvLipWidth = 1.0f / LipWidth;
 
 	const float2 Gravity = MixtormatRunoffGravity();

@@ -223,8 +223,8 @@ float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 
 	// Curvature. Cavities collect, convex detail sheds -- and is where a runoff commonly starts,
 	// which is why both are exposed rather than one signed control.
-	const float Concavity = max(ConcavityWeight, 0.0f);
-	const float Convexity = max(ConvexityWeight, 0.0f);
+	const float Concavity = ConcavityWeight;
+	const float Convexity = ConvexityWeight;
 	if (Concavity > 0.0f || Convexity > 0.0f)
 	{
 		float Curvature;
@@ -297,8 +297,8 @@ float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 float LiquidSource(float2 UV, float2 FlowDirection)
 {
 	const bool bAutoActive =
-		max(ConcavityWeight, 0.0f) > 0.0f
-		|| max(ConvexityWeight, 0.0f) > 0.0f
+		ConcavityWeight > 0.0f
+		|| ConvexityWeight > 0.0f
 		|| abs(OcclusionWeight) > 0.0f
 		|| abs(HeightWeight) > 0.0f
 		|| abs(SlopeWeight) > 0.0f;
@@ -318,7 +318,7 @@ void InitializeState(int2 Pixel, float2 UV)
 	const float2 Flow = SurfaceFlow(UV);
 	const float SourceField = LiquidSource(UV, Flow);
 	const float Breakup = 0.55f + 0.45f * StainRandom01(Pixel, Seed);
-	const float Source = SourceField * max(SourceAmount, 0.0f) * Breakup;
+	const float Source = SourceField * SourceAmount * Breakup;
 	const float InitialSpeed = 0.20f + abs(Gravity) * 0.25f;
 
 	// The packed channels accumulated below the layer, read once here and answered into the
@@ -338,7 +338,7 @@ void InitializeState(int2 Pixel, float2 UV)
 	// duplicated Absorption, which already scales how much the material takes up. Nothing an
 	// artist wanted needed both: a glazed brick -- rough, but sealed -- is full Surface Response
 	// with Absorption at zero, and that always worked.
-	const float Response = saturate(SurfaceResponse);
+	const float Response = SurfaceResponse;
 
 	// R is the physical roughness channel. Smooth surfaces retain momentum; rough surfaces slow,
 	// wander and spread laterally.
@@ -361,14 +361,14 @@ void InitializeState(int2 Pixel, float2 UV)
 	// alone, which left an auto-sourced stain with one injection at init and no top-up at all --
 	// so auto mode read as much weaker than mask mode for reasons that had nothing to do with
 	// either. It is the same combined source the injection above uses.
-	const float ContinuousSource = SourceField * max(SourceAmount, 0.0f) * 0.06f;
+	const float ContinuousSource = SourceField * SourceAmount * 0.06f;
 
 	OutputStateA[Pixel] = float4(Source, 0.0f, 0.0f, 0.0f);
 	OutputStateB[Pixel] = float4(Flow * InitialSpeed, Flow);
 	OutputSurface[Pixel] = float4(
 		LocalRoughness,
 		LocalPorosity,
-		saturate(DirtAmount) * SampleDirt(UV),
+		DirtAmount * SampleDirt(UV),
 		ContinuousSource);
 }
 
@@ -409,7 +409,7 @@ void SimulateState(int2 Pixel, float2 UV)
 	const float Inertia = lerp(0.95f, 0.80f, LocalRoughness);
 	const float TargetSpeed = 0.45f + abs(Gravity) * 1.25f;
 	float2 Velocity = lerp(BaseDirection * TargetSpeed, OldB.xy, Inertia);
-	Velocity -= WaterGradient * (0.16f + saturate(Spread) * 0.32f);
+	Velocity -= WaterGradient * (0.16f + Spread * 0.32f);
 
 	const float2 Side = float2(-BaseDirection.y, BaseDirection.x);
 	const float Wander = StainRandom01(Pixel, Seed + (uint)Iteration * 1664525U) * 2.0f - 1.0f;
@@ -434,7 +434,7 @@ void SimulateState(int2 Pixel, float2 UV)
 	// blending it towards its side neighbors. Water no longer transports this way -- see below --
 	// but dirt is a much smaller, slower-moving signal and the backward sample remains a fine
 	// answer for it.
-	const float SpreadAmount = saturate(Spread) * (0.35f + 0.65f * LocalRoughness);
+	const float SpreadAmount = Spread * (0.35f + 0.65f * LocalRoughness);
 	if (SpreadAmount > 1.0e-5f)
 	{
 		const float2 Direction = StainSafeDirection(Velocity, BaseDirection);
@@ -457,7 +457,7 @@ void SimulateState(int2 Pixel, float2 UV)
 	// how much of a neighbor's water can arrive in a single step (Transport). Low Accumulation
 	// behaves close to the old smear; high Accumulation lets repeated convergent flow build a pool
 	// that does not get renormalized away.
-	const float Retain = lerp(0.05f, 0.80f, saturate(Accumulation));
+	const float Retain = lerp(0.05f, 0.80f, Accumulation);
 	const float Transport = 1.0f - Retain;
 
 	const float IncomingLeft = NeighborAL.x * saturate(NeighborVelL.x) * Transport;
@@ -486,7 +486,7 @@ void SimulateState(int2 Pixel, float2 UV)
 	float Dissolved = max(AdvectedA.z, 0.0f);
 	float Deposit = max(OldA.w, 0.0f);
 
-	const float Dry = saturate(Drying);
+	const float Dry = Drying;
 	const float EvaporationRate = 0.0005f + Dry * 0.018f;
 	const float Evaporated = Water * (1.0f - exp(-EvaporationRate));
 	Water -= Evaporated;
@@ -494,7 +494,7 @@ void SimulateState(int2 Pixel, float2 UV)
 	const float Capacity = 0.55f + 0.65f * LocalPorosity;
 	const float Saturation01 = saturate(Saturation / max(Capacity, 1.0e-6f));
 	const float AbsorptionRate =
-		(0.002f + saturate(Absorption) * 0.055f)
+		(0.002f + Absorption * 0.055f)
 		* LocalPorosity
 		* (1.0f - Saturation01);
 	const float Absorbed = min(Water, min(AbsorptionRate, max(Capacity - Saturation, 0.0f)));
@@ -585,7 +585,7 @@ void ResolveStain(int2 Pixel, float2 UV)
 	// Liquid delivered per texel over the whole run, at full source: one injection at
 	// initialization plus the per-iteration top-up. Mirrors InitializeState and SimulateState, so
 	// changing either rate carries the reference with it.
-	const float Injected = max(SourceAmount, 0.0f) * (1.0f + (float)Iteration * 0.06f);
+	const float Injected = SourceAmount * (1.0f + (float)Iteration * 0.06f);
 
 	// Wet mask resolves from accumulated density rather than a ratio against injected volume.
 	// Normalizing against Injected meant a texel that kept getting wetter run after run -- a
@@ -599,7 +599,7 @@ void ResolveStain(int2 Pixel, float2 UV)
 	// Dirt that settled, against the dirt that much liquid could dissolve. The dissolve rate is
 	// the same expression SimulateState uses, so the reference tracks Dirt Amount instead of
 	// drifting away from it as that slider moves.
-	const float LocalDirt = saturate(DirtAmount);
+	const float LocalDirt = DirtAmount;
 	const float Carried = Injected * LocalDirt * (0.004f + LocalDirt * 0.018f);
 	const float DepositMask = saturate(State.w / max(Carried * 0.25f, 1.0e-6f));
 

@@ -52,7 +52,13 @@ FReply SMixtormat::RebuildBuiltInLibrary()
 
 FReply SMixtormat::StartNewMaterial()
 {
-	if (!SelectedPreviewMaterial.IsValid())
+	return StartNewMaterialWith(EMixtormatLayerType::Material);
+}
+
+FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
+{
+	const bool bFill = LayerType == EMixtormatLayerType::Fill;
+	if (!bFill && !SelectedPreviewMaterial.IsValid())
 	{
 		return FReply::Handled();
 	}
@@ -74,21 +80,28 @@ FReply SMixtormat::StartNewMaterial()
 		}
 	}
 
-	// The first layer of a new recipe -- an ordinary Material layer, not a privileged base.
+	// The first layer of a new recipe -- an ordinary layer, not a privileged base.
 	FMixtormatLayer& FirstLayer = WorkingLayers.AddDefaulted_GetRef();
-	FirstLayer.DisplayName = SelectedLibrarySurfaceName;
-	FirstLayer.Type = EMixtormatLayerType::Material;
-	FirstLayer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
-	FirstLayer.Tiling = CurrentTiling;
-	FirstLayer.RoughnessBias = CurrentRoughnessBias;
-	FirstLayer.RoughnessContrast = CurrentRoughnessContrast;
-	FirstLayer.RoughnessOffset = CurrentRoughnessOffset;
+	if (bFill)
+	{
+		InitializeNewLayer(FirstLayer, EMixtormatLayerType::Fill, 1);
+	}
+	else
+	{
+		FirstLayer.DisplayName = SelectedLibrarySurfaceName;
+		FirstLayer.Type = EMixtormatLayerType::Material;
+		FirstLayer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
+		FirstLayer.Tiling = CurrentTiling;
+		FirstLayer.RoughnessBias = CurrentRoughnessBias;
+		FirstLayer.RoughnessContrast = CurrentRoughnessContrast;
+		FirstLayer.RoughnessOffset = CurrentRoughnessOffset;
+	}
 
 	SelectedLayerIndex = 0;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
 	bHasSelectedLayer = true;
-	if (SelectedSurfaceText.IsValid())
+	if (!bFill && SelectedSurfaceText.IsValid())
 	{
 		SelectedSurfaceText->SetText(SelectedLibrarySurfaceName);
 	}

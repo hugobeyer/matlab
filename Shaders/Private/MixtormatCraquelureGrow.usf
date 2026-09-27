@@ -170,7 +170,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 Jitter = float2(
 		MixtormatCellRandom01(MixtormatCellHash(Cell, Cells, Seed + 17u)),
 		MixtormatCellRandom01(MixtormatCellHash(Cell, Cells, Seed + 43u)));
-	float2 SeedUV = ((float2)Cell + 0.5f + (Jitter - 0.5f) * saturate(SeedJitter)) / (float)Cells;
+	float2 SeedUV = ((float2)Cell + 0.5f + (Jitter - 0.5f) * SeedJitter) / (float)Cells;
 	SeedUV = frac(SeedUV);
 
 	const int2 SeedPixel = (int2)floor(SeedUV * float2(OutputSize));
@@ -515,7 +515,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Per-crack variation, keyed on the lineage id the network carried out from its nucleus, so
 	// a whole crack varies as one thing. The lattice mode gets the same behaviour from its
 	// wall id.
-	Crack *= lerp(1.0f, MixtormatCellRandom01(asuint(NearestId)), saturate(Variation));
+	Crack *= lerp(1.0f, MixtormatCellRandom01(asuint(NearestId)), Variation);
 
 	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
 	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);

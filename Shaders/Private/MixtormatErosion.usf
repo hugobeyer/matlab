@@ -49,23 +49,23 @@ int SmearPass;
 uint WriteRidge;
 float Amount;
 float Depth;
-// @param ErosionRadius hardmin=1
+// @param ErosionRadius
 int Radius;
-// @param ErosionIterations hardmin=1
+// @param ErosionIterations
 int Iterations;
 int Stride;
-// @param ErosionGravityForce saturates
+// @param ErosionGravityForce
 float GravityForce;
-// @param ErosionSlopePower hardmin=0
+// @param ErosionSlopePower
 float SlopePower;
 float Deposit;
 float PreserveFlats;
 float Smoothing;
 float Variation;
-// @param ErosionSeed hardmin=0
+// @param ErosionSeed
 uint Seed;
 uint UsePlacementMask;
-// @param ErosionMaskTiling hardmin=1
+// @param ErosionMaskTiling
 float PlacementMaskTiling;
 uint InvertMask;
 
@@ -207,7 +207,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 		const float SmearHeight = SmearSum / WeightSum;
 
-		const float Blend = saturate(Deposit) * Gate;
+		const float Blend = Deposit * Gate;
 		float NewHeight = Height + Blend * max(SmearHeight - Height, 0.0f);
 		NewHeight = min(NewHeight, max(Source, Height));
 		OutputHeight[Pixel] = max(NewHeight, 0.0f);
@@ -232,7 +232,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Gravity is a constant downhill force in UV space: -Y, no angle. Gravity Force is a
 	// plain weight -- how hard flow is pulled down regardless of the local slope.
 	const float2 GravityDir = float2(0.0f, -1.0f);
-	const float GravityWeight = saturate(GravityForce);
+	const float GravityWeight = GravityForce;
 
 	// Resolution normalization: slopes and curvature are expressed per a fixed fraction of
 	// the tile -- height change per 1/256 UV -- so the response, the wear scale and the
@@ -263,7 +263,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 InstantFlow = FlowBlendLength > 1.0e-6f
 		? FlowBlend / FlowBlendLength
 		: GravityDir;
-	const float UpdateRate = 1.0f - saturate(Smoothing);
+	const float UpdateRate = 1.0f - Smoothing;
 	const float2 VelocityNew = lerp(Velocity, InstantFlow, UpdateRate);
 	OutputVelocity[Pixel] = float4(VelocityNew, 0.0f, 0.0f);
 
@@ -300,7 +300,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// like material hardness patches instead of dithering per texel. Zero Variation is an
 	// exact no-op.
 	const float StrengthJitter = 1.0f
-		+ saturate(Variation)
+		+ Variation
 			* (ErosionVariationField(UV, Seed) * 2.0f - 1.0f)
 			* ErosionVariationScale;
 
@@ -311,14 +311,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Transport
 		* Convexity
 		* SlopeResponse
-		* max(Amount, 0.0f)
+		* Amount
 		* StrengthJitter;
 
 	// Deposition only where flow actually passes -- a pit off the flow path does not catch
 	// runoff -- with the catch weighted by how squarely the site faces uphill against
 	// gravity (ledges and backslopes). A gain, not a mask: ordinary valley refill continues
 	// everywhere the flow reaches.
-	float DepositDelta = Concavity * SlopeResponse * max(Deposit, 0.0f);
+	float DepositDelta = Concavity * SlopeResponse * Deposit;
 	DepositDelta *= saturate(Transport * SlopeNorm * ErosionTransportGateScale);
 	const float2 UphillDir = SlopeLength > 1.0e-6f ? SpanSlope / SlopeLength : -GravityDir;
 	const float UpFacing = saturate(dot(UphillDir, -GravityDir));
@@ -335,7 +335,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		0.01f,
 		max(Depth, 0.0f) * max(max(Amount, Deposit), 0.0f) / max((float)Iterations, 1.0f));
 
-	float Delta = (DepositDelta - ErosionDelta) * max(Depth, 0.0f) * Gate;
+	float Delta = (DepositDelta - ErosionDelta) * Depth * Gate;
 	Delta = clamp(Delta, -MaxStep, MaxStep);
 
 	// One-sided Jacobi relax at single-texel span: protrusions are shaved toward their

@@ -32,6 +32,9 @@ RWTexture2D<float4> OutputDebug;
 // contending on a handful of global atomics for every pixel of a large texture.
 RWStructuredBuffer<uint> Statistics;
 RWStructuredBuffer<uint> CompactIds;
+// Split Islands: one label per pixel, a pixel index. Monotone (only ever lowered), so the racy
+// reads between hook and jump passes can delay convergence but never produce a wrong merge.
+globallycoherent RWStructuredBuffer<uint> Labels;
 
 int2 OutputSize;
 float2 SourceTiling;
@@ -49,6 +52,7 @@ int GuideBlur;
 uint MaxIds;
 int EdgeClose;
 uint WriteDebug;
+uint SplitIslands;
 
 #if SURFACE_ID_STAGE == 2
 groupshared uint LocalRange[4];
@@ -272,6 +276,37 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID, uint GroupIndex : SV_G
     if (GroupIndex < 8u) InterlockedOr(Statistics[4u + GroupIndex], LocalBands[GroupIndex]);
 #elif SURFACE_ID_STAGE == 7
     uint Id = CompactIds[InputIds.Load(int3(P, 0))];
+    OutputIds[P] = Id;
+    if (WriteDebug != 0 && SplitIslands == 0) OutputDebug[P] = float4(MixtormatRegionDebugColor(Id), 1.0f);
+#elif SURFACE_ID_STAGE == 8
+    // Islands: every pixel starts as its own label.
+    Labels[P.y * OutputSize.x + P.x] = uint(P.y * OutputSize.x + P.x);
+#elif SURFACE_ID_STAGE == 9
+    // Hook: join 4-connected neighbours in the same band, tile-wrapped so an island crossing
+    // the tile edge stays one island. Lower label wins; its root is lowered too.
+    uint Index = uint(P.y * OutputSize.x + P.x);
+    uint Band = InputIds.Load(int3(P, 0));
+    uint Label = Labels[Index];
+    const int2 Offsets[4] = { int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1) };
+    [unroll] for (int N = 0; N < 4; ++N)
+    {
+        int2 Q = SurfaceWrap(P + Offsets[N]);
+        if (InputIds.Load(int3(Q, 0)) != Band) continue;
+        uint Other = Labels[uint(Q.y * OutputSize.x + Q.x)];
+        if (Other < Label)
+        {
+            InterlockedMin(Labels[Label], Other);
+            InterlockedMin(Labels[Index], Other);
+            Label = Other;
+        }
+    }
+#elif SURFACE_ID_STAGE == 10
+    // Jump: point at the label's label, halving chain length each pass.
+    uint Index = uint(P.y * OutputSize.x + P.x);
+    InterlockedMin(Labels[Index], Labels[Labels[Index]]);
+#elif SURFACE_ID_STAGE == 11
+    // One id per island: the lowest pixel index in it. Sparse, like Cluster IDs -- consumers hash.
+    uint Id = Labels[uint(P.y * OutputSize.x + P.x)];
     OutputIds[P] = Id;
     if (WriteDebug != 0) OutputDebug[P] = float4(MixtormatRegionDebugColor(Id), 1.0f);
 #endif

@@ -1,0 +1,744 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Rock Formation: a tileable sloped rock surface, ported from the Rock Cliff Lite COP.
+//
+// Chunks are anisotropic Voronoi cells (strata weight squashes them into layers), BSP-split,
+// each a tilted slab with a chipped top, a planar chamfer and a steep wall that keeps falling
+// past its edge. Height is the highest chunk at each pixel. Warp, bend and fault move each chunk
+// rigidly (sampled at its centroid), so faces stay flat and folds read as rotated blocks.
+//
+// Style blends four presets: 0 cliff, 1 layered, 2 boulder, 3 rubble (fractional = lerp).
+//
+// Two passes, both on the GPU, so no pixel ever clips a polygon:
+// ROCK_STAGE 0 (Build): one thread per cell. Builds the cell, walks its BSP tree and writes each
+//   leaf chunk's planes, chips, inset edges and gapped outline into structured buffers.
+// ROCK_STAGE 1 (Field): per pixel. Evaluates only the precomputed planes of the chunks in the
+//   5x5 cells around it. Depends on the settings and resolution only, so it is cached.
+// ROCK_STAGE 2 (Combine): writes the layer's input height from the field. Cheap.
+//
+// Leaves are stored for the canonical cells of one tile. A pixel reaches a neighbouring tile's
+// copy by shifting itself by whole tiles; every field the chunks use is tile-periodic.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+#define ROCK_TAU   6.283185307179586f
+#define ROCK_BIG   1e20f
+#define ROCK_MAXV  24
+#define ROCK_CRACK 0x80000000u
+#define ROCK_NP    17
+
+int2 OutputSize;
+
+float Style;
+int Cells;
+uint Seed;
+float FractureAmount;
+float SlopeAmount;
+float ChamferAmount;
+float GapAmount;
+float WarpAmount;
+float BendAmount;
+float FaultAmount;
+float Amount;
+float HeightScale;
+
+Texture2D<float> RockHeight;
+Texture2D<float> SourceHeight;
+RWTexture2D<float> OutRockHeight;
+RWTexture2D<float> OutRockTop;
+RWTexture2D<float> OutRockChamfer;
+RWTexture2D<float> OutRockWall;
+RWTexture2D<float> OutRockEdgeDistance;
+RWTexture2D<uint> OutRockIds;
+RWTexture2D<float> OutHeight;
+
+// One leaf chunk, in its canonical cell's rest frame.
+struct FRockLeaf
+{
+	float Cx, Cy;          // centroid
+	float Mx, My;          // rigid move (warp + fold + fault)
+	float CosA, SinA;      // rigid rotation
+	float Sx, Sy;          // top slope
+	float TopConstant;     // T(p) = TopConstant + dot(S, p)
+	float Top;             // highest the chunk can reach
+	float Radius;          // rest-frame reach: farthest vertex + wall fall-off
+	float U0x, U0y, R0, U1x, U1y, R1, U2x, U2y, R2; // chip planes
+	uint ChipOn;
+	uint EdgeCount;
+	uint VertexCount;
+	uint Id;
+};
+
+int MaxLeaves;
+int CellsV;
+float RowHeight;
+float WallSlope;
+float ChamferSlope;
+
+RWStructuredBuffer<FRockLeaf> OutLeaves;
+RWStructuredBuffer<float4> OutEdges;     // normal.xy, inset offset, chamfer width
+RWStructuredBuffer<float2> OutVertices;  // gapped outline
+RWStructuredBuffer<uint> OutLeafCounts;
+StructuredBuffer<FRockLeaf> Leaves;
+StructuredBuffer<float4> Edges;
+StructuredBuffer<float2> Vertices;
+StructuredBuffer<uint> LeafCounts;
+
+// strata, row_mul, splits, split_angle, h_bias, dip, slope_rand, height_var,
+// layer_var, chip, wall, cell_gap, seam_gap, outer_ch, inner_ch, bottom, irr
+static const float RockPreset[4][ROCK_NP] = {
+	{ 1.0f, 1.0f, 3.0f, 30.0f, 0.2f, 20.0f, 12.0f, 0.35f, 0.25f, 0.35f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.7f, 0.8f },
+	{ 1.0f, 2.0f, 2.0f,  6.0f, 0.7f, 16.0f,  6.0f, 0.30f, 0.45f, 0.25f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f, 0.8f },
+	{ 0.0f, 1.0f, 2.0f, 30.0f, 0.0f,  8.0f, 18.0f, 0.35f, 0.25f, 0.40f, 58.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.3f, 0.9f },
+	{ 0.0f, 1.0f, 1.0f, 30.0f, 0.0f,  6.0f, 30.0f, 0.60f, 0.20f, 0.40f, 60.0f, 0.04f, 0.020f, 0.10f, 0.06f, 0.3f, 0.9f },
+};
+
+struct FRockPat
+{
+	int cu, cv, splits;
+	float rh, a2, strata, irr, split_angle, h_bias;
+	float2 dip;
+	float rand_k, hvar, lvar, chip, wall_k;
+	float cell_gap, seam_gap, outer_ch, inner_ch, ch_k, bottom, reach;
+	uint seed, wseed;
+	float warp, bend, fault, ph1, ph2;
+};
+
+struct FRockPoly
+{
+	float2 v[ROCK_MAXV];
+	uint t[ROCK_MAXV];
+	int n;
+};
+
+struct FRockBest
+{
+	int hit, cls, si, sj;
+	float h;
+	float2 g;
+	uint cid, node;
+};
+
+// ---- helpers ---------------------------------------------------------------
+
+uint RockHash(uint v)
+{
+	uint s = v * 747796405u + 2891336453u;
+	uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+	return (w >> 22u) ^ w;
+}
+
+float RockRand(uint a, uint b, uint c)
+{
+	return (float)(RockHash(a ^ RockHash(b + RockHash(c))) >> 8) * (1.0f / 16777216.0f);
+}
+
+int RockWrap(int i, int n) { return ((i % n) + n) % n; }
+float RockCross(float2 a, float2 b) { return a.x * b.y - a.y * b.x; }
+float2 RockDir(float a) { return float2(cos(a), sin(a)); }
+uint RockEdgeKey(uint a) { return (RockHash(a) & 0x7fffffffu) | 1u; }
+
+// Periodic value noise on uv in [0,1), period 1, lattice F. Range -1..1.
+float RockValueNoise(float2 uv, int F, uint seed)
+{
+	float2 q = uv * (float)F;
+	float2 fl = floor(q);
+	float2 f = q - fl;
+	f = f * f * (3.0f - 2.0f * f);
+	int x0 = RockWrap((int)fl.x, F), y0 = RockWrap((int)fl.y, F);
+	int x1 = RockWrap(x0 + 1, F), y1 = RockWrap(y0 + 1, F);
+	float a = RockRand(seed, (uint)(x0 + y0 * F), 7u);
+	float b = RockRand(seed, (uint)(x1 + y0 * F), 7u);
+	float c = RockRand(seed, (uint)(x0 + y1 * F), 7u);
+	float d = RockRand(seed, (uint)(x1 + y1 * F), 7u);
+	return 2.0f * lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y) - 1.0f;
+}
+
+float2 RockRotate(float2 v, float a)
+{
+	float c = cos(a), s = sin(a);
+	return float2(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+// Asymmetric triangle wave, -1..1, apex at a: straight limbs, sharp hinge.
+float RockKink(float x, float a)
+{
+	x -= floor(x);
+	return (x < a ? x / a : (1.0f - x) / (1.0f - a)) * 2.0f - 1.0f;
+}
+
+// Fold height (rows) at uv: two kink waves on wavy hinge lines, amplitude varying with depth.
+float RockFold(FRockPat P, float2 uv)
+{
+	float hu = uv.x + 0.08f * sin(ROCK_TAU * uv.y + P.ph1 * 3.0f);
+	float a1 = 0.25f + 0.5f * RockRand(P.wseed, 3u, 5u);
+	float a2 = 0.25f + 0.5f * RockRand(P.wseed, 4u, 5u);
+	float f = 0.65f * RockKink(hu + P.ph1 / ROCK_TAU, a1)
+		+ 0.35f * RockKink(2.0f * hu + P.ph2 / ROCK_TAU, a2);
+	float amp = 0.6f + 0.4f * RockValueNoise(float2(0.37f, uv.y), 3, P.wseed + 77u);
+	return f * amp * P.bend;
+}
+
+// Fault throw (rows): 3 bands between wavy near-vertical faults.
+float RockFaults(FRockPat P, float2 uv)
+{
+	float t = 0.0f;
+	for (uint k = 0u; k < 3u; k++)
+	{
+		float x0 = RockRand(P.wseed, k, 11u)
+			+ 0.03f * sin(ROCK_TAU * uv.y + RockRand(P.wseed, k, 12u) * ROCK_TAU);
+		float width = 0.15f + 0.3f * RockRand(P.wseed, k, 13u);
+		float d = uv.x - x0;
+		d -= floor(d);
+		if (d < width)
+		{
+			t += RockRand(P.wseed, k, 14u) * 2.0f - 1.0f;
+		}
+	}
+	return t * P.fault;
+}
+
+// Rigid move for a chunk centred at c: fold + fault + drift offset, rotation from the fold only.
+void RockBlockTransform(FRockPat P, float2 c, out float2 D, out float th)
+{
+	float2 uv = c / (float)P.cu;
+	float f0 = RockFold(P, uv);
+	float df = (RockFold(P, uv + float2(0.01f, 0.0f)) - f0) / 0.01f;
+	D = float2(RockValueNoise(uv, 2, P.wseed) * P.warp,
+		RockValueNoise(uv, 2, P.wseed + 911u) * P.warp + (f0 + RockFaults(P, uv)) * P.rh);
+	th = atan(df * P.rh / (float)P.cu);
+}
+
+// ---- convex polygons (CCW; t[i] tags edge i -> i+1) --------------------------
+
+void RockBox(inout FRockPoly p, float2 c, float2 e)
+{
+	p.v[0] = c + float2(-e.x, -e.y);
+	p.v[1] = c + float2(e.x, -e.y);
+	p.v[2] = c + float2(e.x, e.y);
+	p.v[3] = c + float2(-e.x, e.y);
+	p.t[0] = 0u; p.t[1] = 0u; p.t[2] = 0u; p.t[3] = 0u;
+	p.n = 4;
+}
+
+// Keep dot(n, x) <= d.
+void RockClip(inout FRockPoly p, float2 n, float d, uint tag)
+{
+	bool anyOut = false;
+	for (int i = 0; i < p.n; i++)
+	{
+		anyOut = anyOut || dot(n, p.v[i]) > d;
+	}
+	if (!anyOut)
+	{
+		return;
+	}
+
+	FRockPoly o = (FRockPoly)0;
+	int m = 0;
+	for (int j = 0; j < p.n; j++)
+	{
+		float2 a = p.v[j];
+		float2 b = p.v[j + 1 == p.n ? 0 : j + 1];
+		float da = dot(n, a) - d;
+		float db = dot(n, b) - d;
+		if (da <= 0.0f)
+		{
+			if (m < ROCK_MAXV) { o.v[m] = a; o.t[m] = p.t[j]; m++; }
+			if (db > 0.0f && m < ROCK_MAXV) { o.v[m] = lerp(a, b, da / (da - db)); o.t[m] = tag; m++; }
+		}
+		else if (db <= 0.0f && m < ROCK_MAXV)
+		{
+			o.v[m] = lerp(a, b, da / (da - db)); o.t[m] = p.t[j]; m++;
+		}
+	}
+	o.n = m;
+	p = o;
+}
+
+float2 RockCentroid(FRockPoly p, out float area)
+{
+	float2 c = 0.0f, mean = 0.0f;
+	float s = 0.0f;
+	for (int i = 0; i < p.n; i++)
+	{
+		float2 a = p.v[i], b = p.v[i + 1 == p.n ? 0 : i + 1];
+		float k = RockCross(a, b);
+		s += k;
+		c += (a + b) * k;
+		mean += a;
+	}
+	area = 0.5f * s;
+	return abs(s) < 1e-12f ? mean / (float)max(p.n, 1) : c / (3.0f * s);
+}
+
+float RockPolySd(FRockPoly p, float2 q)
+{
+	if (p.n < 3)
+	{
+		return ROCK_BIG;
+	}
+	float dmin = ROCK_BIG;
+	bool inside = true;
+	for (int i = 0; i < p.n; i++)
+	{
+		float2 a = p.v[i];
+		float2 e = p.v[i + 1 == p.n ? 0 : i + 1] - a;
+		float2 w = q - a;
+		float t = clamp(dot(w, e) / max(dot(e, e), 1e-20f), 0.0f, 1.0f);
+		dmin = min(dmin, length(w - e * t));
+		if (RockCross(e, w) < 0.0f)
+		{
+			inside = false;
+		}
+	}
+	return inside ? -dmin : dmin;
+}
+
+// ---- cells: anisotropic Voronoi (strata squashes rows into layers) ---------
+
+float2 RockSite(FRockPat P, int i, int j, out uint id)
+{
+	int wi = RockWrap(i, P.cu), wj = RockWrap(j, P.cv);
+	uint h = RockHash(P.seed ^ RockHash((uint)wi + RockHash((uint)wj * 0x85EBCA6Bu + 7u)));
+	float bond = RockRand(P.seed, (uint)wj, 53u) * P.strata;
+	float jx = (RockRand(h, 1u, 31u) - 0.5f) * P.irr;
+	float jy = (RockRand(h, 2u, 31u) - 0.5f) * P.irr * (1.0f - P.strata);
+	id = (uint)(wi + wj * P.cu);
+	return float2((float)i + 0.5f + bond + jx, ((float)j + 0.5f + jy) * P.rh);
+}
+
+float RockMetric(FRockPat P, float2 d) { return d.x * d.x + P.a2 * d.y * d.y; }
+
+// Bisector of s and o under the metric, as a p-space line keeping s's side.
+float3 RockBisector(FRockPat P, float2 s, float2 o)
+{
+	float2 m = (o - s) * float2(1.0f, P.a2);
+	float l = length(m);
+	return float3(m / l, 0.5f * (RockMetric(P, o) - RockMetric(P, s)) / l);
+}
+
+void RockCellPoly(FRockPat P, int i, int j, out FRockPoly cell, out uint cid)
+{
+	cell = (FRockPoly)0;
+	uint id, oid;
+	float2 s = RockSite(P, i, j, id);
+	RockBox(cell, s, float2(3.0f, 3.0f * P.rh));
+	for (int dj = -2; dj <= 2; dj++)
+	{
+		for (int di = -2; di <= 2; di++)
+		{
+			if (di == 0 && dj == 0)
+			{
+				continue;
+			}
+			float2 o = RockSite(P, i + di, j + dj, oid);
+			if (length(o - s) < 1e-6f)
+			{
+				continue;
+			}
+			float3 b = RockBisector(P, s, o);
+			RockClip(cell, b.xy, b.z, RockEdgeKey(min(id, oid) * 0x9E3779B9u + max(id, oid) + 17u));
+		}
+	}
+	cid = RockHash(P.seed ^ (id * 0x27D4EB2Du + 5u));
+}
+
+// ---- BSP fracture ----------------------------------------------------------
+
+float3 RockSplitLine(FRockPat P, uint cid, uint node, FRockPoly p)
+{
+	float2 lo = p.v[0], hi = lo;
+	for (int i = 1; i < p.n; i++) { lo = min(lo, p.v[i]); hi = max(hi, p.v[i]); }
+	float2 dim = hi - lo;
+
+	uint a = RockHash(P.seed ^ (cid * 0x9E3779B9u));
+	int axis = dim.y > dim.x ? 1 : 0;
+	if (RockRand(a, node, 733u) < P.h_bias)
+	{
+		axis = 1;
+	}
+
+	float tilt = radians(P.split_angle) * sqrt(RockRand(a, node, 138u))
+		* (RockRand(a, node, 137u) < 0.5f ? -1.0f : 1.0f);
+	float2 n = RockDir((axis != 0 ? 0.25f * ROCK_TAU : 0.0f) + tilt);
+
+	float pmin = ROCK_BIG, pmax = -ROCK_BIG;
+	for (int k = 0; k < p.n; k++)
+	{
+		float pr = dot(n, p.v[k]);
+		pmin = min(pmin, pr);
+		pmax = max(pmax, pr);
+	}
+	return float3(n, lerp(pmin, pmax, 0.5f + (RockRand(a, node, 139u) - 0.5f) * 0.28f));
+}
+
+void RockNodePoly(FRockPat P, uint cid, uint node, int depth, inout FRockPoly p)
+{
+	for (int level = 0; level < depth; level++)
+	{
+		uint anc = node >> (uint)(depth - level);
+		uint bit = (node >> (uint)(depth - level - 1)) & 1u;
+		float3 l = RockSplitLine(P, cid, anc, p);
+		uint key = ROCK_CRACK | (RockHash(cid * 7919u + anc) & 0x7fffffffu);
+		if (bit != 0u)
+		{
+			RockClip(p, -l.xy, -l.z, key);
+		}
+		else
+		{
+			RockClip(p, l.xy, l.z, key);
+		}
+	}
+}
+
+// ---- chunk surface -----------------------------------------------------------
+
+// Inset edge line and chamfer width for edge i; false for degenerate edges.
+bool RockEdgeLine(FRockPat P, FRockPoly leaf, int i, float2 c, float scale,
+	out float2 nn, out float dg, out float w, out bool crack)
+{
+	nn = 0.0f; dg = 0.0f; w = 0.0f; crack = false;
+	float2 a = leaf.v[i];
+	float2 e = leaf.v[i + 1 == leaf.n ? 0 : i + 1] - a;
+	float len = length(e);
+	if (len < 1e-6f)
+	{
+		return false;
+	}
+	uint tag = leaf.t[i];
+	nn = float2(e.y, -e.x) / len;
+	crack = (tag & ROCK_CRACK) != 0u;
+	float d = dot(nn, a);
+	float clearance = max(0.0f, d - dot(nn, c));
+	dg = d - min((crack ? P.seam_gap : P.cell_gap) * 0.5f, clearance * 0.75f);
+	w = (crack ? P.inner_ch : P.outer_ch) * scale
+		* lerp(0.4f, 1.6f, RockRand(P.seed, tag, 91u))
+		* (1.0f - P.bottom * clamp(-nn.y, 0.0f, 1.0f));
+	w = min(w, 0.75f * max(0.0f, dg - dot(nn, c)));
+	return true;
+}
+
+// ---- build: one leaf's precomputed data ------------------------------------------
+
+void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerRand, uint slot)
+{
+	FRockLeaf L = (FRockLeaf)0;
+	int n = leaf.n;
+
+	uint ck = RockHash(P.seed ^ (cid * 0x9E3779B9u));
+	uint pk = RockHash(ck ^ (node * 0x85EBCA6Bu));
+	float top = 1.0f - P.hvar * 0.5f * (RockRand(ck, 1u, 61u) + RockRand(pk, 1u, 62u))
+		- P.lvar * layerRand;
+
+	float ar;
+	float2 c = RockCentroid(leaf, ar);
+	float2 lo = leaf.v[0], hi = lo;
+	float rv = 0.0f;
+	for (int i = 0; i < n; i++)
+	{
+		lo = min(lo, leaf.v[i]);
+		hi = max(hi, leaf.v[i]);
+		rv = max(rv, length(leaf.v[i] - c));
+	}
+	float scale = min(hi.x - lo.x, hi.y - lo.y);
+
+	float2 D;
+	float th;
+	RockBlockTransform(P, c, D, th);
+
+	float2 s = P.dip + 0.5f * P.rand_k * (
+		RockDir(RockRand(ck, 2u, 61u) * ROCK_TAU) * sqrt(RockRand(ck, 3u, 61u)) +
+		RockDir(RockRand(pk, 2u, 62u) * ROCK_TAU) * sqrt(RockRand(pk, 3u, 62u)));
+	float smax = -ROCK_BIG;
+	for (int k = 0; k < n; k++)
+	{
+		smax = max(smax, dot(s, leaf.v[k] - c));
+	}
+
+	L.Cx = c.x; L.Cy = c.y;
+	L.Mx = D.x; L.My = D.y;
+	L.CosA = cos(th); L.SinA = sin(th);
+	L.Sx = s.x; L.Sy = s.y;
+	L.TopConstant = top - smax - dot(s, c);
+	L.Top = top;
+	// Walls fall at WallSlope from a top of at most 1, so past this they cannot win.
+	L.Radius = rv + 1.0f / max(P.wall_k, 1.0e-4f) + 0.5f * max(P.cell_gap, P.seam_gap);
+
+	L.ChipOn = P.chip > 0.0f ? 1u : 0u;
+	float ph = RockRand(pk, 4u, 63u) * ROCK_TAU;
+	float2 U[3];
+	float R[3];
+	for (int j = 0; j < 3; j++)
+	{
+		U[j] = RockDir(ph + (float)j * ROCK_TAU / 3.0f + (RockRand(pk, (uint)j, 64u) - 0.5f) * 1.6f);
+		// Chip planes are stored against the origin: cut = K * (dot(u, p) - R).
+		R[j] = rv * (1.0f - P.chip * (0.4f + 0.6f * RockRand(pk, (uint)j, 65u))) + dot(U[j], c);
+	}
+	L.U0x = U[0].x; L.U0y = U[0].y; L.R0 = R[0];
+	L.U1x = U[1].x; L.U1y = U[1].y; L.R1 = R[1];
+	L.U2x = U[2].x; L.U2y = U[2].y; L.R2 = R[2];
+
+	uint base = slot * ROCK_MAXV;
+	uint edgeCount = 0u;
+	FRockPoly gapped = leaf;
+	for (int e = 0; e < n; e++)
+	{
+		float2 nn;
+		float dg, w;
+		bool crack;
+		if (!RockEdgeLine(P, leaf, e, c, scale, nn, dg, w, crack))
+		{
+			continue;
+		}
+		OutEdges[base + edgeCount] = float4(nn, dg, w);
+		edgeCount++;
+		RockClip(gapped, nn, dg, leaf.t[e]);
+	}
+	for (int v = 0; v < gapped.n; v++)
+	{
+		OutVertices[base + (uint)v] = gapped.v[v];
+	}
+	L.EdgeCount = edgeCount;
+	L.VertexCount = (uint)gapped.n;
+	// The chunk's slot: unique per chunk and small. Consumers such as UV From IDs index per-id
+	// buffers sized to the pixel count, so an id must stay below it; preview colours scramble it.
+	L.Id = slot;
+	OutLeaves[slot] = L;
+}
+
+// ---- field: one pixel against the precomputed chunks -------------------------------
+
+float RockLeafHeight(FRockLeaf L, uint slot, float2 pr, out int cls)
+{
+	const float ChipK = 0.78f; // tan 38 deg
+	float T = L.TopConstant + dot(float2(L.Sx, L.Sy), pr);
+	if (L.ChipOn != 0u)
+	{
+		float cut = 0.0f;
+		cut = max(cut, ChipK * (dot(float2(L.U0x, L.U0y), pr) - L.R0));
+		cut = max(cut, ChipK * (dot(float2(L.U1x, L.U1y), pr) - L.R1));
+		cut = max(cut, ChipK * (dot(float2(L.U2x, L.U2y), pr) - L.R2));
+		T -= cut;
+	}
+
+	float H = T;
+	cls = 0;
+	uint base = slot * ROCK_MAXV;
+	for (uint e = 0u; e < L.EdgeCount; e++)
+	{
+		float4 E = Edges[base + e];
+		float di = E.z - dot(E.xy, pr);
+		float wall = T + WallSlope * di;
+		if (wall < H) { H = wall; cls = 2; }
+		if (E.w > 0.0f)
+		{
+			float bevel = T + ChamferSlope * (di - E.w);
+			if (bevel < H) { H = bevel; cls = 1; }
+		}
+	}
+	return H;
+}
+
+float RockLeafSd(FRockLeaf L, uint slot, float2 q)
+{
+	uint count = L.VertexCount;
+	if (count < 3u)
+	{
+		return ROCK_BIG;
+	}
+	uint base = slot * ROCK_MAXV;
+	float dmin = ROCK_BIG;
+	bool inside = true;
+	for (uint i = 0u; i < count; i++)
+	{
+		float2 a = Vertices[base + i];
+		float2 e = Vertices[base + (i + 1u == count ? 0u : i + 1u)] - a;
+		float2 w = q - a;
+		float t = clamp(dot(w, e) / max(dot(e, e), 1e-20f), 0.0f, 1.0f);
+		dmin = min(dmin, length(w - e * t));
+		if (RockCross(e, w) < 0.0f)
+		{
+			inside = false;
+		}
+	}
+	return inside ? -dmin : dmin;
+}
+
+FRockPat RockSetup()
+{
+	// Style indexes a four-row table, so it is bounded to the table; everything else is authored.
+	float st = clamp(Style, 0.0f, 3.0f);
+	int i0 = min((int)st, 2);
+	float t = st - (float)i0;
+	float v[ROCK_NP];
+	for (int k = 0; k < ROCK_NP; k++)
+	{
+		v[k] = lerp(RockPreset[i0][k], RockPreset[i0 + 1][k], t);
+	}
+
+	FRockPat P = (FRockPat)0;
+	P.cu = max(Cells, 1);
+	P.cv = max((int)round((float)P.cu * v[1]), 1);
+	P.rh = (float)P.cu / (float)P.cv;
+	P.strata = v[0];
+	P.a2 = (1.0f + 3.0f * v[0]) * (1.0f + 3.0f * v[0]);
+	P.splits = max((int)round(v[2] * FractureAmount), 0);
+	P.split_angle = v[3];
+	P.h_bias = v[4];
+	P.dip = float2(0.0f, -1.0f) * tan(radians(min(v[5] * SlopeAmount, 70.0f)));
+	P.rand_k = tan(radians(min(v[6] * SlopeAmount, 70.0f)));
+	P.hvar = v[7];
+	P.lvar = v[8];
+	P.chip = v[9];
+	P.wall_k = tan(radians(v[10]));
+	P.cell_gap = v[11] * GapAmount;
+	P.seam_gap = v[12] * GapAmount;
+	P.outer_ch = v[13] * ChamferAmount;
+	P.inner_ch = v[14] * ChamferAmount;
+	P.ch_k = min(tan(radians(42.0f)), P.wall_k);
+	P.bottom = v[15];
+	P.irr = v[16];
+	P.seed = RockHash(Seed + 0x51ED27u);
+	P.reach = 1.0f / P.wall_k + 0.5f * P.cell_gap;
+
+	P.wseed = P.seed ^ 0xA5A5u;
+	P.warp = WarpAmount;
+	P.bend = BendAmount;
+	P.fault = FaultAmount;
+	P.ph1 = RockRand(P.wseed, 1u, 5u) * ROCK_TAU;
+	P.ph2 = RockRand(P.wseed, 2u, 5u) * ROCK_TAU;
+	// Moved chunks can reach further: widen the search by the max drift.
+	P.reach += 1.2f * (abs(P.warp) + (abs(P.bend) + 1.5f * abs(P.fault)) * P.rh) + (P.bend != 0.0f ? 0.25f : 0.0f);
+	return P;
+}
+
+#if ROCK_STAGE == 0
+[numthreads(64, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	FRockPat P = RockSetup();
+	const uint CellIndex = DispatchThreadId.x;
+	if (CellIndex >= (uint)(P.cu * P.cv))
+	{
+		return;
+	}
+	const int wi = (int)(CellIndex % (uint)P.cu);
+	const int wj = (int)(CellIndex / (uint)P.cu);
+
+	FRockPoly cell;
+	uint cid;
+	RockCellPoly(P, wi, wj, cell, cid);
+	const float layerRand = RockRand(P.seed, (uint)wj, 56u);
+
+	// Every leaf of the cell's BSP tree (stackless heap walk).
+	uint written = 0u;
+	uint node = 1u;
+	for (int guard = 0; guard < 1024; guard++)
+	{
+		int depth = firstbithigh(node);
+		FRockPoly poly = cell;
+		RockNodePoly(P, cid, node, depth, poly);
+		float ar;
+		RockCentroid(poly, ar);
+		if ((int)node <= P.splits && poly.n >= 3 && ar > 1e-6f)
+		{
+			node <<= 1;
+			continue;
+		}
+		if (poly.n >= 3 && written < (uint)MaxLeaves)
+		{
+			RockWriteLeaf(P, poly, cid, node, layerRand, CellIndex * (uint)MaxLeaves + written);
+			written++;
+		}
+		while ((node & 1u) != 0u && node > 1u)
+		{
+			node >>= 1;
+		}
+		if (node <= 1u)
+		{
+			break;
+		}
+		node += 1u;
+	}
+	OutLeafCounts[CellIndex] = written;
+}
+#else
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+
+#if ROCK_STAGE == 1
+	const int CellsU = max(Cells, 1);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 p = UV * (float)CellsU;
+	const int ci = (int)floor(p.x);
+	const int cj = (int)floor(p.y / RowHeight);
+
+	bool hit = false;
+	float bestH = 0.0f;
+	int bestCls = 0;
+	uint bestSlot = 0u;
+	float2 bestPr = 0.0f;
+
+	for (int dj = -2; dj <= 2; dj++)
+	{
+		for (int di = -2; di <= 2; di++)
+		{
+			const int i = ci + di, j = cj + dj;
+			const int wi = RockWrap(i, CellsU), wj = RockWrap(j, CellsV);
+			// Shift the pixel into the canonical tile instead of shifting the geometry.
+			const float2 pl = p - float2((float)(i - wi), (float)(j - wj) * RowHeight);
+			const uint cellIndex = (uint)(wi + wj * CellsU);
+			const uint count = LeafCounts[cellIndex];
+			for (uint k = 0u; k < count; k++)
+			{
+				const uint slot = cellIndex * (uint)MaxLeaves + k;
+				const FRockLeaf L = Leaves[slot];
+				if (hit && L.Top <= bestH)
+				{
+					continue;
+				}
+				// Into the chunk's rest frame: undo the rigid move and rotation.
+				const float2 c = float2(L.Cx, L.Cy);
+				const float2 d = pl - c - float2(L.Mx, L.My);
+				const float2 pr = c + float2(L.CosA * d.x + L.SinA * d.y, -L.SinA * d.x + L.CosA * d.y);
+				if (length(pr - c) > L.Radius)
+				{
+					continue;
+				}
+				int cls;
+				const float H = RockLeafHeight(L, slot, pr, cls);
+				if (!hit || H > bestH)
+				{
+					hit = true;
+					bestH = H;
+					bestCls = cls;
+					bestSlot = slot;
+					bestPr = pr;
+				}
+			}
+		}
+	}
+
+	OutRockHeight[Pixel] = hit ? saturate(bestH) : 0.0f;
+	OutRockTop[Pixel] = hit && bestCls == 0 ? 1.0f : 0.0f;
+	OutRockChamfer[Pixel] = hit && bestCls == 1 ? 1.0f : 0.0f;
+	OutRockWall[Pixel] = hit && bestCls == 2 ? 1.0f : 0.0f;
+	OutRockEdgeDistance[Pixel] = hit
+		? min(RockLeafSd(Leaves[bestSlot], bestSlot, bestPr) / (float)CellsU, 1e3f)
+		: 1e3f;
+	OutRockIds[Pixel] = hit ? Leaves[bestSlot].Id : MIXTORMAT_INVALID_REGION;
+#else
+	const float Source = SourceHeight.Load(int3(Pixel, 0));
+	const float Rock = RockHeight.Load(int3(Pixel, 0)) * HeightScale;
+	OutHeight[Pixel] = lerp(Source, Rock, Amount);
+#endif
+}
+#endif

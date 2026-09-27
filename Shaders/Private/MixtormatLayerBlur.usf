@@ -26,8 +26,8 @@ RWTexture2D<float4> OutputTexture;
 
 int2 OutputSize;
 int Axis;
-// @param LayerBlurRadiusX hardmin=0 hardmax=32
-// @param LayerBlurRadiusY hardmin=0 hardmax=32
+// @param LayerBlurRadiusX
+// @param LayerBlurRadiusY
 float Radius;
 // Scoped masks gate either scope; layer coverage is an independent intersection.
 uint UseLayerCoverage;
@@ -99,5 +99,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Coverage *= saturate(LayerCoverage.SampleLevel(LinearWrapSampler, UV, 0.0f));
 	}
 
-	OutputTexture[DispatchThreadId.xy] = lerp(Center, Blurred, saturate(Amount) * Coverage);
+	OutputTexture[DispatchThreadId.xy] = lerp(Center, Blurred, Amount * Coverage);
 }

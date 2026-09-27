@@ -127,6 +127,8 @@ namespace
 			{
 			case EMixtormatGeneratorType::StrataCarver: return &Child.Generator.StrataCarver;
 			case EMixtormatGeneratorType::Fracture: return &Child.Generator.Fracture;
+			case EMixtormatGeneratorType::RockFormation: return &Child.Generator.RockFormation;
+			case EMixtormatGeneratorType::Pebbles: return &Child.Generator.Pebbles;
 			}
 			return nullptr;
 		default: return nullptr;

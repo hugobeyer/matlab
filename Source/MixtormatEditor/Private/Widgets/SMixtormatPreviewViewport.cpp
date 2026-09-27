@@ -318,7 +318,8 @@ public:
 		{
 			if (Args.Key == EKeys::MouseX)
 			{
-				Owner.RotateLighting(Args.AmountDepressed, 0.0f);
+				// Negated: the light follows the drag instead of moving against it.
+				Owner.RotateLighting(-Args.AmountDepressed, 0.0f);
 				return true;
 			}
 			if (Args.Key == EKeys::MouseY)
@@ -424,7 +425,43 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
-	ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings);
+
+	// A slider drag asks for a composite every frame. While the last one is still on the render
+	// thread, keep only this newest request and submit it once that one is done, instead of
+	// queueing frames the user has already scrubbed past.
+	if (LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight())
+	{
+		PendingCompose = FPendingCompose{Layers, Groups, Resolution, DebugSettings};
+		if (!PendingComposeTimer.IsValid())
+		{
+			PendingComposeTimer = RegisterActiveTimer(0.0f,
+				FWidgetActiveTimerDelegate::CreateSP(this, &SMixtormatPreviewViewport::FlushPendingCompose));
+		}
+		return;
+	}
+	PendingCompose.Reset();
+	ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, false);
+}
+
+EActiveTimerReturnType SMixtormatPreviewViewport::FlushPendingCompose(
+	const double CurrentTime, const float DeltaTime)
+{
+	(void)CurrentTime;
+	(void)DeltaTime;
+	if (!PendingCompose.IsSet())
+	{
+		PendingComposeTimer.Reset();
+		return EActiveTimerReturnType::Stop;
+	}
+	if (LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight())
+	{
+		return EActiveTimerReturnType::Continue;
+	}
+	FPendingCompose Pending = MoveTemp(PendingCompose.GetValue());
+	PendingCompose.Reset();
+	PendingComposeTimer.Reset();
+	ComposeLayersWithDebug(Pending.Layers, Pending.Groups, Pending.Resolution, Pending.DebugSettings, false);
+	return EActiveTimerReturnType::Stop;
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
@@ -436,14 +473,17 @@ bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	DebugSettings.Mode = bDebugPreviewMode;
 	DebugSettings.LayerIndex = bDebugLayerIndex;
 	DebugSettings.ChildIndex = bDebugChildIndex;
-	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings);
+	// A newer request would overwrite what the caller is about to read back.
+	PendingCompose.Reset();
+	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, true);
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	const TArray<FMixtormatLayer>& Layers,
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
-	FMixtormatDebugPreviewSettings DebugSettings)
+	FMixtormatDebugPreviewSettings DebugSettings,
+	const bool bWaitForCompletion)
 {
 	if (!LayerCompositor)
 	{
@@ -498,7 +538,10 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	{
 		return false;
 	}
-	FlushRenderingCommands();
+	if (bWaitForCompletion)
+	{
+		FlushRenderingCommands();
+	}
 	if (bDebugPreview)
 	{
 		PreviewMaterialInstance->SetTextureParameterValue(

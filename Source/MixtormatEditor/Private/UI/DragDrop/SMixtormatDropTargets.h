@@ -12,6 +12,7 @@
 // SMixtormatChildStackItem, whose other half (the grip, the ellipsis button) the design deleted.
 
 #include "CoreMinimal.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/DragDrop/MixtormatDragDropOps.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -672,12 +673,31 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerDropTarget) {}
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 		SLATE_EVENT(FOnMixtormatSurfaceDropped, OnSurfaceDropped)
+		// Right-click on the column's empty space. Rows open their own menus on press and handle
+		// it, so this only ever sees a click that landed on no row.
+		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
 	{
 		OnSurfaceDropped = InArgs._OnSurfaceDropped;
+		OnGetContextMenu = InArgs._OnGetContextMenu;
 		ChildSlot[InArgs._Content.Widget];
+	}
+
+	virtual FReply OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override
+	{
+		if (Event.GetEffectingButton() != EKeys::RightMouseButton || !OnGetContextMenu.IsBound())
+		{
+			return FReply::Unhandled();
+		}
+		FSlateApplication::Get().PushMenu(
+			AsShared(),
+			FWidgetPath(),
+			OnGetContextMenu.Execute(),
+			Event.GetScreenSpacePosition(),
+			FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu));
+		return FReply::Handled();
 	}
 
 	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
@@ -696,6 +716,7 @@ public:
 
 private:
 	FOnMixtormatSurfaceDropped OnSurfaceDropped;
+	FOnGetContent OnGetContextMenu;
 };
 
 // A child row's drop half.

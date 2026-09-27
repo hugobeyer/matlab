@@ -28,52 +28,52 @@ RWTexture2D<float4> OutputNormal;
 int2 OutputSize;
 int Mode;
 int EdgeStep;
-// @param EdgeWearRadius hardmin=1 hardmax=64
+// @param EdgeWearRadius
 int Radius;
-// @param EdgeWearSlope hardmin=0
+// @param EdgeWearSlope
 float Slope;
-// @param EdgeWearStrength saturates
+// @param EdgeWearStrength
 float Strength;
-// @param EdgeWearFeather hardmin=0
+// @param EdgeWearFeather
 float Feather;
-// @param EdgeWearDirections hardmin=8 hardmax=32
+// @param EdgeWearDirections
 int Directions;
 float AngularAA;
-// @param EdgeWearGravity hardmin=0
+// @param EdgeWearGravity
 float Gravity;
 float GravityAngle;
-// @param EdgeWearSeed hardmin=0
+// @param EdgeWearSeed
 uint Seed;
-// @param EdgeWearMacroScale hardmin=1
+// @param EdgeWearMacroScale
 int MacroScale;
-// @param EdgeWearMacroAmount hardmin=0
+// @param EdgeWearMacroAmount
 float MacroAmount;
-// @param EdgeWearCellScale hardmin=1
+// @param EdgeWearCellScale
 int CellScale;
-// @param EdgeWearCellAmount hardmin=0
+// @param EdgeWearCellAmount
 float CellAmount;
-// @param EdgeWearRidgeScale hardmin=1
+// @param EdgeWearRidgeScale
 int RidgeScale;
-// @param EdgeWearRidgeAmount hardmin=0
+// @param EdgeWearRidgeAmount
 float RidgeAmount;
-// @param EdgeWearMicroScale hardmin=1
+// @param EdgeWearMicroScale
 int MicroScale;
-// @param EdgeWearMicroAmount hardmin=0
+// @param EdgeWearMicroAmount
 float MicroAmount;
-// @param EdgeWearWarpScale hardmin=1
+// @param EdgeWearWarpScale
 int WarpScale;
-// @param EdgeWearWarpAmount hardmin=0
+// @param EdgeWearWarpAmount
 float WarpAmount;
 float NoiseContrast;
-// @param EdgeWearIdVariation hardmin=0
+// @param EdgeWearIdVariation
 float IDVariation;
-// @param EdgeWearIdRadius hardmin=0
+// @param EdgeWearIdRadius
 float IDRadius;
-// @param EdgeWearIdSlope hardmin=0
+// @param EdgeWearIdSlope
 float IDSlope;
-// @param EdgeWearIdStrength hardmin=0
+// @param EdgeWearIdStrength
 float IDStrength;
-// @param EdgeWearIdNoise hardmin=0
+// @param EdgeWearIdNoise
 float IDNoise;
 uint HasPatternEdge;
 
@@ -339,7 +339,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const int BaseRadius = clamp(Radius, 1, 64);
+	const int BaseRadius = max(Radius, 1);
 	if (HasPatternEdge != 0u)
 	{
 		const float SignedEdgePixels = EdgeField.Load(int3(Pixel, 0)).x;
@@ -359,16 +359,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float IDAmount = saturate(IDVariation);
+	const float IDAmount = IDVariation;
 	const float IDR0 = WEIdRand(Rid, Seed + 17u, 0x51ed270bu) * 2.0f - 1.0f;
 	const float IDR1 = WEIdRand(Rid, Seed + 29u, 0xd8163841u) * 2.0f - 1.0f;
 	const float IDR2 = WEIdRand(Rid, Seed + 43u, 0xcb1ab31fu) * 2.0f - 1.0f;
 	const float IDR3 = WEIdRand(Rid, Seed + 71u, 0x8da6b343u) * 2.0f - 1.0f;
 	const float IDRadiusMul = max(1.0f + IDR0 * IDAmount * IDRadius, 0.15f);
 	const int RegionRadius = clamp((int)floor((float)BaseRadius * IDRadiusMul + 0.5f), 1, 64);
-	const int DirectionCount = clamp(Directions, 8, 32);
+	const int DirectionCount = max(Directions, 8);
 
-	const float2 WarpedUV = WEWarp(UV, max(WarpScale, 1), Seed + 41u, max(WarpAmount, 0.0f));
+	const float2 WarpedUV = WEWarp(UV, max(WarpScale, 1), Seed + 41u, WarpAmount);
 	const float Macro = WEFbm(WarpedUV, max(MacroScale, 1), Seed + 11u) * 2.0f - 1.0f;
 	const float Cell = WEChebyCellular(WarpedUV, max(CellScale, 1), Seed + 173u) * 2.0f - 1.0f;
 	const float Ridge = WERidged(WarpedUV, max(RidgeScale, 1), Seed + 349u) * 2.0f - 1.0f;
@@ -394,10 +394,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const float IDSlopeMul = max(1.0f + IDR1 * IDAmount * IDSlope, 0.10f);
-	const float LocalSlope = max(Slope, 0.0f) * Resistance * IDSlopeMul;
+	const float LocalSlope = Slope * Resistance * IDSlopeMul;
 	const float StrengthNoise = 1.0f - Ridge * RidgeWeight * 0.40f - Micro * MicroWeight * 0.35f;
 	const float IDStrengthMul = max(1.0f + IDR2 * IDAmount * IDStrength, 0.0f);
-	const float LocalStrength = saturate(Strength) * clamp(StrengthNoise, 0.20f, 1.50f) * IDStrengthMul * Placement;
+	const float LocalStrength = Strength * clamp(StrengthNoise, 0.20f, 1.50f) * IDStrengthMul * Placement;
 	if (LocalStrength <= 0.0f)
 	{
 		OutputHeight[Pixel] = H0;
@@ -405,7 +405,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float LocalGravity = saturate(Gravity);
+	const float LocalGravity = Gravity;
 	const float GravityRadians = GravityAngle * 0.017453292519943295f;
 	const float2 GravityDirection = float2(cos(GravityRadians), sin(GravityRadians));
 	float Best0 = H0;
@@ -486,7 +486,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const float AverageBest = (Best0 + Best1 + Best2 + Best3) * 0.25f;
-	const float Target = lerp(Best0, AverageBest, saturate(AngularAA));
+	const float Target = lerp(Best0, AverageBest, AngularAA);
 	const float Potential = max(H0 - Target, 0.0f);
 	const float Amount = Potential * LocalStrength;
 	OutputHeight[Pixel] = H0 - Amount;

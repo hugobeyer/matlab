@@ -25,16 +25,14 @@ float MacroWarp;
 float MicroWarp;
 // @param MicroMorph saturates
 float MicroMorph;
-// @param Thickness hardmin=0
+// @param Thickness
 float Thickness;
-// @param Lift hardmin=0
+// @param Lift
 float Lift;
-// @param DetailStrength hardmin=0
+// @param DetailStrength
 float DetailStrength;
 float NormalStrength;
 
-// @param PeelAOStrength saturates
-float ProceduralAOStrength;
 float HeightAmount;
 float HeightInvert;
 
@@ -131,21 +129,32 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		PeelFieldB.Load(
 			int3(p, 0));
 
-	float coverage =
-		saturate(field.r)
-		* scope;
-
+	// Binary: a pixel is either peeled or it is not. The soft field and the soft scope used to
+	// multiply straight into coverage, so the interior of the effect carried partial blends of
+	// the layer's colour and roughness. Strength now moves the threshold -- more Strength peels
+	// more area -- instead of fading everything it touches. A narrow band anti-aliases the edge.
 	float strength =
-		saturate(Strength);
+		Strength;
 
 	float enabled =
 		strength > 1.0e-6f
 		? 1.0f
 		: 0.0f;
 
+	const float AntiAlias = 0.02f;
+	float threshold =
+		1.0f - saturate(strength);
+
+	float scopeBinary =
+		smoothstep(0.5f - AntiAlias, 0.5f + AntiAlias, scope);
+
+	float coverage =
+		smoothstep(threshold - AntiAlias, threshold + AntiAlias, saturate(field.r))
+		* scopeBinary;
+
 	float peel =
 		coverage
-		* strength;
+		* enabled;
 
 	float keep =
 		1.0f - peel;
@@ -210,15 +219,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Apply the final gate after field generation. Using the current pixel's scope for the local
 	// relief stencil avoids feeding the gate's contour back into the procedural peel shape.
-	hmm *= scope;
-	h0m *= scope;
-	hpm *= scope;
-	hm0 *= scope;
-	h00 *= scope;
-	hp0 *= scope;
-	hmp *= scope;
-	h0p *= scope;
-	hpp *= scope;
+	hmm *= scopeBinary;
+	h0m *= scopeBinary;
+	hpm *= scopeBinary;
+	hm0 *= scopeBinary;
+	h00 *= scopeBinary;
+	hp0 *= scopeBinary;
+	hmp *= scopeBinary;
+	h0p *= scopeBinary;
+	hpp *= scopeBinary;
 
 	// The shared height->normal convention. See MixtormatHeightNormal.ush.
 	//
@@ -254,33 +263,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			previousNormal,
 			reliefNormal);
 
-	// Height-driven contact AO.
-	// h is a delta: negative means the peel exposed a lower substrate.
-	float neighbourAverage =
-		(hm0 + hp0 + h0m + h0p)
-		* 0.25f;
-
-	float cavity =
-		max(
-			neighbourAverage - h00,
-			0.0f);
-
-	float removed =
-		max(
-			-h00,
-			0.0f);
-
-	float heightAO =
-		saturate(
-			cavity * 32.0f
-			+ removed * 2.0f);
-
-	float localAO =
-		enabled > 0.0f
-		? 1.0f
-			- saturate(ProceduralAOStrength)
-			* heightAO
-		: 1.0f;
+	// No AO: it is composited once for the final material, never per effect.
+	float localAO = 1.0f;
 
 	float previousHeight =
 		Initialize == 0

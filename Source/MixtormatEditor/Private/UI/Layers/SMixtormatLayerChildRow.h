@@ -24,6 +24,7 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerChildRow)
 		: _bActive(true)
 		, _bSelected(false)
+		, _bInstanceSource(false)
 	{}
 		// A glyph saying what kind of child this is. A slot rather than a brush so the row does not
 		// have to know how the glyph is tinted -- which mask it is, is a hover away, not in here.
@@ -33,6 +34,8 @@ public:
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		// This child is the source of the selected instance: it glows so the link is visible.
+		SLATE_ATTRIBUTE(bool, bInstanceSource)
 		SLATE_EVENT(FSimpleDelegate, OnSelected)
 		// The dot is the child's enable toggle -- it already shows the state, so it takes the
 		// click too rather than adding a checkbox the row has no room for.
@@ -51,6 +54,7 @@ private:
 	FLinearColor GetTintEnd() const;
 
 	TAttribute<bool> bSelected;
+	TAttribute<bool> bInstanceSource;
 	FSimpleDelegate OnSelected;
 	FPointerEventHandler OnRowDragDetected;
 	TSharedPtr<SMenuAnchor> ContextAnchor;

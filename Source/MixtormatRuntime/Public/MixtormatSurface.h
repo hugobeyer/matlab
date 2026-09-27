@@ -41,7 +41,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, AssetRegistrySearchable, Category = "Identity")
 	FName Structure = TEXT("Plain");
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AssetRegistrySearchable, Category = "Identity", meta = (ClampMin = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, AssetRegistrySearchable, Category = "Identity", meta = (UIMin = "1"))
 	int32 Variant = 1;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Identity")
@@ -66,7 +66,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Textures")
 	FString DerivedHeightSourceHash;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Surface", meta = (ClampMin = "1.0", ClampMax = "3.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Surface", meta = (UIMin = "1.0", UIMax = "3.0"))
 	float DefaultIOR = 1.5f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Preview")

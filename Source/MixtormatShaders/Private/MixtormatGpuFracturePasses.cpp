@@ -296,7 +296,7 @@ void AddFracturePasses(
 	}
 	FRDGTextureRef Normal = Ctx.GraphBuilder.CreateTexture(Ctx.OutputN[Index]->Desc, TEXT("Mixtormat.Fracture.Normal"));
 	AddHeightDerivedNormalPass(Ctx, SourceHeight, Height, Ctx.OutputN[Index], Ctx.OutputRAM[Index],
-		Normal, nullptr, Ctx.Request.Resolution, HeightDerivedNormalStrength, 0.0f, false, TEXT("Fracture"));
+		Normal, nullptr, Ctx.Request.Resolution, HeightDerivedNormalStrength, false, TEXT("Fracture"));
 	AddCopyTexturePass(Ctx.GraphBuilder, Height, Ctx.OutputHeight[Index]);
 	AddCopyTexturePass(Ctx.GraphBuilder, Normal, Ctx.OutputN[Index]);
 }

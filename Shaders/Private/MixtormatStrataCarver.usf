@@ -108,7 +108,7 @@ float4 MixtormatStrataFamilies(float2 P, int2 Period, uint Seed, float Jitter)
 // that follow the cell read as a nodule's own growth layers.
 float MixtormatStrataBanded(float Euclidean, float BandFrequency)
 {
-	const float Rings = Euclidean * max(BandFrequency, 0.0f);
+	const float Rings = Euclidean * BandFrequency;
 	return abs(frac(Rings) * 2.0f - 1.0f);
 }
 
@@ -344,7 +344,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float MaskValue = HasScopedMask != 0
 		? saturate(SeedMask.Load(int3(P, 0)))
 		: 1.0f;
-	const float MaskGate = lerp(1.0f, MaskValue, saturate(MaskInfluence));
+	const float MaskGate = lerp(1.0f, MaskValue, MaskInfluence);
 
 	// Region IDs. Branched, not multiplied by zero: the requirement is that influence 0 has
 	// *exactly* no effect, and a lerp against a hashed value still perturbs the last bits.
@@ -376,7 +376,7 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// so carving genuinely never starts outside it rather than starting and being masked away
 	// afterwards -- which is the difference between localised weathering and a cutout.
 	const float Threshold =
-		lerp(saturate(SeedThreshold) + IdSeedBias, 1.0001f, (1.0f - MaskGate));
+		lerp(SeedThreshold + IdSeedBias, 1.0001f, (1.0f - MaskGate));
 	const bool bSeeded = SeedScalar >= Threshold;
 
 	// Propagation cost. Cheap where the seed field is strong, so fronts run down the channels the
@@ -629,7 +629,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (MaskInfluence > 0.0f && HasScopedMask != 0)
 	{
 		const float MaskValue = saturate(ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
-		Carve *= lerp(1.0f, MaskValue, saturate(MaskInfluence));
+		Carve *= lerp(1.0f, MaskValue, MaskInfluence);
 	}
 
 	// Per-region depth variation. Branched for the same reason as in the seed pass: at 0 the ID

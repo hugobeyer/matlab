@@ -3,9 +3,23 @@
 #include "MixtormatGpuCompositorInternal.h"
 
 #include "Async/Async.h"
+#include "Misc/ScopeExit.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RenderingThread.h"
+
+// One stat per family, so `stat gpu` and ProfileGPU show where a composite's time goes.
+DECLARE_GPU_STAT_NAMED(MixtormatCompose, TEXT("Mixtormat Compose"));
+DECLARE_GPU_STAT_NAMED(MixtormatCacheRestore, TEXT("Mixtormat Cache Restore"));
+DECLARE_GPU_STAT_NAMED(MixtormatCacheSave, TEXT("Mixtormat Cache Save"));
+DECLARE_GPU_STAT_NAMED(MixtormatLayer, TEXT("Mixtormat Layer"));
+DECLARE_GPU_STAT_NAMED(MixtormatRegionIds, TEXT("Mixtormat Region IDs"));
+DECLARE_GPU_STAT_NAMED(MixtormatGenerators, TEXT("Mixtormat Generators"));
+DECLARE_GPU_STAT_NAMED(MixtormatChildren, TEXT("Mixtormat Masks and Effects"));
+DECLARE_GPU_STAT_NAMED(MixtormatComposite, TEXT("Mixtormat Composite"));
+DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Fracture Breakup Wear"));
+DECLARE_GPU_STAT_NAMED(MixtormatLayerBlur, TEXT("Mixtormat Layer Blur"));
 
 // The ground every stack composites onto. Values are the neutral read for each buffer, in that
 // buffer's own encoding: BaseColor is mid gray, Normal is encoded +Z, PackedRAM is roughness 0.5
@@ -20,11 +34,163 @@ namespace MixtormatSubstrate
 
 namespace MixtormatGpuCompositor
 {
+	// Copies what layers above LayerIndex can read from it and everything below it into targets
+	// extracted at the end of the graph. Returns null -- keeping nothing -- when the stack cannot
+	// be resumed exactly: over budget, or a published output that is really a ping-pong slot a
+	// later layer overwrites, whose value at resume time the snapshot could not reproduce.
+	static TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> SavePrefixSnapshot(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const int32 LayerIndex,
+		const int32 WriteIndex,
+		const TMap<FGuid, int32>& LayerIndexById)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+
+		const auto IsSharedSlot = [&Ctx, &LayerCtx](const FRDGTextureRef Texture)
+		{
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				if (Texture == Ctx.OutputBC[Index] || Texture == Ctx.OutputN[Index]
+					|| Texture == Ctx.OutputRAM[Index] || Texture == Ctx.OutputHeight[Index]
+					|| Texture == Ctx.OutputDebug[Index] || Texture == Ctx.OutputRegionIdPick[Index]
+					|| Texture == LayerCtx.MaskTargets[Index] || Texture == LayerCtx.RidgeTargets[Index]
+					|| Texture == LayerCtx.EffectTargets[Index] || Texture == LayerCtx.EffectHeightTargets[Index])
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+		const auto LayerOf = [&LayerIndexById](const FGuid& Id)
+		{
+			const int32* Found = LayerIndexById.Find(Id);
+			return Found ? *Found : MAX_int32;
+		};
+
+		const auto TextureBytes = [](const FRDGTextureRef Texture)
+		{
+			return static_cast<uint64>(Texture->Desc.Extent.X) * static_cast<uint64>(Texture->Desc.Extent.Y)
+				* static_cast<uint64>(GPixelFormats[Texture->Desc.Format].BlockBytes);
+		};
+		const FRDGTextureRef Accumulation[5] = {
+			Ctx.OutputBC[WriteIndex], Ctx.OutputN[WriteIndex], Ctx.OutputRAM[WriteIndex],
+			Ctx.OutputHeight[WriteIndex], LayerCtx.RidgeTargets[WriteIndex]};
+		uint64 Bytes = 0;
+		for (const FRDGTextureRef Texture : Accumulation)
+		{
+			Bytes += TextureBytes(Texture);
+		}
+
+		TArray<TPair<FPublishedMaskKey, FRDGTextureRef>> Published;
+		for (const TPair<FPublishedMaskKey, FRDGTextureRef>& Pair : Ctx.PublishedMaskOutputs)
+		{
+			if (LayerOf(Pair.Key.LayerId) > LayerIndex || !Pair.Value)
+			{
+				continue;
+			}
+			if (IsSharedSlot(Pair.Value))
+			{
+				UE_LOG(LogMixtormatComposition, Verbose,
+					TEXT("Prefix cache: not saving layer %d -- published output '%s' is a shared ping-pong slot."),
+					LayerIndex, *Pair.Key.Output.ToString());
+				return nullptr;
+			}
+			Published.Add(Pair);
+			Bytes += TextureBytes(Pair.Value);
+		}
+		if (Bytes > Request.CacheBudgetBytes)
+		{
+			UE_LOG(LogMixtormatComposition, Verbose,
+				TEXT("Prefix cache: not saving layer %d -- %llu MB exceeds Mixtormat.ComposeCacheBudgetMB."),
+				LayerIndex, Bytes / (1024ull * 1024ull));
+			return nullptr;
+		}
+
+		RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatCacheSave, "Mixtormat.CacheSave.Layer%d", LayerIndex);
+		TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> Entry =
+			MakeShared<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe>();
+		Entry->Key = Request.PrefixHashes[LayerIndex];
+		Entry->LayerIndex = LayerIndex;
+		Entry->Resolution = Request.Resolution;
+
+		const auto Keep = [&GraphBuilder](const FRDGTextureRef Source, TRefCountPtr<IPooledRenderTarget>* Out, const TCHAR* Name)
+		{
+			const FRDGTextureDesc Desc = FRDGTextureDesc::Create2D(
+				Source->Desc.Extent, Source->Desc.Format, FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV);
+			const FRDGTextureRef Copy = GraphBuilder.CreateTexture(Desc, Name);
+			AddCopyTexturePass(GraphBuilder, Source, Copy);
+			GraphBuilder.QueueTextureExtraction(Copy, Out);
+		};
+		Keep(Accumulation[0], &Entry->BaseColor, TEXT("Mixtormat.CacheSave.BaseColor"));
+		Keep(Accumulation[1], &Entry->Normal, TEXT("Mixtormat.CacheSave.Normal"));
+		Keep(Accumulation[2], &Entry->RAM, TEXT("Mixtormat.CacheSave.RAM"));
+		Keep(Accumulation[3], &Entry->Height, TEXT("Mixtormat.CacheSave.Height"));
+		Keep(Accumulation[4], &Entry->Ridge, TEXT("Mixtormat.CacheSave.Ridge"));
+
+		// The remaining snapshots are already dedicated copies nothing writes again, so they are
+		// extracted as they are. Arrays are sized before any extraction pointer is taken.
+		int32 HeightCount = 0;
+		for (const TPair<int32, FRDGTextureRef>& Pair : Ctx.HeightSnapshots)
+		{
+			HeightCount += Pair.Key <= LayerIndex ? 1 : 0;
+		}
+		Entry->HeightSnapshots.Reserve(HeightCount);
+		for (const TPair<int32, FRDGTextureRef>& Pair : Ctx.HeightSnapshots)
+		{
+			if (Pair.Key <= LayerIndex)
+			{
+				auto& Slot = Entry->HeightSnapshots.Emplace_GetRef(Pair.Key, TRefCountPtr<IPooledRenderTarget>());
+				GraphBuilder.QueueTextureExtraction(Pair.Value, &Slot.Value);
+			}
+		}
+
+		for (const FGuid& Demanded : Ctx.DriverSnapshotDemand)
+		{
+			if (LayerOf(Demanded) <= LayerIndex)
+			{
+				Entry->DriverDemandCovered.Add(Demanded);
+			}
+		}
+		int32 DriverCount = 0;
+		for (const TPair<FGuid, FRDGTextureRef>& Pair : Ctx.DriverSnapshots)
+		{
+			DriverCount += LayerOf(Pair.Key) <= LayerIndex ? 1 : 0;
+		}
+		Entry->DriverSnapshots.Reserve(DriverCount);
+		for (const TPair<FGuid, FRDGTextureRef>& Pair : Ctx.DriverSnapshots)
+		{
+			if (LayerOf(Pair.Key) <= LayerIndex)
+			{
+				auto& Slot = Entry->DriverSnapshots.Emplace_GetRef(Pair.Key, TRefCountPtr<IPooledRenderTarget>());
+				GraphBuilder.QueueTextureExtraction(Pair.Value, &Slot.Value);
+			}
+		}
+
+		Entry->PublishedMasks.Reserve(Published.Num());
+		for (const TPair<FPublishedMaskKey, FRDGTextureRef>& Pair : Published)
+		{
+			auto& Slot = Entry->PublishedMasks.Emplace_GetRef(Pair.Key, TRefCountPtr<IPooledRenderTarget>());
+			GraphBuilder.QueueTextureExtraction(Pair.Value, &Slot.Value);
+		}
+		return Entry;
+	}
+
 	void EnqueueCompose(FRenderRequest&& Request)
 	{
 		ENQUEUE_RENDER_COMMAND(MixtormatComposite)(
 			[Request = MoveTemp(Request)](FRHICommandListImmediate& RHICmdList) mutable
 			{
+				// Every exit, including the failure returns below, ends the in-flight window.
+				ON_SCOPE_EXIT
+				{
+					if (Request.InFlight.IsValid())
+					{
+						Request.InFlight->store(false);
+					}
+				};
 				// Child commands were enqueued first on the same game thread. Their RDG graphs
 				// finish submission and transition outputs to SRVs before this graph reads them.
 				for (FLayerRenderData& Layer : Request.Layers)
@@ -65,6 +231,11 @@ namespace MixtormatGpuCompositor
 				}
 				FRDGBuilder GraphBuilder(RHICmdList);
 				FMixtormatComposeContext Ctx(GraphBuilder, Request);
+				// Filled during the graph and stored once it has executed, when the extracted
+				// targets actually exist.
+				TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> PendingSnapshot;
+				{
+				RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatCompose, "Mixtormat.Compose");
 				TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
 				FRDGTextureRef* const OutputBC = Ctx.OutputBC;
 				FRDGTextureRef* const OutputN = Ctx.OutputN;
@@ -339,19 +510,109 @@ namespace MixtormatGpuCompositor
 						}
 					}
 					TMap<int32, FRDGTextureRef>& HeightSnapshots = Ctx.HeightSnapshots;
+
+					// Layer of each Driver source, for checking a snapshot holds every Driver signal
+					// the current stack asks for from below it.
+					TMap<FGuid, int32> LayerIndexById;
 					for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 					{
+						LayerIndexById.Add(Request.Layers[LayerIndex].LayerId, LayerIndex);
+					}
+
+					// Resume from the deepest kept prefix. What a layer above K can read from below
+					// it is the accumulation half K wrote, the ridge half K wrote, and the dedicated
+					// snapshots -- restored here into exactly the slots the skipped layers would
+					// have left them in.
+					int32 FirstLayer = 0;
+					const bool bPrefixCache = Request.PrefixCache.IsValid()
+						&& Request.PrefixHashes.Num() == Request.Layers.Num();
+					if (bPrefixCache)
+					{
+						const TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> Resumed =
+							Request.PrefixCache->FindDeepest(
+								Request.PrefixHashes, Request.Resolution, Request.CacheLayerLimit,
+								[&](const FMixtormatPrefixCache::FEntry& Entry)
+								{
+									for (const int32 Required : RequiredHeightSnapshots)
+									{
+										if (Required <= Entry.LayerIndex
+											&& !Entry.HeightSnapshots.ContainsByPredicate(
+												[Required](const TPair<int32, TRefCountPtr<IPooledRenderTarget>>& Pair)
+												{
+													return Pair.Key == Required;
+												}))
+										{
+											return false;
+										}
+									}
+									for (const FGuid& Demanded : DriverSnapshotDemand)
+									{
+										const int32* SourceIndex = LayerIndexById.Find(Demanded);
+										if (SourceIndex && *SourceIndex <= Entry.LayerIndex
+											&& !Entry.DriverDemandCovered.Contains(Demanded))
+										{
+											return false;
+										}
+									}
+									return true;
+								});
+						UE_LOG(LogMixtormatComposition, Verbose,
+							TEXT("Prefix cache: %s (snapshot layer %d, %d layers)."),
+							Resumed.IsValid() ? TEXT("resumed") : TEXT("full composite"),
+							Resumed.IsValid() ? Resumed->LayerIndex : INDEX_NONE,
+							Request.Layers.Num());
+						if (Resumed.IsValid())
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatCacheRestore,
+								"Mixtormat.CacheRestore.Layer%d", Resumed->LayerIndex);
+							const int32 Half = Resumed->LayerIndex & 1;
+							const auto Restore = [&GraphBuilder](
+								const TRefCountPtr<IPooledRenderTarget>& Source, FRDGTextureRef Target, const TCHAR* Name)
+							{
+								AddCopyTexturePass(GraphBuilder, GraphBuilder.RegisterExternalTexture(Source, Name), Target);
+							};
+							Restore(Resumed->BaseColor, OutputBC[Half], TEXT("Mixtormat.Cache.BaseColor"));
+							Restore(Resumed->Normal, OutputN[Half], TEXT("Mixtormat.Cache.Normal"));
+							Restore(Resumed->RAM, OutputRAM[Half], TEXT("Mixtormat.Cache.RAM"));
+							Restore(Resumed->Height, HeightTargets[Half], TEXT("Mixtormat.Cache.Height"));
+							Restore(Resumed->Ridge, RidgeTargets[Half], TEXT("Mixtormat.Cache.Ridge"));
+							for (const TPair<int32, TRefCountPtr<IPooledRenderTarget>>& Pair : Resumed->HeightSnapshots)
+							{
+								HeightSnapshots.Add(Pair.Key, GraphBuilder.RegisterExternalTexture(
+									Pair.Value, TEXT("Mixtormat.Cache.HeightSnapshot")));
+							}
+							for (const TPair<FGuid, TRefCountPtr<IPooledRenderTarget>>& Pair : Resumed->DriverSnapshots)
+							{
+								DriverSnapshots.Add(Pair.Key, GraphBuilder.RegisterExternalTexture(
+									Pair.Value, TEXT("Mixtormat.Cache.DriverSnapshot")));
+							}
+							for (const auto& Pair : Resumed->PublishedMasks)
+							{
+								PublishedMaskOutputs.Add(Pair.Key, GraphBuilder.RegisterExternalTexture(
+									Pair.Value, TEXT("Mixtormat.Cache.PublishedMask")));
+							}
+							FirstLayer = Resumed->LayerIndex + 1;
+						}
+					}
+
+					for (int32 LayerIndex = FirstLayer; LayerIndex < Request.Layers.Num(); ++LayerIndex)
+					{
+						RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayer, "Mixtormat.Layer%d", LayerIndex);
 						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
 						LayerCtx.BeginLayer(LayerIndex);
 
 						TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
 						TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
 							LayerCtx.PatternOutputs;
-						AddRegionProducerPasses(Ctx, LayerCtx, Layer);
-						// Immediately after the producers and before anything reads the layer's
-						// source: the source read is the only thing this node changes, and both the
-						// layer-input resolve and the composite have to see the same answer.
-						AddUvIdPasses(Ctx, LayerCtx, Layer);
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatRegionIds, "Mixtormat.RegionIds");
+							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
+							AddGeneratorFieldPasses(Ctx, LayerCtx, Layer);
+							// Immediately after the producers and before anything reads the layer's
+							// source: the source read is the only thing this node changes, and both the
+							// layer-input resolve and the composite have to see the same answer.
+							AddUvIdPasses(Ctx, LayerCtx, Layer);
+						}
 
 						FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
 						CombinedMask = RegisterTexture(
@@ -384,7 +645,10 @@ namespace MixtormatGpuCompositor
 						// live, would make the carve a decal painted over a finished layer: the
 						// height blend, the mask chain's curvature and every height-driven mask
 						// would all have already run against the uncarved surface.
-						AddGeneratorPasses(Ctx, LayerCtx, Layer);
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
+							AddGeneratorPasses(Ctx, LayerCtx, Layer);
+						}
 						FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 
 						TArray<FPendingWornEdges, TInlineAllocator<2>>& PendingWornEdges =
@@ -415,6 +679,8 @@ namespace MixtormatGpuCompositor
 						TArray<FPendingEffect, TInlineAllocator<2>>& PendingLayerBlurs =
 							LayerCtx.PendingLayerBlurs;
 
+						{
+						RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatChildren, "Mixtormat.MasksAndEffects");
 						for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 						{
 							const FChildRenderData& Child = Layer.Children[ChildIndex];
@@ -533,6 +799,8 @@ namespace MixtormatGpuCompositor
 							AddPeelingEffectPasses(Ctx, LayerCtx, Layer, Child, ChildIndex, Effect, FeatureMask);
 						}
 
+						}
+
 						// All IDs, including Breakup-dependent Combine chains, now exist.
 						CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
@@ -559,19 +827,25 @@ namespace MixtormatGpuCompositor
 							Ctx.OutputRAM[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedRAM->Desc, TEXT("Mixtormat.LocalRAM"));
 							Ctx.OutputHeight[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedHeight->Desc, TEXT("Mixtormat.LocalHeight"));
 						}
-						AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareStructure ? 1u : 0u);
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatComposite, "Mixtormat.Composite");
+							AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareStructure ? 1u : 0u);
+						}
 
-						AddErosionPasses(Ctx, LayerCtx, Layer);
-						AddRampReliefPasses(Ctx, LayerCtx, Layer);
-						AddFracturePasses(Ctx, LayerCtx, Layer);
-						AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatStructure, "Mixtormat.Structure");
+							AddErosionPasses(Ctx, LayerCtx, Layer);
+							AddRampReliefPasses(Ctx, LayerCtx, Layer);
+							AddFracturePasses(Ctx, LayerCtx, Layer);
+							AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
 
-						// Breakup publishes structural IDs during child collection, then authors its relief here.
-						// Worn Edges follows it so a Worn Edges row below Breakup can wear the actual generated
-						// plate/flake boundaries instead of the pre-breakup surface.
-						AddBreakupPasses(Ctx, LayerCtx, Layer);
+							// Breakup publishes structural IDs during child collection, then authors its relief here.
+							// Worn Edges follows it so a Worn Edges row below Breakup can wear the actual generated
+							// plate/flake boundaries instead of the pre-breakup surface.
+							AddBreakupPasses(Ctx, LayerCtx, Layer);
 
-						AddWornEdgesPasses(Ctx, LayerCtx, Layer);
+							AddWornEdgesPasses(Ctx, LayerCtx, Layer);
+						}
 
 						if (bPrepareStructure)
 						{
@@ -590,7 +864,10 @@ namespace MixtormatGpuCompositor
 
 						// Last of all: the blur softens the finished surface, so a grade or a relief pass
 						// running after it would be sharpening detail the blur was asked to remove.
-						AddLayerBlurPasses(Ctx, LayerCtx, Layer);
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayerBlur, "Mixtormat.LayerBlur");
+							AddLayerBlurPasses(Ctx, LayerCtx, Layer);
+						}
 
 						// The raw ids behind the Region IDs preview, for the Exact ID picker.
 						//
@@ -631,7 +908,22 @@ namespace MixtormatGpuCompositor
 							AddCopyTexturePass(GraphBuilder, HeightTargets[WriteIndex], Snapshot);
 							HeightSnapshots.Add(LayerIndex, Snapshot);
 						}
+
+						if (bPrefixCache
+							&& LayerIndex == Request.SnapshotLayer
+							&& LayerIndex < Request.CacheLayerLimit
+							&& !Request.PrefixCache->Contains(
+								Request.PrefixHashes[LayerIndex], LayerIndex, Request.Resolution))
+						{
+							PendingSnapshot = SavePrefixSnapshot(
+								Ctx, LayerCtx, LayerIndex, WriteIndex, LayerIndexById);
+							UE_LOG(LogMixtormatComposition, Verbose,
+								TEXT("Prefix cache: %s layer %d."),
+								PendingSnapshot.IsValid() ? TEXT("saving") : TEXT("refused"), LayerIndex);
+						}
 					}
+				}
+
 				}
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;
@@ -641,15 +933,26 @@ namespace MixtormatGpuCompositor
 					AddRotateOutputPass(Ctx, Request.PublishedTargetIndex, FinalTargetIndex);
 				}
 
-				GraphBuilder.SetTextureAccessFinal(OutputBC[FinalTargetIndex], ERHIAccess::SRVMask);
-				GraphBuilder.SetTextureAccessFinal(OutputN[FinalTargetIndex], ERHIAccess::SRVMask);
-				GraphBuilder.SetTextureAccessFinal(OutputRAM[FinalTargetIndex], ERHIAccess::SRVMask);
-				GraphBuilder.SetTextureAccessFinal(OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
-				GraphBuilder.SetTextureAccessFinal(OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputBC[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputN[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputRAM[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(
-					OutputRegionIdPick[FinalTargetIndex], ERHIAccess::SRVMask);
+					Ctx.OutputRegionIdPick[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.Execute();
 				Request.Targets->bSucceeded = true;
+				if (PendingSnapshot.IsValid() && Request.PrefixCache.IsValid())
+				{
+					Request.PrefixCache->Store(PendingSnapshot, Request.CacheBudgetBytes);
+				}
+				if (Request.NodeCache.IsValid())
+				{
+					for (const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>& Entry : Ctx.PendingNodeEntries)
+					{
+						Request.NodeCache->Store(Entry);
+					}
+				}
 				if (Request.OnComplete.IsBound())
 				{
 					AsyncTask(

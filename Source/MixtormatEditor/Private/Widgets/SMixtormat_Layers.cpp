@@ -310,6 +310,8 @@ namespace
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Fracture:        return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -329,7 +331,6 @@ namespace
 			Child.PatternId.BevelHeight = 0.0f;
 			Child.PatternId.GapHeight = 0.0f;
 			Child.PatternId.EdgeRoughnessAmount = 0.0f;
-			Child.PatternId.AOAmount = 0.0f;
 			break;
 		case EMixtormatChildCreation::SurfaceIds:
 			Child.Filter.bSurfaceIds = true;
@@ -358,6 +359,12 @@ namespace
 		case EMixtormatChildCreation::Fracture:
 			Child.Generator.Type = EMixtormatGeneratorType::Fracture;
 			MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Generator.Fracture);
+			break;
+		case EMixtormatChildCreation::RockFormation:
+			Child.Generator.Type = EMixtormatGeneratorType::RockFormation;
+			break;
+		case EMixtormatChildCreation::Pebbles:
+			Child.Generator.Type = EMixtormatGeneratorType::Pebbles;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -459,9 +466,9 @@ namespace
 		{
 			OutMask.Mask = TSoftObjectPtr<UMixtormatMask>(MaskPath);
 			OutMask.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-			OutMask.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+			OutMask.TilingX = FMath::Max(FMath::RoundToInt(Mask->DefaultTiling), 1);
 			OutMask.TilingY = OutMask.TilingX;
-			OutMask.Shaping.Balance = FMath::Clamp(Mask->DefaultBalance, 0.0f, 1.0f);
+			OutMask.Shaping.Balance = Mask->DefaultBalance;
 			OutMask.Shaping.Contrast = Mask->DefaultContrast;
 			OutMask.Shaping.Offset = Mask->DefaultOffset;
 			OutMask.Shaping.bInvert = Mask->bDefaultInvert;
@@ -474,6 +481,71 @@ namespace
 		}
 		return false;
 	}
+}
+
+void SMixtormat::InitializeNewLayer(
+	FMixtormatLayer& Layer, const EMixtormatLayerType LayerType, const int32 LayerNumber) const
+{
+	Layer.Type = LayerType;
+	switch (LayerType)
+	{
+	case EMixtormatLayerType::Material:
+		Layer.DisplayName = SelectedLibrarySurfaceName.IsEmpty()
+			? FText::Format(LOCTEXT("MaterialLayerNumber", "Material Layer {0}"), FText::AsNumber(LayerNumber))
+			: SelectedLibrarySurfaceName;
+		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
+		break;
+	case EMixtormatLayerType::Fill:
+		Layer.DisplayName = FText::Format(LOCTEXT("FillLayerNumber", "Fill Layer {0}"), FText::AsNumber(LayerNumber));
+		Layer.bOverrideBaseColor = true;
+		Layer.bOverrideRoughness = true;
+		Layer.bOverrideIOR = true;
+		Layer.bOverrideMetallic = true;
+		// OVER, not BLEND. BLEND is a smooth max against the surface below, so a flat fill's
+		// height (and anything a generator carves into it) never shows unless it rises above
+		// what is already there. A fill is its own surface: its height cross-fades in by coverage.
+		Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
+		break;
+	case EMixtormatLayerType::Effect:
+		Layer.DisplayName = FText::Format(LOCTEXT("EffectLayerNumber", "Effect Layer {0}"), FText::AsNumber(LayerNumber));
+		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
+		break;
+	}
+}
+
+bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
+{
+	const FMixtormatLayerChild* Selected = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+	return Selected
+		&& Selected->IsInstance()
+		&& Selected->SourceChildId == ChildId
+		&& (!Selected->SourceLayerId.IsValid() || Selected->SourceLayerId == OwnerId);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("ColumnAddMaterialLayer", "Add Material Layer"),
+		MixtormatIcons::LayerMaterial(),
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			AddLayerOrStartMaterial(EMixtormatLayerType::Material);
+		}))
+		.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
+	Menu.Item(
+		LOCTEXT("ColumnAddFillLayer", "Add Fill Layer"),
+		MixtormatIcons::LayerFill(),
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			AddLayerOrStartMaterial(EMixtormatLayerType::Fill);
+		}));
+	return Menu.Build();
+}
+
+FReply SMixtormat::AddLayerOrStartMaterial(const EMixtormatLayerType LayerType)
+{
+	return bHasWorkingMaterial ? AddWorkingLayer(LayerType) : StartNewMaterialWith(LayerType);
 }
 
 FReply SMixtormat::AddWorkingLayer(const EMixtormatLayerType LayerType)
@@ -489,29 +561,7 @@ FReply SMixtormat::AddWorkingLayer(const EMixtormatLayerType LayerType)
 	}
 
 	FMixtormatLayer& Layer = WorkingLayers.AddDefaulted_GetRef();
-	Layer.Type = LayerType;
-	const int32 LayerNumber = WorkingLayers.Num();
-
-	switch (LayerType)
-	{
-	case EMixtormatLayerType::Material:
-		Layer.DisplayName = SelectedLibrarySurfaceName.IsEmpty()
-			? FText::Format(LOCTEXT("MaterialLayerNumber", "Material Layer {0}"), FText::AsNumber(LayerNumber))
-			: SelectedLibrarySurfaceName;
-		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
-		break;
-	case EMixtormatLayerType::Fill:
-		Layer.DisplayName = FText::Format(LOCTEXT("FillLayerNumber", "Fill Layer {0}"), FText::AsNumber(LayerNumber));
-		Layer.bOverrideBaseColor = true;
-		Layer.bOverrideRoughness = true;
-		Layer.bOverrideIOR = true;
-		Layer.bOverrideMetallic = true;
-		break;
-	case EMixtormatLayerType::Effect:
-		Layer.DisplayName = FText::Format(LOCTEXT("EffectLayerNumber", "Effect Layer {0}"), FText::AsNumber(LayerNumber));
-		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
-		break;
-	}
+	InitializeNewLayer(Layer, LayerType, WorkingLayers.Num());
 
 	SelectedLayerIndex = WorkingLayers.Num() - 1;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1652,11 +1702,11 @@ FReply SMixtormat::ReplaceMaskInLayer(
 	{
 		Replacement.Mask = TSoftObjectPtr<UMixtormatMask>(MaskPath);
 		Replacement.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
-		Replacement.TilingX = FMath::Clamp(FMath::RoundToInt(Mask->DefaultTiling), 1, 16);
+		Replacement.TilingX = FMath::Max(FMath::RoundToInt(Mask->DefaultTiling), 1);
 		Replacement.TilingY = Replacement.TilingX;
 		// Offset is deliberately not carried here, unlike when a mask is first added: replacing
 		// the picture under an existing mask keeps the offset the user dialled against it.
-		Replacement.Shaping.Balance = FMath::Clamp(Mask->DefaultBalance, 0.0f, 1.0f);
+		Replacement.Shaping.Balance = Mask->DefaultBalance;
 		Replacement.Shaping.Contrast = Mask->DefaultContrast;
 		Replacement.Shaping.bInvert = Mask->bDefaultInvert;
 	}
@@ -3396,6 +3446,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SMixtormatLayerDropTarget)
 		.OnSurfaceDropped(this, &SMixtormat::HandleSurfaceDropped)
+		.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerColumnContextMenu))
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::LayerStackWidth)
@@ -3807,6 +3858,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("StrataCarverChildName", "Strata Carver");
 		case EMixtormatGeneratorType::Fracture:
 			return LOCTEXT("FractureChildName", "Fracture");
+		case EMixtormatGeneratorType::RockFormation:
+			return LOCTEXT("RockFormationChildName", "Rock Formation");
+		case EMixtormatGeneratorType::Pebbles:
+			return LOCTEXT("PebblesChildName", "Pebbles");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}
@@ -4418,6 +4473,13 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			{
 				return SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex;
 			})
+			.bInstanceSource_Lambda([this, GroupId, ChildIndex]()
+			{
+				const FMixtormatLayerGroup* Current =
+					MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				return Current && Current->Children.IsValidIndex(ChildIndex)
+					&& IsSourceOfSelectedInstance(GroupId, Current->Children[ChildIndex].ChildId);
+			})
 			.OnSelected_Lambda([this, GroupId, ChildIndex]() { SelectGroupChild(GroupId, ChildIndex); })
 			.OnToggleActive_Lambda([this, GroupId, ChildIndex]()
 			{
@@ -4922,6 +4984,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					return SelectedLayerIndex == LayerIndex
 						&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
 				})
+				.bInstanceSource_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return WorkingLayers.IsValidIndex(LayerIndex)
+						&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+						&& IsSourceOfSelectedInstance(
+							WorkingLayers[LayerIndex].LayerId,
+							WorkingLayers[LayerIndex].Children[ChildIndex].ChildId);
+				})
 				.OnSelected_Lambda([this, LayerIndex, ChildIndex]()
 				{
 					SelectWorkingChild(LayerIndex, ChildIndex);
@@ -5403,6 +5473,22 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
 			CreateChild(Target, EMixtormatChildCreation::Fracture);
+		}))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+	Menu.Item(
+		LOCTEXT("AddRockFormationChild", "Rock Formation"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			CreateChild(Target, EMixtormatChildCreation::RockFormation);
+		}))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+	Menu.Item(
+		LOCTEXT("AddPebblesChild", "Pebbles"),
+		MixtormatIcons::Effect(),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			CreateChild(Target, EMixtormatChildCreation::Pebbles);
 		}))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	return Menu.Build();
@@ -6328,6 +6414,46 @@ FMixtormatFracture* SMixtormat::GetSelectedFracture()
 		&& Child->Type == EMixtormatLayerChildType::Generator
 		&& Child->Generator.Type == EMixtormatGeneratorType::Fracture
 		? &Child->Generator.Fracture
+		: nullptr;
+}
+
+FMixtormatRockFormation* SMixtormat::GetSelectedRockFormation()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::RockFormation
+		? &Child->Generator.RockFormation
+		: nullptr;
+}
+
+const FMixtormatRockFormation* SMixtormat::GetSelectedRockFormation() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::RockFormation
+		? &Child->Generator.RockFormation
+		: nullptr;
+}
+
+FMixtormatPebbles* SMixtormat::GetSelectedPebbles()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::Pebbles
+		? &Child->Generator.Pebbles
+		: nullptr;
+}
+
+const FMixtormatPebbles* SMixtormat::GetSelectedPebbles() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child
+		&& Child->Type == EMixtormatLayerChildType::Generator
+		&& Child->Generator.Type == EMixtormatGeneratorType::Pebbles
+		? &Child->Generator.Pebbles
 		: nullptr;
 }
 

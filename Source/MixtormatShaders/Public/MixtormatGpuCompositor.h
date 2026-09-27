@@ -6,6 +6,9 @@
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/SoftObjectPath.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "UObject/ObjectKey.h"
+
+#include <atomic>
 
 class UMaterialInstanceDynamic;
 class UMixtormatMaterial;
@@ -18,6 +21,8 @@ struct FMixtormatComposeResources;
 // the lifetime is tied to the panel rather than to the module, and hands a shared reference to
 // each render command so a composite still in flight keeps it alive.
 struct FMixtormatNetworkCache;
+struct FMixtormatPrefixCache;
+struct FMixtormatNodeCache;
 
 enum class EMixtormatDebugPreviewMode : uint8
 {
@@ -37,7 +42,10 @@ enum class EMixtormatDebugPreviewMode : uint8
 	// Region IDs, Breakup's Region IDs/Gap/Edge/Pieces, Worn Edges' Wear, ...), addressed by
 	// ChildTarget rather than by a dedicated mode per producer -- see FMixtormatChildPreviewTarget.
 	// LayerIndex/ChildIndex are resolved from ChildTarget once, at composite time.
-	ChildOutput
+	ChildOutput,
+	// The UV this layer actually samples (after UV From IDs, tiling and rotation) as a gradient:
+	// red = U, green = V, with faint lines every eighth of a tile. Written by the composite.
+	LayerUV
 };
 
 // What kind of thing a child-published output is, so the preview knows how to colour it: a
@@ -124,6 +132,12 @@ public:
 	void BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const;
 
 	bool IsInitialized() const { return bInitialized; }
+	// True from RequestCompose until the render thread has submitted that composite. A caller
+	// that recomposites every frame can skip a request while this is set and keep only its latest.
+	bool IsComposeInFlight() const;
+	// Drops every cached layer prefix and referenced composition. Called on resolution change;
+	// safe to call any time -- the next composite simply runs in full.
+	void ResetCaches();
 	FIntPoint GetResolution() const { return Resolution; }
 	UTextureRenderTarget2D* GetBaseColorOutput() const;
 	UTextureRenderTarget2D* GetNormalOutput() const;
@@ -164,6 +178,26 @@ private:
 	// margin the most expensive thing in the graph, and almost nothing a user touches while
 	// tuning actually changes it, so it is kept rather than regrown every frame of a drag.
 	TSharedPtr<FMixtormatNetworkCache, ESPMode::ThreadSafe> NetworkCache;
+	TSharedPtr<FMixtormatPrefixCache, ESPMode::ThreadSafe> PrefixCache;
+	TSharedPtr<FMixtormatNodeCache, ESPMode::ThreadSafe> NodeCache;
+	// Prefix hashes of the previous request, to find the lowest layer an edit changed.
+	TArray<uint64> LastPrefixHashes;
+	int32 LastSnapshotLayer = INDEX_NONE;
+	TSharedPtr<std::atomic<bool>, ESPMode::ThreadSafe> InFlight;
+
+	// Referenced compositions, one compositor per source asset, recomposed only when the
+	// source's content hash changes. Rebuilding one per reference per composite allocated a full
+	// set of render targets every frame of a drag.
+	struct FReferenceEntry
+	{
+		TUniquePtr<FMixtormatGpuCompositor> Compositor;
+		uint64 ContentHash = 0;
+		bool bValid = false;
+	};
+	TMap<TObjectKey<UMixtormatMaterial>, TSharedPtr<FReferenceEntry>> ReferenceCompositors;
+	// False for compositors created for a reference layer. They recomposite only when their source
+	// changes, so layer-prefix and node caches inside them would hold memory for nothing.
+	bool bCacheLayerResults = true;
 
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	int32 PublishedTargetIndex = 0;

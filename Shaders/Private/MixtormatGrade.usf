@@ -22,12 +22,12 @@ int2 OutputSize;
 uint HasMask;
 uint InvertMask;
 int TonemapMode;
-// @param GradeTonemapStrength saturates
+// @param GradeTonemapStrength
 float TonemapStrength;
 float Brightness;
 float Contrast;
 float ContrastPivot;
-// @param GradeGamma hardmin=0.05
+// @param GradeGamma
 float Gamma;
 float Amount;
 float InputMin;
@@ -125,7 +125,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float3 Mapped = TonemapMode == 1
 			? TonemapReinhard(c)
 			: (TonemapMode == 2 ? TonemapACES(c) : TonemapFilmic(c));
-		c = lerp(c, Mapped, saturate(TonemapStrength));
+		c = lerp(c, Mapped, TonemapStrength);
 	}
 
 	// Gamma last, and as pow(c, 1/g), so a value above 1 lifts the midtones. That is the

@@ -66,6 +66,38 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputFractureHeight", "Fracture Height"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)
+		{
+			// Chunk IDs feed the ID consumers below this row; the masks are copyable outputs.
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockTop")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockTop", "Top"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockChamfer")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockChamfer", "Chamfer"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockWall")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockWall", "Wall"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockEdgeDistance")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockEdgeDistance", "Edge Distance"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("PebbleCoverage")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleCoverage", "Coverage"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("PebbleEdgeDistance")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleEdgeDistance", "Edge Distance"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("PebbleRandom")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleRandom", "Random"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		}
 		break;
 	case EMixtormatLayerChildType::Effect:
 		if (EffectType == EMixtormatEffectType::Breakup)

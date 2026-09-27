@@ -34,10 +34,10 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskBlur
 	// The ceiling is the shader's: it unrolls to 32 taps, and sigma is half the radius, so beyond
 	// 32 the kernel would be truncated somewhere it has not yet decayed and the cut would show as
 	// a ring.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius X", ClampMin = "0.0", ClampMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius X", UIMin = "0.0", UIMax = "32.0"))
 	float RadiusX = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius Y", ClampMin = "0.0", ClampMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius Y", UIMin = "0.0", UIMax = "32.0"))
 	float RadiusY = 4.0f;
 
 	bool BlursAnything() const

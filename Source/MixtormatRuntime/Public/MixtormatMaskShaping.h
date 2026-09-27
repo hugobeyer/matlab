@@ -34,19 +34,19 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 	// Thins toward black above 0.5, thickens toward white below it, as a power curve -- so it
 	// erodes what is there rather than fading it out. The shader saturates this, which is why the
 	// clamp is 0-1 and not the 0-2 and 0-16 it used to be in various places.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Balance = 0.5f;
 
 	// About a fixed 0.5 midpoint, which is the correct pivot because masks are stored raw rather
 	// than sRGB. The clamp stays generous for assets authored against the old range; the editor
 	// slider is the narrower one, since everything useful lives under about 4.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (ClampMin = "0.0", ClampMax = "10.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float Contrast = 1.0f;
 
 	// Lifts the signal after contrast and inside the same saturate, so +1 reaches full white and
 	// -1 full black from any input at any contrast. There is nothing past that: a larger offset
 	// clips to the same result.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (ClampMin = "-1.0", ClampMax = "1.0", UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float Offset = 0.0f;
 };
 

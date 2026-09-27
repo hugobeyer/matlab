@@ -220,6 +220,10 @@ namespace MixtormatLayerBadges
 				return LOCTEXT("GeneratorBadgeStrataCarver", "STRATA");
 			case EMixtormatGeneratorType::Fracture:
 				return LOCTEXT("GeneratorBadgeFracture", "FRACT");
+			case EMixtormatGeneratorType::RockFormation:
+				return LOCTEXT("GeneratorBadgeRockFormation", "ROCK");
+			case EMixtormatGeneratorType::Pebbles:
+				return LOCTEXT("GeneratorBadgePebbles", "PEBBL");
 			}
 			return LOCTEXT("GeneratorBadgeUnknown", "GEN");
 		}

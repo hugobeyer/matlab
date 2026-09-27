@@ -45,7 +45,7 @@ bool FMixtormatClusterFilter::CanSampleSurface(const UMixtormatSurface* Surface)
 			return Surface->RoughnessAOMetallic != nullptr;
 		}
 	};
-	const float Mix = FMath::IsFinite(FeatureMix) ? FMath::Clamp(FeatureMix, 0.0f, 1.0f) : 0.0f;
+	const float Mix = FMath::IsFinite(FeatureMix) ? FeatureMix : 0.0f;
 	return (Mix >= 1.0f || HasFeature(PrimaryFeature))
 		&& (Mix <= 0.0f || HasFeature(SecondaryFeature));
 }

@@ -78,7 +78,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (WarpAmount > 0.0f)
 	{
 		const int2 MaxPixel = OutputSize - 1;
-		const int R = clamp(WarpRadius, 1, 16);
+		const int R = max(WarpRadius, 1);
 
 		// Tangent-space normal XY is the surface slope at this point, pointing downhill.
 		const float2 NormalFlow = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY).xy;
@@ -94,7 +94,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		HeightGradient.y = (SurfaceHeight.Load(int3(D, 0)) - SurfaceHeight.Load(int3(U, 0))) * InverseDiameter;
 		const float2 HeightFlow = -HeightGradient;
 
-		const float2 Flow = lerp(NormalFlow, HeightFlow, saturate(WarpSource));
+		const float2 Flow = lerp(NormalFlow, HeightFlow, WarpSource);
 
 		// Soft magnitude rather than a unit vector. Displacement stays proportional to
 		// slope on gentle ground and rolls off asymptotically on steep ground, so the

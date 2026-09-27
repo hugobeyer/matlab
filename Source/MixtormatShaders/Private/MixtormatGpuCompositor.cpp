@@ -2,6 +2,7 @@
 
 #include "MixtormatGpuCompositor.h"
 
+#include "Compositing/MixtormatComposeHash.h"
 #include "Compositing/MixtormatEffectGather.h"
 #include "MixtormatGpuCompositorInternal.h"
 
@@ -25,6 +26,9 @@
 #include "ShaderParameterStruct.h"
 #include "TextureResource.h"
 
+#include "HAL/IConsoleManager.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
+
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #endif
@@ -45,6 +49,20 @@ FMixtormatComposeResources::~FMixtormatComposeResources()
 }
 
 DEFINE_LOG_CATEGORY(LogMixtormatComposition);
+
+static TAutoConsoleVariable<int32> CVarMixtormatDisableComposeCache(
+	TEXT("Mixtormat.DisableComposeCache"),
+	0,
+	TEXT("1 disables the layer-prefix and referenced-composition caches, so every composite runs ")
+	TEXT("the whole stack. For comparing cached output against a full recomposite."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarMixtormatComposeCacheBudgetMB(
+	TEXT("Mixtormat.ComposeCacheBudgetMB"),
+	512,
+	TEXT("Upper bound, in MB, for kept layer-prefix snapshots per compositor. A snapshot larger ")
+	TEXT("than this is not kept at all."),
+	ECVF_Default);
 
 // The ground every stack composites onto.
 //
@@ -288,6 +306,8 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, HasSeparateHeight)
+		SHADER_PARAMETER(uint32, HasPackedHeight)
+		SHADER_PARAMETER(float, ConstantHeight)
 		SHADER_PARAMETER(uint32, LayerInputResolved)
 		SHADER_PARAMETER(uint32, HasNormal)
 		SHADER_PARAMETER(uint32, FlipNormalY)
@@ -614,6 +634,8 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputSize = Request.Resolution;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
+		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
+		Parameters->ConstantHeight = Layer.ConstantHeight;
 		Parameters->LayerInputResolved = 0u;
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
@@ -776,7 +798,8 @@ namespace MixtormatGpuCompositor
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->PreparedLayerMode = PreparedLayerMode;
-		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
+		// A generator wrote this layer's height, so it has one even with no RAMH (a fill).
+		Parameters->HasPackedHeight = Layer.bHasPackedHeight || LayerCtx.bGeneratedHeight ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
 		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
@@ -1201,6 +1224,9 @@ namespace MixtormatGpuCompositor
 
 FMixtormatGpuCompositor::FMixtormatGpuCompositor()
 	: NetworkCache(MakeShared<FMixtormatNetworkCache, ESPMode::ThreadSafe>())
+	, PrefixCache(MakeShared<FMixtormatPrefixCache, ESPMode::ThreadSafe>())
+	, NodeCache(MakeShared<FMixtormatNodeCache, ESPMode::ThreadSafe>())
+	, InFlight(MakeShared<std::atomic<bool>, ESPMode::ThreadSafe>(false))
 {
 }
 
@@ -1218,6 +1244,53 @@ FMixtormatGpuCompositor::~FMixtormatGpuCompositor()
 			});
 	}
 	NetworkCache.Reset();
+	if (PrefixCache.IsValid())
+	{
+		ENQUEUE_RENDER_COMMAND(MixtormatFlushPrefixCache)(
+			[Cache = PrefixCache](FRHICommandListImmediate&)
+			{
+				Cache->Reset();
+			});
+	}
+	PrefixCache.Reset();
+	if (NodeCache.IsValid())
+	{
+		ENQUEUE_RENDER_COMMAND(MixtormatFlushNodeCache)(
+			[Cache = NodeCache](FRHICommandListImmediate&)
+			{
+				Cache->Reset();
+			});
+	}
+	NodeCache.Reset();
+}
+
+bool FMixtormatGpuCompositor::IsComposeInFlight() const
+{
+	return InFlight.IsValid() && InFlight->load();
+}
+
+void FMixtormatGpuCompositor::ResetCaches()
+{
+	check(IsInGameThread());
+	LastPrefixHashes.Reset();
+	LastSnapshotLayer = INDEX_NONE;
+	ReferenceCompositors.Reset();
+	if (PrefixCache.IsValid())
+	{
+		ENQUEUE_RENDER_COMMAND(MixtormatResetPrefixCache)(
+			[Cache = PrefixCache](FRHICommandListImmediate&)
+			{
+				Cache->Reset();
+			});
+	}
+	if (NodeCache.IsValid())
+	{
+		ENQUEUE_RENDER_COMMAND(MixtormatResetNodeCache)(
+			[Cache = NodeCache](FRHICommandListImmediate&)
+			{
+				Cache->Reset();
+			});
+	}
 }
 
 bool FMixtormatGpuCompositor::Initialize(const FIntPoint InResolution)
@@ -1265,6 +1338,8 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 				Cache->Reset();
 			});
 	}
+	// Same reasoning for prefix snapshots, and referenced compositions own targets at the old size.
+	ResetCaches();
 
 	if (bWaitForResources)
 	{
@@ -1318,6 +1393,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
+	TRACE_CPUPROFILER_EVENT_SCOPE(Mixtormat_RequestCompose);
 
 	// Groups become ordinary layers here and nowhere else. Below this point EffectiveLayers is the
 	// only stack that exists -- resolving references against the authored array instead would look
@@ -1420,12 +1496,38 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		}
 	}
 
+	const bool bUseComposeCache = CVarMixtormatDisableComposeCache.GetValueOnGameThread() == 0;
+	// Layer-prefix and node caching; reference caching only needs bUseComposeCache.
+	const bool bCacheLayers = bUseComposeCache && bCacheLayerResults;
+	TSet<TObjectKey<UMixtormatMaterial>> TouchedReferences;
+	TArray<uint64> PrefixHashes;
+	PrefixHashes.Reserve(EffectiveLayers.Num());
+	uint64 PrefixHash = MixtormatComposeHash::Combine(
+		0x4D6978746F726D61ull,
+		(static_cast<uint64>(static_cast<uint32>(Resolution.X)) << 32) | static_cast<uint32>(Resolution.Y));
+
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
 		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
 		MixtormatParameterBinding::ApplyDirectReferences(
 			FMixtormatBindingScope{EffectiveLayers, Groups}, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
+		if (bCacheLayers)
+		{
+			// After direct references are applied, so a value borrowed from any other layer is part
+			// of this layer's identity. Everything a layer reads from below is already covered by
+			// chaining onto the prefix of the layers under it.
+			TRACE_CPUPROFILER_EVENT_SCOPE(Mixtormat_HashLayer);
+			MixtormatComposeHash::FHasher Hasher;
+			Hasher.Struct(FMixtormatLayer::StaticStruct(), &Layer);
+			PrefixHash = MixtormatComposeHash::Combine(PrefixHash, Hasher.Get());
+			PrefixHashes.Add(PrefixHash);
+
+			MixtormatComposeHash::FHasher SourceHasher;
+			SourceHasher.SkipTopLevel.Add(TEXT("Children"));
+			SourceHasher.Struct(FMixtormatLayer::StaticStruct(), &Layer);
+			Data.SourceCacheKey = MixtormatComposeHash::Combine(SourceHasher.Get(), 0x536F75726365ull) | 1ull;
+		}
 		const bool bReference = !Layer.SourceComposition.IsNull();
 		if (bReference && Layer.bEnabled)
 		{
@@ -1441,20 +1543,63 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				return false;
 			}
 
-			// Each occurrence gets a fresh compositor, even for repeated DAG edges. Source layer
-			// IDs, masks, Drivers, direct references and ping-pong targets stay in their own graph.
-			FMixtormatGpuCompositor SourceCompositor;
-			ActiveSources.Add(Source.Get());
-			const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
-				&& SourceCompositor.RequestComposeInternal(Source->Layers, Source->LayerGroups,
-					FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
-					ActiveSources);
-			ActiveSources.Remove(Source.Get());
-			if (!bComposed)
+			// One compositor per source asset, kept between composites. Source layer IDs, masks,
+			// Drivers, direct references and ping-pong targets stay in the source's own graph, as
+			// before; what changed is that an unchanged source is not recomposited, and its targets
+			// are not reallocated, every frame. A second occurrence of the same source in one stack
+			// reuses the first one's outputs -- same asset, same resolution, same pixels.
+			if (bUseComposeCache)
 			{
-				return false;
+				uint64 SourceHash = 0;
+				{
+					TRACE_CPUPROFILER_EVENT_SCOPE(Mixtormat_HashReference);
+					MixtormatComposeHash::FHasher Hasher;
+					Hasher.Object(Source.Get());
+					SourceHash = Hasher.Get();
+				}
+				TouchedReferences.Add(TObjectKey<UMixtormatMaterial>(Source.Get()));
+				TSharedPtr<FReferenceEntry>& Entry =
+					ReferenceCompositors.FindOrAdd(TObjectKey<UMixtormatMaterial>(Source.Get()));
+				if (!Entry.IsValid())
+				{
+					Entry = MakeShared<FReferenceEntry>();
+					Entry->Compositor = MakeUnique<FMixtormatGpuCompositor>();
+					Entry->Compositor->bCacheLayerResults = false;
+				}
+				if (!Entry->bValid || Entry->ContentHash != SourceHash
+					|| !Entry->Compositor->PendingOutputs.IsValid())
+				{
+					Entry->bValid = false;
+					ActiveSources.Add(Source.Get());
+					const bool bComposed = Entry->Compositor->InitializeTargets(Resolution, false)
+						&& Entry->Compositor->RequestComposeInternal(Source->Layers, Source->LayerGroups,
+							FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
+							ActiveSources);
+					ActiveSources.Remove(Source.Get());
+					if (!bComposed)
+					{
+						return false;
+					}
+					Entry->ContentHash = SourceHash;
+					Entry->bValid = true;
+				}
+				Data.SourceOutputs = Entry->Compositor->PendingOutputs;
 			}
-			Data.SourceOutputs = SourceCompositor.PendingOutputs;
+			else
+			{
+				FMixtormatGpuCompositor SourceCompositor;
+				ActiveSources.Add(Source.Get());
+				const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
+					&& SourceCompositor.RequestComposeInternal(Source->Layers, Source->LayerGroups,
+						FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
+						ActiveSources);
+				ActiveSources.Remove(Source.Get());
+				if (!bComposed)
+				{
+					return false;
+				}
+				Data.SourceOutputs = SourceCompositor.PendingOutputs;
+			}
 			Data.bUseSourceF0 = !Layer.bOverrideIOR;
 		}
 		const UMixtormatSurface* Surface = bReference ? nullptr : Layer.SourceSurface.LoadSynchronous();
@@ -1564,15 +1709,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				{
 					HsvData.Palette.Add(FVector4f(Hsv.Palette[ColorIndex]));
 				}
-				HsvData.MixMin = FMath::Clamp(Hsv.RampMixMin, 0.0f, 1.0f);
-				HsvData.MixMax = FMath::Clamp(Hsv.RampMixMax, 0.0f, 1.0f);
-				HsvData.HueMin = FMath::Clamp(Hsv.HueMin, -1.0f, 1.0f);
-				HsvData.HueMax = FMath::Clamp(Hsv.HueMax, -1.0f, 1.0f);
-				HsvData.SatMin = FMath::Clamp(Hsv.SaturationMin, 0.0f, 4.0f);
-				HsvData.SatMax = FMath::Clamp(Hsv.SaturationMax, 0.0f, 4.0f);
-				HsvData.ValMin = FMath::Clamp(Hsv.ValueMin, 0.0f, 4.0f);
-				HsvData.ValMax = FMath::Clamp(Hsv.ValueMax, 0.0f, 4.0f);
-				HsvData.Seed = static_cast<uint32>(FMath::Max(Hsv.Seed, 0));
+				HsvData.MixMin = Hsv.RampMixMin;
+				HsvData.MixMax = Hsv.RampMixMax;
+				HsvData.HueMin = Hsv.HueMin;
+				HsvData.HueMax = Hsv.HueMax;
+				HsvData.SatMin = Hsv.SaturationMin;
+				HsvData.SatMax = Hsv.SaturationMax;
+				HsvData.ValMin = Hsv.ValueMin;
+				HsvData.ValMax = Hsv.ValueMax;
+				HsvData.Seed = static_cast<uint32>(Hsv.Seed);
 				continue;
 			}
 
@@ -1590,16 +1735,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FRampIdRenderData& RampData = ChildData.RampId;
 				RampData.HeightAmount = FMath::IsFinite(Ramp.HeightAmount)
-					? FMath::Max(Ramp.HeightAmount, 0.0f) : 0.05f;
-				RampData.AOAmount = FMath::IsFinite(Ramp.AOAmount)
-					? FMath::Clamp(Ramp.AOAmount, 0.0f, 1.0f) : 0.0f;
-				RampData.IntensityRandom = FMath::Clamp(Ramp.IntensityRandom, 0.0f, 1.0f);
+					? Ramp.HeightAmount : 0.05f;
+				RampData.IntensityRandom = Ramp.IntensityRandom;
 				RampData.BlendMode = Ramp.BlendMode;
 				RampData.bRotateRandom = Ramp.bRotateRandom;
 				RampData.bAngleStepping = Ramp.bAngleStepping;
 				RampData.AngleStepDegrees = FMath::IsFinite(Ramp.AngleStepDegrees)
 					? FMath::Max(Ramp.AngleStepDegrees, 0.01f) : 5.0f;
-				RampData.Seed = static_cast<uint32>(FMath::Max(Ramp.Seed, 0));
+				RampData.Seed = static_cast<uint32>(Ramp.Seed);
 				continue;
 			}
 
@@ -1618,20 +1761,20 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				FUvIdRenderData& UvData = ChildData.UvId;
 				UvData.bOrthogonal = Uv.bOrthogonal;
 				UvData.RotationMin = FMath::IsFinite(Uv.RotationMin)
-					? FMath::Clamp(Uv.RotationMin, -360.0f, 360.0f) : 0.0f;
+					? Uv.RotationMin : 0.0f;
 				UvData.RotationMax = FMath::IsFinite(Uv.RotationMax)
-					? FMath::Clamp(Uv.RotationMax, -360.0f, 360.0f) : 360.0f;
+					? Uv.RotationMax : 360.0f;
 				UvData.ScaleMin = FMath::IsFinite(Uv.ScaleMin)
-					? FMath::Clamp(Uv.ScaleMin, 0.05f, 8.0f) : 1.0f;
+					? FMath::Max(Uv.ScaleMin, 0.05f) : 1.0f;
 				UvData.ScaleMax = FMath::IsFinite(Uv.ScaleMax)
-					? FMath::Clamp(Uv.ScaleMax, 0.05f, 8.0f) : 1.0f;
+					? FMath::Max(Uv.ScaleMax, 0.05f) : 1.0f;
 				UvData.OffsetU = FMath::IsFinite(Uv.OffsetU)
-					? FMath::Clamp(Uv.OffsetU, 0.0f, 1.0f) : 0.0f;
+					? Uv.OffsetU : 0.0f;
 				UvData.OffsetV = FMath::IsFinite(Uv.OffsetV)
-					? FMath::Clamp(Uv.OffsetV, 0.0f, 1.0f) : 0.0f;
+					? Uv.OffsetV : 0.0f;
 				UvData.bRandomFlipU = Uv.bRandomFlipU;
 				UvData.bRandomFlipV = Uv.bRandomFlipV;
-				UvData.Seed = static_cast<uint32>(FMath::Max(Uv.Seed, 0));
+				UvData.Seed = static_cast<uint32>(Uv.Seed);
 				continue;
 			}
 
@@ -1651,19 +1794,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// bounded wherever Pattern's is bounded: these feed the same shader, so a value
 				// that is safe there is safe here and one that is not is not.
 				ReliefData.HeightAmount = FMath::IsFinite(Relief.HeightAmount)
-					? FMath::Max(Relief.HeightAmount, 0.0f) : 0.0f;
+					? Relief.HeightAmount : 0.0f;
 				ReliefData.HeightRandom = FMath::IsFinite(Relief.HeightRandom)
-					? FMath::Clamp(Relief.HeightRandom, 0.0f, 1.0f) : 1.0f;
+					? Relief.HeightRandom : 1.0f;
 				ReliefData.Profile = FMath::IsFinite(Relief.Profile)
-					? FMath::Clamp(Relief.Profile, -1.0f, 1.0f) : 0.0f;
+					? Relief.Profile : 0.0f;
 				ReliefData.ProfileRandom = FMath::IsFinite(Relief.ProfileRandom)
-					? FMath::Clamp(Relief.ProfileRandom, 0.0f, 1.0f) : 0.0f;
+					? Relief.ProfileRandom : 0.0f;
 				ReliefData.Feather = FMath::IsFinite(Relief.Feather)
-					? FMath::Max(Relief.Feather, 0.0f) : 0.1f;
+					? Relief.Feather : 0.1f;
 				ReliefData.FeatherRandom = FMath::IsFinite(Relief.FeatherRandom)
-					? FMath::Clamp(Relief.FeatherRandom, 0.0f, 1.0f) : 0.0f;
+					? Relief.FeatherRandom : 0.0f;
 				ReliefData.FeatherGain = FMath::IsFinite(Relief.FeatherGain)
-					? FMath::Max(Relief.FeatherGain, 0.0f) : 0.0f;
+					? Relief.FeatherGain : 0.0f;
 				ReliefData.BevelHeight = FMath::IsFinite(Relief.BevelHeight)
 					? Relief.BevelHeight : 0.0f;
 				ReliefData.BevelWidthPixels = FMath::IsFinite(Relief.BevelWidthPixels)
@@ -1672,20 +1815,16 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					? FMath::Max(Relief.BevelWidthCells, 0.0001f) : 0.25f;
 				ReliefData.bRelativeWidth = Relief.bRelativeWidth;
 				ReliefData.BevelVariation = FMath::IsFinite(Relief.BevelVariation)
-					? FMath::Clamp(Relief.BevelVariation, 0.0f, 1.0f) : 0.0f;
+					? Relief.BevelVariation : 0.0f;
 				ReliefData.BevelInsetPixels = FMath::IsFinite(Relief.BevelInsetPixels)
 					? Relief.BevelInsetPixels : 0.0f;
 				ReliefData.GapHeight = FMath::IsFinite(Relief.GapHeight)
 					? Relief.GapHeight : 0.0f;
 				ReliefData.EdgeRoughness = FMath::IsFinite(Relief.EdgeRoughness)
-					? FMath::Clamp(Relief.EdgeRoughness, 0.0f, 1.0f) : 0.65f;
+					? Relief.EdgeRoughness : 0.65f;
 				ReliefData.EdgeRoughnessAmount = FMath::IsFinite(Relief.EdgeRoughnessAmount)
-					? FMath::Clamp(Relief.EdgeRoughnessAmount, 0.0f, 1.0f) : 0.0f;
-				ReliefData.AOAmount = FMath::IsFinite(Relief.AOAmount)
-					? FMath::Clamp(Relief.AOAmount, 0.0f, 1.0f) : 0.0f;
-				ReliefData.AOSpread = FMath::IsFinite(Relief.AOSpread)
-					? FMath::Clamp(Relief.AOSpread, 1.0f, 8.0f) : 1.0f;
-				ReliefData.Seed = static_cast<uint32>(FMath::Max(Relief.Seed, 0));
+					? Relief.EdgeRoughnessAmount : 0.0f;
+				ReliefData.Seed = static_cast<uint32>(Relief.Seed);
 				continue;
 			}
 
@@ -1700,15 +1839,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.Type = EMixtormatLayerChildType::RandomId;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FRandomIdRenderData& RandomData = ChildData.RandomId;
-				RandomData.MinValue = FMath::Clamp(RandomId.MinValue, 0.0f, 1.0f);
-				RandomData.MaxValue = FMath::Clamp(RandomId.MaxValue, 0.0f, 1.0f);
-				RandomData.Seed = static_cast<uint32>(FMath::Max(RandomId.Seed, 0));
+				RandomData.MinValue = RandomId.MinValue;
+				RandomData.MaxValue = RandomId.MaxValue;
+				RandomData.Seed = static_cast<uint32>(RandomId.Seed);
 				RandomData.BlendMode = RandomId.BlendMode;
-				RandomData.Weight = FMath::Clamp(RandomId.Weight, 0.0f, 1.0f);
+				RandomData.Weight = RandomId.Weight;
 				RandomData.bInvert = RandomId.Shaping.bInvert;
-				RandomData.Balance = FMath::Clamp(RandomId.Shaping.Balance, 0.0f, 1.0f);
-				RandomData.Contrast = FMath::Clamp(RandomId.Shaping.Contrast, 0.0f, 10.0f);
-				RandomData.Offset = FMath::Clamp(RandomId.Shaping.Offset, -1.0f, 1.0f);
+				RandomData.Balance = RandomId.Shaping.Balance;
+				RandomData.Contrast = RandomId.Shaping.Contrast;
+				RandomData.Offset = RandomId.Shaping.Offset;
 				continue;
 			}
 
@@ -1735,59 +1874,59 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				{
 					const FMixtormatStrataCarver& Carver = Generator.StrataCarver;
 					FStrataCarverRenderData& Out = ChildData.Generator.StrataCarver;
-					Out.Seed = static_cast<uint32>(FMath::Max(Carver.Seed, 0));
+					Out.Seed = static_cast<uint32>(Carver.Seed);
 					Out.Depth = FMath::IsFinite(Carver.Depth)
-						? FMath::Clamp(Carver.Depth, 0.0f, 1.0f) : 0.05f;
+						? Carver.Depth : 0.05f;
 					// The same 1..64 the property and the slider carry, so a driver or a
 					// binding cannot push the solve somewhere the UI says is impossible.
 					// Nothing in the solver is keyed to this number -- the jump schedule is a
 					// function of JumpStart alone -- so the ceiling is a policy, not a limit.
-					Out.Iterations = FMath::Clamp(Carver.Iterations, 1, 64);
+					Out.Iterations = FMath::Max(Carver.Iterations, 1);
 					Out.SeedThreshold = FMath::IsFinite(Carver.SeedThreshold)
-						? FMath::Clamp(Carver.SeedThreshold, 0.0f, 1.0f) : 0.25f;
-					Out.WorleyCells = FMath::Clamp(Carver.Scale, 1, 64);
-					Out.SeedDetail = FMath::Clamp(Carver.SeedDetail, 1, 8);
+						? Carver.SeedThreshold : 0.25f;
+					Out.WorleyCells = FMath::Max(Carver.Scale, 1);
+					Out.SeedDetail = FMath::Max(Carver.SeedDetail, 1);
 					Out.StrataFrequency = FMath::IsFinite(Carver.StrataFrequency)
-						? FMath::Clamp(Carver.StrataFrequency, 0.0f, 64.0f) : 4.0f;
+						? Carver.StrataFrequency : 4.0f;
 					Out.StrataAmount = FMath::IsFinite(Carver.StrataAmount)
-						? FMath::Clamp(Carver.StrataAmount, 0.0f, 16.0f) : 3.0f;
+						? Carver.StrataAmount : 3.0f;
 					Out.StrataWarp = FMath::IsFinite(Carver.StrataWarp)
-						? FMath::Clamp(Carver.StrataWarp, 0.0f, 4.0f) : 0.54f;
+						? Carver.StrataWarp : 0.54f;
 					Out.PushAmount = FMath::IsFinite(Carver.PushAmount)
-						? FMath::Clamp(Carver.PushAmount, 0.0f, 4.0f) : 0.5f;
+						? Carver.PushAmount : 0.5f;
 					Out.MaskInfluence = FMath::IsFinite(Carver.MaskInfluence)
-						? FMath::Clamp(Carver.MaskInfluence, 0.0f, 1.0f) : 1.0f;
+						? Carver.MaskInfluence : 1.0f;
 					Out.IDInfluence = FMath::IsFinite(Carver.IDInfluence)
-						? FMath::Clamp(Carver.IDInfluence, 0.0f, 1.0f) : 0.0f;
+						? Carver.IDInfluence : 0.0f;
 
 					Out.StepScale = FMath::IsFinite(Carver.StepScale)
-						? FMath::Clamp(Carver.StepScale, 0.001f, 4.0f) : 0.3f;
-					Out.JumpStart = FMath::Clamp(Carver.JumpStart, 1, 256);
+						? FMath::Max(Carver.StepScale, 0.001f) : 0.3f;
+					Out.JumpStart = FMath::Max(Carver.JumpStart, 1);
 					Out.MaxValue = FMath::IsFinite(Carver.MaxValue)
 						? FMath::Max(Carver.MaxValue, 1.0f) : 256.0f;
 					Out.WorleyJitter = FMath::IsFinite(Carver.WorleyJitter)
-						? FMath::Clamp(Carver.WorleyJitter, 0.0f, 1.0f) : 1.0f;
+						? Carver.WorleyJitter : 1.0f;
 					Out.BandFrequency = FMath::IsFinite(Carver.BandFrequency)
-						? FMath::Clamp(Carver.BandFrequency, 0.0f, 16.0f) : 1.0f;
+						? Carver.BandFrequency : 1.0f;
 					Out.CostAmount = FMath::IsFinite(Carver.CostAmount)
-						? FMath::Clamp(Carver.CostAmount, 0.0f, 32.0f) : 5.0f;
+						? Carver.CostAmount : 5.0f;
 					Out.PushDecay = FMath::IsFinite(Carver.PushDecay)
-						? FMath::Clamp(Carver.PushDecay, 0.0f, 1.0f) : 0.2f;
-					Out.OperationSeed = static_cast<uint32>(FMath::Max(Carver.OperationSeed, 0));
+						? Carver.PushDecay : 0.2f;
+					Out.OperationSeed = static_cast<uint32>(Carver.OperationSeed);
 					Out.Bias = FMath::IsFinite(Carver.Bias)
-						? FMath::Clamp(Carver.Bias, 0.001f, 1.0f) : 0.68f;
+						? FMath::Max(Carver.Bias, 0.001f) : 0.68f;
 					Out.RemapInMin = FMath::IsFinite(Carver.RemapInMin)
-						? FMath::Clamp(Carver.RemapInMin, 0.0f, 1.0f) : 0.0f;
+						? Carver.RemapInMin : 0.0f;
 					Out.RemapInMax = FMath::IsFinite(Carver.RemapInMax)
-						? FMath::Clamp(Carver.RemapInMax, 0.0f, 1.0f) : 1.0f;
+						? Carver.RemapInMax : 1.0f;
 					Out.RemapOutMin = FMath::IsFinite(Carver.RemapOutMin)
-						? FMath::Clamp(Carver.RemapOutMin, 0.0f, 1.0f) : 0.0f;
+						? Carver.RemapOutMin : 0.0f;
 					Out.RemapOutMax = FMath::IsFinite(Carver.RemapOutMax)
-						? FMath::Clamp(Carver.RemapOutMax, 0.0f, 1.0f) : 1.0f;
+						? Carver.RemapOutMax : 1.0f;
 					Out.ClampMin = FMath::IsFinite(Carver.ClampMin)
-						? FMath::Clamp(Carver.ClampMin, 0.0f, 1.0f) : 0.0f;
+						? Carver.ClampMin : 0.0f;
 					Out.ClampMax = FMath::IsFinite(Carver.ClampMax)
-						? FMath::Clamp(Carver.ClampMax, 0.0f, 1.0f) : 1.0f;
+						? Carver.ClampMax : 1.0f;
 					break;
 				}
 				case EMixtormatGeneratorType::Fracture:
@@ -1812,6 +1951,76 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						EMixtormatParameterOwnerType::Generator, TEXT("FractureChamfer"), Fracture.FractureChamfer);
 					Out.Variation = SanitizeFloat(
 						EMixtormatParameterOwnerType::Generator, TEXT("FractureVariation"), Fracture.FractureVariation);
+					break;
+				}
+				case EMixtormatGeneratorType::RockFormation:
+				{
+					// Unclamped: ranges are authored in the tool. Non-finite falls back to the default.
+					const FMixtormatRockFormation& Rock = Generator.RockFormation;
+					const FMixtormatRockFormation Defaults;
+					FRockFormationRenderData& Out = ChildData.Generator.RockFormation;
+					const auto Finite = [](const float Value, const float Fallback)
+					{
+						return FMath::IsFinite(Value) ? Value : Fallback;
+					};
+					Out.Style = Finite(Rock.RockStyle, Defaults.RockStyle);
+					// A cell count of zero or less has no lattice to evaluate.
+					Out.Cells = FMath::Max(Rock.RockCells, 1);
+					Out.Seed = static_cast<uint32>(Rock.RockSeed);
+					Out.Fracture = Finite(Rock.RockFracture, Defaults.RockFracture);
+					Out.Slope = Finite(Rock.RockSlope, Defaults.RockSlope);
+					Out.Chamfer = Finite(Rock.RockChamfer, Defaults.RockChamfer);
+					Out.Gap = Finite(Rock.RockGap, Defaults.RockGap);
+					Out.Warp = Finite(Rock.RockWarp, Defaults.RockWarp);
+					Out.Bend = Finite(Rock.RockBend, Defaults.RockBend);
+					Out.Fault = Finite(Rock.RockFault, Defaults.RockFault);
+					Out.Amount = Finite(Rock.RockAmount, Defaults.RockAmount);
+					Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
+					if (bCacheLayers)
+					{
+						MixtormatComposeHash::FHasher Hasher;
+						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale")};
+						Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
+						Out.FieldKey = Hasher.Get() | 1ull;
+					}
+					break;
+				}
+				case EMixtormatGeneratorType::Pebbles:
+				{
+					// Unclamped: ranges are authored in the tool. Non-finite falls back to the default.
+					const FMixtormatPebbles& Pebbles = Generator.Pebbles;
+					const FMixtormatPebbles Defaults;
+					FPebblesRenderData& Out = ChildData.Generator.Pebbles;
+					const auto Finite = [](const float Value, const float Fallback)
+					{
+						return FMath::IsFinite(Value) ? Value : Fallback;
+					};
+					Out.Seed = Pebbles.PebbleSeed;
+					// No lattice below one cell; no shape below two planes.
+					Out.Cells = FMath::Max(Pebbles.PebbleCells, 1);
+					Out.Cuts = FMath::Max(Pebbles.PebbleCuts, 2);
+					Out.Density = Finite(Pebbles.PebbleDensity, Defaults.PebbleDensity);
+					Out.Jitter = Finite(Pebbles.PebbleJitter, Defaults.PebbleJitter);
+					Out.Scale = Finite(Pebbles.PebbleScale, Defaults.PebbleScale);
+					Out.ScaleVariation = Finite(Pebbles.PebbleScaleVariation, Defaults.PebbleScaleVariation);
+					Out.Rotation = Finite(Pebbles.PebbleRotation, Defaults.PebbleRotation);
+					Out.Direction = static_cast<int32>(Pebbles.PebbleDirection);
+					Out.Irregularity = Finite(Pebbles.PebbleIrregularity, Defaults.PebbleIrregularity);
+					Out.Chamfer = Finite(Pebbles.PebbleChamfer, Defaults.PebbleChamfer);
+					Out.Steepness = Finite(Pebbles.PebbleSteepness, Defaults.PebbleSteepness);
+					Out.SteepnessVariation = Finite(Pebbles.PebbleSteepnessVariation, Defaults.PebbleSteepnessVariation);
+					Out.BiasVariation = Finite(Pebbles.PebbleBiasVariation, Defaults.PebbleBiasVariation);
+					Out.HeightGain = Finite(Pebbles.PebbleHeightGain, Defaults.PebbleHeightGain);
+					Out.HeightVariation = Finite(Pebbles.PebbleHeightVariation, Defaults.PebbleHeightVariation);
+					Out.bFacetIds = Pebbles.bPebbleFacetIds;
+					Out.Amount = Finite(Pebbles.PebbleAmount, Defaults.PebbleAmount);
+					if (bCacheLayers)
+					{
+						MixtormatComposeHash::FHasher Hasher;
+						Hasher.SkipTopLevel = {TEXT("PebbleAmount")};
+						Hasher.Struct(FMixtormatPebbles::StaticStruct(), &Pebbles);
+						Out.FieldKey = Hasher.Get() | 1ull;
+					}
 					break;
 				}
 				}
@@ -1844,9 +2053,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.Type = EMixtormatLayerChildType::CombineId;
 				ChildData.SourceChildIndex = SourceChildIndex;
 				ChildData.CombineId.Amount = FMath::IsFinite(Combine.Amount)
-					? FMath::Clamp(Combine.Amount, 0.0f, 1.0f) : 0.0f;
-				ChildData.CombineId.Seed = static_cast<uint32>(FMath::Max(Combine.Seed, 0));
-				ChildData.CombineId.Passes = FMath::Clamp(Combine.Passes, 1, 8);
+					? Combine.Amount : 0.0f;
+				ChildData.CombineId.Seed = static_cast<uint32>(Combine.Seed);
+				ChildData.CombineId.Passes = FMath::Max(Combine.Passes, 1);
 				ChildData.CombineId.bSubtract =
 					Combine.Mode == EMixtormatIdCombineMode::Subtract;
 				continue;
@@ -1873,50 +2082,56 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::PatternId;
 				ChildData.SourceChildIndex = SourceChildIndex;
+				if (bCacheLayers)
+				{
+					MixtormatComposeHash::FHasher Hasher;
+					Hasher.Struct(FMixtormatPatternFilter::StaticStruct(), &Pattern);
+					ChildData.CacheKey = Hasher.Get() | 1ull;
+				}
 				ChildData.ScopeOwnerSourceChildIndex = ScopeOwnerIndex;
 				FPatternIdRenderData& PatternData = ChildData.PatternId;
 
 				PatternData.PatternMode = Pattern.PatternMode;
 				PatternData.GridMode = Pattern.GridMode;
-				PatternData.Rows = FMath::Clamp(Pattern.Rows, 1, 256);
-				PatternData.Columns = FMath::Clamp(Pattern.Columns, 1, 256);
+				PatternData.Rows = FMath::Max(Pattern.Rows, 1);
+				PatternData.Columns = FMath::Max(Pattern.Columns, 1);
 				PatternData.RowOffset = FMath::IsFinite(Pattern.RowOffset)
-					? FMath::Clamp(Pattern.RowOffset, 0.0f, 1.0f) : 0.0f;
+					? Pattern.RowOffset : 0.0f;
 				PatternData.Jitter = FMath::IsFinite(Pattern.Jitter)
-					? FMath::Clamp(Pattern.Jitter, 0.0f, 1.0f) : 0.0f;
+					? Pattern.Jitter : 0.0f;
 				PatternData.Rounding = FMath::IsFinite(Pattern.Rounding)
-					? FMath::Max(Pattern.Rounding, 0.0f) : 0.0f;
+					? Pattern.Rounding : 0.0f;
 				PatternData.bRelativeEdgeWidth = Pattern.bRelativeEdgeWidth;
 				PatternData.bSwapAxes = Pattern.bSwapAxes;
 				PatternData.GapPixels = FMath::IsFinite(Pattern.GapPixels)
-					? FMath::Max(Pattern.GapPixels, 0.0f) : 0.0f;
+					? Pattern.GapPixels : 0.0f;
 				// Both are fractions of the piece's own half-gap, so they are genuinely bounded
 				// rather than merely dragged -- past 1 a piece would invade its neighbour.
 				PatternData.GapRandom = FMath::IsFinite(Pattern.GapRandom)
-					? FMath::Clamp(Pattern.GapRandom, 0.0f, 1.0f) : 0.0f;
+					? Pattern.GapRandom : 0.0f;
 				PatternData.GapSlide = FMath::IsFinite(Pattern.GapSlide)
-					? FMath::Clamp(Pattern.GapSlide, 0.0f, 1.0f) : 0.0f;
-				PatternData.Seed = static_cast<uint32>(FMath::Max(Pattern.Seed, 0));
+					? Pattern.GapSlide : 0.0f;
+				PatternData.Seed = static_cast<uint32>(Pattern.Seed);
 
 				PatternData.bUVVariation = Pattern.bUVVariation;
 				PatternData.bOrthogonalUV = Pattern.bOrthogonalUV;
 				PatternData.UVRotationMin = FMath::IsFinite(Pattern.UVRotationMin)
-					? FMath::Clamp(Pattern.UVRotationMin, -360.0f, 360.0f) : 0.0f;
+					? Pattern.UVRotationMin : 0.0f;
 				PatternData.UVRotationMax = FMath::IsFinite(Pattern.UVRotationMax)
-					? FMath::Clamp(Pattern.UVRotationMax, -360.0f, 360.0f) : 360.0f;
+					? Pattern.UVRotationMax : 360.0f;
 				PatternData.UVScaleMin = FMath::IsFinite(Pattern.UVScaleMin)
-					? FMath::Clamp(Pattern.UVScaleMin, 0.05f, 8.0f) : 1.0f;
+					? FMath::Max(Pattern.UVScaleMin, 0.05f) : 1.0f;
 				PatternData.UVScaleMax = FMath::IsFinite(Pattern.UVScaleMax)
-					? FMath::Clamp(Pattern.UVScaleMax, 0.05f, 8.0f) : 1.0f;
+					? FMath::Max(Pattern.UVScaleMax, 0.05f) : 1.0f;
 				PatternData.UVOffset = FMath::IsFinite(Pattern.UVOffset)
-					? FMath::Clamp(Pattern.UVOffset, 0.0f, 1.0f) : 0.0f;
+					? Pattern.UVOffset : 0.0f;
 				PatternData.bRandomFlipU = Pattern.bRandomFlipU;
 				PatternData.bRandomFlipV = Pattern.bRandomFlipV;
 
 				PatternData.HeightAmount = FMath::IsFinite(Pattern.HeightAmount)
-					? FMath::Max(Pattern.HeightAmount, 0.0f) : 0.0f;
+					? Pattern.HeightAmount : 0.0f;
 				PatternData.Feather = FMath::IsFinite(Pattern.Feather)
-					? FMath::Max(Pattern.Feather, 0.0f) : 0.15f;
+					? Pattern.Feather : 0.15f;
 				// Finite-guarded, not range-clamped. The editor sliders bound the drag; a typed
 				// value goes through, because these are artistic amounts and the shader is what
 				// actually has to be safe -- BoundedDelta stops any height clipping the surface,
@@ -1929,31 +2144,27 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				PatternData.BevelWidthCells = FMath::IsFinite(Pattern.BevelWidthCells)
 					? FMath::Max(Pattern.BevelWidthCells, 0.0001f) : 0.25f;
 				PatternData.BevelVariation = FMath::IsFinite(Pattern.BevelVariation)
-					? FMath::Clamp(Pattern.BevelVariation, 0.0f, 1.0f) : 0.0f;
+					? Pattern.BevelVariation : 0.0f;
 				PatternData.BevelRoundness = FMath::IsFinite(Pattern.Profile)
-					? FMath::Clamp(Pattern.Profile, -1.0f, 1.0f) : 0.0f;
+					? Pattern.Profile : 0.0f;
 				PatternData.BevelRoundnessRandom = FMath::IsFinite(Pattern.ProfileRandom)
-					? FMath::Clamp(Pattern.ProfileRandom, 0.0f, 1.0f) : 0.0f;
+					? Pattern.ProfileRandom : 0.0f;
 				PatternData.HeightRandom = FMath::IsFinite(Pattern.HeightRandom)
-					? FMath::Clamp(Pattern.HeightRandom, 0.0f, 1.0f) : 1.0f;
+					? Pattern.HeightRandom : 1.0f;
 				PatternData.FeatherRandom = FMath::IsFinite(Pattern.FeatherRandom)
-					? FMath::Clamp(Pattern.FeatherRandom, 0.0f, 1.0f) : 0.0f;
+					? Pattern.FeatherRandom : 0.0f;
 				// Floored, not range-clamped: an artistic amount, like the Bevel block above. The
 				// shader normalises the curve by its own peak, so a large value cannot clip.
 				PatternData.FeatherGain = FMath::IsFinite(Pattern.FeatherGain)
-					? FMath::Max(Pattern.FeatherGain, 0.0f) : 0.0f;
+					? Pattern.FeatherGain : 0.0f;
 				PatternData.BevelInsetPixels = FMath::IsFinite(Pattern.BevelInsetPixels)
 					? Pattern.BevelInsetPixels : 0.0f;
 				PatternData.GapHeight = FMath::IsFinite(Pattern.GapHeight)
 					? Pattern.GapHeight : 0.0f;
 				PatternData.EdgeRoughness = FMath::IsFinite(Pattern.EdgeRoughness)
-					? FMath::Clamp(Pattern.EdgeRoughness, 0.0f, 1.0f) : 0.65f;
+					? Pattern.EdgeRoughness : 0.65f;
 				PatternData.EdgeRoughnessAmount = FMath::IsFinite(Pattern.EdgeRoughnessAmount)
-					? FMath::Clamp(Pattern.EdgeRoughnessAmount, 0.0f, 1.0f) : 0.0f;
-				PatternData.AOAmount = FMath::IsFinite(Pattern.AOAmount)
-					? FMath::Clamp(Pattern.AOAmount, 0.0f, 1.0f) : 0.0f;
-				PatternData.AOSpread = FMath::IsFinite(Pattern.AOSpread)
-					? FMath::Clamp(Pattern.AOSpread, 1.0f, 8.0f) : 2.0f;
+					? Pattern.EdgeRoughnessAmount : 0.0f;
 
 				// Fracture Plates. Size Variation and the four Edge controls are artistic
 				// amounts, so they are finite-guarded and not range-clamped -- a typed value
@@ -1961,20 +2172,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// Secondary Amount is a probability and the child counts are indices, so those
 				// are genuinely bounded rather than merely dragged.
 				PatternData.FractureSizeVariation = FMath::IsFinite(Pattern.FractureSizeVariation)
-					? FMath::Max(Pattern.FractureSizeVariation, 0.0f) : 0.3f;
+					? Pattern.FractureSizeVariation : 0.3f;
 				PatternData.FractureSecondaryAmount =
 					FMath::IsFinite(Pattern.FractureSecondaryAmount)
-						? FMath::Clamp(Pattern.FractureSecondaryAmount, 0.0f, 1.0f) : 0.5f;
+						? Pattern.FractureSecondaryAmount : 0.5f;
 				PatternData.FractureSecondaryMin =
-					FMath::Clamp(Pattern.FractureSecondaryMin, 2, 8);
-				PatternData.FractureSecondaryMax = FMath::Clamp(
-					Pattern.FractureSecondaryMax, PatternData.FractureSecondaryMin, 8);
+					FMath::Max(Pattern.FractureSecondaryMin, 2);
+				PatternData.FractureSecondaryMax = Pattern.FractureSecondaryMax;
 				PatternData.FractureSecondaryRadius =
 					FMath::IsFinite(Pattern.FractureSecondaryRadius)
-						? FMath::Max(Pattern.FractureSecondaryRadius, 0.0f) : 0.34f;
+						? Pattern.FractureSecondaryRadius : 0.34f;
 				PatternData.FractureSecondaryJitter =
 					FMath::IsFinite(Pattern.FractureSecondaryJitter)
-						? FMath::Max(Pattern.FractureSecondaryJitter, 0.0f) : 0.55f;
+						? Pattern.FractureSecondaryJitter : 0.55f;
 				PatternData.FractureEdgeIrregularity =
 					FMath::IsFinite(Pattern.FractureEdgeIrregularity)
 						? Pattern.FractureEdgeIrregularity : 8.0f;
@@ -2004,23 +2214,30 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 				ChildData.Type = EMixtormatLayerChildType::Filter;
 				ChildData.SourceChildIndex = SourceChildIndex;
+				if (bCacheLayers)
+				{
+					MixtormatComposeHash::FHasher Hasher;
+					Hasher.Struct(FMixtormatClusterFilter::StaticStruct(), &Filter);
+					ChildData.CacheKey = Hasher.Get() | 1ull;
+				}
 				ChildData.Filter.Source = Filter.Source;
 				ChildData.Filter.bSurfaceIds = Filter.bSurfaceIds;
+				ChildData.Filter.bSplitIslands = Filter.bSplitIslands;
 				ChildData.Filter.PrimaryFeature = static_cast<EMixtormatSurfaceIdFeature>(
 					FMath::Clamp(static_cast<int32>(Filter.PrimaryFeature), 0, 8));
 				ChildData.Filter.SecondaryFeature = static_cast<EMixtormatSurfaceIdFeature>(
 					FMath::Clamp(static_cast<int32>(Filter.SecondaryFeature), 0, 8));
 				ChildData.Filter.FeatureMix = FMath::IsFinite(Filter.FeatureMix)
-					? FMath::Clamp(Filter.FeatureMix, 0.0f, 1.0f) : 0.0f;
-				ChildData.Filter.FormScale = FMath::Clamp(Filter.FormScale, 1, 64);
-				ChildData.Filter.GuideBlur = FMath::Clamp(Filter.GuideBlur, 0, 2);
+					? Filter.FeatureMix : 0.0f;
+				ChildData.Filter.FormScale = FMath::Max(Filter.FormScale, 1);
+				ChildData.Filter.GuideBlur = FMath::Max(Filter.GuideBlur, 0); // Kernel weight sum is a divisor.
 				ChildData.Filter.MaxIds = FMath::Clamp(Filter.MaxIds, 2, 256);
-				ChildData.Filter.EdgeClose = FMath::Clamp(Filter.EdgeClose, 0, 2);
+				ChildData.Filter.EdgeClose = FMath::Max(Filter.EdgeClose, 0);
 				ChildData.Filter.Threshold = FMath::IsFinite(Filter.Threshold)
-					? FMath::Clamp(Filter.Threshold, 0.0f, 1.0f) : 0.33f;
+					? Filter.Threshold : 0.33f;
 				ChildData.Filter.Offset = FMath::IsFinite(Filter.Offset) ? Filter.Offset : 0.0f;
 				ChildData.Filter.HeightInfluence = FMath::IsFinite(Filter.HeightInfluence)
-					? FMath::Max(Filter.HeightInfluence, 0.0f) : 1.0f;
+					? Filter.HeightInfluence : 1.0f;
 				continue;
 			}
 
@@ -2054,7 +2271,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FColorIdRenderData& IdData = ChildData.ColorId;
 				IdData.Mode = ColorIdMask.Mode;
-				IdData.ExactRegionId = static_cast<uint32>(FMath::Max(ColorIdMask.ExactRegionId, 0));
+				IdData.ExactRegionId = static_cast<uint32>(ColorIdMask.ExactRegionId);
 				// White in Exact ID, where the slot is never sampled. The shader parameter still
 				// has to be bound, and the cached white texture is already resident.
 				IdData.IdTexture = GetTextureRHI(IdTexture ? IdTexture : WhiteTexture);
@@ -2074,10 +2291,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					IdData.Colors.Add(FVector4f(Color.R, Color.G, Color.B, 1.0f));
 				}
 
-				IdData.Tolerance = FMath::Clamp(ColorIdMask.Tolerance, 0.0f, 1.732f);
-				IdData.Softness = FMath::Clamp(ColorIdMask.Softness, 0.0f, 0.5f);
+				IdData.Tolerance = ColorIdMask.Tolerance;
+				IdData.Softness = ColorIdMask.Softness;
 				IdData.BlendMode = ColorIdMask.BlendMode;
-				IdData.Weight = FMath::Clamp(ColorIdMask.Weight, 0.0f, 1.0f);
+				IdData.Weight = ColorIdMask.Weight;
 				IdData.bInvert = ColorIdMask.Shaping.bInvert;
 				IdData.Tiling = FVector2f(
 					static_cast<float>(FMath::Max(ColorIdMask.TilingX, 1)),
@@ -2086,9 +2303,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				IdData.bFlipU = ColorIdMask.bFlipU;
 				IdData.bFlipV = ColorIdMask.bFlipV;
 				IdData.Rotation = static_cast<int32>(ColorIdMask.Rotation);
-				IdData.Balance = FMath::Clamp(ColorIdMask.Shaping.Balance, 0.0f, 1.0f);
-				IdData.Contrast = FMath::Clamp(ColorIdMask.Shaping.Contrast, 0.0f, 10.0f);
-				IdData.Offset = FMath::Clamp(ColorIdMask.Shaping.Offset, -1.0f, 1.0f);
+				IdData.Balance = ColorIdMask.Shaping.Balance;
+				IdData.Contrast = ColorIdMask.Shaping.Contrast;
+				IdData.Offset = ColorIdMask.Shaping.Offset;
 				Data.bHasMask = true;
 				continue;
 			}
@@ -2197,7 +2414,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 				}
 				MaskData.BlendMode = MaskLayer.BlendMode;
-				MaskData.Weight = FMath::Clamp(MaskLayer.Weight, 0.0f, 1.0f);
+				MaskData.Weight = MaskLayer.Weight;
 				// Integer per axis: the shader wraps the read in a frac(), and a fractional
 				// scale lands mid-cell at that wrap.
 				MaskData.Tiling = FVector2f(
@@ -2207,9 +2424,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				MaskData.bFlipU = MaskLayer.bFlipU;
 				MaskData.bFlipV = MaskLayer.bFlipV;
 				MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
-				MaskData.Balance = FMath::Clamp(MaskLayer.Shaping.Balance, 0.0f, 1.0f);
-				MaskData.Contrast = FMath::Clamp(MaskLayer.Shaping.Contrast, 0.0f, 10.0f);
-				MaskData.Offset = FMath::Clamp(MaskLayer.Shaping.Offset, -1.0f, 1.0f);
+				MaskData.Balance = MaskLayer.Shaping.Balance;
+				MaskData.Contrast = MaskLayer.Shaping.Contrast;
+				MaskData.Offset = MaskLayer.Shaping.Offset;
 				MaskData.bInvert = MaskLayer.Shaping.bInvert;
 				// Blur is a node in the recipe -- so it can be driven, published and instanced --
 				// but a pair of numbers by the time the passes see it. Summed rather than maxed:
@@ -2223,8 +2440,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					{
 						continue;
 					}
-					MaskData.BlurRadiusX += FMath::Max(BlurChild.Blur.RadiusX, 0.0f);
-					MaskData.BlurRadiusY += FMath::Max(BlurChild.Blur.RadiusY, 0.0f);
+					MaskData.BlurRadiusX += BlurChild.Blur.RadiusX;
+					MaskData.BlurRadiusY += BlurChild.Blur.RadiusY;
 				}
 				MaskData.BlurRadiusX = FMath::Min(MaskData.BlurRadiusX, 32.0f);
 				MaskData.BlurRadiusY = FMath::Min(MaskData.BlurRadiusY, 32.0f);
@@ -2260,8 +2477,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				ChildData.SourceChildIndex = SourceChildIndex;
 				FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
 				GeneratedData.CurvatureWeight = GeneratedMask.CurvatureWeight;
-				GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
-				GeneratedData.CurvatureStrength = FMath::Max(GeneratedMask.CurvatureStrength, 0.0f);
+				GeneratedData.CurvatureBias = GeneratedMask.CurvatureBias;
+				GeneratedData.CurvatureStrength = GeneratedMask.CurvatureStrength;
 				GeneratedData.CurvaturePower = FMath::Max(GeneratedMask.CurvaturePower, 0.001f);
 				GeneratedData.DirectionWeight = GeneratedMask.DirectionWeight;
 				GeneratedData.DirectionAngle = GeneratedMask.DirectionAngle;
@@ -2270,16 +2487,16 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				GeneratedData.HeightWeight = GeneratedMask.HeightWeight;
 				GeneratedData.HeightBias = GeneratedMask.HeightBias;
 				GeneratedData.bNormalizeWeights = GeneratedMask.bNormalizeWeights;
-				GeneratedData.Broadness = FMath::Clamp(GeneratedMask.Broadness, 1, 32);
-				GeneratedData.Smoothing = FMath::Clamp(GeneratedMask.Smoothing, 1, 4);
-				GeneratedData.Bias = FMath::Clamp(GeneratedMask.Bias, 0.001f, 0.999f);
-				GeneratedData.WarpAmount = FMath::Max(GeneratedMask.WarpAmount, 0.0f);
-				GeneratedData.WarpSource = FMath::Clamp(GeneratedMask.WarpSource, 0.0f, 1.0f);
-				GeneratedData.WarpRadius = FMath::Clamp(GeneratedMask.WarpRadius, 1, 16);
+				GeneratedData.Broadness = FMath::Max(GeneratedMask.Broadness, 1);
+				GeneratedData.Smoothing = FMath::Max(GeneratedMask.Smoothing, 1);
+				GeneratedData.Bias = FMath::Max(GeneratedMask.Bias, 0.001f);
+				GeneratedData.WarpAmount = GeneratedMask.WarpAmount;
+				GeneratedData.WarpSource = GeneratedMask.WarpSource;
+				GeneratedData.WarpRadius = FMath::Max(GeneratedMask.WarpRadius, 1);
 				GeneratedData.BlendMode = GeneratedMask.BlendMode;
-				GeneratedData.Weight = FMath::Max(GeneratedMask.Weight, 0.0f);
-				GeneratedData.Balance = FMath::Max(GeneratedMask.Shaping.Balance, 0.0f);
-				GeneratedData.Contrast = FMath::Max(GeneratedMask.Shaping.Contrast, 0.0f);
+				GeneratedData.Weight = GeneratedMask.Weight;
+				GeneratedData.Balance = GeneratedMask.Shaping.Balance;
+				GeneratedData.Contrast = GeneratedMask.Shaping.Contrast;
 				GeneratedData.Offset = GeneratedMask.Shaping.Offset;
 				GeneratedData.bInvert = GeneratedMask.Shaping.bInvert;
 				GeneratedData.RidgeWeight = GeneratedMask.RidgeWeight;
@@ -2310,8 +2527,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				//
 				// The clamps guard the lattice rather than taste: a period is a wrap modulus and a
 				// non-positive one divides the hash by zero.
-				const int32 CrackScale = FMath::Clamp(Craquelure.Scale, 1, 128);
-				const float CrackJitter = FMath::Clamp(Craquelure.Jitter, 0.0f, 1.0f);
+				const int32 CrackScale = FMath::Max(Craquelure.Scale, 1);
+				const float CrackJitter = Craquelure.Jitter;
 
 				// One Scale, read as the cell count by whichever mode is running.
 				CrackData.Period = CrackScale;
@@ -2319,47 +2536,44 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				CrackData.Jitter = CrackJitter;
 				CrackData.SeedJitter = CrackJitter;
 
-				CrackData.Seed = static_cast<uint32>(FMath::Max(Craquelure.Seed, 0));
+				CrackData.Seed = static_cast<uint32>(Craquelure.Seed);
 				// The warp rides the network's seed rather than carrying its own. An offset, not the
 				// same value, so reseeding moves both without the two fields ever sharing a hash.
 				CrackData.WarpSeed = CrackData.Seed + 7919u;
-				CrackData.WarpPeriod = FMath::Clamp(Craquelure.WarpScale, 1, 32);
-				CrackData.Warp = FMath::Clamp(Craquelure.Warp, 0.0f, 1.0f);
+				CrackData.WarpPeriod = FMath::Max(Craquelure.WarpScale, 1);
+				CrackData.Warp = Craquelure.Warp;
 
 				CrackData.Width = Craquelure.Width;
 				CrackData.Variation = Craquelure.Variation;
 				CrackData.BlendMode = Craquelure.BlendMode;
 				CrackData.Weight = Craquelure.Weight;
 				CrackData.bInvert = Craquelure.Shaping.bInvert;
-				CrackData.Balance = FMath::Clamp(Craquelure.Shaping.Balance, 0.0f, 1.0f);
+				CrackData.Balance = Craquelure.Shaping.Balance;
 				CrackData.Contrast = Craquelure.Shaping.Contrast;
 				CrackData.Offset = Craquelure.Shaping.Offset;
 
 				CrackData.Mode = Craquelure.Mode;
-				CrackData.ReliefDepth = FMath::Max(Craquelure.ReliefDepth, 0.0f);
+				CrackData.ReliefDepth = Craquelure.ReliefDepth;
 				CrackData.ReliefWidth = FMath::Max(Craquelure.ReliefWidth, 0.002f);
-				CrackData.ReliefProfile = FMath::Clamp(Craquelure.ReliefProfile, 0.05f, 8.0f);
-				CrackData.ReliefGrooveVariation = FMath::Clamp(Craquelure.ReliefGrooveVariation, 0.0f, 1.0f);
-				CrackData.ReliefProfileVariation = FMath::Clamp(Craquelure.ReliefProfileVariation, 0.0f, 1.0f);
-				CrackData.ReliefWidthVariation = FMath::Clamp(Craquelure.ReliefWidthVariation, 0.0f, 1.0f);
-				CrackData.Iterations = FMath::Clamp(Craquelure.Iterations, 1, 1024);
-				CrackData.SeedChance = FMath::Clamp(Craquelure.Density, 0.0f, 1.0f);
+				CrackData.ReliefProfile = FMath::Max(Craquelure.ReliefProfile, 0.05f);
+				CrackData.ReliefGrooveVariation = Craquelure.ReliefGrooveVariation;
+				CrackData.ReliefProfileVariation = Craquelure.ReliefProfileVariation;
+				CrackData.ReliefWidthVariation = Craquelure.ReliefWidthVariation;
+				CrackData.Iterations = FMath::Max(Craquelure.Iterations, 1);
+				CrackData.SeedChance = Craquelure.Density;
 
 				// Detail is a multiple of Scale, so the fields keep their size relative to the
 				// pieces when Scale moves. As an absolute cell count it fought Scale on every drag.
-				CrackData.NoiseCells = FMath::Clamp(
-					FMath::RoundToInt(CrackScale * FMath::Clamp(Craquelure.Detail, 0.1f, 8.0f)),
-					1,
-					256);
+				CrackData.NoiseCells = FMath::Max(FMath::RoundToInt(CrackScale * FMath::Max(Craquelure.Detail, 0.1f)), 1);
 
 				// Stress and toughness vary by the same amount, from independent noise. They were two
 				// dials for the two ends of one balance.
-				const float FieldContrast = FMath::Clamp(Craquelure.FieldContrast, 0.0f, 1.0f);
+				const float FieldContrast = Craquelure.FieldContrast;
 				CrackData.StressVariation = FieldContrast;
 				CrackData.ToughnessVariation = FieldContrast;
 
 				// Likewise the two weights on opposite signs of the same comparison.
-				const float FractureBias = FMath::Clamp(Craquelure.FractureBias, 0.0f, 8.0f);
+				const float FractureBias = Craquelure.FractureBias;
 				CrackData.StressGain = FractureBias;
 				CrackData.ToughnessCost = FractureBias;
 
@@ -2368,14 +2582,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				// run opposite ways -- a straighter crack weights alignment more and turns slower --
 				// which is exactly why two dials for it were easy to set against each other. The
 				// constants put the old defaults near 0.35.
-				const float Straightness = FMath::Clamp(Craquelure.Straightness, 0.0f, 1.0f);
+				const float Straightness = Craquelure.Straightness;
 				CrackData.Persistence = Straightness * 6.0f;
 				CrackData.TurnResponse = FMath::Clamp(1.0f - Straightness * 0.8f, 0.0f, 1.0f);
 
-				CrackData.FlowStrength = FMath::Clamp(Craquelure.Flow, 0.0f, 1.0f);
-				CrackData.Irregularity = FMath::Clamp(Craquelure.Roughness, 0.0f, 8.0f);
+				CrackData.FlowStrength = Craquelure.Flow;
+				CrackData.Irregularity = Craquelure.Roughness;
 				CrackData.GrowthThreshold = Craquelure.GrowthThreshold;
-				CrackData.CollisionLimit = FMath::Clamp(Craquelure.CollisionLimit, 1, 8);
+				CrackData.CollisionLimit = FMath::Max(Craquelure.CollisionLimit, 1);
 
 				// Built from the clamped values rather than the authored ones, so two settings
 				// the clamps map onto the same network share a cache entry -- and, more to the
@@ -2508,7 +2722,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			EffectData.Tiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
 			// Shared enable/blend control across every effect family; not family-keyed, so
 			// it keeps its literal bound instead of a definition entry.
-			EffectData.Strength = FMath::Clamp(LayerEffect.Strength, 0.0f, 1.0f);
+			EffectData.Strength = LayerEffect.Strength;
 
 			// Per-family gathers, one call each: authored values sanitized through the runtime
 			// contract table, derived math local to the family (Compositing/MixtormatEffectGather).
@@ -2583,8 +2797,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		// Integer, because the compositor wraps every source read in a frac() and a
 		// fractional scale lands mid-cell at the wrap. Offset and flip are unclamped:
 		// translating and mirroring a periodic function leave it periodic.
-		Data.UVScaleX = FMath::Clamp(Layer.UVScaleX, 1, 16);
-		Data.UVScaleY = FMath::Clamp(Layer.UVScaleY, 1, 16);
+		Data.UVScaleX = FMath::Max(Layer.UVScaleX, 1);
+		Data.UVScaleY = FMath::Max(Layer.UVScaleY, 1);
 		Data.UVOffset = FVector2f(Layer.UVOffsetX, Layer.UVOffsetY);
 		Data.Rotation = static_cast<int32>(Layer.Rotation);
 		Data.bFlipU = Layer.bFlipU;
@@ -2598,9 +2812,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.NormalIntensity = MixtormatRelief::AuthoredNormalScale(
 					MixtormatParameterContracts::SanitizeFloat(
 						EMixtormatParameterOwnerType::Layer, TEXT("NormalIntensity"), Layer.NormalIntensity));
-		Data.HueShift = FMath::Clamp(Layer.HueShift, -180.0f, 180.0f);
-		Data.Saturation = FMath::Clamp(Layer.Saturation, 0.0f, 2.0f);
-		Data.Value = FMath::Clamp(Layer.Value, 0.0f, 2.0f);
+		Data.HueShift = Layer.HueShift;
+		Data.Saturation = Layer.Saturation;
+		Data.Value = Layer.Value;
 		Data.RoughnessBias = Layer.RoughnessBias;
 		Data.RoughnessContrast = Layer.RoughnessContrast;
 		Data.RoughnessOffset = Layer.RoughnessOffset;
@@ -2618,42 +2832,42 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.HeightBoost = MixtormatRelief::HeightScale(
 					MixtormatParameterContracts::SanitizeFloat(
 						EMixtormatParameterOwnerType::Layer, TEXT("HeightBoost"), Layer.HeightBoost));
-		Data.HeightLevelOffset = FMath::Clamp(Layer.HeightLevelOffset, -1.0f, 1.0f);
-		Data.HeightShape = FMath::Clamp(Layer.HeightShape, -1.0f, 1.0f);
-		Data.HeightSmooth = FMath::Clamp(Layer.HeightSmooth, 0.0f, 8.0f);
+		Data.HeightLevelOffset = Layer.HeightLevelOffset;
+		Data.HeightShape = Layer.HeightShape;
+		Data.HeightSmooth = Layer.HeightSmooth;
 		Data.BaseColorBlendMode = Layer.BaseColorBlendMode;
-		Data.BaseColorBlendAmount = FMath::Clamp(Layer.BaseColorBlendAmount, 0.0f, 1.0f);
-		Data.BaseColorInfluence = FMath::Clamp(Layer.BaseColorInfluence, 0.0f, 1.0f);
-		Data.RoughnessInfluence = FMath::Clamp(Layer.RoughnessInfluence, 0.0f, 1.0f);
-		Data.AOInfluence = FMath::Clamp(Layer.AOInfluence, 0.0f, 1.0f);
-		Data.MetallicInfluence = FMath::Clamp(Layer.MetallicInfluence, 0.0f, 1.0f);
+		Data.BaseColorBlendAmount = Layer.BaseColorBlendAmount;
+		Data.BaseColorInfluence = Layer.BaseColorInfluence;
+		Data.RoughnessInfluence = Layer.RoughnessInfluence;
+		Data.AOInfluence = Layer.AOInfluence;
+		Data.MetallicInfluence = Layer.MetallicInfluence;
 		Data.F0Influence = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Layer, TEXT("F0Influence"), Layer.F0Influence);
 		Data.NormalInfluence = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Layer, TEXT("NormalInfluence"), Layer.NormalInfluence);
 		Data.HeightInfluence = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Layer, TEXT("HeightInfluence"), Layer.HeightInfluence);
-		Data.HeightBlendAmount = FMath::Clamp(Layer.HeightBlendAmount, 0.0f, 4.0f);
-		Data.HeightThreshold = FMath::Clamp(Layer.HeightThreshold, 0.0f, 1.0f);
+		Data.HeightBlendAmount = Layer.HeightBlendAmount;
+		Data.HeightThreshold = Layer.HeightThreshold;
 		Data.HeightRange = FMath::Max(Layer.HeightRange, 1.0e-6f);
 		Data.HeightContrast = FMath::Max(Layer.HeightContrast, 0.01f);
-		Data.HeightOffset = FMath::Clamp(Layer.HeightOffset, -1.0f, 1.0f);
-		Data.HeightBias = FMath::Clamp(Layer.HeightBias, -1.0f, 1.0f);
-		Data.ConstantHeight = FMath::Clamp(Layer.ConstantHeight, 0.0f, 1.0f);
-		Data.MaskHeightInfluence = FMath::Clamp(Layer.MaskHeightInfluence, 0.0f, 1.0f);
-		Data.HeightContactAOAmount = FMath::Clamp(Layer.HeightContactAOAmount, 0.0f, 1.0f);
+		Data.HeightOffset = Layer.HeightOffset;
+		Data.HeightBias = Layer.HeightBias;
+		Data.ConstantHeight = Layer.ConstantHeight;
+		Data.MaskHeightInfluence = Layer.MaskHeightInfluence;
+		Data.HeightContactAOAmount = Layer.HeightContactAOAmount;
 		Data.HeightContactAOWidth = FMath::Max(Layer.HeightContactAOWidth, 1.0e-4f);
-		Data.HeightBorderLift = FMath::Clamp(Layer.HeightBorderLift, -1.0f, 1.0f);
+		Data.HeightBorderLift = Layer.HeightBorderLift;
 		Data.HeightBorderWidth = FMath::Max(Layer.HeightBorderWidth, 1.0e-4f);
-		Data.HeightSmoothRadius = FMath::Clamp(Layer.HeightSmoothRadius, 0.0f, 32.0f);
-		Data.HeightSmoothAmount = FMath::Clamp(Layer.HeightSmoothAmount, 0.0f, 1.0f);
-		Data.HeightBorderSmoothing = FMath::Clamp(Layer.HeightBorderSmoothing, 1.0f, 32.0f);
-		Data.FeatureInfluence = FMath::Clamp(Layer.FeatureInfluence, 0.0f, 1.0f);
-		Data.FeatureBias = FMath::Clamp(Layer.FeatureBias, 0.0f, 1.0f);
-		Data.HeightFeatureInfluence = FMath::Clamp(Layer.HeightFeatureInfluence, 0.0f, 1.0f);
-		Data.AOFeatureInfluence = FMath::Clamp(Layer.AOFeatureInfluence, 0.0f, 1.0f);
+		Data.HeightSmoothRadius = Layer.HeightSmoothRadius;
+		Data.HeightSmoothAmount = Layer.HeightSmoothAmount;
+		Data.HeightBorderSmoothing = FMath::Max(Layer.HeightBorderSmoothing, 1.0f);
+		Data.FeatureInfluence = Layer.FeatureInfluence;
+		Data.FeatureBias = Layer.FeatureBias;
+		Data.HeightFeatureInfluence = Layer.HeightFeatureInfluence;
+		Data.AOFeatureInfluence = Layer.AOFeatureInfluence;
 		Data.CurvatureRadius = Layer.CurvatureRadius;
-		Data.CurvatureSmoothing = FMath::Clamp(Layer.CurvatureSmoothing, 1, 4);
+		Data.CurvatureSmoothing = FMath::Max(Layer.CurvatureSmoothing, 1);
 		Data.CurvatureStrength = Layer.CurvatureStrength;
 		Data.CurvaturePower = Layer.CurvaturePower;
 		Data.bEnabled = Layer.bEnabled;
@@ -2717,6 +2931,74 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	Request.Targets->PublishedIndex = PublishedTargetIndex;
 	PendingOutputs = Request.Targets;
 
+	// Layer-prefix cache. The snapshot goes just below the lowest layer this request changed:
+	// while a value on layer E is being dragged, layers 0..E-1 hash the same every frame, so they
+	// are composited once and every later frame starts at E.
+	// Sources no longer referenced by this stack release their compositor and its targets.
+	if (bUseComposeCache)
+	{
+		for (auto It = ReferenceCompositors.CreateIterator(); It; ++It)
+		{
+			if (!TouchedReferences.Contains(It.Key()))
+			{
+				It.RemoveCurrent();
+			}
+		}
+	}
+	else
+	{
+		ReferenceCompositors.Reset();
+	}
+
+	if (bCacheLayers && PrefixHashes.Num() == Request.Layers.Num() && PrefixCache.IsValid())
+	{
+		int32 FirstChanged = 0;
+		while (FirstChanged < PrefixHashes.Num()
+			&& LastPrefixHashes.IsValidIndex(FirstChanged)
+			&& LastPrefixHashes[FirstChanged] == PrefixHashes[FirstChanged])
+		{
+			++FirstChanged;
+		}
+		if (FirstChanged < PrefixHashes.Num())
+		{
+			// Something at or above FirstChanged differs from the last request.
+			LastSnapshotLayer = FirstChanged - 1;
+		}
+		else if (!PrefixHashes.IsValidIndex(LastSnapshotLayer))
+		{
+			// Nothing changed (a debug toggle, a re-request); keep the previous edit point.
+			LastSnapshotLayer = INDEX_NONE;
+		}
+		// The top layer is never worth keeping: nothing composites above it.
+		Request.SnapshotLayer = LastSnapshotLayer < PrefixHashes.Num() - 1 ? LastSnapshotLayer : INDEX_NONE;
+		LastPrefixHashes = PrefixHashes;
+
+		// A debug view writes from inside the layer it inspects, and the global debug modes from
+		// whichever layer the settings name; neither may be skipped. Nor saved from: a debug
+		// composite takes the same path for the surface today, but a snapshot is only ever taken
+		// from a plain composite so that can never become an assumption.
+		if (DebugSettings.Mode != EMixtormatDebugPreviewMode::None)
+		{
+			Request.CacheLayerLimit = DebugSettings.LayerIndex >= 0 ? DebugSettings.LayerIndex : 0;
+			Request.SnapshotLayer = INDEX_NONE;
+		}
+		Request.PrefixHashes = MoveTemp(PrefixHashes);
+		Request.PrefixCache = PrefixCache;
+		Request.CacheBudgetBytes = static_cast<uint64>(
+			FMath::Max(CVarMixtormatComposeCacheBudgetMB.GetValueOnGameThread(), 0)) * 1024ull * 1024ull;
+	}
+	else
+	{
+		LastPrefixHashes.Reset();
+		LastSnapshotLayer = INDEX_NONE;
+	}
+
+	if (bCacheLayers)
+	{
+		Request.NodeCache = NodeCache;
+	}
+	Request.InFlight = InFlight;
+	InFlight->store(true);
 	EnqueueCompose(MoveTemp(Request));
 
 	return true;

@@ -40,149 +40,146 @@ namespace
 			};
 
 			// ---- Layer-owned shader facts.
-			Add(ET::Layer, TEXT("HeightBoost"), {.HardMin = 0.0f, .HardMax = MixtormatRelief::MaxHeightBoost});
-			Add(ET::Layer, TEXT("NormalIntensity"), {.HardMin = 0.0f, .HardMax = MixtormatRelief::MaxNormalStrength});
-			Add(ET::Layer, TEXT("FuzzInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Layer, TEXT("F0Influence"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Layer, TEXT("NormalInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Layer, TEXT("HeightInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Layer, TEXT("IOR"), {.HardMin = 1.0f, .HardMax = 3.0f});
+			Add(ET::Layer, TEXT("HeightBoost"), {});
+			Add(ET::Layer, TEXT("NormalIntensity"), {});
+			Add(ET::Layer, TEXT("FuzzInfluence"), {});
+			Add(ET::Layer, TEXT("F0Influence"), {});
+			Add(ET::Layer, TEXT("NormalInfluence"), {});
+			Add(ET::Layer, TEXT("HeightInfluence"), {});
+			Add(ET::Layer, TEXT("IOR"), {});
 
 			// ---- Fracture module.
-			Add(ET::Generator, TEXT("FractureSeed"), {.HardMin = 0.0f});
-			Add(ET::Generator, TEXT("FractureScale"), {.HardMin = 2.0f, .HardMax = 64.0f});
-			Add(ET::Generator, TEXT("FractureAmount"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Generator, TEXT("FractureWidth"), {.HardMin = 0.001f, .HardMax = 1.0f});
-			Add(ET::Generator, TEXT("FractureDepth"), {.HardMin = 0.0f});
-			Add(ET::Generator, TEXT("FractureProfile"), {.HardMin = 0.05f});
-		Add(ET::Generator, TEXT("FractureChamfer"), {.HardMin = 0.0f});
-			Add(ET::Generator, TEXT("FractureVariation"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Generator, TEXT("FractureSeed"), {});
+			Add(ET::Generator, TEXT("FractureScale"), {});
+			Add(ET::Generator, TEXT("FractureAmount"), {});
+			Add(ET::Generator, TEXT("FractureWidth"), {});
+			Add(ET::Generator, TEXT("FractureDepth"), {});
+			Add(ET::Generator, TEXT("FractureProfile"), {});
+		Add(ET::Generator, TEXT("FractureChamfer"), {});
+			Add(ET::Generator, TEXT("FractureVariation"), {});
 
 
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.
-			Add(ET::Effect, TEXT("BreakupScale"), {.HardMin = 1.0f, .HardMax = 64.0f});
+			Add(ET::Effect, TEXT("BreakupScale"), {});
 			Add(ET::Effect, TEXT("BreakupDensity"), Saturated());
 			// Size feeds the shape metric's radius; zero or negative cannot exist as a piece.
-			Add(ET::Effect, TEXT("BreakupSize"), {.HardMin = 0.001f});
+			Add(ET::Effect, TEXT("BreakupSize"), {});
 			// Shader: lerp(1.0, max(stretch, 1.0), rt) with per-piece reciprocal flips -- the
 			// value is a magnitude with randomized orientation, so below 1 is folded away.
-			Add(ET::Effect, TEXT("BreakupStretch"), {.HardMin = 1.0f});
+			Add(ET::Effect, TEXT("BreakupStretch"), {});
 			Add(ET::Effect, TEXT("BreakupAngularity"), Saturated());
-			Add(ET::Effect, TEXT("BreakupDistortionFrequency"), {.HardMin = 1.0f, .HardMax = 16.0f});
+			Add(ET::Effect, TEXT("BreakupDistortionFrequency"), {});
 			// Integer-period sinusoid frequency; 0 has no period.
-			Add(ET::Effect, TEXT("BreakupSmoothness"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("BreakupGapWidth"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("BreakupSmoothness"), {});
+			Add(ET::Effect, TEXT("BreakupGapWidth"), {});
 			// Widths reach divisors in the falloff math.
-			Add(ET::Effect, TEXT("BreakupFoldWidth"), {.HardMin = DivisorFloor});
-			Add(ET::Effect, TEXT("BreakupCreaseWidth"), {.HardMin = DivisorFloor});
-			Add(ET::Effect, TEXT("BreakupPushWidth"), {.HardMin = DivisorFloor});
-			Add(ET::Effect, TEXT("BreakupPushRelief"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("BreakupVariation"), Saturated());
+			Add(ET::Effect, TEXT("BreakupFoldWidth"), {});
+			Add(ET::Effect, TEXT("BreakupCreaseWidth"), {});
+			Add(ET::Effect, TEXT("BreakupPushWidth"), {});
+			Add(ET::Effect, TEXT("BreakupPushRelief"), {});
+			Add(ET::Effect, TEXT("BreakupVariation"), {});
 			Add(ET::Effect, TEXT("BreakupAmount"), Saturated());
 			// The RAM channel saturates after the signed offset: any magnitude is legal.
 			Add(ET::Effect, TEXT("BreakupRoughnessAmount"), Saturated());
-			Add(ET::Effect, TEXT("BreakupNormalStrength"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("BreakupNormalSharpness"), Saturated());
-			Add(ET::Effect, TEXT("BreakupAOAmount"), Saturated());
+			Add(ET::Effect, TEXT("BreakupNormalStrength"), {});
+			Add(ET::Effect, TEXT("BreakupNormalSharpness"), {});
 			// AO radius divides in the occlusion falloff.
-			Add(ET::Effect, TEXT("BreakupAORadius"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("BreakupMaskTiling"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("BreakupSeed"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("BreakupMaskTiling"), {});
+			Add(ET::Effect, TEXT("BreakupSeed"), {});
 
 			// ---- Erosion. The shader keeps its own epsilon guards; only true floors here.
-			Add(ET::Effect, TEXT("ErosionRadius"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("ErosionIterations"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("ErosionGravityForce"), Saturated());
+			Add(ET::Effect, TEXT("ErosionRadius"), {});
+			Add(ET::Effect, TEXT("ErosionIterations"), {});
+			Add(ET::Effect, TEXT("ErosionGravityForce"), {});
 			// Negative exponents on negative slopes would NaN the pow.
-			Add(ET::Effect, TEXT("ErosionSlopePower"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("ErosionSeed"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("ErosionMaskTiling"), {.HardMin = 1.0f});
+			Add(ET::Effect, TEXT("ErosionSlopePower"), {});
+			Add(ET::Effect, TEXT("ErosionSeed"), {});
+			Add(ET::Effect, TEXT("ErosionMaskTiling"), {});
 			Add(ET::Effect, TEXT("ErosionRoughnessAmount"), Saturated());
 
 			// ---- Grade.
 			// Applied as pow(c, 1/Gamma): gamma 0 has no reciprocal.
-			Add(ET::Effect, TEXT("GradeGamma"), {.HardMin = 0.05f});
-			Add(ET::Effect, TEXT("GradeTonemapStrength"), Saturated());
+			Add(ET::Effect, TEXT("GradeGamma"), {});
+			Add(ET::Effect, TEXT("GradeTonemapStrength"), {});
 
 			// ---- Layer Blur. Kernel radius is a real tap budget: 32 is the pass allocation.
-			Add(ET::Effect, TEXT("LayerBlurRadiusX"), {.HardMin = 0.0f, .HardMax = 32.0f});
-			Add(ET::Effect, TEXT("LayerBlurRadiusY"), {.HardMin = 0.0f, .HardMax = 32.0f});
+			Add(ET::Effect, TEXT("LayerBlurRadiusX"), {});
+			Add(ET::Effect, TEXT("LayerBlurRadiusY"), {});
 
 			// ---- Flow Warp.
-			Add(ET::Effect, TEXT("FlowWarpScale"), {.HardMin = 1.0f, .HardMax = 128.0f});
-			Add(ET::Effect, TEXT("FlowWarpSeed"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("FlowWarpMaskSlopeInfluence"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("FlowWarpHeightSlopeInfluence"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("FlowWarpScale"), {});
+			Add(ET::Effect, TEXT("FlowWarpSeed"), {});
+			Add(ET::Effect, TEXT("FlowWarpMaskSlopeInfluence"), {});
+			Add(ET::Effect, TEXT("FlowWarpHeightSlopeInfluence"), {});
 			// Derivative radii are kernel taps: 1..64 is the pass's sampling budget.
-			Add(ET::Effect, TEXT("FlowWarpDerivativeKernelX"), {.HardMin = 1.0f, .HardMax = 64.0f});
-			Add(ET::Effect, TEXT("FlowWarpDerivativeKernelY"), {.HardMin = 1.0f, .HardMax = 64.0f});
+			Add(ET::Effect, TEXT("FlowWarpDerivativeKernelX"), {});
+			Add(ET::Effect, TEXT("FlowWarpDerivativeKernelY"), {});
 
 			// ---- Runoff.
 			// Texel reach at 1K; the 8..512 span also picks the stratum-count thresholds.
-			Add(ET::Effect, TEXT("RunoffStreakRadius"), {.HardMin = 8.0f, .HardMax = 512.0f});
-			Add(ET::Effect, TEXT("RunoffStreakSoftness"), {.HardMin = 0.05f, .HardMax = 1.0f});
-			Add(ET::Effect, TEXT("RunoffSurfaceInfluence"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Effect, TEXT("RunoffStrataAmount"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Effect, TEXT("RunoffWarpScale"), {.HardMin = 1.0f, .HardMax = 64.0f});
-			Add(ET::Effect, TEXT("RunoffWarpAmount"), {.HardMin = 0.0f, .HardMax = 2.0f});
-			Add(ET::Effect, TEXT("RunoffLipStrength"), {.HardMin = 0.0f, .HardMax = 1.0f});
+			Add(ET::Effect, TEXT("RunoffStreakRadius"), {});
+			Add(ET::Effect, TEXT("RunoffStreakSoftness"), {});
+			Add(ET::Effect, TEXT("RunoffSurfaceInfluence"), {});
+			Add(ET::Effect, TEXT("RunoffStrataAmount"), {});
+			Add(ET::Effect, TEXT("RunoffWarpScale"), {});
+			Add(ET::Effect, TEXT("RunoffWarpAmount"), {});
+			Add(ET::Effect, TEXT("RunoffLipStrength"), {});
 			// Weight of the resolved runoff in the layer's mask chain.
-			Add(ET::Effect, TEXT("RunoffStrength"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Effect, TEXT("RunoffSeed"), {.HardMin = 0.0f, .HardMax = 9999.0f});
+			Add(ET::Effect, TEXT("RunoffStrength"), {});
+			Add(ET::Effect, TEXT("RunoffSeed"), {});
 
 			// ---- Worn Edges.
-			Add(ET::Effect, TEXT("EdgeWearRadius"), {.HardMin = 1.0f, .HardMax = 64.0f});
-			Add(ET::Effect, TEXT("EdgeWearSlope"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearStrength"), Saturated());
-			Add(ET::Effect, TEXT("EdgeWearFeather"), {.HardMin = 0.0f});
+			Add(ET::Effect, TEXT("EdgeWearRadius"), {});
+			Add(ET::Effect, TEXT("EdgeWearSlope"), {});
+			Add(ET::Effect, TEXT("EdgeWearStrength"), {});
+			Add(ET::Effect, TEXT("EdgeWearFeather"), {});
 			// Ray count drives an unrolled loop: 8..32 is the dispatch budget.
-			Add(ET::Effect, TEXT("EdgeWearDirections"), {.HardMin = 8.0f, .HardMax = 32.0f});
-			Add(ET::Effect, TEXT("EdgeWearGravity"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearSeed"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearMacroScale"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearMacroAmount"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearCellScale"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearCellAmount"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearRidgeScale"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearRidgeAmount"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearMicroScale"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearMicroAmount"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearWarpScale"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearWarpAmount"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearIdVariation"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearIdRadius"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearIdSlope"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearIdStrength"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearIdNoise"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("EdgeWearRoughnessWeight"), {.HardMin = 0.0f, .HardMax = 1.0f});
-			Add(ET::Effect, TEXT("EdgeWearRoughnessOffset"), {.HardMin = -1.0f, .HardMax = 1.0f});
+			Add(ET::Effect, TEXT("EdgeWearDirections"), {});
+			Add(ET::Effect, TEXT("EdgeWearGravity"), {});
+			Add(ET::Effect, TEXT("EdgeWearSeed"), {});
+			Add(ET::Effect, TEXT("EdgeWearMacroScale"), {});
+			Add(ET::Effect, TEXT("EdgeWearMacroAmount"), {});
+			Add(ET::Effect, TEXT("EdgeWearCellScale"), {});
+			Add(ET::Effect, TEXT("EdgeWearCellAmount"), {});
+			Add(ET::Effect, TEXT("EdgeWearRidgeScale"), {});
+			Add(ET::Effect, TEXT("EdgeWearRidgeAmount"), {});
+			Add(ET::Effect, TEXT("EdgeWearMicroScale"), {});
+			Add(ET::Effect, TEXT("EdgeWearMicroAmount"), {});
+			Add(ET::Effect, TEXT("EdgeWearWarpScale"), {});
+			Add(ET::Effect, TEXT("EdgeWearWarpAmount"), {});
+			Add(ET::Effect, TEXT("EdgeWearIdVariation"), {});
+			Add(ET::Effect, TEXT("EdgeWearIdRadius"), {});
+			Add(ET::Effect, TEXT("EdgeWearIdSlope"), {});
+			Add(ET::Effect, TEXT("EdgeWearIdStrength"), {});
+			Add(ET::Effect, TEXT("EdgeWearIdNoise"), {});
+			Add(ET::Effect, TEXT("EdgeWearRoughnessWeight"), {});
+			Add(ET::Effect, TEXT("EdgeWearRoughnessOffset"), {});
 
 			// ---- Procedural peeling.
-			Add(ET::Effect, TEXT("PeelRandomSeed"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("PeelMaskTiling"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("PeelSeedThreshold"), Saturated());
+			Add(ET::Effect, TEXT("PeelRandomSeed"), {});
+			Add(ET::Effect, TEXT("PeelMaskTiling"), {});
+			Add(ET::Effect, TEXT("PeelSeedThreshold"), {});
 			Add(ET::Effect, TEXT("PeelSeedCurvatureBias"), Saturated());
-			Add(ET::Effect, TEXT("PeelGrowthStrength"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("PeelMacroPeriod"), {.HardMin = 1.0f, .HardMax = 256.0f});
-			Add(ET::Effect, TEXT("PeelMicroPeriod"), {.HardMin = 1.0f, .HardMax = 512.0f});
-			Add(ET::Effect, TEXT("PeelSeedNoiseWeight"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("PeelSizeVariation"), Saturated());
-			Add(ET::Effect, TEXT("PeelClusterPeriod"), {.HardMin = 1.0f, .HardMax = 128.0f});
+			Add(ET::Effect, TEXT("PeelGrowthStrength"), {});
+			Add(ET::Effect, TEXT("PeelMacroPeriod"), {});
+			Add(ET::Effect, TEXT("PeelMicroPeriod"), {});
+			Add(ET::Effect, TEXT("PeelSeedNoiseWeight"), {});
+			Add(ET::Effect, TEXT("PeelSizeVariation"), {});
+			Add(ET::Effect, TEXT("PeelClusterPeriod"), {});
 			Add(ET::Effect, TEXT("PeelClusterAmount"), Saturated());
-			Add(ET::Effect, TEXT("PeelWarpPeriod"), {.HardMin = 1.0f, .HardMax = 256.0f});
-			Add(ET::Effect, TEXT("PeelWarpSource"), Saturated());
-			Add(ET::Effect, TEXT("PeelCurvatureRadius"), {.HardMin = 1.0f});
-			Add(ET::Effect, TEXT("Width"), {.HardMin = 1.0e-6f});
+			Add(ET::Effect, TEXT("PeelWarpPeriod"), {});
+			Add(ET::Effect, TEXT("PeelWarpSource"), {});
+			Add(ET::Effect, TEXT("PeelCurvatureRadius"), {});
+			Add(ET::Effect, TEXT("Width"), {});
 			Add(ET::Effect, TEXT("MicroMorph"), Saturated());
-			Add(ET::Effect, TEXT("Thickness"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("Lift"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("DetailStrength"), {.HardMin = 0.0f});
-			Add(ET::Effect, TEXT("PeelLiftVariation"), Saturated());
+			Add(ET::Effect, TEXT("Thickness"), {});
+			Add(ET::Effect, TEXT("Lift"), {});
+			Add(ET::Effect, TEXT("DetailStrength"), {});
+			Add(ET::Effect, TEXT("PeelLiftVariation"), {});
 			Add(ET::Effect, TEXT("PeelCornerLift"), Saturated());
-			Add(ET::Effect, TEXT("PeelCornerRadius"), {.HardMin = 0.05f, .HardMax = 4.0f});
-			Add(ET::Effect, TEXT("PeelIDInfluence"), Saturated());
-			Add(ET::Effect, TEXT("PeelAOStrength"), Saturated());
+			Add(ET::Effect, TEXT("PeelCornerRadius"), {});
+			Add(ET::Effect, TEXT("PeelIDInfluence"), {});
 
 			return Built;
 		}();
@@ -270,17 +267,30 @@ namespace
 			// Generator parameter names are unique across payloads. The owner address remains the
 			// stable category while reflection still supplies the payload's compiled default.
 			static const FMixtormatFracture FractureDefaults;
-			if (const FProperty* Property =
-				FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter))
+			static const FMixtormatRockFormation RockDefaults;
+			static const FMixtormatPebbles PebbleDefaults;
+			const void* Defaults = &FractureDefaults;
+			const FProperty* Property = FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter);
+			if (!Property)
+			{
+				Property = FMixtormatRockFormation::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &RockDefaults;
+			}
+			if (!Property)
+			{
+				Property = FMixtormatPebbles::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &PebbleDefaults;
+			}
+			if (Property)
 			{
 				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 				{
-					Result.Value = *Float->ContainerPtrToValuePtr<float>(&FractureDefaults);
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(Defaults);
 					Result.bFound = true;
 				}
 				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 				{
-					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&FractureDefaults));
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(Defaults));
 					Result.bFound = true;
 				}
 			}

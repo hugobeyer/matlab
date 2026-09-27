@@ -85,7 +85,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// 64, not 32. The spacing is in UV, so a wide kernel is a statement about how broad a shape
 	// to measure rather than about resolution -- but it is wide: at 64 the fan spans 128 texels,
 	// and on a small composition the wrapped taps start meeting themselves from the other side.
-	const float Step = float(clamp(Kernel, 1, 64));
+	const float Step = float(max(Kernel, 1));
 	const float2 H = Texel * Step;
 
 	// Nine taps: the centre, the four axial neighbours for the second derivatives along x and y,

@@ -81,22 +81,22 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskCurvature
 
 	// Tap spacing in texels: the width of the neighbourhood the curvature is measured over. Small
 	// finds the shape of small things, large finds the shape of what those things sit on.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "1", ClampMax = "64"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (UIMin = "1", UIMax = "64"))
 	int32 Kernel = 2;
 
 	// Height amplitude. The field is 0..1 with no statement of what that is worth against a
 	// texel, and curvature is not scale invariant -- both second derivatives scale with this --
 	// so it is the control that decides whether a shape registers as a gentle swell or a cliff.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "0.0", ClampMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (UIMin = "0.0", UIMax = "64.0"))
 	float Scale = 8.0f;
 
 	// The window of signed curvature that becomes coverage. Curvature is unbounded and its useful
 	// band moves with Scale and Kernel, so it is stated rather than assumed. Low above High
 	// inverts the ramp, which is the whole difference between keeping cavities and keeping edges.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "-64.0", ClampMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (UIMin = "-64.0", UIMax = "64.0"))
 	float RangeLow = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "-64.0", ClampMax = "64.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (UIMin = "-64.0", UIMax = "64.0"))
 	float RangeHigh = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature")
@@ -111,7 +111,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskCurvature
 	// on a mask and multiplies it to nothing, and a mask that has silently gone to zero looks like
 	// every other thing being broken rather than like this node needing tuning. Starting inert
 	// costs one drag and cannot destroy what it was attached to.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curvature", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Weight = 0.0f;
 
 	bool KeepsAnything() const

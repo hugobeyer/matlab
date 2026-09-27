@@ -119,7 +119,7 @@ FMixtormatPatternCell PatternRectangularCell(
 	const int Row = (int)floor(P.y);
 	const int WrappedRow = MixtormatWrapI(Row, SafeRows);
 	const float Shift = bStaggered && ((WrappedRow & 1) != 0)
-		? saturate(RowOffset)
+		? RowOffset
 		: 0.0f;
 	const float LocalX = P.x - Shift;
 	const int Column = (int)floor(LocalX);
@@ -128,7 +128,7 @@ FMixtormatPatternCell PatternRectangularCell(
 	const float2 CellPixels = AxisPixels / float2(SafeColumns, SafeRows);
 	const float2 EdgePixelsByAxis = min(CellUV, 1.0f - CellUV) * CellPixels;
 	const float MinCellPixels = max(min(CellPixels.x, CellPixels.y), 1.0e-4f);
-	const float SmoothPixels = 0.5f * max(Rounding, 0.0f) * MinCellPixels;
+	const float SmoothPixels = 0.5f * Rounding * MinCellPixels;
 	const float EdgePixels = max(MixtormatSmoothMin(
 		EdgePixelsByAxis.x,
 		EdgePixelsByAxis.y,
@@ -221,7 +221,7 @@ float PatternRunningBoundary(int Boundary, int WrappedRow, int2 Period)
 	// Boundary 0 and Boundary Columns use the same wrapped draw, so they land exactly at 0 and
 	// Columns. Interior widths vary, remain positive, and telescope to the authored row period.
 	return float(Cycle * Period.x + WrappedBoundary)
-		+ Offset * (0.35f * saturate(Jitter));
+		+ Offset * (0.35f * Jitter);
 }
 
 FMixtormatPatternCell PatternRunningBondCell(
@@ -241,8 +241,8 @@ FMixtormatPatternCell PatternRunningBondCell(
 		int2(0, WrappedRow),
 		Period,
 		Seed ^ 0x63d83595u);
-	const float RowJitter = (MixtormatCellRandom01(RowId) - 0.5f) * saturate(Jitter);
-	const float BaseShift = (WrappedRow & 1) != 0 ? saturate(RowOffset) : 0.0f;
+	const float RowJitter = (MixtormatCellRandom01(RowId) - 0.5f) * Jitter;
+	const float BaseShift = (WrappedRow & 1) != 0 ? RowOffset : 0.0f;
 	const float Shift = BaseShift + RowJitter;
 	const float LocalX = frac((P.x - Shift) / float(SafeColumns)) * float(SafeColumns);
 
@@ -590,7 +590,7 @@ FMixtormatPatternCell PatternCellularCell(
 	const int2 Period = max(int2(AuthoredColumns, AuthoredRows), int2(1, 1));
 	const float2 P = WorkUV * float2(Period);
 	const float2 CellPixels = AxisPixels / float2(Period);
-	const float AuthoredJitter = saturate(Jitter);
+	const float AuthoredJitter = Jitter;
 	// Flagstone keeps feature points biased toward their authored lattice cells. The non-zero floor
 	// breaks the perfect grid, while the capped range stays more laid and structured than Voronoi.
 	const float EffectiveJitter = bFlagstone
@@ -602,7 +602,7 @@ FMixtormatPatternCell PatternCellularCell(
 		Period,
 		EffectiveSeed,
 		EffectiveJitter,
-		max(Rounding, 0.0f),
+		Rounding,
 		CellPixels);
 	const float2 FeatureP = P - Cellular.CellOffset;
 	const float MinCellPixels = max(min(CellPixels.x, CellPixels.y), 1.0e-4f);
@@ -931,7 +931,7 @@ float FractureFieldFloor(FMixtormatFractureContext Context, float RadiusSq, floa
 int FractureChildCount(uint ParentHash)
 {
 	if (MixtormatCellRandom01(MixtormatHashU(ParentHash ^ 0x7f4a7c15u))
-		>= saturate(FractureSecondaryAmount))
+		>= FractureSecondaryAmount)
 	{
 		return 1;
 	}
@@ -970,11 +970,11 @@ float2 FractureChildSitePixels(
 		MixtormatCellRandom01(MixtormatHashU(ChildHash ^ 0x85ebca6bu)) - 0.5f;
 	const float RadiusDraw =
 		MixtormatCellRandom01(MixtormatHashU(ChildHash ^ 0xc2b2ae35u));
-	const float SplitJitter = max(FractureSecondaryJitter, 0.0f);
+	const float SplitJitter = FractureSecondaryJitter;
 	const float Angle = Rotation
 		+ MIXTORMAT_FRACTURE_TAU * float(Child) / float(Count)
 		+ AngleDraw * SplitJitter * MIXTORMAT_FRACTURE_PI / float(Count);
-	const float Radius = max(FractureSecondaryRadius, 0.0f)
+	const float Radius = FractureSecondaryRadius
 		* (0.65f + RadiusDraw * SplitJitter)
 		* Context.BasePixels;
 	return ParentSitePixels + float2(cos(Angle), sin(Angle)) * Radius;
@@ -1007,7 +1007,7 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 	// win about sqrt(Variation) cells further out, and the fracture term lets one win from
 	// sqrt(2 A) pixels further again. Both are bounded by authored values, so the scan can be
 	// bounded too -- an unbounded search radius is what would make this mode unusable at 4K.
-	const float WeightReach = sqrt(max(FractureSizeVariation, 0.0f));
+	const float WeightReach = sqrt(FractureSizeVariation);
 	const float FractureReach =
 		sqrt(2.0f * Context.MaxAmplitude) / Context.BasePixels;
 	const int Search = clamp(2 + (int)floor(WeightReach + FractureReach), 2, 4);
@@ -1154,7 +1154,7 @@ FMixtormatPatternCell PatternFracturePlatesCell(
 	// small secondary plate the same way they frame the large primary one next to it.
 	const float PlateScale = rsqrt(float(max(ChildCount, 1)));
 	const float MinCellPixels = max(Context.BasePixels * PlateScale, 1.0e-4f);
-	const float SafeJitter = saturate(Jitter);
+	const float SafeJitter = Jitter;
 	const float MaxEdgePixels = max(
 		0.5f * MinCellPixels * sqrt(1.0f + SafeJitter + 0.5f * SafeJitter * SafeJitter),
 		1.0e-4f);
@@ -1272,7 +1272,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// already publishes.
 	//
 	// Symmetric about the authored Gap, the same convention as the bevel's Width Variation.
-	const float GapVariation = saturate(GapRandom);
+	const float GapVariation = GapRandom;
 	const float HalfGapDraw = lerp(
 		1.0f - GapVariation,
 		1.0f + GapVariation,
@@ -1303,7 +1303,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float SlideAngle =
 		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_GAP_SLIDE) * 6.283185307f;
 	const float2 SlidePixels = float2(cos(SlideAngle), sin(SlideAngle))
-		* saturate(GapSlide) * HalfGapPixels;
+		* GapSlide * HalfGapPixels;
 	const float SlideAlongNormal = CentreDistanceSq > 1.0e-8f
 		? dot(SlidePixels, CentreDelta * rsqrt(CentreDistanceSq))
 		: 0.0f;
@@ -1367,7 +1367,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// One-sided, like the cell height and the chamfer width: the draw only narrows the
 		// run-out from the authored value, never stretches it past what was asked for.
 		const float FeatherJitter = lerp(
-			1.0f - saturate(FeatherRandom),
+			1.0f - FeatherRandom,
 			1.0f,
 			MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_PATTERN_FEATHER));
 		const float CellFeather = Feather * FeatherJitter;

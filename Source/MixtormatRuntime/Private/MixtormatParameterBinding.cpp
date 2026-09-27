@@ -133,6 +133,14 @@ namespace
 				View.ConstData = &Child.Generator.Fracture;
 				View.Struct = FMixtormatFracture::StaticStruct();
 				break;
+			case EMixtormatGeneratorType::RockFormation:
+				View.ConstData = &Child.Generator.RockFormation;
+				View.Struct = FMixtormatRockFormation::StaticStruct();
+				break;
+			case EMixtormatGeneratorType::Pebbles:
+				View.ConstData = &Child.Generator.Pebbles;
+				View.Struct = FMixtormatPebbles::StaticStruct();
+				break;
 			}
 			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
@@ -187,6 +195,16 @@ namespace
 				View.MutableData = &Child.Generator.Fracture;
 				View.ConstData = &Child.Generator.Fracture;
 				View.Struct = FMixtormatFracture::StaticStruct();
+				break;
+			case EMixtormatGeneratorType::RockFormation:
+				View.MutableData = &Child.Generator.RockFormation;
+				View.ConstData = &Child.Generator.RockFormation;
+				View.Struct = FMixtormatRockFormation::StaticStruct();
+				break;
+			case EMixtormatGeneratorType::Pebbles:
+				View.MutableData = &Child.Generator.Pebbles;
+				View.ConstData = &Child.Generator.Pebbles;
+				View.Struct = FMixtormatPebbles::StaticStruct();
 				break;
 			}
 			break;

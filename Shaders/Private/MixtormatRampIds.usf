@@ -155,7 +155,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// meaningful on its own -- every cell tilts equally, each in its own direction -- so
 	// IntensityRandom 0 leaves every cell at full strength rather than switching the node off.
 	const float Jitter = lerp(
-		1.0f - saturate(IntensityRandom),
+		1.0f - IntensityRandom,
 		1.0f,
 		MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_SAT));
 

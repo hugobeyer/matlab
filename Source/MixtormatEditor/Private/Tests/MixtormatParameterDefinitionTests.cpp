@@ -22,8 +22,7 @@ bool FMixtormatParameterSanitizeTest::RunTest(const FString& Parameters)
 	using ET = EMixtormatParameterOwnerType;
 	const auto Name = [](const TCHAR* N) { return FName(N); };
 
-	// BreakupNormalStrength: HardMin 0, no HardMax, CDO default 2. A typed value past the UI
-	// range must survive untouched.
+	// BreakupNormalStrength: no hard bounds (range is authored in the tool), CDO default 2.
 	TestEqual(TEXT("Finite value passes"),
 		MixtormatParameterContracts::SanitizeFloat(ET::Effect, Name(TEXT("BreakupNormalStrength")), 8.0f),
 		8.0f);
@@ -31,20 +30,12 @@ bool FMixtormatParameterSanitizeTest::RunTest(const FString& Parameters)
 		MixtormatParameterContracts::SanitizeFloat(ET::Effect, Name(TEXT("BreakupNormalStrength")),
 			std::numeric_limits<float>::quiet_NaN()),
 		2.0f);
-	TestEqual(TEXT("HardMin clamps"),
+	TestEqual(TEXT("Negative value passes unclamped"),
 		MixtormatParameterContracts::SanitizeFloat(ET::Effect, Name(TEXT("BreakupNormalStrength")), -4.0f),
-		0.0f);
-
-	// A hard-bounded int: 1..16.
-	TestEqual(TEXT("Int clamp low"),
-		MixtormatParameterContracts::SanitizeInt32(ET::Effect, Name(TEXT("BreakupDistortionFrequency")), 0),
-		1);
-	TestEqual(TEXT("Int clamp high"),
+		-4.0f);
+	TestEqual(TEXT("Int passes unclamped"),
 		MixtormatParameterContracts::SanitizeInt32(ET::Effect, Name(TEXT("BreakupDistortionFrequency")), 99),
-		16);
-	TestEqual(TEXT("Int in range passes"),
-		MixtormatParameterContracts::SanitizeInt32(ET::Effect, Name(TEXT("BreakupDistortionFrequency")), 5),
-		5);
+		99);
 
 	// No contract: pass-through. ErosionAmount deliberately has no bounds.
 	TestEqual(TEXT("Contract-less parameter passes through"),

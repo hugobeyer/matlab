@@ -96,7 +96,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// along the feature itself. The wall id is symmetric in the pair, so the whole crack
 	// takes one value. It still changes at junctions, where the nearest wall becomes a
 	// different pair; cracks do change character where they meet.
-	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.EdgeId), saturate(Variation));
+	Crack *= lerp(1.0f, MixtormatCellRandom01(Cell.EdgeId), Variation);
 
 	// EdgeDistance is in cell units, because the UV handed to the lattice was scaled by the cell
 	// count. One cell spans OutputSize.x / Cells pixels, so this is the same quantity the flood

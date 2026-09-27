@@ -131,7 +131,7 @@ uint FlipU;
 uint FlipV;
 int Rotation;
 float2 UVOffset;
-// @param NormalIntensity hardmin=0 hardmax=8
+// @param NormalIntensity
 float NormalIntensity;
 float HueShift;
 float Saturation;
@@ -148,13 +148,13 @@ float BaseColorInfluence;
 float RoughnessInfluence;
 float AOInfluence;
 float MetallicInfluence;
-// @param F0Influence hardmin=0 hardmax=1
+// @param F0Influence
 float F0Influence;
-// @param NormalInfluence hardmin=0 hardmax=1
+// @param NormalInfluence
 float NormalInfluence;
-// @param HeightInfluence hardmin=0 hardmax=1
+// @param HeightInfluence
 float HeightInfluence;
-// @param HeightBoost hardmin=0 hardmax=8
+// @param HeightBoost
 float HeightBoost;
 float HeightLevelOffset;
 float HeightShape;
@@ -365,7 +365,7 @@ float3 AdjustHSV(float3 RGB)
 
 float AdjustRoughness(float Roughness)
 {
-	float SafeBias = clamp(RoughnessBias, 0.01f, 0.99f);
+	float SafeBias = max(RoughnessBias, 0.01f);
 	float Biased = Roughness / ((((1.0f / SafeBias) - 2.0f) * (1.0f - Roughness)) + 1.0f);
 	float Contrasted = 0.5f + (Biased - 0.5f) * (RoughnessContrast + 1.0f);
 	return saturate(Contrasted + RoughnessOffset);
@@ -404,7 +404,7 @@ float SamplePlacementHeightMask(float2 UV)
 		return Sharp;
 	}
 	const float Smoothed = LayerHeightMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	return lerp(Sharp, Smoothed, saturate(HeightSmoothAmount));
+	return lerp(Sharp, Smoothed, HeightSmoothAmount);
 }
 
 // Where the layer's source is read from.
@@ -619,7 +619,7 @@ float SampleIncomingHeight(float2 UV)
 	return lerp(
 		ShapedHeight,
 		ShapedHeight * PlacementMask,
-		saturate(MaskHeightInfluence));
+		MaskHeightInfluence);
 }
 
 float CalculateHeightDifference(float IncomingHeight, float ComparisonHeight)
@@ -892,9 +892,11 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputBC[Pixel] = SourceBC;
 	OutputN[Pixel] = float4(EncodeNormal(Normal), SourceN.a);
 	OutputRAM[Pixel] = SourceRAM;
+	// A layer with no height of its own (a fill, or a surface without RAMH) contributes its
+	// constant height, so generators on it start from the same value the composite would use.
 	OutputHeight[Pixel] = HasSeparateHeight != 0
 		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
-		: SourceRAM.a;
+		: (HasPackedHeight != 0 ? SourceRAM.a : ConstantHeight);
 }
 
 // The layer's own resolved values, as a mask source.
@@ -1039,7 +1041,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
 	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
-	SampledNormal = lerp(SampledNormal, float3(0.0f, 0.0f, 1.0f), IsFill);
+	// A fill has no normal map -- unless a generator resolved one from the height it formed.
+	SampledNormal = lerp(SampledNormal, float3(0.0f, 0.0f, 1.0f),
+		IsFill != 0 && LayerInputResolved == 0 ? 1.0f : 0.0f);
 	if (PreparedLayerMode == 2)
 	{
 		// These controls already ran before relief. Do not grade or flatten it twice.
@@ -1104,7 +1108,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		GeneratedFeatureMask = InvertFeature != 0
 			? 1.0f - GeneratedFeatureMask
 			: GeneratedFeatureMask;
-		FeatureWeight = lerp(1.0f, GeneratedFeatureMask, saturate(FeatureInfluence));
+		FeatureWeight = lerp(1.0f, GeneratedFeatureMask, FeatureInfluence);
 	}
 
 	float UnderlyingHeightMask = InvertHeightFeature != 0
@@ -1114,8 +1118,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 1.0f - PreviousPacked.g
 		: PreviousPacked.g;
 	float SurfaceMaskWeight = FeatureWeight
-		* lerp(1.0f, saturate(UnderlyingHeightMask), saturate(HeightFeatureInfluence))
-		* lerp(1.0f, saturate(UnderlyingAOMask), saturate(AOFeatureInfluence));
+		* lerp(1.0f, saturate(UnderlyingHeightMask), HeightFeatureInfluence)
+		* lerp(1.0f, saturate(UnderlyingAOMask), AOFeatureInfluence);
 	uint UseHeightBlendMask = HeightBlendEnabled != 0
 		&& DirectHeightComparison != 0
 		&& NormalOnly == 0;
@@ -1160,7 +1164,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// F0 with it. Metallic in particular is not the film's property to deny: a clear coat over
 	// metal is car paint, and MSM_ClearCoat carries the substrate and the film separately.
 	float ColorWeight = saturate(ReplaceWeight + Alpha * Coat * 0.35f);
-	float NormalWeight = Alpha * saturate(NormalInfluence);
+	float NormalWeight = Alpha * NormalInfluence;
 
 	// The blend mode first, then coverage on top of it. The mode decides what colour this layer
 	// *is* against what is under it; ColorWeight and BaseColorInfluence decide how much of that
@@ -1177,20 +1181,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float3 ResultBaseColor = NormalOnly != 0
 		? PreviousBaseColor.rgb
-		: lerp(PreviousBaseColor.rgb, IncomingBaseColor, ColorWeight * saturate(BaseColorInfluence));
+		: lerp(PreviousBaseColor.rgb, IncomingBaseColor, ColorWeight * BaseColorInfluence);
 	float ResultRoughness = NormalOnly != 0
 		? PreviousPacked.r
 		: lerp(PreviousPacked.r, LayerRoughness, Alpha * saturate(GetRoughnessInfluence(UV)));
 	float ResultAO = NormalOnly != 0
 		? PreviousPacked.g
-		: lerp(PreviousPacked.g, LayerAO, Alpha * saturate(AOInfluence));
+		: lerp(PreviousPacked.g, LayerAO, Alpha * AOInfluence);
 	float ResultMetallic = NormalOnly != 0
 		? PreviousPacked.b
-		: lerp(PreviousPacked.b, LayerMetallic, Alpha * saturate(MetallicInfluence));
+		: lerp(PreviousPacked.b, LayerMetallic, Alpha * MetallicInfluence);
 	float ResultF0 = NormalOnly != 0
 		? PreviousPacked.a
 		: lerp(PreviousPacked.a, (UseSourceF0 != 0 || PreparedLayerMode == 2) ? SampledRAM.a : LayerF0,
-			Alpha * saturate(F0Influence));
+			Alpha * F0Influence);
 	float3 WeightedDetail = normalize(float3(
 		SampledNormal.xy * NormalWeight,
 		lerp(1.0f, SampledNormal.z, NormalWeight)));
@@ -1203,20 +1207,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float EffectVisibility = Enabled != 0 && HasEffects != 0
 		? saturate((UseHeightBlendMask != 0 ? HeightWeight : Opacity) * FeatureWeight)
 		: 0.0f;
-	float EffectNormalVisibility = EffectVisibility * saturate(NormalInfluence);
+	float EffectNormalVisibility = EffectVisibility * NormalInfluence;
 	float3 WeightedEffectNormal = normalize(float3(
 		EffectNormal.xy * EffectNormalVisibility,
 		lerp(1.0f, EffectNormal.z, EffectNormalVisibility)));
 	float3 ResultNormal = BlendReorientedNormals(LayerResultNormal, WeightedEffectNormal);
-	ResultAO *= lerp(1.0f, EffectAO, EffectVisibility * saturate(AOInfluence));
+	ResultAO *= lerp(1.0f, EffectAO, EffectVisibility * AOInfluence);
 
 	float HeightDetailVisibility = HeightBlendEnabled != 0
 		&& NormalOnly == 0
 		&& Enabled != 0
 		? saturate(Opacity * SurfaceMaskWeight * HeightInfluence)
 		: 0.0f;
-	float ContactAOVisibility = HeightDetailVisibility * saturate(AOInfluence);
-	float BorderNormalVisibility = HeightDetailVisibility * saturate(NormalInfluence);
+	float ContactAOVisibility = HeightDetailVisibility * AOInfluence;
+	float BorderNormalVisibility = HeightDetailVisibility * NormalInfluence;
 	if (ContactAOVisibility > 0.0f && HeightContactAOAmount > 0.0f)
 	{
 		float ContactCenter = SampleContactField(UV);
@@ -1224,7 +1228,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float Contact = saturate(max(
 			ContactCenter,
 			length(ContactGradient) * max(HeightContactAOWidth, 1.0e-4f)));
-		float GeneratedAO = 1.0f - saturate(HeightContactAOAmount) * Contact;
+		float GeneratedAO = 1.0f - HeightContactAOAmount * Contact;
 		ResultAO *= lerp(1.0f, GeneratedAO, ContactAOVisibility);
 	}
 	if (BorderNormalVisibility > 0.0f
@@ -1285,7 +1289,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			LayerResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
 		}
-		ResultHeight = lerp(PreviousHeightValue, LayerResultHeight, saturate(HeightInfluence));
+		ResultHeight = lerp(PreviousHeightValue, LayerResultHeight, HeightInfluence);
 	}
 
 	if (WriteDebug != 0)
@@ -1312,7 +1316,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			DebugValue = DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		}
-		OutputDebug[DispatchThreadId.xy] = float4(MixtormatDebugRamp(DebugValue), 1.0f);
+		if (DebugMode == 9)
+		{
+			// UV gradient: red = U, green = V of the UV the layer samples, with faint lines
+			// every eighth of a tile so scale, rotation and per-region remaps read at a glance.
+			const float2 Tile = frac(LayerUV);
+			const float2 Cell = frac(LayerUV * 8.0f);
+			// Compute shaders have no derivatives; a fixed width in cell units is enough here.
+			const float2 Line = 1.0f - saturate(min(Cell, 1.0f - Cell) / 0.03f);
+			const float Grid = max(Line.x, Line.y) * 0.35f;
+			OutputDebug[DispatchThreadId.xy] = float4(
+				MixtormatDebugColor(lerp(float3(Tile, 0.0f), float3(1.0f, 1.0f, 1.0f), Grid)), 1.0f);
+		}
+		else
+		{
+			OutputDebug[DispatchThreadId.xy] = float4(MixtormatDebugRamp(DebugValue), 1.0f);
+		}
 	}
 
 	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);

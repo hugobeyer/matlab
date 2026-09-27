@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "Compositing/MixtormatComposeHash.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
@@ -210,10 +211,8 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, BevelWidthPixels)
 		SHADER_PARAMETER(float, BevelVariation)
-		SHADER_PARAMETER(float, AOSpread)
 		SHADER_PARAMETER(float, EdgeRoughness)
 		SHADER_PARAMETER(float, EdgeRoughnessAmount)
-		SHADER_PARAMETER(float, AOAmount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
@@ -1269,7 +1268,7 @@ namespace MixtormatGpuCompositor
 		// Each authored pass is several union dispatches, because one dispatch only propagates a
 		// hook one link along the chain. The inner count matches the cluster filter's, which is
 		// the same problem at the same resolution.
-		const int32 Rounds = FMath::Clamp(Combine.Passes, 1, 8);
+		const int32 Rounds = FMath::Max(Combine.Passes, 1);
 		for (int32 Round = 0; Round < Rounds; ++Round)
 		{
 			for (int32 Iteration = 0; Iteration < 12; ++Iteration)
@@ -1507,8 +1506,7 @@ namespace MixtormatGpuCompositor
 						|| HasIntrinsicPatternOrientation(Pattern)
 						|| Pattern.HeightAmount > 0.0f
 						|| Pattern.BevelHeight > 0.0f
-						|| Pattern.EdgeRoughnessAmount > 0.0f
-						|| Pattern.AOAmount > 0.0f;
+						|| Pattern.EdgeRoughnessAmount > 0.0f;
 
 					// A Gap instance mask is an explicit consumer even when every Pattern relief
 					// control is neutral. Demand its producer so the published texture exists.
@@ -1642,9 +1640,77 @@ namespace MixtormatGpuCompositor
 				}
 
 				FRDGTextureRef RegionIds = nullptr;
-				if (bClusterProducer && Child.Filter.bSurfaceIds)
+
+				// Node cache. Bypassed for the previewed child: its kernel also writes the debug
+				// view, which a cached map cannot reproduce.
+				FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+				uint64 NodeKey = 0;
+				if (NodeCache && Child.CacheKey != 0 && !bIsSelectedPreview)
+				{
+					if (bClusterProducer)
+					{
+						// Surface/Cluster IDs read the layer's own maps and, with Composite Below or as
+						// the height fallback, the accumulated surface under this layer -- exactly what
+						// the prefix hash of the layer below identifies. Folded in whenever there is a
+						// layer below, so the key never depends on which of those a mode samples.
+						const bool bHasBelow = LayerIndex > 0;
+						if (Layer.SourceCacheKey != 0
+							&& (!bHasBelow || Request.PrefixHashes.IsValidIndex(LayerIndex - 1)))
+						{
+							NodeKey = MixtormatComposeHash::Combine(
+								MixtormatComposeHash::Combine(Child.CacheKey, Layer.SourceCacheKey),
+								bHasBelow ? Request.PrefixHashes[LayerIndex - 1] : 0x436C75ull);
+						}
+					}
+					else
+					{
+						// Pattern IDs read nothing but their own settings.
+						NodeKey = MixtormatComposeHash::Combine(Child.CacheKey, 0x5061747465726Eull);
+					}
+				}
+				const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> NodeHit =
+					NodeKey != 0 ? NodeCache->Find(NodeKey, Request.Resolution)
+						: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+				const auto RegisterCached = [&GraphBuilder](
+					const TRefCountPtr<IPooledRenderTarget>& Target, const TCHAR* Name) -> FRDGTextureRef
+				{
+					return Target.IsValid() ? GraphBuilder.RegisterExternalTexture(Target, Name) : nullptr;
+				};
+				const auto KeepNode = [&](const std::initializer_list<FRDGTextureRef> Outputs)
+				{
+					if (NodeKey == 0)
+					{
+						return;
+					}
+					TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = NodeKey;
+					Entry->Resolution = Request.Resolution;
+					int32 Slot = 0;
+					for (const FRDGTextureRef Output : Outputs)
+					{
+						if (Output && Slot < static_cast<int32>(UE_ARRAY_COUNT(Entry->Outputs)))
+						{
+							GraphBuilder.QueueTextureExtraction(Output, &Entry->Outputs[Slot]);
+						}
+						++Slot;
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				};
+
+				if (NodeHit.IsValid())
+				{
+					UE_LOG(LogMixtormatComposition, VeryVerbose,
+						TEXT("Node cache hit: layer %d child %d."), LayerIndex, Child.SourceChildIndex);
+				}
+				if (bClusterProducer && NodeHit.IsValid())
+				{
+					RegionIds = RegisterCached(NodeHit->Outputs[0], TEXT("Mixtormat.NodeCache.RegionIds"));
+				}
+				else if (bClusterProducer && Child.Filter.bSurfaceIds)
 				{
 					RegionIds = AddSurfaceIdPasses(Ctx, Layer, Child, LayerIndex, bIsSelectedPreview);
+					KeepNode({RegionIds});
 				}
 				else if (bClusterProducer)
 				{
@@ -1671,6 +1737,7 @@ namespace MixtormatGpuCompositor
 						Layer,
 						Child,
 						LayerIndex);
+					KeepNode({RegionIds});
 				}
 				else
 				{
@@ -1678,19 +1745,37 @@ namespace MixtormatGpuCompositor
 						PatternOutputs.AddDefaulted_GetRef();
 					PatternOutput.SourceChildIndex = Child.SourceChildIndex;
 					PatternOutput.Settings = &Child.PatternId;
-					RegionIds = AddPatternIdPasses(
-						GraphBuilder,
-						bIsSelectedPreview,
-						OutputDebug[Request.PublishedTargetIndex],
-						Request.Resolution,
-						Child,
-						LayerIndex,
-						EmptyPatternOrientation,
-						PatternOutput.UV,
-						PatternOutput.Ramp,
-						PatternOutput.Edge,
-						PatternOutput.Gap,
-						PatternOutput.Orientation);
+					if (NodeHit.IsValid())
+					{
+						RegionIds = RegisterCached(NodeHit->Outputs[0], TEXT("Mixtormat.NodeCache.PatternIds"));
+						PatternOutput.UV = RegisterCached(NodeHit->Outputs[1], TEXT("Mixtormat.NodeCache.PatternUV"));
+						PatternOutput.Ramp = RegisterCached(NodeHit->Outputs[2], TEXT("Mixtormat.NodeCache.PatternRamp"));
+						PatternOutput.Edge = RegisterCached(NodeHit->Outputs[3], TEXT("Mixtormat.NodeCache.PatternEdge"));
+						PatternOutput.Gap = RegisterCached(NodeHit->Outputs[4], TEXT("Mixtormat.NodeCache.PatternGap"));
+						PatternOutput.Orientation = NodeHit->Outputs[5].IsValid()
+							? RegisterCached(NodeHit->Outputs[5], TEXT("Mixtormat.NodeCache.PatternOrientation"))
+							: EmptyPatternOrientation;
+					}
+					else
+					{
+						RegionIds = AddPatternIdPasses(
+							GraphBuilder,
+							bIsSelectedPreview,
+							OutputDebug[Request.PublishedTargetIndex],
+							Request.Resolution,
+							Child,
+							LayerIndex,
+							EmptyPatternOrientation,
+							PatternOutput.UV,
+							PatternOutput.Ramp,
+							PatternOutput.Edge,
+							PatternOutput.Gap,
+							PatternOutput.Orientation);
+						// The shared 1x1 stand-in is not this node's output; a hit restores it.
+						KeepNode({RegionIds, PatternOutput.UV, PatternOutput.Ramp, PatternOutput.Edge,
+							PatternOutput.Gap,
+							PatternOutput.Orientation != EmptyPatternOrientation ? PatternOutput.Orientation : nullptr});
+					}
 					PatternOutput.Ids = RegionIds;
 					Ctx.PublishedMaskOutputs.Add(
 						FPublishedMaskKey{
@@ -1774,7 +1859,7 @@ namespace MixtormatGpuCompositor
 					|| Pattern.BevelHeight != 0.0f
 					|| Pattern.GapHeight != 0.0f;
 				const bool bNeedsShade =
-					Pattern.EdgeRoughnessAmount > 0.0f || Pattern.AOAmount > 0.0f;
+					Pattern.EdgeRoughnessAmount > 0.0f;
 				if (!bNeedsRelief && !bNeedsShade)
 				{
 					continue;
@@ -1808,8 +1893,6 @@ namespace MixtormatGpuCompositor
 				Tilt.FeatherGain = Pattern.FeatherGain;
 				Tilt.EdgeRoughness = Pattern.EdgeRoughness;
 				Tilt.EdgeRoughnessAmount = Pattern.EdgeRoughnessAmount;
-				Tilt.AOAmount = Pattern.AOAmount;
-				Tilt.AOSpread = Pattern.AOSpread;
 				continue;
 			}
 
@@ -1831,7 +1914,7 @@ namespace MixtormatGpuCompositor
 					|| Relief.BevelHeight != 0.0f
 					|| Relief.GapHeight != 0.0f;
 				const bool bNeedsShade =
-					Relief.EdgeRoughnessAmount > 0.0f || Relief.AOAmount > 0.0f;
+					Relief.EdgeRoughnessAmount > 0.0f;
 				if (!bNeedsRelief && !bNeedsShade)
 				{
 					continue;
@@ -1872,8 +1955,6 @@ namespace MixtormatGpuCompositor
 				Tilt.FeatherGain = Relief.FeatherGain;
 				Tilt.EdgeRoughness = Relief.EdgeRoughness;
 				Tilt.EdgeRoughnessAmount = Relief.EdgeRoughnessAmount;
-				Tilt.AOAmount = Relief.AOAmount;
-				Tilt.AOSpread = Relief.AOSpread;
 				continue;
 			}
 
@@ -1904,7 +1985,6 @@ namespace MixtormatGpuCompositor
 				Child.SourceChildIndex);
 			Tilt.EdgeField = Tilt.Field;
 			Tilt.HeightAmount = Ramp.HeightAmount;
-			Tilt.AOAmount = Ramp.AOAmount;
 			Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
 		}
 	}
@@ -2029,7 +2109,6 @@ namespace MixtormatGpuCompositor
 					nullptr,
 					Request.Resolution,
 					HeightDerivedNormalStrength,
-					Tilt.AOAmount,
 					false,
 					TEXT("RegionRelief"));
 				AddCopyTexturePass(GraphBuilder, TiltH, HeightTargets[WriteIndex]);
@@ -2037,19 +2116,18 @@ namespace MixtormatGpuCompositor
 			}
 
 			if (Tilt.bUseEdge
-				&& (Tilt.EdgeRoughnessAmount > 0.0f || Tilt.AOAmount > 0.0f))
+				&& Tilt.EdgeRoughnessAmount > 0.0f)
 			{
 				FRDGTextureRef ShadeRAM = GraphBuilder.CreateTexture(
 					OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.PatternEdgeRAM"));
 				FMixtormatEdgeShadeCS::FParameters* EdgeP =
 					GraphBuilder.AllocParameters<FMixtormatEdgeShadeCS::FParameters>();
 				EdgeP->OutputSize = Request.Resolution;
-				EdgeP->BevelWidthPixels = Tilt.BevelWidthPixels;
+				// The edge field is a region fraction in Relative mode, so the width must be too.
+				EdgeP->BevelWidthPixels = Tilt.bBevelRelative ? Tilt.BevelWidthCells : Tilt.BevelWidthPixels;
 				EdgeP->BevelVariation = Tilt.BevelVariation;
-				EdgeP->AOSpread = Tilt.AOSpread;
 				EdgeP->EdgeRoughness = Tilt.EdgeRoughness;
 				EdgeP->EdgeRoughnessAmount = Tilt.EdgeRoughnessAmount;
-				EdgeP->AOAmount = Tilt.AOAmount;
 				EdgeP->EdgeField = Tilt.EdgeField;
 				EdgeP->SourceRAM = OutputRAM[WriteIndex];
 				EdgeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);

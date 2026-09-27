@@ -293,11 +293,11 @@ bool FMixtormatAuthoringResolutionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Snap falls through to UiMeta"),
 		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringSnap(Key, 0.0f), 0.05f));
 
-	// Hard bounds are runtime-owned: the database's UI range never touches the contract.
-	TestTrue(TEXT("HardMin still clamps at 0 regardless of database"),
+	// No hard bounds at runtime: the database's UI range never clamps the value.
+	TestTrue(TEXT("Sanitize does not clamp regardless of database"),
 		FMath::IsNearlyEqual(
 			MixtormatParameterContracts::SanitizeFloat(
-				Key.Owner, Key.Parameter, -4.0f), 0.0f));
+				Key.Owner, Key.Parameter, -4.0f), -4.0f));
 
 	// D1 round-trip: the Category-prefix spelling with its display space ("Worn Edges") is
 	// the canonical family section. It must load, resolve, apply at creation, and survive a

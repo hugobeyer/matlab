@@ -185,7 +185,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (Stage >= UNION_START && Stage < ROOT_STAGE)
 	{
 		float Width = max(saturate(Threshold) * 0.25f, 1.0e-7f);
-		float HInfluence = max(HeightInfluence, 0.0f);
+		float HInfluence = HeightInfluence;
 		uint Left = (Pixel.x != 0 ? Pixel.x - 1 : uint(OutputSize.x) - 1) + Pixel.y * uint(OutputSize.x);
 		uint Up = Pixel.x + (Pixel.y != 0 ? Pixel.y - 1 : uint(OutputSize.y) - 1) * uint(OutputSize.x);
 		float2 Here = GuideSignal[Index];

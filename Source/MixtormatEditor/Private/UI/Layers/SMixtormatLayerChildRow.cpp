@@ -18,6 +18,7 @@
 void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 {
 	bSelected = InArgs._bSelected;
+	bInstanceSource = InArgs._bInstanceSource;
 	OnSelected = InArgs._OnSelected;
 	OnRowDragDetected = InArgs._OnDragDetected;
 
@@ -129,6 +130,14 @@ FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 	{
 		return MixtormatPalette::LayerChildSelectedRight();
 	}
+	if (bInstanceSource.Get(false))
+	{
+		// The selection's gradient mirrored (strong on the left) and softer, so the source reads
+		// as linked to the selection without reading as a second selection.
+		FLinearColor Glow = MixtormatPalette::LayerChildSelectedRight();
+		Glow.A *= 0.15f;
+		return Glow;
+	}
 	return IsHovered() ? MixtormatPalette::LayerChildHoverRight() : FLinearColor::Transparent;
 }
 
@@ -137,6 +146,12 @@ FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
 	if (bSelected.Get(false))
 	{
 		return MixtormatPalette::LayerChildSelectedLeft();
+	}
+	if (bInstanceSource.Get(false))
+	{
+		FLinearColor Glow = MixtormatPalette::LayerChildSelectedRight();
+		Glow.A *= 0.75f;
+		return Glow;
 	}
 	return IsHovered() ? MixtormatPalette::LayerChildHoverLeft() : FLinearColor::Transparent;
 }

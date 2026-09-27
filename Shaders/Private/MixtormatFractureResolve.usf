@@ -6,22 +6,22 @@
 #include "/Plugin/Mixtormat/Private/MixtormatSdfBlend.ush"
 
 int2 OutputSize;
-// @param FractureSeed hardmin=0
+// @param FractureSeed
 uint FractureSeed;
-// @param FractureScale hardmin=2 hardmax=64
+// @param FractureScale
 float FractureScale;
-// @param FractureAmount hardmin=0 hardmax=1
+// @param FractureAmount
 float FractureAmount;
 // Stored Width is 0..1; gather converts it to output pixels.
-// @param FractureWidth hardmin=0.001 hardmax=1
+// @param FractureWidth
 float FractureWidthPixels;
-// @param FractureDepth hardmin=0
+// @param FractureDepth
 float FractureDepth;
-// @param FractureProfile hardmin=0.05
+// @param FractureProfile
 float FractureProfile;
-// @param FractureChamfer hardmin=0
+// @param FractureChamfer
 float FractureChamfer;
-// @param FractureVariation hardmin=0 hardmax=1
+// @param FractureVariation
 float FractureVariation;
 Texture2D<uint2> PieceIds;
 Texture2D<float2> SourcePosition;

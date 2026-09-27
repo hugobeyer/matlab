@@ -76,8 +76,7 @@ bool FMixtormatPrompt2LegacyFieldsTest::RunTest(const FString&)
 		TEXT("Profile"), TEXT("ProfileRandom"), TEXT("Feather"), TEXT("FeatherRandom"),
 		TEXT("FeatherGain"), TEXT("BevelHeight"), TEXT("BevelWidthPixels"),
 		TEXT("BevelWidthCells"), TEXT("BevelVariation"), TEXT("BevelInsetPixels"),
-		TEXT("GapHeight"), TEXT("EdgeRoughness"), TEXT("EdgeRoughnessAmount"),
-		TEXT("AOAmount"), TEXT("AOSpread") })
+		TEXT("GapHeight"), TEXT("EdgeRoughness"), TEXT("EdgeRoughnessAmount") })
 	{
 		CheckSerializable(Name, FindFProperty<FFloatProperty>(Pattern, FName(Name)));
 	}

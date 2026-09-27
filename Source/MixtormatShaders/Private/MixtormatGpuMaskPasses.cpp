@@ -472,13 +472,13 @@ namespace MixtormatGpuCompositor
 			FMixtormatMaskCurvatureCS::FParameters* CurvatureParameters =
 				GraphBuilder.AllocParameters<FMixtormatMaskCurvatureCS::FParameters>();
 			CurvatureParameters->OutputSize = Request.Resolution;
-			CurvatureParameters->Kernel = FMath::Clamp(Filter.Kernel, 1, 64);
-			CurvatureParameters->Scale = FMath::Max(Filter.Scale, 0.0f);
+			CurvatureParameters->Kernel = FMath::Max(Filter.Kernel, 1);
+			CurvatureParameters->Scale = Filter.Scale;
 			CurvatureParameters->Mode = static_cast<int32>(Filter.Mode);
 			CurvatureParameters->RangeLow = Filter.RangeLow;
 			CurvatureParameters->RangeHigh = Filter.RangeHigh;
 			CurvatureParameters->Invert = Filter.bInvert ? 1u : 0u;
-			CurvatureParameters->Weight = FMath::Clamp(Filter.Weight, 0.0f, 1.0f);
+			CurvatureParameters->Weight = Filter.Weight;
 			CurvatureParameters->SourceField = SourceField;
 			CurvatureParameters->PreviousMask = FilteredMask;
 			CurvatureParameters->LinearWrapSampler =

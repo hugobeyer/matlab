@@ -30,23 +30,23 @@ RWTexture2D<float> OutputPieces;
 
 int2 OutputSize;
 
-// @param BreakupSeed hardmin=0
+// @param BreakupSeed
 uint Seed;
 
-// @param BreakupScale hardmin=1 hardmax=64
+// @param BreakupScale
 int MacroCells;
-// @param BreakupScale hardmin=1 hardmax=64
+// @param BreakupScale
 int MidCells;
-// @param BreakupScale hardmin=1 hardmax=64
+// @param BreakupScale
 int DetailCells;
 
 // @param BreakupDensity saturates
 float Density;
-// @param BreakupSize hardmin=0.001
+// @param BreakupSize
 float SizeMin;
-// @param BreakupSize hardmin=0.001
+// @param BreakupSize
 float SizeMax;
-// @param BreakupStretch hardmin=1
+// @param BreakupStretch
 float Stretch;
 // @param BreakupAngularity saturates
 float Angularity;
@@ -54,11 +54,11 @@ float Jitter;
 
 int OperationMid;
 int OperationDetail;
-// @param BreakupSmoothness hardmin=0
+// @param BreakupSmoothness
 float BlendSmooth;
 
 float DistortAmount;
-// @param BreakupDistortionFrequency hardmin=1 hardmax=16
+// @param BreakupDistortionFrequency
 int DistortFrequency;
 float Inset;
 
@@ -68,42 +68,38 @@ uint HasRegionIds;
 float Relief;
 float ThicknessVariation;
 
-// @param BreakupGapWidth hardmin=0
+// @param BreakupGapWidth
 float GapWidth;
 float GapDepth;
 float GapVariation;
 
 float FoldHeight;
-// @param BreakupFoldWidth hardmin=1e-4 divisor
+// @param BreakupFoldWidth divisor
 float FoldWidth;
-// @param BreakupCreaseWidth hardmin=1e-4 divisor
+// @param BreakupCreaseWidth divisor
 float CreaseWidth;
 float CreaseDepth;
 
 float PushAmount;
-// @param BreakupPushWidth hardmin=1e-4 divisor
+// @param BreakupPushWidth divisor
 float PushWidth;
-// @param BreakupPushRelief hardmin=0
+// @param BreakupPushRelief
 float PushRelief;
 
-// @param BreakupVariation saturates
+// @param BreakupVariation
 float Variation;
 // @param BreakupAmount saturates
 float Strength;
 
-// @param BreakupNormalStrength hardmin=0
+// @param BreakupNormalStrength
 float NormalStrength;
-// @param BreakupNormalSharpness saturates
+// @param BreakupNormalSharpness
 float NormalSharpness;
-// @param BreakupAOAmount saturates
-float AOAmount;
-// @param BreakupAORadius hardmin=1 divisor
-float AORadius;
 // @param BreakupRoughnessAmount saturates
 float RoughnessAmount;
 
 uint UsePlacementMask;
-// @param BreakupMaskTiling hardmin=1
+// @param BreakupMaskTiling
 float PlacementMaskTiling;
 uint InvertMask;
 
@@ -450,25 +446,6 @@ float2 BreakupDeltaGradient(int2 p, int radius)
 		/ (8.0f * (float)radius);
 }
 
-float BreakupHeightOcclusion(int2 p, int radius)
-{
-	radius = max(radius, 1);
-
-	const float h = CurrentHeight.Load(int3(BreakupWrapPixel(p), 0));
-	float occ = 0.0f;
-
-	occ += max(CurrentHeight.Load(int3(BreakupWrapPixel(p + int2(radius, 0)), 0)) - h, 0.0f);
-	occ += max(CurrentHeight.Load(int3(BreakupWrapPixel(p - int2(radius, 0)), 0)) - h, 0.0f);
-	occ += max(CurrentHeight.Load(int3(BreakupWrapPixel(p + int2(0, radius)), 0)) - h, 0.0f);
-	occ += max(CurrentHeight.Load(int3(BreakupWrapPixel(p - int2(0, radius)), 0)) - h, 0.0f);
-	occ += 0.7071f * max(CurrentHeight.Load(int3(BreakupWrapPixel(p + int2(radius, radius)), 0)) - h, 0.0f);
-	occ += 0.7071f * max(CurrentHeight.Load(int3(BreakupWrapPixel(p + int2(-radius, radius)), 0)) - h, 0.0f);
-	occ += 0.7071f * max(CurrentHeight.Load(int3(BreakupWrapPixel(p + int2(radius, -radius)), 0)) - h, 0.0f);
-	occ += 0.7071f * max(CurrentHeight.Load(int3(BreakupWrapPixel(p - int2(radius, radius)), 0)) - h, 0.0f);
-
-	return occ * 0.14645f;
-}
-
 [numthreads(8, 8, 1)]
 void FieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -524,8 +501,8 @@ void FieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float idRandom = BreakupHash01(finalId ^ Seed * 0x85ebca6bu);
 	const float gapScale = lerp(
-		1.0f - saturate(GapVariation),
-		1.0f + saturate(GapVariation),
+		1.0f - GapVariation,
+		1.0f + GapVariation,
 		frac(idRandom * 2.41421356237f + 0.317f));
 	const float placement = BreakupSamplePlacement(sourceUV);
 	const float idInset = max(GapWidth * gapScale * 0.15f, 0.0f);
@@ -588,26 +565,26 @@ void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: float2(0.0f, 0.0f);
 
 	const float thicknessScale = lerp(
-		1.0f - saturate(ThicknessVariation),
-		1.0f + saturate(ThicknessVariation),
+		1.0f - ThicknessVariation,
+		1.0f + ThicknessVariation,
 		r0);
 
 	const float foldVariation = lerp(
-		1.0f - saturate(Variation) * 0.55f,
-		1.0f + saturate(Variation) * 0.55f,
+		1.0f - Variation * 0.55f,
+		1.0f + Variation * 0.55f,
 		r1);
 	const float creaseVariation = lerp(
-		1.0f - saturate(Variation) * 0.35f,
-		1.0f + saturate(Variation) * 0.35f,
+		1.0f - Variation * 0.35f,
+		1.0f + Variation * 0.35f,
 		r2);
 	const float pushVariation = lerp(
-		1.0f - saturate(Variation) * 0.60f,
-		1.0f + saturate(Variation) * 0.60f,
+		1.0f - Variation * 0.60f,
+		1.0f + Variation * 0.60f,
 		r3);
 
 	const float gapScale = lerp(
-		1.0f - saturate(GapVariation),
-		1.0f + saturate(GapVariation),
+		1.0f - GapVariation,
+		1.0f + GapVariation,
 		r2);
 	const float gapWidth = max(GapWidth * gapScale, 0.0f);
 	const float gapSdf = gapWidth > 1.0e-5f
@@ -696,8 +673,8 @@ void MasksCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// same r2 draw, and a GapWidth of zero collapses both to nothing rather than to a hairline.
 	const float r2 = frac(r0 * 2.41421356237f + 0.517f);
 	const float gapScale = lerp(
-		1.0f - saturate(GapVariation),
-		1.0f + saturate(GapVariation),
+		1.0f - GapVariation,
+		1.0f + GapVariation,
 		r2);
 	const float gapWidth = max(GapWidth * gapScale, 0.0f);
 
@@ -752,8 +729,8 @@ void ShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int broadRadius = max(2, (int)round(lerp(4.0f, 2.0f, saturate(NormalSharpness))));
 	const float2 broadGradient = BreakupDeltaGradient(pixel, broadRadius);
 
-	float2 g = lerp(broadGradient, sharpGradient, saturate(NormalSharpness));
-	g += sharpGradient * saturate(NormalSharpness) * 0.35f;
+	float2 g = lerp(broadGradient, sharpGradient, NormalSharpness);
+	g += sharpGradient * NormalSharpness * 0.35f;
 	g *= NormalStrength;
 
 	const float3 reliefNormal = normalize(float3(g, 1.0f));
@@ -768,30 +745,7 @@ void ShadeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float4 ram = PreviousRAM.Load(int3(pixel, 0));
 	ram.r = saturate(ram.r + RoughnessAmount * coverage);
 
-	if (AOAmount > 0.0f && coverage > 0.0f)
-	{
-		const float resolutionScale = BreakupResolutionScale();
-		const int aoRadiusPixels = max(1, (int)round(max(AORadius, 1.0f) * resolutionScale));
-		const int aoNearPixels = max(1, aoRadiusPixels / 2);
-
-		const float heightAO =
-			BreakupHeightOcclusion(pixel, aoNearPixels) * 18.0f +
-			BreakupHeightOcclusion(pixel, aoRadiusPixels) * 10.0f;
-
-		const float sd = BreakupField.Load(int3(pixel, 0)).x;
-		const float edgeAO =
-			1.0f - BreakupSmooth(0.0f, max(AORadius, 1.0f), abs(sd));
-
-		const uint centerId = BreakupLoadId(pixel);
-		const float idAO = BreakupIdBoundary(pixel, centerId, aoNearPixels);
-
-		const float ao = saturate(
-			heightAO +
-			edgeAO * 0.35f +
-			idAO * 0.25f) * coverage;
-
-		ram.g = saturate(ram.g * (1.0f - saturate(AOAmount) * ao));
-	}
+	// No AO: it is composited once for the final material, never per effect.
 
 	OutputRAM[pixel] = ram;
 }

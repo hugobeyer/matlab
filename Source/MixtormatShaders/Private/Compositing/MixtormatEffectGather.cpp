@@ -150,8 +150,6 @@ void GatherBreakup(FEffectRenderData& EffectData, const FMixtormatLayerEffect& L
 	EffectData.BreakupRoughnessAmount = EffectFloat(TEXT("BreakupRoughnessAmount"), LayerEffect.BreakupRoughnessAmount);
 	EffectData.BreakupNormalStrength = EffectFloat(TEXT("BreakupNormalStrength"), LayerEffect.BreakupNormalStrength);
 	EffectData.BreakupNormalSharpness = EffectFloat(TEXT("BreakupNormalSharpness"), LayerEffect.BreakupNormalSharpness);
-	EffectData.BreakupAOAmount = EffectFloat(TEXT("BreakupAOAmount"), LayerEffect.BreakupAOAmount);
-	EffectData.BreakupAORadius = EffectFloat(TEXT("BreakupAORadius"), LayerEffect.BreakupAORadius);
 
 	EffectData.BreakupMaskTiling = static_cast<float>(
 		EffectInt(TEXT("BreakupMaskTiling"), LayerEffect.BreakupMaskTiling));
@@ -243,7 +241,7 @@ void GatherStain(
 		1.0f, static_cast<float>(LayerEffect.StainDirtMaskTiling));
 	EffectData.bStainSourceMaskInvert = LayerEffect.bStainSourceMaskInvert;
 	EffectData.bStainDirtMaskInvert = LayerEffect.bStainDirtMaskInvert;
-	EffectData.StainIterations = FMath::Clamp(LayerEffect.StainIterations, 4, 64);
+	EffectData.StainIterations = FMath::Max(LayerEffect.StainIterations, 4);
 	EffectData.StainSeed = static_cast<uint32>(FMath::Max(LayerEffect.StainSeed, 1));
 	EffectData.StainSourceAmount = LayerEffect.StainSourceAmount;
 	EffectData.StainGravity = LayerEffect.StainGravity;
@@ -307,7 +305,6 @@ void GatherPeeling(FEffectRenderData& EffectData, const FMixtormatLayerEffect& L
 	EffectData.PeelCurvatureRadius =
 		EffectInt(TEXT("PeelCurvatureRadius"), LayerEffect.PeelCurvatureRadius);
 	EffectData.PeelGrowthStrength = EffectFloat(TEXT("PeelGrowthStrength"), LayerEffect.PeelGrowthStrength);
-	EffectData.PeelAOStrength = EffectFloat(TEXT("PeelAOStrength"), LayerEffect.PeelAOStrength);
 	EffectData.PeelEdgeSharpness = EffectFloat(TEXT("PeelEdgeSharpness"), LayerEffect.PeelEdgeSharpness);
 	EffectData.PeelLiftVariation = EffectFloat(TEXT("PeelLiftVariation"), LayerEffect.PeelLiftVariation);
 	EffectData.PeelCornerLift = EffectFloat(TEXT("PeelCornerLift"), LayerEffect.PeelCornerLift);

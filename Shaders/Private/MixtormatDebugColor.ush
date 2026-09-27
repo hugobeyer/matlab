@@ -56,10 +56,15 @@ float3 MixtormatDebugColor(float3 SrgbColor)
 
 float3 MixtormatRegionDebugColor(uint Root)
 {
-	return MixtormatDebugColor(float3(
-		MixtormatRegionRandom(Root * 3u + 1u),
-		MixtormatRegionRandom(Root * 3u + 2u),
-		MixtormatRegionRandom(Root * 3u + 3u)));
+	// Scrambled twice before use, so consecutive ids (compacted bands, neighbouring cells) land
+	// on unrelated colours instead of reading as a sequence. A random hue at high saturation
+	// and value keeps neighbours distinguishable; plain random RGB drifts to muddy greys.
+	const uint Scrambled = MixtormatRegionHash(MixtormatRegionHash(Root ^ 0x9E3779B9u) + 0x632BE5ABu);
+	const float Hue = MixtormatRegionRandom(Scrambled);
+	const float Saturation = lerp(0.55f, 0.95f, MixtormatRegionRandom(Scrambled ^ 0x85EBCA6Bu));
+	const float Value = lerp(0.55f, 1.0f, MixtormatRegionRandom(Scrambled ^ 0xC2B2AE35u));
+	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
+	return MixtormatDebugColor(Value * lerp(float3(1.0f, 1.0f, 1.0f), Rgb, Saturation));
 }
 
 #endif

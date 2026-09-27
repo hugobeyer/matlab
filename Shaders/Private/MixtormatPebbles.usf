@@ -1,0 +1,261 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Pebbles: faceted, chamfered stones scattered on a tileable jittered grid, ported from the
+// Faceted Stone Scatter COP. Each stone has its own seed, size, rotation and height; where
+// stones overlap the highest wins.
+//
+// A stone is the intersection of Cuts half-planes (chamfered), and each facet rises inward at
+// its own log-random steepness, so the top reads as flat-faceted rather than domed.
+//
+// PEBBLE_STAGE 0 (Field): height, coverage, edge distance, per-stone random and IDs. Depends on
+//   the settings and resolution only, so the compositor caches it.
+// PEBBLE_STAGE 1 (Combine): writes the layer's input height. Cheap.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+#define PEBBLE_TAU     6.28318530717958647692f
+#define PEBBLE_PI      3.14159265358979323846f
+#define PEBBLE_HALF_PI 1.57079632679489661923f
+#define PEBBLE_GOLDEN  2.39996322972865332223f
+
+int2 OutputSize;
+int Seed;
+int Cells;
+float Density;
+float Jitter;
+float StoneScale;
+float ScaleVariation;
+float RotationDegrees;
+int Cuts;
+int DirectionMode;
+float Irregularity;
+float Chamfer;
+float Steepness;
+float SteepnessVariation;
+float BiasVariation;
+float HeightGain;
+float HeightVariation;
+uint FacetIds;
+float Amount;
+
+Texture2D<float> PebbleHeight;
+Texture2D<float> PebbleCoverage;
+Texture2D<float> SourceHeight;
+RWTexture2D<float> OutPebbleHeight;
+RWTexture2D<float> OutPebbleCoverage;
+RWTexture2D<float> OutPebbleEdgeDistance;
+RWTexture2D<float> OutPebbleRandom;
+RWTexture2D<uint> OutPebbleIds;
+RWTexture2D<float> OutHeight;
+
+uint PebbleHash(uint x)
+{
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	x ^= x >> 16;
+	return x;
+}
+
+float PebbleRand(int seed, int i)
+{
+	uint h = PebbleHash((uint)seed * 747796405u + (uint)i * 2891336453u);
+	return (float)(h & 0x00ffffffu) / 16777215.0f;
+}
+
+float PebbleWrapAngle(float a)
+{
+	a = fmod(a, PEBBLE_TAU);
+	return a < 0.0f ? a + PEBBLE_TAU : a;
+}
+
+int PebbleWrap(int i, int n) { return ((i % n) + n) % n; }
+
+// Chamfered union of two fields: a min whose crease is cut by a 45-degree chamfer of width r.
+float PebbleUnionChamfer(float a, float b, float r)
+{
+	return min(min(a, b), (a - r + b) * sqrt(0.5f));
+}
+
+// Chamfered intersection of two distance fields.
+float PebbleIntersectChamfer(float a, float b, float r)
+{
+	return max(max(a, b), (a + r + b) * sqrt(0.5f));
+}
+
+float PebbleCutAngle(int mode, int seed, int i, int count, float r, float jitter)
+{
+	if (mode <= 0) // stratified
+	{
+		float slot = PEBBLE_TAU / (float)count;
+		return slot * ((float)i + 0.5f + (r - 0.5f) * jitter);
+	}
+	if (mode == 1) // random
+	{
+		return PEBBLE_TAU * r;
+	}
+	if (mode == 2) // opposed pairs
+	{
+		int pair = i / 2;
+		float base = PEBBLE_TAU * PebbleRand(seed + 173, pair * 17 + 3);
+		float side = (i & 1) != 0 ? PEBBLE_PI : 0.0f;
+		return PebbleWrapAngle(base + side + (r - 0.5f) * jitter * 0.35f);
+	}
+	if (mode == 3) // golden angle
+	{
+		float phase = PEBBLE_TAU * PebbleRand(seed + 911, 0);
+		return PebbleWrapAngle(phase + (float)i * PEBBLE_GOLDEN + (r - 0.5f) * jitter * 0.35f);
+	}
+	// 4: axis biased
+	int axis = i & 3;
+	return PebbleWrapAngle((float)axis * PEBBLE_HALF_PI + (r - 0.5f) * jitter);
+}
+
+// One stone in local coordinates (roughly within +-0.5). Returns its signed distance and writes
+// its facet height and the winning facet index (1-based).
+float PebbleStone(float2 p, int seed, int cuts, out float outHeight, out int outFacet)
+{
+	const float BaseRadius = 0.33f;
+	float shape = -1e9f;
+	float hf = 1e9f;
+	// The top: every facet plane, chamfered where two meet. A stone's height is the lowest facet
+	// (a convex roof), so its ridges are creases of a min -- chamfering that min bevels the top
+	// edges, which is where a stone's chamfer reads. The outline chamfer alone sat at the floor.
+	float top = 1e9f;
+	float lowest = 1e9f;
+	int bestFacet = -1;
+
+	for (int i = 0; i < cuts; i++)
+	{
+		float r0 = PebbleRand(seed, i * 11 + 0), r1 = PebbleRand(seed, i * 11 + 1);
+		float r2 = PebbleRand(seed, i * 11 + 2), r3 = PebbleRand(seed, i * 11 + 3);
+		float r5 = PebbleRand(seed, i * 11 + 5);
+
+		float angle = PebbleCutAngle(DirectionMode, seed, i, cuts, r0, 2.0f * Irregularity);
+		float2 n = float2(cos(angle), sin(angle));
+
+		float pr = BaseRadius * (1.0f + (r1 - 0.5f) * 0.72f * Irregularity);
+		float plane = dot(p, n) - pr;
+
+		if (i == 0)
+		{
+			shape = plane;
+		}
+		else
+		{
+			float ch = Chamfer * (1.0f + (r2 - 0.5f) * 3.0f * Irregularity);
+			shape = PebbleIntersectChamfer(shape, plane, max(ch, 0.0f));
+		}
+
+		// Facet height = inward distance * steepness (log-random) + bias.
+		float k = Steepness * exp2((r3 * 2.0f - 1.0f) * SteepnessVariation);
+		float facet = -plane * k + (r5 * 2.0f - 1.0f) * BiasVariation;
+		if (facet < lowest)
+		{
+			lowest = facet;
+			bestFacet = i;
+		}
+		// Width in height units: the same Chamfer distance reads the same at any Steepness.
+		float ridge = max(Chamfer * (1.0f + (r2 - 0.5f) * 3.0f * Irregularity), 0.0f) * Steepness;
+		top = i == 0 ? facet : PebbleUnionChamfer(top, facet, ridge);
+	}
+
+	hf = top;
+	outHeight = saturate(hf * HeightGain);
+	outFacet = bestFacet + 1;
+	return shape;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+
+#if PEBBLE_STAGE == 0
+	const int CellCount = max(Cells, 1);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 q = UV * (float)CellCount;
+	const int2 c0 = int2((int)floor(q.x), (int)floor(q.y));
+
+	// Neighbour search radius, derived from the largest possible stone. Bounded: it is the
+	// size of the loop, not an authored range.
+	const float MaxSize = StoneScale * (1.0f + abs(ScaleVariation));
+	const int Reach = clamp((int)ceil(0.6f * MaxSize + 0.5f * abs(Jitter)), 1, 3);
+	const int CutJitter = (int)round(6.0f * Irregularity);
+
+	float bestHeight = 0.0f;
+	float bestSdf = 1e9f;
+	float bestRandom = 0.0f;
+	uint bestId = MIXTORMAT_INVALID_REGION;
+	bool anyStone = false;
+
+	for (int dy = -Reach; dy <= Reach; dy++)
+	{
+		for (int dx = -Reach; dx <= Reach; dx++)
+		{
+			int cx = c0.x + dx, cy = c0.y + dy;
+			int wid = PebbleWrap(cx, CellCount) + PebbleWrap(cy, CellCount) * CellCount;
+			int ss = (int)PebbleHash((uint)Seed * 9781u + (uint)wid * 6271u + 13u);
+
+			if (PebbleRand(ss, 900) > Density)
+			{
+				continue;
+			}
+
+			float2 centre = float2((float)cx + 0.5f, (float)cy + 0.5f)
+				+ (float2(PebbleRand(ss, 901), PebbleRand(ss, 902)) - 0.5f) * Jitter;
+			float size = max(StoneScale * (1.0f + (PebbleRand(ss, 903) * 2.0f - 1.0f) * ScaleVariation), 1e-4f);
+			float ang = radians(RotationDegrees) * (PebbleRand(ss, 904) * 2.0f - 1.0f);
+
+			float2 d = q - centre;
+			if (length(d) > 0.75f * size)
+			{
+				continue;
+			}
+
+			float ca = cos(-ang), sa = sin(-ang);
+			float2 p = float2(ca * d.x - sa * d.y, sa * d.x + ca * d.y) / size;
+
+			// At least two planes make a shape; the count is otherwise authored.
+			int cuts = max(Cuts + (int)round((PebbleRand(ss, 905) * 2.0f - 1.0f) * (float)CutJitter), 2);
+
+			float h;
+			int facet;
+			float sd = PebbleStone(p, ss, cuts, h, facet) * size / (float)CellCount;
+			bestSdf = min(bestSdf, sd);
+
+			if (sd <= 0.0f)
+			{
+				h *= 1.0f - HeightVariation * PebbleRand(ss, 906);
+				if (!anyStone || h > bestHeight)
+				{
+					anyStone = true;
+					bestHeight = h;
+					bestRandom = PebbleRand(ss, 909);
+					// Stone IDs, or stone*64+facet for one region per facet.
+					bestId = FacetIds != 0 ? uint(wid + 1) * 64u + uint(facet) : uint(wid + 1);
+				}
+			}
+		}
+	}
+
+	OutPebbleHeight[Pixel] = anyStone ? bestHeight : 0.0f;
+	OutPebbleCoverage[Pixel] = anyStone ? 1.0f : 0.0f;
+	// Signed distance to the nearest stone outline, UV units, negative inside.
+	OutPebbleEdgeDistance[Pixel] = bestSdf;
+	OutPebbleRandom[Pixel] = bestRandom;
+	OutPebbleIds[Pixel] = bestId;
+#else
+	// Stones replace the layer's height where they are; the surface stays everywhere else.
+	const float Source = SourceHeight.Load(int3(Pixel, 0));
+	const float Stone = PebbleHeight.Load(int3(Pixel, 0));
+	const float Coverage = PebbleCoverage.Load(int3(Pixel, 0));
+	OutHeight[Pixel] = lerp(Source, Stone, Amount * Coverage);
+#endif
+}

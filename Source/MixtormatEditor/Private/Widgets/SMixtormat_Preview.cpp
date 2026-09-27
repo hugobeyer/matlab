@@ -862,6 +862,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					case EMixtormatDebugPreviewMode::LayerMask: return LOCTEXT("DebugLayerMask", "Layer mask ×");
 					case EMixtormatDebugPreviewMode::Stain: return LOCTEXT("DebugStain", "Stain ×");
 					case EMixtormatDebugPreviewMode::Runoff: return LOCTEXT("DebugRunoff", "Runoff ×");
+					case EMixtormatDebugPreviewMode::LayerUV: return LOCTEXT("DebugLayerUV", "UV ×");
 					case EMixtormatDebugPreviewMode::ChildOutput:
 					{
 						// Named after whichever output is active, not the mode: one mode covers

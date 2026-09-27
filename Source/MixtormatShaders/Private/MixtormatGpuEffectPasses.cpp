@@ -25,7 +25,6 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, NormalStrength)
-		SHADER_PARAMETER(float, AOAmount)
 		SHADER_PARAMETER(uint32, WriteRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
@@ -750,8 +749,6 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, NormalStrength)
 		SHADER_PARAMETER(float, NormalSharpness)
-		SHADER_PARAMETER(float, AOAmount)
-		SHADER_PARAMETER(float, AORadius)
 		SHADER_PARAMETER(float, RoughnessAmount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
@@ -894,7 +891,6 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputRAM,
 		const FIntPoint Resolution,
 		const float NormalStrength,
-		const float AOAmount,
 		const bool bWriteRAM,
 		const TCHAR* DebugName)
 	{
@@ -905,7 +901,6 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatHeightDeltaNormalCS::FParameters>();
 		P->OutputSize = Resolution;
 		P->NormalStrength = NormalStrength;
-		P->AOAmount = AOAmount;
 		P->WriteRAM = bWriteRAM ? 1u : 0u;
 		P->PreviousHeight = PreviousHeight;
 		P->CurrentHeight = CurrentHeight;
@@ -2474,7 +2469,6 @@ namespace MixtormatGpuCompositor
 				nullptr,
 				EroRes,
 				HeightDerivedNormalStrength,
-				0.0f,
 				false,
 				TEXT("Erosion"));
 
@@ -2606,7 +2600,6 @@ namespace MixtormatGpuCompositor
 				ReliefRAM,
 				Request.Resolution,
 				HeightDerivedNormalStrength,
-				0.35f,
 				true,
 				TEXT("Craquelure"));
 			AddCopyTexturePass(GraphBuilder, ReliefH, HeightTargets[WriteIndex]);
@@ -2750,12 +2743,9 @@ namespace MixtormatGpuCompositor
 					WearGroups);
 
 				const float MaxIdRadiusMul = FMath::Max(
-					1.0f + FMath::Abs(Wear.EdgeWearIdRadius) * FMath::Clamp(Wear.EdgeWearIdVariation, 0.0f, 1.0f),
+					1.0f + FMath::Abs(Wear.EdgeWearIdRadius) * Wear.EdgeWearIdVariation,
 					0.15f);
-				const int32 ConservativeRadius = FMath::Clamp(
-					FMath::CeilToInt(static_cast<float>(Wear.EdgeWearRadius) * MaxIdRadiusMul * 1.80f),
-					1,
-					64);
+				const int32 ConservativeRadius = FMath::Max(FMath::CeilToInt(static_cast<float>(Wear.EdgeWearRadius) * MaxIdRadiusMul * 1.80f), 1);
 				int32 BandIndex = 0;
 				int32 Covered = 0;
 				int32 DilationStep = 1;
@@ -2868,7 +2858,6 @@ namespace MixtormatGpuCompositor
 				WornRAM,
 				Request.Resolution,
 				8.0f,
-				0.35f,
 				true,
 				TEXT("WornEdges"));
 			FRDGTextureRef FinalWornRAM = WornRAM;
@@ -3022,8 +3011,6 @@ namespace MixtormatGpuCompositor
 			SP->OutputSize = Request.Resolution;
 			SP->NormalStrength = Breakup.BreakupNormalStrength;
 			SP->NormalSharpness = Breakup.BreakupNormalSharpness;
-			SP->AOAmount = Breakup.BreakupAOAmount;
-			SP->AORadius = Breakup.BreakupAORadius;
 			SP->RoughnessAmount = Breakup.BreakupRoughnessAmount;
 			SP->SourceHeight = SourceH;
 			SP->CurrentHeight = ResultH;

@@ -30,17 +30,17 @@ uint HasMask;
 uint Initialize;
 float Amount;
 float EffectWeight;
-// @param FlowWarpScale hardmin=1 hardmax=128
+// @param FlowWarpScale
 int Scale;
 float Direction;
-// @param FlowWarpSeed hardmin=0
+// @param FlowWarpSeed
 uint Seed;
-// @param FlowWarpMaskSlopeInfluence hardmin=0
+// @param FlowWarpMaskSlopeInfluence
 float MaskSlopeInfluence;
-// @param FlowWarpHeightSlopeInfluence hardmin=0
+// @param FlowWarpHeightSlopeInfluence
 float HeightSlopeInfluence;
-// @param FlowWarpDerivativeKernelX hardmin=1 hardmax=64
-// @param FlowWarpDerivativeKernelY hardmin=1 hardmax=64
+// @param FlowWarpDerivativeKernelX
+// @param FlowWarpDerivativeKernelY
 float2 DerivativeKernel;
 uint BlendMode;
 
@@ -107,7 +107,7 @@ float WarpWeight(float2 UV)
 	const float MaskWeight = HasMask != 0
 		? saturate(LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f))
 		: 1.0f;
-	return MaskWeight * saturate(EffectWeight);
+	return MaskWeight * EffectWeight;
 }
 
 bool SelectWarped(float OriginalHeight, float WarpedHeight)

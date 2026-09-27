@@ -6,6 +6,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "MixtormatGpuCompositor.h"
+#include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "SEditorViewport.h"
 #include "UObject/StrongObjectPtr.h"
@@ -179,11 +180,28 @@ private:
 	void UpdateDebugLightVisibility();
 	void UpdatePreviewMeshFloorClearance();
 	void InvalidateDisplacementShadows();
+	// bWaitForCompletion blocks the game thread until the composite has run. Only a caller that
+	// reads the targets back straight away (bake) needs it; the live preview binds the targets
+	// and lets the render thread catch up.
 	bool ComposeLayersWithDebug(
 		const TArray<FMixtormatLayer>& Layers,
 		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
-		FMixtormatDebugPreviewSettings DebugSettings);
+		FMixtormatDebugPreviewSettings DebugSettings,
+		bool bWaitForCompletion);
+	EActiveTimerReturnType FlushPendingCompose(double CurrentTime, float DeltaTime);
+
+	// Latest preview request that arrived while the previous composite was still in flight.
+	// Only the newest is kept: intermediate frames of a drag are never worth rendering late.
+	struct FPendingCompose
+	{
+		TArray<FMixtormatLayer> Layers;
+		TArray<FMixtormatLayerGroup> Groups;
+		int32 Resolution = 0;
+		FMixtormatDebugPreviewSettings DebugSettings;
+	};
+	TOptional<FPendingCompose> PendingCompose;
+	TSharedPtr<FActiveTimerHandle> PendingComposeTimer;
 
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;

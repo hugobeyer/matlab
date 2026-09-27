@@ -259,7 +259,6 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		MakePeelSlider(LOCTEXT("PPeelLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0, 1.0, 0.2, 0.01)));
 	AddPeelSlider(Panel, LOCTEXT("PPeelDetailStrength", "Detail Strength"), &FMixtormatLayerEffect::DetailStrength, 0.0, 1.0, 0.02, 0.005);
 	AddPeelSlider(Panel, LOCTEXT("PPeelSharp", "Edge Sharpness"), &FMixtormatLayerEffect::PeelEdgeSharpness, 0.0, 4.0, 1.0, 0.01);
-	AddPeelSlider(Panel, LOCTEXT("PPeelAO", "Contact AO"), &FMixtormatLayerEffect::PeelAOStrength, 0.0, 1.0, 0.8, 0.01);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSliderInt(LOCTEXT("PPeelSeed", "Seed"), &FMixtormatLayerEffect::PeelRandomSeed, 1.0, 999.0, 1),
 		MakePeelSliderInt(LOCTEXT("PPeelSolveDiv", "Solve"), &FMixtormatLayerEffect::PeelSolveDivisor, 1.0, 32.0, 4,
@@ -894,12 +893,6 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 		Slider(LOCTEXT("BreakupNormalSharpness", "Sharpness"), &FMixtormatLayerEffect::BreakupNormalSharpness,
 			0.0, 1.0, 0.75, 0.01,
 			LOCTEXT("BreakupNormalSharpnessHint", "Blends broad fold normals toward a sharp one-pixel structural gradient."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("BreakupAO", "AO"), &FMixtormatLayerEffect::BreakupAOAmount,
-			0.0, 1.0, 0.35, 0.01,
-			LOCTEXT("BreakupAOHint", "Local contact occlusion from cavities, SDF seams and piece-ID boundaries.")),
-		Slider(LOCTEXT("BreakupAORadius", "AO Radius"), &FMixtormatLayerEffect::BreakupAORadius,
-			1.0, 32.0, 8.0, 0.25)));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
 		-1.0, 1.0, 0.0, 0.01));
@@ -2206,7 +2199,6 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			|| P->GapHeight != 0.0f
 			|| P->BevelHeight != 0.0f
 			|| P->EdgeRoughnessAmount != 0.0f
-			|| P->AOAmount != 0.0f
 			|| P->HeightRandom != Defaults.HeightRandom
 			|| P->Profile != Defaults.Profile
 			|| P->ProfileRandom != Defaults.ProfileRandom
@@ -2218,8 +2210,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			|| P->BevelWidthCells != Defaults.BevelWidthCells
 			|| P->BevelVariation != Defaults.BevelVariation
 			|| P->BevelInsetPixels != Defaults.BevelInsetPixels
-			|| P->EdgeRoughness != Defaults.EdgeRoughness
-			|| P->AOSpread != Defaults.AOSpread;
+			|| P->EdgeRoughness != Defaults.EdgeRoughness;
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
@@ -2455,11 +2446,6 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternEdgeRoughnessHint", "Roughness value approached at region edges. Applied after the layer composite, so it intentionally bypasses the layer Roughness Influence control.")),
 		Slider(LOCTEXT("PatternEdgeRoughnessAmount", "Amount"), &FMixtormatPatternFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternEdgeRoughnessAmountHint", "Strength of edge roughness. 0 leaves the packed roughness channel unchanged."))));
-	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
-		Slider(LOCTEXT("PatternAOAmount", "AO"), &FMixtormatPatternFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("PatternAOAmountHint", "Darkens packed AO at region creases. Applied after the layer composite, so it intentionally bypasses the layer AO Influence control.")),
-		Slider(LOCTEXT("PatternAOSpread", "Spread"), &FMixtormatPatternFilter::AOSpread, 1.0, 8.0, 2.0, 0.05,
-			LOCTEXT("PatternAOSpreadHint", "How much farther the edge AO reaches relative to the bevel width."))));
 
 	Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
 	[
@@ -2558,10 +2544,6 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildRampIdBlendModeMenu)),
 		LOCTEXT("RampBlendModeHint", "How the ramp meets the height under it. Add/Sub is the centred case -- a region rises on one side exactly as much as it falls on the other -- and Min carves, Multiply darkens. The normal is derived from the blended height rather than blended separately, so it always describes the surface actually written.")));
-
-	AddSliderRow(Panel,
-		Slider(LOCTEXT("RampAO", "AO"), &FMixtormatRampIdFilter::AOAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RampAOHint", "Contact and cavity occlusion derived from the height change made by the ramp. Multiplies the existing AO rather than replacing it.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpGradient", "Gradient")));
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -2677,6 +2659,11 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
+	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
+		LOCTEXT("UvIdPreviewUV", "Preview UV"),
+		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerUV,
+			LOCTEXT("UvIdPreviewUVHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile.")),
+		LOCTEXT("UvIdPreviewUVRowHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile.")));
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpTransform", "Transform")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("UvIdRotationMin", "Rotation Min"), &FMixtormatUvIdFilter::RotationMin, -360.0, 360.0, 0.0, 1.0,
@@ -2823,12 +2810,6 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 		Slider(LOCTEXT("ReliefIdEdgeRoughnessAmount", "Amount"), &FMixtormatReliefIdFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("ReliefIdEdgeRoughnessAmountHint", "How strongly that band replaces the roughness already there. At 0 the edge shading pass is skipped entirely."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpAO", "AO")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("ReliefIdAO", "Amount"), &FMixtormatReliefIdFilter::AOAmount, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("ReliefIdAOHint", "Contact occlusion along region boundaries. Multiplies the existing AO rather than replacing it.")),
-		Slider(LOCTEXT("ReliefIdAOSpread", "Spread"), &FMixtormatReliefIdFilter::AOSpread, 1.0, 8.0, 1.0, 0.1,
-			LOCTEXT("ReliefIdAOSpreadHint", "How far that occlusion reaches in from the boundary, as a multiple of the chamfer width."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpRandom", "Random")));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatReliefIdFilter>(
@@ -3350,6 +3331,231 @@ TSharedRef<SWidget> SMixtormat::BuildFractureControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
+{
+	const auto Pebble = [this]() { return GetSelectedPebbles(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatPebbles>(
+			LOCTEXT("PebbleCells", "Cells"), Pebble, &FMixtormatPebbles::PebbleCells, 1.0, 32.0, 4,
+			LOCTEXT("PebbleCellsHint", "Stones per row; the tile is Cells x Cells.")),
+		MakeMemberSliderInt<FMixtormatPebbles>(
+			LOCTEXT("PebbleSeed", "Seed"), Pebble, &FMixtormatPebbles::PebbleSeed, 0.0, 9999.0, 1,
+			LOCTEXT("PebbleSeedHint", "Changes placement, shape and height of every stone."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleDensity", "Density"), Pebble, &FMixtormatPebbles::PebbleDensity, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("PebbleDensityHint", "Chance a cell has a stone.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleJitter", "Jitter"), Pebble, &FMixtormatPebbles::PebbleJitter, 0.0, 1.0, 0.7, 0.01,
+			LOCTEXT("PebbleJitterHint", "Position randomness inside the cell."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleScale", "Scale"), Pebble, &FMixtormatPebbles::PebbleScale, 0.1, 2.0, 1.1, 0.01,
+			LOCTEXT("PebbleScaleHint", "Stone size; 1 fills a cell.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleScaleVariation", "Scale Var"), Pebble, &FMixtormatPebbles::PebbleScaleVariation, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("PebbleScaleVariationHint", "Random size spread per stone."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatPebbles>(
+		LOCTEXT("PebbleRotation", "Rotation"), Pebble, &FMixtormatPebbles::PebbleRotation, 0.0, 180.0, 180.0, 1.0,
+		LOCTEXT("PebbleRotationHint", "Maximum random rotation, degrees.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PebbleGrpShape", "Shape")));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatPebbles>(
+		LOCTEXT("PebbleDirection", "Cut Direction"), Pebble, &FMixtormatPebbles::PebbleDirection,
+		LOCTEXT("PebbleDirectionHint", "How the cut planes are oriented: evenly spread, random, opposed pairs, golden angle, or biased to the axes.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatPebbles>(
+			LOCTEXT("PebbleCuts", "Cuts"), Pebble, &FMixtormatPebbles::PebbleCuts, 3.0, 24.0, 10,
+			LOCTEXT("PebbleCutsHint", "Planes per stone. More reads rounder.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleIrregularity", "Irregularity"), Pebble, &FMixtormatPebbles::PebbleIrregularity, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("PebbleIrregularityHint", "Jitters radius, chamfer, cut angle and cut count."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatPebbles>(
+		LOCTEXT("PebbleChamfer", "Chamfer"), Pebble, &FMixtormatPebbles::PebbleChamfer, 0.0, 0.2, 0.02, 0.001,
+		LOCTEXT("PebbleChamferHint", "Edge chamfer between cuts.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PebbleGrpHeight", "Height")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleSteepness", "Steepness"), Pebble, &FMixtormatPebbles::PebbleSteepness, 0.0, 16.0, 5.6, 0.05,
+			LOCTEXT("PebbleSteepnessHint", "Facet rise per unit inward.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleSteepnessVariation", "Steep Var"), Pebble, &FMixtormatPebbles::PebbleSteepnessVariation, 0.0, 4.0, 1.7, 0.01,
+			LOCTEXT("PebbleSteepnessVariationHint", "Log2 spread of steepness per facet."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleBiasVariation", "Facet Offset"), Pebble, &FMixtormatPebbles::PebbleBiasVariation, 0.0, 0.5, 0.08, 0.005,
+			LOCTEXT("PebbleBiasVariationHint", "Random height offset per facet.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleHeightGain", "Height"), Pebble, &FMixtormatPebbles::PebbleHeightGain, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("PebbleHeightGainHint", "Overall stone height."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleHeightVariation", "Height Var"), Pebble, &FMixtormatPebbles::PebbleHeightVariation, 0.0, 1.0, 0.3, 0.01,
+			LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleAmount", "Amount"), Pebble, &FMixtormatPebbles::PebbleAmount, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("PebbleAmountHint", "How much the stones replace the layer's height where they sit. Does not re-evaluate them."))));
+	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
+		LOCTEXT("PebbleFacetIds", "Facet IDs"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				const FMixtormatPebbles* P = GetSelectedPebbles();
+				return P && P->bPebbleFacetIds ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				if (FMixtormatPebbles* P = GetSelectedPebbles())
+				{
+					P->bPebbleFacetIds = State == ECheckBoxState::Checked;
+					RefreshLayeredPreview();
+				}
+			})),
+		LOCTEXT("PebbleFacetIdsHint", "One region ID per facet instead of per stone.")));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedPebbles() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("PebblesHeading", "PEBBLES"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
+					{
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::Pebbles;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("PebblesEnabledHint", "Enable these pebbles"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
+{
+	const auto Rock = [this]() { return GetSelectedRockFormation(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStyle", "Style"), Rock, &FMixtormatRockFormation::RockStyle, 0.0, 3.0, 0.0, 0.01,
+			LOCTEXT("RockStyleHint", "0 cliff, 1 layered, 2 boulder, 3 rubble. In-between values blend the neighbouring presets.")),
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockCells", "Cells"), Rock, &FMixtormatRockFormation::RockCells, 1.0, 32.0, 4,
+			LOCTEXT("RockCellsHint", "Cells across one repeat of the tile."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockSeed", "Seed"), Rock, &FMixtormatRockFormation::RockSeed, 0.0, 9999.0, 0,
+			LOCTEXT("RockSeedHint", "Changes cell layout, fractures, slopes and folds.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFracture", "Fracture"), Rock, &FMixtormatRockFormation::RockFracture, 0.0, 3.0, 1.0, 0.01,
+			LOCTEXT("RockFractureHint", "Scales how many times each cell is split into chunks."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSlope", "Slope"), Rock, &FMixtormatRockFormation::RockSlope, 0.0, 3.0, 1.0, 0.01,
+			LOCTEXT("RockSlopeHint", "Scales the dip and the random tilt of each chunk's top.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamfer", "Chamfer"), Rock, &FMixtormatRockFormation::RockChamfer, 0.0, 3.0, 1.0, 0.01,
+			LOCTEXT("RockChamferHint", "Scales the planar chamfer along chunk edges."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
+		LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 3.0, 1.0, 0.01,
+		LOCTEXT("RockGapHint", "Scales the gaps between cells and between fractured pieces.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpDeform", "Deform")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockWarp", "Warp"), Rock, &FMixtormatRockFormation::RockWarp, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("RockWarpHint", "Low-frequency rigid drift of whole chunks, in cell widths.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockBend", "Bend"), Rock, &FMixtormatRockFormation::RockBend, 0.0, 2.0, 0.6, 0.01,
+			LOCTEXT("RockBendHint", "Kink folds with straight limbs and sharp hinges; blocks tilt with the limb they sit on."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
+		LOCTEXT("RockFault", "Fault"), Rock, &FMixtormatRockFormation::RockFault, 0.0, 2.0, 0.4, 0.01,
+		LOCTEXT("RockFaultHint", "Wavy fault bands that step blocks up and down.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpHeight", "Height")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockAmount", "Amount"), Rock, &FMixtormatRockFormation::RockAmount, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockAmountHint", "How much of the layer's height the rock replaces. Does not re-evaluate the rock.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockHeightScale", "Height Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("RockHeightScaleHint", "Multiplies the rock height before it is mixed in. Does not re-evaluate the rock."))));
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("RockFormationHeading", "ROCK FORMATION"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
+					{
+						// The generator kind decides the outputs, so the probe names it.
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::RockFormation;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("RockFormationEnabledHint", "Enable this rock formation"))
+				])
+			[
+				Panel
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -3510,11 +3716,19 @@ TSharedRef<SWidget> SMixtormat::BuildClusterSourceMenu()
 
 TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 {
+	// The inspector is built once, before anything is selected, so the Surface IDs / legacy
+	// Cluster split cannot be decided here. Both panels are built and each shows only while the
+	// selected producer is its kind.
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()[BuildRegionFilterPanel(true)]
+		+ SVerticalBox::Slot().AutoHeight()[BuildRegionFilterPanel(false)];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
+{
 	const auto Filter = [this]() { return GetSelectedFilter(); };
 
 	// Integer producers do not use mask blending or weight. Surface guides are mixed before IDs exist.
-	const FMixtormatClusterFilter* SelectedFilter = GetSelectedFilter();
-	const bool bSurfaceIds = SelectedFilter && SelectedFilter->bSurfaceIds;
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	AddSliderRow(Panel, MixtormatRow::Make(
@@ -3585,6 +3799,23 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 			MakeMemberSliderInt<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsBlur", "Guide Blur"),
 				Filter, &FMixtormatClusterFilter::GuideBlur, 0.0, 2.0, 1,
 				LOCTEXT("SurfaceIdsBlurHint", "0, 1 or 2 pixel smoothing before feature extraction. Only continuous source samples are blurred, never IDs."))));
+		AddSliderRow(Panel, MixtormatRow::MakeTrailing(
+			LOCTEXT("SurfaceIdsSplitIslands", "Split Islands"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatClusterFilter* C = GetSelectedFilter();
+					return C && C->bSplitIslands ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					if (FMixtormatClusterFilter* C = GetSelectedFilter())
+					{
+						C->bSplitIslands = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("SurfaceIdsSplitIslandsHint", "Each connected island gets its own ID. Off: every area in the same band shares one ID, even where the areas do not touch.")));
 		AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatClusterFilter>(
 			LOCTEXT("SurfaceIdsClose", "Edge Close"), Filter, &FMixtormatClusterFilter::EdgeClose,
 			0.0, 2.0, 1,
@@ -3592,24 +3823,28 @@ TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 	}
 	else
 	{
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
-		LOCTEXT("ClusterThreshold", "Threshold"), Filter, &FMixtormatClusterFilter::Threshold,
-		0.0, 1.0, 0.33, 0.005,
-		LOCTEXT("ClusterThresholdHint", "Band width, and so how big a region is. Roughness is quantised into bands of this width and neighbours join only inside one. Read after height and roughness are both renormalised to 0-1, which is what makes one value mean the same thing on every scan instead of drifting with that texture's own range.")));
+		AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+			LOCTEXT("ClusterThreshold", "Threshold"), Filter, &FMixtormatClusterFilter::Threshold,
+			0.0, 1.0, 0.33, 0.005,
+			LOCTEXT("ClusterThresholdHint", "Band width, and so how big a region is. Roughness is quantised into bands of this width and neighbours join only inside one. Read after height and roughness are both renormalised to 0-1, which is what makes one value mean the same thing on every scan instead of drifting with that texture's own range.")));
 
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
-		LOCTEXT("ClusterOffset", "Offset"), Filter, &FMixtormatClusterFilter::Offset,
-		-1.0, 1.0, 0.0, 0.005,
-		LOCTEXT("ClusterOffsetHint", "Where the band boundaries fall. Same granularity, different partition -- a reseed that moves every boundary without changing the character of the result.")));
+		AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+			LOCTEXT("ClusterOffset", "Offset"), Filter, &FMixtormatClusterFilter::Offset,
+			-1.0, 1.0, 0.0, 0.005,
+			LOCTEXT("ClusterOffsetHint", "Where the band boundaries fall. Same granularity, different partition -- a reseed that moves every boundary without changing the character of the result.")));
 
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
-		LOCTEXT("ClusterHeightInfluence", "Height Influence"), Filter, &FMixtormatClusterFilter::HeightInfluence,
-		0.0, 8.0, 1.0, 0.01,
-		LOCTEXT("ClusterHeightInfluenceHint", "How strongly a step in height blocks a merge roughness would otherwise allow. The criterion is two-channel: same roughness band and no height step. At 0 it falls back to roughness bands alone.")));
+		AddSliderRow(Panel, MakeMemberSlider<FMixtormatClusterFilter>(
+			LOCTEXT("ClusterHeightInfluence", "Height Influence"), Filter, &FMixtormatClusterFilter::HeightInfluence,
+			0.0, 8.0, 1.0, 0.01,
+			LOCTEXT("ClusterHeightInfluenceHint", "How strongly a step in height blocks a merge roughness would otherwise allow. The criterion is two-channel: same roughness band and no height step. At 0 it falls back to roughness bands alone.")));
 	}
 
 	return SNew(SBox)
-		.Visibility_Lambda([this]() { return GetSelectedFilter() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
+		.Visibility_Lambda([this, bSurfaceIds]()
+		{
+			const FMixtormatClusterFilter* Selected = GetSelectedFilter();
+			return Selected && Selected->bSurfaceIds == bSurfaceIds ? EVisibility::Visible : EVisibility::Collapsed;
+		})
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(bSurfaceIds ? LOCTEXT("SurfaceIdsHeading", "SURFACE IDS") : LOCTEXT("ClusterFilterHeading", "CLUSTER IDS"))
@@ -5006,6 +5241,11 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					{
 						return EVisibility::Collapsed;
 					}
+					// A fill shows its height in FILL PROPERTIES instead.
+					if (WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill)
+					{
+						return EVisibility::Collapsed;
+					}
 					const UMixtormatSurface* Surface =
 						WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous();
 					return Surface && Surface->bHasBlendHeight
@@ -5231,6 +5471,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 					+ SScrollBox::Slot()[BuildFractureControls()]
+					+ SScrollBox::Slot()[BuildRockFormationControls()]
+					+ SScrollBox::Slot()[BuildPebblesControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
@@ -5360,6 +5602,18 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
 									},
 									&FMixtormatLayer::Metallic, 0.0, 1.0, 0.0, 0.01)
+							]
+							// A fill has no surface, so its height is this one value. It is the
+							// fill's own material property, not a height-mask setting.
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+							[
+								MakeMemberSlider<FMixtormatLayer>(
+									LOCTEXT("FillHeight", "Height"),
+									[this]() -> FMixtormatLayer*
+									{
+										return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+									},
+									&FMixtormatLayer::ConstantHeight, 0.0, 1.0, 0.5, 0.01)
 							]
 							]
 						]

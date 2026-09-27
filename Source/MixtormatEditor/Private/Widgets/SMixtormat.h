@@ -62,6 +62,8 @@ enum class EMixtormatChildCreation : uint8
 	RandomFromIds,
 	StrataCarver,
 	Fracture,
+	RockFormation,
+	Pebbles,
 	Peeling,
 };
 
@@ -218,6 +220,14 @@ private:
 	bool IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const;
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	FReply StartNewMaterial();
+	// Starts a recipe whose first layer is LayerType. A Fill needs no library surface.
+	FReply StartNewMaterialWith(EMixtormatLayerType LayerType);
+	// Adds a layer, starting a recipe first if none is open.
+	FReply AddLayerOrStartMaterial(EMixtormatLayerType LayerType);
+	TSharedRef<SWidget> BuildLayerColumnContextMenu();
+	// True when the selected child is an instance whose source is (OwnerId, ChildId).
+	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
+	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();
 	FReply SaveWorkingMaterial();
@@ -398,6 +408,7 @@ private:
 	FMixtormatClusterFilter* GetSelectedFilter();
 	const FMixtormatClusterFilter* GetSelectedFilter() const;
 	TSharedRef<SWidget> BuildFilterControls();
+	TSharedRef<SWidget> BuildRegionFilterPanel(bool bSurfaceIds);
 	TSharedRef<SWidget> BuildClusterSourceMenu();
 
 	FReply AddHsvFilterToLayer(int32 LayerIndex);
@@ -426,6 +437,12 @@ private:
 	FMixtormatFracture* GetSelectedFracture();
 	const FMixtormatFracture* GetSelectedFracture() const;
 	TSharedRef<SWidget> BuildFractureControls();
+	FMixtormatRockFormation* GetSelectedRockFormation();
+	const FMixtormatRockFormation* GetSelectedRockFormation() const;
+	TSharedRef<SWidget> BuildRockFormationControls();
+	FMixtormatPebbles* GetSelectedPebbles();
+	const FMixtormatPebbles* GetSelectedPebbles() const;
+	TSharedRef<SWidget> BuildPebblesControls();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
