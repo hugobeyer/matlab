@@ -731,9 +731,8 @@ namespace MixtormatGpuCompositor
 		bool bSubtract = false;
 	};
 
-	// Strata Carver, already reduced to what the four dispatches read. Worley Cells is derived
-	// from the artist-facing Scale here rather than per pass, and JumpStart is left in texels --
-	// the pass turns it into a schedule.
+	// Strata Carver settings for periodic multi-layer bedding synthesis. Legacy solver values
+	// remain here only so existing gather code and serialized settings stay compatible.
 	struct FStrataCarverRenderData
 	{
 		uint32 Seed = 3;
@@ -745,6 +744,14 @@ namespace MixtormatGpuCompositor
 		float StrataFrequency = 4.0f;
 		float StrataAmount = 3.0f;
 		float StrataWarp = 0.54f;
+		float StrataWarpDetail = 0.25f;
+		int32 StrataLayers = 3;
+		float StrataTilt = 0.0f;
+		float StrataTiltVariance = 12.0f;
+		float StrataRotation = 0.0f;
+		float StrataRotationVariance = 8.0f;
+		uint32 BlendMode = 1;
+		float BlendAmount = 1.0f;
 		float PushAmount = 0.5f;
 		float MaskInfluence = 1.0f;
 		float IDInfluence = 0.0f;
@@ -791,8 +798,11 @@ namespace MixtormatGpuCompositor
 		float Chamfer = 1.0f;
 		float Gap = 1.0f;
 		float Warp = 0.2f;
-		float Bend = 0.6f;
-		float Fault = 0.4f;
+		float ChamferRandom = 0.5f;
+		float Tilt = 16.0f;
+		float TiltRandom = 6.0f;
+		float HeightClusters = 1.0f;
+		uint32 BlendMode = 0;
 		float Amount = 1.0f;
 		float HeightScale = 1.0f;
 		// Hash of the field-shaping settings only (not Amount / HeightScale), for the node cache.

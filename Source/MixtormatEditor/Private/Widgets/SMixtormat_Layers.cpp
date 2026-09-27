@@ -358,7 +358,6 @@ namespace
 			break;
 		case EMixtormatChildCreation::Fracture:
 			Child.Generator.Type = EMixtormatGeneratorType::Fracture;
-			MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Generator.Fracture);
 			break;
 		case EMixtormatChildCreation::RockFormation:
 			Child.Generator.Type = EMixtormatGeneratorType::RockFormation;
@@ -373,6 +372,12 @@ namespace
 		default:
 			// Every remaining kind is fully described by its type.
 			break;
+		}
+
+		// Genuinely-new generator children receive the current persistent plugin defaults.
+		if (Child.Type == EMixtormatLayerChildType::Generator)
+		{
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Generator);
 		}
 
 		// Genuinely-new effect children receive the current persistent plugin defaults;

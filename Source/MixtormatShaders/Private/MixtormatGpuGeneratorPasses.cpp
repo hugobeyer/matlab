@@ -249,7 +249,7 @@ IMPLEMENT_GLOBAL_SHADER(
 	"PropagateCS",
 	SF_Compute);
 
-// Raw distance -> display remap -> carve -> height. Everything cosmetic is here and only here.
+// Direct periodic layered-strata synthesis and height blend.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
 {
 public:
@@ -262,6 +262,14 @@ public:
 		SHADER_PARAMETER(float, StrataFrequency)
 		SHADER_PARAMETER(float, StrataAmount)
 		SHADER_PARAMETER(float, StrataWarp)
+		SHADER_PARAMETER(float, StrataWarpDetail)
+		SHADER_PARAMETER(int32, StrataLayers)
+		SHADER_PARAMETER(float, StrataTilt)
+		SHADER_PARAMETER(float, StrataTiltVariance)
+		SHADER_PARAMETER(float, StrataRotation)
+		SHADER_PARAMETER(float, StrataRotationVariance)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, BlendAmount)
 		SHADER_PARAMETER(float, MaxValue)
 		SHADER_PARAMETER(float, MaskInfluence)
 		SHADER_PARAMETER(float, IDInfluence)
@@ -315,8 +323,11 @@ public:
 		SHADER_PARAMETER(float, ChamferAmount)
 		SHADER_PARAMETER(float, GapAmount)
 		SHADER_PARAMETER(float, WarpAmount)
-		SHADER_PARAMETER(float, BendAmount)
-		SHADER_PARAMETER(float, FaultAmount)
+		SHADER_PARAMETER(float, ChamferRandom)
+		SHADER_PARAMETER(float, Tilt)
+		SHADER_PARAMETER(float, TiltRandom)
+		SHADER_PARAMETER(float, HeightClusters)
+		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(int32, MaxLeaves)
@@ -428,9 +439,7 @@ namespace
 		const FStrataCarverRenderData& Carver = Child.Generator.StrataCarver;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 
-		// Depth 0 is the off switch and it is exact: the resolve writes
-		// SourceHeight - Carve * 0, which is SourceHeight bit for bit. Skipping here rather than
-		// running the whole solve to reproduce the input is worth up to 128 dispatches.
+		// Zero depth is an exact no-op; skip the resolve dispatch.
 		if (Carver.Depth <= 0.0f)
 		{
 			return SourceHeight;
@@ -456,6 +465,46 @@ namespace
 		if (!bHasRegionIds)
 		{
 			RegionIds = Ctx.EmptyRegionIds;
+		}
+
+		// Direct layered-strata synthesis replaces the old recursive front solve.
+		if (Carver.StrataLayers > 0)
+		{
+			FRDGTextureRef CarvedHeight = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.StrataCarvedHeight"));
+			FMixtormatStrataCarverResolveCS::FParameters* P =
+				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
+			P->OutputSize = Request.Resolution;
+			P->Seed = Carver.Seed;
+			P->StrataFrequency = Carver.StrataFrequency;
+			P->StrataAmount = Carver.StrataAmount;
+			P->StrataWarp = Carver.StrataWarp;
+			P->StrataWarpDetail = Carver.StrataWarpDetail;
+			P->StrataLayers = Carver.StrataLayers;
+			P->StrataTilt = Carver.StrataTilt;
+			P->StrataTiltVariance = Carver.StrataTiltVariance;
+			P->StrataRotation = Carver.StrataRotation;
+			P->StrataRotationVariance = Carver.StrataRotationVariance;
+			P->BlendMode = Carver.BlendMode;
+			P->BlendAmount = Carver.BlendAmount;
+			P->MaskInfluence = Carver.MaskInfluence;
+			P->IDInfluence = Carver.IDInfluence;
+			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
+			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
+			P->Depth = Carver.Depth;
+			P->SourceHeight = SourceHeight;
+			P->ResolveMask = ScopedMask;
+			P->ResolveRegionIds = RegionIds;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			P->OutHeight = GraphBuilder.CreateUAV(CarvedHeight);
+			TShaderMapRef<FMixtormatStrataCarverResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.StrataCarver.Layered.L%d.C%d", LayerIndex, Child.SourceChildIndex),
+				Shader, P,
+				FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+					FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
+			return CarvedHeight;
 		}
 
 		const FIntVector SolveGroups(
@@ -738,8 +787,11 @@ namespace
 			P->ChamferAmount = Rock.Chamfer;
 			P->GapAmount = Rock.Gap;
 			P->WarpAmount = Rock.Warp;
-			P->BendAmount = Rock.Bend;
-			P->FaultAmount = Rock.Fault;
+			P->ChamferRandom = Rock.ChamferRandom;
+			P->Tilt = Rock.Tilt;
+			P->TiltRandom = Rock.TiltRandom;
+			P->HeightClusters = Rock.HeightClusters;
+			P->BlendMode = Rock.BlendMode;
 			P->Amount = Rock.Amount;
 			P->HeightScale = Rock.HeightScale;
 		};

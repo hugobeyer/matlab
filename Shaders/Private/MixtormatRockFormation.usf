@@ -4,8 +4,8 @@
 //
 // Chunks are anisotropic Voronoi cells (strata weight squashes them into layers), BSP-split,
 // each a tilted slab with a chipped top, a planar chamfer and a steep wall that keeps falling
-// past its edge. Height is the highest chunk at each pixel. Warp, bend and fault move each chunk
-// rigidly (sampled at its centroid), so faces stay flat and folds read as rotated blocks.
+// past its edge. Height is the highest chunk at each pixel. Warp moves chunks rigidly, while
+// per-chunk tilt rotates them so their faces remain planar.
 //
 // Style blends four presets: 0 cliff, 1 layered, 2 boulder, 3 rubble (fractional = lerp).
 //
@@ -38,8 +38,11 @@ float SlopeAmount;
 float ChamferAmount;
 float GapAmount;
 float WarpAmount;
-float BendAmount;
-float FaultAmount;
+float ChamferRandom;
+float Tilt;
+float TiltRandom;
+float HeightClusters;
+uint BlendMode;
 float Amount;
 float HeightScale;
 
@@ -57,7 +60,7 @@ RWTexture2D<float> OutHeight;
 struct FRockLeaf
 {
 	float Cx, Cy;          // centroid
-	float Mx, My;          // rigid move (warp + fold + fault)
+	float Mx, My;          // rigid move (warp)
 	float CosA, SinA;      // rigid rotation
 	float Sx, Sy;          // top slope
 	float TopConstant;     // T(p) = TopConstant + dot(S, p)
@@ -102,7 +105,7 @@ struct FRockPat
 	float rand_k, hvar, lvar, chip, wall_k;
 	float cell_gap, seam_gap, outer_ch, inner_ch, ch_k, bottom, reach;
 	uint seed, wseed;
-	float warp, bend, fault, ph1, ph2;
+	float warp, tilt, tilt_random, chamfer_random, height_clusters;
 };
 
 struct FRockPoly
@@ -161,53 +164,16 @@ float2 RockRotate(float2 v, float a)
 	return float2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
-// Asymmetric triangle wave, -1..1, apex at a: straight limbs, sharp hinge.
-float RockKink(float x, float a)
-{
-	x -= floor(x);
-	return (x < a ? x / a : (1.0f - x) / (1.0f - a)) * 2.0f - 1.0f;
-}
 
-// Fold height (rows) at uv: two kink waves on wavy hinge lines, amplitude varying with depth.
-float RockFold(FRockPat P, float2 uv)
-{
-	float hu = uv.x + 0.08f * sin(ROCK_TAU * uv.y + P.ph1 * 3.0f);
-	float a1 = 0.25f + 0.5f * RockRand(P.wseed, 3u, 5u);
-	float a2 = 0.25f + 0.5f * RockRand(P.wseed, 4u, 5u);
-	float f = 0.65f * RockKink(hu + P.ph1 / ROCK_TAU, a1)
-		+ 0.35f * RockKink(2.0f * hu + P.ph2 / ROCK_TAU, a2);
-	float amp = 0.6f + 0.4f * RockValueNoise(float2(0.37f, uv.y), 3, P.wseed + 77u);
-	return f * amp * P.bend;
-}
-
-// Fault throw (rows): 3 bands between wavy near-vertical faults.
-float RockFaults(FRockPat P, float2 uv)
-{
-	float t = 0.0f;
-	for (uint k = 0u; k < 3u; k++)
-	{
-		float x0 = RockRand(P.wseed, k, 11u)
-			+ 0.03f * sin(ROCK_TAU * uv.y + RockRand(P.wseed, k, 12u) * ROCK_TAU);
-		float width = 0.15f + 0.3f * RockRand(P.wseed, k, 13u);
-		float d = uv.x - x0;
-		d -= floor(d);
-		if (d < width)
-		{
-			t += RockRand(P.wseed, k, 14u) * 2.0f - 1.0f;
-		}
-	}
-	return t * P.fault;
-}
-
-// Rigid move for a chunk centred at c: fold + fault + drift offset, rotation from the fold only.
+// Rigid per-chunk tilt and low-frequency drift.
 void RockBlockTransform(FRockPat P, float2 c, out float2 D, out float th)
 {
 	float2 uv = c / (float)P.cu;
-	float f0 = RockFold(P, uv);
-	float df = (RockFold(P, uv + float2(0.01f, 0.0f)) - f0) / 0.01f;
 	D = float2(RockValueNoise(uv, 2, P.wseed) * P.warp,
-		RockValueNoise(uv, 2, P.wseed + 911u) * P.warp + (f0 + RockFaults(P, uv)) * P.rh);
-	th = atan(df * P.rh / (float)P.cu);
+		RockValueNoise(uv, 2, P.wseed + 911u) * P.warp);
+	float r = RockRand(P.seed, asuint(c.x * 4096.0f), asuint(c.y * 4096.0f));
+	float sign = r < 0.5f ? -1.0f : 1.0f;
+	th = radians(P.tilt + sign * P.tilt_random * abs(2.0f * r - 1.0f));
 }
 
 // ---- convex polygons (CCW; t[i] tags edge i -> i+1) --------------------------
@@ -414,7 +380,7 @@ bool RockEdgeLine(FRockPat P, FRockPoly leaf, int i, float2 c, float scale,
 	float clearance = max(0.0f, d - dot(nn, c));
 	dg = d - min((crack ? P.seam_gap : P.cell_gap) * 0.5f, clearance * 0.75f);
 	w = (crack ? P.inner_ch : P.outer_ch) * scale
-		* lerp(0.4f, 1.6f, RockRand(P.seed, tag, 91u))
+		* lerp(1.0f, lerp(0.4f, 1.6f, RockRand(P.seed, tag, 91u)), P.chamfer_random)
 		* (1.0f - P.bottom * clamp(-nn.y, 0.0f, 1.0f));
 	w = min(w, 0.75f * max(0.0f, dg - dot(nn, c)));
 	return true;
@@ -429,8 +395,8 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 
 	uint ck = RockHash(P.seed ^ (cid * 0x9E3779B9u));
 	uint pk = RockHash(ck ^ (node * 0x85EBCA6Bu));
-	float top = 1.0f - P.hvar * 0.5f * (RockRand(ck, 1u, 61u) + RockRand(pk, 1u, 62u))
-		- P.lvar * layerRand;
+	float top = 1.0f - P.height_clusters * (P.hvar * 0.5f * (RockRand(ck, 1u, 61u) + RockRand(pk, 1u, 62u))
+		+ P.lvar * layerRand);
 
 	float ar;
 	float2 c = RockCentroid(leaf, ar);
@@ -591,6 +557,7 @@ FRockPat RockSetup()
 	P.rand_k = tan(radians(min(v[6] * SlopeAmount, 70.0f)));
 	P.hvar = v[7];
 	P.lvar = v[8];
+	P.height_clusters = HeightClusters;
 	P.chip = v[9];
 	P.wall_k = tan(radians(v[10]));
 	P.cell_gap = v[11] * GapAmount;
@@ -605,12 +572,11 @@ FRockPat RockSetup()
 
 	P.wseed = P.seed ^ 0xA5A5u;
 	P.warp = WarpAmount;
-	P.bend = BendAmount;
-	P.fault = FaultAmount;
-	P.ph1 = RockRand(P.wseed, 1u, 5u) * ROCK_TAU;
-	P.ph2 = RockRand(P.wseed, 2u, 5u) * ROCK_TAU;
+	P.tilt = Tilt;
+	P.tilt_random = TiltRandom;
+	P.chamfer_random = ChamferRandom;
 	// Moved chunks can reach further: widen the search by the max drift.
-	P.reach += 1.2f * (abs(P.warp) + (abs(P.bend) + 1.5f * abs(P.fault)) * P.rh) + (P.bend != 0.0f ? 0.25f : 0.0f);
+	P.reach += 1.2f * abs(P.warp);
 	return P;
 }
 
@@ -738,7 +704,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #else
 	const float Source = SourceHeight.Load(int3(Pixel, 0));
 	const float Rock = RockHeight.Load(int3(Pixel, 0)) * HeightScale;
-	OutHeight[Pixel] = lerp(Source, Rock, Amount);
+	const float Target = BlendMode == 1u ? min(Source, Rock)
+		: (BlendMode == 2u ? max(Source, Rock) : Rock);
+	OutHeight[Pixel] = lerp(Source, Target, Amount);
 #endif
 }
 #endif

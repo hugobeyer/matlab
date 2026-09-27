@@ -1894,6 +1894,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						? Carver.StrataAmount : 3.0f;
 					Out.StrataWarp = FMath::IsFinite(Carver.StrataWarp)
 						? Carver.StrataWarp : 0.54f;
+					Out.StrataWarpDetail = FMath::IsFinite(Carver.StrataWarpDetail)
+						? Carver.StrataWarpDetail : 0.25f;
+					Out.StrataLayers = FMath::Clamp(Carver.StrataLayers, 1, 4);
+					Out.StrataTilt = FMath::IsFinite(Carver.StrataTilt) ? Carver.StrataTilt : 0.0f;
+					Out.StrataTiltVariance = FMath::IsFinite(Carver.StrataTiltVariance)
+						? Carver.StrataTiltVariance : 12.0f;
+					Out.StrataRotation = FMath::IsFinite(Carver.StrataRotation)
+						? Carver.StrataRotation : 0.0f;
+					Out.StrataRotationVariance = FMath::IsFinite(Carver.StrataRotationVariance)
+						? Carver.StrataRotationVariance : 8.0f;
+					Out.BlendMode = static_cast<uint32>(Carver.StrataBlendMode);
+					Out.BlendAmount = FMath::IsFinite(Carver.StrataBlendAmount)
+						? Carver.StrataBlendAmount : 1.0f;
 					Out.PushAmount = FMath::IsFinite(Carver.PushAmount)
 						? Carver.PushAmount : 0.5f;
 					Out.MaskInfluence = FMath::IsFinite(Carver.MaskInfluence)
@@ -1974,14 +1987,17 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.Chamfer = Finite(Rock.RockChamfer, Defaults.RockChamfer);
 					Out.Gap = Finite(Rock.RockGap, Defaults.RockGap);
 					Out.Warp = Finite(Rock.RockWarp, Defaults.RockWarp);
-					Out.Bend = Finite(Rock.RockBend, Defaults.RockBend);
-					Out.Fault = Finite(Rock.RockFault, Defaults.RockFault);
+					Out.ChamferRandom = Finite(Rock.RockChamferRandom, Defaults.RockChamferRandom);
+					Out.Tilt = Finite(Rock.RockTilt, Defaults.RockTilt);
+					Out.TiltRandom = Finite(Rock.RockTiltRandom, Defaults.RockTiltRandom);
+					Out.HeightClusters = Finite(Rock.RockHeightClusters, Defaults.RockHeightClusters);
+					Out.BlendMode = static_cast<uint32>(Rock.RockBlendMode);
 					Out.Amount = Finite(Rock.RockAmount, Defaults.RockAmount);
 					Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale")};
+						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale"), TEXT("RockBlendMode")};
 						Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}

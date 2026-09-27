@@ -2579,22 +2579,9 @@ enum class EMixtormatPebbleDirection : uint8
 	Axis UMETA(DisplayName = "Axis Biased")
 };
 
-// Strata Carver: sedimentary/weathered carving driven by a propagated distance solve.
-//
-// It modifies the layer's input height. It is not a mask generator that happens to be wired to
-// height -- the final height is
-//
-//     CarvedHeight = SourceHeight - CarveMask * Depth * Influence
-//
-// with SourceHeight taken exactly as authored. Nothing normalises the incoming height before
-// the carve, because a wood plank whose height sits in 0.4..0.6 and a rock whose height covers
-// 0..1 must come out with the same *absolute* groove depth for one Depth value; normalising
-// first would make Depth mean "a fraction of whatever contrast this map happened to have".
-//
-// The solver is a recursive distance propagation over a Worley-seeded field, ported in concept
-// from the Houdini/OpenCL prototype. Its raw recursive distance is kept separate from display
-// remapping throughout: Bias, the two remaps and the clamp are applied once at the very end, so
-// scrubbing them reshapes a finished field instead of changing what propagated.
+// Strata Carver: periodic sedimentary beds with layered orientation variation and multi-scale,
+// tileable curl warping. The new art controls drive direct procedural synthesis; prior solver
+// settings remain serialized for compatibility with existing projects.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 {
@@ -2648,6 +2635,29 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float StrataWarp = 0.54f;
+
+	// Additional medium/high-frequency periodic warp layers for irregular bedding.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float StrataWarpDetail = 0.25f;
+
+	// Number of additional beds with seeded tilt and orientation variation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "4"))
+	int32 StrataLayers = 3;
+
+	// Main bedding tilt and per-layer tilt variation, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "-70.0", UIMax = "70.0"))
+	float StrataTilt = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "45.0"))
+	float StrataTiltVariance = 12.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "180.0"))
+	float StrataRotation = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "45.0"))
+	float StrataRotationVariance = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver")
+	EMixtormatStrataBlendMode StrataBlendMode = EMixtormatStrataBlendMode::Subtract;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float StrataBlendAmount = 1.0f;
 
 	// How hard a propagating front shoves its own strata phase into the next step. This is the
 	// recursion that makes the result read as layered rock rather than as a distance field.
@@ -2784,11 +2794,28 @@ struct MIXTORMATRUNTIME_API FMixtormatFracture
 	float FractureVariation = 0.38f;
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatRockBlendMode : uint8
+{
+	Replace UMETA(DisplayName = "Replace"),
+	MinHeight UMETA(DisplayName = "Min Height"),
+	MaxHeight UMETA(DisplayName = "Max Height")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatStrataBlendMode : uint8
+{
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Difference UMETA(DisplayName = "Difference"),
+	Maximum UMETA(DisplayName = "Maximum"),
+	Minimum UMETA(DisplayName = "Minimum")
+};
+
 // Rock Formation: a tileable sloped rock surface built from BSP-fractured, tilted slab chunks
 // with chipped tops, chamfers and walls. Style blends four presets (0 cliff, 1 layered,
-// 2 boulder, 3 rubble). Warp, Bend and Fault move chunks rigidly. The field depends on these
-// settings only, so it is cached and re-evaluated only when one of them changes.
-USTRUCT(BlueprintType)
+// 2 boulder, 3 rubble). The field depends on these settings only, so it is cached.
 struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 {
 	GENERATED_BODY()
@@ -2824,17 +2851,33 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockWarp = 0.2f;
 
-	// Kink folds: straight limbs, sharp hinges; blocks tilt with the limb they sit on.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	// Retained for serialized-asset compatibility; no longer used by the Rock Formation field.
+	UPROPERTY()
 	float RockBend = 0.6f;
-
-	// Wavy fault bands stepping blocks up and down.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	UPROPERTY()
 	float RockFault = 0.4f;
 
-	// How much of the layer's height the rock replaces. 1 = the layer's height is the rock.
+	// Randomizes planar chamfer width between fractured chunks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockChamferRandom = 0.5f;
+
+	// Base chunk tilt and the per-chunk random tilt, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "70.0", Delta = "0.1"))
+	float RockTilt = 16.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "70.0", Delta = "0.1"))
+	float RockTiltRandom = 6.0f;
+
+	// Scales the preset's per-chunk and per-row height variation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float RockHeightClusters = 1.0f;
+
+	// How much the rock's selected height blend affects the existing layer height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockAmount = 1.0f;
+
+	// How this rock combines with the preceding height result on the same layer.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
+	EMixtormatRockBlendMode RockBlendMode = EMixtormatRockBlendMode::Replace;
 
 	// Multiplies the rock height (0-1, 1 = highest possible top) before it is mixed in.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))

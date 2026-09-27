@@ -3,30 +3,13 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
-// Strata Carver -- the first GENERATORS node.
+// Strata Carver: direct layered bedding synthesis, based on Houdini's HeightField Strata model.
 //
-// It removes material from the layer's input height:
-//
-//     CarvedHeight = SourceHeight - Carve * Depth
-//
-// SourceHeight is taken exactly as authored. Nothing normalises it first, deliberately: a plank
-// whose height lives in 0.4..0.6 and a cliff whose height covers 0..1 must produce the same
-// absolute groove for one Depth value, and normalising would redefine Depth as "a fraction of
-// whatever contrast this map happened to have". That is also what lets the node work on a
-// perfectly flat layer, where a normalised source has no range to be a fraction of at all.
-//
-// Three kernels:
-//
-//     SeedCS       builds the Worley family fractals, the propagation cost and the initial
-//                  distance state, once
-//     PropagateCS  one step of the solve, ping-ponged
-//     ResolveCS    raw distance -> display remap -> carve -> height, once
-//
-// The split matters. The OpenCL prototype keeps its raw recursive distance separate from the
-// remapping it displays, and so does this: Bias, the two remaps and the clamp live only in
-// ResolveCS. Scrubbing them reshapes a finished field rather than changing what propagated, so
-// the solve does not re-run and the picture does not reorganise under the slider.
+// ResolveCS combines seeded strata layers with tileable broad and fine curl warps, then applies
+// the selected height blend. SeedCS / PropagateCS remain registered for compatibility with older
+// serialized settings, but are no longer part of the active Strata Carver path.
 
 // ---------------------------------------------------------------------------------------------
 // Worley families
@@ -203,6 +186,14 @@ float BandFrequency;
 float StrataFrequency;
 float StrataAmount;
 float StrataWarp;
+float StrataWarpDetail;
+int StrataLayers;
+float StrataTilt;
+float StrataTiltVariance;
+float StrataRotation;
+float StrataRotationVariance;
+uint BlendMode;
+float BlendAmount;
 
 float StepScale;
 float MaxValue;
@@ -557,13 +548,7 @@ void PropagateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 // ---------------------------------------------------------------------------------------------
 // Resolve pass
 //
-// Raw distance in, carved height out. Everything cosmetic happens here and only here.
-//
-// The solve runs on a coarse grid -- a propagated distance is a large-scale quantity and solving
-// it at 4K would cost sixteen times the work for a field that is smooth at that scale anyway --
-// so the distance is sampled up bilinearly. What that softens is the band edges, and those are
-// analytic: the same strata phase is re-evaluated here at full resolution and folded back into
-// the field, which puts the crisp edge back without re-solving anything.
+// Full-resolution layered strata synthesis and height blending.
 // ---------------------------------------------------------------------------------------------
 
 Texture2D<float2> SolvedDist;
@@ -591,62 +576,83 @@ float MixtormatStrataBias(float X, float B)
 	return pow(saturate(X), log(SafeB) / log(0.5f));
 }
 
+float MixtormatStrataLayer(float2 UV, int Frequency, float AngleDegrees, uint LayerSeed)
+{
+	const float2 WarpA = MixtormatPeriodicCurlWarp(UV, Frequency, LayerSeed, StrataWarp);
+	const float2 Warped = frac(MixtormatPeriodicCurlWarp(
+		WarpA, Frequency * 2, LayerSeed + 8191u, StrataWarpDetail));
+
+	const float Angle = radians(AngleDegrees);
+	float2 Wave = round(float2(sin(Angle), cos(Angle)) * (float)Frequency);
+	if (all(Wave == 0.0f)) { Wave.y = 1.0f; }
+
+	const float FineNoise = MixtormatPeriodicNoiseD(
+		Warped * (float)(Frequency * 2), Frequency * 2, LayerSeed + 1459u).x;
+	const float Phase = frac(dot(Warped, Wave) + FineNoise * 0.12f);
+	const float Crest = 0.5f + 0.5f * cos(6.28318530718f * Phase);
+	return pow(saturate(Crest), 1.0f + saturate(StrataAmount / 16.0f) * 7.0f);
+}
+
 [numthreads(8, 8, 1)]
 void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
-	{
-		return;
-	}
+	if (any(DispatchThreadId.xy >= uint2(OutputSize))) { return; }
 
 	const int2 P = int2(DispatchThreadId.xy);
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	const int Frequency = max((int)round(StrataFrequency), 1);
+	float Sum = 0.0f;
+	float WeightSum = 0.0f;
+	float Weight = 1.0f;
 
-	const float Distance = SolvedDist.SampleLevel(LinearWrapSampler, UV, 0.0f).x;
-
-	// Normalised once, at the end. Up to this point the field has been a raw recursive distance
-	// in solver units and nothing has rescaled it.
-	float Carve = 1.0f - saturate(Distance / max(MaxValue, 1.0e-4f));
-
-	// Full-resolution band detail, folded in before the remap so Bias and the remaps shape the
-	// banded field rather than a smooth one.
-	if (StrataAmount > 0.0f)
+	[loop]
+	for (int Layer = 0; Layer < 4; ++Layer)
 	{
-		const float Phase = MixtormatStrataPhase(UV, StrataFrequency, StrataWarp, Seed);
-		const float Band = abs(Phase * 2.0f - 1.0f);
-		Carve = saturate(Carve + (Band - 0.5f) * saturate(StrataAmount * 0.0625f) * Carve);
+		if (Layer >= StrataLayers) { break; }
+		const uint LayerSeed = MixtormatHashU(Seed + (uint)Layer * 0x9e3779b9u + 0x51ed270bu);
+		const float R0 = (float)(LayerSeed & 0x00ffffffu) * (1.0f / 16777216.0f);
+		const float R1 = (float)(MixtormatHashU(LayerSeed + 0x68bc21ebu) & 0x00ffffffu) * (1.0f / 16777216.0f);
+		const float Variation = Layer == 0 ? 0.0f : 1.0f;
+		const float Angle = StrataRotation + StrataTilt
+			+ Variation * ((R0 * 2.0f - 1.0f) * StrataRotationVariance
+			+ (R1 * 2.0f - 1.0f) * StrataTiltVariance);
+		const float Bed = MixtormatStrataLayer(UV, Frequency, Angle, LayerSeed);
+		Sum += (Bed - 0.5f) * Weight;
+		WeightSum += Weight;
+		Weight *= 0.55f;
 	}
 
-	Carve = MixtormatStrataBias(Carve, Bias);
-	Carve = saturate((Carve - RemapInMin) / max(RemapInMax - RemapInMin, 1.0e-5f));
-	Carve = lerp(RemapOutMin, RemapOutMax, Carve);
-	Carve = clamp(Carve, min(CarveClampMin, CarveClampMax), max(CarveClampMin, CarveClampMax));
-
-	// Amplitude. This is the third place Mask Influence acts -- it has already moved seed
-	// probability and propagation cost -- and it is the only one of the three that is a plain
-	// multiply. On its own it would be a cutout; on top of the other two it is what lets the
-	// carve fade out at the mask's own edge.
+	float Strata = saturate(0.5f + Sum / max(WeightSum, 1.0e-5f));
+	float Amount = saturate(BlendAmount);
 	if (MaskInfluence > 0.0f && HasScopedMask != 0)
 	{
 		const float MaskValue = saturate(ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
-		Carve *= lerp(1.0f, MaskValue, MaskInfluence);
+		Amount *= lerp(1.0f, MaskValue, MaskInfluence);
 	}
-
-	// Per-region depth variation. Branched for the same reason as in the seed pass: at 0 the ID
-	// map must have exactly no effect, not an effect too small to see.
 	if (IDInfluence > 0.0f && HasRegionIds != 0)
 	{
 		const uint RegionId = ResolveRegionIds.Load(int3(P, 0));
 		if (RegionId != MIXTORMAT_INVALID_REGION)
 		{
 			const uint RegionSeed = MixtormatRegionSeed(RegionId, Seed);
-			const float DrawDepth =
-				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_DEPTH);
-			Carve *= lerp(1.0f, 0.5f + DrawDepth, IDInfluence);
+			const float Draw = MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_DEPTH);
+			Amount *= lerp(1.0f, 0.5f + Draw, IDInfluence);
 		}
 	}
 
-	// Subtracted, never added. A carver removes material, and the height it reads is the layer's
-	// own input taken exactly as authored -- see the note at the top of this file.
-	OutHeight[P] = SourceHeight.Load(int3(P, 0)) - saturate(Carve) * Depth;
+	const float Source = SourceHeight.Load(int3(P, 0));
+	const float Cut = Strata * Depth;
+	const float Relief = (Strata * 2.0f - 1.0f) * Depth;
+	float Target = Source;
+	switch (BlendMode)
+	{
+	case 0u: Target = Source + Relief; break;
+	case 1u: Target = Source - Cut; break;
+	case 2u: Target = Source * (1.0f + Relief); break;
+	case 3u: Target = abs(Source - abs(Relief)); break;
+	case 4u: Target = max(Source, Source + Relief); break;
+	case 5u: Target = min(Source, Source + Relief); break;
+	default: Target = Source - Cut; break;
+	}
+	OutHeight[P] = lerp(Source, Target, Amount);
 }

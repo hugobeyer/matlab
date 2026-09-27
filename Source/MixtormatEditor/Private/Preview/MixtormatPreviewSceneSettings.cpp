@@ -116,9 +116,10 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	ShowFlags.SetLumenGlobalIllumination(bLumen);
 	ShowFlags.SetLumenReflections(bLumen);
 	ShowFlags.SetScreenSpaceReflections(bLumen);
-	// Studio mode gets contact from AO; Lumen supplies its own occlusion.
-	ShowFlags.SetAmbientOcclusion(!bLumen);
-	ShowFlags.SetScreenSpaceAO(!bLumen);
+	// Keep the Default studio preview clean of engine AO artifacts. Lumen is still
+	// available as an explicit lighting mode when broader indirect occlusion is needed.
+	ShowFlags.SetAmbientOcclusion(bLumen);
+	ShowFlags.SetScreenSpaceAO(bLumen);
 }
 
 float MixtormatPreviewSceneSettings::CalculateFocusDistance(

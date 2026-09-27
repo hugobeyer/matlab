@@ -377,6 +377,18 @@ bool FMixtormatAuthoringNewInstanceTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Duplicated effect preserves its authored value"),
 		FMath::IsNearlyEqual(Duplicate.BreakupNormalStrength, 7.0f));
 
+	const FString GeneratorJson = TEXT(R"( {
+		"Rock Formation": {
+			"Generator.RockCells": { "default": 9, "uiMin": 1, "uiMax": 32, "snap": 1 }
+		}
+	} )");
+	TestTrue(TEXT("Rock Formation defaults load from developer JSON"),
+		MixtormatParameterAuthoring::LoadFromString(GeneratorJson));
+	FMixtormatGenerator NewRock;
+	NewRock.Type = EMixtormatGeneratorType::RockFormation;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewRock);
+	TestEqual(TEXT("Rock Formation receives saved JSON defaults"), NewRock.RockFormation.RockCells, 9);
+
 	// Database changes never alter parameter identity.
 	const FMixtormatParameterDefinitionKey Identity{
 		EMixtormatParameterOwnerType::Effect, TEXT("BreakupNormalStrength"),

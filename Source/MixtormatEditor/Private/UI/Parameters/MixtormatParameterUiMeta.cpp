@@ -35,6 +35,23 @@ namespace
 		return Set;
 	}
 
+	const UScriptStruct* GeneratorStructForParameter(const FName Parameter)
+	{
+		const UScriptStruct* Structs[] = {
+			FMixtormatStrataCarver::StaticStruct(),
+			FMixtormatFracture::StaticStruct(),
+			FMixtormatRockFormation::StaticStruct(),
+			FMixtormatPebbles::StaticStruct()};
+		for (const UScriptStruct* Struct : Structs)
+		{
+			if (Struct->FindPropertyByName(Parameter))
+			{
+				return Struct;
+			}
+		}
+		return nullptr;
+	}
+
 	// The reflected UI facts for one parameter, parsed once and cached per key. Everything
 	// comes from the FProperty: UIMin/UIMax/Delta meta strings and the CDO initializer.
 	struct FReflectedUi
@@ -67,9 +84,15 @@ namespace
 		}
 		else if (Key.Owner == EMixtormatParameterOwnerType::Generator)
 		{
-			static const FMixtormatFracture CDODefaults;
-			Struct = FMixtormatFracture::StaticStruct();
-			Defaults = &CDODefaults;
+			Struct = GeneratorStructForParameter(Key.Parameter);
+			static const FMixtormatStrataCarver StrataDefaults;
+			static const FMixtormatFracture FractureDefaults;
+			static const FMixtormatRockFormation RockDefaults;
+			static const FMixtormatPebbles PebblesDefaults;
+			if (Struct == FMixtormatStrataCarver::StaticStruct()) Defaults = &StrataDefaults;
+			else if (Struct == FMixtormatFracture::StaticStruct()) Defaults = &FractureDefaults;
+			else if (Struct == FMixtormatRockFormation::StaticStruct()) Defaults = &RockDefaults;
+			else if (Struct == FMixtormatPebbles::StaticStruct()) Defaults = &PebblesDefaults;
 		}
 
 		if (Struct && Defaults)
@@ -156,10 +179,10 @@ namespace MixtormatParameterUi
 		{
 			return nullptr;
 		}
-		const UScriptStruct* Struct = Key.Owner == EMixtormatParameterOwnerType::Effect
+		const UStruct* Struct = Key.Owner == EMixtormatParameterOwnerType::Effect
 			? FMixtormatLayerEffect::StaticStruct()
 			: (Key.Owner == EMixtormatParameterOwnerType::Generator
-				? FMixtormatFracture::StaticStruct() : nullptr);
+				? GeneratorStructForParameter(Key.Parameter) : nullptr);
 		if (!Struct)
 		{
 			return nullptr;

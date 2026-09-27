@@ -242,15 +242,7 @@ public:
 		Settings.MotionBlurAmount = 0.0f;
 		Settings.bOverride_MotionBlurMax = true;
 		Settings.MotionBlurMax = 0.0f;
-		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Default)
-		{
-			// Keep contact shading restrained: the engine defaults make the sphere's lower
-			// silhouette accumulate a broad, blotchy AO halo.
-			Settings.bOverride_AmbientOcclusionIntensity = true;
-			Settings.AmbientOcclusionIntensity = 0.25f;
-			Settings.bOverride_AmbientOcclusionRadius = true;
-			Settings.AmbientOcclusionRadius = 40.0f;
-		}
+
 		if (Owner.CurrentPreviewQuality == EMixtormatPreviewQuality::Lumen)
 		{
 			Settings.bOverride_LumenFinalGatherQuality = true;

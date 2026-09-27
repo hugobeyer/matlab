@@ -38,7 +38,18 @@ namespace
 		case EMixtormatParameterOwnerType::Effect:
 			return FMixtormatLayerEffect::StaticStruct();
 		case EMixtormatParameterOwnerType::Generator:
-			return FMixtormatFracture::StaticStruct();
+		{
+			const UScriptStruct* Structs[] = {
+				FMixtormatStrataCarver::StaticStruct(),
+				FMixtormatFracture::StaticStruct(),
+				FMixtormatRockFormation::StaticStruct(),
+				FMixtormatPebbles::StaticStruct()};
+			for (const UScriptStruct* Struct : Structs)
+			{
+				if (Struct->FindPropertyByName(Key.Parameter)) return Struct;
+			}
+			return nullptr;
+		}
 		default:
 			return nullptr;
 		}
@@ -304,9 +315,23 @@ namespace MixtormatParameterAuthoring
 		return Fallback;
 	}
 
-	void ApplyAuthoringDefaults(FMixtormatFracture& Fracture)
+	void ApplyAuthoringDefaults(FMixtormatGenerator& Generator)
 	{
 		LoadFromDisk();
+		UScriptStruct* Struct = nullptr;
+		void* Payload = nullptr;
+		switch (Generator.Type)
+		{
+		case EMixtormatGeneratorType::StrataCarver:
+			Struct = FMixtormatStrataCarver::StaticStruct(); Payload = &Generator.StrataCarver; break;
+		case EMixtormatGeneratorType::Fracture:
+			Struct = FMixtormatFracture::StaticStruct(); Payload = &Generator.Fracture; break;
+		case EMixtormatGeneratorType::RockFormation:
+			Struct = FMixtormatRockFormation::StaticStruct(); Payload = &Generator.RockFormation; break;
+		case EMixtormatGeneratorType::Pebbles:
+			Struct = FMixtormatPebbles::StaticStruct(); Payload = &Generator.Pebbles; break;
+		default: return;
+		}
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: ShippedEntries())
 		{
@@ -315,15 +340,14 @@ namespace MixtormatParameterAuthoring
 			{
 				continue;
 			}
-			if (const FFloatProperty* Float = CastField<FFloatProperty>(
-				FMixtormatFracture::StaticStruct()->FindPropertyByName(Pair.Key.Parameter)))
+			const FProperty* Property = Struct->FindPropertyByName(Pair.Key.Parameter);
+			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 			{
-				*Float->ContainerPtrToValuePtr<float>(&Fracture) = Pair.Value.Default.GetValue();
+				*Float->ContainerPtrToValuePtr<float>(Payload) = Pair.Value.Default.GetValue();
 			}
-			else if (const FIntProperty* Int = CastField<FIntProperty>(
-				FMixtormatFracture::StaticStruct()->FindPropertyByName(Pair.Key.Parameter)))
+			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 			{
-				*Int->ContainerPtrToValuePtr<int32>(&Fracture) = FMath::RoundToInt(Pair.Value.Default.GetValue());
+				*Int->ContainerPtrToValuePtr<int32>(Payload) = FMath::RoundToInt(Pair.Value.Default.GetValue());
 			}
 		}
 	}
@@ -395,8 +419,12 @@ namespace MixtormatParameterAuthoring
 			// Warn when no property answers to it: such entries still load (they key by
 			// parameter), but no family can ever match them at apply time.
 			bool bSectionMatchesAnyCategory = false;
-			for (const UStruct* Struct : {static_cast<const UStruct*>(FMixtormatLayerEffect::StaticStruct()),
-				static_cast<const UStruct*>(FMixtormatFracture::StaticStruct())})
+			for (const UStruct* Struct : {
+				static_cast<const UStruct*>(FMixtormatLayerEffect::StaticStruct()),
+				static_cast<const UStruct*>(FMixtormatStrataCarver::StaticStruct()),
+				static_cast<const UStruct*>(FMixtormatFracture::StaticStruct()),
+				static_cast<const UStruct*>(FMixtormatRockFormation::StaticStruct()),
+				static_cast<const UStruct*>(FMixtormatPebbles::StaticStruct())})
 			{
 				for (TFieldIterator<FProperty> It(Struct); It; ++It)
 				{

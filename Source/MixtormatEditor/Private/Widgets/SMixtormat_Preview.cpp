@@ -939,7 +939,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewQualityDefault", "DEFAULT"),
 		LOCTEXT("PreviewQualityLumen", "LUMEN")};
 	const TArray<FText> QualityToolTips = {
-		LOCTEXT("PreviewQualityDefaultHint", "Stable studio key and cubemap lighting with screen-space AO; no Lumen or screen-space reflections."),
+		LOCTEXT("PreviewQualityDefaultHint", "Stable studio key and cubemap lighting; viewport AO, Lumen, and screen-space reflections are off."),
 		LOCTEXT("PreviewQualityLumenHint", "Enable Lumen global illumination and reflections for an optional lighting check.")};
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
