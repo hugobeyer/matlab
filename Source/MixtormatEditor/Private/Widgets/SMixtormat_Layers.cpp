@@ -577,10 +577,6 @@ void SMixtormat::InitializeNewLayer(
 		// what is already there. A fill is its own surface: its height cross-fades in by coverage.
 		Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
 		break;
-	case EMixtormatLayerType::Effect:
-		Layer.DisplayName = FText::Format(LOCTEXT("EffectLayerNumber", "Effect Layer {0}"), FText::AsNumber(LayerNumber));
-		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
-		break;
 	}
 }
 
@@ -1719,7 +1715,7 @@ FReply SMixtormat::ReplaceSurfaceInLayer(const int32 LayerIndex, const FSoftObje
 	}
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	if (Layer.Type != EMixtormatLayerType::Material && Layer.Type != EMixtormatLayerType::Effect)
+	if (Layer.Type != EMixtormatLayerType::Material)
 	{
 		return FReply::Handled();
 	}
@@ -3948,9 +3944,7 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 			: Surface->DisplayName;
 		return FText::FromString(Name.ToString().ToUpper());
 	}
-	return Layer.Type == EMixtormatLayerType::Effect
-		? LOCTEXT("EffectLayerSource", "EFFECT")
-		: LOCTEXT("MaterialLayerSource", "MATERIAL");
+	return LOCTEXT("MaterialLayerSource", "MATERIAL");
 }
 
 FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
@@ -5361,8 +5355,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	Menu.Separator();
 
 	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& (WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Material
-			|| WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Effect))
+		&& WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Material)
 	{
 		// Reuse the persistent bottom-library selection instead of opening a second thumbnail gallery.
 		// Capturing the path keeps the action deterministic for the lifetime of this menu.

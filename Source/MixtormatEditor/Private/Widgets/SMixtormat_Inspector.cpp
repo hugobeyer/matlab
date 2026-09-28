@@ -5266,8 +5266,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				return EVisibility::Collapsed;
 			}
 			const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-			return Layer.Type != EMixtormatLayerType::Effect
-				&& Layer.ChannelMode == EMixtormatLayerChannelMode::CompleteSurface
+			return Layer.ChannelMode == EMixtormatLayerChannelMode::CompleteSurface
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})

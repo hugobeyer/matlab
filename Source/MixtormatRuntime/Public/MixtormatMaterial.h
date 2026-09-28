@@ -22,8 +22,7 @@ UENUM(BlueprintType)
 enum class EMixtormatLayerType : uint8
 {
 	Material UMETA(DisplayName = "Material Layer"),
-	Fill UMETA(DisplayName = "Fill Layer"),
-	Effect UMETA(DisplayName = "Effect Layer")
+	Fill UMETA(DisplayName = "Fill Layer")
 };
 
 UENUM(BlueprintType)

@@ -263,9 +263,6 @@ bool UMixtormatMaterial::AddLayer(const EMixtormatLayerType Type)
 		Layer.bOverrideIOR = true;
 		Layer.bOverrideMetallic = true;
 		break;
-	case EMixtormatLayerType::Effect:
-		Layer.DisplayName = NSLOCTEXT("MixtormatMaterial", "EffectLayer", "Effect Layer");
-		break;
 	}
 
 	return true;
