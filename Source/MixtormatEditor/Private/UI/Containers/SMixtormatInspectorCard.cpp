@@ -8,6 +8,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "UI/Rows/SMixtormatRow.h"
 
 void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 {
@@ -26,6 +27,7 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 				? StaticCastSharedRef<SWidget>(
 					SNew(STextBlock)
 					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.CardTitle")))
+					.Justification_Lambda([]() { return MixtormatRow::JustifyFor(MixtormatTokens::SubgroupHeaderAlign); })
 					.Text(InArgs._Title.ToUpper()))
 				: SNullWidget::NullWidget
 		];
@@ -39,6 +41,18 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 			];
 		}
 
+		if (bHasTitle)
+		{
+			Stack->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::CardTitleGap)
+			[
+				MixtormatRow::MakeInspectorHairline(TAttribute<bool>::CreateLambda([]()
+				{
+					return MixtormatTokens::InspectorHairlineAboveSubgroups >= 0.5f;
+				}))
+			];
+		}
 		Stack->AddSlot()
 		.AutoHeight()
 		.Padding(MixtormatTokens::CardPadding, 0.0f, MixtormatTokens::CardPadding, MixtormatTokens::CardTitleGap)

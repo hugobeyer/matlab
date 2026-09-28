@@ -1998,10 +1998,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.BlendMode = static_cast<uint32>(Rock.RockBlendMode);
 					Out.Amount = Finite(Rock.RockAmount, Defaults.RockAmount);
 					Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
+					Out.bNormalize = Rock.bRockNormalizeHeight;
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale"), TEXT("RockBlendMode")};
+						// Normalize reads the cached field; it does not change it.
+						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale"), TEXT("RockBlendMode"),
+							TEXT("bRockNormalizeHeight")};
 						Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}

@@ -199,7 +199,7 @@ namespace MixtormatTokens
 	// while the drawn icon stays IconButtonSize. A 14px target is under half the ~24px a pointer
 	// reliably hits, and these are the most-clicked controls in the panel.
 	inline float IconButtonHitSlop = 8.0f;
-	constexpr float ChevronSize = 14.0f;
+	inline float ChevronSize = 14.0f;
 	constexpr float StatusDotSize = 8.0f;
 
 	// The size an SVG is *registered* at, which is not the size anything displays it at -- the box
@@ -263,6 +263,8 @@ namespace MixtormatTokens
 	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
 	// word changes without the column moving.
 	constexpr float BadgeWidth = 52.0f;
+	// Matches the badge's old flat brush radius.
+	inline float BadgeCornerRadius = 1.0f;
 	constexpr float BadgeHeight = 16.0f;
 	// Longest word a badge is allowed to carry, and what BadgeWidth is sized for. The box does not
 	// grow to fit its text -- that is the point, the marks have to form a straight column -- so a
@@ -324,6 +326,17 @@ namespace MixtormatTokens
 	// it and without this the first group reads as attached to that bar rather than as the
 	// first thing in the column.
 	inline float InspectorTopMargin = 8.0f;
+	// Header text alignment: 0 left, 1 centre, 2 right. Text only -- the foldout chevron, state,
+	// action and reset keep their places. Groups are the collapsible bars; subgroups are card
+	// titles and row captions inside them.
+	inline float GroupHeaderAlign = 0.0f;
+	inline float SubgroupHeaderAlign = 0.0f;
+	// Thin separators inside the inspector, inset on both sides so they never reach the panel
+	// edges. Thickness 0 turns them all off; the two switches (0/1) pick where they appear.
+	inline float InspectorHairlineThickness = 1.0f;
+	inline float InspectorHairlineInset = 12.0f;
+	inline float InspectorHairlineUnderHeader = 0.0f;
+	inline float InspectorHairlineAboveSubgroups = 1.0f;
 	inline float InspectorMaskGalleryMaxHeight = 420.0f;
 	inline float InspectorFeatureButtonGap = 3.0f;
 	inline float InspectorColorSwatchWidth = 108.0f;
@@ -429,7 +442,7 @@ namespace MixtormatTokens
 	constexpr float LayerNameInset = 4.0f;
 	// Between stacked rows. One pixel: enough to separate, not enough to break the column.
 	inline float LayerRowGap = 2.0f;
-	constexpr float LayerEyeSize = 15.0f;
+	inline float LayerEyeSize = 15.0f;
 	inline float LayerChildIconSize = 16.0f;
 	// Opacity of the tree connector (tee / elbow) before a scoped child's glyph.
 	inline float LayerConnectorOpacity = 0.45f;

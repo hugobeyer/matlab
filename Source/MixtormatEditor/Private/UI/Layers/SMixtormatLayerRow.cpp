@@ -173,6 +173,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						[
 							SNew(SMixtormatBadge)
 							.Text(InArgs._ColorBadge)
+							.OnGetMenuContent(InArgs._OnGetColorBadgeMenu)
 							.Visibility_Lambda([ColorBadge = InArgs._ColorBadge]()
 							{
 								return ColorBadge.Get(FText::GetEmpty()).IsEmpty()
@@ -184,7 +185,9 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.VAlign(VAlign_Center)
 						[
-							SNew(SMixtormatBadge).Text(InArgs._Badge)
+							SNew(SMixtormatBadge)
+							.Text(InArgs._Badge)
+							.OnGetMenuContent(InArgs._OnGetBadgeMenu)
 						]
 
 						// Disclosure last, so the badge column stays flush against it. It is an
@@ -197,9 +200,10 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						[
 							SNew(SMixtormatIconButton)
 							.Size(MixtormatTokens::ChevronSize)
-							.Icon_Lambda([this]()
+							.IsEnabled(InArgs._bHasChildren)
+							.Icon_Lambda([this, bHasChildren = InArgs._bHasChildren]()
 							{
-								return bExpanded.Get(false)
+								return bExpanded.Get(false) && bHasChildren.Get(true)
 									? MixtormatIcons::ChevronDown()
 									: MixtormatIcons::ChevronRight();
 							})
@@ -315,11 +319,13 @@ void SMixtormatLayerRow::BeginRename()
 	{
 		NameEntry = MakeShared<FMixtormatEntryCommit>();
 	}
-	NameEntry->Begin(NameEditBox.ToSharedRef(), [this]()
+	const TWeakPtr<SMixtormatLayerRow> WeakSelf = StaticCastSharedRef<SMixtormatLayerRow>(AsShared());
+	NameEntry->Begin(NameEditBox.ToSharedRef(), [WeakSelf]()
 	{
-		if (NameSwitcher.IsValid())
+		const TSharedPtr<SMixtormatLayerRow> Self = WeakSelf.Pin();
+		if (Self.IsValid() && Self->NameSwitcher.IsValid())
 		{
-			NameSwitcher->SetActiveWidgetIndex(0);
+			Self->NameSwitcher->SetActiveWidgetIndex(0);
 		}
 	});
 }

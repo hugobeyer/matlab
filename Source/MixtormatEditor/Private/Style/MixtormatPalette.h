@@ -140,6 +140,13 @@ namespace MixtormatPalette
 	inline FLinearColor CardTitleText(){ return FMixtormatLiveTheme::ResolveColor(TEXT("CardTitleText"), Hex(0x8C8C8C)); }
 	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.6f); }
 	inline FLinearColor BadgeSurface() { return Hex(0x0d0d0d); }
+	inline FLinearColor InspectorHairline() { return FMixtormatLiveTheme::ResolveColor(TEXT("InspectorHairline"), Hex(0xFFFFFF, 0.08f)); }
+	// The badge well: lighter at the top, a hairline lip, lifts on hover when it opens a menu.
+	inline FLinearColor BadgeTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("BadgeTop"), Hex(0x1A1B1D)); }
+	inline FLinearColor BadgeBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("BadgeBottom"), Hex(0x0B0C0D)); }
+	inline FLinearColor BadgeTopHover() { return Hex(0x24262A); }
+	inline FLinearColor BadgeBottomHover() { return Hex(0x121315); }
+	inline FLinearColor BadgeHairline() { return FMixtormatLiveTheme::ResolveColor(TEXT("BadgeHairline"), Hex(0xFFFFFF, 0.14f)); }
 	inline FLinearColor DisabledText() { return Hex(0xFFFFFF, 0.20f); }
 	inline FLinearColor ShortcutText() { return Hex(0xFFFFFF, 0.24f); }
 

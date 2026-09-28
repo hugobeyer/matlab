@@ -46,6 +46,8 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleActive)
 		SLATE_EVENT(FPointerEventHandler, OnDragDetected)
 		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
+		// Left click on the badge: the child's blend mode, when it has one.
+		SLATE_EVENT(FOnGetContent, OnGetBadgeMenu)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);

@@ -42,6 +42,7 @@ public:
 
 private:
 	void StopWatching();
+	void CloseIfNoCommitArrived();
 
 	TWeakPtr<SWidget> Entry;
 	TSharedPtr<IInputProcessor> Watcher;

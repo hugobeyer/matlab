@@ -423,6 +423,37 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Measured-range normalization for generator height fields. See MixtormatFieldRange.usf.
+class FMixtormatFieldRangeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFieldRangeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFieldRangeCS, FGlobalShader);
+
+	// 0 reduce min/max, 1 normalize.
+	class FStage : SHADER_PERMUTATION_INT("RANGE_STAGE", 2);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutField)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatFieldRangeCS,
+	"/Plugin/Mixtormat/Private/MixtormatFieldRange.usf",
+	"MainCS",
+	SF_Compute);
+
 // Generator flow tools scoped under a Rock Formation. One parameter struct for every stage;
 // ClearUnusedGraphResources drops what a stage does not read. See MixtormatGeneratorFlow.usf.
 class FMixtormatGeneratorFlowCS final : public FGlobalShader
@@ -909,6 +940,45 @@ namespace
 		return false;
 	}
 
+	// A generator height field remapped to 0..1 from its own min/max, measured on the GPU (no
+	// readback). New texture: the cached field is never written.
+	FRDGTextureRef AddNormalizeFieldPasses(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef Field,
+		const FIntPoint Size,
+		const TCHAR* Name)
+	{
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.FieldRange"));
+		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
+		{
+			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
+			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->OutputSize = Size;
+			P->SourceField = Field;
+			P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Reduce"), Shader, P, Groups);
+		}
+		FRDGTextureRef Normalized = GraphBuilder.CreateTexture(Field->Desc, Name);
+		{
+			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
+			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->OutputSize = Size;
+			P->SourceField = Field;
+			P->Range = GraphBuilder.CreateSRV(RangeBuffer);
+			P->OutField = GraphBuilder.CreateUAV(Normalized);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Normalize"), Shader, P, Groups);
+		}
+		return Normalized;
+	}
+
 	// Pebbles publishes a scalar signed distance with a 1e9 no-hit sentinel; the seed stage
 	// reads a (distance, outline-sampled) pair. One cheap pass, never written into the cache.
 	FRDGTextureRef PackScalarBoundary(FMixtormatComposeContext& Ctx, FRDGTextureRef Scalar)
@@ -1386,14 +1456,20 @@ namespace
 			return nullptr;
 		}
 
-		// Scoped flow tools transform the rock's own height before the combine. Run even at
-		// Amount 0 while one of them is previewed, so its diagnostics are not blank.
+		// Normalized first, so flow tools and the combine both see the 0..1 field. Scoped flow
+		// tools then transform the rock's own height before the combine; they run even at Amount 0
+		// while one of them is previewed, so its diagnostics are not blank.
+		const bool bPreviewingFlow = IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
 		FRDGTextureRef RockField = Outputs[0];
-		if ((Rock.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (Rock.bNormalize && (Rock.Amount != 0.0f || bPreviewingFlow))
+		{
+			RockField = AddNormalizeFieldPasses(GraphBuilder, Outputs[0], Size, TEXT("Mixtormat.Rock.NormalizedHeight"));
+		}
+		if ((Rock.Amount != 0.0f || bPreviewingFlow)
 			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			FRDGTextureRef NoCoverage = nullptr;
-			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], Outputs[0], NoCoverage);
+			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], RockField, NoCoverage);
 		}
 
 		// A neutral node passes its input through, like every other generator.

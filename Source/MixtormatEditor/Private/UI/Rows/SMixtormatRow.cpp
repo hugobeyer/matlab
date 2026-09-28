@@ -4,6 +4,8 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatPalette.h"
+#include "Styling/CoreStyle.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/SMixtormatToggle.h"
 #include "Widgets/Images/SImage.h"
@@ -103,18 +105,56 @@ TSharedRef<SWidget> MakePair(const TSharedRef<SWidget>& Left, const TSharedRef<S
 		+ SHorizontalBox::Slot().FillWidth(1.0f)[Right];
 }
 
-TSharedRef<SWidget> MakeCaption(const FText& Caption)
+ETextJustify::Type JustifyFor(const float Align)
+{
+	return Align >= 1.5f ? ETextJustify::Right : (Align >= 0.5f ? ETextJustify::Center : ETextJustify::Left);
+}
+
+TSharedRef<SWidget> MakeInspectorHairline(const TAttribute<bool>& bShown)
 {
 	return SNew(SBox)
-		.Padding(FMargin(
-			1.0f,
-			MixtormatTokens::CaptionHeightAbove,
-			0.0f,
-			MixtormatTokens::CaptionHeightBelow))
+		.Visibility_Lambda([bShown]()
+		{
+			return bShown.Get(true) && MixtormatTokens::InspectorHairlineThickness > 0.0f
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.HeightOverride_Lambda([]() { return FOptionalSize(MixtormatTokens::InspectorHairlineThickness); })
+		.Padding_Lambda([]() { return FMargin(MixtormatTokens::InspectorHairlineInset, 0.0f); })
 		[
-			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
-			.Text(Caption.ToUpper())
+			SNew(SImage)
+			.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+			.ColorAndOpacity_Lambda([]() { return FSlateColor(MixtormatPalette::InspectorHairline()); })
+		];
+}
+
+TSharedRef<SWidget> MakeCaption(const FText& Caption)
+{
+	// A subgroup header: optional hairline above it, then the caption text.
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, MixtormatTokens::CaptionHeightAbove, 0.0f, 0.0f)
+		[
+			MakeInspectorHairline(TAttribute<bool>::CreateLambda([]()
+			{
+				return MixtormatTokens::InspectorHairlineAboveSubgroups >= 0.5f;
+			}))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBox)
+			.Padding(FMargin(
+				1.0f,
+				MixtormatTokens::CaptionHeightAbove,
+				0.0f,
+				MixtormatTokens::CaptionHeightBelow))
+			[
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
+				.Justification_Lambda([]() { return JustifyFor(MixtormatTokens::SubgroupHeaderAlign); })
+				.Text(Caption.ToUpper())
+			]
 		];
 }
 

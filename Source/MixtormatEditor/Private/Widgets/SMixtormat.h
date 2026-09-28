@@ -568,6 +568,9 @@ private:
 	FReply ReorderGroupChild(FGuid GroupId, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
+	// Clicking empty space in the layer stack: nothing selected, so the inspector shows globals.
+	void ClearLayerSelection();
+	bool HasAnySelection() const;
 	static bool IsGroupChildEnabled(const FMixtormatLayerChild& Child);
 	TSharedRef<SWidget> BuildGroupChildRow(FGuid GroupId, int32 ChildIndex);
 	TSharedRef<SWidget> BuildGroupAddEffectMenu(FGuid GroupId);
@@ -1291,6 +1294,8 @@ private:
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
+	// BLEND / OVER / COAT / DETAIL for one layer, from its badge.
+	TSharedRef<SWidget> BuildLayerCompositionMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildBlurContextMenu(int32 LayerIndex, int32 ChildIndex);
 	FMixtormatMaskBlur* GetSelectedLayerBlur();

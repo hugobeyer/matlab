@@ -6,6 +6,7 @@
 #include "Framework/SlateDelegates.h"
 #include "Widgets/SWidget.h"
 #include "Styling/SlateTypes.h"
+#include "Framework/Text/TextLayout.h"
 
 // The inspector's row vocabulary.
 //
@@ -46,6 +47,14 @@ namespace MixtormatRow
 
 	// Separates two runs without naming them. The cheap option.
 	TSharedRef<SWidget> MakeHairline();
+
+	// The inspector separator: InspectorHairlineThickness tall, inset InspectorHairlineInset on
+	// both sides, InspectorHairline colour. Collapsed when thickness is 0 or bShown says no. Live:
+	// every value is read per paint, so the style panel moves it without a rebuild.
+	TSharedRef<SWidget> MakeInspectorHairline(const TAttribute<bool>& bShown);
+
+	// 0 left, 1 centre, 2 right -> text justification. For the header alignment tokens.
+	ETextJustify::Type JustifyFor(float Align);
 
 	// The inspector's boolean, sized for a row's trailing slot. See SMixtormatToggle.
 	TSharedRef<SWidget> MakeCheckbox(

@@ -1,0 +1,84 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Normalizes a generator's height field to 0..1 from its own measured range, on the GPU.
+//
+// RANGE_STAGE 0 (Reduce):    per-group min/max in groupshared memory, then one atomic per group into
+//   a two-entry buffer. The buffer is cleared to 0 beforehand; entry 0 holds max(~ordered(h)), which
+//   is the minimum, and entry 1 holds max(ordered(h)), the maximum -- both reduce with InterlockedMax
+//   from a zero clear.
+// RANGE_STAGE 1 (Normalize): (h - min) / (max - min). A flat field (no range) maps to 0.
+//
+// Nothing is clamped: the mapping is exact for the measured field, so its output spans 0..1 by
+// construction.
+
+#include "/Engine/Public/Platform.ush"
+
+int2 OutputSize;
+Texture2D<float> SourceField;
+RWStructuredBuffer<uint> OutRange;
+StructuredBuffer<uint> Range;
+RWTexture2D<float> OutField;
+
+// Order-preserving float <-> uint: larger floats map to larger uints, negatives included.
+uint FloatToOrdered(float Value)
+{
+	const uint Bits = asuint(Value);
+	return (Bits & 0x80000000u) != 0u ? ~Bits : (Bits | 0x80000000u);
+}
+
+float OrderedToFloat(uint Ordered)
+{
+	return asfloat((Ordered & 0x80000000u) != 0u ? (Ordered & 0x7FFFFFFFu) : ~Ordered);
+}
+
+#if RANGE_STAGE == 0
+groupshared uint GroupMinInv;
+groupshared uint GroupMax;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID, uint GroupIndex : SV_GroupIndex)
+{
+	if (GroupIndex == 0u)
+	{
+		GroupMinInv = 0u;
+		GroupMax = 0u;
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (all(Pixel < OutputSize))
+	{
+		const float Value = SourceField.Load(int3(Pixel, 0));
+		if (!isnan(Value) && !isinf(Value))
+		{
+			const uint Ordered = FloatToOrdered(Value);
+			InterlockedMax(GroupMinInv, ~Ordered);
+			InterlockedMax(GroupMax, Ordered);
+		}
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	if (GroupIndex == 0u)
+	{
+		InterlockedMax(OutRange[0], GroupMinInv);
+		InterlockedMax(OutRange[1], GroupMax);
+	}
+}
+#endif
+
+#if RANGE_STAGE == 1
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float Low = OrderedToFloat(~Range[0]);
+	const float High = OrderedToFloat(Range[1]);
+	const float Span = High - Low;
+	const float Value = SourceField.Load(int3(Pixel, 0));
+	OutField[Pixel] = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
+}
+#endif

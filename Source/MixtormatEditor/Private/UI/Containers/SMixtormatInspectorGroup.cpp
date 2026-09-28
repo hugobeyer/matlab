@@ -9,6 +9,7 @@
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMenuAnchor.h"
@@ -108,6 +109,8 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 	[
 		SNew(STextBlock)
 		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+		// Title only: the chevron, state, action and reset keep their slots.
+		.Justification_Lambda([]() { return MixtormatRow::JustifyFor(MixtormatTokens::GroupHeaderAlign); })
 		.Text(InArgs._Title)
 	];
 
@@ -257,7 +260,21 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				MixtormatTokens::PanelGutter,
 				MixtormatTokens::HeaderContentGap))
 			[
-				InArgs._Content.Widget
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::HeaderContentGap)
+				[
+					MixtormatRow::MakeInspectorHairline(TAttribute<bool>::CreateLambda([]()
+					{
+						return MixtormatTokens::InspectorHairlineUnderHeader >= 0.5f;
+					}))
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					InArgs._Content.Widget
+				]
 			]
 		]
 		]

@@ -113,7 +113,15 @@ void SMixtormatSlider::BeginTextEntry()
 	EntryWidget->SetVisibility(EVisibility::Visible);
 	EntryWidget->SetText(FText::FromString(FormatValue(GetValue())));
 	FSlateApplication::Get().SetKeyboardFocus(EntryWidget, EFocusCause::SetDirectly);
-	EntrySession->Begin(EntryWidget.ToSharedRef(), [this]() { EndTextEntry(); });
+	// Weak: a commit can rebuild the panel and destroy this slider before the session returns.
+	const TWeakPtr<SMixtormatSlider> WeakSelf = StaticCastSharedRef<SMixtormatSlider>(AsShared());
+	EntrySession->Begin(EntryWidget.ToSharedRef(), [WeakSelf]()
+	{
+		if (const TSharedPtr<SMixtormatSlider> Self = WeakSelf.Pin())
+		{
+			Self->EndTextEntry();
+		}
+	});
 }
 
 void SMixtormatSlider::EndTextEntry()

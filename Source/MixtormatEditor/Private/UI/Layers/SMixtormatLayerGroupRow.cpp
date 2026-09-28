@@ -263,11 +263,13 @@ void SMixtormatLayerGroupRow::BeginRename()
 	{
 		NameEntry = MakeShared<FMixtormatEntryCommit>();
 	}
-	NameEntry->Begin(NameEditBox.ToSharedRef(), [this]()
+	const TWeakPtr<SMixtormatLayerGroupRow> WeakSelf = StaticCastSharedRef<SMixtormatLayerGroupRow>(AsShared());
+	NameEntry->Begin(NameEditBox.ToSharedRef(), [WeakSelf]()
 	{
-		if (NameSwitcher.IsValid())
+		const TSharedPtr<SMixtormatLayerGroupRow> Self = WeakSelf.Pin();
+		if (Self.IsValid() && Self->NameSwitcher.IsValid())
 		{
-			NameSwitcher->SetActiveWidgetIndex(0);
+			Self->NameSwitcher->SetActiveWidgetIndex(0);
 		}
 	});
 }

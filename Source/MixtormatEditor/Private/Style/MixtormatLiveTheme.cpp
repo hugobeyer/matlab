@@ -80,6 +80,12 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Preview overlays", ViewportOverlayItemGap, 0.0f, 24.0f),
 		THEME_NUMBER("Preview overlays", ViewportOverlayButtonGap, 0.0f, 24.0f),
 		THEME_NUMBER("Inspector", InspectorTopMargin, 0.0f, 48.0f),
+		THEME_NUMBER("Inspector", GroupHeaderAlign, 0.0f, 2.0f),
+		THEME_NUMBER("Inspector", SubgroupHeaderAlign, 0.0f, 2.0f),
+		THEME_NUMBER("Inspector", InspectorHairlineThickness, 0.0f, 4.0f),
+		THEME_NUMBER("Inspector", InspectorHairlineInset, 0.0f, 64.0f),
+		THEME_NUMBER("Inspector", InspectorHairlineUnderHeader, 0.0f, 1.0f),
+		THEME_NUMBER("Inspector", InspectorHairlineAboveSubgroups, 0.0f, 1.0f),
 		THEME_NUMBER("Inspector", InspectorMaskGalleryMaxHeight, 120.0f, 1000.0f),
 		THEME_NUMBER("Inspector", InspectorFeatureButtonGap, 0.0f, 24.0f),
 		THEME_NUMBER("Inspector", InspectorColorSwatchWidth, 32.0f, 240.0f),
@@ -101,7 +107,10 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Layers", LayerChildIndent, 0.0f, 80.0f),
 		THEME_NUMBER("Layers", LayerScopeIndent, 0.0f, 48.0f),
 		THEME_NUMBER("Layers", LayerChildIconSize, 8.0f, 32.0f),
+		THEME_NUMBER("Layers", LayerEyeSize, 8.0f, 32.0f),
+		THEME_NUMBER("Layers", ChevronSize, 8.0f, 32.0f),
 		THEME_NUMBER("Layers", LayerConnectorOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", BadgeCornerRadius, 0.0f, 8.0f),
 		THEME_NUMBER("Layers", LayerItemGap, 0.0f, 24.0f),
 		THEME_NUMBER("Layers", LayerRowInsetLeading, 0.0f, 32.0f),
 		THEME_NUMBER("Layers", LayerRowInsetTrailing, 0.0f, 32.0f),
@@ -148,6 +157,8 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(WellBottom), THEME_COLOR(FillTop), THEME_COLOR(FillBottom),
 		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified),
 		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
+		THEME_COLOR(BadgeTop), THEME_COLOR(BadgeBottom), THEME_COLOR(BadgeHairline),
+		THEME_COLOR(InspectorHairline),
 		THEME_COLOR(IconRest), THEME_COLOR(IconHover), THEME_COLOR(GroupRowCross)
 	};
 #undef THEME_COLOR

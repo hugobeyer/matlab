@@ -32,6 +32,7 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerRow)
 		: _bEnabled(true)
 		, _bExpanded(false)
+		, _bHasChildren(true)
 		, _bSelected(false)
 		, _bReference(false)
 		, _bSolo(false)
@@ -49,6 +50,8 @@ public:
 		SLATE_ATTRIBUTE(FText, ColorBadge)
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bExpanded)
+		// False: the disclosure chevron fades and ignores clicks -- nothing to open.
+		SLATE_ATTRIBUTE(bool, bHasChildren)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		SLATE_ATTRIBUTE(bool, bReference)
 		// Soloed layers light the eye in the accent, so the one layer the preview is showing is
@@ -72,6 +75,9 @@ public:
 		SLATE_EVENT(FPointerEventHandler, OnDragDetected)
 		// Right button. The row selects itself first, so the menu always acts on what it opened on.
 		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
+		// Left click on the composition badge (BLEND/OVER/COAT/DETAIL) and the colour-blend badge.
+		SLATE_EVENT(FOnGetContent, OnGetBadgeMenu)
+		SLATE_EVENT(FOnGetContent, OnGetColorBadgeMenu)
 		// Enter or focus loss commits; Escape arrives as OnCleared and is dropped.
 		SLATE_EVENT(FOnTextCommitted, OnNameCommitted)
 	SLATE_END_ARGS()

@@ -2989,9 +2989,15 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
 	EMixtormatRockBlendMode RockBlendMode = EMixtormatRockBlendMode::Replace;
 
-	// Multiplies the rock height (0-1, 1 = highest possible top) before it is mixed in.
+	// Multiplies the rock height before it is mixed in.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float RockHeightScale = 1.0f;
+
+	// Remap the rock field to 0..1 from its own measured min/max before Height Scale, so the
+	// deepest wall is 0 and the highest top is 1 whatever the tilt, slope or clusters do. Off
+	// passes the raw field (tops near 1, walls falling below 0).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
+	bool bRockNormalizeHeight = true;
 };
 
 // Pebbles: faceted, chamfered stones scattered on a tileable jittered grid. Each stone has its

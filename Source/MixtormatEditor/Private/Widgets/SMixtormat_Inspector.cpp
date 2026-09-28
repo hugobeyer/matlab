@@ -3589,9 +3589,13 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockSkew", "Skew"), Rock, &FMixtormatRockFormation::RockSkew, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("RockSkewHint", "Offsets rock rows diagonally while preserving tile wrapping."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockHeightScale", "Height Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
-		LOCTEXT("RockHeightScaleHint", "Scales rock height before blending.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockHeightScale", "Height Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("RockHeightScaleHint", "Scales rock height before blending.")),
+		MakeMemberToggle<FMixtormatRockFormation>(
+			LOCTEXT("RockNormalize", "Normalize"), Rock, &FMixtormatRockFormation::bRockNormalizeHeight,
+			LOCTEXT("RockNormalizeHint", "Remap the rock height to 0-1 from its own lowest and highest point, before Height Scale."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 2.0, 1.0, 0.01,
@@ -5500,6 +5504,26 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					BuildInstanceBanner()
+				]
+				// Nothing selected: document-wide settings. Empty for now.
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SBox)
+					.Visibility_Lambda([this]()
+					{
+						return bHasWorkingMaterial && !HasAnySelection() ? EVisibility::Visible : EVisibility::Collapsed;
+					})
+					.Padding(FMargin(MixtormatTokens::GroupOuterGap, 0.0f))
+					[
+						SNew(SMixtormatInspectorGroup)
+						.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
+						.InitiallyExpanded(true)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("GlobalEmpty", "No global settings yet."))
+							.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText().CopyWithNewOpacity(0.5f)))
+						]
+					]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

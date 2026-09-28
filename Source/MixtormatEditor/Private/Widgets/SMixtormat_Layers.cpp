@@ -3638,8 +3638,24 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
 					+ SVerticalBox::Slot().FillHeight(1.0f)
 					[
-						SNew(SScrollBox)
-						+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
+						// Rows handle their own presses, so a left press that reaches this border
+						// landed on empty space: deselect, and the inspector falls back to globals.
+						SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
+						.Padding(0.0f)
+						.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent& MouseEvent)
+						{
+							if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !HasAnySelection())
+							{
+								return FReply::Unhandled();
+							}
+							ClearLayerSelection();
+							return FReply::Handled();
+						})
+						[
+							SNew(SScrollBox)
+							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
+						]
 					]
 					// A hairline like the one above the scroll box, so the permanent controls read
 					// as their own footer rather than as one more row of the stack.
@@ -4500,6 +4516,24 @@ bool SMixtormat::BeginRenameSelection()
 	return true;
 }
 
+void SMixtormat::ClearLayerSelection()
+{
+	SelectedLayerIndex = INDEX_NONE;
+	bHasSelectedLayer = false;
+	SelectedMaskIndex = INDEX_NONE;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedLayerIds.Reset();
+	SyncSelectedLayerControls();
+	RebuildMaskList();
+}
+
+bool SMixtormat::HasAnySelection() const
+{
+	return WorkingLayers.IsValidIndex(SelectedLayerIndex) || SelectedGroupId.IsValid();
+}
+
 FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 {
 	SelectedGroupId = GroupId;
@@ -4992,6 +5026,17 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
 				return Owner.IsValid() && Owner->IsLayerExpanded(LayerIndex);
 			})
+			.bHasChildren_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.Num() > 0;
+			})
+			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerCompositionMenu(LayerIndex); })
+			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
+			.OnGetColorBadgeMenu_Lambda([this, LayerIndex]()
+			{
+				SelectWorkingLayer(LayerIndex);
+				return BuildBaseColorBlendModeMenu();
+			})
 			.bSelected_Lambda([this, LayerIndex]()
 			{
 				return SelectedLayerIndex == LayerIndex || IsLayerMultiSelected(LayerIndex);
@@ -5069,6 +5114,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				.Connector(ScopeConnectorFor(Layer.Children, ChildIndex))
+				// Only children that have a blend mode get a badge menu: masks, and generated
+				// masks that emit coverage (not filters, ID nodes or generators).
+				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Mask
+					? FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, ChildIndex)
+					: (Child.Type == EMixtormatLayerChildType::Generated
+						|| Child.Type == EMixtormatLayerChildType::Craquelure
+						|| Child.Type == EMixtormatLayerChildType::ColorId
+						|| Child.Type == EMixtormatLayerChildType::RandomId)
+						? FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex)
+						: FOnGetContent())
 				.bActive_Lambda([this, LayerIndex, ChildIndex]()
 				{
 					return IsLayerChildEnabled(LayerIndex, ChildIndex);
@@ -6010,6 +6065,34 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 			RemoveMaskFromLayer(LayerIndex, MaskIndex);
 		}))
 		.Destructive();
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerCompositionMenu(const int32 LayerIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TArray<FText> Options = MixtormatLayerBadges::CompositionOptions();
+	for (int32 Index = 0; Index < Options.Num(); ++Index)
+	{
+		const auto Choice = static_cast<MixtormatLayerBadges::EComposition>(Index);
+		Menu.Item(
+			Options[Index],
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, LayerIndex, Choice]()
+			{
+				if (WorkingLayers.IsValidIndex(LayerIndex))
+				{
+					MixtormatLayerBadges::ApplyComposition(WorkingLayers[LayerIndex], Choice);
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, Choice]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& MixtormatLayerBadges::CompositionOf(WorkingLayers[LayerIndex]) == Choice;
+			}));
+	}
 	return Menu.Build();
 }
 

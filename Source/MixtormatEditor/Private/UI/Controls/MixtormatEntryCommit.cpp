@@ -92,18 +92,11 @@ void FMixtormatEntryCommit::Cancel()
 	{
 		return;
 	}
+	const TSharedRef<FMixtormatEntryCommit> KeepAlive = AsShared();
 	bCancel = true;
 	// The field commits on losing focus; Finish() then reports the discard.
 	FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Cleared);
-	if (IsActive())
-	{
-		// Focus was already elsewhere, so no commit is coming. Close it here.
-		Finish();
-		if (ClosedWithoutCommit)
-		{
-			ClosedWithoutCommit();
-		}
-	}
+	CloseIfNoCommitArrived();
 }
 
 void FMixtormatEntryCommit::Accept()
@@ -112,21 +105,31 @@ void FMixtormatEntryCommit::Accept()
 	{
 		return;
 	}
+	const TSharedRef<FMixtormatEntryCommit> KeepAlive = AsShared();
 	FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Mouse);
-	if (IsActive())
-	{
-		Finish();
-		if (ClosedWithoutCommit)
-		{
-			ClosedWithoutCommit();
-		}
-	}
+	CloseIfNoCommitArrived();
 }
 
 bool FMixtormatEntryCommit::IsOverEntry(const FVector2D& ScreenPosition) const
 {
 	const TSharedPtr<SWidget> Pinned = Entry.Pin();
 	return Pinned.IsValid() && Pinned->GetTickSpaceGeometry().IsUnderLocation(ScreenPosition);
+}
+
+void FMixtormatEntryCommit::CloseIfNoCommitArrived()
+{
+	if (!IsActive())
+	{
+		return;
+	}
+	// Focus was already elsewhere, so no commit is coming. Copy the callback first: it may
+	// destroy whoever owns this session.
+	const TFunction<void()> Callback = ClosedWithoutCommit;
+	Finish();
+	if (Callback)
+	{
+		Callback();
+	}
 }
 
 void FMixtormatEntryCommit::StopWatching()

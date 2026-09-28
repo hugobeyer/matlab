@@ -833,6 +833,7 @@ namespace MixtormatGpuCompositor
 		uint32 BlendMode = 0;
 		float Amount = 1.0f;
 		float HeightScale = 1.0f;
+		bool bNormalize = true;
 		// Hash of the field-shaping settings only (not Amount / HeightScale), for the node cache.
 		uint64 FieldKey = 0;
 	};

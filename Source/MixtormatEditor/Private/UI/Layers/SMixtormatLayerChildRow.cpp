@@ -42,8 +42,10 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 			[
 				SNew(SBox)
 				.HeightOverride(MixtormatTokens::LayerChildRowHeight)
+				// Same leading/trailing insets as a layer row, plus the child indent, so both
+				// follow the Leading/Trailing inset tokens together.
 				.Padding(FMargin(
-					MixtormatTokens::LayerChildIndent,
+					MixtormatTokens::LayerRowInsetLeading + MixtormatTokens::LayerChildIndent,
 					0.0f,
 					MixtormatTokens::LayerRowInsetTrailing,
 					0.0f))
@@ -113,6 +115,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					[
 						SNew(SMixtormatBadge)
 						.Text(InArgs._Badge)
+						.OnGetMenuContent(InArgs._OnGetBadgeMenu)
 						// Collapsed rather than drawn empty. A badge is a fixed-width pill, so a
 						// child whose slot has nothing to say -- an ID node, whose name already
 						// says it -- would otherwise print a blank box down the column. The row's

@@ -45,6 +45,10 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 FSlateColor SMixtormatIconButton::GetGlyphColor() const
 {
 	// No plate, so every state has to live in the glyph itself.
+	if (!IsEnabled())
+	{
+		return MixtormatPalette::IconRest().CopyWithNewOpacity(0.25f);
+	}
 	if (bActive.Get(false))
 	{
 		return IsHovered() ? MixtormatPalette::AccentBright() : MixtormatPalette::Accent();
@@ -59,12 +63,20 @@ FCursorReply SMixtormatIconButton::OnCursorQuery(const FGeometry&, const FPointe
 
 FReply SMixtormatIconButton::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)
 {
-	if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+	// Disabled: pass the press through, so a faded chevron behaves like the row behind it.
+	if (!IsEnabled() || MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
 	{
 		return FReply::Unhandled();
 	}
 	bPressed = true;
 	return FReply::Handled();
+}
+
+// A fast second click arrives here instead of OnMouseButtonDown. Treat it as a press so the
+// release fires the button again, and never let it reach the row behind (select + expand).
+FReply SMixtormatIconButton::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	return OnMouseButtonDown(MyGeometry, MouseEvent);
 }
 
 FReply SMixtormatIconButton::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)

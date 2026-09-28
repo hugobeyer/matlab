@@ -3,8 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Framework/SlateDelegates.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+
+class SMenuAnchor;
 
 // The fixed-width mark that says how a row composites.
 //
@@ -14,13 +17,28 @@
 //
 // One widget for the layer stack, the child rows and the group headers, so the three can never
 // drift apart.
+//
+// Painted as a small well: a vertical ramp with a hairline along the top. When OnGetMenuContent is
+// bound, a left click opens that menu (the row's blend-mode choices) and does not select the row.
 class SMixtormatBadge final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatBadge) {}
 		SLATE_ATTRIBUTE(FText, Text)
 		SLATE_ATTRIBUTE(FText, ToolTip)
+		SLATE_EVENT(FOnGetContent, OnGetMenuContent)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
+
+private:
+	FLinearColor GetTop() const;
+	FLinearColor GetBottom() const;
+
+	FOnGetContent OnGetMenuContent;
+	TSharedPtr<SMenuAnchor> MenuAnchor;
 };
