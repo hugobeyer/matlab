@@ -2547,6 +2547,12 @@ namespace MixtormatGpuCompositor
 		const int32 WriteIndex = LayerCtx.LayerIndex & 1;
 		TArray<FPendingCraquelureRelief, TInlineAllocator<2>>& PendingCraquelureReliefs =
 			LayerCtx.PendingCraquelureReliefs;
+		// A hidden layer still resolves its craquelure mask (other layers may reference it), but
+		// its relief must not carve the surface accumulated below it.
+		if (!Layer.bEnabled)
+		{
+			return;
+		}
 		TShaderMapRef<FMixtormatCraquelureReliefCS> CraquelureReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		// Craquelure relief runs after erosion but before chipping. Chipping selects
 		// from the current height and its cavity, so it must see cracks already carved
