@@ -304,21 +304,32 @@ void FMixtormatStyle::Refresh()
 		.SetPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabToggle"), TabToggle);
 
-	// Icon-only toggle: the glyph carries the state through its colour, so there is no plate
-	// behind it in any state. A filled background on a 16px eye reads as a button and competes
-	// with the header title next to it.
+	// Viewport rail buttons: each on its own rounded plate. Hover and press add the accent to the
+	// plate; the glyph is dimmed at rest and full on hover (rail icons draw in the foreground).
+	const FLinearColor OverlayPlate = MixtormatPalette::OverlayButtonPlate();
+	const auto AccentAdded = [&OverlayPlate](const float Amount)
+	{
+		FLinearColor Lit = OverlayPlate + MixtormatPalette::Accent() * Amount;
+		Lit.A = OverlayPlate.A;
+		return Lit;
+	};
+	const float PlateRadius = MixtormatTokens::CornerRadius;
+	const FSlateRoundedBoxBrush PlateRest(OverlayPlate, PlateRadius);
+	const FSlateRoundedBoxBrush PlateHover(AccentAdded(MixtormatTokens::OverlayHoverAccent), PlateRadius);
+	const FSlateRoundedBoxBrush PlatePress(AccentAdded(MixtormatTokens::OverlayPressAccent), PlateRadius);
+	const FSlateRoundedBoxBrush PlateChecked(AccentAdded(MixtormatTokens::OverlayHoverAccent * 0.6f), PlateRadius);
 	FCheckBoxStyle ViewportOverlayToggle = FCheckBoxStyle()
 		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
-		.SetUncheckedImage(FSlateNoResource())
-		.SetUncheckedHoveredImage(FSlateNoResource())
-		.SetUncheckedPressedImage(FSlateNoResource())
-		.SetCheckedImage(FSlateNoResource())
-		.SetCheckedHoveredImage(FSlateNoResource())
-		.SetCheckedPressedImage(FSlateNoResource())
-		.SetUndeterminedImage(FSlateNoResource())
-		.SetUndeterminedHoveredImage(FSlateNoResource())
-		.SetUndeterminedPressedImage(FSlateNoResource())
-		.SetForegroundColor(FSlateColor(WithOpacity(Text, 0.55f)))
+		.SetUncheckedImage(PlateRest)
+		.SetUncheckedHoveredImage(PlateHover)
+		.SetUncheckedPressedImage(PlatePress)
+		.SetCheckedImage(PlateChecked)
+		.SetCheckedHoveredImage(PlateHover)
+		.SetCheckedPressedImage(PlatePress)
+		.SetUndeterminedImage(PlateRest)
+		.SetUndeterminedHoveredImage(PlateHover)
+		.SetUndeterminedPressedImage(PlatePress)
+		.SetForegroundColor(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
 		.SetHoveredForegroundColor(FSlateColor(Text))
 		.SetPressedForegroundColor(FSlateColor(Text))
 		.SetCheckedForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
@@ -361,11 +372,11 @@ void FMixtormatStyle::Refresh()
 	// 10x24 hole that stretched the glyph. Every state here is resourceless like the toggle, so
 	// the rail responds in foreground colour only, and the padding is square.
 	FButtonStyle ViewportOverlayButton = FButtonStyle()
-		.SetNormal(FSlateNoResource())
-		.SetHovered(FSlateNoResource())
-		.SetPressed(FSlateNoResource())
-		.SetDisabled(FSlateNoResource())
-		.SetNormalForeground(FSlateColor(WithOpacity(Text, 0.55f)))
+		.SetNormal(PlateRest)
+		.SetHovered(PlateHover)
+		.SetPressed(PlatePress)
+		.SetDisabled(PlateRest)
+		.SetNormalForeground(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(MixtormatPalette::AccentBright()))
 		.SetDisabledForeground(FSlateColor(DisabledText))

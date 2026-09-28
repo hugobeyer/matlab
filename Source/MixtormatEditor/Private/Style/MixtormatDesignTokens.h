@@ -326,6 +326,11 @@ namespace MixtormatTokens
 	// it and without this the first group reads as attached to that bar rather than as the
 	// first thing in the column.
 	inline float InspectorTopMargin = 8.0f;
+	// Viewport rail buttons: accent added to the plate on hover / press, and the icon's opacity
+	// at rest (full on hover).
+	inline float OverlayHoverAccent = 0.18f;
+	inline float OverlayPressAccent = 0.35f;
+	inline float OverlayIconRestOpacity = 0.45f;
 	// Header text alignment: 0 left, 1 centre, 2 right. Text only -- the foldout chevron, state,
 	// action and reset keep their places. Groups are the collapsible bars; subgroups are card
 	// titles and row captions inside them.

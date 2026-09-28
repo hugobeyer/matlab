@@ -162,6 +162,8 @@ public:
 	void ResetChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;
+	// True while the light is being rotated, and briefly after, so the gizmo can show only then.
+	bool IsRotatingLighting() const { return FPlatformTime::Seconds() - LastLightRotateTime < 0.4; }
 
 protected:
 	virtual TSharedRef<FEditorViewportClient> MakeEditorViewportClient() override;
@@ -236,7 +238,7 @@ private:
 	bool bUsingStudioEnvironment = false;
 	EMixtormatPreviewMesh CurrentPreviewMesh = EMixtormatPreviewMesh::Sphere;
 	EMixtormatPreviewQuality CurrentPreviewQuality = EMixtormatPreviewQuality::Default;
-	bool bDisplacementEnabled = false;
+	bool bDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;
 	float DisplacementAmount = 1.0f;
 	FMixtormatFinalSettings FinalSettings;
@@ -245,6 +247,7 @@ private:
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;
 	float CameraFov = MixtormatPreviewCamera::FovDefault;
+	double LastLightRotateTime = -1000.0;
 	float LightingYaw = -45.0f;
 	float LightingPitch = -35.0f;
 

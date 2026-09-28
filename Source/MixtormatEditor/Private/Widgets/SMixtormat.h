@@ -1460,7 +1460,7 @@ private:
 	bool bShowCompositionBefore = false;
 	bool bPreviewOverlayUiVisible = true;
 	bool bBypassSelectedChild = false;
-	bool bPreviewDisplacementEnabled = false;
+	bool bPreviewDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;
 	bool bSavedGlobalUVRotation90 = false;
 	// Document-level final passes (final height AO), saved with the recipe.

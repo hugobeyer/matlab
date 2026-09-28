@@ -79,6 +79,9 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Preview overlays", ViewportOverlayClusterInset, 0.0f, 24.0f),
 		THEME_NUMBER("Preview overlays", ViewportOverlayItemGap, 0.0f, 24.0f),
 		THEME_NUMBER("Preview overlays", ViewportOverlayButtonGap, 0.0f, 24.0f),
+		THEME_NUMBER("Preview overlays", OverlayHoverAccent, 0.0f, 1.0f),
+		THEME_NUMBER("Preview overlays", OverlayPressAccent, 0.0f, 1.0f),
+		THEME_NUMBER("Preview overlays", OverlayIconRestOpacity, 0.0f, 1.0f),
 		THEME_NUMBER("Inspector", InspectorTopMargin, 0.0f, 48.0f),
 		THEME_NUMBER("Inspector", GroupHeaderAlign, 0.0f, 2.0f),
 		THEME_NUMBER("Inspector", SubgroupHeaderAlign, 0.0f, 2.0f),
@@ -158,7 +161,7 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified),
 		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
 		THEME_COLOR(BadgeTop), THEME_COLOR(BadgeBottom), THEME_COLOR(BadgeHairline),
-		THEME_COLOR(InspectorHairline),
+		THEME_COLOR(InspectorHairline), THEME_COLOR(OverlayButtonPlate),
 		THEME_COLOR(WellTopHover), THEME_COLOR(WellBottomHover), THEME_COLOR(WellOutline),
 		THEME_COLOR(WellOutlineHover), THEME_COLOR(WellEntry),
 		THEME_COLOR(IconRest), THEME_COLOR(IconHover), THEME_COLOR(GroupRowCross)

@@ -824,7 +824,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
 					[
-						SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+						SNew(SImage)
+						.Image(FMixtormatStyle::Get().GetBrush(IconName))
+						.ColorAndOpacity(FSlateColor::UseForeground())
 					]
 				]
 			]
@@ -896,7 +898,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
 					[
-						SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(IconName))
+						SNew(SImage)
+						.Image(FMixtormatStyle::Get().GetBrush(IconName))
+						.ColorAndOpacity(FSlateColor::UseForeground())
 					]
 				]
 			]
@@ -926,7 +930,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
 				[
-					SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+					SNew(SImage)
+					.Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+					.ColorAndOpacity(FSlateColor::UseForeground())
 				]
 			]
 		]
@@ -1264,9 +1270,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(SBox)
 			.WidthOverride(MixtormatLightGizmo::Size)
 			.HeightOverride(MixtormatLightGizmo::Size)
-			.Visibility_Lambda([this]()
+			// Only while the light is being rotated.
+			.Visibility_Lambda([this, PreviewViewport]()
 			{
-				return bPreviewOverlayUiVisible ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+				return bPreviewOverlayUiVisible && PreviewViewport->IsRotatingLighting()
+					? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 			})
 			[
 				SNew(SMixtormatLightGizmo)
