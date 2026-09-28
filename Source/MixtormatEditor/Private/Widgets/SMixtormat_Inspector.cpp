@@ -742,6 +742,114 @@ TSharedRef<SWidget> SMixtormat::BuildLayerBlurControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffectType Type)
+{
+	const auto Flow = [this, Type]() -> FMixtormatLayerEffect*
+	{
+		FMixtormatLayerEffect* Effect = GetSelectedGeneratorFlow();
+		return Effect && Effect->ProceduralType == Type ? Effect : nullptr;
+	};
+	const auto HasOwner = [this]()
+	{
+		const FMixtormatChildAddress Address = GetSelectedChildAddress();
+		const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+		const FMixtormatLayerChild* Owner = Child && Children
+			? Children->FindByPredicate([Child](const FMixtormatLayerChild& Candidate)
+				{ return Candidate.ChildId == Child->ScopeOwnerChildId; }) : nullptr;
+		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
+			&& Owner->Generator.Type == EMixtormatGeneratorType::RockFormation;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox).IsEnabled_Lambda(HasOwner);
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+		LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
+		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning Rock Formation's signed distance or height field.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowAmount, 0.0, 1.0, 1.0, 0.01),
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowTangent", "Normal / Tangent"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowTangent, 0.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAngle", "Angle"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowAngle, -180.0, 180.0, 0.0, 1.0),
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBend", "Bend"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowBend, -180.0, 180.0, 0.0, 1.0)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSeed", "Seed"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowSeed, 0.0, 1024.0, 1),
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowRadius", "Radius (texels)"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowRadius, 1.0, 16.0, 2)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowReach", "Reach (UV)"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowReach, 0.0, 1.0, 0.1, 0.001),
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFeather", "Feather"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowFeather, 0.0, 1.0, 0.5, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAlong", "Offset Along"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowOffsetAlong, -1.0, 1.0, 0.0, 0.01),
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAcross", "Offset Across"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowOffsetAcross, -1.0, 1.0, 0.0, 0.01)));
+
+	if (Type == EMixtormatEffectType::ShapeDeform)
+	{
+		const auto SourceAddress = MakeAddressResolver<FMixtormatLayerEffect>(
+			Flow, &FMixtormatLayerEffect::GeneratorFlowSource);
+		AddSliderRow(Panel, SNew(SBox)
+			.IsEnabled_Lambda([this, Flow, SourceAddress]()
+			{
+				const FMixtormatLayerEffect* Effect = Flow();
+				return Effect && GetEffectiveEnumParameter(SourceAddress(), static_cast<int64>(Effect->GeneratorFlowSource))
+					== static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance);
+			})
+			[
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowShapeOffset", "Shape Offset (UV)"), Flow,
+					&FMixtormatLayerEffect::GeneratorFlowShapeOffset, -0.25, 0.25, 0.0, 0.001,
+					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height."))
+			]);
+		AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBulge", "Bulge / Pinch"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowBulge, -0.25, 0.25, 0.0, 0.001));
+	}
+	else
+	{
+		// Both UV warping and carving trace the shared direction field.
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowTraceLength", "Trace Length (UV)"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowTraceLength, 0.0, 1.0, 0.1, 0.001),
+			MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSteps", "Steps"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowSteps, 1.0, 64.0, 16)));
+		if (Type == EMixtormatEffectType::GeneratorFlow)
+		{
+			AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowWarpStrength", "Warp Strength"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowWarpStrength, -4.0, 4.0, 1.0, 0.01));
+		}
+		else if (Type == EMixtormatEffectType::FlowCarve)
+		{
+			AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowCarveMode", "Mode"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowCarveMode));
+			AddSliderRow(Panel, MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowDepth", "Depth"), Flow,
+					&FMixtormatLayerEffect::GeneratorFlowDepth, 0.0, 1.0, 0.05, 0.001),
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowWidth", "Width (UV)"), Flow,
+					&FMixtormatLayerEffect::GeneratorFlowWidth, 0.0, 0.25, 0.01, 0.001)));
+			AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFalloff", "Falloff"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowFalloff, 0.1, 8.0, 1.0, 0.01));
+		}
+	}
+	const FText Title = Type == EMixtormatEffectType::ShapeDeform
+		? LOCTEXT("ShapeDeformHeading", "SHAPE DEFORM")
+		: Type == EMixtormatEffectType::FlowCarve
+			? LOCTEXT("FlowCarveHeading", "FLOW CARVE") : LOCTEXT("GeneratorFlowHeading", "GENERATOR FLOW");
+	return SNew(SBox)
+		.Visibility_Lambda([Flow]() { return Flow() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(Title)
+			.InitiallyExpanded(true)
+			.HeaderAction(MakeChildOutputPreviewButton(GetPreviewOutputSetForEffectType(Type)))
+			[Panel]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 {
 	const auto Flow = [this]() { return GetSelectedFlowWarp(); };
@@ -5418,6 +5526,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]
+										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::ShapeDeform)]
+										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::GeneratorFlow)]
+										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::FlowCarve)]
 					+ SScrollBox::Slot()[BuildLayerBlurControls()]
 					+ SScrollBox::Slot()[BuildBreakupControls()]
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]

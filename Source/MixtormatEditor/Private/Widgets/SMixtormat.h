@@ -388,6 +388,12 @@ private:
 	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
 	TSharedRef<SWidget> BuildLayerBlurControls();
 	TSharedRef<SWidget> BuildFlowWarpControls();
+	FMixtormatLayerEffect* GetSelectedGeneratorFlow();
+	const FMixtormatLayerEffect* GetSelectedGeneratorFlow() const;
+	bool CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const;
+	FReply AddGeneratorFlow(const FMixtormatChildAddress& Owner, EMixtormatEffectType Type);
+	void AddGeneratorFlowMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner);
+	TSharedRef<SWidget> BuildGeneratorFlowControls(EMixtormatEffectType Type);
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);

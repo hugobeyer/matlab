@@ -294,6 +294,11 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 	}
 	else
 	{
+		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		if (!Child || !IsChildOutputPreviewReady(*Child))
+		{
+			return FReply::Handled();
+		}
 		DebugPreviewMode = EMixtormatDebugPreviewMode::ChildOutput;
 		ChildPreviewTarget = Target;
 	}
@@ -401,6 +406,53 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	if (!IsGroupChildEnabled(Child))
 	{
 		return false;
+	}
+	if (Child.Type == EMixtormatLayerChildType::Effect)
+	{
+		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
+		const EMixtormatEffectType Type = Asset ? Asset->EffectType : Child.Effect.ProceduralType;
+		if (MixtormatIsGeneratorFlowEffect(Type))
+		{
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+			if (!Children || !Child.ScopeOwnerChildId.IsValid())
+			{
+				return false;
+			}
+			const FGuid GroupId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
+				? WorkingLayers[SelectedLayerIndex].GroupId : SelectedGroupId;
+			if (const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId))
+			{
+				if (!Group->bEnabled)
+				{
+					return false;
+				}
+			}
+			int32 CurrentIndex = ResolveChildIndexAt(Address);
+			FGuid OwnerId = Child.ScopeOwnerChildId;
+			bool bImmediateOwner = true;
+			// Require preceding, enabled ancestors. This also rejects cycles and missing owners.
+			while (OwnerId.IsValid())
+			{
+				const int32 OwnerIndex = Children->IndexOfByPredicate(
+					[OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
+				if (OwnerIndex == INDEX_NONE || OwnerIndex >= CurrentIndex)
+				{
+					return false;
+				}
+				const FMixtormatLayerChild& Owner = (*Children)[OwnerIndex];
+				if (!IsGroupChildEnabled(Owner)
+					|| (bImmediateOwner && (Owner.Type != EMixtormatLayerChildType::Generator
+						|| Owner.Generator.Type != EMixtormatGeneratorType::RockFormation)))
+				{
+					return false;
+				}
+				bImmediateOwner = false;
+				CurrentIndex = OwnerIndex;
+				OwnerId = Owner.ScopeOwnerChildId;
+			}
+			return ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask, NAME_None).IsValid();
+		}
 	}
 	if (Child.Type == EMixtormatLayerChildType::CombineId
 		|| Child.Type == EMixtormatLayerChildType::IdGroup)
@@ -552,7 +604,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 		.OnGetMenuContent_Lambda([this, Primary, Secondary, MatchesDesc]() -> TSharedRef<SWidget>
 		{
 			MixtormatMenu::FBuilder Menu;
-			Menu.Caption(LOCTEXT("PreviewMenuIds", "IDS"));
+			Menu.Caption(LOCTEXT("PreviewMenuOutputs", "OUTPUTS"));
 			Menu.Item(Primary.Label, nullptr, FSimpleDelegate::CreateLambda([this, Primary]()
 			{
 				ToggleChildOutputPreview(

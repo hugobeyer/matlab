@@ -56,6 +56,9 @@ RWTexture2D<float> OutRockTop;
 RWTexture2D<float> OutRockChamfer;
 RWTexture2D<float> OutRockWall;
 RWTexture2D<float> OutRockEdgeDistance;
+// XY: local chunk-boundary distance in UV units (negative inside), outline sampled.
+// This is a bounded neighbourhood query, not a global SDF or a propagation solve.
+RWTexture2D<float2> OutRockBoundaryField;
 RWTexture2D<uint> OutRockIds;
 RWTexture2D<float> OutHeight;
 
@@ -662,7 +665,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float bestH = 0.0f;
 	int bestCls = 0;
 	uint bestSlot = 0u;
-	float2 bestPr = 0.0f;
+	float nearestOutside = ROCK_BIG;
+	float deepestInside = 0.0f;
+	bool hasBoundary = false;
 
 	for (int dj = -2; dj <= 2; dj++)
 	{
@@ -678,15 +683,24 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			{
 				const uint slot = cellIndex * (uint)MaxLeaves + k;
 				const FRockLeaf L = Leaves[slot];
-				if (hit && L.Top <= bestH)
-				{
-					continue;
-				}
 				// Into the chunk's rest frame: undo the rigid move and rotation.
 				const float2 c = float2(L.Cx, L.Cy);
 				const float2 d = pl - c - float2(L.Mx, L.My);
 				const float2 pr = c + float2(L.CosA * d.x + L.SinA * d.y, -L.SinA * d.x + L.CosA * d.y);
-				if (length(pr - c) > L.Radius)
+				const float centreDistance = length(pr - c);
+				// Radius encloses the gapped polygon; a farther chunk cannot improve either
+				// the closest exterior edge or the deepest interior boundary.
+				if (centreDistance - L.Radius < max(nearestOutside, deepestInside))
+				{
+					const float sd = RockLeafSd(L, slot, pr);
+					if (sd < ROCK_BIG)
+					{
+						hasBoundary = true;
+						nearestOutside = min(nearestOutside, abs(sd));
+						if (sd < 0.0f) deepestInside = max(deepestInside, -sd);
+					}
+				}
+				if (centreDistance > L.Radius || (hit && L.Top <= bestH))
 				{
 					continue;
 				}
@@ -698,7 +712,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					bestH = H;
 					bestCls = cls;
 					bestSlot = slot;
-					bestPr = pr;
 				}
 			}
 		}
@@ -708,9 +721,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRockTop[Pixel] = hit && bestCls == 0 ? 1.0f : 0.0f;
 	OutRockChamfer[Pixel] = hit && bestCls == 1 ? 1.0f : 0.0f;
 	OutRockWall[Pixel] = hit && bestCls == 2 ? 1.0f : 0.0f;
-	OutRockEdgeDistance[Pixel] = hit
-		? min(RockLeafSd(Leaves[bestSlot], bestSlot, bestPr) / (float)CellsU, 1e3f)
-		: 1e3f;
+	const float boundaryDistance = hasBoundary
+		? (deepestInside > 0.0f ? -deepestInside : nearestOutside) / (float)CellsU : 0.0f;
+	OutRockEdgeDistance[Pixel] = boundaryDistance;
+	OutRockBoundaryField[Pixel] = float2(boundaryDistance, hasBoundary ? 1.0f : 0.0f);
 	OutRockIds[Pixel] = hit ? Leaves[bestSlot].Id : MIXTORMAT_INVALID_REGION;
 #else
 	const float Source = SourceHeight.Load(int3(Pixel, 0));

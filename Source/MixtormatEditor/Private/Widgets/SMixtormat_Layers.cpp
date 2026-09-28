@@ -36,6 +36,18 @@ namespace
 			&& EffectTypeOf(Child) == EMixtormatEffectType::FlowWarp;
 	}
 
+	bool IsGeneratorFlow(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Effect
+			&& MixtormatIsGeneratorFlowEffect(EffectTypeOf(Child));
+	}
+
+	bool CanOwnGeneratorFlow(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Generator
+			&& Child.Generator.Type == EMixtormatGeneratorType::RockFormation;
+	}
+
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		// Generators as well as effects. A mask scoped under a generator is the whole of its
@@ -269,6 +281,10 @@ namespace
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
+		if (IsGeneratorFlow(Child))
+		{
+			return CanOwnGeneratorFlow(Owner);
+		}
 		if (Child.Type == EMixtormatLayerChildType::PatternId)
 		{
 			return Owner.Type == EMixtormatLayerChildType::IdGroup;
@@ -1999,7 +2015,7 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
-	if (IsMaskFilter(Group->Children[ChildIndex]))
+	if (IsMaskFilter(Group->Children[ChildIndex]) || IsGeneratorFlow(Group->Children[ChildIndex]))
 	{
 		return FReply::Unhandled();
 	}
@@ -2129,7 +2145,7 @@ FReply SMixtormat::MoveChildToLayer(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
 	{
 		return FReply::Unhandled();
 	}
@@ -2184,7 +2200,7 @@ FReply SMixtormat::MoveChildToGroup(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
 	{
 		return FReply::Unhandled();
 	}
@@ -2391,6 +2407,23 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
 
+	if (IsGeneratorFlow(Clipboard.Payload))
+	{
+		if (!DestContainer->IsValidIndex(AnchorChildIndex)
+			|| !CanOwnGeneratorFlow((*DestContainer)[AnchorChildIndex])
+			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		const int32 ScopedInsert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
+		return Clipboard.Mode != EMixtormatChildClipboardMode::Instance
+			|| MixtormatParameterBinding::ClassifyInstancePlacement(
+				FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+				Clipboard.Source.OwnerId, Clipboard.Source.ChildId, Dest.OwnerId, ScopedInsert)
+				== MixtormatParameterBinding::EInstancePlacement::Valid
+			? ScopedInsert : INDEX_NONE;
+	}
+
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
 		// A plain duplicate or a published-output mask is severed from its source, so any position
@@ -2455,6 +2488,12 @@ FText SMixtormat::GetChildPasteReason(
 		return FText::GetEmpty();
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	if (IsGeneratorFlow(Clipboard.Payload))
+	{
+		return CanPasteChild(Dest, AnchorChildIndex)
+			? LOCTEXT("PasteGeneratorFlowReady", "Place under this Rock Formation generator.")
+			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Rock Formation owner and valid instance ordering.");
+	}
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
 		if (IsMaskFilter(Clipboard.Payload))
@@ -2529,9 +2568,10 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		FMixtormatLayerChild Pasted = Clipboard.Payload;
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
-		// No feature owner at paste time. Duplicate the mask payload, not a placement link that may
-		// name a child in another container.
-		Pasted.ScopeOwnerChildId.Invalidate();
+		// Never retain the source container's owner. Flow tools require the destination generator;
+		// other plain copies keep their existing standalone paste behavior.
+		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted)
+			? (*DestContainer)[AnchorChildIndex].ChildId : FGuid();
 		DestContainer->Insert(MoveTemp(Pasted), FinalInsert);
 		MixtormatParameterBinding::RegenerateChildIdentity((*DestContainer)[FinalInsert]);
 	}
@@ -2845,11 +2885,15 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 	{
 		return FReply::Unhandled();
 	}
+	const FMixtormatLayerChild* NewSourceChild = MixtormatParameterBinding::FindChild(
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSource.OwnerId, NewSource.ChildId);
+	if (NewSourceChild && IsGeneratorFlow(*NewSourceChild) && !Placement->ScopeOwnerChildId.IsValid())
+	{
+		return FReply::Unhandled();
+	}
 	if (Placement->ScopeOwnerChildId.IsValid())
 	{
 		const int32 OwnerIndex = FindChildById(*Container, Placement->ScopeOwnerChildId);
-		const FMixtormatLayerChild* NewSourceChild = MixtormatParameterBinding::FindChild(
-			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSource.OwnerId, NewSource.ChildId);
 		if (!Container->IsValidIndex(OwnerIndex)
 			|| !NewSourceChild
 			|| !CanKeepScopedPlacement((*Container)[OwnerIndex], *NewSourceChild))
@@ -2882,10 +2926,13 @@ TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex
 	Menu.Caption(LOCTEXT("MoveChildToLayerCaption", "Move To"));
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& IsMaskFilter(*ResolveChild(LayerIndex, ChildIndex)))
+		&& (IsMaskFilter(*ResolveChild(LayerIndex, ChildIndex))
+			|| IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))))
 	{
 		Menu.Item(
-			LOCTEXT("MoveMaskFilterWithMask", "Move the owning mask instead"),
+			IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))
+				? LOCTEXT("MoveFlowWithGenerator", "Move the owning generator instead")
+				: LOCTEXT("MoveMaskFilterWithMask", "Move the owning mask instead"),
 			nullptr,
 			FSimpleDelegate()).Enabled(false);
 		return Menu.Build();
@@ -2959,7 +3006,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				FSimpleDelegate::CreateLambda([this, Address, NewSource]()
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
-				}));
+				}))
+				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
 		}
 	}
 	// A group's shared children are exactly as valid a source as a layer's -- see
@@ -2993,7 +3041,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				FSimpleDelegate::CreateLambda([this, Address, NewSource]()
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
-				}));
+				}))
+				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
 		}
 	}
 	if (Menu.IsEmpty())
@@ -3011,6 +3060,7 @@ void SMixtormat::AddSharedChildMenuItems(
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const bool bInstance = Child && Child->IsInstance();
 
+	AddGeneratorFlowMenuItems(Menu, Address);
 	Menu.Separator();
 	Menu.Item(
 		LOCTEXT("CopyChildContext", "Copy"),
@@ -3130,7 +3180,8 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	}
 
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
+		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
 	{
 		return FReply::Handled();
 	}
@@ -3825,6 +3876,9 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
+			case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
+			case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
+			case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 			case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
@@ -3837,6 +3891,9 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return Child.Effect.StainMode == EMixtormatStainMode::Deposit
 				? LOCTEXT("DepositStainEffectName", "Stain Deposit")
 				: LOCTEXT("WetStainEffectName", "Wet Stain");
+		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
+		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
+		case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
@@ -3958,6 +4015,10 @@ FText SMixtormat::GetLayerChildSourceText(
 		return LOCTEXT("MissingScopeOwner", "OWNER MISSING");
 	}
 	const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
+	if (IsGeneratorFlow(Child))
+	{
+		return LOCTEXT("GeneratorFlowTarget", "TARGET · GEN");
+	}
 	if (IsFlowWarp(Child))
 	{
 		return Owner.Type == EMixtormatLayerChildType::Mask
@@ -4208,7 +4269,8 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath EffectPath)
 {
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
+		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
 	{
 		return FReply::Handled();
 	}
@@ -4633,6 +4695,7 @@ TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
 TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 {
 	MixtormatMenu::FBuilder Menu;
+	AddGeneratorFlowMenuItems(Menu, MakeGroupChildAddress(GroupId, INDEX_NONE));
 	for (const FMixtormatEffectEntry& Entry : FMixtormatRegistry::GetEffects())
 	{
 		Menu.Item(
@@ -5039,7 +5102,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
-					[this, LayerIndex, ChildIndex, ChildName, bCanLeaveLayer = !IsMaskFilter(Child)]
+					[this, LayerIndex, ChildIndex, ChildName,
+										 bCanLeaveLayer = !IsMaskFilter(Child) && !IsGeneratorFlow(Child)]
 					(const FGeometry&, const FPointerEvent&)
 				{
 					return FReply::Handled().BeginDragDrop(
@@ -5502,6 +5566,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
+	AddGeneratorFlowMenuItems(Menu, MakeChildAddress(LayerIndex, INDEX_NONE));
 	const TArray<FMixtormatEffectEntry> Effects = FMixtormatRegistry::GetEffects();
 	for (const FMixtormatEffectEntry& Entry : Effects)
 	{
@@ -7110,6 +7175,76 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges() const
 		return nullptr;
 	}
 	return Effect;
+}
+
+bool SMixtormat::CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const
+{
+	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
+	const int32 OwnerIndex = ResolveChildIndexAt(Owner);
+	return Children && Children->IsValidIndex(OwnerIndex)
+		&& CanOwnGeneratorFlow((*Children)[OwnerIndex])
+		&& CanAddScopedChild(*Children, OwnerIndex);
+}
+
+void SMixtormat::AddGeneratorFlowMenuItems(
+	MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
+{
+	for (const EMixtormatEffectType Type : {EMixtormatEffectType::ShapeDeform,
+		EMixtormatEffectType::GeneratorFlow, EMixtormatEffectType::FlowCarve})
+	{
+		FMixtormatLayerChild Probe;
+		Probe.Type = EMixtormatLayerChildType::Effect;
+		Probe.Effect.ProceduralType = Type;
+		Menu.Item(GetLayerChildName(Probe), MixtormatIcons::Effect(),
+			FSimpleDelegate::CreateLambda([this, Owner, Type]() { AddGeneratorFlow(Owner, Type); }))
+			.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanAddGeneratorFlow(Owner); }));
+	}
+}
+
+FReply SMixtormat::AddGeneratorFlow(
+	const FMixtormatChildAddress& Owner, const EMixtormatEffectType Type)
+{
+	if (!MixtormatIsGeneratorFlowEffect(Type) || !CanAddGeneratorFlow(Owner))
+	{
+		return FReply::Handled();
+	}
+	FMixtormatLayerChild Child;
+	Child.Type = EMixtormatLayerChildType::Effect;
+	Child.Effect.ProceduralType = Type;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Effect, Type);
+	const int32 InsertAt = InsertScopedChild(
+		*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child));
+	if (InsertAt == INDEX_NONE)
+	{
+		return FReply::Handled();
+	}
+	if (Owner.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		FinishGroupChildEdit(Owner.OwnerId, InsertAt);
+	}
+	else
+	{
+		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; });
+		SetLayerExpanded(LayerIndex, true);
+		SelectWorkingChild(LayerIndex, InsertAt);
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	}
+	return FReply::Handled();
+}
+
+FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow()
+{
+	return const_cast<FMixtormatLayerEffect*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedGeneratorFlow());
+}
+
+const FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow() const
+{
+	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
+	return Effect && Effect->Effect.IsNull()
+		&& MixtormatIsGeneratorFlowEffect(Effect->ProceduralType) ? Effect : nullptr;
 }
 
 FReply SMixtormat::AddFlowWarpToLayer(

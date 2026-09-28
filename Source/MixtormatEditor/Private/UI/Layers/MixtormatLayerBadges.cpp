@@ -150,6 +150,9 @@ namespace MixtormatLayerBadges
 		case EMixtormatEffectType::Breakup:   return LOCTEXT("EffectBadgeBreakup", "BREAK");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("EffectBadgeWorn", "WORN");
 		case EMixtormatEffectType::FlowWarp:  return LOCTEXT("EffectBadgeFlowWarp", "WARP");
+		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("EffectBadgeShapeDeform", "SHAPE");
+		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("EffectBadgeGeneratorFlow", "FLOW");
+		case EMixtormatEffectType::FlowCarve: return LOCTEXT("EffectBadgeFlowCarve", "CARVE");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("EffectBadgeLayerBlur", "BLUR");
 		case EMixtormatEffectType::Runoff:    return LOCTEXT("EffectBadgeRunoff", "RUNOFF");
 		default:                              return LOCTEXT("EffectBadgePeel", "PEEL");

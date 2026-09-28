@@ -192,5 +192,15 @@
 			"uiMax": 0.10000000149011612,
 			"snap": 0
 		}
+	},
+	"Rock Formation":
+	{
+		"Generator.RockSkew":
+		{
+			"default": 0,
+			"uiMin": -2,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
+		}
 	}
 }

@@ -81,7 +81,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputRockWall", "Wall"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("RockEdgeDistance")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputRockEdgeDistance", "Edge Distance"),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockEdgeDistance", "Signed Boundary Distance"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
@@ -100,7 +100,33 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	case EMixtormatLayerChildType::Effect:
-		if (EffectType == EMixtormatEffectType::Breakup)
+		if (MixtormatIsGeneratorFlowEffect(EffectType))
+		{
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputFlowDirection", "Flow Direction"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true,
+				EffectType != EMixtormatEffectType::ShapeDeform, NAME_None});
+			if (EffectType != EMixtormatEffectType::FlowCarve)
+			{
+				Result.Outputs.Add({FName(TEXT("WarpedUVGrid")),
+					NSLOCTEXT("SMixtormat", "PreviewOutputWarpedUVGrid", "Warped UV Grid"),
+					EMixtormatPreviewOutputKind::WarpedUVGrid, false, true,
+										EffectType != EMixtormatEffectType::GeneratorFlow, NAME_None});
+			}
+			Result.Outputs.Add({FName(TEXT("Influence")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputInfluence", "Influence"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("Validity")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputValidity", "Validity"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
+			if (EffectType == EMixtormatEffectType::FlowCarve)
+			{
+				Result.Outputs.Add({FName(TEXT("CarveMask")),
+					NSLOCTEXT("SMixtormat", "PreviewOutputCarveMask", "Carve Mask"),
+					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
+			}
+		}
+		else if (EffectType == EMixtormatEffectType::Breakup)
 		{
 			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
 			// Gap -- so PreviewGapMaskName tells the compositor which published output to borrow

@@ -1298,7 +1298,7 @@ namespace MixtormatGpuCompositor
 		bool bGeneratedHeight = false;
 		// Per-layer generator field outputs, keyed by source child index, so the ID phase and the
 		// height phase share one evaluation.
-		TMap<int32, TArray<FRDGTextureRef, TInlineAllocator<6>>> GeneratorFields;
+		TMap<int32, TArray<FRDGTextureRef, TInlineAllocator<7>>> GeneratorFields;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1886,7 +1886,7 @@ struct FMixtormatNodeCacheEntry
 	uint64 Key = 0;
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	// Fixed slots per producer kind; unused slots stay null.
-	TRefCountPtr<IPooledRenderTarget> Outputs[6];
+	TRefCountPtr<IPooledRenderTarget> Outputs[7];
 	uint64 Bytes = 0;
 	uint64 LastUsed = 0;
 };

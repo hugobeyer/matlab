@@ -353,6 +353,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamfer)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockWall)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockEdgeDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutRockBoundaryField)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRockIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
 	END_SHADER_PARAMETER_STRUCT()
@@ -802,12 +803,13 @@ namespace
 			P->HeightScale = Rock.HeightScale;
 		};
 
-		// Outputs in fixed node-cache slots: height, top, chamfer, wall, edge distance, IDs.
-		FRDGTextureRef Outputs[6] = {};
+		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
+		// signed boundary distance + outline-sampled flag (RG32F).
+		FRDGTextureRef Outputs[7] = {};
 		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
-		if (const TArray<FRDGTextureRef, TInlineAllocator<6>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
-			for (int32 Slot = 0; Slot < 6; ++Slot)
+			for (int32 Slot = 0; Slot < 7; ++Slot)
 			{
 				Outputs[Slot] = (*Memo)[Slot];
 			}
@@ -823,17 +825,18 @@ namespace
 					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			if (Hit.IsValid())
 			{
-				static const TCHAR* const Names[6] = {
+				static const TCHAR* const Names[7] = {
 					TEXT("Mixtormat.Rock.Height"), TEXT("Mixtormat.Rock.Top"), TEXT("Mixtormat.Rock.Chamfer"),
-					TEXT("Mixtormat.Rock.Wall"), TEXT("Mixtormat.Rock.EdgeDistance"), TEXT("Mixtormat.Rock.Ids")};
-				for (int32 Slot = 0; Slot < 6; ++Slot)
+					TEXT("Mixtormat.Rock.Wall"), TEXT("Mixtormat.Rock.EdgeDistance"), TEXT("Mixtormat.Rock.Ids"),
+					TEXT("Mixtormat.Rock.BoundaryField")};
+				for (int32 Slot = 0; Slot < 7; ++Slot)
 				{
 					Outputs[Slot] = Hit->Outputs[Slot].IsValid()
 						? GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot])
 						: nullptr;
 				}
 			}
-			if (!Outputs[0] || !Outputs[1] || !Outputs[2] || !Outputs[3] || !Outputs[4] || !Outputs[5])
+			if (!Outputs[0] || !Outputs[1] || !Outputs[2] || !Outputs[3] || !Outputs[4] || !Outputs[5] || !Outputs[6])
 			{
 				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
 				{
@@ -846,6 +849,7 @@ namespace
 				Outputs[3] = Make(PF_R16F, TEXT("Mixtormat.Rock.Wall"));
 				Outputs[4] = Make(PF_R32_FLOAT, TEXT("Mixtormat.Rock.EdgeDistance"));
 				Outputs[5] = Make(PF_R32_UINT, TEXT("Mixtormat.Rock.Ids"));
+				Outputs[6] = Make(PF_G32R32F, TEXT("Mixtormat.Rock.BoundaryField"));
 
 				// Build: each cell's chunk geometry, once, into buffers the field reads.
 				const uint32 CellCount = static_cast<uint32>(Layout.CellsU) * static_cast<uint32>(Layout.CellsV);
@@ -889,6 +893,7 @@ namespace
 				P->OutRockWall = GraphBuilder.CreateUAV(Outputs[3]);
 				P->OutRockEdgeDistance = GraphBuilder.CreateUAV(Outputs[4]);
 				P->OutRockIds = GraphBuilder.CreateUAV(Outputs[5]);
+				P->OutRockBoundaryField = GraphBuilder.CreateUAV(Outputs[6]);
 				// The field stage reads no texture; the combine-only bindings stay unset.
 				ClearUnusedGraphResources(Shader, P);
 				FComputeShaderUtils::AddPass(GraphBuilder,
@@ -901,7 +906,7 @@ namespace
 						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 					Entry->Key = NodeKey;
 					Entry->Resolution = Size;
-					for (int32 Slot = 0; Slot < 6; ++Slot)
+					for (int32 Slot = 0; Slot < 7; ++Slot)
 					{
 						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
 					}
@@ -909,8 +914,9 @@ namespace
 				}
 			}
 
-			// Reusable outputs: chunk IDs for the ID consumers below this row, and the four masks
-			// for Copy Output / published-source masks anywhere downstream.
+			// Reusable outputs: chunk IDs for ID consumers and four scalar outputs for
+			// Copy Output / published-source masks. Slot 4 is the new signed boundary
+			// distance; slot 6 carries its validity without changing scalar mask reads.
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
 			static const TCHAR* const MaskNames[4] = {
 				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance")};
@@ -933,8 +939,8 @@ namespace
 					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
 
-			TArray<FRDGTextureRef, TInlineAllocator<6>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
-			Stored.Append(Outputs, 6);
+			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			Stored.Append(Outputs, 7);
 		}
 		if (bFieldOnly)
 		{
@@ -1008,7 +1014,7 @@ namespace
 		constexpr int32 SlotCount = 5;
 		FRDGTextureRef Outputs[SlotCount] = {};
 		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
-		if (const TArray<FRDGTextureRef, TInlineAllocator<6>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
 			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
 			{
@@ -1105,7 +1111,7 @@ namespace
 					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
 
-			TArray<FRDGTextureRef, TInlineAllocator<6>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, SlotCount);
 		}
 		if (bFieldOnly)
