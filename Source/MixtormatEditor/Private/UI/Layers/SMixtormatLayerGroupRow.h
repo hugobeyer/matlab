@@ -79,4 +79,6 @@ private:
 	FOnTextCommitted OnNameCommitted;
 	TSharedPtr<class SWidgetSwitcher> NameSwitcher;
 	TSharedPtr<class SEditableTextBox> NameEditBox;
+	// Shared typed-entry rules (Enter/Tab/focus loss/left click accept; Escape/right click cancel).
+	TSharedPtr<class FMixtormatEntryCommit> NameEntry;
 };

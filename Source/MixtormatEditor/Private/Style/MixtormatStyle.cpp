@@ -9,6 +9,7 @@
 #include "Style/MixtormatPalette.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateImageBrush.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 
 #include "Misc/Paths.h"
@@ -670,54 +671,81 @@ void FMixtormatStyle::Refresh()
 				FSlateColor(Icon)));
 	};
 
-	SetIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-all"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/ellipsis"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/plus"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/copy"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder-open"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh-cw"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash-2"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip-vertical"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/box"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/circle"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/rectangle-horizontal"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Cylinder"), TEXT("Icons/cylinder"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
-	SetIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/workflow"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
-	SetIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
-	SetIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/book-open-text"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
-	SetIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/message-square"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
-	SetIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/sun"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/cloud-sun"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/contrast"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/sunrise"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/signal-low"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/signal-medium"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/signal-high"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	// UI glyphs: 64 px white-on-transparent PNGs sliced from one sheet at a uniform scale, so
+	// every icon shares a stroke weight. White so the brush tint colours them, as with the SVGs.
+	const auto SetPngIcon = [&Icon](const FName Key, const TCHAR* FileName, const FVector2D Size)
+	{
+		StyleInstance->Set(
+			Key,
+			new FSlateImageBrush(
+				StyleInstance->RootToContentDir(FileName, TEXT(".png")),
+				Size,
+				FSlateColor(Icon)));
+	};
+
+	SetPngIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-as"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/overflow"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/add"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/duplicate"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/cube"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/sphere"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/plane"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Cylinder"), TEXT("Icons/cylinder"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetPngIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/nodes"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetPngIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetPngIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/documentation"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetPngIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/feedback"), FVector2D(MixtormatTokens::IconBrushSizeLarge, MixtormatTokens::IconBrushSizeLarge));
+	SetPngIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/light-neutral"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/light-soft"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/light-dramatic"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/light-rim"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/quality-high"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something
 	// that shapes coverage, a bolt for something that acts on the surface, a shoot for something
 	// grown from what is underneath.
-	SetIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/square-dashed"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/zap"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/sprout"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/mask"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	// Layer kinds. A square for a material, a circle for a fill -- the shapes the add bar uses.
-	SetIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/box"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/circle"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/layer-material"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/layer-fill"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 
 	// Disclosure. These were being borrowed from FAppStyle, which meant the one glyph in the stack
 	// that is not ours changed weight whenever the editor theme did.
-	SetIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-	SetIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+
+	// Hierarchy and indentation glyphs: tree connectors for scoped children and indent levels.
+	{
+		const FVector2D Size(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize);
+		SetPngIcon(TEXT("Mixtormat.Icon.ChevronUp"), TEXT("Icons/chevron-up"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.ChevronDownBold"), TEXT("Icons/chevron-down-bold"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.HierarchyRoot"), TEXT("Icons/hierarchy-root"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.Indent1"), TEXT("Icons/indent-1"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.Indent2"), TEXT("Icons/indent-2"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.Indent3"), TEXT("Icons/indent-3"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.TreeElbow"), TEXT("Icons/tree-elbow"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.TreeBranchDotted"), TEXT("Icons/tree-branch-dotted"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.TreeTee"), TEXT("Icons/tree-tee"), Size);
+		SetPngIcon(TEXT("Mixtormat.Icon.TreeCross"), TEXT("Icons/tree-cross"), Size);
+	}
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the
 	// logo, so every size below holds those ratios rather than squashing the glyph.

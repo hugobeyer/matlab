@@ -45,7 +45,7 @@ namespace
 	bool CanOwnGeneratorFlow(const FMixtormatLayerChild& Child)
 	{
 		return Child.Type == EMixtormatLayerChildType::Generator
-			&& Child.Generator.Type == EMixtormatGeneratorType::RockFormation;
+			&& MixtormatCanOwnGeneratorFlow(Child.Generator.Type);
 	}
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
@@ -126,6 +126,54 @@ namespace
 			OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
 		}
 		return Depth;
+	}
+
+	// Every child shows what kind of thing it is, masks included. An 11px thumbnail of a mask is a
+	// grey smudge that says less than the glyph does, and it cost a pooled thumbnail per row; which
+	// mask it actually is now answers on hover, at a size worth looking at.
+	TSharedRef<SWidget> MakeChildTypeIcon(const FMixtormatLayerChild& Child)
+	{
+		return SNew(SImage)
+			.Image(Child.Type == EMixtormatLayerChildType::Effect
+					// A generator takes the effect glyph rather than the generated-mask one. It is
+					// neither, but of the two it is the structural node -- it writes height -- and
+					// the generated glyph on this row would suggest coverage.
+					|| Child.Type == EMixtormatLayerChildType::Generator
+				? MixtormatIcons::Effect()
+				: (Child.Type == EMixtormatLayerChildType::Generated
+						|| Child.Type == EMixtormatLayerChildType::Craquelure
+						|| Child.Type == EMixtormatLayerChildType::Filter
+						|| Child.Type == EMixtormatLayerChildType::HsvFilter
+						|| Child.Type == EMixtormatLayerChildType::RandomId
+						|| Child.Type == EMixtormatLayerChildType::RampId
+						|| Child.Type == EMixtormatLayerChildType::UvFromIds
+						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+						|| Child.Type == EMixtormatLayerChildType::PatternId
+						|| Child.Type == EMixtormatLayerChildType::CombineId
+						|| Child.Type == EMixtormatLayerChildType::IdGroup)
+					? MixtormatIcons::Generated()
+					: MixtormatIcons::Mask())
+			.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
+	}
+
+
+	// Tree connector for a scoped row: a tee while another child of the same owner follows it,
+	// an elbow on the last one. Null for a top-level child.
+	const FSlateBrush* ScopeConnectorFor(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		if (!Children.IsValidIndex(ChildIndex) || !Children[ChildIndex].ScopeOwnerChildId.IsValid())
+		{
+			return nullptr;
+		}
+		const FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
+		for (int32 Later = ChildIndex + 1; Later < Children.Num(); ++Later)
+		{
+			if (Children[Later].ScopeOwnerChildId == OwnerId)
+			{
+				return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeTee"));
+			}
+		}
+		return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeElbow"));
 	}
 
 	// How far a row is indented.
@@ -519,6 +567,8 @@ void SMixtormat::InitializeNewLayer(
 	case EMixtormatLayerType::Fill:
 		Layer.DisplayName = FText::Format(LOCTEXT("FillLayerNumber", "Fill Layer {0}"), FText::AsNumber(LayerNumber));
 		Layer.bOverrideBaseColor = true;
+		// Mid-dark neutral rather than white, so a new fill reads as a surface under the lights.
+		Layer.BaseColor = FLinearColor(0.2f, 0.2f, 0.2f, 1.0f);
 		Layer.bOverrideRoughness = true;
 		Layer.bOverrideIOR = true;
 		Layer.bOverrideMetallic = true;
@@ -2491,8 +2541,8 @@ FText SMixtormat::GetChildPasteReason(
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
-			? LOCTEXT("PasteGeneratorFlowReady", "Place under this Rock Formation generator.")
-			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Rock Formation owner and valid instance ordering.");
+			? LOCTEXT("PasteGeneratorFlowReady", "Place under this generator.")
+			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Rock Formation or Pebbles owner and valid instance ordering.");
 	}
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
@@ -4048,32 +4098,7 @@ FText SMixtormat::GetLayerChildSourceText(
 
 TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, const int32 ChildIndex)
 {
-	const FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
-
-	// Every child shows what kind of thing it is, masks included. An 11px thumbnail of a mask is a
-	// grey smudge that says less than the glyph does, and it cost a pooled thumbnail per row; which
-	// mask it actually is now answers on hover, at a size worth looking at.
-	return SNew(SImage)
-		.Image(Child.Type == EMixtormatLayerChildType::Effect
-				// A generator takes the effect glyph rather than the generated-mask one. It is
-				// neither, but of the two it is the structural node -- it writes height -- and
-				// the generated glyph on this row would suggest coverage.
-				|| Child.Type == EMixtormatLayerChildType::Generator
-			? MixtormatIcons::Effect()
-			: (Child.Type == EMixtormatLayerChildType::Generated
-					|| Child.Type == EMixtormatLayerChildType::Craquelure
-					|| Child.Type == EMixtormatLayerChildType::Filter
-					|| Child.Type == EMixtormatLayerChildType::HsvFilter
-					|| Child.Type == EMixtormatLayerChildType::RandomId
-					|| Child.Type == EMixtormatLayerChildType::RampId
-					|| Child.Type == EMixtormatLayerChildType::UvFromIds
-					|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
-					|| Child.Type == EMixtormatLayerChildType::PatternId
-					|| Child.Type == EMixtormatLayerChildType::CombineId
-					|| Child.Type == EMixtormatLayerChildType::IdGroup)
-				? MixtormatIcons::Generated()
-				: MixtormatIcons::Mask())
-		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
+	return MakeChildTypeIcon(*ResolveChild(LayerIndex, ChildIndex));
 }
 
 TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex, const int32 ChildIndex)
@@ -4525,6 +4550,8 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 		[
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
+			.Icon()[MakeChildTypeIcon(Child)]
+			.Connector(ScopeConnectorFor(Group->Children, ChildIndex))
 			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
 			// a layer, and this child's container is a group.
 			.Kind(MixtormatLayerBadges::KindForChild(Child))
@@ -5041,6 +5068,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
+				.Connector(ScopeConnectorFor(Layer.Children, ChildIndex))
 				.bActive_Lambda([this, LayerIndex, ChildIndex]()
 				{
 					return IsLayerChildEnabled(LayerIndex, ChildIndex);

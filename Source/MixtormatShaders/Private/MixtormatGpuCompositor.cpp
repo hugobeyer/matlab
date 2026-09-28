@@ -2716,10 +2716,16 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
 					});
 				bool bWarpableOwner = false;
+				bool bFlowGeneratorOwner = false;
 				if (Layer.Children.IsValidIndex(OwnerIndex) && OwnerIndex < SourceChildIndex)
 				{
 					const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
 					bWarpableOwner = Owner.Type == EMixtormatLayerChildType::Mask;
+					// Generator flow tools transform their owning Rock Formation's field. A
+					// disabled owner produces no field, so its tools go with it.
+					bFlowGeneratorOwner = Owner.Type == EMixtormatLayerChildType::Generator
+						&& MixtormatCanOwnGeneratorFlow(Owner.Generator.Type)
+						&& Owner.Generator.bEnabled;
 					if (Owner.Type == EMixtormatLayerChildType::Effect)
 					{
 						const UMixtormatEffect* OwnerAsset = Owner.Effect.Effect.LoadSynchronous();
@@ -2731,13 +2737,21 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 				}
 				const bool bValidFlowWarpScope =
-					ResolvedType == EMixtormatEffectType::FlowWarp && bWarpableOwner;
+					(ResolvedType == EMixtormatEffectType::FlowWarp && bWarpableOwner)
+					|| (MixtormatIsGeneratorFlowEffect(ResolvedType) && bFlowGeneratorOwner);
 				if (!bValidFlowWarpScope)
 				{
 					Data.Children.RemoveAt(Data.Children.Num() - 1);
 					continue;
 				}
 				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+			}
+			else if (MixtormatIsGeneratorFlowEffect(ResolvedType))
+			{
+				// A flow tool without its generator has no field to act on. Inactive, never
+				// substituted with some other field.
+				Data.Children.RemoveAt(Data.Children.Num() - 1);
+				continue;
 			}
 			FEffectRenderData& EffectData = ChildData.Effect;
 			EffectData.Type = ResolvedType;
@@ -2775,6 +2789,11 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (ResolvedType == EMixtormatEffectType::FlowWarp)
 			{
 				GatherFlowWarp(EffectData, LayerEffect);
+			}
+
+			if (MixtormatIsGeneratorFlowEffect(ResolvedType))
+			{
+				GatherGeneratorFlow(EffectData, LayerEffect);
 			}
 
 			if (ResolvedType == EMixtormatEffectType::WornEdges)

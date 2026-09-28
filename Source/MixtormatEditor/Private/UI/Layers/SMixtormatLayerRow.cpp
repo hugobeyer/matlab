@@ -14,6 +14,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "UI/Controls/MixtormatEntryCommit.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
@@ -139,6 +140,10 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 							+ SWidgetSwitcher::Slot()
 							[
 								SAssignNew(NameEditBox, SEditableTextBox)
+								.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+								{
+									return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, KeyEvent) : FReply::Unhandled();
+								})
 								.SelectAllTextWhenFocused(true)
 								.ClearKeyboardFocusOnCommit(true)
 								.OnTextCommitted(this, &SMixtormatLayerRow::HandleNameCommitted)
@@ -306,17 +311,29 @@ void SMixtormatLayerRow::BeginRename()
 	// Without this the box appears and the keystrokes go on reaching the panel, so F2 looks like
 	// it did nothing.
 	FSlateApplication::Get().SetKeyboardFocus(NameEditBox, EFocusCause::SetDirectly);
+	if (!NameEntry.IsValid())
+	{
+		NameEntry = MakeShared<FMixtormatEntryCommit>();
+	}
+	NameEntry->Begin(NameEditBox.ToSharedRef(), [this]()
+	{
+		if (NameSwitcher.IsValid())
+		{
+			NameSwitcher->SetActiveWidgetIndex(0);
+		}
+	});
 }
 
 void SMixtormatLayerRow::HandleNameCommitted(const FText& Text, const ETextCommit::Type CommitType)
 {
+	// Only an explicit Escape or right click discards. Every other commit -- Enter, Tab, focus
+	// moving or clearing (click elsewhere, leaving the window) -- keeps what was typed.
+	const bool bCancelled = NameEntry.IsValid() && NameEntry->Finish();
 	if (NameSwitcher.IsValid())
 	{
 		NameSwitcher->SetActiveWidgetIndex(0);
 	}
-	// Escape arrives as OnCleared. Moving focus away is a commit, the way it is everywhere else
-	// in the editor -- clicking off a half-typed name should keep it, not discard it.
-	if (CommitType == ETextCommit::OnCleared)
+	if (bCancelled)
 	{
 		return;
 	}

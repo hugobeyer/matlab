@@ -1197,25 +1197,41 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				MixtormatRow::Make(Label, SNew(STextBlock).Text(Value))
 			];
 	};
-	// Numeric authoring row: typing is the primary interaction; the wide drag range is a
-	// convenience, not a restriction. EffectiveEntry/Update are captured BY VALUE -- the
-	// sliders outlive this function's stack frame for as long as the menu is open.
-	const auto AddEditRow = [this, &Rows, Key, EffectiveEntry, Update](
+	// Numeric authoring row. The value reads back live from the pending entry, so a drag shows
+	// what it wrote. The drag starts inside a soft range seeded from the parameter's current UI
+	// range when the menu opened and grows by drag past either end, stopping at HardMin/HardMax
+	// -- typing still passes anything. EffectiveEntry/Update/Read/Mutate are captured BY VALUE:
+	// the sliders outlive this function's stack frame for as long as the menu is open.
+	const auto AddEditRow = [this, &Rows, EffectiveEntry, Update](
 		const FText& Label,
-		const float Value,
-		const TFunctionRef<void(FMixtormatParameterAuthoringEntry&, float)>& Mutate)
+		const TFunction<float(const FMixtormatParameterAuthoringEntry&)> Read,
+		const TFunction<void(FMixtormatParameterAuthoringEntry&, float)> Mutate,
+		const double SoftMin,
+		const double SoftMax,
+		const TAttribute<double> HardMin,
+		const TAttribute<double> HardMax,
+		const bool bInteger)
 	{
+		const double Initial = static_cast<double>(Read(EffectiveEntry()));
+		FMixtormatSliderRangeOptions Options;
+		Options.bExpandable = true;
+		Options.HardMin = HardMin;
+		Options.HardMax = HardMax;
 		Rows->AddSlot()
 			.AutoHeight()
 			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
 			[
 				MakeSlider(
 					Label,
-					TAttribute<double>::CreateLambda([Value]() { return static_cast<double>(Value); }),
-					-1.0e4, 1.0e4,
-					static_cast<double>(Value),
+					TAttribute<double>::CreateLambda([EffectiveEntry, Read]()
+					{
+						return static_cast<double>(Read(EffectiveEntry()));
+					}),
+					FMath::Min(SoftMin, Initial),
+					FMath::Max(SoftMax, Initial),
+					Initial,
 					0.0,
-					false,
+					bInteger,
 					FMixtormatOnSliderValueChanged::CreateLambda(
 						[Update, Mutate](const double NewValue)
 					{
@@ -1225,7 +1241,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 						});
 					}),
 					FSimpleDelegate(),
-					LOCTEXT("DevAuthoringRowHint", "Live preview. Unsaved until Save to Plugin Defaults."))
+					LOCTEXT("DevAuthoringRowHint",
+						"Live preview. Drag past an end to widen the range. Unsaved until Save to Plugin Defaults."),
+					Options)
 			];
 	};
 
@@ -1251,24 +1269,117 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				})))
 		];
 
-	AddEditRow(LOCTEXT("DevAuthoringDefault", "Default/Reset"), Current.Default.GetValue(),
-		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Default = Value; });
-	AddEditRow(LOCTEXT("DevAuthoringUiMin", "UI Min"), Current.UiMin.GetValue(),
-		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMin = Value; });
-	AddEditRow(LOCTEXT("DevAuthoringUiMax", "UI Max"), Current.UiMax.GetValue(),
-		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMax = Value; });
-	AddEditRow(LOCTEXT("DevAuthoringSnap", "Snap"), Current.Snap.GetValue(),
-		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Snap = Value; });
+	// Soft ranges seeded from the UI range as the menu opened: the default scrubs inside it,
+	// each end scrubs one span outward from where it is, snap within a tenth of the span.
+	const double UiLow = static_cast<double>(Current.UiMin.GetValue());
+	const double UiHigh = static_cast<double>(Current.UiMax.GetValue());
+	const double Span = FMath::Max(FMath::Abs(UiHigh - UiLow), 1.0e-3);
+	// The back-end clamp as it resolves right now (pending edit included), so editing it below
+	// immediately bounds the Default and UI range rows too.
+	const auto ClampAttribute = [Key](const bool bMax)
+	{
+		return TAttribute<double>::CreateLambda([Key, bMax]() -> double
+		{
+			const TOptional<float> Clamp = MixtormatParameterAuthoring::ResolveAuthoringClamp(Key, bMax);
+			return Clamp.IsSet()
+				? static_cast<double>(Clamp.GetValue())
+				: (bMax ? UE_BIG_NUMBER : -UE_BIG_NUMBER);
+		});
+	};
+	const TAttribute<double> HardLow = ClampAttribute(false);
+	const TAttribute<double> HardHigh = ClampAttribute(true);
+	const bool bIntegerKey = Key.ValueType == EMixtormatParameterValueType::Int;
 
-	// Hard bounds are runtime-owned and read-only here, by design.
-	AddInfo(LOCTEXT("DevAuthoringHardMin", "Hard Min"),
-		Contract && Contract->HardMin.IsSet()
-			? FText::AsNumber(Contract->HardMin.GetValue())
-			: LOCTEXT("DevAuthoringUnbounded", "unlimited"));
-	AddInfo(LOCTEXT("DevAuthoringHardMax", "Hard Max"),
-		Contract && Contract->HardMax.IsSet()
-			? FText::AsNumber(Contract->HardMax.GetValue())
-			: LOCTEXT("DevAuthoringUnbounded2", "unlimited"));
+	Rows->AddSlot().AutoHeight()[MixtormatRow::MakeCaption(LOCTEXT("DevAuthoringVisual", "Visual"))];
+	AddEditRow(LOCTEXT("DevAuthoringDefault", "Default/Reset"),
+		[](const FMixtormatParameterAuthoringEntry& Entry) { return Entry.Default.Get(0.0f); },
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Default = Value; },
+		UiLow, UiHigh, HardLow, HardHigh, bIntegerKey);
+	AddEditRow(LOCTEXT("DevAuthoringUiMin", "UI Min"),
+		[](const FMixtormatParameterAuthoringEntry& Entry) { return Entry.UiMin.Get(0.0f); },
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMin = Value; },
+		UiLow - Span, UiHigh, HardLow, HardHigh, bIntegerKey);
+	AddEditRow(LOCTEXT("DevAuthoringUiMax", "UI Max"),
+		[](const FMixtormatParameterAuthoringEntry& Entry) { return Entry.UiMax.Get(1.0f); },
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.UiMax = Value; },
+		UiLow, UiHigh + Span, HardLow, HardHigh, bIntegerKey);
+	AddEditRow(LOCTEXT("DevAuthoringSnap", "Snap"),
+		[](const FMixtormatParameterAuthoringEntry& Entry) { return Entry.Snap.Get(0.0f); },
+		[](FMixtormatParameterAuthoringEntry& Entry, const float Value) { Entry.Snap = Value; },
+		0.0, Span * 0.1, 0.0, UE_BIG_NUMBER, false);
+
+	// Back-end clamp: editor-only limits for drags, typed values and range growth. A checkbox
+	// turns each end on; off is unlimited (or the runtime contract's Hard bound, if it has one).
+	// Never a shader or gather clamp.
+	Rows->AddSlot().AutoHeight()[MixtormatRow::MakeCaption(LOCTEXT("DevAuthoringClamp", "Back-end Clamp"))];
+	const auto AddClampRow = [this, &Rows, Key, Update, UiLow, UiHigh, Span, bIntegerKey](
+		const FText& Label, const bool bMax)
+	{
+		const auto IsSet = [Key, bMax]()
+		{
+			return MixtormatParameterAuthoring::ResolveAuthoringClamp(Key, bMax).IsSet();
+		};
+		const auto Current = [Key, bMax, UiLow, UiHigh]() -> double
+		{
+			const TOptional<float> Clamp = MixtormatParameterAuthoring::ResolveAuthoringClamp(Key, bMax);
+			return Clamp.IsSet() ? static_cast<double>(Clamp.GetValue()) : (bMax ? UiHigh : UiLow);
+		};
+		const auto Write = [Update, bMax](const TOptional<float> Value)
+		{
+			Update([bMax, Value](FMixtormatParameterAuthoringEntry& Entry)
+			{
+				(bMax ? Entry.ClampMax : Entry.ClampMin) = Value;
+			});
+		};
+		FMixtormatSliderRangeOptions Options;
+		Options.bExpandable = true;
+		Rows->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([IsSet]()
+						{
+							return IsSet() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([Write, Current](const ECheckBoxState State)
+						{
+							Write(State == ECheckBoxState::Checked
+								? TOptional<float>(static_cast<float>(Current()))
+								: TOptional<float>());
+						}),
+						LOCTEXT("DevAuthoringClampToggle", "Off = unlimited."))
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(SBox)
+					.IsEnabled_Lambda(IsSet)
+					[
+						MakeSlider(
+							Label,
+							TAttribute<double>::CreateLambda(Current),
+							bMax ? UiLow : UiLow - Span,
+							bMax ? UiHigh + Span : UiHigh,
+							bMax ? UiHigh : UiLow,
+							0.0,
+							bIntegerKey,
+							FMixtormatOnSliderValueChanged::CreateLambda([Write](const double Value)
+							{
+								Write(static_cast<float>(Value));
+							}),
+							FSimpleDelegate(),
+							LOCTEXT("DevAuthoringClampHint",
+								"Editor clamp: drags and typed values stop here and the slider range never grows past it. Never applied in shaders."),
+							Options)
+					]
+				]
+			];
+	};
+	AddClampRow(LOCTEXT("DevAuthoringClampMin", "Clamp Min"), false);
+	AddClampRow(LOCTEXT("DevAuthoringClampMax", "Clamp Max"), true);
 
 	FString ShaderInfo = FString::Printf(
 		TEXT("normalization: %s | saturates: %s"),

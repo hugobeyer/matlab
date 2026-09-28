@@ -645,7 +645,48 @@ private:
 		const bool bInteger,
 		const FMixtormatOnSliderValueChanged& OnValueChanged,
 		const FSimpleDelegate& ResetDelegate,
-		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+		const TAttribute<FText>& ToolTip = TAttribute<FText>(),
+		const FMixtormatSliderRangeOptions& RangeOptions = FMixtormatSliderRangeOptions());
+
+	// Soft-range policy for a parameter row: the UI range may grow (on release, after pushing
+	// an end) up to the authoring back-end clamp, which also stops drags and typed values.
+	// Not where the shader saturates the value -- past its range it changes nothing. ValueScale
+	// converts stored bounds to the row's UI units.
+	template <typename TKeyFor>
+	static FMixtormatSliderRangeOptions MakeParameterRangeOptions(TKeyFor KeyFor, const double ValueScale = 1.0)
+	{
+		const auto Contract = [KeyFor]() -> const FMixtormatParameterContract*
+		{
+			const FMixtormatParameterDefinitionKey* Key = KeyFor();
+			return Key ? MixtormatParameterContracts::TryGet(Key->Owner, Key->Parameter) : nullptr;
+		};
+		const auto Bound = [KeyFor, ValueScale](const bool bMax) -> double
+		{
+			const FMixtormatParameterDefinitionKey* Key = KeyFor();
+			const TOptional<float> Stored = Key
+				? MixtormatParameterAuthoring::ResolveAuthoringClamp(*Key, bMax) : TOptional<float>();
+			if (!Stored.IsSet())
+			{
+				return bMax ? UE_BIG_NUMBER : -UE_BIG_NUMBER;
+			}
+			return static_cast<double>(Stored.GetValue()) / ValueScale;
+		};
+		FMixtormatSliderRangeOptions Options;
+		Options.bExpandable = TAttribute<bool>::CreateLambda([KeyFor, Contract]()
+		{
+			const FMixtormatParameterContract* C = Contract();
+			return KeyFor() != nullptr && !(C && C->bShaderSaturates);
+		});
+		Options.HardMin = TAttribute<double>::CreateLambda([Bound, ValueScale]()
+		{
+			return ValueScale < 0.0 ? Bound(true) : Bound(false);
+		});
+		Options.HardMax = TAttribute<double>::CreateLambda([Bound, ValueScale]()
+		{
+			return ValueScale < 0.0 ? Bound(false) : Bound(true);
+		});
+		return Options;
+	}
 
 	// Appends a titled card to a panel and hands back the box its rows go in, so a run of
 	// values is one extra line at the top rather than a nested SNew tree around every row.
@@ -919,7 +960,8 @@ private:
 					RefreshLayeredPreview();
 				}
 			}),
-			ToolTip);
+			ToolTip,
+			MakeParameterRangeOptions(KeyFor, ValueScale));
 		return WrapParameterControl(Slider, ResolveTarget);
 	}
 
@@ -1034,7 +1076,8 @@ private:
 					RefreshLayeredPreview();
 				}
 			}),
-			ToolTip);
+			ToolTip,
+			MakeParameterRangeOptions(KeyFor));
 		return WrapParameterControl(Slider, ResolveTarget);
 	}
 
@@ -1433,8 +1476,8 @@ private:
 	float PreviewFov = MixtormatPreviewCamera::FovDefault;
 	float PreviewDisplacementAmount = 1.0f;
 	// Start the overlay preview at half of each preset's authored lighting.
-	float PreviewLightIntensity = 0.5f;
-	float PreviewSkylightIntensity = 0.5f;
+	float PreviewLightIntensity = 0.8f;
+	float PreviewSkylightIntensity = 0.1f;
 	FSoftObjectPath BakeSettingsRecipePath;
 	FString BakeDestinationPath;
 	FString BakeOutputBaseName;

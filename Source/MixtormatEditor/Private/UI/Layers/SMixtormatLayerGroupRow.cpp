@@ -12,6 +12,7 @@
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "UI/Controls/MixtormatEntryCommit.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
@@ -133,6 +134,10 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						+ SWidgetSwitcher::Slot()
 						[
 							SAssignNew(NameEditBox, SEditableTextBox)
+							.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+							{
+								return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, KeyEvent) : FReply::Unhandled();
+							})
 							.SelectAllTextWhenFocused(true)
 							.ClearKeyboardFocusOnCommit(true)
 							.OnTextCommitted(this, &SMixtormatLayerGroupRow::HandleNameCommitted)
@@ -254,17 +259,30 @@ void SMixtormatLayerGroupRow::BeginRename()
 	NameEditBox->SetText(Name.Get(FText::GetEmpty()));
 	NameSwitcher->SetActiveWidgetIndex(1);
 	FSlateApplication::Get().SetKeyboardFocus(NameEditBox, EFocusCause::SetDirectly);
+	if (!NameEntry.IsValid())
+	{
+		NameEntry = MakeShared<FMixtormatEntryCommit>();
+	}
+	NameEntry->Begin(NameEditBox.ToSharedRef(), [this]()
+	{
+		if (NameSwitcher.IsValid())
+		{
+			NameSwitcher->SetActiveWidgetIndex(0);
+		}
+	});
 }
 
 void SMixtormatLayerGroupRow::HandleNameCommitted(
 	const FText& Text,
 	const ETextCommit::Type CommitType)
 {
+	// Only an explicit Escape or right click discards; see SMixtormatLayerRow.
+	const bool bCancelled = NameEntry.IsValid() && NameEntry->Finish();
 	if (NameSwitcher.IsValid())
 	{
 		NameSwitcher->SetActiveWidgetIndex(0);
 	}
-	if (CommitType == ETextCommit::OnCleared)
+	if (bCancelled)
 	{
 		return;
 	}

@@ -12,6 +12,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Images/SImage.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
 
@@ -48,6 +49,22 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					0.0f))
 				[
 					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					[
+						// Dimmer than the glyph: it shows structure, not identity.
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::LayerChildIconSize)
+						.HeightOverride(MixtormatTokens::LayerChildIconSize)
+						.Visibility(InArgs._Connector ? EVisibility::Visible : EVisibility::Collapsed)
+						[
+							SNew(SImage)
+							.Image(InArgs._Connector)
+							.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText().CopyWithNewOpacity(MixtormatTokens::LayerConnectorOpacity)))
+						]
+					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)

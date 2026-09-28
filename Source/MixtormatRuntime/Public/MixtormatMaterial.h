@@ -1405,6 +1405,90 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Output")
 	EMixtormatFlowWarpBlendMode FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::Replace;
 
+	// ---- Generator flow tools (Shape Deform, Generator Flow, Flow Carve) ---------------
+	// One shared direction field, derived from the owning Rock Formation and extended by a
+	// tile-aware jump-flood solve; see Docs/flow_generation_core.md. Distances are UV units.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow")
+	EMixtormatGeneratorFlowSource GeneratorFlowSource = EMixtormatGeneratorFlowSource::SignedDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowAmount = 1.0f;
+
+	// 0 follows the boundary normal (or downhill), 1 its perpendicular contour direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowTangent = 0.0f;
+
+	// Constant rotation of the seeded direction, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float GeneratorFlowAngle = 0.0f;
+
+	// Peak rotation from low-frequency periodic noise, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float GeneratorFlowBend = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0", UIMax = "1024", Delta = "1"))
+	int32 GeneratorFlowSeed = 1;
+
+	// Texel radius of the gradient kernel the seed directions are derived with.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
+	int32 GeneratorFlowRadius = 2;
+
+	// Bartlett (tent) blur of the extended direction field: half-width in output texels. The jump flood hands
+	// each pixel its nearest seed's direction, which is piecewise constant; this smooths it.
+	// 0 keeps the raw field.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "64.0", Delta = "0.5"))
+	float GeneratorFlowSmooth = 8.0f;
+
+	// Propagation distance (UV) over which influence falls to zero.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float GeneratorFlowReach = 0.1f;
+
+	// Fraction of Reach spent fading out. 0 is a hard cut at Reach.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowFeather = 0.5f;
+
+	// Signed offsets, in fractions of Reach, along and across the extended direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowOffsetAlong = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowOffsetAcross = 0.0f;
+
+	// Shape Deform: signed boundary expansion (+) or erosion (-), UV. Signed Distance only.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Shape Deform", meta = (UIMin = "-0.25", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowShapeOffset = 0.0f;
+
+	// Shape Deform: UV displacement along (+, bulge) or against (-, pinch) the direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Shape Deform", meta = (UIMin = "-0.25", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowBulge = 0.0f;
+
+	// Generator Flow / Flow Carve: total traced distance (UV) and its RK2 step count.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float GeneratorFlowTraceLength = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
+	int32 GeneratorFlowSteps = 16;
+
+	// Generator Flow: signed multiplier on the traced displacement.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float GeneratorFlowWarpStrength = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve")
+	EMixtormatFlowCarveMode GeneratorFlowCarveMode = EMixtormatFlowCarveMode::Groove;
+
+	// Flow Carve: gain on the gathered height difference. 1 cuts (Groove) or raises (Deposit)
+	// all the way to the strongest distance-weighted sample; nothing caps it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float GeneratorFlowDepth = 1.0f;
+
+	// Flow Carve: half-width (UV) of the groove across the flow.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.0", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowWidth = 0.01f;
+
+	// Flow Carve: exponent on the along-trace distance falloff.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.1", UIMax = "8.0", Delta = "0.01"))
+	float GeneratorFlowFalloff = 1.0f;
+
 	// ---- Layer Blur ------------------------------------------------------------------
 	// Per axis, like the mask blur, and for the same reasons: the shader runs a dispatch per
 	// direction so a zero radius costs nothing, an unequal pair is anisotropic, and each axis
@@ -2569,6 +2653,14 @@ enum class EMixtormatGeneratorType : uint8
 };
 
 // How a pebble's cut planes are oriented.
+// Generators that publish a signed boundary field and can own Shape Deform / Generator Flow /
+// Flow Carve. One list for runtime gather, GPU passes and editor placement.
+inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
+{
+	return Type == EMixtormatGeneratorType::RockFormation
+		|| Type == EMixtormatGeneratorType::Pebbles;
+}
+
 UENUM(BlueprintType)
 enum class EMixtormatPebbleDirection : uint8
 {

@@ -423,6 +423,86 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+// Generator flow tools scoped under a Rock Formation. One parameter struct for every stage;
+// ClearUnusedGraphResources drops what a stage does not read. See MixtormatGeneratorFlow.usf.
+class FMixtormatGeneratorFlowCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorFlowCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorFlowCS, FGlobalShader);
+
+	// 0 seed, 1 jump flood, 2 resolve, 3 apply, 4 direction preview, 5 UV grid preview,
+	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
+	// 7 one axis of the direction blur.
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 8);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, SolveSize)
+		SHADER_PARAMETER(int32, JumpStep)
+		SHADER_PARAMETER(uint32, Source)
+		SHADER_PARAMETER(float, Tangent)
+		SHADER_PARAMETER(float, Angle)
+		SHADER_PARAMETER(float, Bend)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(int32, Radius)
+		SHADER_PARAMETER(float, Smooth)
+		SHADER_PARAMETER(FIntPoint, BlurAxis)
+		SHADER_PARAMETER(float, Reach)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, OffsetAlong)
+		SHADER_PARAMETER(float, OffsetAcross)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER(uint32, HasCoverage)
+		SHADER_PARAMETER(uint32, Mode)
+		SHADER_PARAMETER(float, ShapeOffset)
+		SHADER_PARAMETER(float, Bulge)
+		SHADER_PARAMETER(float, TraceLength)
+		SHADER_PARAMETER(int32, Steps)
+		SHADER_PARAMETER(float, WarpStrength)
+		SHADER_PARAMETER(uint32, CarveMode)
+		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, Falloff)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RockHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedData)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, JumpIn)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowSmooth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Coverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSeedData)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutJump)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlowField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValidity)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCarveMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutWarpedUV)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatGeneratorFlowCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorFlow.usf",
+	"MainCS",
+	SF_Compute);
+
 
 namespace
 {
@@ -760,6 +840,365 @@ namespace
 	};
 	static constexpr int32 RockMaxVertices = 24;
 
+	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
+	{
+		return Candidate.Type == EMixtormatLayerChildType::Effect
+			&& MixtormatIsGeneratorFlowEffect(Candidate.Effect.Type)
+			&& Candidate.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex;
+	}
+
+	bool IsPreviewingChild(const FRenderRequest& Request, const int32 LayerIndex, const int32 ChildIndex)
+	{
+		return Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput
+			&& Request.DebugSettings.LayerIndex == LayerIndex
+			&& Request.DebugSettings.ChildIndex == ChildIndex;
+	}
+
+	// An item that would leave the height unchanged. Still solved while its preview is up.
+	bool IsNeutralFlowTool(const FEffectRenderData& Flow)
+	{
+		if (Flow.GeneratorFlowAmount == 0.0f)
+		{
+			return true;
+		}
+		switch (Flow.Type)
+		{
+		case EMixtormatEffectType::ShapeDeform:
+			return Flow.GeneratorFlowShapeOffset == 0.0f && Flow.GeneratorFlowBulge == 0.0f;
+		case EMixtormatEffectType::GeneratorFlow:
+			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowWarpStrength == 0.0f;
+		case EMixtormatEffectType::FlowCarve:
+			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
+		default:
+			return true;
+		}
+	}
+
+	bool IsPreviewingAnyFlowTool(
+		const FRenderRequest& Request,
+		const int32 LayerIndex,
+		const FLayerRenderData& Layer,
+		const int32 OwnerSourceChildIndex)
+	{
+		for (const FChildRenderData& Candidate : Layer.Children)
+		{
+			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
+				&& IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool HasActiveFlowTools(
+		const FRenderRequest& Request,
+		const int32 LayerIndex,
+		const FLayerRenderData& Layer,
+		const int32 OwnerSourceChildIndex)
+	{
+		for (const FChildRenderData& Candidate : Layer.Children)
+		{
+			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
+				&& (!IsNeutralFlowTool(Candidate.Effect)
+					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Pebbles publishes a scalar signed distance with a 1e9 no-hit sentinel; the seed stage
+	// reads a (distance, outline-sampled) pair. One cheap pass, never written into the cache.
+	FRDGTextureRef PackScalarBoundary(FMixtormatComposeContext& Ctx, FRDGTextureRef Scalar)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Packed = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.GeneratorFlow.Boundary"));
+		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(6);
+		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		P->OutputSize = Size;
+		P->ScalarBoundary = Scalar;
+		P->OutBoundary = GraphBuilder.CreateUAV(Packed);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorFlow.PackBoundary"),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Packed;
+	}
+
+	// Shape Deform / Generator Flow / Flow Carve under one generator, in authored order.
+	//
+	// Each item solves its own direction field (its Source, Radius and bend differ) against the
+	// height the previous item left, then transforms that height. RockField is the owner's cached
+	// height and is never written: every result is a new texture, so the node cache and the
+	// per-layer memo keep the undeformed field. The boundary field is the owner's original one --
+	// a Shape Deform above does not re-derive it. Published masks/IDs stay undeformed: they are
+	// published in the ID phase, before this runs.
+	//
+	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height so the
+	// owner's combine gates the moved height by moved coverage. Null for Rock Formation.
+	FRDGTextureRef AddGeneratorFlowToolPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& RockChild,
+		FRDGTextureRef BoundaryField,
+		FRDGTextureRef RockField,
+		FRDGTextureRef& InOutCoverage)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		const int32 LayerIndex = LayerCtx.LayerIndex;
+		const FIntPoint Size = Request.Resolution;
+		// The same capped grid the strata solve uses; the resolve refines distance at full res.
+		const FIntPoint SolveSize = StrataSolveResolution(Size);
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		const FIntVector SolveGroups(
+			FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
+		FRHISamplerState* const Sampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+
+		const auto MakeTexture = [&GraphBuilder](const FIntPoint Extent, const EPixelFormat Format, const TCHAR* Name)
+		{
+			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Extent, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		const auto StageShader = [](const int32 Stage)
+		{
+			FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(Stage);
+			return TShaderMapRef<FMixtormatGeneratorFlowCS>(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		};
+
+		FRDGTextureRef Current = RockField;
+		for (const FChildRenderData& FlowChild : Layer.Children)
+		{
+			if (!IsFlowToolChild(FlowChild, RockChild.SourceChildIndex))
+			{
+				continue;
+			}
+			const FEffectRenderData& Flow = FlowChild.Effect;
+			const int32 FlowIndex = FlowChild.SourceChildIndex;
+			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
+			const bool bNeutral = IsNeutralFlowTool(Flow);
+			if (bNeutral && !bPreviewing)
+			{
+				continue;
+			}
+
+			// Independent scope, as under Strata Carver: the item's mask says where this item
+			// acts, not where the layer is.
+			const bool bHasMask = HasScopedMasks(Layer, FlowIndex);
+			FRDGTextureRef Mask = bHasMask
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
+				: Current;
+
+			const auto Fill = [&](FMixtormatGeneratorFlowCS::FParameters* P)
+			{
+				P->OutputSize = Size;
+				P->SolveSize = SolveSize;
+				P->JumpStep = 1;
+				P->Source = Flow.GeneratorFlowSource;
+				P->Tangent = Flow.GeneratorFlowTangent;
+				P->Angle = Flow.GeneratorFlowAngle;
+				P->Bend = Flow.GeneratorFlowBend;
+				P->Seed = Flow.GeneratorFlowSeed;
+				P->Radius = Flow.GeneratorFlowRadius;
+				P->Smooth = Flow.GeneratorFlowSmooth;
+				P->BlurAxis = FIntPoint(1, 0);
+				P->Reach = Flow.GeneratorFlowReach;
+				P->Feather = Flow.GeneratorFlowFeather;
+				P->Amount = Flow.GeneratorFlowAmount;
+				P->OffsetAlong = Flow.GeneratorFlowOffsetAlong;
+				P->OffsetAcross = Flow.GeneratorFlowOffsetAcross;
+				P->HasMask = bHasMask ? 1u : 0u;
+				P->Mode = Flow.Type == EMixtormatEffectType::ShapeDeform ? 0u
+					: (Flow.Type == EMixtormatEffectType::GeneratorFlow ? 1u : 2u);
+				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
+				P->Bulge = Flow.GeneratorFlowBulge;
+				P->TraceLength = Flow.GeneratorFlowTraceLength;
+				P->Steps = Flow.GeneratorFlowSteps;
+				P->WarpStrength = Flow.GeneratorFlowWarpStrength;
+				P->CarveMode = Flow.GeneratorFlowCarveMode;
+				P->Depth = Flow.GeneratorFlowDepth;
+				P->Width = Flow.GeneratorFlowWidth;
+				P->Falloff = Flow.GeneratorFlowFalloff;
+				P->LinearWrapSampler = Sampler;
+				P->RockHeight = Current;
+				P->BoundaryField = BoundaryField;
+				P->FlowMask = Mask;
+				P->HasCoverage = InOutCoverage ? 1u : 0u;
+				P->Coverage = InOutCoverage ? InOutCoverage : Current;
+			};
+
+			// Seed.
+			FRDGTextureRef SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
+			FRDGTextureRef Jump[2] = {
+				MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpA")),
+				MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpB"))};
+			{
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(0);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+				Fill(P);
+				P->OutSeedData = GraphBuilder.CreateUAV(SeedData);
+				P->OutJump = GraphBuilder.CreateUAV(Jump[0]);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Seed.L%d.C%d", LayerIndex, FlowIndex),
+					Shader, P, SolveGroups);
+			}
+
+			// Jump flood: halving strides from the largest power of two within half the grid,
+			// then one extra stride-1 pass to repair the usual JFA misses.
+			int32 Read = 0;
+			{
+				int32 Stride = 1;
+				while (Stride * 2 <= FMath::Max(SolveSize.X, SolveSize.Y) / 2)
+				{
+					Stride *= 2;
+				}
+				TArray<int32, TInlineAllocator<16>> Strides;
+				for (; Stride >= 1; Stride /= 2)
+				{
+					Strides.Add(Stride);
+				}
+				Strides.Add(1);
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(1);
+				for (const int32 Step : Strides)
+				{
+					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+					Fill(P);
+					P->JumpStep = Step;
+					P->JumpIn = Jump[Read];
+					P->OutJump = GraphBuilder.CreateUAV(Jump[1 - Read]);
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Jump%d.L%d.C%d", Step, LayerIndex, FlowIndex),
+						Shader, P, SolveGroups);
+					Read = 1 - Read;
+				}
+			}
+
+			// Resolve at full resolution. Half precision holds a unit direction, a UV distance
+			// under 1 and a 0..1 influence; WarpedUV below must stay 32F to resolve 4K texels.
+			FRDGTextureRef FlowField = MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.Field"));
+			FRDGTextureRef Influence = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Influence"));
+			FRDGTextureRef Validity = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Validity"));
+			{
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(2);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+				Fill(P);
+				P->SeedData = SeedData;
+				P->JumpIn = Jump[Read];
+				P->OutFlowField = GraphBuilder.CreateUAV(FlowField);
+				P->OutInfluence = GraphBuilder.CreateUAV(Influence);
+				P->OutValidity = GraphBuilder.CreateUAV(Validity);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Resolve.L%d.C%d", LayerIndex, FlowIndex),
+					Shader, P, Groups);
+			}
+
+			// Smooth: X then Y. Skipped at zero, where the raw field doubles as the smoothed one.
+			FRDGTextureRef FlowSmooth = FlowField;
+			if (Flow.GeneratorFlowSmooth != 0.0f)
+			{
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(7);
+				FRDGTextureRef Blurred[2] = {
+					MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.SmoothX")),
+					MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.SmoothY"))};
+				FRDGTextureRef Input = FlowField;
+				for (int32 Axis = 0; Axis < 2; ++Axis)
+				{
+					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+					Fill(P);
+					P->BlurAxis = Axis == 0 ? FIntPoint(1, 0) : FIntPoint(0, 1);
+					P->FlowField = Input;
+					P->OutFlowField = GraphBuilder.CreateUAV(Blurred[Axis]);
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Smooth%d.L%d.C%d", Axis, LayerIndex, FlowIndex),
+						Shader, P, Groups);
+					Input = Blurred[Axis];
+				}
+				FlowSmooth = Blurred[1];
+			}
+
+			// Apply.
+			FRDGTextureRef Transformed = MakeTexture(Size, Current->Desc.Format, TEXT("Mixtormat.GeneratorFlow.Height"));
+			FRDGTextureRef CarveMask = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.CarveMask"));
+			FRDGTextureRef WarpedUV = MakeTexture(Size, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.WarpedUV"));
+			FRDGTextureRef MovedCoverage = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Coverage"));
+			{
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(3);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+				Fill(P);
+				P->FlowField = FlowField;
+				P->FlowSmooth = FlowSmooth;
+				P->OutHeight = GraphBuilder.CreateUAV(Transformed);
+				P->OutCarveMask = GraphBuilder.CreateUAV(CarveMask);
+				P->OutWarpedUV = GraphBuilder.CreateUAV(WarpedUV);
+				P->OutCoverage = GraphBuilder.CreateUAV(MovedCoverage);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Apply.L%d.C%d", LayerIndex, FlowIndex),
+					Shader, P, Groups);
+			}
+
+			// Selected-item previews.
+			if (bPreviewing)
+			{
+				FRDGTextureRef Debug = Ctx.OutputDebug[Request.PublishedTargetIndex];
+				const auto BlitMask = [&](const TCHAR* Name, FRDGTextureRef MaskSource)
+				{
+					if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, FName(Name),
+						LayerIndex, FlowIndex))
+					{
+						AddDebugPreviewMaskBlitPass(GraphBuilder, MaskSource, Debug, Size);
+					}
+				};
+				BlitMask(TEXT("Influence"), Influence);
+				BlitMask(TEXT("Validity"), Validity);
+				BlitMask(TEXT("CarveMask"), CarveMask);
+				const auto BlitStage = [&](const int32 Stage, const EMixtormatPreviewOutputKind Kind, const TCHAR* Name)
+				{
+					if (!IsChildOutputPreviewTarget(Request, Kind, FName(Name), LayerIndex, FlowIndex))
+					{
+						return;
+					}
+					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(Stage);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+					Fill(P);
+					// The direction preview shows the smoothed field the tools actually trace.
+					P->FlowField = Stage == 4 ? FlowSmooth : FlowField;
+					P->FlowValidity = Validity;
+					P->WarpedUV = WarpedUV;
+					P->OutputDebug = GraphBuilder.CreateUAV(Debug);
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Preview%d.L%d.C%d", Stage, LayerIndex, FlowIndex),
+						Shader, P, Groups);
+				};
+				BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
+				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUVGrid"));
+			}
+
+			if (!bNeutral)
+			{
+				Current = Transformed;
+				if (InOutCoverage)
+				{
+					InOutCoverage = MovedCoverage;
+				}
+			}
+		}
+		return Current;
+	}
+
 	FRDGTextureRef AddRockFormationPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -947,6 +1386,16 @@ namespace
 			return nullptr;
 		}
 
+		// Scoped flow tools transform the rock's own height before the combine. Run even at
+		// Amount 0 while one of them is previewed, so its diagnostics are not blank.
+		FRDGTextureRef RockField = Outputs[0];
+		if ((Rock.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		{
+			FRDGTextureRef NoCoverage = nullptr;
+			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], Outputs[0], NoCoverage);
+		}
+
 		// A neutral node passes its input through, like every other generator.
 		if (Rock.Amount == 0.0f)
 		{
@@ -960,7 +1409,7 @@ namespace
 			TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
 			FillParameters(P);
-			P->RockHeight = Outputs[0];
+			P->RockHeight = RockField;
 			P->SourceHeight = SourceHeight;
 			P->OutHeight = GraphBuilder.CreateUAV(Combined);
 			ClearUnusedGraphResources(Shader, P);
@@ -1119,6 +1568,16 @@ namespace
 			return nullptr;
 		}
 
+		// Scoped flow tools, as under Rock Formation: height and coverage move together.
+		FRDGTextureRef PebbleField = Outputs[0];
+		FRDGTextureRef PebbleCoverage = Outputs[1];
+		if ((Pebbles.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		{
+			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child,
+				PackScalarBoundary(Ctx, Outputs[2]), Outputs[0], PebbleCoverage);
+		}
+
 		if (Pebbles.Amount == 0.0f)
 		{
 			return SourceHeight;
@@ -1131,8 +1590,8 @@ namespace
 			TShaderMapRef<FMixtormatPebblesCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatPebblesCS::FParameters>();
 			FillParameters(P);
-			P->PebbleHeight = Outputs[0];
-			P->PebbleCoverage = Outputs[1];
+			P->PebbleHeight = PebbleField;
+			P->PebbleCoverage = PebbleCoverage;
 			P->SourceHeight = SourceHeight;
 			P->OutHeight = GraphBuilder.CreateUAV(Combined);
 			ClearUnusedGraphResources(Shader, P);

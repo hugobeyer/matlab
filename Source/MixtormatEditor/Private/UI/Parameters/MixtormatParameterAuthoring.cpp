@@ -291,6 +291,23 @@ namespace MixtormatParameterAuthoring
 		return MixtormatParameterUi::ResolveUiBound(Key, Fallback, bMax);
 	}
 
+	TOptional<float> ResolveAuthoringClamp(const FMixtormatParameterDefinitionKey& Key, const bool bMax)
+	{
+		if (const FMixtormatParameterAuthoringEntry* Entry = FindEffective(Key))
+		{
+			const TOptional<float> Bound = bMax ? Entry->ClampMax : Entry->ClampMin;
+			if (Bound.IsSet())
+			{
+				return Bound;
+			}
+		}
+		if (const FMixtormatParameterContract* Contract = MixtormatParameterContracts::TryGet(Key.Owner, Key.Parameter))
+		{
+			return bMax ? Contract->HardMax : Contract->HardMin;
+		}
+		return TOptional<float>();
+	}
+
 	float ResolveAuthoringSnap(const FMixtormatParameterDefinitionKey& Key, const float Fallback)
 	{
 		if (const FMixtormatParameterAuthoringEntry* Entry = FindEffective(Key))
@@ -460,6 +477,8 @@ namespace MixtormatParameterAuthoring
 				Entry.UiMin = ReadFloatField(*EntryObject, TEXT("uiMin"));
 				Entry.UiMax = ReadFloatField(*EntryObject, TEXT("uiMax"));
 				Entry.Snap = ReadFloatField(*EntryObject, TEXT("snap"));
+				Entry.ClampMin = ReadFloatField(*EntryObject, TEXT("clampMin"));
+				Entry.ClampMax = ReadFloatField(*EntryObject, TEXT("clampMax"));
 
 				// Value type suffix on the key: ":Int" when not the float default.
 				EMixtormatParameterValueType ValueType = EMixtormatParameterValueType::Float;
@@ -525,6 +544,8 @@ namespace MixtormatParameterAuthoring
 			WriteFloat(Entry, TEXT("uiMin"), Pair.Value.UiMin);
 			WriteFloat(Entry, TEXT("uiMax"), Pair.Value.UiMax);
 			WriteFloat(Entry, TEXT("snap"), Pair.Value.Snap);
+			WriteFloat(Entry, TEXT("clampMin"), Pair.Value.ClampMin);
+			WriteFloat(Entry, TEXT("clampMax"), Pair.Value.ClampMax);
 			(*FamilyObject)->SetObjectField(KeyNameOf(Pair.Key), Entry);
 		}
 

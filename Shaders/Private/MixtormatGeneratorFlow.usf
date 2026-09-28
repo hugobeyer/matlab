@@ -1,0 +1,584 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Generator flow tools: Shape Deform, Generator Flow and Flow Carve, scoped under a Rock
+// Formation and applied to its height field before the combine. See Docs/flow_generation_core.md.
+//
+// One shared solve per item, then one apply:
+// FLOW_STAGE 0 (Seed, solve grid):  oriented directions where the source field is trustworthy --
+//   near the chunk boundary with a unit-ish SDF gradient, or where the height has a real slope.
+//   Everything else is unseeded; it is never filled by averaging.
+// FLOW_STAGE 1 (Jump, solve grid):  tile-aware jump flood of the nearest seed. The label carries
+//   the seed's texel, so direction and distance travel together and opposing vectors never mix.
+// FLOW_STAGE 2 (Resolve, full res): nearest seed refined over the 3x3 solve neighbourhood,
+//   exact toroidal distance to it, rotation/bend/offsets, reach + feather influence x mask.
+// FLOW_STAGE 3 (Apply, full res):   Mode 0 Shape Deform, 1 Generator Flow (RK2 trace, one
+//   final sample), 2 Flow Carve (distance-biased min/max gathered along the RK2 trace).
+// FLOW_STAGE 4/5 (Preview):          Flow Direction and Warped UV Grid diagnostics.
+// FLOW_STAGE 7 (Smooth, full res):  separable Bartlett (tent) over the resolved direction (two
+//   dispatches, X then Y). Unnormalized: the apply stage renormalizes on read and falls back to
+//   the raw texel where opposing flows cancel, so a medial-axis collision stays a clean seam.
+// FLOW_STAGE 6 (Pack):               a scalar signed distance with a no-hit sentinel (Pebbles)
+//   into the (distance, outline-sampled) pair the seed stage reads.
+//
+// Owners: Rock Formation (its RG boundary field) and Pebbles (packed edge distance, plus a
+// coverage the apply stage transforms alongside the height so the pebble combine sees it).
+//
+// Every sample wraps: the tile period is the texture period, and bend noise uses integer
+// lattice periods. Travel distance is never wrapped with fmod.
+
+#include "/Engine/Public/Platform.ush"
+
+#define FLOW_PI 3.14159265358979f
+#define FLOW_BIG 1e20f
+
+int2 OutputSize;
+int2 SolveSize;
+int JumpStep;
+
+// Shared solve controls.
+uint Source;          // 0 signed distance, 1 height
+float Tangent;        // 0 normal, 1 contour (90 degrees)
+float Angle;          // degrees
+float Bend;           // degrees, peak of the periodic bend noise
+uint Seed;
+int Radius;           // gradient kernel, output texels
+float Smooth;         // direction blur, output texels
+int2 BlurAxis;
+float Reach;          // UV
+float Feather;        // fraction of Reach
+float Amount;
+float OffsetAlong;    // fraction of Reach
+float OffsetAcross;   // fraction of Reach
+uint HasMask;
+uint HasCoverage;
+
+// Apply controls.
+uint Mode;            // 0 Shape Deform, 1 Generator Flow, 2 Flow Carve
+float ShapeOffset;    // UV, signed
+float Bulge;          // UV, signed
+float TraceLength;    // UV
+int Steps;
+float WarpStrength;
+uint CarveMode;       // 0 groove, 1 deposit
+float Depth;
+float Width;          // UV
+float Falloff;
+
+SamplerState LinearWrapSampler;
+
+Texture2D<float> RockHeight;
+Texture2D<float2> BoundaryField;
+Texture2D<float> FlowMask;
+Texture2D<float4> SeedData;
+Texture2D<float2> JumpIn;
+Texture2D<float4> FlowField;
+Texture2D<float4> FlowSmooth;
+Texture2D<float> FlowValidity;
+Texture2D<float2> WarpedUV;
+Texture2D<float> ScalarBoundary;
+Texture2D<float> Coverage;
+
+RWTexture2D<float4> OutSeedData;
+RWTexture2D<float2> OutJump;
+RWTexture2D<float4> OutFlowField;
+RWTexture2D<float> OutInfluence;
+RWTexture2D<float> OutValidity;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutCarveMask;
+RWTexture2D<float2> OutWarpedUV;
+RWTexture2D<float4> OutputDebug;
+RWTexture2D<float2> OutBoundary;
+RWTexture2D<float> OutCoverage;
+
+int2 FlowWrap(int2 P, int2 Size)
+{
+	return ((P % Size) + Size) % Size;
+}
+
+// Shortest periodic displacement in UV.
+float2 FlowTorus(float2 D)
+{
+	return D - round(D);
+}
+
+float2 FlowRotate(float2 V, float Radians)
+{
+	float S;
+	float C;
+	sincos(Radians, S, C);
+	return float2(C * V.x - S * V.y, S * V.x + C * V.y);
+}
+
+float FlowHash(uint A, uint B)
+{
+	uint V = A * 747796405u + B * 2891336453u + 12345u;
+	uint W = ((V >> ((V >> 28u) + 4u)) ^ V) * 277803737u;
+	return (float)(((W >> 22u) ^ W) >> 8) * (1.0f / 16777216.0f);
+}
+
+// Periodic value noise on an integer lattice, 0..1.
+float FlowNoise(float2 UV, int Period, uint NoiseSeed)
+{
+	const float2 Q = UV * (float)Period;
+	const float2 Fl = floor(Q);
+	float2 F = Q - Fl;
+	F = F * F * (3.0f - 2.0f * F);
+	const int2 P0 = FlowWrap(int2(Fl), int2(Period, Period));
+	const int2 P1 = FlowWrap(P0 + 1, int2(Period, Period));
+	const float A = FlowHash(NoiseSeed, (uint)(P0.x + P0.y * Period));
+	const float B = FlowHash(NoiseSeed, (uint)(P1.x + P0.y * Period));
+	const float C = FlowHash(NoiseSeed, (uint)(P0.x + P1.y * Period));
+	const float D = FlowHash(NoiseSeed, (uint)(P1.x + P1.y * Period));
+	return lerp(lerp(A, B, F.x), lerp(C, D, F.x), F.y);
+}
+
+// Smooth 1 -> 0 between A and B; a hard step when they coincide.
+float FlowFade(float A, float B, float X)
+{
+	const float T = saturate((X - A) / max(B - A, 1e-6f));
+	return 1.0f - T * T * (3.0f - 2.0f * T);
+}
+
+// Central-difference gradient of the signed boundary distance, per UV. Valid only where every
+// tap saw an outline; the local field is not a global SDF (see the doc's field contract).
+bool BoundaryGradient(float2 UV, out float2 Gradient, out float Distance)
+{
+	const float2 R = float2((float)max(Radius, 1), (float)max(Radius, 1)) / float2(OutputSize);
+	const float2 C = BoundaryField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float2 XP = BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(R.x, 0.0f), 0.0f);
+	const float2 XM = BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(R.x, 0.0f), 0.0f);
+	const float2 YP = BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(0.0f, R.y), 0.0f);
+	const float2 YM = BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(0.0f, R.y), 0.0f);
+	Distance = C.x;
+	Gradient = float2(XP.x - XM.x, YP.x - YM.x) / (2.0f * R);
+	// Bilinear flags below 1 mean a tap straddled a no-outline texel.
+	return min(min(C.y, XP.y), min(min(XM.y, YP.y), YM.y)) > 0.99f;
+}
+
+float2 HeightGradient(float2 UV)
+{
+	const float2 R = float2((float)max(Radius, 1), (float)max(Radius, 1)) / float2(OutputSize);
+	const float XP = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(R.x, 0.0f), 0.0f);
+	const float XM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(R.x, 0.0f), 0.0f);
+	const float YP = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, R.y), 0.0f);
+	const float YM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(0.0f, R.y), 0.0f);
+	return float2(XP - XM, YP - YM) / (2.0f * R);
+}
+
+#if FLOW_STAGE == 0
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SolveSize))
+	{
+		return;
+	}
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(SolveSize);
+	bool bSeed = false;
+	float2 Direction = 0.0f;
+	float SeedDistance = 0.0f;
+	if (Source == 0u)
+	{
+		float2 Gradient;
+		float Distance;
+		const bool bOutline = BoundaryGradient(UV, Gradient, Distance);
+		// Seeds only on or near the boundary: at least one solve texel and the kernel radius.
+		const float Band = max((float)max(Radius, 1) / (float)OutputSize.x, 0.75f / (float)SolveSize.x);
+		const float Length = length(Gradient);
+		// A true distance has a unit gradient; creases and overlapping outlines do not.
+		bSeed = bOutline && abs(Distance) <= Band && Length > 0.5f && Length < 2.0f;
+		Direction = bSeed ? Gradient / Length : 0.0f;
+		SeedDistance = Distance;
+	}
+	else
+	{
+		const float2 Gradient = HeightGradient(UV);
+		const float Length = length(Gradient);
+		// Height change across the kernel, so the threshold does not scale with resolution.
+		const float Change = Length * (float)max(Radius, 1) / (float)OutputSize.x;
+		bSeed = Change > 1e-5f;
+		Direction = bSeed ? -Gradient / Length : 0.0f;
+	}
+	OutSeedData[Pixel] = float4(Direction, SeedDistance, bSeed ? 1.0f : 0.0f);
+	OutJump[Pixel] = bSeed ? float2(Pixel) : float2(-1.0f, -1.0f);
+}
+#endif
+
+#if FLOW_STAGE == 1
+float SeedDistanceSq(int2 Pixel, float2 SeedTexel)
+{
+	const float2 D = FlowTorus((SeedTexel - float2(Pixel)) / float2(SolveSize));
+	return dot(D, D);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SolveSize))
+	{
+		return;
+	}
+	float2 Best = JumpIn.Load(int3(Pixel, 0));
+	float BestD = Best.x >= 0.0f ? SeedDistanceSq(Pixel, Best) : FLOW_BIG;
+	[unroll]
+	for (int J = -1; J <= 1; J++)
+	{
+		[unroll]
+		for (int I = -1; I <= 1; I++)
+		{
+			if (I == 0 && J == 0)
+			{
+				continue;
+			}
+			const int2 Q = FlowWrap(Pixel + int2(I, J) * JumpStep, SolveSize);
+			const float2 Candidate = JumpIn.Load(int3(Q, 0));
+			if (Candidate.x < 0.0f)
+			{
+				continue;
+			}
+			const float D = SeedDistanceSq(Pixel, Candidate);
+			if (D < BestD)
+			{
+				BestD = D;
+				Best = Candidate;
+			}
+		}
+	}
+	OutJump[Pixel] = Best;
+}
+#endif
+
+#if FLOW_STAGE == 2
+// Nearest seed to an exact UV, refined over the 3x3 solve neighbourhood of its texel.
+bool NearestSeed(float2 UV, out float4 Data, out float Distance)
+{
+	const int2 Centre = int2(floor(frac(UV) * float2(SolveSize)));
+	Data = 0.0f;
+	Distance = FLOW_BIG;
+	bool bFound = false;
+	[unroll]
+	for (int J = -1; J <= 1; J++)
+	{
+		[unroll]
+		for (int I = -1; I <= 1; I++)
+		{
+			const int2 Q = FlowWrap(Centre + int2(I, J), SolveSize);
+			const float2 SeedTexel = JumpIn.Load(int3(Q, 0));
+			if (SeedTexel.x < 0.0f)
+			{
+				continue;
+			}
+			const float2 SeedUV = (SeedTexel + 0.5f) / float2(SolveSize);
+			const float D = length(FlowTorus(SeedUV - UV));
+			if (D < Distance)
+			{
+				Distance = D;
+				Data = SeedData.Load(int3(int2(SeedTexel), 0));
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
+float2 OrientedDirection(float2 UV, float2 Raw)
+{
+	// Normal/tangent mix is a rotation, so the mixed vector keeps unit length at every setting.
+	const float Degrees = Angle + Tangent * 90.0f
+		+ Bend * (FlowNoise(UV, 3, Seed * 7919u + 11u) * 2.0f - 1.0f);
+	return FlowRotate(Raw, Degrees * (FLOW_PI / 180.0f));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	float4 Data;
+	float Distance;
+	bool bValid = NearestSeed(UV, Data, Distance);
+	float2 Direction = bValid ? OrientedDirection(UV, Data.xy) : 0.0f;
+
+	// Offsets move where the field is read, along and across its own direction.
+	if (bValid && (OffsetAlong != 0.0f || OffsetAcross != 0.0f))
+	{
+		const float2 Across = float2(-Direction.y, Direction.x);
+		const float2 Shifted = UV - (Direction * OffsetAlong + Across * OffsetAcross) * Reach;
+		bValid = NearestSeed(Shifted, Data, Distance);
+		Direction = bValid ? OrientedDirection(Shifted, Data.xy) : 0.0f;
+	}
+
+	float Signed = Distance;
+	if (Source == 0u)
+	{
+		const float2 Local = BoundaryField.Load(int3(Pixel, 0));
+		Signed = Local.y > 0.5f && Local.x < 0.0f ? -Distance : Distance;
+	}
+
+	const float Mask = HasMask != 0u ? FlowMask.Load(int3(Pixel, 0)) : 1.0f;
+	const float Influence = bValid
+		? FlowFade(Reach * (1.0f - Feather), Reach, Distance) * Amount * Mask
+		: 0.0f;
+	OutFlowField[Pixel] = float4(Direction, bValid ? Signed : 0.0f, Influence);
+	OutInfluence[Pixel] = Influence;
+	OutValidity[Pixel] = bValid ? 1.0f : 0.0f;
+}
+#endif
+
+#if FLOW_STAGE == 3
+// Smoothed direction, bilinear and renormalized. Where the blur cancelled opposing vectors
+// (a medial-axis collision) there is no direction to renormalize, so the raw nearest texel
+// is used instead of inventing one. Influence and distance always come from the raw field.
+float4 FlowAt(float2 UV)
+{
+	const int2 P = FlowWrap(int2(floor(UV * float2(OutputSize))), OutputSize);
+	const float4 Raw = FlowField.Load(int3(P, 0));
+	const float2 Blurred = FlowSmooth.SampleLevel(LinearWrapSampler, UV, 0.0f).xy;
+	const float Length = length(Blurred);
+	const float2 Direction = Length > 0.2f ? Blurred / Length : Raw.xy;
+	return float4(Direction, Raw.z, FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f).w);
+}
+
+float SampleHeight(float2 UV)
+{
+	return RockHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+// The owner's coverage, read wherever its height is read so the two stay aligned. Owners
+// without one (Rock Formation) report full coverage, which nothing downstream reads.
+float SampleCoverage(float2 UV)
+{
+	return HasCoverage != 0u ? Coverage.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
+}
+
+// Height across the flow at +-Width, reduced toward the carve's own extreme.
+float SampleCarveHeight(float2 UV, float2 Direction)
+{
+	const float Centre = SampleHeight(UV);
+	if (Width <= 0.0f)
+	{
+		return Centre;
+	}
+	const float2 Across = float2(-Direction.y, Direction.x) * Width;
+	const float A = SampleHeight(UV + Across);
+	const float B = SampleHeight(UV - Across);
+	return CarveMode == 0u ? min(Centre, min(A, B)) : max(Centre, max(A, B));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float4 Here = FlowAt(UV);
+	const float Original = RockHeight.Load(int3(Pixel, 0));
+
+	if (Mode == 0u)
+	{
+		// Shape Deform: one displaced sample. Expand/erode moves the read point across the local
+		// boundary (inward to expand, outward to erode) inside a band of |offset|; bulge/pinch
+		// moves it along the extended direction. Both scale by the feathered influence.
+		float2 Displacement = -Here.xy * Bulge * Here.w;
+		if (ShapeOffset != 0.0f && Here.w != 0.0f)
+		{
+			float2 Gradient;
+			float Distance;
+			if (BoundaryGradient(UV, Gradient, Distance))
+			{
+				const float Length = length(Gradient);
+				if (Length > 0.5f)
+				{
+					const float Band = abs(ShapeOffset);
+					const float K = FlowFade(Band, 2.0f * Band + 1.0f / (float)OutputSize.x, abs(Distance));
+					Displacement -= (Gradient / Length) * ShapeOffset * K * Here.w;
+				}
+			}
+		}
+		const float2 ReadUV = UV + Displacement;
+		OutHeight[Pixel] = SampleHeight(ReadUV);
+		OutWarpedUV[Pixel] = ReadUV;
+		OutCarveMask[Pixel] = 0.0f;
+		OutCoverage[Pixel] = SampleCoverage(ReadUV);
+		return;
+	}
+
+	// At least one step so the step size is defined; no upper limit.
+	const int StepCount = max(Steps, 1);
+	if (Mode == 1u)
+	{
+		// Generator Flow: midpoint (RK2) trace upstream through the influence-weighted field, so
+		// the displacement feathers out with the influence. One height sample at the end.
+		const float H = TraceLength * WarpStrength / (float)StepCount;
+		float2 P = UV;
+		[loop]
+		for (int I = 0; I < StepCount; I++)
+		{
+			const float4 A = FlowAt(P);
+			const float2 K1 = A.xy * A.w;
+			const float4 B = FlowAt(P - 0.5f * H * K1);
+			P -= H * B.xy * B.w;
+		}
+		OutHeight[Pixel] = abs(H) > 0.0f ? SampleHeight(P) : Original;
+		OutWarpedUV[Pixel] = P;
+		OutCarveMask[Pixel] = 0.0f;
+		OutCoverage[Pixel] = SampleCoverage(P);
+		return;
+	}
+
+	// Flow Carve: gather height along the unit direction. Each sample's cut is its drop below
+	// (groove) or rise above (deposit) this pixel, weighted down with travelled distance, and the
+	// strongest one wins -- a distance-biased min/max. Depth caps it; influence gates it.
+	// Groove looks downstream (the direction points outward/downhill), so an edge slumps toward
+	// the lower ground ahead of it, as carve.cl does. Deposit looks upstream and carries the
+	// higher ground behind a pixel down onto it. Either way round, the other mode is a no-op.
+	float Carve = 0.0f;
+	if (Here.w != 0.0f && Depth != 0.0f && TraceLength != 0.0f)
+	{
+		const float Ds = (CarveMode == 0u ? 1.0f : -1.0f) * TraceLength / (float)StepCount;
+		float2 P = UV;
+		[loop]
+		for (int I = 1; I <= StepCount; I++)
+		{
+			const float2 K1 = FlowAt(P).xy;
+			const float2 K2 = FlowAt(P + 0.5f * Ds * K1).xy;
+			if (dot(K2, K2) < 0.25f)
+			{
+				// Left the solved field; nothing further along is defined.
+				break;
+			}
+			P += Ds * K2;
+			const float Travel = (float)I * abs(Ds);
+			const float Weight = pow(1.0f - Travel / (abs(TraceLength) + abs(Ds)), Falloff);
+			const float Sample = SampleCarveHeight(P, K2);
+			const float Drop = CarveMode == 0u ? Original - Sample : Sample - Original;
+			Carve = max(Carve, Drop * Weight);
+		}
+		// Depth scales the gathered drop (1 = cut down to the strongest biased sample); nothing
+		// caps it.
+		Carve = Carve * Depth * Here.w;
+	}
+	OutHeight[Pixel] = CarveMode == 0u ? Original - Carve : Original + Carve;
+	// The gathered, weighted drop times influence -- independent of Depth, unclamped.
+	OutCarveMask[Pixel] = Depth != 0.0f ? Carve / Depth : 0.0f;
+	OutWarpedUV[Pixel] = UV;
+	// A deposit raised outside the owner's coverage would be masked straight back out by its
+	// combine, so the raised pixels join the coverage. A groove keeps the coverage it had.
+	const float Covered = SampleCoverage(UV);
+	OutCoverage[Pixel] = CarveMode == 1u && Carve != 0.0f ? 1.0f : Covered;
+}
+#endif
+
+#if FLOW_STAGE == 4
+// Flow Direction: hue is the angle, value the influence. Unseeded pixels are black.
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float4 Flow = FlowField.Load(int3(Pixel, 0));
+	if (FlowValidity.Load(int3(Pixel, 0)) < 0.5f)
+	{
+		OutputDebug[Pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+		return;
+	}
+	const float Hue = atan2(Flow.y, Flow.x) / (2.0f * FLOW_PI) + 0.5f;
+	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
+	OutputDebug[Pixel] = float4(Rgb * (0.2f + 0.8f * saturate(Flow.w)), 1.0f);
+}
+#endif
+
+#if FLOW_STAGE == 5
+// Warped UV Grid: an 8x8 checker with lines drawn in the warped coordinate. Compression tints
+// blue, stretch yellow, and a fold (non-positive Jacobian) is solid red -- visualized, not clamped.
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float2 W = WarpedUV.Load(int3(Pixel, 0));
+	const float2 Wx = WarpedUV.Load(int3(FlowWrap(Pixel + int2(1, 0), OutputSize), 0));
+	const float2 Wy = WarpedUV.Load(int3(FlowWrap(Pixel + int2(0, 1), OutputSize), 0));
+	const float2 Texel = 1.0f / float2(OutputSize);
+	// Per-texel differences, unwrapped across the tile seam.
+	const float2 Dx = FlowTorus(Wx - W) / Texel.x;
+	const float2 Dy = FlowTorus(Wy - W) / Texel.y;
+	const float Det = Dx.x * Dy.y - Dx.y * Dy.x;
+	if (Det <= 0.0f)
+	{
+		OutputDebug[Pixel] = float4(1.0f, 0.0f, 0.0f, 1.0f);
+		return;
+	}
+	const float2 Cell = W * 8.0f;
+	const float2 G = frac(Cell);
+	const float2 LineWidth = 1.5f * 8.0f * float2(length(float2(Dx.x, Dy.x)), length(float2(Dx.y, Dy.y))) * Texel;
+	const bool bLine = any(min(G, 1.0f - G) < LineWidth);
+	const float Checker = fmod(floor(Cell.x) + floor(Cell.y), 2.0f) == 0.0f ? 0.55f : 0.35f;
+	float3 Color = bLine ? float3(0.95f, 0.95f, 0.95f) : float3(Checker, Checker, Checker);
+	const float Stretch = log2(Det);
+	Color = lerp(Color, Stretch < 0.0f ? float3(0.2f, 0.4f, 1.0f) : float3(1.0f, 0.85f, 0.2f),
+		saturate(abs(Stretch)) * 0.6f);
+	OutputDebug[Pixel] = float4(Color, 1.0f);
+}
+#endif
+
+#if FLOW_STAGE == 6
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	// Pebbles writes 1e9 where no stone lies within its search reach.
+	const float Distance = ScalarBoundary.Load(int3(Pixel, 0));
+	const bool bOutline = Distance < 1e8f;
+	OutBoundary[Pixel] = float2(bOutline ? Distance : 0.0f, bOutline ? 1.0f : 0.0f);
+}
+#endif
+
+#if FLOW_STAGE == 7
+// One axis of the direction blur: a Bartlett (triangle) window of half-width Smooth texels.
+// 17 bilinear taps span it, so the cost does not grow with Smooth; wide blurs just sample
+// farther apart. Invalid texels carry a zero vector and add nothing. Only xy is blurred; z and
+// w pass through from the centre texel.
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 Step = float2(BlurAxis) * (abs(Smooth) / 8.0f) / float2(OutputSize);
+	float2 Sum = 0.0f;
+	float Weight = 0.0f;
+	[unroll]
+	for (int I = -8; I <= 8; I++)
+	{
+		// Tent weights 1..9..1: zero just past the window edge, peak at the centre.
+		const float W = 9.0f - abs((float)I);
+		Sum += FlowField.SampleLevel(LinearWrapSampler, UV + Step * (float)I, 0.0f).xy * W;
+		Weight += W;
+	}
+	const float4 Centre = FlowField.Load(int3(Pixel, 0));
+	OutFlowField[Pixel] = float4(Sum / Weight, Centre.z, Centre.w);
+}
+#endif

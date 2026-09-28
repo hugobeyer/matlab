@@ -199,6 +199,41 @@ void GatherFlowWarp(FEffectRenderData& EffectData, const FMixtormatLayerEffect& 
 	EffectData.FlowWarpBlendMode = static_cast<uint32>(LayerEffect.FlowWarpBlendMode);
 }
 
+void GatherGeneratorFlow(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect)
+{
+	// Authored values pass through unclamped; SanitizeFloat only replaces non-finite input.
+	EffectData.GeneratorFlowSource = static_cast<uint32>(LayerEffect.GeneratorFlowSource);
+	EffectData.GeneratorFlowAmount = EffectFloat(TEXT("GeneratorFlowAmount"), LayerEffect.GeneratorFlowAmount);
+	EffectData.GeneratorFlowTangent = EffectFloat(TEXT("GeneratorFlowTangent"), LayerEffect.GeneratorFlowTangent);
+	EffectData.GeneratorFlowAngle = EffectFloat(TEXT("GeneratorFlowAngle"), LayerEffect.GeneratorFlowAngle);
+	EffectData.GeneratorFlowBend = EffectFloat(TEXT("GeneratorFlowBend"), LayerEffect.GeneratorFlowBend);
+	EffectData.GeneratorFlowSeed = static_cast<uint32>(
+		EffectInt(TEXT("GeneratorFlowSeed"), LayerEffect.GeneratorFlowSeed));
+	EffectData.GeneratorFlowRadius = EffectInt(TEXT("GeneratorFlowRadius"), LayerEffect.GeneratorFlowRadius);
+	EffectData.GeneratorFlowSmooth = EffectFloat(TEXT("GeneratorFlowSmooth"), LayerEffect.GeneratorFlowSmooth);
+	EffectData.GeneratorFlowReach = EffectFloat(TEXT("GeneratorFlowReach"), LayerEffect.GeneratorFlowReach);
+	EffectData.GeneratorFlowFeather = EffectFloat(TEXT("GeneratorFlowFeather"), LayerEffect.GeneratorFlowFeather);
+	EffectData.GeneratorFlowOffsetAlong =
+		EffectFloat(TEXT("GeneratorFlowOffsetAlong"), LayerEffect.GeneratorFlowOffsetAlong);
+	EffectData.GeneratorFlowOffsetAcross =
+		EffectFloat(TEXT("GeneratorFlowOffsetAcross"), LayerEffect.GeneratorFlowOffsetAcross);
+	// Height has no signed boundary to offset: the doc disables the mode rather than substituting.
+	EffectData.GeneratorFlowShapeOffset =
+		LayerEffect.GeneratorFlowSource == EMixtormatGeneratorFlowSource::SignedDistance
+			? EffectFloat(TEXT("GeneratorFlowShapeOffset"), LayerEffect.GeneratorFlowShapeOffset)
+			: 0.0f;
+	EffectData.GeneratorFlowBulge = EffectFloat(TEXT("GeneratorFlowBulge"), LayerEffect.GeneratorFlowBulge);
+	EffectData.GeneratorFlowTraceLength =
+		EffectFloat(TEXT("GeneratorFlowTraceLength"), LayerEffect.GeneratorFlowTraceLength);
+	EffectData.GeneratorFlowSteps = EffectInt(TEXT("GeneratorFlowSteps"), LayerEffect.GeneratorFlowSteps);
+	EffectData.GeneratorFlowWarpStrength =
+		EffectFloat(TEXT("GeneratorFlowWarpStrength"), LayerEffect.GeneratorFlowWarpStrength);
+	EffectData.GeneratorFlowCarveMode = static_cast<uint32>(LayerEffect.GeneratorFlowCarveMode);
+	EffectData.GeneratorFlowDepth = EffectFloat(TEXT("GeneratorFlowDepth"), LayerEffect.GeneratorFlowDepth);
+	EffectData.GeneratorFlowWidth = EffectFloat(TEXT("GeneratorFlowWidth"), LayerEffect.GeneratorFlowWidth);
+	EffectData.GeneratorFlowFalloff = EffectFloat(TEXT("GeneratorFlowFalloff"), LayerEffect.GeneratorFlowFalloff);
+}
+
 void GatherWornEdges(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect)
 {
 	EffectData.EdgeWearRadius = EffectInt(TEXT("EdgeWearRadius"), LayerEffect.EdgeWearRadius);

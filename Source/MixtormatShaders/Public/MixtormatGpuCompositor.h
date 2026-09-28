@@ -54,7 +54,11 @@ enum class EMixtormatDebugPreviewMode : uint8
 enum class EMixtormatPreviewOutputKind : uint8
 {
 	Mask,
-	RegionIds
+	RegionIds,
+	// Generator flow diagnostics: direction as hue (angle) and value (influence), and a
+	// checker/line grid drawn in the warped coordinates so stretch and folds are visible.
+	FlowDirection,
+	WarpedUVGrid
 };
 
 // Names one previewable output on one child, by stable identity rather than by array position --

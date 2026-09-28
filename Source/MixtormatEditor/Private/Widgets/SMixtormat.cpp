@@ -303,7 +303,8 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 	const bool bInteger,
 	const FMixtormatOnSliderValueChanged& OnValueChanged,
 	const FSimpleDelegate& ResetDelegate,
-	const TAttribute<FText>& ToolTip)
+	const TAttribute<FText>& ToolTip,
+	const FMixtormatSliderRangeOptions& RangeOptions)
 {
 	const FSimpleDelegate BoundedReset = FSimpleDelegate::CreateLambda([this, ResetDelegate]()
 	{
@@ -319,6 +320,9 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 		.DefaultValue(DefaultValue)
 		.Delta(SnapDelta)
 		.bInteger(bInteger)
+		.ExpandableRange(RangeOptions.bExpandable)
+		.HardMinValue(RangeOptions.HardMin)
+		.HardMaxValue(RangeOptions.HardMax)
 		.Precision(bInteger ? 0 : 3)
 		.ToolTip(ToolTip)
 		.OnValueChanged(OnValueChanged)

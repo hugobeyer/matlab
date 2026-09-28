@@ -14,6 +14,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "UnrealClient.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SNullWidget.h"
 
 // The inspector column: every per-selection parameter panel.
 
@@ -758,12 +759,12 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 			? Children->FindByPredicate([Child](const FMixtormatLayerChild& Candidate)
 				{ return Candidate.ChildId == Child->ScopeOwnerChildId; }) : nullptr;
 		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
-			&& Owner->Generator.Type == EMixtormatGeneratorType::RockFormation;
+			&& MixtormatCanOwnGeneratorFlow(Owner->Generator.Type);
 	};
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox).IsEnabled_Lambda(HasOwner);
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
 		LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
-		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning Rock Formation's signed distance or height field.")));
+		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field (Rock Formation, Pebbles).")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowAmount, 0.0, 1.0, 1.0, 0.01),
@@ -775,10 +776,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBend", "Bend"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowBend, -180.0, 180.0, 0.0, 1.0)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSeed", "Seed"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowSeed, 0.0, 1024.0, 1),
 		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowRadius", "Radius (texels)"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowRadius, 1.0, 16.0, 2)));
+			&FMixtormatLayerEffect::GeneratorFlowRadius, 1.0, 16.0, 2),
+		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSmooth", "Smooth (texels)"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowSmooth, 0.0, 64.0, 8.0, 0.5,
+			LOCTEXT("GeneratorFlowSmoothHint", "Blurs the flow direction. Removes the stepping of the raw field; collisions between opposing flows stay sharp."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowReach", "Reach (UV)"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowReach, 0.0, 1.0, 0.1, 0.001),
@@ -789,12 +791,17 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 			&FMixtormatLayerEffect::GeneratorFlowOffsetAlong, -1.0, 1.0, 0.0, 0.01),
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAcross", "Offset Across"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowOffsetAcross, -1.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSeed", "Seed"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowSeed, 0.0, 1024.0, 1),
+		SNullWidget::NullWidget));
 
 	if (Type == EMixtormatEffectType::ShapeDeform)
 	{
 		const auto SourceAddress = MakeAddressResolver<FMixtormatLayerEffect>(
 			Flow, &FMixtormatLayerEffect::GeneratorFlowSource);
-		AddSliderRow(Panel, SNew(SBox)
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			SNew(SBox)
 			.IsEnabled_Lambda([this, Flow, SourceAddress]()
 			{
 				const FMixtormatLayerEffect* Effect = Flow();
@@ -805,9 +812,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowShapeOffset", "Shape Offset (UV)"), Flow,
 					&FMixtormatLayerEffect::GeneratorFlowShapeOffset, -0.25, 0.25, 0.0, 0.001,
 					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height."))
-			]);
-		AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBulge", "Bulge / Pinch"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowBulge, -0.25, 0.25, 0.0, 0.001));
+			],
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBulge", "Bulge / Pinch"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowBulge, -0.25, 0.25, 0.0, 0.001)));
 	}
 	else
 	{
@@ -819,8 +826,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 				&FMixtormatLayerEffect::GeneratorFlowSteps, 1.0, 64.0, 16)));
 		if (Type == EMixtormatEffectType::GeneratorFlow)
 		{
-			AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowWarpStrength", "Warp Strength"), Flow,
-				&FMixtormatLayerEffect::GeneratorFlowWarpStrength, -4.0, 4.0, 1.0, 0.01));
+			// Half width like every other slider in the panel; the empty half is intentional.
+			AddSliderRow(Panel, MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowWarpStrength", "Warp Strength"), Flow,
+					&FMixtormatLayerEffect::GeneratorFlowWarpStrength, -4.0, 4.0, 1.0, 0.01),
+				SNullWidget::NullWidget));
 		}
 		else if (Type == EMixtormatEffectType::FlowCarve)
 		{
@@ -828,11 +838,13 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 				&FMixtormatLayerEffect::GeneratorFlowCarveMode));
 			AddSliderRow(Panel, MixtormatRow::MakePair(
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowDepth", "Depth"), Flow,
-					&FMixtormatLayerEffect::GeneratorFlowDepth, 0.0, 1.0, 0.05, 0.001),
+					&FMixtormatLayerEffect::GeneratorFlowDepth, 0.0, 2.0, 1.0, 0.01),
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowWidth", "Width (UV)"), Flow,
 					&FMixtormatLayerEffect::GeneratorFlowWidth, 0.0, 0.25, 0.01, 0.001)));
-			AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFalloff", "Falloff"), Flow,
-				&FMixtormatLayerEffect::GeneratorFlowFalloff, 0.1, 8.0, 1.0, 0.01));
+			AddSliderRow(Panel, MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFalloff", "Falloff"), Flow,
+					&FMixtormatLayerEffect::GeneratorFlowFalloff, 0.1, 8.0, 1.0, 0.01),
+				SNullWidget::NullWidget));
 		}
 	}
 	const FText Title = Type == EMixtormatEffectType::ShapeDeform

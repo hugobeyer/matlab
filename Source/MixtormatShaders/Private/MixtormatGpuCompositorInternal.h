@@ -476,6 +476,30 @@ namespace MixtormatGpuCompositor
 		FVector2f FlowWarpDerivativeKernel = FVector2f(2.0f, 2.0f);
 		uint32 FlowWarpBlendMode = 0;
 		bool bGradeInvertMask = false;
+
+		// Generator flow tools (Shape Deform / Generator Flow / Flow Carve). Sanitized and
+		// clamped by GatherGeneratorFlow; distances are UV units, angles degrees.
+		uint32 GeneratorFlowSource = 0;
+		float GeneratorFlowAmount = 1.0f;
+		float GeneratorFlowTangent = 0.0f;
+		float GeneratorFlowAngle = 0.0f;
+		float GeneratorFlowBend = 0.0f;
+		uint32 GeneratorFlowSeed = 1;
+		int32 GeneratorFlowRadius = 2;
+		float GeneratorFlowSmooth = 8.0f;
+		float GeneratorFlowReach = 0.1f;
+		float GeneratorFlowFeather = 0.5f;
+		float GeneratorFlowOffsetAlong = 0.0f;
+		float GeneratorFlowOffsetAcross = 0.0f;
+		float GeneratorFlowShapeOffset = 0.0f;
+		float GeneratorFlowBulge = 0.0f;
+		float GeneratorFlowTraceLength = 0.1f;
+		int32 GeneratorFlowSteps = 16;
+		float GeneratorFlowWarpStrength = 1.0f;
+		uint32 GeneratorFlowCarveMode = 0;
+		float GeneratorFlowDepth = 1.0f;
+		float GeneratorFlowWidth = 0.01f;
+		float GeneratorFlowFalloff = 1.0f;
 	};
 
 	struct FGeneratedMaskRenderData

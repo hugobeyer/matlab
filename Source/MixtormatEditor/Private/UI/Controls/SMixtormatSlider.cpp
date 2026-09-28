@@ -4,6 +4,7 @@
 
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
+#include "UI/Controls/MixtormatEntryCommit.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
@@ -24,10 +25,14 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	DeltaAttribute = InArgs._Delta;
 	Precision = InArgs._Precision;
 	bInteger = InArgs._bInteger;
+	ExpandableAttribute = InArgs._ExpandableRange;
+	HardMinAttribute = InArgs._HardMinValue;
+	HardMaxAttribute = InArgs._HardMaxValue;
 	OnValueChanged = InArgs._OnValueChanged;
 	OnReset = InArgs._OnReset;
 	OnBeginDrag = InArgs._OnBeginDrag;
 	OnEndDrag = InArgs._OnEndDrag;
+	EntrySession = MakeShared<FMixtormatEntryCommit>();
 
 	if (InArgs._ToolTip.IsSet())
 	{
@@ -54,6 +59,10 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 		.ClearKeyboardFocusOnCommit(true)
 		.RevertTextOnEscape(true)
 		.Visibility(EVisibility::Collapsed)
+		.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+		{
+			return EntrySession->HandleKeyDown(Geometry, KeyEvent);
+		})
 		.OnTextCommitted(this, &SMixtormatSlider::HandleTextCommitted)
 	];
 }
@@ -80,6 +89,8 @@ void SMixtormatSlider::CommitValue(double Value, const bool bClampToRange)
 	{
 		Value = FMath::Clamp(Value, MinValueAttribute.Get(0.0), MaxValueAttribute.Get(1.0));
 	}
+	// The back-end clamp holds for typed values too; the visual range does not.
+	Value = FMath::Clamp(Value, HardMinAttribute.Get(-UE_BIG_NUMBER), HardMaxAttribute.Get(UE_BIG_NUMBER));
 	if (bInteger)
 	{
 		Value = FMath::RoundToDouble(Value);
@@ -102,6 +113,7 @@ void SMixtormatSlider::BeginTextEntry()
 	EntryWidget->SetVisibility(EVisibility::Visible);
 	EntryWidget->SetText(FText::FromString(FormatValue(GetValue())));
 	FSlateApplication::Get().SetKeyboardFocus(EntryWidget, EFocusCause::SetDirectly);
+	EntrySession->Begin(EntryWidget.ToSharedRef(), [this]() { EndTextEntry(); });
 }
 
 void SMixtormatSlider::EndTextEntry()
@@ -119,8 +131,15 @@ void SMixtormatSlider::EndTextEntry()
 
 void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit::Type CommitType)
 {
+	// Every commit accepts -- Enter, Tab, focus moved, focus cleared by leaving the window or
+	// clicking elsewhere -- unless Escape or a right click asked to cancel first.
+	const bool bCancelled = EntrySession->Finish();
+	if (!bEditing)
+	{
+		return;
+	}
 	EndTextEntry();
-	if (CommitType == ETextCommit::OnCleared)
+	if (bCancelled)
 	{
 		return;
 	}
@@ -158,11 +177,20 @@ FReply SMixtormatSlider::OnMouseButtonDown(const FGeometry& MyGeometry, const FP
 	bDragging = true;
 	bMovedPastThreshold = false;
 	DragStartValue = GetValue();
-	DragStartX = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X;
+	DragValue = DragStartValue;
+	bPushedLow = false;
+	bPushedHigh = false;
+	DragTravel = 0.0f;
+	const FVector2D Screen = MouseEvent.GetScreenSpacePosition();
+	DragStartScreen = FIntPoint(FMath::RoundToInt(Screen.X), FMath::RoundToInt(Screen.Y));
 
 	// Capturing is what makes the owner's interactive-edit check see the scrub, so the
-	// preview drops to its drag resolution and undo history is deferred.
-	return FReply::Handled().CaptureMouse(SharedThis(this));
+	// preview drops to its drag resolution and undo history is deferred. High-precision
+	// movement hides the cursor and reports raw deltas, so a scrub is never stopped by the
+	// screen edge.
+	return FReply::Handled()
+		.CaptureMouse(SharedThis(this))
+		.UseHighPrecisionMouseMovement(SharedThis(this));
 }
 
 FReply SMixtormatSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
@@ -172,32 +200,129 @@ FReply SMixtormatSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointer
 		return FReply::Unhandled();
 	}
 
-	const float LocalX = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X;
-	const float PixelDelta = LocalX - DragStartX;
+	// Raw screen pixels to Slate units, so DPI scale does not change the rate.
+	const float Scale = FMath::Max(MyGeometry.Scale, UE_KINDA_SMALL_NUMBER);
+	const float Delta = static_cast<float>(MouseEvent.GetCursorDelta().X) / Scale;
+	const float Width = static_cast<float>(MyGeometry.GetLocalSize().X);
 	if (!bMovedPastThreshold)
 	{
-		if (FMath::Abs(PixelDelta) < MixtormatTokens::DragThreshold)
+		DragTravel += Delta;
+		if (FMath::Abs(DragTravel) < MixtormatTokens::DragThreshold)
 		{
 			return FReply::Handled();
 		}
 		bMovedPastThreshold = true;
 		OnBeginDrag.ExecuteIfBound();
+		// The threshold travel counts, so the value does not lag the hand by four pixels.
+		return ApplyDrag(DragTravel, Width, MouseEvent);
 	}
+	return ApplyDrag(Delta, Width, MouseEvent);
+}
 
-	// Absolute rather than incremental, so a scrub that reverses direction returns to where
-	// it started instead of drifting.
-	const float Width = FMath::Max(MyGeometry.GetLocalSize().X, 1.0f);
-	const double MinValue = MinValueAttribute.Get(0.0);
-	const double MaxValue = MaxValueAttribute.Get(1.0);
-	const double Range = MaxValue - MinValue;
-	const double Scale = MouseEvent.IsShiftDown() ? MixtormatTokens::FineDragScale : 1.0;
-	double NewValue = DragStartValue + (Range * (PixelDelta / Width)) * Scale;
-	if (MouseEvent.IsControlDown() && DeltaAttribute.Get(0.0) > 0.0)
+void SMixtormatSlider::GetDisplayRange(double& OutMin, double& OutMax) const
+{
+	OutMin = MinValueAttribute.Get(0.0);
+	OutMax = MaxValueAttribute.Get(1.0);
+	if (!ExpandableAttribute.Get(false))
 	{
-		NewValue = FMath::RoundToDouble(NewValue / DeltaAttribute.Get(0.0)) * DeltaAttribute.Get(0.0);
+		return;
 	}
-	CommitValue(NewValue, true);
+	if (ExpandedMin.IsSet())
+	{
+		OutMin = FMath::Min(OutMin, ExpandedMin.GetValue());
+	}
+	if (ExpandedMax.IsSet())
+	{
+		OutMax = FMath::Max(OutMax, ExpandedMax.GetValue());
+	}
+	const double Value = GetValue();
+	OutMin = FMath::Min(OutMin, Value);
+	OutMax = FMath::Max(OutMax, Value);
+}
+
+FReply SMixtormatSlider::ApplyDrag(const float Delta, const float Width, const FPointerEvent& MouseEvent)
+{
+	double MinValue = 0.0;
+	double MaxValue = 1.0;
+	GetDisplayRange(MinValue, MaxValue);
+	const double Range = FMath::Max(MaxValue - MinValue, 0.0);
+	// Rate is fixed per unit of travel and read per event, so Shift changes speed from here
+	// on instead of rescaling everything dragged so far.
+	// A row at least DragRangeDistance wide tracks the cursor one to one, so the fill stays
+	// under the hand; a narrower one (a paired half row) spreads the range over the minimum
+	// distance instead of scrubbing faster than a full row.
+	const double Rate = Range / FMath::Max(Width, MixtormatTokens::DragRangeDistance)
+		* (MouseEvent.IsShiftDown() ? MixtormatTokens::FineDragScale : 1.0);
+	const double Proposed = DragValue + static_cast<double>(Delta) * Rate;
+
+	// The drag never leaves the range it started with. Pushing an end that still has room is
+	// remembered; the range grows when the button is released (FinishDragRange).
+	const double HardMin = HardMinAttribute.Get(-UE_BIG_NUMBER);
+	const double HardMax = HardMaxAttribute.Get(UE_BIG_NUMBER);
+	const double Low = FMath::Max(FMath::Min(MinValue, DragStartValue), HardMin);
+	const double High = FMath::Min(FMath::Max(MaxValue, DragStartValue), HardMax);
+	if (ExpandableAttribute.Get(false) && Range > 0.0)
+	{
+		bPushedHigh = Proposed > High && High < HardMax;
+		bPushedLow = Proposed < Low && Low > HardMin;
+	}
+	DragValue = FMath::Clamp(Proposed, Low, High);
+
+	double NewValue = DragValue;
+	const double Snap = DeltaAttribute.Get(0.0);
+	if (MouseEvent.IsControlDown() && Snap > 0.0)
+	{
+		NewValue = FMath::RoundToDouble(NewValue / Snap) * Snap;
+	}
+	if (bInteger)
+	{
+		NewValue = FMath::RoundToDouble(NewValue);
+	}
+	OnValueChanged.ExecuteIfBound(FMath::Clamp(NewValue, Low, High));
 	return FReply::Handled();
+}
+
+void SMixtormatSlider::FinishDragRange()
+{
+	if (!ExpandableAttribute.Get(false))
+	{
+		bPushedLow = bPushedHigh = false;
+		return;
+	}
+	double MinValue = 0.0;
+	double MaxValue = 1.0;
+	GetDisplayRange(MinValue, MaxValue);
+	const double Span = FMath::Max(MaxValue - MinValue, 0.0);
+	if (bPushedHigh)
+	{
+		ExpandedMax = FMath::Min(HardMaxAttribute.Get(UE_BIG_NUMBER), MaxValue + Span);
+	}
+	if (bPushedLow)
+	{
+		ExpandedMin = FMath::Max(HardMinAttribute.Get(-UE_BIG_NUMBER), MinValue - Span);
+	}
+	const double Value = GetValue();
+	if (!bPushedLow && !bPushedHigh
+		&& Value > MinValueAttribute.Get(0.0) && Value < MaxValueAttribute.Get(1.0))
+	{
+		ExpandedMin.Reset();
+		ExpandedMax.Reset();
+	}
+	bPushedLow = bPushedHigh = false;
+}
+
+void SMixtormatSlider::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
+{
+	// Alt-tab or a modal mid-scrub: close the drag so the owner restores preview quality and
+	// commits undo, instead of waiting for a button-up that will never arrive.
+	if (bDragging && bMovedPastThreshold)
+	{
+		FinishDragRange();
+		OnEndDrag.ExecuteIfBound();
+	}
+	bDragging = false;
+	bMovedPastThreshold = false;
+	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
 }
 
 FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& MouseEvent)
@@ -210,6 +335,7 @@ FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& 
 	bDragging = false;
 	if (bMovedPastThreshold)
 	{
+		FinishDragRange();
 		OnEndDrag.ExecuteIfBound();
 	}
 	else
@@ -218,7 +344,8 @@ FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& 
 		BeginTextEntry();
 	}
 	bMovedPastThreshold = false;
-	return FReply::Handled().ReleaseMouseCapture();
+	// The cursor was hidden in place; show it again where the press began.
+	return FReply::Handled().ReleaseMouseCapture().SetMousePos(DragStartScreen);
 }
 
 int32 SMixtormatSlider::OnPaint(
@@ -255,6 +382,26 @@ int32 SMixtormatSlider::OnPaint(
 		ESlateDrawEffect::None,
 		BackgroundBrush->GetTint(InWidgetStyle));
 
+	// The same well ramp the dropdown chips paint (darker at the top), inset by the outline so
+	// the brush's border stays visible. Typing and disabled keep their flat brushes.
+	if (bEnabled && !bEditing)
+	{
+		const bool bLifted = bHighlight || bMovedPastThreshold;
+		const MixtormatGradient::FStop Well[] = {
+			{ 0.0f, bLifted ? MixtormatPalette::WellTopHover() : MixtormatPalette::WellTop() },
+			{ 1.0f, bLifted ? MixtormatPalette::WellBottomHover() : MixtormatPalette::WellBottom() },
+		};
+		const float Inset = MixtormatTokens::OutlineWidth;
+		const FVector2f WellSize(
+			FMath::Max(static_cast<float>(Size.X) - Inset * 2.0f, 0.0f),
+			FMath::Max(static_cast<float>(Size.Y) - Inset * 2.0f, 0.0f));
+		MixtormatGradient::Paint(
+			OutDrawElements, LayerId,
+			AllottedGeometry.ToPaintGeometry(WellSize, FSlateLayoutTransform(FVector2f(Inset, Inset))),
+			WellSize, Orient_Vertical, Well,
+			FVector4f(FMath::Max(MixtormatTokens::CornerRadius - Inset, 0.0f)));
+	}
+
 	if (bEditing)
 	{
 		// The entry field replaces the whole bar while typing; painting the fill and the value
@@ -264,8 +411,9 @@ int32 SMixtormatSlider::OnPaint(
 	}
 
 	const double Value = GetValue();
-	const double MinValue = MinValueAttribute.Get(0.0);
-	const double MaxValue = MaxValueAttribute.Get(1.0);
+	double MinValue = 0.0;
+	double MaxValue = 1.0;
+	GetDisplayRange(MinValue, MaxValue);
 	const double Range = MaxValue - MinValue;
 	const bool bValidRange = Range > UE_DOUBLE_SMALL_NUMBER;
 

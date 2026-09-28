@@ -48,7 +48,32 @@ enum class EMixtormatEffectType : uint8
 	// like liquid pooling and flowing around an obstacle -- but for a streak it is two passes
 	// instead of twenty-two. A mask child, same as Stain: it resolves the shape of where the
 	// runoff ran into the layer's mask chain and the layer supplies every channel.
-	Runoff = 8 UMETA(DisplayName = "Runoff")
+	Runoff = 8 UMETA(DisplayName = "Runoff"),
+	// Generator-owned flow tools. Appended: serialized recipes store this enum by value. Each is
+	// valid only scoped under a Rock Formation generator, and rewrites that generator's own height
+	// field before its combine -- see Docs/flow_generation_core.md.
+	ShapeDeform = 9 UMETA(DisplayName = "Shape Deform"),
+	GeneratorFlow = 10 UMETA(DisplayName = "Generator Flow"),
+	FlowCarve = 11 UMETA(DisplayName = "Flow Carve")
+};
+
+// Which field of the owning generator seeds the flow direction.
+UENUM(BlueprintType)
+enum class EMixtormatGeneratorFlowSource : uint8
+{
+	// Boundary normal from the generator's signed boundary distance (negative inside).
+	SignedDistance = 0 UMETA(DisplayName = "Signed Distance"),
+	// Downhill direction of the generator's own height.
+	Height = 1 UMETA(DisplayName = "Height")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatFlowCarveMode : uint8
+{
+	// Distance-biased minimum along the trace: cuts grooves.
+	Groove = 0 UMETA(DisplayName = "Groove"),
+	// Distance-biased maximum along the trace: raises deposits.
+	Deposit = 1 UMETA(DisplayName = "Deposit")
 };
 
 UENUM(BlueprintType)
@@ -105,10 +130,21 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::FlowWarp:
 	case EMixtormatEffectType::LayerBlur:
 	case EMixtormatEffectType::Runoff:
+	// Generator flow tools write no effect data: they run inside the owning generator.
+	case EMixtormatEffectType::ShapeDeform:
+	case EMixtormatEffectType::GeneratorFlow:
+	case EMixtormatEffectType::FlowCarve:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;
 	}
+}
+
+inline bool MixtormatIsGeneratorFlowEffect(const EMixtormatEffectType Type)
+{
+	return Type == EMixtormatEffectType::ShapeDeform
+		|| Type == EMixtormatEffectType::GeneratorFlow
+		|| Type == EMixtormatEffectType::FlowCarve;
 }
 
 UCLASS(BlueprintType)

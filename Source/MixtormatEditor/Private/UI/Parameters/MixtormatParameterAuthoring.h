@@ -38,9 +38,16 @@ struct FMixtormatParameterAuthoringEntry
 	TOptional<float> UiMax;
 	TOptional<float> Snap;
 
+	// Back-end clamp, enforced by the editor only: a drag and a typed value both stop here, and
+	// a slider's range never grows past it. Never a shader or gather clamp. Unset = unlimited
+	// (falls back to the runtime contract's HardMin/HardMax when that has one).
+	TOptional<float> ClampMin;
+	TOptional<float> ClampMax;
+
 	bool IsEmpty() const
 	{
-		return Label.IsEmpty() && !Default.IsSet() && !UiMin.IsSet() && !UiMax.IsSet() && !Snap.IsSet();
+		return Label.IsEmpty() && !Default.IsSet() && !UiMin.IsSet() && !UiMax.IsSet() && !Snap.IsSet()
+			&& !ClampMin.IsSet() && !ClampMax.IsSet();
 	}
 };
 
@@ -73,6 +80,8 @@ namespace MixtormatParameterAuthoring
 	float ResolveAuthoringDefault(const FMixtormatParameterDefinitionKey& Key, float FallbackStored);
 	float ResolveAuthoringUiBound(const FMixtormatParameterDefinitionKey& Key, float Fallback, bool bMax);
 	float ResolveAuthoringSnap(const FMixtormatParameterDefinitionKey& Key, float Fallback);
+	// Editor clamp: pending -> shipped -> runtime contract Hard bound -> unset (unlimited).
+	TOptional<float> ResolveAuthoringClamp(const FMixtormatParameterDefinitionKey& Key, bool bMax);
 	FText ResolveAuthoringLabel(const FMixtormatParameterDefinitionKey& Key, const FText& Fallback);
 
 	// Creation-time defaults: applies persisted entries to genuinely new effect/generator

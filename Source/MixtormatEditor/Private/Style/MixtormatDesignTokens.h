@@ -170,9 +170,12 @@ namespace MixtormatTokens
 	// The label shifts right by this much when the stripe is showing, so text never sits on it.
 	constexpr float ModifiedLabelInset = 5.0f;
 	// Pixels of travel before a press becomes a scrub rather than a click-to-type.
-	constexpr float DragThreshold = 4.0f;
+	inline float DragThreshold = 4.0f;
 	// Shift-drag multiplier.
-	constexpr float FineDragScale = 0.125f;
+	inline float FineDragScale = 0.125f;
+	// Minimum Slate units of drag that sweep a slider's whole range. Rows wider than this track
+	// the cursor 1:1; narrower ones (paired half rows) use this distance so they are not faster.
+	inline float DragRangeDistance = 320.0f;
 	// Centre tick on a range that spans zero.
 	constexpr float TickInsetY = 4.0f;
 	constexpr float TickWidth = 1.0f;
@@ -427,7 +430,9 @@ namespace MixtormatTokens
 	// Between stacked rows. One pixel: enough to separate, not enough to break the column.
 	inline float LayerRowGap = 2.0f;
 	constexpr float LayerEyeSize = 15.0f;
-	constexpr float LayerChildIconSize = 12.0f;
+	inline float LayerChildIconSize = 16.0f;
+	// Opacity of the tree connector (tee / elbow) before a scoped child's glyph.
+	inline float LayerConnectorOpacity = 0.45f;
 	// The count-and-create bar above the rows: the icon buttons are what governs its natural
 	// height, plus three pixels of breathing room now that it carries the label as well.
 	inline float LayerStackHeaderHeight = IconButtonSize + 3.0f;

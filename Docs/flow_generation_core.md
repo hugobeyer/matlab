@@ -1,8 +1,32 @@
 # Mixtormat — Flow Generation Tools (core proposal)
 
-Status: staged implementation. Rock Formation now caches a local signed boundary field alongside its
-height and existing outputs. Generator-scoped Shape Deform, Generator Flow, Flow Carve, the
-shared propagation solve and selected-item previews are not implemented yet.
+Status: implemented, unvalidated in Unreal. Shape Deform, Generator Flow and Flow Carve are
+effect types 9-11, valid only scoped under an enabled Rock Formation or Pebbles. Each runs its own shared
+solve inside `AddRockFormationPasses`, on the rock height before the combine; the layer's delta
+normal then rebuilds normals from the result. Code: `Shaders/Private/MixtormatGeneratorFlow.usf`,
+`AddRockFlowToolPasses` in `MixtormatGpuGeneratorPasses.cpp`, `GatherGeneratorFlow`.
+
+As built:
+- Seeds: SDF source seeds only where every gradient tap saw an outline, |d| is within the kernel
+  band and |grad d| is near 1; Height source seeds where the height changes across the kernel.
+  Unseeded texels are filled only by the jump flood (nearest seed label, toroidal distance),
+  solved on the strata grid (max 1024) and refined over 3x3 solve texels at full resolution.
+- Direction = seed direction rotated by Angle + Tangent*90 + Bend*periodic noise (period 3).
+  Influence = feather(Reach, Feather) of propagated distance x Amount x scoped mask.
+- Smooth (texels, default 8) blurs the resolved direction with a separable 17-tap Bartlett (tent).
+  Tools read it bilinear and renormalized; where opposing flows cancelled (length < 0.2) they
+  fall back to the raw nearest texel, so collisions stay sharp instead of zeroing.
+- No clamps anywhere: gather passes authored values through (non-finite guard only) and the
+  shader only guards defined math (at least one step). Flow Carve Depth is a gain on the
+  gathered drop (1 = down to the strongest distance-weighted sample), not a cap.
+- Owners: Rock Formation (RG boundary field) and Pebbles (edge distance packed with its 1e9
+  no-hit sentinel as invalid; its coverage is moved with the height so the pebble combine
+  gates moved height by moved coverage; a Deposit adds the raised pixels to coverage).
+- Trace sign: Generator Flow traces upstream (sign via Warp Strength). Flow Carve Groove gathers
+  downstream (edges slump toward lower ground ahead, like `carve.cl`); Deposit gathers upstream.
+- Limitations: published Rock top/chamfer/wall/IDs stay undeformed (published in the ID phase);
+  the boundary field is the rock's original one for every item; Depth is in rock-field height
+  units (before Height Scale); non-square outputs measure distance in UV, not texels.
 
 ## Goal
 
@@ -116,3 +140,14 @@ and masks for other layers can follow after local behavior is validated.
 
 Avoid calling a smoothstep on raw distance an Eikonal solve. Validate visual output and
 shader bindings in Unreal after each milestone; this document is not that validation.
+
+## Verification checklist (Hugo)
+
+1. `MixtormatGeneratorFlow.usf` compiles in all 6 `FLOW_STAGE` permutations.
+2. UHT + C++ build (new enums 9-11, `GeneratorFlow*` fields, preview kinds).
+3. Each tool under a Rock Formation changes height and the rebuilt normals.
+4. Flow Carve at defaults: Groove cuts, Deposit raises.
+5. All previews show: Flow Direction, Warped UV Grid, Influence, Validity, Carve Mask.
+6. A mask scoped under a tool gates only that tool.
+7. Disabling the Rock or orphaning a tool makes it inert (no peel fallback).
+8. Seams tile cleanly at 1K and 4K; check 4K memory with several tools.

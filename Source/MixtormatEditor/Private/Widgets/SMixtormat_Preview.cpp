@@ -443,7 +443,7 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 				const FMixtormatLayerChild& Owner = (*Children)[OwnerIndex];
 				if (!IsGroupChildEnabled(Owner)
 					|| (bImmediateOwner && (Owner.Type != EMixtormatLayerChildType::Generator
-						|| Owner.Generator.Type != EMixtormatGeneratorType::RockFormation)))
+						|| !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type))))
 				{
 					return false;
 				}
@@ -1108,26 +1108,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		MakeSlider(
 			LOCTEXT("PreviewLightIntensityLabel", "Light"),
 			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewLightIntensity); }),
-			0.0, 2.0, 0.5, 0.01, false,
+			0.0, 2.0, 0.8, 0.01, false,
 			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
 			{
 				SetPreviewLightIntensity(static_cast<float>(Value));
 			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(0.5f); }),
-			LOCTEXT("PreviewLightIntensityHint", "Scales the preset key light. The default 0.5 uses half of the preset's authored brightness."))
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewLightIntensity(0.8f); }),
+			LOCTEXT("PreviewLightIntensityHint", "Scales the preset key light. The default 0.8 uses 80% of the preset's authored brightness."))
 	];
 	SceneControls->AddSlot().AutoHeight()
 	[
 		MakeSlider(
 			LOCTEXT("PreviewSkylightIntensityLabel", "Skylight"),
 			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewSkylightIntensity); }),
-			0.0, 2.0, 0.5, 0.01, false,
+			0.0, 2.0, 0.1, 0.01, false,
 			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
 			{
 				SetPreviewSkylightIntensity(static_cast<float>(Value));
 			}),
-			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(0.5f); }),
-			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflection capture. The default is half intensity."))
+			FSimpleDelegate::CreateLambda([this]() { SetPreviewSkylightIntensity(0.1f); }),
+			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflection capture. The default is 10% intensity."))
 	];
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
 	CameraControls->AddSlot().AutoHeight()
