@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatEffect.h"
+#include "MixtormatMaterial.h"
 #include "MixtormatParameterDefinition.h"
 
 // The plugin-owned authoring database: persistent overrides of an authoring setup --
@@ -84,10 +84,9 @@ namespace MixtormatParameterAuthoring
 	TOptional<float> ResolveAuthoringClamp(const FMixtormatParameterDefinitionKey& Key, bool bMax);
 	FText ResolveAuthoringLabel(const FMixtormatParameterDefinitionKey& Key, const FText& Fallback);
 
-	// Creation-time defaults: applies persisted entries to genuinely new effect/generator
-	// payloads. Duplication and instance resolve never call these; authored values are untouched.
-	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, EMixtormatEffectType Family);
-	void ApplyAuthoringDefaults(FMixtormatGenerator& Generator);
+	// Creation-time defaults for the active child payload; duplication and instance resolve
+	// never call this, so existing authored values remain untouched.
+	void ApplyAuthoringDefaults(FMixtormatLayerChild& Child);
 
 	// Database serialization. LoadFromString replaces the entire shipped database and is the
 	// corruption boundary: malformed input returns false and leaves the database empty rather

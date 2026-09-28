@@ -119,7 +119,7 @@ float PebbleStone(float2 p, int seed, int cuts, out float outHeight, out int out
 {
 	const float BaseRadius = 0.33f;
 	float shape = -1e9f;
-	float hf = 1e9f;
+
 	// The top: every facet plane, chamfered where two meet. A stone's height is the lowest facet
 	// (a convex roof), so its ridges are creases of a min -- chamfering that min bevels the top
 	// edges, which is where a stone's chamfer reads. The outline chamfer alone sat at the floor.
@@ -162,8 +162,7 @@ float PebbleStone(float2 p, int seed, int cuts, out float outHeight, out int out
 		top = i == 0 ? facet : PebbleUnionChamfer(top, facet, ridge);
 	}
 
-	hf = top;
-	outHeight = saturate(hf * HeightGain);
+	outHeight = top * HeightGain;
 	outFacet = bestFacet + 1;
 	return shape;
 }
@@ -211,14 +210,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			float2 centre = float2((float)cx + 0.5f, (float)cy + 0.5f)
 				+ (float2(PebbleRand(ss, 901), PebbleRand(ss, 902)) - 0.5f) * Jitter;
 			float size = max(StoneScale * (1.0f + (PebbleRand(ss, 903) * 2.0f - 1.0f) * ScaleVariation), 1e-4f);
-			float ang = radians(RotationDegrees) * (PebbleRand(ss, 904) * 2.0f - 1.0f);
-
 			float2 d = q - centre;
-			if (length(d) > 0.75f * size)
+			float distanceToCentre = length(d);
+			float boundingRadius = 0.75f * size;
+			if (distanceToCentre > boundingRadius
+				&& (distanceToCentre - boundingRadius) / (float)CellCount >= bestSdf)
 			{
 				continue;
 			}
 
+			float ang = radians(RotationDegrees) * (PebbleRand(ss, 904) * 2.0f - 1.0f);
 			float ca = cos(-ang), sa = sin(-ang);
 			float2 p = float2(ca * d.x - sa * d.y, sa * d.x + ca * d.y) / size;
 
@@ -229,6 +230,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			int facet;
 			float sd = PebbleStone(p, ss, cuts, h, facet) * size / (float)CellCount;
 			bestSdf = min(bestSdf, sd);
+
+			if (distanceToCentre > boundingRadius)
+			{
+				continue;
+			}
 
 			if (sd <= 0.0f)
 			{
@@ -247,7 +253,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	OutPebbleHeight[Pixel] = anyStone ? bestHeight : 0.0f;
 	OutPebbleCoverage[Pixel] = anyStone ? 1.0f : 0.0f;
-	// Signed distance to the nearest stone outline, UV units, negative inside.
+	// Nearest stone outline in UV units; negative inside, sentinel if no stone is in Reach.
 	OutPebbleEdgeDistance[Pixel] = bestSdf;
 	OutPebbleRandom[Pixel] = bestRandom;
 	OutPebbleIds[Pixel] = bestId;

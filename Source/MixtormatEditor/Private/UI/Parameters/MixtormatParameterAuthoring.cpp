@@ -3,6 +3,7 @@
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
 
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
+#include "MixtormatParameterBinding.h"
 #include "Containers/StringConv.h"
 #include "Interfaces/IPluginManager.h"
 #include "Logging/LogMacros.h"
@@ -31,28 +32,16 @@ namespace
 		return InnerNameOf(StaticEnum<EMixtormatEffectType>(), static_cast<int64>(Family));
 	}
 
-	const UStruct* StructForKey(const FMixtormatParameterDefinitionKey& Key)
+	const UScriptStruct* StructForKey(const FMixtormatParameterDefinitionKey& Key)
 	{
-		switch (Key.Owner)
+		for (const UScriptStruct* Struct : MixtormatParameterBinding::GetOwnerStructs(Key.Owner))
 		{
-		case EMixtormatParameterOwnerType::Effect:
-			return FMixtormatLayerEffect::StaticStruct();
-		case EMixtormatParameterOwnerType::Generator:
-		{
-			const UScriptStruct* Structs[] = {
-				FMixtormatStrataCarver::StaticStruct(),
-				FMixtormatFracture::StaticStruct(),
-				FMixtormatRockFormation::StaticStruct(),
-				FMixtormatPebbles::StaticStruct()};
-			for (const UScriptStruct* Struct : Structs)
+			if (Struct->FindPropertyByName(Key.Parameter))
 			{
-				if (Struct->FindPropertyByName(Key.Parameter)) return Struct;
+				return Struct;
 			}
-			return nullptr;
 		}
-		default:
-			return nullptr;
-		}
+		return nullptr;
 	}
 
 	const FProperty* PropertyForKey(const FMixtormatParameterDefinitionKey& Key)
@@ -332,53 +321,17 @@ namespace MixtormatParameterAuthoring
 		return Fallback;
 	}
 
-	void ApplyAuthoringDefaults(FMixtormatGenerator& Generator)
+	void ApplyAuthoringDefaults(FMixtormatLayerChild& Child)
 	{
 		LoadFromDisk();
-		UScriptStruct* Struct = nullptr;
-		void* Payload = nullptr;
-		switch (Generator.Type)
+		EMixtormatEffectType EffectFamily = Child.Effect.ProceduralType;
+		if (Child.Type == EMixtormatLayerChildType::Effect && !Child.Effect.Effect.IsNull())
 		{
-		case EMixtormatGeneratorType::StrataCarver:
-			Struct = FMixtormatStrataCarver::StaticStruct(); Payload = &Generator.StrataCarver; break;
-		case EMixtormatGeneratorType::Fracture:
-			Struct = FMixtormatFracture::StaticStruct(); Payload = &Generator.Fracture; break;
-		case EMixtormatGeneratorType::RockFormation:
-			Struct = FMixtormatRockFormation::StaticStruct(); Payload = &Generator.RockFormation; break;
-		case EMixtormatGeneratorType::Pebbles:
-			Struct = FMixtormatPebbles::StaticStruct(); Payload = &Generator.Pebbles; break;
-		default: return;
-		}
-		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
-			: ShippedEntries())
-		{
-			if (Pair.Key.Owner != EMixtormatParameterOwnerType::Generator
-				|| !Pair.Value.Default.IsSet())
+			if (const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous())
 			{
-				continue;
-			}
-			const FProperty* Property = Struct->FindPropertyByName(Pair.Key.Parameter);
-			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
-			{
-				*Float->ContainerPtrToValuePtr<float>(Payload) = Pair.Value.Default.GetValue();
-			}
-			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
-			{
-				*Int->ContainerPtrToValuePtr<int32>(Payload) = FMath::RoundToInt(Pair.Value.Default.GetValue());
+				EffectFamily = Asset->EffectType;
 			}
 		}
-	}
-
-	void ApplyAuthoringDefaults(FMixtormatLayerEffect& Effect, const EMixtormatEffectType Family)
-	{
-		LoadFromDisk();
-		const FString FamilyName = FamilyKeyOf(Family);
-		UScriptStruct* const EffectStruct = FMixtormatLayerEffect::StaticStruct();
-
-		// Genuinely-new instances of one family: apply every shipped database default whose
-		// property's Category names that family. The Category is the family grouping --
-		// "Breakup|Shading" belongs to Breakup -- read from reflection, so no parameter list
-		// is maintained anywhere.
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: ShippedEntries())
 		{
@@ -386,25 +339,34 @@ namespace MixtormatParameterAuthoring
 			{
 				continue;
 			}
-			const FProperty* Property = EffectStruct->FindPropertyByName(Pair.Key.Parameter);
-			if (!Property)
+			const UScriptStruct* Struct = nullptr;
+			void* Payload = MixtormatParameterBinding::GetMutableChildOwnerData(
+				Child, Pair.Key.Owner, Struct);
+			if (!Payload || !Struct)
 			{
 				continue;
 			}
-			const FString Category = Property->GetMetaData(TEXT("Category"));
-			if (!CategoryMatchesFamily(Category, FamilyName))
+			const FProperty* Property = Struct->FindPropertyByName(Pair.Key.Parameter);
+			if (!Property || (Pair.Key.Owner == EMixtormatParameterOwnerType::Effect
+				&& !CategoryMatchesFamily(Property->GetMetaData(TEXT("Category")),
+					FamilyKeyOf(EffectFamily))))
 			{
 				continue;
 			}
-
-			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+			if (Pair.Key.ValueType == EMixtormatParameterValueType::Float)
 			{
-				*Float->ContainerPtrToValuePtr<float>(&Effect) = Pair.Value.Default.GetValue();
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					*Float->ContainerPtrToValuePtr<float>(Payload) = Pair.Value.Default.GetValue();
+				}
 			}
-			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+			else if (Pair.Key.ValueType == EMixtormatParameterValueType::Int)
 			{
-				*Int->ContainerPtrToValuePtr<int32>(&Effect) =
-					FMath::RoundToInt(Pair.Value.Default.GetValue());
+				if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					*Int->ContainerPtrToValuePtr<int32>(Payload) =
+						FMath::RoundToInt(Pair.Value.Default.GetValue());
+				}
 			}
 		}
 	}
@@ -436,24 +398,26 @@ namespace MixtormatParameterAuthoring
 			// Warn when no property answers to it: such entries still load (they key by
 			// parameter), but no family can ever match them at apply time.
 			bool bSectionMatchesAnyCategory = false;
-			for (const UStruct* Struct : {
-				static_cast<const UStruct*>(FMixtormatLayerEffect::StaticStruct()),
-				static_cast<const UStruct*>(FMixtormatStrataCarver::StaticStruct()),
-				static_cast<const UStruct*>(FMixtormatFracture::StaticStruct()),
-				static_cast<const UStruct*>(FMixtormatRockFormation::StaticStruct()),
-				static_cast<const UStruct*>(FMixtormatPebbles::StaticStruct())})
+			const UEnum* OwnerEnum = StaticEnum<EMixtormatParameterOwnerType>();
+			for (int32 OwnerIndex = 0; OwnerIndex < OwnerEnum->NumEnums() - 1
+				&& !bSectionMatchesAnyCategory; ++OwnerIndex)
 			{
-				for (TFieldIterator<FProperty> It(Struct); It; ++It)
+				const auto Owner = static_cast<EMixtormatParameterOwnerType>(
+					OwnerEnum->GetValueByIndex(OwnerIndex));
+				for (const UScriptStruct* Struct : MixtormatParameterBinding::GetOwnerStructs(Owner))
 				{
-					if (CategoryMatchesFamily(It->GetMetaData(TEXT("Category")), FamilyPair.Key))
+					for (TFieldIterator<FProperty> It(Struct); It; ++It)
 					{
-						bSectionMatchesAnyCategory = true;
+						if (CategoryMatchesFamily(It->GetMetaData(TEXT("Category")), FamilyPair.Key))
+						{
+							bSectionMatchesAnyCategory = true;
+							break;
+						}
+					}
+					if (bSectionMatchesAnyCategory)
+					{
 						break;
 					}
-				}
-				if (bSectionMatchesAnyCategory)
-				{
-					break;
 				}
 			}
 			if (!bSectionMatchesAnyCategory)
@@ -489,17 +453,19 @@ namespace MixtormatParameterAuthoring
 					ParameterName.LeftChopInline(4);
 				}
 
-				// KeyNameOf writes the owner-qualified spelling ("Effect.BreakupSeed"); the
-				// parameter itself is the segment after the last dot. Bare names remain Effect.
+				// Bare names remain Effect; qualified names resolve through the serialized
+				// owner enum spelling rather than a special case for Generator.
 				EMixtormatParameterOwnerType Owner = EMixtormatParameterOwnerType::Effect;
 				int32 DotIndex = INDEX_NONE;
 				if (ParameterName.FindLastChar(TEXT('.'), DotIndex))
 				{
-					const FString OwnerName = ParameterName.Left(DotIndex);
-					if (OwnerName == TEXT("Generator"))
+					const int64 OwnerValue = StaticEnum<EMixtormatParameterOwnerType>()
+						->GetValueByNameString(ParameterName.Left(DotIndex));
+					if (OwnerValue == INDEX_NONE)
 					{
-						Owner = EMixtormatParameterOwnerType::Generator;
+						continue;
 					}
+					Owner = static_cast<EMixtormatParameterOwnerType>(OwnerValue);
 					ParameterName.RightChopInline(DotIndex + 1);
 				}
 

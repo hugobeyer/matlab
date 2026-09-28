@@ -2,12 +2,15 @@
 
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
 
+#include "MixtormatParameterBinding.h"
+
 #include "HAL/IConsoleManager.h"
 #include "Logging/LogMacros.h"
 #include "Math/Range.h"
 #include "Misc/AssertionMacros.h"
 #include "Misc/Parse.h"
 #include "UObject/Class.h"
+#include "UObject/StructOnScope.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -35,16 +38,11 @@ namespace
 		return Set;
 	}
 
-	const UScriptStruct* GeneratorStructForParameter(const FName Parameter)
+	const UScriptStruct* StructForParameter(const FMixtormatParameterDefinitionKey& Key)
 	{
-		const UScriptStruct* Structs[] = {
-			FMixtormatStrataCarver::StaticStruct(),
-			FMixtormatFracture::StaticStruct(),
-			FMixtormatRockFormation::StaticStruct(),
-			FMixtormatPebbles::StaticStruct()};
-		for (const UScriptStruct* Struct : Structs)
+		for (const UScriptStruct* Struct : MixtormatParameterBinding::GetOwnerStructs(Key.Owner))
 		{
-			if (Struct->FindPropertyByName(Parameter))
+			if (Struct->FindPropertyByName(Key.Parameter))
 			{
 				return Struct;
 			}
@@ -74,40 +72,21 @@ namespace
 		}
 
 		FReflectedUi Resolved;
-		const UScriptStruct* Struct = nullptr;
-		const void* Defaults = nullptr;
-		if (Key.Owner == EMixtormatParameterOwnerType::Effect)
+		const UScriptStruct* Struct = StructForParameter(Key);
+		if (Struct)
 		{
-			static const FMixtormatLayerEffect CDODefaults;
-			Struct = FMixtormatLayerEffect::StaticStruct();
-			Defaults = &CDODefaults;
-		}
-		else if (Key.Owner == EMixtormatParameterOwnerType::Generator)
-		{
-			Struct = GeneratorStructForParameter(Key.Parameter);
-			static const FMixtormatStrataCarver StrataDefaults;
-			static const FMixtormatFracture FractureDefaults;
-			static const FMixtormatRockFormation RockDefaults;
-			static const FMixtormatPebbles PebblesDefaults;
-			if (Struct == FMixtormatStrataCarver::StaticStruct()) Defaults = &StrataDefaults;
-			else if (Struct == FMixtormatFracture::StaticStruct()) Defaults = &FractureDefaults;
-			else if (Struct == FMixtormatRockFormation::StaticStruct()) Defaults = &RockDefaults;
-			else if (Struct == FMixtormatPebbles::StaticStruct()) Defaults = &PebblesDefaults;
-		}
-
-		if (Struct && Defaults)
-		{
+			FStructOnScope Defaults(Struct);
 			if (const FProperty* Property = Struct->FindPropertyByName(Key.Parameter))
 			{
 				Resolved.bPropertyFound = true;
 
 				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 				{
-					Resolved.Default = *Float->ContainerPtrToValuePtr<float>(const_cast<void*>(Defaults));
+					Resolved.Default = *Float->ContainerPtrToValuePtr<float>(Defaults.GetStructMemory());
 				}
 				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 				{
-					Resolved.Default = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(const_cast<void*>(Defaults)));
+					Resolved.Default = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(Defaults.GetStructMemory()));
 				}
 
 				const auto ReadMeta = [&Property](const TCHAR* Field, float& Out) -> bool
@@ -179,10 +158,7 @@ namespace MixtormatParameterUi
 		{
 			return nullptr;
 		}
-		const UStruct* Struct = Key.Owner == EMixtormatParameterOwnerType::Effect
-			? FMixtormatLayerEffect::StaticStruct()
-			: (Key.Owner == EMixtormatParameterOwnerType::Generator
-				? GeneratorStructForParameter(Key.Parameter) : nullptr);
+		const UScriptStruct* Struct = StructForParameter(Key);
 		if (!Struct)
 		{
 			return nullptr;

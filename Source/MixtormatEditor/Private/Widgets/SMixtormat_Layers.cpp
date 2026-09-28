@@ -438,20 +438,8 @@ namespace
 			break;
 		}
 
-		// Genuinely-new generator children receive the current persistent plugin defaults.
-		if (Child.Type == EMixtormatLayerChildType::Generator)
-		{
-			MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Generator);
-		}
-
-		// Genuinely-new effect children receive the current persistent plugin defaults;
-		// duplication and instance resolve never pass through here, so authored values on
-		// copies and serialized assets are untouched.
-		if (Child.Type == EMixtormatLayerChildType::Effect)
-		{
-			MixtormatParameterAuthoring::ApplyAuthoringDefaults(
-				Child.Effect, Child.Effect.ProceduralType);
-		}
+		// Only genuinely-new children pass through here; copies keep their authored values.
+		MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	}
 
 	// Writes the Link-mode reference that makes Y the same value as X, using the existing
@@ -1595,6 +1583,7 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Mask;
 	Child.Mask = MoveTemp(NewMask);
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	ApplyLinkDefaults(Child, Layer.LayerId);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1639,6 +1628,7 @@ FReply SMixtormat::AddMaskFilterToLayerChild(
 	{
 		return FReply::Handled();
 	}
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(WorkingLayers[LayerIndex].Children[InsertAt]);
 	ApplyLinkDefaults(WorkingLayers[LayerIndex].Children[InsertAt], WorkingLayers[LayerIndex].LayerId);
 
 	SelectedLayerIndex = LayerIndex;
@@ -3312,7 +3302,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
 	}
 	// The database speaks per family; an asset child's family is the asset's type.
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(LayerEffect, Effect->EffectType);
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -4312,6 +4302,7 @@ FReply SMixtormat::AddMaskFilterToGroupChild(
 	{
 		return FReply::Handled();
 	}
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Group->Children[InsertAt]);
 	// The insert index, not the appended default: a filter lands inside its owner's subtree, which
 	// is nowhere near the end of the stack.
 	FinishGroupChildEdit(GroupId, InsertAt);
@@ -4331,6 +4322,7 @@ FReply SMixtormat::AddFlowWarpToGroupChild(const FGuid GroupId, const int32 Owne
 	{
 		return FReply::Handled();
 	}
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Group->Children[InsertAt]);
 	FinishGroupChildEdit(GroupId, InsertAt);
 	return FReply::Handled();
 }
@@ -4356,6 +4348,7 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 	if (FMixtormatLayerChild* Child = AppendGroupChild(GroupId, EMixtormatLayerChildType::Mask))
 	{
 		Child->Mask = MoveTemp(NewMask);
+		MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 		FinishGroupChildEdit(GroupId);
 	}
 	return FReply::Handled();
@@ -4390,7 +4383,7 @@ FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath E
 		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
 	}
 	// The database speaks per family; an asset child's family is the asset's type.
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(LayerEffect, Effect->EffectType);
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 	FinishGroupChildEdit(GroupId);
 	return FReply::Handled();
 }
@@ -4399,8 +4392,9 @@ FReply SMixtormat::AddProceduralChildToGroup(
 	const FGuid GroupId,
 	const EMixtormatLayerChildType ChildType)
 {
-	if (AppendGroupChild(GroupId, ChildType))
+	if (FMixtormatLayerChild* Child = AppendGroupChild(GroupId, ChildType))
 	{
+		MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 		FinishGroupChildEdit(GroupId);
 	}
 	return FReply::Handled();
@@ -4842,6 +4836,7 @@ FReply SMixtormat::AddGeneratorToGroup(
 		AppendGroupChild(GroupId, EMixtormatLayerChildType::Generator))
 	{
 		Child->Generator.Type = GeneratorType;
+		MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 		FinishGroupChildEdit(GroupId);
 	}
 	return FReply::Handled();
@@ -6856,6 +6851,7 @@ FReply SMixtormat::AddCraquelureToLayer(const int32 LayerIndex)
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Craquelure;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
 	SelectedEffectIndex = INDEX_NONE;
@@ -7104,6 +7100,7 @@ FReply SMixtormat::AddStainToLayer(
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Stain;
 	Child.Effect.StainMode = Mode;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7153,6 +7150,7 @@ FReply SMixtormat::AddRunoffToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Runoff;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7200,6 +7198,7 @@ FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Erosion;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7221,6 +7220,7 @@ FReply SMixtormat::AddBreakupToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Breakup;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7243,6 +7243,7 @@ FReply SMixtormat::AddWornEdgesToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7264,6 +7265,7 @@ FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7375,7 +7377,7 @@ FReply SMixtormat::AddGeneratorFlow(
 	FMixtormatLayerChild Child;
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = Type;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child.Effect, Type);
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	const int32 InsertAt = InsertScopedChild(
 		*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child));
 	if (InsertAt == INDEX_NONE)
@@ -7445,6 +7447,7 @@ FReply SMixtormat::AddFlowWarpToLayer(
 	{
 		Layer.Children.Insert(MakeFlowWarpPrototype(), InsertAt);
 	}
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Layer.Children[InsertAt]);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = InsertAt;
 	SelectedMaskIndex = INDEX_NONE;
@@ -7484,6 +7487,7 @@ FReply SMixtormat::AddLayerBlurToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	ApplyLinkDefaults(Child, Layer.LayerId);
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;

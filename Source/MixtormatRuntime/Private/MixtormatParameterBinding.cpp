@@ -101,46 +101,31 @@ namespace
 		View.Bindings = &Child.ParameterBindings;
 		switch (Owner)
 		{
-		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; View.Struct = FMixtormatMaskLayer::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; View.Struct = FMixtormatLayerEffect::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; View.Struct = FMixtormatGeneratedMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; View.Struct = FMixtormatCraquelure::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ColorId: View.ConstData = &Child.ColorId; View.Struct = FMixtormatColorIdMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ClusterId: View.ConstData = &Child.Filter; View.Struct = FMixtormatClusterFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::HsvId: View.ConstData = &Child.HsvFilter; View.Struct = FMixtormatHsvIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::RandomId: View.ConstData = &Child.RandomId; View.Struct = FMixtormatRandomIdMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::PatternId: View.ConstData = &Child.PatternId; View.Struct = FMixtormatPatternFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::RampId: View.ConstData = &Child.RampId; View.Struct = FMixtormatRampIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::UvId: View.ConstData = &Child.UvId; View.Struct = FMixtormatUvIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ReliefId: View.ConstData = &Child.ReliefId; View.Struct = FMixtormatReliefIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; View.Struct = FMixtormatCombineIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; View.Struct = FMixtormatIdGroup::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
-		// The generator's *payload*, not the FMixtormatGenerator wrapper. A binding names a
-		// parameter by FName on a flat struct, so exposing the wrapper would put every
-		// generator's controls behind a nested property the address system cannot reach. The
-		// kind selects which payload is exposed, so two generators can both own a parameter
-		// called Depth without either address resolving to the other.
+		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; break;
+		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
+		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; break;
+		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; break;
+		case EMixtormatParameterOwnerType::ColorId: View.ConstData = &Child.ColorId; break;
+		case EMixtormatParameterOwnerType::ClusterId: View.ConstData = &Child.Filter; break;
+		case EMixtormatParameterOwnerType::HsvId: View.ConstData = &Child.HsvFilter; break;
+		case EMixtormatParameterOwnerType::RandomId: View.ConstData = &Child.RandomId; break;
+		case EMixtormatParameterOwnerType::PatternId: View.ConstData = &Child.PatternId; break;
+		case EMixtormatParameterOwnerType::RampId: View.ConstData = &Child.RampId; break;
+		case EMixtormatParameterOwnerType::UvId: View.ConstData = &Child.UvId; break;
+		case EMixtormatParameterOwnerType::ReliefId: View.ConstData = &Child.ReliefId; break;
+		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
+		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
+		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
+		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; break;
+		// A generator exposes its selected flat payload, not its wrapper.
 		case EMixtormatParameterOwnerType::Generator:
 			switch (Child.Generator.Type)
 			{
-			case EMixtormatGeneratorType::StrataCarver:
-				View.ConstData = &Child.Generator.StrataCarver;
-				View.Struct = FMixtormatStrataCarver::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::Fracture:
-				View.ConstData = &Child.Generator.Fracture;
-				View.Struct = FMixtormatFracture::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::RockFormation:
-				View.ConstData = &Child.Generator.RockFormation;
-				View.Struct = FMixtormatRockFormation::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::Pebbles:
-				View.ConstData = &Child.Generator.Pebbles;
-				View.Struct = FMixtormatPebbles::StaticStruct();
-				break;
+			case EMixtormatGeneratorType::StrataCarver: View.ConstData = &Child.Generator.StrataCarver; break;
+			case EMixtormatGeneratorType::Fracture: View.ConstData = &Child.Generator.Fracture; break;
+			case EMixtormatGeneratorType::RockFormation: View.ConstData = &Child.Generator.RockFormation; break;
+			case EMixtormatGeneratorType::Pebbles: View.ConstData = &Child.Generator.Pebbles; break;
+			default: break;
 			}
 			break;
 		case EMixtormatParameterOwnerType::MaskShaping:
@@ -149,74 +134,35 @@ namespace
 			else if (Child.Type == EMixtormatLayerChildType::Craquelure) View.ConstData = &Child.Craquelure.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::ColorId) View.ConstData = &Child.ColorId.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::RandomId) View.ConstData = &Child.RandomId.Shaping;
-			View.Struct = FMixtormatMaskShaping::StaticStruct();
 			break;
 		default: break;
+		}
+		const TArray<UScriptStruct*> Structs = MixtormatParameterBinding::GetOwnerStructs(Owner);
+		if (View.ConstData && !Structs.IsEmpty())
+		{
+			int32 Index = 0;
+			if (Owner == EMixtormatParameterOwnerType::Generator)
+			{
+				switch (Child.Generator.Type)
+				{
+				case EMixtormatGeneratorType::Fracture: Index = 1; break;
+				case EMixtormatGeneratorType::RockFormation: Index = 2; break;
+				case EMixtormatGeneratorType::Pebbles: Index = 3; break;
+				default: break;
+				}
+			}
+			View.Struct = Structs[Index];
 		}
 		return View;
 	}
 
 	FOwnerView MutableChildOwner(FMixtormatLayerChild& Child, const EMixtormatParameterOwnerType Owner)
 	{
-		if (!ChildTypeMatchesOwner(Child, Owner))
+		FOwnerView View = ChildOwner(Child, Owner);
+		View.MutableData = const_cast<void*>(View.ConstData);
+		if (View.ConstData)
 		{
-			return {};
-		}
-		FOwnerView View;
-		View.Bindings = &Child.ParameterBindings;
-		View.MutableBindings = &Child.ParameterBindings;
-		switch (Owner)
-		{
-		case EMixtormatParameterOwnerType::Mask: View.MutableData = &Child.Mask; View.ConstData = &Child.Mask; View.Struct = FMixtormatMaskLayer::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Effect: View.MutableData = &Child.Effect; View.ConstData = &Child.Effect; View.Struct = FMixtormatLayerEffect::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Generated: View.MutableData = &Child.Generated; View.ConstData = &Child.Generated; View.Struct = FMixtormatGeneratedMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Craquelure: View.MutableData = &Child.Craquelure; View.ConstData = &Child.Craquelure; View.Struct = FMixtormatCraquelure::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ColorId: View.MutableData = &Child.ColorId; View.ConstData = &Child.ColorId; View.Struct = FMixtormatColorIdMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ClusterId: View.MutableData = &Child.Filter; View.ConstData = &Child.Filter; View.Struct = FMixtormatClusterFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::HsvId: View.MutableData = &Child.HsvFilter; View.ConstData = &Child.HsvFilter; View.Struct = FMixtormatHsvIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::RandomId: View.MutableData = &Child.RandomId; View.ConstData = &Child.RandomId; View.Struct = FMixtormatRandomIdMask::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::PatternId: View.MutableData = &Child.PatternId; View.ConstData = &Child.PatternId; View.Struct = FMixtormatPatternFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::RampId: View.MutableData = &Child.RampId; View.ConstData = &Child.RampId; View.Struct = FMixtormatRampIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::UvId: View.MutableData = &Child.UvId; View.ConstData = &Child.UvId; View.Struct = FMixtormatUvIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::ReliefId: View.MutableData = &Child.ReliefId; View.ConstData = &Child.ReliefId; View.Struct = FMixtormatReliefIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::CombineId: View.MutableData = &Child.CombineId; View.ConstData = &Child.CombineId; View.Struct = FMixtormatCombineIdFilter::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::IdGroup: View.MutableData = &Child.IdGroup; View.ConstData = &Child.IdGroup; View.Struct = FMixtormatIdGroup::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Blur: View.MutableData = &Child.Blur; View.ConstData = &Child.Blur; View.Struct = FMixtormatMaskBlur::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Curvature: View.MutableData = &Child.Curvature; View.ConstData = &Child.Curvature; View.Struct = FMixtormatMaskCurvature::StaticStruct(); break;
-		case EMixtormatParameterOwnerType::Generator:
-			switch (Child.Generator.Type)
-			{
-			case EMixtormatGeneratorType::StrataCarver:
-				View.MutableData = &Child.Generator.StrataCarver;
-				View.ConstData = &Child.Generator.StrataCarver;
-				View.Struct = FMixtormatStrataCarver::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::Fracture:
-				View.MutableData = &Child.Generator.Fracture;
-				View.ConstData = &Child.Generator.Fracture;
-				View.Struct = FMixtormatFracture::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::RockFormation:
-				View.MutableData = &Child.Generator.RockFormation;
-				View.ConstData = &Child.Generator.RockFormation;
-				View.Struct = FMixtormatRockFormation::StaticStruct();
-				break;
-			case EMixtormatGeneratorType::Pebbles:
-				View.MutableData = &Child.Generator.Pebbles;
-				View.ConstData = &Child.Generator.Pebbles;
-				View.Struct = FMixtormatPebbles::StaticStruct();
-				break;
-			}
-			break;
-		case EMixtormatParameterOwnerType::MaskShaping:
-			if (Child.Type == EMixtormatLayerChildType::Mask) { View.MutableData = &Child.Mask.Shaping; View.ConstData = &Child.Mask.Shaping; }
-			else if (Child.Type == EMixtormatLayerChildType::Generated) { View.MutableData = &Child.Generated.Shaping; View.ConstData = &Child.Generated.Shaping; }
-			else if (Child.Type == EMixtormatLayerChildType::Craquelure) { View.MutableData = &Child.Craquelure.Shaping; View.ConstData = &Child.Craquelure.Shaping; }
-			else if (Child.Type == EMixtormatLayerChildType::ColorId) { View.MutableData = &Child.ColorId.Shaping; View.ConstData = &Child.ColorId.Shaping; }
-			else if (Child.Type == EMixtormatLayerChildType::RandomId) { View.MutableData = &Child.RandomId.Shaping; View.ConstData = &Child.RandomId.Shaping; }
-			View.Struct = FMixtormatMaskShaping::StaticStruct();
-			break;
-		default: break;
+			View.MutableBindings = &Child.ParameterBindings;
 		}
 		return View;
 	}
@@ -264,7 +210,7 @@ namespace
 			{
 				FOwnerView View;
 				View.ConstData = &Layer;
-				View.Struct = FMixtormatLayer::StaticStruct();
+				View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
 				View.Bindings = &Layer.ParameterBindings;
 				return View;
 			}
@@ -326,7 +272,7 @@ namespace
 				FOwnerView View;
 				View.ConstData = &Layer;
 				View.MutableData = &Layer;
-				View.Struct = FMixtormatLayer::StaticStruct();
+				View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
 				View.Bindings = &Layer.ParameterBindings;
 				View.MutableBindings = &Layer.ParameterBindings;
 				return View;
@@ -350,7 +296,7 @@ namespace
 			FOwnerView View;
 			View.ConstData = &Layer;
 			View.MutableData = &Layer;
-			View.Struct = FMixtormatLayer::StaticStruct();
+			View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
 			View.Bindings = &Layer.ParameterBindings;
 			View.MutableBindings = &Layer.ParameterBindings;
 			return View;
@@ -548,6 +494,44 @@ namespace
 
 namespace MixtormatParameterBinding
 {
+	TArray<UScriptStruct*> GetOwnerStructs(const EMixtormatParameterOwnerType Owner)
+	{
+		switch (Owner)
+		{
+		case EMixtormatParameterOwnerType::Layer: return { FMixtormatLayer::StaticStruct() };
+		case EMixtormatParameterOwnerType::Mask: return { FMixtormatMaskLayer::StaticStruct() };
+		case EMixtormatParameterOwnerType::Effect: return { FMixtormatLayerEffect::StaticStruct() };
+		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
+		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };
+		case EMixtormatParameterOwnerType::ColorId: return { FMixtormatColorIdMask::StaticStruct() };
+		case EMixtormatParameterOwnerType::ClusterId: return { FMixtormatClusterFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::HsvId: return { FMixtormatHsvIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::RandomId: return { FMixtormatRandomIdMask::StaticStruct() };
+		case EMixtormatParameterOwnerType::PatternId: return { FMixtormatPatternFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::RampId: return { FMixtormatRampIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::UvId: return { FMixtormatUvIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::ReliefId: return { FMixtormatReliefIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
+		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };
+		case EMixtormatParameterOwnerType::Curvature: return { FMixtormatMaskCurvature::StaticStruct() };
+		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
+		case EMixtormatParameterOwnerType::Generator:
+			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatFracture::StaticStruct(),
+				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct() };
+		default: return {};
+		}
+	}
+
+	void* GetMutableChildOwnerData(
+		FMixtormatLayerChild& Child, const EMixtormatParameterOwnerType Owner,
+		const UScriptStruct*& OutStruct)
+	{
+		const FOwnerView View = MutableChildOwner(Child, Owner);
+		OutStruct = View.Struct;
+		return View.MutableData;
+	}
+
 	void EnsureStableIds(TArray<FMixtormatLayer>& Layers)
 	{
 		TArray<FMixtormatLayerGroup> NoGroups;

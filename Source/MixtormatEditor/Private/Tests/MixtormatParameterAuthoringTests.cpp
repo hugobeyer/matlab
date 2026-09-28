@@ -311,10 +311,12 @@ bool FMixtormatAuthoringResolutionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Worn Edges entry resolves"),
 		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringDefault(WornKey, 0.0f), 0.9f));
 
-	FMixtormatLayerEffect NewWorn;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewWorn, EMixtormatEffectType::WornEdges);
+	FMixtormatLayerChild NewWorn;
+	NewWorn.Type = EMixtormatLayerChildType::Effect;
+	NewWorn.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewWorn);
 	TestTrue(TEXT("Worn Edges creation default applies"),
-		FMath::IsNearlyEqual(NewWorn.EdgeWearStrength, 0.9f));
+		FMath::IsNearlyEqual(NewWorn.Effect.EdgeWearStrength, 0.9f));
 
 	const FString WornWritten = MixtormatParameterAuthoring::WriteToString();
 	TestTrue(TEXT("Written section keeps the Category spelling"),
@@ -357,25 +359,28 @@ bool FMixtormatAuthoringNewInstanceTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Database loads for creation test"), MixtormatParameterAuthoring::LoadFromString(Json));
 
 	// New Breakup: compiled initializer would be 2.0; the database says 7.0.
-	FMixtormatLayerEffect NewBreakup;
+	FMixtormatLayerChild NewBreakup;
+	NewBreakup.Type = EMixtormatLayerChildType::Effect;
+	NewBreakup.Effect.ProceduralType = EMixtormatEffectType::Breakup;
 	TestTrue(TEXT("Fresh struct holds the compiled default"),
-		FMath::IsNearlyEqual(NewBreakup.BreakupNormalStrength, 2.0f));
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(
-		NewBreakup, EMixtormatEffectType::Breakup);
+		FMath::IsNearlyEqual(NewBreakup.Effect.BreakupNormalStrength, 2.0f));
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewBreakup);
 	TestTrue(TEXT("New Breakup receives the persistent default"),
-		FMath::IsNearlyEqual(NewBreakup.BreakupNormalStrength, 7.0f));
+		FMath::IsNearlyEqual(NewBreakup.Effect.BreakupNormalStrength, 7.0f));
 
 	// Cross-family isolation: a Grade child gets nothing from Breakup entries.
-	FMixtormatLayerEffect NewGrade;
-	NewGrade.BreakupNormalStrength = 2.0f;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewGrade, EMixtormatEffectType::Grade);
+	FMixtormatLayerChild NewGrade;
+	NewGrade.Type = EMixtormatLayerChildType::Effect;
+	NewGrade.Effect.ProceduralType = EMixtormatEffectType::Grade;
+	NewGrade.Effect.BreakupNormalStrength = 2.0f;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewGrade);
 	TestTrue(TEXT("Other families are untouched"),
-		FMath::IsNearlyEqual(NewGrade.BreakupNormalStrength, 2.0f));
+		FMath::IsNearlyEqual(NewGrade.Effect.BreakupNormalStrength, 2.0f));
 
 	// Duplication preserves the duplicated value by never entering this path.
-	FMixtormatLayerEffect Duplicate = NewBreakup;
+	FMixtormatLayerChild Duplicate = NewBreakup;
 	TestTrue(TEXT("Duplicated effect preserves its authored value"),
-		FMath::IsNearlyEqual(Duplicate.BreakupNormalStrength, 7.0f));
+		FMath::IsNearlyEqual(Duplicate.Effect.BreakupNormalStrength, 7.0f));
 
 	const FString GeneratorJson = TEXT(R"( {
 		"Rock Formation": {
@@ -384,10 +389,42 @@ bool FMixtormatAuthoringNewInstanceTest::RunTest(const FString& Parameters)
 	} )");
 	TestTrue(TEXT("Rock Formation defaults load from developer JSON"),
 		MixtormatParameterAuthoring::LoadFromString(GeneratorJson));
-	FMixtormatGenerator NewRock;
-	NewRock.Type = EMixtormatGeneratorType::RockFormation;
+	FMixtormatLayerChild NewRock;
+	NewRock.Type = EMixtormatLayerChildType::Generator;
+	NewRock.Generator.Type = EMixtormatGeneratorType::RockFormation;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewRock);
-	TestEqual(TEXT("Rock Formation receives saved JSON defaults"), NewRock.RockFormation.RockCells, 9);
+	TestEqual(TEXT("Rock Formation receives saved JSON defaults"), NewRock.Generator.RockFormation.RockCells, 9);
+
+	const FMixtormatParameterDefinitionKey PatternKey{
+		EMixtormatParameterOwnerType::PatternId, TEXT("Rows"),
+		EMixtormatParameterValueType::Int};
+	TestTrue(TEXT("Pattern IDs row is developer-editable"),
+		MixtormatParameterAuthoring::IsPersistentlyEditable(PatternKey));
+	MixtormatParameterAuthoring::LoadFromString(TEXT("{}"));
+	FMixtormatParameterAuthoringEntry PatternPending;
+	PatternPending.Default = 12.0f;
+	PatternPending.Label = TEXT("Pattern Rows");
+	MixtormatParameterAuthoring::SetPendingAuthoring(PatternKey, PatternPending);
+	TestTrue(TEXT("Pending Pattern IDs default resolves"),
+		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringDefault(PatternKey, 0.0f), 12.0f));
+	// Simulate save without touching the plugin's real Config file.
+	const FString PatternJson = TEXT(R"( { "Pattern IDs": { "PatternId.Rows:Int": {
+		"default": 12, "label": "Pattern Rows" } } } )");
+	TestTrue(TEXT("Pattern IDs section loads"), MixtormatParameterAuthoring::LoadFromString(PatternJson));
+	MixtormatParameterAuthoring::RevertPendingAuthoring(PatternKey);
+	const FString PatternWritten = MixtormatParameterAuthoring::WriteToString();
+	TestTrue(TEXT("Pattern IDs section is saved"), PatternWritten.Contains(TEXT("Pattern IDs")));
+	TestTrue(TEXT("Pattern ID owner is saved"), PatternWritten.Contains(TEXT("PatternId.Rows:Int")));
+	TestTrue(TEXT("Pattern IDs reloads"), MixtormatParameterAuthoring::LoadFromString(PatternWritten));
+	TestTrue(TEXT("Pattern IDs default resolves after reload"),
+		FMath::IsNearlyEqual(MixtormatParameterAuthoring::ResolveAuthoringDefault(PatternKey, 0.0f), 12.0f));
+	TestEqual(TEXT("Pattern IDs label resolves after reload"),
+		MixtormatParameterAuthoring::ResolveAuthoringLabel(PatternKey, FText::GetEmpty()).ToString(),
+		TEXT("Pattern Rows"));
+	FMixtormatLayerChild NewPattern;
+	NewPattern.Type = EMixtormatLayerChildType::PatternId;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(NewPattern);
+	TestEqual(TEXT("New Pattern IDs child receives saved default"), NewPattern.PatternId.Rows, 12);
 
 	// Database changes never alter parameter identity.
 	const FMixtormatParameterDefinitionKey Identity{

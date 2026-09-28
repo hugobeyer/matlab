@@ -65,6 +65,14 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 
 namespace MixtormatParameterBinding
 {
+	// Reflected payload candidates in binding order; generators have four distinct payloads.
+	MIXTORMATRUNTIME_API TArray<UScriptStruct*> GetOwnerStructs(EMixtormatParameterOwnerType Owner);
+
+	// Resolves the active child payload using the same owner rules as parameter bindings.
+	MIXTORMATRUNTIME_API void* GetMutableChildOwnerData(
+		FMixtormatLayerChild& Child, EMixtormatParameterOwnerType Owner,
+		const UScriptStruct*& OutStruct);
+
 	// Ensures every layer/child has persistent identity. Existing valid IDs are preserved.
 	MIXTORMATRUNTIME_API void EnsureStableIds(TArray<FMixtormatLayer>& Layers);
 	// The document form includes authored groups. Group IDs share the owner-ID namespace with
