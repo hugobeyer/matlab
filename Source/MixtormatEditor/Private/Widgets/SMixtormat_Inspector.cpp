@@ -5450,7 +5450,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, 0.0f, 2.0f, 3.0f)
+				// The selection header (thumbnail, name, source, badge) takes the inspector's top
+				// margin; it sits above the well, so the well's own padding never reached it.
+				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, MixtormatTokens::InspectorTopMargin, 2.0f, 3.0f)
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
