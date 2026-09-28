@@ -2998,6 +2998,14 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	// passes the raw field (tops near 1, walls falling below 0).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
 	bool bRockNormalizeHeight = true;
+
+	// Where the normalized field lands: the deepest wall goes to Low, the highest top to High.
+	// Only with Normalize on. High below Low flips the relief.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockRemapLow = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockRemapHigh = 1.0f;
 };
 
 // Pebbles: faceted, chamfered stones scattered on a tileable jittered grid. Each stone has its
@@ -3097,11 +3105,18 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 	UPROPERTY()
 	float HeightNormalStrength = 1.0f;
 
+	// Remap the finished height to 0..1 from its own measured range, after every layer and
+	// before final AO and normals. Layer heights are no longer clipped to 0..1 in the composite,
+	// so this is the one place the document is brought back into range.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final")
+	bool bAutoRemapHeight = false;
+
 	bool operator==(const FMixtormatFinalSettings& Other) const
 	{
 		return HeightAOAmount == Other.HeightAOAmount && HeightAORadius == Other.HeightAORadius
 			&& bNormalFromHeight == Other.bNormalFromHeight
-			&& HeightNormalStrength == Other.HeightNormalStrength;
+			&& HeightNormalStrength == Other.HeightNormalStrength
+			&& bAutoRemapHeight == Other.bAutoRemapHeight;
 	}
 	bool operator!=(const FMixtormatFinalSettings& Other) const { return !(*this == Other); }
 };

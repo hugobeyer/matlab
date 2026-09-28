@@ -6,7 +6,8 @@
 //   a two-entry buffer. The buffer is cleared to 0 beforehand; entry 0 holds max(~ordered(h)), which
 //   is the minimum, and entry 1 holds max(ordered(h)), the maximum -- both reduce with InterlockedMax
 //   from a zero clear.
-// RANGE_STAGE 1 (Normalize): (h - min) / (max - min). A flat field (no range) maps to 0.
+// RANGE_STAGE 1 (Normalize): (h - min) / (max - min), then placed on [OutLow, OutHigh]. A flat
+//   field (no range) maps to OutLow.
 //
 // Nothing is clamped: the mapping is exact for the measured field, so its output spans 0..1 by
 // construction.
@@ -14,6 +15,8 @@
 #include "/Engine/Public/Platform.ush"
 
 int2 OutputSize;
+float OutLow;
+float OutHigh;
 Texture2D<float> SourceField;
 RWStructuredBuffer<uint> OutRange;
 StructuredBuffer<uint> Range;
@@ -79,6 +82,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float High = OrderedToFloat(Range[1]);
 	const float Span = High - Low;
 	const float Value = SourceField.Load(int3(Pixel, 0));
-	OutField[Pixel] = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
+	const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
+	OutField[Pixel] = lerp(OutLow, OutHigh, Unit);
 }
 #endif

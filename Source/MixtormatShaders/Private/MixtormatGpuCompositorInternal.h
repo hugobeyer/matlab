@@ -834,6 +834,8 @@ namespace MixtormatGpuCompositor
 		float Amount = 1.0f;
 		float HeightScale = 1.0f;
 		bool bNormalize = true;
+		float RemapLow = 0.0f;
+		float RemapHigh = 1.0f;
 		// Hash of the field-shaping settings only (not Amount / HeightScale), for the node cache.
 		uint64 FieldKey = 0;
 	};
@@ -1053,6 +1055,7 @@ namespace MixtormatGpuCompositor
 		// suppressed (height only) so the final pass is the one place slope comes from.
 		bool bFinalNormalFromHeight = false;
 		float FinalNormalStrength = 1.0f;
+		bool bFinalAutoRemapHeight = false;
 		TArray<uint64> PrefixHashes;
 		// The layer whose finished state is worth keeping: the one just below the lowest layer
 		// that changed since the previous composite. INDEX_NONE saves nothing.
@@ -1678,6 +1681,15 @@ namespace MixtormatGpuCompositor
 
 	// MixtormatGpuGeneratorPasses.cpp -- ID-phase fields of settings-only generators (Rock
 	// Formation, Pebbles): publishes their Region IDs before UV From IDs resolves.
+	// Remaps a height field from its measured min/max onto [OutLow, OutHigh]. New texture.
+	FRDGTextureRef AddNormalizeFieldPasses(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef Field,
+		FIntPoint Size,
+		float OutLow,
+		float OutHigh,
+		const TCHAR* Name);
+
 	void AddGeneratorFieldPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,

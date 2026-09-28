@@ -3387,6 +3387,9 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 		MakeMemberSlider<FMixtormatFinalSettings>(
 			LOCTEXT("FinalAORadius", "AO Radius"), Final, &FMixtormatFinalSettings::HeightAORadius, 1.0, 64.0, 8.0, 0.5,
 			LOCTEXT("FinalAORadiusHint", "How far the occlusion reaches, in pixels at 1024. Scales with resolution."))));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatFinalSettings>(
+		LOCTEXT("FinalAutoRemapHeight", "Auto Remap Height"), Final, &FMixtormatFinalSettings::bAutoRemapHeight,
+		LOCTEXT("FinalAutoRemapHeightHint", "Remap the finished height to 0-1 from its own lowest and highest point, before AO and normals.")));
 	return SNew(SBox)
 		.WidthOverride(MixtormatTokens::InspectorWidth)
 		.Padding(MixtormatTokens::ViewportOverlayClusterInset)
@@ -3596,6 +3599,21 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		MakeMemberToggle<FMixtormatRockFormation>(
 			LOCTEXT("RockNormalize", "Normalize"), Rock, &FMixtormatRockFormation::bRockNormalizeHeight,
 			LOCTEXT("RockNormalizeHint", "Remap the rock height to 0-1 from its own lowest and highest point, before Height Scale."))));
+	AddSliderRow(Panel, SNew(SBox)
+		.IsEnabled_Lambda([Rock]()
+		{
+			const FMixtormatRockFormation* Selected = Rock();
+			return Selected && Selected->bRockNormalizeHeight;
+		})
+		[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatRockFormation>(
+					LOCTEXT("RockRemapLow", "Remap Low"), Rock, &FMixtormatRockFormation::RockRemapLow, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("RockRemapLowHint", "Height the deepest wall lands on. Needs Normalize.")),
+				MakeMemberSlider<FMixtormatRockFormation>(
+					LOCTEXT("RockRemapHigh", "Remap High"), Rock, &FMixtormatRockFormation::RockRemapHigh, 0.0, 1.0, 1.0, 0.01,
+					LOCTEXT("RockRemapHighHint", "Height the highest top lands on. Needs Normalize.")))
+		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 2.0, 1.0, 0.01,

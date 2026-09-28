@@ -982,6 +982,17 @@ namespace MixtormatGpuCompositor
 				}
 
 
+				// Auto remap: the finished height onto 0..1 from its measured range, ahead of AO
+				// and normals so both read the remapped surface.
+				if (Request.bFinalAutoRemapHeight && !Request.Layers.IsEmpty())
+				{
+					const int32 Final = Request.PublishedTargetIndex;
+					FRDGTextureRef Remapped = AddNormalizeFieldPasses(
+						GraphBuilder, Ctx.OutputHeight[Final], Request.Resolution, 0.0f, 1.0f,
+						TEXT("Mixtormat.FinalHeight.Remapped"));
+					AddCopyTexturePass(GraphBuilder, Remapped, Ctx.OutputHeight[Final]);
+				}
+
 				// Final AO: from the finished height, into the finished AO channel. Last, so every
 				// layer, effect and generator has shaped the height it reads.
 				if (Request.FinalAOAmount != 0.0f && !Request.Layers.IsEmpty())

@@ -1999,12 +1999,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.Amount = Finite(Rock.RockAmount, Defaults.RockAmount);
 					Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
 					Out.bNormalize = Rock.bRockNormalizeHeight;
+					Out.RemapLow = Finite(Rock.RockRemapLow, Defaults.RockRemapLow);
+					Out.RemapHigh = Finite(Rock.RockRemapHigh, Defaults.RockRemapHigh);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
 						// Normalize reads the cached field; it does not change it.
 						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale"), TEXT("RockBlendMode"),
-							TEXT("bRockNormalizeHeight")};
+							TEXT("bRockNormalizeHeight"), TEXT("RockRemapLow"), TEXT("RockRemapHigh")};
 						Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}
@@ -3045,6 +3047,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	Request.FinalAORadius = FMath::IsFinite(FinalAORadius) ? FinalAORadius : 8.0f;
 	Request.bFinalNormalFromHeight = bFinalNormalFromHeight;
 	Request.FinalNormalStrength = FMath::IsFinite(FinalNormalStrength) ? FinalNormalStrength : 1.0f;
+	Request.bFinalAutoRemapHeight = bFinalAutoRemapHeight;
 	Request.InFlight = InFlight;
 	InFlight->store(true);
 	EnqueueCompose(MoveTemp(Request));

@@ -607,9 +607,10 @@ float SampleIncomingHeight(float2 UV)
 	if (HasSeparateHeight == 0 || HeightShape != 0.0f
 		|| HeightBoost != 1.0f || HeightLevelOffset != 0.0f)
 	{
-		SourceHeight = pow(saturate(SourceHeight), exp2(-HeightShape * 2.0f));
-		SourceHeight = saturate(
-			(SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset);
+		// Unclipped: heights outside 0..1 pass through. The power is sign-safe so a negative
+		// height keeps its sign; Final > Auto Remap Height brings the document back into range.
+		SourceHeight = sign(SourceHeight) * pow(abs(SourceHeight), exp2(-HeightShape * 2.0f));
+		SourceHeight = (SourceHeight - 0.5f) * HeightBoost + 0.5f + HeightLevelOffset;
 	}
 	if (DirectHeightComparison != 0)
 	{
@@ -1354,5 +1355,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		ResultHeight += EffectHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) * EffectVisibility;
 	}
 
-	OutputHeight[DispatchThreadId.xy] = HasSeparateHeight != 0 ? ResultHeight : saturate(ResultHeight);
+	// Unclipped for every layer, not only live compositions. See Final > Auto Remap Height.
+	OutputHeight[DispatchThreadId.xy] = ResultHeight;
 }

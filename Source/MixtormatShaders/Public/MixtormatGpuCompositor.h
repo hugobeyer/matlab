@@ -148,11 +148,13 @@ public:
 		float HeightAOAmount,
 		float HeightAORadius,
 		bool bNormalFromHeight = false,
-		float HeightNormalStrength = 1.0f)
+		float HeightNormalStrength = 1.0f,
+		bool bAutoRemapHeight = false)
 	{
 		FinalAOAmount = HeightAOAmount;
 		FinalAORadius = HeightAORadius;
 		FinalNormalStrength = HeightNormalStrength;
+		bFinalAutoRemapHeight = bAutoRemapHeight;
 		if (bFinalNormalFromHeight != bNormalFromHeight)
 		{
 			bFinalNormalFromHeight = bNormalFromHeight;
@@ -226,6 +228,7 @@ private:
 	float FinalAORadius = 8.0f;
 	bool bFinalNormalFromHeight = false;
 	float FinalNormalStrength = 1.0f;
+	bool bFinalAutoRemapHeight = false;
 
 	FIntPoint Resolution = FIntPoint::ZeroValue;
 	int32 PublishedTargetIndex = 0;
