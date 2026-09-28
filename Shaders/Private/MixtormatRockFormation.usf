@@ -4,8 +4,14 @@
 //
 // Chunks are anisotropic Voronoi cells (strata weight squashes them into layers), BSP-split,
 // each a tilted slab with a chipped top, a planar chamfer and a steep wall that keeps falling
-// past its edge. Height is the highest chunk at each pixel. Warp moves chunks rigidly, while
-// per-chunk tilt rotates them so their faces remain planar.
+// past its edge. Height is the highest chunk at each pixel.
+//
+// Nothing moves a chunk after packing. The packing itself carries Size Random (a power diagram:
+// per-cell weights shift the bisectors) and Stretch (an anisotropic metric along an angle). Spin
+// and Stretch Random reshape a chunk inside its own leaf -- rotate / narrow about the centroid,
+// then clip back to the leaf, trimming corners the way a chamfer would. Tilt leans the whole
+// chunk in height. Warp bends the pixel coordinate before the cell lookup, so the pattern curves
+// as one and never overlaps.
 //
 // Style blends four presets: 0 cliff, 1 layered, 2 boulder, 3 rubble (fractional = lerp).
 //
@@ -41,8 +47,16 @@ float FractureHeightBias;
 float GapAmount;
 float WarpAmount;
 float ChamferRandom;
-float Tilt;
+float Spin;
+float SpinRandom;
+float TiltAngle;
+float TiltDirection;
 float TiltRandom;
+float SizeRandom;
+float Stretch;
+float StretchAngle;
+float StretchRandom;
+int WarpScale;
 float HeightClusters;
 float Skew;
 uint BlendMode;
@@ -66,9 +80,7 @@ RWTexture2D<float> OutHeight;
 struct FRockLeaf
 {
 	float Cx, Cy;          // centroid
-	float Mx, My;          // rigid move (warp)
-	float CosA, SinA;      // rigid rotation
-	float Sx, Sy;          // top slope
+	float Sx, Sy;          // top slope (Slope + Tilt)
 	float TopConstant;     // T(p) = TopConstant + dot(S, p)
 	float Top;             // highest the chunk can reach
 	float Radius;          // rest-frame reach: farthest vertex + wall fall-off
@@ -108,11 +120,14 @@ struct FRockPat
 	int cu, cv, splits;
 	float rh, a2, strata, irr, split_angle, h_bias;
 	float2 dip;
+	float3 metric;         // symmetric 2x2 (m00, m01, m11): strata squash x Stretch
 	float rand_k, hvar, lvar, chip, wall_k;
 	float cell_gap, seam_gap, outer_ch, inner_ch, ch_k, bottom, reach;
 	float chamfer_bias, fracture_height_bias;
 	uint seed, wseed;
-	float warp, tilt, tilt_random, chamfer_random, height_clusters, skew;
+	float warp, chamfer_random, height_clusters, skew;
+	float spin, spin_random, tilt_angle, tilt_dir, tilt_random, size_random, stretch_random;
+	int warp_scale;
 };
 
 struct FRockPoly
@@ -172,16 +187,6 @@ float2 RockRotate(float2 v, float a)
 }
 
 
-// Rigid per-chunk tilt and low-frequency drift.
-void RockBlockTransform(FRockPat P, float2 c, out float2 D, out float th)
-{
-	float2 uv = c / (float)P.cu;
-	D = float2(RockValueNoise(uv, 2, P.wseed) * P.warp,
-		RockValueNoise(uv, 2, P.wseed + 911u) * P.warp);
-	float r = RockRand(P.seed, asuint(c.x * 4096.0f), asuint(c.y * 4096.0f));
-	float sign = r < 0.5f ? -1.0f : 1.0f;
-	th = radians(P.tilt + sign * P.tilt_random * abs(2.0f * r - 1.0f));
-}
 
 // ---- convex polygons (CCW; t[i] tags edge i -> i+1) --------------------------
 
@@ -284,14 +289,26 @@ float2 RockSite(FRockPat P, int i, int j, out uint id)
 	return float2((float)i + 0.5f + bond + jx + row_skew, ((float)j + 0.5f + jy) * P.rh);
 }
 
-float RockMetric(FRockPat P, float2 d) { return d.x * d.x + P.a2 * d.y * d.y; }
-
-// Bisector of s and o under the metric, as a p-space line keeping s's side.
-float3 RockBisector(FRockPat P, float2 s, float2 o)
+float2 RockMetricMul(FRockPat P, float2 d)
 {
-	float2 m = (o - s) * float2(1.0f, P.a2);
+	return float2(P.metric.x * d.x + P.metric.y * d.y, P.metric.y * d.x + P.metric.z * d.y);
+}
+
+float RockMetric(FRockPat P, float2 d) { return dot(d, RockMetricMul(P, d)); }
+
+// Size Random: a per-cell power-diagram weight, hashed on the wrapped cell id so it tiles.
+float RockSiteWeight(FRockPat P, uint id)
+{
+	return P.size_random * 0.35f * (2.0f * RockRand(P.seed, id, 57u) - 1.0f);
+}
+
+// Bisector of s and o under the metric and the two power weights, as a p-space line keeping
+// s's side: |x-s|^2 - ws <= |x-o|^2 - wo.
+float3 RockBisector(FRockPat P, float2 s, float2 o, float ws, float wo)
+{
+	float2 m = RockMetricMul(P, o - s);
 	float l = length(m);
-	return float3(m / l, 0.5f * (RockMetric(P, o) - RockMetric(P, s)) / l);
+	return float3(m / l, 0.5f * (RockMetric(P, o) - RockMetric(P, s) - wo + ws) / l);
 }
 
 void RockCellPoly(FRockPat P, int i, int j, out FRockPoly cell, out uint cid)
@@ -299,6 +316,7 @@ void RockCellPoly(FRockPat P, int i, int j, out FRockPoly cell, out uint cid)
 	cell = (FRockPoly)0;
 	uint id, oid;
 	float2 s = RockSite(P, i, j, id);
+	const float ws = RockSiteWeight(P, id);
 	RockBox(cell, s, float2(3.0f, 3.0f * P.rh));
 	for (int dj = -2; dj <= 2; dj++)
 	{
@@ -313,7 +331,7 @@ void RockCellPoly(FRockPat P, int i, int j, out FRockPoly cell, out uint cid)
 			{
 				continue;
 			}
-			float3 b = RockBisector(P, s, o);
+			float3 b = RockBisector(P, s, o, ws, RockSiteWeight(P, oid));
 			RockClip(cell, b.xy, b.z, RockEdgeKey(min(id, oid) * 0x9E3779B9u + max(id, oid) + 17u));
 		}
 	}
@@ -405,6 +423,41 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 
 	uint ck = RockHash(P.seed ^ (cid * 0x9E3779B9u));
 	uint pk = RockHash(ck ^ (node * 0x85EBCA6Bu));
+
+	// Spin and Stretch Random: reshape inside the leaf, never past it. Transform about the
+	// centroid, then clip back to the original leaf's edges (their tags carry the gap kind).
+	if (P.spin != 0.0f || P.spin_random != 0.0f || P.stretch_random > 0.0f)
+	{
+		float area0;
+		const float2 c0 = RockCentroid(leaf, area0);
+		const float angle = radians(P.spin + P.spin_random * (2.0f * RockRand(pk, 7u, 66u) - 1.0f));
+		const float2 axis = RockDir(RockRand(pk, 8u, 66u) * ROCK_TAU);
+		const float squeeze = 1.0f - P.stretch_random * RockRand(pk, 9u, 66u);
+		FRockPoly moved = leaf;
+		for (int mv = 0; mv < leaf.n; mv++)
+		{
+			float2 d = leaf.v[mv] - c0;
+			d -= axis * dot(d, axis) * (1.0f - squeeze);
+			moved.v[mv] = c0 + RockRotate(d, angle);
+		}
+		for (int ce = 0; ce < leaf.n; ce++)
+		{
+			const float2 a = leaf.v[ce];
+			const float2 e = leaf.v[ce + 1 == leaf.n ? 0 : ce + 1] - a;
+			const float el = length(e);
+			if (el < 1e-6f)
+			{
+				continue;
+			}
+			const float2 nn = float2(e.y, -e.x) / el;
+			RockClip(moved, nn, dot(nn, a), leaf.t[ce]);
+		}
+		if (moved.n >= 3)
+		{
+			leaf = moved;
+			n = leaf.n;
+		}
+	}
 	float top = 1.0f - P.height_clusters * (P.hvar * 0.5f * (RockRand(ck, 1u, 61u) + RockRand(pk, 1u, 62u))
 		+ P.lvar * layerRand);
 	top += P.fracture_height_bias * (2.0f * RockRand(pk, 5u, 61u) - 1.0f);
@@ -421,11 +474,12 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	}
 	float scale = min(hi.x - lo.x, hi.y - lo.y);
 
-	float2 D;
-	float th;
-	RockBlockTransform(P, c, D, th);
+	// Tilt: one authored lean direction, the random part varying angle and spreading direction.
+	const float leanDeg = P.tilt_angle + P.tilt_random * (2.0f * RockRand(ck, 10u, 67u) - 1.0f);
+	const float leanDir = radians(P.tilt_dir) + radians(P.tilt_random) * (RockRand(ck, 11u, 67u) - 0.5f);
+	const float2 lean = RockDir(leanDir) * tan(radians(leanDeg));
 
-	float2 s = P.dip + 0.5f * P.rand_k * (
+	float2 s = lean + P.dip + 0.5f * P.rand_k * (
 		RockDir(RockRand(ck, 2u, 61u) * ROCK_TAU) * sqrt(RockRand(ck, 3u, 61u)) +
 		RockDir(RockRand(pk, 2u, 62u) * ROCK_TAU) * sqrt(RockRand(pk, 3u, 62u)));
 	float smax = -ROCK_BIG;
@@ -435,8 +489,6 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	}
 
 	L.Cx = c.x; L.Cy = c.y;
-	L.Mx = D.x; L.My = D.y;
-	L.CosA = cos(th); L.SinA = sin(th);
 	L.Sx = s.x; L.Sy = s.y;
 	L.TopConstant = top - smax - dot(s, c);
 	L.Top = top;
@@ -561,6 +613,21 @@ FRockPat RockSetup()
 	P.rh = (float)P.cu / (float)P.cv;
 	P.strata = v[0];
 	P.a2 = (1.0f + 3.0f * v[0]) * (1.0f + 3.0f * v[0]);
+	// Metric = T^T T with T = diag(1, sqrt(a2)) * K, K stretching by Stretch along StretchAngle
+	// (distances along the angle count 1/Stretch, so cells elongate that way).
+	{
+		const float sa = radians(StretchAngle);
+		const float cs = cos(sa), sn = sin(sa);
+		const float k = 1.0f / max(abs(Stretch), 1e-3f);
+		// K = R diag(k, 1) R^T
+		const float k00 = k * cs * cs + sn * sn;
+		const float k01 = (k - 1.0f) * cs * sn;
+		const float k11 = k * sn * sn + cs * cs;
+		const float sy = sqrt(P.a2);
+		// T = diag(1, sy) K
+		const float t00 = k00, t01 = k01, t10 = sy * k01, t11 = sy * k11;
+		P.metric = float3(t00 * t00 + t10 * t10, t00 * t01 + t10 * t11, t01 * t01 + t11 * t11);
+	}
 	P.splits = max((int)round(v[2] * FractureAmount), 0);
 	P.split_angle = v[3];
 	P.h_bias = v[4];
@@ -586,11 +653,15 @@ FRockPat RockSetup()
 
 	P.wseed = P.seed ^ 0xA5A5u;
 	P.warp = WarpAmount;
-	P.tilt = Tilt;
+	P.warp_scale = max(WarpScale, 1);
+	P.spin = Spin;
+	P.spin_random = SpinRandom;
+	P.tilt_angle = TiltAngle;
+	P.tilt_dir = TiltDirection;
 	P.tilt_random = TiltRandom;
+	P.size_random = SizeRandom;
+	P.stretch_random = StretchRandom;
 	P.chamfer_random = ChamferRandom;
-	// Moved chunks can reach further: widen the search by the max drift.
-	P.reach += 1.2f * abs(P.warp);
 	return P;
 }
 
@@ -657,7 +728,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #if ROCK_STAGE == 1
 	const int CellsU = max(Cells, 1);
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
-	const float2 p = UV * (float)CellsU;
+	// Warp: bend the lookup coordinate, in cell widths, with tile-periodic noise. The whole
+	// pattern curves consistently; chunks never overlap.
+	const uint WarpSeed = RockHash(Seed + 0x51ED27u) ^ 0xA5A5u;
+	const int WarpPeriod = max(WarpScale, 1);
+	const float2 p = UV * (float)CellsU + WarpAmount * float2(
+		RockValueNoise(UV, WarpPeriod, WarpSeed),
+		RockValueNoise(UV, WarpPeriod, WarpSeed + 911u));
 	const int ci = (int)floor(p.x);
 	const int cj = (int)floor(p.y / RowHeight);
 
@@ -683,10 +760,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			{
 				const uint slot = cellIndex * (uint)MaxLeaves + k;
 				const FRockLeaf L = Leaves[slot];
-				// Into the chunk's rest frame: undo the rigid move and rotation.
+				// Chunks never move after packing, so the rest frame is the canonical tile.
 				const float2 c = float2(L.Cx, L.Cy);
-				const float2 d = pl - c - float2(L.Mx, L.My);
-				const float2 pr = c + float2(L.CosA * d.x + L.SinA * d.y, -L.SinA * d.x + L.CosA * d.y);
+				const float2 pr = pl;
 				const float centreDistance = length(pr - c);
 				// Radius encloses the gapped polygon; a farther chunk cannot improve either
 				// the closest exterior edge or the deepest interior boundary.

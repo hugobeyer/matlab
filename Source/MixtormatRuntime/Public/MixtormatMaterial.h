@@ -2957,9 +2957,29 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
 	float RockGap = 1.0f;
 
-	// Low-frequency rigid drift, in cell widths.
+	// Bends the whole pattern, in cell widths: the lookup coordinate is warped by tileable noise,
+	// so edges curve and chunks never overlap.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockWarp = 0.2f;
+
+	// Warp noise periods per tile. Low = broad bends, high = wobble.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
+	int32 RockWarpScale = 2;
+
+	// Mixed chunk sizes: per-cell weights shift the cell borders. Still a seamless partition.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockSizeRandom = 0.0f;
+
+	// Elongates cells along Stretch Angle. 1 = none; 2 = twice as long along the angle.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
+	float RockStretch = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float RockStretchAngle = 0.0f;
+
+	// Narrows each chunk along a random axis, inside its own space. 0 = none, 1 = up to flat.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockStretchRandom = 0.0f;
 
 	// Retained for serialized-asset compatibility; no longer used by the Rock Formation field.
 	UPROPERTY()
@@ -2971,11 +2991,21 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockChamferRandom = 0.5f;
 
-	// Base chunk tilt and the per-chunk random tilt, in degrees.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "70.0", Delta = "0.1"))
-	float RockTilt = 16.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "70.0", Delta = "0.1"))
-	float RockTiltRandom = 6.0f;
+	// Spin: rotates each chunk about the vertical axis inside its own space, trimming corners.
+	// Degrees; Spin Random adds +- per chunk.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-90.0", UIMax = "90.0", Delta = "0.1"))
+	float RockSpin = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "90.0", Delta = "0.1"))
+	float RockSpinRandom = 12.0f;
+
+	// Tilt: leans whole chunks (top, walls, chamfers) toward Tilt Direction. Degrees of lean;
+	// Tilt Random varies the lean per chunk and spreads its direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "60.0", Delta = "0.1"))
+	float RockTiltAngle = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float RockTiltDirection = -90.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "45.0", Delta = "0.1"))
+	float RockTiltRandom = 0.0f;
 
 	// Scales the preset's per-chunk and per-row height variation.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))

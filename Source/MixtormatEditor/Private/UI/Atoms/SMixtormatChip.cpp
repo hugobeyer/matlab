@@ -59,7 +59,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SNew(SComboButton)
+		SAssignNew(ComboButton, SComboButton)
 		.ToolTipText(InArgs._ToolTip)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
 		.Method(EPopupMethod::UseCurrentWindow)
@@ -69,9 +69,18 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 		.ButtonContent()
 		[
 			// The chip is a well like any other: darker than the body it sits in, no border.
+			// Lifts to the hover well while hovered or open, like the slider trough.
 			SNew(SMixtormatGradientBox)
-			.StartColor(MixtormatPalette::WellTop())
-			.EndColor(MixtormatPalette::WellBottom())
+			.StartColor_Lambda([this]()
+			{
+				return IsHovered() || (ComboButton.IsValid() && ComboButton->IsOpen())
+					? MixtormatPalette::WellTopHover() : MixtormatPalette::WellTop();
+			})
+			.EndColor_Lambda([this]()
+			{
+				return IsHovered() || (ComboButton.IsValid() && ComboButton->IsOpen())
+					? MixtormatPalette::WellBottomHover() : MixtormatPalette::WellBottom();
+			})
 			.Orientation(Orient_Vertical)
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			.Padding(FMargin(MixtormatTokens::ChipTextInset, 0.0f, MixtormatTokens::ChipGap, 0.0f))

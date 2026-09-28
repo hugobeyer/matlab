@@ -3565,19 +3565,49 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 3.0, 1.0, 0.01,
 		LOCTEXT("RockGapHint", "Scales the gaps between cells and between fractured pieces.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpDeform", "Deform")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpPattern", "Pattern")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSizeRandom", "Size Random"), Rock, &FMixtormatRockFormation::RockSizeRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockSizeRandomHint", "Mixes big and small chunks. Still seamless, no gaps.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStretchRandom", "Stretch Random"), Rock, &FMixtormatRockFormation::RockStretchRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockStretchRandomHint", "Narrows each chunk along a random axis, inside its own space."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStretch", "Stretch"), Rock, &FMixtormatRockFormation::RockStretch, 0.25, 4.0, 1.0, 0.01,
+			LOCTEXT("RockStretchHint", "Elongates cells along Stretch Angle. 1 = none.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStretchAngle", "Stretch Angle"), Rock, &FMixtormatRockFormation::RockStretchAngle, -180.0, 180.0, 0.0, 1.0,
+			LOCTEXT("RockStretchAngleHint", "Direction cells elongate in, degrees."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockWarp", "Warp"), Rock, &FMixtormatRockFormation::RockWarp, 0.0, 1.0, 0.2, 0.01,
-			LOCTEXT("RockWarpHint", "Low-frequency rigid drift of whole chunks, in cell widths.")),
+			LOCTEXT("RockWarpHint", "Bends the whole pattern, in cell widths. Edges curve; chunks never overlap.")),
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockWarpScale", "Warp Scale"), Rock, &FMixtormatRockFormation::RockWarpScale, 1.0, 16.0, 2,
+			LOCTEXT("RockWarpScaleHint", "Warp noise periods per tile. Low = broad bends, high = wobble."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockTilt", "Tilt"), Rock, &FMixtormatRockFormation::RockTilt, 0.0, 70.0, 16.0, 0.1,
-			LOCTEXT("RockTiltHint", "Base rotation applied to each fractured chunk."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockTiltRandom", "Tilt Random"), Rock, &FMixtormatRockFormation::RockTiltRandom, 0.0, 70.0, 6.0, 0.1,
-		LOCTEXT("RockTiltRandomHint", "Adds a random amount of rotation to each chunk.")));
+			LOCTEXT("RockSpin", "Spin"), Rock, &FMixtormatRockFormation::RockSpin, -90.0, 90.0, 0.0, 0.1,
+			LOCTEXT("RockSpinHint", "Rotates each chunk about the vertical axis inside its own space; corners trim.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSpinRandom", "Spin Random"), Rock, &FMixtormatRockFormation::RockSpinRandom, 0.0, 90.0, 12.0, 0.1,
+			LOCTEXT("RockSpinRandomHint", "Random +- spin per chunk, degrees."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpHeight", "Height")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltAngle", "Tilt"), Rock, &FMixtormatRockFormation::RockTiltAngle, 0.0, 60.0, 0.0, 0.1,
+			LOCTEXT("RockTiltAngleHint", "Leans whole chunks toward Tilt Direction, degrees. Walls and chamfers follow.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltDirection", "Tilt Direction"), Rock, &FMixtormatRockFormation::RockTiltDirection, -180.0, 180.0, -90.0, 1.0,
+			LOCTEXT("RockTiltDirectionHint", "Which way chunks lean, degrees."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltRandom", "Tilt Random"), Rock, &FMixtormatRockFormation::RockTiltRandom, 0.0, 45.0, 0.0, 0.1,
+			LOCTEXT("RockTiltRandomHint", "Varies lean per chunk and spreads its direction, degrees.")),
+		SNullWidget::NullWidget));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberEnum<FMixtormatRockFormation>(
 			LOCTEXT("RockBlendMode", "Height Blend"), Rock, &FMixtormatRockFormation::RockBlendMode,

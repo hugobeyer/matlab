@@ -587,18 +587,38 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 	// The chevron: a separate, very small control beside the eye, never a replacement for it.
 	// Its menu is categorized -- IDS for the primary (so picking it here behaves exactly like
 	// clicking the eye), MASKS for everything else this child publishes.
+	// Styled like the chips (no stock button plate): a mask-preview glyph and a small caret, so it
+	// reads as "pick which output to view" rather than as a bare disclosure arrow.
 	TSharedRef<SWidget> Chevron = SNew(SComboButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
 		.HasDownArrow(false)
 		.ContentPadding(FMargin(0.0f))
 		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
-		.ToolTipText(LOCTEXT("PreviewChildOutputMenuHint", "More preview options for this child"))
+		.ToolTipText(LOCTEXT("PreviewChildOutputMenuHint", "Choose which output of this child to preview"))
 		.ButtonContent()
 		[
-			SNew(SBox)
-			.WidthOverride(MixtormatTokens::ChevronSize)
-			.HeightOverride(MixtormatTokens::ChevronSize)
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SImage).Image(MixtormatIcons::ChevronDown())
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::LayerEyeSize)
+				.HeightOverride(MixtormatTokens::LayerEyeSize)
+				[
+					SNew(SImage)
+					.Image(MixtormatIcons::Mask())
+					.ColorAndOpacity(FSlateColor(MixtormatPalette::IconRest()))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::ChevronSize * 0.6f)
+				.HeightOverride(MixtormatTokens::ChevronSize * 0.6f)
+				[
+					SNew(SImage)
+					.Image(MixtormatIcons::ChevronDown())
+					.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()))
+				]
 			]
 		]
 		.OnGetMenuContent_Lambda([this, Primary, Secondary, MatchesDesc]() -> TSharedRef<SWidget>
@@ -623,14 +643,33 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 			return Menu.Build();
 		});
 
-	return SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+	// One pill: eye | outputs, separated by a hairline, on the same well the chips use.
+	return SNew(SMixtormatGradientBox)
+		.StartColor(MixtormatPalette::WellTop())
+		.EndColor(MixtormatPalette::WellBottom())
+		.Orientation(Orient_Vertical)
+		.CornerRadius(MixtormatTokens::CornerRadius)
+		.Padding(FMargin(2.0f, 0.0f))
 		[
-			Eye
-		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 0.0f, 0.0f)
-		[
-			Chevron
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				Eye
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Fill).Padding(1.0f, 3.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::HairlineThickness)
+				[
+					SNew(SImage)
+					.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+					.ColorAndOpacity(FSlateColor(MixtormatPalette::WellOutline()))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 2.0f, 0.0f)
+			[
+				Chevron
+			]
 		];
 }
 

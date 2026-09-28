@@ -1992,7 +1992,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.Gap = Finite(Rock.RockGap, Defaults.RockGap);
 					Out.Warp = Finite(Rock.RockWarp, Defaults.RockWarp);
 					Out.ChamferRandom = Finite(Rock.RockChamferRandom, Defaults.RockChamferRandom);
-					Out.Tilt = Finite(Rock.RockTilt, Defaults.RockTilt);
+					Out.WarpScale = Rock.RockWarpScale;
+					Out.SizeRandom = Finite(Rock.RockSizeRandom, Defaults.RockSizeRandom);
+					Out.Stretch = Finite(Rock.RockStretch, Defaults.RockStretch);
+					Out.StretchAngle = Finite(Rock.RockStretchAngle, Defaults.RockStretchAngle);
+					Out.StretchRandom = Finite(Rock.RockStretchRandom, Defaults.RockStretchRandom);
+					Out.Spin = Finite(Rock.RockSpin, Defaults.RockSpin);
+					Out.SpinRandom = Finite(Rock.RockSpinRandom, Defaults.RockSpinRandom);
+					Out.TiltAngle = Finite(Rock.RockTiltAngle, Defaults.RockTiltAngle);
+					Out.TiltDirection = Finite(Rock.RockTiltDirection, Defaults.RockTiltDirection);
 					Out.TiltRandom = Finite(Rock.RockTiltRandom, Defaults.RockTiltRandom);
 					Out.HeightClusters = Finite(Rock.RockHeightClusters, Defaults.RockHeightClusters);
 					Out.BlendMode = static_cast<uint32>(Rock.RockBlendMode);

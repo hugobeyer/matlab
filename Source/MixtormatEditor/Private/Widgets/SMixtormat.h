@@ -568,6 +568,10 @@ private:
 	FReply ReorderGroupChild(FGuid GroupId, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
+	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
+	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
+	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;
+	FReply PasteAsGatingMask(const FMixtormatChildAddress& Address);
 	// Clicking empty space in the layer stack: nothing selected, so the inspector shows globals.
 	void ClearLayerSelection();
 	bool HasAnySelection() const;
@@ -675,10 +679,16 @@ private:
 			return static_cast<double>(Stored.GetValue()) / ValueScale;
 		};
 		FMixtormatSliderRangeOptions Options;
+		// Only parameters with a back-end clamp grow: without one there is no limit to grow
+		// toward, so the authored UI range stays the whole visual range (layer rows, most
+		// effect rows).
 		Options.bExpandable = TAttribute<bool>::CreateLambda([KeyFor, Contract]()
 		{
+			const FMixtormatParameterDefinitionKey* Key = KeyFor();
 			const FMixtormatParameterContract* C = Contract();
-			return KeyFor() != nullptr && !(C && C->bShaderSaturates);
+			return Key != nullptr && !(C && C->bShaderSaturates)
+				&& (MixtormatParameterAuthoring::ResolveAuthoringClamp(*Key, false).IsSet()
+					|| MixtormatParameterAuthoring::ResolveAuthoringClamp(*Key, true).IsSet());
 		});
 		Options.HardMin = TAttribute<double>::CreateLambda([Bound, ValueScale]()
 		{

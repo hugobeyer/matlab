@@ -100,6 +100,9 @@ void SMixtormatSlider::CommitValue(double Value, const bool bClampToRange)
 
 void SMixtormatSlider::ResetToDefault()
 {
+	// A reset returns to the authored range, not the grown one.
+	ExpandedMin.Reset();
+	ExpandedMax.Reset();
 	OnReset.ExecuteIfBound();
 }
 
@@ -235,6 +238,13 @@ void SMixtormatSlider::GetDisplayRange(double& OutMin, double& OutMax) const
 	{
 		return;
 	}
+	const double Value = GetValue();
+	// Back inside the authored range (a reset, a typed value, an undo): show the authored range
+	// again. Only a drag in progress keeps a grown range while the value sits inside it.
+	if (!bDragging && Value >= OutMin && Value <= OutMax)
+	{
+		return;
+	}
 	if (ExpandedMin.IsSet())
 	{
 		OutMin = FMath::Min(OutMin, ExpandedMin.GetValue());
@@ -243,7 +253,6 @@ void SMixtormatSlider::GetDisplayRange(double& OutMin, double& OutMax) const
 	{
 		OutMax = FMath::Max(OutMax, ExpandedMax.GetValue());
 	}
-	const double Value = GetValue();
 	OutMin = FMath::Min(OutMin, Value);
 	OutMax = FMath::Max(OutMax, Value);
 }

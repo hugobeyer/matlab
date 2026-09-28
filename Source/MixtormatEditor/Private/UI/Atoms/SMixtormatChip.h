@@ -27,4 +27,6 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+private:
+	TSharedPtr<class SComboButton> ComboButton;
 };

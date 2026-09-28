@@ -326,8 +326,16 @@ public:
 		SHADER_PARAMETER(float, GapAmount)
 		SHADER_PARAMETER(float, WarpAmount)
 		SHADER_PARAMETER(float, ChamferRandom)
-		SHADER_PARAMETER(float, Tilt)
+		SHADER_PARAMETER(float, Spin)
+		SHADER_PARAMETER(float, SpinRandom)
+		SHADER_PARAMETER(float, TiltAngle)
+		SHADER_PARAMETER(float, TiltDirection)
 		SHADER_PARAMETER(float, TiltRandom)
+		SHADER_PARAMETER(float, SizeRandom)
+		SHADER_PARAMETER(float, Stretch)
+		SHADER_PARAMETER(float, StretchAngle)
+		SHADER_PARAMETER(float, StretchRandom)
+		SHADER_PARAMETER(int32, WarpScale)
 		SHADER_PARAMETER(float, HeightClusters)
 		SHADER_PARAMETER(float, Skew)
 		SHADER_PARAMETER(uint32, BlendMode)
@@ -913,7 +921,8 @@ namespace
 	// GPU mirror of FRockLeaf in MixtormatRockFormation.usf, for the buffer stride only.
 	struct FRockLeafStride
 	{
-		float Floats[20];
+		// Cx Cy, Sx Sy, TopConstant, Top, Radius, 3 chip planes (9) = 16 floats.
+		float Floats[16];
 		uint32 Uints[4];
 	};
 	static constexpr int32 RockMaxVertices = 24;
@@ -1311,8 +1320,16 @@ namespace
 			P->GapAmount = Rock.Gap;
 			P->WarpAmount = Rock.Warp;
 			P->ChamferRandom = Rock.ChamferRandom;
-			P->Tilt = Rock.Tilt;
+			P->Spin = Rock.Spin;
+			P->SpinRandom = Rock.SpinRandom;
+			P->TiltAngle = Rock.TiltAngle;
+			P->TiltDirection = Rock.TiltDirection;
 			P->TiltRandom = Rock.TiltRandom;
+			P->SizeRandom = Rock.SizeRandom;
+			P->Stretch = Rock.Stretch;
+			P->StretchAngle = Rock.StretchAngle;
+			P->StretchRandom = Rock.StretchRandom;
+			P->WarpScale = Rock.WarpScale;
 			P->HeightClusters = Rock.HeightClusters;
 			P->Skew = Rock.Skew;
 			P->BlendMode = Rock.BlendMode;

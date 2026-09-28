@@ -2577,6 +2577,58 @@ FText SMixtormat::GetChildPasteReason(
 	}
 }
 
+bool SMixtormat::CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const
+{
+	if (!ChildClipboard.IsSet())
+	{
+		return false;
+	}
+	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
+	const int32 Anchor = ResolveChildIndexAt(Address);
+	return Clipboard.Mode != EMixtormatChildClipboardMode::Instance
+		&& Clipboard.Payload.Type == EMixtormatLayerChildType::Mask
+		&& Container && Container->IsValidIndex(Anchor)
+		&& CanOwnScopedMasks((*Container)[Anchor])
+		&& CanAddScopedChild(*Container, Anchor);
+}
+
+FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
+{
+	if (!CanPasteAsGatingMask(Address))
+	{
+		return FReply::Unhandled();
+	}
+	TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
+	const int32 Anchor = ResolveChildIndexAt(Address);
+	// A duplicate, scoped under the row it was pasted on and placed at the end of that row's
+	// subtree -- a copied output keeps reading its source, which is published before the owner runs.
+	FMixtormatLayerChild Pasted = ChildClipboard.GetValue().Payload;
+	Pasted.SourceLayerId = FGuid();
+	Pasted.SourceChildId = FGuid();
+	Pasted.ScopeOwnerChildId = (*Container)[Anchor].ChildId;
+	const int32 Insert = FindSubtreeEnd(*Container, Anchor);
+	Container->Insert(MoveTemp(Pasted), Insert);
+	MixtormatParameterBinding::RegenerateChildIdentity((*Container)[Insert]);
+
+	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
+	{
+		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+			[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+		SetLayerExpanded(LayerIndex, true);
+		SelectWorkingChild(LayerIndex, Insert);
+	}
+	else
+	{
+		CollapsedGroupIds.Remove(Address.OwnerId);
+		SelectGroupChild(Address.OwnerId, Insert);
+	}
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
 FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 AnchorChildIndex)
 {
 	const int32 Insert = ResolvePasteInsertIndex(Dest, AnchorChildIndex);
@@ -3150,6 +3202,14 @@ void SMixtormat::AddSharedChildMenuItems(
 		{
 			return CanPasteChild(Address, ResolveChildIndexAt(Address));
 		}));
+	// Only offered where it can land: a copied mask on a row that can own scoped masks.
+	if (CanPasteAsGatingMask(Address))
+	{
+		Menu.Item(
+			LOCTEXT("PasteAsGatingMaskContext", "Paste as Gating Mask"),
+			MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, Address]() { PasteAsGatingMask(Address); }));
+	}
 	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
 	{
 		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(

@@ -159,6 +159,8 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
 		THEME_COLOR(BadgeTop), THEME_COLOR(BadgeBottom), THEME_COLOR(BadgeHairline),
 		THEME_COLOR(InspectorHairline),
+		THEME_COLOR(WellTopHover), THEME_COLOR(WellBottomHover), THEME_COLOR(WellOutline),
+		THEME_COLOR(WellOutlineHover), THEME_COLOR(WellEntry),
 		THEME_COLOR(IconRest), THEME_COLOR(IconHover), THEME_COLOR(GroupRowCross)
 	};
 #undef THEME_COLOR

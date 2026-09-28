@@ -77,11 +77,11 @@ namespace MixtormatPalette
 	// ---- Wells ------------------------------------------------------------------------------
 	inline FLinearColor WellTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTop"), Hex(0x070808)); }
 	inline FLinearColor WellBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottom"), Hex(0x0C0E0F)); }
-	inline FLinearColor WellTopHover() { return Hex(0x0A0B0C); }
-	inline FLinearColor WellBottomHover() { return Hex(0x121416); }
-	inline FLinearColor WellOutline()  { return Hex(0x242729); }
-	inline FLinearColor WellOutlineHover() { return Hex(0x383D41); }
-	inline FLinearColor WellEntry()    { return Hex(0x070808); }
+	inline FLinearColor WellTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTopHover"), Hex(0x0A0B0C)); }
+	inline FLinearColor WellBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottomHover"), Hex(0x121416)); }
+	inline FLinearColor WellOutline()  { return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutline"), Hex(0x242729)); }
+	inline FLinearColor WellOutlineHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutlineHover"), Hex(0x383D41)); }
+	inline FLinearColor WellEntry()    { return FMixtormatLiveTheme::ResolveColor(TEXT("WellEntry"), Hex(0x070808)); }
 
 	// ---- Active -----------------------------------------------------------------------------
 	inline FLinearColor FillTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTop"), Hex(0x303438)); }
