@@ -792,10 +792,14 @@ namespace MixtormatGpuCompositor
 	{
 		float Style = 0.0f;
 		int32 Cells = 4;
+		int32 Rows = 4;
+		float Skew = 0.0f;
 		uint32 Seed = 0;
 		float Fracture = 1.0f;
 		float Slope = 1.0f;
 		float Chamfer = 1.0f;
+		float ChamferBias = 0.0f;
+		float FractureHeightBias = 0.0f;
 		float Gap = 1.0f;
 		float Warp = 0.2f;
 		float ChamferRandom = 0.5f;

@@ -3431,9 +3431,13 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockChamfer", "Chamfer"), Rock, &FMixtormatRockFormation::RockChamfer, 0.0, 3.0, 1.0, 0.01,
 			LOCTEXT("RockChamferHint", "Scales the planar chamfer along chunk edges."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockChamferRandom", "Chamfer Random"), Rock, &FMixtormatRockFormation::RockChamferRandom, 0.0, 1.0, 0.5, 0.01,
-		LOCTEXT("RockChamferRandomHint", "Varies chamfer width between chunk edges.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamferRandom", "Chamfer Random"), Rock, &FMixtormatRockFormation::RockChamferRandom, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("RockChamferRandomHint", "Varies chamfer width between chunk edges.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamferBias", "Chamfer Bias"), Rock, &FMixtormatRockFormation::RockChamferBias, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockChamferBiasHint", "Positive expands chamfers; negative reduces their width."))));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
 		LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 3.0, 1.0, 0.01,
 		LOCTEXT("RockGapHint", "Scales the gaps between cells and between fractured pieces.")));
@@ -3454,16 +3458,27 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberEnum<FMixtormatRockFormation>(
 			LOCTEXT("RockBlendMode", "Height Blend"), Rock, &FMixtormatRockFormation::RockBlendMode,
-			LOCTEXT("RockBlendModeHint", "Replace the existing height, or blend toward the lower or higher of it and this rock.")),
+			LOCTEXT("RockBlendModeHint", "Replace, choose the lower or higher height, or use their absolute difference.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockAmount", "Amount"), Rock, &FMixtormatRockFormation::RockAmount, 0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("RockAmountHint", "How strongly this rock affects the existing layer height."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockRows", "Verticality (Rows)"), Rock, &FMixtormatRockFormation::RockRows, 1.0, 32.0, 4,
+			LOCTEXT("RockRowsHint", "Number of rock rows from top to bottom of the tile.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSkew", "Skew"), Rock, &FMixtormatRockFormation::RockSkew, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockSkewHint", "Offsets rock rows diagonally while preserving tile wrapping."))));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockHeightScale", "Verticality"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
-		LOCTEXT("RockHeightScaleHint", "Scales the rock's vertical height before blending.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 2.0, 1.0, 0.01,
-		LOCTEXT("RockHeightClustersHint", "Scales clustered height variation between chunks and rows.")));
+		LOCTEXT("RockHeightScale", "Height Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
+		LOCTEXT("RockHeightScaleHint", "Scales rock height before blending.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("RockHeightClustersHint", "Scales clustered height variation between chunks and rows.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFractureHeightBias", "Fracture Height Bias"), Rock, &FMixtormatRockFormation::RockFractureHeightBias, -0.5, 0.5, 0.0, 0.01,
+			LOCTEXT("RockFractureHeightBiasHint", "Randomly raises or lowers individual fractured pieces."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })

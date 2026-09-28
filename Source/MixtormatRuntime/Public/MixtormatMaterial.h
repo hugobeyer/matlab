@@ -2579,6 +2579,17 @@ enum class EMixtormatPebbleDirection : uint8
 	Axis UMETA(DisplayName = "Axis Biased")
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatStrataBlendMode : uint8
+{
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Difference UMETA(DisplayName = "Difference"),
+	Maximum UMETA(DisplayName = "Maximum"),
+	Minimum UMETA(DisplayName = "Minimum")
+};
+
 // Strata Carver: periodic sedimentary beds with layered orientation variation and multi-scale,
 // tileable curl warping. The new art controls drive direct procedural synthesis; prior solver
 // settings remain serialized for compatibility with existing projects.
@@ -2799,23 +2810,14 @@ enum class EMixtormatRockBlendMode : uint8
 {
 	Replace UMETA(DisplayName = "Replace"),
 	MinHeight UMETA(DisplayName = "Min Height"),
-	MaxHeight UMETA(DisplayName = "Max Height")
-};
-
-UENUM(BlueprintType)
-enum class EMixtormatStrataBlendMode : uint8
-{
-	Add UMETA(DisplayName = "Add"),
-	Subtract UMETA(DisplayName = "Subtract"),
-	Multiply UMETA(DisplayName = "Multiply"),
-	Difference UMETA(DisplayName = "Difference"),
-	Maximum UMETA(DisplayName = "Maximum"),
-	Minimum UMETA(DisplayName = "Minimum")
+	MaxHeight UMETA(DisplayName = "Max Height"),
+	Difference UMETA(DisplayName = "Difference")
 };
 
 // Rock Formation: a tileable sloped rock surface built from BSP-fractured, tilted slab chunks
 // with chipped tops, chamfers and walls. Style blends four presets (0 cliff, 1 layered,
 // 2 boulder, 3 rubble). The field depends on these settings only, so it is cached.
+USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 {
 	GENERATED_BODY()
@@ -2827,6 +2829,14 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	// Cells across the tile.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "32"))
 	int32 RockCells = 4;
+
+	// Rows along the tile's vertical axis.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "32"))
+	int32 RockRows = 4;
+
+	// Diagonal offset of rows, in cell widths.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockSkew = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
 	int32 RockSeed = 0;
@@ -2842,6 +2852,14 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	// Scales the chamfer width along chunk edges.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
 	float RockChamfer = 1.0f;
+
+	// Signed offset to chamfer width: positive expands, negative shrinks it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RockChamferBias = 0.0f;
+
+	// Signed random height offset per fractured piece.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-0.5", UIMax = "0.5", Delta = "0.01"))
+	float RockFractureHeightBias = 0.0f;
 
 	// Scales the gaps between cells and between fractured pieces.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))

@@ -1981,10 +1981,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.Style = Finite(Rock.RockStyle, Defaults.RockStyle);
 					// A cell count of zero or less has no lattice to evaluate.
 					Out.Cells = FMath::Max(Rock.RockCells, 1);
+					Out.Rows = FMath::Max(Rock.RockRows, 1);
+					Out.Skew = Finite(Rock.RockSkew, Defaults.RockSkew);
 					Out.Seed = static_cast<uint32>(Rock.RockSeed);
 					Out.Fracture = Finite(Rock.RockFracture, Defaults.RockFracture);
 					Out.Slope = Finite(Rock.RockSlope, Defaults.RockSlope);
 					Out.Chamfer = Finite(Rock.RockChamfer, Defaults.RockChamfer);
+					Out.ChamferBias = Finite(Rock.RockChamferBias, Defaults.RockChamferBias);
+					Out.FractureHeightBias = Finite(Rock.RockFractureHeightBias, Defaults.RockFractureHeightBias);
 					Out.Gap = Finite(Rock.RockGap, Defaults.RockGap);
 					Out.Warp = Finite(Rock.RockWarp, Defaults.RockWarp);
 					Out.ChamferRandom = Finite(Rock.RockChamferRandom, Defaults.RockChamferRandom);

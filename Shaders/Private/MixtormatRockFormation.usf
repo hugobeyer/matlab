@@ -36,12 +36,15 @@ uint Seed;
 float FractureAmount;
 float SlopeAmount;
 float ChamferAmount;
+float ChamferBias;
+float FractureHeightBias;
 float GapAmount;
 float WarpAmount;
 float ChamferRandom;
 float Tilt;
 float TiltRandom;
 float HeightClusters;
+float Skew;
 uint BlendMode;
 float Amount;
 float HeightScale;
@@ -104,8 +107,9 @@ struct FRockPat
 	float2 dip;
 	float rand_k, hvar, lvar, chip, wall_k;
 	float cell_gap, seam_gap, outer_ch, inner_ch, ch_k, bottom, reach;
+	float chamfer_bias, fracture_height_bias;
 	uint seed, wseed;
-	float warp, tilt, tilt_random, chamfer_random, height_clusters;
+	float warp, tilt, tilt_random, chamfer_random, height_clusters, skew;
 };
 
 struct FRockPoly
@@ -272,7 +276,9 @@ float2 RockSite(FRockPat P, int i, int j, out uint id)
 	float jx = (RockRand(h, 1u, 31u) - 0.5f) * P.irr;
 	float jy = (RockRand(h, 2u, 31u) - 0.5f) * P.irr * (1.0f - P.strata);
 	id = (uint)(wi + wj * P.cu);
-	return float2((float)i + 0.5f + bond + jx, ((float)j + 0.5f + jy) * P.rh);
+	float row_phase = ROCK_TAU * (float)wj / (float)P.cv;
+	float row_skew = P.skew * sin(row_phase);
+	return float2((float)i + 0.5f + bond + jx + row_skew, ((float)j + 0.5f + jy) * P.rh);
 }
 
 float RockMetric(FRockPat P, float2 d) { return d.x * d.x + P.a2 * d.y * d.y; }
@@ -382,6 +388,7 @@ bool RockEdgeLine(FRockPat P, FRockPoly leaf, int i, float2 c, float scale,
 	w = (crack ? P.inner_ch : P.outer_ch) * scale
 		* lerp(1.0f, lerp(0.4f, 1.6f, RockRand(P.seed, tag, 91u)), P.chamfer_random)
 		* (1.0f - P.bottom * clamp(-nn.y, 0.0f, 1.0f));
+	w = max(0.0f, w + P.chamfer_bias * scale);
 	w = min(w, 0.75f * max(0.0f, dg - dot(nn, c)));
 	return true;
 }
@@ -397,6 +404,7 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	uint pk = RockHash(ck ^ (node * 0x85EBCA6Bu));
 	float top = 1.0f - P.height_clusters * (P.hvar * 0.5f * (RockRand(ck, 1u, 61u) + RockRand(pk, 1u, 62u))
 		+ P.lvar * layerRand);
+	top += P.fracture_height_bias * (2.0f * RockRand(pk, 5u, 61u) - 1.0f);
 
 	float ar;
 	float2 c = RockCentroid(leaf, ar);
@@ -546,7 +554,7 @@ FRockPat RockSetup()
 
 	FRockPat P = (FRockPat)0;
 	P.cu = max(Cells, 1);
-	P.cv = max((int)round((float)P.cu * v[1]), 1);
+	P.cv = max(CellsV, 1);
 	P.rh = (float)P.cu / (float)P.cv;
 	P.strata = v[0];
 	P.a2 = (1.0f + 3.0f * v[0]) * (1.0f + 3.0f * v[0]);
@@ -558,12 +566,15 @@ FRockPat RockSetup()
 	P.hvar = v[7];
 	P.lvar = v[8];
 	P.height_clusters = HeightClusters;
+	P.skew = Skew;
 	P.chip = v[9];
 	P.wall_k = tan(radians(v[10]));
 	P.cell_gap = v[11] * GapAmount;
 	P.seam_gap = v[12] * GapAmount;
 	P.outer_ch = v[13] * ChamferAmount;
 	P.inner_ch = v[14] * ChamferAmount;
+	P.chamfer_bias = ChamferBias;
+	P.fracture_height_bias = FractureHeightBias;
 	P.ch_k = min(tan(radians(42.0f)), P.wall_k);
 	P.bottom = v[15];
 	P.irr = v[16];
@@ -693,7 +704,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	OutRockHeight[Pixel] = hit ? saturate(bestH) : 0.0f;
+	OutRockHeight[Pixel] = hit ? bestH : 0.0f;
 	OutRockTop[Pixel] = hit && bestCls == 0 ? 1.0f : 0.0f;
 	OutRockChamfer[Pixel] = hit && bestCls == 1 ? 1.0f : 0.0f;
 	OutRockWall[Pixel] = hit && bestCls == 2 ? 1.0f : 0.0f;
@@ -705,7 +716,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Source = SourceHeight.Load(int3(Pixel, 0));
 	const float Rock = RockHeight.Load(int3(Pixel, 0)) * HeightScale;
 	const float Target = BlendMode == 1u ? min(Source, Rock)
-		: (BlendMode == 2u ? max(Source, Rock) : Rock);
+		: (BlendMode == 2u ? max(Source, Rock)
+		: (BlendMode == 3u ? abs(Source - Rock) : Rock));
 	OutHeight[Pixel] = lerp(Source, Target, Amount);
 #endif
 }

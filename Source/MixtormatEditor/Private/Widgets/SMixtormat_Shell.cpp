@@ -351,17 +351,24 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
 											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 											[
-												SNew(SImage)
-												// Always on: the tab was a hover-only reveal on a 3px sliver,
-												// which made the control nearly impossible to find. It is now
-												// the affordance itself, not a hint that one exists.
-												.Visibility(EVisibility::HitTestInvisible)
-												.Image_Lambda([this]()
-												{
-													return bBottomLibraryCollapsed
-														? MixtormatIcons::ChevronRight()
-														: MixtormatIcons::ChevronDown();
-												})
+												SNew(SHorizontalBox)
+												+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
+												[
+													SNew(STextBlock)
+													.Text(LOCTEXT("BottomLibraryToggleLabel", "Gallery"))
+													.Visibility(EVisibility::HitTestInvisible)
+												]
+												+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+												[
+													SNew(SImage)
+													.Visibility(EVisibility::HitTestInvisible)
+													.Image_Lambda([this]()
+													{
+														return bBottomLibraryCollapsed
+															? MixtormatIcons::ChevronRight()
+															: MixtormatIcons::ChevronDown();
+													})
+												]
 											]
 										]
 									]

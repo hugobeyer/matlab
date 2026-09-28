@@ -245,16 +245,16 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(TEXT("Mixtormat.TopButton"), TopButton);
 
 	FButtonStyle BottomLibraryCollapseButton = FButtonStyle()
-		.SetNormal(FSlateNoResource())
-		.SetHovered(FSlateNoResource())
-		.SetPressed(FSlateNoResource())
-		.SetDisabled(FSlateNoResource())
+		.SetNormal(FSlateRoundedBoxBrush(FLinearColor::Transparent, MixtormatTokens::CornerRadius))
+		.SetHovered(FSlateRoundedBoxBrush(RaisedPanelHover, MixtormatTokens::CornerRadius))
+		.SetPressed(FSlateRoundedBoxBrush(Panel, MixtormatTokens::CornerRadius))
+		.SetDisabled(FSlateRoundedBoxBrush(FLinearColor::Transparent, MixtormatTokens::CornerRadius))
 		.SetNormalForeground(FSlateColor(Icon))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Accent))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(0.0f))
-		.SetPressedPadding(FMargin(0.0f));
+		.SetNormalPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f))
+		.SetPressedPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.BottomLibraryCollapseButton"), BottomLibraryCollapseButton);
 
 	FButtonStyle PrimaryButton = FButtonStyle()

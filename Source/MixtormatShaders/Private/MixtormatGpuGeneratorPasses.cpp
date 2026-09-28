@@ -321,12 +321,15 @@ public:
 		SHADER_PARAMETER(float, FractureAmount)
 		SHADER_PARAMETER(float, SlopeAmount)
 		SHADER_PARAMETER(float, ChamferAmount)
+		SHADER_PARAMETER(float, ChamferBias)
+		SHADER_PARAMETER(float, FractureHeightBias)
 		SHADER_PARAMETER(float, GapAmount)
 		SHADER_PARAMETER(float, WarpAmount)
 		SHADER_PARAMETER(float, ChamferRandom)
 		SHADER_PARAMETER(float, Tilt)
 		SHADER_PARAMETER(float, TiltRandom)
 		SHADER_PARAMETER(float, HeightClusters)
+		SHADER_PARAMETER(float, Skew)
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, HeightScale)
@@ -737,7 +740,7 @@ namespace
 
 		FRockLayout Layout;
 		Layout.CellsU = FMath::Max(Rock.Cells, 1);
-		Layout.CellsV = FMath::Max(FMath::RoundToInt(static_cast<float>(Layout.CellsU) * Blend(0)), 1);
+		Layout.CellsV = FMath::Max(Rock.Rows, 1);
 		Layout.RowHeight = static_cast<float>(Layout.CellsU) / static_cast<float>(Layout.CellsV);
 		const int32 Splits = FMath::Max(FMath::RoundToInt(Blend(1) * Rock.Fracture), 0);
 		// Every internal BSP node has two children, so a tree with Splits internal nodes has
@@ -785,12 +788,15 @@ namespace
 			P->FractureAmount = Rock.Fracture;
 			P->SlopeAmount = Rock.Slope;
 			P->ChamferAmount = Rock.Chamfer;
+			P->ChamferBias = Rock.ChamferBias;
+			P->FractureHeightBias = Rock.FractureHeightBias;
 			P->GapAmount = Rock.Gap;
 			P->WarpAmount = Rock.Warp;
 			P->ChamferRandom = Rock.ChamferRandom;
 			P->Tilt = Rock.Tilt;
 			P->TiltRandom = Rock.TiltRandom;
 			P->HeightClusters = Rock.HeightClusters;
+			P->Skew = Rock.Skew;
 			P->BlendMode = Rock.BlendMode;
 			P->Amount = Rock.Amount;
 			P->HeightScale = Rock.HeightScale;
