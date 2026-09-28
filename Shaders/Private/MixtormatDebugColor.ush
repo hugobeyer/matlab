@@ -16,10 +16,11 @@
 // raw put linear 0.25 through an sRGB encode and produced roughly 0.54 on screen, which is why
 // every preview read as fluorescent rather than as the dark plum and dark green intended.
 //
-// Converting here gets the displayed colour close to the authored one. Not exact: the viewport
-// still runs the tonemapper with an exposure bias, so there is a filmic curve between this and
-// the pixel. Matching exactly would mean bypassing post-processing for the debug view, which is a
-// bigger change than the brightness is worth.
+// Converting here makes the displayed colour the authored one: while a debug view is up the
+// preview viewport neutralises the tone curve, exposure, vignette and grading and leaves only the
+// linear-to-sRGB encode (SMixtormatPreviewViewport's unlit presentation), so this conversion is
+// the exact inverse of what reaches the pixel. Anything written into the debug target without it
+// displays brighter than intended.
 
 float MixtormatSrgbToLinearChannel(float C)
 {

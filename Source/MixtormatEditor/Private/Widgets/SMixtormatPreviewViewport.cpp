@@ -25,7 +25,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatPalette.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialExpressionCustom.h"
 #include "Materials/MaterialExpressionIf.h"
+#include "Materials/MaterialExpressionMultiply.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
@@ -53,6 +55,59 @@ namespace MixtormatPreview
 	const FName ChannelPreviewModeParameter(TEXT("DA_ChannelPreviewMode"));
 
 
+	// Both transient preview materials displace the mesh the way the master does, so a debug or
+	// channel view keeps the surface's shape instead of collapsing it flat. The tessellation switch
+	// and the Nanite displacement scaling (magnitude, centre, fade) are copied from the master when
+	// the material is built -- one source for those numbers, not a second set here -- and the input
+	// is the composited height gated by the same DA_UseHeight and scaled by the same
+	// DA_HeightAmount the master reads.
+	void AddHeightDisplacement(
+		UMaterial* Material,
+		UMaterialExpressionTextureSampleParameter2D* HeightSample)
+	{
+		UMaterialInterface* MasterInterface = LoadObject<UMaterialInterface>(
+			nullptr,
+			*FMixtormatPaths::MasterMaterialObjectPath());
+		const UMaterial* Master = MasterInterface ? MasterInterface->GetMaterial() : nullptr;
+		if (!Master)
+		{
+			UE_LOG(LogMixtormat, Error,
+				TEXT("Master material %s could not be loaded. Preview material built without displacement."),
+				*FMixtormatPaths::MasterMaterialObjectPath());
+			return;
+		}
+		Material->bEnableTessellation = Master->bEnableTessellation;
+		Material->DisplacementScaling = Master->DisplacementScaling;
+		Material->bEnableDisplacementFade = Master->bEnableDisplacementFade;
+		Material->DisplacementFadeRange = Master->DisplacementFadeRange;
+		Material->SetUsageByFlag(MATUSAGE_Nanite, true);
+
+		const auto MakeScalar = [Material](const FName ParameterName, const float DefaultValue)
+		{
+			UMaterialExpressionScalarParameter* Parameter =
+				NewObject<UMaterialExpressionScalarParameter>(Material);
+			Parameter->SetParameterName(ParameterName);
+			Parameter->ExpressionGUID = FGuid::NewGuid();
+			Parameter->DefaultValue = DefaultValue;
+			Material->GetExpressionCollection().AddExpression(Parameter);
+			return Parameter;
+		};
+		UMaterialExpressionScalarParameter* UseHeight = MakeScalar(UseHeightParameter, 1.0f);
+		UMaterialExpressionScalarParameter* HeightAmount = MakeScalar(HeightAmountParameter, 1.0f);
+
+		// Output 1 is R: the height target is single-channel, and Connect copies that mask onto
+		// the input (see WireInput in CreateChannelPreviewMaterial).
+		UMaterialExpressionMultiply* Gated = NewObject<UMaterialExpressionMultiply>(Material);
+		Gated->A.Connect(1, HeightSample);
+		Gated->B.Connect(0, UseHeight);
+		Material->GetExpressionCollection().AddExpression(Gated);
+		UMaterialExpressionMultiply* Scaled = NewObject<UMaterialExpressionMultiply>(Material);
+		Scaled->A.Connect(0, Gated);
+		Scaled->B.Connect(0, HeightAmount);
+		Material->GetExpressionCollection().AddExpression(Scaled);
+		Material->GetEditorOnlyData()->Displacement.Connect(0, Scaled);
+	}
+
 	UMaterial* CreateDebugMaterial()
 	{
 		UMaterial* Material = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
@@ -74,6 +129,18 @@ namespace MixtormatPreview
 			TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
 		Material->GetExpressionCollection().AddExpression(DebugTexture);
 		Material->GetEditorOnlyData()->EmissiveColor.Expression = DebugTexture;
+
+		// The debug colour is never the shape: the mesh displaces by the composited height,
+		// bound alongside the debug texture on every compose.
+		UMaterialExpressionTextureSampleParameter2D* HeightSample =
+			NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
+		HeightSample->SetParameterName(ChannelPreviewHeightParameter);
+		HeightSample->ExpressionGUID = FGuid::NewGuid();
+		HeightSample->SamplerType = SAMPLERTYPE_Color;
+		HeightSample->Texture = DebugTexture->Texture;
+		Material->GetExpressionCollection().AddExpression(HeightSample);
+		AddHeightDisplacement(Material, HeightSample);
+
 		Material->PostEditChange();
 		return Material;
 	}
@@ -202,7 +269,37 @@ namespace MixtormatPreview
 
 		// The root is the node testing the *highest* mode: evaluating it first is what makes
 		// every lower node's ALessThanB chain the correct fallback, down to Sources[FirstMode].
-		Material->GetEditorOnlyData()->EmissiveColor.Expression = Chain[LastMode];
+		//
+		// Then one display step. The viewport encodes linear to sRGB on the way out, so a data
+		// value written raw would show brighter than itself (0.5 roughness as 188, not 128). Data
+		// channels therefore go through the inverse first -- the same exact curve the debug palette
+		// uses (MixtormatDebugColor.ush) -- so every channel shows its value as the grey it is.
+		// Base Color is a colour, not data: it is already linear and is left alone. The linear
+		// branch is taken for anything at or below the knee, negatives included, so an unclamped
+		// height never reaches pow with a negative base.
+		UMaterialExpressionCustom* Display = NewObject<UMaterialExpressionCustom>(Material);
+		Display->Description = TEXT("MixtormatChannelDisplay");
+		Display->OutputType = CMOT_Float3;
+		Display->Code = FString::Printf(TEXT(
+			"float3 C = Value;\n"
+			"if (abs(Mode - %d.0f) < 0.5f) { return C; }\n"
+			"const float3 Low = C / 12.92f;\n"
+			"const float3 High = pow((abs(C) + 0.055f) / 1.055f, 2.4f);\n"
+			"return float3(\n"
+			"\tC.r <= 0.04045f ? Low.r : High.r,\n"
+			"\tC.g <= 0.04045f ? Low.g : High.g,\n"
+			"\tC.b <= 0.04045f ? Low.b : High.b);"),
+			static_cast<int32>(EMixtormatChannelPreview::BaseColor));
+		Display->Inputs.Reset();
+		FCustomInput& ValueInput = Display->Inputs.AddDefaulted_GetRef();
+		ValueInput.InputName = TEXT("Value");
+		ValueInput.Input.Connect(0, Chain[LastMode]);
+		FCustomInput& ModeInput = Display->Inputs.AddDefaulted_GetRef();
+		ModeInput.InputName = TEXT("Mode");
+		ModeInput.Input.Connect(0, ModeParam);
+		Material->GetExpressionCollection().AddExpression(Display);
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Display);
+		AddHeightDisplacement(Material, HeightSample);
 		Material->PostEditChange();
 		return Material;
 	}
@@ -226,13 +323,14 @@ public:
 		return MixtormatPalette::PreviewBackground();
 	}
 
-	// A diagnostic channel wants a literal read of the composited texture -- the studio-lighting
-	// look's filmic tone curve compresses highlights and lifts blacks, which turns a linear
-	// roughness/height/normal value into visibly wrong contrast, not the raw data being inspected.
-	// Zeroing ToneCurveAmount and ExpandGamut is the documented way to fully disable that curve
-	// (see FPostProcessSettings::ToneCurveAmount) while leaving the ordinary linear-to-sRGB
-	// display encode in place, which is the "unlit, sRGB, no tonemapping" read a channel preview
-	// needs. Left alone in Material mode, so the shaded look is untouched.
+	// A debug or channel view wants a literal read of the composited texture -- the studio look's
+	// filmic tone curve compresses highlights and lifts blacks, its exposure bias darkens, and its
+	// vignette and blue correction shift values by screen position and hue, all of which turn a
+	// linear roughness/height/normal/mask value into visibly wrong numbers. Zeroing
+	// ToneCurveAmount and ExpandGamut fully disables the curve (see
+	// FPostProcessSettings::ToneCurveAmount) while leaving the ordinary linear-to-sRGB display
+	// encode in place. Exposure goes manual with no physical camera and no bias, so a value is
+	// shown as itself. Left alone in Material mode, so the shaded look is untouched.
 	virtual void OverridePostProcessSettings(FSceneView& View) override
 	{
 		FPostProcessSettings Settings;
@@ -248,12 +346,26 @@ public:
 			Settings.bOverride_LumenFinalGatherQuality = true;
 			Settings.LumenFinalGatherQuality = 0.5f;
 		}
-		if (Owner.GetChannelPreview() != EMixtormatChannelPreview::Material)
+		if (Owner.IsUnlitPresentation())
 		{
 			Settings.bOverride_ToneCurveAmount = true;
 			Settings.ToneCurveAmount = 0.0f;
 			Settings.bOverride_ExpandGamut = true;
 			Settings.ExpandGamut = 0.0f;
+			Settings.bOverride_BlueCorrection = true;
+			Settings.BlueCorrection = 0.0f;
+			Settings.bOverride_VignetteIntensity = true;
+			Settings.VignetteIntensity = 0.0f;
+			Settings.bOverride_FilmGrainIntensity = true;
+			Settings.FilmGrainIntensity = 0.0f;
+			Settings.bOverride_BloomIntensity = true;
+			Settings.BloomIntensity = 0.0f;
+			Settings.bOverride_AutoExposureMethod = true;
+			Settings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+			Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+			Settings.AutoExposureApplyPhysicalCameraExposure = 0;
+			Settings.bOverride_AutoExposureBias = true;
+			Settings.AutoExposureBias = 0.0f;
 		}
 		View.OverridePostProcessSettings(Settings, 1.0f);
 	}
@@ -275,11 +387,26 @@ public:
 			Owner.ToggleOverlayUi();
 			return true;
 		}
+		// Bare Z only: Ctrl+Z is undo and must still reach the editor.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Z
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			Owner.ToggleDisplacement();
+			return true;
+		}
 		// Temporary: cycles the raw-channel diagnostic view. No toolbar yet -- WorkingStatusText
 		// is the only indication, same as every other viewport hotkey here.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V)
 		{
-			Owner.CycleChannelPreview();
+			// Shift+V jumps straight back to Material instead of cycling through every channel.
+			if (IsShiftPressed())
+			{
+				Owner.ResetChannelPreview();
+			}
+			else
+			{
+				Owner.CycleChannelPreview();
+			}
 			return true;
 		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
@@ -356,6 +483,7 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 {
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
+	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
@@ -411,10 +539,7 @@ void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 		bUsingDebugPreview = false;
 	}
 
-	if (PreviewViewportClient.IsValid())
-	{
-		PreviewViewportClient->Invalidate();
-	}
+	ApplyPresentationState();
 }
 
 void SMixtormatPreviewViewport::SetPreviewLayers(
@@ -522,7 +647,7 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		SetPreviewMaterial(PreviewMaterial);
 		bUsingLayerPreview = true;
 		bUsingDebugPreview = bDebugPreview;
-		UpdateDebugLightVisibility();
+		ApplyPresentationState();
 	}
 
 	if (!PreviewMaterialInstance.IsValid())
@@ -554,6 +679,9 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		PreviewMaterialInstance->SetTextureParameterValue(
 			MixtormatPreview::DebugTextureParameter,
 			LayerCompositor->GetDebugOutput());
+		PreviewMaterialInstance->SetTextureParameterValue(
+			MixtormatPreview::ChannelPreviewHeightParameter,
+			LayerCompositor->GetHeightOutput());
 	}
 	else
 	{
@@ -624,6 +752,11 @@ void SMixtormatPreviewViewport::SetPreviewScalarParameter(
 	const FName ParameterName,
 	const float Value)
 {
+	// The channel material displaces too, so it follows the same scalars while it is up.
+	if (UMaterialInstanceDynamic* ChannelMID = ChannelPreviewMaterialInstance.Get())
+	{
+		ChannelMID->SetScalarParameterValue(ParameterName, Value);
+	}
 	if (!PreviewMaterialInstance.IsValid())
 	{
 		return;
@@ -848,7 +981,7 @@ void SMixtormatPreviewViewport::SetStudioLighting(const EMixtormatStudioLighting
 void SMixtormatPreviewViewport::UpdateStudioEnvironmentLighting()
 {
 	ApplyLightIntensities();
-	UpdateDebugLightVisibility();
+	ApplyPresentationState();
 }
 
 void SMixtormatPreviewViewport::ApplyLightIntensities()
@@ -905,31 +1038,47 @@ void SMixtormatPreviewViewport::InvalidateDisplacementShadows()
 	}
 }
 
-void SMixtormatPreviewViewport::UpdateDebugLightVisibility()
+bool SMixtormatPreviewViewport::IsUnlitPresentation() const
 {
-	const bool bLightsVisible = !bUsingDebugPreview;
+	return bUsingDebugPreview || ChannelPreview != EMixtormatChannelPreview::Material;
+}
+
+void SMixtormatPreviewViewport::ApplyPresentationState()
+{
+	const bool bUnlit = IsUnlitPresentation();
 	if (PreviewScene.DirectionalLight)
 	{
-		PreviewScene.DirectionalLight->SetVisibility(bLightsVisible);
+		PreviewScene.DirectionalLight->SetVisibility(!bUnlit);
 	}
 	if (PreviewScene.SkyLight)
 	{
-		PreviewScene.SkyLight->SetVisibility(bLightsVisible);
+		PreviewScene.SkyLight->SetVisibility(!bUnlit);
 	}
+	if (StudioReflectionCapture)
+	{
+		StudioReflectionCapture->SetVisibility(!bUnlit);
+	}
+	// Direct, so the shared asset-viewer profile is not rewritten. The floor is not data, and an
+	// emissive mesh would light it under Lumen, so it goes with the lights.
+	PreviewScene.SetFloorVisibility(!bUnlit, true);
+	if (!PreviewViewportClient.IsValid())
+	{
+		return;
+	}
+	MixtormatPreviewSceneSettings::ConfigureQuality(
+		PreviewViewportClient->EngineShowFlags,
+		CurrentPreviewQuality);
+	if (bUnlit)
+	{
+		MixtormatPreviewSceneSettings::ConfigureUnlit(PreviewViewportClient->EngineShowFlags);
+	}
+	PreviewViewportClient->Invalidate();
 }
 
 void SMixtormatPreviewViewport::SetPreviewQuality(const EMixtormatPreviewQuality Quality)
 {
 	CurrentPreviewQuality = Quality;
-	if (!PreviewViewportClient.IsValid())
-	{
-		return;
-	}
-
-	MixtormatPreviewSceneSettings::ConfigureQuality(
-		PreviewViewportClient->EngineShowFlags,
-		Quality);
-	PreviewViewportClient->Invalidate();
+	ApplyPresentationState();
 }
 
 void SMixtormatPreviewViewport::SetPreviewAntiAliasing(const EMixtormatPreviewAntiAliasing AntiAliasing)
@@ -1016,6 +1165,13 @@ void SMixtormatPreviewViewport::ToggleOverlayUi()
 	OnToggleOverlayUi.ExecuteIfBound();
 }
 
+void SMixtormatPreviewViewport::ToggleDisplacement()
+{
+	// The owner holds the displacement state (its checkbox and the library preview read it), so
+	// the hotkey asks it rather than flipping this viewport alone.
+	OnToggleDisplacement.ExecuteIfBound();
+}
+
 void SMixtormatPreviewViewport::ResetChannelPreview()
 {
 	ChannelPreview = EMixtormatChannelPreview::Material;
@@ -1048,10 +1204,7 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 		PreviewMeshComponent->SetMaterial(0, PreviewMaterialInstance.Get());
 		// Back in the material slot, so the strong hold is no longer needed.
 		RetainedPreviewMaterialInstance.Reset();
-		if (PreviewViewportClient.IsValid())
-		{
-			PreviewViewportClient->Invalidate();
-		}
+		ApplyPresentationState();
 		return;
 	}
 
@@ -1092,10 +1245,53 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 	ChannelMID->SetScalarParameterValue(
 		MixtormatPreview::ChannelPreviewModeParameter,
 		static_cast<float>(ChannelPreview));
+	ChannelMID->SetScalarParameterValue(
+		MixtormatPreview::UseHeightParameter,
+		bDisplacementEnabled ? 1.0f : 0.0f);
+	ChannelMID->SetScalarParameterValue(
+		MixtormatPreview::HeightAmountParameter,
+		DisplacementAmount);
 	PreviewMeshComponent->SetMaterial(0, ChannelMID);
-	if (PreviewViewportClient.IsValid())
+	ApplyPresentationState();
+}
+
+FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
+{
+	// A channel view replaces the mesh's material outright, so it wins over a debug view that may
+	// still be composing underneath it.
+	if (ChannelPreview != EMixtormatChannelPreview::Material)
 	{
-		PreviewViewportClient->Invalidate();
+		return FText::Format(
+			NSLOCTEXT("SMixtormatPreviewViewport", "ChannelPreviewModeLabel", "{0}  (Shift+V for Material)"),
+			FText::FromString(GetChannelPreviewLabel()));
+	}
+	if (!bUsingDebugPreview)
+	{
+		return NSLOCTEXT("SMixtormatPreviewViewport", "MaterialPreviewModeLabel", "Material");
+	}
+	switch (bDebugPreviewMode)
+	{
+	case EMixtormatDebugPreviewMode::GeneratedFeature:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugFeatureLabel", "Debug: Feature");
+	case EMixtormatDebugPreviewMode::HeightBlend:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugHeightBlendLabel", "Debug: Height Blend");
+	case EMixtormatDebugPreviewMode::ContactAO:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugContactAOLabel", "Debug: Contact AO");
+	case EMixtormatDebugPreviewMode::BorderNormal:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugBorderNormalLabel", "Debug: Border Normal");
+	case EMixtormatDebugPreviewMode::LayerMask:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugLayerMaskLabel", "Debug: Layer Mask");
+	case EMixtormatDebugPreviewMode::Stain:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugStainLabel", "Debug: Stain");
+	case EMixtormatDebugPreviewMode::Runoff:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugRunoffLabel", "Debug: Runoff");
+	case EMixtormatDebugPreviewMode::ChildOutput:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugChildOutputLabel", "Debug: Child Output");
+	case EMixtormatDebugPreviewMode::LayerUV:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugLayerUVLabel", "Debug: Layer UV");
+	case EMixtormatDebugPreviewMode::None:
+	default:
+		return NSLOCTEXT("SMixtormatPreviewViewport", "DebugPreviewLabel", "Debug");
 	}
 }
 

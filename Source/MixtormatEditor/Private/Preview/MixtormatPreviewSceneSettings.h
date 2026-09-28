@@ -68,6 +68,10 @@ namespace MixtormatPreviewSceneSettings
 	FString GetStudioEnvironmentObjectPath(EMixtormatStudioLighting LightingPreset);
 	FMixtormatStudioLightSettings GetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void ConfigureQuality(FEngineShowFlags& ShowFlags, EMixtormatPreviewQuality Quality);
+	// Applied on top of ConfigureQuality while the preview shows raw data (a debug or channel
+	// view): no light, no indirect, no reflections, no shadows. The Tonemapper flag is left on --
+	// it carries the linear-to-sRGB encode the debug palette is authored against.
+	void ConfigureUnlit(FEngineShowFlags& ShowFlags);
 	float CalculateFocusDistance(
 		float BoundsRadius,
 		float HorizontalFovDegrees,

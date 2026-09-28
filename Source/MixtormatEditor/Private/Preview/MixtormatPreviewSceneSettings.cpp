@@ -122,6 +122,19 @@ void MixtormatPreviewSceneSettings::ConfigureQuality(
 	ShowFlags.SetScreenSpaceAO(bLumen);
 }
 
+void MixtormatPreviewSceneSettings::ConfigureUnlit(FEngineShowFlags& ShowFlags)
+{
+	ShowFlags.SetDynamicShadows(false);
+	ShowFlags.SetGlobalIllumination(false);
+	ShowFlags.SetSkyLighting(false);
+	ShowFlags.SetReflectionEnvironment(false);
+	ShowFlags.SetLumenGlobalIllumination(false);
+	ShowFlags.SetLumenReflections(false);
+	ShowFlags.SetScreenSpaceReflections(false);
+	ShowFlags.SetAmbientOcclusion(false);
+	ShowFlags.SetScreenSpaceAO(false);
+}
+
 float MixtormatPreviewSceneSettings::CalculateFocusDistance(
 	const float BoundsRadius,
 	const float HorizontalFovDegrees,

@@ -27,6 +27,7 @@
 // lattice periods. Travel distance is never wrapped with fmod.
 
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 
 #define FLOW_PI 3.14159265358979f
 #define FLOW_BIG 1e20f
@@ -496,7 +497,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	const float Hue = atan2(Flow.y, Flow.x) / (2.0f * FLOW_PI) + 0.5f;
 	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
-	OutputDebug[Pixel] = float4(Rgb * (0.2f + 0.8f * saturate(Flow.w)), 1.0f);
+	OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(Rgb * (0.2f + 0.8f * saturate(Flow.w))), 1.0f);
 }
 #endif
 
@@ -533,7 +534,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Stretch = log2(Det);
 	Color = lerp(Color, Stretch < 0.0f ? float3(0.2f, 0.4f, 1.0f) : float3(1.0f, 0.85f, 0.2f),
 		saturate(abs(Stretch)) * 0.6f);
-	OutputDebug[Pixel] = float4(Color, 1.0f);
+	OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(Color), 1.0f);
 }
 #endif
 

@@ -110,6 +110,7 @@ class SMixtormatPreviewViewport final : public SEditorViewport
 public:
 	SLATE_BEGIN_ARGS(SMixtormatPreviewViewport) {}
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
+		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 	SLATE_END_ARGS()
 
@@ -159,6 +160,9 @@ public:
 	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
+	// What the viewport is showing right now: Material, a V-key channel (with the Shift+V hint),
+	// or the debug view a preview eye turned on.
+	FText GetPreviewModeLabel() const;
 	void ResetChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;
@@ -175,12 +179,18 @@ private:
 	void RotateLighting(float YawDelta, float PitchDelta);
 	void ZoomCamera(float ZoomDelta);
 	void ToggleOverlayUi();
+	void ToggleDisplacement();
 	void CycleChannelPreview();
 	void ApplyChannelPreview();
 	void UpdateCamera();
 	void UpdateStudioFloor();
 	void UpdateStudioEnvironmentLighting();
-	void UpdateDebugLightVisibility();
+	// A debug or channel view shows raw data on an unlit surface, so everything that lights,
+	// reflects or grades the frame has to be off for it. One funnel, re-run after anything that
+	// can bring that state back: UpdateScene (lighting preset, rotation), a quality change, and
+	// every switch into or out of a data view.
+	bool IsUnlitPresentation() const;
+	void ApplyPresentationState();
 	void UpdatePreviewMeshFloorClearance();
 	void InvalidateDisplacementShadows();
 	// bWaitForCompletion blocks the game thread until the composite has run. Only a caller that
@@ -209,6 +219,7 @@ private:
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;
 	FSimpleDelegate OnToggleOverlayUi;
+	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnChannelPreviewChanged;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;

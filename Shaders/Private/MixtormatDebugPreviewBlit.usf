@@ -15,7 +15,9 @@
 // Scalar outputs (Wear, Edge, Pieces) go straight to grayscale rather than through the plum/green
 // coverage ramp every other feature preview uses: those are named, self-explanatory masks a user
 // is inspecting directly (0 = none, 1 = full), not a signal being related back to the same palette
-// as every other debug view.
+// as every other debug view. The value is read as the grey it should display as, so it goes
+// through the same sRGB-to-linear step as the palette: 0.5 shows as mid grey. Unclamped -- a value
+// outside 0..1 is data, and the display clips it on its own.
 
 Texture2D<float> SourceMask;
 RWTexture2D<float4> OutputDebug;
@@ -30,7 +32,7 @@ void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		return;
 	}
-	const float Value = saturate(SourceMask.Load(int3(Pixel, 0)));
+	const float Value = MixtormatSrgbToLinearChannel(SourceMask.Load(int3(Pixel, 0)));
 	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
 }
 

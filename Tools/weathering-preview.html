@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Heightmaps — left: edge wear · right: freeze–thaw</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#181818}canvas{display:block}</style>
+</head>
+<body>
+<canvas aria-label="Grayscale heightmaps: edge wear left, freeze–thaw right. Black is low; white is high."></canvas>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+
+// Edit these constants; no UI. Both effects use the same periodic rock generator.
+const WEAR = 0.7, FREEZE_CYCLES = 5;
+const renderer = new THREE.WebGLRenderer({canvas:document.querySelector('canvas'),antialias:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x181818);
+renderer.autoClear=false;
+const scene=new THREE.Scene(), camera=new THREE.Camera();
+const material=new THREE.ShaderMaterial({
+  uniforms:{mode:{value:0},wear:{value:WEAR},cycles:{value:FREEZE_CYCLES}},
+  depthTest:false,depthWrite:false,
+  vertexShader:`varying vec2 uvMap;
+    void main(){uvMap=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+  fragmentShader:`
+    precision highp float;
+    varying vec2 uvMap;
+    uniform float mode,wear,cycles;
+    vec2 hash2(vec2 p){
+      return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);
+    }
+    float noise(vec2 uv,float period){
+      vec2 p=uv*period,i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+      return mix(mix(hash2(mod(i,period)).x,hash2(mod(i+vec2(1,0),period)).x,f.x),
+        mix(hash2(mod(i+vec2(0,1),period)).x,hash2(mod(i+1.0,period)).x,f.x),f.y);
+    }
+    vec2 site(vec2 cell,float period){return cell+0.2+0.6*hash2(mod(cell,period));}
+    float smoothMin(float a,float b,float k){
+      float h=max(k-abs(a-b),0.0)/k;return min(a,b)-h*h*k*0.25;
+    }
+    // Nearest feature, then signed distances to its Voronoi bisector planes.
+    // x: sharp boundary distance, y: rounded interior, z: stable per-chunk height.
+    vec3 rockCell(vec2 uv,float period){
+      vec2 p=uv*period,base=floor(p),winner=base,nearest=vec2(0.0);
+      float best=1e6;
+      for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){
+        vec2 cell=base+vec2(float(x),float(y)),r=site(cell,period)-p;
+        float d=dot(r,r);
+        if(d<best){best=d;winner=cell;nearest=r;}
+      }
+      float edge=1e6,rounded=1e6;
+      for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){
+        if(x==0&&y==0)continue;
+        vec2 r=site(winner+vec2(float(x),float(y)),period)-p;
+        float d=dot(0.5*(nearest+r),normalize(r-nearest));
+        edge=min(edge,d);rounded=smoothMin(rounded,d,0.14);
+      }
+      return vec3(max(edge,0.0),max(rounded,0.0),hash2(mod(winner,period)).x);
+    }
+    void main(){
+      vec2 uv=uvMap;
+      vec2 warp=vec2(noise(uv,4.0),noise(uv+vec2(0.37,0.19),4.0))-0.5;
+      vec2 p=uv+warp*0.045;
+      vec3 cell=rockCell(p,6.0);
+      float grain=0.65*noise(uv,32.0)+0.35*noise(uv,96.0);
+      float top=0.62+0.27*cell.z+0.045*(grain-0.5);
+      float base=0.075;
+      float source=mix(base,top,smoothstep(0.008,0.045,cell.x));
+      float height;
+      if(mode<0.5){
+        // Edge-distance erosion: broaden and round shoulders, never raise the source.
+        float width=0.045+wear*(0.18+0.08*grain);
+        float profile=smoothstep(0.008,width,cell.y);
+        float worn=mix(base,top,profile);
+        height=mix(source,min(source,worn),wear);
+      }else{
+        // Procedural freeze damage, not a physical simulation. Cycles widen/deepen seams.
+        vec3 fine=rockCell(p+vec2(0.13,0.27),18.0);
+        float damage=1.0-exp(-cycles*0.18);
+        float gap=0.008+damage*0.075;
+        float joint=1.0-smoothstep(gap,gap+0.028,cell.x);
+        float hairline=1.0-smoothstep(0.004,0.014+damage*0.025,fine.x);
+        float active=smoothstep(0.40,0.72,noise(uv,4.0));
+        float interior=1.0-joint;
+        float uplift=damage*0.06*cell.z*interior;
+        height=source+uplift-joint*damage*0.62-hairline*active*damage*0.20*interior;
+      }
+      // Raw scalar preview: no lighting, tone mapping, or display gamma conversion.
+      gl_FragColor=vec4(vec3(clamp(height,0.0,1.0)),1.0);
+    }`
+});
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),material));
+function draw(){
+  const w=innerWidth,h=innerHeight,gap=12;
+  renderer.setSize(w,h);
+  renderer.setScissorTest(false);renderer.clear();
+  const size=Math.max(1,Math.floor(Math.min((w-gap*3)/2,h-gap*2)));
+  const left=Math.floor((w-size*2-gap)/2),bottom=Math.floor((h-size)/2);
+  renderer.setScissorTest(true);
+  for(let i=0;i<2;i++){
+    renderer.setViewport(left+i*(size+gap),bottom,size,size);
+    renderer.setScissor(left+i*(size+gap),bottom,size,size);
+    material.uniforms.mode.value=i;
+    renderer.render(scene,camera);
+  }
+}
+addEventListener('resize',draw);draw();
+</script>
+</body>
+</html>

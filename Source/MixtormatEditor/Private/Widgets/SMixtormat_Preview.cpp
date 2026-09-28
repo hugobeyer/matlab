@@ -1175,6 +1175,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			LOCTEXT("PreviewSkylightIntensityHint", "Scales the boosted plugin-cubemap lighting and reflection capture. The default is 10% intensity."))
 	];
 	TSharedRef<SVerticalBox> CameraControls = SNew(SVerticalBox);
+	// Which view is on screen, above the FOV: the shaded material, a raw channel, or a debug view.
+	CameraControls->AddSlot().AutoHeight().HAlign(HAlign_Center)
+		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayItemGap)
+	[
+		SNew(STextBlock)
+		.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Text_Lambda([this]()
+		{
+			return !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
+				? PreviewViewports[0]->GetPreviewModeLabel()
+				: FText::GetEmpty();
+		})
+	];
 	CameraControls->AddSlot().AutoHeight()
 	[
 		MakeSlider(
@@ -1201,6 +1214,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnToggleOverlayUi(FSimpleDelegate::CreateLambda([this]()
 			{
 				bPreviewOverlayUiVisible = !bPreviewOverlayUiVisible;
+			}))
+			.OnToggleDisplacement(FSimpleDelegate::CreateLambda([this]()
+			{
+				SetPreviewDisplacementEnabled(!bPreviewDisplacementEnabled);
 			}))
 			// Temporary: V has no toolbar readout yet, so the status line is the only feedback.
 			.OnChannelPreviewChanged(FSimpleDelegate::CreateLambda([this]()
