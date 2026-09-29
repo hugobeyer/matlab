@@ -1,0 +1,23 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#pragma once
+
+// Eight-neighbour monotone arrival relaxation, with local travel cost per unit distance.
+// Peeling provides per-direction costs for its flow bias; cracks uses a scalar speed.
+float MixtormatEikonalStepDirectional(float Self, float L, float R, float D, float U,
+    float NW, float NE, float SW, float SE, float2 Texel,
+    float CostL, float CostR, float CostD, float CostU,
+    float CostNW, float CostNE, float CostSW, float CostSE)
+{
+    const float Diagonal = length(Texel);
+    return min(Self, min(min(min(L + Texel.x * CostL, R + Texel.x * CostR),
+        min(D + Texel.y * CostD, U + Texel.y * CostU)),
+        min(min(NW + Diagonal * CostNW, NE + Diagonal * CostNE),
+            min(SW + Diagonal * CostSW, SE + Diagonal * CostSE))));
+}
+// The caller supplies tile-wrapped neighbour arrival times and the pixel spacing in field units.
+float MixtormatEikonalStep(float Self, float L, float R, float D, float U,
+    float NW, float NE, float SW, float SE, float2 Texel, float Cost)
+{
+    return MixtormatEikonalStepDirectional(Self, L, R, D, U, NW, NE, SW, SE, Texel,
+        Cost, Cost, Cost, Cost, Cost, Cost, Cost, Cost);
+}

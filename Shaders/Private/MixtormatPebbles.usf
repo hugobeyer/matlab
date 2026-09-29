@@ -37,6 +37,8 @@ float BiasVariation;
 float HeightGain;
 float HeightVariation;
 uint FacetIds;
+uint BlendMode;
+float HeightScale;
 float Amount;
 
 Texture2D<float> PebbleHeight;
@@ -258,10 +260,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutPebbleRandom[Pixel] = bestRandom;
 	OutPebbleIds[Pixel] = bestId;
 #else
-	// Height union: buried stones cannot cut into the existing surface.
 	const float Source = SourceHeight.Load(int3(Pixel, 0));
-	const float Stone = PebbleHeight.Load(int3(Pixel, 0));
+	const float Stone = PebbleHeight.Load(int3(Pixel, 0)) * HeightScale;
 	const float Coverage = PebbleCoverage.Load(int3(Pixel, 0));
-	OutHeight[Pixel] = lerp(Source, max(Source, Stone), Amount * Coverage);
+	const float Target = BlendMode == 1u ? min(Source, Stone)
+		: (BlendMode == 2u ? max(Source, Stone)
+		: (BlendMode == 3u ? abs(Source - Stone)
+		: (BlendMode == 4u ? Source + Stone : Stone)));
+	OutHeight[Pixel] = lerp(Source, Target, Amount * Coverage);
 #endif
 }

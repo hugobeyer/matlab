@@ -48,17 +48,6 @@ namespace
 			Add(ET::Layer, TEXT("HeightInfluence"), {});
 			Add(ET::Layer, TEXT("IOR"), {});
 
-			// ---- Fracture module.
-			Add(ET::Generator, TEXT("FractureSeed"), {});
-			Add(ET::Generator, TEXT("FractureScale"), {});
-			Add(ET::Generator, TEXT("FractureAmount"), {});
-			Add(ET::Generator, TEXT("FractureWidth"), {});
-			Add(ET::Generator, TEXT("FractureDepth"), {});
-			Add(ET::Generator, TEXT("FractureProfile"), {});
-		Add(ET::Generator, TEXT("FractureChamfer"), {});
-			Add(ET::Generator, TEXT("FractureVariation"), {});
-
-
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.
 			Add(ET::Effect, TEXT("BreakupScale"), {});
@@ -267,15 +256,15 @@ namespace
 			// Generator parameter names are unique across payloads. The owner address remains the
 			// stable category while reflection still supplies the payload's compiled default.
 			static const FMixtormatStrataCarver StrataDefaults;
-			static const FMixtormatFracture FractureDefaults;
+			static const FMixtormatCracks CrackDefaults;
 			static const FMixtormatRockFormation RockDefaults;
 			static const FMixtormatPebbles PebbleDefaults;
 			const void* Defaults = &StrataDefaults;
 			const FProperty* Property = FMixtormatStrataCarver::StaticStruct()->FindPropertyByName(Parameter);
 			if (!Property)
 			{
-				Property = FMixtormatFracture::StaticStruct()->FindPropertyByName(Parameter);
-				Defaults = &FractureDefaults;
+				Property = FMixtormatCracks::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &CrackDefaults;
 			}
 			if (!Property)
 			{

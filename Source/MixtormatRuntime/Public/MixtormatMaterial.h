@@ -2645,7 +2645,9 @@ UENUM(BlueprintType)
 enum class EMixtormatGeneratorType : uint8
 {
 	StrataCarver UMETA(DisplayName = "Strata Carver"),
-	Fracture UMETA(DisplayName = "Fracture"),
+	// Slot 1 was Fracture. Cracks replaces it in place; Config/DefaultMixtormat.ini carries the
+	// name redirect, so a saved Fracture child loads as Cracks at its defaults.
+	Cracks UMETA(DisplayName = "Cracks"),
 	// Appended: serialized by value.
 	RockFormation UMETA(DisplayName = "Rock Formation"),
 	Pebbles UMETA(DisplayName = "Pebbles")
@@ -2657,7 +2659,8 @@ enum class EMixtormatGeneratorType : uint8
 inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 {
 	return Type == EMixtormatGeneratorType::RockFormation
-		|| Type == EMixtormatGeneratorType::Pebbles;
+		|| Type == EMixtormatGeneratorType::Pebbles
+		|| Type == EMixtormatGeneratorType::Cracks;
 }
 
 UENUM(BlueprintType)
@@ -2846,63 +2849,17 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	float ClampMax = 1.0f;
 };
 
-// Fracture reshapes owned footprints and intersects their height with fractured face planes.
-// It consumes local Ramp From IDs relief before the layer's final blend.
+// How a generator's height combines with the height before it on the same layer. Shared by the
+// generators so one word means one operation everywhere. Serialised by value: append only.
 UENUM(BlueprintType)
-enum class EMixtormatFractureSource : uint8
-{
-	Generated UMETA(DisplayName = "Generated"),
-	RegionIds UMETA(DisplayName = "Region IDs"),
-	Combined UMETA(DisplayName = "Generated + IDs")
-};
-
-USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatFracture
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture")
-	EMixtormatFractureSource FractureSource = EMixtormatFractureSource::Combined;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
-	int32 FractureSeed = 11;
-
-	// Number of broad fracture regions across one repeat.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "2.0", UIMax = "32.0", Delta = "1.0"))
-	float FractureScale = 7.0f;
-
-	// Blends structural deformation and face intersection; zero is an exact identity.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float FractureAmount = 0.62f;
-
-	// Relative shoulder width, converted to output pixels by the structural pass.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float FractureWidth = 0.28f;
-
-	// Face depth below the owner-local sampled surface, in layer-height units.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
-	float FractureDepth = 0.08f;
-
-	// Shapes the three planar slope sections; 1 makes their combined profile linear.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
-	float FractureProfile = 1.0f;
-
-	// Correlated-field chamfer radius in normalized field units; identical fields stay unchanged.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
-	float FractureChamfer = 0.25f;
-
-	// Coherent directional deformation, signed offsets, width and face variation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fracture", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float FractureVariation = 0.38f;
-};
-
-UENUM(BlueprintType)
-enum class EMixtormatRockBlendMode : uint8
+enum class EMixtormatGeneratorBlendMode : uint8
 {
 	Replace UMETA(DisplayName = "Replace"),
 	MinHeight UMETA(DisplayName = "Min Height"),
 	MaxHeight UMETA(DisplayName = "Max Height"),
-	Difference UMETA(DisplayName = "Difference")
+	Difference UMETA(DisplayName = "Difference"),
+	// The generator's field is a signed change: added to the height before it.
+	Add UMETA(DisplayName = "Add")
 };
 
 // Rock Formation: a tileable sloped rock surface built from BSP-fractured, tilted slab chunks
@@ -3016,7 +2973,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 
 	// How this rock combines with the preceding height result on the same layer.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
-	EMixtormatRockBlendMode RockBlendMode = EMixtormatRockBlendMode::Replace;
+	EMixtormatGeneratorBlendMode RockBlendMode = EMixtormatGeneratorBlendMode::Replace;
 
 	// Multiplies the rock height before it is mixed in.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
@@ -3108,12 +3065,147 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	bool bPebbleFacetIds = false;
 
-	// How much the stones replace the layer's height where they sit. Does not re-evaluate them.
+	// Max preserves the existing behaviour: buried stones cannot cut into the surface.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height")
+	EMixtormatGeneratorBlendMode PebbleBlendMode = EMixtormatGeneratorBlendMode::MaxHeight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float PebbleHeightScale = 1.0f;
+
+	// How much the stones blend into the layer's height where they sit. Does not re-evaluate them.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float PebbleAmount = 1.0f;
 };
 
 // Document-level passes that run once on the finished surface, after every layer.
+// Cracks: a tileable network of straight cracks (the borders of a jittered cell lattice), made
+// rough by a per-crack zigzag and a feathered push near the cracks, with widths that vary along
+// each crack, per crack and by region, chipped rims, random opened gaps, and pieces that rise,
+// sink and tip. A chamfer bevels the rims by the distance to the crack over a noisy speed.
+//
+// Every length is in cell widths and every depth scales with the cell, so the look holds at any
+// resolution and any cell count. The field is a signed height change (Add is the natural blend),
+// and it depends on these settings only, so it is cached; the chamfer gate mask is applied after.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatCracks
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks")
+	int32 CrackSeed = 1;
+
+	// Cells across the tile, per axis.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "1", UIMax = "32"))
+	int32 CrackCells = 7;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackJitter = 0.85f;
+
+	// Crack width, in cell widths.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	float CrackWidth = 0.1f;
+
+	// Groove depth at the base width, relative to the cell. A crack that swells wider cuts deeper.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float CrackDepth = 0.415f;
+
+	// How angular the crack lines are. A steepness, not a size: Scale never changes it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Shape", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackRough = 0.361f;
+
+	// Bends per cell width along a crack.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Shape", meta = (UIMin = "0.5", UIMax = "16.0", Delta = "0.05"))
+	float CrackScale = 7.8f;
+
+	// How much finer texture rides on the bends.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Shape", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackDetail = 1.0f;
+
+	// Blend between the push noise's cells: small = fault-like kinks, large = soft bends.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Shape", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackFeather = 0.176f;
+
+	// Fine width wobble along each crack: 0 none, 1 from nothing to double.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Width", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackWidthVariation = 0.5f;
+
+	// Fine width wobbles per cell width along a crack.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Width", meta = (UIMin = "0.5", UIMax = "32.0", Delta = "0.1"))
+	float CrackWidthScale = 6.44f;
+
+	// Every crack its own width, from hairline to wide.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Width", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackLineVariation = 0.541f;
+
+	// Whole regions wider or thinner.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Width", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackRegionVariation = 0.615f;
+
+	// Share of rim slots that carry a chip; each side of a crack chips on its own.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackChip = 0.3f;
+
+	// Chip size, in cell widths.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	float CrackChipSize = 0.12f;
+
+	// Chance that a crack has opened into a flat-floored gap.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackGap = 0.15f;
+
+	// The gap floor's width, relative to the crack's.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.05"))
+	float CrackGapWidth = 1.5f;
+
+	// Every piece rises or sinks by its own random amount, relative to the cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Pieces", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackSlip = 0.1f;
+
+	// Every piece tips its own random way, as a slope.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Pieces", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackTilt = 0.1f;
+
+	// Chamfer: the distance from the crack, divided by a noisy speed, read as a height rising from
+	// Low at Start to High at End (and on past it), then min-blended in by Amount. Scoped masks
+	// under this generator gate it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackChamferAmount = 0.0f;
+
+	// Distance band, in cell widths, over which the chamfer rises.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	float CrackChamferStart = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	float CrackChamferEnd = 0.15f;
+
+	// Chamfer heights at Start and End, in the same units as Depth. Raise them to push the
+	// chamfer further up onto the tops.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "-2.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackChamferLow = -0.4f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "-2.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackChamferHigh = 0.0f;
+
+	// How much the chamfer's speed varies: 0 even width, 1 from very wide to very narrow.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackChamferNoise = 0.5f;
+
+	// Chamfer speed noise cells per crack cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.25", UIMax = "8.0", Delta = "0.05"))
+	float CrackChamferNoiseScale = 1.5f;
+
+	// How the cracks combine with the height before them on the same layer.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend")
+	EMixtormatGeneratorBlendMode CrackBlendMode = EMixtormatGeneratorBlendMode::Add;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CrackAmount = 1.0f;
+
+	// Multiplies the crack field before it is mixed in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float CrackHeightScale = 1.0f;
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 {
@@ -3177,8 +3269,8 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
 	FMixtormatStrataCarver StrataCarver;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Fracture"))
-	FMixtormatFracture Fracture;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Cracks"))
+	FMixtormatCracks Cracks;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::RockFormation"))
 	FMixtormatRockFormation RockFormation;

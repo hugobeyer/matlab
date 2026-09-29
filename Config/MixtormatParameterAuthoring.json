@@ -138,44 +138,6 @@
 			"snap": 0.0099999997764825821
 		}
 	},
-	"Fracture":
-	{
-		"Generator.FractureScale":
-		{
-			"default": 7,
-			"uiMin": 2,
-			"uiMax": 256,
-			"snap": 1
-		},
-		"Generator.FractureDepth":
-		{
-			"default": 0.079999998211860657,
-			"uiMin": 0,
-			"uiMax": 8,
-			"snap": 0.0010000000474974513
-		},
-		"Generator.FractureAmount":
-		{
-			"default": 0.62000000476837158,
-			"uiMin": 0,
-			"uiMax": 1,
-			"snap": 0.0099999997764825821
-		},
-		"Generator.FractureProfile":
-		{
-			"default": 1,
-			"uiMin": -4,
-			"uiMax": 4,
-			"snap": 0.0099999997764825821
-		},
-		"Generator.FractureChamfer":
-		{
-			"default": 0.25,
-			"uiMin": 0,
-			"uiMax": 1,
-			"snap": 0.0099999997764825821
-		}
-	},
 	"Peeling":
 	{
 		"Effect.Width":
@@ -193,6 +155,37 @@
 			"snap": 0
 		}
 	},
+	"Cracks":
+	{
+		"Generator.CrackSeed:Int": {"default": 1, "uiMin": 0, "uiMax": 9999, "snap": 1},
+		"Generator.CrackCells:Int": {"default": 7, "uiMin": 1, "uiMax": 32, "snap": 1},
+		"Generator.CrackJitter": {"default": 0.85, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackWidth": {"default": 0.1, "uiMin": 0, "uiMax": 0.5, "snap": 0.005},
+		"Generator.CrackDepth": {"default": 0.415, "uiMin": 0, "uiMax": 2, "snap": 0.01},
+		"Generator.CrackRough": {"default": 0.361, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackScale": {"default": 7.8, "uiMin": 0.5, "uiMax": 16, "snap": 0.05},
+		"Generator.CrackDetail": {"default": 1, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackFeather": {"default": 0.176, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackWidthVariation": {"default": 0.5, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackWidthScale": {"default": 6.44, "uiMin": 0.5, "uiMax": 32, "snap": 0.1},
+		"Generator.CrackLineVariation": {"default": 0.541, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackRegionVariation": {"default": 0.615, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChip": {"default": 0.3, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChipSize": {"default": 0.12, "uiMin": 0, "uiMax": 0.5, "snap": 0.005},
+		"Generator.CrackGap": {"default": 0.15, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackGapWidth": {"default": 1.5, "uiMin": 0, "uiMax": 4, "snap": 0.05},
+		"Generator.CrackSlip": {"default": 0.1, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackTilt": {"default": 0.1, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChamferAmount": {"default": 0, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChamferStart": {"default": 0, "uiMin": 0, "uiMax": 0.5, "snap": 0.005},
+		"Generator.CrackChamferEnd": {"default": 0.15, "uiMin": 0, "uiMax": 0.5, "snap": 0.005},
+		"Generator.CrackChamferLow": {"default": -0.4, "uiMin": -2, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChamferHigh": {"default": 0, "uiMin": -2, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChamferNoise": {"default": 0.5, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackChamferNoiseScale": {"default": 1.5, "uiMin": 0.25, "uiMax": 8, "snap": 0.05},
+		"Generator.CrackAmount": {"default": 1, "uiMin": 0, "uiMax": 1, "snap": 0.01},
+		"Generator.CrackHeightScale": {"default": 1, "uiMin": 0, "uiMax": 4, "snap": 0.01}
+	},
 	"Rock Formation":
 	{
 		"Generator.RockSkew":
@@ -202,6 +195,10 @@
 			"uiMax": 2,
 			"snap": 0.0099999997764825821
 		}
+	},
+	"Pebbles":
+	{
+		"Generator.PebbleHeightScale": {"default": 1, "uiMin": -4, "uiMax": 4, "snap": 0.01}
 	},
 	"Pattern IDs":
 	{

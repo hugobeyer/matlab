@@ -4,6 +4,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
 
 Texture2D<float4> SurfaceNormal;
 Texture2D<float4> SurfaceRAM;
@@ -798,92 +799,15 @@ float PeelSolve(
 	float adhesion,
 	float2 texel)
 {
-	float sx =
-		texel.x;
-
-	float sy =
-		texel.y;
-
-	float sd =
-		length(
-			texel);
-
-	float t =
-		self;
-
-	t = min(
-		t,
-		l
-		+ sx
-		* PeelStepCost(
-			float2(-1.0f, 0.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		r
-		+ sx
-		* PeelStepCost(
-			float2(1.0f, 0.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		d
-		+ sy
-		* PeelStepCost(
-			float2(0.0f, -1.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		u
-		+ sy
-		* PeelStepCost(
-			float2(0.0f, 1.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		nw
-		+ sd
-		* PeelStepCost(
-			float2(-1.0f, 1.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		ne
-		+ sd
-		* PeelStepCost(
-			float2(1.0f, 1.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		sw
-		+ sd
-		* PeelStepCost(
-			float2(-1.0f, -1.0f),
-			flow,
-			adhesion));
-
-	t = min(
-		t,
-		se
-		+ sd
-		* PeelStepCost(
-			float2(1.0f, -1.0f),
-			flow,
-			adhesion));
-
-	return t;
+	return MixtormatEikonalStepDirectional(self, l, r, d, u, nw, ne, sw, se, texel,
+		PeelStepCost(float2(-1.0f, 0.0f), flow, adhesion),
+		PeelStepCost(float2(1.0f, 0.0f), flow, adhesion),
+		PeelStepCost(float2(0.0f, -1.0f), flow, adhesion),
+		PeelStepCost(float2(0.0f, 1.0f), flow, adhesion),
+		PeelStepCost(float2(-1.0f, 1.0f), flow, adhesion),
+		PeelStepCost(float2(1.0f, 1.0f), flow, adhesion),
+		PeelStepCost(float2(-1.0f, -1.0f), flow, adhesion),
+		PeelStepCost(float2(1.0f, -1.0f), flow, adhesion));
 }
 
 // The peel front as a signed distance, reconstructed at an arbitrary UV.

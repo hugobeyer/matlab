@@ -3299,74 +3299,162 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildFractureControls()
+TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 {
-	const auto Fracture = [this]() { return GetSelectedFracture(); };
+	const auto Crack = [this]() { return GetSelectedCracks(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatFracture>(
-		LOCTEXT("FractureSource", "Source"), Fracture,
-		&FMixtormatFracture::FractureSource,
-		LOCTEXT("FractureSourceHint", "Generated creates pieces. Region IDs reshapes Pattern/Cluster/Combine footprints. Combined subdivides those pieces.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatFracture>(
-			LOCTEXT("FractureScale", "Scale"), Fracture,
-			&FMixtormatFracture::FractureScale, 2.0, 32.0, 7.0, 1.0,
-			LOCTEXT("FractureScaleHint", "Broad generated fracture regions across one repeat.")),
-		MakeMemberSliderInt<FMixtormatFracture>(
-			LOCTEXT("FractureSeed", "Seed"), Fracture,
-			&FMixtormatFracture::FractureSeed, 0.0, 9999.0, 11,
-			LOCTEXT("FractureSeedHint", "Changes piece layout, directional breaks and face variation."))));
+		MakeMemberSliderInt<FMixtormatCracks>(
+			LOCTEXT("CrackCells", "Cells"), Crack, &FMixtormatCracks::CrackCells, 1.0, 32.0, 7,
+			LOCTEXT("CrackCellsHint", "Pieces per row; the tile is Cells x Cells. Every length and depth below is relative to one cell.")),
+		MakeMemberSliderInt<FMixtormatCracks>(
+			LOCTEXT("CrackSeed", "Seed"), Crack, &FMixtormatCracks::CrackSeed, 0.0, 9999.0, 1,
+			LOCTEXT("CrackSeedHint", "Changes the network, its roughness and every piece."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatFracture>(
-			LOCTEXT("FractureAmount", "Amount"), Fracture,
-			&FMixtormatFracture::FractureAmount, 0.0, 1.0, 0.62, 0.01,
-			LOCTEXT("FractureAmountHint", "Blends the boundary deformation and face shaping. Zero preserves the input height.")),
-		MakeMemberSlider<FMixtormatFracture>(
-			LOCTEXT("FractureWidth", "Width"), Fracture,
-			&FMixtormatFracture::FractureWidth, 0.0, 1.0, 0.28, 0.01,
-			LOCTEXT("FractureWidthHint", "Width of the fractured shoulder; Variation breaks up its contour and slope width."))));
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackJitter", "Jitter"), Crack, &FMixtormatCracks::CrackJitter, 0.0, 1.0, 0.85, 0.01,
+			LOCTEXT("CrackJitterHint", "How irregular the pieces are. 0 is a square grid.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackWidth", "Width"), Crack, &FMixtormatCracks::CrackWidth, 0.0, 0.5, 0.1, 0.005,
+			LOCTEXT("CrackWidthHint", "Crack width, in cell widths."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
+		LOCTEXT("CrackDepth", "Depth"), Crack, &FMixtormatCracks::CrackDepth, 0.0, 2.0, 0.415, 0.01,
+		LOCTEXT("CrackDepthHint", "Groove depth at the base width, relative to the cell. Wider cracks cut deeper.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpShape", "Shape")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatFracture>(
-			LOCTEXT("FractureDepth", "Depth"), Fracture,
-			&FMixtormatFracture::FractureDepth, 0.0, 0.5, 0.08, 0.001,
-			LOCTEXT("FractureDepthHint", "Depth of fracture faces measured from the piece shoulder, in layer-height units.")),
-		MakeMemberSlider<FMixtormatFracture>(
-			LOCTEXT("FractureProfile", "Slope Profile"), Fracture,
-			&FMixtormatFracture::FractureProfile, 0.25, 4.0, 1.0, 0.01,
-			LOCTEXT("FractureProfileHint", "Shapes three planar slope sections. One is linear; lower or higher changes the slope breaks."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatFracture>(
-		LOCTEXT("FractureChamfer", "Chamfer"), Fracture,
-		&FMixtormatFracture::FractureChamfer, 0.0, 3.0, 0.25, 0.01,
-		LOCTEXT("FractureChamferHint", "SDF intersection chamfer in normalized field units. Zero uses a hard intersection. Independent of Slope Profile; no re-normalization.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatFracture>(
-		LOCTEXT("FractureVariation", "Variation"), Fracture,
-		&FMixtormatFracture::FractureVariation, 0.0, 1.0, 0.38, 0.01,
-		LOCTEXT("FractureVariationHint", "Directional zigzags, signed boundary offsets, shoulder width and broken slope variation; no micro noise.")));
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackRough", "Rough"), Crack, &FMixtormatCracks::CrackRough, 0.0, 1.0, 0.361, 0.01,
+			LOCTEXT("CrackRoughHint", "How angular the crack lines are. Scale does not change it.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackScale", "Scale"), Crack, &FMixtormatCracks::CrackScale, 0.5, 16.0, 7.8, 0.05,
+			LOCTEXT("CrackScaleHint", "Bends per cell width along a crack."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackDetail", "Detail"), Crack, &FMixtormatCracks::CrackDetail, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("CrackDetailHint", "How much finer texture rides on the bends.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackFeather", "Feather"), Crack, &FMixtormatCracks::CrackFeather, 0.0, 1.0, 0.176, 0.01,
+			LOCTEXT("CrackFeatherHint", "Small gives fault-like kinks, large gives soft bends."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpWidth", "Width Variation")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackLineVariation", "Per Crack"), Crack, &FMixtormatCracks::CrackLineVariation, 0.0, 1.0, 0.541, 0.01,
+			LOCTEXT("CrackLineVariationHint", "Every crack its own width, from hairline to wide.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackRegionVariation", "Regional"), Crack, &FMixtormatCracks::CrackRegionVariation, 0.0, 1.0, 0.615, 0.01,
+			LOCTEXT("CrackRegionVariationHint", "Whole regions wider or thinner."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackWidthVariation", "Along"), Crack, &FMixtormatCracks::CrackWidthVariation, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("CrackWidthVariationHint", "Fine wobble along each crack.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackWidthScale", "Along Scale"), Crack, &FMixtormatCracks::CrackWidthScale, 0.5, 32.0, 6.44, 0.1,
+			LOCTEXT("CrackWidthScaleHint", "Wobbles per cell width along a crack."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpRim", "Rims and Gaps")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChip", "Chips"), Crack, &FMixtormatCracks::CrackChip, 0.0, 1.0, 0.3, 0.01,
+			LOCTEXT("CrackChipHint", "Share of the rim carrying chips. Each side of a crack chips on its own.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChipSize", "Chip Size"), Crack, &FMixtormatCracks::CrackChipSize, 0.0, 0.5, 0.12, 0.005,
+			LOCTEXT("CrackChipSizeHint", "Chip size, in cell widths."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackGap", "Gaps"), Crack, &FMixtormatCracks::CrackGap, 0.0, 1.0, 0.15, 0.01,
+			LOCTEXT("CrackGapHint", "Chance that a crack has opened into a flat-floored gap.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackGapWidth", "Gap Width"), Crack, &FMixtormatCracks::CrackGapWidth, 0.0, 4.0, 1.5, 0.05,
+			LOCTEXT("CrackGapWidthHint", "Gap floor width, relative to the crack's."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpPieces", "Pieces")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackSlip", "Slip"), Crack, &FMixtormatCracks::CrackSlip, 0.0, 1.0, 0.1, 0.01,
+			LOCTEXT("CrackSlipHint", "Every piece rises or sinks by its own amount. Crack floors stay put.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackTilt", "Tilt"), Crack, &FMixtormatCracks::CrackTilt, 0.0, 1.0, 0.1, 0.01,
+			LOCTEXT("CrackTiltHint", "Every piece tips its own random way."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpChamfer", "Chamfer")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferAmount", "Amount"), Crack, &FMixtormatCracks::CrackChamferAmount, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("CrackChamferAmountHint", "Bevels the rims. Masks scoped under this generator gate where.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferNoise", "Noise"), Crack, &FMixtormatCracks::CrackChamferNoise, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("CrackChamferNoiseHint", "How irregular the bevel width is along each rim."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferStart", "Start"), Crack, &FMixtormatCracks::CrackChamferStart, 0.0, 0.5, 0.0, 0.005,
+			LOCTEXT("CrackChamferStartHint", "Distance from the crack, in cell widths, where the bevel is at its Low height.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferEnd", "End"), Crack, &FMixtormatCracks::CrackChamferEnd, 0.0, 0.5, 0.15, 0.005,
+			LOCTEXT("CrackChamferEndHint", "Distance from the crack, in cell widths, where the bevel reaches its High height."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferLow", "Low"), Crack, &FMixtormatCracks::CrackChamferLow, -2.0, 1.0, -0.4, 0.01,
+			LOCTEXT("CrackChamferLowHint", "Bevel height at Start, in the same units as Depth.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackChamferHigh", "High"), Crack, &FMixtormatCracks::CrackChamferHigh, -2.0, 1.0, 0.0, 0.01,
+			LOCTEXT("CrackChamferHighHint", "Bevel height at End. Raise to carry the bevel further up onto the tops."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
+		LOCTEXT("CrackChamferNoiseScale", "Noise Scale"), Crack, &FMixtormatCracks::CrackChamferNoiseScale, 0.25, 8.0, 1.5, 0.05,
+		LOCTEXT("CrackChamferNoiseScaleHint", "Noise cells per crack cell.")));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpBlend", "Blend")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatCracks>(
+			LOCTEXT("CrackBlendMode", "Height Blend"), Crack, &FMixtormatCracks::CrackBlendMode,
+			LOCTEXT("CrackBlendModeHint", "Add puts the cracks into the height before them. Replace, Min, Max and Difference work as on the other generators.")),
+		MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackAmount", "Amount"), Crack, &FMixtormatCracks::CrackAmount, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("CrackAmountHint", "How strongly the cracks affect the existing layer height. Does not re-evaluate them."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
+		LOCTEXT("CrackHeightScale", "Height Scale"), Crack, &FMixtormatCracks::CrackHeightScale, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("CrackHeightScaleHint", "Scales the crack field before blending.")));
 
 	return SNew(SBox)
-		.Visibility_Lambda([this]() { return GetSelectedFracture() ? EVisibility::Visible : EVisibility::Collapsed; })
+		.Visibility_Lambda([this]() { return GetSelectedCracks() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("FractureHeading", "FRACTURE"))
+			.Title(LOCTEXT("CracksHeading", "CRACKS"))
 			.InitiallyExpanded(true)
-			.HeaderAction(MixtormatRow::MakeCheckbox(
-				TAttribute<ECheckBoxState>::CreateLambda([this]()
-				{
-					const FMixtormatGenerator* Generator = GetSelectedGenerator();
-					return Generator && Generator->bEnabled
-						? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-				}),
-				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-				{
-					if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
 					{
-						Generator->bEnabled = State == ECheckBoxState::Checked;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				}),
-				LOCTEXT("FractureEnabledHint", "Enable this fracture module")))
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::Cracks;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("CracksEnabledHint", "Enable these cracks"))
+				])
 			[
 				Panel
 			]
@@ -3465,7 +3553,14 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 			LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")),
 		MakeMemberSlider<FMixtormatPebbles>(
 			LOCTEXT("PebbleAmount", "Amount"), Pebble, &FMixtormatPebbles::PebbleAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("PebbleAmountHint", "Blends toward the higher of the surface and stone heights. Buried stones do not cut into the surface. Does not re-evaluate them."))));
+			LOCTEXT("PebbleAmountHint", "Mixes the stones with the layer height using the selected blend mode. Does not re-evaluate the field."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatPebbles>(
+			LOCTEXT("PebbleBlendMode", "Blend Mode"), Pebble, &FMixtormatPebbles::PebbleBlendMode,
+			LOCTEXT("PebbleBlendModeHint", "How the stone height combines with the preceding height.")),
+		MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleHeightScale", "Height Scale"), Pebble, &FMixtormatPebbles::PebbleHeightScale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("PebbleHeightScaleHint", "Scales the stone field before blending without rebuilding it."))));
 	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
 		LOCTEXT("PebbleFacetIds", "Facet IDs"),
 		MixtormatRow::MakeCheckbox(
@@ -3611,7 +3706,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberEnum<FMixtormatRockFormation>(
 			LOCTEXT("RockBlendMode", "Height Blend"), Rock, &FMixtormatRockFormation::RockBlendMode,
-			LOCTEXT("RockBlendModeHint", "Replace, choose the lower or higher height, or use their absolute difference.")),
+			LOCTEXT("RockBlendModeHint", "Replace, choose the lower or higher height, use their absolute difference, or add the rock to the height before it.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockAmount", "Amount"), Rock, &FMixtormatRockFormation::RockAmount, 0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("RockAmountHint", "How strongly this rock affects the existing layer height."))));
@@ -5633,7 +5728,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildIdGroupControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
-					+ SScrollBox::Slot()[BuildFractureControls()]
+					+ SScrollBox::Slot()[BuildCracksControls()]
 					+ SScrollBox::Slot()[BuildRockFormationControls()]
 					+ SScrollBox::Slot()[BuildPebblesControls()]
 				]

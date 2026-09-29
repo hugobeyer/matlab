@@ -1944,28 +1944,57 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						? Carver.ClampMax : 1.0f;
 					break;
 				}
-				case EMixtormatGeneratorType::Fracture:
+				case EMixtormatGeneratorType::Cracks:
 				{
-					const FMixtormatFracture& Fracture = Generator.Fracture;
-					FFractureRenderData& Out = ChildData.Generator.Fracture;
-					using namespace MixtormatParameterContracts;
-					Out.Source = Fracture.FractureSource;
-					Out.Seed = static_cast<uint32>(SanitizeInt32(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureSeed"), Fracture.FractureSeed));
-					Out.Scale = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureScale"), Fracture.FractureScale);
-					Out.Amount = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureAmount"), Fracture.FractureAmount);
-					Out.Width = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureWidth"), Fracture.FractureWidth);
-					Out.Depth = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureDepth"), Fracture.FractureDepth);
-					Out.Profile = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureProfile"), Fracture.FractureProfile);
-					Out.Chamfer = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureChamfer"), Fracture.FractureChamfer);
-					Out.Variation = SanitizeFloat(
-						EMixtormatParameterOwnerType::Generator, TEXT("FractureVariation"), Fracture.FractureVariation);
+					// Unclamped: ranges are authored in the tool. Non-finite falls back to the default.
+					const FMixtormatCracks& Cracks = Generator.Cracks;
+					const FMixtormatCracks Defaults;
+					FCracksRenderData& Out = ChildData.Generator.Cracks;
+					const auto Finite = [](const float Value, const float Fallback)
+					{
+						return FMath::IsFinite(Value) ? Value : Fallback;
+					};
+					Out.Seed = Cracks.CrackSeed;
+					// No lattice below one cell.
+					Out.Cells = FMath::Max(Cracks.CrackCells, 1);
+					Out.Jitter = Finite(Cracks.CrackJitter, Defaults.CrackJitter);
+					Out.Width = Finite(Cracks.CrackWidth, Defaults.CrackWidth);
+					Out.Depth = Finite(Cracks.CrackDepth, Defaults.CrackDepth);
+					Out.Rough = Finite(Cracks.CrackRough, Defaults.CrackRough);
+					Out.Scale = Finite(Cracks.CrackScale, Defaults.CrackScale);
+					Out.Detail = Finite(Cracks.CrackDetail, Defaults.CrackDetail);
+					Out.Feather = Finite(Cracks.CrackFeather, Defaults.CrackFeather);
+					Out.WidthVariation = Finite(Cracks.CrackWidthVariation, Defaults.CrackWidthVariation);
+					Out.WidthScale = Finite(Cracks.CrackWidthScale, Defaults.CrackWidthScale);
+					Out.LineVariation = Finite(Cracks.CrackLineVariation, Defaults.CrackLineVariation);
+					Out.RegionVariation = Finite(Cracks.CrackRegionVariation, Defaults.CrackRegionVariation);
+					Out.Chip = Finite(Cracks.CrackChip, Defaults.CrackChip);
+					Out.ChipSize = Finite(Cracks.CrackChipSize, Defaults.CrackChipSize);
+					Out.Gap = Finite(Cracks.CrackGap, Defaults.CrackGap);
+					Out.GapWidth = Finite(Cracks.CrackGapWidth, Defaults.CrackGapWidth);
+					Out.Slip = Finite(Cracks.CrackSlip, Defaults.CrackSlip);
+					Out.Tilt = Finite(Cracks.CrackTilt, Defaults.CrackTilt);
+					Out.ChamferAmount = Finite(Cracks.CrackChamferAmount, Defaults.CrackChamferAmount);
+					Out.ChamferStart = Finite(Cracks.CrackChamferStart, Defaults.CrackChamferStart);
+					Out.ChamferEnd = Finite(Cracks.CrackChamferEnd, Defaults.CrackChamferEnd);
+					Out.ChamferLow = Finite(Cracks.CrackChamferLow, Defaults.CrackChamferLow);
+					Out.ChamferHigh = Finite(Cracks.CrackChamferHigh, Defaults.CrackChamferHigh);
+					Out.ChamferNoise = Finite(Cracks.CrackChamferNoise, Defaults.CrackChamferNoise);
+					Out.ChamferNoiseScale = Finite(Cracks.CrackChamferNoiseScale, Defaults.CrackChamferNoiseScale);
+					Out.BlendMode = static_cast<uint32>(Cracks.CrackBlendMode);
+					Out.Amount = Finite(Cracks.CrackAmount, Defaults.CrackAmount);
+					Out.HeightScale = Finite(Cracks.CrackHeightScale, Defaults.CrackHeightScale);
+					if (bCacheLayers)
+					{
+						MixtormatComposeHash::FHasher Hasher;
+						// The chamfer and the blend read the cached field; they do not change it.
+						Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferStart"),
+							TEXT("CrackChamferEnd"), TEXT("CrackChamferLow"), TEXT("CrackChamferHigh"),
+							TEXT("CrackChamferNoise"), TEXT("CrackChamferNoiseScale"), TEXT("CrackBlendMode"),
+							TEXT("CrackAmount"), TEXT("CrackHeightScale")};
+						Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
+						Out.FieldKey = Hasher.Get() | 1ull;
+					}
 					break;
 				}
 				case EMixtormatGeneratorType::RockFormation:
@@ -2048,11 +2077,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.HeightGain = Finite(Pebbles.PebbleHeightGain, Defaults.PebbleHeightGain);
 					Out.HeightVariation = Finite(Pebbles.PebbleHeightVariation, Defaults.PebbleHeightVariation);
 					Out.bFacetIds = Pebbles.bPebbleFacetIds;
+					Out.BlendMode = static_cast<uint32>(Pebbles.PebbleBlendMode);
+					Out.HeightScale = Finite(Pebbles.PebbleHeightScale, Defaults.PebbleHeightScale);
 					Out.Amount = Finite(Pebbles.PebbleAmount, Defaults.PebbleAmount);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						Hasher.SkipTopLevel = {TEXT("PebbleAmount")};
+						Hasher.SkipTopLevel = {TEXT("PebbleAmount"), TEXT("PebbleBlendMode"), TEXT("PebbleHeightScale")};
 						Hasher.Struct(FMixtormatPebbles::StaticStruct(), &Pebbles);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}

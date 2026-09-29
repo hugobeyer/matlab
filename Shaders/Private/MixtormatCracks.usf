@@ -1,0 +1,527 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
+
+// Cracks: a tileable crack network and the pieces between the cracks, as a signed height change.
+//
+// Straight cracks first: the cracks are the borders of a jittered cell lattice, so the network is
+// polygonal. Then, all of it measured in cell widths so the look holds at any resolution and cell
+// count:
+//   jag     -- every crack pushed sideways by a zigzag of straight segments, its own per crack
+//              (seeded by the two cells it separates) and measured along the crack, so both sides
+//              agree. A pixel the jag moves across a border belongs to the piece on the far side.
+//   push    -- near the cracks only, the lattice lookup is shifted by a 2D feathered-cell noise, so
+//              cracks kink and bend while the piece tops keep their facets.
+//   width   -- varies along each crack, per crack and by region; a crack that swells wider also
+//              cuts deeper. Chips bite into each rim on their own side; some cracks have opened
+//              into flat-floored gaps.
+//   pieces  -- every piece rises or sinks and tips its own way. The offset fades down the groove
+//              walls, so the crack floor stays one clean line, and it blends into the neighbour's
+//              across a hairline so a crack too thin to hide the step shows no dither.
+//
+// Stages (CRACK_STAGE):
+//   0 field   -- depends on the settings only, so it is cached: height change, crack mask, crack
+//                distance, piece ids and random, and the boundary pair the flow tools read.
+//   1 seed, 2 propagate -- tile-wrapped variable-speed arrival on a capped solve grid.
+//   3 chamfer -- remap arrival time to height, min-blend, gate by the scoped mask.
+//   4 combine -- the field into the layer's height by the generator blend mode.
+//
+// Prototype: Houdini/opencl/cracks/mx_crack_network.cl.
+
+int2 OutputSize;
+int2 SolveSize;
+int Seed;
+int Cells;
+float Jitter;
+float Width;
+float Depth;
+float Rough;
+float Scale;
+float Detail;
+float Feather;
+float WidthVariation;
+float WidthScale;
+float LineVariation;
+float RegionVariation;
+float Chip;
+float ChipSize;
+float Gap;
+float GapWidth;
+float Slip;
+float Tilt;
+float ChamferAmount;
+float ChamferStart;
+float ChamferEnd;
+float ChamferLow;
+float ChamferHigh;
+float ChamferNoise;
+float ChamferNoiseScale;
+uint HasGate;
+uint BlendMode;
+float Amount;
+float HeightScale;
+
+Texture2D<float> CrackHeight;
+Texture2D<float> CrackDistance;
+Texture2D<float> Arrival;
+Texture2D<float> GateMask;
+Texture2D<float> SourceHeight;
+
+RWTexture2D<float> OutCrackHeight;
+RWTexture2D<float> OutCrackMask;
+RWTexture2D<float> OutCrackDistance;
+RWTexture2D<uint> OutCrackIds;
+RWTexture2D<float> OutCrackRandom;
+RWTexture2D<float2> OutCrackBoundary;
+RWTexture2D<float> OutChamferCut;
+RWTexture2D<float> OutArrival;
+RWTexture2D<float> OutHeight;
+
+// Fixed ratios, from the tested prototype look.
+static const float PushPerRough = 0.7f;
+static const float PushScalePerScale = 0.2f;
+static const float JagDetailPerDetail = 0.15f;
+static const float Lacunarity = 2.2f;
+// Depth, slip and tilt are relative to the cell; this sets their useful range around 0..1.
+static const float ReliefScale = 0.25f;
+// Rough is a steepness: at this Scale it reads as the prototype's absolute amplitude.
+static const float RoughScale = 0.25f;
+static const float RoughRefScale = 3.75f;
+// Regional width noise cells per crack cell.
+static const float RegionPerCell = 0.4f;
+// Band, in cell widths, over which a piece's offset blends into its neighbour's at a border.
+static const float SlipFeather = 0.015f;
+
+uint CrackHash(uint X)
+{
+	X ^= X >> 16;
+	X *= 0x7feb352du;
+	X ^= X >> 15;
+	X *= 0x846ca68bu;
+	X ^= X >> 16;
+	return X;
+}
+
+float CrackRand(int A, int B, int S)
+{
+	const uint H = CrackHash((uint)A * 0x8da6b343u ^ (uint)B * 0xd8163841u ^ (uint)S * 0xcb1ab31fu);
+	return (float)(H & 0x00ffffffu) * (1.0f / 16777216.0f);
+}
+
+int CrackWrap(int X, int N)
+{
+	const int R = X % N;
+	return R < 0 ? R + N : R;
+}
+
+// Seed of lattice cell C (unwrapped, cell units). Its identity is the wrapped cell, so the network
+// tiles.
+float2 CrackSeed(int2 C, int Period, int SeedValue, float JitterValue, out int Id)
+{
+	const int Wx = CrackWrap(C.x, Period);
+	const int Wy = CrackWrap(C.y, Period);
+	Id = Wy * Period + Wx;
+	const float2 R = float2(CrackRand(Wx, Wy, SeedValue), CrackRand(Wx, Wy, SeedValue + 7919));
+	return float2((float)C.x + 0.5f, (float)C.y + 0.5f) + (R - 0.5f) * JitterValue;
+}
+
+// Feathered cells: per-cell random values blended by distance to each cell's seed, -1..1. The
+// feather is a blend distance, guarded off zero where the weights would divide by it.
+float CrackSoftCells(float2 UV, int Period, int SeedValue, float FeatherValue)
+{
+	const float2 Q = UV * (float)Period;
+	const int2 Base = int2(floor(Q));
+	const float F = max(FeatherValue, 1e-3f);
+	const float Inv = 1.0f / (F * F);
+	float Nearest = 1e20f;
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		for (int X = -1; X <= 1; ++X)
+		{
+			const int2 C = Base + int2(X, Y);
+			const int Wx = CrackWrap(C.x, Period);
+			const int Wy = CrackWrap(C.y, Period);
+			const float2 D = float2(C) + float2(CrackRand(Wx, Wy, SeedValue), CrackRand(Wx, Wy, SeedValue + 7919)) - Q;
+			Nearest = min(Nearest, dot(D, D));
+		}
+	}
+	float Sum = 0.0f;
+	float Weights = 0.0f;
+	for (int Y2 = -1; Y2 <= 1; ++Y2)
+	{
+		for (int X2 = -1; X2 <= 1; ++X2)
+		{
+			const int2 C = Base + int2(X2, Y2);
+			const int Wx = CrackWrap(C.x, Period);
+			const int Wy = CrackWrap(C.y, Period);
+			const float2 D = float2(C) + float2(CrackRand(Wx, Wy, SeedValue), CrackRand(Wx, Wy, SeedValue + 7919)) - Q;
+			// Relative to the nearest seed, so exp() cannot underflow at a tiny feather.
+			const float W = exp(-(dot(D, D) - Nearest) * Inv);
+			Sum += W * (CrackRand(Wx, Wy, SeedValue + 353) * 2.0f - 1.0f);
+			Weights += W;
+		}
+	}
+	return Sum / Weights;
+}
+
+// Three octaves of feathered cells, each Lacunarity times finer and DetailValue times as strong,
+// normalised back to -1..1. Periods are whole cells so every octave tiles.
+float CrackSoftFbm(float2 UV, float CellsAcross, int SeedValue, float FeatherValue, float DetailValue)
+{
+	float Sum = 0.0f;
+	float Norm = 0.0f;
+	float Amp = 1.0f;
+	float Across = CellsAcross;
+	for (int O = 0; O < 3; ++O)
+	{
+		const int Period = max((int)round(Across), 1);
+		Sum += Amp * CrackSoftCells(UV, Period, SeedValue + O * 613, FeatherValue);
+		Norm += abs(Amp);
+		Amp *= DetailValue;
+		Across *= Lacunarity;
+	}
+	return Norm > 0.0f ? Sum / Norm : 0.0f;
+}
+
+struct FCrackJag
+{
+	float Amp;
+	float Freq;
+	float Detail;
+	int Seed;
+};
+
+// Piecewise-linear random zigzag: straight segments between random bend heights in -1..1.
+float CrackZig(float X, int Pair, int SeedValue)
+{
+	const float Fl = floor(X);
+	const int I = (int)Fl;
+	const float F = X - Fl;
+	return lerp(CrackRand(Pair, I, SeedValue) * 2.0f - 1.0f, CrackRand(Pair, I + 1, SeedValue) * 2.0f - 1.0f, F);
+}
+
+// How far the jag moves the border between seeds Sa (id Ia) and Sb (id Ib), at Q, as a change of
+// Q's distance to that border seen from Sa's side. Oriented by id, so both cells compute the same
+// line and the same zigzag.
+float CrackJagShift(float2 Q, float2 Sa, int Ia, float2 Sb, int Ib, FCrackJag J)
+{
+	if (J.Amp == 0.0f)
+	{
+		return 0.0f;
+	}
+	const bool bFlip = Ia > Ib;
+	const float2 Lo = bFlip ? Sb : Sa;
+	const float2 Hi = bFlip ? Sa : Sb;
+	const float2 Axis = Hi - Lo;
+	const float Len = length(Axis);
+	if (Len < 1e-9f)
+	{
+		return 0.0f;
+	}
+	const float2 N = Axis / Len;
+	const float2 T = float2(-N.y, N.x);
+	const float U = dot(Q - 0.5f * (Lo + Hi), T);
+	const int Pair = (int)(CrackHash((uint)min(Ia, Ib) * 0x9e3779b1u ^ (uint)max(Ia, Ib)) & 0x7fffffffu);
+	float Sum = 0.0f;
+	float Norm = 0.0f;
+	float Amp = 1.0f;
+	float Freq = J.Freq;
+	for (int O = 0; O < 3; ++O)
+	{
+		Sum += Amp * CrackZig(U * Freq, Pair, J.Seed + O * 57);
+		Norm += abs(Amp);
+		Amp *= J.Detail;
+		Freq *= Lacunarity;
+	}
+	const float Offset = Norm > 0.0f ? J.Amp * Sum / Norm : 0.0f;
+	return bFlip ? -Offset : Offset;
+}
+
+int CrackNearest(float2 Q, int Period, int SeedValue, float JitterValue, int Reach, out float2 OutSeed)
+{
+	const int2 Base = int2(floor(Q));
+	float Best = 1e20f;
+	int BestId = 0;
+	OutSeed = Q;
+	for (int Y = -Reach; Y <= Reach; ++Y)
+	{
+		for (int X = -Reach; X <= Reach; ++X)
+		{
+			int Id;
+			const float2 S = CrackSeed(Base + int2(X, Y), Period, SeedValue, JitterValue, Id);
+			const float2 M = S - Q;
+			const float D = dot(M, M);
+			if (D < Best)
+			{
+				Best = D;
+				BestId = Id;
+				OutSeed = S;
+			}
+		}
+	}
+	return BestId;
+}
+
+// Distance, in cell units, from Q to the nearest (jagged) border of S1's cell: exact bisector
+// distance before the jag, so the width is even along the crack. When the jag has moved a border
+// past Q, the neighbour on the far side is reported as the cell Q is really in. EdgeId/EdgeSeed
+// are the neighbour across the nearest border.
+float CrackEdge(float2 Q, int Period, int SeedValue, float JitterValue, int Reach, float2 S1, int Id1, FCrackJag J,
+	out int CrossId, out float2 CrossSeed, out int EdgeId, out float2 EdgeSeed)
+{
+	const float2 M1 = S1 - Q;
+	const int2 Base = int2(floor(Q));
+	float Best = 1e20f;
+	float Deepest = 0.0f;
+	CrossId = -1;
+	CrossSeed = S1;
+	EdgeId = Id1;
+	EdgeSeed = S1;
+	for (int Y = -Reach; Y <= Reach; ++Y)
+	{
+		for (int X = -Reach; X <= Reach; ++X)
+		{
+			int Id;
+			const float2 S = CrackSeed(Base + int2(X, Y), Period, SeedValue, JitterValue, Id);
+			if (length(S - S1) < 1e-5f)
+			{
+				continue;
+			}
+			const float2 M = S - Q;
+			const float2 Dm = M - M1;
+			const float L = length(Dm);
+			if (L < 1e-9f)
+			{
+				continue;
+			}
+			const float E = dot(0.5f * (M1 + M), Dm / L) + CrackJagShift(Q, S1, Id1, S, Id, J);
+			if (abs(E) < Best)
+			{
+				Best = abs(E);
+				EdgeId = Id;
+				EdgeSeed = S;
+			}
+			if (E < Deepest)
+			{
+				Deepest = E;
+				CrossId = Id;
+				CrossSeed = S;
+			}
+		}
+	}
+	return Best;
+}
+
+// Chip bites along one side of a crack: scattered semicircles on the rim, each widening the bevel by
+// up to its radius. U is the position along the crack and Size the chip scale, both in cell widths.
+float CrackChips(float U, uint Key, int SeedValue, float Density, float Size)
+{
+	if (Density <= 0.0f || Size <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const int I0 = (int)floor(U / Size);
+	float Bite = 0.0f;
+	for (int K = -1; K <= 1; ++K)
+	{
+		const int I = I0 + K;
+		if (CrackRand((int)Key, I, SeedValue) >= Density)
+		{
+			continue;
+		}
+		const float C = ((float)I + CrackRand((int)Key, I, SeedValue + 1)) * Size;
+		const float R = Size * (0.35f + 0.65f * CrackRand((int)Key, I, SeedValue + 2));
+		const float X = (U - C) / R;
+		if (abs(X) >= 1.0f)
+		{
+			continue;
+		}
+		Bite = max(Bite, R * sqrt(1.0f - X * X));
+	}
+	return Bite;
+}
+
+// A piece's own tilt direction: its own random way.
+float2 CrackTiltDir(int Piece, int SeedValue)
+{
+	const float A = CrackRand(Piece, 2, SeedValue + 911) * 6.28318530718f;
+	return float2(cos(A), sin(A));
+}
+
+// Groove profile: a V, 1 on the crack line falling to 0 at the half width; beyond it the pixel is
+// simply not in the groove.
+float CrackGroove(float D, float HalfWidth)
+{
+	if (HalfWidth <= 0.0f || D >= HalfWidth)
+	{
+		return 0.0f;
+	}
+	return 1.0f - D / HalfWidth;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= (CRACK_STAGE == 1 || CRACK_STAGE == 2 ? SolveSize : OutputSize)))
+	{
+		return;
+	}
+
+#if CRACK_STAGE == 0
+	const float2 Res = float2(OutputSize);
+	const float2 UV = (float2(Pixel) + 0.5f) / Res;
+	const int Period = max(Cells, 1);
+	const float CellSize = ReliefScale / (float)Period;
+
+	FCrackJag Jag;
+	// Steepness, not size: bigger bends (lower Scale) get a proportionally larger amplitude.
+	Jag.Amp = Rough * RoughScale * RoughRefScale / max(Scale, 1e-3f);
+	Jag.Freq = Scale;
+	Jag.Detail = Detail * JagDetailPerDetail;
+	Jag.Seed = Seed + 4099;
+	const float Push = Jag.Amp * PushPerRough;
+
+	// Where this pixel really is, before any push. Piece faces are built from it.
+	const float2 QReal = UV * (float)Period;
+
+	// Push, confined to a band around the unpushed cracks, twice the push plus the width wide, so a
+	// pushed crack cannot leave it and the tops are never moved.
+	float2 P = UV;
+	if (Push != 0.0f)
+	{
+		float2 S0;
+		const int I0 = CrackNearest(QReal, Period, Seed, Jitter, 1, S0);
+		int C0, E0;
+		float2 Cs0, Es0;
+		const float D0 = CrackEdge(QReal, Period, Seed, Jitter, 2, S0, I0, Jag, C0, Cs0, E0, Es0);
+		const float Reach = 2.0f * abs(Push) + Width;
+		const float Band = 1.0f - smoothstep(0.5f * Reach, Reach, D0);
+		const float Across = (float)Period * Scale * PushScalePerScale;
+		const float Nx = CrackSoftFbm(UV, Across, Seed + 1531, Feather, Detail);
+		const float Ny = CrackSoftFbm(UV, Across, Seed + 2657, Feather, Detail);
+		P += float2(Nx, Ny) * (Push / (float)Period) * Band;
+	}
+
+	const float2 Q = P * (float)Period;
+	float2 S1;
+	int Id1 = CrackNearest(Q, Period, Seed, Jitter, 1, S1);
+	// The two cells of the nearest crack, taken before a crossing swaps Id1, so both sides agree.
+	const int CrackA = Id1;
+	const float2 SeedA = S1;
+	int CrossId, CrackB;
+	float2 CrossSeed, EdgeSeed;
+	const float CrackDist = CrackEdge(Q, Period, Seed, Jitter, 2, S1, Id1, Jag, CrossId, CrossSeed, CrackB, EdgeSeed);
+	if (CrossId >= 0)
+	{
+		Id1 = CrossId;
+		S1 = CrossSeed;
+	}
+	const float PieceRand = CrackRand(Id1, 0, Seed + 911);
+	const float PieceRand2 = CrackRand(Id1, 1, Seed + 911);
+
+	// Width: along each crack, per crack (the same from both sides) and by region.
+	const int AlongPeriod = max((int)round((float)Period * WidthScale), 1);
+	const float Along = 1.0f + WidthVariation * CrackSoftCells(UV, AlongPeriod, Seed + 2203, 0.5f);
+	const float PerCrack = 1.0f + LineVariation
+		* (CrackRand(min(CrackA, CrackB), max(CrackA, CrackB), Seed + 6151) * 2.0f - 1.0f);
+	const int RegionPeriod = max((int)round((float)Period * RegionPerCell), 1);
+	const float Region = 1.0f + RegionVariation * CrackSoftCells(UV, RegionPeriod, Seed + 7349, 0.6f);
+	const float Swell = Along * PerCrack * Region;
+	const float HalfWidth = Width * 0.5f * Swell;
+
+	// The nearest crack's own frame: oriented by id so both sides measure the same position along
+	// it, and the side this pixel's piece is on.
+	const int LoId = min(CrackA, CrackB);
+	const int HiId = max(CrackA, CrackB);
+	const float2 LoSeed = CrackA == LoId ? SeedA : EdgeSeed;
+	const float2 HiSeed = CrackA == LoId ? EdgeSeed : SeedA;
+	const float2 AxisV = HiSeed - LoSeed;
+	const float AxisLen = length(AxisV);
+	const float2 Tangent = AxisLen > 1e-9f ? float2(-AxisV.y, AxisV.x) / AxisLen : float2(1.0f, 0.0f);
+	const float AlongCrack = dot(Q - 0.5f * (LoSeed + HiSeed), Tangent);
+	const uint PairKey = CrackHash((uint)LoId * 0x9e3779b1u ^ (uint)HiId);
+	const uint Side = Id1 == HiId ? 1u : 0u;
+
+	const float ChipBite = CrackA != CrackB ? CrackChips(AlongCrack, PairKey * 2u + Side, Seed + 9311, Chip, ChipSize) : 0.0f;
+	// Some cracks have opened: their floor is flat for GapWidth times the crack's half width.
+	const float FloorHalf = CrackRand((int)(PairKey & 0x7fffffffu), 7, Seed + 5003) < Gap ? GapWidth * HalfWidth : 0.0f;
+	const float Groove = CrackGroove(max(CrackDist - FloorHalf, 0.0f), HalfWidth + ChipBite);
+	const float Carve = Depth * CellSize * Swell * Groove;
+
+	// Each piece's own offset (slip + tilt), blended toward the piece across the nearest crack within
+	// a hairline band, meeting at the average on the border itself.
+	const int Other = Id1 == CrackA ? CrackB : CrackA;
+	const float2 OtherSeed = Id1 == CrackA ? EdgeSeed : SeedA;
+	const float Own = Slip * CellSize * (PieceRand * 2.0f - 1.0f)
+		+ Tilt * CellSize * (PieceRand2 * 2.0f - 1.0f) * dot(QReal - S1, CrackTiltDir(Id1, Seed));
+	const float Theirs = Slip * CellSize * (CrackRand(Other, 0, Seed + 911) * 2.0f - 1.0f)
+		+ Tilt * CellSize * (CrackRand(Other, 1, Seed + 911) * 2.0f - 1.0f) * dot(QReal - OtherSeed, CrackTiltDir(Other, Seed));
+	const float ToBorder = 0.5f * (1.0f - smoothstep(0.0f, SlipFeather, CrackDist));
+	const float Offset = lerp(Own, Theirs, Other != Id1 ? ToBorder : 0.0f);
+	// The offset fades down the groove walls: the crack floor stays one clean line.
+	OutCrackHeight[Pixel] = Offset * (1.0f - Groove) - Carve;
+
+	OutCrackMask[Pixel] = Groove;
+	OutCrackDistance[Pixel] = CrackDist;
+	OutCrackIds[Pixel] = (uint)Id1;
+	OutCrackRandom[Pixel] = PieceRand;
+	// The flow tools' boundary pair: signed distance to the piece's border in UV units, negative
+	// inside (every pixel is inside a piece), and always sampled.
+	OutCrackBoundary[Pixel] = float2(-CrackDist / (float)Period, 1.0f);
+#elif CRACK_STAGE == 1
+	// The field distance is in crack-cell widths. Resolve the nearest full-resolution sample;
+	// a conservative initial bound ensures that missed subpixel seeds cannot create infinity.
+	const int2 FullPixel = min(int2((float2(Pixel) + 0.5f) * float2(OutputSize) / float2(SolveSize)), OutputSize - 1);
+	const float D = CrackDistance.Load(int3(FullPixel, 0));
+	const float MinSpeed = max(1.0f - abs(ChamferNoise), 0.001f);
+	OutArrival[Pixel] = D / MinSpeed;
+#elif CRACK_STAGE == 2
+	const int2 Left = int2(Pixel.x == 0 ? SolveSize.x - 1 : Pixel.x - 1, Pixel.y);
+	const int2 Right = int2(Pixel.x + 1 == SolveSize.x ? 0 : Pixel.x + 1, Pixel.y);
+	const int2 Down = int2(Pixel.x, Pixel.y == 0 ? SolveSize.y - 1 : Pixel.y - 1);
+	const int2 Up = int2(Pixel.x, Pixel.y + 1 == SolveSize.y ? 0 : Pixel.y + 1);
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(SolveSize);
+	const int NoisePeriod = max((int)round((float)max(Cells, 1) * ChamferNoiseScale), 1);
+	const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(UV, NoisePeriod, Seed + 8101, 0.5f), 0.001f);
+	const float Cost = 1.0f / Speed;
+	const float Self = Arrival.Load(int3(Pixel, 0));
+	const float L = Arrival.Load(int3(Left, 0));
+	const float R = Arrival.Load(int3(Right, 0));
+	const float D = Arrival.Load(int3(Down, 0));
+	const float U = Arrival.Load(int3(Up, 0));
+	const float NW = Arrival.Load(int3(Left.x, Up.y, 0));
+	const float NE = Arrival.Load(int3(Right.x, Up.y, 0));
+	const float SW = Arrival.Load(int3(Left.x, Down.y, 0));
+	const float SE = Arrival.Load(int3(Right.x, Down.y, 0));
+	OutArrival[Pixel] = MixtormatEikonalStep(Self, L, R, D, U, NW, NE, SW, SE,
+		(float)max(Cells, 1) / float2(SolveSize), Cost);
+#elif CRACK_STAGE == 3
+	const int Period = max(Cells, 1);
+	const float CellSize = ReliefScale / (float)Period;
+	const float H = CrackHeight.Load(int3(Pixel, 0));
+	float Result = H;
+	if (ChamferAmount != 0.0f)
+	{
+		const int2 SolvePixel = min(int2((float2(Pixel) + 0.5f) * float2(SolveSize) / float2(OutputSize)), SolveSize - 1);
+		const float D = Arrival.Load(int3(SolvePixel, 0));
+		const float Span = ChamferEnd - ChamferStart;
+		const float T = Span != 0.0f ? (D - ChamferStart) / Span : (D >= ChamferEnd ? 1.0f : 0.0f);
+		const float Surface = (ChamferLow + T * (ChamferHigh - ChamferLow)) * CellSize;
+		const float Gate = HasGate != 0u ? GateMask.Load(int3(Pixel, 0)) : 1.0f;
+		Result = lerp(H, min(H, Surface), ChamferAmount * Gate);
+	}
+	OutHeight[Pixel] = Result;
+	const float DepthScale = Depth * CellSize;
+	OutChamferCut[Pixel] = DepthScale != 0.0f ? (H - Result) / DepthScale : 0.0f;
+#else
+	const float Source = SourceHeight.Load(int3(Pixel, 0));
+	const float Field = CrackHeight.Load(int3(Pixel, 0)) * HeightScale;
+	const float Target = BlendMode == 1u ? min(Source, Field)
+		: (BlendMode == 2u ? max(Source, Field)
+		: (BlendMode == 3u ? abs(Source - Field)
+		: (BlendMode == 4u ? Source + Field : Field)));
+	OutHeight[Pixel] = lerp(Source, Target, Amount);
+#endif
+}

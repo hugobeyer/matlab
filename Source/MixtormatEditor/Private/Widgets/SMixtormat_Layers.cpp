@@ -373,7 +373,7 @@ namespace
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
-		case EMixtormatChildCreation::Fracture:        return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::Cracks:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
@@ -420,8 +420,8 @@ namespace
 		case EMixtormatChildCreation::StrataCarver:
 			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
 			break;
-		case EMixtormatChildCreation::Fracture:
-			Child.Generator.Type = EMixtormatGeneratorType::Fracture;
+		case EMixtormatChildCreation::Cracks:
+			Child.Generator.Type = EMixtormatGeneratorType::Cracks;
 			break;
 		case EMixtormatChildCreation::RockFormation:
 			Child.Generator.Type = EMixtormatGeneratorType::RockFormation;
@@ -4028,8 +4028,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		{
 		case EMixtormatGeneratorType::StrataCarver:
 			return LOCTEXT("StrataCarverChildName", "Strata Carver");
-		case EMixtormatGeneratorType::Fracture:
-			return LOCTEXT("FractureChildName", "Fracture");
+		case EMixtormatGeneratorType::Cracks:
+			return LOCTEXT("CracksChildName", "Cracks");
 		case EMixtormatGeneratorType::RockFormation:
 			return LOCTEXT("RockFormationChildName", "Rock Formation");
 		case EMixtormatGeneratorType::Pebbles:
@@ -5668,11 +5668,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		}))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(
-		LOCTEXT("AddFractureChild", "Fracture"),
+		LOCTEXT("AddCracksChild", "Cracks"),
 		MixtormatIcons::Effect(),
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
-			CreateChild(Target, EMixtormatChildCreation::Fracture);
+			CreateChild(Target, EMixtormatChildCreation::Cracks);
 		}))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(
@@ -6636,13 +6636,13 @@ const FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver() const
 		: nullptr;
 }
 
-FMixtormatFracture* SMixtormat::GetSelectedFracture()
+FMixtormatCracks* SMixtormat::GetSelectedCracks()
 {
 	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
 	return Child
 		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Fracture
-		? &Child->Generator.Fracture
+		&& Child->Generator.Type == EMixtormatGeneratorType::Cracks
+		? &Child->Generator.Cracks
 		: nullptr;
 }
 
@@ -6686,13 +6686,13 @@ const FMixtormatPebbles* SMixtormat::GetSelectedPebbles() const
 		: nullptr;
 }
 
-const FMixtormatFracture* SMixtormat::GetSelectedFracture() const
+const FMixtormatCracks* SMixtormat::GetSelectedCracks() const
 {
 	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
 	return Child
 		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Fracture
-		? &Child->Generator.Fracture
+		&& Child->Generator.Type == EMixtormatGeneratorType::Cracks
+		? &Child->Generator.Cracks
 		: nullptr;
 }
 

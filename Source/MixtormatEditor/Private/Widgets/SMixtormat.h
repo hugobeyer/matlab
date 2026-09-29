@@ -61,7 +61,7 @@ enum class EMixtormatChildCreation : uint8
 	ColorIdMask,
 	RandomFromIds,
 	StrataCarver,
-	Fracture,
+	Cracks,
 	RockFormation,
 	Pebbles,
 	Peeling,
@@ -442,9 +442,9 @@ private:
 	FMixtormatStrataCarver* GetSelectedStrataCarver();
 	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
 	TSharedRef<SWidget> BuildStrataCarverControls();
-	FMixtormatFracture* GetSelectedFracture();
-	const FMixtormatFracture* GetSelectedFracture() const;
-	TSharedRef<SWidget> BuildFractureControls();
+	FMixtormatCracks* GetSelectedCracks();
+	const FMixtormatCracks* GetSelectedCracks() const;
+	TSharedRef<SWidget> BuildCracksControls();
 	FMixtormatRockFormation* GetSelectedRockFormation();
 	const FMixtormatRockFormation* GetSelectedRockFormation() const;
 	TSharedRef<SWidget> BuildRockFormationControls();

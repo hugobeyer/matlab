@@ -20,7 +20,7 @@ DECLARE_GPU_STAT_NAMED(MixtormatRegionIds, TEXT("Mixtormat Region IDs"));
 DECLARE_GPU_STAT_NAMED(MixtormatGenerators, TEXT("Mixtormat Generators"));
 DECLARE_GPU_STAT_NAMED(MixtormatChildren, TEXT("Mixtormat Masks and Effects"));
 DECLARE_GPU_STAT_NAMED(MixtormatComposite, TEXT("Mixtormat Composite"));
-DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Fracture Breakup Wear"));
+DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Breakup Wear"));
 DECLARE_GPU_STAT_NAMED(MixtormatLayerBlur, TEXT("Mixtormat Layer Blur"));
 DECLARE_GPU_STAT_NAMED(MixtormatFinalAO, TEXT("Mixtormat Final AO"));
 DECLARE_GPU_STAT_NAMED(MixtormatFinalNormal, TEXT("Mixtormat Final Normal"));
@@ -863,13 +863,7 @@ namespace MixtormatGpuCompositor
 
 						// Structural operators consume local ramp relief, never the already-blended substrate.
 						// Keep preparation stable as Amount crosses zero.
-						const bool bHasFracture = Layer.Children.ContainsByPredicate(
-							[](const FChildRenderData& Child)
-							{
-								return Child.Type == EMixtormatLayerChildType::Generator
-									&& Child.Generator.Type == EMixtormatGeneratorType::Fracture;
-							});
-						const bool bPrepareStructure = !LayerCtx.PendingBreakups.IsEmpty() || bHasFracture;
+						const bool bPrepareStructure = !LayerCtx.PendingBreakups.IsEmpty();
 						const int32 LocalWriteIndex = LayerIndex & 1;
 						FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
 						FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
@@ -893,7 +887,6 @@ namespace MixtormatGpuCompositor
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatStructure, "Mixtormat.Structure");
 							AddErosionPasses(Ctx, LayerCtx, Layer);
 							AddRampReliefPasses(Ctx, LayerCtx, Layer);
-							AddFracturePasses(Ctx, LayerCtx, Layer);
 							AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
 
 							// Breakup publishes structural IDs during child collection, then authors its relief here.

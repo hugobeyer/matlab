@@ -407,6 +407,8 @@ public:
 		SHADER_PARAMETER(float, HeightGain)
 		SHADER_PARAMETER(float, HeightVariation)
 		SHADER_PARAMETER(uint32, FacetIds)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleCoverage)
@@ -430,6 +432,73 @@ IMPLEMENT_GLOBAL_SHADER(
 	"/Plugin/Mixtormat/Private/MixtormatPebbles.usf",
 	"MainCS",
 	SF_Compute);
+
+class FMixtormatCracksCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCracksCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCracksCS, FGlobalShader);
+	// Field, arrival seed, propagation, chamfer resolve, combine.
+	class FStage : SHADER_PERMUTATION_INT("CRACK_STAGE", 5);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, SolveSize)
+		SHADER_PARAMETER(int32, Seed)
+		SHADER_PARAMETER(int32, Cells)
+		SHADER_PARAMETER(float, Jitter)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(float, Rough)
+		SHADER_PARAMETER(float, Scale)
+		SHADER_PARAMETER(float, Detail)
+		SHADER_PARAMETER(float, Feather)
+		SHADER_PARAMETER(float, WidthVariation)
+		SHADER_PARAMETER(float, WidthScale)
+		SHADER_PARAMETER(float, LineVariation)
+		SHADER_PARAMETER(float, RegionVariation)
+		SHADER_PARAMETER(float, Chip)
+		SHADER_PARAMETER(float, ChipSize)
+		SHADER_PARAMETER(float, Gap)
+		SHADER_PARAMETER(float, GapWidth)
+		SHADER_PARAMETER(float, Slip)
+		SHADER_PARAMETER(float, Tilt)
+		SHADER_PARAMETER(float, ChamferAmount)
+		SHADER_PARAMETER(float, ChamferStart)
+		SHADER_PARAMETER(float, ChamferEnd)
+		SHADER_PARAMETER(float, ChamferLow)
+		SHADER_PARAMETER(float, ChamferHigh)
+		SHADER_PARAMETER(float, ChamferNoise)
+		SHADER_PARAMETER(float, ChamferNoiseScale)
+		SHADER_PARAMETER(uint32, HasGate)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDistance)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutCrackIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackRandom)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCrackBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutChamferCut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutArrival)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatCracksCS,
+	"/Plugin/Mixtormat/Private/MixtormatCracks.usf", "MainCS", SF_Compute);
 
 // Measured-range normalization for generator height fields. See MixtormatFieldRange.usf.
 class FMixtormatFieldRangeCS final : public FGlobalShader
@@ -1522,6 +1591,263 @@ namespace
 		return Combined;
 	}
 
+	FRDGTextureRef AddCracksPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child,
+		FRDGTextureRef SourceHeight,
+		const bool bFieldOnly = false)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		const FCracksRenderData& Cracks = Child.Generator.Cracks;
+		const FIntPoint Size = Request.Resolution;
+		FIntPoint SolveSize = StrataSolveResolution(Size);
+		while (FMath::Max(SolveSize.X, SolveSize.Y) > 256)
+		{
+			SolveSize.X = FMath::Max(SolveSize.X / 2, 1);
+			SolveSize.Y = FMath::Max(SolveSize.Y / 2, 1);
+		}
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
+		const auto Fill = [&Cracks, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
+		{
+			P->OutputSize = Size;
+			P->SolveSize = SolveSize;
+			P->Seed = Cracks.Seed;
+			P->Cells = Cracks.Cells;
+			P->Jitter = Cracks.Jitter;
+			P->Width = Cracks.Width;
+			P->Depth = Cracks.Depth;
+			P->Rough = Cracks.Rough;
+			P->Scale = Cracks.Scale;
+			P->Detail = Cracks.Detail;
+			P->Feather = Cracks.Feather;
+			P->WidthVariation = Cracks.WidthVariation;
+			P->WidthScale = Cracks.WidthScale;
+			P->LineVariation = Cracks.LineVariation;
+			P->RegionVariation = Cracks.RegionVariation;
+			P->Chip = Cracks.Chip;
+			P->ChipSize = Cracks.ChipSize;
+			P->Gap = Cracks.Gap;
+			P->GapWidth = Cracks.GapWidth;
+			P->Slip = Cracks.Slip;
+			P->Tilt = Cracks.Tilt;
+			P->ChamferAmount = Cracks.ChamferAmount;
+			P->ChamferStart = Cracks.ChamferStart;
+			P->ChamferEnd = Cracks.ChamferEnd;
+			P->ChamferLow = Cracks.ChamferLow;
+			P->ChamferHigh = Cracks.ChamferHigh;
+			P->ChamferNoise = Cracks.ChamferNoise;
+			P->ChamferNoiseScale = Cracks.ChamferNoiseScale;
+			P->BlendMode = Cracks.BlendMode;
+			P->Amount = Cracks.Amount;
+			P->HeightScale = Cracks.HeightScale;
+		};
+		const auto Make = [&GraphBuilder, Size](EPixelFormat Format, const TCHAR* Name)
+		{
+			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		// Field key deliberately omits chamfer, blend and flow settings.
+		constexpr int32 SlotCount = 6;
+		FRDGTextureRef Outputs[SlotCount] = {};
+		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+			{
+				Outputs[Slot] = (*Memo)[Slot];
+			}
+		}
+		else
+		{
+			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+			const uint64 NodeKey = NodeCache && Cracks.FieldKey != 0
+				? MixtormatComposeHash::Combine(Cracks.FieldKey, 0x437261636B73ull) : 0;
+			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = NodeKey != 0
+				? NodeCache->Find(NodeKey, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			static const TCHAR* const Names[SlotCount] = {
+				TEXT("Mixtormat.Cracks.Height"), TEXT("Mixtormat.Cracks.Mask"),
+				TEXT("Mixtormat.Cracks.Distance"), TEXT("Mixtormat.Cracks.Ids"),
+				TEXT("Mixtormat.Cracks.Random"), TEXT("Mixtormat.Cracks.Boundary")};
+			bool bComplete = Hit.IsValid();
+			for (int32 Slot = 0; bComplete && Slot < SlotCount; ++Slot)
+			{
+				bComplete = Hit->Outputs[Slot].IsValid();
+			}
+			if (bComplete)
+			{
+				for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+				{
+					Outputs[Slot] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot]);
+				}
+			}
+			else
+			{
+				Outputs[0] = Make(PF_R32_FLOAT, Names[0]);
+				Outputs[1] = Make(PF_R16F, Names[1]);
+				Outputs[2] = Make(PF_R32_FLOAT, Names[2]);
+				Outputs[3] = Make(PF_R32_UINT, Names[3]);
+				Outputs[4] = Make(PF_R16F, Names[4]);
+				Outputs[5] = Make(PF_G32R32F, Names[5]);
+				FMixtormatCracksCS::FPermutationDomain Permutation;
+				Permutation.Set<FMixtormatCracksCS::FStage>(0);
+				TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
+				Fill(P);
+				P->OutCrackHeight = GraphBuilder.CreateUAV(Outputs[0]);
+				P->OutCrackMask = GraphBuilder.CreateUAV(Outputs[1]);
+				P->OutCrackDistance = GraphBuilder.CreateUAV(Outputs[2]);
+				P->OutCrackIds = GraphBuilder.CreateUAV(Outputs[3]);
+				P->OutCrackRandom = GraphBuilder.CreateUAV(Outputs[4]);
+				P->OutCrackBoundary = GraphBuilder.CreateUAV(Outputs[5]);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.Cracks.Field.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+					Shader, P, Groups);
+				if (NodeKey != 0)
+				{
+				TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+					MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+				Entry->Key = NodeKey;
+				Entry->Resolution = Size;
+				for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+				{
+					GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+				}
+				Ctx.PendingNodeEntries.Add(Entry);
+			}
+			}
+			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[3]);
+			static const TCHAR* const MaskNames[3] = { TEXT("CrackMask"), TEXT("CrackDistance"), TEXT("PieceRandom") };
+			const int32 MaskSlots[3] = { 1, 2, 4 };
+			for (int32 Index = 0; Index < 3; ++Index)
+			{
+				const FName OutputName(MaskNames[Index]);
+				Ctx.PublishedMaskOutputs.Add(
+					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[MaskSlots[Index]]);
+				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
+					LayerCtx.LayerIndex, Child.SourceChildIndex))
+				{
+					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[MaskSlots[Index]],
+						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+				}
+			}
+			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+				LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[3], nullptr,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+			}
+			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			Stored.Append(Outputs, SlotCount);
+		}
+		if (bFieldOnly)
+		{
+			return nullptr;
+		}
+
+		FRDGTextureRef Field = Outputs[0];
+		const bool bHasGate = HasScopedMasks(Layer, Child.SourceChildIndex);
+		FRDGTextureRef Gate = bHasGate
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Outputs[1];
+		FRDGTextureRef ChamferCut = Make(PF_R16F, TEXT("Mixtormat.Cracks.ChamferCut"));
+		FRDGTextureRef Chamfered = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.Chamfered"));
+		// Arrival is computed only after the cached field; its noise and gate never invalidate it.
+		FRDGTextureRef Arrival[2];
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			Arrival[Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				SolveSize, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.Cracks.Arrival"));
+		}
+		{
+			FMixtormatCracksCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatCracksCS::FStage>(1);
+			TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
+			Fill(P);
+			P->CrackDistance = Outputs[2];
+			P->OutArrival = GraphBuilder.CreateUAV(Arrival[0]);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Cracks.ArrivalSeed.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, SolveGroups);
+		}
+		// Eight-neighbour monotone relaxation with wrapped neighbours. Each pass crosses one
+		// solve texel; the last pass cannot exceed the tile diameter.
+		int32 Read = 0;
+		const int32 Iterations = Cracks.ChamferAmount != 0.0f
+			? FMath::Min(FMath::Max(SolveSize.X, SolveSize.Y), 128) : 0;
+		for (int32 Iteration = 0; Iteration < Iterations; ++Iteration)
+		{
+			FMixtormatCracksCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatCracksCS::FStage>(2);
+			TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
+			Fill(P);
+			P->Arrival = Arrival[Read];
+			P->OutArrival = GraphBuilder.CreateUAV(Arrival[1 - Read]);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Cracks.Arrival.%d.L%d.C%d", Iteration, LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, SolveGroups);
+			Read = 1 - Read;
+		}
+		{
+			FMixtormatCracksCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatCracksCS::FStage>(3);
+			TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
+			Fill(P);
+			P->HasGate = bHasGate ? 1u : 0u;
+			P->CrackHeight = Field;
+			P->Arrival = Arrival[Read];
+			P->GateMask = Gate;
+			P->OutHeight = GraphBuilder.CreateUAV(Chamfered);
+			P->OutChamferCut = GraphBuilder.CreateUAV(ChamferCut);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Cracks.Chamfer.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, Groups);
+		}
+		Field = Chamfered;
+		const FName CutName(TEXT("ChamferCut"));
+		Ctx.PublishedMaskOutputs.Add(
+			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, CutName}, ChamferCut);
+		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, CutName,
+			LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewMaskBlitPass(GraphBuilder, ChamferCut,
+				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+		}
+		if ((Cracks.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		{
+			FRDGTextureRef NoCoverage = nullptr;
+			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[5], Field, NoCoverage);
+		}
+		if (Cracks.Amount == 0.0f)
+		{
+			return SourceHeight;
+		}
+		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Cracks.LayerHeight"));
+		FMixtormatCracksCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatCracksCS::FStage>(4);
+		TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
+		Fill(P);
+		P->CrackHeight = Field;
+		P->SourceHeight = SourceHeight;
+		P->OutHeight = GraphBuilder.CreateUAV(Combined);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Cracks.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader, P, Groups);
+		return Combined;
+	}
+
 	// One Pebbles child. Same shape as Rock Formation: the scatter field is cached against its
 	// settings and resolution, and Amount mixes it into the layer's height without re-running it.
 	FRDGTextureRef AddPebblesPasses(
@@ -1558,6 +1884,8 @@ namespace
 			P->HeightGain = Pebbles.HeightGain;
 			P->HeightVariation = Pebbles.HeightVariation;
 			P->FacetIds = Pebbles.bFacetIds ? 1u : 0u;
+			P->BlendMode = Pebbles.BlendMode;
+			P->HeightScale = Pebbles.HeightScale;
 			P->Amount = Pebbles.Amount;
 		};
 
@@ -1733,6 +2061,10 @@ void AddGeneratorFieldPasses(
 		{
 			AddPebblesPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
+		{
+			AddCracksPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+		}
 	}
 }
 
@@ -1747,7 +2079,8 @@ void AddGeneratorPasses(
 			return Child.Type == EMixtormatLayerChildType::Generator
 							&& (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
 								|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
-								|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles);
+								|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
+								|| Child.Generator.Type == EMixtormatGeneratorType::Cracks);
 		});
 	if (!bHasGenerator)
 	{
@@ -1787,8 +2120,9 @@ void AddGeneratorPasses(
 			LayerCtx.LayerInputHeight = AddStrataCarverPasses(
 				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
 			break;
-		case EMixtormatGeneratorType::Fracture:
-			// Fracture consumes ramp relief in the isolated structural stage.
+		case EMixtormatGeneratorType::Cracks:
+			LayerCtx.LayerInputHeight = AddCracksPasses(
+				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
 			break;
 		case EMixtormatGeneratorType::RockFormation:
 			LayerCtx.LayerInputHeight = AddRockFormationPasses(

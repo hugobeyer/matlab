@@ -345,7 +345,7 @@ pre{
 <div class="mini"><strong>Ships in Mixtormat 1.0</strong>65 source surfaces across 18 families, 47 reusable masks, and a worked example recipe — all evaluated on the GPU while you edit.</div>
 <div class="mini"><strong>Nine effects</strong>Peeling, Stain, Erosion, Grade, Breakup, Worn Edges, Flow Warp, Layer Blur, and Runoff, plus Craquelure as its own mask child.</div>
 <div class="mini"><strong>Complete ID toolchain</strong>Pattern IDs lays out regions; the From-IDs filters — Random, Ramp, HSV, Color ID, UV From IDs, Relief From IDs — turn them into per-region variation and drive parameter drivers.</div>
-<div class="mini"><strong>Generators &amp; groups</strong>Strata Carver and Fracture rewrite layer height before compositing; layer groups broadcast one shared child stack across members.</div>
+<div class="mini"><strong>Generators &amp; groups</strong>Strata Carver, Cracks, Rock Formation and Pebbles rewrite layer height before compositing; layer groups broadcast one shared child stack across members.</div>
 </div>
 </section>
 <section id="requirements">
@@ -571,8 +571,9 @@ pre{
 <p>Sedimentary, weathered carving driven by a propagated distance solve over a Worley-seeded field. Depth sets the absolute groove depth — the same value means the same physical depth on a subtle wood and on a full-contrast rock — and seeded variation keeps neighbouring grooves independent. Display remapping and the clamp are applied to the finished field, so scrubbing them reshapes the carve without changing what propagated.</p>
 </div>
 <div class="card">
-<h3>Fracture</h3>
-<p>Authors a fracture lattice and resolves it into interlocking pieces with distance-based ownership, blended fields at the boundaries, and optional chamfer. Cells can subdivide into smaller cells, so a single node covers multi-scale fracture without stacking copies.</p>
+<h3>Cracks</h3>
+<p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator.</p>
+<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks for downstream children. Shape Deform, Generator Flow and Flow Carve can reshape its height before blending; IDs and published masks represent the original field. Blend modes are Replace, Min, Max, Difference and Add (the default for signed cracks). Amount and Height Scale do not regenerate the cached field.</p>
 </div>
 <div class="note">
 <div class="kicker">Order matters</div>

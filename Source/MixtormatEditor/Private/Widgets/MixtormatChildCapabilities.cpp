@@ -54,16 +54,22 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		break;
 	case EMixtormatLayerChildType::Generator:
-		if (Child.Generator.Type == EMixtormatGeneratorType::Fracture)
+		if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
 		{
-			Result.Outputs.Add({FName(TEXT("Fracture")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputFracture", "Fracture"),
+			// Piece IDs feed the ID consumers below this row; the masks are copyable outputs.
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("CrackMask")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCrackMask", "Crack"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
-			Result.Outputs.Add({FName(TEXT("FaceProgress")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputFractureFaceProgress", "Face Progress"),
+			Result.Outputs.Add({FName(TEXT("CrackDistance")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCrackDistance", "Crack Distance"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
-			Result.Outputs.Add({FName(TEXT("FractureHeight")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputFractureHeight", "Fracture Height"),
+			Result.Outputs.Add({FName(TEXT("PieceRandom")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCrackPieceRandom", "Piece Random"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("ChamferCut")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCrackChamfer", "Chamfer Cut"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)

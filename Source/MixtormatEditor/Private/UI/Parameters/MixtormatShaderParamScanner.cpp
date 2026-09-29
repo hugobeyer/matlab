@@ -180,7 +180,7 @@ namespace MixtormatShaderParamScanner
 				const FString ShaderName = FPaths::GetCleanFilename(RelativeFile);
 				Tag.Owner = ShaderName == TEXT("MixtormatComposite.usf")
 					? EMixtormatParameterOwnerType::Layer
-					: (ShaderName.StartsWith(TEXT("MixtormatFracture"))
+					: (ShaderName.StartsWith(TEXT("MixtormatCracks"))
 						? EMixtormatParameterOwnerType::Generator
 						: EMixtormatParameterOwnerType::Effect);
 

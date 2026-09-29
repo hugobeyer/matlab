@@ -126,7 +126,7 @@ namespace
 			switch (Child.Generator.Type)
 			{
 			case EMixtormatGeneratorType::StrataCarver: return &Child.Generator.StrataCarver;
-			case EMixtormatGeneratorType::Fracture: return &Child.Generator.Fracture;
+			case EMixtormatGeneratorType::Cracks: return &Child.Generator.Cracks;
 			case EMixtormatGeneratorType::RockFormation: return &Child.Generator.RockFormation;
 			case EMixtormatGeneratorType::Pebbles: return &Child.Generator.Pebbles;
 			}
@@ -788,7 +788,7 @@ namespace
 			switch (Child.Generator.Type)
 			{
 			case EMixtormatGeneratorType::StrataCarver: return FMixtormatStrataCarver::StaticStruct();
-			case EMixtormatGeneratorType::Fracture: return FMixtormatFracture::StaticStruct();
+			case EMixtormatGeneratorType::Cracks: return FMixtormatCracks::StaticStruct();
 			case EMixtormatGeneratorType::RockFormation: return FMixtormatRockFormation::StaticStruct();
 			case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();
 			default: return nullptr;

@@ -122,7 +122,7 @@ namespace
 			switch (Child.Generator.Type)
 			{
 			case EMixtormatGeneratorType::StrataCarver: View.ConstData = &Child.Generator.StrataCarver; break;
-			case EMixtormatGeneratorType::Fracture: View.ConstData = &Child.Generator.Fracture; break;
+			case EMixtormatGeneratorType::Cracks: View.ConstData = &Child.Generator.Cracks; break;
 			case EMixtormatGeneratorType::RockFormation: View.ConstData = &Child.Generator.RockFormation; break;
 			case EMixtormatGeneratorType::Pebbles: View.ConstData = &Child.Generator.Pebbles; break;
 			default: break;
@@ -145,7 +145,7 @@ namespace
 			{
 				switch (Child.Generator.Type)
 				{
-				case EMixtormatGeneratorType::Fracture: Index = 1; break;
+				case EMixtormatGeneratorType::Cracks: Index = 1; break;
 				case EMixtormatGeneratorType::RockFormation: Index = 2; break;
 				case EMixtormatGeneratorType::Pebbles: Index = 3; break;
 				default: break;
@@ -517,7 +517,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Curvature: return { FMixtormatMaskCurvature::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generator:
-			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatFracture::StaticStruct(),
+			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatCracks::StaticStruct(),
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct() };
 		default: return {};
 		}

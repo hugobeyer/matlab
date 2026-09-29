@@ -799,17 +799,39 @@ namespace MixtormatGpuCompositor
 
 	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second
 	// generator adds a payload beside StrataCarver and a case in AddGeneratorPasses.
-	struct FFractureRenderData
+	struct FCracksRenderData
 	{
-		EMixtormatFractureSource Source = EMixtormatFractureSource::Combined;
-		uint32 Seed = 11;
-		float Scale = 7.0f;
-		float Amount = 0.62f;
-		float Width = 0.28f;
-		float Depth = 0.08f;
-		float Profile = 1.0f;
-		float Chamfer = 0.25f;
-		float Variation = 0.38f;
+		int32 Seed = 1;
+		int32 Cells = 7;
+		float Jitter = 0.85f;
+		float Width = 0.1f;
+		float Depth = 0.415f;
+		float Rough = 0.361f;
+		float Scale = 7.8f;
+		float Detail = 1.0f;
+		float Feather = 0.176f;
+		float WidthVariation = 0.5f;
+		float WidthScale = 6.44f;
+		float LineVariation = 0.541f;
+		float RegionVariation = 0.615f;
+		float Chip = 0.3f;
+		float ChipSize = 0.12f;
+		float Gap = 0.15f;
+		float GapWidth = 1.5f;
+		float Slip = 0.1f;
+		float Tilt = 0.1f;
+		float ChamferAmount = 0.0f;
+		float ChamferStart = 0.0f;
+		float ChamferEnd = 0.15f;
+		float ChamferLow = -0.4f;
+		float ChamferHigh = 0.0f;
+		float ChamferNoise = 0.5f;
+		float ChamferNoiseScale = 1.5f;
+		uint32 BlendMode = 4;
+		float Amount = 1.0f;
+		float HeightScale = 1.0f;
+		// Hash of the field-shaping settings only (not chamfer or blend), for the node cache.
+		uint64 FieldKey = 0;
 	};
 
 	struct FRockFormationRenderData
@@ -867,8 +889,10 @@ namespace MixtormatGpuCompositor
 		float HeightGain = 1.0f;
 		float HeightVariation = 0.3f;
 		bool bFacetIds = false;
+		uint32 BlendMode = 2;
+		float HeightScale = 1.0f;
 		float Amount = 1.0f;
-		// Hash of the field-shaping settings only (not Amount), for the node cache.
+		// Hash of the field-shaping settings only (not blend settings), for the node cache.
 		uint64 FieldKey = 0;
 	};
 
@@ -876,7 +900,7 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		FStrataCarverRenderData StrataCarver;
-		FFractureRenderData Fracture;
+		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;
 		FPebblesRenderData Pebbles;
 	};
@@ -1703,15 +1727,8 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
-	// MixtormatGpuGeneratorPasses.cpp -- source-height generators (Strata).
-	// Fracture has a later dependency: the isolated layer's Ramp From IDs relief.
+	// MixtormatGpuGeneratorPasses.cpp -- the generators (Strata, Rock, Pebbles, Cracks).
 	void AddGeneratorPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer);
-
-	// MixtormatGpuFracturePasses.cpp -- owned footprints, redistance and face intersection.
-	void AddFracturePasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
