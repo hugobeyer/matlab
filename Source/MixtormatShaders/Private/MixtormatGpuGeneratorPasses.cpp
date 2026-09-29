@@ -3,6 +3,7 @@
 #include "MixtormatGpuCompositorInternal.h"
 #include "Compositing/MixtormatComposeHash.h"
 
+#include "Algo/AnyOf.h"
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
@@ -360,6 +361,9 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockTop)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamfer)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockWall)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockTopRamp)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamferRamp)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockWallRamp)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockEdgeDistance)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutRockBoundaryField)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRockIds)
@@ -1408,12 +1412,14 @@ namespace
 		};
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
-		// signed boundary distance + outline-sampled flag (RG32F).
-		FRDGTextureRef Outputs[7] = {};
+		// signed boundary distance + outline-sampled flag (RG32F), then the top, chamfer and wall
+		// ramps.
+		constexpr int32 RockSlotCount = 10;
+		FRDGTextureRef Outputs[RockSlotCount] = {};
 		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
-			for (int32 Slot = 0; Slot < 7; ++Slot)
+			for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
 			{
 				Outputs[Slot] = (*Memo)[Slot];
 			}
@@ -1429,18 +1435,19 @@ namespace
 					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			if (Hit.IsValid())
 			{
-				static const TCHAR* const Names[7] = {
+				static const TCHAR* const Names[RockSlotCount] = {
 					TEXT("Mixtormat.Rock.Height"), TEXT("Mixtormat.Rock.Top"), TEXT("Mixtormat.Rock.Chamfer"),
 					TEXT("Mixtormat.Rock.Wall"), TEXT("Mixtormat.Rock.EdgeDistance"), TEXT("Mixtormat.Rock.Ids"),
-					TEXT("Mixtormat.Rock.BoundaryField")};
-				for (int32 Slot = 0; Slot < 7; ++Slot)
+					TEXT("Mixtormat.Rock.BoundaryField"), TEXT("Mixtormat.Rock.TopRamp"),
+					TEXT("Mixtormat.Rock.ChamferRamp"), TEXT("Mixtormat.Rock.WallRamp")};
+				for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
 				{
 					Outputs[Slot] = Hit->Outputs[Slot].IsValid()
 						? GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot])
 						: nullptr;
 				}
 			}
-			if (!Outputs[0] || !Outputs[1] || !Outputs[2] || !Outputs[3] || !Outputs[4] || !Outputs[5] || !Outputs[6])
+			if (Algo::AnyOf(Outputs, [](const FRDGTextureRef Output) { return Output == nullptr; }))
 			{
 				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
 				{
@@ -1454,6 +1461,9 @@ namespace
 				Outputs[4] = Make(PF_R32_FLOAT, TEXT("Mixtormat.Rock.EdgeDistance"));
 				Outputs[5] = Make(PF_R32_UINT, TEXT("Mixtormat.Rock.Ids"));
 				Outputs[6] = Make(PF_G32R32F, TEXT("Mixtormat.Rock.BoundaryField"));
+				Outputs[7] = Make(PF_R16F, TEXT("Mixtormat.Rock.TopRamp"));
+				Outputs[8] = Make(PF_R16F, TEXT("Mixtormat.Rock.ChamferRamp"));
+				Outputs[9] = Make(PF_R16F, TEXT("Mixtormat.Rock.WallRamp"));
 
 				// Build: each cell's chunk geometry, once, into buffers the field reads.
 				const uint32 CellCount = static_cast<uint32>(Layout.CellsU) * static_cast<uint32>(Layout.CellsV);
@@ -1498,6 +1508,9 @@ namespace
 				P->OutRockEdgeDistance = GraphBuilder.CreateUAV(Outputs[4]);
 				P->OutRockIds = GraphBuilder.CreateUAV(Outputs[5]);
 				P->OutRockBoundaryField = GraphBuilder.CreateUAV(Outputs[6]);
+				P->OutRockTopRamp = GraphBuilder.CreateUAV(Outputs[7]);
+				P->OutRockChamferRamp = GraphBuilder.CreateUAV(Outputs[8]);
+				P->OutRockWallRamp = GraphBuilder.CreateUAV(Outputs[9]);
 				// The field stage reads no texture; the combine-only bindings stay unset.
 				ClearUnusedGraphResources(Shader, P);
 				FComputeShaderUtils::AddPass(GraphBuilder,
@@ -1510,7 +1523,7 @@ namespace
 						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 					Entry->Key = NodeKey;
 					Entry->Resolution = Size;
-					for (int32 Slot = 0; Slot < 7; ++Slot)
+					for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
 					{
 						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
 					}
@@ -1518,22 +1531,38 @@ namespace
 				}
 			}
 
-			// Reusable outputs: chunk IDs for ID consumers and four scalar outputs for
-			// Copy Output / published-source masks. Slot 4 is the new signed boundary
-			// distance; slot 6 carries its validity without changing scalar mask reads.
+			// Reusable outputs: chunk IDs for ID consumers and seven scalar outputs for Copy Output /
+			// published-source masks -- the hard class masks, the signed boundary distance, and a ramp
+			// across each class. Slot 6 carries the distance's validity without changing scalar
+			// mask reads, so it is not published.
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
-			static const TCHAR* const MaskNames[4] = {
-				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance")};
-			for (int32 Index = 0; Index < 4; ++Index)
+			static const TCHAR* const MaskNames[7] = {
+				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
+				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp")};
+			static const int32 MaskSlots[7] = {1, 2, 3, 4, 7, 8, 9};
+			for (int32 Index = 0; Index < 7; ++Index)
 			{
 				const FName OutputName(MaskNames[Index]);
+				const FRDGTextureRef Output = Outputs[MaskSlots[Index]];
 				Ctx.PublishedMaskOutputs.Add(
-					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[1 + Index]);
-				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
-					LayerCtx.LayerIndex, Child.SourceChildIndex))
+					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Output);
+				// The edge distance is signed and in UV widths, so it gets its own preview kind --
+				// the capability row names the same kind, or the eye never matches.
+				const bool bSignedDistance = MaskSlots[Index] == 4;
+				if (IsChildOutputPreviewTarget(Request,
+					bSignedDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
+					OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
 				{
-					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
-						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					if (bSignedDistance)
+					{
+						AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Output, (float)Size.X,
+							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					}
+					else
+					{
+						AddDebugPreviewMaskBlitPass(GraphBuilder, Output,
+							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					}
 				}
 			}
 			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
@@ -1544,7 +1573,7 @@ namespace
 			}
 
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
-			Stored.Append(Outputs, 7);
+			Stored.Append(Outputs, RockSlotCount);
 		}
 		if (bFieldOnly)
 		{
@@ -1979,11 +2008,23 @@ namespace
 				const FName OutputName(MaskNames[Index]);
 				Ctx.PublishedMaskOutputs.Add(
 					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[1 + Index]);
-				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
-					LayerCtx.LayerIndex, Child.SourceChildIndex))
+				// The edge distance is signed and in UV widths, so it gets its own preview kind --
+				// the capability row names the same kind, or the eye never matches.
+				const bool bSignedDistance = Index == 1;
+				if (IsChildOutputPreviewTarget(Request,
+					bSignedDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
+					OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
 				{
-					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
-						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					if (bSignedDistance)
+					{
+						AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Outputs[1 + Index], (float)Size.X,
+							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					}
+					else
+					{
+						AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
+							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
+					}
 				}
 			}
 			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,

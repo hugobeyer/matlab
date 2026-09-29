@@ -62,7 +62,7 @@ float RegionValMax;
 
 Texture2D<uint> RegionUVIds;
 Texture2D<float2> RegionUVCentreField;
-Texture2D<uint> RegionUVOrientationField;
+Texture2D<float> RegionUVOrientationField;
 uint RegionUVEnabled;
 uint RegionUVVariationEnabled;
 uint RegionUVIntrinsicOrientation;
@@ -515,10 +515,13 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 	}
 
 	float2 P = Delta * UVScale;
-	if (RegionUVIntrinsicOrientation != 0
-		&& RegionUVOrientationField.Load(int3(Pixel, 0)) != 0)
+	// The region's own orientation, in radians. Zero is the common case and skips the rotation, so
+	// an unrotated region reads exactly what it did before the field carried arbitrary angles.
+	const float IntrinsicAngle = RegionUVIntrinsicOrientation != 0
+		? RegionUVOrientationField.Load(int3(Pixel, 0)) : 0.0f;
+	if (IntrinsicAngle != 0.0f)
 	{
-		const float2x2 IntrinsicRotation = MixtormatRotation90Matrix(1);
+		const float2x2 IntrinsicRotation = MixtormatRotationMatrix(IntrinsicAngle);
 		P = mul(IntrinsicRotation, P);
 		Orientation = mul(IntrinsicRotation, Orientation);
 	}

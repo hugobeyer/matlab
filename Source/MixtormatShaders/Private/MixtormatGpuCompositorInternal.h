@@ -1160,7 +1160,8 @@ namespace MixtormatGpuCompositor
 		int32 SourceChildIndex = INDEX_NONE;
 		FRDGTextureRef Ids = nullptr;
 		FRDGTextureRef CentreUV = nullptr;
-		// Pattern's intrinsic quarter-turn field, bound only when the producer this node resolved
+		// Pattern's intrinsic orientation field (radians, PF_R32_FLOAT; Pattern writes only 0 and
+		// pi/2), bound only when the producer this node resolved
 		// to is a Herringbone/Basketweave Pattern in the same layer. Not an approximation for
 		// other producers -- they simply do not have one, and this stays null rather than
 		// inventing a basis. See FMixtormatUvIdFilter.
@@ -1757,6 +1758,15 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 
+	// A signed distance (negative inside) as two colours with iso-lines. DistanceToPixels takes
+	// the producer's unit to output pixels -- Resolution.X for a field in UV widths.
+	void AddDebugPreviewSignedDistanceBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceDistance,
+		float DistanceToPixels,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
+
 	// GapMask may be null: pass a Mask-kind published output on the same child to force its
 	// active pixels to black instead of a hashed colour (Breakup), or null when the id map has
 	// no separate gap concept to combine (Cluster IDs) or already blackens its own invalid
@@ -1947,8 +1957,8 @@ struct FMixtormatNodeCacheEntry
 {
 	uint64 Key = 0;
 	FIntPoint Resolution = FIntPoint::ZeroValue;
-	// Fixed slots per producer kind; unused slots stay null.
-	TRefCountPtr<IPooledRenderTarget> Outputs[7];
+	// Fixed slots per producer kind; unused slots stay null. Rock Formation uses all ten.
+	TRefCountPtr<IPooledRenderTarget> Outputs[10];
 	uint64 Bytes = 0;
 	uint64 LastUsed = 0;
 };

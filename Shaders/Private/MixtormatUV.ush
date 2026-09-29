@@ -46,6 +46,17 @@ float2x2 MixtormatRotation90Matrix(int Steps)
 	return float2x2(1.0f, 0.0f, 0.0f, 1.0f);
 }
 
+// The same rotation at any angle, in the sense MixtormatRotation90Matrix turns: Radians = pi/2 is
+// Steps = 1. Not for source placement -- an arbitrary angle does not map the tile onto itself --
+// but for a region's own intrinsic orientation, which rotates a coordinate local to the region.
+float2x2 MixtormatRotationMatrix(float Radians)
+{
+	float S;
+	float C;
+	sincos(Radians, S, C);
+	return float2x2(C, S, -S, C);
+}
+
 float2x2 MixtormatFlipMatrix(uint FlipU, uint FlipV)
 {
 	return float2x2(

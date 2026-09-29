@@ -69,6 +69,9 @@ RWTexture2D<float> OutRockHeight;
 RWTexture2D<float> OutRockTop;
 RWTexture2D<float> OutRockChamfer;
 RWTexture2D<float> OutRockWall;
+RWTexture2D<float> OutRockTopRamp;
+RWTexture2D<float> OutRockChamferRamp;
+RWTexture2D<float> OutRockWallRamp;
 RWTexture2D<float> OutRockEdgeDistance;
 // XY: local chunk-boundary distance in UV units (negative inside), outline sampled.
 // This is a bounded neighbourhood query, not a global SDF or a propagation solve.
@@ -539,7 +542,20 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 
 // ---- field: one pixel against the precomputed chunks -------------------------------
 
-float RockLeafHeight(FRockLeaf L, uint slot, float2 pr, out int cls)
+// Height of one chunk at pr, the class of surface that set it (0 top, 1 chamfer, 2 wall), and
+// where along that surface the pixel sits.
+//
+// The ramp runs 0 -> 1 across the surface that won, bounded by how each is built rather than by a
+// saturate:
+//   Top      inward distance past the chamfer over that plus the distance to the chunk centre --
+//            0 at the chamfer's inner edge, 1 at the centre.
+//   Chamfer  across the bevel, from its foot on the wall (0) to the top (1).
+//   Wall     1 where the wall meets the bevel or the top, falling by one per unit of height it
+//            drops -- so 0 one full top-height down, since tops are at most 1. Measured from the
+//            wall's own top rather than against height 0: on a sloped or tilted chunk the raw top
+//            sits anywhere, down to below zero. Past one unit down it goes negative; that is still
+//            the wall, so it is left alone.
+float RockLeafHeight(FRockLeaf L, uint slot, float2 pr, out int cls, out float ramp)
 {
 	const float ChipK = 0.78f; // tan 38 deg
 	float T = L.TopConstant + dot(float2(L.Sx, L.Sy), pr);
@@ -554,18 +570,43 @@ float RockLeafHeight(FRockLeaf L, uint slot, float2 pr, out int cls)
 
 	float H = T;
 	cls = 0;
+	float edgeDi = 0.0f;
+	float edgeW = 0.0f;
+	// Nearest inward distance past any chamfer, for the top's ramp.
+	float topInset = ROCK_BIG;
 	uint base = slot * ROCK_MAXV;
 	for (uint e = 0u; e < L.EdgeCount; e++)
 	{
 		float4 E = Edges[base + e];
 		float di = E.z - dot(E.xy, pr);
+		topInset = min(topInset, di - max(E.w, 0.0f));
 		float wall = T + WallSlope * di;
-		if (wall < H) { H = wall; cls = 2; }
+		if (wall < H) { H = wall; cls = 2; edgeDi = di; edgeW = E.w; }
 		if (E.w > 0.0f)
 		{
 			float bevel = T + ChamferSlope * (di - E.w);
-			if (bevel < H) { H = bevel; cls = 1; }
+			if (bevel < H) { H = bevel; cls = 1; edgeDi = di; edgeW = E.w; }
 		}
+	}
+
+	// Where the bevel meets the wall: T + WallSlope * d = T + ChamferSlope * (d - w). The gather caps
+	// ChamferSlope at WallSlope, so the difference is never negative; the guard is only for the
+	// equal case, where the two never meet.
+	const float footDi = edgeW > 0.0f
+		? -ChamferSlope * edgeW / max(WallSlope - ChamferSlope, 1.0e-6f) : 0.0f;
+	if (cls == 1)
+	{
+		ramp = (edgeDi - footDi) / (edgeW - footDi);
+	}
+	else if (cls == 2)
+	{
+		ramp = 1.0f + WallSlope * (edgeDi - footDi);
+	}
+	else
+	{
+		const float inset = L.EdgeCount > 0u ? topInset : 0.0f;
+		const float toCentre = length(pr - float2(L.Cx, L.Cy));
+		ramp = inset + toCentre > 0.0f ? inset / (inset + toCentre) : 1.0f;
 	}
 	return H;
 }
@@ -741,6 +782,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	bool hit = false;
 	float bestH = 0.0f;
 	int bestCls = 0;
+	float bestRamp = 0.0f;
 	uint bestSlot = 0u;
 	float nearestOutside = ROCK_BIG;
 	float deepestInside = 0.0f;
@@ -781,12 +823,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					continue;
 				}
 				int cls;
-				const float H = RockLeafHeight(L, slot, pr, cls);
+				float ramp;
+				const float H = RockLeafHeight(L, slot, pr, cls, ramp);
 				if (!hit || H > bestH)
 				{
 					hit = true;
 					bestH = H;
 					bestCls = cls;
+					bestRamp = ramp;
 					bestSlot = slot;
 				}
 			}
@@ -797,6 +841,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRockTop[Pixel] = hit && bestCls == 0 ? 1.0f : 0.0f;
 	OutRockChamfer[Pixel] = hit && bestCls == 1 ? 1.0f : 0.0f;
 	OutRockWall[Pixel] = hit && bestCls == 2 ? 1.0f : 0.0f;
+	OutRockTopRamp[Pixel] = hit && bestCls == 0 ? bestRamp : 0.0f;
+	OutRockChamferRamp[Pixel] = hit && bestCls == 1 ? bestRamp : 0.0f;
+	OutRockWallRamp[Pixel] = hit && bestCls == 2 ? bestRamp : 0.0f;
 	const float boundaryDistance = hasBoundary
 		? (deepestInside > 0.0f ? -deepestInside : nearestOutside) / (float)CellsU : 0.0f;
 	OutRockEdgeDistance[Pixel] = boundaryDistance;

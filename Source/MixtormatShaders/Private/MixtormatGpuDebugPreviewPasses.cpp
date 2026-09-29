@@ -36,6 +36,31 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainMaskCS",
 	SF_Compute);
 
+class FMixtormatDebugPreviewSignedDistanceCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatDebugPreviewSignedDistanceCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatDebugPreviewSignedDistanceCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, DistanceToPixels)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatDebugPreviewSignedDistanceCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf",
+	"MainSignedDistanceCS",
+	SF_Compute);
+
 class FMixtormatDebugPreviewRegionIdsCS final : public FGlobalShader
 {
 public:
@@ -135,6 +160,33 @@ namespace MixtormatGpuCompositor
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.DebugPreview.Mask"),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8),
+				1));
+	}
+
+	void AddDebugPreviewSignedDistanceBlitPass(
+		FRDGBuilder& GraphBuilder,
+		const FRDGTextureRef SourceDistance,
+		const float DistanceToPixels,
+		const FRDGTextureRef OutputDebug,
+		const FIntPoint Resolution)
+	{
+		FMixtormatDebugPreviewSignedDistanceCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatDebugPreviewSignedDistanceCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->DistanceToPixels = DistanceToPixels;
+		Parameters->SourceDistance = SourceDistance;
+		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
+
+		TShaderMapRef<FMixtormatDebugPreviewSignedDistanceCS> Shader(
+			GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.DebugPreview.SignedDistance"),
 			Shader,
 			Parameters,
 			FIntVector(

@@ -372,14 +372,14 @@ namespace MixtormatGpuCompositor
 				EmptyPatternOrientation = GraphBuilder.CreateTexture(
 					FRDGTextureDesc::Create2D(
 						FIntPoint(1, 1),
-						PF_R8_UINT,
+						PF_R32_FLOAT,
 						FClearValueBinding::None,
 						TexCreate_ShaderResource | TexCreate_UAV),
 					TEXT("Mixtormat.EmptyPatternOrientation"));
 				AddClearUAVPass(
 					GraphBuilder,
 					GraphBuilder.CreateUAV(EmptyPatternOrientation),
-					0u);
+					0.0f);
 
 				// No Driver on this layer, or one that could not resolve: the slot still needs a real
 				// resource. Cleared to zero, which every Combine mode turns into a no-op once Amount

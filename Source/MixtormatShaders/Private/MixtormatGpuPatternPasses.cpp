@@ -185,7 +185,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputGap)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputOrientation)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputOrientation)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -666,7 +666,7 @@ namespace MixtormatGpuCompositor
 			? GraphBuilder.CreateTexture(
 				FRDGTextureDesc::Create2D(
 					OutputSize,
-					PF_R8_UINT,
+					PF_R32_FLOAT,
 					FClearValueBinding::None,
 					TexCreate_ShaderResource | TexCreate_UAV),
 				TEXT("Mixtormat.Pattern.Orientation"))

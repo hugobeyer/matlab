@@ -88,6 +88,16 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("RockEdgeDistance")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRockEdgeDistance", "Signed Boundary Distance"),
+				EMixtormatPreviewOutputKind::SignedDistance, true, true, true, NAME_None});
+			// 0 -> 1 across each class, zero outside it: the soft counterparts of the three masks.
+			Result.Outputs.Add({FName(TEXT("RockTopRamp")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockTopRamp", "Top Ramp"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockChamferRamp")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockChamferRamp", "Chamfer Ramp"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockWallRamp")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockWallRamp", "Wall Ramp"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
@@ -99,7 +109,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("PebbleEdgeDistance")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleEdgeDistance", "Edge Distance"),
-				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+				EMixtormatPreviewOutputKind::SignedDistance, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("PebbleRandom")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleRandom", "Random"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});

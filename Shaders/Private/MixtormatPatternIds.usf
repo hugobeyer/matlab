@@ -15,7 +15,7 @@ RWTexture2D<float2> OutputUV;
 RWTexture2D<float2> OutputRamp;
 RWTexture2D<float2> OutputEdge;
 RWTexture2D<float> OutputGap;
-RWTexture2D<uint> OutputOrientation;
+RWTexture2D<float> OutputOrientation;
 RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
@@ -1335,8 +1335,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputGap[Pixel] = bValidRegion ? 0.0f : 1.0f;
 	if (WriteOrientation != 0)
 	{
-		// Swap Axes turns horizontal work-space strips vertical in the authored UV basis.
-		OutputOrientation[Pixel] = Cell.Orientation ^ (SwapAxes != 0 ? 1u : 0u);
+		// Swap Axes turns horizontal work-space strips vertical in the authored UV basis. The cell's
+		// orientation is a quarter-turn flag, so the two combine as a toggle before becoming an angle.
+		const uint QuarterTurn = Cell.Orientation ^ (SwapAxes != 0 ? 1u : 0u);
+		OutputOrientation[Pixel] = QuarterTurn != 0u ? 1.57079632679f : 0.0f;
 	}
 
 	if (!bValidRegion)

@@ -36,6 +36,55 @@ void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
 }
 
+// A signed distance (negative inside) as two colours with iso-lines, for a field whose range has
+// nothing to do with 0..1 -- a mask blit of one is black on the inside and white a few texels out.
+//
+// DistanceToPixels converts the field's own unit to composition texels. The iso-line spacing and
+// the line widths are then a fixed fraction of the composition width, whatever unit the producer
+// writes in -- a spacing in texels would crowd into moire on a 4K composition shown in the
+// viewport. Every term is bounded by how it is built -- smoothstep, exp of a negative, cos -- so
+// the field itself is never clipped. A value at or past the producers' "nothing within reach" sentinel shows as no data.
+Texture2D<float> SourceDistance;
+float DistanceToPixels;
+
+#define MIXTORMAT_SDF_ISO_LINES_ACROSS 96.0f
+#define MIXTORMAT_SDF_NO_DATA 1.0e8f
+
+[numthreads(8, 8, 1)]
+void MainSignedDistanceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float Distance = SourceDistance.Load(int3(Pixel, 0));
+	if (!(abs(Distance) < MIXTORMAT_SDF_NO_DATA))
+	{
+		OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(float3(0.22f, 0.20f, 0.24f)), 1.0f);
+		return;
+	}
+
+	const float D = Distance * DistanceToPixels;
+	const float AbsD = abs(D);
+	const float Spacing = (float)OutputSize.x / MIXTORMAT_SDF_ISO_LINES_ACROSS;
+	// One texel of line at a 1K composition, scaled with it.
+	const float LineWidth = (float)OutputSize.x / 1024.0f;
+
+	// Warm inside, cool outside, darkening toward the contour so the side is readable at a glance.
+	float3 Colour = D < 0.0f ? float3(0.93f, 0.62f, 0.32f) : float3(0.45f, 0.70f, 0.95f);
+	Colour *= 0.35f + 0.65f * (1.0f - exp(-AbsD / (4.0f * Spacing)));
+	// Soft bands, then a thin line at every multiple of the spacing.
+	Colour *= 0.85f + 0.15f * cos(6.28318530718f * D / Spacing);
+	const float Band = frac(AbsD / Spacing);
+	const float IsoDistance = min(Band, 1.0f - Band) * Spacing;
+	Colour = lerp(Colour, Colour * 0.55f, 1.0f - smoothstep(0.0f, LineWidth, IsoDistance));
+	// The zero contour itself, in white and a little wider than the iso-lines.
+	Colour = lerp(Colour, float3(1.0f, 1.0f, 1.0f), 1.0f - smoothstep(0.0f, 1.5f * LineWidth, AbsD));
+
+	OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(Colour), 1.0f);
+}
+
 Texture2D<uint> SourceIds;
 // Bound whenever the target asks for gap-aware colouring; SourceHasGapMask is 0 and SourceGapMask
 // is a dummy otherwise, since RDG requires every declared texture parameter to be bound to
