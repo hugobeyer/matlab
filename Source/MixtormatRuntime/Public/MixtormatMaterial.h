@@ -3173,20 +3173,6 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float CrackChamferEdge = 0.12f;
 
-	// Retained for deserializing earlier recipes; the two-control profile replaces these knobs.
-	UPROPERTY()
-	float CrackChamferStart = 0.0f;
-	UPROPERTY()
-	float CrackChamferEnd = 0.15f;
-	UPROPERTY()
-	float CrackChamferLow = -0.4f;
-	UPROPERTY()
-	float CrackChamferHigh = 0.0f;
-	UPROPERTY()
-	float CrackChamferNoise = 0.5f;
-	UPROPERTY()
-	float CrackChamferNoiseScale = 1.5f;
-
 	// How the cracks combine with the height before them on the same layer.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend")
 	EMixtormatGeneratorBlendMode CrackBlendMode = EMixtormatGeneratorBlendMode::Add;

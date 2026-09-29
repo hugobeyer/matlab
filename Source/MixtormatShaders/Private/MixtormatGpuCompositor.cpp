@@ -1992,10 +1992,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						MixtormatComposeHash::FHasher Hasher;
 						// The chamfer and the blend read the cached field; they do not change it.
 						Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
-							TEXT("CrackChamferStart"), TEXT("CrackChamferEnd"), TEXT("CrackChamferLow"),
-							TEXT("CrackChamferHigh"), TEXT("CrackChamferNoise"),
-							TEXT("CrackChamferNoiseScale"), TEXT("CrackBlendMode"),
-							TEXT("CrackAmount"), TEXT("CrackHeightScale")};
+							TEXT("CrackBlendMode"), TEXT("CrackAmount"), TEXT("CrackHeightScale")};
 						Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}
