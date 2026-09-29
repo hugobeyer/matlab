@@ -554,18 +554,30 @@ float2 LayerSourceUV(float2 UV)
 	return LayerSourceUVAndOrientation(UV, Orientation);
 }
 
+// A source height as it reads once the layer's Tiling has repeated it.
+//
+// Tiling fits N repeats into the same output, so every feature comes out N times smaller while the
+// normal map keeps its slopes. The height has to shrink with the features or it stops agreeing with
+// the normal and outgrows everything under it -- a 2x tile stands half as tall. About the 0.5
+// midpoint, like every other height scale here, so the average level stays where it was.
+float TiledSourceHeight(float Height)
+{
+	return 0.5f + (Height - 0.5f) / max(Tiling, 0.0001f);
+}
+
 // This layer's source height. Height Smooth resolves and blurs the source into output UV before
 // this composite runs, so this remains one sample and every later reader sees the same result.
 float SampleRawLayerHeight(float2 SourceUV)
 {
+	// Already tiled, and already scaled for it, by ResolveLayerInputCS.
 	if (LayerInputResolved != 0)
 	{
 		return LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
 	}
 	// Authored surfaces carry RAMH; live compositions carry F0 in RAM alpha.
-	return HasSeparateHeight != 0
+	return TiledSourceHeight(HasSeparateHeight != 0
 		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
-		: LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).a;
+		: LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).a);
 }
 
 float SampleLayerSourceHeight(float2 UV)
@@ -899,9 +911,10 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputRAM[Pixel] = SourceRAM;
 	// A layer with no height of its own (a fill, or a surface without RAMH) contributes its
 	// constant height, so generators on it start from the same value the composite would use.
+	// The constant is a level, not a feature, so tiling leaves it alone.
 	OutputHeight[Pixel] = HasSeparateHeight != 0
-		? LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
-		: (HasPackedHeight != 0 ? SourceRAM.a : ConstantHeight);
+		? TiledSourceHeight(LayerSourceHeight.SampleLevel(LinearWrapSampler, SourceUV, 0.0f))
+		: (HasPackedHeight != 0 ? TiledSourceHeight(SourceRAM.a) : ConstantHeight);
 }
 
 // The layer's own resolved values, as a mask source.

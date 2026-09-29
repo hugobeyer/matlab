@@ -76,10 +76,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float4 Blurred = Sum / WeightSum;
 
+	// The normal target is stored encoded, n * 0.5 + 0.5, so the unit length that matters is the
+	// decoded vector's. Normalizing the encoded value tilts even a flat normal.
 	if (RenormalizeXYZ != 0)
 	{
-		const float Length = length(Blurred.xyz);
-		Blurred.xyz = Length > 1.0e-6f ? Blurred.xyz / Length : Center.xyz;
+		const float3 Decoded = Blurred.xyz * 2.0f - 1.0f;
+		const float Length = length(Decoded);
+		Blurred.xyz = Length > 1.0e-6f ? (Decoded / Length) * 0.5f + 0.5f : Center.xyz;
 	}
 
 	// Coverage decides where the blur is allowed to land, and Amount decides how much of it does.

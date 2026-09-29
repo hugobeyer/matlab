@@ -79,7 +79,8 @@ float CraqReliefOffset(int2 P)
 	}
 
 	const float2 Nearby = CrackDistance.Load(int3(CraqReliefWrapPixel(SampleP), 0)).xy;
-	const uint CrackId = asuint(Nearby.y);
+	// Both writers store the id as a whole number held under 2^24, not as reinterpreted bits.
+	const uint CrackId = (uint)Nearby.y;
 
 	// Width variation shifts the groove's mouth per crack before the cone is evaluated, so it
 	// changes how wide the dish is without moving the crack or its mask.

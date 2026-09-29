@@ -515,7 +515,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Per-crack variation, keyed on the lineage id the network carried out from its nucleus, so
 	// a whole crack varies as one thing. The lattice mode gets the same behaviour from its
 	// wall id.
-	Crack *= lerp(1.0f, MixtormatCellRandom01(asuint(NearestId)), Variation);
+	Crack *= lerp(1.0f, MixtormatCellRandom01((uint)NearestId), Variation);
 
 	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
 	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
