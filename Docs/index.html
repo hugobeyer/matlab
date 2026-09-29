@@ -572,7 +572,7 @@ pre{
 </div>
 <div class="card">
 <h3>Cracks</h3>
-<p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator.</p>
+<p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator. Its Amount and Cut Reach are the only chamfer controls: the sharp remap and fine noise follow the crack depth and width automatically.</p>
 <p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks for downstream children. Shape Deform, Generator Flow and Flow Carve can reshape its height before blending; IDs and published masks represent the original field. Blend modes are Replace, Min, Max, Difference and Add (the default for signed cracks). Amount and Height Scale do not regenerate the cached field.</p>
 </div>
 <div class="note">

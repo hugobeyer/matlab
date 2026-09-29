@@ -478,6 +478,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackHeight)
@@ -1708,16 +1709,16 @@ namespace
 					Shader, P, Groups);
 				if (NodeKey != 0)
 				{
-				TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
-					MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
-				Entry->Key = NodeKey;
-				Entry->Resolution = Size;
-				for (int32 Slot = 0; Slot < SlotCount; ++Slot)
-				{
-					GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+					TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = NodeKey;
+					Entry->Resolution = Size;
+					for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
 				}
-				Ctx.PendingNodeEntries.Add(Entry);
-			}
 			}
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[3]);
 			static const TCHAR* const MaskNames[3] = { TEXT("CrackMask"), TEXT("CrackDistance"), TEXT("PieceRandom") };
@@ -1803,7 +1804,9 @@ namespace
 			Fill(P);
 			P->HasGate = bHasGate ? 1u : 0u;
 			P->CrackHeight = Field;
+			P->CrackDistance = Outputs[2];
 			P->Arrival = Arrival[Read];
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->GateMask = Gate;
 			P->OutHeight = GraphBuilder.CreateUAV(Chamfered);
 			P->OutChamferCut = GraphBuilder.CreateUAV(ChamferCut);

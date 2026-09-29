@@ -65,6 +65,7 @@ float HeightScale;
 Texture2D<float> CrackHeight;
 Texture2D<float> CrackDistance;
 Texture2D<float> Arrival;
+SamplerState LinearWrapSampler;
 Texture2D<float> GateMask;
 Texture2D<float> SourceHeight;
 
@@ -349,6 +350,16 @@ float2 CrackTiltDir(int Piece, int SeedValue)
 	return float2(cos(A), sin(A));
 }
 
+// Sample the full-resolution distance at the exact texel used to seed a solve-grid cell.
+// Interpolating this along with arrival lets the resolve restore sub-grid crack detail without
+// imprinting the grid's individual pixels on the chamfer.
+float CrackSolveSeedDistance(int2 Cell)
+{
+	const int2 Wrapped = (Cell % SolveSize + SolveSize) % SolveSize;
+	const int2 FullPixel = min(int2((float2(Wrapped) + 0.5f) * float2(OutputSize) / float2(SolveSize)), OutputSize - 1);
+	return CrackDistance.Load(int3(FullPixel, 0));
+}
+
 // Groove profile: a V, 1 on the crack line falling to 0 at the half width; beyond it the pixel is
 // simply not in the groove.
 float CrackGroove(float D, float HalfWidth)
@@ -504,8 +515,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Result = H;
 	if (ChamferAmount != 0.0f)
 	{
-		const int2 SolvePixel = min(int2((float2(Pixel) + 0.5f) * float2(SolveSize) / float2(OutputSize)), SolveSize - 1);
-		const float D = Arrival.Load(int3(SolvePixel, 0));
+		const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+		const float2 SolveCoord = UV * float2(SolveSize) - 0.5f;
+		const int2 Base = int2(floor(SolveCoord));
+		const float2 Fraction = frac(SolveCoord);
+		const float SeedD = lerp(
+			lerp(CrackSolveSeedDistance(Base), CrackSolveSeedDistance(Base + int2(1, 0)), Fraction.x),
+			lerp(CrackSolveSeedDistance(Base + int2(0, 1)), CrackSolveSeedDistance(Base + int2(1, 1)), Fraction.x),
+			Fraction.y);
+		const float ArrivalTime = Arrival.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		const int NoisePeriod = max((int)round((float)Period * ChamferNoiseScale), 1);
+		const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(UV, NoisePeriod, Seed + 8101, 0.5f), 0.001f);
+		const float FineD = CrackDistance.Load(int3(Pixel, 0));
+		const float D = max(0.0f, ArrivalTime + (FineD - SeedD) / Speed);
 		const float Span = ChamferEnd - ChamferStart;
 		const float T = Span != 0.0f ? (D - ChamferStart) / Span : (D >= ChamferEnd ? 1.0f : 0.0f);
 		const float Surface = (ChamferLow + T * (ChamferHigh - ChamferLow)) * CellSize;

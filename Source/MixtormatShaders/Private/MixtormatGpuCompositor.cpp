@@ -1975,12 +1975,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.Slip = Finite(Cracks.CrackSlip, Defaults.CrackSlip);
 					Out.Tilt = Finite(Cracks.CrackTilt, Defaults.CrackTilt);
 					Out.ChamferAmount = Finite(Cracks.CrackChamferAmount, Defaults.CrackChamferAmount);
-					Out.ChamferStart = Finite(Cracks.CrackChamferStart, Defaults.CrackChamferStart);
-					Out.ChamferEnd = Finite(Cracks.CrackChamferEnd, Defaults.CrackChamferEnd);
-					Out.ChamferLow = Finite(Cracks.CrackChamferLow, Defaults.CrackChamferLow);
-					Out.ChamferHigh = Finite(Cracks.CrackChamferHigh, Defaults.CrackChamferHigh);
-					Out.ChamferNoise = Finite(Cracks.CrackChamferNoise, Defaults.CrackChamferNoise);
-					Out.ChamferNoiseScale = Finite(Cracks.CrackChamferNoiseScale, Defaults.CrackChamferNoiseScale);
+					const float Edge = Finite(Cracks.CrackChamferEdge, Defaults.CrackChamferEdge);
+					// The narrow descending band and depth-relative heights reproduce the hard
+					// reference profile without four separate remap controls.
+					Out.ChamferStart = Edge;
+					Out.ChamferEnd = Edge - FMath::Max(FMath::Abs(Edge) * 0.025f, 0.001f);
+					Out.ChamferLow = FMath::Abs(Out.Depth) * 0.26f;
+					Out.ChamferHigh = -FMath::Abs(Out.Depth) * 0.28f;
+					Out.ChamferNoise = 0.692f;
+					Out.ChamferNoiseScale = 1.1882f / FMath::Max(FMath::Abs(Out.Width), 0.05f);
 					Out.BlendMode = static_cast<uint32>(Cracks.CrackBlendMode);
 					Out.Amount = Finite(Cracks.CrackAmount, Defaults.CrackAmount);
 					Out.HeightScale = Finite(Cracks.CrackHeightScale, Defaults.CrackHeightScale);
@@ -1988,9 +1991,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					{
 						MixtormatComposeHash::FHasher Hasher;
 						// The chamfer and the blend read the cached field; they do not change it.
-						Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferStart"),
-							TEXT("CrackChamferEnd"), TEXT("CrackChamferLow"), TEXT("CrackChamferHigh"),
-							TEXT("CrackChamferNoise"), TEXT("CrackChamferNoiseScale"), TEXT("CrackBlendMode"),
+						Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
+							TEXT("CrackChamferStart"), TEXT("CrackChamferEnd"), TEXT("CrackChamferLow"),
+							TEXT("CrackChamferHigh"), TEXT("CrackChamferNoise"),
+							TEXT("CrackChamferNoiseScale"), TEXT("CrackBlendMode"),
 							TEXT("CrackAmount"), TEXT("CrackHeightScale")};
 						Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
 						Out.FieldKey = Hasher.Get() | 1ull;

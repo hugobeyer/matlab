@@ -3077,11 +3077,10 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	float PebbleAmount = 1.0f;
 };
 
-// Document-level passes that run once on the finished surface, after every layer.
 // Cracks: a tileable network of straight cracks (the borders of a jittered cell lattice), made
 // rough by a per-crack zigzag and a feathered push near the cracks, with widths that vary along
 // each crack, per crack and by region, chipped rims, random opened gaps, and pieces that rise,
-// sink and tip. A chamfer bevels the rims by the distance to the crack over a noisy speed.
+// sink and tip. A chamfer bevels the rims by a variable-speed arrival from the cracks.
 //
 // Every length is in cell widths and every depth scales with the cell, so the look holds at any
 // resolution and any cell count. The field is a signed height change (Add is the natural blend),
@@ -3165,33 +3164,27 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Pieces", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackTilt = 0.1f;
 
-	// Chamfer: the distance from the crack, divided by a noisy speed, read as a height rising from
-	// Low at Start to High at End (and on past it), then min-blended in by Amount. Scoped masks
-	// under this generator gate it.
+	// A hard cut from a noisy arrival field. Masks scoped under this generator gate the cut.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackChamferAmount = 0.0f;
 
-	// Distance band, in cell widths, over which the chamfer rises.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	// Cut reach in cell widths; the narrow descending profile and noise derive from the crack
+	// width and depth. 0.12 reproduces the hard-edged reference at the default crack settings.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
+	float CrackChamferEdge = 0.12f;
+
+	// Retained for deserializing earlier recipes; the two-control profile replaces these knobs.
+	UPROPERTY()
 	float CrackChamferStart = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
+	UPROPERTY()
 	float CrackChamferEnd = 0.15f;
-
-	// Chamfer heights at Start and End, in the same units as Depth. Raise them to push the
-	// chamfer further up onto the tops.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "-2.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY()
 	float CrackChamferLow = -0.4f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "-2.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY()
 	float CrackChamferHigh = 0.0f;
-
-	// How much the chamfer's speed varies: 0 even width, 1 from very wide to very narrow.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY()
 	float CrackChamferNoise = 0.5f;
-
-	// Chamfer speed noise cells per crack cell.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.25", UIMax = "8.0", Delta = "0.05"))
+	UPROPERTY()
 	float CrackChamferNoiseScale = 1.5f;
 
 	// How the cracks combine with the height before them on the same layer.

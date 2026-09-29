@@ -3383,27 +3383,10 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackChamferAmount", "Amount"), Crack, &FMixtormatCracks::CrackChamferAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("CrackChamferAmountHint", "Bevels the rims. Masks scoped under this generator gate where.")),
+			LOCTEXT("CrackChamferAmountHint", "Strength of the hard cut. Masks scoped under this generator gate it.")),
 		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferNoise", "Noise"), Crack, &FMixtormatCracks::CrackChamferNoise, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("CrackChamferNoiseHint", "How irregular the bevel width is along each rim."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferStart", "Start"), Crack, &FMixtormatCracks::CrackChamferStart, 0.0, 0.5, 0.0, 0.005,
-			LOCTEXT("CrackChamferStartHint", "Distance from the crack, in cell widths, where the bevel is at its Low height.")),
-		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferEnd", "End"), Crack, &FMixtormatCracks::CrackChamferEnd, 0.0, 0.5, 0.15, 0.005,
-			LOCTEXT("CrackChamferEndHint", "Distance from the crack, in cell widths, where the bevel reaches its High height."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferLow", "Low"), Crack, &FMixtormatCracks::CrackChamferLow, -2.0, 1.0, -0.4, 0.01,
-			LOCTEXT("CrackChamferLowHint", "Bevel height at Start, in the same units as Depth.")),
-		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferHigh", "High"), Crack, &FMixtormatCracks::CrackChamferHigh, -2.0, 1.0, 0.0, 0.01,
-			LOCTEXT("CrackChamferHighHint", "Bevel height at End. Raise to carry the bevel further up onto the tops."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
-		LOCTEXT("CrackChamferNoiseScale", "Noise Scale"), Crack, &FMixtormatCracks::CrackChamferNoiseScale, 0.25, 8.0, 1.5, 0.05,
-		LOCTEXT("CrackChamferNoiseScaleHint", "Noise cells per crack cell.")));
+			LOCTEXT("CrackChamferEdge", "Cut Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
+			LOCTEXT("CrackChamferEdgeHint", "Cut reach in cell widths. The sharp profile and fine noise follow crack depth and width."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpBlend", "Blend")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
