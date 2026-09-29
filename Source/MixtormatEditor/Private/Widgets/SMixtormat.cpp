@@ -567,6 +567,7 @@ void SMixtormat::RefreshLayeredPreview(const bool bMarkDirty)
 	SyncChildInstances();
 
 	bInteractiveEdit = IsInteractiveEdit();
+	bPreviewSubmitPending = true;
 
 	if (bMarkDirty)
 	{
@@ -614,8 +615,8 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	}
 
 	// A drag produces no release event here, so the timer keeps itself alive while the mouse
-	// is captured and settles on the first frame after it is let go: one full-resolution
-	// composite, and the history entry the drag deferred.
+	// is captured and settles on the first frame after it is let go: the final composite, and
+	// the history entry the drag deferred.
 	const bool bWasInteractive = bInteractiveEdit;
 	bInteractiveEdit = IsInteractiveEdit();
 	const bool bDragJustEnded = bWasInteractive && !bInteractiveEdit;
@@ -643,8 +644,21 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		{
 			DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 			ChildPreviewTarget = FMixtormatChildPreviewTarget();
+			bPreviewSubmitPending = true;
 		}
 	}
+
+	// Mouse held and nothing changed since the last submit: holding still must not recompose.
+	if (!bPreviewSubmitPending)
+	{
+		if (bInteractiveEdit)
+		{
+			bPreviewRefreshPending = true;
+			return EActiveTimerReturnType::Continue;
+		}
+		return EActiveTimerReturnType::Stop;
+	}
+	bPreviewSubmitPending = false;
 
 	TArray<FMixtormatLayer> PreviewOverrideLayers;
 	const TArray<FMixtormatLayer>* PreviewLayers = &WorkingLayers;
@@ -765,7 +779,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	// the drag ended. A preview that reshapes itself on mouse-up is worse than a slower one.
 	//
 	// Drag cost is still reduced, but only where it costs nothing to look at: the undo history
-	// deferral above, which does no drawing at all.
+	// deferral above, which does no drawing at all, and the viewport spacing composites by their
+	// measured cost while the mouse is held. The release frame submits with bInteractive false,
+	// so the final value is always composed.
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -783,12 +799,12 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			DebugSettings.ChildTarget = ChildPreviewTarget;
 			Viewport->SetFinalSettings(WorkingFinalSettings);
 			Viewport->SetPreviewLayers(
-				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings);
+				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings, bInteractiveEdit);
 		}
 	}
 
 	// Keep the timer alive for as long as the mouse is held, so the drag-end frame above is
-	// reached even if no further value change arrives.
+	// reached even if no further value change arrives. It idles at the check above until then.
 	if (bInteractiveEdit)
 	{
 		bPreviewRefreshPending = true;

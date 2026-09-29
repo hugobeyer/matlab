@@ -542,31 +542,79 @@ void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 	ApplyPresentationState();
 }
 
+namespace
+{
+	// Floor on the gap between two drag-time composites, and the headroom over the measured
+	// compose time. A cheap stack is held to the floor; a heavy one (erosion iterations, stain,
+	// flow solve) backs off to a little longer than one compose takes, so the game thread never
+	// queues behind the GPU.
+	constexpr double MinDragComposeInterval = 0.05;
+	constexpr double DragComposeHeadroom = 1.25;
+	// Weight of the newest sample in the smoothed compose time.
+	constexpr double ComposeTimeSmoothing = 0.3;
+}
+
+bool SMixtormatPreviewViewport::CanSubmitCompose(const bool bInteractive) const
+{
+	if (LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight())
+	{
+		return false;
+	}
+	if (!bInteractive)
+	{
+		return true;
+	}
+	const double Interval = FMath::Max(MinDragComposeInterval, SmoothedComposeSeconds * DragComposeHeadroom);
+	return FPlatformTime::Seconds() - LastComposeSubmitTime >= Interval;
+}
+
+void SMixtormatPreviewViewport::SubmitCompose(
+	const TArray<FMixtormatLayer>& Layers,
+	const TArray<FMixtormatLayerGroup>& Groups,
+	const int32 Resolution,
+	const FMixtormatDebugPreviewSettings& DebugSettings)
+{
+	LastComposeSubmitTime = FPlatformTime::Seconds();
+	if (ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, false))
+	{
+		bMeasuringCompose = true;
+		EnsureComposeTimer();
+	}
+}
+
+void SMixtormatPreviewViewport::EnsureComposeTimer()
+{
+	if (!PendingComposeTimer.IsValid())
+	{
+		PendingComposeTimer = RegisterActiveTimer(0.0f,
+			FWidgetActiveTimerDelegate::CreateSP(this, &SMixtormatPreviewViewport::FlushPendingCompose));
+	}
+}
+
 void SMixtormatPreviewViewport::SetPreviewLayers(
 	const TArray<FMixtormatLayer>& Layers,
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
-	FMixtormatDebugPreviewSettings DebugSettings)
+	FMixtormatDebugPreviewSettings DebugSettings,
+	const bool bInteractive)
 {
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
 
-	// A slider drag asks for a composite every frame. While the last one is still on the render
-	// thread, keep only this newest request and submit it once that one is done, instead of
-	// queueing frames the user has already scrubbed past.
-	if (LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight())
+	// A slider drag asks for a composite as fast as the hand moves. While the last one is still
+	// on the render thread, or (mid-drag) the interval sized to its cost has not passed, keep
+	// only this newest request and submit it when the timer allows, instead of queueing frames
+	// the user has already scrubbed past. A non-drag request replaces a waiting drag one, so the
+	// final value of a scrub is never held back by the interval.
+	if (!CanSubmitCompose(bInteractive))
 	{
-		PendingCompose = FPendingCompose{Layers, Groups, Resolution, DebugSettings};
-		if (!PendingComposeTimer.IsValid())
-		{
-			PendingComposeTimer = RegisterActiveTimer(0.0f,
-				FWidgetActiveTimerDelegate::CreateSP(this, &SMixtormatPreviewViewport::FlushPendingCompose));
-		}
+		PendingCompose = FPendingCompose{Layers, Groups, Resolution, DebugSettings, bInteractive};
+		EnsureComposeTimer();
 		return;
 	}
 	PendingCompose.Reset();
-	ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, false);
+	SubmitCompose(Layers, Groups, Resolution, DebugSettings);
 }
 
 EActiveTimerReturnType SMixtormatPreviewViewport::FlushPendingCompose(
@@ -574,20 +622,32 @@ EActiveTimerReturnType SMixtormatPreviewViewport::FlushPendingCompose(
 {
 	(void)CurrentTime;
 	(void)DeltaTime;
+	const bool bInFlight = LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight();
+	if (bMeasuringCompose && !bInFlight)
+	{
+		const double Elapsed = FPlatformTime::Seconds() - LastComposeSubmitTime;
+		SmoothedComposeSeconds = SmoothedComposeSeconds > 0.0
+			? FMath::Lerp(SmoothedComposeSeconds, Elapsed, ComposeTimeSmoothing)
+			: Elapsed;
+		bMeasuringCompose = false;
+	}
 	if (!PendingCompose.IsSet())
 	{
+		if (bMeasuringCompose)
+		{
+			return EActiveTimerReturnType::Continue;
+		}
 		PendingComposeTimer.Reset();
 		return EActiveTimerReturnType::Stop;
 	}
-	if (LayerCompositor.IsValid() && LayerCompositor->IsComposeInFlight())
+	if (!CanSubmitCompose(PendingCompose->bInteractive))
 	{
 		return EActiveTimerReturnType::Continue;
 	}
 	FPendingCompose Pending = MoveTemp(PendingCompose.GetValue());
 	PendingCompose.Reset();
-	PendingComposeTimer.Reset();
-	ComposeLayersWithDebug(Pending.Layers, Pending.Groups, Pending.Resolution, Pending.DebugSettings, false);
-	return EActiveTimerReturnType::Stop;
+	SubmitCompose(Pending.Layers, Pending.Groups, Pending.Resolution, Pending.DebugSettings);
+	return EActiveTimerReturnType::Continue;
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
@@ -601,6 +661,8 @@ bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	DebugSettings.ChildIndex = bDebugChildIndex;
 	// A newer request would overwrite what the caller is about to read back.
 	PendingCompose.Reset();
+	// The blocking wait would read as the cost of one preview compose and throttle the next drag.
+	bMeasuringCompose = false;
 	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, true);
 }
 

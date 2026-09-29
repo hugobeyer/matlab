@@ -42,7 +42,7 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	{
 		SetToolTipText(LOCTEXT(
 			"SliderHint",
-			"Drag to adjust · click to type · Shift fine · Ctrl snap · MMB or hover + Backspace to reset"));
+			"Drag to adjust · click to type · Shift fine · Ctrl+Shift finer · Ctrl snap · MMB or hover + Backspace to reset"));
 	}
 
 	const FEditableTextBoxStyle& EntryStyle =
@@ -192,16 +192,13 @@ FReply SMixtormatSlider::OnMouseButtonDown(const FGeometry& MyGeometry, const FP
 	bPushedLow = false;
 	bPushedHigh = false;
 	DragTravel = 0.0f;
-	const FVector2D Screen = MouseEvent.GetScreenSpacePosition();
-	DragStartScreen = FIntPoint(FMath::RoundToInt(Screen.X), FMath::RoundToInt(Screen.Y));
+	LastDragScreenX = static_cast<float>(MouseEvent.GetScreenSpacePosition().X);
 
-	// Capturing is what makes the owner's interactive-edit check see the scrub, so the
-	// preview drops to its drag resolution and undo history is deferred. High-precision
-	// movement hides the cursor and reports raw deltas, so a scrub is never stopped by the
-	// screen edge.
-	return FReply::Handled()
-		.CaptureMouse(SharedThis(this))
-		.UseHighPrecisionMouseMovement(SharedThis(this));
+	// Capturing is what makes the owner's interactive-edit check see the scrub, so undo history
+	// is deferred and previews are rate-limited. The cursor stays the real, visible one: it is
+	// read as a position rather than as raw deltas, so a stalled frame loses nothing, and the
+	// screen edge is handled by wrapping it (WrapCursorAtScreenEdge).
+	return FReply::Handled().CaptureMouse(SharedThis(this));
 }
 
 FReply SMixtormatSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
@@ -211,23 +208,56 @@ FReply SMixtormatSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointer
 		return FReply::Unhandled();
 	}
 
-	// Raw screen pixels to Slate units, so DPI scale does not change the rate.
+	// Cursor travel since the last event, screen pixels to Slate units so DPI scale does not
+	// change the rate. Taken from positions rather than the event's own delta so a wrap of the
+	// cursor (below) can be excluded from it.
+	const FVector2D Screen = MouseEvent.GetScreenSpacePosition();
 	const float Scale = FMath::Max(MyGeometry.Scale, UE_KINDA_SMALL_NUMBER);
-	const float Delta = static_cast<float>(MouseEvent.GetCursorDelta().X) / Scale;
+	const float Delta = (static_cast<float>(Screen.X) - LastDragScreenX) / Scale;
+	LastDragScreenX = static_cast<float>(Screen.X);
 	const float Width = static_cast<float>(MyGeometry.GetLocalSize().X);
 	if (!bMovedPastThreshold)
 	{
 		DragTravel += Delta;
 		if (FMath::Abs(DragTravel) < MixtormatTokens::DragThreshold)
 		{
-			return FReply::Handled();
+			return WrapCursorAtScreenEdge(Screen);
 		}
 		bMovedPastThreshold = true;
 		OnBeginDrag.ExecuteIfBound();
 		// The threshold travel counts, so the value does not lag the hand by four pixels.
-		return ApplyDrag(DragTravel, Width, MouseEvent);
+		ApplyDrag(DragTravel, Width, MouseEvent);
+		return WrapCursorAtScreenEdge(Screen);
 	}
-	return ApplyDrag(Delta, Width, MouseEvent);
+	ApplyDrag(Delta, Width, MouseEvent);
+	return WrapCursorAtScreenEdge(Screen);
+}
+
+FReply SMixtormatSlider::WrapCursorAtScreenEdge(const FVector2D& Screen)
+{
+	// Blender-style continuous grab: at the edge of the monitor's work area the cursor jumps to
+	// the opposite edge. The landing point becomes the new reference, so the jump itself adds
+	// no travel and the scrub carries on where it was.
+	const FSlateRect WorkArea = FSlateApplication::Get().GetWorkArea(
+		FSlateRect::FromPointAndExtent(FVector2f(Screen), FVector2f(1.0f, 1.0f)));
+	const float Left = WorkArea.Left + MixtormatTokens::DragWrapMargin;
+	const float Right = WorkArea.Right - 1.0f - MixtormatTokens::DragWrapMargin;
+	float LandingX = 0.0f;
+	if (Screen.X <= Left)
+	{
+		// Lands inside the wrap margin of the far edge, or the next move would wrap straight back.
+		LandingX = Right - MixtormatTokens::DragWrapMargin;
+	}
+	else if (Screen.X >= Right)
+	{
+		LandingX = Left + MixtormatTokens::DragWrapMargin;
+	}
+	else
+	{
+		return FReply::Handled();
+	}
+	LastDragScreenX = LandingX;
+	return FReply::Handled().SetMousePos(FIntPoint(FMath::RoundToInt(LandingX), FMath::RoundToInt(Screen.Y)));
 }
 
 void SMixtormatSlider::GetDisplayRange(double& OutMin, double& OutMax) const
@@ -257,19 +287,21 @@ void SMixtormatSlider::GetDisplayRange(double& OutMin, double& OutMax) const
 	OutMax = FMath::Max(OutMax, Value);
 }
 
-FReply SMixtormatSlider::ApplyDrag(const float Delta, const float Width, const FPointerEvent& MouseEvent)
+void SMixtormatSlider::ApplyDrag(const float Delta, const float Width, const FPointerEvent& MouseEvent)
 {
 	double MinValue = 0.0;
 	double MaxValue = 1.0;
 	GetDisplayRange(MinValue, MaxValue);
 	const double Range = FMath::Max(MaxValue - MinValue, 0.0);
-	// Rate is fixed per unit of travel and read per event, so Shift changes speed from here
+	// Rate is fixed per unit of travel and read per event, so a modifier changes speed from here
 	// on instead of rescaling everything dragged so far.
-	// A row at least DragRangeDistance wide tracks the cursor one to one, so the fill stays
-	// under the hand; a narrower one (a paired half row) spreads the range over the minimum
-	// distance instead of scrubbing faster than a full row.
-	const double Rate = Range / FMath::Max(Width, MixtormatTokens::DragRangeDistance)
-		* (MouseEvent.IsShiftDown() ? MixtormatTokens::FineDragScale : 1.0);
+	// The range spans the row's own width, whatever it is, so the fill stays under the cursor on
+	// a full row and on a paired half row alike. Shift slows the scrub; Ctrl+Shift slows it
+	// further, and Ctrl on its own is left free for snapping.
+	const double Tier = !MouseEvent.IsShiftDown() ? 1.0
+		: MouseEvent.IsControlDown() ? MixtormatTokens::FinestDragScale
+		: MixtormatTokens::FineDragScale;
+	const double Rate = Range / FMath::Max(Width, UE_KINDA_SMALL_NUMBER) * Tier;
 	const double Proposed = DragValue + static_cast<double>(Delta) * Rate;
 
 	// The drag never leaves the range it started with. Pushing an end that still has room is
@@ -287,7 +319,7 @@ FReply SMixtormatSlider::ApplyDrag(const float Delta, const float Width, const F
 
 	double NewValue = DragValue;
 	const double Snap = DeltaAttribute.Get(0.0);
-	if (MouseEvent.IsControlDown() && Snap > 0.0)
+	if (MouseEvent.IsControlDown() && !MouseEvent.IsShiftDown() && Snap > 0.0)
 	{
 		NewValue = FMath::RoundToDouble(NewValue / Snap) * Snap;
 	}
@@ -296,7 +328,6 @@ FReply SMixtormatSlider::ApplyDrag(const float Delta, const float Width, const F
 		NewValue = FMath::RoundToDouble(NewValue);
 	}
 	OnValueChanged.ExecuteIfBound(FMath::Clamp(NewValue, Low, High));
-	return FReply::Handled();
 }
 
 void SMixtormatSlider::FinishDragRange()
@@ -361,8 +392,7 @@ FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& 
 		BeginTextEntry();
 	}
 	bMovedPastThreshold = false;
-	// The cursor was hidden in place; show it again where the press began.
-	return FReply::Handled().ReleaseMouseCapture().SetMousePos(DragStartScreen);
+	return FReply::Handled().ReleaseMouseCapture();
 }
 
 int32 SMixtormatSlider::OnPaint(

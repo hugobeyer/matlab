@@ -171,10 +171,13 @@ namespace MixtormatTokens
 	constexpr float ModifiedLabelInset = 5.0f;
 	// Pixels of travel before a press becomes a scrub rather than a click-to-type.
 	inline float DragThreshold = 4.0f;
-	// Shift-drag multiplier.
-	inline float FineDragScale = 0.125f;
-	// Minimum Slate units of drag that sweep a slider's whole range. Rows wider than this track
-	// the cursor 1:1; narrower ones (paired half rows) use this distance so they are not faster.
+	// Drag-rate multipliers: Shift, and Ctrl+Shift. The base rate sweeps the range over the row's
+	// own width, so the fill follows the cursor.
+	inline float FineDragScale = 0.1f;
+	constexpr float FinestDragScale = 0.01f;
+	// Pixels from the work-area edge at which a drag wraps the cursor to the opposite edge.
+	constexpr float DragWrapMargin = 2.0f;
+	// Not read by the slider any more; still registered in MixtormatLiveTheme.cpp. Delete both.
 	inline float DragRangeDistance = 320.0f;
 	// Centre tick on a range that spans zero.
 	constexpr float TickInsetY = 4.0f;

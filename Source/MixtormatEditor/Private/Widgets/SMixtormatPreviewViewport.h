@@ -119,11 +119,15 @@ public:
 
 	void Construct(const FArguments& InArgs);
 	void SetPreviewMaterial(UMaterialInterface* Material);
+	// bInteractive marks a request made mid-scrub: it is rate-limited to the measured compose
+	// cost and only the newest is kept. Anything else (typed value, toggle, the drag's final
+	// value) is submitted as soon as the previous composite is out of flight.
 	void SetPreviewLayers(
 		const TArray<FMixtormatLayer>& Layers,
 		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
-		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings());
+		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
+		bool bInteractive = false);
 	void SetDebugPreview(FMixtormatDebugPreviewSettings DebugSettings);
 	bool ComposeLayersAtResolution(
 		const TArray<FMixtormatLayer>& Layers,
@@ -202,19 +206,36 @@ private:
 		int32 Resolution,
 		FMixtormatDebugPreviewSettings DebugSettings,
 		bool bWaitForCompletion);
+	// One timer both measures the composite in flight and releases the pending request.
 	EActiveTimerReturnType FlushPendingCompose(double CurrentTime, float DeltaTime);
+	bool CanSubmitCompose(bool bInteractive) const;
+	// Submits a live-preview composite and starts timing it for the drag-time interval.
+	void SubmitCompose(
+		const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups,
+		int32 Resolution,
+		const FMixtormatDebugPreviewSettings& DebugSettings);
+	void EnsureComposeTimer();
 
-	// Latest preview request that arrived while the previous composite was still in flight.
-	// Only the newest is kept: intermediate frames of a drag are never worth rendering late.
+	// Latest preview request that arrived while the previous composite was still in flight or
+	// the drag-time interval had not elapsed. Only the newest is kept: intermediate frames of a
+	// drag are never worth rendering late.
 	struct FPendingCompose
 	{
 		TArray<FMixtormatLayer> Layers;
 		TArray<FMixtormatLayerGroup> Groups;
 		int32 Resolution = 0;
 		FMixtormatDebugPreviewSettings DebugSettings;
+		bool bInteractive = false;
 	};
 	TOptional<FPendingCompose> PendingCompose;
 	TSharedPtr<FActiveTimerHandle> PendingComposeTimer;
+
+	// Game-thread wall time from submit to the first frame the composite is out of flight,
+	// smoothed. It sets how often a drag may submit, so a heavy stack backs off by itself.
+	double LastComposeSubmitTime = 0.0;
+	double SmoothedComposeSeconds = 0.0;
+	bool bMeasuringCompose = false;
 
 	FAdvancedPreviewScene PreviewScene;
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;

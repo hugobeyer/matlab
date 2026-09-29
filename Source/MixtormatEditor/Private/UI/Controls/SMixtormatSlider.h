@@ -109,7 +109,10 @@ private:
 	double GetValue() const;
 	FString FormatValue(double Value) const;
 	void CommitValue(double Value, bool bClampToRange);
-	FReply ApplyDrag(float Delta, float Width, const FPointerEvent& MouseEvent);
+	void ApplyDrag(float Delta, float Width, const FPointerEvent& MouseEvent);
+	// Warps the cursor to the opposite edge of the monitor work area once it reaches one, and
+	// re-bases the drag on the landing point. The reply carries the warp.
+	FReply WrapCursorAtScreenEdge(const FVector2D& Screen);
 	// The range the bar draws and scrubs over: the soft range, widened by any expansion and,
 	// for an expandable slider, by a value typed outside it.
 	void GetDisplayRange(double& OutMin, double& OutMax) const;
@@ -152,11 +155,12 @@ private:
 	bool bDragging = false;
 	bool bMovedPastThreshold = false;
 	double DragStartValue = 0.0;
-	// Unrounded, range-clamped scrub value. Accumulated per move so Shift can change the rate
-	// mid-drag without jumping, and clamped as it goes so reversing at a limit responds at once.
+	// Unrounded, range-clamped scrub value. Accumulated per move so a modifier can change the
+	// rate mid-drag without jumping, and clamped as it goes so reversing at a limit responds at once.
 	double DragValue = 0.0;
 	// Total travel before the threshold, in Slate units.
 	float DragTravel = 0.0f;
-	// Where the hidden cursor is put back on release.
-	FIntPoint DragStartScreen = FIntPoint::ZeroValue;
+	// Cursor X, in screen pixels, at the previous move. Reset to the landing point when the
+	// cursor wraps, so the wrap itself is not counted as travel.
+	float LastDragScreenX = 0.0f;
 };

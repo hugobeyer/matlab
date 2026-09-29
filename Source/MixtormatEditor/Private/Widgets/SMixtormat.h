@@ -1453,10 +1453,13 @@ private:
 	bool bApplyingHistory = false;
 	bool bPreviewRefreshPending = false;
 
-	// Drag state. While scrubbing, the preview composites at a reduced resolution and the
-	// undo history is not written; both are settled once on the frame the drag ends.
+	// Drag state. While scrubbing, the preview composites are rate-limited by the viewport and
+	// the undo history is not written; both are settled once on the frame the drag ends.
 	bool bInteractiveEdit = false;
 	bool bInteractiveHistoryPending = false;
+	// Set by every refresh request, cleared when the preview is submitted. Lets the drag timer
+	// idle instead of re-submitting an unchanged stack every frame while the mouse is held.
+	bool bPreviewSubmitPending = false;
 	bool bShowCompositionBefore = false;
 	bool bPreviewOverlayUiVisible = true;
 	bool bBypassSelectedChild = false;

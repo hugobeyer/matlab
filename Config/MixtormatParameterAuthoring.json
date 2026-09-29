@@ -202,5 +202,82 @@
 			"uiMax": 2,
 			"snap": 0.0099999997764825821
 		}
+	},
+	"Pattern IDs":
+	{
+		"PatternId.GapPixels":
+		{
+			"default": 4,
+			"uiMin": 0,
+			"uiMax": 32,
+			"snap": 1,
+			"clampMin": 0,
+			"clampMax": 256
+		},
+		"PatternId.RowOffset":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 1
+		},
+		"PatternId.Rows:Int":
+		{
+			"default": 16,
+			"uiMin": 1,
+			"uiMax": 256,
+			"snap": 0
+		},
+		"PatternId.Columns:Int":
+		{
+			"default": 16,
+			"uiMin": 1,
+			"uiMax": 32,
+			"snap": 0,
+			"clampMin": 1,
+			"clampMax": 512
+		}
+	},
+	"Relief From IDs":
+	{
+		"ReliefId.HeightAmount":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0
+		},
+		"ReliefId.BevelHeight":
+		{
+			"default": 0.125,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0
+		},
+		"ReliefId.BevelWidthPixels":
+		{
+			"default": 16,
+			"uiMin": 0,
+			"uiMax": 64,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 512
+		},
+		"ReliefId.EdgeRoughness":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0
+		},
+		"ReliefId.EdgeRoughnessAmount":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0
+		}
 	}
 }
