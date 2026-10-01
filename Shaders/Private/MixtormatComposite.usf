@@ -761,10 +761,6 @@ float SampleHeightBlendFieldEx(float2 UV, float Softness, uint SmoothBase)
 	return EvaluateHeightBlend(UV, Softness, SmoothBase).Weight;
 }
 
-float SampleHeightBlendField(float2 UV, float Softness)
-{
-	return SampleHeightBlendFieldEx(UV, Softness, 0);
-}
 
 float SampleContactField(float2 UV)
 {

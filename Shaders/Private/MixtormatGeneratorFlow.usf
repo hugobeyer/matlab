@@ -501,8 +501,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// The gathered, weighted drop times influence -- independent of Depth, unclamped.
 	OutCarveMask[Pixel] = Depth != 0.0f ? Carve / Depth : 0.0f;
 	OutWarpedUV[Pixel] = UV;
-	// A deposit raised outside the owner's coverage would be masked straight back out by its
-	// combine, so the raised pixels join the coverage. A groove keeps the coverage it had.
+	// Deposits extend the explicit support field published by generators such as Pebbles.
+	// Grooves preserve that field; it does not gate the module's height combine.
 	const float Covered = SampleCoverage(UV);
 	OutCoverage[Pixel] = CarveMode == 1u && Carve != 0.0f ? 1.0f : Covered;
 }

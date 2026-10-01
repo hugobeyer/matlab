@@ -2916,7 +2916,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockEdgeJag = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (ClampMin = "1.0", UIMin = "1.0", Delta = "0.01"))
 	float RockJagScale = 4.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))

@@ -1385,8 +1385,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorBundle GeneratorBundle;
 		// Last valid Flow/UV reference placement. Applied before the destination's own source UVs.
 		FRDGTextureRef ReferencedUV = nullptr;
-		// HeightMode and scoped flow resolved, before the Rock HeightScale placement gain.
-		TMap<int32, FRDGTextureRef> ResolvedRockHeights;
+
 		// Set when a generator rewrote LayerInputHeight: the composite then reads it as this
 		// layer's height even when the layer has no packed height of its own.
 		bool bGeneratedHeight = false;
@@ -1454,7 +1453,7 @@ namespace MixtormatGpuCompositor
 			LayerInputHeight = nullptr;
 			GeneratorBundle = FGeneratorBundle();
 			ReferencedUV = nullptr;
-			ResolvedRockHeights.Reset();
+
 			bGeneratedHeight = false;
 			GeneratorFields.Reset();
 			PendingLayerBlurs.Reset();

@@ -28,8 +28,8 @@
 //         -> mask children, effects, AddLayerCompositePass
 //
 // AddGeneratorLayerPasses is called once per Generator layer and walks its module children in
-// authored order. Each module builds its own height and coverage, then blends into the layer's
-// running height with its own Height Op; the result replaces LayerCtx.LayerInputHeight.
+// authored order. Each module builds its own scalar height, then blends into the layer's
+// running height with the shared HeightBlend; the result replaces LayerCtx.LayerInputHeight.
 
 namespace MixtormatGpuCompositor
 {
@@ -845,9 +845,9 @@ namespace
 
 	FRockLayout ResolveRockLayout(const FRockFormationRenderData& Rock)
 	{
-		// row_mul, splits, wall angle for cliff, layered, boulder, rubble.
-		static const float Preset[4][3] = {
-			{1.0f, 3.0f, 72.0f}, {2.0f, 2.0f, 72.0f}, {1.0f, 2.0f, 58.0f}, {1.0f, 1.0f, 60.0f}};
+		// Splits and wall angle for cliff, layered, boulder, rubble.
+		static const float Preset[4][2] = {
+			{3.0f, 72.0f}, {2.0f, 72.0f}, {2.0f, 58.0f}, {1.0f, 60.0f}};
 		// Match ROCK_STYLE_FROM / ROCK_STYLE_TO; only the table position is bounded.
 		const float Style = FMath::Clamp(FMath::Lerp(1.0f, 2.5f, Rock.Style), 0.0f, 3.0f);
 		const int32 Row = FMath::Min(static_cast<int32>(Style), 2);
@@ -861,11 +861,11 @@ namespace
 		Layout.CellsU = FMath::Max(Rock.Cells, 1);
 		Layout.CellsV = FMath::Max(Rock.Rows, 1);
 		Layout.RowHeight = static_cast<float>(Layout.CellsU) / static_cast<float>(Layout.CellsV);
-		const int32 Splits = FMath::Max(FMath::RoundToInt(Blend(1) * Rock.Fracture), 0);
+		const int32 Splits = FMath::Max(FMath::RoundToInt(Blend(0) * Rock.Fracture), 0);
 		// Every internal BSP node has two children, so a tree with Splits internal nodes has
 		// Splits + 1 leaves. Bounded by the per-cell buffer slot count, not by taste.
 		Layout.MaxLeaves = FMath::Clamp(Splits + 1, 1, 256);
-		Layout.WallSlope = FMath::Tan(FMath::DegreesToRadians(Blend(2)));
+		Layout.WallSlope = FMath::Tan(FMath::DegreesToRadians(Blend(1)));
 		Layout.ChamferSlope = FMath::Min(FMath::Tan(FMath::DegreesToRadians(42.0f)), Layout.WallSlope);
 		return Layout;
 	}
@@ -873,12 +873,12 @@ namespace
 	// GPU mirror of FRockLeaf in MixtormatRockFormation.usf, for the buffer stride only.
 	struct FRockLeafStride
 	{
-		// Cx Cy, Sx Sy, TopConstant, Top, Radius, Rv, JagOffset, JagSize.
-		float Floats[10];
+		// Cx Cy, Sx Sy, TopConstant, Radius, Rv, JagOffset, JagSize.
+		float Floats[9];
 		// Ck, Pk, ChipOn, EdgeCount, VertexCount, Id, SeamBits, Pad.
 		uint32 Uints[8];
 	};
-	static_assert(sizeof(FRockLeafStride) == 72, "Rock leaf stride must match FRockLeaf in HLSL");
+	static_assert(sizeof(FRockLeafStride) == 68, "Rock leaf stride must match FRockLeaf in HLSL");
 	static constexpr int32 RockMaxVertices = 24;
 
 	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
@@ -1282,7 +1282,6 @@ namespace
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
-		FRDGTextureRef SourceHeight,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1292,7 +1291,7 @@ namespace
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
 		const FRockLayout Layout = ResolveRockLayout(Rock);
-		const auto FillParameters = [&Rock, &Layout, &Layer, &Child, Size](FMixtormatRockFormationCS::FParameters* P)
+		const auto FillParameters = [&Rock, &Layout, &Layer, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer);
 			P->OutputSize = Size;
@@ -1559,7 +1558,6 @@ namespace
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
-		FRDGTextureRef SourceHeight,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1784,7 +1782,6 @@ namespace
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
-		FRDGTextureRef SourceHeight,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1793,7 +1790,7 @@ namespace
 		const FIntPoint Size = Request.Resolution;
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
-		const auto FillParameters = [&Pebbles, &Layer, &Child, Size](FMixtormatPebblesCS::FParameters* P)
+		const auto FillParameters = [&Pebbles, &Layer, Size](FMixtormatPebblesCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer);
 			P->OutputSize = Size;
@@ -2011,13 +2008,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
 			break;
 		case EMixtormatGeneratorType::RockFormation:
-			AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
+			AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		case EMixtormatGeneratorType::Pebbles:
-			AddPebblesPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
+			AddPebblesPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		case EMixtormatGeneratorType::Cracks:
-			AddCracksPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
+			AddCracksPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		}
 		if (!Module.Height) { continue; }

@@ -280,14 +280,14 @@
 		{
 			"default": 0.10000000149011612,
 			"uiMin": 0,
-			"uiMax": 1,
+			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.CrackTilt":
 		{
 			"default": 0.10000000149011612,
 			"uiMin": 0,
-			"uiMax": 1,
+			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.CrackChamferAmount":

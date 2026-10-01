@@ -40,7 +40,7 @@
 #define ROCK_BIG   1e20f
 #define ROCK_MAXV  24
 #define ROCK_CRACK 0x80000000u
-#define ROCK_NP    14
+#define ROCK_NP    13
 
 // Full-scale angles for the normalised controls, in degrees.
 #define ROCK_SPIN_DEG          180.0f
@@ -126,13 +126,13 @@ RWTexture2D<uint> OutRockIds;
 RWTexture2D<float> OutHeight;
 
 // One leaf chunk, in its canonical cell's rest frame. FRockLeafStride in
-// MixtormatGpuGeneratorPasses.cpp mirrors this layout: ten floats, then eight uints.
+// MixtormatGpuGeneratorPasses.cpp mirrors this layout: nine floats, then eight uints.
 struct FRockLeaf
 {
 	float Cx, Cy;          // centroid
 	float Sx, Sy;          // top slope (tilt)
 	float TopConstant;     // T(p) = TopConstant + dot(S, p)
-	float Top;             // highest the chunk can reach
+
 	float Radius;          // reach: farthest vertex + wall fall-off + jag + chip
 	float Rv;              // farthest vertex from the centroid; facet planes scale by it
 	float JagOffset;       // the chunk's own shift along its edges, so its jag is its own
@@ -164,13 +164,13 @@ StructuredBuffer<uint> EdgeTags;
 StructuredBuffer<float2> Vertices;
 StructuredBuffer<uint> LeafCounts;
 
-// strata, row_mul, splits, split_angle, h_bias, height_var,
+// strata, splits, split_angle, h_bias, height_var,
 // layer_var, chip, wall, cell_gap, seam_gap, outer_ch, inner_ch, irr
 static const float RockPreset[4][ROCK_NP] = {
-	{ 1.0f, 1.0f, 3.0f, 30.0f, 0.2f, 0.35f, 0.25f, 0.35f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
-	{ 1.0f, 2.0f, 2.0f,  6.0f, 0.7f, 0.30f, 0.45f, 0.25f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
-	{ 0.0f, 1.0f, 2.0f, 30.0f, 0.0f, 0.35f, 0.25f, 0.40f, 58.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.9f },
-	{ 0.0f, 1.0f, 1.0f, 30.0f, 0.0f, 0.60f, 0.20f, 0.40f, 60.0f, 0.04f, 0.020f, 0.10f, 0.06f, 0.9f },
+	{ 1.0f, 3.0f, 30.0f, 0.2f, 0.35f, 0.25f, 0.35f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
+	{ 1.0f, 2.0f,  6.0f, 0.7f, 0.30f, 0.45f, 0.25f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
+	{ 0.0f, 2.0f, 30.0f, 0.0f, 0.35f, 0.25f, 0.40f, 58.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.9f },
+	{ 0.0f, 1.0f, 30.0f, 0.0f, 0.60f, 0.20f, 0.40f, 60.0f, 0.04f, 0.020f, 0.10f, 0.06f, 0.9f },
 };
 
 struct FRockPat
@@ -591,7 +591,7 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	L.Cx = c.x; L.Cy = c.y;
 	L.Sx = s.x; L.Sy = s.y;
 	L.TopConstant = top - smax - dot(s, c);
-	L.Top = top;
+
 	L.Rv = rv;
 	L.Ck = ck;
 	L.Pk = pk;
@@ -884,30 +884,30 @@ FRockPat RockSetup()
 		const float t00 = k00, t01 = k01, t10 = sy * k01, t11 = sy * k11;
 		P.metric = float3(t00 * t00 + t10 * t10, t00 * t01 + t10 * t11, t01 * t01 + t11 * t11);
 	}
-	P.splits = max((int)round(v[2] * FractureAmount), 0);
-	P.split_angle = v[3];
-	P.h_bias = v[4];
-	P.hvar = v[5];
-	P.lvar = v[6];
+	P.splits = max((int)round(v[1] * FractureAmount), 0);
+	P.split_angle = v[2];
+	P.h_bias = v[3];
+	P.hvar = v[4];
+	P.lvar = v[5];
 	P.height_clusters = HeightClusters;
 	P.skew = Skew;
-	P.chip = v[7] * FacetChips;
-	P.wall_k = tan(radians(v[8]));
+	P.chip = v[6] * FacetChips;
+	P.wall_k = tan(radians(v[7]));
 	// Signed domain offset: positive shrinks, negative expands, zero leaves packing unchanged.
 	// 1 is twice the style's natural gap; only positive gaps get the anti-aliasing pixel floor.
 	const float pixel = (float)P.cu / (float)max(OutputSize.x, 1);
 	const float gapFloor = GapAmount > 0.0f ? pixel : 0.0f;
-	P.cell_gap = v[9] * GapAmount * 2.0f + gapFloor;
-	P.seam_gap = v[10] * GapAmount * 2.0f + gapFloor;
+	P.cell_gap = v[8] * GapAmount * 2.0f + gapFloor;
+	P.seam_gap = v[9] * GapAmount * 2.0f + gapFloor;
 	// The preset keeps only its character for the chamfer: outer edges vs split seams, rubble a
 	// little wider than cliff.
-	P.outer_ch = v[11] / 0.08f;
-	P.inner_ch = v[12] / 0.05f;
+	P.outer_ch = v[10] / 0.08f;
+	P.inner_ch = v[11] / 0.05f;
 	P.chamfer = ChamferAmount;
 	P.seam_chamfer = ChamferAmount * ROCK_SEAM_CHAMFER;
 	P.chamfer_random = ChamferRandom;
 	P.fracture_height_bias = FractureHeightBias;
-	P.irr = v[13];
+	P.irr = v[12];
 	P.seed = RockHash(Seed + 0x51ED27u);
 
 	// Stored in degrees from here on.

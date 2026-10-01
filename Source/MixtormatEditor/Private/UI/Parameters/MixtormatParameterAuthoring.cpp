@@ -1,7 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
-#include "UI/Parameters/MixtormatGeneratorPayload.h"
+
 
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "MixtormatParameterBinding.h"
@@ -372,38 +372,6 @@ namespace MixtormatParameterAuthoring
 		}
 	}
 
-	void ApplyAuthoringDefaults(FMixtormatGenerator& Generator)
-	{
-		LoadFromDisk();
-		void* Payload = MixtormatGeneratorPayload::Data(Generator);
-		const UScriptStruct* Struct = MixtormatGeneratorPayload::Struct(Generator);
-		if (!Payload || !Struct)
-		{
-			return;
-		}
-		for (const auto& Pair : ShippedEntries())
-		{
-			if (Pair.Key.Owner != EMixtormatParameterOwnerType::Generator || !Pair.Value.Default.IsSet())
-			{
-				continue;
-			}
-			const FProperty* Property = Struct->FindPropertyByName(Pair.Key.Parameter);
-			if (Pair.Key.ValueType == EMixtormatParameterValueType::Float)
-			{
-				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
-				{
-					*Float->ContainerPtrToValuePtr<float>(Payload) = Pair.Value.Default.GetValue();
-				}
-			}
-			else if (Pair.Key.ValueType == EMixtormatParameterValueType::Int)
-			{
-				if (const FIntProperty* Int = CastField<FIntProperty>(Property))
-				{
-					*Int->ContainerPtrToValuePtr<int32>(Payload) = FMath::RoundToInt(Pair.Value.Default.GetValue());
-				}
-			}
-		}
-	}
 
 	bool LoadFromString(const FString& Json)
 	{

@@ -18,10 +18,6 @@ namespace MixtormatGeneratorPayload
 		return nullptr;
 	}
 
-	inline void* Data(FMixtormatGenerator& Generator)
-	{
-		return const_cast<void*>(Data(static_cast<const FMixtormatGenerator&>(Generator)));
-	}
 
 	inline UScriptStruct* Struct(const FMixtormatGenerator& Generator)
 	{

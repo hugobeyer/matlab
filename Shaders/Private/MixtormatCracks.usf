@@ -14,18 +14,18 @@
 //              agree. A pixel the jag moves across a border belongs to the piece on the far side.
 //   push    -- near the cracks only, the lattice lookup is shifted by a 2D feathered-cell noise, so
 //              cracks kink and bend while the piece tops keep their facets.
-//   width   -- varies along each crack, per crack and by region; a crack that swells wider also
-//              cuts deeper. Chips bite into each rim on their own side; some cracks have opened
-//              into flat-floored gaps.
+//   width   -- dilates the negative groove without changing piece height or depth. Width
+//              variation also modulates groove depth. Chips bite into each rim on their own side;
+//              some cracks have opened into flat-floored gaps.
 //   pieces  -- slip/tilt form the base height independently of width. Neighbouring offsets
 //              blend across a hairline at the border; the crack adds only a non-positive delta.
 //
 // Stages (CRACK_STAGE):
 //   0 field   -- depends on the settings only, so it is cached: height change, crack mask, crack
 //                distance, piece ids and random, and the boundary pair the flow tools read.
-//   1 seed, 2 propagate -- tile-wrapped variable-speed arrival on a capped solve grid.
+//   1 seed, 2 propagate -- tile-wrapped neutral-speed arrival on a capped solve grid.
 //   3 chamfer -- shape the negative groove delta, preserving the piece base and flat floor.
-//   4 combine -- the field into the layer's height by the generator blend mode.
+//   4 resolve -- scalar module height; the ordered chain applies the shared HeightBlend.
 //
 // Prototype: Houdini/opencl/cracks/mx_crack_network.cl.
 
@@ -490,9 +490,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Right = int2(Pixel.x + 1 == SolveSize.x ? 0 : Pixel.x + 1, Pixel.y);
 	const int2 Down = int2(Pixel.x, Pixel.y == 0 ? SolveSize.y - 1 : Pixel.y - 1);
 	const int2 Up = int2(Pixel.x, Pixel.y + 1 == SolveSize.y ? 0 : Pixel.y + 1);
-	// Future external modulation belongs here (SpeedField * SpeedAmount * SpeedGate).
-	// Seed bounds and sub-grid resolve must use the same speed contract when it is wired.
-	// No source is connected today: propagation is neutral, independent of Width.
+	// Propagation is neutral, independent of Width.
 	const float Speed = 1.0f;
 	const float Cost = 1.0f / Speed;
 	const float Self = Arrival.Load(int3(Pixel, 0));

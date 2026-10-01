@@ -101,7 +101,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	}
 	case EMixtormatGeneratorType::RockFormation:
 	{
-		// Unclamped: ranges are authored in the tool. Non-finite falls back to the default.
+		// Non-finite values fall back to defaults; lattice counts and Jag Scale have safety floors.
 		const FMixtormatRockFormation& Rock = Generator.RockFormation;
 		const FMixtormatRockFormation Defaults;
 		FRockFormationRenderData& Out = ChildData.Generator.RockFormation;
@@ -122,6 +122,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.Spin = Finite(Rock.RockSpin, Defaults.RockSpin);
 		Out.SpinRandom = Finite(Rock.RockSpinRandom, Defaults.RockSpinRandom);
 		Out.TiltAngle = Finite(Rock.RockTiltAngle, Defaults.RockTiltAngle);
+		Out.TiltDirection = Finite(Rock.RockTiltDirection, Defaults.RockTiltDirection);
 		Out.TiltRandom = Finite(Rock.RockTiltRandom, Defaults.RockTiltRandom);
 		Out.SizeRandom = Finite(Rock.RockSizeRandom, Defaults.RockSizeRandom);
 		Out.Stretch = Finite(Rock.RockStretch, Defaults.RockStretch);
@@ -130,7 +131,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.HeightClusters = Finite(Rock.RockHeightClusters, Defaults.RockHeightClusters);
 		Out.Skew = Finite(Rock.RockSkew, Defaults.RockSkew);
 		Out.EdgeJag = Finite(Rock.RockEdgeJag, Defaults.RockEdgeJag);
-		Out.JagScale = Finite(Rock.RockJagScale, Defaults.RockJagScale);
+		// Sub-unit frequency inflates inverse jag amplitude and the per-pixel field search reach.
+		Out.JagScale = FMath::Max(Finite(Rock.RockJagScale, Defaults.RockJagScale), 1.0f);
 		Out.JagDetail = Finite(Rock.RockJagDetail, Defaults.RockJagDetail);
 		Out.ChamferJag = Finite(Rock.RockChamferJag, Defaults.RockChamferJag);
 		Out.RimChips = Finite(Rock.RockRimChips, Defaults.RockRimChips);

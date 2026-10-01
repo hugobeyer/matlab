@@ -74,17 +74,4 @@ float3 MixtormatNormalFromHeightGradient(float2 Gradient)
 	return normalize(float3(-Gradient.x, -Gradient.y, 1.0f));
 }
 
-// Central-difference variant, for passes that sample a field rather than load a neighbourhood.
-// Scaled to agree with the Sobel above: a Sobel over a linear ramp of per-texel step d evaluates
-// to 8d, so a central difference of 2d needs the same factor of four to land in the same units.
-float2 MixtormatHeightGradientCentral(
-	float hM0, float hP0,
-	float h0M, float h0P,
-	int2 OutputSize,
-	float Strength)
-{
-	return float2(hP0 - hM0, h0P - h0M)
-		* 4.0f
-		* (float2(OutputSize) / MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES)
-		* Strength;
-}
+
