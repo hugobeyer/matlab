@@ -3120,7 +3120,7 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 // one badge, one dispatch, one gather branch, one inspector slot -- and the kind is a field
 // inside it rather than a second discriminator bolted onto EMixtormatLayerChildType. Adding a
 // generator is then: a value on EMixtormatGeneratorType, a payload struct beside StrataCarver,
-// a case in AddGeneratorPasses, and an inspector panel. Nothing that already exists changes.
+// a case in AddGeneratorLayerPasses, and an inspector panel. Nothing that already exists changes.
 //
 // This is the opposite of the trade EMixtormatLayerChildType makes for filters, and deliberately
 // so. Filters are discriminated at the top level because every dispatch in the plugin already
@@ -3137,6 +3137,17 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
 	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+
+	// Modules compose into their Generator layer in child order. The first module created on a
+	// layer replaces its neutral running height; later modules add unless the artist changes it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
+	EMixtormatHeightOp BlendOp = EMixtormatHeightOp::Replace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "0.5"))
+	float BlendSoftness = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float BlendAmount = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
 	FMixtormatStrataCarver StrataCarver;
@@ -3413,10 +3424,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
-
-	// Type selects the only active payload; surface values and composition remain layer-owned.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatLayerType::Generator"))
-	FMixtormatGenerator Generator;
 
 	// Disable to keep full layer coverage while using the generator's height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatLayerType::Generator"))

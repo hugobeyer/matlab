@@ -755,12 +755,6 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		const FMixtormatChildAddress Address = GetSelectedChildAddress();
 		const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-		if (Child && !Child->ScopeOwnerChildId.IsValid()
-			&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
-			&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
-		{
-			return true;
-		}
 		const FMixtormatLayerChild* Owner = Child && Children
 			? Children->FindByPredicate([Child](const FMixtormatLayerChild& Candidate)
 				{ return Candidate.ChildId == Child->ScopeOwnerChildId; }) : nullptr;
@@ -3212,6 +3206,24 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 		];
 }
 
+// The module's blend into its Generator layer's running height. First in every module panel,
+// because it is the one question every module answers however its own controls read.
+void SMixtormat::AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel)
+{
+	const auto Generator = [this]() { return GetSelectedGenerator(); };
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatGenerator, EMixtormatHeightOp>(
+			LOCTEXT("GeneratorBlendOp", "Blend"), Generator, &FMixtormatGenerator::BlendOp,
+			LOCTEXT("GeneratorBlendOpHint", "How this module combines with the height the modules above it built. The first module replaces; later ones add. Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace where nothing is below."),
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
+		MakeMemberSlider<FMixtormatGenerator>(
+			LOCTEXT("GeneratorBlendSoftness", "Softness"), Generator, &FMixtormatGenerator::BlendSoftness, 0.0, 0.5, 0.1, 0.001,
+			LOCTEXT("GeneratorBlendSoftnessHint", "Rounded join for Min and Max, in height units. 0 is a hard min or max."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGenerator>(
+		LOCTEXT("GeneratorBlendAmount", "Amount"), Generator, &FMixtormatGenerator::BlendAmount, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("GeneratorBlendAmountHint", "How much of this module reaches the layer, multiplied by its own coverage.")));
+}
+
 // Strata Carver, the first GENERATORS panel.
 //
 // Rows run from what the beds are (size, direction, thickness, height), through their profile
@@ -3244,6 +3256,7 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddGeneratorBlendRows(Panel);
 
 	AddSliderRow(Panel, SliderInt(
 		LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 9999.0, 3,
@@ -3333,6 +3346,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 {
 	const auto Crack = [this]() { return GetSelectedCracks(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddGeneratorBlendRows(Panel);
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatCracks>(
@@ -3497,6 +3511,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 {
 	const auto Pebble = [this]() { return GetSelectedPebbles(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddGeneratorBlendRows(Panel);
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatPebbles>(
@@ -3626,6 +3641,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 {
 	const auto Rock = [this]() { return GetSelectedRockFormation(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddGeneratorBlendRows(Panel);
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpShape", "SHAPE")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(

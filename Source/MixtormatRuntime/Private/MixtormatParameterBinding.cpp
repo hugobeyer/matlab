@@ -123,10 +123,6 @@ namespace
 
 	FOwnerView LayerOwner(const FMixtormatLayer& Layer, const EMixtormatParameterOwnerType Owner)
 	{
-		if (Owner == EMixtormatParameterOwnerType::Generator && Layer.Type == EMixtormatLayerType::Generator)
-		{
-			return GeneratorOwner(Layer.Generator, Layer.ParameterBindings);
-		}
 		if (Owner != EMixtormatParameterOwnerType::Layer)
 		{
 			return {};
@@ -248,10 +244,6 @@ namespace
 			{
 				return LayerOwner(Layer, Address.Owner);
 			}
-			if (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid())
-			{
-				return Address.LayerId.IsValid() ? LayerOwner(Layer, Address.Owner) : FOwnerView{};
-			}
 			for (const FMixtormatLayerChild& Child : Layer.Children)
 			{
 				if (Child.ChildId == Address.ChildId)
@@ -308,10 +300,6 @@ namespace
 			if (Address.Owner == EMixtormatParameterOwnerType::Layer)
 			{
 				return MutableLayerOwner(Layer, Address.Owner);
-			}
-			if (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid())
-			{
-				return Address.LayerId.IsValid() ? MutableLayerOwner(Layer, Address.Owner) : FOwnerView{};
 			}
 			for (FMixtormatLayerChild& Child : Layer.Children)
 			{

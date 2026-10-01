@@ -125,7 +125,6 @@ struct FMixtormatChildPreviewOutputSet
 // eye/chevron widget and its status label read this rather than naming a child type themselves,
 // so a new producer needs one case in GetChildCapabilities and nothing else.
 FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child);
-FMixtormatChildPreviewOutputSet GetLayerPreviewOutputSet(const FMixtormatLayer& Layer);
 
 // Convenience for an inspector group whose panel is built for one known, fixed child kind (the
 // panel is only ever visible while a child of that kind is selected): the descriptor set depends
@@ -365,6 +364,8 @@ private:
 	// wants, and leaves it selected in whichever container it landed in.
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
+	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
+	void AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel);
 	// Texture Mask, from the gallery selection. The same call the gallery's drag-and-drop makes, so
 	// the menu entry and the drop cannot drift into two different kinds of mask.
 	FReply AddTextureMask(FMixtormatAddTarget Target, FSoftObjectPath MaskPath);

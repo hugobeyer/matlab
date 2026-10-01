@@ -345,8 +345,8 @@ pre{
 <div class="mini"><strong>Ships in Mixtormat 1.0</strong>65 source surfaces across 18 families, 47 reusable masks, and a worked example recipe — all evaluated on the GPU while you edit.</div>
 <div class="mini"><strong>Nine effects</strong>Peeling, Stain, Erosion, Grade, Breakup, Worn Edges, Flow Warp, Layer Blur, and Runoff, plus Craquelure as its own mask child.</div>
 <div class="mini"><strong>Complete ID toolchain</strong>Pattern IDs lays out regions; the From-IDs filters — Random, Ramp, HSV, Color ID, UV From IDs, Relief From IDs — turn them into per-region variation and drive parameter drivers.</div>
-<div class="mini"><strong>Generators &amp; groups</strong>Strata, Cracks, Rock Formation and Pebbles can own a Generator layer with independent coverage and Height Op; layer groups broadcast one shared child stack across members.</div>
-<div class="mini"><strong>Rock Formation</strong>Shape fractured rocks with normalized tilt, spin, stretch, jagged edges, rim chips and facet chips. Choose Raw, Analytic or Measured height. Copy normalized Height, Slope and Gap gates alongside the existing Top, Chamfer, Wall, ramps and signed boundary distance. Height and Slope gates are independent of Height Mode and Height Scale. Generator-layer IDs and masks publish after flow; transitional generator-child outputs retain their existing ordering.</div>
+<div class="mini"><strong>Generators &amp; groups</strong>A Generator layer holds an ordered chain of generator modules (Strata, Cracks, Rock Formation, Pebbles), each with its own blend into the layer height; layer groups broadcast one shared child stack across members.</div>
+<div class="mini"><strong>Rock Formation</strong>Shape fractured rocks with normalized tilt, spin, stretch, jagged edges, rim chips and facet chips. Choose Raw, Analytic or Measured height. Copy normalized Height, Slope and Gap gates alongside the existing Top, Chamfer, Wall, ramps and signed boundary distance. Height and Slope gates are independent of Height Mode and Height Scale. Module IDs and masks publish after the module's flow.</div>
 <div class="mini"><strong>Typed output references</strong>Copy IDs, Flow or UVs from published outputs into later layers without reducing them to scalar masks. Scalar outputs remain Copy Gate masks; typed references must follow their source layer.</div>
 </div>
 </section>
@@ -469,11 +469,11 @@ pre{
 </div>
 <div class="card">
 <h3>Generator Layer</h3>
-<p>Right-click the layer column and choose <strong>Generator Layer → Strata / Cracks / Rock Formation / Pebbles</strong>. Each layer owns one generator, with Fill-style constant Base Color, Roughness, IOR and Metallic controls. Its source label reads <strong>GEN</strong> plus the generator kind; the Height Op badge and <strong>H</strong> indicator keep their existing meaning. AO remains derived from the final height, as on Fill layers.</p>
-<p><strong>Generator Drives Coverage</strong> defaults on: generator coverage multiplies the layer's coverage, so gaps reveal the stack below. Off, the layer fills the tile and the generator contributes height only; opacity, masks and Height Blending still apply. The existing HEIGHT and COMPOSITION cards remain available, with no separate generator blend control.</p>
+<p>Right-click the layer column and choose <strong>Generator Layer → Strata / Cracks / Rock Formation / Pebbles</strong>. The new layer starts with that module as its first child; add more from the layer's <strong>Add → Generators</strong> menu. Material layers do not offer generators. A Generator layer has Fill-style constant Base Color, Roughness, IOR and Metallic controls and its source label reads <strong>GEN</strong>; the Height Op badge and <strong>H</strong> indicator keep their existing meaning. AO remains derived from the final height, as on Fill layers.</p>
+<p><strong>Generator Drives Coverage</strong> defaults on: the merged coverage of the module chain multiplies the layer's coverage, so gaps reveal the stack below. Off, the layer fills the tile and the modules contribute height only; opacity, masks and Height Blending still apply. The layer's Height Op decides how the finished chain meets the stack below.</p>
 </div>
 <h3>New layer versus child effect</h3>
-<p>Effects are not a layer type — they are children you add to an existing layer. Add a Material, Fill or Generator Layer when introducing a different surface; add a child effect when changing the surface already in the stack. Generator children and their creation menus remain available during the transition; removing them is a later step.</p>
+<p>Effects are not a layer type — they are children you add to an existing layer. Add a Material, Fill or Generator Layer when introducing a different surface; add a child effect when changing the surface already in the stack.</p>
 </figure>
 </section>
 <section id="layer-groups">
@@ -575,29 +575,30 @@ pre{
 <section id="generators">
 <div class="section-head"><h2>Generators</h2></div>
 <p>A Generator layer produces its own height and coverage before masks and compositing. Its Height Op determines how that surface meets the stack below, independently of Height Blending. An effect modifies the finished surface; a generator defines the surface the layer is made of.</p>
+<h3>Generator layer: the module chain</h3>
+<p>A Generator layer holds an ordered chain of modules, its generator children. They run top to bottom: each module builds its own height and coverage, then blends into the layer's running height. The first module replaces the neutral starting height; modules added later default to <strong>Add</strong>.</p>
+<p>Every module panel starts with a <strong>BLEND</strong> row: <strong>Op</strong> (Replace, Add, Subtract, Multiply, Min, Max, Difference), <strong>Softness</strong> for the rounded Min/Max join, and <strong>Amount</strong> (0 to 1). The result is <code>running = lerp(running, op(running, module), Amount &times; module coverage)</code>, and the module's row badge shows its op.</p>
+<p>Coverage merges with the op, with no extra control. Replace, Add and Max extend coverage to wherever either has it; Subtract, Min, Multiply and Difference only change height inside the coverage already built. The merged result is the layer's coverage when <strong>Generator Drives Coverage</strong> is on.</p>
+<p>Every module publishes its IDs and masks under its own name and row, for example Rock IDs or Strata Bed Position, after its own flow. The layer's default IDs are those of the last module that produces any. Modules do not read each other yet.</p>
 <h3>Placement, flow and outputs</h3>
 <p>The layer's UV offset, quarter-turn rotation, integer scale and tiling move the generator's evaluation coordinates, so geometry, height, IDs, masks and boundaries move together. They do not transform published outputs afterwards.</p>
-<p>Add <strong>Shape Deform</strong>, <strong>Generator Flow</strong> or <strong>Flow Carve</strong> from a Generator layer's context menu. These are root Effect children and work with all four generator kinds. They deform the generator bundle before IDs and named masks publish; ordinary mask children follow, and ordinary effects still act on the composited surface.</p>
-<p>The generator foldout header retains its preview eye and output chevron. <strong>Copy Output</strong> on the layer copies scalar outputs as live masks, usable in its ordinary child chain or later layers. Layer-level Region IDs copying is disabled until typed references can address a layer producer; no cross-layer ID-source picker is added here.</p>
+<p>Add <strong>Shape Deform</strong>, <strong>Generator Flow</strong> or <strong>Flow Carve</strong> from a module's context menu. They are Effect children scoped to that module and deform its bundle before its IDs and named masks publish; ordinary mask children follow, and ordinary effects still act on the composited surface.</p>
+<p>Each module's foldout header has its preview eye and output chevron, and <strong>Copy Output</strong> on a module copies its scalar outputs as live masks, usable in the layer's ordinary child chain or later layers. Region IDs copying is unchanged.</p>
 <div class="note"><div class="kicker">Channel-driving follow-up</div>Named masks such as Rock Top/Chamfer/Wall and Strata Bed Position are available as outputs. Driving the layer's constant material channels directly from those masks is a follow-up, not part of this step.</div>
 <div class="card">
 <h3>Strata Carver</h3>
-<p>Layered bedding as it weathers on a surface: every bed rises along a ramp and ends in a steeper face where the next bed starts. Verticality sets how steep the faces are, from a symmetric ridge to a sheer wall, and Ramp Shape hollows or bulges the slope. Thickness and Height Variation make thin and thick, tall and low beds sit side by side. Bend sweeps the beds by a set distance in tile widths without stretching them, Breakup roughens the faces, and Height Follow on a Generator layer reads the composite below, so faces trace the contours underneath and Strata cannot reuse a cached field independent of that input. Transitional Strata children retain their existing layer-input behavior. Fine laminae fan across each bed. The direction snaps to the nearest angle that tiles.</p>
-<p>Strata publishes bed IDs, Bed Position (0 to 1 up each bed, the natural ramp coordinate) and Bed Random masks. Generator-layer outputs publish after flow and before its ordinary children. Transitional Strata children still publish from their own row down, preserving their existing ID-consumer behavior.</p>
+<p>Layered bedding as it weathers on a surface: every bed rises along a ramp and ends in a steeper face where the next bed starts. Verticality sets how steep the faces are, from a symmetric ridge to a sheer wall, and Ramp Shape hollows or bulges the slope. Thickness and Height Variation make thin and thick, tall and low beds sit side by side. Bend sweeps the beds by a set distance in tile widths without stretching them, Breakup roughens the faces, and Height Follow reads the composite below the layer, so faces trace the contours underneath and Strata cannot reuse a cached field independent of that input. Fine laminae fan across each bed. The direction snaps to the nearest angle that tiles.</p>
+<p>Strata publishes bed IDs, Bed Position (0 to 1 up each bed, the natural ramp coordinate) and Bed Random masks. A Strata module publishes after its own flow.</p>
 </div>
 <div class="card">
 <h3>Cracks</h3>
 <p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator. Its Amount and Cut Reach are the only chamfer controls: the sharp remap and fine noise follow the crack depth and width automatically.</p>
-<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks. On a Generator layer, flow reshapes its bundle before those outputs publish. The crack field is a signed change, so the layer's height is the flat midpoint 0.5 plus the field: Add carves cracks into the height below, and Replace gives flat ground with cracks cut in. Height Scale does not regenerate the cached field.</p>
+<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks. Flow reshapes its bundle before those outputs publish. The crack field is a signed change, so the layer's height is the flat midpoint 0.5 plus the field: Add carves cracks into the height below, and Replace gives flat ground with cracks cut in. Height Scale does not regenerate the cached field.</p>
 </div>
 <div class="card">
 <h3>Rock Formation and Pebbles</h3>
-<p>Rock Formation builds fractured rock surfaces and publishes Top, Chamfer, Wall, their ramps, signed boundary distance, normalized Height, Slope and Gap. Pebbles publishes Coverage, Edge Distance and Random. Both also publish Region IDs and retain their generator-field node cache. Choose either from the Generator Layer submenu to edit its existing panel alongside the layer's own material, coverage and composition controls.</p>
+<p>Rock Formation builds fractured rock surfaces and publishes Top, Chamfer, Wall, their ramps, signed boundary distance, normalized Height, Slope and Gap. Pebbles publishes Coverage, Edge Distance and Random. Both also publish Region IDs and retain their generator-field node cache. Choose either from the Generator Layer submenu or a Generator layer's Add menu.</p>
 </div>
-<div class="note">
-<div class="kicker">Transitional child model</div>
-          Generator children and their panels, menus and scopes remain available. A child generator runs before its layer composites regardless of its row position; existing generator-child flow scopes keep their current eligibility and ordering. This is separate from Generator-layer root flow, which supports every kind. Child removal and the cross-layer ID-source picker belong to later steps.
-        </div>
 </section>
 <section id="ids">
 <div class="section-head"><h2>Region &amp; ID Tools</h2></div>

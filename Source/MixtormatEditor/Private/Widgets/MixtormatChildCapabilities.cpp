@@ -259,19 +259,6 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	return Result;
 }
 
-FMixtormatChildCapabilities GetLayerCapabilities(const FMixtormatLayer& Layer)
-{
-	if (Layer.Type != EMixtormatLayerType::Generator)
-	{
-		return {};
-	}
-	// Capability lookup only: the layer payload never executes as a synthetic child.
-	FMixtormatLayerChild Probe;
-	Probe.Type = EMixtormatLayerChildType::Generator;
-	Probe.Generator.Type = Layer.Generator.Type;
-	return GetChildCapabilities(Probe);
-}
-
 FMixtormatChildCapabilities GetChildCapabilitiesForChildType(const EMixtormatLayerChildType Type)
 {
 	FMixtormatLayerChild Probe;

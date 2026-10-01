@@ -202,14 +202,6 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 			Result.Owner = EMixtormatParameterOwnerType::Layer;
 			return Result;
 		}
-		if (Layer.Type == EMixtormatLayerType::Generator
-			&& Owner == MixtormatGeneratorPayload::Data(Layer.Generator)
-			&& OwnerStruct == MixtormatGeneratorPayload::Struct(Layer.Generator))
-		{
-			Result.LayerId = Layer.LayerId;
-			Result.Owner = EMixtormatParameterOwnerType::Generator;
-			return Result;
-		}
 		if (ScanChildren(Layer.Children, Layer.LayerId))
 		{
 			return Result;
@@ -297,9 +289,7 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 			continue;
 		}
 		TArray<FMixtormatParameterBinding>* Bindings = nullptr;
-		if (Target.Owner == EMixtormatParameterOwnerType::Layer
-			|| (Target.Owner == EMixtormatParameterOwnerType::Generator && !Target.ChildId.IsValid()
-				&& Layer.Type == EMixtormatLayerType::Generator))
+		if (Target.Owner == EMixtormatParameterOwnerType::Layer)
 		{
 			Bindings = &Layer.ParameterBindings;
 		}
@@ -352,9 +342,7 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 			continue;
 		}
 		const TArray<FMixtormatParameterBinding>* Bindings = nullptr;
-		if (Target.Owner == EMixtormatParameterOwnerType::Layer
-			|| (Target.Owner == EMixtormatParameterOwnerType::Generator && !Target.ChildId.IsValid()
-				&& Layer.Type == EMixtormatLayerType::Generator))
+		if (Target.Owner == EMixtormatParameterOwnerType::Layer)
 		{
 			Bindings = &Layer.ParameterBindings;
 		}
@@ -484,8 +472,7 @@ void SMixtormat::GoToParameterReferenceSource(FMixtormatParameterAddress Target)
 		{
 			continue;
 		}
-		if (Source.Owner == EMixtormatParameterOwnerType::Layer
-			|| (Source.Owner == EMixtormatParameterOwnerType::Generator && !Source.ChildId.IsValid()))
+		if (Source.Owner == EMixtormatParameterOwnerType::Layer)
 		{
 			SelectWorkingLayer(LayerIndex);
 			return;
@@ -822,23 +809,14 @@ namespace
 			else if (Child->Type == EMixtormatLayerChildType::RandomId) OwnerPtr = &Child->RandomId.Shaping;
 			OwnerStruct = FMixtormatMaskShaping::StaticStruct();
 		}
-		else if (Address.Owner == EMixtormatParameterOwnerType::Layer
-			|| (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid()))
+		else if (Address.Owner == EMixtormatParameterOwnerType::Layer)
 		{
 			for (const FMixtormatLayer& Layer : Layers)
 			{
 				if (Layer.LayerId == Address.LayerId)
 				{
-					if (Address.Owner == EMixtormatParameterOwnerType::Layer)
-					{
-						OwnerPtr = &Layer;
-						OwnerStruct = FMixtormatLayer::StaticStruct();
-					}
-					else if (Layer.Type == EMixtormatLayerType::Generator)
-					{
-						OwnerPtr = MixtormatGeneratorPayload::Data(Layer.Generator);
-						OwnerStruct = MixtormatGeneratorPayload::Struct(Layer.Generator);
-					}
+					OwnerPtr = &Layer;
+					OwnerStruct = FMixtormatLayer::StaticStruct();
 					break;
 				}
 			}

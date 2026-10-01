@@ -816,7 +816,7 @@ namespace MixtormatGpuCompositor
 	};
 
 	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second
-	// generator adds a payload beside StrataCarver and a case in AddGeneratorPasses.
+	// generator adds a payload beside StrataCarver and a case in AddGeneratorLayerPasses.
 	struct FCracksRenderData
 	{
 		int32 Seed = 1;
@@ -926,6 +926,9 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
+		EMixtormatHeightOp GeneratorBlendOp = EMixtormatHeightOp::Replace;
+		float GeneratorBlendSoftness = 0.1f;
+		float GeneratorBlendAmount = 1.0f;
 		// Hash of this child's own settings for FMixtormatNodeCache; 0 when caching is off.
 		uint64 CacheKey = 0;
 		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
@@ -987,9 +990,7 @@ namespace MixtormatGpuCompositor
 	{
 		FGuid LayerId;
 		bool bGenerator = false;
-		bool bGeneratorEnabled = false;
 		bool bGeneratorDrivesCoverage = true;
-		FGeneratorRenderData Generator;
 		// Hash of the layer without its children: everything a producer reading the layer's own
 		// maps can see (surface, reference source, UV transform). 0 when caching is off.
 		uint64 SourceCacheKey = 0;
@@ -1774,17 +1775,8 @@ namespace MixtormatGpuCompositor
 		float OutHigh,
 		const TCHAR* Name);
 
-	void AddGeneratorFieldPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer);
-
-	// MixtormatGpuGeneratorPasses.cpp -- the generators (Strata, Rock, Pebbles, Cracks).
-	void AddGeneratorPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer);
-
+	// MixtormatGpuGeneratorPasses.cpp -- a Generator layer's module chain (Strata, Rock, Pebbles,
+	// Cracks): per-module blend into the running height, per-module publication.
 	void AddGeneratorLayerPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,

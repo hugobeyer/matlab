@@ -798,13 +798,15 @@ namespace MixtormatGpuCompositor
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatRegionIds, "Mixtormat.RegionIds");
 							AddOutputReferencePasses(Ctx, LayerCtx, Layer);
 							// Transitional child producers keep their established early-publication order.
-							AddGeneratorFieldPasses(Ctx, LayerCtx, Layer);
 							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
-							// A layer generator deforms before its own IDs and named masks publish.
-							if (Layer.bGenerator && Layer.bGeneratorEnabled)
+							// A Generator layer builds its module chain here; each module publishes its own IDs and masks.
+							if (Layer.bGenerator)
 							{
 								AddLayerInputPass(Ctx, LayerCtx, Layer);
-								AddGeneratorLayerPasses(Ctx, LayerCtx, Layer);
+								{
+									RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
+									AddGeneratorLayerPasses(Ctx, LayerCtx, Layer);
+								}
 								if (LayerCtx.GeneratorBundle.Height)
 								{
 									LayerCtx.LayerInputHeight = LayerCtx.GeneratorBundle.Height;
@@ -834,28 +836,6 @@ namespace MixtormatGpuCompositor
 							LayerCtx.LayerInputN = FormedNormal;
 						}
 
-						// GENERATORS, and this line is the whole reason the category is not an
-						// Effect. It runs against the layer's resolved input height -- after the
-						// height smooth has had its turn at it, after the region producers have
-						// published their ID maps, and before a single mask child or the composite
-						// itself has read it. A generator rewrites LayerCtx.LayerInputHeight and
-						// LayerCtx.LayerInputN in place, exactly as AddLayerHeightSmoothPasses does
-						// one line above, and the composite at AddLayerCompositePass then reads the
-						// carved surface as though it had been authored that way.
-						//
-						// Moving this below AddLayerCompositePass, where the deferred effect filters
-						// live, would make the carve a decal painted over a finished layer: the
-						// height blend, the mask chain's curvature and every height-driven mask
-						// would all have already run against the uncarved surface.
-						{
-							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
-							FScopedRegionIdView RegionView(LayerCtx, Layer, nullptr, bHasIdGroups);
-							AddGeneratorPasses(Ctx, LayerCtx, Layer);
-							if (Layer.bGenerator && LayerCtx.GeneratorBundle.Height)
-							{
-								LayerCtx.bGeneratedHeight = true;
-							}
-						}
 						FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 
 						TArray<FPendingWornEdges, TInlineAllocator<2>>& PendingWornEdges =
@@ -955,7 +935,7 @@ namespace MixtormatGpuCompositor
 							if (MixtormatIsGeneratorFlowEffect(Effect.Type))
 							{
 								// Already run inside its owning Rock Formation, before this loop
-								// (AddGeneratorPasses). Must not fall through to the peel default.
+								// (AddGeneratorLayerPasses). Must not fall through to the peel default.
 								continue;
 							}
 							FRDGTextureRef FeatureMask =

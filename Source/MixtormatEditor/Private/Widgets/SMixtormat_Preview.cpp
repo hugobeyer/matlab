@@ -45,11 +45,6 @@ FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerCh
 	return GetPreviewOutputSet(GetChildCapabilities(Child));
 }
 
-FMixtormatChildPreviewOutputSet GetLayerPreviewOutputSet(const FMixtormatLayer& Layer)
-{
-	return GetPreviewOutputSet(GetLayerCapabilities(Layer));
-}
-
 FMixtormatChildPreviewOutputSet GetPreviewOutputSetForChildType(const EMixtormatLayerChildType Type)
 {
 	FMixtormatLayerChild Probe;
@@ -394,7 +389,7 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 		}
 		const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
 		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-		if (!Child && (!bHasSelectedLayer || Layer.Type != EMixtormatLayerType::Generator))
+		if (!Child)
 		{
 			return Target;
 		}
@@ -482,17 +477,8 @@ bool SMixtormat::IsSelectedOutputPreviewReady() const
 	{
 		return IsChildOutputPreviewReady(*Child);
 	}
-	if (!bHasSelectedLayer || !WorkingLayers.IsValidIndex(SelectedLayerIndex))
-	{
-		return false;
-	}
-	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-	if (Layer.Type != EMixtormatLayerType::Generator || !Layer.bEnabled || !Layer.Generator.bEnabled)
-	{
-		return false;
-	}
-	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Layer.GroupId);
-	return !Group || Group->bEnabled;
+	// Generator layers publish per module, so a layer with no child selected has nothing to show.
+	return false;
 }
 
 bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const
@@ -523,12 +509,7 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 			}
 			if (!Child.ScopeOwnerChildId.IsValid())
 			{
-				if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
-					|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator
-					|| !WorkingLayers[SelectedLayerIndex].Generator.bEnabled)
-				{
-					return false;
-				}
+				return false;
 			}
 			const FGuid GroupId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
 				? WorkingLayers[SelectedLayerIndex].GroupId : SelectedGroupId;

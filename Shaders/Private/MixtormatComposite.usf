@@ -7,6 +7,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatColorOps.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
@@ -687,42 +688,9 @@ float SampleIncomingHeight(float2 UV)
 		MaskHeightInfluence);
 }
 
-#define MIXTORMAT_HEIGHT_OP_REPLACE 0
-#define MIXTORMAT_HEIGHT_OP_ADD 1
-#define MIXTORMAT_HEIGHT_OP_SUBTRACT 2
-#define MIXTORMAT_HEIGHT_OP_MULTIPLY 3
-#define MIXTORMAT_HEIGHT_OP_MIN 4
-#define MIXTORMAT_HEIGHT_OP_MAX 5
-#define MIXTORMAT_HEIGHT_OP_DIFFERENCE 6
-
-// Polynomial smooth max at width K; K of zero is a hard max, where the division is undefined.
-float MixtormatHeightSmoothMax(float A, float B, float K)
-{
-	if (K <= 0.0f)
-	{
-		return max(A, B);
-	}
-	const float W = saturate(0.5f + 0.5f * (B - A) / K);
-	return lerp(A, B, W) + K * W * (1.0f - W);
-}
-
-// The layer's height against the height below. Coverage is applied by the caller, so every op
-// fades the same way. On bare ground (Occupancy 0) Min, Max and Difference have nothing to compare
-// against and fall back to the layer itself, so the first layer reads the same whatever its op.
 float ApplyHeightOp(float Below, float Layer, float Occupancy)
 {
-	float Result = Layer;
-	if (HeightOp == MIXTORMAT_HEIGHT_OP_ADD) { Result = Below + (Layer - 0.5f); }
-	else if (HeightOp == MIXTORMAT_HEIGHT_OP_SUBTRACT) { Result = Below - (Layer - 0.5f); }
-	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MULTIPLY) { Result = Below * (Layer * 2.0f); }
-	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MIN) { Result = -MixtormatHeightSmoothMax(-Below, -Layer, HeightSoftness); }
-	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MAX) { Result = MixtormatHeightSmoothMax(Below, Layer, HeightSoftness); }
-	else if (HeightOp == MIXTORMAT_HEIGHT_OP_DIFFERENCE) { Result = abs(Below - Layer); }
-	if (HeightOp >= MIXTORMAT_HEIGHT_OP_MIN)
-	{
-		Result = lerp(Layer, Result, Occupancy);
-	}
-	return Result;
+	return MixtormatApplyHeightOp(Below, Layer, Occupancy, HeightOp, HeightSoftness);
 }
 
 float CalculateHeightDifference(float IncomingHeight, float ComparisonHeight)

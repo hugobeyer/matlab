@@ -1668,7 +1668,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		}
 		Data.LayerId = Layer.LayerId;
 		Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator;
-		Data.bGeneratorEnabled = Data.bGenerator && Layer.Generator.bEnabled;
 		Data.bGeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage;
 		Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 		// Only a layer's combined mask is a usable signal this step. A child mask lives in the
@@ -1744,17 +1743,28 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			}
 		}
 		const bool bGeneratorLayer = Layer.Type == EMixtormatLayerType::Generator;
-		const int32 GatheredChildCount = Layer.Children.Num() + (bGeneratorLayer ? 1 : 0);
-		for (int32 SourceChildIndex = 0; SourceChildIndex < GatheredChildCount; ++SourceChildIndex)
+		// The layer's UV transform moves every module's geometry, so it keys their cached fields.
+		uint64 PlacementKey = 0;
+		if (bGeneratorLayer)
 		{
-			FMixtormatLayerChild GeneratorLayerPayload;
-			if (bGeneratorLayer && SourceChildIndex >= Layer.Children.Num())
-			{
-				GeneratorLayerPayload.Type = EMixtormatLayerChildType::Generator;
-				GeneratorLayerPayload.Generator = Layer.Generator;
-			}
-			const FMixtormatLayerChild& LayerChild = SourceChildIndex < Layer.Children.Num()
-				? Layer.Children[SourceChildIndex] : GeneratorLayerPayload;
+			MixtormatComposeHash::FHasher PlacementHasher;
+			const float PlacementTiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
+			const int32 PlacementScaleX = FMath::Max(Layer.UVScaleX, 1);
+			const int32 PlacementScaleY = FMath::Max(Layer.UVScaleY, 1);
+			const FVector2f PlacementOffset(Layer.UVOffsetX, Layer.UVOffsetY);
+			const int32 PlacementRotation = static_cast<int32>(Layer.Rotation);
+			PlacementHasher.Bytes(&PlacementTiling, sizeof(PlacementTiling));
+			PlacementHasher.Bytes(&PlacementScaleX, sizeof(PlacementScaleX));
+			PlacementHasher.Bytes(&PlacementScaleY, sizeof(PlacementScaleY));
+			PlacementHasher.Bytes(&PlacementOffset, sizeof(PlacementOffset));
+			PlacementHasher.Bytes(&Layer.bFlipU, sizeof(Layer.bFlipU));
+			PlacementHasher.Bytes(&Layer.bFlipV, sizeof(Layer.bFlipV));
+			PlacementHasher.Bytes(&PlacementRotation, sizeof(PlacementRotation));
+			PlacementKey = PlacementHasher.Get();
+		}
+		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
+		{
+			const FMixtormatLayerChild& LayerChild = Layer.Children[SourceChildIndex];
 			if (SourceChildIndex < DisabledGroupScopes.Num() && DisabledGroupScopes[SourceChildIndex])
 			{
 				continue;
@@ -1955,22 +1965,21 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (LayerChild.Type == EMixtormatLayerChildType::Generator)
 			{
-				// Rewrites the layer's own input height before the composite, so a disabled
-				// layer must not gather it -- the same reason effects are skipped above. An
-				// enabled generator on a hidden layer would carve a surface nobody can see and
-				// still cost the whole solve.
+				// Modules exist only on Generator layers. A disabled layer must not gather them -- an
+				// enabled module on a hidden layer would build a surface nobody can see and still cost
+				// the whole solve.
 				const FMixtormatGenerator& Generator = LayerChild.Generator;
-				if (!Layer.bEnabled || !Generator.bEnabled)
+				if (!bGeneratorLayer || !Layer.bEnabled || !Generator.bEnabled)
 				{
 					continue;
 				}
 
-			FChildRenderData LayerGeneratorData;
-			FChildRenderData& ChildData = bGeneratorLayer && SourceChildIndex >= Layer.Children.Num()
-				? LayerGeneratorData : Data.Children.AddDefaulted_GetRef();
+			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMixtormatLayerChildType::Generator;
-			ChildData.SourceChildIndex = bGeneratorLayer && SourceChildIndex >= Layer.Children.Num()
-				? INDEX_NONE : SourceChildIndex;
+			ChildData.SourceChildIndex = SourceChildIndex;
+			ChildData.GeneratorBlendOp = Generator.BlendOp;
+			ChildData.GeneratorBlendSoftness = Generator.BlendSoftness;
+			ChildData.GeneratorBlendAmount = Generator.BlendAmount;
 			ChildData.Generator.Type = Generator.Type;
 
 				switch (Generator.Type)
@@ -2147,44 +2156,29 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					break;
 				}
 				}
-				if (bGeneratorLayer && SourceChildIndex >= Layer.Children.Num())
+				if (PlacementKey != 0)
 				{
-					Data.Generator = MoveTemp(ChildData.Generator);
-					MixtormatComposeHash::FHasher PlacementHasher;
-					const float PlacementTiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
-					const int32 PlacementScaleX = FMath::Max(Layer.UVScaleX, 1);
-					const int32 PlacementScaleY = FMath::Max(Layer.UVScaleY, 1);
-					const FVector2f PlacementOffset(Layer.UVOffsetX, Layer.UVOffsetY);
-					const int32 PlacementRotation = static_cast<int32>(Layer.Rotation);
-					PlacementHasher.Bytes(&PlacementTiling, sizeof(PlacementTiling));
-					PlacementHasher.Bytes(&PlacementScaleX, sizeof(PlacementScaleX));
-					PlacementHasher.Bytes(&PlacementScaleY, sizeof(PlacementScaleY));
-					PlacementHasher.Bytes(&PlacementOffset, sizeof(PlacementOffset));
-					PlacementHasher.Bytes(&Layer.bFlipU, sizeof(Layer.bFlipU));
-					PlacementHasher.Bytes(&Layer.bFlipV, sizeof(Layer.bFlipV));
-					PlacementHasher.Bytes(&PlacementRotation, sizeof(PlacementRotation));
-					const uint64 PlacementKey = PlacementHasher.Get();
-					switch (Data.Generator.Type)
+					switch (Generator.Type)
 					{
 					case EMixtormatGeneratorType::RockFormation:
-						if (Data.Generator.RockFormation.FieldKey != 0)
+						if (ChildData.Generator.RockFormation.FieldKey != 0)
 						{
-							Data.Generator.RockFormation.FieldKey = MixtormatComposeHash::Combine(
-								Data.Generator.RockFormation.FieldKey, PlacementKey) | 1ull;
+							ChildData.Generator.RockFormation.FieldKey = MixtormatComposeHash::Combine(
+								ChildData.Generator.RockFormation.FieldKey, PlacementKey) | 1ull;
 						}
 						break;
 					case EMixtormatGeneratorType::Pebbles:
-						if (Data.Generator.Pebbles.FieldKey != 0)
+						if (ChildData.Generator.Pebbles.FieldKey != 0)
 						{
-							Data.Generator.Pebbles.FieldKey = MixtormatComposeHash::Combine(
-								Data.Generator.Pebbles.FieldKey, PlacementKey) | 1ull;
+							ChildData.Generator.Pebbles.FieldKey = MixtormatComposeHash::Combine(
+								ChildData.Generator.Pebbles.FieldKey, PlacementKey) | 1ull;
 						}
 						break;
 					case EMixtormatGeneratorType::Cracks:
-						if (Data.Generator.Cracks.FieldKey != 0)
+						if (ChildData.Generator.Cracks.FieldKey != 0)
 						{
-							Data.Generator.Cracks.FieldKey = MixtormatComposeHash::Combine(
-								Data.Generator.Cracks.FieldKey, PlacementKey) | 1ull;
+							ChildData.Generator.Cracks.FieldKey = MixtormatComposeHash::Combine(
+								ChildData.Generator.Cracks.FieldKey, PlacementKey) | 1ull;
 						}
 						break;
 					default:
@@ -2858,6 +2852,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					// Generator flow tools transform their owning Rock Formation's field. A
 					// disabled owner produces no field, so its tools go with it.
 					bFlowGeneratorOwner = Owner.Type == EMixtormatLayerChildType::Generator
+						&& Layer.Type == EMixtormatLayerType::Generator
 						&& MixtormatCanOwnGeneratorFlow(Owner.Generator.Type)
 						&& Owner.Generator.bEnabled;
 					if (Owner.Type == EMixtormatLayerChildType::Effect)
@@ -2880,13 +2875,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				}
 				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 			}
-			else if (MixtormatIsGeneratorFlowEffect(ResolvedType)
-				&& !(Layer.Type == EMixtormatLayerType::Generator
-					&& MixtormatCanOwnGeneratorFlow(Layer.Generator.Type)
-					&& Layer.Generator.bEnabled))
+			else if (MixtormatIsGeneratorFlowEffect(ResolvedType))
 			{
-				// A flow tool without a generator field is inactive; a root-scoped tool on a
-				// Generator layer instead uses INDEX_NONE as its owner address.
+				// A flow tool must sit under the module whose field it transforms.
 				Data.Children.RemoveAt(Data.Children.Num() - 1);
 				continue;
 			}

@@ -1,0 +1,38 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#define MIXTORMAT_HEIGHT_OP_REPLACE 0
+#define MIXTORMAT_HEIGHT_OP_ADD 1
+#define MIXTORMAT_HEIGHT_OP_SUBTRACT 2
+#define MIXTORMAT_HEIGHT_OP_MULTIPLY 3
+#define MIXTORMAT_HEIGHT_OP_MIN 4
+#define MIXTORMAT_HEIGHT_OP_MAX 5
+#define MIXTORMAT_HEIGHT_OP_DIFFERENCE 6
+
+// Polynomial smooth max at width K; K of zero is a hard max, where the division is undefined.
+float MixtormatHeightSmoothMax(float A, float B, float K)
+{
+	if (K <= 0.0f)
+	{
+		return max(A, B);
+	}
+	const float W = saturate(0.5f + 0.5f * (B - A) / K);
+	return lerp(A, B, W) + K * W * (1.0f - W);
+}
+
+// Coverage is applied by the caller. On bare ground Min, Max and Difference use the incoming
+// value, because there is no established surface to compare against.
+float MixtormatApplyHeightOp(float Below, float Layer, float Occupancy, uint Op, float Softness)
+{
+	float Result = Layer;
+	if (Op == MIXTORMAT_HEIGHT_OP_ADD) { Result = Below + (Layer - 0.5f); }
+	else if (Op == MIXTORMAT_HEIGHT_OP_SUBTRACT) { Result = Below - (Layer - 0.5f); }
+	else if (Op == MIXTORMAT_HEIGHT_OP_MULTIPLY) { Result = Below * (Layer * 2.0f); }
+	else if (Op == MIXTORMAT_HEIGHT_OP_MIN) { Result = -MixtormatHeightSmoothMax(-Below, -Layer, Softness); }
+	else if (Op == MIXTORMAT_HEIGHT_OP_MAX) { Result = MixtormatHeightSmoothMax(Below, Layer, Softness); }
+	else if (Op == MIXTORMAT_HEIGHT_OP_DIFFERENCE) { Result = abs(Below - Layer); }
+	if (Op >= MIXTORMAT_HEIGHT_OP_MIN)
+	{
+		Result = lerp(Layer, Result, Occupancy);
+	}
+	return Result;
+}

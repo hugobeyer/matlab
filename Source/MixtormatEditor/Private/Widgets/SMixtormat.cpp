@@ -499,7 +499,7 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		{
 			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 			const FMixtormatChildPreviewOutputSet Outputs = Child ? GetChildPreviewOutputSet(*Child)
-				: GetLayerPreviewOutputSet(WorkingLayers[SelectedLayerIndex]);
+				: FMixtormatChildPreviewOutputSet();
 			if (Outputs.Primary.IsSet()
 				&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds)
 			{

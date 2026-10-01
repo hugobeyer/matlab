@@ -81,23 +81,27 @@ namespace MixtormatLayerBadges
 		};
 	}
 
+	FText ForHeightOp(const EMixtormatHeightOp HeightOp)
+	{
+		switch (HeightOp)
+		{
+		case EMixtormatHeightOp::Add:        return LOCTEXT("HeightOpBadgeAdd", "ADD");
+		case EMixtormatHeightOp::Subtract:   return LOCTEXT("HeightOpBadgeSub", "SUB");
+		case EMixtormatHeightOp::Multiply:   return LOCTEXT("HeightOpBadgeMul", "MUL");
+		case EMixtormatHeightOp::Min:        return LOCTEXT("HeightOpBadgeMin", "MIN");
+		case EMixtormatHeightOp::Max:        return LOCTEXT("HeightOpBadgeMax", "MAX");
+		case EMixtormatHeightOp::Difference: return LOCTEXT("HeightOpBadgeDif", "DIF");
+		default:                             return LOCTEXT("HeightOpBadgeRep", "REP");
+		}
+	}
+
 	FText ForLayer(const FMixtormatLayer& Layer)
 	{
 		if (CompositionOf(Layer) == EComposition::Detail)
 		{
 			return LOCTEXT("LayerBadgeDetail", "DTL");
 		}
-		FText Op;
-		switch (Layer.HeightOp)
-		{
-		case EMixtormatHeightOp::Add:        Op = LOCTEXT("HeightOpBadgeAdd", "ADD"); break;
-		case EMixtormatHeightOp::Subtract:   Op = LOCTEXT("HeightOpBadgeSub", "SUB"); break;
-		case EMixtormatHeightOp::Multiply:   Op = LOCTEXT("HeightOpBadgeMul", "MUL"); break;
-		case EMixtormatHeightOp::Min:        Op = LOCTEXT("HeightOpBadgeMin", "MIN"); break;
-		case EMixtormatHeightOp::Max:        Op = LOCTEXT("HeightOpBadgeMax", "MAX"); break;
-		case EMixtormatHeightOp::Difference: Op = LOCTEXT("HeightOpBadgeDif", "DIF"); break;
-		default:                             Op = LOCTEXT("HeightOpBadgeRep", "REP"); break;
-		}
+		const FText Op = ForHeightOp(Layer.HeightOp);
 		return Layer.bHeightBlendEnabled
 			? FText::Format(LOCTEXT("LayerBadgeHeightCoverage", "{0} H"), Op)
 			: Op;
@@ -222,20 +226,9 @@ namespace MixtormatLayerBadges
 		}
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
-			// The generator kind, not a blend mode -- a generator emits no coverage and never
-			// joins the mask chain, so the slot that would carry one names what is running.
-			switch (Child.Generator.Type)
-			{
-			case EMixtormatGeneratorType::StrataCarver:
-				return LOCTEXT("GeneratorBadgeStrataCarver", "STRATA");
-			case EMixtormatGeneratorType::Cracks:
-				return LOCTEXT("GeneratorBadgeCracks", "CRACK");
-			case EMixtormatGeneratorType::RockFormation:
-				return LOCTEXT("GeneratorBadgeRockFormation", "ROCK");
-			case EMixtormatGeneratorType::Pebbles:
-				return LOCTEXT("GeneratorBadgePebbles", "PEBBL");
-			}
-			return LOCTEXT("GeneratorBadgeUnknown", "GEN");
+			// How this module blends into the layer's running height; the row name already says
+			// which generator it is.
+			return ForHeightOp(Child.Generator.BlendOp);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Curvature)
 		{

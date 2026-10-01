@@ -362,53 +362,6 @@ namespace
 		{
 			return true;
 		}
-		if (Child.Type == EMixtormatLayerChildType::Mask && SourceOwnerId.IsValid() && !SourceChildId.IsValid())
-		{
-			if (Child.IsInstance() && MixtormatParameterBinding::ClassifyInstancePlacement(
-				Scope, Child.SourceLayerId, Child.SourceChildId, DestOwnerId, InsertIndex)
-				!= MixtormatParameterBinding::EInstancePlacement::Valid)
-			{
-				return false;
-			}
-			const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
-			const int32 SourceIndex = Layers.IndexOfByPredicate(
-				[SourceOwnerId](const FMixtormatLayer& Layer) { return Layer.LayerId == SourceOwnerId; });
-			if (!Layers.IsValidIndex(SourceIndex) || Layers[SourceIndex].Type != EMixtormatLayerType::Generator
-				|| !GetLayerCapabilities(Layers[SourceIndex]).Outputs.ContainsByPredicate(
-					[&Child](const FMixtormatPublishedOutputDesc& Output)
-					{ return Output.Name == Child.Mask.PublishedSourceOutput && Output.bCopyableAsMask; }))
-			{
-				return false;
-			}
-			const int32 DestIndex = Layers.IndexOfByPredicate(
-				[DestOwnerId](const FMixtormatLayer& Layer) { return Layer.LayerId == DestOwnerId; });
-			if (DestIndex != INDEX_NONE)
-			{
-				if (SourceIndex != DestIndex)
-				{
-					return SourceIndex < DestIndex;
-				}
-				// Layer outputs publish after root flow tools, so they cannot gate their own flow.
-				const TArray<FMixtormatLayerChild>& Children = Layers[DestIndex].Children;
-				FGuid OwnerId = Child.ScopeOwnerChildId;
-				TSet<FGuid> Visited;
-				while (OwnerId.IsValid())
-				{
-					const int32 OwnerIndex = FindChildById(Children, OwnerId);
-					if (Visited.Contains(OwnerId) || !Children.IsValidIndex(OwnerIndex)
-						|| IsGeneratorFlow(Children[OwnerIndex]))
-					{
-						return false;
-					}
-					Visited.Add(OwnerId);
-					OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
-				}
-				return true;
-			}
-			int32 First = INDEX_NONE, Last = INDEX_NONE;
-			return Scope.Groups && MixtormatLayerGroups::FindGroup(*Scope.Groups, DestOwnerId)
-				&& MixtormatLayerGroups::GetGroupRange(Layers, DestOwnerId, First, Last) && SourceIndex < First;
-		}
 		// Typed bundles are imported before local producers; only earlier owners can supply them.
 		if (Child.Type == EMixtormatLayerChildType::OutputReference && SourceOwnerId == DestOwnerId)
 		{
@@ -587,6 +540,17 @@ namespace
 	// The serialised child type one menu entry produces. Several kinds share one: Texture Mask and
 	// Layer Values Mask are both Mask, and Strata Carver is a Generator. That collapse is exactly
 	// why EMixtormatChildCreation exists alongside the type.
+	EMixtormatChildCreation CreationKindForGenerator(const EMixtormatGeneratorType Type)
+	{
+		switch (Type)
+		{
+		case EMixtormatGeneratorType::Cracks:        return EMixtormatChildCreation::Cracks;
+		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
+		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
+		default:                                     return EMixtormatChildCreation::StrataCarver;
+		}
+	}
+
 	EMixtormatLayerChildType ChildTypeForCreation(const EMixtormatChildCreation Kind)
 	{
 		switch (Kind)
@@ -815,15 +779,11 @@ FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 		return FReply::Handled();
 	}
 	FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-	Layer.Generator.Type = Type;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Layer.Generator);
 	Layer.DisplayName = FText::Format(LOCTEXT("GeneratorLayerNumber", "{0} Layer {1}"),
 		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Type)),
 		FText::AsNumber(WorkingLayers.Num()));
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	return FReply::Handled();
+	// The first module is the layer's first child; CreateChild selects it and refreshes the stack.
+	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), CreationKindForGenerator(Type));
 }
 
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
@@ -2904,16 +2864,6 @@ bool SMixtormat::CanCopyChildOutput(const FMixtormatChildAddress& Address, const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-	if (!Address.ChildId.IsValid() && Address.OwnerType == EMixtormatChildOwnerType::Layer)
-	{
-		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
-			[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
-		// Typed fields still require a child ID in their resolver; do not fabricate a layer reference.
-		return Layer && GetLayerCapabilities(*Layer).Outputs.ContainsByPredicate(
-			[OutputName](const FMixtormatPublishedOutputDesc& Output)
-			{ return Output.Name == OutputName && Output.bCopyableAsMask; })
-			&& PublishedOutputPlacementsValid(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups});
-	}
 	if (!Child || !Children)
 	{
 		return false;
@@ -2937,10 +2887,7 @@ void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FN
 	{
 		return;
 	}
-	const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
-		[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
-	const FMixtormatChildCapabilities Capabilities = Child
-		? GetChildCapabilities(*Child) : GetLayerCapabilities(*Layer);
+	const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
 	const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
 		[OutputName](const FMixtormatPublishedOutputDesc& Candidate)
 		{
@@ -4580,9 +4527,7 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 	}
 	if (Layer.Type == EMixtormatLayerType::Generator)
 	{
-		return FText::Format(LOCTEXT("GeneratorLayerSource", "GEN · {0}"),
-			StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(
-				static_cast<int64>(Layer.Generator.Type)));
+		return LOCTEXT("GeneratorLayerSource", "GEN");
 	}
 	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
 		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
@@ -5497,7 +5442,6 @@ TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
 TSharedRef<SWidget> SMixtormat::BuildGroupAddEffectMenu(const FGuid GroupId)
 {
 	MixtormatMenu::FBuilder Menu;
-	AddGeneratorFlowMenuItems(Menu, MakeGroupChildAddress(GroupId, INDEX_NONE));
 	for (const FMixtormatEffectEntry& Entry : FMixtormatRegistry::GetEffects())
 	{
 		Menu.Item(
@@ -6052,21 +5996,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
 	// IDs / Filter / Masks / Generators, built by the same four functions the group menu calls.
 	AddCreationSections(Menu, FMixtormatAddTarget::Layer(LayerIndex));
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Generator)
-	{
-		const FMixtormatChildAddress Address = MakeChildAddress(LayerIndex, INDEX_NONE);
-		AddGeneratorFlowMenuItems(Menu, Address);
-		Menu.Caption(LOCTEXT("LayerCopyOutputs", "Copy Output"));
-		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetLayerCapabilities(WorkingLayers[LayerIndex])))
-		{
-			Menu.Item(Output.Label, nullptr,
-				FSimpleDelegate::CreateLambda([this, Address, Name = Output.Name]() { CopyChildOutput(Address, Name); }))
-				.Enabled(TAttribute<bool>::CreateLambda([this, Address, Name = Output.Name]()
-					{ return CanCopyChildOutput(Address, Name); }));
-		}
-	}
-
 	Menu.Separator();
 
 	// Solo is reachable two ways on purpose: ctrl or alt on the eye for someone who knows, and
@@ -6217,6 +6146,14 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 		&& CanAddScopedChild(*Children, OwnerIndex);
 }
 
+// Modules live only at the root of a Generator layer; groups and material layers never host them.
+bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
+{
+	return !Target.IsGroup() && !Target.ScopeOwnerChildId.IsValid()
+		&& WorkingLayers.IsValidIndex(Target.LayerIndex)
+		&& WorkingLayers[Target.LayerIndex].Type == EMixtormatLayerType::Generator;
+}
+
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
 	// Cluster IDs remains unavailable; Combine IDs can be authored inside an explicit ID Group.
@@ -6227,6 +6164,10 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	}
 
 	if (!CanCreateChild(Target))
+	{
+		return FReply::Handled();
+	}
+	if (ChildTypeForCreation(Kind) == EMixtormatLayerChildType::Generator && !CanAddGeneratorModule(Target))
 	{
 		return FReply::Handled();
 	}
@@ -6283,8 +6224,16 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	// same as before this function collapsed the ten of them into one. Left alone deliberately --
 	// changing it changes the undo stack, which is not this refactor's to move.
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
+	const bool bLaterModule = ChildTypeForCreation(Kind) == EMixtormatLayerChildType::Generator
+		&& Layer.Children.ContainsByPredicate([](const FMixtormatLayerChild& Existing)
+			{ return Existing.Type == EMixtormatLayerChildType::Generator; });
 	const int32 CreatedIndex = Layer.Children.AddDefaulted();
 	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
+	if (bLaterModule)
+	{
+		// The first module replaces the neutral running height; each later one adds to it.
+		Layer.Children[CreatedIndex].Generator.BlendOp = EMixtormatHeightOp::Add;
+	}
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
@@ -6328,10 +6277,13 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 	// it runs: an effect filters the layer after it has composited, a generator rewrites the
 	// height the layer composites from. Filing it under Effect would be the first step toward
 	// implementing it as one.
-	Menu.SubMenu(
-		LOCTEXT("AddGeneratorChild", "Generators"),
-		MixtormatIcons::Effect(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorsMenu, Target));
+	if (CanAddGeneratorModule(Target))
+	{
+		Menu.SubMenu(
+			LOCTEXT("AddGeneratorChild", "Generators"),
+			MixtormatIcons::Effect(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorsMenu, Target));
+	}
 }
 
 TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target)
@@ -6524,7 +6476,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
-	AddGeneratorFlowMenuItems(Menu, MakeChildAddress(LayerIndex, INDEX_NONE));
 	const TArray<FMixtormatEffectEntry> Effects = FMixtormatRegistry::GetEffects();
 	for (const FMixtormatEffectEntry& Entry : Effects)
 	{
@@ -7523,9 +7474,7 @@ const FMixtormatGenerator* SMixtormat::GetSelectedGenerator() const
 	{
 		return Child->Type == EMixtormatLayerChildType::Generator ? &Child->Generator : nullptr;
 	}
-	return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
-		? &WorkingLayers[SelectedLayerIndex].Generator : nullptr;
+	return nullptr;
 }
 
 FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
@@ -8163,12 +8112,6 @@ bool SMixtormat::CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const
 {
 	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 	const int32 OwnerIndex = ResolveChildIndexAt(Owner);
-	if (Owner.OwnerType == EMixtormatChildOwnerType::Layer && !Owner.ChildId.IsValid())
-	{
-		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
-			[&Owner](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Owner.OwnerId; });
-		return Layer && Layer->Type == EMixtormatLayerType::Generator;
-	}
 	return Children && Children->IsValidIndex(OwnerIndex)
 		&& CanOwnGeneratorFlow((*Children)[OwnerIndex])
 		&& CanAddScopedChild(*Children, OwnerIndex);

@@ -24,14 +24,12 @@
 //     Layer source height
 //         -> AddLayerInputPass            resolves it into output space
 //         -> AddLayerHeightSmoothPasses   optional pre-smooth
-//         -> AddGeneratorPasses           <- here
+//         -> AddGeneratorLayerPasses      <- here, on Generator layers only
 //         -> mask children, effects, AddLayerCompositePass
 //
-// AddGeneratorPasses is called once per layer from the layer loop and walks that layer's
-// generator children in authored order, each one carving the height the previous one produced.
-// It reassigns LayerCtx.LayerInputHeight and LayerCtx.LayerInputN in place -- exactly what
-// AddLayerHeightSmoothPasses does one line above it -- and returns. Nothing downstream needs to
-// know a generator ran.
+// AddGeneratorLayerPasses is called once per Generator layer and walks its module children in
+// authored order. Each module builds its own height and coverage, then blends into the layer's
+// running height with its own Height Op; the result replaces LayerCtx.LayerInputHeight.
 
 namespace MixtormatGpuCompositor
 {
@@ -527,19 +525,27 @@ class FMixtormatGeneratorBundleCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorBundleCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorBundleCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 9);
+	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 10);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, CoverageMode)
+		SHADER_PARAMETER(uint32, HeightOp)
+		SHADER_PARAMETER(float, HeightSoftness)
+		SHADER_PARAMETER(float, BlendAmount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, IdField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VectorField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleCoverage)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScalar)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutVector)
 	END_SHADER_PARAMETER_STRUCT()
@@ -555,26 +561,24 @@ IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 
 namespace
 {
-	// Shared payload/index contract. A layer is not a synthetic child and never takes the
-	// child ID-phase publication path; children keep their field-only and memo execution.
+	// A module of a Generator layer: its payload and its child index in that layer. Publication
+	// happens once per module in AddGeneratorLayerPasses, after flow.
 	struct FGeneratorPassInput
 	{
 		const FGeneratorRenderData& Generator;
 		int32 SourceChildIndex;
-		bool bGeneratorLayer;
 	};
 
+	// Every module sits in the Generator layer's UV placement, so the layer moves all of them.
 	template<typename TParameters>
-	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer, const bool bGeneratorLayer)
+	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer)
 	{
-		P->GeneratorLayer = bGeneratorLayer ? 1u : 0u;
-		P->GeneratorUVScale = bGeneratorLayer
-			? FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY)
-			: FVector2f(1.0f, 1.0f);
-		P->GeneratorUVOffset = bGeneratorLayer ? Layer.UVOffset : FVector2f::ZeroVector;
-		P->GeneratorUVRotation = bGeneratorLayer ? Layer.Rotation : 0;
-		P->GeneratorUVFlipU = bGeneratorLayer && Layer.bFlipU ? 1u : 0u;
-		P->GeneratorUVFlipV = bGeneratorLayer && Layer.bFlipV ? 1u : 0u;
+		P->GeneratorLayer = 1u;
+		P->GeneratorUVScale = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
+		P->GeneratorUVOffset = Layer.UVOffset;
+		P->GeneratorUVRotation = Layer.Rotation;
+		P->GeneratorUVFlipU = Layer.bFlipU ? 1u : 0u;
+		P->GeneratorUVFlipV = Layer.bFlipV ? 1u : 0u;
 	}
 
 	FRDGTextureRef AddBundleCoverage(FMixtormatComposeContext& Ctx, const uint32 Mode,
@@ -599,6 +603,42 @@ namespace
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Coverage"),
 			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		return Coverage;
+	}
+
+	void AddGeneratorModuleCombine(
+		FMixtormatComposeContext& Ctx,
+		FRDGTextureRef RunningHeight,
+		FRDGTextureRef RunningCoverage,
+		const FGeneratorBundle& Module,
+		const FChildRenderData& Child,
+		FRDGTextureRef& OutHeight,
+		FRDGTextureRef& OutCoverage)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		OutHeight = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.RunningHeight"));
+		OutCoverage = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.RunningCoverage"));
+		FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(9);
+		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
+		P->OutputSize = Size;
+		P->HeightOp = static_cast<uint32>(Child.GeneratorBlendOp);
+		P->HeightSoftness = Child.GeneratorBlendSoftness;
+		P->BlendAmount = Child.GeneratorBlendAmount;
+		P->RunningHeight = RunningHeight;
+		P->ModuleHeight = Module.Height;
+		P->RunningCoverage = RunningCoverage;
+		P->ModuleCoverage = Module.Coverage;
+		P->OutScalar = GraphBuilder.CreateUAV(OutHeight);
+		P->OutCoverage = GraphBuilder.CreateUAV(OutCoverage);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Combine"), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 	}
 
 	FRDGTextureRef RemapBundleField(FMixtormatComposeContext& Ctx, FRDGTextureRef Field,
@@ -731,25 +771,12 @@ namespace
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FIntPoint Size = Request.Resolution;
 
-		// The scoped mask. Independent scope, so the chain starts from white rather than
-		// inheriting whatever the layer mask happens to be at this row: a mask authored under a
-		// generator describes where *this generator* acts, and folding the layer's own coverage
-		// into it would make Mask Influence mean two different things depending on row order.
-		const bool bHasScopedMask = !Child.bGeneratorLayer && HasScopedMasks(Layer, Child.SourceChildIndex);
-		FRDGTextureRef ScopedMask = bHasScopedMask
-			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-			: (Child.bGeneratorLayer ? SourceHeight : LayerCtx.CombinedMask);
-
-		// Region IDs published above this generator in the same layer, by the nearest producer.
-		// Absent is the normal case and not an error -- a generator makes its own structure and
-		// never needs one.
-		FRDGTextureRef RegionIds =
-			Child.bGeneratorLayer ? nullptr : FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
-		const bool bHasRegionIds = RegionIds != nullptr;
-		if (!bHasRegionIds)
-		{
-			RegionIds = Ctx.EmptyRegionIds;
-		}
+		// No scoped mask and no upstream IDs yet: modules do not read each other until Region
+		// inputs land, so the shader's gated paths stay off and these only satisfy the bindings.
+		const bool bHasScopedMask = false;
+		FRDGTextureRef ScopedMask = SourceHeight;
+		const bool bHasRegionIds = false;
+		FRDGTextureRef RegionIds = Ctx.EmptyRegionIds;
 
 		const FStrataLattice Lattice = MakeStrataLattice(Carver.StrataFrequency, Carver.StrataRotation);
 
@@ -767,7 +794,7 @@ namespace
 		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
+			FillGeneratorPlacement(P, Layer);
 						P->BedWave = Lattice.Wave;
 			P->BedPerp = Lattice.Perp;
 			P->BedPeriod = Lattice.Period;
@@ -806,40 +833,14 @@ namespace
 		}
 
 		if (Bundle)
-				{
-					Bundle->Height = CarvedHeight;
-					Bundle->Coverage = AddBundleCoverage(Ctx, 0);
-					Bundle->RegionIds = BedIds;
-					Bundle->BoundaryField = RemapBundleField(Ctx, BedPosition, nullptr, 8);
-					Bundle->NamedMasks.Add(FName(TEXT("StrataPosition")), BedPosition);
-					Bundle->NamedMasks.Add(FName(TEXT("StrataRandom")), BedRandom);
-					return CarvedHeight;
-				}
-
-				// Bed IDs for the ID consumers below this row (a colour or hue per bed), and the position
-		// and a per-bed random as masks -- position is the natural scalar for a colour ramp.
-		PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, BedIds);
-		const TPair<FName, FRDGTextureRef> Masks[2] = {
-			{FName(TEXT("StrataPosition")), BedPosition},
-			{FName(TEXT("StrataRandom")), BedRandom}};
-		for (const TPair<FName, FRDGTextureRef>& Mask : Masks)
 		{
-			Ctx.PublishedMaskOutputs.Add(
-				FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Mask.Key}, Mask.Value);
-			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, Mask.Key,
-				LayerIndex, Child.SourceChildIndex))
-			{
-				AddDebugPreviewMaskBlitPass(GraphBuilder, Mask.Value,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-			}
+			Bundle->Height = CarvedHeight;
+			Bundle->Coverage = AddBundleCoverage(Ctx, 0);
+			Bundle->RegionIds = BedIds;
+			Bundle->BoundaryField = RemapBundleField(Ctx, BedPosition, nullptr, 8);
+			Bundle->NamedMasks.Add(FName(TEXT("StrataPosition")), BedPosition);
+			Bundle->NamedMasks.Add(FName(TEXT("StrataRandom")), BedRandom);
 		}
-		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-			LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewRegionIdsBlitPass(GraphBuilder, BedIds, nullptr,
-				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-		}
-
 		return CarvedHeight;
 	}
 
@@ -1305,7 +1306,6 @@ namespace
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1317,7 +1317,7 @@ namespace
 		const FRockLayout Layout = ResolveRockLayout(Rock);
 		const auto FillParameters = [&Rock, &Layout, &Layer, &Child, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
+			FillGeneratorPlacement(P, Layer);
 			P->OutputSize = Size;
 			P->MaxLeaves = Layout.MaxLeaves;
 			P->CellsV = Layout.CellsV;
@@ -1369,7 +1369,7 @@ namespace
 					<= sizeof(FMixtormatNodeCacheEntry::Outputs),
 			"Rock cache slots must fit the shared node cache entry");
 		FRDGTextureRef Outputs[RockSlotCount] = {};
-		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
+		// Produced once per module.
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
 			for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
@@ -1381,7 +1381,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
-				? MixtormatComposeHash::Combine(Rock.FieldKey, Child.bGeneratorLayer ? 0x526F636B09ull : 0x526F636B08ull)
+				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636B09ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -1522,53 +1522,11 @@ namespace
 
 			// Reusable outputs retain the existing masks, ramps and signed distance. The three
 			// normalised gates share their original (pre-flow) geometry frame. Slot 6 is not published.
-			if (!Child.bGeneratorLayer)
-			{
-			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
-			static const TCHAR* const MaskNames[10] = {
-				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
-				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp"),
-				TEXT("RockHeight"), TEXT("RockSlope"), TEXT("RockGap")};
-			static const int32 MaskSlots[10] = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12};
-			for (int32 Index = 0; Index < UE_ARRAY_COUNT(MaskNames); ++Index)
-			{
-				const FName OutputName(MaskNames[Index]);
-				const FRDGTextureRef Output = Outputs[MaskSlots[Index]];
-				Ctx.PublishedMaskOutputs.Add(
-					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Output);
-				// The edge distance is signed and in UV widths, so it gets its own preview kind --
-				// the capability row names the same kind, or the eye never matches.
-				const bool bSignedDistance = MaskSlots[Index] == 4;
-				if (IsChildOutputPreviewTarget(Request,
-					bSignedDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
-					OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
-				{
-					if (bSignedDistance)
-					{
-						AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Output, (float)Size.X,
-							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-					}
-					else
-					{
-						AddDebugPreviewMaskBlitPass(GraphBuilder, Output,
-							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-					}
-				}
-			}
-			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-				LayerCtx.LayerIndex, Child.SourceChildIndex))
-			{
-				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[5], nullptr,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-			}
-
-			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, RockSlotCount);
 		}
 		// Independent normalised gate, including field-only evaluation; never the mode-selected
 		// or flow-modified layer height and never affected by HeightScale.
-		if (!Child.bGeneratorLayer) { LayerCtx.ResolvedRockHeights.Add(Child.SourceChildIndex, Outputs[10]); }
 		if (Bundle)
 		{
 			Bundle->Coverage = AddBundleCoverage(Ctx, 2, nullptr, Outputs[6]);
@@ -1583,10 +1541,6 @@ namespace
 			{
 				Bundle->NamedMasks.Add(FName(Names[Index]), Outputs[Slots[Index]]);
 			}
-		}
-		if (bFieldOnly)
-		{
-			return nullptr;
 		}
 
 		const auto Combine = [&](FRDGTextureRef Field, const EMixtormatRockHeightMode HeightMode,
@@ -1618,21 +1572,7 @@ namespace
 			RockField = AddNormalizeFieldPasses(GraphBuilder, RockField, Size,
 				0.0f, 1.0f, TEXT("Mixtormat.Rock.NormalizedHeight"));
 		}
-		const bool bHasFlowTools = !Child.bGeneratorLayer
-						&& HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
-		if (bHasFlowTools)
-		{
-			// Resolve floors and analytic bounds before flow moves pixels: the cached IDs are in
-			// the original frame. The final combine must not remap or reset those moved pixels.
-			if (Rock.HeightMode != EMixtormatRockHeightMode::Raw)
-			{
-				RockField = Combine(RockField, Rock.HeightMode, 1.0f, TEXT("Mixtormat.Rock.ResolveHeightMode"));
-			}
-			FRDGTextureRef NoCoverage = nullptr;
-			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, Outputs[6], RockField, NoCoverage);
-		}
-		FRDGTextureRef Height = Combine(RockField, bHasFlowTools ? EMixtormatRockHeightMode::Raw : Rock.HeightMode,
-			Rock.HeightScale, TEXT("Mixtormat.Rock.LayerHeight"));
+		FRDGTextureRef Height = Combine(RockField, Rock.HeightMode, Rock.HeightScale, TEXT("Mixtormat.Rock.LayerHeight"));
 		if (Bundle) { Bundle->Height = Height; }
 		return Height;
 	}
@@ -1643,7 +1583,6 @@ namespace
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1660,7 +1599,7 @@ namespace
 		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
 		const auto Fill = [&Cracks, &Layer, &Child, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
+			FillGeneratorPlacement(P, Layer);
 			P->OutputSize = Size;
 			P->SolveSize = SolveSize;
 			P->Seed = Cracks.Seed;
@@ -1710,7 +1649,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Cracks.FieldKey != 0
-				? MixtormatComposeHash::Combine(Cracks.FieldKey, Child.bGeneratorLayer ? 0x437261636B74ull : 0x437261636B73ull) : 0;
+				? MixtormatComposeHash::Combine(Cracks.FieldKey, 0x437261636B74ull) : 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = NodeKey != 0
 				? NodeCache->Find(NodeKey, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			static const TCHAR* const Names[SlotCount] = {
@@ -1765,30 +1704,6 @@ namespace
 					Ctx.PendingNodeEntries.Add(Entry);
 				}
 			}
-			if (!Child.bGeneratorLayer)
-			{
-			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[3]);
-			static const TCHAR* const MaskNames[3] = { TEXT("CrackMask"), TEXT("CrackDistance"), TEXT("PieceRandom") };
-			const int32 MaskSlots[3] = { 1, 2, 4 };
-			for (int32 Index = 0; Index < 3; ++Index)
-			{
-				const FName OutputName(MaskNames[Index]);
-				Ctx.PublishedMaskOutputs.Add(
-					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[MaskSlots[Index]]);
-				if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, OutputName,
-					LayerCtx.LayerIndex, Child.SourceChildIndex))
-				{
-					AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[MaskSlots[Index]],
-						Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-				}
-			}
-			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-				LayerCtx.LayerIndex, Child.SourceChildIndex))
-			{
-				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[3], nullptr,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-			}
-			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, SlotCount);
 		}
@@ -1801,15 +1716,9 @@ namespace
 			Bundle->NamedMasks.Add(FName(TEXT("CrackDistance")), Outputs[2]);
 			Bundle->NamedMasks.Add(FName(TEXT("PieceRandom")), Outputs[4]);
 		}
-		if (bFieldOnly)
-		{
-			return nullptr;
-		}
 
 		FRDGTextureRef Field = Outputs[0];
-		const bool bHasGate = !Child.bGeneratorLayer && HasScopedMasks(Layer, Child.SourceChildIndex);
-		FRDGTextureRef Gate = bHasGate
-			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Outputs[1];
+		FRDGTextureRef Gate = Outputs[1];
 		FRDGTextureRef ChamferCut = Make(PF_R16F, TEXT("Mixtormat.Cracks.ChamferCut"));
 		FRDGTextureRef Chamfered = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.Chamfered"));
 		// Arrival is computed only after the cached field; its noise and gate never invalidate it.
@@ -1859,7 +1768,7 @@ namespace
 			TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
 			Fill(P);
-			P->HasGate = bHasGate ? 1u : 0u;
+			P->HasGate = 0u;
 			P->CrackHeight = Field;
 			P->CrackDistance = Outputs[2];
 			P->Arrival = Arrival[Read];
@@ -1875,22 +1784,6 @@ namespace
 		Field = Chamfered;
 		const FName CutName(TEXT("ChamferCut"));
 		if (Bundle) { Bundle->NamedMasks.Add(CutName, ChamferCut); }
-		if (!Child.bGeneratorLayer)
-		{
-		Ctx.PublishedMaskOutputs.Add(
-			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, CutName}, ChamferCut);
-		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, CutName,
-			LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewMaskBlitPass(GraphBuilder, ChamferCut,
-				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-		}
-		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
-		{
-			FRDGTextureRef NoCoverage = nullptr;
-			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, Outputs[5], Field, NoCoverage);
-		}
-		}
 		FRDGTextureRef Combined = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.LayerHeight"));
 		FMixtormatCracksCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatCracksCS::FStage>(4);
@@ -1915,7 +1808,6 @@ namespace
 		const FLayerRenderData& Layer,
 		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false,
 		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1926,7 +1818,7 @@ namespace
 
 		const auto FillParameters = [&Pebbles, &Layer, &Child, Size](FMixtormatPebblesCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
+			FillGeneratorPlacement(P, Layer);
 			P->OutputSize = Size;
 			P->Seed = Pebbles.Seed;
 			P->Cells = Pebbles.Cells;
@@ -1951,7 +1843,7 @@ namespace
 		// Node-cache slots: height, coverage, edge distance, random, IDs.
 		constexpr int32 SlotCount = 5;
 		FRDGTextureRef Outputs[SlotCount] = {};
-		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
+		// Produced once per module.
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
 			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
@@ -1963,7 +1855,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Pebbles.FieldKey != 0
-				? MixtormatComposeHash::Combine(Pebbles.FieldKey, Child.bGeneratorLayer ? 0x506562626C66ull : 0x506562626C65ull)
+				? MixtormatComposeHash::Combine(Pebbles.FieldKey, 0x506562626C66ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -2027,43 +1919,6 @@ namespace
 			}
 
 			// Stone (or facet) IDs for the ID consumers below this row; masks for Copy Output.
-			if (!Child.bGeneratorLayer)
-			{
-			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[4]);
-			static const TCHAR* const MaskNames[3] = {
-				TEXT("PebbleCoverage"), TEXT("PebbleEdgeDistance"), TEXT("PebbleRandom")};
-			for (int32 Index = 0; Index < 3; ++Index)
-			{
-				const FName OutputName(MaskNames[Index]);
-				Ctx.PublishedMaskOutputs.Add(
-					FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, OutputName}, Outputs[1 + Index]);
-				// The edge distance is signed and in UV widths, so it gets its own preview kind --
-				// the capability row names the same kind, or the eye never matches.
-				const bool bSignedDistance = Index == 1;
-				if (IsChildOutputPreviewTarget(Request,
-					bSignedDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
-					OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
-				{
-					if (bSignedDistance)
-					{
-						AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Outputs[1 + Index], (float)Size.X,
-							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-					}
-					else
-					{
-						AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[1 + Index],
-							Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-					}
-				}
-			}
-			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-				LayerCtx.LayerIndex, Child.SourceChildIndex))
-			{
-				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[4], nullptr,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
-			}
-
-			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, SlotCount);
 		}
@@ -2076,19 +1931,8 @@ namespace
 			Bundle->NamedMasks.Add(FName(TEXT("PebbleEdgeDistance")), Outputs[2]);
 			Bundle->NamedMasks.Add(FName(TEXT("PebbleRandom")), Outputs[3]);
 		}
-		if (bFieldOnly)
-		{
-			return nullptr;
-		}
 
-		// Scoped flow tools, as under Rock Formation: height and coverage move together.
 		FRDGTextureRef PebbleField = Outputs[0];
-		FRDGTextureRef PebbleCoverage = Outputs[1];
-		if (!Child.bGeneratorLayer && HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
-		{
-			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
-				PackScalarBoundary(Ctx, Outputs[2]), Outputs[0], PebbleCoverage);
-		}
 
 		FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 					Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -2169,220 +2013,80 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
 {
-	if (!Layer.bEnabled || !Layer.bGenerator || !Layer.bGeneratorEnabled) { return; }
+	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
 	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
 	Bundle = FGeneratorBundle();
-	const FGeneratorPassInput Input{Layer.Generator, INDEX_NONE, true};
-	switch (Layer.Generator.Type)
-	{
-	case EMixtormatGeneratorType::StrataCarver:
-		// Height Follow reads the composite below, never this layer's own height or IDs.
-		AddStrataCarverPasses(Ctx, LayerCtx, Layer, Input,
-			Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Bundle);
-		break;
-	case EMixtormatGeneratorType::RockFormation:
-		AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
-		break;
-	case EMixtormatGeneratorType::Pebbles:
-		AddPebblesPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
-		break;
-	case EMixtormatGeneratorType::Cracks:
-		AddCracksPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
-		break;
-	}
-	if (!Bundle.Height || !Bundle.Coverage) { return; }
-	if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, INDEX_NONE))
-	{
-		Bundle.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, INDEX_NONE,
-			Bundle.BoundaryField, Bundle.Height, Bundle.Coverage, &Bundle);
-	}
-
-	// This is the only layer-generator publication point. Consumers in the local ID phase
-	// see post-flow geometry; cross-layer ID selection belongs to Step 3b.
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-	if (Bundle.RegionIds)
-	{
-		PublishRegionIds(LayerCtx.RegionIdMaps, INDEX_NONE, Bundle.RegionIds);
-		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::RegionIds,
-			NAME_None, LayerCtx.LayerIndex, INDEX_NONE))
-		{
-			AddDebugPreviewRegionIdsBlitPass(Ctx.GraphBuilder, Bundle.RegionIds, nullptr, Debug, Size);
-		}
-	}
-	for (const TPair<FName, FRDGTextureRef>& Mask : Bundle.NamedMasks)
-	{
-		Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, INDEX_NONE, Mask.Key}, Mask.Value);
-		const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
-			|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
-		if (IsChildOutputPreviewTarget(Ctx.Request,
-			bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
-			Mask.Key, LayerCtx.LayerIndex, INDEX_NONE))
-		{
-			if (bDistance)
-			{
-				AddDebugPreviewSignedDistanceBlitPass(Ctx.GraphBuilder, Mask.Value, (float)Size.X, Debug, Size);
-			}
-			else
-			{
-				AddDebugPreviewMaskBlitPass(Ctx.GraphBuilder, Mask.Value, Debug, Size);
-			}
-		}
-	}
-}
-
-void AddGeneratorFieldPasses(
-	FMixtormatComposeContext& Ctx,
-	FMixtormatLayerPassContext& LayerCtx,
-	const FLayerRenderData& Layer)
-{
-	// Generators whose field depends only on their own settings publish their Region IDs here,
-	// in the ID phase, so UV From IDs -- which resolves before the layer's source is read --
-	// can key off them. Their height is still mixed in later by AddGeneratorPasses.
-	if (!Layer.bEnabled)
-	{
-		return;
-	}
+	FRDGTextureRef RunningHeight = LayerCtx.LayerInputHeight;
+	FRDGTextureRef RunningCoverage = AddBundleCoverage(Ctx, 3);
+	// Modules compose in child order; each one only sees the running result of those above it.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
-		if (Child.Type != EMixtormatLayerChildType::Generator)
-		{
-			continue;
-		}
-		if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)
-		{
-			AddRockFormationPasses(Ctx, LayerCtx, Layer,
-							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
-		}
-		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
-		{
-			AddPebblesPasses(Ctx, LayerCtx, Layer,
-							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
-		}
-		else if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
-		{
-			AddCracksPasses(Ctx, LayerCtx, Layer,
-							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
-		}
-	}
-}
-
-void AddGeneratorPasses(
-	FMixtormatComposeContext& Ctx,
-	FMixtormatLayerPassContext& LayerCtx,
-	const FLayerRenderData& Layer)
-{
-	const bool bHasGenerator = Layer.Children.ContainsByPredicate(
-		[](const FChildRenderData& Child)
-		{
-			return Child.Type == EMixtormatLayerChildType::Generator
-							&& (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
-								|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
-								|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
-								|| Child.Generator.Type == EMixtormatGeneratorType::Cracks);
-		});
-	if (!bHasGenerator)
-	{
-		return;
-	}
-
-	// The layer's own maps, resolved into output space. Idempotent -- if a height smooth or a
-	// flow warp already asked for this pass it costs nothing, and going through it is what makes
-	// the layer's UV transform and pattern UV basis apply exactly once, to the surface the
-	// generator is about to carve rather than twice to the carve itself.
-	AddLayerInputPass(Ctx, LayerCtx, Layer);
-
-	// The height as it stood before any generator ran. Kept for the normal pass at the end: the
-	// relief normal is one delta across the whole chain rather than one per generator, which is
-	// both cheaper and more correct -- two carves of the same groove compose into one slope, and
-	// RNM-combining each of them separately would tilt the normal twice for a surface that only
-	// moved once.
-	FRDGTextureRef SourceHeight = LayerCtx.LayerInputHeight;
-
-	// Authored order. A generator's output is the layer's height, so each one replaces what the
-	// one before it produced; how the result meets the stack below is the layer's Height Op. The
-	// chain is still carried in LayerCtx.LayerInputHeight as well as in the local, so what a later
-	// generator reads -- Strata's Height Follow -- is the previous generator's height.
-	for (const FChildRenderData& Child : Layer.Children)
-	{
-		if (Child.Type != EMixtormatLayerChildType::Generator)
-		{
-			continue;
-		}
+		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		FGeneratorBundle Module;
+		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
 		switch (Child.Generator.Type)
 		{
 		case EMixtormatGeneratorType::StrataCarver:
-			LayerCtx.LayerInputHeight = AddStrataCarverPasses(
-				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
-				LayerCtx.LayerInputHeight);
-			break;
-		case EMixtormatGeneratorType::Cracks:
-			LayerCtx.LayerInputHeight = AddCracksPasses(
-				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
-				LayerCtx.LayerInputHeight);
+			// Height Follow reads the composite below, never this layer's own height or IDs.
+			AddStrataCarverPasses(Ctx, LayerCtx, Layer, Input,
+				Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
 			break;
 		case EMixtormatGeneratorType::RockFormation:
-			LayerCtx.LayerInputHeight = AddRockFormationPasses(
-				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
-				LayerCtx.LayerInputHeight);
+			AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
 			break;
 		case EMixtormatGeneratorType::Pebbles:
-			LayerCtx.LayerInputHeight = AddPebblesPasses(
-				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
-				LayerCtx.LayerInputHeight);
+			AddPebblesPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
+			break;
+		case EMixtormatGeneratorType::Cracks:
+			AddCracksPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
 			break;
 		}
+		if (!Module.Height || !Module.Coverage) { continue; }
+		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		{
+			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
+				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
+		}
+
+		// The only publication point: every module publishes under its own child index, after its
+		// flow. The layer's default IDs are therefore the last module that produced any.
+		if (Module.RegionIds)
+		{
+			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Module.RegionIds);
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::RegionIds,
+				NAME_None, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewRegionIdsBlitPass(Ctx.GraphBuilder, Module.RegionIds, nullptr, Debug, Size);
+			}
+		}
+		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
+		{
+			Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Mask.Key}, Mask.Value);
+			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
+				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+			if (IsChildOutputPreviewTarget(Ctx.Request,
+				bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
+				Mask.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				if (bDistance)
+				{
+					AddDebugPreviewSignedDistanceBlitPass(Ctx.GraphBuilder, Mask.Value, (float)Size.X, Debug, Size);
+				}
+				else
+				{
+					AddDebugPreviewMaskBlitPass(Ctx.GraphBuilder, Mask.Value, Debug, Size);
+				}
+			}
+		}
+
+		AddGeneratorModuleCombine(Ctx, RunningHeight, RunningCoverage, Module, Child,
+			RunningHeight, RunningCoverage);
 	}
-
-	FRDGTextureRef CarvedHeight = LayerCtx.LayerInputHeight;
-	LayerCtx.bGeneratedHeight = CarvedHeight != SourceHeight;
-	if (CarvedHeight == SourceHeight)
-	{
-		// Every generator on this layer was neutral. Nothing carved, so nothing to re-derive --
-		// and skipping is not merely an optimisation: running the delta pass over an unchanged
-		// height would still rewrite LayerInputN through the RNM combine, which is not the
-		// identity in the last bits.
-		return;
-	}
-
-	// The normal, through the shared convention and nothing else.
-	//
-	// AddHeightDerivedNormalPass is the one height->normal in the plugin -- erosion, craquelure
-	// relief, region relief and worn edges all go through it -- and it takes the *delta* between
-	// the height before and after, derives a relief normal from it and RNM-combines that onto the
-	// normal that was already there. A private Sobel here with its own strength would be a fourth
-	// convention, and the header at MixtormatHeightNormal.ush documents what three of those cost
-	// the last time: the same height field differentiated in worlds three orders of magnitude
-	// apart.
-	//
-	// HeightDerivedNormalStrength, which is what every other caller of this pass uses --
-	// erosion, craquelure relief and region relief all pass it, and passing anything else here
-	// would be the private convention this node is not allowed to have. It is not the neutral
-	// gain: MixtormatHeightDeltaNormal carries its own Sobel rather than going through
-	// MixtormatHeightNormal.ush, and its /8 is cancelled by this 8 to land on the pixel-space
-	// gradient the header names as this pass's convention. ReliefNormalStrength is the neutral
-	// gain for the *other* path -- the shaders that include MixtormatHeightNormal.ush, where the
-	// pixel-to-slope conversion has already happened -- and using it here would make the same
-	// carve depth read eight times shallower than an erosion of the same depth.
-	//
-	// A second target rather than writing LayerInputN in place -- RDG will not let one pass read
-	// and write the same resource, and the composite reads whichever one this leaves behind.
-	FRDGTextureRef FormedNormal = Ctx.GraphBuilder.CreateTexture(
-		LayerCtx.LayerInputN->Desc, TEXT("Mixtormat.FormationNormal"));
-
-	AddHeightDerivedNormalPass(
-		Ctx,
-		SourceHeight,
-		CarvedHeight,
-		LayerCtx.LayerInputN,
-		LayerCtx.LayerInputRAM,
-		FormedNormal,
-		nullptr,
-		Ctx.Request.Resolution,
-		HeightDerivedNormalStrength,
-		false,
-		TEXT("FormationRecipe"));
-	LayerCtx.LayerInputN = FormedNormal;
+	if (!RunningHeight || !RunningCoverage) { return; }
+	Bundle.Height = RunningHeight;
+	Bundle.Coverage = RunningCoverage;
 }
 
 }
