@@ -1669,7 +1669,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.LayerId = Layer.LayerId;
 		Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator;
 		Data.bGeneratorEnabled = Data.bGenerator && Layer.Generator.bEnabled;
-		Data.GeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage;
+		Data.bGeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage;
 		Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 		// Only a layer's combined mask is a usable signal this step. A child mask lives in the
 		// rotating ping-pong pair and is gone by the composite; region IDs are not a scalar at
