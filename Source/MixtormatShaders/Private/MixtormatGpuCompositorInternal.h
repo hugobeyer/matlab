@@ -926,9 +926,7 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
-		EMixtormatHeightOp GeneratorBlendOp = EMixtormatHeightOp::Replace;
-		float GeneratorBlendSoftness = 0.1f;
-		float GeneratorBlendAmount = 1.0f;
+		FMixtormatHeightBlend GeneratorHeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Replace);
 		// Hash of this child's own settings for FMixtormatNodeCache; 0 when caching is off.
 		uint64 CacheKey = 0;
 		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
@@ -1035,15 +1033,11 @@ namespace MixtormatGpuCompositor
 		float HeightLevelOffset = 0.0f;
 		float HeightShape = 0.0f;
 		float HeightSmooth = 0.0f;
+		// The layer's Height Blend Strength, kept apart from HeightBlend because a Driver modulates
+		// it in the composite.
 		float HeightBlendAmount = 1.0f;
-		// EMixtormatHeightOp, and the rounded-join width Min and Max use.
-		uint32 HeightOp = 0;
-		float HeightSoftness = 0.0f;
-		float HeightThreshold = 0.5f;
-		float HeightRange = 0.1f;
+		FMixtormatHeightBlend HeightBlend;
 		float HeightContrast = 1.0f;
-		float HeightOffset = 0.0f;
-		float HeightBias = 0.0f;
 		float ConstantHeight = 0.5f;
 		float MaskHeightInfluence = 0.0f;
 		float HeightContactAOAmount = 0.0f;
@@ -1074,7 +1068,6 @@ namespace MixtormatGpuCompositor
 		bool bNormalOnly = false;
 		bool bOverrideNormal = false;
 		bool bFlipNormalY = false;
-		bool bHeightBlendEnabled = false;
 		bool bHasPackedHeight = false;
 		bool bInvertHeight = false;
 		bool bDirectHeightComparison = false;

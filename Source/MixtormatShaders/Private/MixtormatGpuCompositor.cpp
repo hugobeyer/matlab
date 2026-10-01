@@ -143,7 +143,6 @@ public:
 		SHADER_PARAMETER(uint32, NormalOnly)
 		SHADER_PARAMETER(uint32, OverrideNormal)
 		SHADER_PARAMETER(uint32, FlipNormalY)
-		SHADER_PARAMETER(uint32, HeightBlendEnabled)
 		SHADER_PARAMETER(uint32, HeightOp)
 		SHADER_PARAMETER(uint32, HeightSource)
 		SHADER_PARAMETER(uint32, InvertHeight)
@@ -185,6 +184,7 @@ public:
 		SHADER_PARAMETER(float, HeightShape)
 		SHADER_PARAMETER(float, HeightBlendAmount)
 		SHADER_PARAMETER(float, HeightSoftness)
+		SHADER_PARAMETER(float, HeightAmount)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
 		SHADER_PARAMETER(float, HeightContrast)
@@ -828,9 +828,9 @@ namespace MixtormatGpuCompositor
 		Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
 		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-		Parameters->HeightBlendEnabled = Layer.bHeightBlendEnabled ? 1u : 0u;
-		Parameters->HeightOp = Layer.HeightOp;
-		Parameters->HeightSoftness = Layer.HeightSoftness;
+		Parameters->HeightOp = static_cast<uint32>(Layer.HeightBlend.Op);
+		Parameters->HeightSoftness = Layer.HeightBlend.Softness;
+		Parameters->HeightAmount = Layer.HeightBlend.Amount;
 		Parameters->HeightSource = Layer.HeightSource;
 		Parameters->InvertHeight = Layer.bInvertHeight ? 1u : 0u;
 		Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
@@ -879,11 +879,11 @@ namespace MixtormatGpuCompositor
 		Parameters->NormalInfluence = Layer.NormalInfluence;
 		Parameters->HeightInfluence = Layer.HeightInfluence;
 		Parameters->HeightBlendAmount = Layer.HeightBlendAmount;
-		Parameters->HeightThreshold = Layer.HeightThreshold;
-		Parameters->HeightRange = Layer.HeightRange;
+		Parameters->HeightThreshold = Layer.HeightBlend.Threshold;
+		Parameters->HeightRange = Layer.HeightBlend.EdgeSoftness;
 		Parameters->HeightContrast = Layer.HeightContrast;
-		Parameters->HeightOffset = Layer.HeightOffset;
-		Parameters->HeightBias = Layer.HeightBias;
+		Parameters->HeightOffset = Layer.HeightBlend.BlendBias;
+		Parameters->HeightBias = Layer.HeightBlend.BaseBias;
 		Parameters->ConstantHeight = Layer.ConstantHeight;
 		Parameters->MaskHeightInfluence = Layer.MaskHeightInfluence;
 		Parameters->HeightContactAOAmount = Layer.HeightContactAOAmount;
@@ -907,7 +907,7 @@ namespace MixtormatGpuCompositor
 		// noise instead of averaging it, which is why widening the measurement made
 		// the stipple coarser rather than removing it.
 		const bool bBorderActive =
-			Layer.bHeightBlendEnabled
+			Layer.HeightBlend.Op == EMixtormatHeightOp::HeightBlend
 			&& !Layer.bNormalOnly
 			&& ((Layer.HeightContactAOAmount > 0.0f)
 				|| FMath::Abs(Layer.HeightBorderLift) > 1.0e-4f);
@@ -1977,9 +1977,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 			ChildData.Type = EMixtormatLayerChildType::Generator;
 			ChildData.SourceChildIndex = SourceChildIndex;
-			ChildData.GeneratorBlendOp = Generator.BlendOp;
-			ChildData.GeneratorBlendSoftness = Generator.BlendSoftness;
-			ChildData.GeneratorBlendAmount = Generator.BlendAmount;
+			ChildData.GeneratorHeightBlend = Generator.HeightBlend;
 			ChildData.Generator.Type = Generator.Type;
 
 				switch (Generator.Type)
@@ -3041,11 +3039,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.HeightInfluence = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Layer, TEXT("HeightInfluence"), Layer.HeightInfluence);
 		Data.HeightBlendAmount = Layer.HeightBlendAmount;
-		Data.HeightThreshold = Layer.HeightThreshold;
-		Data.HeightRange = FMath::Max(Layer.HeightRange, 1.0e-6f);
+		Data.HeightBlend = Layer.HeightBlend;
 		Data.HeightContrast = FMath::Max(Layer.HeightContrast, 0.01f);
-		Data.HeightOffset = Layer.HeightOffset;
-		Data.HeightBias = Layer.HeightBias;
 		Data.ConstantHeight = Layer.ConstantHeight;
 		Data.MaskHeightInfluence = Layer.MaskHeightInfluence;
 		Data.HeightContactAOAmount = Layer.HeightContactAOAmount;
@@ -3064,7 +3059,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.CurvatureStrength = Layer.CurvatureStrength;
 		Data.CurvaturePower = Layer.CurvaturePower;
 		Data.bEnabled = Layer.bEnabled;
-		Data.bHeightBlendEnabled = Layer.bHeightBlendEnabled;
 		Data.bHasPackedHeight = Data.SourceOutputs.IsValid() || (Surface && Surface->bHasBlendHeight);
 		Data.bInvertHeight = Layer.bInvertHeight;
 		Data.bDirectHeightComparison = !bNormalOnly;
@@ -3104,8 +3098,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.bHasNormal = Data.SourceOutputs.IsValid() || LayerNormal != nullptr;
 		Data.bNormalOnly = bNormalOnly;
 		Data.bOverrideNormal = Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override;
-		Data.HeightOp = static_cast<uint32>(Layer.HeightOp);
-		Data.HeightSoftness = FMath::IsFinite(Layer.HeightSoftness) ? Layer.HeightSoftness : 0.1f;
 		Data.bFlipNormalY = Layer.bFlipNormalY;
 	}
 

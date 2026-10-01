@@ -57,7 +57,10 @@ enum class EMixtormatNormalBlendMode : uint8
 
 // How a layer's height combines with the height already standing below it, weighted by the
 // layer's coverage so every op fades in the same way. Replace is the old OVER; Max with Softness
-// is the old BLEND smooth merge.
+// is the old BLEND smooth merge. Height Blend is the one op that decides coverage itself: the
+// incoming surface runs over the one below where it is higher, gated by the mask.
+//
+// Serialised by value and mirrored by the MIXTORMAT_HEIGHT_OP_* defines in MixtormatHeightOps.ush.
 UENUM(BlueprintType)
 enum class EMixtormatHeightOp : uint8
 {
@@ -69,7 +72,58 @@ enum class EMixtormatHeightOp : uint8
 	Multiply UMETA(DisplayName = "Multiply"),
 	Min UMETA(DisplayName = "Min"),
 	Max UMETA(DisplayName = "Max"),
-	Difference UMETA(DisplayName = "Difference")
+	Difference UMETA(DisplayName = "Difference"),
+	HeightBlend UMETA(DisplayName = "Height Blend")
+};
+
+// The one height-combine block, used by a layer against the stack below it and by a Generator
+// module against the layer's running height. Same fields, same meaning, one shader function.
+//
+// Op, Softness and Amount are common to every op. The rest only matter at Op = Height Blend:
+//
+//     a = base + BaseBias;  b = blend + BlendBias;  m = saturate(mask * Strength)
+//     t = smoothstep(Threshold - EdgeSoftness, Threshold + EdgeSoftness, m + b - a)
+//     height = lerp(a, b, t)
+//
+// where t is also the coverage every channel uses. A layer's Strength is driven through its own
+// HeightBlendAmount (a Driver binds a flat property of the layer), so only a module reads Strength.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatHeightBlend
+{
+	GENERATED_BODY()
+
+	FMixtormatHeightBlend() = default;
+	explicit FMixtormatHeightBlend(const EMixtormatHeightOp InOp)
+		: Op(InOp)
+	{
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
+	EMixtormatHeightOp Op = EMixtormatHeightOp::Max;
+
+	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "0.5"))
+	float Softness = 0.1f;
+
+	// How much of the op's height reaches the result.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Amount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "4.0"))
+	float Strength = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Threshold = 0.5f;
+
+	// Half-width of the smoothstep that turns the height contest into coverage.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (DisplayName = "Edge Softness", UIMin = "0.0"))
+	float EdgeSoftness = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BaseBias = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BlendBias = 0.0f;
 };
 
 UENUM(BlueprintType)
@@ -3141,13 +3195,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	// Modules compose into their Generator layer in child order. The first module created on a
 	// layer replaces its neutral running height; later modules add unless the artist changes it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
-	EMixtormatHeightOp BlendOp = EMixtormatHeightOp::Replace;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "0.5"))
-	float BlendSoftness = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float BlendAmount = 1.0f;
+	FMixtormatHeightBlend HeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Replace);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
 	FMixtormatStrataCarver StrataCarver;
@@ -3556,68 +3604,47 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
 	EMixtormatNormalBlendMode NormalBlendMode = EMixtormatNormalBlendMode::Combine;
 
-	// How this layer's height combines with the height below it, weighted by its coverage. Height
-	// Blending, when on, decides that coverage from the heights; this decides what the height is.
+	// How this layer's height combines with the height below it, weighted by its coverage. At Op =
+	// Height Blend the heights decide that coverage too; every other op takes it from the mask.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
-	EMixtormatHeightOp HeightOp = EMixtormatHeightOp::Max;
-
-	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (EditCondition = "HeightOp == EMixtormatHeightOp::Min || HeightOp == EMixtormatHeightOp::Max", UIMin = "0.0"))
-	float HeightSoftness = 0.1f;
+	FMixtormatHeightBlend HeightBlend;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending")
-	bool bHeightBlendEnabled = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
 	EMixtormatHeightSource HeightSource = EMixtormatHeightSource::LayerHeight;
 
-	// How much of the height contest happens, not how strong the mask is.
+	// The layer's Height Blend Strength: how much of the height contest happens, not how strong
+	// the mask is. It lives here rather than in HeightBlend because a Driver binds a flat property
+	// of the layer, and this is the driven one (slot 1).
 	//
 	// 0 is ordinary OVER -- the mask alone decides coverage and the heights simply cross-fade --
 	// and 1 is the full contest gated by that mask. Past 1 the contest is already total, so the
 	// rest of the range sharpens the transition instead of widening anything, which keeps the
 	// slider monotone end to end.
-	//
-	// It used to multiply the placement mask, which made its bottom end meaningless: at 0 the
-	// mask vanished from the comparison and the layer appeared wherever it happened to be taller
-	// than what was beneath it, ignoring where it had been painted.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Strength", EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Strength", UIMin = "0.0", UIMax = "4.0"))
 	float HeightBlendAmount = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
-	float HeightThreshold = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Softness", EditCondition = "bHeightBlendEnabled", UIMin = "0.0"))
-	float HeightRange = 0.1f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.01"))
 	float HeightContrast = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Blend Height Bias", EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
-	float HeightOffset = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (DisplayName = "Base Height Bias", EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
-	float HeightBias = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending")
 	bool bInvertHeight = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ConstantHeight = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MaskHeightInfluence = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightContactAOAmount = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0001", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0001", UIMax = "1.0"))
 	float HeightContactAOWidth = 0.05f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "-1.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "-1.0", UIMax = "1.0"))
 	float HeightBorderLift = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0001", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0001", UIMax = "1.0"))
 	float HeightBorderWidth = 0.05f;
 
 	// Gaussian radius, in texels, applied to the accumulated height that Contact AO and Border
@@ -3627,19 +3654,19 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// is sampled, so raising it gave a wider band that was just as noisy. This smooths the height
 	// before the field is derived from it, and only those two effects read the smoothed copy --
 	// coverage, layer height and blend weight all keep the sharp one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "1.0", UIMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "1.0", UIMax = "32.0"))
 	float HeightBorderSmoothing = 1.0f;
 
 	// Rounds the height the placement mask produces, in texels. 0 skips the two blur passes
 	// entirely. Wide enough and the interior of a shape domes rather than only its rim softening,
 	// which is the difference between an anti-aliased edge and a filleted one.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "32.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0", UIMax = "32.0"))
 	float HeightSmoothRadius = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightSmoothAmount = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending", meta = (EditCondition = "bHeightBlendEnabled"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending")
 	int32 HeightReferenceLayerIndex = INDEX_NONE;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Children", meta = (TitleProperty = "Type"))
@@ -3714,8 +3741,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	// Positive bulges -- the midtones rise toward the peaks and the form reads as swollen -- and
 	// negative pinches them down toward the pits. Neutral at 0.
 	//
-	// Named Shape rather than Bias because HeightBias is already taken, by the height-blend
-	// comparison offset further up. That one moves where two layers cross; this one reshapes one
+	// Named Shape rather than Bias because Bias already means the height-blend comparison offset
+	// (HeightBlend.BaseBias). That one moves where two layers cross; this one reshapes one
 	// layer's own relief. Applied before HeightBoost, so the curve always sees a clean 0..1.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (DisplayName = "Height Shape", UIMin = "-1.0", UIMax = "1.0"))
 	float HeightShape = 0.0f;

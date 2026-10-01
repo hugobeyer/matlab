@@ -534,6 +534,11 @@ public:
 		SHADER_PARAMETER(uint32, HeightOp)
 		SHADER_PARAMETER(float, HeightSoftness)
 		SHADER_PARAMETER(float, BlendAmount)
+		SHADER_PARAMETER(float, HbStrength)
+		SHADER_PARAMETER(float, HbThreshold)
+		SHADER_PARAMETER(float, HbEdgeSoftness)
+		SHADER_PARAMETER(float, HbBaseBias)
+		SHADER_PARAMETER(float, HbBlendBias)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, IdField)
@@ -627,9 +632,15 @@ namespace
 		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
 		P->OutputSize = Size;
-		P->HeightOp = static_cast<uint32>(Child.GeneratorBlendOp);
-		P->HeightSoftness = Child.GeneratorBlendSoftness;
-		P->BlendAmount = Child.GeneratorBlendAmount;
+		const FMixtormatHeightBlend& Blend = Child.GeneratorHeightBlend;
+		P->HeightOp = static_cast<uint32>(Blend.Op);
+		P->HeightSoftness = Blend.Softness;
+		P->BlendAmount = Blend.Amount;
+		P->HbStrength = Blend.Strength;
+		P->HbThreshold = Blend.Threshold;
+		P->HbEdgeSoftness = Blend.EdgeSoftness;
+		P->HbBaseBias = Blend.BaseBias;
+		P->HbBlendBias = Blend.BlendBias;
 		P->RunningHeight = RunningHeight;
 		P->ModuleHeight = Module.Height;
 		P->RunningCoverage = RunningCoverage;

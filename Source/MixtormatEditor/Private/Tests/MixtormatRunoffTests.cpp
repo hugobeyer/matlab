@@ -722,7 +722,7 @@ bool FMixtormatRunoffHeightSourceTest::RunTest(const FString&)
 	ShelfMask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(Shelf.Get()));
 	ShelfMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
 	ShelfMask.Mask.Weight = 1.0f;
-	Layers[0].bHeightBlendEnabled = true;
+	Layers[0].HeightBlend.Op = EMixtormatHeightOp::HeightBlend;
 	Layers[0].HeightSource = EMixtormatHeightSource::CombinedMask;
 	Layers[0].HeightInfluence = 1.0f;
 
@@ -1093,7 +1093,7 @@ namespace MixtormatRunoffTests
 		ShelfMask.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(Shelf));
 		ShelfMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
 		ShelfMask.Mask.Weight = 1.0f;
-		Layers[0].bHeightBlendEnabled = true;
+		Layers[0].HeightBlend.Op = EMixtormatHeightOp::HeightBlend;
 		Layers[0].HeightSource = EMixtormatHeightSource::CombinedMask;
 		Layers[0].HeightInfluence = 1.0f;
 

@@ -11,6 +11,12 @@ uint CoverageMode;
 uint HeightOp;
 float HeightSoftness;
 float BlendAmount;
+// Height Blend op only: see FMixtormatHeightBlend.
+float HbStrength;
+float HbThreshold;
+float HbEdgeSoftness;
+float HbBaseBias;
+float HbBlendBias;
 Texture2D<float2> WarpedUV;
 Texture2D<float> ScalarField;
 Texture2D<uint> IdField;
@@ -76,10 +82,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Coverage = RunningCoverage.Load(int3(Pixel, 0));
 	const float ModuleCov = ModuleCoverage.Load(int3(Pixel, 0));
 	const float Weight = BlendAmount * ModuleCov;
-	OutScalar[Pixel] = lerp(Running,
+	float Combined = lerp(Running,
 		MixtormatApplyHeightOp(Running, Module, Coverage, HeightOp, HeightSoftness), Weight);
+	if (HeightOp == MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND)
+	{
+		// The module's coverage is the mask: the contest runs over the height above where it is
+		// painted. Where nothing is below, the weight falls back to the bare coverage, which is
+		// Replace.
+		const FMixtormatHeightBlendResult Blend = MixtormatHeightBlend(
+			Running, Module, ModuleCov, HbStrength, HbThreshold, HbEdgeSoftness, HbBaseBias, HbBlendBias);
+		const float T = lerp(ModuleCov, Blend.Weight, Coverage);
+		Combined = lerp(Running, lerp(Blend.Base, Module + HbBlendBias, T), BlendAmount);
+	}
+	OutScalar[Pixel] = Combined;
 	const bool bExtendsCoverage = HeightOp == MIXTORMAT_HEIGHT_OP_REPLACE
-		|| HeightOp == MIXTORMAT_HEIGHT_OP_ADD || HeightOp == MIXTORMAT_HEIGHT_OP_MAX;
+		|| HeightOp == MIXTORMAT_HEIGHT_OP_ADD || HeightOp == MIXTORMAT_HEIGHT_OP_MAX
+		|| HeightOp == MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND;
 	OutCoverage[Pixel] = bExtendsCoverage ? max(Coverage, ModuleCov) : Coverage;
 #elif BUNDLE_STAGE == 4
 	float Coverage = CoverageMode == 3u ? 0.0f : 1.0f;

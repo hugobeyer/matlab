@@ -7,6 +7,40 @@
 #define MIXTORMAT_HEIGHT_OP_MIN 4
 #define MIXTORMAT_HEIGHT_OP_MAX 5
 #define MIXTORMAT_HEIGHT_OP_DIFFERENCE 6
+#define MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND 7
+
+// One height contest, read two ways: the visibility every channel is weighted by, and the
+// surface that is kept. They are the same operation, so no channel can disagree with the height
+// about which surface is on top.
+struct FMixtormatHeightBlendResult
+{
+	// The winner field t. Coverage for every channel.
+	float Weight;
+	// lerp(Base, Blend, t) after both biases.
+	float Height;
+	// The base surface after its bias -- what Height falls back to as t drops.
+	float Base;
+};
+
+// Hugo's runover kernel, shared by layer composition and Generator module combine.
+// Mask is the coverage gating the contest; Strength scales it before the comparison, so a painted
+// mask pushes the incoming surface through however low it sits.
+FMixtormatHeightBlendResult MixtormatHeightBlend(
+	float Base, float Blend, float Mask,
+	float Strength, float Threshold, float Softness, float BaseBias, float BlendBias)
+{
+	const float A = Base + BaseBias;
+	const float B = Blend + BlendBias;
+	const float M = saturate(Mask * Strength);
+	const float S = max(Softness, 1.0e-6f);
+	const float T = smoothstep(Threshold - S, Threshold + S, M + B - A);
+
+	FMixtormatHeightBlendResult Result;
+	Result.Weight = T;
+	Result.Height = lerp(A, B, T);
+	Result.Base = A;
+	return Result;
+}
 
 // Polynomial smooth max at width K; K of zero is a hard max, where the division is undefined.
 float MixtormatHeightSmoothMax(float A, float B, float K)
@@ -19,8 +53,9 @@ float MixtormatHeightSmoothMax(float A, float B, float K)
 	return lerp(A, B, W) + K * W * (1.0f - W);
 }
 
-// Coverage is applied by the caller. On bare ground Min, Max and Difference use the incoming
-// value, because there is no established surface to compare against.
+// Coverage is applied by the caller. On bare ground Min, Max, Difference and Height Blend use the
+// incoming value, because there is no established surface to compare against. Height Blend itself
+// is evaluated by MixtormatHeightBlend; here it only supplies that bare-ground fallback.
 float MixtormatApplyHeightOp(float Below, float Layer, float Occupancy, uint Op, float Softness)
 {
 	float Result = Layer;

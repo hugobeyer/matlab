@@ -104,7 +104,7 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	FMixtormatLayer BaseLayer;
 	BaseLayer.Type = EMixtormatLayerType::Fill;
 	// Match editor-created fills; the shared layer struct defaults to Max.
-	BaseLayer.HeightOp = EMixtormatHeightOp::Replace;
+	BaseLayer.HeightBlend.Op = EMixtormatHeightOp::Replace;
 	BaseLayer.DisplayName = FText::FromString(TEXT("Red Fill"));
 	BaseLayer.bOverrideBaseColor = true;
 	BaseLayer.bOverrideRoughness = true;
@@ -112,7 +112,7 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	BaseLayer.BaseColor = FLinearColor::Red;
 	BaseLayer.Roughness = 0.25f;
 	BaseLayer.Metallic = 1.0f;
-	TestFalse(TEXT("Legacy layers keep height blending disabled"), BaseLayer.bHeightBlendEnabled);
+	TestTrue(TEXT("Fill layers keep the Height Blend op off"), BaseLayer.HeightBlend.Op != EMixtormatHeightOp::HeightBlend);
 	TestEqual(TEXT("Contact AO is opt-in"), BaseLayer.HeightContactAOAmount, 0.0f);
 	TestEqual(TEXT("Border Lift is opt-in"), BaseLayer.HeightBorderLift, 0.0f);
 	TestEqual(TEXT("Height mask strength defaults full"), BaseLayer.HeightBlendAmount, 1.0f);
@@ -523,12 +523,12 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	}
 
 	Layers[0].ConstantHeight = 0.8f;
-	Layers[1].bHeightBlendEnabled = true;
+	Layers[1].HeightBlend.Op = EMixtormatHeightOp::HeightBlend;
 	Layers[1].HeightSource = EMixtormatHeightSource::Constant;
 	Layers[1].ConstantHeight = 0.2f;
-	Layers[1].HeightRange = 0.01f;
-	Layers[1].HeightBias = 0.0f;
-	Layers[1].HeightOffset = 0.0f;
+	Layers[1].HeightBlend.EdgeSoftness = 0.01f;
+	Layers[1].HeightBlend.BaseBias = 0.0f;
+	Layers[1].HeightBlend.BlendBias = 0.0f;
 	TestTrue(TEXT("Compositor accepts constant height blending"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Height-rejected output can be read"), Pixel))
@@ -557,7 +557,7 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	}
 	Layers[1].bInvertHeight = false;
 
-	Layers[1].HeightOffset = 1.0f;
+	Layers[1].HeightBlend.BlendBias = 1.0f;
 	TestTrue(TEXT("Compositor accepts blend height bias"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Height-biased output can be read"), Pixel))
@@ -576,12 +576,12 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 			TEXT("Accepted biased height is clamped in the height output"),
 			Pixel.R >= 253);
 	}
-	Layers[1].bHeightBlendEnabled = false;
-	Layers[1].HeightBias = 0.0f;
-	Layers[1].HeightOffset = 0.0f;
+	Layers[1].HeightBlend.Op = EMixtormatHeightOp::Replace;
+	Layers[1].HeightBlend.BaseBias = 0.0f;
+	Layers[1].HeightBlend.BlendBias = 0.0f;
 
 	Layers[0].ConstantHeight = 0.6f;
-	Layers[1].bHeightBlendEnabled = true;
+	Layers[1].HeightBlend.Op = EMixtormatHeightOp::HeightBlend;
 	Layers[1].HeightSource = EMixtormatHeightSource::LayerHeight;
 	Layers[1].ConstantHeight = 0.4f;
 	if (PeelTexture)
@@ -592,10 +592,10 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 		HeightMask.Mask.Weight = 0.8f;
 	}
 	Layers[1].HeightBlendAmount = 0.5f;
-	Layers[1].HeightThreshold = 0.5f;
-	Layers[1].HeightRange = 0.1f;
-	Layers[1].HeightBias = 0.0f;
-	Layers[1].HeightOffset = 0.0f;
+	Layers[1].HeightBlend.Threshold = 0.5f;
+	Layers[1].HeightBlend.EdgeSoftness = 0.1f;
+	Layers[1].HeightBlend.BaseBias = 0.0f;
+	Layers[1].HeightBlend.BlendBias = 0.0f;
 	Layers[1].Metallic = 0.0f;
 	TestTrue(TEXT("Compositor accepts RAMH-style height-mask blending"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
@@ -603,23 +603,23 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("Weak mask strength rejects the upper layer"), Pixel.R > Pixel.B);
 	}
-	Layers[1].HeightOffset = 0.4f;
+	Layers[1].HeightBlend.BlendBias = 0.4f;
 	TestTrue(TEXT("Compositor accepts blend height bias"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Blend-biased output can be read"), Pixel))
 	{
 		TestTrue(TEXT("Blend bias restores the upper layer"), Pixel.B > Pixel.R);
 	}
-	Layers[1].HeightOffset = 0.0f;
+	Layers[1].HeightBlend.BlendBias = 0.0f;
 	Layers[1].HeightBlendAmount = 1.0f;
-	Layers[1].HeightBias = 0.4f;
+	Layers[1].HeightBlend.BaseBias = 0.4f;
 	TestTrue(TEXT("Compositor accepts base height bias"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Base-biased output can be read"), Pixel))
 	{
 		TestTrue(TEXT("Base bias protects the lower layer"), Pixel.R > Pixel.B);
 	}
-	Layers[1].HeightBias = 0.0f;
+	Layers[1].HeightBlend.BaseBias = 0.0f;
 	TestTrue(TEXT("Compositor accepts full height-mask strength"), Compositor.RequestCompose(Layers));
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Height-mask accepted output can be read"), Pixel))
@@ -636,12 +636,12 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 			TEXT("Height blend mask carries the accepted blend height"),
 			FMath::Abs(static_cast<int32>(Pixel.R) - 102) <= 2);
 	}
-	Layers[1].bHeightBlendEnabled = false;
+	Layers[1].HeightBlend.Op = EMixtormatHeightOp::Replace;
 	Layers[1].HeightBlendAmount = 1.0f;
-	Layers[1].HeightBias = 0.0f;
-	Layers[1].HeightOffset = 0.0f;
+	Layers[1].HeightBlend.BaseBias = 0.0f;
+	Layers[1].HeightBlend.BlendBias = 0.0f;
 	Layers[1].Metallic = 1.0f;
-	Layers[1].HeightRange = 0.1f;
+	Layers[1].HeightBlend.EdgeSoftness = 0.1f;
 	Layers[1].Children.Reset();
 
 	TArray<FMixtormatLayer> ReferenceLayers;
@@ -654,10 +654,10 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	ReferenceLayers.Add(ReferenceMiddle);
 	FMixtormatLayer ReferenceTop = BaseLayer;
 	ReferenceTop.BaseColor = FLinearColor::Blue;
-	ReferenceTop.bHeightBlendEnabled = true;
+	ReferenceTop.HeightBlend.Op = EMixtormatHeightOp::HeightBlend;
 	ReferenceTop.HeightSource = EMixtormatHeightSource::Constant;
 	ReferenceTop.ConstantHeight = 0.5f;
-	ReferenceTop.HeightRange = 0.01f;
+	ReferenceTop.HeightBlend.EdgeSoftness = 0.01f;
 	ReferenceLayers.Add(ReferenceTop);
 	TestTrue(TEXT("Compositor accepts previous-composite height comparison"), Compositor.RequestCompose(ReferenceLayers));
 	FlushRenderingCommands();
@@ -670,7 +670,7 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 	FlushRenderingCommands();
 	if (ReadFirstPixel(Compositor.GetBaseColorOutput(), TEXT("Accumulated-height comparison can be read"), Pixel))
 	{
-		TestTrue(TEXT("Current blending always uses the immediate accumulated height"), Pixel.B > Pixel.G);
+		TestTrue(TEXT("A reference below the top still lets the taller current layer win"), Pixel.B > Pixel.G);
 	}
 
 	Layers[1].FeatureInfluence = 1.0f;

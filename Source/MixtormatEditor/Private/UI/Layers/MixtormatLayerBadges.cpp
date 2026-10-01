@@ -74,8 +74,8 @@ namespace MixtormatLayerBadges
 	TArray<FText> CompositionToolTips()
 	{
 		return {
-			LOCTEXT("CompositionCombineHint", "This layer's normal reorients onto the normal below (RNM). Height is separate: see Height Op."),
-			LOCTEXT("CompositionOverrideHint", "This layer's normal replaces the normal below. Height is separate: see Height Op."),
+			LOCTEXT("CompositionCombineHint", "This layer's normal reorients onto the normal below (RNM). Height is separate: see BLEND."),
+			LOCTEXT("CompositionOverrideHint", "This layer's normal replaces the normal below. Height is separate: see BLEND."),
 			LOCTEXT("CompositionCoatHint", "Sit this layer over what is below rather than blending into it."),
 			LOCTEXT("CompositionDetailHint", "Contribute only a normal. The layer's other channels are ignored."),
 		};
@@ -91,7 +91,8 @@ namespace MixtormatLayerBadges
 		case EMixtormatHeightOp::Min:        return LOCTEXT("HeightOpBadgeMin", "MIN");
 		case EMixtormatHeightOp::Max:        return LOCTEXT("HeightOpBadgeMax", "MAX");
 		case EMixtormatHeightOp::Difference: return LOCTEXT("HeightOpBadgeDif", "DIF");
-		default:                             return LOCTEXT("HeightOpBadgeRep", "REP");
+		case EMixtormatHeightOp::HeightBlend: return LOCTEXT("HeightOpBadgeHB", "HB");
+		default:                            return LOCTEXT("HeightOpBadgeRep", "REP");
 		}
 	}
 
@@ -101,10 +102,7 @@ namespace MixtormatLayerBadges
 		{
 			return LOCTEXT("LayerBadgeDetail", "DTL");
 		}
-		const FText Op = ForHeightOp(Layer.HeightOp);
-		return Layer.bHeightBlendEnabled
-			? FText::Format(LOCTEXT("LayerBadgeHeightCoverage", "{0} H"), Op)
-			: Op;
+		return ForHeightOp(Layer.HeightBlend.Op);
 	}
 
 	FText ForColorBlendMode(const EMixtormatColorBlendMode Mode)
@@ -228,7 +226,7 @@ namespace MixtormatLayerBadges
 		{
 			// How this module blends into the layer's running height; the row name already says
 			// which generator it is.
-			return ForHeightOp(Child.Generator.BlendOp);
+			return ForHeightOp(Child.Generator.HeightBlend.Op);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Curvature)
 		{

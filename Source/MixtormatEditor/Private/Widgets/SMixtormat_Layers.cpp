@@ -758,7 +758,7 @@ void SMixtormat::InitializeNewLayer(
 		// A fill is its own surface: its normal replaces the one below rather than reorienting onto it.
 		Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
 		// And its height replaces what is below, rather than only rising above it.
-		Layer.HeightOp = EMixtormatHeightOp::Replace;
+		Layer.HeightBlend.Op = EMixtormatHeightOp::Replace;
 		break;
 	case EMixtormatLayerType::Generator:
 		Layer.bOverrideBaseColor = true;
@@ -6232,7 +6232,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	if (bLaterModule)
 	{
 		// The first module replaces the neutral running height; each later one adds to it.
-		Layer.Children[CreatedIndex].Generator.BlendOp = EMixtormatHeightOp::Add;
+		Layer.Children[CreatedIndex].Generator.HeightBlend.Op = EMixtormatHeightOp::Add;
 	}
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
 	SetLayerExpanded(Target.LayerIndex, true);
@@ -6917,7 +6917,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerHeightOpMenu(const int32 LayerIndex)
 			{
 				if (WorkingLayers.IsValidIndex(LayerIndex))
 				{
-					WorkingLayers[LayerIndex].HeightOp = Choice;
+					WorkingLayers[LayerIndex].HeightBlend.Op = Choice;
 					RefreshLayeredPreview();
 					RebuildLayerList();
 				}
@@ -6925,7 +6925,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerHeightOpMenu(const int32 LayerIndex)
 			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, Choice]()
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].HeightOp == Choice;
+					&& WorkingLayers[LayerIndex].HeightBlend.Op == Choice;
 			}));
 	}
 	return Menu.Build();

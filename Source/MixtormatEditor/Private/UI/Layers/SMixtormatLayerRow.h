@@ -16,8 +16,7 @@ class SMenuAnchor;
 //
 //   Name     what the user called it
 //   Source   what it is made of      -- "Mat - Rust Orange", "FILL", "GEN · Rock Formation"
-//   Badge    what it does to height  -- REP / ADD / SUB / MUL / MIN / MAX / DIF, DTL
-//            H means Height Blending on.
+//   Badge    what it does to height  -- REP / ADD / SUB / MUL / MIN / MAX / DIF / HB, DTL
 //   ColorBadge  how it blends colour -- MULT / SCREEN / ... , absent at Normal
 //
 // The badge is the only derived field: it is not typed, it is read from the layer's composition

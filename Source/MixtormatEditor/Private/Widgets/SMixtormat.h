@@ -366,6 +366,11 @@ private:
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
 	void AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel);
+	void AddHeightBlendRows(
+		const TSharedRef<SVerticalBox>& Panel,
+		TFunction<FMixtormatHeightBlend*()> Resolve,
+		const FText& OpHint,
+		const FText& AmountHint);
 	// Texture Mask, from the gallery selection. The same call the gallery's drag-and-drop makes, so
 	// the menu entry and the drop cannot drift into two different kinds of mask.
 	FReply AddTextureMask(FMixtormatAddTarget Target, FSoftObjectPath MaskPath);

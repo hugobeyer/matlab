@@ -470,7 +470,7 @@ pre{
 <div class="card">
 <h3>Generator Layer</h3>
 <p>Right-click the layer column and choose <strong>Generator Layer → Strata / Cracks / Rock Formation / Pebbles</strong>. The new layer starts with that module as its first child; add more from the layer's <strong>Add → Generators</strong> menu. Material layers do not offer generators. A Generator layer has Fill-style constant Base Color, Roughness, IOR and Metallic controls and its source label reads <strong>GEN</strong>; the Height Op badge and <strong>H</strong> indicator keep their existing meaning. AO remains derived from the final height, as on Fill layers.</p>
-<p><strong>Generator Drives Coverage</strong> defaults on: the merged coverage of the module chain multiplies the layer's coverage, so gaps reveal the stack below. Off, the layer fills the tile and the modules contribute height only; opacity, masks and Height Blending still apply. The layer's Height Op decides how the finished chain meets the stack below.</p>
+<p><strong>Generator Drives Coverage</strong> defaults on: the merged coverage of the module chain multiplies the layer's coverage, so gaps reveal the stack below. Off, the layer fills the tile and the modules contribute height only; opacity and masks still apply. The layer's Height Op decides how the finished chain meets the stack below.</p>
 </div>
 <h3>New layer versus child effect</h3>
 <p>Effects are not a layer type — they are children you add to an existing layer. Add a Material, Fill or Generator Layer when introducing a different surface; add a child effect when changing the surface already in the stack.</p>
@@ -518,8 +518,8 @@ pre{
 <section id="height">
 <div class="section-head"><h2>Height System</h2></div>
 <p>Height is one of the main differences between a flat opacity mix and a material transition that feels physically layered. Mixtormat can use Height as part of the relationship between an incoming layer and the surface below it.</p>
-<h3>Height Op</h3>
-<p>Every layer has a Height Op at the top of its Composition card: how its height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges and keeps the upper surface (the old BLEND, and the default); Add and Subtract are signed about 0.5; Multiply treats 0.5 as neutral; Min and Difference compare. On bare ground, where nothing is below yet, Min, Max and Difference behave like Replace, so the first layer reads the same whatever its op. Height Blending, below, still decides where the layer covers.</p>
+<h3>Height Op (Blend)</h3>
+<p>Every layer has a Height Op at the top of its Composition card: how its height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges and keeps the upper surface (the old BLEND, and the default); Add and Subtract are signed about 0.5; Multiply treats 0.5 as neutral; Min and Difference compare. On bare ground, where nothing is below yet, Min, Max and Difference behave like Replace, so the first layer reads the same whatever its op. Height Blend (HB) is the one op that also decides coverage: the layer runs over what is below where its mask is strong and its height is higher, and its settings open in the Height Blend card. Generator modules have the same Blend row.</p>
 <h3>Height sources</h3>
 <div class="grid">
 <div class="mini"><strong>RAMH Height</strong>Uses authored Height stored in the alpha channel of a RAMH source.</div>
@@ -574,7 +574,7 @@ pre{
 </section>
 <section id="generators">
 <div class="section-head"><h2>Generators</h2></div>
-<p>A Generator layer produces its own height and coverage before masks and compositing. Its Height Op determines how that surface meets the stack below, independently of Height Blending. An effect modifies the finished surface; a generator defines the surface the layer is made of.</p>
+<p>A Generator layer produces its own height and coverage before masks and compositing. Its Height Op determines how that surface meets the stack below, through the same Blend row every layer and module has. An effect modifies the finished surface; a generator defines the surface the layer is made of.</p>
 <h3>Generator layer: the module chain</h3>
 <p>A Generator layer holds an ordered chain of modules, its generator children. They run top to bottom: each module builds its own height and coverage, then blends into the layer's running height. The first module replaces the neutral starting height; modules added later default to <strong>Add</strong>.</p>
 <p>Every module panel starts with a <strong>BLEND</strong> row: <strong>Op</strong> (Replace, Add, Subtract, Multiply, Min, Max, Difference), <strong>Softness</strong> for the rounded Min/Max join, and <strong>Amount</strong> (0 to 1). The result is <code>running = lerp(running, op(running, module), Amount &times; module coverage)</code>, and the module's row badge shows its op.</p>

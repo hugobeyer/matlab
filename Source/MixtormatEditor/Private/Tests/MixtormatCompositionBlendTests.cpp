@@ -13,11 +13,11 @@
 //                       base colour, roughness, AO, metallic and F0 composite exactly as under
 //                       OVER. A height operation, nothing more.
 //
-//   Height Mask Blend   an independently armed feature (bHeightBlendEnabled) where the height
-//                       decides *visibility*, and one winner drives every channel together.
+//   Height Blend        the height op (HeightBlend.Op = HeightBlend) where the height runs over
+//                       what is below and decides *visibility*, one winner driving every channel.
 //
-// Picking BLEND must not switch the second one on -- it drags a dozen authored controls with it
-// -- and the second one must keep working when it is armed. Both halves are pinned here.
+// Picking a composition badge must not change the height op, and the Height Blend op must keep
+// working when it is chosen. Both halves are pinned here.
 //
 // The UI contract is read off the shipping MixtormatLayerBadges functions. The arithmetic is
 // reimplemented from MixtormatComposite.usf: the same smooth maximum, the same coverage split,
@@ -41,16 +41,23 @@ namespace MixtormatCompositionBlendTests
 	// MixtormatComposite.usf: the layer parameters the height paths read.
 	struct FBlendSettings
 	{
-		double Softness = 0.1;      // HeightRange
-		double Threshold = 0.5;     // HeightThreshold
-		double Contest = 1.0;       // HeightBlendAmount, saturated
-		double Amount = 1.0;        // HeightBlendAmount, unsaturated (sharpens above 1)
-		double BaseBias = 0.0;      // HeightBias
-		double IncomingBias = 0.0;  // HeightOffset
+		double Softness = 0.1;      // HeightBlend.Softness, the Min/Max join
+		double EdgeSoftness = 0.1;  // HeightBlend.EdgeSoftness (HeightRange)
+		double Threshold = 0.5;     // HeightBlend.Threshold
+		double Strength = 1.0;      // HeightBlendAmount
+		double BaseBias = 0.0;      // HeightBlend.BaseBias
+		double IncomingBias = 0.0;  // HeightBlend.BlendBias
 	};
 
-	// MixtormatComposite.usf: FMixtormatHeightBlend / EvaluateHeightBlend. Height Mask Blending
-	// only -- this is the path where coverage comes out of the height contest.
+	inline double SmoothStep(const double Low, const double High, const double X)
+	{
+		const double T = Saturate((X - Low) / (High - Low));
+		return T * T * (3.0 - 2.0 * T);
+	}
+
+	// MixtormatHeightOps.ush: FMixtormatHeightBlendResult / MixtormatHeightBlend, through the
+	// opacity fade EvaluateHeightBlend puts after it. The Height Blend op only -- this is the path
+	// where coverage comes out of the height contest.
 	struct FHeightBlend
 	{
 		double Weight = 0.0;
@@ -61,21 +68,20 @@ namespace MixtormatCompositionBlendTests
 	inline FHeightBlend EvaluateHeightBlend(
 		const double BaseHeight,
 		const double IncomingHeight,
-		const double Coverage,
+		const double Mask,
+		const double Opacity,
 		const FBlendSettings& Settings)
 	{
 		const double A = BaseHeight + Settings.BaseBias;
 		const double B = IncomingHeight + Settings.IncomingBias;
-		const double K = FMath::Max(Settings.Softness, 1.0e-6) / FMath::Max(Settings.Amount, 1.0);
-
-		const double Contested = B + (0.5 - Settings.Threshold);
-		const double HeightWinner = Saturate(0.5 + 0.5 * (Contested - A) / K);
+		const double M = Saturate(Mask * Settings.Strength);
+		const double S = FMath::Max(Settings.EdgeSoftness, 1.0e-6);
+		const double T = SmoothStep(Settings.Threshold - S, Settings.Threshold + S, M + B - A);
 
 		FHeightBlend Result;
 		Result.Base = A;
-		Result.Weight = FMath::Lerp(Coverage, Coverage * HeightWinner, Settings.Contest);
-		Result.Height = FMath::Lerp(A, B, Result.Weight)
-			+ K * HeightWinner * (1.0 - HeightWinner) * Coverage * Settings.Contest;
+		Result.Weight = Saturate(Opacity * T);
+		Result.Height = FMath::Lerp(A, B, Result.Weight);
 		return Result;
 	}
 
@@ -119,7 +125,7 @@ namespace MixtormatCompositionBlendTests
 	{
 		Over,        // cross-fade, the ordinary case
 		Merge,       // BLEND: smooth maximum, coverage untouched
-		MaskBlend,   // Height Mask Blending: the height decides coverage too
+		MaskBlend,   // Height Blend op: the height decides coverage too
 	};
 
 	// MixtormatComposite.usf: MainCS, the coverage split and the height.
@@ -142,10 +148,10 @@ namespace MixtormatCompositionBlendTests
 		Blend.Base = Previous.Height;
 		if (Mode == EHeightMode::MaskBlend)
 		{
-			Blend = EvaluateHeightBlend(Previous.Height, Incoming.Height, Coverage, Settings);
+			Blend = EvaluateHeightBlend(Previous.Height, Incoming.Height, Mask, Opacity, Settings);
 		}
 
-		// Only Height Mask Blending takes its coverage from the height. BLEND and OVER share
+		// Only the Height Blend op takes its coverage from the height. BLEND and OVER share
 		// this line, which is what makes them identical on every channel but the height.
 		const double SurfaceCoverage = Mode == EHeightMode::MaskBlend ? Blend.Weight : Coverage;
 
@@ -274,8 +280,8 @@ bool FMixtormatCompositionContractTest::RunTest(const FString&)
 	TestEqual(TEXT("DETAIL contributes only a normal"),
 		Layer.ChannelMode, EMixtormatLayerChannelMode::NormalDetail);
 
-	// The separation this whole revision is about. Height Mask Blending arms a dozen authored
-	// controls and decides coverage from the height; the composition badge must leave it exactly
+	// The separation this whole revision is about. The Height Blend op arms a dozen authored
+	// controls and decides coverage from the height; the composition badge must leave the op exactly
 	// as the artist set it, whichever way the badge is flipped and however often.
 	for (const bool bArmed : { false, true })
 	{
@@ -283,11 +289,11 @@ bool FMixtormatCompositionContractTest::RunTest(const FString&)
 			{ EComposition::Combine, EComposition::Override, EComposition::Coat, EComposition::Detail })
 		{
 			FMixtormatLayer Probe;
-			Probe.bHeightBlendEnabled = bArmed;
+			Probe.HeightBlend.Op = bArmed ? EMixtormatHeightOp::HeightBlend : EMixtormatHeightOp::Max;
 			ApplyComposition(Probe, Choice);
 			TestEqual(
-				TEXT("The composition choice never arms or disarms Height Mask Blending"),
-				Probe.bHeightBlendEnabled,
+				TEXT("The composition choice never changes the height op"),
+				Probe.HeightBlend.Op == EMixtormatHeightOp::HeightBlend,
 				bArmed);
 		}
 	}
@@ -463,30 +469,37 @@ bool FMixtormatHeightMaskBlendTest::RunTest(const FString&)
 		TestEqual(TEXT("F0 uses the winner"), R.F0, R.Alpha, Tolerance);
 		TestEqual(TEXT("Normal uses the winner"), R.NormalWeight, R.Alpha, Tolerance);
 
-		const double Fillet = R.Height - FMath::Lerp(Below.Height, IncomingHeight, R.Alpha);
-		TestTrue(TEXT("Height is the same lerp plus a non-negative fillet"), Fillet >= -1.0e-9);
+		TestEqual(TEXT("Height is exactly lerp(base, incoming, winner)"),
+			R.Height, FMath::Lerp(Below.Height, IncomingHeight, R.Alpha), Tolerance);
 	}
 
-	// A zero mask is gone whatever its height. Under the old form the mask was added into the
-	// height difference, so a tall enough layer punched through where nothing was painted.
-	for (const double IncomingHeight : { 0.0, 0.5, 1.0 })
-	{
-		const FComposite Masked = Composite(
-			Below, MakeSurface(1.0, IncomingHeight), 1.0, 0.0, 1.0,
-			EHeightMode::MaskBlend, Settings);
-		TestEqual(
-			FString::Printf(TEXT("Zero mask composites nothing at height %.2f"), IncomingHeight),
-			Masked.Alpha, 0.0, Tolerance);
-	}
+	// An unpainted layer at the same height as what is below it composites nothing: the mask is
+	// the only thing pushing it through, and there is none.
+	TestEqual(TEXT("Zero mask at level height composites nothing"),
+		Composite(Below, MakeSurface(1.0, Below.Height), 1.0, 0.0, 1.0,
+			EHeightMode::MaskBlend, Settings).Alpha,
+		0.0, Tolerance);
 
-	// A taller layer under a full mask wins outright, a shorter one loses: this is what makes a
-	// layer settle into the recesses of what is beneath it instead of tiling over them.
-	TestEqual(TEXT("A taller layer wins the contest"),
-		Composite(Below, MakeSurface(1.0, 0.8), 1.0, 1.0, 1.0, EHeightMode::MaskBlend, Settings).Alpha,
+	// Runover: a full mask pushes a layer through even where it sits lower than its base. That is
+	// the kernel's point -- painting the mask is what makes the layer win.
+	TestEqual(TEXT("A full mask runs a lower layer over the base"),
+		Composite(Below, MakeSurface(1.0, 0.3), 1.0, 1.0, 1.0, EHeightMode::MaskBlend, Settings).Alpha,
 		1.0, 1.0e-4);
-	TestEqual(TEXT("A shorter layer loses the contest"),
-		Composite(Below, MakeSurface(1.0, 0.2), 1.0, 1.0, 1.0, EHeightMode::MaskBlend, Settings).Alpha,
+
+	// At half a mask the heights decide: a taller layer wins, a shorter one loses.
+	TestEqual(TEXT("A taller layer wins the contest at half mask"),
+		Composite(Below, MakeSurface(1.0, 0.8), 1.0, 0.5, 1.0, EHeightMode::MaskBlend, Settings).Alpha,
+		1.0, 1.0e-4);
+	TestEqual(TEXT("A shorter layer loses the contest at half mask"),
+		Composite(Below, MakeSurface(1.0, 0.2), 1.0, 0.5, 1.0, EHeightMode::MaskBlend, Settings).Alpha,
 		0.0, 1.0e-4);
+
+	// The biases shift the contest: raising the incoming bias lifts a losing layer into a win.
+	FBlendSettings Biased;
+	Biased.IncomingBias = 0.4;
+	TestEqual(TEXT("Blend Bias lifts a shorter layer into a win"),
+		Composite(Below, MakeSurface(1.0, 0.2), 1.0, 0.5, 1.0, EHeightMode::MaskBlend, Biased).Alpha,
+		1.0, 1.0e-4);
 
 	// Coverage stays monotone across the mask's whole range. An early formulation sank the
 	// incoming surface by a full height range, which left the mask inert until its last few
@@ -504,66 +517,44 @@ bool FMixtormatHeightMaskBlendTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FMixtormatHeightMaskBlendAmountZeroTest,
-	"Mixtormat.Composition.HeightMaskBlendAmountZero",
+	FMixtormatHeightBlendStrengthTest,
+	"Mixtormat.Composition.HeightBlendStrength",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMixtormatHeightMaskBlendAmountZeroTest::RunTest(const FString&)
+bool FMixtormatHeightBlendStrengthTest::RunTest(const FString&)
 {
 	using namespace MixtormatCompositionBlendTests;
 
-	// At Blend Strength 0 the armed feature must degrade to ordinary OVER, not to an unrelated
-	// threshold result. The old form multiplied the mask by this value, so 0 erased the mask from
-	// the comparison and left a bare height test: the layer appeared wherever it happened to be
-	// taller, ignoring where it was painted. Any formulation that folds the mask into the height
-	// difference additively fails here.
+	// Strength scales the mask before the contest. At 0 the mask has no say, so the result no
+	// longer depends on it; above 0 every extra step of Strength pushes the layer further through.
 	FBlendSettings Off;
-	Off.Contest = 0.0;
-	Off.Amount = 0.0;
-
-	const FBlendSettings OverSettings;
-	int32 Mismatches = 0;
-	for (const double BaseHeight : { 0.1, 0.5, 0.9 })
-	{
-		for (const double IncomingHeight : { 0.2, 0.5, 0.85 })
-		{
-			for (const double Mask : { 0.0, 0.25, 0.5, 1.0 })
-			{
-				for (const double Opacity : { 0.5, 1.0 })
-				{
-					const FSurface Below = MakeSurface(0.0, BaseHeight);
-					const FSurface Above = MakeSurface(1.0, IncomingHeight);
-					const FComposite Blend = Composite(
-						Below, Above, Opacity, Mask, 1.0, EHeightMode::MaskBlend, Off);
-					const FComposite Over = Composite(
-						Below, Above, Opacity, Mask, 1.0, EHeightMode::Over, OverSettings);
-					Mismatches += FMath::IsNearlyEqual(Blend.Alpha, Over.Alpha, 1.0e-9) ? 0 : 1;
-					Mismatches += FMath::IsNearlyEqual(Blend.Height, Over.Height, 1.0e-9) ? 0 : 1;
-				}
-			}
-		}
-	}
-	TestEqual(TEXT("Blend Strength 0 is exactly OVER"), Mismatches, 0);
-
-	// And it departs continuously rather than snapping, so the bottom of the slider is a usable
-	// range instead of a cliff.
+	Off.Strength = 0.0;
 	const FSurface Below = MakeSurface(0.0, 0.5);
 	const FSurface Above = MakeSurface(1.0, 0.65);
-	const FComposite Over =
-		Composite(Below, Above, 1.0, 0.6, 1.0, EHeightMode::Over, OverSettings);
-	double PreviousGap = 0.0;
-	for (int32 Step = 1; Step <= 4; ++Step)
+	const double AtZeroMask =
+		Composite(Below, Above, 1.0, 0.0, 1.0, EHeightMode::MaskBlend, Off).Alpha;
+	for (const double Mask : { 0.25, 0.5, 1.0 })
+	{
+		TestEqual(TEXT("Strength 0 makes the contest independent of the mask"),
+			Composite(Below, Above, 1.0, Mask, 1.0, EHeightMode::MaskBlend, Off).Alpha,
+			AtZeroMask, Tolerance);
+	}
+
+	double Previous = -1.0;
+	for (int32 Step = 0; Step <= 8; ++Step)
 	{
 		FBlendSettings Partial;
-		Partial.Contest = 0.25 * static_cast<double>(Step);
-		Partial.Amount = Partial.Contest;
-		const FComposite Blend =
-			Composite(Below, Above, 1.0, 0.6, 1.0, EHeightMode::MaskBlend, Partial);
-		const double Gap = FMath::Abs(Blend.Alpha - Over.Alpha);
-		TestTrue(TEXT("Blend Strength departs from OVER monotonically"),
-			Gap >= PreviousGap - 1.0e-9);
-		PreviousGap = Gap;
+		Partial.Strength = 0.25 * static_cast<double>(Step);
+		const double Alpha =
+			Composite(Below, Above, 1.0, 0.4, 1.0, EHeightMode::MaskBlend, Partial).Alpha;
+		TestTrue(TEXT("Coverage is monotone in Strength"), Alpha >= Previous - Tolerance);
+		Previous = Alpha;
 	}
+
+	// Opacity fades the whole layer after the contest.
+	TestEqual(TEXT("Opacity 0 composites nothing"),
+		Composite(Below, Above, 0.0, 1.0, 1.0, EHeightMode::MaskBlend, FBlendSettings()).Alpha,
+		0.0, Tolerance);
 	return true;
 }
 

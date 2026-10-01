@@ -3206,22 +3206,62 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 		];
 }
 
+// The BLEND row every layer and every module shares: Op and Softness, then Amount. One block with
+// one meaning, whatever it is attached to -- a layer's against the stack below, a module's against
+// the layer's running height. Resolve names the FMixtormatHeightBlend it edits.
+void SMixtormat::AddHeightBlendRows(
+	const TSharedRef<SVerticalBox>& Panel,
+	TFunction<FMixtormatHeightBlend*()> Resolve,
+	const FText& OpHint,
+	const FText& AmountHint)
+{
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatHeightBlend, EMixtormatHeightOp>(
+			LOCTEXT("HeightBlendOp", "Blend"), Resolve, &FMixtormatHeightBlend::Op, OpHint,
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
+		MakeMemberSlider<FMixtormatHeightBlend>(
+			LOCTEXT("HeightBlendSoftness", "Softness"), Resolve, &FMixtormatHeightBlend::Softness, 0.0, 0.5, 0.1, 0.001,
+			LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min and Max, in height units. 0 is a hard min or max."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("HeightBlendAmount", "Amount"), Resolve, &FMixtormatHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
+		AmountHint));
+}
+
 // The module's blend into its Generator layer's running height. First in every module panel,
-// because it is the one question every module answers however its own controls read.
+// because it is the one question every module answers however its own controls read. At Height
+// Blend the module's own Strength, Threshold, Softness and biases open beneath the shared row.
 void SMixtormat::AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel)
 {
-	const auto Generator = [this]() { return GetSelectedGenerator(); };
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatGenerator, EMixtormatHeightOp>(
-			LOCTEXT("GeneratorBlendOp", "Blend"), Generator, &FMixtormatGenerator::BlendOp,
-			LOCTEXT("GeneratorBlendOpHint", "How this module combines with the height the modules above it built. The first module replaces; later ones add. Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace where nothing is below."),
-			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
-		MakeMemberSlider<FMixtormatGenerator>(
-			LOCTEXT("GeneratorBlendSoftness", "Softness"), Generator, &FMixtormatGenerator::BlendSoftness, 0.0, 0.5, 0.1, 0.001,
-			LOCTEXT("GeneratorBlendSoftnessHint", "Rounded join for Min and Max, in height units. 0 is a hard min or max."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGenerator>(
-		LOCTEXT("GeneratorBlendAmount", "Amount"), Generator, &FMixtormatGenerator::BlendAmount, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("GeneratorBlendAmountHint", "How much of this module reaches the layer, multiplied by its own coverage.")));
+	const TFunction<FMixtormatHeightBlend*()> Blend = [this]() -> FMixtormatHeightBlend*
+	{
+		FMixtormatGenerator* Generator = GetSelectedGenerator();
+		return Generator ? &Generator->HeightBlend : nullptr;
+	};
+	AddHeightBlendRows(Panel, Blend,
+		LOCTEXT("GeneratorBlendOpHint", "How this module combines with the height the modules above it built. The first module replaces; later ones add. Add and Subtract are signed about 0.5. Min, Max, Difference and Height Blend behave like Replace where nothing is below. Height Blend lets this module run over the height above it where its coverage is strong."),
+		LOCTEXT("GeneratorBlendAmountHint", "How much of this module reaches the layer, multiplied by its own coverage."));
+
+	const TSharedRef<SVerticalBox> Settings = SNew(SVerticalBox)
+		.Visibility_Lambda([Blend]()
+		{
+			const FMixtormatHeightBlend* Current = Blend();
+			return Current && Current->Op == EMixtormatHeightOp::HeightBlend
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		});
+	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("HeightBlendStrength", "Blend Strength"), Blend, &FMixtormatHeightBlend::Strength, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("HeightBlendStrengthHint", "How much of the height contest happens. 0 is plain coverage; 1 is the full contest gated by the mask.")));
+	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("HeightBlendThresholdLabel", "Threshold"), Blend, &FMixtormatHeightBlend::Threshold, 0.0, 1.0, 0.5, 0.01));
+	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend, &FMixtormatHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005));
+	AddSliderRow(Settings, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatHeightBlend>(
+			LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend, &FMixtormatHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
+		MakeMemberSlider<FMixtormatHeightBlend>(
+			LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend, &FMixtormatHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, Settings);
 }
 
 // Strata Carver, the first GENERATORS panel.
@@ -5379,6 +5419,31 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			Delta);
 	};
 
+	// The shared Height Blend block (Threshold, Edge Softness, the two biases) lives on the layer's
+	// FMixtormatHeightBlend, the same struct a module edits.
+	const auto BlendRow = [this](
+		const FText& Label,
+		float FMixtormatHeightBlend::* Member,
+		const float MinValue,
+		const float MaxValue,
+		const float Delta,
+		const float DefaultValue) -> TSharedRef<SWidget>
+	{
+		return MakeMemberSlider<FMixtormatHeightBlend>(
+			Label,
+			[this]() -> FMixtormatHeightBlend*
+			{
+				return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					? &WorkingLayers[SelectedLayerIndex].HeightBlend
+					: nullptr;
+			},
+			Member,
+			MinValue,
+			MaxValue,
+			DefaultValue,
+			Delta);
+	};
+
 	return SNew(SBox)
 		.Visibility_Lambda([this]()
 		{
@@ -5387,14 +5452,16 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				return EVisibility::Collapsed;
 			}
 			const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			// The settings open only at Op = Height Blend; the BLEND row in COMPOSITION chooses it.
 			return Layer.ChannelMode == EMixtormatLayerChannelMode::CompleteSurface
+				&& Layer.HeightBlend.Op == EMixtormatHeightOp::HeightBlend
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
-		
+
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("HeightMaskBlendingHeading", "HEIGHT MASK BLENDING"))
+			.Title(LOCTEXT("HeightMaskBlendingHeading", "HEIGHT BLEND"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -5403,36 +5470,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::HeightBlend,
 						LOCTEXT("PreviewHeightBlendMask", "Preview the computed height blend mask in unlit dark red and cyan"))
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SMixtormatToggle)
-					.ToolTip(LOCTEXT("EnableHeightBlend", "Enable Height Blend"))
-					.IsChecked_Lambda([this]()
-					{
-						return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-							&& WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled
-							? ECheckBoxState::Checked
-							: ECheckBoxState::Unchecked;
-					})
-					.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-					{
-						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-						{
-							WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-						}
-					})
 				])
 			[
 				SNew(SVerticalBox)
-				.Visibility_Lambda([this]()
-				{
-					return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-						&& WorkingLayers[SelectedLayerIndex].bHeightBlendEnabled
-						? EVisibility::Visible
-						: EVisibility::Collapsed;
-				})
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
@@ -5457,19 +5497,19 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
-					NumericRow(LOCTEXT("HeightBlendThreshold", "Threshold"), &FMixtormatLayer::HeightThreshold, 0.0f, 1.0f, 0.01f, 0.5f)
+					BlendRow(LOCTEXT("HeightBlendThreshold", "Threshold"), &FMixtormatHeightBlend::Threshold, 0.0f, 1.0f, 0.01f, 0.5f)
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
-					NumericRow(LOCTEXT("HeightSoftness", "Softness"), &FMixtormatLayer::HeightRange, 0.0f, 1.0f, 0.005f, 0.1f)
+					BlendRow(LOCTEXT("HeightSoftness", "Edge Softness"), &FMixtormatHeightBlend::EdgeSoftness, 0.0f, 1.0f, 0.005f, 0.1f)
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
-					NumericRow(LOCTEXT("BaseHeightBias", "Base Height Bias"), &FMixtormatLayer::HeightBias, -1.0f, 1.0f, 0.01f, 0.0f)
+					BlendRow(LOCTEXT("BaseHeightBias", "Base Bias"), &FMixtormatHeightBlend::BaseBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 				[
-					NumericRow(LOCTEXT("BlendHeightBias", "Blend Height Bias"), &FMixtormatLayer::HeightOffset, -1.0f, 1.0f, 0.01f, 0.0f)
+					BlendRow(LOCTEXT("BlendHeightBias", "Blend Bias"), &FMixtormatHeightBlend::BlendBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
 
 				// Rounds the height field itself, which is why it sits here rather than under
@@ -5614,6 +5654,17 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		});
 	};
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const TSharedRef<SVerticalBox> BlendPanel = SNew(SVerticalBox);
+	AddHeightBlendRows(
+		BlendPanel,
+		[this]() -> FMixtormatHeightBlend*
+		{
+			return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+				? &WorkingLayers[SelectedLayerIndex].HeightBlend
+				: nullptr;
+		},
+		LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground. Height Blend lets the layer run over the stack where its mask is strong and its height is higher: its settings open in the card below."),
+		LOCTEXT("HeightAmountHint", "How much of this op's height reaches the stack."));
 	return SNew(SBox)
 		.WidthOverride(MixtormatTokens::InspectorWidth)
 		[
@@ -5947,28 +5998,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								SNew(SVerticalBox)
 
 								// What this layer's height does to the stack below. First, because it is
-								// the composition question every layer answers; Height Blending further
-								// down only decides where the layer covers.
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+								// the composition question every layer answers; at Height Blend the card
+								// below opens to decide where the layer runs over what is under it.
+								+ SVerticalBox::Slot().AutoHeight()
 								[
-									MixtormatRow::MakePair(
-										MakeMemberEnum<FMixtormatLayer, EMixtormatHeightOp>(
-											LOCTEXT("HeightOpLabel", "Height Op"),
-											[this]() -> FMixtormatLayer*
-											{
-												return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-											},
-											&FMixtormatLayer::HeightOp,
-											LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground."),
-											FSimpleDelegate::CreateLambda([this]() { RebuildLayerList(); })),
-										MakeMemberSlider<FMixtormatLayer>(
-											LOCTEXT("HeightSoftnessLabel", "Softness"),
-											[this]() -> FMixtormatLayer*
-											{
-												return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-											},
-											&FMixtormatLayer::HeightSoftness, 0.0, 0.5, 0.1, 0.001,
-											LOCTEXT("HeightSoftnessHint", "Rounded join for Min and Max, in height units. 0 is a hard min or max.")))
+									BlendPanel
 								]
 
 								// One control, not three fields. BLEND / OVER / COAT / DETAIL are the

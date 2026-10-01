@@ -28,7 +28,7 @@ namespace MixtormatIdGroupTests
 		Layer.BaseColor = FLinearColor(0.5f, 0.5f, 0.5f);
 		Layer.HeightSource = EMixtormatHeightSource::Constant;
 		Layer.ConstantHeight = 0.35f;
-		Layer.bHeightBlendEnabled = false;
+		Layer.HeightBlend.Op = EMixtormatHeightOp::Max;
 		return Layer;
 	}
 
