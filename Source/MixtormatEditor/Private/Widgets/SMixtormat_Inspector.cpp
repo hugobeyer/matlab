@@ -755,6 +755,12 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		const FMixtormatChildAddress Address = GetSelectedChildAddress();
 		const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+		if (Child && !Child->ScopeOwnerChildId.IsValid()
+			&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
+			&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
+		{
+			return true;
+		}
 		const FMixtormatLayerChild* Owner = Child && Children
 			? Children->FindByPredicate([Child](const FMixtormatLayerChild& Candidate)
 				{ return Candidate.ChildId == Child->ScopeOwnerChildId; }) : nullptr;
@@ -764,7 +770,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox).IsEnabled_Lambda(HasOwner);
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
 		LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
-		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field (Rock Formation, Pebbles).")));
+		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Generator layers support every kind; existing generator-child scope eligibility is unchanged.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowAmount, 0.0, 1.0, 1.0, 0.01),
@@ -3299,9 +3305,8 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 					MixtormatRow::MakeCheckbox(
 						TAttribute<ECheckBoxState>::CreateLambda([this]()
 						{
-							const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-							return Child && Child->Type == EMixtormatLayerChildType::Generator
-								&& Child->Generator.bEnabled
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
 								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 						}),
 						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
@@ -5789,6 +5794,26 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						{
 							return bHasSelectedLayer ? EVisibility::Visible : EVisibility::Collapsed;
 						})
+						+ SVerticalBox::Slot().AutoHeight()[BuildStrataCarverControls()]
+						+ SVerticalBox::Slot().AutoHeight()[BuildCracksControls()]
+						+ SVerticalBox::Slot().AutoHeight()[BuildRockFormationControls()]
+						+ SVerticalBox::Slot().AutoHeight()[BuildPebblesControls()]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+						[
+							SNew(SBox)
+							.Visibility_Lambda([this]()
+							{
+								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
+									? EVisibility::Visible : EVisibility::Collapsed;
+							})
+							[
+								MakeMemberToggle<FMixtormatLayer>(
+									LOCTEXT("GeneratorDrivesCoverage", "Generator Drives Coverage"), LayerForRows(),
+									&FMixtormatLayer::bGeneratorDrivesCoverage,
+									LOCTEXT("GeneratorDrivesCoverageHint", "On: multiply generator coverage into layer coverage, revealing the stack through gaps. Off: fill the tile and use the generator for height only."))
+							]
+						]
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
 						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
 						// meant the segment could say BLEND while the box said the layer was detail.
@@ -5805,7 +5830,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Visibility_Lambda([this]()
 							{
 								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
+									&& (WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
+										|| WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
 									? EVisibility::Visible
 									: EVisibility::Collapsed;
 							})
@@ -5871,13 +5897,18 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// fill's own material property, not a height-mask setting.
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("FillHeight", "Height"),
-									[this]() -> FMixtormatLayer*
-									{
-										return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-									},
-									&FMixtormatLayer::ConstantHeight, 0.0, 1.0, 0.5, 0.01)
+								SNew(SBox)
+								.Visibility_Lambda([this]()
+								{
+									return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+										&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
+										? EVisibility::Visible : EVisibility::Collapsed;
+								})
+								[
+									MakeMemberSlider<FMixtormatLayer>(
+										LOCTEXT("FillHeight", "Height"), LayerForRows(),
+										&FMixtormatLayer::ConstantHeight, 0.0, 1.0, 0.5, 0.01)
+								]
 							]
 							]
 						]

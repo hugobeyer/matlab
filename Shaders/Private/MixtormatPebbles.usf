@@ -13,6 +13,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 
 #define PEBBLE_TAU     6.28318530717958647692f
 #define PEBBLE_PI      3.14159265358979323846f
@@ -176,7 +177,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 #if PEBBLE_STAGE == 0
 	const int CellCount = max(Cells, 1);
-	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / float2(OutputSize));
 	const float2 q = UV * (float)CellCount;
 	const int2 c0 = int2((int)floor(q.x), (int)floor(q.y));
 
@@ -212,7 +213,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			float distanceToCentre = length(d);
 			float boundingRadius = 0.75f * size;
 			if (distanceToCentre > boundingRadius
-				&& (distanceToCentre - boundingRadius) / (float)CellCount >= bestSdf)
+				&& GeneratorLayer == 0u
+								&& (distanceToCentre - boundingRadius) / (float)CellCount >= bestSdf)
 			{
 				continue;
 			}
@@ -226,8 +228,24 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 			float h;
 			int facet;
-			float sd = PebbleStone(p, ss, cuts, h, facet) * size / (float)CellCount;
-			bestSdf = min(bestSdf, sd);
+			const float sd = PebbleStone(p, ss, cuts, h, facet) * size / (float)CellCount;
+			float destinationSd = sd;
+			if (GeneratorLayer != 0u && any(abs(GeneratorUVScale) != 1.0f))
+			{
+				const float E = 1e-4f;
+				float unusedHeight;
+				int unusedFacet;
+				const float2 G = float2(
+					PebbleStone(p + float2(E, 0.0f), ss, cuts, unusedHeight, unusedFacet)
+						- PebbleStone(p - float2(E, 0.0f), ss, cuts, unusedHeight, unusedFacet),
+					PebbleStone(p + float2(0.0f, E), ss, cuts, unusedHeight, unusedFacet)
+						- PebbleStone(p - float2(0.0f, E), ss, cuts, unusedHeight, unusedFacet));
+				const float GL = length(G);
+				const float2 N = float2(cos(ang) * G.x - sin(ang) * G.y,
+					sin(ang) * G.x + cos(ang) * G.y);
+				if (GL != 0.0f) { destinationSd = MixtormatGeneratorDistance(sd, N / GL); }
+			}
+			bestSdf = min(bestSdf, destinationSd);
 
 			if (distanceToCentre > boundingRadius)
 			{

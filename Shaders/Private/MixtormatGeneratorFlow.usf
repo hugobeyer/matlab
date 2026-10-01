@@ -20,8 +20,9 @@
 // FLOW_STAGE 6 (Pack):               a scalar signed distance with a no-hit sentinel (Pebbles)
 //   into the (distance, outline-sampled) pair the seed stage reads.
 //
-// Owners: Rock Formation (its RG boundary field) and Pebbles (packed edge distance, plus a
-// coverage the apply stage transforms alongside the height so the pebble combine sees it).
+// Generator layers remap their remaining bundle fields through OutWarpedUV after each apply,
+// before the next tool reads BoundaryField. Flow Carve keeps IDs/masks/boundary in place.
+// Child owners retain their existing pre-combine height/coverage path.
 //
 // Every sample wraps: the tile period is the texture period, and bend noise uses integer
 // lattice periods. Travel distance is never wrapped with fmod.
@@ -52,6 +53,7 @@ float OffsetAlong;    // fraction of Reach
 float OffsetAcross;   // fraction of Reach
 uint HasMask;
 uint HasCoverage;
+uint GeneratorLayer;
 
 // Apply controls.
 uint Mode;            // 0 Shape Deform, 1 Generator Flow, 2 Flow Carve
@@ -437,10 +439,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 		}
 		const float2 ReadUV = UV + Displacement;
-		OutHeight[Pixel] = SampleHeight(ReadUV);
+		const bool Unmoved = GeneratorLayer != 0u && all(Displacement == 0.0f);
+		OutHeight[Pixel] = Unmoved ? Original : SampleHeight(ReadUV);
 		OutWarpedUV[Pixel] = ReadUV;
 		OutCarveMask[Pixel] = 0.0f;
-		OutCoverage[Pixel] = SampleCoverage(ReadUV);
+		OutCoverage[Pixel] = Unmoved && HasCoverage != 0u
+			? Coverage.Load(int3(Pixel, 0)) : SampleCoverage(ReadUV);
 		return;
 	}
 
@@ -452,10 +456,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// the displacement feathers out with the influence. One height sample at the end.
 		const float H = TraceLength * WarpStrength / (float)StepCount;
 		const float2 P = TraceFlowCoordinate(UV);
-		OutHeight[Pixel] = abs(H) > 0.0f ? SampleHeight(P) : Original;
+		const bool Unmoved = GeneratorLayer != 0u && all(P == UV);
+		OutHeight[Pixel] = abs(H) > 0.0f && !Unmoved ? SampleHeight(P) : Original;
 		OutWarpedUV[Pixel] = P;
 		OutCarveMask[Pixel] = 0.0f;
-		OutCoverage[Pixel] = SampleCoverage(P);
+		OutCoverage[Pixel] = Unmoved && HasCoverage != 0u
+			? Coverage.Load(int3(Pixel, 0)) : SampleCoverage(P);
 		return;
 	}
 

@@ -91,6 +91,64 @@ namespace
 		}
 	}
 
+	// Layer and child addresses expose only the selected flat payload, never the wrapper.
+	FOwnerView GeneratorOwner(
+		const FMixtormatGenerator& Generator,
+		const TArray<FMixtormatParameterBinding>& Bindings)
+	{
+		FOwnerView View;
+		View.Bindings = &Bindings;
+		switch (Generator.Type)
+		{
+		case EMixtormatGeneratorType::StrataCarver:
+			View.ConstData = &Generator.StrataCarver;
+			View.Struct = FMixtormatStrataCarver::StaticStruct();
+			break;
+		case EMixtormatGeneratorType::Cracks:
+			View.ConstData = &Generator.Cracks;
+			View.Struct = FMixtormatCracks::StaticStruct();
+			break;
+		case EMixtormatGeneratorType::RockFormation:
+			View.ConstData = &Generator.RockFormation;
+			View.Struct = FMixtormatRockFormation::StaticStruct();
+			break;
+		case EMixtormatGeneratorType::Pebbles:
+			View.ConstData = &Generator.Pebbles;
+			View.Struct = FMixtormatPebbles::StaticStruct();
+			break;
+		default: break;
+		}
+		return View;
+	}
+
+	FOwnerView LayerOwner(const FMixtormatLayer& Layer, const EMixtormatParameterOwnerType Owner)
+	{
+		if (Owner == EMixtormatParameterOwnerType::Generator && Layer.Type == EMixtormatLayerType::Generator)
+		{
+			return GeneratorOwner(Layer.Generator, Layer.ParameterBindings);
+		}
+		if (Owner != EMixtormatParameterOwnerType::Layer)
+		{
+			return {};
+		}
+		FOwnerView View;
+		View.ConstData = &Layer;
+		View.Struct = FMixtormatLayer::StaticStruct();
+		View.Bindings = &Layer.ParameterBindings;
+		return View;
+	}
+
+	FOwnerView MutableLayerOwner(FMixtormatLayer& Layer, const EMixtormatParameterOwnerType Owner)
+	{
+		FOwnerView View = LayerOwner(Layer, Owner);
+		View.MutableData = const_cast<void*>(View.ConstData);
+		if (View.ConstData)
+		{
+			View.MutableBindings = &Layer.ParameterBindings;
+		}
+		return View;
+	}
+
 	FOwnerView ChildOwner(const FMixtormatLayerChild& Child, const EMixtormatParameterOwnerType Owner)
 	{
 		if (!ChildTypeMatchesOwner(Child, Owner))
@@ -117,17 +175,8 @@ namespace
 		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
 		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; break;
-		// A generator exposes its selected flat payload, not its wrapper.
 		case EMixtormatParameterOwnerType::Generator:
-			switch (Child.Generator.Type)
-			{
-			case EMixtormatGeneratorType::StrataCarver: View.ConstData = &Child.Generator.StrataCarver; break;
-			case EMixtormatGeneratorType::Cracks: View.ConstData = &Child.Generator.Cracks; break;
-			case EMixtormatGeneratorType::RockFormation: View.ConstData = &Child.Generator.RockFormation; break;
-			case EMixtormatGeneratorType::Pebbles: View.ConstData = &Child.Generator.Pebbles; break;
-			default: break;
-			}
-			break;
+			return GeneratorOwner(Child.Generator, Child.ParameterBindings);
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) View.ConstData = &Child.Mask.Shaping;
 			else if (Child.Type == EMixtormatLayerChildType::Generated) View.ConstData = &Child.Generated.Shaping;
@@ -140,18 +189,7 @@ namespace
 		const TArray<UScriptStruct*> Structs = MixtormatParameterBinding::GetOwnerStructs(Owner);
 		if (View.ConstData && !Structs.IsEmpty())
 		{
-			int32 Index = 0;
-			if (Owner == EMixtormatParameterOwnerType::Generator)
-			{
-				switch (Child.Generator.Type)
-				{
-				case EMixtormatGeneratorType::Cracks: Index = 1; break;
-				case EMixtormatGeneratorType::RockFormation: Index = 2; break;
-				case EMixtormatGeneratorType::Pebbles: Index = 3; break;
-				default: break;
-				}
-			}
-			View.Struct = Structs[Index];
+			View.Struct = Structs[0];
 		}
 		return View;
 	}
@@ -208,11 +246,11 @@ namespace
 			}
 			if (Address.Owner == EMixtormatParameterOwnerType::Layer)
 			{
-				FOwnerView View;
-				View.ConstData = &Layer;
-				View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
-				View.Bindings = &Layer.ParameterBindings;
-				return View;
+				return LayerOwner(Layer, Address.Owner);
+			}
+			if (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid())
+			{
+				return Address.LayerId.IsValid() ? LayerOwner(Layer, Address.Owner) : FOwnerView{};
 			}
 			for (const FMixtormatLayerChild& Child : Layer.Children)
 			{
@@ -269,13 +307,11 @@ namespace
 			}
 			if (Address.Owner == EMixtormatParameterOwnerType::Layer)
 			{
-				FOwnerView View;
-				View.ConstData = &Layer;
-				View.MutableData = &Layer;
-				View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
-				View.Bindings = &Layer.ParameterBindings;
-				View.MutableBindings = &Layer.ParameterBindings;
-				return View;
+				return MutableLayerOwner(Layer, Address.Owner);
+			}
+			if (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid())
+			{
+				return Address.LayerId.IsValid() ? MutableLayerOwner(Layer, Address.Owner) : FOwnerView{};
 			}
 			for (FMixtormatLayerChild& Child : Layer.Children)
 			{
@@ -291,17 +327,11 @@ namespace
 
 	FOwnerView LocateMutableOwner(FMixtormatLayer& Layer, const FMixtormatParameterBinding& Binding, FMixtormatLayerChild* Child)
 	{
-		if (Binding.DestinationOwner == EMixtormatParameterOwnerType::Layer)
+		if (Binding.DestinationOwner == EMixtormatParameterOwnerType::Layer || !Child)
 		{
-			FOwnerView View;
-			View.ConstData = &Layer;
-			View.MutableData = &Layer;
-			View.Struct = MixtormatParameterBinding::GetOwnerStructs(EMixtormatParameterOwnerType::Layer)[0];
-			View.Bindings = &Layer.ParameterBindings;
-			View.MutableBindings = &Layer.ParameterBindings;
-			return View;
+			return MutableLayerOwner(Layer, Binding.DestinationOwner);
 		}
-		return Child ? MutableChildOwner(*Child, Binding.DestinationOwner) : FOwnerView{};
+		return MutableChildOwner(*Child, Binding.DestinationOwner);
 	}
 
 	const FMixtormatParameterBinding* FindReferenceBinding(
@@ -1130,6 +1160,7 @@ namespace MixtormatParameterBinding
 		// Instances first: an instance inherits its source's bindings, and those have to be
 		// present before the binding pass walks them.
 		ResolveChildInstances(Scope, InOutLayer);
+		// Generator-owner bindings share the layer's set; a null child selects the layer payload.
 		ApplyBindingSet(Scope, InOutLayer, nullptr, InOutLayer.ParameterBindings);
 		for (FMixtormatLayerChild& Child : InOutLayer.Children)
 		{

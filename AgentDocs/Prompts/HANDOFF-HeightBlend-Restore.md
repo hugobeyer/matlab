@@ -4,6 +4,8 @@ Paste `00-Shared-Rules.md` above this.
 
 **Never delete a user-facing feature unless the step names it.**
 
+**Sanity update (2026-10-01):** see [Step 1 report](REPORT-Step1-Sanity.md). Shader checks pass; inherited HMB source/contrast/reference limitations and incomplete test coverage prevent claiming full restoration. Items 1–4 below are checked; the external feedback-memory update remains open. Generator-layer work has not started.
+
 ## What happened
 - Sonnet's Step 1 deleted Hugo's Height Blending features. All of them are intact in HEAD (`f43f02d`), and the deletions are only uncommitted.
 - Claude restored them by rebuilding files from HEAD, keeping three things from Step 1:

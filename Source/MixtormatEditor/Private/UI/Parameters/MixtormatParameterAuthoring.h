@@ -87,6 +87,7 @@ namespace MixtormatParameterAuthoring
 	// Creation-time defaults for the active child payload; duplication and instance resolve
 	// never call this, so existing authored values remain untouched.
 	void ApplyAuthoringDefaults(FMixtormatLayerChild& Child);
+		void ApplyAuthoringDefaults(FMixtormatGenerator& Generator);
 
 	// Database serialization. LoadFromString replaces the entire shipped database and is the
 	// corruption boundary: malformed input returns false and leaves the database empty rather

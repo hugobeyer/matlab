@@ -90,6 +90,12 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverResolveCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
 		SHADER_PARAMETER(FIntPoint, BedWave)
 		SHADER_PARAMETER(FIntPoint, BedPerp)
 		SHADER_PARAMETER(int32, BedPeriod)
@@ -144,6 +150,12 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
 		SHADER_PARAMETER(float, Style)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(uint32, Seed)
@@ -234,6 +246,12 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Density)
@@ -285,6 +303,12 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(FIntPoint, SolveSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Jitter)
@@ -449,6 +473,7 @@ public:
 		SHADER_PARAMETER(float, OffsetAcross)
 		SHADER_PARAMETER(uint32, HasMask)
 		SHADER_PARAMETER(uint32, HasCoverage)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
 		SHADER_PARAMETER(uint32, Mode)
 		SHADER_PARAMETER(float, ShapeOffset)
 		SHADER_PARAMETER(float, Bulge)
@@ -497,8 +522,144 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
+class FMixtormatGeneratorBundleCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorBundleCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorBundleCS, FGlobalShader);
+	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 9);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, CoverageMode)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, IdField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, VectorField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScalar)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutVector)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
+
 namespace
 {
+	// Shared payload/index contract. A layer is not a synthetic child and never takes the
+	// child ID-phase publication path; children keep their field-only and memo execution.
+	struct FGeneratorPassInput
+	{
+		const FGeneratorRenderData& Generator;
+		int32 SourceChildIndex;
+		bool bGeneratorLayer;
+	};
+
+	template<typename TParameters>
+	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer, const bool bGeneratorLayer)
+	{
+		P->GeneratorLayer = bGeneratorLayer ? 1u : 0u;
+		P->GeneratorUVScale = bGeneratorLayer
+			? FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY)
+			: FVector2f(1.0f, 1.0f);
+		P->GeneratorUVOffset = bGeneratorLayer ? Layer.UVOffset : FVector2f::ZeroVector;
+		P->GeneratorUVRotation = bGeneratorLayer ? Layer.Rotation : 0;
+		P->GeneratorUVFlipU = bGeneratorLayer && Layer.bFlipU ? 1u : 0u;
+		P->GeneratorUVFlipV = bGeneratorLayer && Layer.bFlipV ? 1u : 0u;
+	}
+
+	FRDGTextureRef AddBundleCoverage(FMixtormatComposeContext& Ctx, const uint32 Mode,
+		FRDGTextureRef Scalar = nullptr, FRDGTextureRef Boundary = nullptr)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Coverage = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.Coverage"));
+		FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(4);
+		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
+		P->OutputSize = Size;
+		P->CoverageMode = Mode;
+		// Mode is a uniform, so RDG needs both resources bound even for constant coverage.
+		P->ScalarField = Scalar ? Scalar : Ctx.EmptyDriverSignal;
+		P->BoundaryField = Boundary ? Boundary : Ctx.EmptyPatternUV;
+		P->OutScalar = GraphBuilder.CreateUAV(Coverage);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Coverage"),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Coverage;
+	}
+
+	FRDGTextureRef RemapBundleField(FMixtormatComposeContext& Ctx, FRDGTextureRef Field,
+		FRDGTextureRef WarpedUV, const int32 Stage, FRDGTextureRef Boundary = nullptr)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const FRDGTextureDesc Desc = Stage == 8
+					? FRDGTextureDesc::Create2D(Size, PF_G32R32F, FClearValueBinding::Black,
+						TexCreate_ShaderResource | TexCreate_UAV) : Field->Desc;
+				FRDGTextureRef Moved = GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.Generator.MovedField"));
+		FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(Stage);
+		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
+		P->OutputSize = Size;
+		P->WarpedUV = WarpedUV;
+		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		if (Stage == 1)
+		{
+			P->IdField = Field;
+			P->OutIds = GraphBuilder.CreateUAV(Moved);
+		}
+		else if (Stage == 2 || Stage == 3 || Stage == 5 || Stage == 8)
+		{
+			P->VectorField = Field;
+			P->ScalarField = Field;
+			P->BoundaryField = Field;
+			P->OutVector = GraphBuilder.CreateUAV(Moved);
+		}
+		else
+		{
+			P->ScalarField = Field;
+			P->BoundaryField = Boundary;
+			P->OutScalar = GraphBuilder.CreateUAV(Moved);
+		}
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Remap%d", Stage),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Moved;
+	}
+
+	void RemapGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle, FRDGTextureRef WarpedUV)
+	{
+		if (Bundle.RegionIds) { Bundle.RegionIds = RemapBundleField(Ctx, Bundle.RegionIds, WarpedUV, 1); }
+		if (Bundle.CentreUV) { Bundle.CentreUV = RemapBundleField(Ctx, Bundle.CentreUV, WarpedUV, 5); }
+		if (Bundle.Orientation) { Bundle.Orientation = RemapBundleField(Ctx, Bundle.Orientation, WarpedUV, 6); }
+		for (TPair<FName, FRDGTextureRef>& Mask : Bundle.NamedMasks)
+		{
+			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
+				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+			Mask.Value = RemapBundleField(Ctx, Mask.Value, WarpedUV,
+				bDistance && Bundle.BoundaryField ? 7 : 0, Bundle.BoundaryField);
+		}
+		// Rebuild the local distance metric before the next tool seeds against the moved outline.
+		if (Bundle.BoundaryField)
+		{
+			Bundle.BoundaryField = RemapBundleField(Ctx, Bundle.BoundaryField, WarpedUV, 2);
+		}
+	}
+
 	// The bedding as an integer lattice vector, which is what lets the beds tile.
 	//
 	// A bedding plane at an arbitrary angle does not close on the tile, so the direction snaps to
@@ -560,8 +721,9 @@ namespace
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
-		FRDGTextureRef SourceHeight)
+		const FGeneratorPassInput& Child,
+		FRDGTextureRef SourceHeight,
+		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -573,16 +735,16 @@ namespace
 		// inheriting whatever the layer mask happens to be at this row: a mask authored under a
 		// generator describes where *this generator* acts, and folding the layer's own coverage
 		// into it would make Mask Influence mean two different things depending on row order.
-		const bool bHasScopedMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+		const bool bHasScopedMask = !Child.bGeneratorLayer && HasScopedMasks(Layer, Child.SourceChildIndex);
 		FRDGTextureRef ScopedMask = bHasScopedMask
 			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-			: LayerCtx.CombinedMask;
+			: (Child.bGeneratorLayer ? SourceHeight : LayerCtx.CombinedMask);
 
 		// Region IDs published above this generator in the same layer, by the nearest producer.
 		// Absent is the normal case and not an error -- a generator makes its own structure and
 		// never needs one.
 		FRDGTextureRef RegionIds =
-			FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+			Child.bGeneratorLayer ? nullptr : FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
 		const bool bHasRegionIds = RegionIds != nullptr;
 		if (!bHasRegionIds)
 		{
@@ -597,7 +759,7 @@ namespace
 				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
 		FRDGTextureRef CarvedHeight =
-			GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.StrataCarvedHeight"));
+			MakeField(PF_R32_FLOAT, TEXT("Mixtormat.StrataCarvedHeight"));
 		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
 		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
 		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
@@ -605,7 +767,8 @@ namespace
 		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			P->BedWave = Lattice.Wave;
+			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
+						P->BedWave = Lattice.Wave;
 			P->BedPerp = Lattice.Perp;
 			P->BedPeriod = Lattice.Period;
 			P->OutputSize = Size;
@@ -642,7 +805,18 @@ namespace
 				FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		}
 
-		// Bed IDs for the ID consumers below this row (a colour or hue per bed), and the position
+		if (Bundle)
+				{
+					Bundle->Height = CarvedHeight;
+					Bundle->Coverage = AddBundleCoverage(Ctx, 0);
+					Bundle->RegionIds = BedIds;
+					Bundle->BoundaryField = RemapBundleField(Ctx, BedPosition, nullptr, 8);
+					Bundle->NamedMasks.Add(FName(TEXT("StrataPosition")), BedPosition);
+					Bundle->NamedMasks.Add(FName(TEXT("StrataRandom")), BedRandom);
+					return CarvedHeight;
+				}
+
+				// Bed IDs for the ID consumers below this row (a colour or hue per bed), and the position
 		// and a per-bed random as masks -- position is the natural scalar for a colour ramp.
 		PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, BedIds);
 		const TPair<FName, FRDGTextureRef> Masks[2] = {
@@ -846,10 +1020,11 @@ namespace
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const FChildRenderData& RockChild,
+		const int32 OwnerSourceChildIndex,
 		FRDGTextureRef BoundaryField,
 		FRDGTextureRef RockField,
-		FRDGTextureRef& InOutCoverage)
+		FRDGTextureRef& InOutCoverage,
+		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -877,7 +1052,7 @@ namespace
 		FRDGTextureRef Current = RockField;
 		for (const FChildRenderData& FlowChild : Layer.Children)
 		{
-			if (!IsFlowToolChild(FlowChild, RockChild.SourceChildIndex))
+			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex))
 			{
 				continue;
 			}
@@ -932,6 +1107,7 @@ namespace
 				P->BoundaryField = BoundaryField;
 				P->FlowMask = Mask;
 				P->HasCoverage = InOutCoverage ? 1u : 0u;
+				P->GeneratorLayer = Bundle ? 1u : 0u;
 				P->Coverage = InOutCoverage ? InOutCoverage : Current;
 			};
 
@@ -1104,6 +1280,20 @@ namespace
 				{
 					InOutCoverage = MovedCoverage;
 				}
+				if (Bundle)
+				{
+					Bundle->Height = Current;
+					Bundle->Coverage = InOutCoverage;
+					if (Flow.Type != EMixtormatEffectType::FlowCarve)
+					{
+						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
+						BoundaryField = Bundle->BoundaryField;
+					}
+					if (Bundle->NamedMasks.Contains(FName(TEXT("PebbleCoverage"))))
+					{
+						Bundle->NamedMasks[FName(TEXT("PebbleCoverage"))] = InOutCoverage;
+					}
+				}
 			}
 		}
 		return Current;
@@ -1113,9 +1303,10 @@ namespace
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
+		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false)
+		const bool bFieldOnly = false,
+		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -1124,8 +1315,9 @@ namespace
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
 		const FRockLayout Layout = ResolveRockLayout(Rock);
-		const auto FillParameters = [&Rock, &Layout, Size](FMixtormatRockFormationCS::FParameters* P)
+		const auto FillParameters = [&Rock, &Layout, &Layer, &Child, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
+			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
 			P->OutputSize = Size;
 			P->MaxLeaves = Layout.MaxLeaves;
 			P->CellsV = Layout.CellsV;
@@ -1189,7 +1381,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
-				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636B08ull)
+				? MixtormatComposeHash::Combine(Rock.FieldKey, Child.bGeneratorLayer ? 0x526F636B09ull : 0x526F636B08ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -1330,6 +1522,8 @@ namespace
 
 			// Reusable outputs retain the existing masks, ramps and signed distance. The three
 			// normalised gates share their original (pre-flow) geometry frame. Slot 6 is not published.
+			if (!Child.bGeneratorLayer)
+			{
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
 			static const TCHAR* const MaskNames[10] = {
 				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
@@ -1368,12 +1562,28 @@ namespace
 					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
 
+			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, RockSlotCount);
 		}
 		// Independent normalised gate, including field-only evaluation; never the mode-selected
 		// or flow-modified layer height and never affected by HeightScale.
-		LayerCtx.ResolvedRockHeights.Add(Child.SourceChildIndex, Outputs[10]);
+		if (!Child.bGeneratorLayer) { LayerCtx.ResolvedRockHeights.Add(Child.SourceChildIndex, Outputs[10]); }
+		if (Bundle)
+		{
+			Bundle->Coverage = AddBundleCoverage(Ctx, 2, nullptr, Outputs[6]);
+			Bundle->RegionIds = Outputs[5];
+			Bundle->BoundaryField = Outputs[6];
+			static const TCHAR* const Names[10] = {
+				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
+				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp"),
+				TEXT("RockHeight"), TEXT("RockSlope"), TEXT("RockGap")};
+			static const int32 Slots[10] = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12};
+			for (int32 Index = 0; Index < UE_ARRAY_COUNT(Names); ++Index)
+			{
+				Bundle->NamedMasks.Add(FName(Names[Index]), Outputs[Slots[Index]]);
+			}
+		}
 		if (bFieldOnly)
 		{
 			return nullptr;
@@ -1382,7 +1592,8 @@ namespace
 		const auto Combine = [&](FRDGTextureRef Field, const EMixtormatRockHeightMode HeightMode,
 			const float HeightScale, const TCHAR* Name)
 		{
-			FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, Name);
+			FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+								Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 			FMixtormatRockFormationCS::FPermutationDomain Permutation;
 			Permutation.Set<FMixtormatRockFormationCS::FStage>(2);
 			TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
@@ -1407,7 +1618,8 @@ namespace
 			RockField = AddNormalizeFieldPasses(GraphBuilder, RockField, Size,
 				0.0f, 1.0f, TEXT("Mixtormat.Rock.NormalizedHeight"));
 		}
-		const bool bHasFlowTools = HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
+		const bool bHasFlowTools = !Child.bGeneratorLayer
+						&& HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
 		if (bHasFlowTools)
 		{
 			// Resolve floors and analytic bounds before flow moves pixels: the cached IDs are in
@@ -1417,19 +1629,22 @@ namespace
 				RockField = Combine(RockField, Rock.HeightMode, 1.0f, TEXT("Mixtormat.Rock.ResolveHeightMode"));
 			}
 			FRDGTextureRef NoCoverage = nullptr;
-			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], RockField, NoCoverage);
+			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, Outputs[6], RockField, NoCoverage);
 		}
-		return Combine(RockField, bHasFlowTools ? EMixtormatRockHeightMode::Raw : Rock.HeightMode,
+		FRDGTextureRef Height = Combine(RockField, bHasFlowTools ? EMixtormatRockHeightMode::Raw : Rock.HeightMode,
 			Rock.HeightScale, TEXT("Mixtormat.Rock.LayerHeight"));
+		if (Bundle) { Bundle->Height = Height; }
+		return Height;
 	}
 
 	FRDGTextureRef AddCracksPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
+		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false)
+		const bool bFieldOnly = false,
+		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -1443,8 +1658,9 @@ namespace
 		}
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
-		const auto Fill = [&Cracks, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
+		const auto Fill = [&Cracks, &Layer, &Child, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
 		{
+			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
 			P->OutputSize = Size;
 			P->SolveSize = SolveSize;
 			P->Seed = Cracks.Seed;
@@ -1494,7 +1710,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Cracks.FieldKey != 0
-				? MixtormatComposeHash::Combine(Cracks.FieldKey, 0x437261636B73ull) : 0;
+				? MixtormatComposeHash::Combine(Cracks.FieldKey, Child.bGeneratorLayer ? 0x437261636B74ull : 0x437261636B73ull) : 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = NodeKey != 0
 				? NodeCache->Find(NodeKey, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			static const TCHAR* const Names[SlotCount] = {
@@ -1549,6 +1765,8 @@ namespace
 					Ctx.PendingNodeEntries.Add(Entry);
 				}
 			}
+			if (!Child.bGeneratorLayer)
+			{
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[3]);
 			static const TCHAR* const MaskNames[3] = { TEXT("CrackMask"), TEXT("CrackDistance"), TEXT("PieceRandom") };
 			const int32 MaskSlots[3] = { 1, 2, 4 };
@@ -1570,8 +1788,18 @@ namespace
 				AddDebugPreviewRegionIdsBlitPass(GraphBuilder, Outputs[3], nullptr,
 					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
+			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, SlotCount);
+		}
+		if (Bundle)
+		{
+			Bundle->Coverage = AddBundleCoverage(Ctx, 1, Outputs[1]);
+			Bundle->RegionIds = Outputs[3];
+			Bundle->BoundaryField = Outputs[5];
+			Bundle->NamedMasks.Add(FName(TEXT("CrackMask")), Outputs[1]);
+			Bundle->NamedMasks.Add(FName(TEXT("CrackDistance")), Outputs[2]);
+			Bundle->NamedMasks.Add(FName(TEXT("PieceRandom")), Outputs[4]);
 		}
 		if (bFieldOnly)
 		{
@@ -1579,7 +1807,7 @@ namespace
 		}
 
 		FRDGTextureRef Field = Outputs[0];
-		const bool bHasGate = HasScopedMasks(Layer, Child.SourceChildIndex);
+		const bool bHasGate = !Child.bGeneratorLayer && HasScopedMasks(Layer, Child.SourceChildIndex);
 		FRDGTextureRef Gate = bHasGate
 			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Outputs[1];
 		FRDGTextureRef ChamferCut = Make(PF_R16F, TEXT("Mixtormat.Cracks.ChamferCut"));
@@ -1646,6 +1874,9 @@ namespace
 		}
 		Field = Chamfered;
 		const FName CutName(TEXT("ChamferCut"));
+		if (Bundle) { Bundle->NamedMasks.Add(CutName, ChamferCut); }
+		if (!Child.bGeneratorLayer)
+		{
 		Ctx.PublishedMaskOutputs.Add(
 			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, CutName}, ChamferCut);
 		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, CutName,
@@ -1657,9 +1888,10 @@ namespace
 		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			FRDGTextureRef NoCoverage = nullptr;
-			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[5], Field, NoCoverage);
+			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, Outputs[5], Field, NoCoverage);
 		}
-		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Cracks.LayerHeight"));
+		}
+		FRDGTextureRef Combined = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.LayerHeight"));
 		FMixtormatCracksCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatCracksCS::FStage>(4);
 		TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
@@ -1671,6 +1903,7 @@ namespace
 		FComputeShaderUtils::AddPass(GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.Cracks.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
 			Shader, P, Groups);
+		if (Bundle) { Bundle->Height = Combined; }
 		return Combined;
 	}
 
@@ -1680,9 +1913,10 @@ namespace
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
+		const FGeneratorPassInput& Child,
 		FRDGTextureRef SourceHeight,
-		const bool bFieldOnly = false)
+		const bool bFieldOnly = false,
+		FGeneratorBundle* Bundle = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -1690,8 +1924,9 @@ namespace
 		const FIntPoint Size = Request.Resolution;
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
-		const auto FillParameters = [&Pebbles, Size](FMixtormatPebblesCS::FParameters* P)
+		const auto FillParameters = [&Pebbles, &Layer, &Child, Size](FMixtormatPebblesCS::FParameters* P)
 		{
+			FillGeneratorPlacement(P, Layer, Child.bGeneratorLayer);
 			P->OutputSize = Size;
 			P->Seed = Pebbles.Seed;
 			P->Cells = Pebbles.Cells;
@@ -1728,7 +1963,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Pebbles.FieldKey != 0
-				? MixtormatComposeHash::Combine(Pebbles.FieldKey, 0x506562626C65ull)
+				? MixtormatComposeHash::Combine(Pebbles.FieldKey, Child.bGeneratorLayer ? 0x506562626C66ull : 0x506562626C65ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -1792,6 +2027,8 @@ namespace
 			}
 
 			// Stone (or facet) IDs for the ID consumers below this row; masks for Copy Output.
+			if (!Child.bGeneratorLayer)
+			{
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[4]);
 			static const TCHAR* const MaskNames[3] = {
 				TEXT("PebbleCoverage"), TEXT("PebbleEdgeDistance"), TEXT("PebbleRandom")};
@@ -1826,8 +2063,18 @@ namespace
 					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
 
+			}
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, SlotCount);
+		}
+		if (Bundle)
+		{
+			Bundle->Coverage = Outputs[1];
+			Bundle->RegionIds = Outputs[4];
+			Bundle->BoundaryField = PackScalarBoundary(Ctx, Outputs[2]);
+			Bundle->NamedMasks.Add(FName(TEXT("PebbleCoverage")), Outputs[1]);
+			Bundle->NamedMasks.Add(FName(TEXT("PebbleEdgeDistance")), Outputs[2]);
+			Bundle->NamedMasks.Add(FName(TEXT("PebbleRandom")), Outputs[3]);
 		}
 		if (bFieldOnly)
 		{
@@ -1837,13 +2084,15 @@ namespace
 		// Scoped flow tools, as under Rock Formation: height and coverage move together.
 		FRDGTextureRef PebbleField = Outputs[0];
 		FRDGTextureRef PebbleCoverage = Outputs[1];
-		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (!Child.bGeneratorLayer && HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
-			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child,
+			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				PackScalarBoundary(Ctx, Outputs[2]), Outputs[0], PebbleCoverage);
 		}
 
-		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Pebbles.LayerHeight"));
+		FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.Pebbles.LayerHeight"));
 		{
 			FMixtormatPebblesCS::FPermutationDomain Permutation;
 			Permutation.Set<FMixtormatPebblesCS::FStage>(1);
@@ -1857,6 +2106,7 @@ namespace
 				RDG_EVENT_NAME("Mixtormat.Pebbles.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
 				Shader, P, Groups);
 		}
+		if (Bundle) { Bundle->Height = Combined; }
 		return Combined;
 	}
 
@@ -1916,6 +2166,71 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 	}
 }
 
+void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
+	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
+{
+	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
+	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
+	Bundle = FGeneratorBundle();
+	const FGeneratorPassInput Input{Layer.Generator, INDEX_NONE, true};
+	switch (Layer.Generator.Type)
+	{
+	case EMixtormatGeneratorType::StrataCarver:
+		// Height Follow reads the composite below, never this layer's own height or IDs.
+		AddStrataCarverPasses(Ctx, LayerCtx, Layer, Input,
+			Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Bundle);
+		break;
+	case EMixtormatGeneratorType::RockFormation:
+		AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
+		break;
+	case EMixtormatGeneratorType::Pebbles:
+		AddPebblesPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
+		break;
+	case EMixtormatGeneratorType::Cracks:
+		AddCracksPasses(Ctx, LayerCtx, Layer, Input, nullptr, false, &Bundle);
+		break;
+	}
+	if (!Bundle.Height || !Bundle.Coverage) { return; }
+	if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, INDEX_NONE))
+	{
+		Bundle.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, INDEX_NONE,
+			Bundle.BoundaryField, Bundle.Height, Bundle.Coverage, &Bundle);
+	}
+
+	// This is the only layer-generator publication point. Consumers in the local ID phase
+	// see post-flow geometry; cross-layer ID selection belongs to Step 3b.
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
+	if (Bundle.RegionIds)
+	{
+		PublishRegionIds(LayerCtx.RegionIdMaps, INDEX_NONE, Bundle.RegionIds);
+		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::RegionIds,
+			NAME_None, LayerCtx.LayerIndex, INDEX_NONE))
+		{
+			AddDebugPreviewRegionIdsBlitPass(Ctx.GraphBuilder, Bundle.RegionIds, nullptr, Debug, Size);
+		}
+	}
+	for (const TPair<FName, FRDGTextureRef>& Mask : Bundle.NamedMasks)
+	{
+		Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, INDEX_NONE, Mask.Key}, Mask.Value);
+		const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
+			|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+		if (IsChildOutputPreviewTarget(Ctx.Request,
+			bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
+			Mask.Key, LayerCtx.LayerIndex, INDEX_NONE))
+		{
+			if (bDistance)
+			{
+				AddDebugPreviewSignedDistanceBlitPass(Ctx.GraphBuilder, Mask.Value, (float)Size.X, Debug, Size);
+			}
+			else
+			{
+				AddDebugPreviewMaskBlitPass(Ctx.GraphBuilder, Mask.Value, Debug, Size);
+			}
+		}
+	}
+}
+
 void AddGeneratorFieldPasses(
 	FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx,
@@ -1936,15 +2251,18 @@ void AddGeneratorFieldPasses(
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)
 		{
-			AddRockFormationPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+			AddRockFormationPasses(Ctx, LayerCtx, Layer,
+							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
 		{
-			AddPebblesPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+			AddPebblesPasses(Ctx, LayerCtx, Layer,
+							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
 		{
-			AddCracksPasses(Ctx, LayerCtx, Layer, Child, nullptr, true);
+			AddCracksPasses(Ctx, LayerCtx, Layer,
+							FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false}, nullptr, true);
 		}
 	}
 }
@@ -1995,19 +2313,23 @@ void AddGeneratorPasses(
 		{
 		case EMixtormatGeneratorType::StrataCarver:
 			LayerCtx.LayerInputHeight = AddStrataCarverPasses(
-				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
+				LayerCtx.LayerInputHeight);
 			break;
 		case EMixtormatGeneratorType::Cracks:
 			LayerCtx.LayerInputHeight = AddCracksPasses(
-				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
+				LayerCtx.LayerInputHeight);
 			break;
 		case EMixtormatGeneratorType::RockFormation:
 			LayerCtx.LayerInputHeight = AddRockFormationPasses(
-				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
+				LayerCtx.LayerInputHeight);
 			break;
 		case EMixtormatGeneratorType::Pebbles:
 			LayerCtx.LayerInputHeight = AddPebblesPasses(
-				Ctx, LayerCtx, Layer, Child, LayerCtx.LayerInputHeight);
+				Ctx, LayerCtx, Layer, FGeneratorPassInput{Child.Generator, Child.SourceChildIndex, false},
+				LayerCtx.LayerInputHeight);
 			break;
 		}
 	}

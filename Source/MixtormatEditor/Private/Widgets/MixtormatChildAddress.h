@@ -18,7 +18,8 @@ enum class EMixtormatChildOwnerType : uint8
 
 // A child's address, stable across a reorder within its own container (it is never an index).
 // LayerIndex/ChildIndex pairs, which most of SMixtormat still uses, only ever named a layer child;
-// this is their generalization to "layer or group".
+// this is their generalization to "layer or group". A layer producer uses OwnerId with an invalid
+// ChildId for scalar Copy Output and root flow creation; IsValid still means a concrete child.
 struct FMixtormatChildAddress
 {
 	EMixtormatChildOwnerType OwnerType = EMixtormatChildOwnerType::Layer;
@@ -63,6 +64,6 @@ struct FMixtormatChildClipboard
 	// current values has no better address to report than the source it was mirroring). For
 	// Mode::Instance, this is what the pasted instance will point at.
 	FMixtormatChildAddress Source;
-	// Set only for Mode::PublishedOutput: which of Source's outputs this is.
+	// Set only for Mode::PublishedOutput: which of Source's outputs this is. A layer source has no ChildId.
 	FName PublishedOutput;
 };

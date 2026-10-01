@@ -125,6 +125,7 @@ struct FMixtormatChildPreviewOutputSet
 // eye/chevron widget and its status label read this rather than naming a child type themselves,
 // so a new producer needs one case in GetChildCapabilities and nothing else.
 FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child);
+FMixtormatChildPreviewOutputSet GetLayerPreviewOutputSet(const FMixtormatLayer& Layer);
 
 // Convenience for an inspector group whose panel is built for one known, fixed child kind (the
 // panel is only ever visible while a child of that kind is selected): the descriptor set depends
@@ -222,6 +223,7 @@ private:
 	// state plus whatever domain readiness a child's own output kind genuinely requires (Cluster
 	// IDs' packed-source requirement, Combine IDs needing a producer above it to combine).
 	bool IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const;
+	bool IsSelectedOutputPreviewReady() const;
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	FReply StartNewMaterial();
 	// Starts a recipe whose first layer is LayerType. A Fill needs no library surface.
@@ -233,6 +235,8 @@ private:
 	// True when the selected child is an instance whose source is (OwnerId, ChildId).
 	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
 	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
+	FReply AddGeneratorLayer(EMixtormatGeneratorType Type);
+	TSharedRef<SWidget> BuildAddGeneratorLayerMenu();
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();
 	FReply SaveWorkingMaterial();
@@ -446,9 +450,8 @@ private:
 	TSharedRef<SWidget> BuildPatternModeMenu();
 	TSharedRef<SWidget> BuildGridModeMenu();
 
-	// GENERATORS. One creator, one getter pair and one panel per generator; HasSelectedGenerator
-	// and GetSelectedGenerator are the category-wide pair the inspector's visibility lists and
-	// the header chip use, so adding a generator does not mean extending them.
+	// GENERATORS. Panels resolve a generator child first, or the selected Generator layer payload.
+	// HasSelectedGenerator remains child-only so a layer keeps its HEIGHT and COMPOSITION cards.
 	FReply AddStrataCarverToLayer(int32 LayerIndex);
 	FMixtormatStrataCarver* GetSelectedStrataCarver();
 	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
@@ -465,6 +468,7 @@ private:
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
+	const FMixtormatGenerator* GetSelectedGenerator() const;
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 	FReply AddCombineIdToLayer(int32 LayerIndex);

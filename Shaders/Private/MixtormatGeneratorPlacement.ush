@@ -1,0 +1,58 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_GENERATOR_PLACEMENT_USH
+#define MIXTORMAT_GENERATOR_PLACEMENT_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
+
+uint GeneratorLayer;
+float2 GeneratorUVScale;
+float2 GeneratorUVOffset;
+int GeneratorUVRotation;
+uint GeneratorUVFlipU;
+uint GeneratorUVFlipV;
+
+float2 MixtormatGeneratorUV(float2 UV)
+{
+	// Child generators retain their original evaluation frame, including its last bits.
+	return GeneratorLayer != 0u
+		? MixtormatSourceUV(UV, GeneratorUVScale, GeneratorUVOffset,
+			GeneratorUVFlipU, GeneratorUVFlipV, GeneratorUVRotation)
+		: UV;
+}
+
+float2 MixtormatGeneratorSourceVector(float2 DestinationVector)
+{
+	return GeneratorLayer != 0u
+		? mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV, GeneratorUVRotation),
+			DestinationVector) * GeneratorUVScale
+		: DestinationVector;
+}
+
+float2 MixtormatGeneratorDestinationGradient(float2 SourceGradient)
+{
+	return GeneratorLayer != 0u
+		? mul(SourceGradient * GeneratorUVScale,
+			MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV, GeneratorUVRotation))
+		: SourceGradient;
+}
+
+float2 MixtormatGeneratorSourceGradient(float2 DestinationGradient)
+{
+	if (GeneratorLayer == 0u) { return DestinationGradient; }
+	const float2 G = mul(MixtormatSourceOrientation(
+		GeneratorUVFlipU, GeneratorUVFlipV, GeneratorUVRotation), DestinationGradient);
+	return float2(GeneratorUVScale.x != 0.0f ? G.x / GeneratorUVScale.x : 0.0f,
+		GeneratorUVScale.y != 0.0f ? G.y / GeneratorUVScale.y : 0.0f);
+}
+
+// Local distance in destination tile widths. The normal accounts for non-uniform placement;
+// returning the source distance at a singular map avoids undefined division, not authored limits.
+float MixtormatGeneratorDistance(float Distance, float2 SourceNormal)
+{
+	if (GeneratorLayer == 0u || all(abs(GeneratorUVScale) == 1.0f)) { return Distance; }
+	const float Scale = length(MixtormatGeneratorDestinationGradient(SourceNormal));
+	return Scale != 0.0f ? Distance / Scale : Distance;
+}
+
+#endif

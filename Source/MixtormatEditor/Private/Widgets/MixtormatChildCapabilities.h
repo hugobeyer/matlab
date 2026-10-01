@@ -56,6 +56,7 @@ struct FMixtormatChildCapabilities
 // nothing else. Driven entirely by Child.Type/Child.Effect.ProceduralType, never by which specific
 // instance is selected.
 FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child);
+FMixtormatChildCapabilities GetLayerCapabilities(const FMixtormatLayer& Layer);
 
 // Convenience for a probe built from just a type (an inspector group whose panel is only ever
 // visible while a child of one known, fixed kind is selected).

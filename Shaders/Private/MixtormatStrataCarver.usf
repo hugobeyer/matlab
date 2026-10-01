@@ -3,6 +3,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 
 // Strata Carver: a stack of beds, each weathered into a ramp and a face.
 //
@@ -136,7 +137,8 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(DispatchThreadId.xy >= uint2(OutputSize))) { return; }
 
 	const int2 P = int2(DispatchThreadId.xy);
-	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	const float2 DestinationUV = (float2(P) + 0.5f) / float2(OutputSize);
+		const float2 UV = MixtormatGeneratorUV(DestinationUV);
 	const float Source = SourceHeight.Load(int3(P, 0));
 	const float BedsPerTile = length(float2(BedWave));
 
@@ -176,7 +178,9 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// ridge, down to one texel at Verticality 1, a sheer wall. The texel term is what keeps a
 	// sheer wall a clean edge rather than a stair. A negative share has no geometry, hence the
 	// guard; RampEnd is guarded for the same reason when Verticality is driven far below 0.
-	const float PixelT = BedsPerTile / ((float)max(OutputSize.x, 1) * Thickness);
+	const float PixelBeds = GeneratorLayer != 0u
+			? length(MixtormatGeneratorDestinationGradient(float2(BedWave))) : BedsPerTile;
+		const float PixelT = PixelBeds / ((float)max(OutputSize.x, 1) * Thickness);
 	const float Face = max(0.5f * (1.0f - Verticality), 0.0f) + PixelT;
 	const float RampEnd = max(1.0f - Face, 1.0e-5f);
 
@@ -223,7 +227,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Amount = 1.0f;
 	if (MaskInfluence > 0.0f && HasScopedMask != 0)
 	{
-		const float MaskValue = ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+		const float MaskValue = ResolveMask.SampleLevel(LinearWrapSampler, DestinationUV, 0.0f);
 		Amount *= lerp(1.0f, MaskValue, MaskInfluence);
 	}
 	if (IDInfluence > 0.0f && HasRegionIds != 0)

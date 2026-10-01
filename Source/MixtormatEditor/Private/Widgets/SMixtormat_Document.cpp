@@ -57,8 +57,8 @@ FReply SMixtormat::StartNewMaterial()
 
 FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 {
-	const bool bFill = LayerType == EMixtormatLayerType::Fill;
-	if (!bFill && !SelectedPreviewMaterial.IsValid())
+	const bool bMaterial = LayerType == EMixtormatLayerType::Material;
+	if (bMaterial && !SelectedPreviewMaterial.IsValid())
 	{
 		return FReply::Handled();
 	}
@@ -83,9 +83,9 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 
 	// The first layer of a new recipe -- an ordinary layer, not a privileged base.
 	FMixtormatLayer& FirstLayer = WorkingLayers.AddDefaulted_GetRef();
-	if (bFill)
+	if (!bMaterial)
 	{
-		InitializeNewLayer(FirstLayer, EMixtormatLayerType::Fill, 1);
+		InitializeNewLayer(FirstLayer, LayerType, 1);
 	}
 	else
 	{
@@ -102,7 +102,7 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
 	bHasSelectedLayer = true;
-	if (!bFill && SelectedSurfaceText.IsValid())
+	if (bMaterial && SelectedSurfaceText.IsValid())
 	{
 		SelectedSurfaceText->SetText(SelectedLibrarySurfaceName);
 	}

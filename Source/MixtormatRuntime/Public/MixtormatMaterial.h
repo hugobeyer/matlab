@@ -23,7 +23,8 @@ UENUM(BlueprintType)
 enum class EMixtormatLayerType : uint8
 {
 	Material UMETA(DisplayName = "Material Layer"),
-	Fill UMETA(DisplayName = "Fill Layer")
+	Fill UMETA(DisplayName = "Fill Layer"),
+	Generator UMETA(DisplayName = "Generator Layer")
 };
 
 UENUM(BlueprintType)
@@ -3413,6 +3414,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
+
+	// Type selects the only active payload; surface values and composition remain layer-owned.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatLayerType::Generator"))
+	FMixtormatGenerator Generator;
+
+	// Disable to keep full layer coverage while using the generator's height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatLayerType::Generator"))
+	bool bGeneratorDrivesCoverage = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	bool bEnabled = true;

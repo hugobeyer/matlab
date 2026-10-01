@@ -1,0 +1,116 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+
+// Bundle remapping is exclusively for actual flow deformation, never source UV placement.
+// 0 scalar, 1 IDs (nearest), 2 boundary, 3 vector, 4 coverage, 5 centre UV,
+// 6 orientation (radians), 7 signed scalar distance, 8 Strata bed boundary.
+int2 OutputSize;
+uint CoverageMode;
+Texture2D<float2> WarpedUV;
+Texture2D<float> ScalarField;
+Texture2D<uint> IdField;
+Texture2D<float2> VectorField;
+Texture2D<float2> BoundaryField;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutScalar;
+RWTexture2D<uint> OutIds;
+RWTexture2D<float2> OutVector;
+
+int2 BundleWrap(int2 P)
+{
+	return ((P % OutputSize) + OutputSize) % OutputSize;
+}
+
+float2 BundleTorus(float2 D) { return D - round(D); }
+
+// Columns of destination->source Jacobian. WarpedUV is unwrapped, so subtract the known
+// destination seam instead of shortening large (but authored) deformations to half a tile.
+void BundleJacobian(int2 Pixel, out float2 X, out float2 Y)
+{
+	const float2 W = WarpedUV.Load(int3(Pixel, 0));
+	X = WarpedUV.Load(int3(BundleWrap(Pixel + int2(1, 0)), 0)) - W;
+	Y = WarpedUV.Load(int3(BundleWrap(Pixel + int2(0, 1)), 0)) - W;
+	if (Pixel.x + 1 == OutputSize.x) { X.x += 1.0f; }
+	if (Pixel.y + 1 == OutputSize.y) { Y.y += 1.0f; }
+	X *= (float)OutputSize.x;
+	Y *= (float)OutputSize.y;
+}
+
+float2 BundleDestinationVector(float2 V, float2 X, float2 Y)
+{
+	const float Det = X.x * Y.y - X.y * Y.x;
+	return Det != 0.0f ? float2(Y.y * V.x - Y.x * V.y, -X.y * V.x + X.x * V.y) / Det : 0.0f;
+}
+
+float BundleDistanceScale(float2 UV, float2 X, float2 Y)
+{
+	const float2 T = 1.0f / float2(OutputSize);
+	const float2 G = float2(
+		BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(T.x, 0.0f), 0.0f).x
+			- BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(T.x, 0.0f), 0.0f).x,
+		BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(0.0f, T.y), 0.0f).x
+			- BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(0.0f, T.y), 0.0f).x) / (2.0f * T);
+	const float SourceLength = length(G);
+	const float DestinationLength = length(float2(dot(G, X), dot(G, Y)));
+	return DestinationLength != 0.0f ? SourceLength / DestinationLength : 1.0f;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+#if BUNDLE_STAGE == 4
+	float Coverage = 1.0f;
+	if (CoverageMode == 1u) { Coverage = 1.0f - ScalarField.Load(int3(Pixel, 0)); }
+	if (CoverageMode == 2u)
+	{
+		const float2 B = BoundaryField.Load(int3(Pixel, 0));
+		Coverage = B.y > 0.0f && B.x <= 0.0f ? 1.0f : 0.0f;
+	}
+	OutScalar[Pixel] = Coverage;
+#elif BUNDLE_STAGE == 8
+	// Bed position wraps at each bed. Unwrap differences across that boundary before
+	// differentiating, giving a local distance in the already placed destination frame.
+	const float T = ScalarField.Load(int3(Pixel, 0));
+	const float XP = ScalarField.Load(int3(BundleWrap(Pixel + int2(1, 0)), 0));
+	const float XM = ScalarField.Load(int3(BundleWrap(Pixel - int2(1, 0)), 0));
+	const float YP = ScalarField.Load(int3(BundleWrap(Pixel + int2(0, 1)), 0));
+	const float YM = ScalarField.Load(int3(BundleWrap(Pixel - int2(0, 1)), 0));
+	const float2 D = float2(XP - XM, YP - YM);
+	const float2 G = (D - round(D)) * float2(OutputSize) * 0.5f;
+	const float GL = length(G);
+	OutVector[Pixel] = float2(GL != 0.0f ? -min(T, 1.0f - T) / GL : 0.0f,
+		GL != 0.0f ? 1.0f : 0.0f);
+#else
+	const float2 UV = WarpedUV.Load(int3(Pixel, 0));
+#if BUNDLE_STAGE == 0
+	OutScalar[Pixel] = ScalarField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#elif BUNDLE_STAGE == 1
+	OutIds[Pixel] = IdField.Load(int3(int2(floor(frac(UV) * float2(OutputSize))), 0));
+#elif BUNDLE_STAGE == 3
+	OutVector[Pixel] = VectorField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#else
+	float2 X, Y;
+	BundleJacobian(Pixel, X, Y);
+#if BUNDLE_STAGE == 2
+	const float2 B = BoundaryField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	OutVector[Pixel] = float2(B.x * BundleDistanceScale(UV, X, Y), B.y);
+#elif BUNDLE_STAGE == 5
+	const int2 SourcePixel = int2(floor(frac(UV) * float2(OutputSize)));
+	const float2 Centre = VectorField.Load(int3(SourcePixel, 0));
+	const float2 DestinationUV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	OutVector[Pixel] = frac(DestinationUV + BundleDestinationVector(BundleTorus(Centre - UV), X, Y));
+#elif BUNDLE_STAGE == 6
+	const int2 SourcePixel = int2(floor(frac(UV) * float2(OutputSize)));
+	const float A = ScalarField.Load(int3(SourcePixel, 0));
+	const float2 V = BundleDestinationVector(float2(cos(A), -sin(A)), X, Y);
+	OutScalar[Pixel] = dot(V, V) != 0.0f ? atan2(-V.y, V.x) : 0.0f;
+#elif BUNDLE_STAGE == 7
+	OutScalar[Pixel] = ScalarField.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		* BundleDistanceScale(UV, X, Y);
+#endif
+#endif
+#endif
+}

@@ -103,6 +103,8 @@ bool FMixtormatGpuCompositorTest::RunTest(const FString& Parameters)
 
 	FMixtormatLayer BaseLayer;
 	BaseLayer.Type = EMixtormatLayerType::Fill;
+	// Match editor-created fills; the shared layer struct defaults to Max.
+	BaseLayer.HeightOp = EMixtormatHeightOp::Replace;
 	BaseLayer.DisplayName = FText::FromString(TEXT("Red Fill"));
 	BaseLayer.bOverrideBaseColor = true;
 	BaseLayer.bOverrideRoughness = true;

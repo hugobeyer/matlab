@@ -2,6 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 
 // Cracks: a tileable crack network and the pieces between the cracks, as a signed height change.
 //
@@ -379,7 +380,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 #if CRACK_STAGE == 0
 	const float2 Res = float2(OutputSize);
-	const float2 UV = (float2(Pixel) + 0.5f) / Res;
+	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / Res);
 	const int Period = max(Cells, 1);
 	const float CellSize = ReliefScale / (float)Period;
 
@@ -477,7 +478,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutCrackRandom[Pixel] = PieceRand;
 	// The flow tools' boundary pair: signed distance to the piece's border in UV units, negative
 	// inside (every pixel is inside a piece), and always sampled.
-	OutCrackBoundary[Pixel] = float2(-CrackDist / (float)Period, 1.0f);
+	const float2 BorderNormal = AxisLen != 0.0f ? AxisV / AxisLen : float2(1.0f, 0.0f);
+		OutCrackBoundary[Pixel] = float2(MixtormatGeneratorDistance(
+			-CrackDist / (float)Period, BorderNormal), 1.0f);
 #elif CRACK_STAGE == 1
 	// The field distance is in crack-cell widths. Resolve the nearest full-resolution sample;
 	// a conservative initial bound ensures that missed subpixel seeds cannot create infinity.
@@ -490,7 +493,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Right = int2(Pixel.x + 1 == SolveSize.x ? 0 : Pixel.x + 1, Pixel.y);
 	const int2 Down = int2(Pixel.x, Pixel.y == 0 ? SolveSize.y - 1 : Pixel.y - 1);
 	const int2 Up = int2(Pixel.x, Pixel.y + 1 == SolveSize.y ? 0 : Pixel.y + 1);
-	const float2 UV = (float2(Pixel) + 0.5f) / float2(SolveSize);
+	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / float2(SolveSize));
 	const int NoisePeriod = max((int)round((float)max(Cells, 1) * ChamferNoiseScale), 1);
 	const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(UV, NoisePeriod, Seed + 8101, 0.5f), 0.001f);
 	const float Cost = 1.0f / Speed;
@@ -504,7 +507,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float SW = Arrival.Load(int3(Left.x, Down.y, 0));
 	const float SE = Arrival.Load(int3(Right.x, Down.y, 0));
 	OutArrival[Pixel] = MixtormatEikonalStep(Self, L, R, D, U, NW, NE, SW, SE,
-		(float)max(Cells, 1) / float2(SolveSize), Cost);
+		(float)max(Cells, 1) * float2(
+					length(MixtormatGeneratorSourceVector(float2(1.0f / (float)SolveSize.x, 0.0f))),
+					length(MixtormatGeneratorSourceVector(float2(0.0f, 1.0f / (float)SolveSize.y)))), Cost);
 #elif CRACK_STAGE == 3
 	const int Period = max(Cells, 1);
 	const float CellSize = ReliefScale / (float)Period;
@@ -522,7 +527,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			Fraction.y);
 		const float ArrivalTime = Arrival.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		const int NoisePeriod = max((int)round((float)Period * ChamferNoiseScale), 1);
-		const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(UV, NoisePeriod, Seed + 8101, 0.5f), 0.001f);
+		const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(MixtormatGeneratorUV(UV), NoisePeriod, Seed + 8101, 0.5f), 0.001f);
 		const float FineD = CrackDistance.Load(int3(Pixel, 0));
 		const float D = max(0.0f, ArrivalTime + (FineD - SeedD) / Speed);
 		const float Span = ChamferEnd - ChamferStart;

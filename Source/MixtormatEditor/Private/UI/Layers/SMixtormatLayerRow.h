@@ -15,7 +15,7 @@ class SMenuAnchor;
 // named "Untitled" still be readable:
 //
 //   Name     what the user called it
-//   Source   what it is made of      -- "Mat - Rust Orange", "FILL"
+//   Source   what it is made of      -- "Mat - Rust Orange", "FILL", "GEN · Rock Formation"
 //   Badge    what it does to height  -- REP / ADD / SUB / MUL / MIN / MAX / DIF, DTL
 //            H means Height Blending on.
 //   ColorBadge  how it blends colour -- MULT / SCREEN / ... , absent at Normal

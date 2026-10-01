@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Parameters/MixtormatGeneratorPayload.h"
 #include "Widgets/SMixtormatInternal.h"
 
 #include "MixtormatParameterBinding.h"
@@ -123,14 +124,7 @@ namespace
 		// EMixtormatParameterOwnerType::Generator, or an address built from a generator slider
 		// would fail to find the child it came from.
 		case EMixtormatLayerChildType::Generator:
-			switch (Child.Generator.Type)
-			{
-			case EMixtormatGeneratorType::StrataCarver: return &Child.Generator.StrataCarver;
-			case EMixtormatGeneratorType::Cracks: return &Child.Generator.Cracks;
-			case EMixtormatGeneratorType::RockFormation: return &Child.Generator.RockFormation;
-			case EMixtormatGeneratorType::Pebbles: return &Child.Generator.Pebbles;
-			}
-			return nullptr;
+			return MixtormatGeneratorPayload::Data(Child.Generator);
 		default: return nullptr;
 		}
 	}
@@ -206,6 +200,14 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 		{
 			Result.LayerId = Layer.LayerId;
 			Result.Owner = EMixtormatParameterOwnerType::Layer;
+			return Result;
+		}
+		if (Layer.Type == EMixtormatLayerType::Generator
+			&& Owner == MixtormatGeneratorPayload::Data(Layer.Generator)
+			&& OwnerStruct == MixtormatGeneratorPayload::Struct(Layer.Generator))
+		{
+			Result.LayerId = Layer.LayerId;
+			Result.Owner = EMixtormatParameterOwnerType::Generator;
 			return Result;
 		}
 		if (ScanChildren(Layer.Children, Layer.LayerId))
@@ -295,7 +297,9 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 			continue;
 		}
 		TArray<FMixtormatParameterBinding>* Bindings = nullptr;
-		if (Target.Owner == EMixtormatParameterOwnerType::Layer)
+		if (Target.Owner == EMixtormatParameterOwnerType::Layer
+			|| (Target.Owner == EMixtormatParameterOwnerType::Generator && !Target.ChildId.IsValid()
+				&& Layer.Type == EMixtormatLayerType::Generator))
 		{
 			Bindings = &Layer.ParameterBindings;
 		}
@@ -348,7 +352,9 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 			continue;
 		}
 		const TArray<FMixtormatParameterBinding>* Bindings = nullptr;
-		if (Target.Owner == EMixtormatParameterOwnerType::Layer)
+		if (Target.Owner == EMixtormatParameterOwnerType::Layer
+			|| (Target.Owner == EMixtormatParameterOwnerType::Generator && !Target.ChildId.IsValid()
+				&& Layer.Type == EMixtormatLayerType::Generator))
 		{
 			Bindings = &Layer.ParameterBindings;
 		}
@@ -478,7 +484,8 @@ void SMixtormat::GoToParameterReferenceSource(FMixtormatParameterAddress Target)
 		{
 			continue;
 		}
-		if (Source.Owner == EMixtormatParameterOwnerType::Layer)
+		if (Source.Owner == EMixtormatParameterOwnerType::Layer
+			|| (Source.Owner == EMixtormatParameterOwnerType::Generator && !Source.ChildId.IsValid()))
 		{
 			SelectWorkingLayer(LayerIndex);
 			return;
@@ -785,14 +792,7 @@ namespace
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
 		case EMixtormatLayerChildType::Generator:
-			switch (Child.Generator.Type)
-			{
-			case EMixtormatGeneratorType::StrataCarver: return FMixtormatStrataCarver::StaticStruct();
-			case EMixtormatGeneratorType::Cracks: return FMixtormatCracks::StaticStruct();
-			case EMixtormatGeneratorType::RockFormation: return FMixtormatRockFormation::StaticStruct();
-			case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();
-			default: return nullptr;
-			}
+			return MixtormatGeneratorPayload::Struct(Child.Generator);
 		default: return nullptr;
 		}
 	}
@@ -808,33 +808,42 @@ namespace
 	{
 		const FMixtormatLayerChild* Child = MixtormatParameterBinding::FindChild(
 			{Layers, Groups}, Address.LayerId, Address.ChildId);
-		if (!Child)
+		if (!Child && Address.ChildId.IsValid())
 		{
 			return false;
 		}
 
 		const void* OwnerPtr = nullptr;
 		UScriptStruct* OwnerStruct = nullptr;
-		if (Address.Owner == EMixtormatParameterOwnerType::MaskShaping)
+		if (Address.Owner == EMixtormatParameterOwnerType::MaskShaping && Child)
 		{
 			if (Child->Type == EMixtormatLayerChildType::Mask) OwnerPtr = &Child->Mask.Shaping;
 			else if (Child->Type == EMixtormatLayerChildType::Craquelure) OwnerPtr = &Child->Craquelure.Shaping;
 			else if (Child->Type == EMixtormatLayerChildType::RandomId) OwnerPtr = &Child->RandomId.Shaping;
 			OwnerStruct = FMixtormatMaskShaping::StaticStruct();
 		}
-		else if (Address.Owner == EMixtormatParameterOwnerType::Layer)
+		else if (Address.Owner == EMixtormatParameterOwnerType::Layer
+			|| (Address.Owner == EMixtormatParameterOwnerType::Generator && !Address.ChildId.IsValid()))
 		{
 			for (const FMixtormatLayer& Layer : Layers)
 			{
 				if (Layer.LayerId == Address.LayerId)
 				{
-					OwnerPtr = &Layer;
-					OwnerStruct = FMixtormatLayer::StaticStruct();
+					if (Address.Owner == EMixtormatParameterOwnerType::Layer)
+					{
+						OwnerPtr = &Layer;
+						OwnerStruct = FMixtormatLayer::StaticStruct();
+					}
+					else if (Layer.Type == EMixtormatLayerType::Generator)
+					{
+						OwnerPtr = MixtormatGeneratorPayload::Data(Layer.Generator);
+						OwnerStruct = MixtormatGeneratorPayload::Struct(Layer.Generator);
+					}
 					break;
 				}
 			}
 		}
-		else
+		else if (Child)
 		{
 			OwnerPtr = OwnerPointer(*Child);
 			OwnerStruct = PayloadStructForChild(*Child);

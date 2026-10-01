@@ -34,6 +34,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 
 #define ROCK_TAU   6.283185307179586f
 #define ROCK_BIG   1e20f
@@ -1012,7 +1013,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 #if ROCK_STAGE == 1
 	const FRockPat P = RockSetup();
-	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / float2(OutputSize));
 	const float2 p = UV * (float)P.cu;
 	const int ci = (int)floor(p.x);
 	const int cj = (int)floor(p.y / RowHeight);
@@ -1046,9 +1047,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				const float centreDistance = length(pl - c);
 				// Radius encloses the gapped polygon; a farther chunk cannot improve either the
 				// closest exterior edge or the deepest interior boundary.
-				if (centreDistance - L.Radius < max(nearestOutside, deepestInside))
+				if (GeneratorLayer != 0u || centreDistance - L.Radius < max(nearestOutside, deepestInside))
 				{
-					const float sd = bJag ? RockLeafSdJag(P, L, slot, pl) : RockLeafSd(L, slot, pl);
+					float sd = bJag ? RockLeafSdJag(P, L, slot, pl) : RockLeafSd(L, slot, pl);
+					if (GeneratorLayer != 0u && any(abs(GeneratorUVScale) != 1.0f) && sd < ROCK_BIG)
+					{
+						// Differentiate the same jagged outline, not the unjagged packing polygon.
+						const float E = 1e-4f;
+						const float2 X = float2(E, 0.0f), Y = float2(0.0f, E);
+						const float2 G = float2(
+							(bJag ? RockLeafSdJag(P, L, slot, pl + X) : RockLeafSd(L, slot, pl + X))
+								- (bJag ? RockLeafSdJag(P, L, slot, pl - X) : RockLeafSd(L, slot, pl - X)),
+							(bJag ? RockLeafSdJag(P, L, slot, pl + Y) : RockLeafSd(L, slot, pl + Y))
+								- (bJag ? RockLeafSdJag(P, L, slot, pl - Y) : RockLeafSd(L, slot, pl - Y)));
+						const float GL = length(G);
+						if (GL != 0.0f) { sd = MixtormatGeneratorDistance(sd, G / GL); }
+					}
 					if (sd < ROCK_BIG)
 					{
 						hasBoundary = true;
@@ -1102,7 +1116,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* float2(OutputSize) / (2.0f * (float)P.cu);
 	// Inclination / 90 degrees: 0 = flat, 0.5 = 45 degrees, approaching 1 = vertical.
 	OutRockSlope[Pixel] = RockIds.Load(int3(Pixel, 0)) != MIXTORMAT_INVALID_REGION
-		? saturate(atan(length(gradient)) * (4.0f / ROCK_TAU)) : 0.0f;
+		? saturate(atan(length(MixtormatGeneratorSourceGradient(gradient))) * (4.0f / ROCK_TAU)) : 0.0f;
 	// Height hits include walls extending past the outline, so IDs/classes are not coverage.
 	// The union's signed gapped-outline distance is negative inside; unsampled pixels are gap.
 	const float2 boundary = RockBoundaryField.Load(int3(Pixel, 0));

@@ -362,6 +362,53 @@ namespace
 		{
 			return true;
 		}
+		if (Child.Type == EMixtormatLayerChildType::Mask && SourceOwnerId.IsValid() && !SourceChildId.IsValid())
+		{
+			if (Child.IsInstance() && MixtormatParameterBinding::ClassifyInstancePlacement(
+				Scope, Child.SourceLayerId, Child.SourceChildId, DestOwnerId, InsertIndex)
+				!= MixtormatParameterBinding::EInstancePlacement::Valid)
+			{
+				return false;
+			}
+			const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
+			const int32 SourceIndex = Layers.IndexOfByPredicate(
+				[SourceOwnerId](const FMixtormatLayer& Layer) { return Layer.LayerId == SourceOwnerId; });
+			if (!Layers.IsValidIndex(SourceIndex) || Layers[SourceIndex].Type != EMixtormatLayerType::Generator
+				|| !GetLayerCapabilities(Layers[SourceIndex]).Outputs.ContainsByPredicate(
+					[&Child](const FMixtormatPublishedOutputDesc& Output)
+					{ return Output.Name == Child.Mask.PublishedSourceOutput && Output.bCopyableAsMask; }))
+			{
+				return false;
+			}
+			const int32 DestIndex = Layers.IndexOfByPredicate(
+				[DestOwnerId](const FMixtormatLayer& Layer) { return Layer.LayerId == DestOwnerId; });
+			if (DestIndex != INDEX_NONE)
+			{
+				if (SourceIndex != DestIndex)
+				{
+					return SourceIndex < DestIndex;
+				}
+				// Layer outputs publish after root flow tools, so they cannot gate their own flow.
+				const TArray<FMixtormatLayerChild>& Children = Layers[DestIndex].Children;
+				FGuid OwnerId = Child.ScopeOwnerChildId;
+				TSet<FGuid> Visited;
+				while (OwnerId.IsValid())
+				{
+					const int32 OwnerIndex = FindChildById(Children, OwnerId);
+					if (Visited.Contains(OwnerId) || !Children.IsValidIndex(OwnerIndex)
+						|| IsGeneratorFlow(Children[OwnerIndex]))
+					{
+						return false;
+					}
+					Visited.Add(OwnerId);
+					OwnerId = Children[OwnerIndex].ScopeOwnerChildId;
+				}
+				return true;
+			}
+			int32 First = INDEX_NONE, Last = INDEX_NONE;
+			return Scope.Groups && MixtormatLayerGroups::FindGroup(*Scope.Groups, DestOwnerId)
+				&& MixtormatLayerGroups::GetGroupRange(Layers, DestOwnerId, First, Last) && SourceIndex < First;
+		}
 		// Typed bundles are imported before local producers; only earlier owners can supply them.
 		if (Child.Type == EMixtormatLayerChildType::OutputReference && SourceOwnerId == DestOwnerId)
 		{
@@ -749,7 +796,51 @@ void SMixtormat::InitializeNewLayer(
 		// And its height replaces what is below, rather than only rising above it.
 		Layer.HeightOp = EMixtormatHeightOp::Replace;
 		break;
+	case EMixtormatLayerType::Generator:
+		Layer.bOverrideBaseColor = true;
+		Layer.BaseColor = FLinearColor(0.2f, 0.2f, 0.2f, 1.0f);
+		Layer.bOverrideRoughness = true;
+		Layer.bOverrideIOR = true;
+		Layer.bOverrideMetallic = true;
+		break;
 	}
+}
+
+FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
+{
+	AddLayerOrStartMaterial(EMixtormatLayerType::Generator);
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator)
+	{
+		return FReply::Handled();
+	}
+	FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	Layer.Generator.Type = Type;
+	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Layer.Generator);
+	Layer.DisplayName = FText::Format(LOCTEXT("GeneratorLayerNumber", "{0} Layer {1}"),
+		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Type)),
+		FText::AsNumber(WorkingLayers.Num()));
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const TPair<FText, EMixtormatGeneratorType> Entries[] = {
+		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatGeneratorType::StrataCarver},
+		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatGeneratorType::Cracks},
+		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatGeneratorType::RockFormation},
+		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatGeneratorType::Pebbles},
+	};
+	for (const auto& Entry : Entries)
+	{
+		Menu.Item(Entry.Key, MixtormatIcons::Effect(),
+			FSimpleDelegate::CreateLambda([this, Type = Entry.Value]() { AddGeneratorLayer(Type); }));
+	}
+	return Menu.Build();
 }
 
 bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
@@ -779,6 +870,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 		{
 			AddLayerOrStartMaterial(EMixtormatLayerType::Fill);
 		}));
+	Menu.SubMenu(LOCTEXT("ColumnAddGeneratorLayer", "Generator Layer"), MixtormatIcons::Effect(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorLayerMenu));
 	return Menu.Build();
 }
 
@@ -793,7 +886,7 @@ FReply SMixtormat::AddWorkingLayer(const EMixtormatLayerType LayerType)
 	{
 		return FReply::Handled();
 	}
-	if (LayerType != EMixtormatLayerType::Fill && SelectedSurfacePath.IsNull())
+	if (LayerType == EMixtormatLayerType::Material && SelectedSurfacePath.IsNull())
 	{
 		WorkingStatusText = TEXT("Select a library surface first");
 		return FReply::Handled();
@@ -2686,11 +2779,14 @@ FReply SMixtormat::DropChildIntoIdGroup(
 FMixtormatChildAddress SMixtormat::MakeChildAddress(const int32 LayerIndex, const int32 ChildIndex) const
 {
 	FMixtormatChildAddress Address;
-	if (WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	if (WorkingLayers.IsValidIndex(LayerIndex))
 	{
 		Address.OwnerType = EMixtormatChildOwnerType::Layer;
 		Address.OwnerId = WorkingLayers[LayerIndex].LayerId;
-		Address.ChildId = WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+		if (WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+		{
+			Address.ChildId = WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+		}
 	}
 	return Address;
 }
@@ -2808,6 +2904,16 @@ bool SMixtormat::CanCopyChildOutput(const FMixtormatChildAddress& Address, const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+	if (!Address.ChildId.IsValid() && Address.OwnerType == EMixtormatChildOwnerType::Layer)
+	{
+		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+			[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+		// Typed fields still require a child ID in their resolver; do not fabricate a layer reference.
+		return Layer && GetLayerCapabilities(*Layer).Outputs.ContainsByPredicate(
+			[OutputName](const FMixtormatPublishedOutputDesc& Output)
+			{ return Output.Name == OutputName && Output.bCopyableAsMask; })
+			&& PublishedOutputPlacementsValid(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups});
+	}
 	if (!Child || !Children)
 	{
 		return false;
@@ -2827,11 +2933,14 @@ bool SMixtormat::CanCopyChildOutput(const FMixtormatChildAddress& Address, const
 void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FName OutputName)
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
-	if (!Child || !CanCopyChildOutput(Address, OutputName))
+	if (!CanCopyChildOutput(Address, OutputName))
 	{
 		return;
 	}
-	const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
+	const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+		[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+	const FMixtormatChildCapabilities Capabilities = Child
+		? GetChildCapabilities(*Child) : GetLayerCapabilities(*Layer);
 	const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
 		[OutputName](const FMixtormatPublishedOutputDesc& Candidate)
 		{
@@ -2906,7 +3015,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 				return INDEX_NONE;
 			}
 		}
-		if (!bScoped && bPublished && PublishedOwnerId == Dest.OwnerId)
+		if (!bScoped && bPublished && PublishedChildId.IsValid() && PublishedOwnerId == Dest.OwnerId)
 		{
 			const int32 SourceIndex = FindChildById(*DestContainer, PublishedChildId);
 			if (SourceIndex == INDEX_NONE)
@@ -2963,6 +3072,10 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
+		if (CanAddGeneratorFlow(Dest) && !Dest.ChildId.IsValid())
+		{
+			return ValidateInsert(DestContainer->Num(), false);
+		}
 		if (!DestContainer->IsValidIndex(AnchorChildIndex)
 			|| !CanOwnGeneratorFlow((*DestContainer)[AnchorChildIndex])
 			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))
@@ -3041,7 +3154,7 @@ FText SMixtormat::GetChildPasteReason(
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
 			? LOCTEXT("PasteGeneratorFlowReady", "Place under this generator.")
-			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Rock Formation or Pebbles owner and valid instance ordering.");
+			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Generator layer or an eligible generator child and valid instance ordering.");
 	}
 	FGuid PublishedOwnerId, PublishedChildId;
 	if (GetPublishedOutputSource(Clipboard.Payload, PublishedOwnerId, PublishedChildId))
@@ -4377,7 +4490,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 
 	// A fill layer has no asset to preview, so its own colour is the thumbnail. Read through a
 	// lambda rather than captured, because the colour picker edits it live.
-	if (Layer.Type == EMixtormatLayerType::Fill)
+	if (Layer.Type == EMixtormatLayerType::Fill || Layer.Type == EMixtormatLayerType::Generator)
 	{
 		return SNew(SColorBlock)
 			.Color_Lambda([this, LayerIndex]()
@@ -4464,6 +4577,12 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 	if (Layer.Type == EMixtormatLayerType::Fill)
 	{
 		return LOCTEXT("FillLayerSource", "FILL");
+	}
+	if (Layer.Type == EMixtormatLayerType::Generator)
+	{
+		return FText::Format(LOCTEXT("GeneratorLayerSource", "GEN · {0}"),
+			StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(
+				static_cast<int64>(Layer.Generator.Type)));
 	}
 	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
 		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
@@ -5898,6 +6017,20 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddEffectMenu, LayerIndex));
 	// IDs / Filter / Masks / Generators, built by the same four functions the group menu calls.
 	AddCreationSections(Menu, FMixtormatAddTarget::Layer(LayerIndex));
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Type == EMixtormatLayerType::Generator)
+	{
+		const FMixtormatChildAddress Address = MakeChildAddress(LayerIndex, INDEX_NONE);
+		AddGeneratorFlowMenuItems(Menu, Address);
+		Menu.Caption(LOCTEXT("LayerCopyOutputs", "Copy Output"));
+		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetLayerCapabilities(WorkingLayers[LayerIndex])))
+		{
+			Menu.Item(Output.Label, nullptr,
+				FSimpleDelegate::CreateLambda([this, Address, Name = Output.Name]() { CopyChildOutput(Address, Name); }))
+				.Enabled(TAttribute<bool>::CreateLambda([this, Address, Name = Output.Name]()
+					{ return CanCopyChildOutput(Address, Name); }));
+		}
+	}
 
 	Menu.Separator();
 
@@ -7280,88 +7413,58 @@ FReply SMixtormat::AddStrataCarverToLayer(const int32 LayerIndex)
 
 FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver()
 {
-	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
-	{
-		return nullptr;
-	}
-	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child.Type == EMixtormatLayerChildType::Generator
-		&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
-		? &Child.Generator.StrataCarver
-		: nullptr;
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::StrataCarver
+		? &Generator->StrataCarver : nullptr;
 }
 
 const FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver() const
 {
-	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
-	{
-		return nullptr;
-	}
-	const FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child.Type == EMixtormatLayerChildType::Generator
-		&& Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
-		? &Child.Generator.StrataCarver
-		: nullptr;
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::StrataCarver
+		? &Generator->StrataCarver : nullptr;
 }
 
 FMixtormatCracks* SMixtormat::GetSelectedCracks()
 {
-	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Cracks
-		? &Child->Generator.Cracks
-		: nullptr;
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Cracks
+		? &Generator->Cracks : nullptr;
 }
 
 FMixtormatRockFormation* SMixtormat::GetSelectedRockFormation()
 {
-	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::RockFormation
-		? &Child->Generator.RockFormation
-		: nullptr;
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::RockFormation
+		? &Generator->RockFormation : nullptr;
 }
 
 const FMixtormatRockFormation* SMixtormat::GetSelectedRockFormation() const
 {
-	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::RockFormation
-		? &Child->Generator.RockFormation
-		: nullptr;
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::RockFormation
+		? &Generator->RockFormation : nullptr;
 }
 
 FMixtormatPebbles* SMixtormat::GetSelectedPebbles()
 {
-	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Pebbles
-		? &Child->Generator.Pebbles
-		: nullptr;
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Pebbles
+		? &Generator->Pebbles : nullptr;
 }
 
 const FMixtormatPebbles* SMixtormat::GetSelectedPebbles() const
 {
-	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Pebbles
-		? &Child->Generator.Pebbles
-		: nullptr;
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Pebbles
+		? &Generator->Pebbles : nullptr;
 }
 
 const FMixtormatCracks* SMixtormat::GetSelectedCracks() const
 {
-	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child
-		&& Child->Type == EMixtormatLayerChildType::Generator
-		&& Child->Generator.Type == EMixtormatGeneratorType::Cracks
-		? &Child->Generator.Cracks
-		: nullptr;
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Cracks
+		? &Generator->Cracks : nullptr;
 }
 
 // True for any generator, whatever kind. The inspector's two visibility lists ask this rather
@@ -7376,12 +7479,18 @@ bool SMixtormat::HasSelectedGenerator() const
 
 FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
 {
-	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
+	return const_cast<FMixtormatGenerator*>(static_cast<const SMixtormat*>(this)->GetSelectedGenerator());
+}
+
+const FMixtormatGenerator* SMixtormat::GetSelectedGenerator() const
+{
+	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
 	{
-		return nullptr;
+		return Child->Type == EMixtormatLayerChildType::Generator ? &Child->Generator : nullptr;
 	}
-	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child.Type == EMixtormatLayerChildType::Generator ? &Child.Generator : nullptr;
+	return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
+		? &WorkingLayers[SelectedLayerIndex].Generator : nullptr;
 }
 
 FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
@@ -8019,6 +8128,12 @@ bool SMixtormat::CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const
 {
 	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 	const int32 OwnerIndex = ResolveChildIndexAt(Owner);
+	if (Owner.OwnerType == EMixtormatChildOwnerType::Layer && !Owner.ChildId.IsValid())
+	{
+		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+			[&Owner](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Owner.OwnerId; });
+		return Layer && Layer->Type == EMixtormatLayerType::Generator;
+	}
 	return Children && Children->IsValidIndex(OwnerIndex)
 		&& CanOwnGeneratorFlow((*Children)[OwnerIndex])
 		&& CanAddScopedChild(*Children, OwnerIndex);
@@ -8050,8 +8165,9 @@ FReply SMixtormat::AddGeneratorFlow(
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = Type;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
-	const int32 InsertAt = InsertScopedChild(
-		*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child));
+	const int32 InsertAt = Owner.ChildId.IsValid()
+		? InsertScopedChild(*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child))
+		: ResolveContainer(Owner)->Add(MoveTemp(Child));
 	if (InsertAt == INDEX_NONE)
 	{
 		return FReply::Handled();

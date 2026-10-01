@@ -18,10 +18,10 @@
 // bSecondaryPreview entry becomes Secondary. A capability that is copyable but not previewable
 // (Pattern IDs' Gap -- the default Region IDs preview already renders it, blackened) contributes
 // nothing here, which is the whole reason capabilities keeps the two flags separate.
-FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child)
+static FMixtormatChildPreviewOutputSet GetPreviewOutputSet(const FMixtormatChildCapabilities& Capabilities)
 {
 	FMixtormatChildPreviewOutputSet Result;
-	for (const FMixtormatPublishedOutputDesc& Output : GetChildCapabilities(Child).Outputs)
+	for (const FMixtormatPublishedOutputDesc& Output : Capabilities.Outputs)
 	{
 		if (!Output.bPreviewable)
 		{
@@ -38,6 +38,16 @@ FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerCh
 		}
 	}
 	return Result;
+}
+
+FMixtormatChildPreviewOutputSet GetChildPreviewOutputSet(const FMixtormatLayerChild& Child)
+{
+	return GetPreviewOutputSet(GetChildCapabilities(Child));
+}
+
+FMixtormatChildPreviewOutputSet GetLayerPreviewOutputSet(const FMixtormatLayer& Layer)
+{
+	return GetPreviewOutputSet(GetLayerCapabilities(Layer));
 }
 
 FMixtormatChildPreviewOutputSet GetPreviewOutputSetForChildType(const EMixtormatLayerChildType Type)
@@ -294,8 +304,7 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 	}
 	else
 	{
-		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-		if (!Child || !IsChildOutputPreviewReady(*Child))
+		if (!IsSelectedOutputPreviewReady())
 		{
 			return FReply::Handled();
 		}
@@ -320,13 +329,14 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 		{
 			return Target;
 		}
+		const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
 		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-		if (!Child)
+		if (!Child && (!bHasSelectedLayer || Layer.Type != EMixtormatLayerType::Generator))
 		{
 			return Target;
 		}
-		Target.OwnerId = WorkingLayers[SelectedLayerIndex].LayerId;
-		Target.ChildId = Child->ChildId;
+		Target.OwnerId = Layer.LayerId;
+		Target.ChildId = Child ? Child->ChildId : FGuid();
 		return Target;
 	}
 
@@ -393,6 +403,25 @@ namespace
 	}
 }
 
+bool SMixtormat::IsSelectedOutputPreviewReady() const
+{
+	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
+	{
+		return IsChildOutputPreviewReady(*Child);
+	}
+	if (!bHasSelectedLayer || !WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		return false;
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	if (Layer.Type != EMixtormatLayerType::Generator || !Layer.bEnabled || !Layer.Generator.bEnabled)
+	{
+		return false;
+	}
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Layer.GroupId);
+	return !Group || Group->bEnabled;
+}
+
 bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const
 {
 	if (bBypassSelectedChild)
@@ -415,9 +444,18 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 		{
 			const FMixtormatChildAddress Address = GetSelectedChildAddress();
 			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-			if (!Children || !Child.ScopeOwnerChildId.IsValid())
+			if (!Children)
 			{
 				return false;
+			}
+			if (!Child.ScopeOwnerChildId.IsValid())
+			{
+				if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator
+					|| !WorkingLayers[SelectedLayerIndex].Generator.bEnabled)
+				{
+					return false;
+				}
 			}
 			const FGuid GroupId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
 				? WorkingLayers[SelectedLayerIndex].GroupId : SelectedGroupId;
@@ -548,8 +586,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 	};
 	const auto IsReady = [this]()
 	{
-		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-		return Child != nullptr && IsChildOutputPreviewReady(*Child);
+		return IsSelectedOutputPreviewReady();
 	};
 
 	// The eye: a normal single-click toggle, identical in every respect to MakeFeaturePreviewButton
@@ -594,7 +631,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 		.HasDownArrow(false)
 		.ContentPadding(FMargin(0.0f))
 		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
-		.ToolTipText(LOCTEXT("PreviewChildOutputMenuHint", "Choose which output of this child to preview"))
+		.ToolTipText(LOCTEXT("PreviewChildOutputMenuHint", "Choose which output to preview"))
 		.ButtonContent()
 		[
 			SNew(SHorizontalBox)

@@ -495,12 +495,13 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		{
 			return ToggleChildOutputPreview(ChildPreviewTarget);
 		}
-		if (const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress()))
+		if (IsSelectedOutputPreviewReady())
 		{
-			const FMixtormatChildPreviewOutputSet Outputs = GetChildPreviewOutputSet(*Child);
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			const FMixtormatChildPreviewOutputSet Outputs = Child ? GetChildPreviewOutputSet(*Child)
+				: GetLayerPreviewOutputSet(WorkingLayers[SelectedLayerIndex]);
 			if (Outputs.Primary.IsSet()
-				&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds
-				&& IsChildOutputPreviewReady(*Child))
+				&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds)
 			{
 				for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 				{
@@ -635,11 +636,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	// else clears it.
 	if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
 	{
-		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-		const bool bStillValid = Child
+		const bool bStillValid = IsSelectedOutputPreviewReady()
 			&& ChildPreviewTarget == ResolveChildPreviewTarget(
-				ChildPreviewTarget.OutputName, ChildPreviewTarget.Kind, ChildPreviewTarget.GapMaskName)
-			&& IsChildOutputPreviewReady(*Child);
+				ChildPreviewTarget.OutputName, ChildPreviewTarget.Kind, ChildPreviewTarget.GapMaskName);
 		if (!bStillValid)
 		{
 			DebugPreviewMode = EMixtormatDebugPreviewMode::None;
