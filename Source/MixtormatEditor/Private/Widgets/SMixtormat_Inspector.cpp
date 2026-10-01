@@ -5653,6 +5653,59 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
 		});
 	};
+	const auto GeneratorBlend = [this]() -> FMixtormatHeightBlend*
+	{
+		return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+			? &WorkingLayers[SelectedLayerIndex].HeightBlend : nullptr;
+	};
+	const TSharedRef<SVerticalBox> GeneratorComposition = SNew(SVerticalBox);
+	AddSliderRow(GeneratorComposition, MakeMemberEnum<FMixtormatHeightBlend, EMixtormatHeightOp>(
+		LOCTEXT("GeneratorLayerHeightOperation", "Height Operation"), GeneratorBlend,
+		&FMixtormatHeightBlend::Op,
+		LOCTEXT("GeneratorLayerHeightOperationHint", "How the generated height stack combines with the layer below."),
+		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+	AddSliderRow(GeneratorComposition,
+		SNew(SBox).Visibility_Lambda([GeneratorBlend]()
+		{
+			const FMixtormatHeightBlend* Blend = GeneratorBlend();
+			return Blend && (Blend->Op == EMixtormatHeightOp::Min || Blend->Op == EMixtormatHeightOp::Max)
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSlider<FMixtormatHeightBlend>(LOCTEXT("GeneratorLayerSoftness", "Softness"),
+				GeneratorBlend, &FMixtormatHeightBlend::Softness, 0.0, 0.5, 0.1, 0.001)
+		]);
+	AddSliderRow(GeneratorComposition, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("GeneratorLayerAmount", "Amount"), GeneratorBlend,
+		&FMixtormatHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01));
+	AddSliderRow(GeneratorComposition, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("GeneratorLayerOpacity", "Opacity"), LayerForRows(),
+		&FMixtormatLayer::Opacity, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("GeneratorLayerOpacityHint", "Weights this layer's height coverage, including the Height Blend contest.")));
+	const TSharedRef<SVerticalBox> GeneratorHeightBlend = SNew(SVerticalBox)
+		.Visibility_Lambda([GeneratorBlend]()
+		{
+			const FMixtormatHeightBlend* Blend = GeneratorBlend();
+			return Blend && Blend->Op == EMixtormatHeightOp::HeightBlend
+				? EVisibility::Visible : EVisibility::Collapsed;
+		});
+	// Layer composition currently reads HeightBlendAmount for strength, unlike module composition.
+	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatLayer>(
+		LOCTEXT("GeneratorLayerBlendStrength", "Strength"), LayerForRows(),
+		&FMixtormatLayer::HeightBlendAmount, 0.0, 4.0, 1.0, 0.01));
+	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("GeneratorLayerThreshold", "Threshold"), GeneratorBlend,
+		&FMixtormatHeightBlend::Threshold, 0.0, 1.0, 0.5, 0.01));
+	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("GeneratorLayerEdgeSoftness", "Edge Softness"), GeneratorBlend,
+		&FMixtormatHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005));
+	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("GeneratorLayerBaseBias", "Base Bias"), GeneratorBlend,
+		&FMixtormatHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01));
+	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatHeightBlend>(
+		LOCTEXT("GeneratorLayerBlendBias", "Blend Bias"), GeneratorBlend,
+		&FMixtormatHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01));
+	AddSliderRow(GeneratorComposition, GeneratorHeightBlend);
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const TSharedRef<SVerticalBox> BlendPanel = SNew(SVerticalBox);
 	AddHeightBlendRows(
@@ -5851,6 +5904,27 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 
 					+ SScrollBox::Slot()
 					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
+						[
+							SNew(SMixtormatInspectorGroup)
+							.Visibility_Lambda([this]()
+							{
+								return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
+									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
+									? EVisibility::Visible : EVisibility::Collapsed;
+							})
+							.Title(LOCTEXT("GeneratorLayerHeading", "GENERATOR LAYER"))
+							.InitiallyExpanded(true)
+							[
+								SNew(SMixtormatInspectorGroup)
+								.Title(LOCTEXT("CompositionLabel", "COMPOSITION"))
+								.InitiallyExpanded(true)
+								[GeneratorComposition]
+							]
+						]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
 						// No wrapping LAYER group. Selecting a layer shows its sections --
 						// Channel Influence, Composition, Surface Adjustments, Colour, Height
 						// Mask Blending -- as siblings in the column. A group whose only job was
@@ -5859,7 +5933,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						SNew(SVerticalBox)
 						.Visibility_Lambda([this]()
 						{
-							return bHasSelectedLayer ? EVisibility::Visible : EVisibility::Collapsed;
+							return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
+															&& WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator
+															? EVisibility::Visible : EVisibility::Collapsed;
 						})
 						+ SVerticalBox::Slot().AutoHeight()[BuildStrataCarverControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildCracksControls()]
@@ -5882,8 +5958,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Visibility_Lambda([this]()
 							{
 								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& (WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
-										|| WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
+									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
 									? EVisibility::Visible
 									: EVisibility::Collapsed;
 							})
@@ -6087,6 +6162,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						[
 							BuildHeightBlendControls()
 						]
+					]
 					]
 				]
 			]

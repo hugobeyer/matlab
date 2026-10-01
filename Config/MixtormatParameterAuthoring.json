@@ -332,12 +332,19 @@
 		},
 		"Generator.RockGap":
 		{
-			"default": 1,
-			"uiMin": 0,
+			"default": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821,
-			"clampMin": 0,
+			"clampMin": -16,
 			"clampMax": 16
+		},
+		"Generator.RockJagScale":
+		{
+			"default": 4,
+			"uiMin": 1,
+			"uiMax": 12,
+			"snap": 0.0099999997764825821
 		}
 	},
 	"Pebbles":

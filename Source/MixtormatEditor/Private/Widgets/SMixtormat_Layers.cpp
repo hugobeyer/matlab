@@ -761,12 +761,21 @@ void SMixtormat::InitializeNewLayer(
 		Layer.HeightBlend.Op = EMixtormatHeightOp::Replace;
 		break;
 	case EMixtormatLayerType::Generator:
-		Layer.bOverrideBaseColor = true;
-		Layer.BaseColor = FLinearColor(0.2f, 0.2f, 0.2f, 1.0f);
-		Layer.bOverrideRoughness = true;
-		Layer.bOverrideIOR = true;
-		Layer.bOverrideMetallic = true;
+	{
+		int32 GeneratorNumber = 1;
+		FText DefaultName;
+		do
+		{
+			DefaultName = FText::Format(LOCTEXT("GeneratorLayerNumber", "Generator Layer {0}"),
+				FText::AsNumber(GeneratorNumber++));
+		}
+		while (WorkingLayers.ContainsByPredicate([&Layer, &DefaultName](const FMixtormatLayer& Existing)
+		{
+			return &Existing != &Layer && Existing.DisplayName.EqualTo(DefaultName);
+		}));
+		Layer.DisplayName = DefaultName;
 		break;
+	}
 	}
 }
 
@@ -778,10 +787,7 @@ FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 	{
 		return FReply::Handled();
 	}
-	FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-	Layer.DisplayName = FText::Format(LOCTEXT("GeneratorLayerNumber", "{0} Layer {1}"),
-		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Type)),
-		FText::AsNumber(WorkingLayers.Num()));
+
 	// The first module is the layer's first child; CreateChild selects it and refreshes the stack.
 	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), CreationKindForGenerator(Type));
 }
@@ -876,9 +882,28 @@ FReply SMixtormat::DuplicateSelectedLayer()
 	SoloLayerIndex = INDEX_NONE;
 	FMixtormatLayer Copy = WorkingLayers[SelectedLayerIndex];
 	MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
-	Copy.DisplayName = FText::Format(
-		LOCTEXT("CopiedLayerName", "{0} Copy"),
-		Copy.DisplayName);
+	bool bDefaultGeneratorName = false;
+	if (Copy.Type == EMixtormatLayerType::Generator)
+	{
+		for (int32 Number = 1; Number <= WorkingLayers.Num(); ++Number)
+		{
+			if (Copy.DisplayName.EqualTo(FText::Format(
+				LOCTEXT("GeneratorLayerNumber", "Generator Layer {0}"), FText::AsNumber(Number))))
+			{
+				bDefaultGeneratorName = true;
+				break;
+			}
+		}
+	}
+	if (bDefaultGeneratorName)
+	{
+		InitializeNewLayer(Copy, EMixtormatLayerType::Generator, WorkingLayers.Num() + 1);
+	}
+	else
+	{
+		Copy.DisplayName = FText::Format(
+			LOCTEXT("CopiedLayerName", "{0} Copy"), Copy.DisplayName);
+	}
 	WorkingLayers.Insert(Copy, SelectedLayerIndex + 1);
 	MixtormatUI::RemapHeightReferencesAfterInsert(WorkingLayers, SelectedLayerIndex + 1);
 	++SelectedLayerIndex;
@@ -4437,7 +4462,18 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 
 	// A fill layer has no asset to preview, so its own colour is the thumbnail. Read through a
 	// lambda rather than captured, because the colour picker edits it live.
-	if (Layer.Type == EMixtormatLayerType::Fill || Layer.Type == EMixtormatLayerType::Generator)
+	if (Layer.Type == EMixtormatLayerType::Generator)
+	{
+		return SNew(SBox)
+			.WidthOverride(MixtormatTokens::LayerThumbnailSize)
+			.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+			.HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(SImage).Image(MixtormatIcons::Effect())
+				.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()))
+			];
+	}
+	if (Layer.Type == EMixtormatLayerType::Fill)
 	{
 		return SNew(SColorBlock)
 			.Color_Lambda([this, LayerIndex]()
@@ -5709,6 +5745,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.ColorBadge_Lambda([this, LayerIndex]()
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Type != EMixtormatLayerType::Generator
 					? MixtormatLayerBadges::ForColorBlendMode(
 						WorkingLayers[LayerIndex].BaseColorBlendMode)
 					: FText::GetEmpty();
