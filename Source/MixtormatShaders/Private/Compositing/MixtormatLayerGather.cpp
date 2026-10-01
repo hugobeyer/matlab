@@ -40,7 +40,8 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Surface = bReference ? nullptr : Layer.SourceSurface.LoadSynchronous();
 	const bool bNormalOnly = Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail;
 	UTexture2D* LayerBaseColor = Surface && Surface->BaseColor ? Surface->BaseColor.Get() : WhiteTexture;
-	LayerNormal = Surface && Surface->Normal ? Surface->Normal.Get() : NormalTexture;
+	// Keep authored presence separate from the safe GPU binding fallback.
+	LayerNormal = Surface && Surface->Normal ? Surface->Normal.Get() : nullptr;
 	if (bNormalOnly && Layer.NormalSourceType == EMixtormatNormalSourceType::Texture)
 	{
 		LayerNormal = Layer.NormalTexture.LoadSynchronous();
@@ -223,7 +224,9 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.CurvatureStrength = Layer.CurvatureStrength;
 	Data.CurvaturePower = Layer.CurvaturePower;
 	Data.bEnabled = Layer.bEnabled;
-	Data.bHasPackedHeight = Data.SourceOutputs.IsValid() || (Surface && Surface->bHasBlendHeight);
+	Data.bHasPackedHeight = Data.SourceOutputs.IsValid() || (Surface
+		&& Surface->RoughnessAOMetallic
+		&& Surface->bHasBlendHeight);
 	Data.bInvertHeight = Layer.bInvertHeight;
 	Data.bDirectHeightComparison = !bNormalOnly;
 	Data.bInvertHeightFeature = Layer.bInvertHeightFeature;
@@ -257,7 +260,6 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 	Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 		&& Surface->BaseColor
-		&& Surface->Normal
 		&& Surface->RoughnessAOMetallic);
 	Data.bHasNormal = Data.SourceOutputs.IsValid() || LayerNormal != nullptr;
 	Data.bNormalOnly = bNormalOnly;
