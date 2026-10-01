@@ -2684,169 +2684,89 @@ enum class EMixtormatStrataBlendMode : uint8
 	Minimum UMETA(DisplayName = "Minimum")
 };
 
-// Strata Carver: periodic sedimentary beds with layered orientation variation and multi-scale,
-// tileable curl warping. The new art controls drive direct procedural synthesis; prior solver
-// settings remain serialized for compatibility with existing projects.
+// Strata Carver: a stack of beds, each weathered into a dip-slope ramp and a steeper face where
+// the next bed starts. Bent by a low-frequency field rather than a domain warp, so beds keep their
+// thickness. Closed form, so it costs one pass. Publishes bed IDs, the position inside each bed
+// and a per-bed random.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 {
 	GENERATED_BODY()
 
-	// ---- Main ----
-
-	// Drives both the internal fractal seed and every per-iteration draw the solver makes.
+	// Draws every per-bed random: thickness, base, rise and cross-bedding, and the bend field.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0"))
 	int32 Seed = 3;
 
-	// How far the carve cuts, in the same units as the layer's height. Subtracted, never added:
-	// a carver removes material.
+	// How far the strata relief reaches, in the same units as the layer's height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float Depth = 0.05f;
+	float Depth = 0.25f;
 
-	// Propagation steps. The jump schedule halves its stride inside this budget rather than
-	// consuming one iteration per texel, so a high count buys depth of recursion, not reach.
-	//
-	// 1..64 everywhere -- the data model, the gather clamp and the inspector slider all agree,
-	// so the stored value and the one the slider can reach are the same number. 64 is the
-	// default because it is where the picture stops changing on every surface this was authored
-	// against, and nothing in the solver is keyed to the count: the jump schedule is a function
-	// of JumpStart alone, so raising the ceiling later is a one-line change here and in the
-	// gather, not an algorithm change.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "64"))
-	int32 Iterations = 64;
+	// Beds across the tile along the bedding's own direction. Rounded to a whole number so the
+	// column closes on the tile, and it is also how many distinct beds are drawn before they
+	// repeat.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1.0", UIMax = "64.0"))
+	float StrataFrequency = 6.0f;
 
-	// Where the seed field is cut into "carved" and "not carved". Higher leaves fewer, more
-	// isolated origins; lower floods the surface.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float SeedThreshold = 0.25f;
-
-	// Feature size of the internal seed, as cells across the tile. Drives Worley Cells: the
-	// artist-facing dial is one number, and the solver's cell count follows it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "64"))
-	int32 Scale = 3;
-
-	// Octaves of the internal fractal seed. Broad natural noise rather than pixel noise is the
-	// whole point of the default: a seed with detail turned up reads as dirt, not as strata.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "8"))
-	int32 SeedDetail = 3;
-
-	// The banding. Frequency is how many strata cross the field, Amount how hard they bite into
-	// the propagated distance, Warp how far the bands wander off straight.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "64.0"))
-	float StrataFrequency = 4.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "16.0"))
-	float StrataAmount = 3.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "4.0"))
-	float StrataWarp = 0.54f;
-
-	// Additional medium/high-frequency periodic warp layers for irregular bedding.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float StrataWarpDetail = 0.25f;
-
-	// Number of additional beds with seeded tilt and orientation variation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "4"))
-	int32 StrataLayers = 3;
-
-	// Main bedding tilt and per-layer tilt variation, in degrees.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "-70.0", UIMax = "70.0"))
-	float StrataTilt = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "45.0"))
-	float StrataTiltVariance = 12.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "180.0"))
+	// Direction of the bedding, in degrees. Snaps to the nearest angle that tiles; 180 turns the
+	// faces the other way.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "360.0"))
 	float StrataRotation = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "45.0"))
-	float StrataRotationVariance = 8.0f;
+
+	// 0 is evenly spaced beds; 1 lets thin and thick beds sit side by side.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float ThicknessVariation = 0.5f;
+
+	// 0 gives every bed the same rise from the same base; 1 varies both, so some beds stand tall
+	// and some sit low.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float HeightVariation = 0.5f;
+
+	// How steep each bed's face is. 0 is a symmetric ridge, 1 a sheer wall.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Verticality = 0.7f;
+
+	// The dip slope's profile. -1 hollows it, 0 is straight, 1 bulges it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float RampShape = 0.0f;
+
+	// How far the beds bend, in tile widths, and how many bends cross the tile.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.25"))
+	float Bend = 0.03f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "8"))
+	int32 BendScale = 2;
+
+	// How ragged each face is, in beds.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.5"))
+	float Breakup = 0.1f;
+
+	// How many beds the layer's own height shifts the bedding by. Above 0 the faces follow the
+	// contours of the surface underneath.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "16.0"))
+	float HeightFollow = 0.0f;
+
+	// Fine laminae inside each bed, and how far each bed tilts them off the bedding plane.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Lamination = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "3.0"))
+	float CrossBedding = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver")
-	EMixtormatStrataBlendMode StrataBlendMode = EMixtormatStrataBlendMode::Subtract;
+	EMixtormatStrataBlendMode StrataBlendMode = EMixtormatStrataBlendMode::Add;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float StrataBlendAmount = 1.0f;
 
-	// How hard a propagating front shoves its own strata phase into the next step. This is the
-	// recursion that makes the result read as layered rock rather than as a distance field.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "4.0"))
-	float PushAmount = 0.5f;
-
-	// 0 ignores any mask scoped under this generator entirely. 1 lets it decide where carving
-	// starts, how cheaply it spreads and how deep it cuts.
-	//
-	// Not a final multiply. A mask applied only at the end gives a hard cutout with full-strength
-	// carving inside it; feeding seed probability and propagation cost as well is what produces
-	// localised weathering that fades at its own edges.
+	// 0 ignores any mask scoped under this generator entirely. 1 lets it scale where the strata
+	// act.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float MaskInfluence = 1.0f;
 
-	// How much Region IDs above this generator vary the carve. Exactly zero at 0 -- the shader
-	// branches rather than multiplying by zero, so a stack with no ID producer and a stack with
-	// one at influence 0 are bit-identical.
+	// How much Region IDs above this generator vary the relief per region. Exactly zero at 0 --
+	// the shader branches rather than multiplying by zero, so a stack with no ID producer and a
+	// stack with one at influence 0 are bit-identical.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float IDInfluence = 0.0f;
-
-	// ---- Advanced ----
-
-	// Distance added per propagation step, before cost. The solver's speed dial.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.001", UIMax = "4.0"))
-	float StepScale = 0.3f;
-
-	// Widest jump stride, in texels at the reference resolution. The schedule halves from here
-	// to one, so this sets how far a front can reach in its first pass rather than how many
-	// passes run.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "1", UIMax = "256"))
-	int32 JumpStart = 24;
-
-	// The unreachable distance. Anything still holding this when the solve ends never had a
-	// front arrive, and reads as uncarved.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "1.0"))
-	float MaxValue = 256.0f;
-
-	// Worley feature-point jitter. 0 puts the points on the lattice and the strata come out
-	// regular; 1 is full Voronoi.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float WorleyJitter = 1.0f;
-
-	// Frequency of the banded/ringed Worley family, which is the one that reads as bedding
-	// planes rather than as cells.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "16.0"))
-	float BandFrequency = 1.0f;
-
-	// How much the seed field resists propagation. High cost makes fronts hug the cheap
-	// channels and the carve comes out as veins; low cost floods.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "32.0"))
-	float CostAmount = 5.0f;
-
-	// How fast a push dies out behind the front. 0 would carry one push across the whole tile.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float PushDecay = 0.2f;
-
-	// Reshuffles which operation and which Worley family each iteration picks, without changing
-	// the seed field. The cheap dial: reseeding here re-solves, it does not re-seed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0"))
-	int32 OperationSeed = 6;
-
-	// Display shaping, all of it applied once after the solve. Bias is a gamma-style pull about
-	// the midpoint; the two remaps and the clamp follow it in that order.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.001", UIMax = "1.0"))
-	float Bias = 0.68f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float RemapInMin = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float RemapInMax = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float RemapOutMin = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float RemapOutMax = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float ClampMin = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Advanced", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float ClampMax = 1.0f;
 };
 
 // How a generator's height combines with the height before it on the same layer. Shared by the

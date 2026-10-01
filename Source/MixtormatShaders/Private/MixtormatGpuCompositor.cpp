@@ -1876,72 +1876,29 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				{
 					const FMixtormatStrataCarver& Carver = Generator.StrataCarver;
 					FStrataCarverRenderData& Out = ChildData.Generator.StrataCarver;
+					// Non-finite falls back to the default; ranges are authored in the tool.
+					const auto Finite = [](const float Value, const float Fallback)
+					{
+						return FMath::IsFinite(Value) ? Value : Fallback;
+					};
 					Out.Seed = static_cast<uint32>(Carver.Seed);
-					Out.Depth = FMath::IsFinite(Carver.Depth)
-						? Carver.Depth : 0.05f;
-					// The same 1..64 the property and the slider carry, so a driver or a
-					// binding cannot push the solve somewhere the UI says is impossible.
-					// Nothing in the solver is keyed to this number -- the jump schedule is a
-					// function of JumpStart alone -- so the ceiling is a policy, not a limit.
-					Out.Iterations = FMath::Max(Carver.Iterations, 1);
-					Out.SeedThreshold = FMath::IsFinite(Carver.SeedThreshold)
-						? Carver.SeedThreshold : 0.25f;
-					Out.WorleyCells = FMath::Max(Carver.Scale, 1);
-					Out.SeedDetail = FMath::Max(Carver.SeedDetail, 1);
-					Out.StrataFrequency = FMath::IsFinite(Carver.StrataFrequency)
-						? Carver.StrataFrequency : 4.0f;
-					Out.StrataAmount = FMath::IsFinite(Carver.StrataAmount)
-						? Carver.StrataAmount : 3.0f;
-					Out.StrataWarp = FMath::IsFinite(Carver.StrataWarp)
-						? Carver.StrataWarp : 0.54f;
-					Out.StrataWarpDetail = FMath::IsFinite(Carver.StrataWarpDetail)
-						? Carver.StrataWarpDetail : 0.25f;
-					Out.StrataLayers = FMath::Clamp(Carver.StrataLayers, 1, 4);
-					Out.StrataTilt = FMath::IsFinite(Carver.StrataTilt) ? Carver.StrataTilt : 0.0f;
-					Out.StrataTiltVariance = FMath::IsFinite(Carver.StrataTiltVariance)
-						? Carver.StrataTiltVariance : 12.0f;
-					Out.StrataRotation = FMath::IsFinite(Carver.StrataRotation)
-						? Carver.StrataRotation : 0.0f;
-					Out.StrataRotationVariance = FMath::IsFinite(Carver.StrataRotationVariance)
-						? Carver.StrataRotationVariance : 8.0f;
+					Out.Depth = Finite(Carver.Depth, 0.25f);
+					Out.StrataFrequency = Finite(Carver.StrataFrequency, 6.0f);
+					Out.StrataRotation = Finite(Carver.StrataRotation, 0.0f);
+					Out.ThicknessVariation = Finite(Carver.ThicknessVariation, 0.5f);
+					Out.HeightVariation = Finite(Carver.HeightVariation, 0.5f);
+					Out.Verticality = Finite(Carver.Verticality, 0.7f);
+					Out.RampShape = Finite(Carver.RampShape, 0.0f);
+					Out.Bend = Finite(Carver.Bend, 0.03f);
+					Out.BendScale = Carver.BendScale;
+					Out.Breakup = Finite(Carver.Breakup, 0.1f);
+					Out.HeightFollow = Finite(Carver.HeightFollow, 0.0f);
+					Out.Lamination = Finite(Carver.Lamination, 0.25f);
+					Out.CrossBedding = Finite(Carver.CrossBedding, 1.0f);
 					Out.BlendMode = static_cast<uint32>(Carver.StrataBlendMode);
-					Out.BlendAmount = FMath::IsFinite(Carver.StrataBlendAmount)
-						? Carver.StrataBlendAmount : 1.0f;
-					Out.PushAmount = FMath::IsFinite(Carver.PushAmount)
-						? Carver.PushAmount : 0.5f;
-					Out.MaskInfluence = FMath::IsFinite(Carver.MaskInfluence)
-						? Carver.MaskInfluence : 1.0f;
-					Out.IDInfluence = FMath::IsFinite(Carver.IDInfluence)
-						? Carver.IDInfluence : 0.0f;
-
-					Out.StepScale = FMath::IsFinite(Carver.StepScale)
-						? FMath::Max(Carver.StepScale, 0.001f) : 0.3f;
-					Out.JumpStart = FMath::Max(Carver.JumpStart, 1);
-					Out.MaxValue = FMath::IsFinite(Carver.MaxValue)
-						? FMath::Max(Carver.MaxValue, 1.0f) : 256.0f;
-					Out.WorleyJitter = FMath::IsFinite(Carver.WorleyJitter)
-						? Carver.WorleyJitter : 1.0f;
-					Out.BandFrequency = FMath::IsFinite(Carver.BandFrequency)
-						? Carver.BandFrequency : 1.0f;
-					Out.CostAmount = FMath::IsFinite(Carver.CostAmount)
-						? Carver.CostAmount : 5.0f;
-					Out.PushDecay = FMath::IsFinite(Carver.PushDecay)
-						? Carver.PushDecay : 0.2f;
-					Out.OperationSeed = static_cast<uint32>(Carver.OperationSeed);
-					Out.Bias = FMath::IsFinite(Carver.Bias)
-						? FMath::Max(Carver.Bias, 0.001f) : 0.68f;
-					Out.RemapInMin = FMath::IsFinite(Carver.RemapInMin)
-						? Carver.RemapInMin : 0.0f;
-					Out.RemapInMax = FMath::IsFinite(Carver.RemapInMax)
-						? Carver.RemapInMax : 1.0f;
-					Out.RemapOutMin = FMath::IsFinite(Carver.RemapOutMin)
-						? Carver.RemapOutMin : 0.0f;
-					Out.RemapOutMax = FMath::IsFinite(Carver.RemapOutMax)
-						? Carver.RemapOutMax : 1.0f;
-					Out.ClampMin = FMath::IsFinite(Carver.ClampMin)
-						? Carver.ClampMin : 0.0f;
-					Out.ClampMax = FMath::IsFinite(Carver.ClampMax)
-						? Carver.ClampMax : 1.0f;
+					Out.BlendAmount = Finite(Carver.StrataBlendAmount, 1.0f);
+					Out.MaskInfluence = Finite(Carver.MaskInfluence, 1.0f);
+					Out.IDInfluence = Finite(Carver.IDInfluence, 0.0f);
 					break;
 				}
 				case EMixtormatGeneratorType::Cracks:

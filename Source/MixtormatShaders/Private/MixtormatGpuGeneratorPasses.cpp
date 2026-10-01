@@ -37,35 +37,20 @@ namespace MixtormatGpuCompositor
 {
 namespace
 {
-	// The grid the distance solve runs on.
+	// The grid a generator's distance solve runs on.
 	//
-	// A propagated distance is a large-scale quantity: the field it produces is smooth at the
-	// scale of the cells that seeded it, and solving it at 4K would cost sixteen times the work
-	// of solving it at 1K for a result that is visually identical after the remap. Sixteen taps
-	// per pixel per iteration at 128 iterations is 34 billion texture loads at 4K and 537 million
-	// at 512 -- the difference between a composite that takes minutes and one that takes a
-	// fraction of a second.
-	//
-	// The cap is on the grid, not on a divisor, so the same material solves at the same physical
-	// scale at every export resolution. 512 and 1024 and 4096 all solve at 512 and produce the
-	// same strata; only the resolve is finer. That is the property an artist actually needs --
-	// a preview at 1K that predicts the 4K bake.
-	//
-	// What the coarse grid costs is edge crispness in the bands, and the bands are analytic:
-	// ResolveCS re-evaluates the same strata phase at full resolution and folds it back in, so
-	// the detail that matters comes back without the solve paying for it. The same trade the
-	// peel front and the wet stain already make.
-	constexpr int32 StrataSolveMaxSize = 1024;
+	// A propagated distance is smooth at the scale of the cells that seeded it, so solving it at 4K
+	// costs sixteen times what 1K does for a result that is identical after the resolve refines it.
+	// The cap is on the grid rather than on a divisor, so a material solves at the same physical
+	// scale at every export resolution and a 1K preview predicts the 4K bake. The divisor is a
+	// power of two so a non-square tile keeps its aspect and the wrap stays exact on both axes.
+	constexpr int32 DistanceSolveMaxSize = 1024;
 
-	// Divisor rather than a straight clamp, so a non-square tile keeps its aspect and the wrap
-	// stays exact on both axes. Rounded up to a power of two because every composition
-	// resolution in this plugin is one, and a non-power-of-two divisor would put the solve grid
-	// off the texel lattice the mask and ID maps are sampled on.
-	FIntPoint StrataSolveResolution(const FIntPoint Resolution)
+	FIntPoint DistanceSolveResolution(const FIntPoint Resolution)
 	{
 		const int32 Longest = FMath::Max(Resolution.X, Resolution.Y);
 		int32 Divisor = 1;
-		while (Longest / Divisor > StrataSolveMaxSize)
+		while (Longest / Divisor > DistanceSolveMaxSize)
 		{
 			Divisor *= 2;
 		}
@@ -73,49 +58,6 @@ namespace
 			FMath::Max(Resolution.X / Divisor, 1),
 			FMath::Max(Resolution.Y / Divisor, 1));
 	}
-
-	// The jump schedule.
-	//
-	// Strides halve from JumpStart to 1 and then the schedule restarts, so a long iteration
-	// budget alternates reach and relaxation instead of spending everything after the fifth
-	// iteration crawling one texel at a time. The wide passes carry a front across the tile; the
-	// stride-1 passes are where the recursive strata push accumulates and the bands form.
-	//
-	// The schedule is a function of JumpStart alone. Nothing here is keyed to the iteration
-	// count, which is what lets Iterations be 1 or 64 or 128 without a special case: 1 runs the
-	// widest jump only, 64 runs the cycle a dozen times, and neither is a different algorithm.
-	int32 StrataJumpStride(const int32 Iteration, const int32 JumpStart)
-	{
-		const int32 Start = FMath::Max(JumpStart, 1);
-		int32 Halvings = 0;
-		while ((Start >> Halvings) > 1)
-		{
-			++Halvings;
-		}
-		const int32 CycleLength = Halvings + 1;
-		return FMath::Max(Start >> (Iteration % CycleLength), 1);
-	}
-
-	// Which Worley family and which combining operation this iteration runs.
-	//
-	// Drawn from OperationSeed and the iteration index on the CPU, so the inner loop of the
-	// propagation kernel carries no hashing at all. Two different hashes rather than two fields
-	// of one, so family and operation do not march in lockstep -- with a single draw, iteration
-	// 3 would always be "Chebyshev and smooth" for every seed, and the cycling would read as a
-	// fixed five-step pattern rather than as variety.
-	uint32 StrataIterationHash(const uint32 OperationSeed, const int32 Iteration, const uint32 Salt)
-	{
-		uint32 Value = OperationSeed * 0x9e3779b9u + static_cast<uint32>(Iteration) * 0x85ebca6bu + Salt;
-		Value ^= Value >> 16;
-		Value *= 0x7feb352du;
-		Value ^= Value >> 15;
-		Value *= 0x846ca68bu;
-		Value ^= Value >> 16;
-		return Value;
-	}
-
-	constexpr int32 StrataFamilyCount = 5;
-	constexpr int32 StrataOperationCount = 4;
 
 	// True when this generator has at least one enabled mask scoped beneath it.
 	//
@@ -139,118 +81,8 @@ namespace
 	}
 }
 
-// Box-reduces the scoped mask from composition resolution to the solve grid. See the note in
-// MixtormatStrataCarver.usf: a bilinear fetch at an 8:1 ratio reads one texel in sixty-four, so
-// a thin mask aliases or vanishes; an average over the footprint turns it into the coverage the
-// solve actually wants.
-class FMixtormatStrataCarverMaskReduceCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatStrataCarverMaskReduceCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverMaskReduceCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(FIntPoint, MaskFootprint)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FullResMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSolveMask)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatStrataCarverMaskReduceCS,
-	"/Plugin/Mixtormat/Private/MixtormatStrataCarver.usf",
-	"MaskReduceCS",
-	SF_Compute);
-
-// Builds the Worley family fractals, the propagation cost and the initial distance state.
-class FMixtormatStrataCarverSeedCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatStrataCarverSeedCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverSeedCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, SeedThreshold)
-		SHADER_PARAMETER(int32, WorleyCells)
-		SHADER_PARAMETER(int32, SeedDetail)
-		SHADER_PARAMETER(float, WorleyJitter)
-		SHADER_PARAMETER(float, BandFrequency)
-		SHADER_PARAMETER(float, MaxValue)
-		SHADER_PARAMETER(float, CostAmount)
-		SHADER_PARAMETER(float, MaskInfluence)
-		SHADER_PARAMETER(float, IDInfluence)
-		SHADER_PARAMETER(uint32, HasScopedMask)
-		SHADER_PARAMETER(uint32, HasRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SeedMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SeedRegionIds)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFamilies)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutAux)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutDist)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatStrataCarverSeedCS,
-	"/Plugin/Mixtormat/Private/MixtormatStrataCarver.usf",
-	"SeedCS",
-	SF_Compute);
-
-// One propagation step, ping-ponged.
-class FMixtormatStrataCarverPropagateCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatStrataCarverPropagateCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverPropagateCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, BandFrequency)
-		SHADER_PARAMETER(float, StrataFrequency)
-		SHADER_PARAMETER(float, StrataAmount)
-		SHADER_PARAMETER(float, StrataWarp)
-		SHADER_PARAMETER(float, StepScale)
-		SHADER_PARAMETER(float, MaxValue)
-		SHADER_PARAMETER(float, PushAmount)
-		SHADER_PARAMETER(float, PushDecay)
-		SHADER_PARAMETER(int32, IterationStride)
-		SHADER_PARAMETER(int32, IterationFamily)
-		SHADER_PARAMETER(int32, IterationOp)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PrevDist)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FamilyField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Aux)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, NextDist)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatStrataCarverPropagateCS,
-	"/Plugin/Mixtormat/Private/MixtormatStrataCarver.usf",
-	"PropagateCS",
-	SF_Compute);
-
-// Direct periodic layered-strata synthesis and height blend.
+// Strata beds as ramps and faces, and the height blend, in closed form. Writes the bed IDs, the
+// position inside each bed and a per-bed random alongside the height.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
 {
 public:
@@ -258,38 +90,36 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverResolveCS, FGlobalShader);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, BedWave)
+		SHADER_PARAMETER(FIntPoint, BedPerp)
+		SHADER_PARAMETER(int32, BedPeriod)
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, StrataFrequency)
-		SHADER_PARAMETER(float, StrataAmount)
-		SHADER_PARAMETER(float, StrataWarp)
-		SHADER_PARAMETER(float, StrataWarpDetail)
-		SHADER_PARAMETER(int32, StrataLayers)
-		SHADER_PARAMETER(float, StrataTilt)
-		SHADER_PARAMETER(float, StrataTiltVariance)
-		SHADER_PARAMETER(float, StrataRotation)
-		SHADER_PARAMETER(float, StrataRotationVariance)
+		SHADER_PARAMETER(float, ThicknessVariation)
+		SHADER_PARAMETER(float, HeightVariation)
+		SHADER_PARAMETER(float, Verticality)
+		SHADER_PARAMETER(float, RampShape)
+		SHADER_PARAMETER(float, Bend)
+		SHADER_PARAMETER(int32, BendScale)
+		SHADER_PARAMETER(float, Breakup)
+		SHADER_PARAMETER(float, HeightFollow)
+		SHADER_PARAMETER(float, Lamination)
+		SHADER_PARAMETER(float, CrossBedding)
+		SHADER_PARAMETER(float, Depth)
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, BlendAmount)
-		SHADER_PARAMETER(float, MaxValue)
 		SHADER_PARAMETER(float, MaskInfluence)
 		SHADER_PARAMETER(float, IDInfluence)
 		SHADER_PARAMETER(uint32, HasScopedMask)
 		SHADER_PARAMETER(uint32, HasRegionIds)
-		SHADER_PARAMETER(float, Depth)
-		SHADER_PARAMETER(float, Bias)
-		SHADER_PARAMETER(float, RemapInMin)
-		SHADER_PARAMETER(float, RemapInMax)
-		SHADER_PARAMETER(float, RemapOutMin)
-		SHADER_PARAMETER(float, RemapOutMax)
-		SHADER_PARAMETER(float, CarveClampMin)
-		SHADER_PARAMETER(float, CarveClampMax)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SolvedDist)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, ResolveRegionIds)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutBedIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedPosition)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedRandom)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -666,11 +496,63 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace
 {
+	// The bedding as an integer lattice vector, which is what lets the beds tile.
+	//
+	// A bedding plane at an arbitrary angle does not close on the tile, so the direction snaps to
+	// the nearest small integer vector (p, q) and the beds are that vector scaled by N. N is
+	// chosen so the bed spacing stays near what Frequency asked for whatever the direction.
+	// Scaling by N also makes N the number of beds before the per-bed randoms repeat.
+	struct FStrataLattice
+	{
+		FIntPoint Wave;
+		FIntPoint Perp;
+		int32 Period = 1;
+	};
+
+	FStrataLattice MakeStrataLattice(const float Frequency, const float RotationDegrees)
+	{
+		// Beds lie across the direction (sin, cos): rotation 0 is horizontal beds, and 180 is the
+		// same beds with their faces turned the other way.
+		const float Radians = FMath::DegreesToRadians(RotationDegrees);
+		const FVector2f Want(FMath::Sin(Radians), FMath::Cos(Radians));
+
+		FIntPoint Best(0, 1);
+		float BestAlignment = -2.0f;
+		constexpr int32 MaxComponent = 3;
+		for (int32 P = -MaxComponent; P <= MaxComponent; ++P)
+		{
+			for (int32 Q = -MaxComponent; Q <= MaxComponent; ++Q)
+			{
+				if ((P == 0 && Q == 0) || FMath::GreatestCommonDivisor(FMath::Abs(P), FMath::Abs(Q)) != 1)
+				{
+					continue;
+				}
+				const float Alignment = (Want.X * P + Want.Y * Q) / FMath::Sqrt(static_cast<float>(P * P + Q * Q));
+				if (Alignment > BestAlignment)
+				{
+					BestAlignment = Alignment;
+					Best = FIntPoint(P, Q);
+				}
+			}
+		}
+
+		const float Length = FMath::Sqrt(static_cast<float>(Best.X * Best.X + Best.Y * Best.Y));
+		FStrataLattice Lattice;
+		Lattice.Period = FMath::Max(FMath::RoundToInt(Frequency / Length), 1);
+		Lattice.Wave = FIntPoint(Best.X * Lattice.Period, Best.Y * Lattice.Period);
+		Lattice.Perp = FIntPoint(-Lattice.Wave.Y, Lattice.Wave.X);
+		return Lattice;
+	}
+
 	// One Strata Carver child.
 	//
 	// Takes the height currently standing as the layer's input and returns the carved one. The
 	// caller chains them, so two carvers on one layer are two carves of one surface rather than
 	// two competing for the same slot.
+	//
+	// The bedding coordinate reads the source height (Height Follow), so this cannot publish in
+	// the ID phase: its bed IDs exist from here on, for the children below it, and UV From IDs
+	// -- which resolves before the layer's source is read -- cannot key off them.
 	FRDGTextureRef AddStrataCarverPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -682,14 +564,7 @@ namespace
 		const FRenderRequest& Request = Ctx.Request;
 		const FStrataCarverRenderData& Carver = Child.Generator.StrataCarver;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
-
-		// Zero depth is an exact no-op; skip the resolve dispatch.
-		if (Carver.Depth <= 0.0f)
-		{
-			return SourceHeight;
-		}
-
-		const FIntPoint SolveSize = StrataSolveResolution(Request.Resolution);
+		const FIntPoint Size = Request.Resolution;
 
 		// The scoped mask. Independent scope, so the chain starts from white rather than
 		// inheriting whatever the layer mask happens to be at this row: a mask authored under a
@@ -711,236 +586,88 @@ namespace
 			RegionIds = Ctx.EmptyRegionIds;
 		}
 
-		// Direct layered-strata synthesis replaces the old recursive front solve.
-		if (Carver.StrataLayers > 0)
+		const FStrataLattice Lattice = MakeStrataLattice(Carver.StrataFrequency, Carver.StrataRotation);
+
+		const auto MakeField = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
 		{
-			FRDGTextureRef CarvedHeight = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.StrataCarvedHeight"));
+			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		FRDGTextureRef CarvedHeight =
+			GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.StrataCarvedHeight"));
+		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
+		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
+		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
+
+		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			P->OutputSize = Request.Resolution;
+			P->BedWave = Lattice.Wave;
+			P->BedPerp = Lattice.Perp;
+			P->BedPeriod = Lattice.Period;
+			P->OutputSize = Size;
 			P->Seed = Carver.Seed;
-			P->StrataFrequency = Carver.StrataFrequency;
-			P->StrataAmount = Carver.StrataAmount;
-			P->StrataWarp = Carver.StrataWarp;
-			P->StrataWarpDetail = Carver.StrataWarpDetail;
-			P->StrataLayers = Carver.StrataLayers;
-			P->StrataTilt = Carver.StrataTilt;
-			P->StrataTiltVariance = Carver.StrataTiltVariance;
-			P->StrataRotation = Carver.StrataRotation;
-			P->StrataRotationVariance = Carver.StrataRotationVariance;
+			P->ThicknessVariation = Carver.ThicknessVariation;
+			P->HeightVariation = Carver.HeightVariation;
+			P->Verticality = Carver.Verticality;
+			P->RampShape = Carver.RampShape;
+			P->Bend = Carver.Bend;
+			P->BendScale = Carver.BendScale;
+			P->Breakup = Carver.Breakup;
+			P->HeightFollow = Carver.HeightFollow;
+			P->Lamination = Carver.Lamination;
+			P->CrossBedding = Carver.CrossBedding;
+			P->Depth = Carver.Depth;
 			P->BlendMode = Carver.BlendMode;
 			P->BlendAmount = Carver.BlendAmount;
 			P->MaskInfluence = Carver.MaskInfluence;
 			P->IDInfluence = Carver.IDInfluence;
 			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-			P->Depth = Carver.Depth;
 			P->SourceHeight = SourceHeight;
 			P->ResolveMask = ScopedMask;
 			P->ResolveRegionIds = RegionIds;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			P->OutHeight = GraphBuilder.CreateUAV(CarvedHeight);
+			P->OutBedIds = GraphBuilder.CreateUAV(BedIds);
+			P->OutBedPosition = GraphBuilder.CreateUAV(BedPosition);
+			P->OutBedRandom = GraphBuilder.CreateUAV(BedRandom);
 			TShaderMapRef<FMixtormatStrataCarverResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StrataCarver.Layered.L%d.C%d", LayerIndex, Child.SourceChildIndex),
+				RDG_EVENT_NAME("Mixtormat.StrataCarver.L%d.C%d", LayerIndex, Child.SourceChildIndex),
 				Shader, P,
-				FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-					FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
-			return CarvedHeight;
+				FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		}
 
-		const FIntVector SolveGroups(
-			FMath::DivideAndRoundUp(SolveSize.X, 8),
-			FMath::DivideAndRoundUp(SolveSize.Y, 8),
-			1);
-		const FIntVector OutputGroups(
-			FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-			FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-			1);
-
-		// RGBA16F for the four family fractals -- they are 0..1 and half is plenty. 32-bit for
-		// the cost and the distance: cost reaches five figures where a mask confines the solve,
-		// and the distance has to stay separable from MaxValue after a hundred accumulated
-		// steps, which is exactly the case half floats lose.
-		const FRDGTextureDesc FamilyDesc = FRDGTextureDesc::Create2D(
-			SolveSize, PF_FloatRGBA, FClearValueBinding::Black,
-			TexCreate_ShaderResource | TexCreate_UAV);
-		const FRDGTextureDesc PairDesc = FRDGTextureDesc::Create2D(
-			SolveSize, PF_G32R32F, FClearValueBinding::Black,
-			TexCreate_ShaderResource | TexCreate_UAV);
-
-		FRDGTextureRef FamilyField =
-			GraphBuilder.CreateTexture(FamilyDesc, TEXT("Mixtormat.StrataFamilies"));
-		FRDGTextureRef Aux =
-			GraphBuilder.CreateTexture(PairDesc, TEXT("Mixtormat.StrataAux"));
-		FRDGTextureRef DistTargets[2] = {
-			GraphBuilder.CreateTexture(PairDesc, TEXT("Mixtormat.StrataDistA")),
-			GraphBuilder.CreateTexture(PairDesc, TEXT("Mixtormat.StrataDistB"))};
-
-		// RDG rejects a pass that reads a transient nothing has written, and the very first
-		// propagation reads whichever half the seed did not fill.
-		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(DistTargets[1]), FVector4f(0.0f));
-
-		// The mask, reduced onto the solve grid. Always allocated so the seed pass has a bound
-		// resource, but only filled when there is a mask to reduce -- and cleared to white when
-		// there is not, because an unwritten transient is an RDG error and a black one would
-		// read as "masked out everywhere" and silently produce no carve at all.
-		const FRDGTextureDesc SolveMaskDesc = FRDGTextureDesc::Create2D(
-			SolveSize, PF_R16F, FClearValueBinding::White,
-			TexCreate_ShaderResource | TexCreate_UAV);
-		FRDGTextureRef SolveMask =
-			GraphBuilder.CreateTexture(SolveMaskDesc, TEXT("Mixtormat.StrataSolveMask"));
-		if (bHasScopedMask)
+		// Bed IDs for the ID consumers below this row (a colour or hue per bed), and the position
+		// and a per-bed random as masks -- position is the natural scalar for a colour ramp.
+		PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, BedIds);
+		const TPair<FName, FRDGTextureRef> Masks[2] = {
+			{FName(TEXT("StrataPosition")), BedPosition},
+			{FName(TEXT("StrataRandom")), BedRandom}};
+		for (const TPair<FName, FRDGTextureRef>& Mask : Masks)
 		{
-			FMixtormatStrataCarverMaskReduceCS::FParameters* MP =
-				GraphBuilder.AllocParameters<FMixtormatStrataCarverMaskReduceCS::FParameters>();
-			MP->SolveSize = SolveSize;
-			MP->OutputSize = Request.Resolution;
-			MP->MaskFootprint = FIntPoint(
-				FMath::Max(Request.Resolution.X / FMath::Max(SolveSize.X, 1), 1),
-				FMath::Max(Request.Resolution.Y / FMath::Max(SolveSize.Y, 1), 1));
-			MP->FullResMask = ScopedMask;
-			MP->OutSolveMask = GraphBuilder.CreateUAV(SolveMask);
-
-			TShaderMapRef<FMixtormatStrataCarverMaskReduceCS> Shader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StrataCarver.MaskReduce.L%d.C%d",
-					LayerIndex, Child.SourceChildIndex),
-				Shader,
-				MP,
-				SolveGroups);
-		}
-		else
-		{
-			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(SolveMask), FVector4f(1.0f));
-		}
-
-		{
-			FMixtormatStrataCarverSeedCS::FParameters* P =
-				GraphBuilder.AllocParameters<FMixtormatStrataCarverSeedCS::FParameters>();
-			P->SolveSize = SolveSize;
-			P->OutputSize = Request.Resolution;
-			P->Seed = Carver.Seed;
-			P->SeedThreshold = Carver.SeedThreshold;
-			P->WorleyCells = Carver.WorleyCells;
-			P->SeedDetail = Carver.SeedDetail;
-			P->WorleyJitter = Carver.WorleyJitter;
-			P->BandFrequency = Carver.BandFrequency;
-			P->MaxValue = Carver.MaxValue;
-			P->CostAmount = Carver.CostAmount;
-			P->MaskInfluence = Carver.MaskInfluence;
-			P->IDInfluence = Carver.IDInfluence;
-			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
-			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-			P->SeedMask = SolveMask;
-			P->SeedRegionIds = RegionIds;
-			P->LinearWrapSampler =
-				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutFamilies = GraphBuilder.CreateUAV(FamilyField);
-			P->OutAux = GraphBuilder.CreateUAV(Aux);
-			P->OutDist = GraphBuilder.CreateUAV(DistTargets[0]);
-
-			TShaderMapRef<FMixtormatStrataCarverSeedCS> Shader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StrataCarver.Seed.L%d.C%d",
-					LayerIndex, Child.SourceChildIndex),
-				Shader,
-				P,
-				SolveGroups);
-		}
-
-		int32 ReadIndex = 0;
-		{
-			TShaderMapRef<FMixtormatStrataCarverPropagateCS> Shader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			for (int32 Iteration = 0; Iteration < Carver.Iterations; ++Iteration)
+			Ctx.PublishedMaskOutputs.Add(
+				FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Mask.Key}, Mask.Value);
+			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, Mask.Key,
+				LayerIndex, Child.SourceChildIndex))
 			{
-				const int32 WriteIndex = 1 - ReadIndex;
-				FMixtormatStrataCarverPropagateCS::FParameters* P =
-					GraphBuilder.AllocParameters<FMixtormatStrataCarverPropagateCS::FParameters>();
-				P->SolveSize = SolveSize;
-				P->Seed = Carver.Seed;
-				P->BandFrequency = Carver.BandFrequency;
-				P->StrataFrequency = Carver.StrataFrequency;
-				P->StrataAmount = Carver.StrataAmount;
-				P->StrataWarp = Carver.StrataWarp;
-				P->StepScale = Carver.StepScale;
-				P->MaxValue = Carver.MaxValue;
-				P->PushAmount = Carver.PushAmount;
-				P->PushDecay = Carver.PushDecay;
-				P->IterationStride = StrataJumpStride(Iteration, Carver.JumpStart);
-				P->IterationFamily = static_cast<int32>(
-					StrataIterationHash(Carver.OperationSeed, Iteration, 0x2545f491u)
-					% static_cast<uint32>(StrataFamilyCount));
-				P->IterationOp = static_cast<int32>(
-					StrataIterationHash(Carver.OperationSeed, Iteration, 0xad90777du)
-					% static_cast<uint32>(StrataOperationCount));
-				P->PrevDist = DistTargets[ReadIndex];
-				P->FamilyField = FamilyField;
-				P->Aux = Aux;
-				P->NextDist = GraphBuilder.CreateUAV(DistTargets[WriteIndex]);
-
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.StrataCarver.Propagate.L%d.C%d.It%d",
-						LayerIndex, Child.SourceChildIndex, Iteration),
-					Shader,
-					P,
-					SolveGroups);
-
-				ReadIndex = WriteIndex;
+				AddDebugPreviewMaskBlitPass(GraphBuilder, Mask.Value,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 			}
 		}
-
-		FRDGTextureRef CarvedHeight =
-			GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.StrataCarvedHeight"));
+		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+			LayerIndex, Child.SourceChildIndex))
 		{
-			FMixtormatStrataCarverResolveCS::FParameters* P =
-				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			P->OutputSize = Request.Resolution;
-			P->Seed = Carver.Seed;
-			P->StrataFrequency = Carver.StrataFrequency;
-			P->StrataAmount = Carver.StrataAmount;
-			P->StrataWarp = Carver.StrataWarp;
-			P->MaxValue = Carver.MaxValue;
-			P->MaskInfluence = Carver.MaskInfluence;
-			P->IDInfluence = Carver.IDInfluence;
-			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
-			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-			P->Depth = Carver.Depth;
-			P->Bias = Carver.Bias;
-			P->RemapInMin = Carver.RemapInMin;
-			P->RemapInMax = Carver.RemapInMax;
-			P->RemapOutMin = Carver.RemapOutMin;
-			P->RemapOutMax = Carver.RemapOutMax;
-			P->CarveClampMin = Carver.ClampMin;
-			P->CarveClampMax = Carver.ClampMax;
-			P->SolvedDist = DistTargets[ReadIndex];
-			P->SourceHeight = SourceHeight;
-			P->ResolveMask = ScopedMask;
-			P->ResolveRegionIds = RegionIds;
-			P->LinearWrapSampler =
-				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutHeight = GraphBuilder.CreateUAV(CarvedHeight);
-
-			TShaderMapRef<FMixtormatStrataCarverResolveCS> Shader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StrataCarver.Resolve.L%d.C%d",
-					LayerIndex, Child.SourceChildIndex),
-				Shader,
-				P,
-				OutputGroups);
+			AddDebugPreviewRegionIdsBlitPass(GraphBuilder, BedIds, nullptr,
+				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 		}
 
-		return CarvedHeight;
+		// Zero depth is a neutral generator: hand back the input itself, not a copy, so a chain
+		// with a neutral node in the middle passes the pointer through unchanged.
+		return Carver.Depth <= 0.0f ? SourceHeight : CarvedHeight;
 	}
 
 	// One Rock Formation child.
@@ -1116,8 +843,8 @@ namespace
 		const FRenderRequest& Request = Ctx.Request;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FIntPoint Size = Request.Resolution;
-		// The same capped grid the strata solve uses; the resolve refines distance at full res.
-		const FIntPoint SolveSize = StrataSolveResolution(Size);
+		// The capped solve grid; the resolve refines distance at full res.
+		const FIntPoint SolveSize = DistanceSolveResolution(Size);
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 		const FIntVector SolveGroups(
 			FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
@@ -1633,7 +1360,7 @@ namespace
 		const FRenderRequest& Request = Ctx.Request;
 		const FCracksRenderData& Cracks = Child.Generator.Cracks;
 		const FIntPoint Size = Request.Resolution;
-		FIntPoint SolveSize = StrataSolveResolution(Size);
+		FIntPoint SolveSize = DistanceSolveResolution(Size);
 		while (FMath::Max(SolveSize.X, SolveSize.Y) > 256)
 		{
 			SolveSize.X = FMath::Max(SolveSize.X / 2, 1);

@@ -53,6 +53,13 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			NSLOCTEXT("SMixtormat", "PreviewOutputIdGroupBoundary", "Boundary"),
 			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		break;
+	case EMixtormatLayerChildType::RampId:
+		// The per-region gradient. Preview only: the field is two-channel (gradient, strength), not
+		// a scalar mask a Replace-blend mask child could read.
+		Result.Outputs.Add({FName(TEXT("Ramp")),
+			NSLOCTEXT("SMixtormat", "PreviewOutputRampIdRamp", "Ramp"),
+			EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
+		break;
 	case EMixtormatLayerChildType::Generator:
 		if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
 		{
@@ -98,6 +105,19 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("RockWallRamp")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRockWallRamp", "Wall Ramp"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver)
+		{
+			// Bed IDs feed the ID consumers below this row. Position is 0..1 up each bed, the
+			// natural coordinate for a colour ramp; random is one value per bed.
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("StrataPosition")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputStrataPosition", "Bed Position"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("StrataRandom")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputStrataRandom", "Bed Random"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
@@ -166,8 +186,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	default:
-		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Ramp/Random
-		// From IDs, Strata Carver, Peeling) publishes nothing a preview or Copy Output could use.
+		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Random
+		// From IDs, Peeling) publishes nothing a preview or Copy Output could use.
 		//
 		// UV From IDs and Relief From IDs belong here too, and deliberately. Neither publishes a
 		// scalar another node could read: UV From IDs changes the coordinate the layer's source is

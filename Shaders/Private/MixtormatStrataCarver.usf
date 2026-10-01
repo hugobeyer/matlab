@@ -1,596 +1,118 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
-// Strata Carver: direct layered bedding synthesis, based on Houdini's HeightField Strata model.
+// Strata Carver: a stack of beds, each weathered into a ramp and a face.
 //
-// ResolveCS combines seeded strata layers with tileable broad and fine curl warps, then applies
-// the selected height blend. SeedCS / PropagateCS remain registered for compatibility with older
-// serialized settings, but are no longer part of the active Strata Carver path.
-
-// ---------------------------------------------------------------------------------------------
-// Worley families
+// Tilted strata seen on a surface read as a sawtooth: every bed rises along a dip slope and ends
+// in a steeper face where the next bed starts. So the field is built in that order --
 //
-// Five of them, and they are not interchangeable -- each reads as a different rock. Euclidean
-// gives rounded nodules, F2-F1 gives the seams between them, Chebyshev gives blocky jointing,
-// Manhattan gives diagonal fracture, and the banded family gives concentric bedding rings, which
-// is the one that actually reads as sediment.
+//     bedding coordinate S    dot(uv, wave) + bend + breakup + height follow
+//         -> which bed, and how far up it (T, 0..1)
+//         -> the bed's ramp from its own base to its crest, then the face down to the next
+//            bed's base
+//         -> laminae inside the bed
 //
-// All five come out of one 3x3 lattice scan: the offset to each feature point is computed once
-// and four metrics are taken off it, so four fractals cost barely more than one. The banded
-// family is derived from the Euclidean distance at read time and costs nothing to store.
-// ---------------------------------------------------------------------------------------------
-
-#define MIXTORMAT_STRATA_FAMILY_COUNT 5
-
-#define MIXTORMAT_STRATA_FAMILY_EUCLIDEAN 0
-#define MIXTORMAT_STRATA_FAMILY_F2F1      1
-#define MIXTORMAT_STRATA_FAMILY_CHEBYSHEV 2
-#define MIXTORMAT_STRATA_FAMILY_MANHATTAN 3
-#define MIXTORMAT_STRATA_FAMILY_BANDED    4
-
-// Normalisers so the four stored families land in roughly the same 0..1 range. A Chebyshev
-// distance inside a unit cell tops out near 1, a Manhattan one near 1.5, and leaving them
-// unscaled would make the family choice read as a brightness change rather than as a shape
-// change -- which is exactly what per-iteration family selection must not do.
-#define MIXTORMAT_STRATA_NORM_EUCLIDEAN 1.0f
-#define MIXTORMAT_STRATA_NORM_CHEBYSHEV 1.0f
-#define MIXTORMAT_STRATA_NORM_MANHATTAN 0.6666667f
-#define MIXTORMAT_STRATA_NORM_F2F1      1.4142136f
-
-// The four stored metrics at one point of one lattice. Wrapped by MixtormatCellPoint, so the
-// lattice closes on its period and the field tiles by construction rather than by a wrapped
-// input -- see the note at the top of MixtormatCellular.ush, which is explicit that the two are
-// different constructions and one cannot be retrofitted into the other.
-float4 MixtormatStrataFamilies(float2 P, int2 Period, uint Seed, float Jitter)
-{
-	const int2 Base = (int2)floor(P);
-
-	float BestEuclid = 1.0e30f;
-	float SecondEuclid = 1.0e30f;
-	float BestCheb = 1.0e30f;
-	float BestManh = 1.0e30f;
-
-	[unroll]
-	for (int y = -1; y <= 1; ++y)
-	{
-		[unroll]
-		for (int x = -1; x <= 1; ++x)
-		{
-			const int2 Cell = Base + int2(x, y);
-			const float2 D = MixtormatCellPoint(Cell, Period, Seed, Jitter) - P;
-
-			const float Euclid = length(D);
-			if (Euclid < BestEuclid)
-			{
-				SecondEuclid = BestEuclid;
-				BestEuclid = Euclid;
-			}
-			else if (Euclid < SecondEuclid)
-			{
-				SecondEuclid = Euclid;
-			}
-
-			BestCheb = min(BestCheb, max(abs(D.x), abs(D.y)));
-			BestManh = min(BestManh, abs(D.x) + abs(D.y));
-		}
-	}
-
-	return float4(
-		saturate(BestEuclid * MIXTORMAT_STRATA_NORM_EUCLIDEAN),
-		saturate((SecondEuclid - BestEuclid) * MIXTORMAT_STRATA_NORM_F2F1),
-		saturate(BestCheb * MIXTORMAT_STRATA_NORM_CHEBYSHEV),
-		saturate(BestManh * MIXTORMAT_STRATA_NORM_MANHATTAN));
-}
-
-// The banded family, off the Euclidean channel. Rings inside each cell rather than a global
-// stripe: a global one would be a second strata control fighting StrataFrequency, whereas rings
-// that follow the cell read as a nodule's own growth layers.
-float MixtormatStrataBanded(float Euclidean, float BandFrequency)
-{
-	const float Rings = Euclidean * BandFrequency;
-	return abs(frac(Rings) * 2.0f - 1.0f);
-}
-
-float MixtormatStrataFamilyValue(float4 Families, int Family, float BandFrequency)
-{
-	if (Family == MIXTORMAT_STRATA_FAMILY_F2F1)
-	{
-		return Families.y;
-	}
-	if (Family == MIXTORMAT_STRATA_FAMILY_CHEBYSHEV)
-	{
-		return Families.z;
-	}
-	if (Family == MIXTORMAT_STRATA_FAMILY_MANHATTAN)
-	{
-		return Families.w;
-	}
-	if (Family == MIXTORMAT_STRATA_FAMILY_BANDED)
-	{
-		return MixtormatStrataBanded(Families.x, BandFrequency);
-	}
-	return Families.x;
-}
-
-// The length of a propagation step, measured in the family this iteration is using.
+// The beds are bent by offsetting S, never by warping the domain. A domain warp moves the
+// coordinate the beds are sampled at, which pulls beds apart in one place and crushes them in
+// another; offsetting S by a low-frequency field bends them as a whole and keeps their thickness.
 //
-// This is the other half of automatic family selection, and the half that changes the *shape* of
-// the solve rather than the shape of the seed: under Chebyshev a diagonal step is as cheap as an
-// axial one and fronts spread as squares; under Manhattan diagonals are twice the price and
-// fronts spread as diamonds; under Euclidean they spread as circles. Cycling the metric is what
-// stops the finished field from carrying the signature of any one of them.
-float MixtormatStrataStepLength(float2 Offset, int Family)
-{
-	if (Family == MIXTORMAT_STRATA_FAMILY_CHEBYSHEV)
-	{
-		return max(abs(Offset.x), abs(Offset.y));
-	}
-	if (Family == MIXTORMAT_STRATA_FAMILY_MANHATTAN)
-	{
-		return abs(Offset.x) + abs(Offset.y);
-	}
-	// Euclidean, F2-F1 and banded all measure length the same way. The first two differ in what
-	// they *seed*, not in how far a step is, and a banded metric would make a step's cost depend
-	// on where the ring fell, which is a strata effect and already lives in the phase term.
-	return length(Offset);
-}
+// TILING is the constraint everything is arranged around. The wave vector is an integer lattice
+// vector, so S advances by a whole number of beds per tile; every per-bed random is hashed from
+// the bed index wrapped by BedPeriod, the number of distinct beds before the column repeats; and
+// every noise is periodic on the tile.
 
-// ---------------------------------------------------------------------------------------------
-// Strata phase
-//
-// The bedding planes, as a 0..1 sawtooth across the tile. Frequency is rounded to a whole number
-// of bands, which is what makes the field tile exactly: a fractional band count leaves a partial
-// band at the wrap and the seam shows as a sheared stripe.
-//
-// The warp is MixtormatPeriodicCurlWarp -- periodic by construction, like everything else here,
-// so bending the bands cannot break the tile.
-// ---------------------------------------------------------------------------------------------
-float MixtormatStrataPhase(float2 UV, float Frequency, float Warp, uint Seed)
-{
-	const float Bands = max(round(Frequency), 1.0f);
-	float2 Warped = UV;
-	if (Warp > 0.0f)
-	{
-		Warped = MixtormatPeriodicCurlWarp(UV, (int)Bands, Seed + 7717u, Warp);
-	}
-	return frac(Warped.y * Bands);
-}
+#define MIXTORMAT_STRATA_TAU 6.28318530718f
 
-// How far apart two phases are, on the circle. Plain subtraction reads 0.98 and 0.02 as almost a
-// whole band apart when they are neighbours across a wrap, which puts a false bedding plane at
-// every band boundary.
-float MixtormatStrataPhaseDelta(float A, float B)
-{
-	const float D = abs(A - B);
-	return min(D, 1.0f - D) * 2.0f;
-}
+// Salts: independent draws off one bed index, so a thick bed is not also always the tall one.
+#define MIXTORMAT_SALT_STRATA_BOUNDARY 0x3b9aca07u
+#define MIXTORMAT_SALT_STRATA_BASE     0x5851f42du
+#define MIXTORMAT_SALT_STRATA_RISE     0x2545f491u
+#define MIXTORMAT_SALT_STRATA_CROSS    0x14057b7eu
+#define MIXTORMAT_SALT_STRATA_RANDOM   0xad90777du
+#define MIXTORMAT_SALT_STRATA_DEPTH    0x9e3779b1u
 
-// ---------------------------------------------------------------------------------------------
-// Shared bindings
-// ---------------------------------------------------------------------------------------------
+// Laminae per bed. The cross-bedding tilt is a whole number of laminae per tile of strike, so
+// a bed's laminae meet themselves at the seam; that fixes the ratio of tilt to spacing, and
+// this is the spacing.
+#define MIXTORMAT_STRATA_LAMINAE 6.0f
 
-int2 SolveSize;
+// Breakup runs this many times finer than the beds: fine enough to notch a face, coarse enough
+// not to read as grain.
+#define MIXTORMAT_STRATA_BREAKUP_SCALE 4
+
+int2 BedWave;
+int2 BedPerp;
+int BedPeriod;
 int2 OutputSize;
 
 uint Seed;
-float SeedThreshold;
-int WorleyCells;
-int SeedDetail;
-float WorleyJitter;
-float BandFrequency;
+float ThicknessVariation;
+float HeightVariation;
+float Verticality;
+float RampShape;
+float Bend;
+int BendScale;
+float Breakup;
+float HeightFollow;
+float Lamination;
+float CrossBedding;
 
-float StrataFrequency;
-float StrataAmount;
-float StrataWarp;
-float StrataWarpDetail;
-int StrataLayers;
-float StrataTilt;
-float StrataTiltVariance;
-float StrataRotation;
-float StrataRotationVariance;
+float Depth;
 uint BlendMode;
 float BlendAmount;
-
-float StepScale;
-float MaxValue;
-float CostAmount;
-float PushAmount;
-float PushDecay;
-
 float MaskInfluence;
 float IDInfluence;
 uint HasScopedMask;
 uint HasRegionIds;
 
-SamplerState LinearWrapSampler;
-
-// ---------------------------------------------------------------------------------------------
-// Mask reduction
-//
-// The scoped mask is authored at composition resolution and the solve runs on a 512 grid, so at
-// 4K one solve texel covers an 8x8 block of it. Point-sampling that block -- which is what a
-// bilinear fetch at the solve grid amounts to when the ratio is this large -- reads one texel in
-// sixty-four, so a mask with detail finer than the block either aliases into a crawling pattern
-// or disappears entirely: a one-texel-wide painted line at 4K has a one-in-eight chance of being
-// seen at all, and which eighth it lands in changes with resolution.
-//
-// A box average over the whole footprint is the fix, and it is the right answer rather than a
-// cheap one. What the solve needs from the mask is coverage, not a sample: a thin line should
-// arrive as "an eighth of this cell is masked" and go on steering seed probability and cost in
-// proportion, which is exactly what the average gives. The mask is still read at full resolution
-// in ResolveCS, so the carve's own edge stays as sharp as the mask that shaped it -- only the
-// solve sees the reduced copy.
-//
-// The footprint is a power of two (the divisor is chosen that way), so the block tiles the image
-// exactly and every full-resolution texel is counted once.
-// ---------------------------------------------------------------------------------------------
-
-Texture2D<float> FullResMask;
-RWTexture2D<float> OutSolveMask;
-int2 MaskFootprint;
-
-[numthreads(8, 8, 1)]
-void MaskReduceCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
-	{
-		return;
-	}
-
-	const int2 P = int2(DispatchThreadId.xy);
-	const int2 Footprint = max(MaskFootprint, int2(1, 1));
-	const int2 Base = P * Footprint;
-
-	float Sum = 0.0f;
-	for (int y = 0; y < Footprint.y; ++y)
-	{
-		for (int x = 0; x < Footprint.x; ++x)
-		{
-			// Wrapped, like every other fetch here. The footprint lands inside the image for
-			// every solve texel when the divisor divides the resolution, which it always does;
-			// the wrap is what keeps that true rather than assumed.
-			const int2 Q = int2(
-				MixtormatWrapI(Base.x + x, OutputSize.x),
-				MixtormatWrapI(Base.y + y, OutputSize.y));
-			Sum += FullResMask.Load(int3(Q, 0));
-		}
-	}
-
-	OutSolveMask[P] = saturate(Sum / float(max(Footprint.x * Footprint.y, 1)));
-}
-
-// ---------------------------------------------------------------------------------------------
-// Seed pass
-// ---------------------------------------------------------------------------------------------
-
-Texture2D<float> SeedMask;
-Texture2D<uint> SeedRegionIds;
-
-RWTexture2D<float4> OutFamilies;
-RWTexture2D<float2> OutAux;   // r = propagation cost, g = seed scalar
-RWTexture2D<float2> OutDist;  // r = raw distance, g = carried push
-
-// Salts. Four independent draws off one region seed, so a region that happens to carve deeply is
-// not also always the one that seeds first.
-#define MIXTORMAT_SALT_STRATA_SEED  0x3b9aca07u
-#define MIXTORMAT_SALT_STRATA_COST  0x5851f42du
-#define MIXTORMAT_SALT_STRATA_PHASE 0x14057b7eu
-#define MIXTORMAT_SALT_STRATA_DEPTH 0x9e3779b1u
-
-// The internal fractal seed: broad natural noise, not pixel noise.
-//
-// Octaves double the cell count, so every octave is still an integer lattice over the tile and
-// the sum tiles as exactly as the first term does. The lowest octave is WorleyCells across the
-// whole tile -- three by default -- which is what keeps the result geological instead of grainy.
-// Amplitude halves, so the first octave dominates and the detail octaves only roughen its edges.
-float4 MixtormatStrataSeedFractal(float2 UV, int Cells, int Octaves, uint NoiseSeed, float Jitter)
-{
-	float4 Sum = 0.0f;
-	float Amplitude = 1.0f;
-	float Norm = 0.0f;
-	int2 Period = int2(max(Cells, 1), max(Cells, 1));
-
-	for (int Octave = 0; Octave < Octaves; ++Octave)
-	{
-		Sum += MixtormatStrataFamilies(
-			UV * float2(Period), Period, NoiseSeed + (uint)Octave * 131u, Jitter) * Amplitude;
-		Norm += Amplitude;
-		Amplitude *= 0.5f;
-		Period *= 2;
-	}
-
-	return Sum / max(Norm, 1.0e-6f);
-}
-
-[numthreads(8, 8, 1)]
-void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
-	{
-		return;
-	}
-
-	const int2 P = int2(DispatchThreadId.xy);
-	const float2 UV = (float2(P) + 0.5f) / float2(SolveSize);
-
-	const float4 FamilyValues =
-		MixtormatStrataSeedFractal(UV, WorleyCells, SeedDetail, Seed, WorleyJitter);
-
-	// The seed scalar. Which family decides where carving starts is itself a function of Seed, so
-	// reseeding changes the character of the origins and not only their placement.
-	const int SeedFamily =
-		(int)(MixtormatHashU(Seed * 0x9e3779b9u + 0x2545f491u) % (uint)MIXTORMAT_STRATA_FAMILY_COUNT);
-	const float SeedScalar =
-		saturate(MixtormatStrataFamilyValue(FamilyValues, SeedFamily, BandFrequency));
-
-	// The scoped mask, already box-reduced to this grid by MaskReduceCS. Loaded, not sampled:
-	// the reduction has put one value per solve texel there that already accounts for every
-	// full-resolution texel under it, and sampling it again would only blur what is already
-	// correct. The full-resolution copy is read separately in ResolveCS, where it shapes the
-	// finished amplitude and its own edge has to stay sharp.
-	const float MaskValue = HasScopedMask != 0
-		? saturate(SeedMask.Load(int3(P, 0)))
-		: 1.0f;
-	const float MaskGate = lerp(1.0f, MaskValue, MaskInfluence);
-
-	// Region IDs. Branched, not multiplied by zero: the requirement is that influence 0 has
-	// *exactly* no effect, and a lerp against a hashed value still perturbs the last bits.
-	// Every pixel of one region draws the same numbers, because the draw is off the region id
-	// and nothing else -- this is per-region variation, never per-pixel noise.
-	float IdSeedBias = 0.0f;
-	float IdCostScale = 1.0f;
-	if (IDInfluence > 0.0f && HasRegionIds != 0)
-	{
-		// The ID map is produced at full resolution by a pattern or cluster node in the same
-		// layer. Point-sampled at the solve grid's pixel centre: interpolating ids would give a
-		// third id halfway between two regions that names neither of them.
-		const int2 IdPixel = (int2)(UV * float2(OutputSize));
-		const uint RegionId = SeedRegionIds.Load(int3(
-			clamp(IdPixel, int2(0, 0), OutputSize - 1), 0));
-		if (RegionId != MIXTORMAT_INVALID_REGION)
-		{
-			const uint RegionSeed = MixtormatRegionSeed(RegionId, Seed);
-			const float DrawSeed =
-				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_SEED);
-			const float DrawCost =
-				MixtormatRegionRandomSalted(RegionSeed, MIXTORMAT_SALT_STRATA_COST);
-			IdSeedBias = (DrawSeed - 0.5f) * 0.35f * IDInfluence;
-			IdCostScale = lerp(1.0f, 0.4f + 1.2f * DrawCost, IDInfluence);
-		}
-	}
-
-	// Seed probability. The mask raises the threshold past reachable where coverage is absent,
-	// so carving genuinely never starts outside it rather than starting and being masked away
-	// afterwards -- which is the difference between localised weathering and a cutout.
-	const float Threshold =
-		lerp(SeedThreshold + IdSeedBias, 1.0001f, (1.0f - MaskGate));
-	const bool bSeeded = SeedScalar >= Threshold;
-
-	// Propagation cost. Cheap where the seed field is strong, so fronts run down the channels the
-	// noise already laid out; squared in the mask term so coverage confines the spread steeply
-	// while still fading rather than cutting.
-	float Cost = 1.0f + CostAmount * (1.0f - SeedScalar);
-	Cost /= max(MaskGate * MaskGate, 1.0e-3f);
-	Cost *= IdCostScale;
-
-	OutFamilies[P] = FamilyValues;
-	OutAux[P] = float2(Cost, SeedScalar);
-	OutDist[P] = float2(bSeeded ? 0.0f : MaxValue, 0.0f);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Propagation pass
-//
-// One iteration. The stride, the Worley family and the combining operation are chosen on the CPU
-// from OperationSeed and the iteration index and arrive as uniforms, so the inner loop carries no
-// per-pixel hashing at all.
-//
-// Sixteen taps: the eight local directions at this stride, and eight knight-style offsets. The
-// knights are what stop the field from crystallising onto the axes -- with only the eight
-// neighbours, a Chebyshev or Manhattan iteration lays down a visible square or diamond grain that
-// no amount of later smoothing removes.
-// ---------------------------------------------------------------------------------------------
-
-Texture2D<float2> PrevDist;
-Texture2D<float4> FamilyField;
-Texture2D<float2> Aux;
-
-RWTexture2D<float2> NextDist;
-
-int IterationStride;
-int IterationFamily;
-int IterationOp;
-
-#define MIXTORMAT_STRATA_OP_MIN        0
-#define MIXTORMAT_STRATA_OP_HYSTERESIS 1
-#define MIXTORMAT_STRATA_OP_SMOOTH     2
-#define MIXTORMAT_STRATA_OP_PAIR       3
-#define MIXTORMAT_STRATA_OP_COUNT      4
-
-int2 MixtormatStrataWrap(int2 P, int2 Size)
-{
-	return int2(MixtormatWrapI(P.x, Size.x), MixtormatWrapI(P.y, Size.y));
-}
-
-[numthreads(8, 8, 1)]
-void PropagateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	if (any(DispatchThreadId.xy >= uint2(SolveSize)))
-	{
-		return;
-	}
-
-	const int2 P = int2(DispatchThreadId.xy);
-	const float2 UV = (float2(P) + 0.5f) / float2(SolveSize);
-
-	const float2 Current = PrevDist.Load(int3(P, 0));
-	const float2 CentreAux = Aux.Load(int3(P, 0));
-	const float CentreCost = CentreAux.x;
-	const float CentrePhase =
-		MixtormatStrataPhase(UV, StrataFrequency, StrataWarp, Seed);
-
-	// The family value at this pixel scales the local cost. This is where per-iteration family
-	// selection bites: the same seed field resists differently depending on which metric is
-	// being asked about it, so successive iterations carve along different grains.
-	const float4 CentreFamilies = FamilyField.Load(int3(P, 0));
-	const float CentreFamilyValue =
-		MixtormatStrataFamilyValue(CentreFamilies, IterationFamily, BandFrequency);
-	const float FamilyCost = lerp(0.75f, 1.75f, CentreFamilyValue);
-
-	const int Stride = max(IterationStride, 1);
-
-	// Eight local directions, then eight knights.
-	const int2 Offsets[16] =
-	{
-		int2(-1, -1), int2(0, -1), int2(1, -1),
-		int2(-1,  0),              int2(1,  0),
-		int2(-1,  1), int2(0,  1), int2(1,  1),
-		int2(-1, -2), int2(1, -2), int2(-2, -1), int2(2, -1),
-		int2(-2,  1), int2(2,  1), int2(-1,  2), int2(1,  2)
-	};
-
-	float Best = Current.x;
-	float BestPush = Current.y;
-	float SecondBest = Current.x;
-
-	[unroll]
-	for (int Tap = 0; Tap < 16; ++Tap)
-	{
-		const int2 Offset = Offsets[Tap] * Stride;
-		const int2 Q = MixtormatStrataWrap(P + Offset, SolveSize);
-		const float2 Neighbour = PrevDist.Load(int3(Q, 0));
-
-		// Nothing to carry from a cell the front has not reached. Skipping is not only cheaper,
-		// it is necessary: MaxValue plus a step is still an unreachable distance, and letting it
-		// compete would let rounding decide which unreached cell is "nearest".
-		if (Neighbour.x >= MaxValue)
-		{
-			continue;
-		}
-
-		const float2 QUV = (float2(Q) + 0.5f) / float2(SolveSize);
-		const float NeighbourCost = Aux.Load(int3(Q, 0)).x;
-		const float NeighbourPhase =
-			MixtormatStrataPhase(QUV, StrataFrequency, StrataWarp, Seed);
-
-		// Crossing a bedding plane is expensive; running along one is not. This is the whole
-		// mechanism behind the layered read -- without it the solve is an ordinary distance
-		// field and the strata controls only tint it afterwards.
-		const float PhaseDelta = MixtormatStrataPhaseDelta(CentrePhase, NeighbourPhase);
-		const float StrataTerm = StrataAmount * PhaseDelta;
-		const float Along = 1.0f - saturate(PhaseDelta);
-
-		const float StepLength = MixtormatStrataStepLength(float2(Offset), IterationFamily);
-		const float LocalCost = 0.5f * (CentreCost + NeighbourCost) * FamilyCost;
-		const float StepCost = StepLength * StepScale * LocalCost * (1.0f + StrataTerm);
-
-		// The recursive push. A front that has been running along a bedding plane accumulates
-		// credit and gets cheaper, so it keeps running along that plane instead of spreading
-		// evenly -- that recursion is what turns a distance field into strata.
-		//
-		// The credit is capped at three quarters of the step it is discounting. Without the cap
-		// a front with enough accumulated push would take negative steps, the field would
-		// descend without bound and the solve would never settle; with it every step still
-		// raises the distance by at least a quarter of its cost, so the field is monotone and
-		// converges however many iterations run.
-		const float PushIn = Neighbour.y * (1.0f - PushDecay) + PushAmount * Along;
-		const float Credit = min(PushIn * StepScale * 0.5f, StepCost * 0.75f);
-		const float Candidate = Neighbour.x + max(StepCost - Credit, 0.0f);
-
-		if (Candidate < Best)
-		{
-			SecondBest = Best;
-			Best = Candidate;
-			BestPush = PushIn;
-		}
-		else if (Candidate < SecondBest)
-		{
-			SecondBest = Candidate;
-		}
-	}
-
-	// Operation cycling. Which of these an iteration runs is drawn from OperationSeed, so the
-	// same seed field solves into a different rock without reseeding it.
-	float Result = Best;
-	if (IterationOp == MIXTORMAT_STRATA_OP_HYSTERESIS)
-	{
-		// A candidate has to beat what is already here by a margin before it takes. Fronts meet
-		// in a crisp seam instead of a gradient, which is what a fracture looks like.
-		const float Margin = StepScale * 0.25f;
-		Result = (Best < Current.x - Margin) ? Best : Current.x;
-	}
-	else if (IterationOp == MIXTORMAT_STRATA_OP_SMOOTH)
-	{
-		// Rounds where two fronts meet, using the same polynomial smooth-min the cellular
-		// header defines, so a smoothed junction here matches a rounded cell corner elsewhere.
-		Result = MixtormatSmoothMin(Best, Current.x, StepScale);
-	}
-	else if (IterationOp == MIXTORMAT_STRATA_OP_PAIR)
-	{
-		// Averages the two best arrivals. Where one front clearly wins this is a no-op; where
-		// two arrive together it widens the seam into a bed rather than a line.
-		Result = (SecondBest < MaxValue) ? 0.5f * (Best + SecondBest) : Best;
-	}
-
-	// The convergence guard, and the reason the three shaping operations above are safe. They
-	// decide *which* arrival wins and by how much; this keeps the field non-increasing over the
-	// solve, so an operation that would otherwise raise a settled distance cannot make the
-	// iteration count change the answer in an unbounded way.
-	Result = min(Result, Current.x);
-
-	NextDist[P] = float2(Result, (Result < Current.x) ? BestPush : Current.y);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Resolve pass
-//
-// Full-resolution layered strata synthesis and height blending.
-// ---------------------------------------------------------------------------------------------
-
-Texture2D<float2> SolvedDist;
 Texture2D<float> SourceHeight;
 Texture2D<float> ResolveMask;
 Texture2D<uint> ResolveRegionIds;
+SamplerState LinearWrapSampler;
 
 RWTexture2D<float> OutHeight;
+RWTexture2D<uint> OutBedIds;
+RWTexture2D<float> OutBedPosition;
+RWTexture2D<float> OutBedRandom;
 
-float Depth;
-float Bias;
-float RemapInMin;
-float RemapInMax;
-float RemapOutMin;
-float RemapOutMax;
-float CarveClampMin;
-float CarveClampMax;
-
-// Gamma-style pull about the midpoint. 0.5 is the identity, below darkens, above brightens --
-// the same curve the prototype ends on, and the reason Bias is authored as 0..1 rather than as
-// an exponent nobody can picture.
-float MixtormatStrataBias(float X, float B)
+float MixtormatStrataBedRandom(int Bed, uint Salt)
 {
-	const float SafeB = clamp(B, 0.001f, 0.999f);
-	return pow(saturate(X), log(SafeB) / log(0.5f));
+	const uint Wrapped = (uint)MixtormatWrapI(Bed, BedPeriod);
+	return (float)(MixtormatHashU(Wrapped * 0x9e3779b1u ^ Seed * 0x85ebca6bu ^ Salt) & 0x00ffffffu)
+		* (1.0f / 16777216.0f);
 }
 
-float MixtormatStrataLayer(float2 UV, int Frequency, float AngleDegrees, uint LayerSeed)
+// Where bed K starts, in units of S. Each boundary is jittered by up to half a bed either way, so
+// neighbouring boundaries can approach but never cross while ThicknessVariation is at most 1.
+float MixtormatStrataBoundary(int Bed)
 {
-	const float2 WarpA = MixtormatPeriodicCurlWarp(UV, Frequency, LayerSeed, StrataWarp);
-	const float2 Warped = frac(MixtormatPeriodicCurlWarp(
-		WarpA, Frequency * 2, LayerSeed + 8191u, StrataWarpDetail));
+	return (float)Bed
+		+ ThicknessVariation * (MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_BOUNDARY) - 0.5f);
+}
 
-	const float Angle = radians(AngleDegrees);
-	float2 Wave = round(float2(sin(Angle), cos(Angle)) * (float)Frequency);
-	if (all(Wave == 0.0f)) { Wave.y = 1.0f; }
+// The height a bed's ramp starts from. HeightVariation lifts or drops whole beds so they do not
+// all bottom out at the same level.
+float MixtormatStrataBase(int Bed)
+{
+	return HeightVariation * (MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_BASE) - 0.5f) * 0.5f;
+}
 
-	const float FineNoise = MixtormatPeriodicNoiseD(
-		Warped * (float)(Frequency * 2), Frequency * 2, LayerSeed + 1459u).x;
-	const float Phase = frac(dot(Warped, Wave) + FineNoise * 0.12f);
-	const float Crest = 0.5f + 0.5f * cos(6.28318530718f * Phase);
-	return pow(saturate(Crest), 1.0f + saturate(StrataAmount / 16.0f) * 7.0f);
+// How far a bed's ramp climbs. 1 for every bed at HeightVariation 0.
+float MixtormatStrataRise(int Bed)
+{
+	return lerp(1.0f, 0.25f + 0.75f * MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_RISE), HeightVariation);
+}
+
+// The dip slope. RampShape -1 hollows it, +1 bulges it, 0 is straight. Polynomials rather than
+// pow, so X = 0 needs no guard.
+float MixtormatStrataRamp(float X)
+{
+	const float Hollow = X * X;
+	const float Bulge = X * (2.0f - X);
+	return RampShape >= 0.0f ? lerp(X, Bulge, RampShape) : lerp(X, Hollow, -RampShape);
 }
 
 [numthreads(8, 8, 1)]
@@ -600,33 +122,78 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const int2 P = int2(DispatchThreadId.xy);
 	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
-	const int Frequency = max((int)round(StrataFrequency), 1);
-	float Sum = 0.0f;
-	float WeightSum = 0.0f;
-	float Weight = 1.0f;
+	const float Source = SourceHeight.Load(int3(P, 0));
+	const float BedsPerTile = length(float2(BedWave));
 
-	[loop]
-	for (int Layer = 0; Layer < 4; ++Layer)
+	// Bend is authored in tile widths, so the same value bends thick and thin beds by the same
+	// distance on the surface. Two octaves: the broad sweep and a softer half-size wobble.
+	const int BendPeriod = max(BendScale, 1);
+	const float BendField =
+		MixtormatPeriodicNoiseD(UV * (float)BendPeriod, BendPeriod, Seed + 7717u).x
+		+ 0.5f * MixtormatPeriodicNoiseD(UV * (float)(BendPeriod * 2), BendPeriod * 2, Seed + 8191u).x;
+
+	// Breakup is authored in beds: it is about how ragged a face is relative to the bed it ends.
+	const int BreakupPeriod = max(max(abs(BedWave.x), abs(BedWave.y)), 1) * MIXTORMAT_STRATA_BREAKUP_SCALE;
+	const float BreakupField =
+		MixtormatPeriodicNoiseD(UV * (float)BreakupPeriod, BreakupPeriod, Seed + 1459u).x;
+
+	// Height follow makes the beds terrace the surface instead of lying on it: the same bed sits
+	// further along where the source is higher, so the faces trace its contours.
+	const float S = dot(UV, float2(BedWave))
+		+ Bend * BedsPerTile * BendField
+		+ Breakup * BreakupField
+		+ HeightFollow * (Source - 0.5f);
+
+	int Bed = (int)floor(S);
+	if (S < MixtormatStrataBoundary(Bed))
 	{
-		if (Layer >= StrataLayers) { break; }
-		const uint LayerSeed = MixtormatHashU(Seed + (uint)Layer * 0x9e3779b9u + 0x51ed270bu);
-		const float R0 = (float)(LayerSeed & 0x00ffffffu) * (1.0f / 16777216.0f);
-		const float R1 = (float)(MixtormatHashU(LayerSeed + 0x68bc21ebu) & 0x00ffffffu) * (1.0f / 16777216.0f);
-		const float Variation = Layer == 0 ? 0.0f : 1.0f;
-		const float Angle = StrataRotation + StrataTilt
-			+ Variation * ((R0 * 2.0f - 1.0f) * StrataRotationVariance
-			+ (R1 * 2.0f - 1.0f) * StrataTiltVariance);
-		const float Bed = MixtormatStrataLayer(UV, Frequency, Angle, LayerSeed);
-		Sum += (Bed - 0.5f) * Weight;
-		WeightSum += Weight;
-		Weight *= 0.55f;
+		Bed -= 1;
+	}
+	else if (S >= MixtormatStrataBoundary(Bed + 1))
+	{
+		Bed += 1;
 	}
 
-	float Strata = saturate(0.5f + Sum / max(WeightSum, 1.0e-5f));
-	float Amount = saturate(BlendAmount);
+	const float Lower = MixtormatStrataBoundary(Bed);
+	const float Thickness = max(MixtormatStrataBoundary(Bed + 1) - Lower, 1.0e-5f);
+	const float T = (S - Lower) / Thickness;
+
+	// The face takes this share of the bed: half of it at Verticality 0, which is a symmetric
+	// ridge, down to one texel at Verticality 1, a sheer wall. The texel term is what keeps a
+	// sheer wall a clean edge rather than a stair. A negative share has no geometry, hence the
+	// guard; RampEnd is guarded for the same reason when Verticality is driven far below 0.
+	const float PixelT = BedsPerTile / ((float)max(OutputSize.x, 1) * Thickness);
+	const float Face = max(0.5f * (1.0f - Verticality), 0.0f) + PixelT;
+	const float RampEnd = max(1.0f - Face, 1.0e-5f);
+
+	const float Base = MixtormatStrataBase(Bed);
+	const float Crest = Base + MixtormatStrataRise(Bed);
+	float Strata;
+	if (T < RampEnd)
+	{
+		Strata = lerp(Base, Crest, MixtormatStrataRamp(T / RampEnd));
+	}
+	else
+	{
+		// Down to where the next bed's ramp starts, so the surface is continuous across beds.
+		Strata = lerp(Crest, MixtormatStrataBase(Bed + 1), smoothstep(0.0f, 1.0f, (T - RampEnd) / Face));
+	}
+
+	// Laminae. Each bed draws its own whole-number cross-bedding tilt, so the fine lines fan
+	// between beds instead of running parallel to every boundary.
+	const float CrossDraw = MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_CROSS) * 2.0f - 1.0f;
+	const float Cross = round(CrossDraw * CrossBedding);
+	const float LaminaPhase = MIXTORMAT_STRATA_LAMINAE * T + Cross * dot(UV, float2(BedPerp));
+	Strata += Lamination * 0.1f * sin(MIXTORMAT_STRATA_TAU * LaminaPhase);
+
+	OutBedIds[P] = (uint)MixtormatWrapI(Bed, BedPeriod);
+	OutBedPosition[P] = T;
+	OutBedRandom[P] = MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_RANDOM);
+
+	float Amount = BlendAmount;
 	if (MaskInfluence > 0.0f && HasScopedMask != 0)
 	{
-		const float MaskValue = saturate(ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f));
+		const float MaskValue = ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		Amount *= lerp(1.0f, MaskValue, MaskInfluence);
 	}
 	if (IDInfluence > 0.0f && HasRegionIds != 0)
@@ -640,19 +207,20 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	const float Source = SourceHeight.Load(int3(P, 0));
-	const float Cut = Strata * Depth;
-	const float Relief = (Strata * 2.0f - 1.0f) * Depth;
+	// Strata runs about 0..1 from a bed's base to its crest. Relief is the same shape centred on
+	// zero; Subtract carves the same shape down from the source, so every mode keeps the ramps
+	// facing the same way.
+	const float Relief = (Strata - 0.5f) * Depth;
 	float Target = Source;
 	switch (BlendMode)
 	{
 	case 0u: Target = Source + Relief; break;
-	case 1u: Target = Source - Cut; break;
+	case 1u: Target = Source - (1.0f - Strata) * Depth; break;
 	case 2u: Target = Source * (1.0f + Relief); break;
-	case 3u: Target = abs(Source - abs(Relief)); break;
+	case 3u: Target = abs(Source - Strata * Depth); break;
 	case 4u: Target = max(Source, Source + Relief); break;
 	case 5u: Target = min(Source, Source + Relief); break;
-	default: Target = Source - Cut; break;
+	default: Target = Source + Relief; break;
 	}
 	OutHeight[P] = lerp(Source, Target, Amount);
 }

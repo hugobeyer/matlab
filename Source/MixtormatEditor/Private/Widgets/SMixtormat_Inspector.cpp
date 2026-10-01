@@ -2715,22 +2715,31 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 			.Title(LOCTEXT("RampIdHeading", "RAMP FROM IDS"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
-				MixtormatRow::MakeCheckbox(
-					TAttribute<ECheckBoxState>::CreateLambda([this]()
-					{
-						const FMixtormatRampIdFilter* Selected = GetSelectedRampId();
-						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-					}),
-					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-					{
-						if (FMixtormatRampIdFilter* Selected = GetSelectedRampId())
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton(
+						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::RampId))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
 						{
-							Selected->bEnabled = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-							RebuildLayerList();
-						}
-					}),
-					LOCTEXT("RampEnabledHint", "Enable this ramp filter")))
+							const FMixtormatRampIdFilter* Selected = GetSelectedRampId();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatRampIdFilter* Selected = GetSelectedRampId())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("RampEnabledHint", "Enable this ramp filter"))
+				])
 			[
 				Panel
 			]
@@ -2779,11 +2788,6 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
-		LOCTEXT("UvIdPreviewUV", "Preview UV"),
-		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerUV,
-			LOCTEXT("UvIdPreviewUVHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile.")),
-		LOCTEXT("UvIdPreviewUVRowHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile.")));
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpTransform", "Transform")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("UvIdRotationMin", "Rotation Min"), &FMixtormatUvIdFilter::RotationMin, -360.0, 360.0, 0.0, 1.0,
@@ -2825,22 +2829,31 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 			.Title(LOCTEXT("UvIdHeading", "UV FROM IDS"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
-				MixtormatRow::MakeCheckbox(
-					TAttribute<ECheckBoxState>::CreateLambda([this]()
-					{
-						const FMixtormatUvIdFilter* Selected = GetSelectedUvId();
-						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-					}),
-					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-					{
-						if (FMixtormatUvIdFilter* Selected = GetSelectedUvId())
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerUV,
+						LOCTEXT("UvIdPreviewUVHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile."))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
 						{
-							Selected->bEnabled = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-							RebuildLayerList();
-						}
-					}),
-					LOCTEXT("UvIdEnabledHint", "Enable this UV filter")))
+							const FMixtormatUvIdFilter* Selected = GetSelectedUvId();
+							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatUvIdFilter* Selected = GetSelectedUvId())
+							{
+								Selected->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("UvIdEnabledHint", "Enable this UV filter"))
+				])
 			[
 				Panel
 			]
@@ -3195,12 +3208,8 @@ TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
 
 // Strata Carver, the first GENERATORS panel.
 //
-// Deliberately smaller than the Houdini prototype. The prototype exposes every term of the
-// solver because it was being designed; an artist using it is choosing a rock, not tuning a
-// distance metric. Eleven rows carry the whole look -- how deep, how big, how banded, where --
-// and the twenty solver terms sit behind ADVANCED where they can be reached and are not in the
-// way. Scale is the clearest case: it is the artist's word for the Worley cell count, and the
-// gather derives the cells from it rather than asking anyone to think in lattices.
+// Rows run from what the beds are (size, direction, thickness, height), through their profile
+// (verticality, ramp shape), to what bends and roughens them, then the laminae.
 TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 {
 	const auto Carver = [this]() { return GetSelectedStrataCarver(); };
@@ -3232,35 +3241,43 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 
 	AddSliderRow(Panel, SliderInt(
 		LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 9999.0, 3,
-		LOCTEXT("StrataSeedHint", "Randomizes the layer pattern and its warped copies.")));
+		LOCTEXT("StrataSeedHint", "Draws every per-bed random and the bend.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataFrequency", "Strata Size"), &FMixtormatStrataCarver::StrataFrequency, 1.0, 64.0, 4.0, 1.0,
-			LOCTEXT("StrataFrequencyHint", "Number of sedimentary bands across the tile.")),
-		Slider(LOCTEXT("StrataDepth", "Depth"), &FMixtormatStrataCarver::Depth, 0.0, 1.0, 0.05, 0.001,
+		Slider(LOCTEXT("StrataFrequency", "Strata Size"), &FMixtormatStrataCarver::StrataFrequency, 1.0, 64.0, 6.0, 1.0,
+			LOCTEXT("StrataFrequencyHint", "Beds across the tile. Also how many distinct beds are drawn before they repeat.")),
+		Slider(LOCTEXT("StrataDepth", "Depth"), &FMixtormatStrataCarver::Depth, 0.0, 1.0, 0.25, 0.001,
 			LOCTEXT("StrataDepthHint", "Height relief contributed by the strata."))));
 	AddSliderRow(Panel, Slider(
-		LOCTEXT("StrataAmount", "Band Sharpness"), &FMixtormatStrataCarver::StrataAmount, 0.0, 16.0, 3.0, 0.1,
-		LOCTEXT("StrataAmountHint", "Sharpens each bed while keeping the layered profile smooth.")));
+		LOCTEXT("StrataRotation", "Direction"), &FMixtormatStrataCarver::StrataRotation, 0.0, 360.0, 0.0, 0.1,
+		LOCTEXT("StrataRotationHint", "Direction of the bedding. Snaps to the nearest angle that tiles; 180 turns the faces the other way.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataTilt", "Tilt"), &FMixtormatStrataCarver::StrataTilt, -70.0, 70.0, 0.0, 0.1,
-			LOCTEXT("StrataTiltHint", "Base angle of the bedding planes.")),
-		Slider(LOCTEXT("StrataTiltVariance", "Tilt Variance"), &FMixtormatStrataCarver::StrataTiltVariance, 0.0, 45.0, 12.0, 0.1,
-			LOCTEXT("StrataTiltVarianceHint", "Random tilt variation for additional strata layers."))));
+		Slider(LOCTEXT("StrataThickness", "Thickness Variation"), &FMixtormatStrataCarver::ThicknessVariation, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("StrataThicknessHint", "0 is evenly spaced beds; 1 lets thin and thick beds sit side by side.")),
+		Slider(LOCTEXT("StrataHeightVariation", "Height Variation"), &FMixtormatStrataCarver::HeightVariation, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("StrataHeightVariationHint", "0 gives every bed the same rise from the same base; 1 varies both."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataRotation", "Rotation"), &FMixtormatStrataCarver::StrataRotation, 0.0, 180.0, 0.0, 0.1,
-			LOCTEXT("StrataRotationHint", "Base rotation of the strata pattern.")),
-		Slider(LOCTEXT("StrataRotationVariance", "Rotation Variance"), &FMixtormatStrataCarver::StrataRotationVariance, 0.0, 45.0, 8.0, 0.1,
-			LOCTEXT("StrataRotationVarianceHint", "Random rotation added to each extra layer."))));
+		Slider(LOCTEXT("StrataVerticality", "Verticality"), &FMixtormatStrataCarver::Verticality, 0.0, 1.0, 0.7, 0.01,
+			LOCTEXT("StrataVerticalityHint", "How steep each bed's face is. 0 is a symmetric ridge, 1 a sheer wall.")),
+		Slider(LOCTEXT("StrataRampShape", "Ramp Shape"), &FMixtormatStrataCarver::RampShape, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("StrataRampShapeHint", "The dip slope's profile. -1 hollows it, 0 is straight, 1 bulges it."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataWarp", "Broad Warp"), &FMixtormatStrataCarver::StrataWarp, 0.0, 4.0, 0.54, 0.01,
-			LOCTEXT("StrataWarpHint", "Large-scale curl distortion bends the bedding coherently.")),
-		Slider(LOCTEXT("StrataWarpDetail", "Fine Warp"), &FMixtormatStrataCarver::StrataWarpDetail, 0.0, 1.0, 0.25, 0.01,
-			LOCTEXT("StrataWarpDetailHint", "A second, finer periodic warp breaks up the broad bends."))));
+		Slider(LOCTEXT("StrataBend", "Bend"), &FMixtormatStrataCarver::Bend, 0.0, 0.25, 0.03, 0.001,
+			LOCTEXT("StrataBendHint", "How far the beds bend, in tile widths. Beds keep their thickness.")),
+		SliderInt(LOCTEXT("StrataBendScale", "Bend Scale"), &FMixtormatStrataCarver::BendScale, 1.0, 8.0, 2,
+			LOCTEXT("StrataBendScaleHint", "How many bends cross the tile."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		SliderInt(LOCTEXT("StrataLayers", "Layers"), &FMixtormatStrataCarver::StrataLayers, 1.0, 4.0, 3,
-			LOCTEXT("StrataLayersHint", "Number of differently oriented beds combined into the pattern.")),
-		Slider(LOCTEXT("StrataBlendAmount", "Blend Amount"), &FMixtormatStrataCarver::StrataBlendAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("StrataBlendAmountHint", "Strength of the selected blend with the input height."))));
+		Slider(LOCTEXT("StrataBreakup", "Breakup"), &FMixtormatStrataCarver::Breakup, 0.0, 0.5, 0.1, 0.01,
+			LOCTEXT("StrataBreakupHint", "How ragged each face is, in beds.")),
+		Slider(LOCTEXT("StrataHeightFollow", "Height Follow"), &FMixtormatStrataCarver::HeightFollow, 0.0, 16.0, 0.0, 0.01,
+			LOCTEXT("StrataHeightFollowHint", "How many beds the layer's own height shifts the bedding by. Above 0 the faces follow the contours underneath."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("StrataLamination", "Lamination"), &FMixtormatStrataCarver::Lamination, 0.0, 1.0, 0.25, 0.01,
+			LOCTEXT("StrataLaminationHint", "Fine laminae inside each bed.")),
+		Slider(LOCTEXT("StrataCrossBedding", "Cross Bedding"), &FMixtormatStrataCarver::CrossBedding, 0.0, 3.0, 1.0, 0.01,
+			LOCTEXT("StrataCrossBeddingHint", "How far each bed tilts its laminae off the bedding plane."))));
+	AddSliderRow(Panel, Slider(
+		LOCTEXT("StrataBlendAmount", "Blend Amount"), &FMixtormatStrataCarver::StrataBlendAmount, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("StrataBlendAmountHint", "Strength of the selected blend with the input height.")));
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatStrataCarver>(
 		LOCTEXT("StrataBlendMode", "Blend Mode"), Carver, &FMixtormatStrataCarver::StrataBlendMode,
 		LOCTEXT("StrataBlendModeHint", "Combines the layered strata with the existing height.")));
@@ -3272,27 +3289,41 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 			.Title(LOCTEXT("StrataCarverHeading", "STRATA CARVER"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
-				MixtormatRow::MakeCheckbox(
-					TAttribute<ECheckBoxState>::CreateLambda([this]()
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
 					{
-						const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-						return Child && Child->Type == EMixtormatLayerChildType::Generator
-							&& Child->Generator.bEnabled
-							? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-					}),
-					FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-					{
-						// The wrapper's flag, not the payload's. One switch turns off the node
-						// whatever generator it is carrying, which is the same thing the bypass
-						// preview and the gather branch both test.
-						if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::StrataCarver;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
 						{
-							Generator->bEnabled = State == ECheckBoxState::Checked;
-							RefreshLayeredPreview();
-							RebuildLayerList();
-						}
-					}),
-					LOCTEXT("StrataEnabledHint", "Enable this generator")))
+							const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+							return Child && Child->Type == EMixtormatLayerChildType::Generator
+								&& Child->Generator.bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							// The wrapper's flag, not the payload's. One switch turns off the node
+							// whatever generator it is carrying, which is the same thing the bypass
+							// preview and the gather branch both test.
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("StrataEnabledHint", "Enable this generator"))
+				])
 			[
 				Panel
 			]

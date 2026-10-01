@@ -755,46 +755,27 @@ namespace MixtormatGpuCompositor
 		bool bSubtract = false;
 	};
 
-	// Strata Carver settings for periodic multi-layer bedding synthesis. Legacy solver values
-	// remain here only so existing gather code and serialized settings stay compatible.
+	// Strata Carver settings: the beds, their profile, the bend, and the height blend.
 	struct FStrataCarverRenderData
 	{
 		uint32 Seed = 3;
-		float Depth = 0.05f;
-		int32 Iterations = 64;
-		float SeedThreshold = 0.25f;
-		int32 WorleyCells = 3;
-		int32 SeedDetail = 3;
-		float StrataFrequency = 4.0f;
-		float StrataAmount = 3.0f;
-		float StrataWarp = 0.54f;
-		float StrataWarpDetail = 0.25f;
-		int32 StrataLayers = 3;
-		float StrataTilt = 0.0f;
-		float StrataTiltVariance = 12.0f;
+		float Depth = 0.25f;
+		float StrataFrequency = 6.0f;
 		float StrataRotation = 0.0f;
-		float StrataRotationVariance = 8.0f;
-		uint32 BlendMode = 1;
+		float ThicknessVariation = 0.5f;
+		float HeightVariation = 0.5f;
+		float Verticality = 0.7f;
+		float RampShape = 0.0f;
+		float Bend = 0.03f;
+		int32 BendScale = 2;
+		float Breakup = 0.1f;
+		float HeightFollow = 0.0f;
+		float Lamination = 0.25f;
+		float CrossBedding = 1.0f;
+		uint32 BlendMode = 0;
 		float BlendAmount = 1.0f;
-		float PushAmount = 0.5f;
 		float MaskInfluence = 1.0f;
 		float IDInfluence = 0.0f;
-
-		float StepScale = 0.3f;
-		int32 JumpStart = 24;
-		float MaxValue = 256.0f;
-		float WorleyJitter = 1.0f;
-		float BandFrequency = 1.0f;
-		float CostAmount = 5.0f;
-		float PushDecay = 0.2f;
-		uint32 OperationSeed = 6;
-		float Bias = 0.68f;
-		float RemapInMin = 0.0f;
-		float RemapInMax = 1.0f;
-		float RemapOutMin = 0.0f;
-		float RemapOutMax = 1.0f;
-		float ClampMin = 0.0f;
-		float ClampMax = 1.0f;
 	};
 
 	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second

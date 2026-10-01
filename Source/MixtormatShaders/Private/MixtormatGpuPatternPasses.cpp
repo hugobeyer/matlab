@@ -1965,19 +1965,35 @@ namespace MixtormatGpuCompositor
 				continue;
 			}
 			const FRampIdRenderData& Ramp = Child.RampId;
-			if (Ramp.HeightAmount <= 0.0f)
+			// The preview builds the gradient even at zero strength: it shows what the node would
+			// lay down, which is what an artist needs before turning the height up.
+			const bool bPreviewRamp = IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
+				FName(TEXT("Ramp")), LayerIndex, Child.SourceChildIndex);
+			if (Ramp.HeightAmount <= 0.0f && !bPreviewRamp)
 			{
 				continue;
 			}
 
-			FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
-			Tilt.Field = AddRampIdPasses(
+			const FRDGTextureRef RampField = AddRampIdPasses(
 				GraphBuilder,
 				RegionIds,
 				Request.Resolution,
 				Ramp,
 				LayerIndex,
 				Child.SourceChildIndex);
+			if (bPreviewRamp)
+			{
+				// The gradient is the field's first channel, which is what the mask blit reads.
+				AddDebugPreviewMaskBlitPass(GraphBuilder, RampField,
+					Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
+			}
+			if (Ramp.HeightAmount <= 0.0f)
+			{
+				continue;
+			}
+
+			FPendingRampTilt& Tilt = PendingRampTilts.AddDefaulted_GetRef();
+			Tilt.Field = RampField;
 			Tilt.EdgeField = Tilt.Field;
 			Tilt.HeightAmount = Ramp.HeightAmount;
 			Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
