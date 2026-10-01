@@ -85,15 +85,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.Slip = Finite(Cracks.CrackSlip, Defaults.CrackSlip);
 		Out.Tilt = Finite(Cracks.CrackTilt, Defaults.CrackTilt);
 		Out.ChamferAmount = Finite(Cracks.CrackChamferAmount, Defaults.CrackChamferAmount);
-		const float Edge = Finite(Cracks.CrackChamferEdge, Defaults.CrackChamferEdge);
-		// The narrow descending band and depth-relative heights reproduce the hard
-		// reference profile without four separate remap controls.
-		Out.ChamferStart = Edge;
-		Out.ChamferEnd = Edge - FMath::Max(FMath::Abs(Edge) * 0.025f, 0.001f);
-		Out.ChamferLow = FMath::Abs(Out.Depth) * 0.26f;
-		Out.ChamferHigh = -FMath::Abs(Out.Depth) * 0.28f;
-		Out.ChamferNoise = 0.692f;
-		Out.ChamferNoiseScale = 1.1882f / FMath::Max(FMath::Abs(Out.Width), 0.05f);
+		Out.ChamferEdge = Finite(Cracks.CrackChamferEdge, Defaults.CrackChamferEdge);
 		Out.HeightScale = Finite(Cracks.CrackHeightScale, Defaults.CrackHeightScale);
 		if (bCacheLayers)
 		{
@@ -102,8 +94,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
 				TEXT("CrackHeightScale")};
 			Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
-			// Width shapes scalar relief only; invalidate fields from the width-dependent domain.
-			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x437261636B7332ull) | 1ull;
+			// Combined height and negative delta are cached separately; invalidate the old field layout.
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x437261636B7333ull) | 1ull;
 		}
 		break;
 	}

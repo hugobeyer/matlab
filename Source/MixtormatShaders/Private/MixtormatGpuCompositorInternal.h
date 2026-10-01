@@ -839,12 +839,7 @@ namespace MixtormatGpuCompositor
 		float Slip = 0.1f;
 		float Tilt = 0.1f;
 		float ChamferAmount = 0.0f;
-		float ChamferStart = 0.12f;
-		float ChamferEnd = 0.117f;
-		float ChamferLow = 0.1079f;
-		float ChamferHigh = -0.1162f;
-		float ChamferNoise = 0.692f;
-		float ChamferNoiseScale = 11.882f;
+		float ChamferEdge = 0.12f;
 		float HeightScale = 1.0f;
 		// Hash of the field-shaping settings only (not chamfer), for the node cache.
 		uint64 FieldKey = 0;

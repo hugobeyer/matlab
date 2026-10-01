@@ -327,20 +327,16 @@ public:
 		SHADER_PARAMETER(float, Slip)
 		SHADER_PARAMETER(float, Tilt)
 		SHADER_PARAMETER(float, ChamferAmount)
-		SHADER_PARAMETER(float, ChamferStart)
-		SHADER_PARAMETER(float, ChamferEnd)
-		SHADER_PARAMETER(float, ChamferLow)
-		SHADER_PARAMETER(float, ChamferHigh)
-		SHADER_PARAMETER(float, ChamferNoise)
-		SHADER_PARAMETER(float, ChamferNoiseScale)
-		SHADER_PARAMETER(uint32, HasGate)
+		SHADER_PARAMETER(float, ChamferEdge)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDelta)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackDelta)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutCrackIds)
@@ -1603,12 +1599,7 @@ namespace
 			P->Slip = Cracks.Slip;
 			P->Tilt = Cracks.Tilt;
 			P->ChamferAmount = Cracks.ChamferAmount;
-			P->ChamferStart = Cracks.ChamferStart;
-			P->ChamferEnd = Cracks.ChamferEnd;
-			P->ChamferLow = Cracks.ChamferLow;
-			P->ChamferHigh = Cracks.ChamferHigh;
-			P->ChamferNoise = Cracks.ChamferNoise;
-			P->ChamferNoiseScale = Cracks.ChamferNoiseScale;
+			P->ChamferEdge = Cracks.ChamferEdge;
 			P->HeightScale = Cracks.HeightScale;
 		};
 		const auto Make = [&GraphBuilder, Size](EPixelFormat Format, const TCHAR* Name)
@@ -1617,7 +1608,7 @@ namespace
 				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
 		// Field key deliberately omits chamfer, blend and flow settings.
-		constexpr int32 SlotCount = 6;
+		constexpr int32 SlotCount = 7;
 		FRDGTextureRef Outputs[SlotCount] = {};
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
@@ -1636,7 +1627,8 @@ namespace
 			static const TCHAR* const Names[SlotCount] = {
 				TEXT("Mixtormat.Cracks.Height"), TEXT("Mixtormat.Cracks.Mask"),
 				TEXT("Mixtormat.Cracks.Distance"), TEXT("Mixtormat.Cracks.Ids"),
-				TEXT("Mixtormat.Cracks.Random"), TEXT("Mixtormat.Cracks.Boundary")};
+				TEXT("Mixtormat.Cracks.Random"), TEXT("Mixtormat.Cracks.Boundary"),
+				TEXT("Mixtormat.Cracks.Delta")};
 			bool bComplete = Hit.IsValid();
 			for (int32 Slot = 0; bComplete && Slot < SlotCount; ++Slot)
 			{
@@ -1652,17 +1644,20 @@ namespace
 			else
 			{
 				Outputs[0] = Make(PF_R32_FLOAT, Names[0]);
-				Outputs[1] = Make(PF_R16F, Names[1]);
+				// The chamfer remap reads the profile: retain field precision, not a quantized gate.
+				Outputs[1] = Make(PF_R32_FLOAT, Names[1]);
 				Outputs[2] = Make(PF_R32_FLOAT, Names[2]);
 				Outputs[3] = Make(PF_R32_UINT, Names[3]);
 				Outputs[4] = Make(PF_R16F, Names[4]);
 				Outputs[5] = Make(PF_G32R32F, Names[5]);
+				Outputs[6] = Make(PF_R32_FLOAT, Names[6]);
 				FMixtormatCracksCS::FPermutationDomain Permutation;
 				Permutation.Set<FMixtormatCracksCS::FStage>(0);
 				TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 				auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
 				Fill(P);
 				P->OutCrackHeight = GraphBuilder.CreateUAV(Outputs[0]);
+				P->OutCrackDelta = GraphBuilder.CreateUAV(Outputs[6]);
 				P->OutCrackMask = GraphBuilder.CreateUAV(Outputs[1]);
 				P->OutCrackDistance = GraphBuilder.CreateUAV(Outputs[2]);
 				P->OutCrackIds = GraphBuilder.CreateUAV(Outputs[3]);
@@ -1699,10 +1694,10 @@ namespace
 		}
 
 		FRDGTextureRef Field = Outputs[0];
-		FRDGTextureRef Gate = Outputs[1];
+
 		FRDGTextureRef ChamferCut = Make(PF_R16F, TEXT("Mixtormat.Cracks.ChamferCut"));
 		FRDGTextureRef Chamfered = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.Chamfered"));
-		// Arrival is computed only after the cached field; its noise and gate never invalidate it.
+		// Neutral-speed arrival is independent of Width; chamfer only remaps the cached delta.
 		FRDGTextureRef Arrival[2];
 		for (int32 Index = 0; Index < 2; ++Index)
 		{
@@ -1749,12 +1744,13 @@ namespace
 			TShaderMapRef<FMixtormatCracksCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
 			Fill(P);
-			P->HasGate = 0u;
 			P->CrackHeight = Field;
+			P->CrackDelta = Outputs[6];
+			P->CrackMask = Outputs[1];
 			P->CrackDistance = Outputs[2];
 			P->Arrival = Arrival[Read];
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->GateMask = Gate;
+
 			P->OutHeight = GraphBuilder.CreateUAV(Chamfered);
 			P->OutChamferCut = GraphBuilder.CreateUAV(ChamferCut);
 			ClearUnusedGraphResources(Shader, P);

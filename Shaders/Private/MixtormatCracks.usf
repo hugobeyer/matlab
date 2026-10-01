@@ -17,15 +17,14 @@
 //   width   -- varies along each crack, per crack and by region; a crack that swells wider also
 //              cuts deeper. Chips bite into each rim on their own side; some cracks have opened
 //              into flat-floored gaps.
-//   pieces  -- every piece rises or sinks and tips its own way. The offset fades down the groove
-//              walls, so the crack floor stays one clean line, and it blends into the neighbour's
-//              across a hairline so a crack too thin to hide the step shows no dither.
+//   pieces  -- slip/tilt form the base height independently of width. Neighbouring offsets
+//              blend across a hairline at the border; the crack adds only a non-positive delta.
 //
 // Stages (CRACK_STAGE):
 //   0 field   -- depends on the settings only, so it is cached: height change, crack mask, crack
 //                distance, piece ids and random, and the boundary pair the flow tools read.
 //   1 seed, 2 propagate -- tile-wrapped variable-speed arrival on a capped solve grid.
-//   3 chamfer -- remap arrival time to height, min-blend, gate by the scoped mask.
+//   3 chamfer -- shape the negative groove delta, preserving the piece base and flat floor.
 //   4 combine -- the field into the layer's height by the generator blend mode.
 //
 // Prototype: Houdini/opencl/cracks/mx_crack_network.cl.
@@ -52,22 +51,19 @@ float GapWidth;
 float Slip;
 float Tilt;
 float ChamferAmount;
-float ChamferStart;
-float ChamferEnd;
-float ChamferLow;
-float ChamferHigh;
-float ChamferNoise;
-float ChamferNoiseScale;
-uint HasGate;
+float ChamferEdge;
 float HeightScale;
 
 Texture2D<float> CrackHeight;
+Texture2D<float> CrackDelta;
+Texture2D<float> CrackMask;
 Texture2D<float> CrackDistance;
 Texture2D<float> Arrival;
 SamplerState LinearWrapSampler;
-Texture2D<float> GateMask;
+
 
 RWTexture2D<float> OutCrackHeight;
+RWTexture2D<float> OutCrackDelta;
 RWTexture2D<float> OutCrackMask;
 RWTexture2D<float> OutCrackDistance;
 RWTexture2D<uint> OutCrackIds;
@@ -458,7 +454,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float FloorHalf = CrackRand((int)(PairKey & 0x7fffffffu), 7, Seed + 5003) < Gap ? GapWidth * HalfWidth : 0.0f;
 	const float Groove = HalfWidth > 0.0f
 			? CrackGroove(max(CrackDist - FloorHalf, 0.0f), HalfWidth + ChipBite) : 0.0f;
-	const float Carve = Depth * CellSize * Swell * Groove;
+	const float Delta = -max(Depth, 0.0f) * CellSize * Swell * Groove;
 
 	// Each piece's own offset (slip + tilt), blended toward the piece across the nearest crack within
 	// a hairline band, meeting at the average on the border itself.
@@ -470,8 +466,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		+ Tilt * CellSize * (CrackRand(Other, 1, Seed + 911) * 2.0f - 1.0f) * dot(QReal - OtherSeed, CrackTiltDir(Other, Seed));
 	const float ToBorder = 0.5f * (1.0f - smoothstep(0.0f, SlipFeather, CrackDist));
 	const float Offset = lerp(Own, Theirs, Other != Id1 ? ToBorder : 0.0f);
-	// The offset fades down the groove walls: the crack floor stays one clean line.
-	OutCrackHeight[Pixel] = Offset * (1.0f - Groove) - Carve;
+	// Width dilates the groove without fading or raising the piece's base height.
+	OutCrackHeight[Pixel] = Offset + Delta;
+	OutCrackDelta[Pixel] = Delta;
 
 	OutCrackMask[Pixel] = Groove;
 	OutCrackDistance[Pixel] = CrackDist;
@@ -487,16 +484,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// a conservative initial bound ensures that missed subpixel seeds cannot create infinity.
 	const int2 FullPixel = min(int2((float2(Pixel) + 0.5f) * float2(OutputSize) / float2(SolveSize)), OutputSize - 1);
 	const float D = CrackDistance.Load(int3(FullPixel, 0));
-	const float MinSpeed = max(1.0f - abs(ChamferNoise), 0.001f);
-	OutArrival[Pixel] = D / MinSpeed;
+	OutArrival[Pixel] = D;
 #elif CRACK_STAGE == 2
 	const int2 Left = int2(Pixel.x == 0 ? SolveSize.x - 1 : Pixel.x - 1, Pixel.y);
 	const int2 Right = int2(Pixel.x + 1 == SolveSize.x ? 0 : Pixel.x + 1, Pixel.y);
 	const int2 Down = int2(Pixel.x, Pixel.y == 0 ? SolveSize.y - 1 : Pixel.y - 1);
 	const int2 Up = int2(Pixel.x, Pixel.y + 1 == SolveSize.y ? 0 : Pixel.y + 1);
-	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / float2(SolveSize));
-	const int NoisePeriod = max((int)round((float)max(Cells, 1) * ChamferNoiseScale), 1);
-	const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(UV, NoisePeriod, Seed + 8101, 0.5f), 0.001f);
+	// Future external modulation belongs here (SpeedField * SpeedAmount * SpeedGate).
+	// Seed bounds and sub-grid resolve must use the same speed contract when it is wired.
+	// No source is connected today: propagation is neutral, independent of Width.
+	const float Speed = 1.0f;
 	const float Cost = 1.0f / Speed;
 	const float Self = Arrival.Load(int3(Pixel, 0));
 	const float L = Arrival.Load(int3(Left, 0));
@@ -527,18 +524,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			lerp(CrackSolveSeedDistance(Base + int2(0, 1)), CrackSolveSeedDistance(Base + int2(1, 1)), Fraction.x),
 			Fraction.y);
 		const float ArrivalTime = Arrival.SampleLevel(LinearWrapSampler, UV, 0.0f);
-		const int NoisePeriod = max((int)round((float)Period * ChamferNoiseScale), 1);
-		const float Speed = max(1.0f + ChamferNoise * CrackSoftCells(MixtormatGeneratorUV(UV), NoisePeriod, Seed + 8101, 0.5f), 0.001f);
 		const float FineD = CrackDistance.Load(int3(Pixel, 0));
-		const float D = max(0.0f, ArrivalTime + (FineD - SeedD) / Speed);
-		const float Span = ChamferEnd - ChamferStart;
-		const float T = Span != 0.0f ? (D - ChamferStart) / Span : (D >= ChamferEnd ? 1.0f : 0.0f);
-		const float Surface = (ChamferLow + T * (ChamferHigh - ChamferLow)) * CellSize;
-		const float Gate = HasGate != 0u ? GateMask.Load(int3(Pixel, 0)) : 1.0f;
-		Result = lerp(H, min(H, Surface), ChamferAmount * Gate);
+		// Neutral-speed correction restores detail without imprinting the solve grid.
+		const float D = max(0.0f, ArrivalTime + FineD - SeedD);
+		const float Transition = ChamferEdge > 0.0f ? smoothstep(0.0f, ChamferEdge, D) : 1.0f;
+		const float Groove = saturate(CrackMask.Load(int3(Pixel, 0)));
+		const float Delta = min(CrackDelta.Load(int3(Pixel, 0)), 0.0f);
+		// Remap g to g + k*g*(1-g): monotone in Width, zero outside, unchanged at the floor.
+		// Only the negative delta changes; the interpolated slip/tilt base is untouched.
+		const float ShapedDelta = Delta * (1.0f + Transition * (1.0f - Groove));
+		Result = H + (ShapedDelta - Delta) * saturate(ChamferAmount);
 	}
 	OutHeight[Pixel] = Result;
-	const float DepthScale = Depth * CellSize;
+	const float DepthScale = max(Depth, 0.0f) * CellSize;
 	OutChamferCut[Pixel] = DepthScale != 0.0f ? (H - Result) / DepthScale : 0.0f;
 #else
 	// Resolve the shaped signed change around the flat midpoint as one scalar module height.

@@ -3034,11 +3034,11 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 // Cracks: a tileable network of straight cracks (the borders of a jittered cell lattice), made
 // rough by a per-crack zigzag and a feathered push near the cracks, with widths that vary along
 // each crack, per crack and by region, chipped rims, random opened gaps, and pieces that rise,
-// sink and tip. A chamfer bevels the rims by a variable-speed arrival from the cracks.
+// sink and tip. Chamfer shapes only the negative groove delta using neutral-speed arrival.
 //
 // Every length is in cell widths and every depth scales with the cell, so the look holds at any
 // resolution and any cell count. The field is a signed height change (Add is the natural blend),
-// and it depends on these settings only, so it is cached; the chamfer gate mask is applied after.
+// and it depends on these settings only, so it is cached; chamfer shapes its delta afterwards.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatCracks
 {
@@ -3055,7 +3055,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	float CrackJitter = 0.85f;
 
 	// Scalar groove width, in cell widths; does not move piece borders or control visibility.
-	// Zero disables the groove and its rim chips; slip, tilt and chamfer remain independent.
+	// Zero disables the groove, rim chips and groove chamfer; slip and tilt remain unchanged.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
 	float CrackWidth = 0.1f;
 
@@ -3119,12 +3119,12 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Pieces", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackTilt = 0.1f;
 
-	// A hard cut from a noisy arrival field. Masks scoped under this generator gate the cut.
+	// Strength of wall-profile shaping on the non-positive crack delta; never cuts the piece base.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackChamferAmount = 0.0f;
 
-	// Cut reach in cell widths; the narrow descending profile and noise derive from the crack
-	// width and depth. 0.12 reproduces the hard-edged reference at the default crack settings.
+	// Wall-profile transition distance in cell widths, independent of crack Width.
+	// Does not expand the groove domain or introduce propagation noise.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float CrackChamferEdge = 0.12f;
 

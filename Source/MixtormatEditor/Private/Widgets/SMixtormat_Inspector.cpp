@@ -3458,7 +3458,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackSlip", "Slip"), Crack, &FMixtormatCracks::CrackSlip, 0.0, 1.0, 0.1, 0.01,
-			LOCTEXT("CrackSlipHint", "Every piece rises or sinks by its own amount. Crack floors stay put.")),
+			LOCTEXT("CrackSlipHint", "Every piece rises or sinks by its own amount, independently of crack width.")),
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackTilt", "Tilt"), Crack, &FMixtormatCracks::CrackTilt, 0.0, 1.0, 0.1, 0.01,
 			LOCTEXT("CrackTiltHint", "Every piece tips its own random way."))));
@@ -3467,10 +3467,10 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackChamferAmount", "Amount"), Crack, &FMixtormatCracks::CrackChamferAmount, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("CrackChamferAmountHint", "Strength of the hard cut. Masks scoped under this generator gate it.")),
+			LOCTEXT("CrackChamferAmountHint", "Shapes the negative groove wall profile without cutting the piece base or changing the flat floor.")),
 		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackChamferEdge", "Cut Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
-			LOCTEXT("CrackChamferEdgeHint", "Cut reach in cell widths. The sharp profile and fine noise follow crack depth and width."))));
+			LOCTEXT("CrackChamferEdge", "Edge Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
+			LOCTEXT("CrackChamferEdgeHint", "Wall-profile transition distance in cell widths; independent of crack width, with no built-in propagation noise."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpHeight", "Height")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
