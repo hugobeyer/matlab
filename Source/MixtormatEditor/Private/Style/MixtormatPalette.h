@@ -118,6 +118,9 @@ namespace MixtormatPalette
 	inline FLinearColor Accent()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Accent"), Hex(0x4D8FA8)); }
 	inline FLinearColor AccentBright() { return FMixtormatLiveTheme::ResolveColor(TEXT("AccentBright"), Hex(0x6CA8BF)); }
 	inline FLinearColor Modified()     { return FMixtormatLiveTheme::ResolveColor(TEXT("Modified"), Hex(0xC28A3D)); }
+	// A row's dot while the viewport shows a preview taken from it. Orange, distinct from Modified's
+	// amber so a reference row being previewed still reads as both.
+	inline FLinearColor PreviewDot()   { return FMixtormatLiveTheme::ResolveColor(TEXT("PreviewDot"), Hex(0xFF7A1A)); }
 	inline FLinearColor Destructive()  { return Hex(0xC46A6A); }
 	inline FLinearColor Tick()         { return Hex(0x4A4D4F); }
 	inline FLinearColor SegmentSeam()  { return Hex(0xFFFFFF, 0.08f); }

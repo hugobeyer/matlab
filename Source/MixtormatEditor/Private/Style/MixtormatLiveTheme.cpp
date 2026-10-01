@@ -158,7 +158,7 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(AccentBright), THEME_COLOR(SelectionFill), THEME_COLOR(FocusFill),
 		THEME_COLOR(Border), THEME_COLOR(BorderStrong), THEME_COLOR(WellTop),
 		THEME_COLOR(WellBottom), THEME_COLOR(FillTop), THEME_COLOR(FillBottom),
-		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified),
+		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified), THEME_COLOR(PreviewDot),
 		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
 		THEME_COLOR(BadgeTop), THEME_COLOR(BadgeBottom), THEME_COLOR(BadgeHairline),
 		THEME_COLOR(InspectorHairline), THEME_COLOR(OverlayButtonPlate),

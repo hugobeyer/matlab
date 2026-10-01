@@ -480,6 +480,9 @@ void FMixtormatStyle::Refresh()
 		TEXT("Mixtormat.StatusDot.Reference"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::Modified(), MixtormatTokens::StatusDotSize * 0.5f));
 	StyleInstance->Set(
+		TEXT("Mixtormat.StatusDot.Previewing"),
+		new FSlateRoundedBoxBrush(MixtormatPalette::PreviewDot(), MixtormatTokens::StatusDotSize * 0.5f));
+	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Broken"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::Destructive(), MixtormatTokens::StatusDotSize * 0.5f));
 	StyleInstance->Set(

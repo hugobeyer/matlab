@@ -46,6 +46,14 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
 			false, true, false, NAME_None});
 		break;
+	case EMixtormatLayerChildType::OutputReference:
+		// Only a Region-IDs reference has IDs to show; its target resolves to the source producer.
+		if (Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+		}
+		break;
 	case EMixtormatLayerChildType::IdGroup:
 		Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
 			false, true, false, NAME_None});

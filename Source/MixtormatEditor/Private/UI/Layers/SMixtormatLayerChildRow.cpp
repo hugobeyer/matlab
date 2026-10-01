@@ -11,6 +11,7 @@
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
 
@@ -40,6 +41,25 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 			.Orientation(Orient_Horizontal)
 			.CornerRadius(MixtormatTokens::CornerRadius)
 			[
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Left)
+				[
+					// Beside the glow, not instead of it: a tint fades into the stack, a bar does not.
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::LayerSourceBarWidth)
+					.Visibility_Lambda([bInstanceSource = InArgs._bInstanceSource]()
+					{
+						return bInstanceSource.Get(false) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					})
+					[
+						SNew(SImage)
+						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+						.ColorAndOpacity(FSlateColor(MixtormatPalette::AccentBright()))
+					]
+				]
+				+ SOverlay::Slot()
+				[
 				SNew(SBox)
 				.HeightOverride(MixtormatTokens::LayerChildRowHeight)
 				// Same leading/trailing insets as a layer row, plus the child indent, so both
@@ -135,9 +155,18 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						SNew(SMixtormatStatusDot)
 						.Size(MixtormatTokens::StatusDotSize)
 						.bFilled(InArgs._bActive)
+						// Unnamed falls back to the filled/hollow pair, so the toggle state comes back
+						// the moment the preview stops.
+						.BrushName_Lambda([bPreviewing = InArgs._bPreviewing]()
+						{
+							return bPreviewing.Get(false)
+								? FName(TEXT("Mixtormat.StatusDot.Previewing"))
+								: NAME_None;
+						})
 						.ToolTip(LOCTEXT("ChildDotHint", "Enable or disable this child."))
 						.OnClicked(InArgs._OnToggleActive)
 					]
+				]
 				]
 			]
 		]
@@ -154,8 +183,8 @@ FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 	{
 		// The selection's gradient mirrored (strong on the left) and softer, so the source reads
 		// as linked to the selection without reading as a second selection.
-		FLinearColor Glow = MixtormatPalette::LayerChildSelectedRight();
-		Glow.A *= 0.15f;
+		FLinearColor Glow = MixtormatPalette::Accent();
+		Glow.A = 0.10f;
 		return Glow;
 	}
 	return IsHovered() ? MixtormatPalette::LayerChildHoverRight() : FLinearColor::Transparent;
@@ -169,8 +198,8 @@ FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
 	}
 	if (bInstanceSource.Get(false))
 	{
-		FLinearColor Glow = MixtormatPalette::LayerChildSelectedRight();
-		Glow.A *= 0.75f;
+		FLinearColor Glow = MixtormatPalette::Accent();
+		Glow.A = 0.55f;
 		return Glow;
 	}
 	return IsHovered() ? MixtormatPalette::LayerChildHoverLeft() : FLinearColor::Transparent;

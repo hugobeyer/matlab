@@ -26,6 +26,7 @@ public:
 		, _bActive(true)
 		, _bSelected(false)
 		, _bInstanceSource(false)
+		, _bPreviewing(false)
 	{}
 		// A glyph saying what kind of child this is. A slot rather than a brush so the row does not
 		// have to know how the glyph is tinted -- which mask it is, is a hover away, not in here.
@@ -40,6 +41,9 @@ public:
 		SLATE_ATTRIBUTE(bool, bSelected)
 		// This child is the source of the selected instance: it glows so the link is visible.
 		SLATE_ATTRIBUTE(bool, bInstanceSource)
+		// The viewport is showing a debug or child-output preview taken from this child: the dot
+		// turns the preview colour for as long as that holds.
+		SLATE_ATTRIBUTE(bool, bPreviewing)
 		SLATE_EVENT(FSimpleDelegate, OnSelected)
 		// The dot is the child's enable toggle -- it already shows the state, so it takes the
 		// click too rather than adding a checkbox the row has no room for.

@@ -85,6 +85,21 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 					]
 				]
 				+ SOverlay::Slot()
+				.HAlign(HAlign_Left)
+				[
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::LayerSourceBarWidth)
+					.Visibility_Lambda([bHolds = InArgs._bHoldsInstanceSource]()
+					{
+						return bHolds.Get(false) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					})
+					[
+						SNew(SImage)
+						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+						.ColorAndOpacity(FSlateColor(MixtormatPalette::AccentBright()))
+					]
+				]
+				+ SOverlay::Slot()
 				[
 					SNew(SBox)
 					.HeightOverride(MixtormatTokens::LayerRowHeight)

@@ -5748,6 +5748,18 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				RenameLayer(LayerId, Text);
 			})
 			.bReference(!Layer.SourceComposition.IsNull())
+			.bHoldsInstanceSource_Lambda([this, LayerIndex]()
+			{
+				// A collapsed layer hides the source row that would otherwise carry the marker.
+				const FMixtormatLayerChild* Selected =
+					ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+				return Selected && Selected->IsInstance()
+					&& WorkingLayers.IsValidIndex(LayerIndex)
+					&& !IsLayerExpanded(LayerIndex)
+					&& (Selected->SourceLayerId.IsValid()
+						? Selected->SourceLayerId == WorkingLayers[LayerIndex].LayerId
+						: SelectedLayerIndex == LayerIndex);
+			})
 			.Source(GetLayerSourceText(LayerIndex))
 			.Badge(MixtormatLayerBadges::ForLayer(Layer))
 			.ColorBadge_Lambda([this, LayerIndex]()
@@ -5837,8 +5849,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 		Container->AddChild(
 			SNew(SBox)
+			// One indent for being under the layer plus one per scope level. Without the base level a
+			// top-level child (the first ID Group, say) sat flush with the layer header while its own
+			// scoped children stepped in, so the owner read as a sibling of the layer.
 			.Padding(FMargin(
-				GetDisplayScopeDepth(Layer.Children, ChildIndex) * MixtormatTokens::LayerScopeIndent,
+				(1 + GetDisplayScopeDepth(Layer.Children, ChildIndex)) * MixtormatTokens::LayerScopeIndent,
 				0.0f,
 				0.0f,
 				0.0f))
@@ -5882,6 +5897,26 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					// compare against depends on what the child is.
 					return SelectedLayerIndex == LayerIndex
 						&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
+				})
+				.bPreviewing_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					if (!WorkingLayers.IsValidIndex(LayerIndex)
+						|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+					{
+						return false;
+					}
+					// The two sources RefreshLayeredPreview feeds the compositor from: a child-output
+					// preview names its child by GUID, a layer-mask preview by the selection.
+					switch (DebugPreviewMode)
+					{
+					case EMixtormatDebugPreviewMode::ChildOutput:
+						return ChildPreviewTarget.OwnerId == WorkingLayers[LayerIndex].LayerId
+							&& ChildPreviewTarget.ChildId == WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+					case EMixtormatDebugPreviewMode::LayerMask:
+						return SelectedLayerIndex == LayerIndex && GetSelectedChildIndex() == ChildIndex;
+					default:
+						return false;
+					}
 				})
 				.bInstanceSource_Lambda([this, LayerIndex, ChildIndex]()
 				{

@@ -438,6 +438,9 @@ namespace MixtormatTokens
 	// Children sit under the layer name; each scoped ownership level steps in again.
 	inline float LayerChildIndent = 28.0f;
 	inline float LayerScopeIndent = 14.0f;
+	// The accent bar down the left edge of an instance's source row (and of its collapsed layer):
+	// readable from across the stack where a tint alone is not.
+	inline float LayerSourceBarWidth = 3.0f;
 	// Leading inset is larger than trailing: the eye needs room from the panel edge, while the
 	// chevron on the right is already inset by its own slot padding.
 	inline float LayerRowInsetLeading = 6.0f;

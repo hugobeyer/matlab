@@ -315,6 +315,69 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 	return FReply::Handled();
 }
 
+namespace
+{
+	// The producer whose Region IDs an instance or a Region-IDs reference actually reads, found by
+	// following the chain to its end. False when the child is neither, or the chain leaves the
+	// layer list (a group-authored source, a deleted one, a cycle) -- the caller then previews the
+	// child itself, which is what it did before.
+	bool ResolveRegionIdSource(
+		const TArray<FMixtormatLayer>& Layers,
+		const FGuid& OwnerLayerId,
+		const FMixtormatLayerChild& Child,
+		FGuid& OutOwnerId,
+		FGuid& OutChildId)
+	{
+		const FMixtormatLayerChild* Current = &Child;
+		FGuid OwnerId = OwnerLayerId;
+		TSet<FGuid> Visited;
+		bool bRedirected = false;
+		while (Visited.Num() <= Layers.Num() + 1)
+		{
+			FGuid NextOwnerId, NextChildId;
+			if (Current->IsInstance())
+			{
+				// An unset source layer means "this layer", the same reading IsSourceOfSelectedInstance uses.
+				NextOwnerId = Current->SourceLayerId.IsValid() ? Current->SourceLayerId : OwnerId;
+				NextChildId = Current->SourceChildId;
+			}
+			else if (Current->Type == EMixtormatLayerChildType::OutputReference
+				&& Current->OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds
+				&& Current->OutputReference.HasSource())
+			{
+				NextOwnerId = Current->OutputReference.SourceLayerId;
+				NextChildId = Current->OutputReference.SourceChildId;
+			}
+			else
+			{
+				return bRedirected;
+			}
+			if (Visited.Contains(Current->ChildId))
+			{
+				return false;
+			}
+			Visited.Add(Current->ChildId);
+
+			const FMixtormatLayer* SourceLayer = Layers.FindByPredicate(
+				[&NextOwnerId](const FMixtormatLayer& Candidate) { return Candidate.LayerId == NextOwnerId; });
+			const FMixtormatLayerChild* Next = SourceLayer
+				? SourceLayer->Children.FindByPredicate(
+					[&NextChildId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == NextChildId; })
+				: nullptr;
+			if (!Next)
+			{
+				return false;
+			}
+			Current = Next;
+			OwnerId = NextOwnerId;
+			OutOwnerId = NextOwnerId;
+			OutChildId = NextChildId;
+			bRedirected = true;
+		}
+		return false;
+	}
+}
+
 FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 	const FName OutputName, const EMixtormatPreviewOutputKind Kind, const FName GapMaskName) const
 {
@@ -337,6 +400,16 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 		}
 		Target.OwnerId = Layer.LayerId;
 		Target.ChildId = Child ? Child->ChildId : FGuid();
+		// An instance or reference has no map of its own to show: it reads its source's, so that is
+		// what the eye and the I key preview. The still-valid check re-resolves through here too,
+		// so the preview survives for as long as the instance stays selected.
+		FGuid SourceOwnerId, SourceChildId;
+		if (Kind == EMixtormatPreviewOutputKind::RegionIds && Child
+			&& ResolveRegionIdSource(WorkingLayers, Layer.LayerId, *Child, SourceOwnerId, SourceChildId))
+		{
+			Target.OwnerId = SourceOwnerId;
+			Target.ChildId = SourceChildId;
+		}
 		return Target;
 	}
 
@@ -492,8 +565,9 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 			return ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask, NAME_None).IsValid();
 		}
 	}
-	if (Child.Type == EMixtormatLayerChildType::CombineId
-		|| Child.Type == EMixtormatLayerChildType::IdGroup)
+	// An ID Group folds however many producers sit inside it -- none, one, several, or nested
+	// groups -- so it always has a map to show.
+	if (Child.Type == EMixtormatLayerChildType::CombineId)
 	{
 		// A group-authored Combine IDs child is checked against its own authored array (Group's
 		// shared stack), same as a plain layer's Children -- the producer-above requirement is
@@ -514,21 +588,6 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 		if (!Siblings || !Siblings->IsValidIndex(ChildIndex))
 		{
 			return false;
-		}
-		if (Child.Type == EMixtormatLayerChildType::IdGroup)
-		{
-			const FGuid GroupChildId = (*Siblings)[ChildIndex].ChildId;
-			int32 EnabledPatternCount = 0;
-			for (const FMixtormatLayerChild& Candidate : *Siblings)
-			{
-				if (Candidate.Type == EMixtormatLayerChildType::PatternId
-					&& Candidate.ScopeOwnerChildId == GroupChildId
-					&& Candidate.PatternId.bEnabled)
-				{
-					++EnabledPatternCount;
-				}
-			}
-			return EnabledPatternCount == 2;
 		}
 		return CountRegionIdProducersAbove(*Siblings, ChildIndex) >= 1;
 	}
