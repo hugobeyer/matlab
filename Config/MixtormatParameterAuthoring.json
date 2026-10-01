@@ -320,6 +320,24 @@
 			"uiMin": -2,
 			"uiMax": 2,
 			"snap": 0.0099999997764825821
+		},
+		"Generator.RockFracture":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 8
+		},
+		"Generator.RockGap":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 16
 		}
 	},
 	"Pebbles":
