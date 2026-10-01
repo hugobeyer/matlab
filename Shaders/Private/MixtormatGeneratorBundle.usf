@@ -4,10 +4,10 @@
 #include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
 
 // Bundle remapping is exclusively for actual flow deformation, never source UV placement.
-// 0 scalar, 1 IDs (nearest), 2 boundary, 3 vector, 4 coverage, 5 centre UV,
-// 6 orientation (radians), 7 signed scalar distance, 8 Strata bed boundary.
+// 0 scalar, 1 IDs (nearest), 2 boundary, 3 vector, 5 centre UV,
+// 6 orientation (radians), 7 signed scalar distance, 8 Strata bed boundary, 9 height combine.
 int2 OutputSize;
-uint CoverageMode;
+
 uint HeightOp;
 float HeightSoftness;
 float BlendAmount;
@@ -24,11 +24,10 @@ Texture2D<float2> VectorField;
 Texture2D<float2> BoundaryField;
 Texture2D<float> RunningHeight;
 Texture2D<float> ModuleHeight;
-Texture2D<float> RunningCoverage;
-Texture2D<float> ModuleCoverage;
+
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutScalar;
-RWTexture2D<float> OutCoverage;
+
 RWTexture2D<uint> OutIds;
 RWTexture2D<float2> OutVector;
 
@@ -79,35 +78,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #if BUNDLE_STAGE == 9
 	const float Running = RunningHeight.Load(int3(Pixel, 0));
 	const float Module = ModuleHeight.Load(int3(Pixel, 0));
-	const float Coverage = RunningCoverage.Load(int3(Pixel, 0));
-	const float ModuleCov = ModuleCoverage.Load(int3(Pixel, 0));
-	const float Weight = BlendAmount * ModuleCov;
 	float Combined = lerp(Running,
-		MixtormatApplyHeightOp(Running, Module, Coverage, HeightOp, HeightSoftness), Weight);
+		MixtormatApplyHeightOp(Running, Module, 1.0f, HeightOp, HeightSoftness), BlendAmount);
 	if (HeightOp == MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND)
 	{
-		// The module's coverage is the mask: the contest runs over the height above where it is
-		// painted. Where nothing is below, the weight falls back to the bare coverage, which is
-		// Replace.
 		const FMixtormatHeightBlendResult Blend = MixtormatHeightBlend(
-			Running, Module, ModuleCov, HbStrength, HbThreshold, HbEdgeSoftness, HbBaseBias, HbBlendBias);
-		const float T = lerp(ModuleCov, Blend.Weight, Coverage);
-		Combined = lerp(Running, lerp(Blend.Base, Module + HbBlendBias, T), BlendAmount);
+			Running, Module, 1.0f, HbStrength, HbThreshold, HbEdgeSoftness, HbBaseBias, HbBlendBias);
+		Combined = lerp(Running, lerp(Blend.Base, Module + HbBlendBias, Blend.Weight), BlendAmount);
 	}
 	OutScalar[Pixel] = Combined;
-	const bool bExtendsCoverage = HeightOp == MIXTORMAT_HEIGHT_OP_REPLACE
-		|| HeightOp == MIXTORMAT_HEIGHT_OP_ADD || HeightOp == MIXTORMAT_HEIGHT_OP_MAX
-		|| HeightOp == MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND;
-	OutCoverage[Pixel] = bExtendsCoverage ? max(Coverage, ModuleCov) : Coverage;
-#elif BUNDLE_STAGE == 4
-	float Coverage = CoverageMode == 3u ? 0.0f : 1.0f;
-	if (CoverageMode == 1u) { Coverage = 1.0f - ScalarField.Load(int3(Pixel, 0)); }
-	if (CoverageMode == 2u)
-	{
-		const float2 B = BoundaryField.Load(int3(Pixel, 0));
-		Coverage = B.y > 0.0f && B.x <= 0.0f ? 1.0f : 0.0f;
-	}
-	OutScalar[Pixel] = Coverage;
+
 #elif BUNDLE_STAGE == 8
 	// Bed position wraps at each bed. Unwrap differences across that boundary before
 	// differentiating, giving a local distance in the already placed destination frame.

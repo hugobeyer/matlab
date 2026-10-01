@@ -98,8 +98,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Enabled)
 		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER(uint32, HasGeneratorCoverage)
-		SHADER_PARAMETER(uint32, GeneratorDrivesCoverage)
+
 		SHADER_PARAMETER(uint32, HasEffects)
 		SHADER_PARAMETER(uint32, OverrideBaseColor)
 		SHADER_PARAMETER(uint32, OverrideRoughness)
@@ -191,7 +190,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerSourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GeneratorCoverage)
+
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, EffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EffectHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerHeightMask)
@@ -782,8 +781,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputSize = Request.Resolution;
 		Parameters->Enabled = Layer.bEnabled ? 1u : 0u;
 		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
-		Parameters->HasGeneratorCoverage = Layer.bGenerator && LayerCtx.GeneratorBundle.Coverage ? 1u : 0u;
-		Parameters->GeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage ? 1u : 0u;
+
 		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
 		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
 		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
@@ -940,8 +938,7 @@ namespace MixtormatGpuCompositor
 					TEXT("Mixtormat.LayerSourceHeight"))
 				: HeightTargets[ReadIndex]);
 		Parameters->LayerMask = CombinedMask;
-		Parameters->GeneratorCoverage = LayerCtx.GeneratorBundle.Coverage
-			? LayerCtx.GeneratorBundle.Coverage : CombinedMask;
+
 
 		// Rounding for the height field. A placement mask is a step, so the layer's
 		// height falls from full to nothing across one texel and the layer reads as a

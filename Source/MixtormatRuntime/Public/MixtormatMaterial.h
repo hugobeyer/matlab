@@ -2864,8 +2864,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float RockFractureHeightBias = 0.0f;
 
-	// 1 is twice the natural gap; positive gaps also get a one-pixel floor.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	// Domain offset before height shaping: positive shrinks chunks, negative expands them.
+	// Zero preserves packing; 1 is twice the natural gap, with a positive-only one-pixel floor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float RockGap = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -3053,7 +3054,8 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackJitter = 0.85f;
 
-	// Crack width, in cell widths.
+	// Scalar groove width, in cell widths; does not move piece borders or control visibility.
+	// Zero disables the groove and its rim chips; slip, tilt and chamfer remain independent.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.005"))
 	float CrackWidth = 0.1f;
 
@@ -3105,7 +3107,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float CrackGap = 0.15f;
 
-	// The gap floor's width, relative to the crack's.
+	// The scalar groove's flat floor width, relative to the crack's; not a visibility gap.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Rim", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.05"))
 	float CrackGapWidth = 1.5f;
 
@@ -3473,9 +3475,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
 
-	// Disable to keep full layer coverage while using the generator's height.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatLayerType::Generator"))
-	bool bGeneratorDrivesCoverage = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	bool bEnabled = true;

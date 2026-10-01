@@ -975,6 +975,8 @@ namespace MixtormatGpuCompositor
 	struct FGeneratorBundle
 	{
 		FRDGTextureRef Height = nullptr;
+		// Pebbles' local support, transformed by flow and published as an explicit mask.
+		// Never accumulated or used as final layer visibility.
 		FRDGTextureRef Coverage = nullptr;
 		FRDGTextureRef RegionIds = nullptr;
 		FRDGTextureRef CentreUV = nullptr;
@@ -988,7 +990,7 @@ namespace MixtormatGpuCompositor
 	{
 		FGuid LayerId;
 		bool bGenerator = false;
-		bool bGeneratorDrivesCoverage = true;
+
 		// Hash of the layer without its children: everything a producer reading the layer's own
 		// maps can see (surface, reference source, UV transform). 0 when caching is off.
 		uint64 SourceCacheKey = 0;

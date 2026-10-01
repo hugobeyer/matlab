@@ -601,7 +601,7 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	L.JagSize = rv / ROCK_JAG_REF_RADIUS;
 	// Walls fall at WallSlope from a top of at most 1, so past this they cannot win; jag and chips
 	// can move an edge outward, so the reach grows by both.
-	L.Radius = rv + 1.0f / max(P.wall_k, 1.0e-4f) + 0.5f * max(P.cell_gap, P.seam_gap)
+	L.Radius = rv + 1.0f / max(P.wall_k, 1.0e-4f) + 0.5f * max(abs(P.cell_gap), abs(P.seam_gap))
 		+ max(abs(P.jag_amp[0]), abs(P.jag_amp[1])) * L.JagSize + P.rim_chip_size;
 	L.ChipOn = P.chip > 0.0f ? 1u : 0u;
 
@@ -609,6 +609,30 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	uint edgeCount = 0u;
 	uint seamBits = 0u;
 	FRockPoly gapped = leaf;
+	// Negative gap expands the domain before any height shaping. Start from a containing
+	// polygon: clipping the original leaf can only shrink, even when its edge lines expand.
+	if (min(P.cell_gap, P.seam_gap) < 0.0f)
+	{
+		float domainScale = 1.0f;
+		for (int ge = 0; ge < n; ge++)
+		{
+			float2 gn;
+			float gd, gw;
+			bool seam;
+			if (RockEdgeLine(P, leaf, ge, c, gn, gd, gw, seam))
+			{
+				const float room = dot(gn, leaf.v[ge] - c);
+				if (room > 1e-6f)
+				{
+					domainScale = max(domainScale, (gd - dot(gn, c)) / room);
+				}
+			}
+		}
+		for (int gv = 0; gv < n; gv++)
+		{
+			gapped.v[gv] = c + (leaf.v[gv] - c) * domainScale;
+		}
+	}
 	for (int e = 0; e < n; e++)
 	{
 		float2 nn;
@@ -630,6 +654,10 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	for (int v = 0; v < gapped.n; v++)
 	{
 		OutVertices[base + (uint)v] = gapped.v[v];
+		// The expanded outline must remain inside the field query's enclosing radius.
+		L.Radius = max(L.Radius, length(gapped.v[v] - c)
+			+ 1.0f / max(P.wall_k, 1.0e-4f)
+			+ max(abs(P.jag_amp[0]), abs(P.jag_amp[1])) * L.JagSize + P.rim_chip_size);
 	}
 	L.EdgeCount = edgeCount;
 	L.SeamBits = seamBits;
@@ -865,8 +893,8 @@ FRockPat RockSetup()
 	P.skew = Skew;
 	P.chip = v[7] * FacetChips;
 	P.wall_k = tan(radians(v[8]));
-	// Gap 0..1, 1 = twice the style's natural gap. Any gap above 0 is also at least a pixel wide,
-	// added rather than clamped in, so it cannot alias away.
+	// Signed domain offset: positive shrinks, negative expands, zero leaves packing unchanged.
+	// 1 is twice the style's natural gap; only positive gaps get the anti-aliasing pixel floor.
 	const float pixel = (float)P.cu / (float)max(OutputSize.x, 1);
 	const float gapFloor = GapAmount > 0.0f ? pixel : 0.0f;
 	P.cell_gap = v[9] * GapAmount * 2.0f + gapFloor;
@@ -919,7 +947,7 @@ FRockPat RockSetup()
 	P.build_reach_i = max(2, (int)ceil(2.0f * P.rh));
 	P.build_reach_j = max(2, (int)ceil(2.0f / P.rh));
 	const float reach = 0.5f + 1.0f / max(P.wall_k, 1.0e-4f)
-		+ 0.5f * max(P.cell_gap, P.seam_gap) + 2.0f * max(abs(P.jag_amp[0]), abs(P.jag_amp[1])) + P.rim_chip_size;
+		+ 0.5f * max(abs(P.cell_gap), abs(P.seam_gap)) + 2.0f * max(abs(P.jag_amp[0]), abs(P.jag_amp[1])) + P.rim_chip_size;
 	P.field_reach_i = max(2, (int)ceil(reach + P.strata) + 1);
 	P.field_reach_j = max(2, (int)ceil(reach / P.rh) + 1);
 
@@ -934,7 +962,7 @@ FRockPat RockSetup()
 	P.height_hi = 1.0f + abs(P.fracture_height_bias);
 	P.height_lo = 1.0f - P.height_clusters * (P.hvar + P.lvar) - abs(P.fracture_height_bias)
 		- leanMax * chunkWidth
-		- P.wall_k * 0.5f * max(P.cell_gap, P.seam_gap);
+		- P.wall_k * 0.5f * max(0.0f, max(P.cell_gap, P.seam_gap));
 	return P;
 }
 
@@ -1070,7 +1098,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 						if (sd < 0.0f) deepestInside = max(deepestInside, -sd);
 					}
 				}
-				if (centreDistance > L.Radius || (hit && L.Top <= bestH))
+				if (centreDistance > L.Radius)
 				{
 					continue;
 				}
@@ -1118,11 +1146,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRockSlope[Pixel] = RockIds.Load(int3(Pixel, 0)) != MIXTORMAT_INVALID_REGION
 		? saturate(atan(length(MixtormatGeneratorSourceGradient(gradient))) * (4.0f / ROCK_TAU)) : 0.0f;
 	// Height hits include walls extending past the outline, so IDs/classes are not coverage.
+	// Explicit analytical RockGap mask only; it never gates height blending or layer visibility.
 	// The union's signed gapped-outline distance is negative inside; unsampled pixels are gap.
 	const float2 boundary = RockBoundaryField.Load(int3(Pixel, 0));
 	OutRockGap[Pixel] = boundary.y > 0.0f && boundary.x <= 0.0f ? 0.0f : 1.0f;
 #else
-	// The field is the layer's height. How it meets the stack below is the layer's Height Op.
+	// Resolve one scalar module height; the ordered module chain applies its shared HeightBlend.
 	// Analytic maps the settings' own bounds to 0..1; Raw and Measured arrive here as they are
 	// (Measured was normalised by the field-range pass before this).
 	float h = RockHeight.Load(int3(Pixel, 0));

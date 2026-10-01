@@ -21,7 +21,7 @@ Texture2D<float4> LayerN;
 Texture2D<float4> LayerRAM;
 Texture2D<float> LayerSourceHeight;
 Texture2D<float> LayerMask;
-Texture2D<float> GeneratorCoverage;
+
 
 // The same mask, separably blurred. Bound to the unblurred mask when the layer asks for no
 // smoothing, so this is always a valid SRV and the shader needs no branch on whether the passes
@@ -94,8 +94,7 @@ RWTexture2D<float4> OutputDebug;
 int2 OutputSize;
 uint Enabled;
 uint HasMask;
-uint HasGeneratorCoverage;
-uint GeneratorDrivesCoverage;
+
 uint HasEffects;
 uint OverrideBaseColor;
 uint OverrideRoughness;
@@ -389,10 +388,7 @@ float AdjustRoughness(float Roughness)
 
 float SamplePlacementMask(float2 UV)
 {
-	const float LayerCoverage = HasMask != 0 ? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
-	const float GeneratorMask = HasGeneratorCoverage != 0 && GeneratorDrivesCoverage != 0
-		? GeneratorCoverage.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
-	return LayerCoverage * GeneratorMask;
+	return HasMask != 0 ? LayerMask.SampleLevel(LinearWrapSampler, UV, 0.0f) : 1.0f;
 }
 
 // The mask as the height field should see it.

@@ -3448,11 +3448,11 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackChipSizeHint", "Chip size, in cell widths."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackGap", "Gaps"), Crack, &FMixtormatCracks::CrackGap, 0.0, 1.0, 0.15, 0.01,
-			LOCTEXT("CrackGapHint", "Chance that a crack has opened into a flat-floored gap.")),
+			LOCTEXT("CrackGap", "Flat Floors"), Crack, &FMixtormatCracks::CrackGap, 0.0, 1.0, 0.15, 0.01,
+			LOCTEXT("CrackGapHint", "Chance of a flat floor in the scalar crack height profile; does not create transparency.")),
 		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackGapWidth", "Gap Width"), Crack, &FMixtormatCracks::CrackGapWidth, 0.0, 4.0, 1.5, 0.05,
-			LOCTEXT("CrackGapWidthHint", "Gap floor width, relative to the crack's."))));
+			LOCTEXT("CrackGapWidth", "Floor Width"), Crack, &FMixtormatCracks::CrackGapWidth, 0.0, 4.0, 1.5, 0.05,
+			LOCTEXT("CrackGapWidthHint", "Flat floor width relative to the crack width, within the same height profile."))));
 
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpPieces", "Pieces")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -3751,8 +3751,8 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpEdges", "EDGES")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("RockGapHint", "1 is twice the natural gap. Positive gaps also get a one-pixel floor.")),
+			LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, -1.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockGapHint", "Positive shrinks rock regions; zero preserves their size; negative expands them. Shapes height only, never layer transparency.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockChamfer", "Chamfer"), Rock, &FMixtormatRockFormation::RockChamfer, 0.0, 1.0, 0.1, 0.01,
 			LOCTEXT("RockChamferHint", "Share of each edge's room to the chunk centre, scaled by 0.75. Seams take 0.6 of the outline chamfer."))));
@@ -5865,22 +5865,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						+ SVerticalBox::Slot().AutoHeight()[BuildCracksControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildRockFormationControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildPebblesControls()]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-						[
-							SNew(SBox)
-							.Visibility_Lambda([this]()
-							{
-								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
-									? EVisibility::Visible : EVisibility::Collapsed;
-							})
-							[
-								MakeMemberToggle<FMixtormatLayer>(
-									LOCTEXT("GeneratorDrivesCoverage", "Generator Drives Coverage"), LayerForRows(),
-									&FMixtormatLayer::bGeneratorDrivesCoverage,
-									LOCTEXT("GeneratorDrivesCoverageHint", "On: multiply generator coverage into layer coverage, revealing the stack through gaps. Off: fill the tile and use the generator for height only."))
-							]
-						]
+
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
 						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
 						// meant the segment could say BLEND while the box said the layer was detail.

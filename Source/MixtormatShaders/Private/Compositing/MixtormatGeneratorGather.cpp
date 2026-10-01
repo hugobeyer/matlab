@@ -102,7 +102,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
 				TEXT("CrackHeightScale")};
 			Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
-			Out.FieldKey = Hasher.Get() | 1ull;
+			// Width shapes scalar relief only; invalidate fields from the width-dependent domain.
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x437261636B7332ull) | 1ull;
 		}
 		break;
 	}
@@ -155,7 +156,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			// Height mode and scale consume the cached field; they do not reshape it.
 			Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode")};
 			Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
-			Out.FieldKey = Hasher.Get() | 1ull;
+			// Signed gap now expands the cached outline as well as the height edge planes.
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x526F636B47617032ull) | 1ull;
 		}
 		break;
 	}

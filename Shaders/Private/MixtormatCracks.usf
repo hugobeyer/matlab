@@ -395,8 +395,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Where this pixel really is, before any push. Piece faces are built from it.
 	const float2 QReal = UV * (float)Period;
 
-	// Push, confined to a band around the unpushed cracks, twice the push plus the width wide, so a
-	// pushed crack cannot leave it and the tops are never moved.
+	// Push belongs to the network domain, not the groove profile. Width must not move borders
+	// or piece IDs; it shapes only the scalar height below.
 	float2 P = UV;
 	if (Push != 0.0f)
 	{
@@ -405,7 +405,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		int C0, E0;
 		float2 Cs0, Es0;
 		const float D0 = CrackEdge(QReal, Period, Seed, Jitter, 2, S0, I0, Jag, C0, Cs0, E0, Es0);
-		const float Reach = 2.0f * abs(Push) + Width;
+		const float Reach = 2.0f * abs(Push);
 		const float Band = 1.0f - smoothstep(0.5f * Reach, Reach, D0);
 		const float Across = (float)Period * Scale * PushScalePerScale;
 		const float Nx = CrackSoftFbm(UV, Across, Seed + 1531, Feather, Detail);
@@ -437,8 +437,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		* (CrackRand(min(CrackA, CrackB), max(CrackA, CrackB), Seed + 6151) * 2.0f - 1.0f);
 	const int RegionPeriod = max((int)round((float)Period * RegionPerCell), 1);
 	const float Region = 1.0f + RegionVariation * CrackSoftCells(UV, RegionPeriod, Seed + 7349, 0.6f);
-	const float Swell = Along * PerCrack * Region;
-	const float HalfWidth = Width * 0.5f * Swell;
+	const float Swell = max(Along * PerCrack * Region, 0.0f);
+	const float HalfWidth = max(Width, 0.0f) * 0.5f * Swell;
 
 	// The nearest crack's own frame: oriented by id so both sides measure the same position along
 	// it, and the side this pixel's piece is on.
@@ -456,7 +456,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float ChipBite = CrackA != CrackB ? CrackChips(AlongCrack, PairKey * 2u + Side, Seed + 9311, Chip, ChipSize) : 0.0f;
 	// Some cracks have opened: their floor is flat for GapWidth times the crack's half width.
 	const float FloorHalf = CrackRand((int)(PairKey & 0x7fffffffu), 7, Seed + 5003) < Gap ? GapWidth * HalfWidth : 0.0f;
-	const float Groove = CrackGroove(max(CrackDist - FloorHalf, 0.0f), HalfWidth + ChipBite);
+	const float Groove = HalfWidth > 0.0f
+			? CrackGroove(max(CrackDist - FloorHalf, 0.0f), HalfWidth + ChipBite) : 0.0f;
 	const float Carve = Depth * CellSize * Swell * Groove;
 
 	// Each piece's own offset (slip + tilt), blended toward the piece across the nearest crack within
@@ -479,8 +480,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// The flow tools' boundary pair: signed distance to the piece's border in UV units, negative
 	// inside (every pixel is inside a piece), and always sampled.
 	const float2 BorderNormal = AxisLen != 0.0f ? AxisV / AxisLen : float2(1.0f, 0.0f);
-		OutCrackBoundary[Pixel] = float2(MixtormatGeneratorDistance(
-			-CrackDist / (float)Period, BorderNormal), 1.0f);
+	OutCrackBoundary[Pixel] = float2(MixtormatGeneratorDistance(
+		-CrackDist / (float)Period, BorderNormal), 1.0f);
 #elif CRACK_STAGE == 1
 	// The field distance is in crack-cell widths. Resolve the nearest full-resolution sample;
 	// a conservative initial bound ensures that missed subpixel seeds cannot create infinity.
@@ -540,9 +541,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float DepthScale = Depth * CellSize;
 	OutChamferCut[Pixel] = DepthScale != 0.0f ? (H - Result) / DepthScale : 0.0f;
 #else
-	// The field is a signed change about 0, so it is written about the flat midpoint: the layer's
-	// height is 0.5 plus the cracks. Add then carves them into the height below, and Replace gives
-	// flat ground with the cracks cut in. How it meets the stack below is the layer's Height Op.
+	// Resolve the shaped signed change around the flat midpoint as one scalar module height.
+	// The ordered module chain applies the shared HeightBlend; no crack mask gates this result.
 	OutHeight[Pixel] = 0.5f + CrackHeight.Load(int3(Pixel, 0)) * HeightScale;
 #endif
 }

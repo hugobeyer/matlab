@@ -530,7 +530,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, CoverageMode)
+
 		SHADER_PARAMETER(uint32, HeightOp)
 		SHADER_PARAMETER(float, HeightSoftness)
 		SHADER_PARAMETER(float, BlendAmount)
@@ -546,18 +546,18 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningCoverage)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleCoverage)
+
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScalar)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutVector)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		const FPermutationDomain Permutation(Parameters.PermutationId);
+		return Permutation.Get<FStage>() != 4
+			&& IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
 
@@ -586,47 +586,20 @@ namespace
 		P->GeneratorUVFlipV = Layer.bFlipV ? 1u : 0u;
 	}
 
-	FRDGTextureRef AddBundleCoverage(FMixtormatComposeContext& Ctx, const uint32 Mode,
-		FRDGTextureRef Scalar = nullptr, FRDGTextureRef Boundary = nullptr)
-	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Coverage = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Generator.Coverage"));
-		FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(4);
-		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
-		P->OutputSize = Size;
-		P->CoverageMode = Mode;
-		// Mode is a uniform, so RDG needs both resources bound even for constant coverage.
-		P->ScalarField = Scalar ? Scalar : Ctx.EmptyDriverSignal;
-		P->BoundaryField = Boundary ? Boundary : Ctx.EmptyPatternUV;
-		P->OutScalar = GraphBuilder.CreateUAV(Coverage);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Coverage"),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-		return Coverage;
-	}
 
 	void AddGeneratorModuleCombine(
 		FMixtormatComposeContext& Ctx,
 		FRDGTextureRef RunningHeight,
-		FRDGTextureRef RunningCoverage,
 		const FGeneratorBundle& Module,
 		const FChildRenderData& Child,
-		FRDGTextureRef& OutHeight,
-		FRDGTextureRef& OutCoverage)
+		FRDGTextureRef& OutHeight)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		OutHeight = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.Generator.RunningHeight"));
-		OutCoverage = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Generator.RunningCoverage"));
+
 		FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(9);
 		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
@@ -643,10 +616,7 @@ namespace
 		P->HbBlendBias = Blend.BlendBias;
 		P->RunningHeight = RunningHeight;
 		P->ModuleHeight = Module.Height;
-		P->RunningCoverage = RunningCoverage;
-		P->ModuleCoverage = Module.Coverage;
 		P->OutScalar = GraphBuilder.CreateUAV(OutHeight);
-		P->OutCoverage = GraphBuilder.CreateUAV(OutCoverage);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Combine"), Shader, P,
 			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
@@ -846,7 +816,7 @@ namespace
 		if (Bundle)
 		{
 			Bundle->Height = CarvedHeight;
-			Bundle->Coverage = AddBundleCoverage(Ctx, 0);
+
 			Bundle->RegionIds = BedIds;
 			Bundle->BoundaryField = RemapBundleField(Ctx, BedPosition, nullptr, 8);
 			Bundle->NamedMasks.Add(FName(TEXT("StrataPosition")), BedPosition);
@@ -1026,8 +996,8 @@ namespace
 	// a Shape Deform above does not re-derive it. Published masks/IDs stay undeformed: they are
 	// published in the ID phase, before this runs.
 	//
-	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height so the
-	// owner's combine gates the moved height by moved coverage. Null for Rock Formation.
+	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height.
+	// Generator modules retain it for the named PebbleCoverage output, not height blending.
 	FRDGTextureRef AddGeneratorFlowToolPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -1540,7 +1510,7 @@ namespace
 		// or flow-modified layer height and never affected by HeightScale.
 		if (Bundle)
 		{
-			Bundle->Coverage = AddBundleCoverage(Ctx, 2, nullptr, Outputs[6]);
+
 			Bundle->RegionIds = Outputs[5];
 			Bundle->BoundaryField = Outputs[6];
 			static const TCHAR* const Names[10] = {
@@ -1720,7 +1690,7 @@ namespace
 		}
 		if (Bundle)
 		{
-			Bundle->Coverage = AddBundleCoverage(Ctx, 1, Outputs[1]);
+
 			Bundle->RegionIds = Outputs[3];
 			Bundle->BoundaryField = Outputs[5];
 			Bundle->NamedMasks.Add(FName(TEXT("CrackMask")), Outputs[1]);
@@ -2030,7 +2000,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
 	FRDGTextureRef RunningHeight = LayerCtx.LayerInputHeight;
-	FRDGTextureRef RunningCoverage = AddBundleCoverage(Ctx, 3);
+
 	// Modules compose in child order; each one only sees the running result of those above it.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
@@ -2054,7 +2024,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddCracksPasses(Ctx, LayerCtx, Layer, Input, nullptr, &Module);
 			break;
 		}
-		if (!Module.Height || !Module.Coverage) { continue; }
+		if (!Module.Height) { continue; }
 		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
@@ -2092,12 +2062,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 
-		AddGeneratorModuleCombine(Ctx, RunningHeight, RunningCoverage, Module, Child,
-			RunningHeight, RunningCoverage);
+		AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
 	}
-	if (!RunningHeight || !RunningCoverage) { return; }
+	if (!RunningHeight) { return; }
 	Bundle.Height = RunningHeight;
-	Bundle.Coverage = RunningCoverage;
 }
 
 }
