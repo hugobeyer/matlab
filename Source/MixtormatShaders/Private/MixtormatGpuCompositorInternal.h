@@ -971,9 +971,25 @@ namespace MixtormatGpuCompositor
 		uint32 Combine = 0;
 	};
 
+	struct FGeneratorBundle
+	{
+		FRDGTextureRef Height = nullptr;
+		FRDGTextureRef Coverage = nullptr;
+		FRDGTextureRef RegionIds = nullptr;
+		FRDGTextureRef CentreUV = nullptr;
+		FRDGTextureRef Orientation = nullptr;
+		TMap<FName, FRDGTextureRef> NamedMasks;
+		FRDGTextureRef BoundaryField = nullptr;
+		bool bHashedIds = false;
+	};
+
 	struct FLayerRenderData
 	{
 		FGuid LayerId;
+		bool bGenerator = false;
+		bool bGeneratorEnabled = false;
+		bool bGeneratorDrivesCoverage = true;
+		FGeneratorRenderData Generator;
 		// Hash of the layer without its children: everything a producer reading the layer's own
 		// maps can see (surface, reference source, UV transform). 0 when caching is off.
 		uint64 SourceCacheKey = 0;
@@ -1375,6 +1391,7 @@ namespace MixtormatGpuCompositor
 		// shared by every Layer Values mask on it.
 		FRDGTextureRef LayerValues = nullptr;
 		FRDGTextureRef LayerInputHeight = nullptr;
+		FGeneratorBundle GeneratorBundle;
 		// Last valid Flow/UV reference placement. Applied before the destination's own source UVs.
 		FRDGTextureRef ReferencedUV = nullptr;
 		// HeightMode and scoped flow resolved, before the Rock HeightScale placement gain.
@@ -1444,6 +1461,7 @@ namespace MixtormatGpuCompositor
 			LayerInputRAM = nullptr;
 			LayerValues = nullptr;
 			LayerInputHeight = nullptr;
+			GeneratorBundle = FGeneratorBundle();
 			ReferencedUV = nullptr;
 			ResolvedRockHeights.Reset();
 			bGeneratedHeight = false;
@@ -1763,6 +1781,11 @@ namespace MixtormatGpuCompositor
 
 	// MixtormatGpuGeneratorPasses.cpp -- the generators (Strata, Rock, Pebbles, Cracks).
 	void AddGeneratorPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer);
+
+	void AddGeneratorLayerPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);

@@ -125,6 +125,8 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Enabled)
 		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER(uint32, HasGeneratorCoverage)
+		SHADER_PARAMETER(uint32, GeneratorDrivesCoverage)
 		SHADER_PARAMETER(uint32, HasEffects)
 		SHADER_PARAMETER(uint32, OverrideBaseColor)
 		SHADER_PARAMETER(uint32, OverrideRoughness)
@@ -216,6 +218,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerSourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GeneratorCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, EffectData)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, EffectHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerHeightMask)
@@ -806,6 +809,8 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputSize = Request.Resolution;
 		Parameters->Enabled = Layer.bEnabled ? 1u : 0u;
 		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
+		Parameters->HasGeneratorCoverage = Layer.bGenerator && LayerCtx.GeneratorBundle.Coverage ? 1u : 0u;
+		Parameters->GeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage ? 1u : 0u;
 		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
 		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
 		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
@@ -962,6 +967,8 @@ namespace MixtormatGpuCompositor
 					TEXT("Mixtormat.LayerSourceHeight"))
 				: HeightTargets[ReadIndex]);
 		Parameters->LayerMask = CombinedMask;
+		Parameters->GeneratorCoverage = LayerCtx.GeneratorBundle.Coverage
+			? LayerCtx.GeneratorBundle.Coverage : CombinedMask;
 
 		// Rounding for the height field. A placement mask is a step, so the layer's
 		// height falls from full to nothing across one texel and the layer reads as a
@@ -1443,8 +1450,18 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			{
 				continue;
 			}
-			DebugSettings.LayerIndex = Index;
 			const FGuid TargetChildId = DebugSettings.ChildTarget.ChildId;
+			if (!TargetChildId.IsValid())
+			{
+				if (EffectiveLayers[Index].Type != EMixtormatLayerType::Generator)
+				{
+					break;
+				}
+				DebugSettings.LayerIndex = Index;
+				DebugSettings.ChildIndex = INDEX_NONE;
+				break;
+			}
+			DebugSettings.LayerIndex = Index;
 			DebugSettings.ChildIndex = EffectiveLayers[Index].Children.IndexOfByPredicate(
 				[TargetChildId](const FMixtormatLayerChild& Candidate)
 				{
@@ -1650,6 +1667,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			return false;
 		}
 		Data.LayerId = Layer.LayerId;
+		Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator;
+		Data.bGeneratorEnabled = Data.bGenerator && Layer.Generator.bEnabled;
+		Data.GeneratorDrivesCoverage = Layer.bGeneratorDrivesCoverage;
+		Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 		// Only a layer's combined mask is a usable signal this step. A child mask lives in the
 		// rotating ping-pong pair and is gone by the composite; region IDs are not a scalar at
 		// all. Both are refused here rather than approximated -- a Driver that cannot resolve
@@ -1722,10 +1743,19 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
 			}
 		}
-		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
+		const bool bGeneratorLayer = Layer.Type == EMixtormatLayerType::Generator;
+		const int32 GatheredChildCount = Layer.Children.Num() + (bGeneratorLayer ? 1 : 0);
+		for (int32 SourceChildIndex = 0; SourceChildIndex < GatheredChildCount; ++SourceChildIndex)
 		{
-			const FMixtormatLayerChild& LayerChild = Layer.Children[SourceChildIndex];
-			if (DisabledGroupScopes[SourceChildIndex])
+			FMixtormatLayerChild GeneratorLayerPayload;
+			if (bGeneratorLayer && SourceChildIndex >= Layer.Children.Num())
+			{
+				GeneratorLayerPayload.Type = EMixtormatLayerChildType::Generator;
+				GeneratorLayerPayload.Generator = Layer.Generator;
+			}
+			const FMixtormatLayerChild& LayerChild = SourceChildIndex < Layer.Children.Num()
+				? Layer.Children[SourceChildIndex] : GeneratorLayerPayload;
+			if (SourceChildIndex < DisabledGroupScopes.Num() && DisabledGroupScopes[SourceChildIndex])
 			{
 				continue;
 			}
@@ -1935,10 +1965,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					continue;
 				}
 
-				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
-				ChildData.Type = EMixtormatLayerChildType::Generator;
-				ChildData.SourceChildIndex = SourceChildIndex;
-				ChildData.Generator.Type = Generator.Type;
+			FChildRenderData LayerGeneratorData;
+			FChildRenderData& ChildData = bGeneratorLayer && SourceChildIndex >= Layer.Children.Num()
+				? LayerGeneratorData : Data.Children.AddDefaulted_GetRef();
+			ChildData.Type = EMixtormatLayerChildType::Generator;
+			ChildData.SourceChildIndex = bGeneratorLayer && SourceChildIndex >= Layer.Children.Num()
+				? INDEX_NONE : SourceChildIndex;
+			ChildData.Generator.Type = Generator.Type;
 
 				switch (Generator.Type)
 				{
@@ -2113,6 +2146,50 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					}
 					break;
 				}
+				}
+				if (bGeneratorLayer && SourceChildIndex >= Layer.Children.Num())
+				{
+					Data.Generator = MoveTemp(ChildData.Generator);
+					MixtormatComposeHash::FHasher PlacementHasher;
+					const float PlacementTiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
+					const int32 PlacementScaleX = FMath::Max(Layer.UVScaleX, 1);
+					const int32 PlacementScaleY = FMath::Max(Layer.UVScaleY, 1);
+					const FVector2f PlacementOffset(Layer.UVOffsetX, Layer.UVOffsetY);
+					const int32 PlacementRotation = static_cast<int32>(Layer.Rotation);
+					PlacementHasher.Bytes(&PlacementTiling, sizeof(PlacementTiling));
+					PlacementHasher.Bytes(&PlacementScaleX, sizeof(PlacementScaleX));
+					PlacementHasher.Bytes(&PlacementScaleY, sizeof(PlacementScaleY));
+					PlacementHasher.Bytes(&PlacementOffset, sizeof(PlacementOffset));
+					PlacementHasher.Bytes(&Layer.bFlipU, sizeof(Layer.bFlipU));
+					PlacementHasher.Bytes(&Layer.bFlipV, sizeof(Layer.bFlipV));
+					PlacementHasher.Bytes(&PlacementRotation, sizeof(PlacementRotation));
+					const uint64 PlacementKey = PlacementHasher.Get();
+					switch (Data.Generator.Type)
+					{
+					case EMixtormatGeneratorType::RockFormation:
+						if (Data.Generator.RockFormation.FieldKey != 0)
+						{
+							Data.Generator.RockFormation.FieldKey = MixtormatComposeHash::Combine(
+								Data.Generator.RockFormation.FieldKey, PlacementKey) | 1ull;
+						}
+						break;
+					case EMixtormatGeneratorType::Pebbles:
+						if (Data.Generator.Pebbles.FieldKey != 0)
+						{
+							Data.Generator.Pebbles.FieldKey = MixtormatComposeHash::Combine(
+								Data.Generator.Pebbles.FieldKey, PlacementKey) | 1ull;
+						}
+						break;
+					case EMixtormatGeneratorType::Cracks:
+						if (Data.Generator.Cracks.FieldKey != 0)
+						{
+							Data.Generator.Cracks.FieldKey = MixtormatComposeHash::Combine(
+								Data.Generator.Cracks.FieldKey, PlacementKey) | 1ull;
+						}
+						break;
+					default:
+						break;
+					}
 				}
 				continue;
 			}
@@ -2803,10 +2880,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				}
 				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 			}
-			else if (MixtormatIsGeneratorFlowEffect(ResolvedType))
+			else if (MixtormatIsGeneratorFlowEffect(ResolvedType)
+				&& !(Layer.Type == EMixtormatLayerType::Generator
+					&& MixtormatCanOwnGeneratorFlow(Layer.Generator.Type)
+					&& Layer.Generator.bEnabled))
 			{
-				// A flow tool without its generator has no field to act on. Inactive, never
-				// substituted with some other field.
+				// A flow tool without a generator field is inactive; a root-scoped tool on a
+				// Generator layer instead uses INDEX_NONE as its owner address.
 				Data.Children.RemoveAt(Data.Children.Num() - 1);
 				continue;
 			}
@@ -2868,15 +2948,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				GatherRunoff(EffectData, LayerEffect, Data.bHasMask);
 			}
 
-			// Filters have nothing further to gather. bHasEffects is deliberately not set for
-			// them: a Filter never writes the effect data target, so flagging it would make
-			// the composite sample a buffer nothing wrote.
+			// Filters and generator flow tools have no post-composite effect data. bHasEffects
+			// stays clear for them, so the composite never samples an unwritten effect target.
 			//
 			// Gated on the class, not on the absence of an asset. Erosion got away with the
 			// narrower test because nothing creates Erosion assets, but Grade is a valid
 			// EffectType on UMixtormatEffect, so an authored Grade asset would fall through
 			// into the peel branches below and trip exactly the failure above.
-			if (MixtormatEffectClassOf(ResolvedType) == EMixtormatEffectClass::Filter)
+			if (MixtormatEffectClassOf(ResolvedType) == EMixtormatEffectClass::Filter
+				|| MixtormatIsGeneratorFlowEffect(ResolvedType))
 			{
 				continue;
 			}
@@ -3025,7 +3105,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.bOverrideRoughness = Layer.bOverrideRoughness;
 		Data.bOverrideMetallic = Layer.bOverrideMetallic;
 		Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
-		Data.bFill = Layer.Type == EMixtormatLayerType::Fill;
+		Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 		Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 			&& Surface->BaseColor
 			&& Surface->Normal

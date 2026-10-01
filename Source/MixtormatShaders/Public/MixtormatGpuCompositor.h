@@ -87,7 +87,7 @@ struct FMixtormatChildPreviewTarget
 	// them inside their own kernel and need no second texture here).
 	FName GapMaskName;
 
-	bool IsValid() const { return OwnerId.IsValid() && ChildId.IsValid(); }
+	bool IsValid() const { return OwnerId.IsValid(); }
 
 	friend bool operator==(const FMixtormatChildPreviewTarget& A, const FMixtormatChildPreviewTarget& B)
 	{

@@ -2169,7 +2169,7 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
 {
-	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
+	if (!Layer.bEnabled || !Layer.bGenerator || !Layer.bGeneratorEnabled) { return; }
 	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
 	Bundle = FGeneratorBundle();
 	const FGeneratorPassInput Input{Layer.Generator, INDEX_NONE, true};

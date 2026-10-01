@@ -785,36 +785,54 @@ namespace MixtormatGpuCompositor
 						TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
 						TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
 							LayerCtx.PatternOutputs;
+						FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
+						CombinedMask = RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Mask,
+							TEXT("Mixtormat.WhiteMask"));
+						FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
+						CombinedEffectData = RegisterTexture(GraphBuilder, RegisteredTextures, Layer.BaseColor,
+							TEXT("Mixtormat.DefaultEffectData"));
+						LayerCtx.CombinedEffectHeight = EffectHeightTargets[0];
+						LayerCtx.DebugMask = CombinedMask;
+
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatRegionIds, "Mixtormat.RegionIds");
-							// Typed references only read earlier layers; import before any local consumers.
 							AddOutputReferencePasses(Ctx, LayerCtx, Layer);
-							// Independent generator fields must exist before ordered Combine chains.
+							// Transitional child producers keep their established early-publication order.
 							AddGeneratorFieldPasses(Ctx, LayerCtx, Layer);
 							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
-							// Immediately after the producers and before anything reads the layer's
-							// source: the source read is the only thing this node changes, and both the
-							// layer-input resolve and the composite have to see the same answer.
+							// A layer generator deforms before its own IDs and named masks publish.
+							if (Layer.bGenerator && Layer.bGeneratorEnabled)
+							{
+								AddLayerInputPass(Ctx, LayerCtx, Layer);
+								AddGeneratorLayerPasses(Ctx, LayerCtx, Layer);
+								if (LayerCtx.GeneratorBundle.Height)
+								{
+									LayerCtx.LayerInputHeight = LayerCtx.GeneratorBundle.Height;
+									LayerCtx.bGeneratedHeight = true;
+								}
+							}
+							// UV From IDs may now consume the post-flow layer producer.
 							AddUvIdPasses(Ctx, LayerCtx, Layer);
 						}
 
-						FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
-						CombinedMask = RegisterTexture(
-							GraphBuilder,
-							RegisteredTextures,
-							Layer.Mask,
-							TEXT("Mixtormat.WhiteMask"));
-						FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
-						CombinedEffectData = RegisterTexture(
-							GraphBuilder,
-							RegisteredTextures,
-							Layer.BaseColor,
-							TEXT("Mixtormat.DefaultEffectData"));
 						FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
 						CombinedEffectHeight = EffectHeightTargets[0];
 						FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
 						DebugMask = CombinedMask;
 						AddLayerHeightSmoothPasses(Ctx, LayerCtx, Layer);
+						if (Layer.bGenerator && LayerCtx.GeneratorBundle.Height)
+						{
+							const int32 BelowIndex = 1 - (LayerIndex & 1);
+							FRDGTextureRef SourceHeight = Ctx.OutputHeight[BelowIndex];
+							LayerCtx.bGeneratedHeight = true;
+							FRDGTextureRef FormedNormal = GraphBuilder.CreateTexture(
+								LayerCtx.LayerInputN->Desc, TEXT("Mixtormat.GeneratorLayerNormal"));
+							AddHeightDerivedNormalPass(Ctx, SourceHeight, LayerCtx.LayerInputHeight,
+								LayerCtx.LayerInputN, LayerCtx.LayerInputRAM, FormedNormal, nullptr,
+								Request.Resolution, HeightDerivedNormalStrength, false,
+								TEXT("GeneratorLayer"));
+							LayerCtx.LayerInputN = FormedNormal;
+						}
 
 						// GENERATORS, and this line is the whole reason the category is not an
 						// Effect. It runs against the layer's resolved input height -- after the
@@ -833,6 +851,10 @@ namespace MixtormatGpuCompositor
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
 							FScopedRegionIdView RegionView(LayerCtx, Layer, nullptr, bHasIdGroups);
 							AddGeneratorPasses(Ctx, LayerCtx, Layer);
+							if (Layer.bGenerator && LayerCtx.GeneratorBundle.Height)
+							{
+								LayerCtx.bGeneratedHeight = true;
+							}
 						}
 						FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
 

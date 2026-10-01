@@ -418,9 +418,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 
 	bool HasPublishedSource() const
 	{
-		return PublishedSourceLayerId.IsValid()
-			&& PublishedSourceChildId.IsValid()
-			&& !PublishedSourceOutput.IsNone();
+		return PublishedSourceLayerId.IsValid() && !PublishedSourceOutput.IsNone();
 	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
@@ -2677,7 +2675,8 @@ enum class EMixtormatGeneratorType : uint8
 // Flow Carve. One list for runtime gather, GPU passes and editor placement.
 inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 {
-	return Type == EMixtormatGeneratorType::RockFormation
+	return Type == EMixtormatGeneratorType::StrataCarver
+		|| Type == EMixtormatGeneratorType::RockFormation
 		|| Type == EMixtormatGeneratorType::Pebbles
 		|| Type == EMixtormatGeneratorType::Cracks;
 }
