@@ -7,6 +7,35 @@
 
 namespace MixtormatGpuCompositor
 {
+	static int32 ResolveBoundarySource(const TArray<FMixtormatLayer>& Layers,
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FMixtormatLayerChild& Destination, const FMixtormatOutputReference& Reference)
+	{
+		if (!Reference.bEnabled || !Reference.HasSource()
+			|| Reference.Kind != EMixtormatPublishedFieldKind::RegionIds
+			|| Reference.OutputName != FName(TEXT("RegionIds"))
+			|| !Layers.IsValidIndex(LayerIndex))
+		{
+			return INDEX_NONE;
+		}
+		const FMixtormatLayer& Owner = Layers[LayerIndex];
+		if (Reference.SourceLayerId != Owner.LayerId)
+		{
+			return MixtormatOutputReferences::ResolveEarlierSource(Layers, LayerIndex, Reference);
+		}
+		if (!Owner.bEnabled) { return INDEX_NONE; }
+		for (int32 Index = 0; Index < ChildIndex && Index < Owner.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Candidate = Owner.Children[Index];
+			if (Candidate.ChildId == Reference.SourceChildId
+				&& Candidate.ScopeOwnerChildId == Destination.ScopeOwnerChildId)
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
 bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const int32 LayerIndex,
 	const TArray<FMixtormatLayer>& EffectiveLayers, const UMixtormatSurface* Surface,
@@ -121,6 +150,43 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		UvData.bRandomFlipU = Uv.bRandomFlipU;
 		UvData.bRandomFlipV = Uv.bRandomFlipV;
 		UvData.Seed = static_cast<uint32>(Uv.Seed);
+		return true;
+	}
+
+	if (LayerChild.Type == EMixtormatLayerChildType::BoundaryFromIds)
+	{
+		const FMixtormatBoundaryIdFilter& Boundary = LayerChild.BoundaryId;
+		if (!Layer.bEnabled || !Boundary.bEnabled) { return true; }
+		const FMixtormatOutputReference& Reference = Boundary.RegionIdsSource;
+		// A partial or invalid authored address is not an implicit-source request.
+		const bool bExplicit = Reference.SourceLayerId.IsValid()
+			|| Reference.SourceChildId.IsValid() || !Reference.OutputName.IsNone();
+		int32 SourceIndex = INDEX_NONE;
+		if (bExplicit)
+		{
+			if (Reference.Kind != EMixtormatPublishedFieldKind::RegionIds) { return true; }
+			SourceIndex = ResolveBoundarySource(EffectiveLayers, LayerIndex,
+				SourceChildIndex, LayerChild, Reference);
+			if (SourceIndex == INDEX_NONE) { return true; }
+		}
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::BoundaryFromIds;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FBoundaryIdRenderData& Out = ChildData.BoundaryId;
+		Out.bExplicitSource = bExplicit;
+		Out.RegionIdsSource.Source = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
+		Out.RegionIdsSource.Kind = Reference.Kind;
+		const auto Finite = [](float Value, float Default)
+		{
+			return FMath::IsFinite(Value) ? Value : Default;
+		};
+		Out.WidthPixels = FMath::Max(Finite(Boundary.WidthPixels, 4.0f), 0.0f);
+		Out.Softness = FMath::Clamp(Finite(Boundary.Softness, 0.5f), 0.0f, 1.0f);
+		Out.GapWidthPixels = FMath::Max(Finite(Boundary.GapWidthPixels, 8.0f), 0.0f);
+		Out.GapSoftness = FMath::Clamp(Finite(Boundary.GapSoftness, 0.5f), 0.0f, 1.0f);
+		Out.GapBiasPixels = Finite(Boundary.GapBiasPixels, 0.0f);
+		Out.DistanceRangePixels = FMath::Max(Finite(Boundary.DistanceRangePixels, 64.0f), 0.25f);
+		Out.bInvertDistance = Boundary.bInvertDistance;
 		return true;
 	}
 

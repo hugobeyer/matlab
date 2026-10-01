@@ -76,6 +76,7 @@ namespace
 		case EMixtormatParameterOwnerType::RampId: return Child.Type == EMixtormatLayerChildType::RampId;
 		case EMixtormatParameterOwnerType::UvId: return Child.Type == EMixtormatLayerChildType::UvFromIds;
 		case EMixtormatParameterOwnerType::ReliefId: return Child.Type == EMixtormatLayerChildType::ReliefFromIds;
+		case EMixtormatParameterOwnerType::BoundaryId: return Child.Type == EMixtormatLayerChildType::BoundaryFromIds;
 		case EMixtormatParameterOwnerType::CombineId: return Child.Type == EMixtormatLayerChildType::CombineId;
 		case EMixtormatParameterOwnerType::IdGroup: return Child.Type == EMixtormatLayerChildType::IdGroup;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
@@ -167,6 +168,7 @@ namespace
 		case EMixtormatParameterOwnerType::RampId: View.ConstData = &Child.RampId; break;
 		case EMixtormatParameterOwnerType::UvId: View.ConstData = &Child.UvId; break;
 		case EMixtormatParameterOwnerType::ReliefId: View.ConstData = &Child.ReliefId; break;
+		case EMixtormatParameterOwnerType::BoundaryId: View.ConstData = &Child.BoundaryId; break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
 		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
@@ -529,6 +531,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::RampId: return { FMixtormatRampIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::UvId: return { FMixtormatUvIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::ReliefId: return { FMixtormatReliefIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::BoundaryId: return { FMixtormatBoundaryIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
 		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };
@@ -661,6 +664,14 @@ namespace MixtormatParameterBinding
 					Child.SourceChildId = *NewSourceChildId;
 				}
 			}
+			if (Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
+			{
+				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.BoundaryId.RegionIdsSource.SourceChildId))
+				{
+					Child.BoundaryId.RegionIdsSource.SourceChildId = *NewSourceChildId;
+				}
+			}
 			if (Child.OutputReference.SourceLayerId == OldLayerId)
 			{
 				Child.OutputReference.SourceLayerId = NewLayerId;
@@ -737,6 +748,8 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
 				RemapGuid(Child.OutputReference.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.OutputReference.SourceChildId, ChildIdRemap);
+				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceLayerId, OwnerIdRemap);
+				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceChildId, ChildIdRemap);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapBinding(Binding);
@@ -1085,6 +1098,11 @@ namespace MixtormatParameterBinding
 		// too, or the mask silently goes back to reading nothing.
 		auto RemapPublishedSource = [&](FMixtormatLayerChild& Child)
 		{
+			if (Child.BoundaryId.RegionIdsSource.SourceChildId == ChildId
+				&& Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
+			{
+				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
+			}
 			if (Child.OutputReference.SourceChildId == ChildId
 				&& Child.OutputReference.SourceLayerId == OldLayerId)
 			{

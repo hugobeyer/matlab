@@ -672,6 +672,11 @@ namespace MixtormatGpuCompositor
 							{
 								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
 							}
+							if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds
+								&& Child.BoundaryId.bExplicitSource)
+							{
+								Ctx.PublishedFieldDemand.Add(Child.BoundaryId.RegionIdsSource.Source);
+							}
 						}
 					}
 
@@ -871,6 +876,13 @@ namespace MixtormatGpuCompositor
 						for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 						{
 							const FChildRenderData& Child = Layer.Children[ChildIndex];
+							if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds)
+							{
+								// Explicit same-owner addresses need the unfiltered maps; implicit
+								// lookup applies the existing scope/order policy itself.
+								AddBoundaryIdPass(Ctx, LayerCtx, Layer, Child);
+								continue;
+							}
 							FScopedRegionIdView RegionView(LayerCtx, Layer, &Child, bHasIdGroups);
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{

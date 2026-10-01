@@ -195,6 +195,7 @@ namespace
 						|| Child.Type == EMixtormatLayerChildType::RampId
 						|| Child.Type == EMixtormatLayerChildType::UvFromIds
 						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+						|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 						|| Child.Type == EMixtormatLayerChildType::PatternId
 						|| Child.Type == EMixtormatLayerChildType::CombineId
 						|| Child.Type == EMixtormatLayerChildType::IdGroup
@@ -325,6 +326,14 @@ namespace
 		{
 			OwnerId = Child.OutputReference.SourceLayerId;
 			ChildId = Child.OutputReference.SourceChildId;
+			return true;
+		}
+		if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds
+			&& (Child.BoundaryId.RegionIdsSource.SourceLayerId.IsValid()
+				|| Child.BoundaryId.RegionIdsSource.SourceChildId.IsValid()))
+		{
+			OwnerId = Child.BoundaryId.RegionIdsSource.SourceLayerId;
+			ChildId = Child.BoundaryId.RegionIdsSource.SourceChildId;
 			return true;
 		}
 		if (Child.Type == EMixtormatLayerChildType::Mask
@@ -564,6 +573,7 @@ namespace
 		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
 		case EMixtormatChildCreation::UvFromIds:       return EMixtormatLayerChildType::UvFromIds;
 		case EMixtormatChildCreation::ReliefFromIds:   return EMixtormatLayerChildType::ReliefFromIds;
+		case EMixtormatChildCreation::BoundaryFromIds: return EMixtormatLayerChildType::BoundaryFromIds;
 		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
@@ -1722,6 +1732,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::RampId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::UvFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::BoundaryFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::IdGroup
@@ -4707,6 +4718,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("ReliefIdChildName", "Relief From IDs");
 	}
+	if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds)
+	{
+		return LOCTEXT("BoundaryIdChildName", "Boundary From IDs");
+	}
 	if (Child.Type == EMixtormatLayerChildType::PatternId)
 	{
 		return LOCTEXT("PatternIdChildName", "Pattern IDs");
@@ -5107,6 +5122,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::RampId:      Child.RampId.bEnabled = !Child.RampId.bEnabled; break;
 	case EMixtormatLayerChildType::UvFromIds:   Child.UvId.bEnabled = !Child.UvId.bEnabled; break;
 	case EMixtormatLayerChildType::ReliefFromIds: Child.ReliefId.bEnabled = !Child.ReliefId.bEnabled; break;
+	case EMixtormatLayerChildType::BoundaryFromIds: Child.BoundaryId.bEnabled = !Child.BoundaryId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
 	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
 	case EMixtormatLayerChildType::IdGroup:     Child.IdGroup.bEnabled = !Child.IdGroup.bEnabled; break;
@@ -5133,6 +5149,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::UvFromIds:   return Child.UvId.bEnabled;
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
+	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
@@ -5816,6 +5833,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::RampId
 			|| Child.Type == EMixtormatLayerChildType::UvFromIds
 			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::CombineId
 			|| Child.Type == EMixtormatLayerChildType::IdGroup
@@ -5994,6 +6012,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
 	case EMixtormatLayerChildType::UvFromIds: return Child.UvId.bEnabled;
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
+	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
@@ -6382,6 +6401,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddFromIdsMenu(const FMixtormatAddTarget Ta
 	MixtormatMenu::FBuilder Menu;
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddColorIdChild", "Color ID Mask"), EMixtormatChildCreation::ColorIdMask },
+		{ LOCTEXT("AddBoundaryIdChild", "Boundary From IDs"), EMixtormatChildCreation::BoundaryFromIds },
 		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
 		{ LOCTEXT("AddRandomIdChild", "Random From IDs"), EMixtormatChildCreation::RandomFromIds },
 		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
@@ -6406,6 +6426,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Ta
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
 		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
+		{ LOCTEXT("AddBoundaryIdChild", "Boundary From IDs"), EMixtormatChildCreation::BoundaryFromIds },
 		// The two halves Pattern IDs used to carry itself. Beside Ramp rather than under IDs,
 		// because they consume Region IDs and change something else -- which is what a Filter is.
 		{ LOCTEXT("AddUvIdChild", "UV From IDs"), EMixtormatChildCreation::UvFromIds },
@@ -6667,6 +6688,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::RampId
 		|| RowType == EMixtormatLayerChildType::UvFromIds
 		|| RowType == EMixtormatLayerChildType::ReliefFromIds
+		|| RowType == EMixtormatLayerChildType::BoundaryFromIds
 		|| RowType == EMixtormatLayerChildType::PatternId
 		|| RowType == EMixtormatLayerChildType::CombineId
 		|| RowType == EMixtormatLayerChildType::IdGroup
@@ -6766,6 +6788,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::ReliefFromIds:
 			RemoveLabel = LOCTEXT("RemoveReliefIdChild", "Remove Relief From IDs");
+			break;
+		case EMixtormatLayerChildType::BoundaryFromIds:
+			RemoveLabel = LOCTEXT("RemoveBoundaryIdChild", "Remove Boundary From IDs");
 			break;
 		case EMixtormatLayerChildType::PatternId:
 			RemoveLabel = LOCTEXT("RemovePatternIdChild", "Remove Pattern IDs");
@@ -7612,6 +7637,89 @@ const FMixtormatReliefIdFilter* SMixtormat::GetSelectedReliefId() const
 	return Child && Child->Type == EMixtormatLayerChildType::ReliefFromIds ? &Child->ReliefId : nullptr;
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBoundaryIdSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Dest = GetSelectedChildAddress();
+	const int32 DestIndex = ResolveChildIndexAt(Dest);
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	const auto Assign = [this, Dest](const FMixtormatOutputReference& Reference)
+	{
+		if (FMixtormatLayerChild* Child = ResolveChildAt(Dest))
+		{
+			if (Child->Type == EMixtormatLayerChildType::BoundaryFromIds && !Child->IsInstance())
+			{
+				Child->BoundaryId.RegionIdsSource = Reference;
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		}
+	};
+	Menu.Item(LOCTEXT("BoundaryIdNearestSource", "Nearest preceding Region IDs"), nullptr,
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(FMixtormatOutputReference{}); }));
+	const auto AddSources = [this, &Menu, &Scope, &Dest, DestIndex, Assign](
+		const FGuid OwnerId, const FText& OwnerName, const TArray<FMixtormatLayerChild>& Children,
+		const bool bOwnerEnabled)
+	{
+		for (const FMixtormatLayerChild& Source : Children)
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Source);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (!Output.bCopyableAsField || Output.FieldKind != EMixtormatPublishedFieldKind::RegionIds)
+				{
+					continue;
+				}
+				FMixtormatOutputReference Reference;
+				Reference.SourceLayerId = OwnerId;
+				Reference.SourceChildId = Source.ChildId;
+				Reference.OutputName = Output.Name;
+				Reference.Kind = EMixtormatPublishedFieldKind::RegionIds;
+				FMixtormatLayerChild Candidate;
+				Candidate.Type = EMixtormatLayerChildType::BoundaryFromIds;
+				Candidate.BoundaryId.RegionIdsSource = Reference;
+				if (const FMixtormatLayerChild* Selected = ResolveChildAt(Dest))
+				{
+					Candidate.ScopeOwnerChildId = Selected->ScopeOwnerChildId;
+				}
+				const int32 SourceIndex = FindChildById(Children, Source.ChildId);
+				const int32 SourceLayerIndex = WorkingLayers.IndexOfByPredicate(
+					[OwnerId](const FMixtormatLayer& Layer) { return Layer.LayerId == OwnerId; });
+				const bool bSourceEnabled = SourceLayerIndex != INDEX_NONE
+					? IsLayerChildEnabled(SourceLayerIndex, SourceIndex)
+					: IsGroupChildEnabled(Source);
+				const bool bAvailable = bOwnerEnabled && bSourceEnabled && DestIndex != INDEX_NONE
+					&& CanReadPublishedOutputAt(Scope, Candidate, Dest.OwnerId, DestIndex);
+				Menu.Item(FText::Format(LOCTEXT("BoundaryIdSourceEntry", "{0} / {1} / {2}"),
+					OwnerName, GetLayerChildName(Source), Output.Label), nullptr,
+					FSimpleDelegate::CreateLambda([Assign, Reference]() { Assign(Reference); }))
+					.Enabled(TAttribute<bool>(bAvailable));
+			}
+		}
+	};
+	for (const FMixtormatLayer& Layer : WorkingLayers)
+	{
+		AddSources(Layer.LayerId, Layer.DisplayName, Layer.Children, Layer.bEnabled);
+	}
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		AddSources(Group.GroupId, Group.DisplayName, Group.Children, Group.bEnabled);
+	}
+	return Menu.Build();
+}
+
+FMixtormatBoundaryIdFilter* SMixtormat::GetSelectedBoundaryId()
+{
+	FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::BoundaryFromIds ? &Child->BoundaryId : nullptr;
+}
+
+const FMixtormatBoundaryIdFilter* SMixtormat::GetSelectedBoundaryId() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
+	return Child && Child->Type == EMixtormatLayerChildType::BoundaryFromIds ? &Child->BoundaryId : nullptr;
+}
+
 FReply SMixtormat::AddRandomIdToLayer(const int32 LayerIndex)
 {
 	return CreateChild(
@@ -7718,6 +7826,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::RampId
 		&& ChildType != EMixtormatLayerChildType::UvFromIds
 		&& ChildType != EMixtormatLayerChildType::ReliefFromIds
+		&& ChildType != EMixtormatLayerChildType::BoundaryFromIds
 		&& ChildType != EMixtormatLayerChildType::PatternId
 		&& ChildType != EMixtormatLayerChildType::CombineId
 		&& ChildType != EMixtormatLayerChildType::IdGroup
@@ -7800,6 +7909,9 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::ReliefFromIds:
 		Child.ReliefId.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::BoundaryFromIds:
+		Child.BoundaryId.bEnabled = bEnabled;
 		break;
 	case EMixtormatLayerChildType::PatternId:
 		Child.PatternId.bEnabled = bEnabled;

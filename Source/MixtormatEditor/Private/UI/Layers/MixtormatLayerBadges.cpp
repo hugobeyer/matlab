@@ -210,6 +210,7 @@ namespace MixtormatLayerBadges
 			|| Child.Type == EMixtormatLayerChildType::RampId
 			|| Child.Type == EMixtormatLayerChildType::UvFromIds
 			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 			|| Child.Type == EMixtormatLayerChildType::IdGroup)
 		{
 			// Nothing. These have no blend mode -- they emit data and albedo, not coverage -- and
@@ -288,6 +289,7 @@ namespace MixtormatLayerBadges
 		// its right would only repeat it.
 		case EMixtormatLayerChildType::UvFromIds: return FText::GetEmpty();
 		case EMixtormatLayerChildType::ReliefFromIds: return FText::GetEmpty();
+		case EMixtormatLayerChildType::BoundaryFromIds: return FText::GetEmpty();
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		case EMixtormatLayerChildType::Generator: return LOCTEXT("ChildKindGenerator", "GEN");

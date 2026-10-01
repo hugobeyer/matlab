@@ -75,6 +75,18 @@ uint FieldSeed;
 float Feather;
 float FeatherRandom;
 uint RelativeWidth;
+uint SeedPolicy; // 0: legacy four including invalid borders; 1: valid-only eight.
+
+float BoundaryWidthPixels;
+float BoundarySoftness;
+float GapWidthPixels;
+float GapSoftness;
+float GapBiasPixels;
+float DistanceRangePixels;
+uint InvertDistance;
+RWTexture2D<float> OutputBoundary;
+RWTexture2D<float> OutputGap;
+RWTexture2D<float> OutputDistance;
 
 int RegionFieldWrap(int X, int Size)
 {
@@ -345,14 +357,16 @@ void SeedCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (RegionIdValid(RawId))
 	{
 		const int2 P = int2(Pixel);
-		const int2 Neighbours[4] = {
+		const int2 Neighbours[8] = {
 			int2(P.x - 1, P.y), int2(P.x + 1, P.y),
-			int2(P.x, P.y - 1), int2(P.x, P.y + 1)};
-		for (int I = 0; I < 4; ++I)
+			int2(P.x, P.y - 1), int2(P.x, P.y + 1),
+			P + int2(-1, -1), P + int2(1, -1),
+			P + int2(-1, 1), P + int2(1, 1)};
+		for (int I = 0; I < (SeedPolicy == 0u ? 4 : 8); ++I)
 		{
 			const uint NeighbourId =
 				RegionIds.Load(int3(RegionFieldWrapPixel(Neighbours[I]), 0));
-			if (NeighbourId != RawId)
+			if (NeighbourId != RawId && (SeedPolicy == 0u || RegionIdValid(NeighbourId)))
 			{
 				bSeed = true;
 			}
@@ -404,6 +418,42 @@ void JumpCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	OutputRecord[Pixel] = Best;
+}
+
+// Full band width, centred on the raster border; softness feathers inward from its edge.
+float RegionBoundaryBand(float Distance, float Radius, float Softness)
+{
+	if (Radius <= 0.0f) { return 0.0f; }
+	if (Softness <= 0.0f) { return Distance <= Radius ? 1.0f : 0.0f; }
+	return 1.0f - smoothstep(Radius * (1.0f - Softness), Radius, Distance);
+}
+
+[numthreads(8, 8, 1)]
+void BoundaryResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize))) { return; }
+	float Boundary = 0.0f;
+	float Gap = 0.0f;
+	float NormalizedDistance = 0.0f;
+	if (RegionIdValid(RegionIds.Load(int3(Pixel, 0))))
+	{
+		const uint Record = PreviousRecord.Load(int3(Pixel, 0));
+		// No seeds means unbounded interior, not a fake boundary around invalid space.
+		NormalizedDistance = 1.0f;
+		if (RegionRecordValid(Record))
+		{
+			const float Distance = RegionToroidalDistance(int2(Pixel), RegionUnpackRecord(Record)) + 0.5f;
+			Boundary = RegionBoundaryBand(Distance, BoundaryWidthPixels * 0.5f, BoundarySoftness);
+			// Bias dilates/erodes the unsigned band radius. There is no region ownership/sign.
+			Gap = RegionBoundaryBand(Distance, max(0.0f, GapWidthPixels * 0.5f + GapBiasPixels), GapSoftness);
+			NormalizedDistance = saturate(Distance / max(DistanceRangePixels, 0.25f));
+		}
+		if (InvertDistance != 0u) { NormalizedDistance = 1.0f - NormalizedDistance; }
+	}
+	OutputBoundary[Pixel] = Boundary;
+	OutputGap[Pixel] = Gap;
+	OutputDistance[Pixel] = NormalizedDistance;
 }
 
 // The signed boundary distance at one pixel, from its record.

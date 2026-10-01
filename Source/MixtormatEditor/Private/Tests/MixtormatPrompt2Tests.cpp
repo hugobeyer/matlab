@@ -2,6 +2,7 @@
 
 #include "MixtormatMaterial.h"
 
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
@@ -90,5 +91,6 @@ bool FMixtormatPrompt2LegacyFieldsTest::RunTest(const FString&)
 	}
 	return true;
 }
+
 
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -243,7 +243,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	// Appended with its child type. Combine IDs arrived after this enum's last pass and its rows
 	// fell through to Layer, which stored their bindings on the layer and resolved to nothing.
 	CombineId UMETA(DisplayName = "Combine IDs"),
-	IdGroup UMETA(DisplayName = "ID Group")
+	IdGroup UMETA(DisplayName = "ID Group"),
+	BoundaryId UMETA(DisplayName = "Boundary From IDs")
 };
 
 UENUM(BlueprintType)
@@ -2598,6 +2599,41 @@ struct MIXTORMATRUNTIME_API FMixtormatUvIdFilter
 	int32 Seed = 1;
 };
 
+// An independent Region-ID consumer. An unassigned source reads the nearest preceding valid
+// Region IDs; an assigned source is a typed reference, never a scalar mask or an ID Group setting.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBoundaryIdFilter
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs")
+	FMixtormatOutputReference RegionIdsSource;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "64.0", Delta = "0.01"))
+	float WidthPixels = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Softness = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "64.0", Delta = "0.01"))
+	float GapWidthPixels = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GapSoftness = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (UIMin = "-64.0", UIMax = "64.0", Delta = "0.01"))
+	float GapBiasPixels = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs", meta = (ClampMin = "0.25", UIMin = "0.25", UIMax = "256.0", Delta = "0.01"))
+	float DistanceRangePixels = 64.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boundary From IDs")
+	bool bInvertDistance = false;
+};
+
 // Per-region elevation, chamfer and edge shading, from whatever Region IDs sit above it.
 //
 // The relief half of what Pattern IDs used to own. Pattern published an analytic edge-distance
@@ -3299,7 +3335,8 @@ enum class EMixtormatLayerChildType : uint8
 	ReliefFromIds UMETA(DisplayName = "Relief From IDs"),
 	// Appended for serialization safety. Owns exactly two nested Region-ID producers.
 	IdGroup UMETA(DisplayName = "ID Group"),
-	OutputReference UMETA(DisplayName = "Output Reference")
+	OutputReference UMETA(DisplayName = "Output Reference"),
+	BoundaryFromIds UMETA(DisplayName = "Boundary From IDs")
 };
 
 USTRUCT(BlueprintType)
@@ -3392,6 +3429,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::OutputReference"))
 	FMixtormatOutputReference OutputReference;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::BoundaryFromIds"))
+	FMixtormatBoundaryIdFilter BoundaryId;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

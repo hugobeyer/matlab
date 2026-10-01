@@ -61,6 +61,16 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			NSLOCTEXT("SMixtormat", "PreviewOutputIdGroupBoundary", "Boundary"),
 			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		break;
+	case EMixtormatLayerChildType::BoundaryFromIds:
+		Result.Outputs.Add({FName(TEXT("Boundary")),
+			NSLOCTEXT("SMixtormat", "PreviewOutputBoundaryIdBoundary", "Boundary"),
+			EMixtormatPreviewOutputKind::Mask, true, true, false, NAME_None});
+		Result.Outputs.Add({GapName, GapLabel,
+			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		Result.Outputs.Add({FName(TEXT("Distance")),
+			NSLOCTEXT("SMixtormat", "PreviewOutputBoundaryIdDistance", "Distance"),
+			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		break;
 	case EMixtormatLayerChildType::RampId:
 		// The per-region gradient. Preview only: the field is two-channel (gradient, strength), not
 		// a scalar mask a Replace-blend mask child could read.

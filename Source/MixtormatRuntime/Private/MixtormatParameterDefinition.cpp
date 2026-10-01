@@ -251,6 +251,16 @@ namespace
 				}
 			}
 		}
+		else if (Owner == EMixtormatParameterOwnerType::BoundaryId)
+		{
+			static const FMixtormatBoundaryIdFilter Defaults;
+			if (const FFloatProperty* Property = FindFProperty<FFloatProperty>(
+				FMixtormatBoundaryIdFilter::StaticStruct(), Parameter))
+			{
+				Result.Value = *Property->ContainerPtrToValuePtr<float>(&Defaults);
+				Result.bFound = true;
+			}
+		}
 		else if (Owner == EMixtormatParameterOwnerType::Generator)
 		{
 			// Generator parameter names are unique across payloads. The owner address remains the

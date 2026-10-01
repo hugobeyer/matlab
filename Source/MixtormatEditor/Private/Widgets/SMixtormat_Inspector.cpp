@@ -2860,6 +2860,100 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBoundaryIdControls()
+{
+	const auto Boundary = [this]() { return GetSelectedBoundaryId(); };
+	const auto Slider = [this, Boundary](const FText& Label,
+		float FMixtormatBoundaryIdFilter::* Member, const double Min, const double Max,
+		const double Default, const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatBoundaryIdFilter>(
+			Label, Boundary, Member, Min, Max, Default, 0.01, Hint);
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("BoundaryIdSource", "Region IDs"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
+		{
+			const FMixtormatBoundaryIdFilter* Selected = GetSelectedBoundaryId();
+			if (!Selected)
+			{
+				return LOCTEXT("BoundaryIdNearestSource", "Nearest preceding Region IDs");
+			}
+			const FMixtormatOutputReference& Ref = Selected->RegionIdsSource;
+			if (!Ref.SourceLayerId.IsValid() && !Ref.SourceChildId.IsValid() && Ref.OutputName.IsNone())
+			{
+				return LOCTEXT("BoundaryIdNearestSource", "Nearest preceding Region IDs");
+			}
+			if (!Ref.HasSource())
+			{
+				return LOCTEXT("BoundaryIdMissingSource", "Missing Region IDs source");
+			}
+			const auto FindLabel = [this, &Ref](const FText& OwnerName,
+				const TArray<FMixtormatLayerChild>& Children)
+			{
+				const FMixtormatLayerChild* Source = Children.FindByPredicate(
+					[&Ref](const FMixtormatLayerChild& Child) { return Child.ChildId == Ref.SourceChildId; });
+				return Source ? FText::Format(LOCTEXT("BoundaryIdSourceLabel", "{0} / {1}"),
+					OwnerName, GetLayerChildName(*Source)) : LOCTEXT("BoundaryIdMissingSource", "Missing Region IDs source");
+			};
+			for (const FMixtormatLayer& Layer : WorkingLayers)
+			{
+				if (Layer.LayerId == Ref.SourceLayerId) return FindLabel(Layer.DisplayName, Layer.Children);
+			}
+			for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+			{
+				if (Group.GroupId == Ref.SourceLayerId) return FindLabel(Group.DisplayName, Group.Children);
+			}
+			return LOCTEXT("BoundaryIdMissingSource", "Missing Region IDs source");
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBoundaryIdSourceMenu)),
+		LOCTEXT("BoundaryIdSourceHint", "Unassigned reads the nearest preceding valid Region IDs. Explicit sources must precede this child; unavailable sources do not fall back to another map.")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdBoundaryGroup", "Boundary")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BoundaryIdWidth", "Width"), &FMixtormatBoundaryIdFilter::WidthPixels, 0.0, 64.0, 4.0,
+			LOCTEXT("BoundaryIdWidthHint", "Boundary width in output pixels.")),
+		Slider(LOCTEXT("BoundaryIdSoftness", "Softness"), &FMixtormatBoundaryIdFilter::Softness, 0.0, 1.0, 0.5,
+			LOCTEXT("BoundaryIdSoftnessHint", "Softness of the boundary mask transition."))));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdGapGroup", "Gap")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("BoundaryIdGapWidth", "Width"), &FMixtormatBoundaryIdFilter::GapWidthPixels, 0.0, 64.0, 8.0,
+			LOCTEXT("BoundaryIdGapWidthHint", "Gap mask width in output pixels; does not change the source IDs.")),
+		Slider(LOCTEXT("BoundaryIdGapSoftness", "Softness"), &FMixtormatBoundaryIdFilter::GapSoftness, 0.0, 1.0, 0.5,
+			LOCTEXT("BoundaryIdGapSoftnessHint", "Softness of the gap mask transition."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("BoundaryIdGapBias", "Bias"),
+		&FMixtormatBoundaryIdFilter::GapBiasPixels, -64.0, 64.0, 0.0,
+		LOCTEXT("BoundaryIdGapBiasHint", "Expands or shrinks the gap radius in output pixels; does not assign an inside/outside sign.")));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdDistanceGroup", "Distance")));
+	AddSliderRow(Panel, Slider(LOCTEXT("BoundaryIdDistanceRange", "Range"),
+		&FMixtormatBoundaryIdFilter::DistanceRangePixels, 0.25, 256.0, 64.0,
+		LOCTEXT("BoundaryIdDistanceRangeHint", "Pixel range mapped into the scalar Distance output.")));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatBoundaryIdFilter>(
+		LOCTEXT("BoundaryIdInvertDistance", "Invert Distance"), Boundary,
+		&FMixtormatBoundaryIdFilter::bInvertDistance,
+		LOCTEXT("BoundaryIdInvertDistanceHint", "Invert Distance without changing Boundary or Gap.")));
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedBoundaryId() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("BoundaryIdHeading", "BOUNDARY FROM IDS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatBoundaryIdFilter* Selected = GetSelectedBoundaryId();
+					return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}), FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					if (FMixtormatBoundaryIdFilter* Selected = GetSelectedBoundaryId())
+					{
+						Selected->bEnabled = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}), LOCTEXT("BoundaryIdEnabledHint", "Enable Boundary From IDs")))
+			[Panel]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 {
 	const auto Relief = [this]() { return GetSelectedReliefId(); };
@@ -5822,6 +5916,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// exactly how Combine IDs' bug read.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
+							|| GetSelectedBoundaryId()
 							|| GetSelectedIdGroup()
 							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
@@ -5855,6 +5950,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildRampIdControls()]
 					+ SScrollBox::Slot()[BuildUvIdControls()]
 					+ SScrollBox::Slot()[BuildReliefIdControls()]
+					+ SScrollBox::Slot()[BuildBoundaryIdControls()]
 					+ SScrollBox::Slot()[BuildIdGroupControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
@@ -5893,6 +5989,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// exactly how Combine IDs' bug read.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
+							|| GetSelectedBoundaryId()
 							|| GetSelectedIdGroup()
 							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet

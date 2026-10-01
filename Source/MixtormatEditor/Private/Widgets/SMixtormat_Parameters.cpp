@@ -91,6 +91,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return EMixtormatParameterOwnerType::RampId;
 		case EMixtormatLayerChildType::UvFromIds: return EMixtormatParameterOwnerType::UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return EMixtormatParameterOwnerType::ReliefId;
+		case EMixtormatLayerChildType::BoundaryFromIds: return EMixtormatParameterOwnerType::BoundaryId;
 		case EMixtormatLayerChildType::CombineId: return EMixtormatParameterOwnerType::CombineId;
 		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
@@ -116,6 +117,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return &Child.RampId;
 		case EMixtormatLayerChildType::UvFromIds: return &Child.UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return &Child.ReliefId;
+		case EMixtormatLayerChildType::BoundaryFromIds: return &Child.BoundaryId;
 		case EMixtormatLayerChildType::CombineId: return &Child.CombineId;
 		case EMixtormatLayerChildType::IdGroup: return &Child.IdGroup;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
@@ -774,6 +776,7 @@ namespace
 		case EMixtormatLayerChildType::RampId: return FMixtormatRampIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::UvFromIds: return FMixtormatUvIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::ReliefFromIds: return FMixtormatReliefIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::BoundaryFromIds: return FMixtormatBoundaryIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::CombineId: return FMixtormatCombineIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();

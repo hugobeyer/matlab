@@ -8,6 +8,7 @@
 #include "RHIStaticStates.h"
 #include "ShaderParameterStruct.h"
 
+
 // Region-ID passes: the cluster segmentation and the procedural pattern lattice that
 // produce ID maps, the Ramp-from-ID gradient built on one, the random-value mask that
 // reads one, and the post-composite relief and edge shading those fields drive.
@@ -457,6 +458,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, SeedPolicy)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputRecord)
 	END_SHADER_PARAMETER_STRUCT()
@@ -472,6 +474,37 @@ IMPLEMENT_GLOBAL_SHADER(
 	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
 	"SeedCS",
 	SF_Compute);
+
+class FMixtormatBoundaryResolveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBoundaryResolveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBoundaryResolveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, BoundaryWidthPixels)
+		SHADER_PARAMETER(float, BoundarySoftness)
+		SHADER_PARAMETER(float, GapWidthPixels)
+		SHADER_PARAMETER(float, GapSoftness)
+		SHADER_PARAMETER(float, GapBiasPixels)
+		SHADER_PARAMETER(float, DistanceRangePixels)
+		SHADER_PARAMETER(uint32, InvertDistance)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputGap)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputDistance)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBoundaryResolveCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf", "BoundaryResolveCS", SF_Compute);
 
 class FMixtormatRegionJumpCS final : public FGlobalShader
 {
@@ -962,9 +995,8 @@ namespace MixtormatGpuCompositor
 	// Resolve the authored producer before looking for its published map. A deferred or
 	// unavailable producer shadows older maps; publication order must not change the source.
 	//
-	// The index matters as well as the texture. The region-distance cache is keyed on it, so two
-	// consumers of one producer share a jump flood; and UV From IDs uses it to find out whether
-	// the producer it landed on happens to be a Pattern with an intrinsic quarter-turn field.
+	// UV From IDs also needs the producer index to identify Pattern's intrinsic orientation.
+	// Distance records instead share by source texture identity, resolution and seed policy.
 	static FRDGTextureRef FindRegionIdsAboveWithIndex(
 		const FLayerRenderData& Layer,
 		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
@@ -1027,24 +1059,24 @@ namespace MixtormatGpuCompositor
 
 	// Distance to the nearest region boundary, by jump flooding, plus each region's reach.
 	//
-	// Both are functions of the ID map alone, so the result is cached against the producer's row
-	// and reused by every Relief From IDs node reading that producer. Log2(N) passes and two
+	// Records are cached graph-wide by source texture, resolution and seed policy, so consumers
+	// of the same map and policy share the solve. Log2(N) passes and two
 	// full-resolution textures is the same order as the cluster segmentation, and paying it twice
 	// for two relief nodes over one pattern would be the obvious waste.
-	static FRegionDistanceCacheEntry AddRegionDistancePasses(
+	static FRDGTextureRef AddRegionDistanceRecordPasses(
 		FRDGBuilder& GraphBuilder,
-		FMixtormatLayerPassContext& LayerCtx,
+		FMixtormatComposeContext& Ctx,
 		FRDGTextureRef RegionIds,
-		FRDGTextureRef RegionRootIds,
+		const ERegionSeedPolicy Policy,
 		const int32 ProducerIndex,
 		const FIntPoint OutputSize,
 		const int32 LayerIndex)
 	{
-		for (const FRegionDistanceCacheEntry& Entry : LayerCtx.RegionDistanceCache)
+		for (const FRegionDistanceRecord& Entry : Ctx.RegionDistanceRecords)
 		{
-			if (Entry.SourceChildIndex == ProducerIndex)
+			if (Entry.Source == RegionIds && Entry.Resolution == OutputSize && Entry.Policy == Policy)
 			{
-				return Entry;
+				return Entry.Record;
 			}
 		}
 
@@ -1070,6 +1102,7 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatRegionSeedCS::FParameters>();
 		SeedParameters->OutputSize = OutputSize;
 		SeedParameters->RegionIds = RegionIds;
+		SeedParameters->SeedPolicy = static_cast<uint32>(Policy);
 		SeedParameters->OutputRecord = GraphBuilder.CreateUAV(Record[0]);
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -1120,6 +1153,31 @@ namespace MixtormatGpuCompositor
 			RecordIndex = Write;
 		}
 
+		Ctx.RegionDistanceRecords.Add(FRegionDistanceRecord{RegionIds, OutputSize, Policy, Record[RecordIndex]});
+		return Record[RecordIndex];
+	}
+
+	// Relief alone requires per-region reach. Boundary never indexes IDs or allocates extent.
+	static FRegionDistanceCacheEntry AddRegionDistancePasses(
+		FRDGBuilder& GraphBuilder,
+		FMixtormatLayerPassContext& LayerCtx,
+		FRDGTextureRef RegionIds,
+		FRDGTextureRef RegionRootIds,
+		const int32 ProducerIndex,
+		const FIntPoint OutputSize,
+		const int32 LayerIndex)
+	{
+		for (const FRegionDistanceCacheEntry& Entry : LayerCtx.RegionDistanceCache)
+		{
+			if (Entry.Source == RegionIds && Entry.RootIds == RegionRootIds && Entry.Resolution == OutputSize)
+			{
+				return Entry;
+			}
+		}
+		const FRDGTextureRef Record = AddRegionDistanceRecordPasses(GraphBuilder, LayerCtx.Ctx,
+			RegionIds, ERegionSeedPolicy::LegacyFour, ProducerIndex, OutputSize, LayerIndex);
+		const FIntVector Groups(FMath::DivideAndRoundUp(OutputSize.X, 8),
+			FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
 		FRDGTextureRef Extent = GraphBuilder.CreateTexture(
 			FRDGTextureDesc::Create2D(
 				OutputSize,
@@ -1135,7 +1193,7 @@ namespace MixtormatGpuCompositor
 		ExtentParameters->OutputSize = OutputSize;
 		ExtentParameters->RegionIds = RegionIds;
 		ExtentParameters->RegionRootIds = RegionRootIds;
-		ExtentParameters->PreviousRecord = Record[RecordIndex];
+		ExtentParameters->PreviousRecord = Record;
 		ExtentParameters->RegionExtent = GraphBuilder.CreateUAV(Extent);
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
@@ -1144,12 +1202,107 @@ namespace MixtormatGpuCompositor
 
 		FRegionDistanceCacheEntry& Entry = LayerCtx.RegionDistanceCache.AddDefaulted_GetRef();
 		Entry.SourceChildIndex = ProducerIndex;
-		Entry.Record = Record[RecordIndex];
+		Entry.Source = RegionIds;
+		Entry.RootIds = RegionRootIds;
+		Entry.Resolution = OutputSize;
+		Entry.Record = Record;
 		Entry.Extent = Extent;
 		// By value. The cache is inline-allocated, so a reference into it would dangle the moment
 		// a second consumer of a different producer pushed its own entry.
 		return Entry;
 	}
+
+	// Resolution depends on published texture type/address, never on the source producer's enum.
+	static FRDGTextureRef ResolveBoundaryRegionIds(
+		const FMixtormatComposeContext& Ctx, const FMixtormatLayerPassContext& LayerCtx,
+		const FChildRenderData& Child)
+	{
+		const auto IsValid = [&Ctx](FRDGTextureRef Texture)
+		{
+			return Texture && Texture->Desc.Format == PF_R32_UINT
+				&& Texture->Desc.Extent == Ctx.Request.Resolution;
+		};
+		const FBoundaryIdRenderData& Boundary = Child.BoundaryId;
+		if (Boundary.bExplicitSource)
+		{
+			const FPublishedFieldKey& Address = Boundary.RegionIdsSource.Source;
+			if (Boundary.RegionIdsSource.Kind != EMixtormatPublishedFieldKind::RegionIds
+				|| Address.Output != FName(TEXT("RegionIds"))) { return nullptr; }
+			if (Ctx.Request.Layers.IsValidIndex(LayerCtx.LayerIndex)
+				&& Address.LayerId == Ctx.Request.Layers[LayerCtx.LayerIndex].LayerId)
+			{
+				// Current-layer IDs are not published to the graph registry until layer end.
+				for (const auto& Map : LayerCtx.RegionIdMaps)
+				{
+					if (Map.Key == Address.ChildIndex && Map.Key < Child.SourceChildIndex)
+					{
+						return IsValid(Map.Value) ? Map.Value : nullptr;
+					}
+				}
+				return nullptr;
+			}
+			const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Address);
+			return Boundary.RegionIdsSource.Kind == EMixtormatPublishedFieldKind::RegionIds
+				&& Field && Field->Kind == EMixtormatPublishedFieldKind::RegionIds
+				&& Field->IsComplete() && IsValid(Field->Texture) ? Field->Texture : nullptr;
+		}
+		if (!Ctx.Request.Layers.IsValidIndex(LayerCtx.LayerIndex)) { return nullptr; }
+		int32 ProducerIndex = INDEX_NONE;
+		const FRDGTextureRef Source = FindRegionIdsAboveWithIndex(
+			Ctx.Request.Layers[LayerCtx.LayerIndex], LayerCtx.RegionIdMaps, Child, ProducerIndex);
+		return IsValid(Source) ? Source : nullptr;
+	}
+
+	void AddBoundaryIdPass(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child)
+	{
+		if (!Layer.bEnabled) { return; }
+		const FRDGTextureRef RegionIds = ResolveBoundaryRegionIds(Ctx, LayerCtx, Child);
+		if (!RegionIds) { return; } // Unresolved explicit sources never fall back.
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const FRDGTextureRef Record = AddRegionDistanceRecordPasses(GraphBuilder, Ctx, RegionIds,
+			ERegionSeedPolicy::ValidOnlyEight, Child.SourceChildIndex, Size, LayerCtx.LayerIndex);
+		const FRDGTextureDesc Desc = FRDGTextureDesc::Create2D(Size, PF_R32_FLOAT,
+			FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_UAV);
+		FRDGTextureRef Outputs[] = {
+			GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.BoundaryId.Boundary")),
+			GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.BoundaryId.Gap")),
+			GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.BoundaryId.Distance"))};
+		const FBoundaryIdRenderData& Boundary = Child.BoundaryId;
+		TShaderMapRef<FMixtormatBoundaryResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatBoundaryResolveCS::FParameters>();
+		Parameters->OutputSize = Size;
+		Parameters->BoundaryWidthPixels = Boundary.WidthPixels;
+		Parameters->BoundarySoftness = Boundary.Softness;
+		Parameters->GapWidthPixels = Boundary.GapWidthPixels;
+		Parameters->GapSoftness = Boundary.GapSoftness;
+		Parameters->GapBiasPixels = Boundary.GapBiasPixels;
+		Parameters->DistanceRangePixels = Boundary.DistanceRangePixels;
+		Parameters->InvertDistance = Boundary.bInvertDistance ? 1u : 0u;
+		Parameters->RegionIds = RegionIds;
+		Parameters->PreviousRecord = Record;
+		Parameters->OutputBoundary = GraphBuilder.CreateUAV(Outputs[0]);
+		Parameters->OutputGap = GraphBuilder.CreateUAV(Outputs[1]);
+		Parameters->OutputDistance = GraphBuilder.CreateUAV(Outputs[2]);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.BoundaryId.Resolve.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		const FName Names[] = {FName(TEXT("Boundary")), FName(TEXT("Gap")), FName(TEXT("Distance"))};
+		for (int32 Index = 0; Index < UE_ARRAY_COUNT(Outputs); ++Index)
+		{
+			Ctx.PublishedMaskOutputs.Add(
+				FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Names[Index]}, Outputs[Index]);
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Mask,
+				Names[Index], LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[Index],
+					Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
+			}
+		}
+	}
+
 
 	// One Relief From IDs node's edge and ramp fields. Everything above this is shared; only this
 	// dispatch reads the node's own feather and width, which is why the cache above is worth
@@ -1883,6 +2036,7 @@ namespace MixtormatGpuCompositor
 							|| Other.Type == EMixtormatLayerChildType::RampId
 							|| Other.Type == EMixtormatLayerChildType::UvFromIds
 							|| Other.Type == EMixtormatLayerChildType::ReliefFromIds
+							|| Other.Type == EMixtormatLayerChildType::BoundaryFromIds
 							|| bWornEdgesConsumer
 							|| bBreakupConsumer)
 						{

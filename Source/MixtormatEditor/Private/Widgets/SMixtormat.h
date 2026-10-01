@@ -57,6 +57,7 @@ enum class EMixtormatChildCreation : uint8
 	RampFromIds,
 	UvFromIds,
 	ReliefFromIds,
+	BoundaryFromIds,
 	LayerValuesMask,
 	GeneratedMask,
 	ColorIdMask,
@@ -491,6 +492,10 @@ private:
 	FMixtormatReliefIdFilter* GetSelectedReliefId();
 	const FMixtormatReliefIdFilter* GetSelectedReliefId() const;
 	TSharedRef<SWidget> BuildReliefIdControls();
+	FMixtormatBoundaryIdFilter* GetSelectedBoundaryId();
+	const FMixtormatBoundaryIdFilter* GetSelectedBoundaryId() const;
+	TSharedRef<SWidget> BuildBoundaryIdControls();
+	TSharedRef<SWidget> BuildBoundaryIdSourceMenu();
 	TSharedRef<SWidget> BuildIdGroupControls();
 	TSharedRef<SWidget> BuildIdGroupFeatureMenu();
 	TSharedRef<SWidget> BuildCombineIdControls();

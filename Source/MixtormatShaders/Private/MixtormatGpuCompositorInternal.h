@@ -917,6 +917,19 @@ namespace MixtormatGpuCompositor
 		FPebblesRenderData Pebbles;
 	};
 
+	struct FBoundaryIdRenderData
+	{
+		bool bExplicitSource = false;
+		FOutputReferenceRenderData RegionIdsSource;
+		float WidthPixels = 4.0f;
+		float Softness = 0.5f;
+		float GapWidthPixels = 8.0f;
+		float GapSoftness = 0.5f;
+		float GapBiasPixels = 0.0f;
+		float DistanceRangePixels = 64.0f;
+		bool bInvertDistance = false;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -941,6 +954,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorRenderData Generator;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
+		FBoundaryIdRenderData BoundaryId;
 		FOutputReferenceRenderData OutputReference;
 	};
 
@@ -1206,9 +1220,26 @@ namespace MixtormatGpuCompositor
 	// for it once. Nothing here depends on the consumer's own controls: the jump flood and the
 	// per-region reach are functions of the Region IDs alone, and only the final field resolve --
 	// one dispatch -- reads a node's feather and width.
+	enum class ERegionSeedPolicy : uint32
+	{
+		LegacyFour = 0,
+		ValidOnlyEight = 1
+	};
+
+	struct FRegionDistanceRecord
+	{
+		FRDGTextureRef Source = nullptr;
+		FIntPoint Resolution = FIntPoint::ZeroValue;
+		ERegionSeedPolicy Policy = ERegionSeedPolicy::LegacyFour;
+		FRDGTextureRef Record = nullptr;
+	};
+
 	struct FRegionDistanceCacheEntry
 	{
 		int32 SourceChildIndex = INDEX_NONE;
+		FRDGTextureRef Source = nullptr;
+		FRDGTextureRef RootIds = nullptr;
+		FIntPoint Resolution = FIntPoint::ZeroValue;
 		FRDGTextureRef Record = nullptr;
 		FRDGTextureRef Extent = nullptr;
 	};
@@ -1338,6 +1369,8 @@ namespace MixtormatGpuCompositor
 		TMap<FPublishedMaskKey, FRDGTextureRef> PublishedMaskOutputs;
 		TMap<FPublishedFieldKey, FPublishedField> PublishedFieldOutputs;
 		TSet<FPublishedFieldKey> PublishedFieldDemand;
+		// Graph-local identity cache; never retain RDG pointers across compose requests.
+		TArray<FRegionDistanceRecord, TInlineAllocator<2>> RegionDistanceRecords;
 		TSet<int32> RequiredHeightSnapshots;
 		TMap<int32, FRDGTextureRef> HeightSnapshots;
 
@@ -1480,6 +1513,9 @@ namespace MixtormatGpuCompositor
 	// Typed imports run before producers/UV consumers. Export IDs after deferred producers finish.
 	void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer);
+	void AddBoundaryIdPass(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child);
 	void PublishLayerRegionIdOutputs(FMixtormatComposeContext& Ctx,
 		const FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer);
 

@@ -20,6 +20,7 @@ namespace MixtormatGpuCompositor
 		case EMixtormatLayerChildType::RampId:
 		case EMixtormatLayerChildType::UvFromIds:
 		case EMixtormatLayerChildType::ReliefFromIds:
+		case EMixtormatLayerChildType::BoundaryFromIds:
 		case EMixtormatLayerChildType::OutputReference:
 			return true;
 		default:

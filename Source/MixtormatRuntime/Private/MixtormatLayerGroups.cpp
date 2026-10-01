@@ -288,6 +288,7 @@ namespace MixtormatLayerGroups
 				RemapPair(Child.SourceLayerId, Child.SourceChildId);
 				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
 				RemapPair(Child.OutputReference.SourceLayerId, Child.OutputReference.SourceChildId);
+				RemapPair(Child.BoundaryId.RegionIdsSource.SourceLayerId, Child.BoundaryId.RegionIdsSource.SourceChildId);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
