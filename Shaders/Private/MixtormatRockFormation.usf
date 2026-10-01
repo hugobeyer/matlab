@@ -21,12 +21,13 @@
 // Every control is normalised; the full-scale values are the constants below. Style 0..1 spans
 // the part of the preset table that reads well.
 //
-// Three stages:
+// Four stages:
 // ROCK_STAGE 0 (Build): one thread per cell. Builds the cell, walks its BSP tree and writes each
 //   leaf chunk's surface, inset edges, edge tags and gapped outline into structured buffers.
 // ROCK_STAGE 1 (Field): per pixel. Evaluates only the precomputed chunks of the cells around it.
 //   Depends on the settings and resolution only, so it is cached.
 // ROCK_STAGE 2 (Combine): writes the layer's input height from the field. Cheap.
+// ROCK_STAGE 3 (Outputs): derives normalised scalar gates from the cached field.
 //
 // Leaves are stored for the canonical cells of one tile. A pixel reaches a neighbouring tile's
 // copy by shifting itself by whole tiles; every field the chunks use is tile-periodic.
@@ -105,6 +106,10 @@ float HeightScale;
 
 Texture2D<float> RockHeight;
 Texture2D<uint> RockIds;
+Texture2D<float2> RockBoundaryField;
+RWTexture2D<float> OutRockNormalizedHeight;
+RWTexture2D<float> OutRockSlope;
+RWTexture2D<float> OutRockGap;
 RWTexture2D<float> OutRockHeight;
 RWTexture2D<float> OutRockTop;
 RWTexture2D<float> OutRockChamfer;
@@ -932,6 +937,19 @@ FRockPat RockSetup()
 	return P;
 }
 
+#if ROCK_STAGE == 3
+// Gates use analytic bounds regardless of the layer's HeightMode or HeightScale.
+float RockNormalizedHeightAt(int2 Pixel, float HeightLo, float HeightRange)
+{
+	Pixel = int2(RockWrap(Pixel.x, OutputSize.x), RockWrap(Pixel.y, OutputSize.y));
+	if (RockIds.Load(int3(Pixel, 0)) == MIXTORMAT_INVALID_REGION)
+	{
+		return 0.0f;
+	}
+	return saturate((RockHeight.Load(int3(Pixel, 0)) - HeightLo) / HeightRange);
+}
+#endif
+
 #if ROCK_STAGE == 0
 [numthreads(64, 1, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -1070,6 +1088,25 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRockEdgeDistance[Pixel] = boundaryDistance;
 	OutRockBoundaryField[Pixel] = float2(boundaryDistance, hasBoundary ? 1.0f : 0.0f);
 	OutRockIds[Pixel] = hit ? Leaves[bestSlot].Id : MIXTORMAT_INVALID_REGION;
+#elif ROCK_STAGE == 3
+	const FRockPat P = RockSetup();
+	const float heightRange = max(P.height_hi - P.height_lo, 1e-6f);
+	OutRockNormalizedHeight[Pixel] = RockNormalizedHeightAt(Pixel, P.height_lo, heightRange);
+	// Central differences in cell widths, not pixels or tile widths. Wrap to preserve tiling
+	// and account for each axis separately at non-square resolutions.
+	const float2 gradient = float2(
+		RockNormalizedHeightAt(Pixel + int2(1, 0), P.height_lo, heightRange)
+			- RockNormalizedHeightAt(Pixel - int2(1, 0), P.height_lo, heightRange),
+		RockNormalizedHeightAt(Pixel + int2(0, 1), P.height_lo, heightRange)
+			- RockNormalizedHeightAt(Pixel - int2(0, 1), P.height_lo, heightRange))
+		* float2(OutputSize) / (2.0f * (float)P.cu);
+	// Inclination / 90 degrees: 0 = flat, 0.5 = 45 degrees, approaching 1 = vertical.
+	OutRockSlope[Pixel] = RockIds.Load(int3(Pixel, 0)) != MIXTORMAT_INVALID_REGION
+		? saturate(atan(length(gradient)) * (4.0f / ROCK_TAU)) : 0.0f;
+	// Height hits include walls extending past the outline, so IDs/classes are not coverage.
+	// The union's signed gapped-outline distance is negative inside; unsampled pixels are gap.
+	const float2 boundary = RockBoundaryField.Load(int3(Pixel, 0));
+	OutRockGap[Pixel] = boundary.y > 0.0f && boundary.x <= 0.0f ? 0.0f : 1.0f;
 #else
 	// The field is the layer's height. How it meets the stack below is the layer's Height Op.
 	// Analytic maps the settings' own bounds to 0..1; Raw and Measured arrive here as they are

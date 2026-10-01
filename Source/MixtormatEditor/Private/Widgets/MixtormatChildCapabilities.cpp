@@ -106,6 +106,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("RockWallRamp")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRockWallRamp", "Wall Ramp"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockHeight")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockHeight", "Height"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockSlope")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockSlope", "Slope"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RockGap")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockGap", "Gap"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver)
 		{
@@ -198,6 +207,47 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		// preview -- see priorities.md on hardcoded preview tables.
 		break;
 	}
+	// Preview IDs use NAME_None; references use the registry's explicit RegionIds address.
+	const bool bPublishesIds = Result.Outputs.ContainsByPredicate(
+		[](const FMixtormatPublishedOutputDesc& Output)
+		{
+			return Output.Kind == EMixtormatPreviewOutputKind::RegionIds;
+		});
+	if (bPublishesIds)
+	{
+		Result.Outputs.Add({FName(TEXT("RegionIds")), RegionIdsLabel,
+			EMixtormatPreviewOutputKind::RegionIds, false, false, false, NAME_None,
+			true, EMixtormatPublishedFieldKind::RegionIds});
+	}
+	for (FMixtormatPublishedOutputDesc& Output : Result.Outputs)
+	{
+		if (Output.Name == FName(TEXT("FlowDirection")))
+		{
+			Output.bCopyableAsField = true;
+			Output.FieldKind = EMixtormatPublishedFieldKind::Flow;
+		}
+	}
+	if (Result.Outputs.ContainsByPredicate([](const FMixtormatPublishedOutputDesc& Output)
+		{ return Output.Name == FName(TEXT("WarpedUVGrid")); }))
+	{
+		Result.Outputs.Add({FName(TEXT("WarpedUV")),
+			NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs"),
+			EMixtormatPreviewOutputKind::WarpedUVGrid, false, false, false, NAME_None,
+			true, EMixtormatPublishedFieldKind::UVMap});
+	}
+	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	{
+		const EMixtormatPublishedFieldKind Kind = Child.OutputReference.Kind;
+		const bool bIds = Kind == EMixtormatPublishedFieldKind::RegionIds;
+		const bool bFlow = Kind == EMixtormatPublishedFieldKind::Flow;
+		Result.Outputs.Add({bIds ? FName(TEXT("RegionIds")) : bFlow
+			? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV")),
+			bIds ? RegionIdsLabel : bFlow ? NSLOCTEXT("SMixtormat", "CopyOutputFlow", "Flow")
+				: NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs"),
+			bIds ? EMixtormatPreviewOutputKind::RegionIds : bFlow
+				? EMixtormatPreviewOutputKind::FlowDirection : EMixtormatPreviewOutputKind::WarpedUVGrid,
+			false, false, false, NAME_None, true, Kind});
+	}
 	return Result;
 }
 
@@ -221,7 +271,7 @@ TArray<FMixtormatPublishedOutputDesc> GetCopyableOutputs(const FMixtormatChildCa
 	TArray<FMixtormatPublishedOutputDesc> Copyable;
 	for (const FMixtormatPublishedOutputDesc& Output : Capabilities.Outputs)
 	{
-		if (Output.bCopyableAsMask)
+		if (Output.bCopyableAsMask || Output.bCopyableAsField)
 		{
 			Copyable.Add(Output);
 		}

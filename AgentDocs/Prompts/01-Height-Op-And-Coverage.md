@@ -2,6 +2,8 @@
 
 Paste `00-Shared-Rules.md` above this.
 
+**Preservation correction:** retain the full Height Blending feature and its controls, independently of Height Op. Do not execute tests, builds, Unreal, shell, git, or dxc without explicit permission.
+
 ## Goal
 Replace every implicit or ad-hoc height-combine rule with two explicit per-layer settings and one formula.
 
@@ -22,9 +24,10 @@ Today a layer's height combine is derived implicitly, which makes it hard to pre
    - `Max`
    - `Difference` (`abs(below - layer)`)
 2. **`float HeightSoftness`**: the smooth min/max width for Min and Max, using the existing polynomial smax/smin with fillet (see `EvaluateHeightBlend` and the SmoothHeightMerge branch). 0 means a hard min/max.
-3. **`EMixtormatCoverageSource`** = `Mask` or `Height`.
-   - `Mask`: coverage = opacity × placement mask × feature masks, as today.
-   - `Height`: today's Height Mask Blending contest decides coverage for **every** channel. Keep only what the contest needs: `HeightThreshold` (lows vs highs) and `HeightCoverageSoftness` (rename if clearer). Drop the rest unless it is genuinely still used, and justify anything you keep in the report.
+3. **Height Blending remains independent.**
+   - Disabled: coverage = opacity × placement mask × feature masks, as today.
+   - Enabled: the existing Height Blending contest modulates coverage for **every** channel. Preserve `bHeightBlendEnabled`, height source, threshold, range, contrast, offset, bias, invert, constant height, amount, and their existing behavior.
+   - Do not replace these controls with a reduced Coverage enum.
 4. **One formula, for height:** `result = lerp(below, op(below, layer), coverage)`. Colour, roughness, AO, metallic and normal keep their existing coverage weighting, driven by the same coverage value.
 5. **Empty ground.** Add an internal per-pixel occupancy map: R8 or R16F, ping-ponged on the layer index like the height targets, cleared to 0 for the substrate.
    - Each layer writes `max(occBelow, coverage)` for an enabled layer.
@@ -33,24 +36,22 @@ Today a layer's height combine is derived implicitly, which makes it hard to pre
    - This must not make layer 0 a special case; occupancy is the only mechanism.
    - Internal only; not published.
 
-## Delete (no shims)
+## Replace internal height-combine machinery (preserve user controls)
 - `bSmoothHeightMerge` (render data, gather, shader param, shader branch).
 - The implicit Replace + Combine derivation.
-- `bHeightBlendEnabled`, plus every height-blend field the new model doesn't use (layer, render data, gather, shader params, inspector rows, parameter authoring/bindings, tests).
+- Preserve `bHeightBlendEnabled` and every user-facing Height Blending field throughout data, gather, shaders, inspector, authoring, bindings, and tests.
 - `EMixtormatGeneratorBlendMode` and `EMixtormatStrataBlendMode`, and every generator `BlendMode`/`*BlendMode`/`StrataBlendAmount` property, with their shader params and the switch blocks inside the generator shaders.
   - Generators now write their field into the layer input height **as Replace**: the generator output *is* the layer's height.
   - Combining with the stack below is the layer's Height Op.
   - Check how each generator currently mixes with `SourceHeight`, and keep any "Amount" that scales the generator's own relief, but no combine modes.
-- The BLEND badge logic in `MixtormatLayerBadges.cpp`. Badges should show the Height Op (short labels: REP, ADD, SUB, MUL, MIN, MAX, DIF) and an "H" marker when Coverage = Height.
-- The debug preview mode `HeightBlend` stays only if it still means something: it should preview the coverage when Coverage = Height. Otherwise delete it.
+- The BLEND badge logic in `MixtormatLayerBadges.cpp`. Badges should show the Height Op (short labels: REP, ADD, SUB, MUL, MIN, MAX, DIF) and an "H" marker when Height Blending is on.
+- Preserve the `HeightBlend` debug preview and its coverage visualization.
 
 ## UI
-- One **HEIGHT** card per layer, replacing the Height Blending card (`BuildHeightBlendControls`):
+- Add Height Op and Softness controls; keep the existing Height Blending card (`BuildHeightBlendControls`), all its controls, and its preview eye.
   - Op dropdown.
   - Softness, visible only for Min and Max.
-  - Coverage dropdown.
-  - Threshold and coverage softness, visible only when Coverage = Height.
-  - The coverage preview eye goes on the card's header row, next to the title, like the other panels.
+  - Height Blending toggle and the complete existing control set remain independent.
 - Use the same widgets and helpers as the neighbouring cards (`MakeMemberEnum`, `MakeMemberSlider`, `AddCard`, `MixtormatRow::MakePair`).
 
 ## Shader work (`MixtormatComposite.usf`)
@@ -61,19 +62,19 @@ Today a layer's height combine is derived implicitly, which makes it hard to pre
 - Watch `PreparedLayerMode` 1 and 2 (the structure-effects re-composite in `ComposePipeline.cpp` around the `bPrepareStructure` path). Both must use the same op.
 
 ## Static checks
-- dxc at HV 2018 and HV 2021 for `MixtormatComposite.usf` (all entry points and permutations), plus every generator shader you touched.
-- Grep for zero remaining hits of `bSmoothHeightMerge`, `SmoothHeightMerge`, `bHeightBlendEnabled`, `HeightBlendEnabled`, `EMixtormatGeneratorBlendMode`, `EMixtormatStrataBlendMode`, and each deleted field name. Cover Source, Shaders, Config, Docs and Tests.
+- Only with explicit execution permission: dxc at HV 2018 and HV 2021 for `MixtormatComposite.usf` (all entry points and permutations), plus every generator shader you touched.
+- Grep for zero remaining hits of `bSmoothHeightMerge`, `SmoothHeightMerge`, `EMixtormatGeneratorBlendMode`, `EMixtormatStrataBlendMode`, and each deleted field name. Cover Source, Shaders, Config, Docs and Tests.
 - Compare each touched shader's globals against its `SHADER_PARAMETER` list.
-- Tests: rewrite `MixtormatCompositionBlendTests.cpp` and any other test touching removed fields so they assert the new ops (Replace, Add, Max on the first layer equals Replace, Coverage = Height). Keep them compiling; Hugo runs them.
+- Tests: rewrite `MixtormatCompositionBlendTests.cpp` and any other test touching removed fields so they assert the new ops (Replace, Add, Max on the first layer equals Replace, independent Height Blending). Keep them compiling; Hugo runs them.
 
 ## Docs
-- Update the layer/height section of `Docs/index.html` to describe Op + Coverage + empty ground.
+- Update the layer/height section of `Docs/index.html` to describe Height Op + independent Height Blending + empty ground.
 
 ## Report and checklist for Hugo
 - Terse bullets: what changed, what was deleted, and any judgement calls.
 - Checklist:
   - First layer: every op gives sensible heights, and Min/Max/Difference look like Replace.
-  - Rock layer + material on top: Max, Add, and Coverage = Height (settles into lows).
+  - Rock layer + material on top: Max, Add, and independent Height Blending (settles into lows).
   - Softness on Min and Max rounds the join.
   - Badges show the op.
   - Generators no longer have blend dropdowns.

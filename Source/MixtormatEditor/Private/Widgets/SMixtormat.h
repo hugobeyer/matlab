@@ -22,6 +22,7 @@ namespace MixtormatMenu { class FBuilder; }
 
 class FAssetThumbnail;
 class FAssetThumbnailPool;
+class FMixtormatChildDragDropOp;
 class UMaterialInterface;
 class IToolTip;
 class SBox;
@@ -76,6 +77,7 @@ struct FMixtormatAddTarget
 {
 	int32 LayerIndex = INDEX_NONE;
 	FGuid GroupId;
+	FGuid ScopeOwnerChildId;
 
 	static FMixtormatAddTarget Layer(const int32 InLayerIndex)
 	{
@@ -145,6 +147,7 @@ public:
 	bool CanCloseTab();
 
 private:
+
 	struct FEditHistoryState
 	{
 		TArray<FMixtormatLayer> Layers;
@@ -304,14 +307,20 @@ private:
 	FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address);
 	const FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address) const;
 	int32 ResolveChildIndexAt(const FMixtormatChildAddress& Address) const;
+	bool CanMovePublishedOutputs(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest, int32 InsertIndex) const;
+	bool CanMoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest) const;
+	FReply MoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
+	FMixtormatChildAddress GetDraggedChildAddress(const FMixtormatChildDragDropOp& Operation) const;
+	bool CanDropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest) const;
+	FReply DropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest);
 
 	// Copy takes the payload; Copy as Instance takes the address as well; Copy Output takes one of
 	// Address's published outputs (see MixtormatChildCapabilities.h) and builds a published-source
 	// mask from it. Paste reads FMixtormatChildClipboard::Mode to decide which of the three it does
 	// -- there is no separate "Paste Instance" destination command any more.
 	void CopyChild(const FMixtormatChildAddress& Address, bool bAsInstance);
-	// OutputName must name one of GetChildCapabilities(*ResolveChildAt(Address)).Outputs with
-	// bCopyableAsMask set.
+	// Scalar outputs become live gate masks; typed fields become OutputReference children.
+	bool CanCopyChildOutput(const FMixtormatChildAddress& Address, FName OutputName) const;
 	void CopyChildOutput(const FMixtormatChildAddress& Address, FName OutputName);
 	// Where the clipboard's child may land at Dest, given the row the paste was asked from.
 	// INDEX_NONE when nothing in Dest can take it (wrong kind for Dest, or -- for Mode::Instance --
@@ -343,6 +352,8 @@ private:
 	// configured child creation path in both menus.
 	void AddCreationSections(MixtormatMenu::FBuilder& Menu, FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildAddIdsMenu(FMixtormatAddTarget Target);
+	TSharedRef<SWidget> BuildAddFromIdsMenu(FMixtormatAddTarget Target);
+	void AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner);
 	TSharedRef<SWidget> BuildAddFiltersMenu(FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildAddMasksMenu(FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildAddGeneratorsMenu(FMixtormatAddTarget Target);

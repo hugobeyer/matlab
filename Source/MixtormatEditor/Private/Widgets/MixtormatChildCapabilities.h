@@ -38,6 +38,10 @@ struct FMixtormatPublishedOutputDesc
 	// from a valid one by itself (Breakup's Region IDs; Cluster/Pattern/Combine IDs need nothing
 	// here -- Cluster has no invalid pixels, Pattern/Combine blacken their own inline).
 	FName PreviewGapMaskName;
+
+	// Typed fields retain their full payload instead of being coerced into scalar masks.
+	bool bCopyableAsField = false;
+	EMixtormatPublishedFieldKind FieldKind = EMixtormatPublishedFieldKind::RegionIds;
 };
 
 // Everything one child type/procedural kind publishes. Preview, Copy Output and (eventually)

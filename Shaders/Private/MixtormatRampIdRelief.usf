@@ -24,6 +24,7 @@ Texture2D<float2> RampField;
 Texture2D<float2> EdgeField;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
+// Bounded analysis roots, not raw identities. Both height stages use this map only as addresses.
 Texture2D<uint> PatternRegionIds;
 Texture2D<uint> PatternHeightMax;
 
@@ -63,7 +64,7 @@ float BevelInsetPixels;
 float GapHeight;
 float FeatherGain;
 
-// Pattern-only reduction. Positive structural elevation is limited against one maximum source
+// Per-region reduction. Positive structural elevation is limited against one maximum source
 // height per region, so every flat-face texel receives the same safe offset.
 [numthreads(8, 8, 1)]
 void PatternHeightMaxCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -75,7 +76,7 @@ void PatternHeightMaxCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const uint RegionId = PatternRegionIds.Load(int3(Pixel, 0));
-	if (RegionId == MIXTORMAT_INVALID_REGION)
+	if (RegionId >= uint(OutputSize.x) * uint(OutputSize.y))
 	{
 		return;
 	}
@@ -298,7 +299,7 @@ float PatternCellHeight(int2 P)
 
 	const int2 W = RampWrapPixel(P);
 	const uint RegionId = PatternRegionIds.Load(int3(W, 0));
-	if (RegionId == MIXTORMAT_INVALID_REGION)
+	if (RegionId >= uint(OutputSize.x) * uint(OutputSize.y))
 	{
 		return 0.0f;
 	}

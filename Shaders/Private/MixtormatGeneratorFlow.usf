@@ -332,7 +332,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 #endif
 
-#if FLOW_STAGE == 3
+#if FLOW_STAGE == 3 || FLOW_STAGE == 8
 // Smoothed direction, bilinear and renormalized. Where the blur cancelled opposing vectors
 // (a medial-axis collision) there is no direction to renormalize, so the raw nearest texel
 // is used instead of inventing one. Influence and distance always come from the raw field.
@@ -346,6 +346,37 @@ float4 FlowAt(float2 UV)
 	return float4(Direction, Raw.z, FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f).w);
 }
 
+float2 TraceFlowCoordinate(float2 UV)
+{
+	const int StepCount = max(Steps, 1);
+	const float H = TraceLength * WarpStrength / (float)StepCount;
+	float2 P = UV;
+	[loop]
+	for (int I = 0; I < StepCount; I++)
+	{
+		const float4 A = FlowAt(P);
+		const float2 K1 = A.xy * A.w;
+		const float4 B = FlowAt(P - 0.5f * H * K1);
+		P -= H * B.xy * B.w;
+	}
+	return P;
+}
+#endif
+
+#if FLOW_STAGE == 8
+// A live Flow reference remaps destination source reads without evaluating its producer again.
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	OutWarpedUV[Pixel] = FlowValidity.Load(int3(Pixel, 0)) > 0.0f
+		? TraceFlowCoordinate(UV) : UV;
+}
+#endif
+
+#if FLOW_STAGE == 3
 float SampleHeight(float2 UV)
 {
 	return RockHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
@@ -420,15 +451,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Generator Flow: midpoint (RK2) trace upstream through the influence-weighted field, so
 		// the displacement feathers out with the influence. One height sample at the end.
 		const float H = TraceLength * WarpStrength / (float)StepCount;
-		float2 P = UV;
-		[loop]
-		for (int I = 0; I < StepCount; I++)
-		{
-			const float4 A = FlowAt(P);
-			const float2 K1 = A.xy * A.w;
-			const float4 B = FlowAt(P - 0.5f * H * K1);
-			P -= H * B.xy * B.w;
-		}
+		const float2 P = TraceFlowCoordinate(UV);
 		OutHeight[Pixel] = abs(H) > 0.0f ? SampleHeight(P) : Original;
 		OutWarpedUV[Pixel] = P;
 		OutCarveMask[Pixel] = 0.0f;

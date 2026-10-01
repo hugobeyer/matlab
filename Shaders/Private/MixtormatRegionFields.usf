@@ -22,10 +22,27 @@
 //   distance  -- jump-flooded distance to the nearest region boundary, signed so that a pixel in
 //                no region reads negative. Pattern's edge field in everything but provenance.
 //
-// An ID is the linear index of its region's root pixel, which is what carries the root's position
-// for free and why nothing anywhere compacts these to a dense range.
-
+// RegionIds carries identity, not an address: zero, compact labels and full-width hashes are
+// equally valid. RegionRootIds is a separate analysis map of bounded pixel indices. Bind the
+// original map directly only when its producer guarantees pixel-root IDs; compact labels need
+// IndexCS just as hashes do. Random draws and boundary equality always use the original IDs.
 Texture2D<uint> RegionIds;
+Texture2D<uint> RegionRootIds;
+
+// IndexCS contract: three separate dispatches (0 init, 1 register/reduce, 2 resolve), with
+// ordinary RDG UAV barriers. Both uint buffers have the same capacity, at least twice the
+// maximum distinct ID count and at most twice the pixel count. Use 2 * pixel-count for unknown
+// full-width IDs; a known compact-label bound permits a smaller table. The minimum member
+// pixel is deterministic even across disconnected regions and wrap seams. A winning claim
+// never assigns a root: all contenders atomically reduce roots initialized in the prior pass.
+uint IndexStage;
+globallycoherent RWStructuredBuffer<uint> RegionIndexKeys;
+globallycoherent RWStructuredBuffer<uint> RegionIndexRoots;
+RWTexture2D<uint> OutputRootIds;
+
+#define REGION_INDEX_STAGE_INIT 0u
+#define REGION_INDEX_STAGE_REGISTER 1u
+#define REGION_INDEX_STAGE_RESOLVE 2u
 
 // Two ints per possible root -- min/max for one axis. X and Y are solved sequentially through
 // the same scratch allocation, halving the bounds solve's peak memory without changing its math.
@@ -34,7 +51,7 @@ RWStructuredBuffer<int> RegionBounds;
 // One exact packed seed coordinate per pixel: low 16 bits X, high 16 bits Y. 0xffffffff means
 // no seed. Unreal's supported texture dimensions are well below 65535, so this preserves every
 // pixel coordinate exactly while taking 4 bytes instead of the old float4's 16.
-#define REGION_RECORD_INVALID 0xffffffffu
+#define REGION_RECORD_INVALID MIXTORMAT_INVALID_REGION
 Texture2D<uint> PreviousRecord;
 RWTexture2D<uint> OutputRecord;
 
@@ -115,8 +132,105 @@ bool RegionRecordValid(uint Record)
 
 bool RegionIdValid(uint RawId)
 {
-	return RawId != MIXTORMAT_INVALID_REGION
-		&& RawId < uint(OutputSize.x * OutputSize.y);
+	return RawId != MIXTORMAT_INVALID_REGION;
+}
+
+// A malformed analysis binding must never let a full-width identity address a buffer/texture.
+uint RegionRootIndex(int2 Pixel, uint RawId)
+{
+	if (!RegionIdValid(RawId))
+	{
+		return MIXTORMAT_INVALID_REGION;
+	}
+	const uint Root = RegionRootIds.Load(int3(Pixel, 0));
+	return Root < uint(OutputSize.x) * uint(OutputSize.y) ? Root : MIXTORMAT_INVALID_REGION;
+}
+
+[numthreads(8, 8, 1)]
+void IndexCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(OutputSize <= 0) || any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	// Keep the pixel count and twice that count representable before any address arithmetic.
+	if (uint(OutputSize.x) > 0x7fffffffu / uint(OutputSize.y))
+	{
+		return;
+	}
+	const uint PixelCount = uint(OutputSize.x) * uint(OutputSize.y);
+	const uint Index = Pixel.x + Pixel.y * uint(OutputSize.x);
+	uint Capacity, KeyStride, RootCount, RootStride;
+	RegionIndexKeys.GetDimensions(Capacity, KeyStride);
+	RegionIndexRoots.GetDimensions(RootCount, RootStride);
+	if (Capacity == 0u || Capacity > PixelCount * 2u || RootCount != Capacity)
+	{
+		// A host allocation error is not a reason to index a shorter table.
+		if (IndexStage == REGION_INDEX_STAGE_RESOLVE)
+		{
+			OutputRootIds[Pixel] = MIXTORMAT_INVALID_REGION;
+		}
+		return;
+	}
+	if (IndexStage == REGION_INDEX_STAGE_INIT)
+	{
+		if (Index < Capacity)
+		{
+			RegionIndexKeys[Index] = MIXTORMAT_INVALID_REGION;
+			RegionIndexRoots[Index] = MIXTORMAT_INVALID_REGION;
+		}
+		const uint Extra = Index + PixelCount;
+		if (Extra < Capacity)
+		{
+			RegionIndexKeys[Extra] = MIXTORMAT_INVALID_REGION;
+			RegionIndexRoots[Extra] = MIXTORMAT_INVALID_REGION;
+		}
+		return;
+	}
+
+	const uint RawId = RegionIds.Load(int3(Pixel, 0));
+	uint Root = MIXTORMAT_INVALID_REGION;
+	if (RegionIdValid(RawId))
+	{
+		uint Slot = MixtormatRegionHash(RawId) % Capacity;
+		[loop]
+		for (uint Probe = 0u; Probe < Capacity; ++Probe)
+		{
+			if (IndexStage == REGION_INDEX_STAGE_REGISTER)
+			{
+				uint Previous;
+				InterlockedCompareExchange(RegionIndexKeys[Slot], MIXTORMAT_INVALID_REGION, RawId, Previous);
+				if (Previous == MIXTORMAT_INVALID_REGION || Previous == RawId)
+				{
+					InterlockedMin(RegionIndexRoots[Slot], Index);
+					return;
+				}
+			}
+			else if (IndexStage == REGION_INDEX_STAGE_RESOLVE)
+			{
+				const uint Key = RegionIndexKeys[Slot];
+				if (Key == RawId)
+				{
+					Root = RegionIndexRoots[Slot];
+					break;
+				}
+				if (Key == MIXTORMAT_INVALID_REGION)
+				{
+					break;
+				}
+			}
+			else
+			{
+				return;
+			}
+			Slot = (Slot + 1u) % Capacity;
+		}
+	}
+	if (IndexStage == REGION_INDEX_STAGE_RESOLVE)
+	{
+		OutputRootIds[Pixel] = Root < PixelCount ? Root : MIXTORMAT_INVALID_REGION;
+	}
 }
 
 // ------------------------------------------------------------------------------------------
@@ -147,10 +261,11 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const uint RawId = RegionIds.Load(int3(Pixel, 0));
-	const bool bValid = RegionIdValid(RawId);
-	const uint RootId = bValid ? RawId : Index;
-	const int RootX = int(RootId % uint(OutputSize.x));
-	const int RootY = int(RootId / uint(OutputSize.x));
+	const uint RootId = RegionRootIndex(int2(Pixel), RawId);
+	const bool bHasRoot = RootId != MIXTORMAT_INVALID_REGION;
+	const uint Anchor = bHasRoot ? RootId : Index;
+	const int RootX = int(Anchor % uint(OutputSize.x));
+	const int RootY = int(Anchor / uint(OutputSize.x));
 	const int RootCoord = Axis == 0u ? RootX : RootY;
 	const int PixelCoord = Axis == 0u ? int(Pixel.x) : int(Pixel.y);
 	const int AxisSize = Axis == 0u ? OutputSize.x : OutputSize.y;
@@ -158,7 +273,7 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (Stage == REGION_BOUNDS_STAGE_REDUCE)
 	{
-		if (bValid)
+		if (bHasRoot)
 		{
 			InterlockedMin(RegionBounds[RootId * 2u + 0u], Delta);
 			InterlockedMax(RegionBounds[RootId * 2u + 1u], Delta);
@@ -170,7 +285,7 @@ void BoundsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// and the transform collapses to nothing there, rather than dragging grout toward some
 	// neighbouring region's centre.
 	const float2 IdentityUV = (float2(Pixel) + 0.5f) / float2(OutputSize);
-	if (!bValid)
+	if (!bHasRoot)
 	{
 		if (Axis == 0u)
 		{
@@ -321,7 +436,8 @@ void ExtentCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const uint RawId = RegionIds.Load(int3(Pixel, 0));
-	if (!RegionIdValid(RawId))
+	const uint RootId = RegionRootIndex(int2(Pixel), RawId);
+	if (RootId == MIXTORMAT_INVALID_REGION)
 	{
 		return;
 	}
@@ -334,8 +450,8 @@ void ExtentCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Distance = RegionToroidalDistance(int2(Pixel), RegionUnpackRecord(Record)) + 0.5f;
 
 	const uint2 RootPixel = uint2(
-		RawId % uint(OutputSize.x),
-		RawId / uint(OutputSize.x));
+		RootId % uint(OutputSize.x),
+		RootId / uint(OutputSize.x));
 	InterlockedMax(RegionExtent[RootPixel], asuint(max(Distance, 0.0f)));
 }
 
@@ -364,22 +480,23 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// record points at, so a grout pixel's chamfer varies with the piece it borders instead of
 	// being uniform along every wall in the image.
 	uint OwnerId = RawId;
+	int2 OwnerPixel = P;
 	if (!bValid && RegionRecordValid(Record))
 	{
-		const int2 SeedPixel = RegionUnpackRecord(Record);
-		const uint SeedId = RegionIds.Load(int3(SeedPixel, 0));
-		OwnerId = SeedId;
+		OwnerPixel = RegionUnpackRecord(Record);
+		OwnerId = RegionIds.Load(int3(OwnerPixel, 0));
 	}
 
 	const bool bHasOwner = RegionIdValid(OwnerId);
 	const uint Seeded = MixtormatRegionSeed(bHasOwner ? OwnerId : 0u, FieldSeed);
 
 	float Reach = 1.0f;
-	if (bHasOwner)
+	const uint OwnerRoot = RegionRootIndex(OwnerPixel, OwnerId);
+	if (OwnerRoot != MIXTORMAT_INVALID_REGION)
 	{
 		const uint2 RootPixel = uint2(
-			OwnerId % uint(OutputSize.x),
-			OwnerId / uint(OutputSize.x));
+			OwnerRoot % uint(OutputSize.x),
+			OwnerRoot / uint(OutputSize.x));
 		Reach = max(asfloat(RegionExtentIn.Load(int3(RootPixel, 0))), 1.0e-4f);
 	}
 

@@ -48,7 +48,7 @@ namespace MixtormatLayerBadges
 	TArray<FText> CompositionToolTips();
 
 	// The layer mark: the Height Op as a three-letter word (REP, ADD, SUB, MUL, MIN, MAX, DIF),
-	// followed by H when coverage comes from height. A detail layer has no height, so it says DTL.
+	// followed by H when Height Blending is on. A detail layer has no height, so it says DTL.
 	FText ForLayer(const FMixtormatLayer& Layer);
 
 	// The colour blend mark, and empty when the mode is Normal.

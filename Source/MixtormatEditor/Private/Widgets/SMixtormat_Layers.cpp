@@ -21,6 +21,53 @@ namespace
 {
 	constexpr int32 MaximumScopeDepth = 4;
 
+	DECLARE_DELEGATE_RetVal_TwoParams(bool, FCanDropIdGroupChild,
+		const FMixtormatChildDragDropOp&, FMixtormatChildAddress);
+	DECLARE_DELEGATE_RetVal_TwoParams(FReply, FDropIdGroupChild,
+		const FMixtormatChildDragDropOp&, FMixtormatChildAddress);
+
+	// Inside the existing row drop target: ID containment gets first refusal, while every
+	// unrelated gesture continues to the original reorder/move handlers unchanged.
+	class SMixtormatIdGroupChildDropTarget final : public SCompoundWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatIdGroupChildDropTarget) {}
+			SLATE_DEFAULT_SLOT(FArguments, Content)
+			SLATE_ARGUMENT(FMixtormatChildAddress, Address)
+			SLATE_EVENT(FCanDropIdGroupChild, OnCanDrop)
+			SLATE_EVENT(FDropIdGroupChild, OnIdDrop)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs)
+		{
+			Address = InArgs._Address;
+			OnCanDrop = InArgs._OnCanDrop;
+			OnIdDrop = InArgs._OnIdDrop;
+			ChildSlot[InArgs._Content.Widget];
+		}
+
+		virtual FReply OnDragOver(const FGeometry&, const FDragDropEvent& Event) override
+		{
+			const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+				Event.GetOperationAs<FMixtormatChildDragDropOp>();
+			return Operation.IsValid() && OnCanDrop.IsBound() && OnCanDrop.Execute(*Operation, Address)
+				? FReply::Handled() : FReply::Unhandled();
+		}
+
+		virtual FReply OnDrop(const FGeometry&, const FDragDropEvent& Event) override
+		{
+			const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+				Event.GetOperationAs<FMixtormatChildDragDropOp>();
+			return Operation.IsValid() && OnIdDrop.IsBound()
+				? OnIdDrop.Execute(*Operation, Address) : FReply::Unhandled();
+		}
+
+	private:
+		FMixtormatChildAddress Address;
+		FCanDropIdGroupChild OnCanDrop;
+		FDropIdGroupChild OnIdDrop;
+	};
+
 	EMixtormatEffectType EffectTypeOf(const FMixtormatLayerChild& Child)
 	{
 		if (const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous())
@@ -150,12 +197,24 @@ namespace
 						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 						|| Child.Type == EMixtormatLayerChildType::PatternId
 						|| Child.Type == EMixtormatLayerChildType::CombineId
-						|| Child.Type == EMixtormatLayerChildType::IdGroup)
+						|| Child.Type == EMixtormatLayerChildType::IdGroup
+						|| Child.Type == EMixtormatLayerChildType::OutputReference)
 					? MixtormatIcons::Generated()
 					: MixtormatIcons::Mask())
 			.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
 	}
 
+
+	FText OutputReferenceKindText(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.OutputReference.Kind)
+		{
+		case EMixtormatPublishedFieldKind::RegionIds: return LOCTEXT("OutputReferenceIdsKind", "REF · IDs");
+		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("OutputReferenceFlowKind", "REF · FLOW");
+		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("OutputReferenceUvKind", "REF · UVs");
+		}
+		return LOCTEXT("OutputReferenceKind", "REF · FIELD");
+	}
 
 	// Tree connector for a scoped row: a tee while another child of the same owner follows it,
 	// an elbow on the last one. Null for a top-level child.
@@ -260,27 +319,152 @@ namespace
 		return INDEX_NONE;
 	}
 
-	bool CanAddScopedChild(const TArray<FMixtormatLayerChild>& Children, const int32 OwnerIndex)
+	bool GetPublishedOutputSource(const FMixtormatLayerChild& Child, FGuid& OwnerId, FGuid& ChildId)
 	{
-		if (!Children.IsValidIndex(OwnerIndex)
-			|| GetScopeDepth(Children, OwnerIndex) >= MaximumScopeDepth)
+		if (Child.Type == EMixtormatLayerChildType::OutputReference)
+		{
+			OwnerId = Child.OutputReference.SourceLayerId;
+			ChildId = Child.OutputReference.SourceChildId;
+			return true;
+		}
+		if (Child.Type == EMixtormatLayerChildType::Mask
+			&& (Child.Mask.PublishedSourceLayerId.IsValid() || Child.Mask.PublishedSourceChildId.IsValid()))
+		{
+			OwnerId = Child.Mask.PublishedSourceLayerId;
+			ChildId = Child.Mask.PublishedSourceChildId;
+			return true;
+		}
+		return false;
+	}
+
+	const TArray<FMixtormatLayerChild>* FindChildrenInScope(const FMixtormatBindingScope& Scope, const FGuid OwnerId)
+	{
+		for (const FMixtormatLayer& Layer : Scope.GetLayers())
+		{
+			if (Layer.LayerId == OwnerId)
+			{
+				return &Layer.Children;
+			}
+		}
+		const FMixtormatLayerGroup* Group = Scope.Groups
+			? MixtormatLayerGroups::FindGroup(*Scope.Groups, OwnerId) : nullptr;
+		return Group ? &Group->Children : nullptr;
+	}
+
+	bool CanReadPublishedOutputAt(
+		const FMixtormatBindingScope& Scope,
+		const FMixtormatLayerChild& Child,
+		const FGuid DestOwnerId,
+		const int32 InsertIndex)
+	{
+		FGuid SourceOwnerId, SourceChildId;
+		if (!GetPublishedOutputSource(Child, SourceOwnerId, SourceChildId))
+		{
+			return true;
+		}
+		// Typed bundles are imported before local producers; only earlier owners can supply them.
+		if (Child.Type == EMixtormatLayerChildType::OutputReference && SourceOwnerId == DestOwnerId)
 		{
 			return false;
 		}
-		if (Children[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup)
+		using EPlacement = MixtormatParameterBinding::EInstancePlacement;
+		if (!SourceOwnerId.IsValid() || !SourceChildId.IsValid()
+			|| MixtormatParameterBinding::ClassifyInstancePlacement(
+				Scope, SourceOwnerId, SourceChildId, DestOwnerId, InsertIndex) != EPlacement::Valid
+			|| (Child.IsInstance() && MixtormatParameterBinding::ClassifyInstancePlacement(
+				Scope, Child.SourceLayerId, Child.SourceChildId, DestOwnerId, InsertIndex) != EPlacement::Valid))
 		{
-			const FGuid OwnerId = Children[OwnerIndex].ChildId;
-			int32 ScopedChildCount = 0;
-			for (const FMixtormatLayerChild& Child : Children)
+			return false;
+		}
+		if (SourceOwnerId != DestOwnerId)
+		{
+			return true;
+		}
+		const TArray<FMixtormatLayerChild>* Children = FindChildrenInScope(Scope, DestOwnerId);
+		const int32 SourceIndex = Children ? FindChildById(*Children, SourceChildId) : INDEX_NONE;
+		FGuid OwnerId = Child.ScopeOwnerChildId;
+		TSet<FGuid> Visited;
+		while (Children && OwnerId.IsValid())
+		{
+			const int32 OwnerIndex = FindChildById(*Children, OwnerId);
+			if (Visited.Contains(OwnerId) || !Children->IsValidIndex(OwnerIndex))
 			{
-				if (Child.ScopeOwnerChildId == OwnerId)
-				{
-					++ScopedChildCount;
-				}
+				return false;
 			}
-			return ScopedChildCount < 2;
+			Visited.Add(OwnerId);
+			// Array order alone would allow a generator's own gate, or a group's output fed
+			// back into that group's inputs. Both require the owner to finish before it starts.
+			if (SourceChildId == OwnerId
+				|| ((*Children)[OwnerIndex].Type != EMixtormatLayerChildType::IdGroup
+					&& IsDescendantOf(*Children, SourceIndex, OwnerId)))
+			{
+				return false;
+			}
+			OwnerId = (*Children)[OwnerIndex].ScopeOwnerChildId;
 		}
 		return true;
+	}
+
+	bool PublishedOutputPlacementsValid(const FMixtormatBindingScope& Scope)
+	{
+		const auto CheckChildren = [&Scope](const TArray<FMixtormatLayerChild>& Children, const FGuid OwnerId)
+		{
+			for (int32 Index = 0; Index < Children.Num(); ++Index)
+			{
+				if (!CanReadPublishedOutputAt(Scope, Children[Index], OwnerId, Index))
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+		for (const FMixtormatLayer& Layer : Scope.GetLayers())
+		{
+			if (!CheckChildren(Layer.Children, Layer.LayerId))
+			{
+				return false;
+			}
+		}
+		if (Scope.Groups)
+		{
+			for (const FMixtormatLayerGroup& Group : *Scope.Groups)
+			{
+				if (!CheckChildren(Group.Children, Group.GroupId))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	bool CanAddScopedChild(const TArray<FMixtormatLayerChild>& Children, const int32 OwnerIndex)
+	{
+		return Children.IsValidIndex(OwnerIndex)
+			&& GetScopeDepth(Children, OwnerIndex) < MaximumScopeDepth;
+	}
+
+	bool IsIdGroupChild(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::PatternId:
+		case EMixtormatLayerChildType::CombineId:
+		case EMixtormatLayerChildType::IdGroup:
+		case EMixtormatLayerChildType::ColorId:
+		case EMixtormatLayerChildType::HsvFilter:
+		case EMixtormatLayerChildType::RandomId:
+		case EMixtormatLayerChildType::RampId:
+		case EMixtormatLayerChildType::UvFromIds:
+		case EMixtormatLayerChildType::ReliefFromIds:
+			return true;
+		case EMixtormatLayerChildType::OutputReference:
+			return Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+		case EMixtormatLayerChildType::Filter:
+			return Child.Filter.bSurfaceIds;
+		default:
+			return false;
+		}
 	}
 
 	// Puts Child under the owner at OwnerChildIndex and returns where it landed, or INDEX_NONE if
@@ -333,9 +517,9 @@ namespace
 		{
 			return CanOwnGeneratorFlow(Owner);
 		}
-		if (Child.Type == EMixtormatLayerChildType::PatternId)
+		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
-			return Owner.Type == EMixtormatLayerChildType::IdGroup;
+			return IsIdGroupChild(Child);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Mask)
 		{
@@ -1463,6 +1647,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::IdGroup
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::OutputReference
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature))
@@ -1918,6 +2103,12 @@ FReply SMixtormat::ReorderLayerChild(
 	{
 		return FReply::Unhandled();
 	}
+	if (!CanMovePublishedOutputs(MakeChildAddress(LayerIndex, SourceChildIndex),
+		{EMixtormatChildOwnerType::Layer, Layer.LayerId, FGuid()},
+		TargetRootIndex < SourceChildIndex ? TargetRootIndex : TargetSubtreeEnd))
+	{
+		return FReply::Unhandled();
+	}
 
 	FGuid SelectedEffectId;
 	FGuid SelectedMaskId;
@@ -1969,19 +2160,22 @@ FReply SMixtormat::ReorderGroupChild(
 	if (!Group
 		|| !Group->Children.IsValidIndex(SourceChildIndex)
 		|| !Group->Children.IsValidIndex(TargetChildIndex)
-		// The source has to be top-level: BuildGroupChildRow gives a scoped filter no drag source
-		// (bCanLeaveLayer is false for one), but a direct call is refused the same way a drag would
-		// have been.
-		|| Group->Children[SourceChildIndex].ScopeOwnerChildId.IsValid())
+		// Scoped mask/flow tools still travel with their owner; ID children can reorder as siblings.
+		|| (Group->Children[SourceChildIndex].ScopeOwnerChildId.IsValid()
+			&& !IsIdGroupChild(Group->Children[SourceChildIndex])))
 	{
 		return FReply::Unhandled();
 	}
-	// The target can land inside a scoped subtree, and that still means "reorder relative to its
-	// root". The rows do render depth now, so this is a choice rather than a consequence: a scoped
-	// filter has exactly one valid place -- inside its owner's subtree -- so the only thing a drop
-	// aimed at one can sensibly mean is moving the subtree it belongs to.
-	TargetChildIndex = FindSiblingRoot(Group->Children, TargetChildIndex, FGuid());
+	// Reordering cannot change containment. ID Group nesting is handled by the inner drop target.
+	const FGuid SourceParentId = Group->Children[SourceChildIndex].ScopeOwnerChildId;
+	TargetChildIndex = FindSiblingRoot(Group->Children, TargetChildIndex, SourceParentId);
 	if (TargetChildIndex == INDEX_NONE || TargetChildIndex == SourceChildIndex)
+	{
+		return FReply::Unhandled();
+	}
+	if (!CanMovePublishedOutputs(MakeGroupChildAddress(GroupId, SourceChildIndex),
+		{EMixtormatChildOwnerType::Group, GroupId, FGuid()},
+		TargetChildIndex < SourceChildIndex ? TargetChildIndex : FindSubtreeEnd(Group->Children, TargetChildIndex)))
 	{
 		return FReply::Unhandled();
 	}
@@ -2045,13 +2239,22 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	if (!Group
 		|| !Group->Children.IsValidIndex(ChildIndex)
 		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
-		// Top-level only, the same rule ReorderGroupChild enforces: a scoped filter cannot be
-		// orphaned from the mask it filters, and it travels as part of that mask's subtree instead.
-		|| Group->Children[ChildIndex].ScopeOwnerChildId.IsValid())
+		// ID children can leave a group; scoped masks/flow tools cannot leave their owner.
+		|| (Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
+			&& !IsIdGroupChild(Group->Children[ChildIndex])))
 	{
 		return FReply::Unhandled();
 	}
 	if (IsMaskFilter(Group->Children[ChildIndex]) || IsGeneratorFlow(Group->Children[ChildIndex]))
+	{
+		return FReply::Unhandled();
+	}
+	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
+	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
+		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
+	if (!CanMovePublishedOutputs(MakeGroupChildAddress(GroupId, ChildIndex),
+		{EMixtormatChildOwnerType::Layer, WorkingLayers[DestLayerIndex].LayerId, FGuid()},
+		DestRoot == INDEX_NONE ? DestChildren.Num() : DestRoot))
 	{
 		return FReply::Unhandled();
 	}
@@ -2077,14 +2280,14 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	}
 	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
 	{
-		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
 		DestLayer.Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
-		// GroupId as the old parent: a group's shared children are addressed by GroupId in the
-		// same slot a layer's are addressed by LayerId, which is what MoveChildToGroup wrote on the
-		// way in. RemapChildParent compares that id rather than resolving it, so the reverse
-		// direction works without it having to know a group from a layer.
+	}
+	// Insert the complete subtree first so references between moved children are remapped too.
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
 		MixtormatParameterBinding::RemapChildParent(
-			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, GroupId, NewLayerId);
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups},
+			DestLayer.Children[InsertAt + MoveIndex].ChildId, GroupId, NewLayerId);
 	}
 
 	// Both lanes, the way SelectWorkingLayer clears them: SelectWorkingChild below sets the layer
@@ -2185,6 +2388,15 @@ FReply SMixtormat::MoveChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
+	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
+	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
+		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
+	if (!CanMovePublishedOutputs(MakeChildAddress(SourceLayerIndex, ChildIndex),
+		{EMixtormatChildOwnerType::Layer, WorkingLayers[DestLayerIndex].LayerId, FGuid()},
+		DestRoot == INDEX_NONE ? DestChildren.Num() : DestRoot))
+	{
+		return FReply::Unhandled();
+	}
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
 	const FGuid NewLayerId = WorkingLayers[DestLayerIndex].LayerId;
@@ -2208,10 +2420,13 @@ FReply SMixtormat::MoveChildToLayer(
 	}
 	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
 	{
-		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
 		DestLayer.Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
+	}
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
 		MixtormatParameterBinding::RemapChildParent(
-			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, OldLayerId, NewLayerId);
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups},
+			DestLayer.Children[InsertAt + MoveIndex].ChildId, OldLayerId, NewLayerId);
 	}
 
 	SetLayerExpanded(DestLayerIndex, true);
@@ -2240,6 +2455,11 @@ FReply SMixtormat::MoveChildToGroup(
 	{
 		return FReply::Unhandled();
 	}
+	if (!CanMovePublishedOutputs(MakeChildAddress(SourceLayerIndex, ChildIndex),
+		{EMixtormatChildOwnerType::Group, GroupId, FGuid()}, Group->Children.Num()))
+	{
+		return FReply::Unhandled();
+	}
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
 	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer.Children, ChildIndex);
@@ -2258,14 +2478,13 @@ FReply SMixtormat::MoveChildToGroup(
 	const int32 InsertAt = Group->Children.Num();
 	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
 	{
-		const FGuid MovedChildId = MovedChildren[MoveIndex].ChildId;
 		Group->Children.Insert(MoveTemp(MovedChildren[MoveIndex]), InsertAt + MoveIndex);
-		// GroupId, not a LayerId: a group's shared children are addressed by GroupId in the same
-		// slot a layer's are addressed by LayerId, so this is the same remap MoveChildToLayer does.
-		// The scope carries WorkingLayerGroups too, so a reference held by another shared child
-		// follows this one across exactly as a layer child's would.
+	}
+	for (int32 MoveIndex = 0; MoveIndex < MovedChildren.Num(); ++MoveIndex)
+	{
 		MixtormatParameterBinding::RemapChildParent(
-			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups}, MovedChildId, OldLayerId, GroupId);
+			FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups},
+			Group->Children[InsertAt + MoveIndex].ChildId, OldLayerId, GroupId);
 	}
 
 	CollapsedGroupIds.Remove(GroupId);
@@ -2273,6 +2492,194 @@ FReply SMixtormat::MoveChildToGroup(
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();
+	return FReply::Handled();
+}
+
+bool SMixtormat::CanMovePublishedOutputs(
+	const FMixtormatChildAddress& Source,
+	const FMixtormatChildAddress& Dest,
+	const int32 InsertIndex) const
+{
+	const TArray<FMixtormatLayerChild>* SourceChildren = ResolveContainer(Source);
+	const TArray<FMixtormatLayerChild>* DestChildren = ResolveContainer(Dest);
+	const int32 SourceIndex = ResolveChildIndexAt(Source);
+	if (!SourceChildren || !DestChildren || !SourceChildren->IsValidIndex(SourceIndex))
+	{
+		return false;
+	}
+	const int32 Count = FindSubtreeEnd(*SourceChildren, SourceIndex) - SourceIndex;
+	if (InsertIndex < 0 || InsertIndex > DestChildren->Num()
+		|| (SourceChildren == DestChildren && InsertIndex > SourceIndex && InsertIndex < SourceIndex + Count))
+	{
+		return false;
+	}
+	// Check the proposed order, including consumers left behind when their producer moves.
+	// No working state is mutated on a rejected drag.
+	TArray<FMixtormatLayer> Layers = WorkingLayers;
+	TArray<FMixtormatLayerGroup> Groups = WorkingLayerGroups;
+	const auto FindChildren = [&Layers, &Groups](const FMixtormatChildAddress& Address) -> TArray<FMixtormatLayerChild>*
+	{
+		if (Address.OwnerType == EMixtormatChildOwnerType::Group)
+		{
+			FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, Address.OwnerId);
+			return Group ? &Group->Children : nullptr;
+		}
+		FMixtormatLayer* Layer = Layers.FindByPredicate(
+			[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+		return Layer ? &Layer->Children : nullptr;
+	};
+	TArray<FMixtormatLayerChild>* ProjectedSource = FindChildren(Source);
+	TArray<FMixtormatLayerChild>* ProjectedDest = FindChildren(Dest);
+	TArray<FMixtormatLayerChild> Moved;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		Moved.Add(MoveTemp((*ProjectedSource)[SourceIndex + Index]));
+	}
+	ProjectedSource->RemoveAt(SourceIndex, Count);
+	if (Dest.ChildId.IsValid())
+	{
+		Moved[0].ScopeOwnerChildId = Dest.ChildId;
+	}
+	else if (Source.OwnerId != Dest.OwnerId)
+	{
+		Moved[0].ScopeOwnerChildId.Invalidate();
+	}
+	const int32 ProjectedInsert = InsertIndex
+		- (SourceChildren == DestChildren && SourceIndex < InsertIndex ? Count : 0);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		ProjectedDest->Insert(MoveTemp(Moved[Index]), ProjectedInsert + Index);
+	}
+	if (Source.OwnerId != Dest.OwnerId)
+	{
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			MixtormatParameterBinding::RemapChildParent(FMixtormatMutableBindingScope{Layers, Groups},
+				(*ProjectedDest)[ProjectedInsert + Index].ChildId, Source.OwnerId, Dest.OwnerId);
+		}
+	}
+	return PublishedOutputPlacementsValid(FMixtormatBindingScope{Layers, Groups});
+}
+
+bool SMixtormat::CanMoveChildIntoIdGroup(
+	const FMixtormatChildAddress& Source,
+	const FMixtormatChildAddress& Dest) const
+{
+	const TArray<FMixtormatLayerChild>* SourceChildren = ResolveContainer(Source);
+	const TArray<FMixtormatLayerChild>* DestChildren = ResolveContainer(Dest);
+	const int32 SourceIndex = ResolveChildIndexAt(Source);
+	const int32 OwnerIndex = ResolveChildIndexAt(Dest);
+	if (!SourceChildren || !DestChildren
+		|| !SourceChildren->IsValidIndex(SourceIndex) || !DestChildren->IsValidIndex(OwnerIndex)
+		|| (*DestChildren)[OwnerIndex].Type != EMixtormatLayerChildType::IdGroup
+		|| !IsIdGroupChild((*SourceChildren)[SourceIndex])
+		|| !CanAddScopedChild(*DestChildren, OwnerIndex))
+	{
+		return false;
+	}
+	if (SourceChildren == DestChildren
+		&& (Source.ChildId == Dest.ChildId || IsDescendantOf(*SourceChildren, OwnerIndex, Source.ChildId)))
+	{
+		return false;
+	}
+	const int32 SourceDepth = GetScopeDepth(*SourceChildren, SourceIndex);
+	const int32 NewDepth = GetScopeDepth(*DestChildren, OwnerIndex) + 1;
+	const int32 SubtreeEnd = FindSubtreeEnd(*SourceChildren, SourceIndex);
+	for (int32 Index = SourceIndex; Index < SubtreeEnd; ++Index)
+	{
+		const int32 Depth = GetScopeDepth(*SourceChildren, Index);
+		if (Depth > MaximumScopeDepth || NewDepth + Depth - SourceDepth > MaximumScopeDepth)
+		{
+			return false;
+		}
+	}
+	return CanMovePublishedOutputs(Source, Dest, FindSubtreeEnd(*DestChildren, OwnerIndex));
+}
+
+FReply SMixtormat::MoveChildIntoIdGroup(
+	const FMixtormatChildAddress& Source,
+	const FMixtormatChildAddress& Dest)
+{
+	if (!CanMoveChildIntoIdGroup(Source, Dest))
+	{
+		return FReply::Unhandled();
+	}
+	TArray<FMixtormatLayerChild>* SourceChildren = ResolveContainer(Source);
+	TArray<FMixtormatLayerChild>* DestChildren = ResolveContainer(Dest);
+	const int32 SourceIndex = ResolveChildIndexAt(Source);
+	const int32 Count = FindSubtreeEnd(*SourceChildren, SourceIndex) - SourceIndex;
+	TArray<FMixtormatLayerChild> MovedChildren;
+	MovedChildren.Reserve(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		MovedChildren.Add(MoveTemp((*SourceChildren)[SourceIndex + Index]));
+	}
+	SourceChildren->RemoveAt(SourceIndex, Count);
+	MovedChildren[0].ScopeOwnerChildId = Dest.ChildId;
+	// Re-resolve after removal: source and destination may be the same child array.
+	const int32 InsertAt = FindSubtreeEnd(*DestChildren, ResolveChildIndexAt(Dest));
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		DestChildren->Insert(MoveTemp(MovedChildren[Index]), InsertAt + Index);
+	}
+	if (Source.OwnerId != Dest.OwnerId)
+	{
+		// The entire subtree must be present before remapping references between its children.
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			MixtormatParameterBinding::RemapChildParent(
+				FMixtormatMutableBindingScope{WorkingLayers, WorkingLayerGroups},
+				(*DestChildren)[InsertAt + Index].ChildId, Source.OwnerId, Dest.OwnerId);
+		}
+	}
+	if (Dest.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		FinishGroupChildEdit(Dest.OwnerId, InsertAt);
+	}
+	else
+	{
+		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+			[&Dest](const FMixtormatLayer& Layer) { return Layer.LayerId == Dest.OwnerId; });
+		SelectedGroupId.Invalidate();
+		SelectedGroupChildIndex = INDEX_NONE;
+		SetLayerExpanded(LayerIndex, true);
+		SelectWorkingChild(LayerIndex, InsertAt);
+		RecordEditHistory();
+		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	}
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+FMixtormatChildAddress SMixtormat::GetDraggedChildAddress(const FMixtormatChildDragDropOp& Operation) const
+{
+	return Operation.GroupId.IsValid()
+		? MakeGroupChildAddress(Operation.GroupId, Operation.ChildIndex)
+		: MakeChildAddress(Operation.LayerIndex, Operation.ChildIndex);
+}
+
+bool SMixtormat::CanDropChildIntoIdGroup(
+	const FMixtormatChildDragDropOp& Operation,
+	const FMixtormatChildAddress Dest) const
+{
+	return CanMoveChildIntoIdGroup(GetDraggedChildAddress(Operation), Dest);
+}
+
+FReply SMixtormat::DropChildIntoIdGroup(
+	const FMixtormatChildDragDropOp& Operation,
+	const FMixtormatChildAddress Dest)
+{
+	const FMixtormatChildAddress Source = GetDraggedChildAddress(Operation);
+	const FMixtormatLayerChild* Owner = ResolveChildAt(Dest);
+	const FMixtormatLayerChild* Child = ResolveChildAt(Source);
+	if (!Owner || Owner->Type != EMixtormatLayerChildType::IdGroup || !Child || !IsIdGroupChild(*Child))
+	{
+		return FReply::Unhandled();
+	}
+	// An invalid ID drop must not fall through and become a top-level reorder instead.
+	MoveChildIntoIdGroup(Source, Dest);
 	return FReply::Handled();
 }
 
@@ -2371,6 +2778,12 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	{
 		return;
 	}
+	FGuid PublishedOwnerId, PublishedChildId;
+	if (GetPublishedOutputSource(*Child, PublishedOwnerId, PublishedChildId)
+		&& !PublishedOutputPlacementsValid(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}))
+	{
+		return;
+	}
 	FMixtormatChildClipboard Clipboard;
 	Clipboard.Mode = bAsInstance ? EMixtormatChildClipboardMode::Instance : EMixtormatChildClipboardMode::Copy;
 	Clipboard.Payload = *Child;
@@ -2391,10 +2804,30 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	ChildClipboard = MoveTemp(Clipboard);
 }
 
+bool SMixtormat::CanCopyChildOutput(const FMixtormatChildAddress& Address, const FName OutputName) const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+	if (!Child || !Children)
+	{
+		return false;
+	}
+	const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
+	return Capabilities.Outputs.ContainsByPredicate([OutputName](const FMixtormatPublishedOutputDesc& Output)
+		{
+			return Output.Name == OutputName && (Output.bCopyableAsMask || Output.bCopyableAsField);
+		})
+		&& PublishedOutputPlacementsValid(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups})
+		&& MixtormatParameterBinding::ClassifyInstancePlacement(
+			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Address.OwnerId, Address.ChildId,
+			Address.OwnerId, FindSubtreeEnd(*Children, ResolveChildIndexAt(Address)))
+			== MixtormatParameterBinding::EInstancePlacement::Valid;
+}
+
 void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FName OutputName)
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
-	if (!Child)
+	if (!Child || !CanCopyChildOutput(Address, OutputName))
 	{
 		return;
 	}
@@ -2402,25 +2835,37 @@ void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FN
 	const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
 		[OutputName](const FMixtormatPublishedOutputDesc& Candidate)
 		{
-			return Candidate.Name == OutputName && Candidate.bCopyableAsMask;
+			return Candidate.Name == OutputName && (Candidate.bCopyableAsMask || Candidate.bCopyableAsField);
 		});
 	if (!Output)
 	{
 		return;
 	}
 
-	FMixtormatLayerChild PublishedMask;
-	PublishedMask.Type = EMixtormatLayerChildType::Mask;
-	PublishedMask.Mask.bEnabled = true;
-	PublishedMask.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
-	PublishedMask.Mask.Weight = 1.0f;
-	PublishedMask.Mask.PublishedSourceLayerId = Address.OwnerId;
-	PublishedMask.Mask.PublishedSourceChildId = Address.ChildId;
-	PublishedMask.Mask.PublishedSourceOutput = OutputName;
+	FMixtormatLayerChild PublishedChild;
+	if (Output->bCopyableAsMask)
+	{
+		PublishedChild.Type = EMixtormatLayerChildType::Mask;
+		PublishedChild.Mask.bEnabled = true;
+		PublishedChild.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+		PublishedChild.Mask.Weight = 1.0f;
+		PublishedChild.Mask.PublishedSourceLayerId = Address.OwnerId;
+		PublishedChild.Mask.PublishedSourceChildId = Address.ChildId;
+		PublishedChild.Mask.PublishedSourceOutput = OutputName;
+	}
+	else
+	{
+		PublishedChild.Type = EMixtormatLayerChildType::OutputReference;
+		PublishedChild.OutputReference.bEnabled = true;
+		PublishedChild.OutputReference.SourceLayerId = Address.OwnerId;
+		PublishedChild.OutputReference.SourceChildId = Address.ChildId;
+		PublishedChild.OutputReference.OutputName = OutputName;
+		PublishedChild.OutputReference.Kind = Output->FieldKind;
+	}
 
 	FMixtormatChildClipboard Clipboard;
 	Clipboard.Mode = EMixtormatChildClipboardMode::PublishedOutput;
-	Clipboard.Payload = MoveTemp(PublishedMask);
+	Clipboard.Payload = MoveTemp(PublishedChild);
 	Clipboard.Source = Address;
 	Clipboard.PublishedOutput = OutputName;
 	ChildClipboard = MoveTemp(Clipboard);
@@ -2442,6 +2887,79 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return INDEX_NONE;
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	const auto ValidateInsert = [this, &Clipboard, DestContainer, &Dest, AnchorChildIndex](int32 Insert, const bool bScoped) -> int32
+	{
+		FMixtormatLayerChild Payload = Clipboard.Payload;
+		Payload.ScopeOwnerChildId.Invalidate();
+		Payload.SourceLayerId = Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			? Clipboard.Source.OwnerId : FGuid();
+		Payload.SourceChildId = Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			? Clipboard.Source.ChildId : FGuid();
+		FGuid PublishedOwnerId, PublishedChildId;
+		const bool bPublished = GetPublishedOutputSource(Payload, PublishedOwnerId, PublishedChildId);
+		if (!bScoped && bPublished && DestContainer->IsValidIndex(Insert)
+			&& (*DestContainer)[Insert].ScopeOwnerChildId.IsValid())
+		{
+			Insert = FindSiblingRoot(*DestContainer, Insert, FGuid());
+			if (Insert == INDEX_NONE)
+			{
+				return INDEX_NONE;
+			}
+		}
+		if (!bScoped && bPublished && PublishedOwnerId == Dest.OwnerId)
+		{
+			const int32 SourceIndex = FindChildById(*DestContainer, PublishedChildId);
+			if (SourceIndex == INDEX_NONE)
+			{
+				return INDEX_NONE;
+			}
+			// A standalone reference must not split a producer's containing subtree.
+			const int32 SourceRoot = FindSiblingRoot(*DestContainer, SourceIndex, FGuid());
+			if (SourceRoot == INDEX_NONE)
+			{
+				return INDEX_NONE;
+			}
+			Insert = FMath::Max(Insert, FindSubtreeEnd(*DestContainer, SourceRoot));
+		}
+		if (bScoped)
+		{
+			Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
+		}
+		else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			&& DestContainer->IsValidIndex(AnchorChildIndex)
+			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
+			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Payload))
+		{
+			const int32 ScopedInsert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
+			if (Insert <= ScopedInsert)
+			{
+				Insert = ScopedInsert;
+				Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
+			}
+		}
+		const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+		if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			&& MixtormatParameterBinding::ClassifyInstancePlacement(Scope,
+				Clipboard.Source.OwnerId, Clipboard.Source.ChildId, Dest.OwnerId, Insert)
+				!= MixtormatParameterBinding::EInstancePlacement::Valid)
+		{
+			return INDEX_NONE;
+		}
+		// Plain copies of gate/field reference nodes retain their live output dependency too.
+		return CanReadPublishedOutputAt(Scope, Payload, Dest.OwnerId, Insert)
+			&& (!bPublished || PublishedOutputPlacementsValid(Scope)) ? Insert : INDEX_NONE;
+	};
+
+	if (DestContainer->IsValidIndex(AnchorChildIndex)
+		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
+		&& IsIdGroupChild(Clipboard.Payload))
+	{
+		if (!CanAddScopedChild(*DestContainer, AnchorChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
+	}
 
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
@@ -2451,25 +2969,19 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		{
 			return INDEX_NONE;
 		}
-		const int32 ScopedInsert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
-		return Clipboard.Mode != EMixtormatChildClipboardMode::Instance
-			|| MixtormatParameterBinding::ClassifyInstancePlacement(
-				FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
-				Clipboard.Source.OwnerId, Clipboard.Source.ChildId, Dest.OwnerId, ScopedInsert)
-				== MixtormatParameterBinding::EInstancePlacement::Valid
-			? ScopedInsert : INDEX_NONE;
+		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
 	}
 
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
-		// A plain duplicate or a published-output mask is severed from its source, so any position
-		// works -- except a mask filter, which only ever travels scoped beneath the mask it filters
+		// Ordinary copies are detached from instance identity; live output dependencies are
+		// checked below. A mask filter only ever travels scoped beneath the mask it filters
 		// and can never be pasted as a standalone row.
 		if (IsMaskFilter(Clipboard.Payload))
 		{
 			return INDEX_NONE;
 		}
-		return DestContainer->IsValidIndex(AnchorChildIndex) ? AnchorChildIndex : DestContainer->Num();
+		return ValidateInsert(DestContainer->IsValidIndex(AnchorChildIndex) ? AnchorChildIndex : DestContainer->Num(), false);
 	}
 
 	// A container's top-level paste (a layer header, or a group's own top) names no row and means
@@ -2495,15 +3007,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		Insert = FMath::Max(Insert, SourceChildIndex + 1);
 	}
 
-	// Still classified, never assumed. This only picks a candidate; the policy decides.
-	return MixtormatParameterBinding::ClassifyInstancePlacement(
-		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
-		Clipboard.Source.OwnerId,
-		Clipboard.Source.ChildId,
-		Dest.OwnerId,
-		Insert) == MixtormatParameterBinding::EInstancePlacement::Valid
-		? Insert
-		: INDEX_NONE;
+	return ValidateInsert(Insert, false);
 }
 
 bool SMixtormat::CanPasteChild(const FMixtormatChildAddress& Dest, const int32 AnchorChildIndex) const
@@ -2524,11 +3028,27 @@ FText SMixtormat::GetChildPasteReason(
 		return FText::GetEmpty();
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Dest);
+	if (Container->IsValidIndex(AnchorChildIndex)
+		&& (*Container)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
+		&& IsIdGroupChild(Clipboard.Payload))
+	{
+		return CanPasteChild(Dest, AnchorChildIndex)
+			? LOCTEXT("PasteIntoIdGroupReady", "Place inside this ID Group.")
+			: LOCTEXT("PasteIntoIdGroupBlocked", "Requires available nesting depth and valid instance ordering.");
+	}
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
 			? LOCTEXT("PasteGeneratorFlowReady", "Place under this generator.")
 			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Rock Formation or Pebbles owner and valid instance ordering.");
+	}
+	FGuid PublishedOwnerId, PublishedChildId;
+	if (GetPublishedOutputSource(Clipboard.Payload, PublishedOwnerId, PublishedChildId))
+	{
+		return CanPasteChild(Dest, AnchorChildIndex)
+			? LOCTEXT("PublishedOutputPasteReady", "Place a live reference after its published source.")
+			: LOCTEXT("PublishedOutputPasteBlocked", "Requires an existing earlier source and no owner feedback cycle.");
 	}
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
@@ -2572,11 +3092,18 @@ bool SMixtormat::CanPasteAsGatingMask(const FMixtormatChildAddress& Address) con
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	const int32 Anchor = ResolveChildIndexAt(Address);
-	return Clipboard.Mode != EMixtormatChildClipboardMode::Instance
-		&& Clipboard.Payload.Type == EMixtormatLayerChildType::Mask
-		&& Container && Container->IsValidIndex(Anchor)
-		&& CanOwnScopedMasks((*Container)[Anchor])
-		&& CanAddScopedChild(*Container, Anchor);
+	if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+		|| Clipboard.Payload.Type != EMixtormatLayerChildType::Mask
+		|| !Container || !Container->IsValidIndex(Anchor)
+		|| !CanOwnScopedMasks((*Container)[Anchor]) || !CanAddScopedChild(*Container, Anchor))
+	{
+		return false;
+	}
+	FMixtormatLayerChild Payload = Clipboard.Payload;
+	Payload.ScopeOwnerChildId = (*Container)[Anchor].ChildId;
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	return CanReadPublishedOutputAt(Scope, Payload, Address.OwnerId, FindSubtreeEnd(*Container, Anchor))
+		&& PublishedOutputPlacementsValid(Scope);
 }
 
 FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
@@ -2651,14 +3178,17 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 	}
 	else
 	{
-		// A plain paste (or a published-output mask, which is built with no identity of its own) is
-		// a duplicate: fresh identity, and no tie to where it came from.
+		// Copies receive fresh node identity, but gate/field nodes keep their authored live
+		// output reference and local shaping rather than becoming producer instances.
 		FMixtormatLayerChild Pasted = Clipboard.Payload;
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
-		// Never retain the source container's owner. Flow tools require the destination generator;
-		// other plain copies keep their existing standalone paste behavior.
-		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted)
+		// ID fields, including copied outputs, attach to the destination group. Scalar gates
+		// keep their standalone placement unless explicitly pasted as a gating mask.
+		const bool bIntoIdGroup = DestContainer->IsValidIndex(AnchorChildIndex)
+			&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
+			&& IsIdGroupChild(Pasted);
+		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted) || bIntoIdGroup
 			? (*DestContainer)[AnchorChildIndex].ChildId : FGuid();
 		DestContainer->Insert(MoveTemp(Pasted), FinalInsert);
 		MixtormatParameterBinding::RegenerateChildIdentity((*DestContainer)[FinalInsert]);
@@ -3168,12 +3698,26 @@ void SMixtormat::AddSharedChildMenuItems(
 	{
 		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
 		{
+			FText Label = FText::Format(LOCTEXT("CopyChildGateContext", "Copy Gate · {0}"), Output.Label);
+			if (!Output.bCopyableAsMask)
+			{
+				switch (Output.FieldKind)
+				{
+				case EMixtormatPublishedFieldKind::RegionIds: Label = LOCTEXT("CopyChildIdsContext", "Copy IDs"); break;
+				case EMixtormatPublishedFieldKind::Flow:      Label = LOCTEXT("CopyChildFlowContext", "Copy Flow"); break;
+				case EMixtormatPublishedFieldKind::UVMap:     Label = LOCTEXT("CopyChildUvsContext", "Copy UVs"); break;
+				}
+			}
 			Menu.Item(
-				FText::Format(LOCTEXT("CopyChildOutputContext", "Copy Output · {0}"), Output.Label),
-				MixtormatIcons::Mask(),
+				Label,
+				Output.bCopyableAsMask ? MixtormatIcons::Mask() : MixtormatIcons::Generated(),
 				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
 				{
 					CopyChildOutput(Address, OutputName);
+				}))
+				.Enabled(TAttribute<bool>::CreateLambda([this, Address, OutputName = Output.Name]()
+				{
+					return CanCopyChildOutput(Address, OutputName);
 				}));
 		}
 	}
@@ -4075,6 +4619,16 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("IdGroupChildName", "ID Group");
 	}
+	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	{
+		switch (Child.OutputReference.Kind)
+		{
+		case EMixtormatPublishedFieldKind::RegionIds: return LOCTEXT("IdsReferenceChildName", "IDs Reference");
+		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("FlowReferenceChildName", "Flow Reference");
+		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("UvReferenceChildName", "UVs Reference");
+		}
+		return LOCTEXT("OutputReferenceChildName", "Output Reference");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Blur)
 	{
 		// Named for what it does rather than for the mask it is on: the row sits indented under
@@ -4112,6 +4666,10 @@ FText SMixtormat::GetLayerChildSourceText(
 
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	{
+		return OutputReferenceKindText(Child);
+	}
 	if (!Child.ScopeOwnerChildId.IsValid())
 	{
 		return IsFlowWarp(Child)
@@ -4409,11 +4967,18 @@ FReply SMixtormat::RemoveGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	}
 	// Anything scoped beneath this child goes with it, the same as removing a layer child: a
 	// blur whose owner has left gates nothing.
-	const FGuid RemovedId = Group->Children[ChildIndex].ChildId;
-	Group->Children.RemoveAll([&RemovedId](const FMixtormatLayerChild& Candidate)
+	if (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::IdGroup)
 	{
-		return Candidate.ChildId == RemovedId || Candidate.ScopeOwnerChildId == RemovedId;
-	});
+		Group->Children.RemoveAt(ChildIndex, FindSubtreeEnd(Group->Children, ChildIndex) - ChildIndex);
+	}
+	else
+	{
+		const FGuid RemovedId = Group->Children[ChildIndex].ChildId;
+		Group->Children.RemoveAll([&RemovedId](const FMixtormatLayerChild& Candidate)
+		{
+			return Candidate.ChildId == RemovedId || Candidate.ScopeOwnerChildId == RemovedId;
+		});
+	}
 	SelectedGroupChildIndex = INDEX_NONE;
 	RecordEditHistory();
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
@@ -4445,6 +5010,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
 	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
 	case EMixtormatLayerChildType::IdGroup:     Child.IdGroup.bEnabled = !Child.IdGroup.bEnabled; break;
+	case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = !Child.OutputReference.bEnabled; break;
 	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
 	default:                                    Child.Mask.bEnabled = !Child.Mask.bEnabled; break;
 	}
@@ -4470,6 +5036,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
+	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
 	default:                                    return Child.Mask.bEnabled;
 	}
@@ -4604,12 +5171,9 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	return FReply::Handled();
 }
 
-// A shared child's row. A child can arrive from a layer by dropping it on the group header
-// (MoveChildToGroup, always appended), reorders among its top-level siblings the same way a layer
-// child does (ReorderGroupChild), and leaves the group by being dropped on a layer or one of its
-// child rows (MoveGroupChildToLayer). A scoped filter does none of the three -- it cannot leave
-// the owner it filters -- and group-to-group is still not built, so a drag aimed at another
-// group's header refuses rather than lighting up for a drop that would do nothing.
+// A shared child's row. ID children can reorder within their scope or move into an ID Group
+// in either container. Scoped mask/flow tools still travel with their owner. Ordinary shared
+// children keep the existing header/layer gestures; only an ID Group accepts cross-group drops.
 TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const int32 ChildIndex)
 {
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
@@ -4623,20 +5187,27 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	// MoveGroupChildToLayer applies -- otherwise a row lights up for a release that is then
 	// refused. A top-level mask filter is unreachable today (one only ever arrives scoped), but
 	// the two ends are kept in step rather than relying on that.
-	const bool bCanReorder = !Child.ScopeOwnerChildId.IsValid() && !IsMaskFilter(Child);
+	const bool bCanReorder = IsIdGroupChild(Child)
+		|| (!Child.ScopeOwnerChildId.IsValid() && !IsMaskFilter(Child));
 
 	return SNew(SMixtormatGroupChildDropTarget)
 		.GroupId(GroupId)
 		.ChildIndex(ChildIndex)
 		.OnChildReordered(this, &SMixtormat::ReorderGroupChild)
 		[
+			SNew(SMixtormatIdGroupChildDropTarget)
+			.Address(MakeGroupChildAddress(GroupId, ChildIndex))
+			.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
+			.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
+			[
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
 			.Icon()[MakeChildTypeIcon(Child)]
 			.Connector(ScopeConnectorFor(Group->Children, ChildIndex))
 			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
 			// a layer, and this child's container is a group.
-			.Kind(MixtormatLayerBadges::KindForChild(Child))
+			.Kind(Child.Type == EMixtormatLayerChildType::OutputReference
+				? OutputReferenceKindText(Child) : MixtormatLayerBadges::KindForChild(Child))
 			.Badge(MixtormatLayerBadges::ForChild(Child))
 			.bActive_Lambda([this, GroupId, ChildIndex]()
 			{
@@ -4673,6 +5244,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 				return FReply::Handled().BeginDragDrop(
 					FMixtormatChildDragDropOp::NewFromGroup(GroupId, ChildIndex, ChildName, bCanReorder));
 			})
+			]
 		];
 }
 
@@ -4682,10 +5254,11 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 {
 	MixtormatMenu::FBuilder Menu;
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	// Same rule the drag has: a scoped filter travels with the child it filters, never alone.
+	// ID children are movable; scoped mask/flow tools still travel with their owner.
 	const bool bCanLeaveGroup = Group
 		&& Group->Children.IsValidIndex(ChildIndex)
-		&& !Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
+		&& (!Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
+			|| IsIdGroupChild(Group->Children[ChildIndex]))
 		&& !IsMaskFilter(Group->Children[ChildIndex]);
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
 		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
@@ -4766,6 +5339,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 	// Instance / Replace Source / Copy Instance Reference -- the same rows a layer child's menus
 	// build via AddSharedChildMenuItems, driven by the same address-based clipboard rather than a
 	// second, group-specific copy of this logic.
+	AddIdGroupMenuItems(Menu, MakeGroupChildAddress(GroupId, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeGroupChildAddress(GroupId, ChildIndex));
 	Menu.Item(
 		LOCTEXT("RemoveGroupChildContext", "Delete"),
@@ -5133,6 +5707,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::CombineId
 			|| Child.Type == EMixtormatLayerChildType::IdGroup
+			|| Child.Type == EMixtormatLayerChildType::OutputReference
 			// A generator joins them for the row, not for the semantics. What the shared
 			// procedural row gives it is the right ones: an enable toggle that writes its own
 			// flag, a context menu with no blend mode on it, and the shared duplicate/instance
@@ -5156,6 +5731,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
 			.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
 			[
+				SNew(SMixtormatIdGroupChildDropTarget)
+				.Address(MakeChildAddress(LayerIndex, ChildIndex))
+				.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
+				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
+				[
 				SNew(SMixtormatLayerChildRow)
 				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
 				.Name(ChildName)
@@ -5242,6 +5822,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						FMixtormatChildDragDropOp::New(
 							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
 				})
+				]
 			]
 		]);
 	}
@@ -5281,6 +5862,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
 	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
 	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
+	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
 	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
 	case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
@@ -5448,29 +6030,66 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 
 bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 {
-	return Target.IsGroup()
-		? MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId) != nullptr
-		: WorkingLayers.IsValidIndex(Target.LayerIndex);
+	const FMixtormatLayerGroup* Group = Target.IsGroup()
+		? MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId) : nullptr;
+	const TArray<FMixtormatLayerChild>* Children = Target.IsGroup()
+		? (Group ? &Group->Children : nullptr)
+		: (WorkingLayers.IsValidIndex(Target.LayerIndex) ? &WorkingLayers[Target.LayerIndex].Children : nullptr);
+	if (!Children)
+	{
+		return false;
+	}
+	if (!Target.ScopeOwnerChildId.IsValid())
+	{
+		return true;
+	}
+	const int32 OwnerIndex = FindChildById(*Children, Target.ScopeOwnerChildId);
+	return Children->IsValidIndex(OwnerIndex)
+		&& (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup
+		&& CanAddScopedChild(*Children, OwnerIndex);
 }
 
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
-	// Retired authoring operations. Keep their serialized payloads intact while their
-	// replacements are designed around explicit ID composition and real hierarchy.
+	// Cluster IDs remains unavailable; Combine IDs can be authored inside an explicit ID Group.
 	if (Kind == EMixtormatChildCreation::ClusterIds
-		|| Kind == EMixtormatChildCreation::CombineIds)
+		|| (Kind == EMixtormatChildCreation::CombineIds && !Target.ScopeOwnerChildId.IsValid()))
 	{
 		return FReply::Handled();
 	}
-	const auto AddIdGroupChildren = [](TArray<FMixtormatLayerChild>& Children, const int32 ParentIndex)
+
+	if (!CanCreateChild(Target))
 	{
-		for (int32 ChildSlot = 0; ChildSlot < 2; ++ChildSlot)
+		return FReply::Handled();
+	}
+	if (Target.ScopeOwnerChildId.IsValid())
+	{
+		const FMixtormatChildAddress Owner = Target.IsGroup()
+			? FMixtormatChildAddress{EMixtormatChildOwnerType::Group, Target.GroupId, Target.ScopeOwnerChildId}
+			: FMixtormatChildAddress{EMixtormatChildOwnerType::Layer,
+				WorkingLayers[Target.LayerIndex].LayerId, Target.ScopeOwnerChildId};
+		TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
+		FMixtormatLayerChild Child;
+		ApplyChildCreationDefaults(Child, Kind);
+		const int32 CreatedIndex = InsertScopedChild(*Children, ResolveChildIndexAt(Owner), MoveTemp(Child));
+		if (CreatedIndex == INDEX_NONE)
 		{
-			FMixtormatLayerChild Pattern;
-			ApplyChildCreationDefaults(Pattern, EMixtormatChildCreation::PatternIds);
-			InsertScopedChild(Children, ParentIndex, MoveTemp(Pattern));
+			return FReply::Handled();
 		}
-	};
+		ApplyLinkDefaults((*Children)[CreatedIndex], Owner.OwnerId);
+		if (Target.IsGroup())
+		{
+			FinishGroupChildEdit(Target.GroupId, CreatedIndex);
+		}
+		else
+		{
+			SetLayerExpanded(Target.LayerIndex, true);
+			SelectWorkingChild(Target.LayerIndex, CreatedIndex);
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}
+		return FReply::Handled();
+	}
 
 	if (Target.IsGroup())
 	{
@@ -5481,17 +6100,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		{
 			ApplyChildCreationDefaults(*Child, Kind);
 			ApplyLinkDefaults(*Child, Target.GroupId);
-			int32 CreatedIndex = INDEX_NONE;
-			if (FMixtormatLayerGroup* Group =
-				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId))
-			{
-				CreatedIndex = Group->Children.Num() - 1;
-				if (Kind == EMixtormatChildCreation::IdGroup)
-				{
-					AddIdGroupChildren(Group->Children, CreatedIndex);
-				}
-			}
-			FinishGroupChildEdit(Target.GroupId, CreatedIndex);
+			FinishGroupChildEdit(Target.GroupId);
 		}
 		return FReply::Handled();
 	}
@@ -5509,10 +6118,6 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	const int32 CreatedIndex = Layer.Children.AddDefaulted();
 	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
-	if (Kind == EMixtormatChildCreation::IdGroup)
-	{
-		AddIdGroupChildren(Layer.Children, CreatedIndex);
-	}
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
 	RefreshLayeredPreview();
@@ -5567,11 +6172,16 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
 		{ LOCTEXT("AddSurfaceIdsChild", "Surface IDs"), EMixtormatChildCreation::SurfaceIds },
+		{ LOCTEXT("AddCombineIdsChild", "Combine IDs"), EMixtormatChildCreation::CombineIds },
 		{ LOCTEXT("AddIdGroupChild", "ID Group"), EMixtormatChildCreation::IdGroup },
 	};
 	const bool bEnabled = CanCreateChild(Target);
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
+		if (Entry.Value == EMixtormatChildCreation::CombineIds && !Target.ScopeOwnerChildId.IsValid())
+		{
+			continue;
+		}
 		Menu.Item(
 			Entry.Key,
 			MixtormatIcons::Generated(),
@@ -5579,6 +6189,55 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 			{
 				CreateChild(Target, Kind);
 			}))
+			.Enabled(TAttribute<bool>(bEnabled));
+	}
+	return Menu.Build();
+}
+
+void SMixtormat::AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(Owner);
+	if (!Child || Child->Type != EMixtormatLayerChildType::IdGroup)
+	{
+		return;
+	}
+	FMixtormatAddTarget Target = Owner.OwnerType == EMixtormatChildOwnerType::Group
+		? FMixtormatAddTarget::Group(Owner.OwnerId)
+		: FMixtormatAddTarget::Layer(WorkingLayers.IndexOfByPredicate(
+			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; }));
+	Target.ScopeOwnerChildId = Owner.ChildId;
+	const bool bEnabled = CanCreateChild(Target);
+	Menu.SubMenu(
+		LOCTEXT("IdGroupAddIds", "Add IDs"),
+		MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddIdsMenu, Target))
+		.Enabled(TAttribute<bool>(bEnabled));
+	Menu.SubMenu(
+		LOCTEXT("IdGroupAddFromIds", "Add From IDs"),
+		MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFromIdsMenu, Target))
+		.Enabled(TAttribute<bool>(bEnabled));
+	Menu.Separator();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddFromIdsMenu(const FMixtormatAddTarget Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		{ LOCTEXT("AddColorIdChild", "Color ID Mask"), EMixtormatChildCreation::ColorIdMask },
+		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
+		{ LOCTEXT("AddRandomIdChild", "Random From IDs"), EMixtormatChildCreation::RandomFromIds },
+		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
+		{ LOCTEXT("AddUvIdChild", "UV From IDs"), EMixtormatChildCreation::UvFromIds },
+		{ LOCTEXT("AddReliefIdChild", "Relief From IDs"), EMixtormatChildCreation::ReliefFromIds },
+	};
+	const bool bEnabled = CanCreateChild(Target);
+	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
+	{
+		Menu.Item(
+			Entry.Key,
+			MixtormatIcons::Generated(),
+			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]() { CreateChild(Target, Kind); }))
 			.Enabled(TAttribute<bool>(bEnabled));
 	}
 	return Menu.Build();
@@ -5855,6 +6514,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::PatternId
 		|| RowType == EMixtormatLayerChildType::CombineId
 		|| RowType == EMixtormatLayerChildType::IdGroup
+		|| RowType == EMixtormatLayerChildType::OutputReference
 		|| bGenerator;
 
 	// The scoped mask, which is the whole of Mask Influence. Offered here rather than in the
@@ -5913,6 +6573,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		{
 			DuplicateLayerChild(LayerIndex, ChildIndex);
 		}));
+	AddIdGroupMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
 	// Named after the row it is on. This menu serves generated masks, craquelure and colour id
@@ -5958,6 +6619,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::IdGroup:
 			RemoveLabel = LOCTEXT("RemoveIdGroupChild", "Remove ID Group");
+			break;
+		case EMixtormatLayerChildType::OutputReference:
+			RemoveLabel = LOCTEXT("RemoveOutputReferenceChild", "Remove Output Reference");
 			break;
 		case EMixtormatLayerChildType::Generator:
 			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
@@ -6927,6 +7591,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::PatternId
 		&& ChildType != EMixtormatLayerChildType::CombineId
 		&& ChildType != EMixtormatLayerChildType::IdGroup
+		&& ChildType != EMixtormatLayerChildType::OutputReference
 		&& ChildType != EMixtormatLayerChildType::Generator)
 	{
 		return FReply::Handled();
@@ -7014,6 +7679,9 @@ void SMixtormat::SetGeneratedEnabled(
 		break;
 	case EMixtormatLayerChildType::IdGroup:
 		Child.IdGroup.bEnabled = bEnabled;
+		break;
+	case EMixtormatLayerChildType::OutputReference:
+		Child.OutputReference.bEnabled = bEnabled;
 		break;
 	case EMixtormatLayerChildType::Generator:
 		// The wrapper's flag. The kind chooses a payload; whether the node runs at all is one

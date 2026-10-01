@@ -7,6 +7,8 @@ Repo: `C:\Tools\MaterialLab\MatLab\Plugins\Mixtormat`.
 - Before starting, read the memory index: `C:\Users\hugob\.claude\projects\C--Tools-MaterialLab-MatLab-Plugins-Mixtormat\memory\MEMORY.md`, especially `generator-layer-roadmap.md`.
 
 ## Hard rules
+- **Preserve user-facing features.** A simplified model is not permission to remove controls, previews, flags, or behavior. Ask before removing them; Height Blending remains independent of Height Op.
+- **Current execution restriction:** no tests, builds, Unreal, shell, git, or compiler commands. Use file reads and search only; the dxc recipe below requires explicit permission before execution.
 - **Do NOT build, launch Unreal, or run tests.** Hugo builds and tests. Validate statically only:
   - Read diffs and grep call sites.
   - Syntax-check HLSL with dxc at `C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/dxc.exe`:

@@ -138,8 +138,8 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatRockFormationCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatRockFormationCS, FGlobalShader);
 
-	// 0 = build chunk geometry (one thread per cell), 1 = field (cached), 2 = combine.
-	class FStage : SHADER_PERMUTATION_INT("ROCK_STAGE", 3);
+	// 0 = build chunk geometry, 1 = field (cached), 2 = combine, 3 = normalised outputs.
+	class FStage : SHADER_PERMUTATION_INT("ROCK_STAGE", 4);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -193,6 +193,10 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, LeafCounts)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RockHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RockIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RockBoundaryField)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockNormalizedHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockSlope)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockGap)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockTop)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamfer)
@@ -422,8 +426,8 @@ public:
 
 	// 0 seed, 1 jump flood, 2 resolve, 3 apply, 4 direction preview, 5 UV grid preview,
 	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
-	// 7 one axis of the direction blur.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 8);
+	// 7 one axis of the direction blur, 8 trace a published field into destination UVs.
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 9);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -776,17 +780,28 @@ namespace
 		return false;
 	}
 
+	bool IsFlowFieldDemanded(const FMixtormatComposeContext& Ctx,
+		const FLayerRenderData& Layer, const int32 ChildIndex)
+	{
+		return Ctx.PublishedFieldDemand.Contains(
+			FPublishedFieldKey{Layer.LayerId, ChildIndex, FName(TEXT("FlowDirection"))})
+			|| Ctx.PublishedFieldDemand.Contains(
+				FPublishedFieldKey{Layer.LayerId, ChildIndex, FName(TEXT("WarpedUV"))});
+	}
+
 	bool HasActiveFlowTools(
-		const FRenderRequest& Request,
+		const FMixtormatComposeContext& Ctx,
 		const int32 LayerIndex,
 		const FLayerRenderData& Layer,
 		const int32 OwnerSourceChildIndex)
 	{
+		const FRenderRequest& Request = Ctx.Request;
 		for (const FChildRenderData& Candidate : Layer.Children)
 		{
 			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
 				&& (!IsNeutralFlowTool(Candidate.Effect)
-					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)))
+					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)
+					|| IsFlowFieldDemanded(Ctx, Layer, Candidate.SourceChildIndex)))
 			{
 				return true;
 			}
@@ -870,7 +885,7 @@ namespace
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
 			const bool bNeutral = IsNeutralFlowTool(Flow);
-			if (bNeutral && !bPreviewing)
+			if (bNeutral && !bPreviewing && !IsFlowFieldDemanded(Ctx, Layer, FlowIndex))
 			{
 				continue;
 			}
@@ -1034,6 +1049,16 @@ namespace
 					Shader, P, Groups);
 			}
 
+			Ctx.PublishedFieldOutputs.Add(
+				FPublishedFieldKey{Layer.LayerId, FlowIndex, FName(TEXT("FlowDirection"))},
+				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
+			if (Flow.Type != EMixtormatEffectType::FlowCarve)
+			{
+				Ctx.PublishedFieldOutputs.Add(
+					FPublishedFieldKey{Layer.LayerId, FlowIndex, FName(TEXT("WarpedUV"))},
+					FPublishedField{EMixtormatPublishedFieldKind::UVMap, WarpedUV, nullptr, nullptr, false});
+			}
+
 			// Selected-item previews.
 			if (bPreviewing)
 			{
@@ -1144,8 +1169,13 @@ namespace
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
 		// signed boundary distance + outline-sampled flag (RG32F), then the top, chamfer and wall
-		// ramps.
-		constexpr int32 RockSlotCount = 10;
+		// ramps. Normalised height, slope and gap are derived once per layer in slots 10..12;
+		// only the original ten slots use the shared node cache's fixed-size output array.
+		constexpr int32 RockCachedSlotCount = 10;
+		constexpr int32 RockSlotCount = 13;
+		static_assert(RockCachedSlotCount * sizeof(TRefCountPtr<IPooledRenderTarget>)
+					<= sizeof(FMixtormatNodeCacheEntry::Outputs),
+			"Rock cache slots must fit the shared node cache entry");
 		FRDGTextureRef Outputs[RockSlotCount] = {};
 		// Produced once per layer: the ID phase may already have run it (see AddGeneratorFieldPasses).
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
@@ -1166,19 +1196,24 @@ namespace
 					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			if (Hit.IsValid())
 			{
-				static const TCHAR* const Names[RockSlotCount] = {
+				static const TCHAR* const Names[RockCachedSlotCount] = {
 					TEXT("Mixtormat.Rock.Height"), TEXT("Mixtormat.Rock.Top"), TEXT("Mixtormat.Rock.Chamfer"),
 					TEXT("Mixtormat.Rock.Wall"), TEXT("Mixtormat.Rock.EdgeDistance"), TEXT("Mixtormat.Rock.Ids"),
 					TEXT("Mixtormat.Rock.BoundaryField"), TEXT("Mixtormat.Rock.TopRamp"),
 					TEXT("Mixtormat.Rock.ChamferRamp"), TEXT("Mixtormat.Rock.WallRamp")};
-				for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
+				for (int32 Slot = 0; Slot < RockCachedSlotCount; ++Slot)
 				{
 					Outputs[Slot] = Hit->Outputs[Slot].IsValid()
 						? GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot])
 						: nullptr;
 				}
 			}
-			if (Algo::AnyOf(Outputs, [](const FRDGTextureRef Output) { return Output == nullptr; }))
+			bool bComplete = true;
+			for (int32 Slot = 0; Slot < RockCachedSlotCount; ++Slot)
+			{
+				bComplete &= Outputs[Slot] != nullptr;
+			}
+			if (!bComplete)
 			{
 				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
 				{
@@ -1258,7 +1293,7 @@ namespace
 						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 					Entry->Key = NodeKey;
 					Entry->Resolution = Size;
-					for (int32 Slot = 0; Slot < RockSlotCount; ++Slot)
+					for (int32 Slot = 0; Slot < RockCachedSlotCount; ++Slot)
 					{
 						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
 					}
@@ -1266,16 +1301,42 @@ namespace
 				}
 			}
 
-			// Reusable outputs: chunk IDs for ID consumers and seven scalar outputs for Copy Output /
-			// published-source masks -- the hard class masks, the signed boundary distance, and a ramp
-			// across each class. Slot 6 carries the distance's validity without changing scalar
-			// mask reads, so it is not published.
+			// Derive scalar gates after either cache registration or field generation. A separate
+			// dispatch can safely read neighbouring heights and keeps the ten-slot cache unchanged.
+			{
+				static const TCHAR* const Names[3] = {
+					TEXT("Mixtormat.Rock.NormalizedHeightGate"), TEXT("Mixtormat.Rock.Slope"), TEXT("Mixtormat.Rock.Gap")};
+				for (int32 Index = 0; Index < UE_ARRAY_COUNT(Names); ++Index)
+				{
+					Outputs[10 + Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+						Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[Index]);
+				}
+				FMixtormatRockFormationCS::FPermutationDomain Permutation;
+				Permutation.Set<FMixtormatRockFormationCS::FStage>(3);
+				TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
+				FillParameters(P);
+				P->RockHeight = Outputs[0];
+				P->RockIds = Outputs[5];
+				P->RockBoundaryField = Outputs[6];
+				P->OutRockNormalizedHeight = GraphBuilder.CreateUAV(Outputs[10]);
+				P->OutRockSlope = GraphBuilder.CreateUAV(Outputs[11]);
+				P->OutRockGap = GraphBuilder.CreateUAV(Outputs[12]);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.RockFormation.Outputs.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+					Shader, P, Groups);
+			}
+
+			// Reusable outputs retain the existing masks, ramps and signed distance. The three
+			// normalised gates share their original (pre-flow) geometry frame. Slot 6 is not published.
 			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Outputs[5]);
-			static const TCHAR* const MaskNames[7] = {
+			static const TCHAR* const MaskNames[10] = {
 				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
-				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp")};
-			static const int32 MaskSlots[7] = {1, 2, 3, 4, 7, 8, 9};
-			for (int32 Index = 0; Index < 7; ++Index)
+				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp"),
+				TEXT("RockHeight"), TEXT("RockSlope"), TEXT("RockGap")};
+			static const int32 MaskSlots[10] = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12};
+			for (int32 Index = 0; Index < UE_ARRAY_COUNT(MaskNames); ++Index)
 			{
 				const FName OutputName(MaskNames[Index]);
 				const FRDGTextureRef Output = Outputs[MaskSlots[Index]];
@@ -1310,6 +1371,9 @@ namespace
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, RockSlotCount);
 		}
+		// Independent normalised gate, including field-only evaluation; never the mode-selected
+		// or flow-modified layer height and never affected by HeightScale.
+		LayerCtx.ResolvedRockHeights.Add(Child.SourceChildIndex, Outputs[10]);
 		if (bFieldOnly)
 		{
 			return nullptr;
@@ -1343,7 +1407,7 @@ namespace
 			RockField = AddNormalizeFieldPasses(GraphBuilder, RockField, Size,
 				0.0f, 1.0f, TEXT("Mixtormat.Rock.NormalizedHeight"));
 		}
-		const bool bHasFlowTools = HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
+		const bool bHasFlowTools = HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
 		if (bHasFlowTools)
 		{
 			// Resolve floors and analytic bounds before flow moves pixels: the cached IDs are in
@@ -1590,7 +1654,7 @@ namespace
 			AddDebugPreviewMaskBlitPass(GraphBuilder, ChamferCut,
 				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 		}
-		if (HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			FRDGTextureRef NoCoverage = nullptr;
 			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[5], Field, NoCoverage);
@@ -1773,7 +1837,7 @@ namespace
 		// Scoped flow tools, as under Rock Formation: height and coverage move together.
 		FRDGTextureRef PebbleField = Outputs[0];
 		FRDGTextureRef PebbleCoverage = Outputs[1];
-		if (HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child,
 				PackScalarBoundary(Ctx, Outputs[2]), Outputs[0], PebbleCoverage);
@@ -1797,6 +1861,59 @@ namespace
 	}
 
 
+}
+
+void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
+	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
+{
+	if (!Layer.bEnabled) { return; }
+	for (const FChildRenderData& Child : Layer.Children)
+	{
+		if (Child.Type != EMixtormatLayerChildType::OutputReference) { continue; }
+		const FOutputReferenceRenderData& Reference = Child.OutputReference;
+		const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Reference.Source);
+		if (!Source || Source->Kind != Reference.Kind || !Source->IsComplete()) { continue; }
+		// Copy the bundle before Add can reallocate the registry. No producer is reevaluated.
+		const FPublishedField Field = *Source;
+		Ctx.PublishedFieldOutputs.Add(
+			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Reference.Source.Output}, Field);
+		if (Reference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+		{
+			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Field.Texture);
+			continue;
+		}
+		if (Reference.Kind == EMixtormatPublishedFieldKind::UVMap)
+		{
+			LayerCtx.ReferencedUV = Field.Texture;
+			continue;
+		}
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.OutputReference.FlowUV"));
+		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
+		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		P->OutputSize = Size;
+		P->TraceLength = Reference.FlowTraceLength;
+		P->WarpStrength = Reference.FlowAmount;
+		P->Steps = Reference.FlowSteps;
+		P->FlowField = Field.Texture;
+		P->FlowSmooth = Field.FlowSmooth;
+		P->FlowValidity = Field.Validity;
+		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.OutputReference.Flow.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		LayerCtx.ReferencedUV = Coordinates;
+		Ctx.PublishedFieldOutputs.Add(
+			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("WarpedUV"))},
+			FPublishedField{EMixtormatPublishedFieldKind::UVMap, Coordinates, nullptr, nullptr, false});
+	}
 }
 
 void AddGeneratorFieldPasses(

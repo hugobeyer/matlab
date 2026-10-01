@@ -13,7 +13,11 @@
 // Three stages, driven by Stage exactly as the cluster filter is. Every file-scope uniform below
 // is declared in FMixtormatRampIdsCS::FParameters whether a given stage reads it or not: UE binds
 // the whole file, not the entry point's subset.
+// Raw identities remain unchanged for random draws. Compact labels and full-width hashes
+// are never memory addresses: RegionRootIds supplies a bounded pixel-root analysis map.
+// Build it with MixtormatRegionFields.usf IndexCS unless the producer guarantees pixel roots.
 Texture2D<uint> RegionIds;
+Texture2D<uint> RegionRootIds;
 // Four ints per pixel -- min x, max x, min y, max y -- strided rather than four buffers or a
 // buffer of int4. Atomics on a struct member of a structured buffer are the kind of thing dxc
 // accepts and a driver disagrees about; plain strided ints are unambiguous everywhere.
@@ -77,18 +81,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const uint RawId = RegionIds.Load(int3(Pixel, 0));
-	const bool bValid = RawId != MIXTORMAT_INVALID_REGION && RawId < uint(OutputSize.x * OutputSize.y);
-	// The ID *is* the root pixel's linear index, which is what carries the root's position for
-	// free. Nothing collapses these to a dense range; doing so would destroy exactly this.
-	const uint RootId = bValid ? RawId : Index;
-	const int RootX = int(RootId % uint(OutputSize.x));
-	const int RootY = int(RootId / uint(OutputSize.x));
+	const bool bValid = RawId != MIXTORMAT_INVALID_REGION;
+	const uint RootId = RegionRootIds.Load(int3(Pixel, 0));
+	const bool bHasRoot = bValid && RootId < uint(OutputSize.x) * uint(OutputSize.y);
+	const uint Anchor = bHasRoot ? RootId : Index;
+	const int RootX = int(Anchor % uint(OutputSize.x));
+	const int RootY = int(Anchor / uint(OutputSize.x));
 	const int DeltaX = WrapDelta(int(Pixel.x), RootX, OutputSize.x);
 	const int DeltaY = WrapDelta(int(Pixel.y), RootY, OutputSize.y);
 
 	if (Stage == RAMP_STAGE_BOUNDS)
 	{
-		if (bValid)
+		if (bHasRoot)
 		{
 			InterlockedMin(RegionBounds[RootId * 4u + 0u], DeltaX);
 			InterlockedMax(RegionBounds[RootId * 4u + 1u], DeltaX);
@@ -100,7 +104,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// A pixel in no region gets the neutral ramp and zero strength, so the relief pass leaves it
 	// flat rather than lifting it by half an amount.
-	if (!bValid)
+	if (!bHasRoot)
 	{
 		OutputRamp[Pixel] = float2(0.5f, 0.0f);
 		return;
@@ -114,7 +118,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float SpanX = max(float(MaxX - MinX), 1.0f);
 	const float SpanY = max(float(MaxY - MinY), 1.0f);
 
-	const uint Seeded = MixtormatRegionSeed(RootId, Seed);
+	const uint Seeded = MixtormatRegionSeed(RawId, Seed);
 	float Angle = RotateRandom != 0
 		? MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_HUE) * 6.28318530718f
 		: 0.0f;

@@ -22,9 +22,9 @@
 // the opposite of the node's job. Every pixel carrying an ID resolves through the same root, so a
 // region stays whole however it is scattered.
 //
-// Cluster/Pattern IDs index parents directly. Breakup publishes full-width hashes instead,
-// so those chains use an open-addressed key table while retaining the original IDs as parents.
-// Zero is a valid Cluster/Pattern ID, but is background in a Breakup-derived map.
+// Bounded pixel-root and compact IDs can index parents directly. Full-width IDs use an
+// open-addressed key table while retaining their original identities as parents. Zero is
+// valid in both paths; only MIXTORMAT_INVALID_REGION denotes a region-less pixel.
 
 Texture2D<uint> SourceIds;
 globallycoherent RWStructuredBuffer<uint> Parents;
@@ -62,11 +62,16 @@ uint ParentCount()
 
 bool IsRegion(uint Id)
 {
-	return Id != MIXTORMAT_INVALID_REGION && (UseHashedIds == 0u || Id != 0u);
+	return Id != MIXTORMAT_INVALID_REGION;
 }
 
 uint ParentSlot(uint Id)
 {
+	// The empty-table marker must never resolve as a real key, in either addressing mode.
+	if (!IsRegion(Id))
+	{
+		return MIXTORMAT_INVALID_REGION;
+	}
 	if (UseHashedIds == 0u)
 	{
 		return Id < ParentCount() ? Id : MIXTORMAT_INVALID_REGION;
@@ -189,7 +194,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const uint Here = SourceIds.Load(int3(Pixel, 0));
 	if (Stage == MIXTORMAT_COMBINE_STAGE_INDEX)
 	{
-		if (!IsRegion(Here))
+		// Direct-index allocations have only one key-table element.
+		if (UseHashedIds == 0u || !IsRegion(Here))
 		{
 			return;
 		}

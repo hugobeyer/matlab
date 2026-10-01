@@ -643,6 +643,14 @@ namespace MixtormatParameterBinding
 					Child.SourceChildId = *NewSourceChildId;
 				}
 			}
+			if (Child.OutputReference.SourceLayerId == OldLayerId)
+			{
+				Child.OutputReference.SourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.OutputReference.SourceChildId))
+				{
+					Child.OutputReference.SourceChildId = *NewSourceChildId;
+				}
+			}
 			if (Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{
 				Child.Mask.PublishedSourceLayerId = NewLayerId;
@@ -709,6 +717,8 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.SourceChildId, ChildIdRemap);
 				RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
+				RemapGuid(Child.OutputReference.SourceLayerId, OwnerIdRemap);
+				RemapGuid(Child.OutputReference.SourceChildId, ChildIdRemap);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapBinding(Binding);
@@ -1057,6 +1067,11 @@ namespace MixtormatParameterBinding
 		// too, or the mask silently goes back to reading nothing.
 		auto RemapPublishedSource = [&](FMixtormatLayerChild& Child)
 		{
+			if (Child.OutputReference.SourceChildId == ChildId
+				&& Child.OutputReference.SourceLayerId == OldLayerId)
+			{
+				Child.OutputReference.SourceLayerId = NewLayerId;
+			}
 			if (Child.Type == EMixtormatLayerChildType::Mask
 				&& Child.Mask.PublishedSourceChildId == ChildId
 				&& Child.Mask.PublishedSourceLayerId == OldLayerId)

@@ -316,9 +316,9 @@
 	{
 		"Generator.RockSkew":
 		{
-			"default": 0,
-			"uiMin": -2,
-			"uiMax": 2,
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.RockFracture":

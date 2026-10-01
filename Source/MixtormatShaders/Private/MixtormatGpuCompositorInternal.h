@@ -218,6 +218,45 @@ namespace MixtormatGpuCompositor
 		}
 	};
 
+	// Shares the existing stable layer/child/output address shape; kind belongs to the payload.
+	using FPublishedFieldKey = FPublishedMaskKey;
+
+	struct FPublishedField
+	{
+		EMixtormatPublishedFieldKind Kind = EMixtormatPublishedFieldKind::RegionIds;
+		FRDGTextureRef Texture = nullptr;
+		FRDGTextureRef FlowSmooth = nullptr;
+		FRDGTextureRef Validity = nullptr;
+		bool bHashedIds = false;
+
+		bool IsComplete() const
+		{
+			if (!Texture) { return false; }
+						switch (Kind)
+						{
+						case EMixtormatPublishedFieldKind::RegionIds:
+							return Texture->Desc.Format == PF_R32_UINT;
+						case EMixtormatPublishedFieldKind::UVMap:
+							return Texture->Desc.Format == PF_G32R32F;
+						case EMixtormatPublishedFieldKind::Flow:
+							return FlowSmooth && Validity && Texture->Desc.Format == PF_FloatRGBA
+								&& FlowSmooth->Desc.Format == PF_FloatRGBA && Validity->Desc.Format == PF_R16F
+								&& FlowSmooth->Desc.Extent == Texture->Desc.Extent && Validity->Desc.Extent == Texture->Desc.Extent;
+						default:
+							return false;
+						}
+		}
+	};
+
+	struct FOutputReferenceRenderData
+	{
+		FPublishedFieldKey Source;
+		EMixtormatPublishedFieldKind Kind = EMixtormatPublishedFieldKind::RegionIds;
+		float FlowAmount = 1.0f;
+		float FlowTraceLength = 0.05f;
+		int32 FlowSteps = 16;
+	};
+
 	struct FMaskRenderData
 	{
 		FTextureRHIRef Texture;
@@ -906,6 +945,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorRenderData Generator;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
+		FOutputReferenceRenderData OutputReference;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
@@ -1289,6 +1329,8 @@ namespace MixtormatGpuCompositor
 		TSet<FGuid> DriverSnapshotDemand;
 		TMap<FGuid, FRDGTextureRef> DriverSnapshots;
 		TMap<FPublishedMaskKey, FRDGTextureRef> PublishedMaskOutputs;
+		TMap<FPublishedFieldKey, FPublishedField> PublishedFieldOutputs;
+		TSet<FPublishedFieldKey> PublishedFieldDemand;
 		TSet<int32> RequiredHeightSnapshots;
 		TMap<int32, FRDGTextureRef> HeightSnapshots;
 
@@ -1333,6 +1375,10 @@ namespace MixtormatGpuCompositor
 		// shared by every Layer Values mask on it.
 		FRDGTextureRef LayerValues = nullptr;
 		FRDGTextureRef LayerInputHeight = nullptr;
+		// Last valid Flow/UV reference placement. Applied before the destination's own source UVs.
+		FRDGTextureRef ReferencedUV = nullptr;
+		// HeightMode and scoped flow resolved, before the Rock HeightScale placement gain.
+		TMap<int32, FRDGTextureRef> ResolvedRockHeights;
 		// Set when a generator rewrote LayerInputHeight: the composite then reads it as this
 		// layer's height even when the layer has no packed height of its own.
 		bool bGeneratedHeight = false;
@@ -1398,6 +1444,8 @@ namespace MixtormatGpuCompositor
 			LayerInputRAM = nullptr;
 			LayerValues = nullptr;
 			LayerInputHeight = nullptr;
+			ReferencedUV = nullptr;
+			ResolvedRockHeights.Reset();
 			bGeneratedHeight = false;
 			GeneratorFields.Reset();
 			PendingLayerBlurs.Reset();
@@ -1420,6 +1468,12 @@ namespace MixtormatGpuCompositor
 		int32 OutputTargetIndex);
 
 	void EnqueueCompose(FRenderRequest&& Request);
+
+	// Typed imports run before producers/UV consumers. Export IDs after deferred producers finish.
+	void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer);
+	void PublishLayerRegionIdOutputs(FMixtormatComposeContext& Ctx,
+		const FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer);
 
 	// Producers can publish in different phases; consumers still require source-child order.
 	inline void PublishRegionIds(
@@ -1788,6 +1842,16 @@ namespace MixtormatGpuCompositor
 // full-resolution targets: about 120MB at 2K and 470MB at 4K.
 struct FMixtormatPrefixCache
 {
+	struct FPublishedFieldSnapshot
+	{
+		MixtormatGpuCompositor::FPublishedFieldKey Key;
+		EMixtormatPublishedFieldKind Kind = EMixtormatPublishedFieldKind::RegionIds;
+		TRefCountPtr<IPooledRenderTarget> Texture;
+		TRefCountPtr<IPooledRenderTarget> FlowSmooth;
+		TRefCountPtr<IPooledRenderTarget> Validity;
+		bool bHashedIds = false;
+	};
+
 	struct FEntry
 	{
 		uint64 Key = 0;
@@ -1806,6 +1870,8 @@ struct FMixtormatPrefixCache
 		// snapshot cannot be the test; being considered is.
 		TSet<FGuid> DriverDemandCovered;
 		TArray<TPair<MixtormatGpuCompositor::FPublishedMaskKey, TRefCountPtr<IPooledRenderTarget>>> PublishedMasks;
+				TArray<FPublishedFieldSnapshot> PublishedFields;
+				TSet<MixtormatGpuCompositor::FPublishedFieldKey> FieldDemandCovered;
 		uint64 Bytes = 0;
 		uint64 LastUsed = 0;
 	};
@@ -1859,13 +1925,25 @@ struct FMixtormatPrefixCache
 		return Best;
 	}
 
-	bool Contains(const uint64 Key, const int32 LayerIndex, const FIntPoint InResolution) const
+	bool Contains(const uint64 Key, const int32 LayerIndex, const FIntPoint InResolution,
+		const TSet<MixtormatGpuCompositor::FPublishedFieldKey>& FieldDemand,
+		const TMap<FGuid, int32>& LayerIndexById) const
 	{
 		for (const TSharedPtr<FEntry, ESPMode::ThreadSafe>& Entry : Entries)
 		{
 			if (Entry->Key == Key && Entry->LayerIndex == LayerIndex && Entry->Resolution == InResolution)
 			{
-				return true;
+				bool bCovered = true;
+				for (const auto& Demand : FieldDemand)
+				{
+					const int32* SourceIndex = LayerIndexById.Find(Demand.LayerId);
+					if (SourceIndex && *SourceIndex <= LayerIndex && !Entry->FieldDemandCovered.Contains(Demand))
+					{
+						bCovered = false;
+						break;
+					}
+				}
+				if (bCovered) { return true; }
 			}
 		}
 		return false;
@@ -1887,6 +1965,19 @@ struct FMixtormatPrefixCache
 		for (const auto& Pair : Incoming->HeightSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->DriverSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->PublishedMasks) { Bytes += TargetBytes(Pair.Value); }
+		TSet<IPooledRenderTarget*> KeptFieldTargets;
+		for (const FPublishedFieldSnapshot& Field : Incoming->PublishedFields)
+		{
+			const TRefCountPtr<IPooledRenderTarget> Targets[] = {Field.Texture, Field.FlowSmooth, Field.Validity};
+			for (const auto& Target : Targets)
+			{
+				if (Target.IsValid() && !KeptFieldTargets.Contains(Target.GetReference()))
+				{
+					KeptFieldTargets.Add(Target.GetReference());
+					Bytes += TargetBytes(Target);
+				}
+			}
+		}
 		Incoming->Bytes = Bytes;
 		if (Bytes > BudgetBytes)
 		{

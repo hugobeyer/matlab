@@ -251,6 +251,7 @@ public:
 		SHADER_PARAMETER(float, AngleStepDegrees)
 		SHADER_PARAMETER(float, IntensityRandom)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionRootIds)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
 	END_SHADER_PARAMETER_STRUCT()
@@ -378,9 +379,41 @@ IMPLEMENT_GLOBAL_SHADER(
 
 // Generic region analysis, shared by UV From IDs and Relief From IDs.
 //
-// Five entry points and five parameter layouts, in the style of the craquelure distance file:
+// Six entry points and six parameter layouts, in the style of the craquelure distance file:
 // each struct carries exactly what its own entry point references, which is what keeps a UAV and
 // an SRV of the same texture out of one pass. Nothing here knows which node produced the IDs.
+
+// Bounded analysis roots for compact labels and full-width identities.
+class FMixtormatRegionIndexCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRegionIndexCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRegionIndexCS, FGlobalShader);
+
+	static constexpr uint32 StageInit = 0;
+	static constexpr uint32 StageRegister = 1;
+	static constexpr uint32 StageResolve = 2;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, IndexStage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RegionIndexKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, RegionIndexRoots)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputRootIds)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRegionIndexCS,
+	"/Plugin/Mixtormat/Private/MixtormatRegionFields.usf",
+	"IndexCS",
+	SF_Compute);
 
 // Region bounding boxes, and the per-region centre UV resolved from them.
 class FMixtormatRegionBoundsCS final : public FGlobalShader
@@ -398,6 +431,7 @@ public:
 		SHADER_PARAMETER(uint32, Stage)
 		SHADER_PARAMETER(uint32, Axis)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionRootIds)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<int>, RegionBounds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputCentreUV)
 	END_SHADER_PARAMETER_STRUCT()
@@ -475,6 +509,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionRootIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, RegionExtent)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -507,6 +542,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionExtentIn)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionRootIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputEdge)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutputRamp)
 	END_SHADER_PARAMETER_STRUCT()
@@ -728,9 +764,101 @@ namespace MixtormatGpuCompositor
 	//
 	// Three dispatches and one full-resolution int4 scratch buffer, so it is demand-culled the
 	// same way the segmentation is: no tilt weight, no pass.
+	// Only these local producers guarantee that an identity is also a pixel-root address.
+	// Output references are indexed conservatively: a non-hashed map may use compact labels.
+	static bool HasPixelRootIds(const FLayerRenderData& Layer, int32 ProducerIndex)
+	{
+		const FChildRenderData* Producer = Layer.Children.FindByPredicate(
+			[ProducerIndex](const FChildRenderData& Candidate)
+			{
+				return Candidate.SourceChildIndex == ProducerIndex;
+			});
+		while (Producer && Producer->Type == EMixtormatLayerChildType::CombineId)
+		{
+			const FChildRenderData* Previous = nullptr;
+			for (const FChildRenderData& Candidate : Layer.Children)
+			{
+				if (Candidate.SourceChildIndex >= Producer->SourceChildIndex
+					|| Candidate.ScopeOwnerSourceChildIndex != Producer->ScopeOwnerSourceChildIndex)
+				{
+					continue;
+				}
+				const bool bProducesIds = Candidate.Type == EMixtormatLayerChildType::Filter
+					|| Candidate.Type == EMixtormatLayerChildType::PatternId
+					|| Candidate.Type == EMixtormatLayerChildType::CombineId
+					|| Candidate.Type == EMixtormatLayerChildType::IdGroup
+					|| Candidate.Type == EMixtormatLayerChildType::Generator
+					|| (Candidate.Type == EMixtormatLayerChildType::OutputReference
+						&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+					|| (Candidate.Type == EMixtormatLayerChildType::Effect
+						&& Candidate.Effect.Type == EMixtormatEffectType::Breakup);
+				if (bProducesIds && (!Previous || Candidate.SourceChildIndex > Previous->SourceChildIndex))
+				{
+					Previous = &Candidate;
+				}
+			}
+			Producer = Previous;
+		}
+		return Producer && (Producer->Type == EMixtormatLayerChildType::PatternId
+			|| (Producer->Type == EMixtormatLayerChildType::Filter
+				&& (!Producer->Filter.bSurfaceIds || Producer->Filter.bSplitIslands)));
+	}
+
+	static FRDGTextureRef AddRegionIndexPasses(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef RegionIds,
+		const bool bPixelRootIds,
+		const FIntPoint OutputSize,
+		TMap<FRDGTextureRef, FRDGTextureRef>& RootCache)
+	{
+		if (bPixelRootIds)
+		{
+			return RegionIds;
+		}
+		if (const FRDGTextureRef* Cached = RootCache.Find(RegionIds))
+		{
+			return *Cached;
+		}
+		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
+		const uint32 Capacity = PixelCount * 2u;
+		FRDGBufferRef Keys = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), Capacity),
+			TEXT("Mixtormat.Region.IndexKeys"));
+		FRDGBufferRef Roots = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), Capacity),
+			TEXT("Mixtormat.Region.IndexRoots"));
+		FRDGTextureRef RootIds = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(OutputSize, PF_R32_UINT, FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Region.RootIds"));
+		const FRDGBufferUAVRef KeysUAV = GraphBuilder.CreateUAV(Keys);
+		const FRDGBufferUAVRef RootsUAV = GraphBuilder.CreateUAV(Roots);
+		const FRDGTextureUAVRef RootIdsUAV = GraphBuilder.CreateUAV(RootIds);
+		TShaderMapRef<FMixtormatRegionIndexCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		const FIntVector Groups(
+			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
+		for (uint32 Stage = FMixtormatRegionIndexCS::StageInit;
+			Stage <= FMixtormatRegionIndexCS::StageResolve; ++Stage)
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatRegionIndexCS::FParameters>();
+			P->OutputSize = OutputSize;
+			P->IndexStage = Stage;
+			P->RegionIds = RegionIds;
+			P->RegionIndexKeys = KeysUAV;
+			P->RegionIndexRoots = RootsUAV;
+			P->OutputRootIds = RootIdsUAV;
+			// Default UAV barriers separate initialization, registration and root publication.
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.RegionFields.Index.Stage%u", Stage), Shader, P, Groups);
+		}
+		RootCache.Add(RegionIds, RootIds);
+		return RootIds;
+	}
+
 	static FRDGTextureRef AddRampIdPasses(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef RegionIds,
+		FRDGTextureRef RegionRootIds,
 		FIntPoint OutputSize,
 		const FRampIdRenderData& Ramp,
 		int32 LayerIndex,
@@ -738,8 +866,7 @@ namespace MixtormatGpuCompositor
 	{
 		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
 		// Four ints per pixel -- min x, max x, min y, max y -- strided in one buffer. Sized by
-		// pixel rather than by region because an ID *is* a pixel index and nothing compacts them;
-		// most of this is never touched, which is the price of keeping the root's position.
+		// pixel rather than by raw identity: RegionRootIds supplies bounded analysis addresses.
 		FRDGBufferRef RegionBounds = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateStructuredDesc(sizeof(int32), PixelCount * 4u),
 			TEXT("Mixtormat.Ramp.RegionBounds"));
@@ -771,6 +898,7 @@ namespace MixtormatGpuCompositor
 			Parameters->AngleStepDegrees = Ramp.AngleStepDegrees;
 			Parameters->IntensityRandom = Ramp.IntensityRandom;
 			Parameters->RegionIds = RegionIds;
+			Parameters->RegionRootIds = RegionRootIds;
 			Parameters->RegionBounds = RegionBoundsUAV;
 			Parameters->OutputRamp = RampFieldUAV;
 
@@ -791,28 +919,110 @@ namespace MixtormatGpuCompositor
 	// how the micro/macro pairing in the design note is meant to be authored. Nothing above means
 	// no map, and the consumer is culled rather than guessing.
 
-	// The producer a From-IDs consumer resolves to: the nearest published map above its own row,
-	// and the row that published it.
+	// Keep private producer maps for previews and nested groups, but expose only the
+	// owning group's final output to its consumers. Combine is a producer transform:
+	// it reads the preceding producer in that same scope, never its own group's result.
+	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
+		const FLayerRenderData& Layer,
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const FChildRenderData* Child)
+	{
+		TArray<TPair<int32, FRDGTextureRef>> View;
+		const int32 ScopeOwner = Child ? Child->ScopeOwnerSourceChildIndex : INDEX_NONE;
+		const bool bGroupConsumer = Child && Child->Type != EMixtormatLayerChildType::CombineId
+			&& ScopeOwner != INDEX_NONE
+			&& Layer.Children.ContainsByPredicate([ScopeOwner](const FChildRenderData& Candidate)
+			{
+				return Candidate.SourceChildIndex == ScopeOwner
+					&& Candidate.Type == EMixtormatLayerChildType::IdGroup;
+			});
+		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+		{
+			if (bGroupConsumer)
+			{
+				if (Entry.Key == ScopeOwner)
+				{
+					View.Add(Entry);
+				}
+				continue;
+			}
+			const FChildRenderData* Producer = Layer.Children.FindByPredicate(
+				[&Entry](const FChildRenderData& Candidate)
+				{
+					return Candidate.SourceChildIndex == Entry.Key;
+				});
+			if (Producer && Producer->ScopeOwnerSourceChildIndex == ScopeOwner)
+			{
+				View.Add(Entry);
+			}
+		}
+		return View;
+	}
+
+	// Resolve the authored producer before looking for its published map. A deferred or
+	// unavailable producer shadows older maps; publication order must not change the source.
 	//
 	// The index matters as well as the texture. The region-distance cache is keyed on it, so two
 	// consumers of one producer share a jump flood; and UV From IDs uses it to find out whether
 	// the producer it landed on happens to be a Pattern with an intrinsic quarter-turn field.
 	static FRDGTextureRef FindRegionIdsAboveWithIndex(
+		const FLayerRenderData& Layer,
 		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
-		const int32 ChildIndex,
+		const FChildRenderData& Child,
 		int32& OutProducerIndex)
 	{
-		FRDGTextureRef Found = nullptr;
 		OutProducerIndex = INDEX_NONE;
-		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
-		{
-			if (Entry.Key < ChildIndex)
+		const int32 ScopeOwner = Child.ScopeOwnerSourceChildIndex;
+		const bool bGroupConsumer = Child.Type != EMixtormatLayerChildType::CombineId
+			&& ScopeOwner != INDEX_NONE
+			&& Layer.Children.ContainsByPredicate([ScopeOwner](const FChildRenderData& Candidate)
 			{
-				Found = Entry.Value;
-				OutProducerIndex = Entry.Key;
+				return Candidate.SourceChildIndex == ScopeOwner
+					&& Candidate.Type == EMixtormatLayerChildType::IdGroup;
+			});
+		if (bGroupConsumer)
+		{
+			// Nested consumers read only their immediate owning group's final output.
+			if (ScopeOwner < Child.SourceChildIndex)
+			{
+				OutProducerIndex = ScopeOwner;
 			}
 		}
-		return Found;
+		else
+		{
+			for (const FChildRenderData& Candidate : Layer.Children)
+			{
+				if (Candidate.SourceChildIndex >= Child.SourceChildIndex
+					|| Candidate.ScopeOwnerSourceChildIndex != ScopeOwner)
+				{
+					continue;
+				}
+				const bool bProducesIds = Candidate.Type == EMixtormatLayerChildType::Filter
+					|| Candidate.Type == EMixtormatLayerChildType::PatternId
+					|| Candidate.Type == EMixtormatLayerChildType::CombineId
+					|| Candidate.Type == EMixtormatLayerChildType::IdGroup
+					|| Candidate.Type == EMixtormatLayerChildType::Generator
+					|| (Candidate.Type == EMixtormatLayerChildType::OutputReference
+						&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+					|| (Candidate.Type == EMixtormatLayerChildType::Effect
+						&& Candidate.Effect.Type == EMixtormatEffectType::Breakup);
+				if (bProducesIds && Candidate.SourceChildIndex > OutProducerIndex)
+				{
+					OutProducerIndex = Candidate.SourceChildIndex;
+				}
+			}
+		}
+		if (OutProducerIndex != INDEX_NONE)
+		{
+			for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
+			{
+				if (Entry.Key == OutProducerIndex)
+				{
+					return Entry.Value;
+				}
+			}
+		}
+		return nullptr;
 	}
 
 	// Distance to the nearest region boundary, by jump flooding, plus each region's reach.
@@ -825,6 +1035,7 @@ namespace MixtormatGpuCompositor
 		FRDGBuilder& GraphBuilder,
 		FMixtormatLayerPassContext& LayerCtx,
 		FRDGTextureRef RegionIds,
+		FRDGTextureRef RegionRootIds,
 		const int32 ProducerIndex,
 		const FIntPoint OutputSize,
 		const int32 LayerIndex)
@@ -923,6 +1134,7 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatRegionExtentCS::FParameters>();
 		ExtentParameters->OutputSize = OutputSize;
 		ExtentParameters->RegionIds = RegionIds;
+		ExtentParameters->RegionRootIds = RegionRootIds;
 		ExtentParameters->PreviousRecord = Record[RecordIndex];
 		ExtentParameters->RegionExtent = GraphBuilder.CreateUAV(Extent);
 		FComputeShaderUtils::AddPass(
@@ -946,6 +1158,7 @@ namespace MixtormatGpuCompositor
 		FRDGBuilder& GraphBuilder,
 		const FRegionDistanceCacheEntry& Distance,
 		FRDGTextureRef RegionIds,
+		FRDGTextureRef RegionRootIds,
 		const FReliefIdRenderData& Relief,
 		const FIntPoint OutputSize,
 		const int32 LayerIndex,
@@ -970,6 +1183,7 @@ namespace MixtormatGpuCompositor
 		Parameters->FeatherRandom = Relief.FeatherRandom;
 		Parameters->RelativeWidth = Relief.bRelativeWidth ? 1u : 0u;
 		Parameters->RegionIds = RegionIds;
+		Parameters->RegionRootIds = RegionRootIds;
 		Parameters->PreviousRecord = Distance.Record;
 		Parameters->RegionExtentIn = Distance.Extent;
 		Parameters->OutputEdge = GraphBuilder.CreateUAV(OutEdge);
@@ -1015,9 +1229,11 @@ namespace MixtormatGpuCompositor
 			}
 			int32 ProducerIndex = INDEX_NONE;
 			FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
-				LayerCtx.RegionIdMaps, Child.SourceChildIndex, ProducerIndex);
+				Layer, LayerCtx.RegionIdMaps, Child, ProducerIndex);
 			if (!RegionIds)
 			{
+				// Deferred IDs are not ready before source sampling. Leave UV unavailable:
+				// moving this solve later can cycle through masks that already read the source.
 				continue;
 			}
 
@@ -1033,6 +1249,9 @@ namespace MixtormatGpuCompositor
 
 			if (!CentreUV)
 			{
+				TMap<FRDGTextureRef, FRDGTextureRef> RootCache;
+				const FRDGTextureRef RegionRootIds = AddRegionIndexPasses(
+					GraphBuilder, RegionIds, HasPixelRootIds(Layer, ProducerIndex), OutputSize, RootCache);
 				const uint32 PixelCount =
 					static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
 
@@ -1066,6 +1285,7 @@ namespace MixtormatGpuCompositor
 						Parameters->Stage = Stage;
 						Parameters->Axis = Axis;
 						Parameters->RegionIds = RegionIds;
+						Parameters->RegionRootIds = RegionRootIds;
 						Parameters->RegionBounds = RegionBoundsUAV;
 						Parameters->OutputCentreUV = CentreUAV;
 						// Default UAV barriers are intentional: each axis must finish its
@@ -1132,8 +1352,9 @@ namespace MixtormatGpuCompositor
 		// Culled rather than defaulted when there is no cluster above it. A
 		// mask with no ID map has no regions to vary, and emitting a flat
 		// value would silently replace whatever the chain had accumulated.
-		FRDGTextureRef RegionIds =
-			FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
+		int32 ProducerIndex = INDEX_NONE;
+		FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
+			Layer, RegionIdMaps, Child, ProducerIndex);
 		if (!RegionIds)
 		{
 			return;
@@ -1281,6 +1502,36 @@ namespace MixtormatGpuCompositor
 		return OutputIds;
 	}
 
+	void PublishLayerRegionIdOutputs(FMixtormatComposeContext& Ctx,
+		const FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
+	{
+		for (const auto& Map : LayerCtx.RegionIdMaps)
+		{
+			if (!Map.Value) { continue; }
+			const FChildRenderData* Child = Layer.Children.FindByPredicate([&Map](const FChildRenderData& Candidate)
+			{
+				return Candidate.SourceChildIndex == Map.Key;
+			});
+			if (!Child) { continue; }
+			bool bHashed = Child->Type == EMixtormatLayerChildType::Generator
+				|| Child->Type == EMixtormatLayerChildType::IdGroup
+				|| (Child->Type == EMixtormatLayerChildType::Effect && Child->Effect.Type == EMixtormatEffectType::Breakup);
+			if (Child->Type == EMixtormatLayerChildType::CombineId)
+			{
+				// Combine keeps source identities, including full-width hashes across chains.
+				bHashed = !HasPixelRootIds(Layer, Child->SourceChildIndex);
+			}
+			if (Child->Type == EMixtormatLayerChildType::OutputReference)
+			{
+				const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Child->OutputReference.Source);
+				bHashed = Source && Source->bHashedIds;
+			}
+			Ctx.PublishedFieldOutputs.Add(
+				FPublishedFieldKey{Layer.LayerId, Map.Key, FName(TEXT("RegionIds"))},
+				FPublishedField{EMixtormatPublishedFieldKind::RegionIds, Map.Value, nullptr, nullptr, bHashed});
+		}
+	}
+
 	void AddCombineIdProducerPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -1306,7 +1557,8 @@ namespace MixtormatGpuCompositor
 		for (int32 Index = Layer.Children.Num() - 1; Index >= 0; --Index)
 		{
 			const FChildRenderData& Candidate = Layer.Children[Index];
-			if (Candidate.SourceChildIndex >= Child.SourceChildIndex)
+			if (Candidate.SourceChildIndex >= Child.SourceChildIndex
+				|| Candidate.ScopeOwnerSourceChildIndex != Child.ScopeOwnerSourceChildIndex)
 			{
 				continue;
 			}
@@ -1315,7 +1567,10 @@ namespace MixtormatGpuCompositor
 			if (Candidate.Type != EMixtormatLayerChildType::Filter
 				&& Candidate.Type != EMixtormatLayerChildType::PatternId
 				&& Candidate.Type != EMixtormatLayerChildType::CombineId
-				&& Candidate.Type != EMixtormatLayerChildType::IdGroup && !bBreakup)
+				&& Candidate.Type != EMixtormatLayerChildType::IdGroup
+				&& Candidate.Type != EMixtormatLayerChildType::Generator
+				&& !(Candidate.Type == EMixtormatLayerChildType::OutputReference
+					&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds) && !bBreakup)
 			{
 				continue;
 			}
@@ -1325,7 +1580,7 @@ namespace MixtormatGpuCompositor
 			}
 			if (Candidate.Type != EMixtormatLayerChildType::CombineId)
 			{
-				bUseHashedIds = bBreakup || Candidate.Type == EMixtormatLayerChildType::IdGroup;
+				bUseHashedIds = !HasPixelRootIds(Layer, Candidate.SourceChildIndex);
 				break;
 			}
 		}
@@ -1359,68 +1614,70 @@ namespace MixtormatGpuCompositor
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child)
 	{
-		FRDGTextureRef SourceA = nullptr;
-		FRDGTextureRef SourceB = nullptr;
-		for (const FChildRenderData& Candidate : Layer.Children)
-		{
-			if (Candidate.Type != EMixtormatLayerChildType::PatternId
-				|| Candidate.ScopeOwnerSourceChildIndex != Child.SourceChildIndex)
-			{
-				continue;
-			}
-			FRDGTextureRef ChildIds = nullptr;
-			for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
-			{
-				if (Entry.Key == Candidate.SourceChildIndex)
-				{
-					ChildIds = Entry.Value;
-					break;
-				}
-			}
-			if (!SourceA)
-			{
-				SourceA = ChildIds;
-			}
-			else if (!SourceB)
-			{
-				SourceB = ChildIds;
-			}
-			else
-			{
-				return nullptr;
-			}
-		}
-		if (!SourceA || !SourceB)
-		{
-			return nullptr;
-		}
-
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		const FIntVector Groups(
 			FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-		FRDGTextureRef GroupIds = GraphBuilder.CreateTexture(
-			FRDGTextureDesc::Create2D(Size, PF_R32_UINT, FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.IdGroup.Ids"));
-		FRDGTextureRef Boundary = GraphBuilder.CreateTexture(
-			FRDGTextureDesc::Create2D(Size, PF_R16F, FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.IdGroup.Boundary"));
-		const bool bPreview = IsChildOutputPreviewTarget(
-			Ctx.Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
-			LayerCtx.LayerIndex, Child.SourceChildIndex);
+		const FRDGTextureDesc IdDesc = FRDGTextureDesc::Create2D(
+			Size, PF_R32_UINT, FClearValueBinding::None, TexCreate_ShaderResource | TexCreate_UAV);
+		FRDGTextureRef GroupIds = nullptr;
+		for (const FChildRenderData& Candidate : Layer.Children)
 		{
+			if (Candidate.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+				|| (Candidate.Type != EMixtormatLayerChildType::PatternId
+					&& Candidate.Type != EMixtormatLayerChildType::Filter
+					&& Candidate.Type != EMixtormatLayerChildType::CombineId
+					&& Candidate.Type != EMixtormatLayerChildType::IdGroup
+					&& !(Candidate.Type == EMixtormatLayerChildType::OutputReference
+						&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)))
+			{
+				continue;
+			}
+			const TPair<int32, FRDGTextureRef>* Entry = LayerCtx.RegionIdMaps.FindByPredicate(
+				[&Candidate](const TPair<int32, FRDGTextureRef>& Map)
+				{
+					return Map.Key == Candidate.SourceChildIndex;
+				});
+			if (!Entry || !Entry->Value)
+			{
+				// A Combine with no preceding producer contributes no IDs.
+				continue;
+			}
+			if (!GroupIds)
+			{
+				GroupIds = Entry->Value; // One producer is an exact passthrough.
+				continue;
+			}
+			const FRDGTextureRef Folded = GraphBuilder.CreateTexture(IdDesc, TEXT("Mixtormat.IdGroup.Ids"));
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupResolveCS::FParameters>();
 			P->OutputSize = Size;
 			P->Mode = static_cast<uint32>(Child.IdGroup.Mode);
-			P->WriteDebug = bPreview ? 1u : 0u;
-			P->SourceAIds = SourceA;
-			P->SourceBIds = SourceB;
-			P->OutputIds = GraphBuilder.CreateUAV(GroupIds);
+			P->WriteDebug = 0u;
+			P->SourceAIds = GroupIds;
+			P->SourceBIds = Entry->Value;
+			P->OutputIds = GraphBuilder.CreateUAV(Folded);
 			P->OutputDebug = GraphBuilder.CreateUAV(Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex]);
 			TShaderMapRef<FMixtormatIdGroupResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 			FComputeShaderUtils::AddPass(GraphBuilder,
 				RDG_EVENT_NAME("Mixtormat.IdGroup.Resolve"), Shader, P, Groups);
+			GroupIds = Folded;
 		}
+		if (!GroupIds)
+		{
+			// Full-size invalid IDs, not the 1x1 binding dummy: consumers use integer Load.
+			GroupIds = GraphBuilder.CreateTexture(IdDesc, TEXT("Mixtormat.IdGroup.Empty"));
+			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(GroupIds), 0xffffffffu);
+		}
+		if (IsChildOutputPreviewTarget(
+			Ctx.Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
+			LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewRegionIdsBlitPass(GraphBuilder, GroupIds, nullptr,
+				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
+		}
+		FRDGTextureRef Boundary = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Size, PF_R16F, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.IdGroup.Boundary"));
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupBoundaryCS::FParameters>();
 			P->OutputSize = Size;
@@ -1478,15 +1735,9 @@ namespace MixtormatGpuCompositor
 					continue;
 				}
 
-				if (bCombineProducer)
+				if (bCombineProducer || bIdGroupProducer)
 				{
-					AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
-					continue;
-				}
-				if (bIdGroupProducer)
-				{
-					// A parent precedes its nested children in the flat serialized array. Resolve it
-					// after this loop, once both child ID maps have been produced.
+					// Resolved in scope order after the independent producers below.
 					continue;
 				}
 
@@ -1496,7 +1747,9 @@ namespace MixtormatGpuCompositor
 					Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 					LayerIndex, Child.SourceChildIndex);
 				bool bWanted = bIsSelectedPreview
-					|| (bPatternProducer && Child.ScopeOwnerSourceChildIndex != INDEX_NONE);
+					|| Child.ScopeOwnerSourceChildIndex != INDEX_NONE
+					|| Ctx.PublishedFieldDemand.Contains(
+						FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("RegionIds"))});
 
 				if (bPatternProducer)
 				{
@@ -1570,10 +1823,12 @@ namespace MixtormatGpuCompositor
 						for (const FChildRenderData& Other : Layer.Children)
 						{
 							if (Other.SourceChildIndex > Child.SourceChildIndex
+								&& Other.ScopeOwnerSourceChildIndex == Child.ScopeOwnerSourceChildIndex
 								&& (Other.Type == EMixtormatLayerChildType::Filter
 									|| Other.Type == EMixtormatLayerChildType::PatternId
 									|| Other.Type == EMixtormatLayerChildType::CombineId
-									|| Other.Type == EMixtormatLayerChildType::IdGroup
+										|| Other.Type == EMixtormatLayerChildType::IdGroup
+									|| Other.Type == EMixtormatLayerChildType::Generator
 									|| (Other.Type == EMixtormatLayerChildType::Effect
 										&& Other.Effect.Type == EMixtormatEffectType::Breakup)))
 							{
@@ -1595,18 +1850,23 @@ namespace MixtormatGpuCompositor
 					// The next producer shadows this one for every later consumer.
 					for (const FChildRenderData& Other : Layer.Children)
 					{
-						if (Other.SourceChildIndex <= Child.SourceChildIndex)
+						if (Other.SourceChildIndex <= Child.SourceChildIndex
+							|| Other.ScopeOwnerSourceChildIndex != Child.ScopeOwnerSourceChildIndex)
 						{
 							continue;
 						}
-						if (Other.Type == EMixtormatLayerChildType::CombineId)
+						if (Other.Type == EMixtormatLayerChildType::CombineId
+							|| (Other.Type == EMixtormatLayerChildType::Generator
+								&& Other.Generator.Type == EMixtormatGeneratorType::StrataCarver))
 						{
-							// Consumes this producer, and shadows it for everything below.
+							// Combine and Strata consume this map before publishing their own.
 							bWanted = true;
 							break;
 						}
 						if (Other.Type == EMixtormatLayerChildType::Filter
-							|| Other.Type == EMixtormatLayerChildType::PatternId)
+							|| Other.Type == EMixtormatLayerChildType::PatternId
+							|| Other.Type == EMixtormatLayerChildType::IdGroup
+							|| Other.Type == EMixtormatLayerChildType::Generator)
 						{
 							break;
 						}
@@ -1617,6 +1877,8 @@ namespace MixtormatGpuCompositor
 							Other.Type == EMixtormatLayerChildType::Effect
 							&& Other.Effect.Type == EMixtormatEffectType::Breakup;
 						if (Other.Type == EMixtormatLayerChildType::HsvFilter
+							|| (Other.Type == EMixtormatLayerChildType::ColorId
+								&& Other.ColorId.Mode == EMixtormatColorIdMode::ExactId)
 							|| Other.Type == EMixtormatLayerChildType::RandomId
 							|| Other.Type == EMixtormatLayerChildType::RampId
 							|| Other.Type == EMixtormatLayerChildType::UvFromIds
@@ -1791,28 +2053,30 @@ namespace MixtormatGpuCompositor
 				PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, RegionIds);
 			}
 
-			for (const FChildRenderData& GroupChild : Layer.Children)
+			// Resolve each scope in authored order. Nested groups finish before a sibling
+			// Combine reads them, and before the enclosing group folds their output.
+			TFunction<void(int32)> ResolveScope;
+			ResolveScope = [&](const int32 ScopeOwner)
 			{
-				if (GroupChild.Type != EMixtormatLayerChildType::IdGroup)
+				for (const FChildRenderData& ScopedChild : Layer.Children)
 				{
-					continue;
-				}
-				FRDGTextureRef GroupIds = AddIdGroupPasses(Ctx, LayerCtx, Layer, GroupChild);
-				if (!GroupIds)
-				{
-					continue;
-				}
-				RegionIdMaps.RemoveAll([&Layer, &GroupChild](const TPair<int32, FRDGTextureRef>& Entry)
-				{
-					return Layer.Children.ContainsByPredicate([&Entry, &GroupChild](
-						const FChildRenderData& Candidate)
+					if (ScopedChild.ScopeOwnerSourceChildIndex != ScopeOwner)
 					{
-						return Candidate.SourceChildIndex == Entry.Key
-							&& Candidate.ScopeOwnerSourceChildIndex == GroupChild.SourceChildIndex;
-					});
-				});
-				PublishRegionIds(RegionIdMaps, GroupChild.SourceChildIndex, GroupIds);
-			}
+						continue;
+					}
+					if (ScopedChild.Type == EMixtormatLayerChildType::IdGroup)
+					{
+						ResolveScope(ScopedChild.SourceChildIndex);
+						PublishRegionIds(RegionIdMaps, ScopedChild.SourceChildIndex,
+							AddIdGroupPasses(Ctx, LayerCtx, Layer, ScopedChild));
+					}
+					else if (ScopedChild.Type == EMixtormatLayerChildType::CombineId)
+					{
+						AddCombineIdProducerPass(Ctx, LayerCtx, Layer, ScopedChild);
+					}
+				}
+			};
+			ResolveScope(INDEX_NONE);
 		}
 	}
 
@@ -1831,6 +2095,7 @@ namespace MixtormatGpuCompositor
 			LayerCtx.PatternOutputs;
 		TArray<FPendingRampTilt, TInlineAllocator<2>>& PendingRampTilts =
 			LayerCtx.PendingRampTilts;
+		TMap<FRDGTextureRef, FRDGTextureRef> RootCache;
 		for (const FChildRenderData& Child : Layer.Children)
 		{
 			if (Child.Type == EMixtormatLayerChildType::PatternId)
@@ -1895,7 +2160,7 @@ namespace MixtormatGpuCompositor
 			{
 				int32 ProducerIndex = INDEX_NONE;
 				FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
-					RegionIdMaps, Child.SourceChildIndex, ProducerIndex);
+					Layer, RegionIdMaps, Child, ProducerIndex);
 				if (!RegionIds)
 				{
 					// Nothing above publishes IDs. Culled rather than defaulted: a relief with no
@@ -1915,13 +2180,16 @@ namespace MixtormatGpuCompositor
 					continue;
 				}
 
+				const FRDGTextureRef RegionRootIds = AddRegionIndexPasses(
+					GraphBuilder, RegionIds, HasPixelRootIds(Layer, ProducerIndex),
+					Request.Resolution, RootCache);
 				const FRegionDistanceCacheEntry Distance = AddRegionDistancePasses(
-					GraphBuilder, LayerCtx, RegionIds, ProducerIndex,
+					GraphBuilder, LayerCtx, RegionIds, RegionRootIds, ProducerIndex,
 					Request.Resolution, LayerIndex);
 				FRDGTextureRef EdgeField = nullptr;
 				FRDGTextureRef RampField = nullptr;
 				AddRegionReliefFieldPass(
-					GraphBuilder, Distance, RegionIds, Relief, Request.Resolution,
+					GraphBuilder, Distance, RegionIds, RegionRootIds, Relief, Request.Resolution,
 					LayerIndex, Child.SourceChildIndex, EdgeField, RampField);
 
 				// From here down this is the Pattern relief path, unchanged. The fields carry the
@@ -1958,8 +2226,9 @@ namespace MixtormatGpuCompositor
 				continue;
 			}
 
-			FRDGTextureRef RegionIds =
-				FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex);
+			int32 ProducerIndex = INDEX_NONE;
+			FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
+				Layer, RegionIdMaps, Child, ProducerIndex);
 			if (!RegionIds)
 			{
 				continue;
@@ -1977,6 +2246,8 @@ namespace MixtormatGpuCompositor
 			const FRDGTextureRef RampField = AddRampIdPasses(
 				GraphBuilder,
 				RegionIds,
+				AddRegionIndexPasses(GraphBuilder, RegionIds, HasPixelRootIds(Layer, ProducerIndex),
+					Request.Resolution, RootCache),
 				Request.Resolution,
 				Ramp,
 				LayerIndex,
@@ -2020,6 +2291,7 @@ namespace MixtormatGpuCompositor
 		TShaderMapRef<FMixtormatEdgeShadeCS> EdgeShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatPatternHeightMaxCS> PatternHeightMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		TMap<FRDGTextureRef, FRDGTextureRef> RootCache;
 		// The region tilt runs before craquelure relief, and the order is not
 		// arbitrary: a crack carved into a tile that has already settled is right,
 		// whereas tilting a tile after its crack was carved drags the groove's depth
@@ -2041,8 +2313,13 @@ namespace MixtormatGpuCompositor
 					OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
 
 				FRDGTextureRef PatternHeightMax = EmptyRegionIds;
+				FRDGTextureRef HeightRootIds = EmptyRegionIds;
 				if (Tilt.bUseEdge && Tilt.CellHeightAmount > 0.0f && Tilt.RegionIds)
 				{
+					const bool bPatternPixelRoots = LayerCtx.PatternOutputs.ContainsByPredicate(
+						[&Tilt](const FPatternIdPassOutput& Output) { return Output.Ids == Tilt.RegionIds; });
+					HeightRootIds = AddRegionIndexPasses(GraphBuilder, Tilt.RegionIds,
+						bPatternPixelRoots, Request.Resolution, RootCache);
 					PatternHeightMax = GraphBuilder.CreateTexture(
 						FRDGTextureDesc::Create2D(
 							Request.Resolution,
@@ -2058,7 +2335,8 @@ namespace MixtormatGpuCompositor
 					FMixtormatPatternHeightMaxCS::FParameters* MaxP =
 						GraphBuilder.AllocParameters<FMixtormatPatternHeightMaxCS::FParameters>();
 					MaxP->OutputSize = Request.Resolution;
-					MaxP->PatternRegionIds = Tilt.RegionIds;
+					// This shader uses IDs only as addresses; random draws remain in the raw-ID fields.
+					MaxP->PatternRegionIds = HeightRootIds;
 					MaxP->SourceHeight = HeightTargets[WriteIndex];
 					MaxP->OutputPatternHeightMax = GraphBuilder.CreateUAV(PatternHeightMax);
 					FComputeShaderUtils::AddPass(
@@ -2095,7 +2373,7 @@ namespace MixtormatGpuCompositor
 				TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
 				TiltP->SourceHeight = HeightTargets[WriteIndex];
 				TiltP->PreviousNormal = OutputN[WriteIndex];
-				TiltP->PatternRegionIds = Tilt.RegionIds ? Tilt.RegionIds : EmptyRegionIds;
+				TiltP->PatternRegionIds = HeightRootIds;
 				TiltP->PatternHeightMax = PatternHeightMax;
 				TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
 				TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);

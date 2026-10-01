@@ -62,6 +62,8 @@ float RegionSatMax;
 float RegionValMin;
 float RegionValMax;
 
+uint ReferencedUVEnabled;
+Texture2D<float2> ReferencedUVField;
 Texture2D<uint> RegionUVIds;
 Texture2D<float2> RegionUVCentreField;
 Texture2D<float> RegionUVOrientationField;
@@ -457,6 +459,34 @@ int2 PatternPixel(float2 UV)
 // The layer's per-axis scale sits between the base rotation and the pattern rotation in the
 // coordinate transform, and is dropped from the orientation: it changes the texture's frequency,
 // not the direction of its tangent frame. See MixtormatTransformTangentVector.
+// Interpolate displacement, not wrapped absolute coordinates, to preserve the tile winding.
+float2 ReferencedUVDisplacement(int2 Pixel)
+{
+	const int2 Wrapped = (Pixel % OutputSize + OutputSize) % OutputSize;
+	return ReferencedUVField.Load(int3(Wrapped, 0))
+		- (float2(Wrapped) + 0.5f) / float2(OutputSize);
+}
+
+float2 ReferencedCoordinate(float2 UV)
+{
+	const float2 Texel = UV * float2(OutputSize) - 0.5f;
+	const int2 P = int2(floor(Texel));
+	const float2 T = frac(Texel);
+	return UV + lerp(
+		lerp(ReferencedUVDisplacement(P), ReferencedUVDisplacement(P + int2(1, 0)), T.x),
+		lerp(ReferencedUVDisplacement(P + int2(0, 1)), ReferencedUVDisplacement(P + int2(1, 1)), T.x), T.y);
+}
+
+float2x2 ReferencedUVJacobian(float2 UV)
+{
+	const float2 D = 1.0f / float2(OutputSize);
+	const float2 X = (ReferencedCoordinate(UV + float2(D.x, 0))
+		- ReferencedCoordinate(UV - float2(D.x, 0))) / (2.0f * D.x);
+	const float2 Y = (ReferencedCoordinate(UV + float2(0, D.y))
+		- ReferencedCoordinate(UV - float2(0, D.y))) / (2.0f * D.y);
+	return float2x2(X.x, Y.x, X.y, Y.y);
+}
+
 float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 {
 	if (LayerInputResolved != 0)
@@ -469,6 +499,11 @@ float2 LayerSourceUVAndOrientation(float2 UV, out float2x2 Orientation)
 		max(Tiling, 0.0001f) * (float)max(UVScaleX, 1),
 		max(Tiling, 0.0001f) * (float)max(UVScaleY, 1));
 	Orientation = MixtormatSourceOrientation(FlipU, FlipV, Rotation);
+	if (ReferencedUVEnabled != 0)
+	{
+		Orientation = mul(Orientation, ReferencedUVJacobian(UV));
+		UV = ReferencedCoordinate(UV);
+	}
 	const float2 SourceUV = MixtormatSourceUV(UV, Scale, UVOffset, FlipU, FlipV, Rotation);
 	if (RegionUVEnabled == 0)
 	{
@@ -950,6 +985,7 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Normal = MixtormatScaleNormalSlope(Stored, NormalIntensity);
 	}
 	Normal.xy = MixtormatTransformTangentVector(Orientation, Normal.xy);
+	if (ReferencedUVEnabled != 0) { Normal = normalize(Normal); }
 
 	OutputBC[Pixel] = SourceBC;
 	OutputN[Pixel] = float4(EncodeNormal(Normal), SourceN.a);
@@ -1080,6 +1116,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 	SampledNormal.xy = MixtormatTransformTangentVector(LayerOrientation, SampledNormal.xy);
+	if (ReferencedUVEnabled != 0 && LayerInputResolved == 0) { SampledNormal = normalize(SampledNormal); }
 	if (PreparedLayerMode == 2)
 	{
 		SampledNormal = normalize(LayerN.SampleLevel(LinearWrapSampler, UV, 0.0f).xyz * 2.0f - 1.0f);

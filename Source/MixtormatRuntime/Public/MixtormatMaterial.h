@@ -9,6 +9,7 @@
 #include "MixtormatMaskBlur.h"
 #include "MixtormatMaskCurvature.h"
 #include "MixtormatMaskShaping.h"
+#include "MixtormatOutputReference.h"
 #include "MixtormatMaterial.generated.h"
 
 class UMaterialInterface;
@@ -3236,7 +3237,8 @@ enum class EMixtormatLayerChildType : uint8
 	UvFromIds UMETA(DisplayName = "UV From IDs"),
 	ReliefFromIds UMETA(DisplayName = "Relief From IDs"),
 	// Appended for serialization safety. Owns exactly two nested Region-ID producers.
-	IdGroup UMETA(DisplayName = "ID Group")
+	IdGroup UMETA(DisplayName = "ID Group"),
+	OutputReference UMETA(DisplayName = "Output Reference")
 };
 
 USTRUCT(BlueprintType)
@@ -3326,6 +3328,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::IdGroup"))
 	FMixtormatIdGroup IdGroup;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::OutputReference"))
+	FMixtormatOutputReference OutputReference;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

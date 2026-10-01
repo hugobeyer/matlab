@@ -85,6 +85,57 @@ namespace MixtormatSubstrate
 
 namespace MixtormatGpuCompositor
 {
+	// Kept local to the owned GPU translation units until the internal typed-ref seam lands.
+	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
+		const FLayerRenderData& Layer,
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const FChildRenderData* Child);
+
+	// Legacy pass families resolve IDs from LayerCtx. Give them an isolated view, then
+	// retain any IDs they publish without exposing another group's private producers.
+	class FScopedRegionIdView
+	{
+	public:
+		FScopedRegionIdView(FMixtormatLayerPassContext& InLayerCtx,
+			const FLayerRenderData& Layer, const FChildRenderData* Child, const bool bEnabled)
+			: LayerCtx(InLayerCtx), bActive(bEnabled)
+		{
+			if (bActive)
+			{
+				TArray<TPair<int32, FRDGTextureRef>> View = GetRegionIdView(Layer, LayerCtx.RegionIdMaps, Child);
+				SavedMaps = MoveTemp(LayerCtx.RegionIdMaps);
+				LayerCtx.RegionIdMaps = MoveTemp(View);
+			}
+		}
+
+		~FScopedRegionIdView()
+		{
+			if (!bActive)
+			{
+				return;
+			}
+			for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+			{
+				TPair<int32, FRDGTextureRef>* Saved = SavedMaps.FindByPredicate(
+					[&Entry](const TPair<int32, FRDGTextureRef>& Map) { return Map.Key == Entry.Key; });
+				if (Saved)
+				{
+					Saved->Value = Entry.Value;
+				}
+				else
+				{
+					PublishRegionIds(SavedMaps, Entry.Key, Entry.Value);
+				}
+			}
+			LayerCtx.RegionIdMaps = MoveTemp(SavedMaps);
+		}
+
+	private:
+		FMixtormatLayerPassContext& LayerCtx;
+		TArray<TPair<int32, FRDGTextureRef>> SavedMaps;
+		bool bActive;
+	};
+
 	// Copies what layers above LayerIndex can read from it and everything below it into targets
 	// extracted at the end of the graph. Returns null -- keeping nothing -- when the stack cannot
 	// be resumed exactly: over budget, or a published output that is really a ping-pong slot a
@@ -152,6 +203,24 @@ namespace MixtormatGpuCompositor
 			}
 			Published.Add(Pair);
 			Bytes += TextureBytes(Pair.Value);
+		}
+		TArray<TPair<FPublishedFieldKey, FPublishedField>> PublishedFields;
+		TSet<FRDGTextureRef> KeptFieldTextures;
+		for (const auto& Pair : Ctx.PublishedFieldOutputs)
+		{
+			if (LayerOf(Pair.Key.LayerId) > LayerIndex || !Pair.Value.IsComplete()) { continue; }
+			const FRDGTextureRef Textures[] = {Pair.Value.Texture, Pair.Value.FlowSmooth, Pair.Value.Validity};
+			for (FRDGTextureRef Texture : Textures)
+			{
+				if (!Texture) { continue; }
+				if (IsSharedSlot(Texture)) { return nullptr; }
+				if (!KeptFieldTextures.Contains(Texture))
+				{
+					KeptFieldTextures.Add(Texture);
+					Bytes += TextureBytes(Texture);
+				}
+			}
+			PublishedFields.Add(Pair);
 		}
 		if (Bytes > Request.CacheBudgetBytes)
 		{
@@ -228,6 +297,21 @@ namespace MixtormatGpuCompositor
 		{
 			auto& Slot = Entry->PublishedMasks.Emplace_GetRef(Pair.Key, TRefCountPtr<IPooledRenderTarget>());
 			GraphBuilder.QueueTextureExtraction(Pair.Value, &Slot.Value);
+		}
+		Entry->PublishedFields.Reserve(PublishedFields.Num());
+		for (const auto& Pair : PublishedFields)
+		{
+			auto& Slot = Entry->PublishedFields.AddDefaulted_GetRef();
+			Slot.Key = Pair.Key;
+			Slot.Kind = Pair.Value.Kind;
+			Slot.bHashedIds = Pair.Value.bHashedIds;
+			GraphBuilder.QueueTextureExtraction(Pair.Value.Texture, &Slot.Texture);
+			if (Pair.Value.FlowSmooth) { GraphBuilder.QueueTextureExtraction(Pair.Value.FlowSmooth, &Slot.FlowSmooth); }
+			if (Pair.Value.Validity) { GraphBuilder.QueueTextureExtraction(Pair.Value.Validity, &Slot.Validity); }
+		}
+		for (const FPublishedFieldKey& Demand : Ctx.PublishedFieldDemand)
+		{
+			if (LayerOf(Demand.LayerId) <= LayerIndex) { Entry->FieldDemandCovered.Add(Demand); }
 		}
 		return Entry;
 	}
@@ -580,7 +664,15 @@ namespace MixtormatGpuCompositor
 					TMap<FGuid, int32> LayerIndexById;
 					for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 					{
-						LayerIndexById.Add(Request.Layers[LayerIndex].LayerId, LayerIndex);
+						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
+						LayerIndexById.Add(Layer.LayerId, LayerIndex);
+						for (const FChildRenderData& Child : Layer.Children)
+						{
+							if (Child.Type == EMixtormatLayerChildType::OutputReference)
+							{
+								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
+							}
+						}
 					}
 
 					// Resume from the deepest kept prefix. What a layer above K can read from below
@@ -617,6 +709,12 @@ namespace MixtormatGpuCompositor
 										{
 											return false;
 										}
+									}
+									for (const FPublishedFieldKey& Demand : Ctx.PublishedFieldDemand)
+									{
+										const int32* SourceIndex = LayerIndexById.Find(Demand.LayerId);
+										if (SourceIndex && *SourceIndex <= Entry.LayerIndex
+											&& !Entry.FieldDemandCovered.Contains(Demand)) { return false; }
 									}
 									return true;
 								});
@@ -656,6 +754,22 @@ namespace MixtormatGpuCompositor
 								PublishedMaskOutputs.Add(Pair.Key, GraphBuilder.RegisterExternalTexture(
 									Pair.Value, TEXT("Mixtormat.Cache.PublishedMask")));
 							}
+							for (const auto& Slot : Resumed->PublishedFields)
+							{
+								FPublishedField Field;
+								Field.Kind = Slot.Kind;
+								Field.bHashedIds = Slot.bHashedIds;
+								Field.Texture = GraphBuilder.RegisterExternalTexture(Slot.Texture, TEXT("Mixtormat.Cache.PublishedField"));
+								if (Slot.FlowSmooth.IsValid())
+								{
+									Field.FlowSmooth = GraphBuilder.RegisterExternalTexture(Slot.FlowSmooth, TEXT("Mixtormat.Cache.FlowSmooth"));
+								}
+								if (Slot.Validity.IsValid())
+								{
+									Field.Validity = GraphBuilder.RegisterExternalTexture(Slot.Validity, TEXT("Mixtormat.Cache.FlowValidity"));
+								}
+								Ctx.PublishedFieldOutputs.Add(Slot.Key, Field);
+							}
 							FirstLayer = Resumed->LayerIndex + 1;
 						}
 					}
@@ -664,6 +778,8 @@ namespace MixtormatGpuCompositor
 					{
 						RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayer, "Mixtormat.Layer%d", LayerIndex);
 						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
+						const bool bHasIdGroups = Layer.Children.ContainsByPredicate(
+							[](const FChildRenderData& Child) { return Child.Type == EMixtormatLayerChildType::IdGroup; });
 						LayerCtx.BeginLayer(LayerIndex);
 
 						TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
@@ -671,8 +787,11 @@ namespace MixtormatGpuCompositor
 							LayerCtx.PatternOutputs;
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatRegionIds, "Mixtormat.RegionIds");
-							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
+							// Typed references only read earlier layers; import before any local consumers.
+							AddOutputReferencePasses(Ctx, LayerCtx, Layer);
+							// Independent generator fields must exist before ordered Combine chains.
 							AddGeneratorFieldPasses(Ctx, LayerCtx, Layer);
+							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
 							// Immediately after the producers and before anything reads the layer's
 							// source: the source read is the only thing this node changes, and both the
 							// layer-input resolve and the composite have to see the same answer.
@@ -712,6 +831,7 @@ namespace MixtormatGpuCompositor
 						// would all have already run against the uncarved surface.
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
+							FScopedRegionIdView RegionView(LayerCtx, Layer, nullptr, bHasIdGroups);
 							AddGeneratorPasses(Ctx, LayerCtx, Layer);
 						}
 						FPendingEffect& PendingErosion = LayerCtx.PendingErosion;
@@ -749,6 +869,7 @@ namespace MixtormatGpuCompositor
 						for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 						{
 							const FChildRenderData& Child = Layer.Children[ChildIndex];
+							FScopedRegionIdView RegionView(LayerCtx, Layer, &Child, bHasIdGroups);
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{
 								// Already run, before this loop started. It has no mask to
@@ -763,7 +884,8 @@ namespace MixtormatGpuCompositor
 								|| Child.Type == EMixtormatLayerChildType::RampId
 								|| Child.Type == EMixtormatLayerChildType::UvFromIds
 								|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
-								|| Child.Type == EMixtormatLayerChildType::IdGroup)
+								|| Child.Type == EMixtormatLayerChildType::IdGroup
+								|| Child.Type == EMixtormatLayerChildType::OutputReference)
 							{
 								// All three are handled outside this loop -- the cluster in the
 								// pre-mask phase, the HSV filter at the composite's albedo sample,
@@ -973,11 +1095,13 @@ namespace MixtormatGpuCompositor
 							HeightSnapshots.Add(LayerIndex, Snapshot);
 						}
 
+						PublishLayerRegionIdOutputs(Ctx, LayerCtx, Layer);
 						if (bPrefixCache
 							&& LayerIndex == Request.SnapshotLayer
 							&& LayerIndex < Request.CacheLayerLimit
 							&& !Request.PrefixCache->Contains(
-								Request.PrefixHashes[LayerIndex], LayerIndex, Request.Resolution))
+								Request.PrefixHashes[LayerIndex], LayerIndex, Request.Resolution,
+								Ctx.PublishedFieldDemand, LayerIndexById))
 						{
 							PendingSnapshot = SavePrefixSnapshot(
 								Ctx, LayerCtx, LayerIndex, WriteIndex, LayerIndexById);

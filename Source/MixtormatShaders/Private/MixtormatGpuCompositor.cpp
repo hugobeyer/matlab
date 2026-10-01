@@ -276,6 +276,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RegionUVCentreField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RegionUVOrientationField)
+		SHADER_PARAMETER(uint32, ReferencedUVEnabled)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, ReferencedUVField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
@@ -342,6 +344,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionUVIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RegionUVCentreField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RegionUVOrientationField)
+		SHADER_PARAMETER(uint32, ReferencedUVEnabled)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, ReferencedUVField)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
@@ -441,6 +445,12 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
+	// Kept local to the owned GPU translation units until the internal typed-ref seam lands.
+	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
+		const FLayerRenderData& Layer,
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const FChildRenderData* Child);
+
 
 	// The debug clear, in the same space the shaders write.
 	//
@@ -662,6 +672,8 @@ namespace MixtormatGpuCompositor
 				TEXT("Mixtormat.LayerSourceHeight"))
 			: Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
 		ApplyRegionUVParameters(*Parameters, RegionUV, Ctx);
+		Parameters->ReferencedUVEnabled = LayerCtx.ReferencedUV ? 1u : 0u;
+		Parameters->ReferencedUVField = LayerCtx.ReferencedUV ? LayerCtx.ReferencedUV : Ctx.EmptyPatternUV;
 		Parameters->LinearWrapSampler = TStaticSamplerState<
 			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		Parameters->OutputBC = GraphBuilder.CreateUAV(LayerCtx.LayerInputBC);
@@ -995,7 +1007,8 @@ namespace MixtormatGpuCompositor
 			{
 				continue;
 			}
-			if (FRDGTextureRef Ids = FindRegionIdsAbove(RegionIdMaps, Child.SourceChildIndex))
+			if (FRDGTextureRef Ids = FindRegionIdsAbove(
+				GetRegionIdView(Layer, RegionIdMaps, &Child), Child.SourceChildIndex))
 			{
 				ActiveHsv = &Child.HsvFilter;
 				HsvRegionIds = Ids;
@@ -1066,7 +1079,8 @@ namespace MixtormatGpuCompositor
 					}
 					else
 					{
-						RegionSignal = FindRegionIdsAbove(RegionIdMaps, MAX_int32);
+						RegionSignal = FindRegionIdsAbove(
+							GetRegionIdView(Layer, RegionIdMaps, nullptr), MAX_int32);
 					}
 				}
 			}
@@ -1172,6 +1186,8 @@ namespace MixtormatGpuCompositor
 		Parameters->RegionValMax = ActiveHsv ? ActiveHsv->ValMax : 1.0f;
 
 		ApplyRegionUVParameters(*Parameters, ResolveRegionUVBinding(LayerCtx), Ctx);
+		Parameters->ReferencedUVEnabled = !LayerCtx.LayerInputBC && LayerCtx.ReferencedUV ? 1u : 0u;
+		Parameters->ReferencedUVField = LayerCtx.ReferencedUV ? LayerCtx.ReferencedUV : Ctx.EmptyPatternUV;
 
 		Parameters->LinearWrapSampler = TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		Parameters->OutputBC = GraphBuilder.CreateUAV(OutputBC[WriteIndex]);
@@ -1685,9 +1701,34 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			Layer.BaseColor.G,
 			Layer.BaseColor.B,
 			Layer.BaseColor.A);
+		TMap<FGuid, int32> ScopeOwnerIndices;
+		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+		{
+			ScopeOwnerIndices.Add(Layer.Children[Index].ChildId, Index);
+		}
+		TArray<int32> ScopeOwners;
+		TArray<bool> DisabledGroupScopes;
+		ScopeOwners.Init(INDEX_NONE, Layer.Children.Num());
+		DisabledGroupScopes.Init(false, Layer.Children.Num());
+		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Child = Layer.Children[Index];
+			const int32* Owner = ScopeOwnerIndices.Find(Child.ScopeOwnerChildId);
+			if (Child.ScopeOwnerChildId.IsValid() && Owner && *Owner < Index)
+			{
+				ScopeOwners[Index] = *Owner;
+				const FMixtormatLayerChild& Parent = Layer.Children[*Owner];
+				DisabledGroupScopes[Index] = DisabledGroupScopes[*Owner]
+					|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
+			}
+		}
 		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
 		{
 			const FMixtormatLayerChild& LayerChild = Layer.Children[SourceChildIndex];
+			if (DisabledGroupScopes[SourceChildIndex])
+			{
+				continue;
+			}
 
 			// Mask children still resolve on disabled layers so other layers can reference them.
 			// Effects never contribute to that mask, and effect filters run after the disabled composite,
@@ -1751,6 +1792,29 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				RampData.AngleStepDegrees = FMath::IsFinite(Ramp.AngleStepDegrees)
 					? FMath::Max(Ramp.AngleStepDegrees, 0.01f) : 5.0f;
 				RampData.Seed = static_cast<uint32>(Ramp.Seed);
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::OutputReference)
+			{
+				const FMixtormatOutputReference& Reference = LayerChild.OutputReference;
+				const int32 SourceIndex = MixtormatOutputReferences::ResolveEarlierSource(
+					EffectiveLayers, LayerIndex, Reference);
+				if (!Layer.bEnabled || SourceIndex == INDEX_NONE
+					|| (LayerChild.ScopeOwnerChildId.IsValid() && Reference.Kind != EMixtormatPublishedFieldKind::RegionIds))
+				{
+					continue;
+				}
+				FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+				ChildData.Type = EMixtormatLayerChildType::OutputReference;
+				ChildData.SourceChildIndex = SourceChildIndex;
+				FOutputReferenceRenderData& Out = ChildData.OutputReference;
+				Out.Source = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
+				Out.Kind = Reference.Kind;
+				Out.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
+				Out.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
+					? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
+				Out.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
 				continue;
 			}
 
@@ -2090,17 +2154,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (LayerChild.Type == EMixtormatLayerChildType::PatternId)
 			{
 				const FMixtormatPatternFilter& Pattern = LayerChild.PatternId;
-				const int32 ScopeOwnerIndex = LayerChild.ScopeOwnerChildId.IsValid()
-					? Layer.Children.IndexOfByPredicate(
-						[&LayerChild](const FMixtormatLayerChild& Candidate)
-						{
-							return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
-						})
-					: INDEX_NONE;
-				const bool bDisabledIdGroupChild = Layer.Children.IsValidIndex(ScopeOwnerIndex)
-					&& Layer.Children[ScopeOwnerIndex].Type == EMixtormatLayerChildType::IdGroup
-					&& !Layer.Children[ScopeOwnerIndex].IdGroup.bEnabled;
-				if (!Layer.bEnabled || !Pattern.bEnabled || bDisabledIdGroupChild)
+				if (!Layer.bEnabled || !Pattern.bEnabled)
 				{
 					continue;
 				}
@@ -2114,7 +2168,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Hasher.Struct(FMixtormatPatternFilter::StaticStruct(), &Pattern);
 					ChildData.CacheKey = Hasher.Get() | 1ull;
 				}
-				ChildData.ScopeOwnerSourceChildIndex = ScopeOwnerIndex;
 				FPatternIdRenderData& PatternData = ChildData.PatternId;
 
 				PatternData.PatternMode = Pattern.PatternMode;
@@ -2834,6 +2887,30 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			Data.bHasEffects = true;
 			continue;
 
+		}
+
+		// One gather step for every ID producer/consumer; Effect/Generator mask ownership
+		// remains with its existing gather path above.
+		for (FChildRenderData& Child : Data.Children)
+		{
+			switch (Child.Type)
+			{
+			case EMixtormatLayerChildType::PatternId:
+			case EMixtormatLayerChildType::Filter:
+			case EMixtormatLayerChildType::CombineId:
+			case EMixtormatLayerChildType::IdGroup:
+			case EMixtormatLayerChildType::ColorId:
+			case EMixtormatLayerChildType::HsvFilter:
+			case EMixtormatLayerChildType::RandomId:
+			case EMixtormatLayerChildType::RampId:
+			case EMixtormatLayerChildType::UvFromIds:
+			case EMixtormatLayerChildType::ReliefFromIds:
+			case EMixtormatLayerChildType::OutputReference:
+				Child.ScopeOwnerSourceChildIndex = ScopeOwners[Child.SourceChildIndex];
+				break;
+			default:
+				break;
+			}
 		}
 
 		Data.Opacity = Layer.Opacity;
