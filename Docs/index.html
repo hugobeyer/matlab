@@ -511,6 +511,8 @@ pre{
 <section id="height">
 <div class="section-head"><h2>Height System</h2></div>
 <p>Height is one of the main differences between a flat opacity mix and a material transition that feels physically layered. Mixtormat can use Height as part of the relationship between an incoming layer and the surface below it.</p>
+<h3>Height Op</h3>
+<p>Every layer has a Height Op at the top of its Composition card: how its height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges and keeps the upper surface (the old BLEND, and the default); Add and Subtract are signed about 0.5; Multiply treats 0.5 as neutral; Min and Difference compare. On bare ground, where nothing is below yet, Min, Max and Difference behave like Replace, so the first layer reads the same whatever its op. Height Blending, below, still decides where the layer covers.</p>
 <h3>Height sources</h3>
 <div class="grid">
 <div class="mini"><strong>RAMH Height</strong>Uses authored Height stored in the alpha channel of a RAMH source.</div>
@@ -565,7 +567,7 @@ pre{
 </section>
 <section id="generators">
 <div class="section-head"><h2>Generators</h2></div>
-<p>Generators rewrite a layer's input height before anything else reads it — before the mask chain, before height blending, before the composite. Everything downstream then sees the carved surface as if it had been authored that way. That is what separates a Generator from an Effect: an effect modifies the finished layer; a generator changes the surface the layer is made of.</p>
+<p>Generators rewrite a layer's input height before anything else reads it — before the mask chain, before the composite. Everything downstream then sees the generated surface as if it had been authored that way. A generator's output is the layer's height; how it meets the stack below is the layer's Height Op, the same as for any other layer. That is what separates a Generator from an Effect: an effect modifies the finished layer; a generator changes the surface the layer is made of.</p>
 <div class="card">
 <h3>Strata Carver</h3>
 <p>Layered bedding as it weathers on a surface: every bed rises along a ramp and ends in a steeper face where the next bed starts. Verticality sets how steep the faces are, from a symmetric ridge to a sheer wall, and Ramp Shape hollows or bulges the slope. Thickness and Height Variation make thin and thick, tall and low beds sit side by side. Bend sweeps the beds by a set distance in tile widths without stretching them, Breakup roughens the faces, and Height Follow shifts the bedding by the layer's own height so the faces trace the contours underneath. Fine laminae fan across each bed. The direction snaps to the nearest angle that tiles.</p>
@@ -574,7 +576,7 @@ pre{
 <div class="card">
 <h3>Cracks</h3>
 <p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator. Its Amount and Cut Reach are the only chamfer controls: the sharp remap and fine noise follow the crack depth and width automatically.</p>
-<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks for downstream children. Shape Deform, Generator Flow and Flow Carve can reshape its height before blending; IDs and published masks represent the original field. Blend modes are Replace, Min, Max, Difference and Add (the default for signed cracks). Amount and Height Scale do not regenerate the cached field.</p>
+<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks for downstream children. Shape Deform, Generator Flow and Flow Carve can reshape its height before it reaches the composite; IDs and published masks represent the original field. The crack field is a signed change, so the layer's height is the flat midpoint 0.5 plus the field: Add carves the cracks into the height below, and Replace gives flat ground with the cracks cut in. Height Scale does not regenerate the cached field.</p>
 </div>
 <div class="note">
 <div class="kicker">Order matters</div>

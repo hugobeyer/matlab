@@ -9,11 +9,11 @@
 // Tilted strata seen on a surface read as a sawtooth: every bed rises along a dip slope and ends
 // in a steeper face where the next bed starts. So the field is built in that order --
 //
-//     bedding coordinate S    dot(uv, wave) + bend + breakup + height follow
+//     bedding coordinate S    dot(uv, wave) + bend + height follow
 //         -> which bed, and how far up it (T, 0..1)
 //         -> the bed's ramp from its own base to its crest, then the face down to the next
 //            bed's base
-//         -> laminae inside the bed
+//         -> breakup chips bitten out of the crest, and laminae carved into the ramp
 //
 // The beds are bent by offsetting S, never by warping the domain. A domain warp moves the
 // coordinate the beds are sampled at, which pulls beds apart in one place and crushes them in
@@ -39,8 +39,7 @@
 // this is the spacing.
 #define MIXTORMAT_STRATA_LAMINAE 6.0f
 
-// Breakup runs this many times finer than the beds: fine enough to notch a face, coarse enough
-// not to read as grain.
+// Chips per bed spacing along the strike: long bites out of a crest, not grain.
 #define MIXTORMAT_STRATA_BREAKUP_SCALE 4
 
 int2 BedWave;
@@ -61,8 +60,6 @@ float Lamination;
 float CrossBedding;
 
 float Depth;
-uint BlendMode;
-float BlendAmount;
 float MaskInfluence;
 float IDInfluence;
 uint HasScopedMask;
@@ -115,6 +112,24 @@ float MixtormatStrataRamp(float X)
 	return RampShape >= 0.0f ? lerp(X, Bulge, RampShape) : lerp(X, Hollow, -RampShape);
 }
 
+// Chip depth along a bed's crest, 0..1. One-dimensional along the strike, so chips are long bites
+// out of the edge rather than isotropic blobs. Q advances by a multiple of BedPeriod per tile, so
+// a lattice wrapped at BedPeriod * Scale closes on the tile. Keyed on the bed as well, so
+// neighbouring crests do not chip in step.
+float MixtormatStrataChip(float Q, int Bed, int Scale)
+{
+	const int Period = BedPeriod * Scale;
+	const float X = Q * (float)Scale;
+	const int I = (int)floor(X);
+	const float F = X - (float)I;
+	const uint BedKey = (uint)MixtormatWrapI(Bed, BedPeriod) * 0x27d4eb2du;
+	const float A = (float)(MixtormatHashU((uint)MixtormatWrapI(I, Period) * 0x165667b1u ^ BedKey ^ Seed * 0x85ebca6bu) & 0x00ffffffu)
+		* (1.0f / 16777216.0f);
+	const float B = (float)(MixtormatHashU((uint)MixtormatWrapI(I + 1, Period) * 0x165667b1u ^ BedKey ^ Seed * 0x85ebca6bu) & 0x00ffffffu)
+		* (1.0f / 16777216.0f);
+	return lerp(A, B, F * F * (3.0f - 2.0f * F));
+}
+
 [numthreads(8, 8, 1)]
 void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -132,17 +147,16 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		MixtormatPeriodicNoiseD(UV * (float)BendPeriod, BendPeriod, Seed + 7717u).x
 		+ 0.5f * MixtormatPeriodicNoiseD(UV * (float)(BendPeriod * 2), BendPeriod * 2, Seed + 8191u).x;
 
-	// Breakup is authored in beds: it is about how ragged a face is relative to the bed it ends.
-	const int BreakupPeriod = max(max(abs(BedWave.x), abs(BedWave.y)), 1) * MIXTORMAT_STRATA_BREAKUP_SCALE;
-	const float BreakupField =
-		MixtormatPeriodicNoiseD(UV * (float)BreakupPeriod, BreakupPeriod, Seed + 1459u).x;
-
 	// Height follow makes the beds terrace the surface instead of lying on it: the same bed sits
 	// further along where the source is higher, so the faces trace its contours.
+	//
+	// Breakup is deliberately not here. Anything added to S moves every pixel of every ramp, which
+	// is what turned the soft slopes into blobs; breakup only ever moves the crest edge, below.
 	const float S = dot(UV, float2(BedWave))
 		+ Bend * BedsPerTile * BendField
-		+ Breakup * BreakupField
 		+ HeightFollow * (Source - 0.5f);
+	// Position along the strike, for the chips and the cross-bedding.
+	const float Q = dot(UV, float2(BedPerp));
 
 	int Bed = (int)floor(S);
 	if (S < MixtormatStrataBoundary(Bed))
@@ -166,31 +180,47 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Face = max(0.5f * (1.0f - Verticality), 0.0f) + PixelT;
 	const float RampEnd = max(1.0f - Face, 1.0e-5f);
 
+	// Breakup bites back into the crest only. The face starts earlier where a chip is, and the
+	// ramp before it is exactly what it is with no breakup. Breakup is a share of the bed.
+	const float Chip = 0.65f * MixtormatStrataChip(Q, Bed, MIXTORMAT_STRATA_BREAKUP_SCALE)
+		+ 0.35f * MixtormatStrataChip(Q, Bed, MIXTORMAT_STRATA_BREAKUP_SCALE * 2);
+	const float FaceStart = RampEnd - Breakup * Chip;
+
 	const float Base = MixtormatStrataBase(Bed);
 	const float Crest = Base + MixtormatStrataRise(Bed);
+	const float NextBase = MixtormatStrataBase(Bed + 1);
 	float Strata;
-	if (T < RampEnd)
+	if (T < FaceStart)
 	{
 		Strata = lerp(Base, Crest, MixtormatStrataRamp(T / RampEnd));
 	}
 	else
 	{
-		// Down to where the next bed's ramp starts, so the surface is continuous across beds.
-		Strata = lerp(Crest, MixtormatStrataBase(Bed + 1), smoothstep(0.0f, 1.0f, (T - RampEnd) / Face));
+		// The face, moved back to the chip. It drops from wherever the ramp had reached down to
+		// the next bed's base and stays there -- a chip is a notch, not a smear -- so the surface
+		// is still continuous where the next bed starts. A chip deeper than the ramp has no ramp
+		// left to start from, hence the guard.
+		const float EdgeHeight = lerp(Base, Crest, MixtormatStrataRamp(max(FaceStart, 0.0f) / RampEnd));
+		Strata = lerp(EdgeHeight, NextBase, smoothstep(0.0f, 1.0f, (T - FaceStart) / Face));
 	}
 
-	// Laminae. Each bed draws its own whole-number cross-bedding tilt, so the fine lines fan
-	// between beds instead of running parallel to every boundary.
+	// Laminae, carved. Thin grooves cut into the ramp at each lamina line, fading out before the
+	// face so the faces stay clean. Each bed draws its own whole-number cross-bedding tilt, so the
+	// grooves fan between beds. The groove is never narrower than a texel, or it stair-steps.
 	const float CrossDraw = MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_CROSS) * 2.0f - 1.0f;
 	const float Cross = round(CrossDraw * CrossBedding);
-	const float LaminaPhase = MIXTORMAT_STRATA_LAMINAE * T + Cross * dot(UV, float2(BedPerp));
-	Strata += Lamination * 0.1f * sin(MIXTORMAT_STRATA_TAU * LaminaPhase);
+	const float LaminaPhase = MIXTORMAT_STRATA_LAMINAE * T + Cross * Q;
+	const float LineDistance = abs(frac(LaminaPhase + 0.5f) - 0.5f);
+	const float GrooveWidth = 0.12f + PixelT * MIXTORMAT_STRATA_LAMINAE;
+	const float Groove = 1.0f - smoothstep(0.0f, GrooveWidth, LineDistance);
+	const float OnRamp = 1.0f - smoothstep(FaceStart - 2.0f * GrooveWidth / MIXTORMAT_STRATA_LAMINAE, FaceStart, T);
+	Strata -= Lamination * 0.15f * Groove * OnRamp;
 
 	OutBedIds[P] = (uint)MixtormatWrapI(Bed, BedPeriod);
 	OutBedPosition[P] = T;
 	OutBedRandom[P] = MixtormatStrataBedRandom(Bed, MIXTORMAT_SALT_STRATA_RANDOM);
 
-	float Amount = BlendAmount;
+	float Amount = 1.0f;
 	if (MaskInfluence > 0.0f && HasScopedMask != 0)
 	{
 		const float MaskValue = ResolveMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
@@ -208,19 +238,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	// Strata runs about 0..1 from a bed's base to its crest. Relief is the same shape centred on
-	// zero; Subtract carves the same shape down from the source, so every mode keeps the ramps
-	// facing the same way.
-	const float Relief = (Strata - 0.5f) * Depth;
-	float Target = Source;
-	switch (BlendMode)
-	{
-	case 0u: Target = Source + Relief; break;
-	case 1u: Target = Source - (1.0f - Strata) * Depth; break;
-	case 2u: Target = Source * (1.0f + Relief); break;
-	case 3u: Target = abs(Source - Strata * Depth); break;
-	case 4u: Target = max(Source, Source + Relief); break;
-	case 5u: Target = min(Source, Source + Relief); break;
-	default: Target = Source + Relief; break;
-	}
-	OutHeight[P] = lerp(Source, Target, Amount);
+	// zero, and the layer's height is that relief about the flat midpoint. How it meets the stack
+	// below is the layer's Height Op. Mask and ID influence scale the relief itself.
+	OutHeight[P] = 0.5f + (Strata - 0.5f) * Depth * Amount;
 }

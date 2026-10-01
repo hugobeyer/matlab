@@ -11,7 +11,7 @@ class SMenuAnchor;
 
 // The fixed-width mark that says how a row composites.
 //
-// A layer's BLEND / OVER / COAT / DETAIL, a mask's blend mode abbreviated, an effect's type. It is
+// A layer's Height Op, a mask's blend mode abbreviated, an effect's type. It is
 // deliberately a fixed width rather than hugging its text: the badges then form a scannable column
 // down the right edge of the stack, and the word can change without the column moving.
 //

@@ -37,13 +37,9 @@ float BiasVariation;
 float HeightGain;
 float HeightVariation;
 uint FacetIds;
-uint BlendMode;
 float HeightScale;
-float Amount;
 
 Texture2D<float> PebbleHeight;
-Texture2D<float> PebbleCoverage;
-Texture2D<float> SourceHeight;
 RWTexture2D<float> OutPebbleHeight;
 RWTexture2D<float> OutPebbleCoverage;
 RWTexture2D<float> OutPebbleEdgeDistance;
@@ -260,13 +256,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutPebbleRandom[Pixel] = bestRandom;
 	OutPebbleIds[Pixel] = bestId;
 #else
-	const float Source = SourceHeight.Load(int3(Pixel, 0));
-	const float Stone = PebbleHeight.Load(int3(Pixel, 0)) * HeightScale;
-	const float Coverage = PebbleCoverage.Load(int3(Pixel, 0));
-	const float Target = BlendMode == 1u ? min(Source, Stone)
-		: (BlendMode == 2u ? max(Source, Stone)
-		: (BlendMode == 3u ? abs(Source - Stone)
-		: (BlendMode == 4u ? Source + Stone : Stone)));
-	OutHeight[Pixel] = lerp(Source, Target, Amount * Coverage);
+	// The stones are the layer's height, 0 in the gaps. How that meets the stack below is the
+	// layer's Height Op: Max keeps the surface in the gaps, Replace cuts it down to 0.
+	OutHeight[Pixel] = PebbleHeight.Load(int3(Pixel, 0)) * HeightScale;
 #endif
 }

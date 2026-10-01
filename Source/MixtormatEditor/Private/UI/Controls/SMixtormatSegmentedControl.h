@@ -10,8 +10,7 @@ DECLARE_DELEGATE_OneParam(FMixtormatOnSegmentChosen, int32);
 
 // A row of exclusive choices, drawn as the words themselves.
 //
-// Built for the layer's BLEND / OVER / COAT / DETAIL, where the badge in the stack shows the same
-// word the control sets -- so the inspector and the stack teach one vocabulary rather than two.
+// Built for the layer's COMBINE / OVERRIDE / COAT / DETAIL normal choice.
 // Parameterised on cells and an active index rather than on any particular enum, so it also serves
 // mask blend modes and anything else discrete.
 //

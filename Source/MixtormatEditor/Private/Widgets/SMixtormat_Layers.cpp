@@ -560,10 +560,10 @@ void SMixtormat::InitializeNewLayer(
 		Layer.bOverrideRoughness = true;
 		Layer.bOverrideIOR = true;
 		Layer.bOverrideMetallic = true;
-		// OVER, not BLEND. BLEND is a smooth max against the surface below, so a flat fill's
-		// height (and anything a generator carves into it) never shows unless it rises above
-		// what is already there. A fill is its own surface: its height cross-fades in by coverage.
+		// A fill is its own surface: its normal replaces the one below rather than reorienting onto it.
 		Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
+		// And its height replaces what is below, rather than only rising above it.
+		Layer.HeightOp = EMixtormatHeightOp::Replace;
 		break;
 	}
 }
@@ -5079,7 +5079,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.Num() > 0;
 			})
-			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerCompositionMenu(LayerIndex); })
+			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerHeightOpMenu(LayerIndex); })
 			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
 			.OnGetColorBadgeMenu_Lambda([this, LayerIndex]()
 			{
@@ -6116,21 +6116,25 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildLayerCompositionMenu(const int32 LayerIndex)
+TSharedRef<SWidget> SMixtormat::BuildLayerHeightOpMenu(const int32 LayerIndex)
 {
 	MixtormatMenu::FBuilder Menu;
-	const TArray<FText> Options = MixtormatLayerBadges::CompositionOptions();
-	for (int32 Index = 0; Index < Options.Num(); ++Index)
+	const UEnum* OpEnum = StaticEnum<EMixtormatHeightOp>();
+	for (int32 Index = 0; Index < OpEnum->NumEnums(); ++Index)
 	{
-		const auto Choice = static_cast<MixtormatLayerBadges::EComposition>(Index);
+		if (OpEnum->HasMetaData(TEXT("Hidden"), Index))
+		{
+			continue;
+		}
+		const auto Choice = static_cast<EMixtormatHeightOp>(OpEnum->GetValueByIndex(Index));
 		Menu.Item(
-			Options[Index],
+			OpEnum->GetDisplayNameTextByIndex(Index),
 			nullptr,
 			FSimpleDelegate::CreateLambda([this, LayerIndex, Choice]()
 			{
 				if (WorkingLayers.IsValidIndex(LayerIndex))
 				{
-					MixtormatLayerBadges::ApplyComposition(WorkingLayers[LayerIndex], Choice);
+					WorkingLayers[LayerIndex].HeightOp = Choice;
 					RefreshLayeredPreview();
 					RebuildLayerList();
 				}
@@ -6138,7 +6142,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerCompositionMenu(const int32 LayerIndex
 			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, Choice]()
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& MixtormatLayerBadges::CompositionOf(WorkingLayers[LayerIndex]) == Choice;
+					&& WorkingLayers[LayerIndex].HeightOp == Choice;
 			}));
 	}
 	return Menu.Build();

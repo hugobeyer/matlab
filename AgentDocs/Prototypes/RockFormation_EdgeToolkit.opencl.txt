@@ -1,0 +1,954 @@
+// Mixtormat reference -- Rock Formation WITH the planned edge toolkit (AgentDocs/Prompts/07).
+// Copernicus OpenCL COP. Same base as RockFormation_Current.opencl.txt; everything new is marked NEW.
+//
+// What is added, all in cell widths so the look holds at any cell count:
+//   Edge Jag    every chunk edge is shifted sideways by a zigzag of straight segments (3 octaves),
+//               keyed on the edge's own tag. The chamfer and wall follow the jagged edge.
+//               edge_jag = steepness (amplitude is divided by jag_scale, as in Cracks' rough/scale),
+//               jag_scale = bends per cell width, jag_detail = finer octaves' strength.
+//               Relative to each chunk: smaller chunks get proportionally smaller, finer teeth.
+//   Chamfer Jag NEW: the bevel's width swells and thins along each rim by its own zigzag
+//               (same jag_scale/jag_detail, own key). 0 = even bevel, 1 = nothing to double.
+//   Rim Chips   scattered semicircle bites along each edge (Cracks' chips): each widens that edge's
+//               chamfer locally, so the chamfer and wall ramps follow. rim_chips = share of rim
+//               slots that carry a chip, rim_chip_size = chip scale.
+//   Facet Chips today's three planar cuts across each top; facet_chips scales the preset.
+//               NEW: facet_iterations rounds of them. Round 0 is today's three cuts exactly. Each
+//               later round adds two more planes than the last, in fresh random directions, cut
+//               closer to the rim by facet_falloff, so big breaks get smaller breaks along their
+//               edges. facet_random varies, per rock, how many rounds it gets, how deep its
+//               facets bite and how fast each round shrinks; split pieces follow their rock and
+//               deviate only a little (RK_PIECE_FACET). Above 1
+//               each round bites deeper; bites ease toward the chunk's centre and never pass it.
+//               facet_iterations 1 ~ today.
+//
+// Rocks have gaps between them, so unlike Cracks two neighbouring chunks need not agree on a shared
+// border: each edge jags and chips on its own key.
+//
+// Warp and Edge Push are removed from this proto: Edge Jag does that job. With edge_jag 0,
+// rim_chips 0 and facet_chips 1 this closely matches the current file with warp 0 (the eased
+// facet bite and the normalised angles are the only differences).
+//
+// Outputs are the same as RockFormation_Current.opencl.txt. With jag on, edge_distance uses the
+// half-plane form of the jagged outline (exact along the edges, approximate past the corners).
+//
+// The plugin builds chunks once per cell into buffers; one OpenCL COP has no persistent buffers, so
+// this rebuilds the 5x5 neighbouring cells' chunks per pixel. Same maths, slower. Look, don't time.
+
+#bind layer !&height float
+#bind layer !&top_mask float
+#bind layer !&chamfer_mask float
+#bind layer !&wall_mask float
+#bind layer !&top_ramp float
+#bind layer !&chamfer_ramp float
+#bind layer !&wall_ramp float
+#bind layer !&edge_distance float
+#bind layer !&id int
+
+// NEW: style 0..1 spans the part of the preset table that reads well: 0 = layered, 0.67 = boulder,
+// 1 = halfway from boulder to rubble (table positions 1..2.5; see RK_STYLE_*).
+#bind parm style float val=0.5
+#bind parm cells int val=6
+#bind parm rows int val=6
+#bind parm seed int val=1
+#bind parm fracture float val=1
+// NEW: chamfer 0..1 is a share of the room each edge has (edge to chunk centre): 1 is the widest
+// bevel the chunk allows. Relative per chunk, so big and small rocks bevel alike.
+#bind parm chamfer float val=0.2
+#bind parm fracture_height_bias float val=0
+// NEW: gap 0..1, 1 = twice the style's natural gap, 0.5 = natural. In cell widths, so it holds at
+// any cell count; any gap above 0 is also at least a pixel wide, so it cannot alias away.
+#bind parm gap float val=0.5
+#bind parm chamfer_random float val=0.5
+// NEW: angles are normalised. spin -1..1 = -180..180 deg, spin_random 0..1 = 0..180 deg,
+// tilt -1..1 = -45..45 deg, tilt_direction 0..1 = full turn, tilt_random 0..1 = 0..45 deg,
+// stretch_angle 0..1 = 0..180 deg. Values past the range keep going; nothing is clamped.
+#bind parm spin float val=0
+#bind parm spin_random float val=0
+// NEW: Tilt is the one lean control (the old Slope and the presets' dip and random lean are folded
+// in). tilt_angle + tilt_direction lean every chunk the same way, the whole surface going downhill;
+// tilt_random adds each chunk's own lean, in its own direction, up to that angle. The defaults are
+// about the old cliff look: 20 deg downhill plus 12 deg random.
+#bind parm tilt_angle float val=0.45
+#bind parm tilt_direction float val=0.75
+#bind parm tilt_random float val=0.3
+#bind parm size_random float val=0
+// NEW: stretch -1..1, 0 = none. Each step of 1 doubles the cells along stretch_angle (1 = x2 along,
+// -1 = x2 across). Exponential, so +1 and -1 are equal and opposite, and any value is valid.
+#bind parm stretch float val=0
+#bind parm stretch_angle float val=0
+#bind parm stretch_random float val=0
+#bind parm height_clusters float val=1
+#bind parm skew float val=0
+#bind parm height_scale float val=1
+// NEW: height_mode 0 = raw (absolute, in cell widths, as before), 1 = analytic 0..1: the highest a
+// peak can be maps to 1 and the lowest the settings can reach maps to 0, from the settings alone,
+// so the range stays put while you tweak. Loose by design: it rarely fills 0..1 exactly. The
+// plugin can add 2 = measured (its field-range pass), which fills 0..1 exactly but rescales on
+// every change.
+#bind parm height_mode int val=1
+// NEW: edge toolkit
+#bind parm edge_jag float val=0
+#bind parm jag_scale float val=6
+#bind parm jag_detail float val=0.5
+#bind parm chamfer_jag float val=0
+#bind parm rim_chips float val=0
+#bind parm rim_chip_size float val=0.08
+#bind parm facet_chips float val=1
+#bind parm facet_iterations int val=1
+#bind parm facet_falloff float val=0.5
+#bind parm facet_random float val=0.5
+// NEW: facet_align -1..1 swings every facet plane toward one side of its chunk's lean: +1 cuts the
+// low side (opposite the tilt), -1 the high side, 0 keeps them random. Partial values lerp.
+#bind parm facet_align float val=0
+
+#define RK_TAU   6.283185307179586f
+#define RK_BIG   1e20f
+#define RK_MAXV  24
+#define RK_CRACK 0x80000000u
+#define RK_NP    14
+// NEW: Cracks' fixed ratios, reused so the two generators read the same.
+#define RK_LACUNARITY 2.2f
+// NEW: full-scale angles, in degrees, for the normalised parameters.
+#define RK_SPIN_DEG 180.0f
+#define RK_TILT_DEG 45.0f
+#define RK_STRETCH_ANGLE_DEG 180.0f
+#define RK_JAG_SCALE 0.25f
+#define RK_JAG_REF_SCALE 3.75f
+// NEW: jag is relative to each chunk. A chunk this far across (centroid to farthest vertex, in cell
+// widths -- about an unsplit cell) gets the authored jag; smaller chunks get smaller, finer teeth.
+#define RK_JAG_REF_RADIUS 0.7f
+// NEW: seams -- the edges a Fracture split cut inside a cell -- are fresher breaks than a rock's
+// weathered outline, so they follow the outline's controls by fixed ratios instead of their own:
+// a narrower bevel, smaller and finer teeth, and a more uneven bevel width.
+// NEW: a split piece's own random lean, as a share of its cell's. Pieces mostly follow the rock
+// they broke from, deviating a little.
+#define RK_PIECE_LEAN 0.25f
+// NEW: a split piece's own facet variation, as a share of its rock's.
+#define RK_PIECE_FACET 0.25f
+#define RK_SEAM_CHAMFER 0.6f
+// NEW: where style 0 and 1 land in the preset table (0 cliff, 1 layered, 2 boulder, 3 rubble).
+#define RK_STYLE_FROM 1.0f
+#define RK_STYLE_TO 2.5f
+#define RK_SEAM_JAG 0.5f
+#define RK_SEAM_JAG_SCALE 2.0f
+#define RK_SEAM_CHAMFER_JAG 1.5f
+
+// strata, row_mul, splits, split_angle, h_bias, height_var,
+// layer_var, chip, wall, cell_gap, seam_gap, outer_ch, inner_ch, irr
+// (the old dip, slope_rand and bottom columns are gone: lean is Tilt's job, and down-facing
+// edges no longer lose their chamfer)
+constant float RK_PRESET[4][RK_NP] = {
+    { 1.0f, 1.0f, 3.0f, 30.0f, 0.2f, 0.35f, 0.25f, 0.35f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
+    { 1.0f, 2.0f, 2.0f, 6.0f, 0.7f, 0.30f, 0.45f, 0.25f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f },
+    { 0.0f, 1.0f, 2.0f, 30.0f, 0.0f, 0.35f, 0.25f, 0.40f, 58.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.9f },
+    { 0.0f, 1.0f, 1.0f, 30.0f, 0.0f, 0.60f, 0.20f, 0.40f, 60.0f, 0.04f, 0.020f, 0.10f, 0.06f, 0.9f },
+};
+
+typedef struct
+{
+    int cu, cv, splits;
+    float rh, a2, strata, irr, split_angle, h_bias;
+    float3 metric;          // symmetric 2x2 (m00, m01, m11): strata squash x stretch
+    float hvar, lvar, chip, wall_k;
+    float cell_gap, seam_gap, outer_ch, inner_ch;
+    int build_reach_i, build_reach_j, field_reach_i, field_reach_j;
+    float chamfer, fracture_height_bias;
+    uint seed;
+    float chamfer_random, height_clusters, skew;
+    float spin, spin_random, tilt_angle, tilt_dir, tilt_random, size_random, stretch_random;
+    float wall_slope, chamfer_slope;
+    float height_lo, height_hi;     // NEW: analytic bounds, for height_mode 1
+    // NEW
+    // NEW: index 0 = outer edges, 1 = seams.
+    float jag_amp[2], jag_freq[2], chamfer_jag[2];
+    float jag_detail;
+    float rim_chips, rim_chip_size;
+    float seam_chamfer;
+    int facet_iterations;
+    float facet_falloff;
+    float facet_random;
+    float facet_align;
+} RkPat;
+
+typedef struct
+{
+    float2 v[RK_MAXV];
+    uint t[RK_MAXV];        // t[i] tags edge i -> i+1: cell border key, or RK_CRACK | split key
+    int n;
+} RkPoly;
+
+typedef struct
+{
+    float2 c;
+    float2 s;
+    float top_constant;
+    float top;
+    float radius;
+    float rv;               // farthest vertex from the centroid: facet chip planes scale by it
+    uint pk;                // the chunk's own hash: facet chip planes are drawn from it
+    uint ck;                // NEW: its cell's hash: facet variation is drawn mostly from it
+    float jag_offset;       // NEW: the chunk's own shift along its edges, so its jag is its own
+    float jag_size;         // NEW: the chunk's size relative to RK_JAG_REF_RADIUS; scales its jag
+    int chip_on;
+    int edge_count;
+    float4 edges[RK_MAXV];  // inward normal.xy, inset line offset, chamfer width
+    uint tags[RK_MAXV];     // NEW: the edge's key, for its jag and its chips
+    uint seam_bits;         // NEW: bit e set = edge e is a seam (a Fracture split), not the outline
+    int vertex_count;
+    float2 verts[RK_MAXV];
+    uint id;
+} RkLeaf;
+
+typedef struct
+{
+    int hit, cls;
+    float h, ramp, boundary;
+    uint id;
+} RkOut;
+
+// ---- helpers ---------------------------------------------------------------
+
+uint rk_hash(uint v)
+{
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+float rk_rand(uint a, uint b, uint c)
+{
+    return (float)(rk_hash(a ^ rk_hash(b + rk_hash(c))) >> 8) * (1.0f / 16777216.0f);
+}
+
+int rk_wrap(int i, int n) { return ((i % n) + n) % n; }
+float rk_cross(float2 a, float2 b) { return a.x * b.y - a.y * b.x; }
+float2 rk_dir(float a) { return (float2)(cos(a), sin(a)); }
+uint rk_edge_key(uint a) { return (rk_hash(a) & 0x7fffffffu) | 1u; }
+
+float rk_value_noise(float2 uv, int f, uint seed)
+{
+    float2 q = uv * (float)f;
+    float2 fl = floor(q);
+    float2 t = q - fl;
+    t = t * t * (3.0f - 2.0f * t);
+    int x0 = rk_wrap((int)fl.x, f), y0 = rk_wrap((int)fl.y, f);
+    int x1 = rk_wrap(x0 + 1, f), y1 = rk_wrap(y0 + 1, f);
+    float a = rk_rand(seed, (uint)(x0 + y0 * f), 7u);
+    float b = rk_rand(seed, (uint)(x1 + y0 * f), 7u);
+    float c = rk_rand(seed, (uint)(x0 + y1 * f), 7u);
+    float d = rk_rand(seed, (uint)(x1 + y1 * f), 7u);
+    return 2.0f * mix(mix(a, b, t.x), mix(c, d, t.x), t.y) - 1.0f;
+}
+
+float2 rk_rotate(float2 v, float a)
+{
+    float c = cos(a), s = sin(a);
+    return (float2)(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+// ---- NEW: edge toolkit (the shared .ush in the plugin) -------------------------
+
+// Piecewise-linear random zigzag: straight segments between random bend heights in -1..1.
+float rk_zig(float x, uint key, uint salt)
+{
+    float fl = floor(x);
+    int i = (int)fl;
+    float f = x - fl;
+    return mix(rk_rand(key, (uint)i, salt) * 2.0f - 1.0f, rk_rand(key, (uint)(i + 1), salt) * 2.0f - 1.0f, f);
+}
+
+// Three octaves of zigzag along an edge, -1..1.
+float rk_zig_fbm(float u, uint key, float freq, const RkPat* P)
+{
+    float sum = 0.0f, norm = 0.0f, amp = 1.0f;
+    for (int o = 0; o < 3; o++)
+    {
+        sum += amp * rk_zig(u * freq, key, 4099u + (uint)o * 57u);
+        norm += fabs(amp);
+        amp *= P->jag_detail;
+        freq *= RK_LACUNARITY;
+    }
+    return norm > 0.0f ? sum / norm : 0.0f;
+}
+
+// Jag: sideways shift of an edge at position u along it. Set 0 = outer edges, 1 = seams.
+float rk_jag(float u, uint key, int set, const RkPat* P)
+{
+    return P->jag_amp[set] == 0.0f ? 0.0f : P->jag_amp[set] * rk_zig_fbm(u, key, P->jag_freq[set], P);
+}
+
+// NEW: chamfer jag. The bevel's width swells and thins along the rim by its own zigzag, on its own
+// key, so it does not follow the outline's teeth. Multiplicative: at chamfer_jag 1 the width runs
+// from nothing to double, never negative.
+float rk_chamfer_scale(float u, uint key, int set, const RkPat* P)
+{
+    return P->chamfer_jag[set] == 0.0f ? 1.0f
+        : 1.0f + P->chamfer_jag[set] * rk_zig_fbm(u, key ^ 0x5bd1e995u, P->jag_freq[set], P);
+}
+
+// Rim chips: scattered angular bites along an edge, each widening the bevel by up to its depth.
+// Rock breaks into flat facets, so a chip is straight-sided, not a semicircle: an asymmetric
+// triangle with its deepest point anywhere across the chip, and on some chips a flat floor
+// (a trapezoid) where the flake came off whole. u and size in cell widths.
+float rk_rim_chips(float u, uint key, const RkPat* P)
+{
+    float density = P->rim_chips, size = P->rim_chip_size;
+    if (density <= 0.0f || size <= 0.0f) return 0.0f;
+    int i0 = (int)floor(u / size);
+    float bite = 0.0f;
+    for (int k = -1; k <= 1; k++)
+    {
+        int i = i0 + k;
+        if (rk_rand(key, (uint)i, 9311u) >= density) continue;
+        float c = ((float)i + rk_rand(key, (uint)i, 9312u)) * size;
+        float rr = size * (0.35f + 0.65f * rk_rand(key, (uint)i, 9313u));
+        float x = (u - c) / rr;
+        if (fabs(x) >= 1.0f) continue;
+        // Apex anywhere in the middle 70% of the chip, so the two flanks have different slopes.
+        float apex = (rk_rand(key, (uint)i, 9314u) - 0.5f) * 1.4f;
+        float tri = x < apex ? (x + 1.0f) / (apex + 1.0f) : (1.0f - x) / (1.0f - apex);
+        // Flat floor on about half the chips: the triangle's top third is cut off flat.
+        float floor_at = rk_rand(key, (uint)i, 9315u) < 0.5f ? 0.67f : 1.0f;
+        float depth = rr * (0.5f + 0.5f * rk_rand(key, (uint)i, 9316u));
+        bite = fmax(bite, depth * fmin(tri, floor_at) / floor_at);
+    }
+    return bite;
+}
+
+// ---- convex polygons (CCW) -------------------------------------------------
+
+void rk_box(RkPoly* p, float2 c, float2 e)
+{
+    p->v[0] = c + (float2)(-e.x, -e.y);
+    p->v[1] = c + (float2)(e.x, -e.y);
+    p->v[2] = c + (float2)(e.x, e.y);
+    p->v[3] = c + (float2)(-e.x, e.y);
+    p->t[0] = 0u; p->t[1] = 0u; p->t[2] = 0u; p->t[3] = 0u;
+    p->n = 4;
+}
+
+// Keep dot(n, x) <= d.
+void rk_clip(RkPoly* p, float2 n, float d, uint tag)
+{
+    int any_out = 0;
+    for (int i = 0; i < p->n; i++)
+        any_out = any_out || dot(n, p->v[i]) > d;
+    if (!any_out)
+        return;
+
+    RkPoly o;
+    int m = 0;
+    for (int j = 0; j < p->n; j++)
+    {
+        float2 a = p->v[j];
+        float2 b = p->v[j + 1 == p->n ? 0 : j + 1];
+        float da = dot(n, a) - d;
+        float db = dot(n, b) - d;
+        if (da <= 0.0f)
+        {
+            if (m < RK_MAXV) { o.v[m] = a; o.t[m] = p->t[j]; m++; }
+            if (db > 0.0f && m < RK_MAXV) { o.v[m] = mix(a, b, da / (da - db)); o.t[m] = tag; m++; }
+        }
+        else if (db <= 0.0f && m < RK_MAXV)
+        {
+            o.v[m] = mix(a, b, da / (da - db)); o.t[m] = p->t[j]; m++;
+        }
+    }
+    o.n = m;
+    *p = o;
+}
+
+float2 rk_centroid(const RkPoly* p, float* area)
+{
+    float2 c = (float2)(0.0f), mean = (float2)(0.0f);
+    float s = 0.0f;
+    for (int i = 0; i < p->n; i++)
+    {
+        float2 a = p->v[i], b = p->v[i + 1 == p->n ? 0 : i + 1];
+        float k = rk_cross(a, b);
+        s += k;
+        c += (a + b) * k;
+        mean += a;
+    }
+    *area = 0.5f * s;
+    return fabs(s) < 1e-12f ? mean / (float)max(p->n, 1) : c / (3.0f * s);
+}
+
+// ---- cells: anisotropic power diagram --------------------------------------
+
+float2 rk_site(const RkPat* P, int i, int j, uint* id)
+{
+    int wi = rk_wrap(i, P->cu), wj = rk_wrap(j, P->cv);
+    uint h = rk_hash(P->seed ^ rk_hash((uint)wi + rk_hash((uint)wj * 0x85EBCA6Bu + 7u)));
+    float bond = rk_rand(P->seed, (uint)wj, 53u) * P->strata;
+    float jx = (rk_rand(h, 1u, 31u) - 0.5f) * P->irr;
+    float jy = (rk_rand(h, 2u, 31u) - 0.5f) * P->irr * (1.0f - P->strata);
+    *id = (uint)(wi + wj * P->cu);
+    float row_phase = RK_TAU * (float)wj / (float)P->cv;
+    float row_skew = P->skew * sin(row_phase);
+    return (float2)((float)i + 0.5f + bond + jx + row_skew, ((float)j + 0.5f + jy) * P->rh);
+}
+
+float2 rk_metric_mul(const RkPat* P, float2 d)
+{
+    return (float2)(P->metric.x * d.x + P->metric.y * d.y, P->metric.y * d.x + P->metric.z * d.y);
+}
+
+float rk_metric(const RkPat* P, float2 d) { return dot(d, rk_metric_mul(P, d)); }
+
+float rk_site_weight(const RkPat* P, uint id)
+{
+    return P->size_random * 0.35f * (2.0f * rk_rand(P->seed, id, 57u) - 1.0f);
+}
+
+float3 rk_bisector(const RkPat* P, float2 s, float2 o, float ws, float wo)
+{
+    float2 m = rk_metric_mul(P, o - s);
+    float l = length(m);
+    return (float3)(m / l, 0.5f * (rk_metric(P, o) - rk_metric(P, s) - wo + ws) / l);
+}
+
+void rk_cell_poly(const RkPat* P, int i, int j, RkPoly* cell, uint* cid)
+{
+    uint id, oid;
+    float2 s = rk_site(P, i, j, &id);
+    float ws = rk_site_weight(P, id);
+    rk_box(cell, s, (float2)(3.0f, 3.0f * P->rh));
+    for (int dj = -P->build_reach_j; dj <= P->build_reach_j; dj++)
+    for (int di = -P->build_reach_i; di <= P->build_reach_i; di++)
+    {
+        if (di == 0 && dj == 0) continue;
+        float2 o = rk_site(P, i + di, j + dj, &oid);
+        if (length(o - s) < 1e-6f) continue;
+        float3 b = rk_bisector(P, s, o, ws, rk_site_weight(P, oid));
+        rk_clip(cell, b.xy, b.z, rk_edge_key(min(id, oid) * 0x9E3779B9u + max(id, oid) + 17u));
+    }
+    *cid = rk_hash(P->seed ^ (id * 0x27D4EB2Du + 5u));
+}
+
+// ---- BSP fracture ----------------------------------------------------------
+
+float3 rk_split_line(const RkPat* P, uint cid, uint node, const RkPoly* p)
+{
+    float2 lo = p->v[0], hi = lo;
+    for (int i = 1; i < p->n; i++) { lo = fmin(lo, p->v[i]); hi = fmax(hi, p->v[i]); }
+    float2 dim = hi - lo;
+
+    uint a = rk_hash(P->seed ^ (cid * 0x9E3779B9u));
+    int axis = dim.y > dim.x ? 1 : 0;
+    if (rk_rand(a, node, 733u) < P->h_bias) axis = 1;
+
+    float tilt = radians(P->split_angle) * sqrt(rk_rand(a, node, 138u))
+        * (rk_rand(a, node, 137u) < 0.5f ? -1.0f : 1.0f);
+    float2 n = rk_dir((axis != 0 ? 0.25f * RK_TAU : 0.0f) + tilt);
+
+    float pmin = RK_BIG, pmax = -RK_BIG;
+    for (int k = 0; k < p->n; k++)
+    {
+        float pr = dot(n, p->v[k]);
+        pmin = fmin(pmin, pr);
+        pmax = fmax(pmax, pr);
+    }
+    return (float3)(n, mix(pmin, pmax, 0.5f + (rk_rand(a, node, 139u) - 0.5f) * 0.28f));
+}
+
+void rk_node_poly(const RkPat* P, uint cid, uint node, int depth, RkPoly* p)
+{
+    for (int level = 0; level < depth; level++)
+    {
+        uint anc = node >> (uint)(depth - level);
+        uint bit = (node >> (uint)(depth - level - 1)) & 1u;
+        float3 l = rk_split_line(P, cid, anc, p);
+        uint key = RK_CRACK | (rk_hash(cid * 7919u + anc) & 0x7fffffffu);
+        if (bit != 0u) rk_clip(p, -l.xy, -l.z, key);
+        else           rk_clip(p, l.xy, l.z, key);
+    }
+}
+
+// ---- chunk build -------------------------------------------------------------
+
+int rk_edge_line(const RkPat* P, const RkPoly* leaf, int i, float2 c,
+    float2* nn, float* dg, float* w)
+{
+    float2 a = leaf->v[i];
+    float2 e = leaf->v[i + 1 == leaf->n ? 0 : i + 1] - a;
+    float len = length(e);
+    if (len < 1e-6f) return 0;
+    uint tag = leaf->t[i];
+    *nn = (float2)(e.y, -e.x) / len;
+    int crack = (tag & RK_CRACK) != 0u;
+    float d = dot(*nn, a);
+    float clearance = fmax(0.0f, d - dot(*nn, c));
+    *dg = d - fmin((crack ? P->seam_gap : P->cell_gap) * 0.5f, clearance * 0.75f);
+    // The room this edge has: three quarters of the way from its inset line to the centre. A
+    // bevel past it would cross the chunk, so the width is a share of it, and the min below is
+    // that geometric limit, reached only when chamfer_random pushes a share past 1.
+    float room = 0.75f * fmax(0.0f, *dg - dot(*nn, c));
+    float ww = (crack ? P->seam_chamfer * P->inner_ch : P->chamfer * P->outer_ch) * room
+        * mix(1.0f, mix(0.4f, 1.6f, rk_rand(P->seed, tag, 91u)), P->chamfer_random);
+    *w = fmin(fmax(ww, 0.0f), room);
+    return 1;
+}
+
+void rk_make_leaf(const RkPat* P, RkPoly leaf, uint cid, uint node, float layer_rand, uint id, RkLeaf* L)
+{
+    int n = leaf.n;
+    uint ck = rk_hash(P->seed ^ (cid * 0x9E3779B9u));
+    uint pk = rk_hash(ck ^ (node * 0x85EBCA6Bu));
+
+    if (P->spin != 0.0f || P->spin_random != 0.0f || P->stretch_random > 0.0f)
+    {
+        float area0;
+        float2 c0 = rk_centroid(&leaf, &area0);
+        float angle = radians(P->spin + P->spin_random * (2.0f * rk_rand(pk, 7u, 66u) - 1.0f));
+        float2 axis = rk_dir(rk_rand(pk, 8u, 66u) * RK_TAU);
+        float squeeze = 1.0f - P->stretch_random * rk_rand(pk, 9u, 66u);
+        RkPoly moved = leaf;
+        for (int mv = 0; mv < leaf.n; mv++)
+        {
+            float2 d = leaf.v[mv] - c0;
+            d -= axis * dot(d, axis) * (1.0f - squeeze);
+            moved.v[mv] = c0 + rk_rotate(d, angle);
+        }
+        // NEW: fit, don't clip. Clipping the turned chunk back to its leaf trimmed its corners,
+        // which read as a carve. Instead the whole turned chunk is scaled about its centroid by
+        // the largest factor that keeps every vertex inside every leaf edge, so it stays one
+        // clean shape. Each edge keeps its own tag, so gaps and seams still know what they are.
+        float fit = 1.0f;
+        for (int ce = 0; ce < leaf.n; ce++)
+        {
+            float2 a = leaf.v[ce];
+            float2 e = leaf.v[ce + 1 == leaf.n ? 0 : ce + 1] - a;
+            float el = length(e);
+            if (el < 1e-6f) continue;
+            float2 nn = (float2)(e.y, -e.x) / el;
+            float room = dot(nn, a) - dot(nn, c0);
+            for (int mv = 0; mv < moved.n; mv++)
+            {
+                float out_by = dot(nn, moved.v[mv] - c0);
+                if (out_by > room && out_by > 1e-9f) fit = fmin(fit, room / out_by);
+            }
+        }
+        for (int mv = 0; mv < moved.n; mv++) moved.v[mv] = c0 + (moved.v[mv] - c0) * fit;
+        leaf = moved;
+    }
+
+    float top = 1.0f - P->height_clusters * (P->hvar * 0.5f * (rk_rand(ck, 1u, 61u) + rk_rand(pk, 1u, 62u))
+        + P->lvar * layer_rand);
+    top += P->fracture_height_bias * (2.0f * rk_rand(pk, 5u, 61u) - 1.0f);
+
+    float ar;
+    float2 c = rk_centroid(&leaf, &ar);
+    float rv = 0.0f;
+    for (int i = 0; i < n; i++) rv = fmax(rv, length(leaf.v[i] - c));
+
+    // Tilt: the shared lean, plus the cell's own random lean, plus a little of the piece's own, so
+    // the pieces of one split rock tip together and only deviate slightly from each other.
+    float2 s = rk_dir(radians(P->tilt_dir)) * tan(radians(P->tilt_angle))
+        + tan(radians(P->tilt_random)) * (
+            rk_dir(rk_rand(ck, 2u, 61u) * RK_TAU) * sqrt(rk_rand(ck, 3u, 61u)) +
+            RK_PIECE_LEAN * rk_dir(rk_rand(pk, 2u, 62u) * RK_TAU) * sqrt(rk_rand(pk, 3u, 62u)));
+    float smax = -RK_BIG;
+    for (int k = 0; k < n; k++) smax = fmax(smax, dot(s, leaf.v[k] - c));
+
+    L->c = c;
+    L->s = s;
+    L->top_constant = top - smax - dot(s, c);
+    L->top = top;
+    L->jag_size = rv / RK_JAG_REF_RADIUS;
+    // NEW: jag and chips can move an edge outward, so the reach grows by both.
+    L->radius = rv + 1.0f / fmax(P->wall_k, 1.0e-4f) + 0.5f * fmax(P->cell_gap, P->seam_gap)
+        + fmax(fabs(P->jag_amp[0]), fabs(P->jag_amp[1])) * L->jag_size + P->rim_chip_size;
+
+    // Facet chips: planes drawn at evaluate time from the chunk's hash (see rk_facet_cut).
+    L->chip_on = P->chip > 0.0f;
+    L->rv = rv;
+    L->pk = pk;
+    L->ck = ck;
+    // Neighbouring chunks share their border's key, so without this they would jag in step across
+    // a gap. A per-chunk shift along the edge breaks that, at the cost of one draw per chunk.
+    L->jag_offset = rk_rand(pk, 12u, 69u) * 64.0f;
+
+    int edge_count = 0;
+    uint seam_bits = 0u;
+    RkPoly gapped = leaf;
+    for (int e = 0; e < n; e++)
+    {
+        float2 nn; float dg, w;
+        if (!rk_edge_line(P, &leaf, e, c, &nn, &dg, &w)) continue;
+        L->edges[edge_count] = (float4)(nn, dg, w);
+        L->tags[edge_count] = rk_edge_key(leaf.t[e] + 101u);
+        if ((leaf.t[e] & RK_CRACK) != 0u) seam_bits |= 1u << (uint)edge_count;
+        edge_count++;
+        rk_clip(&gapped, nn, dg, leaf.t[e]);
+    }
+    for (int v = 0; v < gapped.n; v++) L->verts[v] = gapped.v[v];
+    L->edge_count = edge_count;
+    L->seam_bits = seam_bits;
+    L->vertex_count = gapped.n;
+    L->id = id;
+}
+
+// ---- chunk evaluate ------------------------------------------------------------
+
+// Facet chips, in rounds. Each plane cuts cut = K * (dot(u, p) - R) off the top. Round 0 is the
+// original three planes with the original salts. Round k adds 3 + 2k planes in fresh directions,
+// their offsets pushed out toward the rim by falloff^k, so each round's breaks are smaller and sit
+// along the edges the earlier rounds left. The slope varies a little per plane in later rounds so
+// the small facets do not all read at one angle. Each break line carries the jag as well.
+float rk_facet_cut(const RkPat* P, const RkLeaf* L, float2 pr)
+{
+    const float chip_k = 0.78f; // tan 38 deg
+    float cut = 0.0f;
+    float size = 1.0f;
+
+    // NEW: facet variation, drawn per rock (cell) with a little per piece, so the pieces of one
+    // broken rock chip alike. r(salt) is the rock's draw nudged by the piece's, 0..1-ish.
+    #define RK_FACET_DRAW(salt) (rk_rand(L->ck, (salt), 72u)         + RK_PIECE_FACET * (rk_rand(L->pk, (salt), 73u) - 0.5f))
+    // Rounds: some rocks get fewer, and all pieces of one rock get the same count, so this draw is
+    // the rock's alone. It is under 1, so up to facet_random 1 round 0 always survives.
+    int rounds = P->facet_iterations
+        - (int)floor(rk_rand(L->ck, 13u, 72u) * P->facet_random * (float)P->facet_iterations);
+    // Depth: each rock's facets bite 0.5x to 1.5x as deep at full random.
+    float depth = mix(1.0f, 0.5f + RK_FACET_DRAW(14u), P->facet_random);
+
+    for (int it = 0; it < rounds; it++)
+    {
+        uint salt = (uint)it * 10u;
+        int planes = 3 + 2 * it;
+        float ph = rk_rand(L->pk, 4u + salt, 63u) * RK_TAU;
+        for (int j = 0; j < planes; j++)
+        {
+            float2 u = rk_dir(ph + (float)j * RK_TAU / (float)planes + (rk_rand(L->pk, (uint)j + salt, 64u) - 0.5f) * 1.6f);
+            // Swing toward the low side (+align) or the high side (-align) of the chunk's lean.
+            // A chunk with no lean has no side to swing to, hence the guard.
+            float lean = length(L->s);
+            if (P->facet_align != 0.0f && lean > 1e-6f)
+            {
+                float2 side = -L->s / lean * sign(P->facet_align);
+                float2 swung = mix(u, side, fabs(P->facet_align));
+                float sl = length(swung);
+                u = sl > 1e-6f ? swung / sl : side;
+            }
+            // The bite, as a share of the chunk's radius, eased so it approaches 1 but never gets
+            // there: a plane can never pass the centre and slice the whole top away, however deep
+            // facet_chips or a growing falloff push it. Almost exact for the usual bites (0.4
+            // reads as 0.397).
+            float bite = P->chip * depth * size * (0.4f + 0.6f * rk_rand(L->pk, (uint)j + salt, 65u));
+            bite = bite / sqrt(sqrt(1.0f + bite * bite * bite * bite));
+            float R = L->rv * (1.0f - bite) + dot(u, L->c);
+            float k = it == 0 ? chip_k : chip_k * mix(0.8f, 1.3f, rk_rand(L->pk, (uint)j + salt, 68u));
+            // Jag on the break line too, keyed per plane. Scaled by the round's size, so smaller
+            // breaks get proportionally smaller, finer teeth rather than the outline's big ones.
+            // The jag grows with the round too, eased toward twice the first round's so a growing
+            // falloff cannot saw the teeth across the chunk's borders.
+            float grow = size / sqrt(sqrt(1.0f + 0.0625f * size * size * size * size));
+            float js = grow * L->jag_size;
+            float along = dot(pr, (float2)(-u.y, u.x)) / js + L->jag_offset;
+            float shift = rk_jag(along, rk_hash(L->pk ^ ((uint)j + salt) * 0x9E3779B9u), 0, P) * js;
+            cut = fmax(cut, k * (dot(u, pr) - R + shift));
+        }
+        // Each rock draws its own falloff per round: 0.5x to 1.5x the authored one at full random,
+        // so some rocks step down gently and others drop straight to fine nibbles.
+        size *= P->facet_falloff * mix(1.0f, 0.5f + RK_FACET_DRAW((uint)it + 20u), P->facet_random);
+    }
+    #undef RK_FACET_DRAW
+    return cut;
+}
+
+float rk_leaf_height(const RkPat* P, const RkLeaf* L, float2 pr, int* cls, float* ramp)
+{
+    float T = L->top_constant + dot(L->s, pr);
+    if (L->chip_on) T -= rk_facet_cut(P, L, pr);
+
+    float H = T;
+    *cls = 0;
+    float edge_di = 0.0f, edge_w = 0.0f;
+    float top_inset = RK_BIG;
+    for (int e = 0; e < L->edge_count; e++)
+    {
+        float4 E = L->edges[e];
+        // NEW: position along the edge, its jag and its chips.
+        float u = dot(pr, (float2)(-E.y, E.x)) + L->jag_offset;
+        int set = (int)((L->seam_bits >> (uint)e) & 1u);
+        float di = E.z - dot(E.xy, pr) + rk_jag(u / L->jag_size, L->tags[e], set, P) * L->jag_size;
+        float w = E.w * rk_chamfer_scale(u / L->jag_size, L->tags[e], set, P)
+            + rk_rim_chips(u, L->tags[e] * 2u + 1u, P);
+        top_inset = fmin(top_inset, di - fmax(w, 0.0f));
+        float wall = T + P->wall_slope * di;
+        if (wall < H) { H = wall; *cls = 2; edge_di = di; edge_w = w; }
+        if (w > 0.0f)
+        {
+            float bevel = T + P->chamfer_slope * (di - w);
+            if (bevel < H) { H = bevel; *cls = 1; edge_di = di; edge_w = w; }
+        }
+    }
+
+    float foot_di = edge_w > 0.0f
+        ? -P->chamfer_slope * edge_w / fmax(P->wall_slope - P->chamfer_slope, 1.0e-6f) : 0.0f;
+    if (*cls == 1)      *ramp = (edge_di - foot_di) / (edge_w - foot_di);
+    else if (*cls == 2) *ramp = 1.0f + P->wall_slope * (edge_di - foot_di);
+    else
+    {
+        float inset = L->edge_count > 0 ? top_inset : 0.0f;
+        float to_centre = length(pr - L->c);
+        *ramp = inset + to_centre > 0.0f ? inset / (inset + to_centre) : 1.0f;
+    }
+    return H;
+}
+
+// Exact signed distance to the gapped outline, negative inside.
+float rk_leaf_sd(const RkLeaf* L, float2 q)
+{
+    int count = L->vertex_count;
+    if (count < 3) return RK_BIG;
+    float dmin = RK_BIG;
+    int inside = 1;
+    for (int i = 0; i < count; i++)
+    {
+        float2 a = L->verts[i];
+        float2 e = L->verts[i + 1 == count ? 0 : i + 1] - a;
+        float2 w = q - a;
+        float t = clamp(dot(w, e) / fmax(dot(e, e), 1e-20f), 0.0f, 1.0f);
+        dmin = fmin(dmin, length(w - e * t));
+        if (rk_cross(e, w) < 0.0f) inside = 0;
+    }
+    return inside ? -dmin : dmin;
+}
+
+// NEW: with jag on, the outline is the half-plane form of the jagged inset lines.
+float rk_leaf_sd_jag(const RkPat* P, const RkLeaf* L, float2 q)
+{
+    if (L->edge_count < 3) return RK_BIG;
+    float sd = -RK_BIG;
+    for (int e = 0; e < L->edge_count; e++)
+    {
+        float4 E = L->edges[e];
+        float u = dot(q, (float2)(-E.y, E.x)) + L->jag_offset;
+        int set = (int)((L->seam_bits >> (uint)e) & 1u);
+        sd = fmax(sd, dot(E.xy, q) - E.z - rk_jag(u / L->jag_size, L->tags[e], set, P) * L->jag_size);
+    }
+    return sd;
+}
+
+void rk_setup(RkPat* P, float pixel, float style, int cells, int rows, int seed, float fracture,
+    float chamfer, float fracture_height_bias, float gap,
+    float chamfer_random, float spin, float spin_random, float tilt_angle, float tilt_direction,
+    float tilt_random, float size_random, float stretch, float stretch_angle, float stretch_random,
+    float height_clusters, float skew,
+    float facet_chips, int facet_iterations, float facet_falloff, float facet_random, float facet_align,
+    float edge_jag, float jag_scale, float jag_detail, float chamfer_jag, float rim_chips, float rim_chip_size)
+{
+    // The table has four rows, so the position is bounded to it; style itself is not.
+    float st = clamp(mix(RK_STYLE_FROM, RK_STYLE_TO, style), 0.0f, 3.0f);
+    int i0 = min((int)st, 2);
+    float t = st - (float)i0;
+    float v[RK_NP];
+    for (int k = 0; k < RK_NP; k++) v[k] = mix(RK_PRESET[i0][k], RK_PRESET[i0 + 1][k], t);
+
+    P->cu = max(cells, 1);
+    P->cv = max(rows, 1);
+    P->rh = (float)P->cu / (float)P->cv;
+    P->strata = v[0];
+    P->a2 = (1.0f + 3.0f * v[0]) * (1.0f + 3.0f * v[0]);
+    {
+        float sa = radians(stretch_angle * RK_STRETCH_ANGLE_DEG);
+        float cs = cos(sa), sn = sin(sa);
+        float k = exp2(-stretch);
+        float k00 = k * cs * cs + sn * sn;
+        float k01 = (k - 1.0f) * cs * sn;
+        float k11 = k * sn * sn + cs * cs;
+        float sy = sqrt(P->a2);
+        float t00 = k00, t01 = k01, t10 = sy * k01, t11 = sy * k11;
+        P->metric = (float3)(t00 * t00 + t10 * t10, t00 * t01 + t10 * t11, t01 * t01 + t11 * t11);
+    }
+    P->splits = max((int)round(v[2] * fracture), 0);
+    P->split_angle = v[3];
+    P->h_bias = v[4];
+    P->hvar = v[5];
+    P->lvar = v[6];
+    P->height_clusters = height_clusters;
+    P->skew = skew;
+    P->chip = v[7] * facet_chips;
+    P->wall_k = tan(radians(v[8]));
+    // The pixel is added, not clamped in: at normal settings it is a sliver of the gap; where the
+    // gap would otherwise fall under a pixel it keeps it visible.
+    float gap_floor = gap > 0.0f ? pixel : 0.0f;
+    P->cell_gap = v[9] * gap * 2.0f + gap_floor;
+    P->seam_gap = v[10] * gap * 2.0f + gap_floor;
+    // The preset keeps only its character: outer edges vs split seams, and rubble a little wider
+    // than cliff, relative to the cliff outer edge.
+    P->outer_ch = v[11] / 0.08f;
+    P->inner_ch = v[12] / 0.05f;
+    P->chamfer = chamfer;
+    P->fracture_height_bias = fracture_height_bias;
+    P->irr = v[13];
+    P->seed = rk_hash((uint)seed + 0x51ED27u);
+    // Stored in degrees from here on.
+    P->spin = spin * RK_SPIN_DEG;
+    P->spin_random = spin_random * RK_SPIN_DEG;
+    P->tilt_angle = tilt_angle * RK_TILT_DEG;
+    P->tilt_dir = tilt_direction * 360.0f;
+    P->tilt_random = tilt_random * RK_TILT_DEG;
+    P->size_random = size_random;
+    P->stretch_random = stretch_random;
+    P->chamfer_random = chamfer_random;
+    P->wall_slope = P->wall_k;
+    P->chamfer_slope = fmin(tan(radians(42.0f)), P->wall_k);
+    // NEW: jag is a steepness, as in Cracks: bigger bends (lower jag_scale) get a proportionally
+    // larger amplitude, so changing the scale never makes the edges spikier or flatter.
+    P->jag_amp[0] = edge_jag * RK_JAG_SCALE * RK_JAG_REF_SCALE / fmax(jag_scale, 1e-3f);
+    P->jag_freq[0] = jag_scale;
+    // Seams: same steepness rule, at the seam ratios.
+    P->jag_freq[1] = jag_scale * RK_SEAM_JAG_SCALE;
+    P->jag_amp[1] = edge_jag * RK_SEAM_JAG * RK_JAG_SCALE * RK_JAG_REF_SCALE / fmax(P->jag_freq[1], 1e-3f);
+    P->chamfer_jag[0] = chamfer_jag;
+    P->chamfer_jag[1] = chamfer_jag * RK_SEAM_CHAMFER_JAG;
+    P->seam_chamfer = chamfer * RK_SEAM_CHAMFER;
+    P->jag_detail = jag_detail;
+    P->rim_chips = rim_chips;
+    P->rim_chip_size = rim_chip_size;
+
+    // NEW: search reach in cells, from the row height instead of a fixed +-2. Rows thinner than a
+    // cell is wide (rows > cells) put a cell's true neighbours, and a chunk's falling wall, more
+    // than two rows away; a fixed window missed them and cut hard seams along the row borders.
+    //   build: a cell's Voronoi neighbours lie within about two cell widths either way.
+    //   field: how far a chunk can reach past its own cell -- half a cell of site jitter, the
+    //          wall fall-off, the gap, the jag at up to twice the reference chunk, and a chip --
+    //          plus one cell, since the pixel can sit anywhere in its own. Strata's row bond can
+    //          also shift a site by up to a whole cell sideways, so layered styles search one
+    //          column further each way. At rows == cells the rows stay at the old +-2.
+    P->build_reach_i = max(2, (int)ceil(2.0f * P->rh));
+    P->build_reach_j = max(2, (int)ceil(2.0f / P->rh));
+    float reach = 0.5f + 1.0f / fmax(P->wall_k, 1.0e-4f)
+        + 0.5f * fmax(P->cell_gap, P->seam_gap) + 2.0f * fmax(fabs(P->jag_amp[0]), fabs(P->jag_amp[1])) + P->rim_chip_size;
+    P->field_reach_i = max(2, (int)ceil(reach + P->strata) + 1);
+    P->field_reach_j = max(2, (int)ceil(reach / P->rh) + 1);
+
+    // NEW: analytic height bounds.
+    //   hi: the highest a peak can be -- 1, plus the full fracture height bias.
+    //   lo: the lowest top (all height variation and bias down), minus the most a top can fall
+    //       across its chunk (steepest possible lean over a chunk's full width), minus the wall
+    //       falling across the widest half gap.
+    float lean_max = tan(radians(fabs(P->tilt_angle)))
+        + tan(radians(fabs(P->tilt_random))) * (1.0f + RK_PIECE_LEAN);
+    float chunk_width = 2.0f * 1.5f * fmax(1.0f, P->rh);
+    P->height_hi = 1.0f + fabs(P->fracture_height_bias);
+    P->height_lo = 1.0f - P->height_clusters * (P->hvar + P->lvar) - fabs(P->fracture_height_bias)
+        - lean_max * chunk_width
+        - P->wall_k * 0.5f * fmax(P->cell_gap, P->seam_gap);
+    P->facet_iterations = max(facet_iterations, 0);
+    P->facet_falloff = facet_falloff;
+    P->facet_random = facet_random;
+    P->facet_align = facet_align;
+}
+
+// One field evaluation at lookup position p (cell widths).
+RkOut rk_field(const RkPat* P, float2 p)
+{
+    int max_leaves = P->splits + 1;
+    int ci = (int)floor(p.x);
+    int cj = (int)floor(p.y / P->rh);
+
+    RkOut o;
+    o.hit = 0; o.cls = 0; o.h = 0.0f; o.ramp = 0.0f; o.id = 0u;
+    float nearest_outside = RK_BIG, deepest_inside = 0.0f;
+    int has_boundary = 0;
+
+    for (int dj = -P->field_reach_j; dj <= P->field_reach_j; dj++)
+    for (int di = -P->field_reach_i; di <= P->field_reach_i; di++)
+    {
+        int i = ci + di, j = cj + dj;
+        int wi = rk_wrap(i, P->cu), wj = rk_wrap(j, P->cv);
+        // Shift the pixel into the canonical tile instead of shifting the geometry.
+        float2 pl = p - (float2)((float)(i - wi), (float)(j - wj) * P->rh);
+        int cell_index = wi + wj * P->cu;
+
+        RkPoly cell;
+        uint cid;
+        rk_cell_poly(P, wi, wj, &cell, &cid);
+        float layer_rand = rk_rand(P->seed, (uint)wj, 56u);
+
+        int written = 0;
+        uint node = 1u;
+        for (int guard = 0; guard < 1024; guard++)
+        {
+            int depth = 31 - (int)clz(node);
+            RkPoly poly = cell;
+            rk_node_poly(P, cid, node, depth, &poly);
+            float ar;
+            rk_centroid(&poly, &ar);
+            if ((int)node <= P->splits && poly.n >= 3 && ar > 1e-6f) { node <<= 1; continue; }
+            if (poly.n >= 3 && written < max_leaves)
+            {
+                RkLeaf L;
+                rk_make_leaf(P, poly, cid, node, layer_rand, (uint)(cell_index * max_leaves + written), &L);
+                written++;
+
+                float centre_distance = length(pl - L.c);
+                if (centre_distance - L.radius < fmax(nearest_outside, deepest_inside))
+                {
+                    float sd = P->jag_amp[0] != 0.0f || P->jag_amp[1] != 0.0f ? rk_leaf_sd_jag(P, &L, pl) : rk_leaf_sd(&L, pl);
+                    if (sd < RK_BIG)
+                    {
+                        has_boundary = 1;
+                        nearest_outside = fmin(nearest_outside, fabs(sd));
+                        if (sd < 0.0f) deepest_inside = fmax(deepest_inside, -sd);
+                    }
+                }
+                if (!(centre_distance > L.radius || (o.hit && L.top <= o.h)))
+                {
+                    int cls; float ramp;
+                    float H = rk_leaf_height(P, &L, pl, &cls, &ramp);
+                    if (!o.hit || H > o.h)
+                    {
+                        o.hit = 1; o.h = H; o.cls = cls; o.ramp = ramp; o.id = L.id;
+                    }
+                }
+            }
+            while ((node & 1u) != 0u && node > 1u) node >>= 1;
+            if (node <= 1u) break;
+            node += 1u;
+        }
+    }
+    // Cell widths here; the kernel converts to UV.
+    o.boundary = has_boundary ? (deepest_inside > 0.0f ? -deepest_inside : nearest_outside) : 0.0f;
+    return o;
+}
+
+@KERNEL
+{
+    int2 px = @ixy;
+    int2 r = (int2)(@res.x, @res.y);
+
+    RkPat P;
+    // One pixel, in cell widths.
+    float pixel = (float)max(@cells, 1) / (float)r.x;
+    rk_setup(&P, pixel, @style, @cells, @rows, @seed, @fracture, @chamfer,
+        @fracture_height_bias, @gap, @chamfer_random, @spin, @spin_random,
+        @tilt_angle, @tilt_direction, @tilt_random, @size_random, @stretch, @stretch_angle,
+        @stretch_random, @height_clusters, @skew,
+        @facet_chips, @facet_iterations, @facet_falloff, @facet_random, @facet_align, @edge_jag, @jag_scale, @jag_detail, @chamfer_jag, @rim_chips, @rim_chip_size);
+
+    float2 uv = ((float2)(px.x, px.y) + 0.5f) / (float2)(r.x, r.y);
+    float2 p = uv * (float)P.cu;
+
+    RkOut o = rk_field(&P, p);
+
+    // A pixel no chunk reaches is the floor: 0 raw, the analytic low in mode 1 (so it maps to 0).
+    float h = o.hit ? o.h : (@height_mode == 1 ? P.height_lo : 0.0f);
+    if (@height_mode == 1)
+    {
+        h = (h - P.height_lo) / fmax(P.height_hi - P.height_lo, 1e-6f);
+    }
+    @height.set(h * @height_scale);
+    @top_mask.set(o.hit && o.cls == 0 ? 1.0f : 0.0f);
+    @chamfer_mask.set(o.hit && o.cls == 1 ? 1.0f : 0.0f);
+    @wall_mask.set(o.hit && o.cls == 2 ? 1.0f : 0.0f);
+    @top_ramp.set(o.hit && o.cls == 0 ? o.ramp : 0.0f);
+    @chamfer_ramp.set(o.hit && o.cls == 1 ? o.ramp : 0.0f);
+    @wall_ramp.set(o.hit && o.cls == 2 ? o.ramp : 0.0f);
+    @edge_distance.set(o.boundary / (float)P.cu);
+    @id.set(o.hit ? (int)o.id : -1);
+}

@@ -3275,12 +3275,6 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 			LOCTEXT("StrataLaminationHint", "Fine laminae inside each bed.")),
 		Slider(LOCTEXT("StrataCrossBedding", "Cross Bedding"), &FMixtormatStrataCarver::CrossBedding, 0.0, 3.0, 1.0, 0.01,
 			LOCTEXT("StrataCrossBeddingHint", "How far each bed tilts its laminae off the bedding plane."))));
-	AddSliderRow(Panel, Slider(
-		LOCTEXT("StrataBlendAmount", "Blend Amount"), &FMixtormatStrataCarver::StrataBlendAmount, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("StrataBlendAmountHint", "Strength of the selected blend with the input height.")));
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatStrataCarver>(
-		LOCTEXT("StrataBlendMode", "Blend Mode"), Carver, &FMixtormatStrataCarver::StrataBlendMode,
-		LOCTEXT("StrataBlendModeHint", "Combines the layered strata with the existing height.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedStrataCarver() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3419,17 +3413,10 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackChamferEdge", "Cut Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
 			LOCTEXT("CrackChamferEdgeHint", "Cut reach in cell widths. The sharp profile and fine noise follow crack depth and width."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpBlend", "Blend")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatCracks>(
-			LOCTEXT("CrackBlendMode", "Height Blend"), Crack, &FMixtormatCracks::CrackBlendMode,
-			LOCTEXT("CrackBlendModeHint", "Add puts the cracks into the height before them. Replace, Min, Max and Difference work as on the other generators.")),
-		MakeMemberSlider<FMixtormatCracks>(
-			LOCTEXT("CrackAmount", "Amount"), Crack, &FMixtormatCracks::CrackAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("CrackAmountHint", "How strongly the cracks affect the existing layer height. Does not re-evaluate them."))));
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpHeight", "Height")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
 		LOCTEXT("CrackHeightScale", "Height Scale"), Crack, &FMixtormatCracks::CrackHeightScale, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("CrackHeightScaleHint", "Scales the crack field before blending.")));
+		LOCTEXT("CrackHeightScaleHint", "Scales the crack field. The layer's height is the flat midpoint plus the cracks; the layer's Height Op decides how it meets the stack below. Add carves them into the height below.")));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedCracks() ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3566,15 +3553,8 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 			LOCTEXT("PebbleHeightVariation", "Height Var"), Pebble, &FMixtormatPebbles::PebbleHeightVariation, 0.0, 1.0, 0.3, 0.01,
 			LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")),
 		MakeMemberSlider<FMixtormatPebbles>(
-			LOCTEXT("PebbleAmount", "Amount"), Pebble, &FMixtormatPebbles::PebbleAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("PebbleAmountHint", "Mixes the stones with the layer height using the selected blend mode. Does not re-evaluate the field."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatPebbles>(
-			LOCTEXT("PebbleBlendMode", "Blend Mode"), Pebble, &FMixtormatPebbles::PebbleBlendMode,
-			LOCTEXT("PebbleBlendModeHint", "How the stone height combines with the preceding height.")),
-		MakeMemberSlider<FMixtormatPebbles>(
 			LOCTEXT("PebbleHeightScale", "Height Scale"), Pebble, &FMixtormatPebbles::PebbleHeightScale, -4.0, 4.0, 1.0, 0.01,
-			LOCTEXT("PebbleHeightScaleHint", "Scales the stone field before blending without rebuilding it."))));
+			LOCTEXT("PebbleHeightScaleHint", "Scales the stone field without rebuilding it. The gaps between stones are 0, so Max keeps the surface below there and Replace cuts it down."))));
 	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
 		LOCTEXT("PebbleFacetIds", "Facet IDs"),
 		MixtormatRow::MakeCheckbox(
@@ -3642,124 +3622,135 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 	const auto Rock = [this]() { return GetSelectedRockFormation(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpShape", "SHAPE")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockStyle", "Style"), Rock, &FMixtormatRockFormation::RockStyle, 0.0, 3.0, 0.0, 0.01,
-			LOCTEXT("RockStyleHint", "0 cliff, 1 layered, 2 boulder, 3 rubble. In-between values blend the neighbouring presets.")),
+			LOCTEXT("RockStyle", "Style"), Rock, &FMixtormatRockFormation::RockStyle, 0.0, 1.0, 0.05, 0.01,
+			LOCTEXT("RockStyleHint", "0..1 blends preset positions 1..2.5, from layered through boulder toward rubble.")),
 		MakeMemberSliderInt<FMixtormatRockFormation>(
 			LOCTEXT("RockCells", "Cells"), Rock, &FMixtormatRockFormation::RockCells, 1.0, 32.0, 4,
 			LOCTEXT("RockCellsHint", "Cells across one repeat of the tile."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatRockFormation>(
-			LOCTEXT("RockSeed", "Seed"), Rock, &FMixtormatRockFormation::RockSeed, 0.0, 9999.0, 0,
-			LOCTEXT("RockSeedHint", "Changes cell layout, fractures, slopes and folds.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockFracture", "Fracture"), Rock, &FMixtormatRockFormation::RockFracture, 0.0, 3.0, 1.0, 0.01,
-			LOCTEXT("RockFractureHint", "Scales how many times each cell is split into chunks."))));
+			LOCTEXT("RockRows", "Rows"), Rock, &FMixtormatRockFormation::RockRows, 1.0, 32.0, 12,
+			LOCTEXT("RockRowsHint", "Number of rock rows from top to bottom of the tile.")),
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockSeed", "Seed"), Rock, &FMixtormatRockFormation::RockSeed, 0.0, 9999.0, 1,
+			LOCTEXT("RockSeedHint", "Changes cell layout, fractures, lean, jag and chips."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockSlope", "Slope"), Rock, &FMixtormatRockFormation::RockSlope, 0.0, 3.0, 1.0, 0.01,
-			LOCTEXT("RockSlopeHint", "Scales the dip and the random tilt of each chunk's top.")),
+			LOCTEXT("RockFracture", "Fracture"), Rock, &FMixtormatRockFormation::RockFracture, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockFractureHint", "Scales how many times each cell is split into chunks.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockChamfer", "Chamfer"), Rock, &FMixtormatRockFormation::RockChamfer, 0.0, 3.0, 1.0, 0.01,
-			LOCTEXT("RockChamferHint", "Scales the planar chamfer along chunk edges."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockChamferRandom", "Chamfer Random"), Rock, &FMixtormatRockFormation::RockChamferRandom, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("RockChamferRandomHint", "Varies chamfer width between chunk edges.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockChamferBias", "Chamfer Bias"), Rock, &FMixtormatRockFormation::RockChamferBias, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RockChamferBiasHint", "Positive expands chamfers; negative reduces their width."))));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatRockFormation>(
-		LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 3.0, 1.0, 0.01,
-		LOCTEXT("RockGapHint", "Scales the gaps between cells and between fractured pieces.")));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpPattern", "Pattern")));
+			LOCTEXT("RockFractureHeightBias", "Fracture Height Bias"), Rock, &FMixtormatRockFormation::RockFractureHeightBias, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockFractureHeightBiasHint", "Randomly raises or lowers individual fractured pieces."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockSizeRandom", "Size Random"), Rock, &FMixtormatRockFormation::RockSizeRandom, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RockSizeRandomHint", "Mixes big and small chunks. Still seamless, no gaps.")),
+			LOCTEXT("RockSizeRandomHint", "Mixes big and small cells while preserving the seamless partition.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStretch", "Stretch"), Rock, &FMixtormatRockFormation::RockStretch, -1.0, 1.0, 0.5, 0.01,
+			LOCTEXT("RockStretchHint", "0 is neutral; +1 doubles cells along Stretch Angle, -1 across it."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockStretchAngle", "Stretch Angle"), Rock, &FMixtormatRockFormation::RockStretchAngle, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("RockStretchAngleHint", "Direction cells elongate in. 0..1 is half a turn.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockStretchRandom", "Stretch Random"), Rock, &FMixtormatRockFormation::RockStretchRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("RockStretchRandomHint", "Narrows each chunk along a random axis, inside its own space."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockStretch", "Stretch"), Rock, &FMixtormatRockFormation::RockStretch, 0.25, 4.0, 1.0, 0.01,
-			LOCTEXT("RockStretchHint", "Elongates cells along Stretch Angle. 1 = none.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockStretchAngle", "Stretch Angle"), Rock, &FMixtormatRockFormation::RockStretchAngle, -180.0, 180.0, 0.0, 1.0,
-			LOCTEXT("RockStretchAngleHint", "Direction cells elongate in, degrees."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockWarp", "Warp"), Rock, &FMixtormatRockFormation::RockWarp, 0.0, 1.0, 0.2, 0.01,
-			LOCTEXT("RockWarpHint", "Bends the whole pattern, in cell widths. Edges curve; chunks never overlap.")),
-		MakeMemberSliderInt<FMixtormatRockFormation>(
-			LOCTEXT("RockWarpScale", "Warp Scale"), Rock, &FMixtormatRockFormation::RockWarpScale, 1.0, 16.0, 2,
-			LOCTEXT("RockWarpScaleHint", "Warp noise periods per tile. Low = broad bends, high = wobble."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockSpin", "Spin"), Rock, &FMixtormatRockFormation::RockSpin, -90.0, 90.0, 0.0, 0.1,
-			LOCTEXT("RockSpinHint", "Rotates each chunk about the vertical axis inside its own space; corners trim.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockSpinRandom", "Spin Random"), Rock, &FMixtormatRockFormation::RockSpinRandom, 0.0, 90.0, 12.0, 0.1,
-			LOCTEXT("RockSpinRandomHint", "Random +- spin per chunk, degrees."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpHeight", "Height")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockTiltAngle", "Tilt"), Rock, &FMixtormatRockFormation::RockTiltAngle, 0.0, 60.0, 0.0, 0.1,
-			LOCTEXT("RockTiltAngleHint", "Leans whole chunks toward Tilt Direction, degrees. Walls and chamfers follow.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockTiltDirection", "Tilt Direction"), Rock, &FMixtormatRockFormation::RockTiltDirection, -180.0, 180.0, -90.0, 1.0,
-			LOCTEXT("RockTiltDirectionHint", "Which way chunks lean, degrees."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockTiltRandom", "Tilt Random"), Rock, &FMixtormatRockFormation::RockTiltRandom, 0.0, 45.0, 0.0, 0.1,
-			LOCTEXT("RockTiltRandomHint", "Varies lean per chunk and spreads its direction, degrees.")),
-		SNullWidget::NullWidget));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatRockFormation>(
-			LOCTEXT("RockBlendMode", "Height Blend"), Rock, &FMixtormatRockFormation::RockBlendMode,
-			LOCTEXT("RockBlendModeHint", "Replace, choose the lower or higher height, use their absolute difference, or add the rock to the height before it.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockAmount", "Amount"), Rock, &FMixtormatRockFormation::RockAmount, 0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("RockAmountHint", "How strongly this rock affects the existing layer height."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatRockFormation>(
-			LOCTEXT("RockRows", "Verticality (Rows)"), Rock, &FMixtormatRockFormation::RockRows, 1.0, 32.0, 4,
-			LOCTEXT("RockRowsHint", "Number of rock rows from top to bottom of the tile.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockSkew", "Skew"), Rock, &FMixtormatRockFormation::RockSkew, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("RockSkewHint", "Offsets rock rows diagonally while preserving tile wrapping."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockHeightScale", "Height Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
-			LOCTEXT("RockHeightScaleHint", "Scales rock height before blending.")),
-		MakeMemberToggle<FMixtormatRockFormation>(
-			LOCTEXT("RockNormalize", "Normalize"), Rock, &FMixtormatRockFormation::bRockNormalizeHeight,
-			LOCTEXT("RockNormalizeHint", "Remap the rock height to 0-1 from its own lowest and highest point, before Height Scale."))));
-	AddSliderRow(Panel, SNew(SBox)
-		.IsEnabled_Lambda([Rock]()
-		{
-			const FMixtormatRockFormation* Selected = Rock();
-			return Selected && Selected->bRockNormalizeHeight;
-		})
-		[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatRockFormation>(
-					LOCTEXT("RockRemapLow", "Remap Low"), Rock, &FMixtormatRockFormation::RockRemapLow, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("RockRemapLowHint", "Height the deepest wall lands on. Needs Normalize.")),
-				MakeMemberSlider<FMixtormatRockFormation>(
-					LOCTEXT("RockRemapHigh", "Remap High"), Rock, &FMixtormatRockFormation::RockRemapHigh, 0.0, 1.0, 1.0, 0.01,
-					LOCTEXT("RockRemapHighHint", "Height the highest top lands on. Needs Normalize.")))
-		]);
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("RockHeightClusters", "Height Clusters"), Rock, &FMixtormatRockFormation::RockHeightClusters, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("RockHeightClustersHint", "Scales clustered height variation between chunks and rows.")),
 		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockFractureHeightBias", "Fracture Height Bias"), Rock, &FMixtormatRockFormation::RockFractureHeightBias, -0.5, 0.5, 0.0, 0.01,
-			LOCTEXT("RockFractureHeightBiasHint", "Randomly raises or lowers individual fractured pieces."))));
+			LOCTEXT("RockSkew", "Skew"), Rock, &FMixtormatRockFormation::RockSkew, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("RockSkewHint", "Offsets rock rows diagonally in cell widths while preserving tile wrapping."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpTilt", "TILT")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltAngle", "Angle"), Rock, &FMixtormatRockFormation::RockTiltAngle, -1.0, 1.0, 0.1, 0.01,
+			LOCTEXT("RockTiltAngleHint", "Shared lean toward Direction. +/-1 is +/- one eighth of a turn; walls and chamfers follow.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltDirection", "Direction"), Rock, &FMixtormatRockFormation::RockTiltDirection, 0.0, 1.0, 0.75, 0.01,
+			LOCTEXT("RockTiltDirectionHint", "Which way rocks lean. 0..1 is a full turn."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockTiltRandom", "Random"), Rock, &FMixtormatRockFormation::RockTiltRandom, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("RockTiltRandomHint", "Random lean per rock; 1 is one eighth of a turn. Pieces share their rock's lean with a small deviation.")),
+		SNullWidget::NullWidget));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSpin", "Spin"), Rock, &FMixtormatRockFormation::RockSpin, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockSpinHint", "Rotates each chunk about the vertical axis. +/-1 is +/- half a turn; chunks scale uniformly to fit, without clipping corners.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockSpinRandom", "Spin Random"), Rock, &FMixtormatRockFormation::RockSpinRandom, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("RockSpinRandomHint", "Random spin per chunk. 1 adds up to half a turn in either direction."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpEdges", "EDGES")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockGapHint", "1 is twice the natural gap. Positive gaps also get a one-pixel floor.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamfer", "Chamfer"), Rock, &FMixtormatRockFormation::RockChamfer, 0.0, 1.0, 0.1, 0.01,
+			LOCTEXT("RockChamferHint", "Share of each edge's room to the chunk centre, scaled by 0.75. Seams take 0.6 of the outline chamfer."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamferRandom", "Chamfer Random"), Rock, &FMixtormatRockFormation::RockChamferRandom, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockChamferRandomHint", "Varies chamfer width between chunk edges.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockChamferJag", "Chamfer Jag"), Rock, &FMixtormatRockFormation::RockChamferJag, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockChamferJagHint", "Varies bevel width along each rim with its own jag pattern. Seams take 1.5 times the variation."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockEdgeJag", "Edge Jag"), Rock, &FMixtormatRockFormation::RockEdgeJag, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("RockEdgeJagHint", "Zigzag strength relative to each chunk. Seams use half the strength at twice the frequency.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockJagScale", "Jag Scale"), Rock, &FMixtormatRockFormation::RockJagScale, 0.0, 16.0, 4.0, 0.01,
+			LOCTEXT("RockJagScaleHint", "Jag frequency relative to each chunk's size, not the tile or pixels."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockJagDetail", "Jag Detail"), Rock, &FMixtormatRockFormation::RockJagDetail, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("RockJagDetailHint", "Strength of the finer zigzag octaves.")),
+		SNullWidget::NullWidget));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockRimChips", "Rim Chips"), Rock, &FMixtormatRockFormation::RockRimChips, 0.0, 1.0, 0.1, 0.01,
+			LOCTEXT("RockRimChipsHint", "Angular bites along the rims, widening the chamfer around each chip.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockRimChipSize", "Rim Chip Size"), Rock, &FMixtormatRockFormation::RockRimChipSize, 0.0, 1.0, 0.075, 0.001,
+			LOCTEXT("RockRimChipSizeHint", "Chip size relative to each chunk."))));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpFacets", "FACETS")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFacetChips", "Chips"), Rock, &FMixtormatRockFormation::RockFacetChips, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("RockFacetChipsHint", "Depth of faceted cuts into each chunk, eased so planes never pass its centre.")),
+		MakeMemberSliderInt<FMixtormatRockFormation>(
+			LOCTEXT("RockFacetIterations", "Iterations"), Rock, &FMixtormatRockFormation::RockFacetIterations, 0.0, 8.0, 3,
+			LOCTEXT("RockFacetIterationsHint", "Facet rounds, adding 3, 5, 7 and then more planes. 0 disables facet cuts."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFacetFalloff", "Falloff"), Rock, &FMixtormatRockFormation::RockFacetFalloff, 0.0, 4.0, 4.0, 0.01,
+			LOCTEXT("RockFacetFalloffHint", "Scales each successive facet round. Values above 1 grow later rounds.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFacetRandom", "Random"), Rock, &FMixtormatRockFormation::RockFacetRandom, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("RockFacetRandomHint", "Varies round count, depth and falloff per rock. Pieces take a small share of their own variation."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockFacetAlign", "Align"), Rock, &FMixtormatRockFormation::RockFacetAlign, -1.0, 1.0, 0.75, 0.01,
+			LOCTEXT("RockFacetAlignHint", "Positive swings facet planes toward the lean's low side; negative toward its high side.")),
+		SNullWidget::NullWidget));
+
+	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpHeight", "HEIGHT")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatRockFormation, EMixtormatRockHeightMode>(
+			LOCTEXT("RockHeightMode", "Mode"), Rock, &FMixtormatRockFormation::RockHeightMode,
+			LOCTEXT("RockHeightModeHint", "Raw keeps the field height. Analytic (default) uses setting-derived bounds. Measured normalises the field's own minimum and maximum to 0..1.")),
+		MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockHeightScale", "Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("RockHeightScaleHint", "Scales height after the selected mode, before blending, without rebuilding the cached field."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -5907,6 +5898,31 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.InitiallyExpanded(true)
 							[
 								SNew(SVerticalBox)
+
+								// What this layer's height does to the stack below. First, because it is
+								// the composition question every layer answers; Height Blending further
+								// down only decides where the layer covers.
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+								[
+									MixtormatRow::MakePair(
+										MakeMemberEnum<FMixtormatLayer, EMixtormatHeightOp>(
+											LOCTEXT("HeightOpLabel", "Height Op"),
+											[this]() -> FMixtormatLayer*
+											{
+												return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+											},
+											&FMixtormatLayer::HeightOp,
+											LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground."),
+											FSimpleDelegate::CreateLambda([this]() { RebuildLayerList(); })),
+										MakeMemberSlider<FMixtormatLayer>(
+											LOCTEXT("HeightSoftnessLabel", "Softness"),
+											[this]() -> FMixtormatLayer*
+											{
+												return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+											},
+											&FMixtormatLayer::HeightSoftness, 0.0, 0.5, 0.1, 0.001,
+											LOCTEXT("HeightSoftnessHint", "Rounded join for Min and Max, in height units. 0 is a hard min or max.")))
+								]
 
 								// One control, not three fields. BLEND / OVER / COAT / DETAIL are the
 								// only combinations of ChannelMode, CompositionMode and NormalBlendMode

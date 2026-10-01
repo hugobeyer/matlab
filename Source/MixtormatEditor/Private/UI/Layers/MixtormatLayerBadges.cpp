@@ -21,14 +21,10 @@ namespace MixtormatLayerBadges
 			return EComposition::Coat;
 		}
 		// Replace is the only mode left, so the normal blend distinguishes the two that remain:
-		// Over discards the normal below, Blend reorients onto it.
-		//
-		// Deliberately not read from bHeightBlendEnabled. That flag arms Height Mask Blending,
-		// where the height decides *coverage* and drags a dozen authored controls with it, and
-		// it is an independent opt-in. BLEND merges heights; it does not turn that feature on.
+		// Override discards the normal below, Combine reorients onto it.
 		return Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override
-			? EComposition::Over
-			: EComposition::Blend;
+			? EComposition::Override
+			: EComposition::Combine;
 	}
 
 	void ApplyComposition(FMixtormatLayer& Layer, const EComposition Choice)
@@ -50,7 +46,7 @@ namespace MixtormatLayerBadges
 			// A coat sits over what is below, so its own normal replaces rather than reorients.
 			Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
 			break;
-		case EComposition::Over:
+		case EComposition::Override:
 			Layer.ChannelMode = EMixtormatLayerChannelMode::CompleteSurface;
 			Layer.CompositionMode = EMixtormatCompositionMode::Replace;
 			Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
@@ -68,8 +64,8 @@ namespace MixtormatLayerBadges
 		// Spelled out here, abbreviated on the badge: the control has the width and is read once,
 		// the badge is scanned down a column and has 40px.
 		return {
-			LOCTEXT("CompositionBlend", "BLEND"),
-			LOCTEXT("CompositionOver", "OVER"),
+			LOCTEXT("CompositionCombine", "COMBINE"),
+			LOCTEXT("CompositionOverride", "OVERRIDE"),
 			LOCTEXT("CompositionCoat", "COAT"),
 			LOCTEXT("CompositionDetail", "DETAIL"),
 		};
@@ -78,8 +74,8 @@ namespace MixtormatLayerBadges
 	TArray<FText> CompositionToolTips()
 	{
 		return {
-			LOCTEXT("CompositionBlendHint", "Merge this layer's height with the surface below instead of cross-fading it, so an intersection keeps the upper surface rather than sinking to the average. Its normal reorients onto what is below (RNM). Coverage is unchanged: base colour, roughness, AO, metallic and F0 composite exactly as they do under OVER."),
-			LOCTEXT("CompositionOverHint", "Cross-fade this layer's height with the surface below, and replace the normal below with this layer's. Ordinary opacity and mask compositing throughout."),
+			LOCTEXT("CompositionCombineHint", "This layer's normal reorients onto the normal below (RNM). Height is separate: see Height Op."),
+			LOCTEXT("CompositionOverrideHint", "This layer's normal replaces the normal below. Height is separate: see Height Op."),
 			LOCTEXT("CompositionCoatHint", "Sit this layer over what is below rather than blending into it."),
 			LOCTEXT("CompositionDetailHint", "Contribute only a normal. The layer's other channels are ignored."),
 		};
@@ -87,13 +83,24 @@ namespace MixtormatLayerBadges
 
 	FText ForLayer(const FMixtormatLayer& Layer)
 	{
-		switch (CompositionOf(Layer))
+		if (CompositionOf(Layer) == EComposition::Detail)
 		{
-		case EComposition::Detail: return LOCTEXT("LayerBadgeDetail", "DTL");
-		case EComposition::Coat:   return LOCTEXT("LayerBadgeCoat", "COAT");
-		case EComposition::Over:   return LOCTEXT("LayerBadgeOver", "OVER");
-		default:                   return LOCTEXT("LayerBadgeBlend", "BLEND");
+			return LOCTEXT("LayerBadgeDetail", "DTL");
 		}
+		FText Op;
+		switch (Layer.HeightOp)
+		{
+		case EMixtormatHeightOp::Add:        Op = LOCTEXT("HeightOpBadgeAdd", "ADD"); break;
+		case EMixtormatHeightOp::Subtract:   Op = LOCTEXT("HeightOpBadgeSub", "SUB"); break;
+		case EMixtormatHeightOp::Multiply:   Op = LOCTEXT("HeightOpBadgeMul", "MUL"); break;
+		case EMixtormatHeightOp::Min:        Op = LOCTEXT("HeightOpBadgeMin", "MIN"); break;
+		case EMixtormatHeightOp::Max:        Op = LOCTEXT("HeightOpBadgeMax", "MAX"); break;
+		case EMixtormatHeightOp::Difference: Op = LOCTEXT("HeightOpBadgeDif", "DIF"); break;
+		default:                             Op = LOCTEXT("HeightOpBadgeRep", "REP"); break;
+		}
+		return Layer.bHeightBlendEnabled
+			? FText::Format(LOCTEXT("LayerBadgeHeightCoverage", "{0} H"), Op)
+			: Op;
 	}
 
 	FText ForColorBlendMode(const EMixtormatColorBlendMode Mode)

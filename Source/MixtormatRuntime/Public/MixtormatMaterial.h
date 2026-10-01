@@ -53,6 +53,23 @@ enum class EMixtormatNormalBlendMode : uint8
 	Override UMETA(DisplayName = "Override")
 };
 
+// How a layer's height combines with the height already standing below it, weighted by the
+// layer's coverage so every op fades in the same way. Replace is the old OVER; Max with Softness
+// is the old BLEND smooth merge.
+UENUM(BlueprintType)
+enum class EMixtormatHeightOp : uint8
+{
+	Replace UMETA(DisplayName = "Replace"),
+	// Signed about 0.5, the flat midpoint: below + (layer - 0.5).
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	// 0.5 is neutral: below * (layer * 2).
+	Multiply UMETA(DisplayName = "Multiply"),
+	Min UMETA(DisplayName = "Min"),
+	Max UMETA(DisplayName = "Max"),
+	Difference UMETA(DisplayName = "Difference")
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatHeightSource : uint8
 {
@@ -2673,17 +2690,6 @@ enum class EMixtormatPebbleDirection : uint8
 	Axis UMETA(DisplayName = "Axis Biased")
 };
 
-UENUM(BlueprintType)
-enum class EMixtormatStrataBlendMode : uint8
-{
-	Add UMETA(DisplayName = "Add"),
-	Subtract UMETA(DisplayName = "Subtract"),
-	Multiply UMETA(DisplayName = "Multiply"),
-	Difference UMETA(DisplayName = "Difference"),
-	Maximum UMETA(DisplayName = "Maximum"),
-	Minimum UMETA(DisplayName = "Minimum")
-};
-
 // Strata Carver: a stack of beds, each weathered into a dip-slope ramp and a steeper face where
 // the next bed starts. Bent by a low-frequency field rather than a domain warp, so beds keep their
 // thickness. Closed form, so it costs one pass. Publishes bed IDs, the position inside each bed
@@ -2752,11 +2758,6 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "3.0"))
 	float CrossBedding = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver")
-	EMixtormatStrataBlendMode StrataBlendMode = EMixtormatStrataBlendMode::Add;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float StrataBlendAmount = 1.0f;
-
 	// 0 ignores any mask scoped under this generator entirely. 1 lets it scale where the strata
 	// act.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
@@ -2769,149 +2770,134 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	float IDInfluence = 0.0f;
 };
 
-// How a generator's height combines with the height before it on the same layer. Shared by the
-// generators so one word means one operation everywhere. Serialised by value: append only.
 UENUM(BlueprintType)
-enum class EMixtormatGeneratorBlendMode : uint8
+enum class EMixtormatRockHeightMode : uint8
 {
-	Replace UMETA(DisplayName = "Replace"),
-	MinHeight UMETA(DisplayName = "Min Height"),
-	MaxHeight UMETA(DisplayName = "Max Height"),
-	Difference UMETA(DisplayName = "Difference"),
-	// The generator's field is a signed change: added to the height before it.
-	Add UMETA(DisplayName = "Add")
+	Raw = 0 UMETA(DisplayName = "Raw"),
+	Analytic = 1 UMETA(DisplayName = "Analytic"),
+	Measured = 2 UMETA(DisplayName = "Measured")
 };
 
-// Rock Formation: a tileable sloped rock surface built from BSP-fractured, tilted slab chunks
-// with chipped tops, chamfers and walls. Style blends four presets (0 cliff, 1 layered,
-// 2 boulder, 3 rubble). The field depends on these settings only, so it is cached.
+// Rock Formation: tileable BSP-fractured, tilted slabs with jagged rims, faceted tops,
+// chamfers and walls. Height mode and scale consume the cached field without reshaping it.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 {
 	GENERATED_BODY()
 
-	// 0 cliff, 1 layered, 2 boulder, 3 rubble; fractional values blend neighbours.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
-	float RockStyle = 0.0f;
+	// 0..1 spans preset positions 1..2.5: layered through boulder toward rubble.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockStyle = 0.05f;
 
-	// Cells across the tile.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "32"))
 	int32 RockCells = 4;
 
-	// Rows along the tile's vertical axis.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "32"))
-	int32 RockRows = 4;
-
-	// Diagonal offset of rows, in cell widths.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockSkew = 0.0f;
+	int32 RockRows = 12;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
-	int32 RockSeed = 0;
+	int32 RockSeed = 1;
 
 	// Scales the preset's BSP split count per cell.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockFracture = 1.0f;
 
-	// Scales dip and per-chunk slope randomness.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
-	float RockSlope = 1.0f;
+	// Share of each edge's room to the chunk centre; seams take a fixed smaller share.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockChamfer = 0.1f;
 
-	// Scales the chamfer width along chunk edges.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
-	float RockChamfer = 1.0f;
-
-	// Signed offset to chamfer width: positive expands, negative shrinks it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
-	float RockChamferBias = 0.0f;
-
-	// Signed random height offset per fractured piece.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-0.5", UIMax = "0.5", Delta = "0.01"))
 	float RockFractureHeightBias = 0.0f;
 
-	// Scales the gaps between cells and between fractured pieces.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "3.0", Delta = "0.01"))
+	// 1 is twice the natural gap; positive gaps also get a one-pixel floor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockGap = 1.0f;
 
-	// Bends the whole pattern, in cell widths: the lookup coordinate is warped by tileable noise,
-	// so edges curve and chunks never overlap.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockWarp = 0.2f;
+	float RockChamferRandom = 1.0f;
 
-	// Warp noise periods per tile. Low = broad bends, high = wobble.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
-	int32 RockWarpScale = 2;
+	// Normalised spin: +/-1 is +/-180 degrees, fitted back into the leaf rather than clipped.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RockSpin = 0.0f;
 
-	// Mixed chunk sizes: per-cell weights shift the cell borders. Still a seamless partition.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockSpinRandom = 0.0f;
+
+	// +/-1 is +/-45 degrees; pieces share their rock's lean with a small random deviation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RockTiltAngle = 0.1f;
+
+	// 0..1 is a full turn.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockTiltDirection = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockTiltRandom = 0.2f;
+
+	// Per-cell weights shift the borders while preserving the seamless partition.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockSizeRandom = 0.0f;
 
-	// Elongates cells along Stretch Angle. 1 = none; 2 = twice as long along the angle.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.01"))
-	float RockStretch = 1.0f;
+	// 0 is neutral; +/-1 doubles cells along/across Stretch Angle.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RockStretch = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
-	float RockStretchAngle = 0.0f;
+	// 0..1 is half a turn.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockStretchAngle = 0.5f;
 
-	// Narrows each chunk along a random axis, inside its own space. 0 = none, 1 = up to flat.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockStretchRandom = 0.0f;
 
-	// Retained for serialized-asset compatibility; no longer used by the Rock Formation field.
-	UPROPERTY()
-	float RockBend = 0.6f;
-	UPROPERTY()
-	float RockFault = 0.4f;
-
-	// Randomizes planar chamfer width between fractured chunks.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockChamferRandom = 0.5f;
+	float RockHeightClusters = 0.5f;
 
-	// Spin: rotates each chunk about the vertical axis inside its own space, trimming corners.
-	// Degrees; Spin Random adds +- per chunk.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-90.0", UIMax = "90.0", Delta = "0.1"))
-	float RockSpin = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "90.0", Delta = "0.1"))
-	float RockSpinRandom = 12.0f;
-
-	// Tilt: leans whole chunks (top, walls, chamfers) toward Tilt Direction. Degrees of lean;
-	// Tilt Random varies the lean per chunk and spreads its direction.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "60.0", Delta = "0.1"))
-	float RockTiltAngle = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
-	float RockTiltDirection = -90.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "45.0", Delta = "0.1"))
-	float RockTiltRandom = 0.0f;
-
-	// Scales the preset's per-chunk and per-row height variation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
-	float RockHeightClusters = 1.0f;
-
-	// How much the rock's selected height blend affects the existing layer height.
+	// Diagonal row offset, in cell widths.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockAmount = 1.0f;
+	float RockSkew = 0.5f;
 
-	// How this rock combines with the preceding height result on the same layer.
+	// Jag sizes follow each chunk; seams use fixed strength and frequency ratios.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockEdgeJag = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", Delta = "0.01"))
+	float RockJagScale = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockJagDetail = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockChamferJag = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockRimChips = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float RockRimChipSize = 0.075f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockFacetChips = 0.5f;
+
+	// Each round adds two planes; falloff above 1 grows later rounds instead of shrinking them.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0"))
+	int32 RockFacetIterations = 3;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float RockFacetFalloff = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RockFacetRandom = 1.0f;
+
+	// +1 cuts toward the lean's low side, -1 toward its high side.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RockFacetAlign = 0.75f;
+
+	// Analytic uses setting-derived bounds; Measured uses the field's own min/max.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
-	EMixtormatGeneratorBlendMode RockBlendMode = EMixtormatGeneratorBlendMode::Replace;
+	EMixtormatRockHeightMode RockHeightMode = EMixtormatRockHeightMode::Analytic;
 
-	// Multiplies the rock height before it is mixed in.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float RockHeightScale = 1.0f;
-
-	// Remap the rock field to 0..1 from its own measured min/max before Height Scale, so the
-	// deepest wall is 0 and the highest top is 1 whatever the tilt, slope or clusters do. Off
-	// passes the raw field (tops near 1, walls falling below 0).
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
-	bool bRockNormalizeHeight = true;
-
-	// Where the normalized field lands: the deepest wall goes to Low, the highest top to High.
-	// Only with Normalize on. High below Low flips the relief.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockRemapLow = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float RockRemapHigh = 1.0f;
 };
 
 // Pebbles: faceted, chamfered stones scattered on a tileable jittered grid. Each stone has its
@@ -2985,16 +2971,8 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	bool bPebbleFacetIds = false;
 
-	// Max preserves the existing behaviour: buried stones cannot cut into the surface.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height")
-	EMixtormatGeneratorBlendMode PebbleBlendMode = EMixtormatGeneratorBlendMode::MaxHeight;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float PebbleHeightScale = 1.0f;
-
-	// How much the stones blend into the layer's height where they sit. Does not re-evaluate them.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float PebbleAmount = 1.0f;
 };
 
 // Cracks: a tileable network of straight cracks (the borders of a jittered cell lattice), made
@@ -3093,15 +3071,9 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float CrackChamferEdge = 0.12f;
 
-	// How the cracks combine with the height before them on the same layer.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend")
-	EMixtormatGeneratorBlendMode CrackBlendMode = EMixtormatGeneratorBlendMode::Add;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float CrackAmount = 1.0f;
-
-	// Multiplies the crack field before it is mixed in.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Blend", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	// Multiplies the crack field. The layer's height is the flat midpoint 0.5 plus the field, so Add
+	// carves the cracks into the height below and Replace gives flat ground with the cracks cut in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Height", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float CrackHeightScale = 1.0f;
 };
 
@@ -3563,6 +3535,15 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments")
 	EMixtormatNormalBlendMode NormalBlendMode = EMixtormatNormalBlendMode::Combine;
+
+	// How this layer's height combines with the height below it, weighted by its coverage. Height
+	// Blending, when on, decides that coverage from the heights; this decides what the height is.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition")
+	EMixtormatHeightOp HeightOp = EMixtormatHeightOp::Max;
+
+	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Composition", meta = (EditCondition = "HeightOp == EMixtormatHeightOp::Min || HeightOp == EMixtormatHeightOp::Max", UIMin = "0.0"))
+	float HeightSoftness = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blending")
 	bool bHeightBlendEnabled = false;

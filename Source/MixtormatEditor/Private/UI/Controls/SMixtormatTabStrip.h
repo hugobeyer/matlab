@@ -16,7 +16,7 @@
 // meant copying it again, and the copies had already drifted in their padding.
 //
 // Not SMixtormatSegmentedControl, though it takes the same arguments on purpose. That control is
-// one well divided by hairlines, for a choice that lives inside a panel -- BLEND / OVER / COAT.
+// one well divided by hairlines, for a choice that lives inside a panel -- COMBINE / OVERRIDE / COAT.
 // A tab is the edge of the panel it opens: it needs the underline that joins the selected tab to
 // the surface below and separates the rest from it, which is the whole affordance and the one
 // thing a segmented control deliberately does not draw. Same delegate type, since the question

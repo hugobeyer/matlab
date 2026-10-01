@@ -16,7 +16,7 @@ class SMenuAnchor;
 //
 //   Name     what the user called it
 //   Source   what it is made of      -- "Mat - Rust Orange", "FILL"
-//   Badge    how it composites       -- BLEND / OVER / COAT / DETAIL
+//   Badge    what it does to height  -- REP / ADD / SUB / MUL / MIN / MAX / DIF (+ H), DTL
 //   ColorBadge  how it blends colour -- MULT / SCREEN / ... , absent at Normal
 //
 // The badge is the only derived field: it is not typed, it is read from the layer's composition
@@ -75,7 +75,7 @@ public:
 		SLATE_EVENT(FPointerEventHandler, OnDragDetected)
 		// Right button. The row selects itself first, so the menu always acts on what it opened on.
 		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
-		// Left click on the composition badge (BLEND/OVER/COAT/DETAIL) and the colour-blend badge.
+		// Left click on the Height Op badge and the colour-blend badge.
 		SLATE_EVENT(FOnGetContent, OnGetBadgeMenu)
 		SLATE_EVENT(FOnGetContent, OnGetColorBadgeMenu)
 		// Enter or focus loss commits; Escape arrives as OnCleared and is dropped.

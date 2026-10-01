@@ -81,7 +81,7 @@ namespace
 	}
 }
 
-// Strata beds as ramps and faces, and the height blend, in closed form. Writes the bed IDs, the
+// Strata beds as ramps and faces, in closed form. Writes the bed IDs, the
 // position inside each bed and a per-bed random alongside the height.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
 {
@@ -106,8 +106,6 @@ public:
 		SHADER_PARAMETER(float, Lamination)
 		SHADER_PARAMETER(float, CrossBedding)
 		SHADER_PARAMETER(float, Depth)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(float, BlendAmount)
 		SHADER_PARAMETER(float, MaskInfluence)
 		SHADER_PARAMETER(float, IDInfluence)
 		SHADER_PARAMETER(uint32, HasScopedMask)
@@ -150,12 +148,9 @@ public:
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(float, FractureAmount)
-		SHADER_PARAMETER(float, SlopeAmount)
 		SHADER_PARAMETER(float, ChamferAmount)
-		SHADER_PARAMETER(float, ChamferBias)
 		SHADER_PARAMETER(float, FractureHeightBias)
 		SHADER_PARAMETER(float, GapAmount)
-		SHADER_PARAMETER(float, WarpAmount)
 		SHADER_PARAMETER(float, ChamferRandom)
 		SHADER_PARAMETER(float, Spin)
 		SHADER_PARAMETER(float, SpinRandom)
@@ -166,11 +161,20 @@ public:
 		SHADER_PARAMETER(float, Stretch)
 		SHADER_PARAMETER(float, StretchAngle)
 		SHADER_PARAMETER(float, StretchRandom)
-		SHADER_PARAMETER(int32, WarpScale)
 		SHADER_PARAMETER(float, HeightClusters)
 		SHADER_PARAMETER(float, Skew)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, EdgeJag)
+		SHADER_PARAMETER(float, JagScale)
+		SHADER_PARAMETER(float, JagDetail)
+		SHADER_PARAMETER(float, ChamferJag)
+		SHADER_PARAMETER(float, RimChips)
+		SHADER_PARAMETER(float, RimChipSize)
+		SHADER_PARAMETER(float, FacetChips)
+		SHADER_PARAMETER(int32, FacetIterations)
+		SHADER_PARAMETER(float, FacetFalloff)
+		SHADER_PARAMETER(float, FacetRandom)
+		SHADER_PARAMETER(float, FacetAlign)
+		SHADER_PARAMETER(uint32, HeightMode)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(int32, MaxLeaves)
 		SHADER_PARAMETER(int32, CellsV)
@@ -179,14 +183,16 @@ public:
 		SHADER_PARAMETER(float, ChamferSlope)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRockLeaf>, OutLeaves)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, OutEdges)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutEdgeTags)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, OutVertices)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutLeafCounts)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FRockLeaf>, Leaves)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, Edges)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, EdgeTags)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float2>, Vertices)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, LeafCounts)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RockHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RockIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockTop)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRockChamfer)
@@ -241,12 +247,8 @@ public:
 		SHADER_PARAMETER(float, HeightGain)
 		SHADER_PARAMETER(float, HeightVariation)
 		SHADER_PARAMETER(uint32, FacetIds)
-		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, HeightScale)
-		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleCoverage)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleEdgeDistance)
@@ -306,15 +308,12 @@ public:
 		SHADER_PARAMETER(float, ChamferNoise)
 		SHADER_PARAMETER(float, ChamferNoiseScale)
 		SHADER_PARAMETER(uint32, HasGate)
-		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCrackDistance)
@@ -618,8 +617,6 @@ namespace
 			P->Lamination = Carver.Lamination;
 			P->CrossBedding = Carver.CrossBedding;
 			P->Depth = Carver.Depth;
-			P->BlendMode = Carver.BlendMode;
-			P->BlendAmount = Carver.BlendAmount;
 			P->MaskInfluence = Carver.MaskInfluence;
 			P->IDInfluence = Carver.IDInfluence;
 			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
@@ -665,9 +662,7 @@ namespace
 				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 		}
 
-		// Zero depth is a neutral generator: hand back the input itself, not a copy, so a chain
-		// with a neutral node in the middle passes the pointer through unchanged.
-		return Carver.Depth <= 0.0f ? SourceHeight : CarvedHeight;
+		return CarvedHeight;
 	}
 
 	// One Rock Formation child.
@@ -678,8 +673,8 @@ namespace
 	// the plugin per pixel -- polygon clipping for every nearby cell and BSP node -- which is
 	// exactly why editing anything else must not re-run it.
 	//
-	// The combine is separate and cheap: Amount and Height Scale mix the cached rock into the
-	// layer's input height, so those two stay live without touching the field.
+	// Height Mode and Height Scale resolve the cached raw field in cheap passes, so neither
+	// setting needs to rebuild the geometry or re-evaluate the field.
 	// Mirrors the shader's preset table for the three values the C++ side needs to size buffers
 	// and bind constants: row multiplier, split count and wall angle.
 	struct FRockLayout
@@ -697,8 +692,8 @@ namespace
 		// row_mul, splits, wall angle for cliff, layered, boulder, rubble.
 		static const float Preset[4][3] = {
 			{1.0f, 3.0f, 72.0f}, {2.0f, 2.0f, 72.0f}, {1.0f, 2.0f, 58.0f}, {1.0f, 1.0f, 60.0f}};
-		// Style indexes the four-row table, so it is bounded to it (the shader does the same).
-		const float Style = FMath::Clamp(Rock.Style, 0.0f, 3.0f);
+		// Match ROCK_STYLE_FROM / ROCK_STYLE_TO; only the table position is bounded.
+		const float Style = FMath::Clamp(FMath::Lerp(1.0f, 2.5f, Rock.Style), 0.0f, 3.0f);
 		const int32 Row = FMath::Min(static_cast<int32>(Style), 2);
 		const float T = Style - static_cast<float>(Row);
 		const auto Blend = [&](const int32 Column)
@@ -722,10 +717,12 @@ namespace
 	// GPU mirror of FRockLeaf in MixtormatRockFormation.usf, for the buffer stride only.
 	struct FRockLeafStride
 	{
-		// Cx Cy, Sx Sy, TopConstant, Top, Radius, 3 chip planes (9) = 16 floats.
-		float Floats[16];
-		uint32 Uints[4];
+		// Cx Cy, Sx Sy, TopConstant, Top, Radius, Rv, JagOffset, JagSize.
+		float Floats[10];
+		// Ck, Pk, ChipOn, EdgeCount, VertexCount, Id, SeamBits, Pad.
+		uint32 Uints[8];
 	};
+	static_assert(sizeof(FRockLeafStride) == 72, "Rock leaf stride must match FRockLeaf in HLSL");
 	static constexpr int32 RockMaxVertices = 24;
 
 	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
@@ -1114,12 +1111,9 @@ namespace
 			P->Cells = Rock.Cells;
 			P->Seed = Rock.Seed;
 			P->FractureAmount = Rock.Fracture;
-			P->SlopeAmount = Rock.Slope;
 			P->ChamferAmount = Rock.Chamfer;
-			P->ChamferBias = Rock.ChamferBias;
 			P->FractureHeightBias = Rock.FractureHeightBias;
 			P->GapAmount = Rock.Gap;
-			P->WarpAmount = Rock.Warp;
 			P->ChamferRandom = Rock.ChamferRandom;
 			P->Spin = Rock.Spin;
 			P->SpinRandom = Rock.SpinRandom;
@@ -1130,12 +1124,22 @@ namespace
 			P->Stretch = Rock.Stretch;
 			P->StretchAngle = Rock.StretchAngle;
 			P->StretchRandom = Rock.StretchRandom;
-			P->WarpScale = Rock.WarpScale;
 			P->HeightClusters = Rock.HeightClusters;
 			P->Skew = Rock.Skew;
-			P->BlendMode = Rock.BlendMode;
-			P->Amount = Rock.Amount;
-			P->HeightScale = Rock.HeightScale;
+			P->EdgeJag = Rock.EdgeJag;
+			P->JagScale = Rock.JagScale;
+			P->JagDetail = Rock.JagDetail;
+			P->ChamferJag = Rock.ChamferJag;
+			P->RimChips = Rock.RimChips;
+			P->RimChipSize = Rock.RimChipSize;
+			P->FacetChips = Rock.FacetChips;
+			P->FacetIterations = Rock.FacetIterations;
+			P->FacetFalloff = Rock.FacetFalloff;
+			P->FacetRandom = Rock.FacetRandom;
+			P->FacetAlign = Rock.FacetAlign;
+			// Build and Field must never bake these combine-only settings into cached outputs.
+			P->HeightMode = static_cast<uint32>(EMixtormatRockHeightMode::Raw);
+			P->HeightScale = 1.0f;
 		};
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
@@ -1155,7 +1159,7 @@ namespace
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
-				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636Bull)
+				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636B08ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -1199,6 +1203,8 @@ namespace
 					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRockLeafStride), LeafSlots), TEXT("Mixtormat.Rock.Leaves"));
 				FRDGBufferRef EdgeBuffer = GraphBuilder.CreateBuffer(
 					FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector4f), LeafSlots * RockMaxVertices), TEXT("Mixtormat.Rock.Edges"));
+				FRDGBufferRef EdgeTagBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), LeafSlots * RockMaxVertices), TEXT("Mixtormat.Rock.EdgeTags"));
 				FRDGBufferRef VertexBuffer = GraphBuilder.CreateBuffer(
 					FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector2f), LeafSlots * RockMaxVertices), TEXT("Mixtormat.Rock.Vertices"));
 				FRDGBufferRef CountBuffer = GraphBuilder.CreateBuffer(
@@ -1211,6 +1217,7 @@ namespace
 					FillParameters(B);
 					B->OutLeaves = GraphBuilder.CreateUAV(LeafBuffer);
 					B->OutEdges = GraphBuilder.CreateUAV(EdgeBuffer);
+					B->OutEdgeTags = GraphBuilder.CreateUAV(EdgeTagBuffer);
 					B->OutVertices = GraphBuilder.CreateUAV(VertexBuffer);
 					B->OutLeafCounts = GraphBuilder.CreateUAV(CountBuffer);
 					ClearUnusedGraphResources(BuildShader, B);
@@ -1226,6 +1233,7 @@ namespace
 				FillParameters(P);
 				P->Leaves = GraphBuilder.CreateSRV(LeafBuffer);
 				P->Edges = GraphBuilder.CreateSRV(EdgeBuffer);
+				P->EdgeTags = GraphBuilder.CreateSRV(EdgeTagBuffer);
 				P->Vertices = GraphBuilder.CreateSRV(VertexBuffer);
 				P->LeafCounts = GraphBuilder.CreateSRV(CountBuffer);
 				P->OutRockHeight = GraphBuilder.CreateUAV(Outputs[0]);
@@ -1307,45 +1315,48 @@ namespace
 			return nullptr;
 		}
 
-		// Normalized first, so flow tools and the combine both see the 0..1 field. Scoped flow
-		// tools then transform the rock's own height before the combine; they run even at Amount 0
-		// while one of them is previewed, so its diagnostics are not blank.
-		const bool bPreviewingFlow = IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
-		FRDGTextureRef RockField = Outputs[0];
-		if (Rock.bNormalize && (Rock.Amount != 0.0f || bPreviewingFlow))
+		const auto Combine = [&](FRDGTextureRef Field, const EMixtormatRockHeightMode HeightMode,
+			const float HeightScale, const TCHAR* Name)
 		{
-			RockField = AddNormalizeFieldPasses(GraphBuilder, Outputs[0], Size,
-				Rock.RemapLow, Rock.RemapHigh, TEXT("Mixtormat.Rock.NormalizedHeight"));
-		}
-		if ((Rock.Amount != 0.0f || bPreviewingFlow)
-			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
-		{
-			FRDGTextureRef NoCoverage = nullptr;
-			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], RockField, NoCoverage);
-		}
-
-		// A neutral node passes its input through, like every other generator.
-		if (Rock.Amount == 0.0f)
-		{
-			return SourceHeight;
-		}
-
-		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Rock.LayerHeight"));
-		{
+			FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, Name);
 			FMixtormatRockFormationCS::FPermutationDomain Permutation;
 			Permutation.Set<FMixtormatRockFormationCS::FStage>(2);
 			TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
 			FillParameters(P);
-			P->RockHeight = RockField;
-			P->SourceHeight = SourceHeight;
+			P->HeightMode = static_cast<uint32>(HeightMode);
+			P->HeightScale = HeightScale;
+			P->RockHeight = Field;
+			P->RockIds = Outputs[5];
 			P->OutHeight = GraphBuilder.CreateUAV(Combined);
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.RockFormation.Combine.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				RDG_EVENT_NAME("%s.L%d.C%d", Name, LayerCtx.LayerIndex, Child.SourceChildIndex),
 				Shader, P, Groups);
+			return Combined;
+		};
+
+		// Resolve the mode after cache extraction; Measured never mutates the cached raw field.
+		FRDGTextureRef RockField = Outputs[0];
+		if (Rock.HeightMode == EMixtormatRockHeightMode::Measured)
+		{
+			RockField = AddNormalizeFieldPasses(GraphBuilder, RockField, Size,
+				0.0f, 1.0f, TEXT("Mixtormat.Rock.NormalizedHeight"));
 		}
-		return Combined;
+		const bool bHasFlowTools = HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex);
+		if (bHasFlowTools)
+		{
+			// Resolve floors and analytic bounds before flow moves pixels: the cached IDs are in
+			// the original frame. The final combine must not remap or reset those moved pixels.
+			if (Rock.HeightMode != EMixtormatRockHeightMode::Raw)
+			{
+				RockField = Combine(RockField, Rock.HeightMode, 1.0f, TEXT("Mixtormat.Rock.ResolveHeightMode"));
+			}
+			FRDGTextureRef NoCoverage = nullptr;
+			RockField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[6], RockField, NoCoverage);
+		}
+		return Combine(RockField, bHasFlowTools ? EMixtormatRockHeightMode::Raw : Rock.HeightMode,
+			Rock.HeightScale, TEXT("Mixtormat.Rock.LayerHeight"));
 	}
 
 	FRDGTextureRef AddCracksPasses(
@@ -1398,8 +1409,6 @@ namespace
 			P->ChamferHigh = Cracks.ChamferHigh;
 			P->ChamferNoise = Cracks.ChamferNoise;
 			P->ChamferNoiseScale = Cracks.ChamferNoiseScale;
-			P->BlendMode = Cracks.BlendMode;
-			P->Amount = Cracks.Amount;
 			P->HeightScale = Cracks.HeightScale;
 		};
 		const auto Make = [&GraphBuilder, Size](EPixelFormat Format, const TCHAR* Name)
@@ -1581,15 +1590,10 @@ namespace
 			AddDebugPreviewMaskBlitPass(GraphBuilder, ChamferCut,
 				Ctx.OutputDebug[Request.PublishedTargetIndex], Size);
 		}
-		if ((Cracks.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
-			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			FRDGTextureRef NoCoverage = nullptr;
 			Field = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child, Outputs[5], Field, NoCoverage);
-		}
-		if (Cracks.Amount == 0.0f)
-		{
-			return SourceHeight;
 		}
 		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Cracks.LayerHeight"));
 		FMixtormatCracksCS::FPermutationDomain Permutation;
@@ -1598,7 +1602,6 @@ namespace
 		auto* P = GraphBuilder.AllocParameters<FMixtormatCracksCS::FParameters>();
 		Fill(P);
 		P->CrackHeight = Field;
-		P->SourceHeight = SourceHeight;
 		P->OutHeight = GraphBuilder.CreateUAV(Combined);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder,
@@ -1608,7 +1611,7 @@ namespace
 	}
 
 	// One Pebbles child. Same shape as Rock Formation: the scatter field is cached against its
-	// settings and resolution, and Amount mixes it into the layer's height without re-running it.
+	// settings and resolution, and Height Scale turns it into the layer's height without re-running it.
 	FRDGTextureRef AddPebblesPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -1643,9 +1646,7 @@ namespace
 			P->HeightGain = Pebbles.HeightGain;
 			P->HeightVariation = Pebbles.HeightVariation;
 			P->FacetIds = Pebbles.bFacetIds ? 1u : 0u;
-			P->BlendMode = Pebbles.BlendMode;
 			P->HeightScale = Pebbles.HeightScale;
-			P->Amount = Pebbles.Amount;
 		};
 
 		// Node-cache slots: height, coverage, edge distance, random, IDs.
@@ -1772,16 +1773,10 @@ namespace
 		// Scoped flow tools, as under Rock Formation: height and coverage move together.
 		FRDGTextureRef PebbleField = Outputs[0];
 		FRDGTextureRef PebbleCoverage = Outputs[1];
-		if ((Pebbles.Amount != 0.0f || IsPreviewingAnyFlowTool(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
-			&& HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (HasActiveFlowTools(Request, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			PebbleField = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child,
 				PackScalarBoundary(Ctx, Outputs[2]), Outputs[0], PebbleCoverage);
-		}
-
-		if (Pebbles.Amount == 0.0f)
-		{
-			return SourceHeight;
 		}
 
 		FRDGTextureRef Combined = GraphBuilder.CreateTexture(SourceHeight->Desc, TEXT("Mixtormat.Pebbles.LayerHeight"));
@@ -1792,8 +1787,6 @@ namespace
 			auto* P = GraphBuilder.AllocParameters<FMixtormatPebblesCS::FParameters>();
 			FillParameters(P);
 			P->PebbleHeight = PebbleField;
-			P->PebbleCoverage = PebbleCoverage;
-			P->SourceHeight = SourceHeight;
 			P->OutHeight = GraphBuilder.CreateUAV(Combined);
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(GraphBuilder,
@@ -1871,14 +1864,10 @@ void AddGeneratorPasses(
 	// moved once.
 	FRDGTextureRef SourceHeight = LayerCtx.LayerInputHeight;
 
-	// Authored order. Each generator is handed what the previous one produced, so a second
-	// carver cuts into the first one's grooves instead of re-cutting the original surface --
-	// and because the chain is carried in LayerCtx.LayerInputHeight as well as in the local,
-	// anything a later generator's own passes read sees the accumulated result too.
-	//
-	// A generator that is neutral returns its input unchanged rather than a copy of it (see the
-	// Depth guard in AddStrataCarverPasses), so a disabled or zero-depth node in the middle of a
-	// chain cannot reset what ran before it: the pointer simply passes through.
+	// Authored order. A generator's output is the layer's height, so each one replaces what the
+	// one before it produced; how the result meets the stack below is the layer's Height Op. The
+	// chain is still carried in LayerCtx.LayerInputHeight as well as in the local, so what a later
+	// generator reads -- Strata's Height Follow -- is the previous generator's height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
 		if (Child.Type != EMixtormatLayerChildType::Generator)

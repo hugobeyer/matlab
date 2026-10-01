@@ -12,6 +12,8 @@ Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
 Texture2D<float4> PreviousRAM;
 Texture2D<float> PreviousHeight;
+// How much of each pixel is covered by something standing on the substrate, 0 for bare ground.
+Texture2D<float> PreviousOccupancy;
 Texture2D<float> ReferenceHeight;
 Texture2D<float4> LayerBC;
 Texture2D<float4> LayerN;
@@ -82,6 +84,7 @@ RWTexture2D<float4> OutputBC;
 RWTexture2D<float4> OutputN;
 RWTexture2D<float4> OutputRAM;
 RWTexture2D<float> OutputHeight;
+RWTexture2D<float> OutputOccupancy;
 RWTexture2D<float4> OutputDebug;
 
 int2 OutputSize;
@@ -105,9 +108,10 @@ uint NormalOnly;
 uint OverrideNormal;
 uint FlipNormalY;
 uint HeightBlendEnabled;
-// BLEND: merge this layer's height with the surface below instead of cross-fading it.
-// A height operation only -- it moves no coverage, and it is not Height Mask Blending.
-uint SmoothHeightMerge;
+// EMixtormatHeightOp, as the MIXTORMAT_HEIGHT_OP_* values below. What the height is, weighted by
+// coverage; Height Mask Blending, when on, decides that coverage.
+uint HeightOp;
+float HeightSoftness;
 uint HeightSource;
 uint InvertHeight;
 uint DirectHeightComparison;
@@ -642,6 +646,44 @@ float SampleIncomingHeight(float2 UV)
 		MaskHeightInfluence);
 }
 
+#define MIXTORMAT_HEIGHT_OP_REPLACE 0
+#define MIXTORMAT_HEIGHT_OP_ADD 1
+#define MIXTORMAT_HEIGHT_OP_SUBTRACT 2
+#define MIXTORMAT_HEIGHT_OP_MULTIPLY 3
+#define MIXTORMAT_HEIGHT_OP_MIN 4
+#define MIXTORMAT_HEIGHT_OP_MAX 5
+#define MIXTORMAT_HEIGHT_OP_DIFFERENCE 6
+
+// Polynomial smooth max at width K; K of zero is a hard max, where the division is undefined.
+float MixtormatHeightSmoothMax(float A, float B, float K)
+{
+	if (K <= 0.0f)
+	{
+		return max(A, B);
+	}
+	const float W = saturate(0.5f + 0.5f * (B - A) / K);
+	return lerp(A, B, W) + K * W * (1.0f - W);
+}
+
+// The layer's height against the height below. Coverage is applied by the caller, so every op
+// fades the same way. On bare ground (Occupancy 0) Min, Max and Difference have nothing to compare
+// against and fall back to the layer itself, so the first layer reads the same whatever its op.
+float ApplyHeightOp(float Below, float Layer, float Occupancy)
+{
+	float Result = Layer;
+	if (HeightOp == MIXTORMAT_HEIGHT_OP_ADD) { Result = Below + (Layer - 0.5f); }
+	else if (HeightOp == MIXTORMAT_HEIGHT_OP_SUBTRACT) { Result = Below - (Layer - 0.5f); }
+	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MULTIPLY) { Result = Below * (Layer * 2.0f); }
+	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MIN) { Result = -MixtormatHeightSmoothMax(-Below, -Layer, HeightSoftness); }
+	else if (HeightOp == MIXTORMAT_HEIGHT_OP_MAX) { Result = MixtormatHeightSmoothMax(Below, Layer, HeightSoftness); }
+	else if (HeightOp == MIXTORMAT_HEIGHT_OP_DIFFERENCE) { Result = abs(Below - Layer); }
+	if (HeightOp >= MIXTORMAT_HEIGHT_OP_MIN)
+	{
+		Result = lerp(Layer, Result, Occupancy);
+	}
+	return Result;
+}
+
 float CalculateHeightDifference(float IncomingHeight, float ComparisonHeight)
 {
 	return IncomingHeight - ComparisonHeight + HeightBias;
@@ -990,6 +1032,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		DecodeNormal(PreviousN.SampleLevel(LinearWrapSampler, UV, 0.0f), 1.0f, 0);
 	float4 PreviousPacked = PreviousRAM.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float PreviousHeightValue = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float PreviousOccupancyValue = PreviousOccupancy.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
 	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2)
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
@@ -1275,7 +1318,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (Enabled != 0 && NormalOnly == 0)
 	{
 		float LayerResultHeight = PreviousHeightValue;
-		if (UseHeightBlendMask != 0)
+		if (UseHeightBlendMask != 0 && HeightOp == MIXTORMAT_HEIGHT_OP_REPLACE)
 		{
 			// Height Mask Blending: the contest decided coverage, so the height it chose is
 			// faded back toward the base by the coverage that took no part in it. Expanding this
@@ -1283,37 +1326,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			// the height is weighted by exactly the Alpha every material channel above used.
 			LayerResultHeight = lerp(HeightBlend.Base, HeightBlend.Height, NonHeightCoverage);
 		}
-		else if (SmoothHeightMerge != 0)
+		else if (UseHeightBlendMask != 0)
 		{
-			// BLEND. The heights merge; nothing else about the composite changes.
-			//
-			// A polynomial smooth maximum of the surface below and this layer's, at the layer's
-			// Softness:
-			//
-			//     W = saturate(0.5 + 0.5 * (B - A) / K)
-			//     M = lerp(A, B, W) + K * W * (1 - W)
-			//
-			// M is smax(A, B, K). Where the two surfaces intersect a cross-fade returns their
-			// average, so a crossing reads as a crease pressed flat; this keeps the upper surface
-			// and rounds the join over by at most K/4. Far from the crossing the fillet vanishes
-			// and the result is exactly max(A, B) -- the layer adds material on top of what is
-			// beneath it and never digs into it. A layer that should cut the height down is OVER.
-			//
-			// Coverage is deliberately absent from the merge. Alpha here is the ordinary
-			// opacity-and-mask coverage every other channel uses, applied to the merged surface
-			// afterwards, which is what keeps BLEND from moving base colour, roughness, AO,
-			// metallic, F0 or the normal's weight. Height deciding *visibility* is Height Mask
-			// Blending, armed separately and by the artist rather than by this badge.
-			const float K = max(HeightRange, 1.0e-6f);
-			const float W = saturate(
-				0.5f + 0.5f * (IncomingHeight - PreviousHeightValue) / K);
-			const float Merged =
-				lerp(PreviousHeightValue, IncomingHeight, W) + K * W * (1.0f - W);
-			LayerResultHeight = lerp(PreviousHeightValue, Merged, Alpha);
+			// Height Mask Blending with another op: the contest still decides coverage, the op
+			// decides what the height is where the layer covers.
+			LayerResultHeight = lerp(HeightBlend.Base,
+				ApplyHeightOp(HeightBlend.Base, IncomingHeight, PreviousOccupancyValue), Alpha);
 		}
 		else
 		{
-			LayerResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
+			LayerResultHeight = lerp(PreviousHeightValue,
+				ApplyHeightOp(PreviousHeightValue, IncomingHeight, PreviousOccupancyValue), Alpha);
 		}
 		ResultHeight = lerp(PreviousHeightValue, LayerResultHeight, HeightInfluence);
 	}
@@ -1373,4 +1396,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Unclipped for every layer, not only live compositions. See Final > Auto Remap Height.
 	OutputHeight[DispatchThreadId.xy] = ResultHeight;
+	// A detail layer contributes only a normal, so it puts nothing on the ground.
+	OutputOccupancy[DispatchThreadId.xy] = max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
 }

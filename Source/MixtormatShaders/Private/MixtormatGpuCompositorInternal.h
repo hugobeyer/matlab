@@ -755,7 +755,7 @@ namespace MixtormatGpuCompositor
 		bool bSubtract = false;
 	};
 
-	// Strata Carver settings: the beds, their profile, the bend, and the height blend.
+	// Strata Carver settings: the beds, their profile and the bend.
 	struct FStrataCarverRenderData
 	{
 		uint32 Seed = 3;
@@ -772,8 +772,6 @@ namespace MixtormatGpuCompositor
 		float HeightFollow = 0.0f;
 		float Lamination = 0.25f;
 		float CrossBedding = 1.0f;
-		uint32 BlendMode = 0;
-		float BlendAmount = 1.0f;
 		float MaskInfluence = 1.0f;
 		float IDInfluence = 0.0f;
 	};
@@ -808,46 +806,47 @@ namespace MixtormatGpuCompositor
 		float ChamferHigh = -0.1162f;
 		float ChamferNoise = 0.692f;
 		float ChamferNoiseScale = 11.882f;
-		uint32 BlendMode = 4;
-		float Amount = 1.0f;
 		float HeightScale = 1.0f;
-		// Hash of the field-shaping settings only (not chamfer or blend), for the node cache.
+		// Hash of the field-shaping settings only (not chamfer), for the node cache.
 		uint64 FieldKey = 0;
 	};
 
 	struct FRockFormationRenderData
 	{
-		float Style = 0.0f;
+		float Style = 0.05f;
 		int32 Cells = 4;
-		int32 Rows = 4;
-		float Skew = 0.0f;
-		uint32 Seed = 0;
+		int32 Rows = 12;
+		uint32 Seed = 1;
 		float Fracture = 1.0f;
-		float Slope = 1.0f;
-		float Chamfer = 1.0f;
-		float ChamferBias = 0.0f;
+		float Chamfer = 0.1f;
 		float FractureHeightBias = 0.0f;
 		float Gap = 1.0f;
-		float Warp = 0.2f;
-		float ChamferRandom = 0.5f;
-		int32 WarpScale = 2;
-		float SizeRandom = 0.0f;
-		float Stretch = 1.0f;
-		float StretchAngle = 0.0f;
-		float StretchRandom = 0.0f;
+		float ChamferRandom = 1.0f;
 		float Spin = 0.0f;
-		float SpinRandom = 12.0f;
-		float TiltAngle = 0.0f;
-		float TiltDirection = -90.0f;
-		float TiltRandom = 0.0f;
-		float HeightClusters = 1.0f;
-		uint32 BlendMode = 0;
-		float Amount = 1.0f;
+		float SpinRandom = 0.0f;
+		float TiltAngle = 0.1f;
+		float TiltDirection = 0.75f;
+		float TiltRandom = 0.2f;
+		float SizeRandom = 0.0f;
+		float Stretch = 0.5f;
+		float StretchAngle = 0.5f;
+		float StretchRandom = 0.0f;
+		float HeightClusters = 0.5f;
+		float Skew = 0.5f;
+		float EdgeJag = 0.2f;
+		float JagScale = 4.0f;
+		float JagDetail = 0.2f;
+		float ChamferJag = 1.0f;
+		float RimChips = 0.1f;
+		float RimChipSize = 0.075f;
+		float FacetChips = 0.5f;
+		int32 FacetIterations = 3;
+		float FacetFalloff = 4.0f;
+		float FacetRandom = 1.0f;
+		float FacetAlign = 0.75f;
+		EMixtormatRockHeightMode HeightMode = EMixtormatRockHeightMode::Analytic;
 		float HeightScale = 1.0f;
-		bool bNormalize = true;
-		float RemapLow = 0.0f;
-		float RemapHigh = 1.0f;
-		// Hash of the field-shaping settings only (not Amount / HeightScale), for the node cache.
+		// Hash of the field-shaping settings only (not HeightScale or HeightMode), for the node cache.
 		uint64 FieldKey = 0;
 	};
 
@@ -870,10 +869,8 @@ namespace MixtormatGpuCompositor
 		float HeightGain = 1.0f;
 		float HeightVariation = 0.3f;
 		bool bFacetIds = false;
-		uint32 BlendMode = 2;
 		float HeightScale = 1.0f;
-		float Amount = 1.0f;
-		// Hash of the field-shaping settings only (not blend settings), for the node cache.
+		// Hash of the field-shaping settings only (not HeightScale), for the node cache.
 		uint64 FieldKey = 0;
 	};
 
@@ -982,6 +979,9 @@ namespace MixtormatGpuCompositor
 		float HeightShape = 0.0f;
 		float HeightSmooth = 0.0f;
 		float HeightBlendAmount = 1.0f;
+		// EMixtormatHeightOp, and the rounded-join width Min and Max use.
+		uint32 HeightOp = 0;
+		float HeightSoftness = 0.0f;
 		float HeightThreshold = 0.5f;
 		float HeightRange = 0.1f;
 		float HeightContrast = 1.0f;
@@ -1016,11 +1016,6 @@ namespace MixtormatGpuCompositor
 		bool bHasNormal = false;
 		bool bNormalOnly = false;
 		bool bOverrideNormal = false;
-		// BLEND, as the layer badge defines it: Replace composition with a reoriented normal.
-		// Merges the layer's height with what is below instead of cross-fading it, and touches
-		// no other channel. Distinct from bHeightBlendEnabled, which is Height Mask Blending --
-		// there the height decides coverage, and the artist arms it explicitly.
-		bool bSmoothHeightMerge = false;
 		bool bFlipNormalY = false;
 		bool bHeightBlendEnabled = false;
 		bool bHasPackedHeight = false;
@@ -1323,6 +1318,9 @@ namespace MixtormatGpuCompositor
 
 		FRDGTextureRef MaskTargets[2] = {};
 		FRDGTextureRef RidgeTargets[2] = {};
+		// Per-pixel coverage of the ground, ping-ponged on the layer index like the height targets
+		// it travels with. 0 is bare substrate; a layer writes max(below, its coverage).
+		FRDGTextureRef OccupancyTargets[2] = {};
 		FRDGTextureRef EffectTargets[2] = {};
 		FRDGTextureRef EffectHeightTargets[2] = {};
 
@@ -1800,6 +1798,7 @@ struct FMixtormatPrefixCache
 		TRefCountPtr<IPooledRenderTarget> RAM;
 		TRefCountPtr<IPooledRenderTarget> Height;
 		TRefCountPtr<IPooledRenderTarget> Ridge;
+		TRefCountPtr<IPooledRenderTarget> Occupancy;
 		TArray<TPair<int32, TRefCountPtr<IPooledRenderTarget>>> HeightSnapshots;
 		TArray<TPair<FGuid, TRefCountPtr<IPooledRenderTarget>>> DriverSnapshots;
 		// Driver sources at or below LayerIndex that were demanded when this was saved. Not every
@@ -1877,12 +1876,14 @@ struct FMixtormatPrefixCache
 	{
 		check(IsInRenderingThread());
 		if (!Incoming.IsValid() || !Incoming->BaseColor.IsValid() || !Incoming->Normal.IsValid()
-			|| !Incoming->RAM.IsValid() || !Incoming->Height.IsValid() || !Incoming->Ridge.IsValid())
+			|| !Incoming->RAM.IsValid() || !Incoming->Height.IsValid() || !Incoming->Ridge.IsValid()
+			|| !Incoming->Occupancy.IsValid())
 		{
 			return;
 		}
 		uint64 Bytes = TargetBytes(Incoming->BaseColor) + TargetBytes(Incoming->Normal)
-			+ TargetBytes(Incoming->RAM) + TargetBytes(Incoming->Height) + TargetBytes(Incoming->Ridge);
+			+ TargetBytes(Incoming->RAM) + TargetBytes(Incoming->Height) + TargetBytes(Incoming->Ridge)
+			+ TargetBytes(Incoming->Occupancy);
 		for (const auto& Pair : Incoming->HeightSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->DriverSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->PublishedMasks) { Bytes += TargetBytes(Pair.Value); }

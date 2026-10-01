@@ -1,0 +1,659 @@
+// Mixtormat reference -- Rock Formation, as the plugin computes it today (MixtormatRockFormation.usf).
+// Copernicus OpenCL COP. Paste into an OpenCL COP and generate the bindings from the #bind lines.
+//
+// What it is: a tileable sloped rock surface. Chunks are anisotropic Voronoi cells (Strata in the
+// preset squashes them into layers), split by a BSP tree, each chunk a tilted slab with a chipped
+// top, a planar chamfer and a steep wall that keeps falling past its edge. Height is the highest
+// chunk at each pixel.
+//
+// Plugin vs this file:
+//   The plugin runs two GPU stages: Build (one thread per cell, writes every leaf chunk's planes,
+//   chips, inset edges and gapped outline into buffers) and Field (per pixel, reads the 5x5
+//   neighbouring cells' leaves). One OpenCL COP has no persistent buffers, so this file rebuilds
+//   each neighbouring cell's chunks per pixel. Same maths, same hashes, same outputs -- just slower.
+//   Use it to look at the shapes, not to time it.
+//
+// Style blends four presets: 0 cliff, 1 layered, 2 boulder, 3 rubble (fractional = lerp).
+// Leaves exist for the canonical cells of one tile; a pixel reaches a neighbouring tile's copy by
+// shifting itself by whole tiles. Every field the chunks use is tile-periodic, so it tiles.
+//
+// Outputs:
+//   height         rock height x height_scale (what the layer gets)
+//   top_mask/chamfer_mask/wall_mask  1 on the surface class that won, else 0
+//   top_ramp/chamfer_ramp/wall_ramp  0..1 across that class (see rk_leaf_height)
+//   edge_distance  signed distance to the nearest chunk outline, UV units, negative inside
+//   id             chunk id (cell index * max leaves + leaf index); -1 = no chunk
+
+#bind layer !&height float
+#bind layer !&top_mask float
+#bind layer !&chamfer_mask float
+#bind layer !&wall_mask float
+#bind layer !&top_ramp float
+#bind layer !&chamfer_ramp float
+#bind layer !&wall_ramp float
+#bind layer !&edge_distance float
+#bind layer !&id int
+
+#bind parm style float val=0
+#bind parm cells int val=6
+#bind parm rows int val=6
+#bind parm seed int val=1
+#bind parm fracture float val=1
+#bind parm slope float val=1
+#bind parm chamfer float val=1
+#bind parm chamfer_bias float val=0
+#bind parm fracture_height_bias float val=0
+#bind parm gap float val=1
+#bind parm warp float val=0
+#bind parm warp_scale int val=2
+#bind parm chamfer_random float val=0.5
+#bind parm spin float val=0
+#bind parm spin_random float val=0
+#bind parm tilt_angle float val=0
+#bind parm tilt_direction float val=0
+#bind parm tilt_random float val=0
+#bind parm size_random float val=0
+#bind parm stretch float val=1
+#bind parm stretch_angle float val=0
+#bind parm stretch_random float val=0
+#bind parm height_clusters float val=1
+#bind parm skew float val=0
+#bind parm height_scale float val=1
+
+#define RK_TAU   6.283185307179586f
+#define RK_BIG   1e20f
+#define RK_MAXV  24
+#define RK_CRACK 0x80000000u
+#define RK_NP    17
+
+// strata, row_mul, splits, split_angle, h_bias, dip, slope_rand, height_var,
+// layer_var, chip, wall, cell_gap, seam_gap, outer_ch, inner_ch, bottom, irr
+constant float RK_PRESET[4][RK_NP] = {
+    { 1.0f, 1.0f, 3.0f, 30.0f, 0.2f, 20.0f, 12.0f, 0.35f, 0.25f, 0.35f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.7f, 0.8f },
+    { 1.0f, 2.0f, 2.0f,  6.0f, 0.7f, 16.0f,  6.0f, 0.30f, 0.45f, 0.25f, 72.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.8f, 0.8f },
+    { 0.0f, 1.0f, 2.0f, 30.0f, 0.0f,  8.0f, 18.0f, 0.35f, 0.25f, 0.40f, 58.0f, 0.03f, 0.015f, 0.08f, 0.05f, 0.3f, 0.9f },
+    { 0.0f, 1.0f, 1.0f, 30.0f, 0.0f,  6.0f, 30.0f, 0.60f, 0.20f, 0.40f, 60.0f, 0.04f, 0.020f, 0.10f, 0.06f, 0.3f, 0.9f },
+};
+
+typedef struct
+{
+    int cu, cv, splits;
+    float rh, a2, strata, irr, split_angle, h_bias;
+    float2 dip;
+    float3 metric;          // symmetric 2x2 (m00, m01, m11): strata squash x stretch
+    float rand_k, hvar, lvar, chip, wall_k;
+    float cell_gap, seam_gap, outer_ch, inner_ch, bottom;
+    float chamfer_bias, fracture_height_bias;
+    uint seed, wseed;
+    float warp, chamfer_random, height_clusters, skew;
+    float spin, spin_random, tilt_angle, tilt_dir, tilt_random, size_random, stretch_random;
+    int warp_scale;
+    float wall_slope, chamfer_slope;
+} RkPat;
+
+typedef struct
+{
+    float2 v[RK_MAXV];
+    uint t[RK_MAXV];        // t[i] tags edge i -> i+1: cell border key, or RK_CRACK | split key
+    int n;
+} RkPoly;
+
+// One leaf chunk, ready to evaluate.
+typedef struct
+{
+    float2 c;               // centroid
+    float2 s;               // top slope (dip + tilt + random)
+    float top_constant;     // T(p) = top_constant + dot(s, p)
+    float top;              // highest the chunk can reach
+    float radius;           // reach: farthest vertex + wall fall-off
+    float2 u[3];            // facet chip plane normals
+    float r[3];             // facet chip plane offsets: cut = K * (dot(u, p) - r)
+    int chip_on;
+    int edge_count;
+    float4 edges[RK_MAXV];  // inward normal.xy, inset line offset, chamfer width
+    int vertex_count;
+    float2 verts[RK_MAXV];  // gapped outline
+    uint id;
+} RkLeaf;
+
+// ---- helpers ---------------------------------------------------------------
+
+uint rk_hash(uint v)
+{
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+float rk_rand(uint a, uint b, uint c)
+{
+    return (float)(rk_hash(a ^ rk_hash(b + rk_hash(c))) >> 8) * (1.0f / 16777216.0f);
+}
+
+int rk_wrap(int i, int n) { return ((i % n) + n) % n; }
+float rk_cross(float2 a, float2 b) { return a.x * b.y - a.y * b.x; }
+float2 rk_dir(float a) { return (float2)(cos(a), sin(a)); }
+uint rk_edge_key(uint a) { return (rk_hash(a) & 0x7fffffffu) | 1u; }
+
+// Periodic value noise on uv in [0,1), lattice f. Range -1..1.
+float rk_value_noise(float2 uv, int f, uint seed)
+{
+    float2 q = uv * (float)f;
+    float2 fl = floor(q);
+    float2 t = q - fl;
+    t = t * t * (3.0f - 2.0f * t);
+    int x0 = rk_wrap((int)fl.x, f), y0 = rk_wrap((int)fl.y, f);
+    int x1 = rk_wrap(x0 + 1, f), y1 = rk_wrap(y0 + 1, f);
+    float a = rk_rand(seed, (uint)(x0 + y0 * f), 7u);
+    float b = rk_rand(seed, (uint)(x1 + y0 * f), 7u);
+    float c = rk_rand(seed, (uint)(x0 + y1 * f), 7u);
+    float d = rk_rand(seed, (uint)(x1 + y1 * f), 7u);
+    return 2.0f * mix(mix(a, b, t.x), mix(c, d, t.x), t.y) - 1.0f;
+}
+
+float2 rk_rotate(float2 v, float a)
+{
+    float c = cos(a), s = sin(a);
+    return (float2)(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+// ---- convex polygons (CCW) -------------------------------------------------
+
+void rk_box(RkPoly* p, float2 c, float2 e)
+{
+    p->v[0] = c + (float2)(-e.x, -e.y);
+    p->v[1] = c + (float2)(e.x, -e.y);
+    p->v[2] = c + (float2)(e.x, e.y);
+    p->v[3] = c + (float2)(-e.x, e.y);
+    p->t[0] = 0u; p->t[1] = 0u; p->t[2] = 0u; p->t[3] = 0u;
+    p->n = 4;
+}
+
+// Keep dot(n, x) <= d.
+void rk_clip(RkPoly* p, float2 n, float d, uint tag)
+{
+    int any_out = 0;
+    for (int i = 0; i < p->n; i++)
+        any_out = any_out || dot(n, p->v[i]) > d;
+    if (!any_out)
+        return;
+
+    RkPoly o;
+    int m = 0;
+    for (int j = 0; j < p->n; j++)
+    {
+        float2 a = p->v[j];
+        float2 b = p->v[j + 1 == p->n ? 0 : j + 1];
+        float da = dot(n, a) - d;
+        float db = dot(n, b) - d;
+        if (da <= 0.0f)
+        {
+            if (m < RK_MAXV) { o.v[m] = a; o.t[m] = p->t[j]; m++; }
+            if (db > 0.0f && m < RK_MAXV) { o.v[m] = mix(a, b, da / (da - db)); o.t[m] = tag; m++; }
+        }
+        else if (db <= 0.0f && m < RK_MAXV)
+        {
+            o.v[m] = mix(a, b, da / (da - db)); o.t[m] = p->t[j]; m++;
+        }
+    }
+    o.n = m;
+    *p = o;
+}
+
+float2 rk_centroid(const RkPoly* p, float* area)
+{
+    float2 c = (float2)(0.0f), mean = (float2)(0.0f);
+    float s = 0.0f;
+    for (int i = 0; i < p->n; i++)
+    {
+        float2 a = p->v[i], b = p->v[i + 1 == p->n ? 0 : i + 1];
+        float k = rk_cross(a, b);
+        s += k;
+        c += (a + b) * k;
+        mean += a;
+    }
+    *area = 0.5f * s;
+    return fabs(s) < 1e-12f ? mean / (float)max(p->n, 1) : c / (3.0f * s);
+}
+
+// ---- cells: anisotropic power diagram --------------------------------------
+
+float2 rk_site(const RkPat* P, int i, int j, uint* id)
+{
+    int wi = rk_wrap(i, P->cu), wj = rk_wrap(j, P->cv);
+    uint h = rk_hash(P->seed ^ rk_hash((uint)wi + rk_hash((uint)wj * 0x85EBCA6Bu + 7u)));
+    float bond = rk_rand(P->seed, (uint)wj, 53u) * P->strata;
+    float jx = (rk_rand(h, 1u, 31u) - 0.5f) * P->irr;
+    float jy = (rk_rand(h, 2u, 31u) - 0.5f) * P->irr * (1.0f - P->strata);
+    *id = (uint)(wi + wj * P->cu);
+    float row_phase = RK_TAU * (float)wj / (float)P->cv;
+    float row_skew = P->skew * sin(row_phase);
+    return (float2)((float)i + 0.5f + bond + jx + row_skew, ((float)j + 0.5f + jy) * P->rh);
+}
+
+float2 rk_metric_mul(const RkPat* P, float2 d)
+{
+    return (float2)(P->metric.x * d.x + P->metric.y * d.y, P->metric.y * d.x + P->metric.z * d.y);
+}
+
+float rk_metric(const RkPat* P, float2 d) { return dot(d, rk_metric_mul(P, d)); }
+
+// Size Random: per-cell power weight, hashed on the wrapped id so it tiles.
+float rk_site_weight(const RkPat* P, uint id)
+{
+    return P->size_random * 0.35f * (2.0f * rk_rand(P->seed, id, 57u) - 1.0f);
+}
+
+// Bisector of s and o under the metric and power weights, keeping s's side.
+float3 rk_bisector(const RkPat* P, float2 s, float2 o, float ws, float wo)
+{
+    float2 m = rk_metric_mul(P, o - s);
+    float l = length(m);
+    return (float3)(m / l, 0.5f * (rk_metric(P, o) - rk_metric(P, s) - wo + ws) / l);
+}
+
+void rk_cell_poly(const RkPat* P, int i, int j, RkPoly* cell, uint* cid)
+{
+    uint id, oid;
+    float2 s = rk_site(P, i, j, &id);
+    float ws = rk_site_weight(P, id);
+    rk_box(cell, s, (float2)(3.0f, 3.0f * P->rh));
+    for (int dj = -2; dj <= 2; dj++)
+    for (int di = -2; di <= 2; di++)
+    {
+        if (di == 0 && dj == 0) continue;
+        float2 o = rk_site(P, i + di, j + dj, &oid);
+        if (length(o - s) < 1e-6f) continue;
+        float3 b = rk_bisector(P, s, o, ws, rk_site_weight(P, oid));
+        rk_clip(cell, b.xy, b.z, rk_edge_key(min(id, oid) * 0x9E3779B9u + max(id, oid) + 17u));
+    }
+    *cid = rk_hash(P->seed ^ (id * 0x27D4EB2Du + 5u));
+}
+
+// ---- BSP fracture ----------------------------------------------------------
+
+float3 rk_split_line(const RkPat* P, uint cid, uint node, const RkPoly* p)
+{
+    float2 lo = p->v[0], hi = lo;
+    for (int i = 1; i < p->n; i++) { lo = fmin(lo, p->v[i]); hi = fmax(hi, p->v[i]); }
+    float2 dim = hi - lo;
+
+    uint a = rk_hash(P->seed ^ (cid * 0x9E3779B9u));
+    int axis = dim.y > dim.x ? 1 : 0;
+    if (rk_rand(a, node, 733u) < P->h_bias) axis = 1;
+
+    float tilt = radians(P->split_angle) * sqrt(rk_rand(a, node, 138u))
+        * (rk_rand(a, node, 137u) < 0.5f ? -1.0f : 1.0f);
+    float2 n = rk_dir((axis != 0 ? 0.25f * RK_TAU : 0.0f) + tilt);
+
+    float pmin = RK_BIG, pmax = -RK_BIG;
+    for (int k = 0; k < p->n; k++)
+    {
+        float pr = dot(n, p->v[k]);
+        pmin = fmin(pmin, pr);
+        pmax = fmax(pmax, pr);
+    }
+    return (float3)(n, mix(pmin, pmax, 0.5f + (rk_rand(a, node, 139u) - 0.5f) * 0.28f));
+}
+
+void rk_node_poly(const RkPat* P, uint cid, uint node, int depth, RkPoly* p)
+{
+    for (int level = 0; level < depth; level++)
+    {
+        uint anc = node >> (uint)(depth - level);
+        uint bit = (node >> (uint)(depth - level - 1)) & 1u;
+        float3 l = rk_split_line(P, cid, anc, p);
+        uint key = RK_CRACK | (rk_hash(cid * 7919u + anc) & 0x7fffffffu);
+        if (bit != 0u) rk_clip(p, -l.xy, -l.z, key);
+        else           rk_clip(p, l.xy, l.z, key);
+    }
+}
+
+// ---- chunk build -------------------------------------------------------------
+
+// Inset edge line and chamfer width for edge i; 0 for degenerate edges.
+int rk_edge_line(const RkPat* P, const RkPoly* leaf, int i, float2 c, float scale,
+    float2* nn, float* dg, float* w)
+{
+    float2 a = leaf->v[i];
+    float2 e = leaf->v[i + 1 == leaf->n ? 0 : i + 1] - a;
+    float len = length(e);
+    if (len < 1e-6f) return 0;
+    uint tag = leaf->t[i];
+    *nn = (float2)(e.y, -e.x) / len;
+    int crack = (tag & RK_CRACK) != 0u;
+    float d = dot(*nn, a);
+    float clearance = fmax(0.0f, d - dot(*nn, c));
+    *dg = d - fmin((crack ? P->seam_gap : P->cell_gap) * 0.5f, clearance * 0.75f);
+    float ww = (crack ? P->inner_ch : P->outer_ch) * scale
+        * mix(1.0f, mix(0.4f, 1.6f, rk_rand(P->seed, tag, 91u)), P->chamfer_random)
+        * (1.0f - P->bottom * clamp(-(*nn).y, 0.0f, 1.0f));
+    ww = fmax(0.0f, ww + P->chamfer_bias * scale);
+    *w = fmin(ww, 0.75f * fmax(0.0f, *dg - dot(*nn, c)));
+    return 1;
+}
+
+void rk_make_leaf(const RkPat* P, RkPoly leaf, uint cid, uint node, float layer_rand, uint id, RkLeaf* L)
+{
+    int n = leaf.n;
+    uint ck = rk_hash(P->seed ^ (cid * 0x9E3779B9u));
+    uint pk = rk_hash(ck ^ (node * 0x85EBCA6Bu));
+
+    // Spin and Stretch Random: reshape about the centroid, then clip back to the leaf.
+    if (P->spin != 0.0f || P->spin_random != 0.0f || P->stretch_random > 0.0f)
+    {
+        float area0;
+        float2 c0 = rk_centroid(&leaf, &area0);
+        float angle = radians(P->spin + P->spin_random * (2.0f * rk_rand(pk, 7u, 66u) - 1.0f));
+        float2 axis = rk_dir(rk_rand(pk, 8u, 66u) * RK_TAU);
+        float squeeze = 1.0f - P->stretch_random * rk_rand(pk, 9u, 66u);
+        RkPoly moved = leaf;
+        for (int mv = 0; mv < leaf.n; mv++)
+        {
+            float2 d = leaf.v[mv] - c0;
+            d -= axis * dot(d, axis) * (1.0f - squeeze);
+            moved.v[mv] = c0 + rk_rotate(d, angle);
+        }
+        for (int ce = 0; ce < leaf.n; ce++)
+        {
+            float2 a = leaf.v[ce];
+            float2 e = leaf.v[ce + 1 == leaf.n ? 0 : ce + 1] - a;
+            float el = length(e);
+            if (el < 1e-6f) continue;
+            float2 nn = (float2)(e.y, -e.x) / el;
+            rk_clip(&moved, nn, dot(nn, a), leaf.t[ce]);
+        }
+        if (moved.n >= 3) { leaf = moved; n = leaf.n; }
+    }
+
+    float top = 1.0f - P->height_clusters * (P->hvar * 0.5f * (rk_rand(ck, 1u, 61u) + rk_rand(pk, 1u, 62u))
+        + P->lvar * layer_rand);
+    top += P->fracture_height_bias * (2.0f * rk_rand(pk, 5u, 61u) - 1.0f);
+
+    float ar;
+    float2 c = rk_centroid(&leaf, &ar);
+    float2 lo = leaf.v[0], hi = lo;
+    float rv = 0.0f;
+    for (int i = 0; i < n; i++)
+    {
+        lo = fmin(lo, leaf.v[i]);
+        hi = fmax(hi, leaf.v[i]);
+        rv = fmax(rv, length(leaf.v[i] - c));
+    }
+    float scale = fmin(hi.x - lo.x, hi.y - lo.y);
+
+    // Tilt: one authored lean, the random part varying angle and spreading direction.
+    float lean_deg = P->tilt_angle + P->tilt_random * (2.0f * rk_rand(ck, 10u, 67u) - 1.0f);
+    float lean_dir = radians(P->tilt_dir) + radians(P->tilt_random) * (rk_rand(ck, 11u, 67u) - 0.5f);
+    float2 lean = rk_dir(lean_dir) * tan(radians(lean_deg));
+
+    float2 s = lean + P->dip + 0.5f * P->rand_k * (
+        rk_dir(rk_rand(ck, 2u, 61u) * RK_TAU) * sqrt(rk_rand(ck, 3u, 61u)) +
+        rk_dir(rk_rand(pk, 2u, 62u) * RK_TAU) * sqrt(rk_rand(pk, 3u, 62u)));
+    float smax = -RK_BIG;
+    for (int k = 0; k < n; k++) smax = fmax(smax, dot(s, leaf.v[k] - c));
+
+    L->c = c;
+    L->s = s;
+    L->top_constant = top - smax - dot(s, c);
+    L->top = top;
+    L->radius = rv + 1.0f / fmax(P->wall_k, 1.0e-4f) + 0.5f * fmax(P->cell_gap, P->seam_gap);
+
+    // Facet chips: three planar cuts across the top.
+    L->chip_on = P->chip > 0.0f;
+    float ph = rk_rand(pk, 4u, 63u) * RK_TAU;
+    for (int j = 0; j < 3; j++)
+    {
+        L->u[j] = rk_dir(ph + (float)j * RK_TAU / 3.0f + (rk_rand(pk, (uint)j, 64u) - 0.5f) * 1.6f);
+        L->r[j] = rv * (1.0f - P->chip * (0.4f + 0.6f * rk_rand(pk, (uint)j, 65u))) + dot(L->u[j], c);
+    }
+
+    int edge_count = 0;
+    RkPoly gapped = leaf;
+    for (int e = 0; e < n; e++)
+    {
+        float2 nn; float dg, w;
+        if (!rk_edge_line(P, &leaf, e, c, scale, &nn, &dg, &w)) continue;
+        L->edges[edge_count] = (float4)(nn, dg, w);
+        edge_count++;
+        rk_clip(&gapped, nn, dg, leaf.t[e]);
+    }
+    for (int v = 0; v < gapped.n; v++) L->verts[v] = gapped.v[v];
+    L->edge_count = edge_count;
+    L->vertex_count = gapped.n;
+    L->id = id;
+}
+
+// ---- chunk evaluate ------------------------------------------------------------
+
+// Height of one chunk at pr, the surface class that set it (0 top, 1 chamfer, 2 wall), and the
+// ramp across that class:
+//   top      inward distance past the chamfer over that plus the distance to the centre (0 at the
+//            chamfer's inner edge, 1 at the centre)
+//   chamfer  across the bevel, foot (0) to top (1)
+//   wall     1 where the wall meets the bevel/top, falling by one per unit of height it drops
+float rk_leaf_height(const RkPat* P, const RkLeaf* L, float2 pr, int* cls, float* ramp)
+{
+    const float chip_k = 0.78f; // tan 38 deg
+    float T = L->top_constant + dot(L->s, pr);
+    if (L->chip_on)
+    {
+        float cut = 0.0f;
+        for (int j = 0; j < 3; j++) cut = fmax(cut, chip_k * (dot(L->u[j], pr) - L->r[j]));
+        T -= cut;
+    }
+
+    float H = T;
+    *cls = 0;
+    float edge_di = 0.0f, edge_w = 0.0f;
+    float top_inset = RK_BIG;
+    for (int e = 0; e < L->edge_count; e++)
+    {
+        float4 E = L->edges[e];
+        float di = E.z - dot(E.xy, pr);
+        top_inset = fmin(top_inset, di - fmax(E.w, 0.0f));
+        float wall = T + P->wall_slope * di;
+        if (wall < H) { H = wall; *cls = 2; edge_di = di; edge_w = E.w; }
+        if (E.w > 0.0f)
+        {
+            float bevel = T + P->chamfer_slope * (di - E.w);
+            if (bevel < H) { H = bevel; *cls = 1; edge_di = di; edge_w = E.w; }
+        }
+    }
+
+    // Where the bevel meets the wall. chamfer_slope <= wall_slope; the guard is the equal case.
+    float foot_di = edge_w > 0.0f
+        ? -P->chamfer_slope * edge_w / fmax(P->wall_slope - P->chamfer_slope, 1.0e-6f) : 0.0f;
+    if (*cls == 1)      *ramp = (edge_di - foot_di) / (edge_w - foot_di);
+    else if (*cls == 2) *ramp = 1.0f + P->wall_slope * (edge_di - foot_di);
+    else
+    {
+        float inset = L->edge_count > 0 ? top_inset : 0.0f;
+        float to_centre = length(pr - L->c);
+        *ramp = inset + to_centre > 0.0f ? inset / (inset + to_centre) : 1.0f;
+    }
+    return H;
+}
+
+// Signed distance to the gapped outline, negative inside.
+float rk_leaf_sd(const RkLeaf* L, float2 q)
+{
+    int count = L->vertex_count;
+    if (count < 3) return RK_BIG;
+    float dmin = RK_BIG;
+    int inside = 1;
+    for (int i = 0; i < count; i++)
+    {
+        float2 a = L->verts[i];
+        float2 e = L->verts[i + 1 == count ? 0 : i + 1] - a;
+        float2 w = q - a;
+        float t = clamp(dot(w, e) / fmax(dot(e, e), 1e-20f), 0.0f, 1.0f);
+        dmin = fmin(dmin, length(w - e * t));
+        if (rk_cross(e, w) < 0.0f) inside = 0;
+    }
+    return inside ? -dmin : dmin;
+}
+
+void rk_setup(RkPat* P, float style, int cells, int rows, int seed, float fracture, float slope,
+    float chamfer, float chamfer_bias, float fracture_height_bias, float gap, float warp, int warp_scale,
+    float chamfer_random, float spin, float spin_random, float tilt_angle, float tilt_direction,
+    float tilt_random, float size_random, float stretch, float stretch_angle, float stretch_random,
+    float height_clusters, float skew)
+{
+    // Style indexes a four-row table, so it is bounded to the table.
+    float st = clamp(style, 0.0f, 3.0f);
+    int i0 = min((int)st, 2);
+    float t = st - (float)i0;
+    float v[RK_NP];
+    for (int k = 0; k < RK_NP; k++) v[k] = mix(RK_PRESET[i0][k], RK_PRESET[i0 + 1][k], t);
+
+    P->cu = max(cells, 1);
+    P->cv = max(rows, 1);
+    P->rh = (float)P->cu / (float)P->cv;
+    P->strata = v[0];
+    P->a2 = (1.0f + 3.0f * v[0]) * (1.0f + 3.0f * v[0]);
+    {
+        // Metric = T^T T, T = diag(1, sqrt(a2)) * K, K stretching along stretch_angle.
+        float sa = radians(stretch_angle);
+        float cs = cos(sa), sn = sin(sa);
+        float k = 1.0f / fmax(fabs(stretch), 1e-3f);
+        float k00 = k * cs * cs + sn * sn;
+        float k01 = (k - 1.0f) * cs * sn;
+        float k11 = k * sn * sn + cs * cs;
+        float sy = sqrt(P->a2);
+        float t00 = k00, t01 = k01, t10 = sy * k01, t11 = sy * k11;
+        P->metric = (float3)(t00 * t00 + t10 * t10, t00 * t01 + t10 * t11, t01 * t01 + t11 * t11);
+    }
+    P->splits = max((int)round(v[2] * fracture), 0);
+    P->split_angle = v[3];
+    P->h_bias = v[4];
+    P->dip = (float2)(0.0f, -1.0f) * tan(radians(fmin(v[5] * slope, 70.0f)));
+    P->rand_k = tan(radians(fmin(v[6] * slope, 70.0f)));
+    P->hvar = v[7];
+    P->lvar = v[8];
+    P->height_clusters = height_clusters;
+    P->skew = skew;
+    P->chip = v[9];
+    P->wall_k = tan(radians(v[10]));
+    P->cell_gap = v[11] * gap;
+    P->seam_gap = v[12] * gap;
+    P->outer_ch = v[13] * chamfer;
+    P->inner_ch = v[14] * chamfer;
+    P->chamfer_bias = chamfer_bias;
+    P->fracture_height_bias = fracture_height_bias;
+    P->bottom = v[15];
+    P->irr = v[16];
+    P->seed = rk_hash((uint)seed + 0x51ED27u);
+    P->wseed = P->seed ^ 0xA5A5u;
+    P->warp = warp;
+    P->warp_scale = max(warp_scale, 1);
+    P->spin = spin;
+    P->spin_random = spin_random;
+    P->tilt_angle = tilt_angle;
+    P->tilt_dir = tilt_direction;
+    P->tilt_random = tilt_random;
+    P->size_random = size_random;
+    P->stretch_random = stretch_random;
+    P->chamfer_random = chamfer_random;
+    P->wall_slope = P->wall_k;
+    P->chamfer_slope = fmin(tan(radians(42.0f)), P->wall_k);
+}
+
+@KERNEL
+{
+    int2 px = @ixy;
+    int2 r = (int2)(@res.x, @res.y);
+
+    RkPat P;
+    rk_setup(&P, @style, @cells, @rows, @seed, @fracture, @slope, @chamfer, @chamfer_bias,
+        @fracture_height_bias, @gap, @warp, @warp_scale, @chamfer_random, @spin, @spin_random,
+        @tilt_angle, @tilt_direction, @tilt_random, @size_random, @stretch, @stretch_angle,
+        @stretch_random, @height_clusters, @skew);
+    int max_leaves = P.splits + 1;
+
+    float2 uv = ((float2)(px.x, px.y) + 0.5f) / (float2)(r.x, r.y);
+    // Warp: bend the lookup coordinate (cell widths) with tile-periodic noise.
+    float2 p = uv * (float)P.cu + P.warp * (float2)(
+        rk_value_noise(uv, P.warp_scale, P.wseed),
+        rk_value_noise(uv, P.warp_scale, P.wseed + 911u));
+    int ci = (int)floor(p.x);
+    int cj = (int)floor(p.y / P.rh);
+
+    int hit = 0;
+    float best_h = 0.0f, best_ramp = 0.0f;
+    int best_cls = 0;
+    uint best_id = 0u;
+    float nearest_outside = RK_BIG, deepest_inside = 0.0f;
+    int has_boundary = 0;
+
+    for (int dj = -2; dj <= 2; dj++)
+    for (int di = -2; di <= 2; di++)
+    {
+        int i = ci + di, j = cj + dj;
+        int wi = rk_wrap(i, P.cu), wj = rk_wrap(j, P.cv);
+        // Shift the pixel into the canonical tile instead of shifting the geometry.
+        float2 pl = p - (float2)((float)(i - wi), (float)(j - wj) * P.rh);
+        int cell_index = wi + wj * P.cu;
+
+        RkPoly cell;
+        uint cid;
+        rk_cell_poly(&P, wi, wj, &cell, &cid);
+        float layer_rand = rk_rand(P.seed, (uint)wj, 56u);
+
+        // Every leaf of the cell's BSP tree (stackless heap walk).
+        int written = 0;
+        uint node = 1u;
+        for (int guard = 0; guard < 1024; guard++)
+        {
+            int depth = 31 - (int)clz(node);
+            RkPoly poly = cell;
+            rk_node_poly(&P, cid, node, depth, &poly);
+            float ar;
+            rk_centroid(&poly, &ar);
+            if ((int)node <= P.splits && poly.n >= 3 && ar > 1e-6f) { node <<= 1; continue; }
+            if (poly.n >= 3 && written < max_leaves)
+            {
+                RkLeaf L;
+                rk_make_leaf(&P, poly, cid, node, layer_rand, (uint)(cell_index * max_leaves + written), &L);
+                written++;
+
+                float centre_distance = length(pl - L.c);
+                if (centre_distance - L.radius < fmax(nearest_outside, deepest_inside))
+                {
+                    float sd = rk_leaf_sd(&L, pl);
+                    if (sd < RK_BIG)
+                    {
+                        has_boundary = 1;
+                        nearest_outside = fmin(nearest_outside, fabs(sd));
+                        if (sd < 0.0f) deepest_inside = fmax(deepest_inside, -sd);
+                    }
+                }
+                if (!(centre_distance > L.radius || (hit && L.top <= best_h)))
+                {
+                    int cls; float ramp;
+                    float H = rk_leaf_height(&P, &L, pl, &cls, &ramp);
+                    if (!hit || H > best_h)
+                    {
+                        hit = 1; best_h = H; best_cls = cls; best_ramp = ramp; best_id = L.id;
+                    }
+                }
+            }
+            while ((node & 1u) != 0u && node > 1u) node >>= 1;
+            if (node <= 1u) break;
+            node += 1u;
+        }
+    }
+
+    float boundary = has_boundary
+        ? (deepest_inside > 0.0f ? -deepest_inside : nearest_outside) / (float)P.cu : 0.0f;
+
+    @height.set((hit ? best_h : 0.0f) * @height_scale);
+    @top_mask.set(hit && best_cls == 0 ? 1.0f : 0.0f);
+    @chamfer_mask.set(hit && best_cls == 1 ? 1.0f : 0.0f);
+    @wall_mask.set(hit && best_cls == 2 ? 1.0f : 0.0f);
+    @top_ramp.set(hit && best_cls == 0 ? best_ramp : 0.0f);
+    @chamfer_ramp.set(hit && best_cls == 1 ? best_ramp : 0.0f);
+    @wall_ramp.set(hit && best_cls == 2 ? best_ramp : 0.0f);
+    @edge_distance.set(boundary);
+    @id.set(hit ? (int)best_id : -1);
+}

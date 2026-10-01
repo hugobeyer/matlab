@@ -142,7 +142,7 @@ public:
 		SHADER_PARAMETER(uint32, OverrideNormal)
 		SHADER_PARAMETER(uint32, FlipNormalY)
 		SHADER_PARAMETER(uint32, HeightBlendEnabled)
-		SHADER_PARAMETER(uint32, SmoothHeightMerge)
+		SHADER_PARAMETER(uint32, HeightOp)
 		SHADER_PARAMETER(uint32, HeightSource)
 		SHADER_PARAMETER(uint32, InvertHeight)
 		SHADER_PARAMETER(uint32, DirectHeightComparison)
@@ -182,6 +182,7 @@ public:
 		SHADER_PARAMETER(float, HeightLevelOffset)
 		SHADER_PARAMETER(float, HeightShape)
 		SHADER_PARAMETER(float, HeightBlendAmount)
+		SHADER_PARAMETER(float, HeightSoftness)
 		SHADER_PARAMETER(float, HeightThreshold)
 		SHADER_PARAMETER(float, HeightRange)
 		SHADER_PARAMETER(float, HeightContrast)
@@ -208,6 +209,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousN)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousOccupancy)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ReferenceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerBC)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerN)
@@ -279,6 +281,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputOccupancy)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
 	END_SHADER_PARAMETER_STRUCT()
@@ -809,7 +812,8 @@ namespace MixtormatGpuCompositor
 		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 		Parameters->HeightBlendEnabled = Layer.bHeightBlendEnabled ? 1u : 0u;
-		Parameters->SmoothHeightMerge = Layer.bSmoothHeightMerge ? 1u : 0u;
+		Parameters->HeightOp = Layer.HeightOp;
+		Parameters->HeightSoftness = Layer.HeightSoftness;
 		Parameters->HeightSource = Layer.HeightSource;
 		Parameters->InvertHeight = Layer.bInvertHeight ? 1u : 0u;
 		Parameters->DirectHeightComparison = Layer.bDirectHeightComparison ? 1u : 0u;
@@ -912,6 +916,7 @@ namespace MixtormatGpuCompositor
 		Parameters->PreviousN = OutputN[ReadIndex];
 		Parameters->PreviousRAM = OutputRAM[ReadIndex];
 		Parameters->PreviousHeight = HeightTargets[ReadIndex];
+		Parameters->PreviousOccupancy = LayerCtx.OccupancyTargets[ReadIndex];
 		Parameters->ReferenceHeight = HeightTargets[ReadIndex];
 		if (FRDGTextureRef* Snapshot = HeightSnapshots.Find(Layer.HeightReferenceLayerIndex))
 		{
@@ -1173,6 +1178,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputN = GraphBuilder.CreateUAV(OutputN[WriteIndex]);
 		Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
 		Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
+		Parameters->OutputOccupancy = GraphBuilder.CreateUAV(LayerCtx.OccupancyTargets[WriteIndex]);
 		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]);
 
 		FComputeShaderUtils::AddPass(
@@ -1895,8 +1901,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.HeightFollow = Finite(Carver.HeightFollow, 0.0f);
 					Out.Lamination = Finite(Carver.Lamination, 0.25f);
 					Out.CrossBedding = Finite(Carver.CrossBedding, 1.0f);
-					Out.BlendMode = static_cast<uint32>(Carver.StrataBlendMode);
-					Out.BlendAmount = Finite(Carver.StrataBlendAmount, 1.0f);
 					Out.MaskInfluence = Finite(Carver.MaskInfluence, 1.0f);
 					Out.IDInfluence = Finite(Carver.IDInfluence, 0.0f);
 					break;
@@ -1941,15 +1945,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.ChamferHigh = -FMath::Abs(Out.Depth) * 0.28f;
 					Out.ChamferNoise = 0.692f;
 					Out.ChamferNoiseScale = 1.1882f / FMath::Max(FMath::Abs(Out.Width), 0.05f);
-					Out.BlendMode = static_cast<uint32>(Cracks.CrackBlendMode);
-					Out.Amount = Finite(Cracks.CrackAmount, Defaults.CrackAmount);
 					Out.HeightScale = Finite(Cracks.CrackHeightScale, Defaults.CrackHeightScale);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						// The chamfer and the blend read the cached field; they do not change it.
+						// The chamfer and the height scale read the cached field; they do not change it.
 						Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
-							TEXT("CrackBlendMode"), TEXT("CrackAmount"), TEXT("CrackHeightScale")};
+							TEXT("CrackHeightScale")};
 						Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}
@@ -1969,39 +1971,41 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					// A cell count of zero or less has no lattice to evaluate.
 					Out.Cells = FMath::Max(Rock.RockCells, 1);
 					Out.Rows = FMath::Max(Rock.RockRows, 1);
-					Out.Skew = Finite(Rock.RockSkew, Defaults.RockSkew);
 					Out.Seed = static_cast<uint32>(Rock.RockSeed);
 					Out.Fracture = Finite(Rock.RockFracture, Defaults.RockFracture);
-					Out.Slope = Finite(Rock.RockSlope, Defaults.RockSlope);
 					Out.Chamfer = Finite(Rock.RockChamfer, Defaults.RockChamfer);
-					Out.ChamferBias = Finite(Rock.RockChamferBias, Defaults.RockChamferBias);
 					Out.FractureHeightBias = Finite(Rock.RockFractureHeightBias, Defaults.RockFractureHeightBias);
 					Out.Gap = Finite(Rock.RockGap, Defaults.RockGap);
-					Out.Warp = Finite(Rock.RockWarp, Defaults.RockWarp);
 					Out.ChamferRandom = Finite(Rock.RockChamferRandom, Defaults.RockChamferRandom);
-					Out.WarpScale = Rock.RockWarpScale;
-					Out.SizeRandom = Finite(Rock.RockSizeRandom, Defaults.RockSizeRandom);
-					Out.Stretch = Finite(Rock.RockStretch, Defaults.RockStretch);
-					Out.StretchAngle = Finite(Rock.RockStretchAngle, Defaults.RockStretchAngle);
-					Out.StretchRandom = Finite(Rock.RockStretchRandom, Defaults.RockStretchRandom);
 					Out.Spin = Finite(Rock.RockSpin, Defaults.RockSpin);
 					Out.SpinRandom = Finite(Rock.RockSpinRandom, Defaults.RockSpinRandom);
 					Out.TiltAngle = Finite(Rock.RockTiltAngle, Defaults.RockTiltAngle);
 					Out.TiltDirection = Finite(Rock.RockTiltDirection, Defaults.RockTiltDirection);
 					Out.TiltRandom = Finite(Rock.RockTiltRandom, Defaults.RockTiltRandom);
+					Out.SizeRandom = Finite(Rock.RockSizeRandom, Defaults.RockSizeRandom);
+					Out.Stretch = Finite(Rock.RockStretch, Defaults.RockStretch);
+					Out.StretchAngle = Finite(Rock.RockStretchAngle, Defaults.RockStretchAngle);
+					Out.StretchRandom = Finite(Rock.RockStretchRandom, Defaults.RockStretchRandom);
 					Out.HeightClusters = Finite(Rock.RockHeightClusters, Defaults.RockHeightClusters);
-					Out.BlendMode = static_cast<uint32>(Rock.RockBlendMode);
-					Out.Amount = Finite(Rock.RockAmount, Defaults.RockAmount);
+					Out.Skew = Finite(Rock.RockSkew, Defaults.RockSkew);
+					Out.EdgeJag = Finite(Rock.RockEdgeJag, Defaults.RockEdgeJag);
+					Out.JagScale = Finite(Rock.RockJagScale, Defaults.RockJagScale);
+					Out.JagDetail = Finite(Rock.RockJagDetail, Defaults.RockJagDetail);
+					Out.ChamferJag = Finite(Rock.RockChamferJag, Defaults.RockChamferJag);
+					Out.RimChips = Finite(Rock.RockRimChips, Defaults.RockRimChips);
+					Out.RimChipSize = Finite(Rock.RockRimChipSize, Defaults.RockRimChipSize);
+					Out.FacetChips = Finite(Rock.RockFacetChips, Defaults.RockFacetChips);
+					Out.FacetIterations = Rock.RockFacetIterations;
+					Out.FacetFalloff = Finite(Rock.RockFacetFalloff, Defaults.RockFacetFalloff);
+					Out.FacetRandom = Finite(Rock.RockFacetRandom, Defaults.RockFacetRandom);
+					Out.FacetAlign = Finite(Rock.RockFacetAlign, Defaults.RockFacetAlign);
+					Out.HeightMode = Rock.RockHeightMode;
 					Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
-					Out.bNormalize = Rock.bRockNormalizeHeight;
-					Out.RemapLow = Finite(Rock.RockRemapLow, Defaults.RockRemapLow);
-					Out.RemapHigh = Finite(Rock.RockRemapHigh, Defaults.RockRemapHigh);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						// Normalize reads the cached field; it does not change it.
-						Hasher.SkipTopLevel = {TEXT("RockAmount"), TEXT("RockHeightScale"), TEXT("RockBlendMode"),
-							TEXT("bRockNormalizeHeight"), TEXT("RockRemapLow"), TEXT("RockRemapHigh")};
+						// Height mode and scale consume the cached field; they do not reshape it.
+						Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode")};
 						Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}
@@ -2035,13 +2039,11 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Out.HeightGain = Finite(Pebbles.PebbleHeightGain, Defaults.PebbleHeightGain);
 					Out.HeightVariation = Finite(Pebbles.PebbleHeightVariation, Defaults.PebbleHeightVariation);
 					Out.bFacetIds = Pebbles.bPebbleFacetIds;
-					Out.BlendMode = static_cast<uint32>(Pebbles.PebbleBlendMode);
 					Out.HeightScale = Finite(Pebbles.PebbleHeightScale, Defaults.PebbleHeightScale);
-					Out.Amount = Finite(Pebbles.PebbleAmount, Defaults.PebbleAmount);
 					if (bCacheLayers)
 					{
 						MixtormatComposeHash::FHasher Hasher;
-						Hasher.SkipTopLevel = {TEXT("PebbleAmount"), TEXT("PebbleBlendMode"), TEXT("PebbleHeightScale")};
+						Hasher.SkipTopLevel = {TEXT("PebbleHeightScale")};
 						Hasher.Struct(FMixtormatPebbles::StaticStruct(), &Pebbles);
 						Out.FieldKey = Hasher.Get() | 1ull;
 					}
@@ -2954,11 +2956,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Data.bHasNormal = Data.SourceOutputs.IsValid() || LayerNormal != nullptr;
 		Data.bNormalOnly = bNormalOnly;
 		Data.bOverrideNormal = Layer.NormalBlendMode == EMixtormatNormalBlendMode::Override;
-		// The same two fields the layer badge reads for BLEND, so the word on the row and the
-		// height arithmetic can never disagree. Coat is excluded: it keeps its own semantics.
-		Data.bSmoothHeightMerge = !bNormalOnly
-			&& Layer.CompositionMode == EMixtormatCompositionMode::Replace
-			&& Layer.NormalBlendMode == EMixtormatNormalBlendMode::Combine;
+		Data.HeightOp = static_cast<uint32>(Layer.HeightOp);
+		Data.HeightSoftness = FMath::IsFinite(Layer.HeightSoftness) ? Layer.HeightSoftness : 0.1f;
 		Data.bFlipNormalY = Layer.bFlipNormalY;
 	}
 

@@ -10,9 +10,9 @@ struct FMixtormatLayerChild;
 
 // What the fixed-width mark on the right of a layer row says.
 //
-// A badge is derived, never typed. It answers one question -- how does this row composite with
-// what is under it -- and it is the only field in the stack a user cannot edit directly, which is
-// what makes it trustworthy when a dozen layers are all called "Untitled".
+// A badge is derived, never typed. It answers one question -- what does this row do to the height
+// under it -- and it is the only field in the stack a user cannot edit directly, which is what
+// makes it trustworthy when a dozen layers are all called "Untitled".
 //
 // These are free functions rather than widget methods because the derivation is the interesting
 // part and it should be readable, and testable, without constructing Slate.
@@ -22,18 +22,18 @@ struct FMixtormatLayerChild;
 // it, so the tables below are written against that limit.
 namespace MixtormatLayerBadges
 {
-	// How a layer composites, as one choice instead of the three fields that encode it.
+	// How a layer's normal composites, as one choice instead of the three fields that encode it.
 	//
 	// ChannelMode, CompositionMode and NormalBlendMode are three booleans that only make sense in
 	// four combinations, and asking a user to set them separately means offering states that mean
 	// nothing (a NormalDetail layer with a Coat composition). This is that cross-product collapsed
-	// into the four words the design uses -- the same four the badge prints.
+	// into four words. Height is not part of it: that is the layer's Height Op.
 	enum class EComposition : uint8
 	{
-		Blend,   // Replace + Combine  -- heights merged, normal reoriented onto the one below
-		Over,    // Replace + Override -- heights cross-faded, normal replaces the one below
-		Coat,    // sits over what is below
-		Detail,  // contributes normal only
+		Combine,   // Replace + Combine  -- normal reoriented onto the one below
+		Override,  // Replace + Override -- normal replaces the one below
+		Coat,      // sits over what is below
+		Detail,    // contributes normal only
 	};
 
 	// Read the three fields; return the one choice they encode.
@@ -47,20 +47,8 @@ namespace MixtormatLayerBadges
 	TArray<FText> CompositionOptions();
 	TArray<FText> CompositionToolTips();
 
-	// Layer marks, in resolution order. The four cases are mutually exclusive and exhaustive:
-	// EMixtormatCompositionMode has only Replace and Coat, so a Replace layer always falls through
-	// to its normal blend mode.
-	//
-	//   NormalDetail channel        -> DETAIL   contributes normal only
-	//   Coat composition            -> COAT     sits over what is below
-	//   Replace + Override normals  -> OVER     heights cross-faded, normal replaced
-	//   Replace + Combine normals   -> BLEND    heights merged, normal reoriented
-	//
-	// BLEND and OVER differ in how the height channel is composited and in how the normal is
-	// combined -- and in nothing else. Coverage is identical: base colour, roughness, AO, metallic
-	// and F0 see the same opacity and mask either way. Height driving *coverage* is a separate,
-	// independently armed feature (bHeightBlendEnabled, Height Mask Blending) that neither choice
-	// switches on.
+	// The layer mark: the Height Op as a three-letter word (REP, ADD, SUB, MUL, MIN, MAX, DIF),
+	// followed by H when coverage comes from height. A detail layer has no height, so it says DTL.
 	FText ForLayer(const FMixtormatLayer& Layer);
 
 	// The colour blend mark, and empty when the mode is Normal.

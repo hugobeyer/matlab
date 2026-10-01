@@ -1304,8 +1304,8 @@ private:
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
-	// BLEND / OVER / COAT / DETAIL for one layer, from its badge.
-	TSharedRef<SWidget> BuildLayerCompositionMenu(int32 LayerIndex);
+	// The Height Op choices for one layer, from its badge.
+	TSharedRef<SWidget> BuildLayerHeightOpMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildBlurContextMenu(int32 LayerIndex, int32 ChildIndex);
 	FMixtormatMaskBlur* GetSelectedLayerBlur();

@@ -104,7 +104,6 @@ uint HeightMode;
 float HeightScale;
 
 Texture2D<float> RockHeight;
-Texture2D<uint> RockIds;
 RWTexture2D<float> OutRockHeight;
 RWTexture2D<float> OutRockTop;
 RWTexture2D<float> OutRockChamfer;
@@ -690,13 +689,8 @@ float RockFacetCut(FRockPat P, FRockLeaf L, float2 pr)
 			// round's so a growing falloff cannot saw the teeth across the chunk's borders.
 			const float grow = size / sqrt(sqrt(1.0f + 0.0625f * size * size * size * size));
 			const float js = grow * L.JagSize;
-			// A zero falloff removes later rounds' jag without dividing by their zero size.
-			float shift = 0.0f;
-			if (js != 0.0f)
-			{
-				const float along = dot(pr, float2(-u.y, u.x)) / js + L.JagOffset;
-				shift = RockJag(P, along, RockHash(L.Pk ^ ((uint)j + salt) * 0x9E3779B9u), 0) * js;
-			}
+			const float along = dot(pr, float2(-u.y, u.x)) / js + L.JagOffset;
+			const float shift = RockJag(P, along, RockHash(L.Pk ^ ((uint)j + salt) * 0x9E3779B9u), 0) * js;
 			cut = max(cut, k * (dot(u, pr) - R + shift));
 		}
 		size *= P.facet_falloff * lerp(1.0f, 0.5f + RockFacetDraw(L, (uint)it + 20u), P.facet_random);
@@ -1057,8 +1051,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	// Cache raw heights only; IDs preserve empty pixels through later mode resolution.
-	OutRockHeight[Pixel] = hit ? bestH : 0.0f;
+	// A pixel no chunk reaches is the floor: 0 raw, the analytic low otherwise, so Analytic maps it
+	// to 0 and Measured finds it as the field's own low.
+	OutRockHeight[Pixel] = hit ? bestH : (HeightMode == 0u ? 0.0f : P.height_lo);
 	OutRockTop[Pixel] = hit && bestCls == 0 ? 1.0f : 0.0f;
 	OutRockChamfer[Pixel] = hit && bestCls == 1 ? 1.0f : 0.0f;
 	OutRockWall[Pixel] = hit && bestCls == 2 ? 1.0f : 0.0f;
@@ -1075,11 +1070,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Analytic maps the settings' own bounds to 0..1; Raw and Measured arrive here as they are
 	// (Measured was normalised by the field-range pass before this).
 	float h = RockHeight.Load(int3(Pixel, 0));
-	if (HeightMode == 1u && RockIds.Load(int3(Pixel, 0)) == MIXTORMAT_INVALID_REGION)
-	{
-		h = 0.0f;
-	}
-	else if (HeightMode == 1u)
+	if (HeightMode == 1u)
 	{
 		const FRockPat P = RockSetup();
 		h = (h - P.height_lo) / max(P.height_hi - P.height_lo, 1e-6f);

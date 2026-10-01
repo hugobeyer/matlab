@@ -250,19 +250,19 @@ bool FMixtormatCompositionContractTest::RunTest(const FString&)
 
 	FMixtormatLayer Layer;
 
-	ApplyComposition(Layer, EComposition::Blend);
+	ApplyComposition(Layer, EComposition::Combine);
 	TestEqual(TEXT("BLEND reorients the normal below"),
 		Layer.NormalBlendMode, EMixtormatNormalBlendMode::Combine);
 	TestEqual(TEXT("BLEND is a surface layer"),
 		Layer.ChannelMode, EMixtormatLayerChannelMode::CompleteSurface);
 	TestEqual(TEXT("BLEND composites as Replace"),
 		Layer.CompositionMode, EMixtormatCompositionMode::Replace);
-	TestEqual(TEXT("BLEND round trips"), CompositionOf(Layer), EComposition::Blend);
+	TestEqual(TEXT("BLEND round trips"), CompositionOf(Layer), EComposition::Combine);
 
-	ApplyComposition(Layer, EComposition::Over);
+	ApplyComposition(Layer, EComposition::Override);
 	TestEqual(TEXT("OVER replaces the normal below"),
 		Layer.NormalBlendMode, EMixtormatNormalBlendMode::Override);
-	TestEqual(TEXT("OVER round trips"), CompositionOf(Layer), EComposition::Over);
+	TestEqual(TEXT("OVER round trips"), CompositionOf(Layer), EComposition::Override);
 
 	ApplyComposition(Layer, EComposition::Coat);
 	TestEqual(TEXT("COAT round trips"), CompositionOf(Layer), EComposition::Coat);
@@ -280,7 +280,7 @@ bool FMixtormatCompositionContractTest::RunTest(const FString&)
 	for (const bool bArmed : { false, true })
 	{
 		for (const EComposition Choice :
-			{ EComposition::Blend, EComposition::Over, EComposition::Coat, EComposition::Detail })
+			{ EComposition::Combine, EComposition::Override, EComposition::Coat, EComposition::Detail })
 		{
 			FMixtormatLayer Probe;
 			Probe.bHeightBlendEnabled = bArmed;
@@ -295,7 +295,7 @@ bool FMixtormatCompositionContractTest::RunTest(const FString&)
 	// Every choice must leave Detail behind, or a layer that had once been Detail keeps
 	// contributing only its normal while the control claims it is blending.
 	for (const EComposition Choice :
-		{ EComposition::Blend, EComposition::Over, EComposition::Coat })
+		{ EComposition::Combine, EComposition::Override, EComposition::Coat })
 	{
 		FMixtormatLayer FromDetail;
 		ApplyComposition(FromDetail, EComposition::Detail);

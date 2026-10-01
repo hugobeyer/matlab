@@ -107,6 +107,7 @@ namespace MixtormatGpuCompositor
 					|| Texture == Ctx.OutputRAM[Index] || Texture == Ctx.OutputHeight[Index]
 					|| Texture == Ctx.OutputDebug[Index] || Texture == Ctx.OutputRegionIdPick[Index]
 					|| Texture == LayerCtx.MaskTargets[Index] || Texture == LayerCtx.RidgeTargets[Index]
+					|| Texture == LayerCtx.OccupancyTargets[Index]
 					|| Texture == LayerCtx.EffectTargets[Index] || Texture == LayerCtx.EffectHeightTargets[Index])
 				{
 					return true;
@@ -125,9 +126,10 @@ namespace MixtormatGpuCompositor
 			return static_cast<uint64>(Texture->Desc.Extent.X) * static_cast<uint64>(Texture->Desc.Extent.Y)
 				* static_cast<uint64>(GPixelFormats[Texture->Desc.Format].BlockBytes);
 		};
-		const FRDGTextureRef Accumulation[5] = {
+		const FRDGTextureRef Accumulation[6] = {
 			Ctx.OutputBC[WriteIndex], Ctx.OutputN[WriteIndex], Ctx.OutputRAM[WriteIndex],
-			Ctx.OutputHeight[WriteIndex], LayerCtx.RidgeTargets[WriteIndex]};
+			Ctx.OutputHeight[WriteIndex], LayerCtx.RidgeTargets[WriteIndex],
+			LayerCtx.OccupancyTargets[WriteIndex]};
 		uint64 Bytes = 0;
 		for (const FRDGTextureRef Texture : Accumulation)
 		{
@@ -180,6 +182,7 @@ namespace MixtormatGpuCompositor
 		Keep(Accumulation[2], &Entry->RAM, TEXT("Mixtormat.CacheSave.RAM"));
 		Keep(Accumulation[3], &Entry->Height, TEXT("Mixtormat.CacheSave.Height"));
 		Keep(Accumulation[4], &Entry->Ridge, TEXT("Mixtormat.CacheSave.Ridge"));
+		Keep(Accumulation[5], &Entry->Occupancy, TEXT("Mixtormat.CacheSave.Occupancy"));
 
 		// The remaining snapshots are already dedicated copies nothing writes again, so they are
 		// extracted as they are. Arrays are sized before any extraction pointer is taken.
@@ -474,6 +477,16 @@ namespace MixtormatGpuCompositor
 						GraphBuilder.CreateUAV(HeightTargets[1]),
 						MixtormatSubstrate::Height);
 
+					// Occupancy starts at zero: nothing stands on the substrate yet. Layer 0 reads
+					// it like every other layer reads the one below, so the first layer is not a
+					// special case -- it simply sees bare ground. Both halves cleared for the same
+					// reason the mask pair is: RDG validates the binding rather than the use.
+					FRDGTextureRef* const OccupancyTargets = LayerCtx.OccupancyTargets;
+					OccupancyTargets[0] = GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.OccupancyA"));
+					OccupancyTargets[1] = GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.OccupancyB"));
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OccupancyTargets[0]), FVector4f(0.0f));
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OccupancyTargets[1]), FVector4f(0.0f));
+
 					// Drainage and crest lines, produced by the erosion filter and consumed by
 					// generated masks on later layers.
 					//
@@ -627,6 +640,7 @@ namespace MixtormatGpuCompositor
 							Restore(Resumed->RAM, OutputRAM[Half], TEXT("Mixtormat.Cache.RAM"));
 							Restore(Resumed->Height, HeightTargets[Half], TEXT("Mixtormat.Cache.Height"));
 							Restore(Resumed->Ridge, RidgeTargets[Half], TEXT("Mixtormat.Cache.Ridge"));
+							Restore(Resumed->Occupancy, OccupancyTargets[Half], TEXT("Mixtormat.Cache.Occupancy"));
 							for (const TPair<int32, TRefCountPtr<IPooledRenderTarget>>& Pair : Resumed->HeightSnapshots)
 							{
 								HeightSnapshots.Add(Pair.Key, GraphBuilder.RegisterExternalTexture(
