@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatOutputReference.h"
 #include "Services/MixtormatPaths.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
@@ -360,6 +361,177 @@ namespace
 		return Group ? &Group->Children : nullptr;
 	}
 
+	TArray<FMixtormatLayerChild> CopyChildSubtree(TArray<FMixtormatLayerChild> Copies,
+		const FGuid OldOwnerId, const FGuid NewOwnerId)
+	{
+		TMap<FGuid, FGuid> ChildIdRemap;
+		for (FMixtormatLayerChild& Copy : Copies)
+		{
+			const FGuid OldId = Copy.ChildId;
+			Copy.SourceLayerId.Invalidate();
+			Copy.SourceChildId.Invalidate();
+			MixtormatParameterBinding::RegenerateChildIdentity(Copy);
+			ChildIdRemap.Add(OldId, Copy.ChildId);
+		}
+		const auto RemapPair = [&ChildIdRemap, OldOwnerId, NewOwnerId](FGuid& OwnerId, FGuid& ChildId)
+		{
+			if (OwnerId == OldOwnerId)
+			{
+				if (const FGuid* NewId = ChildIdRemap.Find(ChildId))
+				{
+					OwnerId = NewOwnerId;
+					ChildId = *NewId;
+				}
+			}
+		};
+		for (FMixtormatLayerChild& Copy : Copies)
+		{
+			if (const FGuid* Owner = ChildIdRemap.Find(Copy.ScopeOwnerChildId))
+			{
+				Copy.ScopeOwnerChildId = *Owner;
+			}
+			// Only addresses inside the copied subtree follow it; arbitrary producers stay external.
+			RemapPair(Copy.OutputReference.SourceLayerId, Copy.OutputReference.SourceChildId);
+			RemapPair(Copy.BoundaryId.RegionIdsSource.SourceLayerId, Copy.BoundaryId.RegionIdsSource.SourceChildId);
+			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
+			for (FMixtormatParameterBinding& Binding : Copy.ParameterBindings)
+			{
+				RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+				RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+			}
+		}
+		return Copies;
+	}
+
+	bool IsRegionIdsReference(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::OutputReference
+			&& Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+	}
+
+	bool MakeRegionIdsReference(const FMixtormatLayerChild& Source,
+		const FMixtormatChildAddress& Address, FMixtormatLayerChild& Reference)
+	{
+		Reference = FMixtormatLayerChild();
+		Reference.Type = EMixtormatLayerChildType::OutputReference;
+		if (IsRegionIdsReference(Source))
+		{
+			Reference.OutputReference = Source.OutputReference;
+			Reference.OutputReference.bEnabled = true;
+			return Reference.OutputReference.HasSource();
+		}
+		const FMixtormatChildCapabilities Caps = GetChildCapabilities(Source);
+		const FMixtormatPublishedOutputDesc* Output = Caps.Outputs.FindByPredicate(
+			[](const FMixtormatPublishedOutputDesc& Candidate)
+			{
+				return Candidate.bCopyableAsField
+					&& Candidate.FieldKind == EMixtormatPublishedFieldKind::RegionIds;
+			});
+		if (!Output || !Address.IsValid()) { return false; }
+		Reference.OutputReference.SourceLayerId = Address.OwnerId;
+		Reference.OutputReference.SourceChildId = Address.ChildId;
+		Reference.OutputReference.OutputName = Output->Name;
+		Reference.OutputReference.Kind = Output->FieldKind;
+		return true;
+	}
+
+	bool ValidateRegionIdsPlacement(const FMixtormatBindingScope& Scope,
+		const FMixtormatLayerChild& Child, const FGuid OwnerId, const int32 InsertIndex)
+	{
+		TArray<FMixtormatLayer> Layers = Scope.GetLayers();
+		TArray<FMixtormatLayerGroup> Groups = Scope.Groups ? *Scope.Groups : TArray<FMixtormatLayerGroup>();
+		FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, OwnerId);
+		FMixtormatLayer* Layer = Layers.FindByPredicate(
+			[OwnerId](const FMixtormatLayer& Candidate) { return Candidate.LayerId == OwnerId; });
+		TArray<FMixtormatLayerChild>* Children = Group ? &Group->Children : Layer ? &Layer->Children : nullptr;
+		if (!Children) { return false; }
+		FMixtormatLayerChild Proposed = Child;
+		// Validate the edge even when its row is currently bypassed; paste retains authored enable state.
+		Proposed.OutputReference.bEnabled = true;
+		const int32 Existing = FindChildById(*Children, Child.ChildId);
+		if (Existing != INDEX_NONE) { (*Children)[Existing] = Proposed; }
+		else
+		{
+			if (InsertIndex < 0 || InsertIndex > Children->Num()) { return false; }
+			Children->Insert(Proposed, InsertIndex);
+		}
+		TArray<FMixtormatLayer> Effective;
+		MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, Effective);
+		bool bValidated = false;
+		for (const FMixtormatLayer& Member : Effective)
+		{
+			if ((Group ? Member.GroupId != OwnerId : Member.LayerId != OwnerId) || !Member.bEnabled) { continue; }
+			const FGuid EffectiveId = Group
+				? MixtormatLayerGroups::MakeEffectiveChildId(OwnerId, Child.ChildId, Member.LayerId) : Child.ChildId;
+			const FMixtormatLayerChild* Placement = Member.Children.FindByPredicate(
+				[EffectiveId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == EffectiveId; });
+			if (!Placement || !MixtormatOutputReferences::ValidateDependency(Effective,
+				Member.LayerId, EffectiveId, Placement->OutputReference)) { return false; }
+			bValidated = true;
+		}
+		return bValidated;
+	}
+
+	bool IsPublishedSourceEnabled(const FMixtormatBindingScope& Scope, const FGuid OwnerId, const FGuid ChildId,
+		TSet<FGuid>* ActiveSources = nullptr)
+	{
+		TSet<FGuid> LocalSources;
+		TSet<FGuid>& Active = ActiveSources ? *ActiveSources : LocalSources;
+		if (!ChildId.IsValid() || Active.Contains(ChildId)) { return false; }
+		Active.Add(ChildId);
+		const TArray<FMixtormatLayerChild>* Children = FindChildrenInScope(Scope, OwnerId);
+		const int32 Index = Children ? FindChildById(*Children, ChildId) : INDEX_NONE;
+		if (!Children || !Children->IsValidIndex(Index)) { return false; }
+		for (const FMixtormatLayer& Layer : Scope.GetLayers())
+		{
+			if (Layer.LayerId == OwnerId && !Layer.bEnabled) { return false; }
+			if (Layer.LayerId == OwnerId && Scope.Groups)
+			{
+				const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(*Scope.Groups, Layer.GroupId);
+				if (Group && !Group->bEnabled) { return false; }
+			}
+		}
+		if (Scope.Groups)
+		{
+			const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(*Scope.Groups, OwnerId);
+			if (Group && (!Group->bEnabled || !Scope.GetLayers().ContainsByPredicate(
+				[OwnerId](const FMixtormatLayer& Layer) { return Layer.GroupId == OwnerId && Layer.bEnabled; })))
+			{
+				return false;
+			}
+		}
+		const FMixtormatLayerChild& Child = (*Children)[Index];
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::PatternId: if (!Child.PatternId.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::Filter: if (!Child.Filter.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::CombineId: if (!Child.CombineId.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::IdGroup: if (!Child.IdGroup.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::OutputReference: if (!Child.OutputReference.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::Generator: if (!Child.Generator.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::Effect: if (!Child.Effect.bEnabled) { return false; } break;
+		default: return false;
+		}
+		FGuid ParentId = Child.ScopeOwnerChildId;
+		TSet<FGuid> Visited;
+		while (ParentId.IsValid())
+		{
+			const int32 ParentIndex = FindChildById(*Children, ParentId);
+			if (Visited.Contains(ParentId) || !Children->IsValidIndex(ParentIndex)) { return false; }
+			Visited.Add(ParentId);
+			const FMixtormatLayerChild& Parent = (*Children)[ParentIndex];
+			if (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled) { return false; }
+			ParentId = Parent.ScopeOwnerChildId;
+		}
+		if (Child.IsInstance()
+			&& !IsPublishedSourceEnabled(Scope, Child.SourceLayerId, Child.SourceChildId, &Active)) { return false; }
+		if (Child.Type == EMixtormatLayerChildType::OutputReference
+			&& (!Child.OutputReference.HasSource() || !IsPublishedSourceEnabled(Scope,
+				Child.OutputReference.SourceLayerId, Child.OutputReference.SourceChildId, &Active))) { return false; }
+		Active.Remove(ChildId);
+		return true;
+	}
+
 	bool CanReadPublishedOutputAt(
 		const FMixtormatBindingScope& Scope,
 		const FMixtormatLayerChild& Child,
@@ -371,13 +543,32 @@ namespace
 		{
 			return true;
 		}
-		// Typed bundles are imported before local producers; only earlier owners can supply them.
-		if (Child.Type == EMixtormatLayerChildType::OutputReference && SourceOwnerId == DestOwnerId)
+		if (IsRegionIdsReference(Child))
 		{
-			return false;
+			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
+			if (!Source) { return false; }
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
+			return Caps.Outputs.ContainsByPredicate([&Child](const FMixtormatPublishedOutputDesc& Output)
+				{
+					return Output.bCopyableAsField && Output.Name == Child.OutputReference.OutputName
+						&& Output.FieldKind == Child.OutputReference.Kind;
+				}) && ValidateRegionIdsPlacement(Scope, Child, DestOwnerId, InsertIndex);
+		}
+		// Flow/UV imports still run before local producers.
+		if (Child.Type == EMixtormatLayerChildType::OutputReference && SourceOwnerId == DestOwnerId) { return false; }
+		const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
+		if (Child.Type == EMixtormatLayerChildType::OutputReference)
+		{
+			if (!Source || !Child.OutputReference.HasSource()) { return false; }
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
+			if (!Caps.Outputs.ContainsByPredicate([&Child](const FMixtormatPublishedOutputDesc& Output)
+				{
+					return Output.bCopyableAsField && Output.Name == Child.OutputReference.OutputName
+						&& Output.FieldKind == Child.OutputReference.Kind;
+				})) { return false; }
 		}
 		using EPlacement = MixtormatParameterBinding::EInstancePlacement;
-		if (!SourceOwnerId.IsValid() || !SourceChildId.IsValid()
+		if (!SourceOwnerId.IsValid() || !SourceChildId.IsValid() || !Source
 			|| MixtormatParameterBinding::ClassifyInstancePlacement(
 				Scope, SourceOwnerId, SourceChildId, DestOwnerId, InsertIndex) != EPlacement::Valid
 			|| (Child.IsInstance() && MixtormatParameterBinding::ClassifyInstancePlacement(
@@ -385,6 +576,7 @@ namespace
 		{
 			return false;
 		}
+
 		if (SourceOwnerId != DestOwnerId)
 		{
 			return true;
@@ -420,6 +612,8 @@ namespace
 		{
 			for (int32 Index = 0; Index < Children.Num(); ++Index)
 			{
+				if (IsRegionIdsReference(Children[Index])
+					&& !IsPublishedSourceEnabled(Scope, OwnerId, Children[Index].ChildId)) { continue; }
 				if (!CanReadPublishedOutputAt(Scope, Children[Index], OwnerId, Index))
 				{
 					return false;
@@ -821,10 +1015,14 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 
 bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
 {
-	const FMixtormatLayerChild* Selected = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-	return Selected
-		&& Selected->IsInstance()
-		&& Selected->SourceChildId == ChildId
+	const FMixtormatLayerChild* Selected = ResolveChildAt(GetSelectedChildAddress());
+	if (!Selected) { return false; }
+	if (Selected->Type == EMixtormatLayerChildType::OutputReference && !Selected->IsInstance())
+	{
+		return Selected->OutputReference.SourceLayerId == OwnerId
+			&& Selected->OutputReference.SourceChildId == ChildId;
+	}
+	return Selected->IsInstance() && Selected->SourceChildId == ChildId
 		&& (!Selected->SourceLayerId.IsValid() || Selected->SourceLayerId == OwnerId);
 }
 
@@ -2416,22 +2614,7 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 		Copies.Add(Layer.Children[CopyIndex]);
 	}
 
-	TMap<FGuid, FGuid> ChildIdRemap;
-	for (FMixtormatLayerChild& Copy : Copies)
-	{
-		const FGuid OldChildId = Copy.ChildId;
-		Copy.SourceLayerId = FGuid();
-		Copy.SourceChildId = FGuid();
-		MixtormatParameterBinding::RegenerateChildIdentity(Copy);
-		ChildIdRemap.Add(OldChildId, Copy.ChildId);
-	}
-	for (FMixtormatLayerChild& Copy : Copies)
-	{
-		if (const FGuid* NewOwnerId = ChildIdRemap.Find(Copy.ScopeOwnerChildId))
-		{
-			Copy.ScopeOwnerChildId = *NewOwnerId;
-		}
-	}
+	Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId);
 
 	const int32 NewChildIndex = InsertAt;
 	for (int32 CopyIndex = 0; CopyIndex < Copies.Num(); ++CopyIndex)
@@ -2749,11 +2932,68 @@ FMixtormatChildAddress SMixtormat::GetDraggedChildAddress(const FMixtormatChildD
 		: MakeChildAddress(Operation.LayerIndex, Operation.ChildIndex);
 }
 
+bool SMixtormat::IsOutputReferenceAvailable(const FMixtormatChildAddress& Address) const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	return Child && Child->Type == EMixtormatLayerChildType::OutputReference
+		&& IsPublishedSourceEnabled(Scope, Address.OwnerId, Address.ChildId)
+		&& CanReadPublishedOutputAt(Scope, *Child, Address.OwnerId, ResolveChildIndexAt(Address));
+}
+
+bool SMixtormat::CanAddIdGroupSource(
+	const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest) const
+{
+	const FMixtormatLayerChild* Producer = ResolveChildAt(Source);
+	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Dest);
+	const int32 OwnerIndex = ResolveChildIndexAt(Dest);
+	FMixtormatLayerChild Reference;
+	if (!Producer || !Children || !Children->IsValidIndex(OwnerIndex)
+		|| (*Children)[OwnerIndex].Type != EMixtormatLayerChildType::IdGroup
+		|| !CanAddScopedChild(*Children, OwnerIndex)
+		|| !MakeRegionIdsReference(*Producer, Source, Reference)) { return false; }
+	Reference.ScopeOwnerChildId = Dest.ChildId;
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	return IsPublishedSourceEnabled(Scope, Source.OwnerId, Source.ChildId)
+		&& IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
+		&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, FindSubtreeEnd(*Children, OwnerIndex));
+}
+
+FReply SMixtormat::AddIdGroupSource(
+	const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest)
+{
+	if (!CanAddIdGroupSource(Source, Dest)) { return FReply::Unhandled(); }
+	FMixtormatLayerChild Reference;
+	MakeRegionIdsReference(*ResolveChildAt(Source), Source, Reference);
+	TArray<FMixtormatLayerChild>* Children = ResolveContainer(Dest);
+	const int32 InsertAt = InsertScopedChild(*Children, ResolveChildIndexAt(Dest), MoveTemp(Reference));
+	if (InsertAt == INDEX_NONE) { return FReply::Unhandled(); }
+	if (Dest.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		FinishGroupChildEdit(Dest.OwnerId, InsertAt);
+	}
+	else
+	{
+		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+			[&Dest](const FMixtormatLayer& Layer) { return Layer.LayerId == Dest.OwnerId; });
+		SelectedGroupId.Invalidate();
+		SelectedGroupChildIndex = INDEX_NONE;
+		SetLayerExpanded(LayerIndex, true);
+		SelectWorkingChild(LayerIndex, InsertAt);
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	}
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
 bool SMixtormat::CanDropChildIntoIdGroup(
-	const FMixtormatChildDragDropOp& Operation,
+	const FMixtormatChildDragDropOp&,
 	const FMixtormatChildAddress Dest) const
 {
-	return CanMoveChildIntoIdGroup(GetDraggedChildAddress(Operation), Dest);
+	const FMixtormatLayerChild* Owner = ResolveChildAt(Dest);
+	// Reserve the group row even for a rejected gesture; it must never move the producer instead.
+	return Owner && Owner->Type == EMixtormatLayerChildType::IdGroup;
 }
 
 FReply SMixtormat::DropChildIntoIdGroup(
@@ -2762,13 +3002,16 @@ FReply SMixtormat::DropChildIntoIdGroup(
 {
 	const FMixtormatChildAddress Source = GetDraggedChildAddress(Operation);
 	const FMixtormatLayerChild* Owner = ResolveChildAt(Dest);
-	const FMixtormatLayerChild* Child = ResolveChildAt(Source);
-	if (!Owner || Owner->Type != EMixtormatLayerChildType::IdGroup || !Child || !IsIdGroupChild(*Child))
+	if (!Owner || Owner->Type != EMixtormatLayerChildType::IdGroup)
 	{
 		return FReply::Unhandled();
 	}
-	// An invalid ID drop must not fall through and become a top-level reorder instead.
-	MoveChildIntoIdGroup(Source, Dest);
+	if (!CanAddIdGroupSource(Source, Dest))
+	{
+		WorkingStatusText = LOCTEXT("IdGroupSourceBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.").ToString();
+		return FReply::Handled();
+	}
+	AddIdGroupSource(Source, Dest);
 	return FReply::Handled();
 }
 
@@ -2893,6 +3136,17 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	{
 		Clipboard.Source = Address;
 	}
+	ChildClipboardScopedRows.Reset();
+	if (!bAsInstance && Child->Type == EMixtormatLayerChildType::IdGroup)
+	{
+		Clipboard.Source = Address;
+		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+		const int32 Root = ResolveChildIndexAt(Address);
+		for (int32 Index = Root + 1; Index < FindSubtreeEnd(*Children, Root); ++Index)
+		{
+			ChildClipboardScopedRows.Add((*Children)[Index]);
+		}
+	}
 	ChildClipboard = MoveTemp(Clipboard);
 }
 
@@ -2960,9 +3214,24 @@ void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FN
 	Clipboard.Payload = MoveTemp(PublishedChild);
 	Clipboard.Source = Address;
 	Clipboard.PublishedOutput = OutputName;
+	ChildClipboardScopedRows.Reset();
 	ChildClipboard = MoveTemp(Clipboard);
 	WorkingStatusText = FText::Format(
 		LOCTEXT("ChildOutputCopied", "{0} output copied"), Output->Label).ToString();
+}
+
+bool SMixtormat::ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) const
+{
+	if (!ChildClipboard.IsSet()) { return false; }
+	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	if (IsRegionIdsReference(Clipboard.Payload))
+	{
+		return MakeRegionIdsReference(Clipboard.Payload, Clipboard.Source, Reference);
+	}
+	// A producer copy/instance becomes an output address here, never a copied producer payload.
+	const FMixtormatLayerChild* Source = ResolveChildAt(Clipboard.Source);
+	return Source && Clipboard.Mode != EMixtormatChildClipboardMode::PublishedOutput
+		&& MakeRegionIdsReference(*Source, Clipboard.Source, Reference);
 }
 
 int32 SMixtormat::ResolvePasteInsertIndex(
@@ -2979,9 +3248,22 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return INDEX_NONE;
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	if (DestContainer->IsValidIndex(AnchorChildIndex)
+		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
+	{
+		FMixtormatLayerChild Reference;
+		if (!CanAddScopedChild(*DestContainer, AnchorChildIndex)
+			|| !ResolveIdGroupPasteReference(Reference)) { return INDEX_NONE; }
+		Reference.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
+		const int32 Insert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
+		const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+		return IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
+			&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, Insert) ? Insert : INDEX_NONE;
+	}
 	const auto ValidateInsert = [this, &Clipboard, DestContainer, &Dest, AnchorChildIndex](int32 Insert, const bool bScoped) -> int32
 	{
 		FMixtormatLayerChild Payload = Clipboard.Payload;
+		Payload.ChildId = FGuid::NewGuid();
 		Payload.ScopeOwnerChildId.Invalidate();
 		Payload.SourceLayerId = Clipboard.Mode == EMixtormatChildClipboardMode::Instance
 			? Clipboard.Source.OwnerId : FGuid();
@@ -3037,21 +3319,47 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		{
 			return INDEX_NONE;
 		}
+		if (Clipboard.Mode == EMixtormatChildClipboardMode::Copy
+			&& Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup)
+		{
+			TArray<FMixtormatLayerChild> Copies;
+			Copies.Add(Clipboard.Payload);
+			Copies[0].ScopeOwnerChildId.Invalidate();
+			Copies.Append(ChildClipboardScopedRows);
+			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+			TArray<FMixtormatLayer> Layers = WorkingLayers;
+			TArray<FMixtormatLayerGroup> Groups = WorkingLayerGroups;
+			TArray<FMixtormatLayerChild>* Projected = nullptr;
+			if (Dest.OwnerType == EMixtormatChildOwnerType::Group)
+			{
+				FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, Dest.OwnerId);
+				Projected = Group ? &Group->Children : nullptr;
+			}
+			else
+			{
+				FMixtormatLayer* Layer = Layers.FindByPredicate(
+					[&Dest](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Dest.OwnerId; });
+				Projected = Layer ? &Layer->Children : nullptr;
+			}
+			if (!Projected) { return INDEX_NONE; }
+			for (int32 Index = 0; Index < Copies.Num(); ++Index)
+			{
+				Projected->Insert(Copies[Index], Insert + Index);
+			}
+			const FMixtormatBindingScope ProjectedScope{Layers, Groups};
+			for (int32 Index = 0; Index < Copies.Num(); ++Index)
+			{
+				if (!CanReadPublishedOutputAt(ProjectedScope, Copies[Index], Dest.OwnerId, Insert + Index))
+				{
+					return INDEX_NONE;
+				}
+			}
+		}
 		// Plain copies of gate/field reference nodes retain their live output dependency too.
 		return CanReadPublishedOutputAt(Scope, Payload, Dest.OwnerId, Insert)
 			&& (!bPublished || PublishedOutputPlacementsValid(Scope)) ? Insert : INDEX_NONE;
 	};
 
-	if (DestContainer->IsValidIndex(AnchorChildIndex)
-		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
-		&& IsIdGroupChild(Clipboard.Payload))
-	{
-		if (!CanAddScopedChild(*DestContainer, AnchorChildIndex))
-		{
-			return INDEX_NONE;
-		}
-		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
-	}
 
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
@@ -3126,12 +3434,11 @@ FText SMixtormat::GetChildPasteReason(
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Dest);
 	if (Container->IsValidIndex(AnchorChildIndex)
-		&& (*Container)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
-		&& IsIdGroupChild(Clipboard.Payload))
+		&& (*Container)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
-			? LOCTEXT("PasteIntoIdGroupReady", "Place inside this ID Group.")
-			: LOCTEXT("PasteIntoIdGroupBlocked", "Requires available nesting depth and valid instance ordering.");
+			? LOCTEXT("PasteIntoIdGroupReady", "Add a live Region IDs source; the producer stays where it is.")
+			: LOCTEXT("PasteIntoIdGroupBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.");
 	}
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
@@ -3249,7 +3556,16 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 	const FMixtormatChildClipboard Clipboard = ChildClipboard.GetValue();
 	int32 FinalInsert = Insert;
 
-	if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance)
+	const bool bIntoIdGroup = DestContainer->IsValidIndex(AnchorChildIndex)
+		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup;
+	if (bIntoIdGroup)
+	{
+		FMixtormatLayerChild Reference;
+		if (!ResolveIdGroupPasteReference(Reference)) { return FReply::Unhandled(); }
+		Reference.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
+		DestContainer->Insert(MoveTemp(Reference), FinalInsert);
+	}
+	else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance)
 	{
 		FMixtormatLayerChild Instance = Clipboard.Payload;
 		Instance.ChildId = FGuid::NewGuid();
@@ -3279,15 +3595,24 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		FMixtormatLayerChild Pasted = Clipboard.Payload;
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
-		// ID fields, including copied outputs, attach to the destination group. Scalar gates
-		// keep their standalone placement unless explicitly pasted as a gating mask.
-		const bool bIntoIdGroup = DestContainer->IsValidIndex(AnchorChildIndex)
-			&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup
-			&& IsIdGroupChild(Pasted);
-		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted) || bIntoIdGroup
+		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted)
 			? (*DestContainer)[AnchorChildIndex].ChildId : FGuid();
-		DestContainer->Insert(MoveTemp(Pasted), FinalInsert);
-		MixtormatParameterBinding::RegenerateChildIdentity((*DestContainer)[FinalInsert]);
+		if (Pasted.Type == EMixtormatLayerChildType::IdGroup)
+		{
+			TArray<FMixtormatLayerChild> Copies;
+			Copies.Add(MoveTemp(Pasted));
+			Copies.Append(ChildClipboardScopedRows);
+			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+			for (int32 Index = 0; Index < Copies.Num(); ++Index)
+			{
+				DestContainer->Insert(MoveTemp(Copies[Index]), FinalInsert + Index);
+			}
+		}
+		else
+		{
+			DestContainer->Insert(MoveTemp(Pasted), FinalInsert);
+			MixtormatParameterBinding::RegenerateChildIdentity((*DestContainer)[FinalInsert]);
+		}
 	}
 
 	if (Dest.OwnerType == EMixtormatChildOwnerType::Layer)
@@ -3521,8 +3846,9 @@ FReply SMixtormat::GoToChildInstanceSource(const FMixtormatChildAddress& Address
 	{
 		return FReply::Unhandled();
 	}
-	const FGuid SourceLayerId = Child->SourceLayerId;
-	const FGuid SourceChildId = Child->SourceChildId;
+	const bool bOutputReference = Child->Type == EMixtormatLayerChildType::OutputReference && !Child->IsInstance();
+	const FGuid SourceLayerId = bOutputReference ? Child->OutputReference.SourceLayerId : Child->SourceLayerId;
+	const FGuid SourceChildId = bOutputReference ? Child->OutputReference.SourceChildId : Child->SourceChildId;
 	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
 	{
 		if (WorkingLayers[SourceLayerIndex].LayerId != SourceLayerId)
@@ -3767,6 +4093,28 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildCopyChildOutputMenu(FMixtormatChildAddress Address)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (const FMixtormatLayerChild* Child = ResolveChildAt(Address))
+	{
+		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
+		{
+			Menu.Item(Output.Label,
+				Output.bCopyableAsMask ? MixtormatIcons::Mask() : MixtormatIcons::Generated(),
+				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
+				{
+					CopyChildOutput(Address, OutputName);
+				}))
+				.Enabled(TAttribute<bool>::CreateLambda([this, Address, OutputName = Output.Name]()
+				{
+					return CanCopyChildOutput(Address, OutputName);
+				}));
+		}
+	}
+	return Menu.Build();
+}
+
 void SMixtormat::AddSharedChildMenuItems(
 	MixtormatMenu::FBuilder& Menu,
 	const FMixtormatChildAddress& Address)
@@ -3792,7 +4140,11 @@ void SMixtormat::AddSharedChildMenuItems(
 		}));
 	if (Child)
 	{
-		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
+		const TArray<FMixtormatPublishedOutputDesc> CopyableOutputs = GetCopyableOutputs(GetChildCapabilities(*Child));
+		Menu.SubMenu(LOCTEXT("CopyChildOutputContext", "Copy Output"), nullptr,
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address))
+			.Enabled(!CopyableOutputs.IsEmpty());
+		for (const FMixtormatPublishedOutputDesc& Output : CopyableOutputs)
 		{
 			FText Label = FText::Format(LOCTEXT("CopyChildGateContext", "Copy Gate · {0}"), Output.Label);
 			if (!Output.bCopyableAsMask)
@@ -3847,6 +4199,21 @@ void SMixtormat::AddSharedChildMenuItems(
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildMoveChildToLayerMenu, LayerIndex, ChildIndex));
 	}
 
+	if (Child && Child->Type == EMixtormatLayerChildType::OutputReference && !bInstance)
+	{
+		Menu.Separator();
+		Menu.Item(LOCTEXT("GoToOutputSourceContext", "Go to Source"),
+			FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.ArrowUp")),
+			FSimpleDelegate::CreateLambda([this, Address]() { GoToChildInstanceSource(Address); }))
+			.Enabled(MixtormatParameterBinding::FindChild(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+				Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId) != nullptr);
+		if (IsRegionIdsReference(*Child))
+		{
+			Menu.SubMenu(LOCTEXT("ReplaceOutputSourceContext", "Source"), nullptr,
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildOutputReferenceSourceMenu, Address))
+				.Enabled(!bInstance);
+		}
+	}
 	if (!bInstance)
 	{
 		return;
@@ -4738,7 +5105,23 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		switch (Child.OutputReference.Kind)
 		{
-		case EMixtormatPublishedFieldKind::RegionIds: return LOCTEXT("IdsReferenceChildName", "IDs Reference");
+		case EMixtormatPublishedFieldKind::RegionIds:
+		{
+			const FMixtormatLayerChild* Source = &Child;
+			TSet<FGuid> Visited;
+			while (Source && IsRegionIdsReference(*Source))
+			{
+				if (Visited.Contains(Source->ChildId))
+				{
+					return LOCTEXT("IdsReferenceCycleName", "Cyclic source › Region IDs");
+				}
+				Visited.Add(Source->ChildId);
+				Source = MixtormatParameterBinding::FindChild(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+					Source->OutputReference.SourceLayerId, Source->OutputReference.SourceChildId);
+			}
+			return FText::Format(LOCTEXT("IdsReferenceProducerName", "{0} › Region IDs"),
+				Source ? GetLayerChildName(*Source) : LOCTEXT("IdsReferenceMissingSource", "Missing source"));
+		}
 		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("FlowReferenceChildName", "Flow Reference");
 		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("UvReferenceChildName", "UVs Reference");
 		}
@@ -5080,6 +5463,9 @@ FReply SMixtormat::RemoveGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	{
 		return FReply::Handled();
 	}
+	const FGuid SelectedChildId = SelectedGroupId == GroupId
+		&& Group->Children.IsValidIndex(SelectedGroupChildIndex)
+		? Group->Children[SelectedGroupChildIndex].ChildId : FGuid();
 	// Anything scoped beneath this child goes with it, the same as removing a layer child: a
 	// blur whose owner has left gates nothing.
 	if (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::IdGroup)
@@ -5094,7 +5480,10 @@ FReply SMixtormat::RemoveGroupChild(const FGuid GroupId, const int32 ChildIndex)
 			return Candidate.ChildId == RemovedId || Candidate.ScopeOwnerChildId == RemovedId;
 		});
 	}
-	SelectedGroupChildIndex = INDEX_NONE;
+	if (SelectedGroupId == GroupId)
+	{
+		SelectedGroupChildIndex = FindChildById(Group->Children, SelectedChildId);
+	}
 	RecordEditHistory();
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
@@ -6370,6 +6759,82 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildIdGroupSourceMenu(const FMixtormatChildAddress Dest)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("IdGroupSourcesCaption", "Region IDs sources"));
+	const FMixtormatLayerChild* Destination = ResolveChildAt(Dest);
+	if (!Destination) { return Menu.Build(); }
+	const bool bAdd = Destination->Type == EMixtormatLayerChildType::IdGroup;
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	const auto AddSources = [this, &Menu, &Scope, &Dest, Destination, bAdd](
+		const EMixtormatChildOwnerType OwnerType, const FGuid OwnerId, const FText& OwnerName,
+		const TArray<FMixtormatLayerChild>& Children)
+	{
+		for (const FMixtormatLayerChild& Producer : Children)
+		{
+			const FMixtormatChildAddress Source{OwnerType, OwnerId, Producer.ChildId};
+			FMixtormatLayerChild Reference;
+			if (!MakeRegionIdsReference(Producer, Source, Reference)) { continue; }
+			Reference.ChildId = Destination->ChildId;
+			Reference.ScopeOwnerChildId = Destination->ScopeOwnerChildId;
+			const bool bAvailable = bAdd ? CanAddIdGroupSource(Source, Dest)
+				: IsRegionIdsReference(*Destination) && !Destination->IsInstance()
+					&& IsPublishedSourceEnabled(Scope, Source.OwnerId, Source.ChildId)
+					&& IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
+					&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, ResolveChildIndexAt(Dest));
+			Menu.Item(FText::Format(LOCTEXT("IdGroupSourceEntry", "{0} / {1}"), OwnerName,
+				GetLayerChildName(Producer)), MixtormatIcons::Generated(),
+				FSimpleDelegate::CreateLambda([this, Dest, Source, Ref = Reference.OutputReference, bAdd]()
+				{
+					if (bAdd) { AddIdGroupSource(Source, Dest); }
+					else { ReplaceOutputReferenceSource(Dest, Ref); }
+				})).Enabled(bAvailable);
+		}
+	};
+	for (const FMixtormatLayer& Layer : WorkingLayers)
+	{
+		AddSources(EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.DisplayName, Layer.Children);
+	}
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		AddSources(EMixtormatChildOwnerType::Group, Group.GroupId, Group.DisplayName, Group.Children);
+	}
+	if (Menu.IsEmpty())
+	{
+		Menu.Item(LOCTEXT("IdGroupNoSources", "No Region IDs outputs"), nullptr, FSimpleDelegate()).Enabled(false);
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildOutputReferenceSourceMenu(const FMixtormatChildAddress Dest)
+{
+	return BuildIdGroupSourceMenu(Dest);
+}
+
+FReply SMixtormat::ReplaceOutputReferenceSource(
+	const FMixtormatChildAddress& Dest, const FMixtormatOutputReference& Reference)
+{
+	FMixtormatLayerChild* Child = ResolveChildAt(Dest);
+	if (!Child || !IsRegionIdsReference(*Child) || Child->IsInstance()
+		|| Reference.Kind != EMixtormatPublishedFieldKind::RegionIds) { return FReply::Unhandled(); }
+	FMixtormatLayerChild Candidate = *Child;
+	Candidate.OutputReference = Reference;
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	if (!IsPublishedSourceEnabled(Scope, Reference.SourceLayerId, Reference.SourceChildId)
+		|| !CanReadPublishedOutputAt(Scope, Candidate, Dest.OwnerId, ResolveChildIndexAt(Dest)))
+	{
+		return FReply::Unhandled();
+	}
+	const bool bEnabled = Child->OutputReference.bEnabled;
+	Child->OutputReference = Reference;
+	Child->OutputReference.bEnabled = bEnabled;
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	SyncSelectedLayerControls();
+	return FReply::Handled();
+}
+
 void SMixtormat::AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Owner);
@@ -6382,6 +6847,8 @@ void SMixtormat::AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixto
 		: FMixtormatAddTarget::Layer(WorkingLayers.IndexOfByPredicate(
 			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; }));
 	Target.ScopeOwnerChildId = Owner.ChildId;
+	Menu.SubMenu(LOCTEXT("IdGroupAddSource", "Add Source"), MixtormatIcons::Generated(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupSourceMenu, Owner));
 	const bool bEnabled = CanCreateChild(Target);
 	Menu.SubMenu(
 		LOCTEXT("IdGroupAddIds", "Add IDs"),

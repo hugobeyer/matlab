@@ -1516,6 +1516,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	uint64 PrefixHash = MixtormatComposeHash::Combine(
 		0x4D6978746F726D61ull,
 		(static_cast<uint64>(static_cast<uint32>(Resolution.X)) << 32) | static_cast<uint32>(Resolution.Y));
+	// Scheduler readiness, Pair/Min shader modes and configurable boundaries change cached results.
+	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
 
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{

@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "MixtormatLayerGroups.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
@@ -3094,15 +3095,83 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupFeatureMenu()
 	};
 
 	Entry(EMixtormatIdGroupMode::Difference, LOCTEXT("IdGroupModeDifference", "Difference"));
+	Entry(EMixtormatIdGroupMode::Pair, LOCTEXT("IdGroupModePair", "Pair"));
 	Entry(EMixtormatIdGroupMode::MaxId, LOCTEXT("IdGroupModeMaxId", "Max ID"));
+	Entry(EMixtormatIdGroupMode::MinId, LOCTEXT("IdGroupModeMinId", "Min ID"));
 	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildCapabilities& Capabilities)
+{
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	const TArray<FMixtormatPublishedOutputDesc> Copyable = GetCopyableOutputs(Capabilities);
+	TSet<FName> PairedCopies;
+	const auto AddOutputRow = [this, &Panel](const FText& Label,
+		const FMixtormatPublishedOutputDesc* Preview, const FMixtormatPublishedOutputDesc* Copy)
+	{
+		FMixtormatChildPreviewOutputSet PreviewSet;
+		if (Preview)
+		{
+			PreviewSet.Primary = FMixtormatPreviewOutputDesc{
+				Preview->Name, Preview->Label, Preview->Kind, Preview->PreviewGapMaskName};
+		}
+		const bool bCopyable = Copy != nullptr;
+		const FName CopyName = Copy ? Copy->Name : NAME_None;
+		AddSliderRow(Panel, MixtormatRow::Make(Label,
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+			[
+				MakeChildOutputPreviewButton(PreviewSet)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+				.Text(LOCTEXT("InspectorCopyChildOutput", "Copy"))
+				.ToolTipText(FText::Format(LOCTEXT("InspectorCopyChildOutputHint", "Copy the live {0} output reference; the producer stays in place."), Label))
+				.IsEnabled_Lambda([this, bCopyable, CopyName]()
+				{
+					return bCopyable && CanCopyChildOutput(GetSelectedChildAddress(), CopyName);
+				})
+				.OnClicked_Lambda([this, CopyName]()
+				{
+					CopyChildOutput(GetSelectedChildAddress(), CopyName);
+					return FReply::Handled();
+				})
+			]));
+	};
+	for (const FMixtormatPublishedOutputDesc& Preview : Capabilities.Outputs)
+	{
+		if (!Preview.bPreviewable) { continue; }
+		const FMixtormatPublishedOutputDesc* Copy = Copyable.FindByPredicate(
+			[&Preview](const FMixtormatPublishedOutputDesc& Candidate) { return Candidate.Name == Preview.Name; });
+		// Typed previews can use a display address distinct from their published field address.
+		if (!Copy)
+		{
+			Copy = Copyable.FindByPredicate([&Preview](const FMixtormatPublishedOutputDesc& Candidate)
+			{
+				return Candidate.bCopyableAsField && Candidate.Kind == Preview.Kind;
+			});
+		}
+		if (Copy) { PairedCopies.Add(Copy->Name); }
+		AddOutputRow(Preview.Label, &Preview, Copy);
+	}
+	for (const FMixtormatPublishedOutputDesc& Copy : Copyable)
+	{
+		if (!PairedCopies.Contains(Copy.Name)) { AddOutputRow(Copy.Label, nullptr, &Copy); }
+	}
+	return SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("InspectorChildOutputsHeading", "OUTPUTS"))
+		.InitiallyExpanded(true)
+		[Panel];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("IdGroupModeLabel", "Mode"),
+		LOCTEXT("IdGroupModeLabel", "Operation"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
 			{
@@ -3111,14 +3180,42 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 				{
 					return FText::GetEmpty();
 				}
-				return Group->Mode == EMixtormatIdGroupMode::MaxId
-					? LOCTEXT("IdGroupModeMaxId", "Max ID")
-					: LOCTEXT("IdGroupModeDifference", "Difference");
+				switch (Group->Mode)
+				{
+				case EMixtormatIdGroupMode::Pair: return LOCTEXT("IdGroupModePair", "Pair");
+				case EMixtormatIdGroupMode::MaxId: return LOCTEXT("IdGroupModeMaxId", "Max ID");
+				case EMixtormatIdGroupMode::MinId: return LOCTEXT("IdGroupModeMinId", "Min ID");
+				default: return LOCTEXT("IdGroupModeDifference", "Difference");
+				}
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu)),
-		LOCTEXT("IdGroupModeHint",
-			"Difference creates a new ID where both children overlap with different IDs. "
-			"Max ID keeps the larger valid ID at each pixel.")));
+		TAttribute<FText>::CreateLambda([this]()
+		{
+			const FMixtormatIdGroup* Group = GetSelectedIdGroup();
+			switch (Group ? Group->Mode : EMixtormatIdGroupMode::Difference)
+			{
+			case EMixtormatIdGroupMode::Pair:
+				return LOCTEXT("IdGroupPairHint", "Hash ordered ID pairs to subdivide overlapping regions. Source order matters; the result does not retain recoverable parent assignments.");
+			case EMixtormatIdGroupMode::MaxId:
+				return LOCTEXT("IdGroupMaxIdHint", "Select the numerically largest valid ID per pixel. This is a numeric selector, not pair subdivision.");
+			case EMixtormatIdGroupMode::MinId:
+				return LOCTEXT("IdGroupMinIdHint", "Select the numerically smallest valid ID per pixel. This is a numeric selector, not pair subdivision.");
+			default:
+				return LOCTEXT("IdGroupDifferenceHint", "Fold ordered Region IDs sources, preserving equal IDs and hashing unequal overlaps.");
+			}
+		})));
+	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("IdGroupSourcesLabel", "Sources"),
+		MixtormatRow::MakeChip(LOCTEXT("IdGroupAddSource", "Add Source"),
+			FOnGetContent::CreateLambda([this]() { return BuildIdGroupSourceMenu(GetSelectedChildAddress()); })),
+		LOCTEXT("IdGroupSourcesHint", "Add live Region IDs references. Reorder or remove their subordinate rows in the stack; producers stay in place.")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
+		LOCTEXT("IdGroupBoundaryWidth", "Boundary Width"),
+		[this]() { return GetSelectedIdGroup(); }, &FMixtormatIdGroup::BoundaryWidth, 1.0, 16.0, 1,
+		LOCTEXT("IdGroupBoundaryWidthHint", "Width of the Boundary output in pixels, from 1 to 16. Does not change the Region IDs output.")));
+	Panel->AddSlot().AutoHeight()
+	[
+		BuildChildOutputsControls(GetChildCapabilitiesForChildType(EMixtormatLayerChildType::IdGroup))
+	];
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedIdGroup() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -3155,6 +3252,67 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 			[
 				Panel
 			]
+		];
+}
+
+bool SMixtormat::HasSelectedOutputReference() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::OutputReference;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
+{
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("OutputReferenceSource", "Source"),
+		SNew(SBox)
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			return Child && !Child->IsInstance()
+				&& Child->OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+		})
+		[
+			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child ? GetLayerChildName(*Child) : FText::GetEmpty();
+			}), FOnGetContent::CreateLambda([this]() { return BuildOutputReferenceSourceMenu(GetSelectedChildAddress()); }))
+		], LOCTEXT("OutputReferenceSourceHint", "A live output address, not a copy of the producer.")));
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+		.Text(LOCTEXT("OutputReferenceGoToSource", "Go to Source"))
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			if (!Child) { return false; }
+			FMixtormatChildAddress Source;
+			Source.OwnerId = Child->IsInstance() ? Child->SourceLayerId : Child->OutputReference.SourceLayerId;
+			Source.ChildId = Child->IsInstance() ? Child->SourceChildId : Child->OutputReference.SourceChildId;
+			Source.OwnerType = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Source.OwnerId)
+				? EMixtormatChildOwnerType::Group : EMixtormatChildOwnerType::Layer;
+			return ResolveChildAt(Source) != nullptr;
+		})
+		.OnClicked_Lambda([this]() { return GoToChildInstanceSource(GetSelectedChildAddress()); })
+	];
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return HasSelectedOutputReference() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("OutputReferenceHeading", "OUTPUT REFERENCE"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SBox)
+				.Visibility_Lambda([this]()
+				{
+					const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+					return Child && Child->OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds
+						? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				[MakeChildOutputPreviewButton(GetPreviewOutputSetForChildType(EMixtormatLayerChildType::OutputReference))])
+			[Panel]
 		];
 }
 
@@ -5923,6 +6081,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.
 							|| HasSelectedGenerator()
+							|| HasSelectedOutputReference()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
@@ -5952,6 +6111,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildReliefIdControls()]
 					+ SScrollBox::Slot()[BuildBoundaryIdControls()]
 					+ SScrollBox::Slot()[BuildIdGroupControls()]
+					+ SScrollBox::Slot()[BuildOutputReferenceControls()]
 					+ SScrollBox::Slot()[BuildCombineIdControls()]
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 					+ SScrollBox::Slot()[BuildCracksControls()]
@@ -5996,6 +6156,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.
 							|| HasSelectedGenerator()
+							|| HasSelectedOutputReference()
 							? EVisibility::Collapsed : EVisibility::Visible;
 					})
 

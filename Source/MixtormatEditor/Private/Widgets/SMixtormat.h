@@ -316,6 +316,15 @@ private:
 	FReply MoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
 	FMixtormatChildAddress GetDraggedChildAddress(const FMixtormatChildDragDropOp& Operation) const;
 	bool CanDropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest) const;
+	bool CanAddIdGroupSource(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest) const;
+	FReply AddIdGroupSource(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
+	bool ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) const;
+	TSharedRef<SWidget> BuildIdGroupSourceMenu(FMixtormatChildAddress Dest);
+	TSharedRef<SWidget> BuildOutputReferenceSourceMenu(FMixtormatChildAddress Dest);
+	FReply ReplaceOutputReferenceSource(const FMixtormatChildAddress& Dest, const FMixtormatOutputReference& Reference);
+	bool HasSelectedOutputReference() const;
+	bool IsOutputReferenceAvailable(const FMixtormatChildAddress& Address) const;
+	TSharedRef<SWidget> BuildOutputReferenceControls();
 	FReply DropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest);
 
 	// Copy takes the payload; Copy as Instance takes the address as well; Copy Output takes one of
@@ -348,6 +357,7 @@ private:
 	// The rows every child row shares, appended to whichever child menu is open (layer or group) so
 	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
 	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Address);
+	TSharedRef<SWidget> BuildCopyChildOutputMenu(FMixtormatChildAddress Address);
 
 	// THE ADD MENU. One taxonomy, two containers.
 	//
@@ -498,6 +508,7 @@ private:
 	TSharedRef<SWidget> BuildBoundaryIdSourceMenu();
 	TSharedRef<SWidget> BuildIdGroupControls();
 	TSharedRef<SWidget> BuildIdGroupFeatureMenu();
+	TSharedRef<SWidget> BuildChildOutputsControls(const FMixtormatChildCapabilities& Capabilities);
 	TSharedRef<SWidget> BuildCombineIdControls();
 	TSharedRef<SWidget> BuildCombineIdModeMenu();
 	TSharedRef<SWidget> BuildCombineIdModeMenuFor(int32 LayerIndex, int32 ChildIndex);
@@ -1460,6 +1471,8 @@ private:
 	// replaces the old bChildClipboardIsInstance bool -- PublishedOutput is a third state that bool
 	// could not express without a second flag.
 	TOptional<FMixtormatChildClipboard> ChildClipboard;
+	// A copied ID Group carries its existing scoped rows, not the producers they reference.
+	TArray<FMixtormatLayerChild> ChildClipboardScopedRows;
 	FEditHistoryState CurrentHistoryState;
 	FSoftObjectPath SelectedSurfacePath;
 	FText SelectedLibrarySurfaceName;

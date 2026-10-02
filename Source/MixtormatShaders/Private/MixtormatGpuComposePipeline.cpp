@@ -668,8 +668,10 @@ namespace MixtormatGpuCompositor
 						LayerIndexById.Add(Layer.LayerId, LayerIndex);
 						for (const FChildRenderData& Child : Layer.Children)
 						{
-							if (Child.Type == EMixtormatLayerChildType::OutputReference)
+							if (Child.Type == EMixtormatLayerChildType::OutputReference
+								&& Child.OutputReference.Source.ChildIndex != INDEX_NONE)
 							{
+								// Includes scoped group inputs and local alias chains before prefix reuse.
 								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
 							}
 							if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds
@@ -818,6 +820,8 @@ namespace MixtormatGpuCompositor
 									LayerCtx.bGeneratedHeight = true;
 								}
 							}
+							// Local references/groups may now consume evaluated generator modules.
+							AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, MAX_int32, false);
 							// UV From IDs may now consume the post-flow layer producer.
 							AddUvIdPasses(Ctx, LayerCtx, Layer);
 						}
@@ -876,6 +880,21 @@ namespace MixtormatGpuCompositor
 						for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 						{
 							const FChildRenderData& Child = Layer.Children[ChildIndex];
+							if (Child.Type == EMixtormatLayerChildType::IdGroup
+								|| Child.Type == EMixtormatLayerChildType::OutputReference
+								|| Child.Type == EMixtormatLayerChildType::CombineId)
+							{
+								// Finalize unavailable inputs at their owning row, with unfiltered maps.
+								// Never execute a future producer to satisfy a local reference.
+								AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex + 1, true);
+								if (Child.Type == EMixtormatLayerChildType::OutputReference
+									&& Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+								{
+									// Non-group scopes are not visited by the group scheduler. Resolve their
+									// own row too, so an unavailable alias cannot vanish from the ID chain.
+									AddRegionIdReferencePass(Ctx, LayerCtx, Layer, Child, true);
+								}
+							}
 							if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds)
 							{
 								// Explicit same-owner addresses need the unfiltered maps; implicit

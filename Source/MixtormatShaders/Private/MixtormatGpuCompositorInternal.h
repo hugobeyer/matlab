@@ -717,6 +717,7 @@ namespace MixtormatGpuCompositor
 	struct FIdGroupRenderData
 	{
 		EMixtormatIdGroupMode Mode = EMixtormatIdGroupMode::Difference;
+		int32 BoundaryWidth = 1;
 	};
 
 	struct FRandomIdRenderData
@@ -1510,9 +1511,15 @@ namespace MixtormatGpuCompositor
 
 	void EnqueueCompose(FRenderRequest&& Request);
 
-	// Typed imports run before producers/UV consumers. Export IDs after deferred producers finish.
+	// Flow/UV imports run before producers. RegionIds also resolve locally as sources finish.
 	void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer);
+	bool AddRegionIdReferencePass(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, bool bFinalizeUnavailable);
+	void AddReadyRegionIdPasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		int32 BeforeChildIndex, bool bFinalizeUnavailable);
 	void AddBoundaryIdPass(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Child);
@@ -1529,6 +1536,11 @@ namespace MixtormatGpuCompositor
 		while (InsertIndex < RegionIdMaps.Num() && RegionIdMaps[InsertIndex].Key < SourceChildIndex)
 		{
 			++InsertIndex;
+		}
+		if (RegionIdMaps.IsValidIndex(InsertIndex) && RegionIdMaps[InsertIndex].Key == SourceChildIndex)
+		{
+			RegionIdMaps[InsertIndex].Value = RegionIds;
+			return;
 		}
 		RegionIdMaps.Insert(TPair<int32, FRDGTextureRef>(SourceChildIndex, RegionIds), InsertIndex);
 	}

@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
+#include "MixtormatParameterBinding.h"
 #include "Preview/SMixtormatLightGizmo.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Widgets/Input/SComboButton.h"
@@ -313,11 +314,9 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 namespace
 {
 	// The producer whose Region IDs an instance or a Region-IDs reference actually reads, found by
-	// following the chain to its end. False when the child is neither, or the chain leaves the
-	// layer list (a group-authored source, a deleted one, a cycle) -- the caller then previews the
-	// child itself, which is what it did before.
+	// following authored layer/group addresses to its end. A missing source or cycle cannot redirect.
 	bool ResolveRegionIdSource(
-		const TArray<FMixtormatLayer>& Layers,
+		const FMixtormatBindingScope& Scope,
 		const FGuid& OwnerLayerId,
 		const FMixtormatLayerChild& Child,
 		FGuid& OutOwnerId,
@@ -325,9 +324,9 @@ namespace
 	{
 		const FMixtormatLayerChild* Current = &Child;
 		FGuid OwnerId = OwnerLayerId;
-		TSet<FGuid> Visited;
+		TArray<TPair<FGuid, FGuid>> Visited;
 		bool bRedirected = false;
-		while (Visited.Num() <= Layers.Num() + 1)
+		while (Current)
 		{
 			FGuid NextOwnerId, NextChildId;
 			if (Current->IsInstance())
@@ -347,18 +346,10 @@ namespace
 			{
 				return bRedirected;
 			}
-			if (Visited.Contains(Current->ChildId))
-			{
-				return false;
-			}
-			Visited.Add(Current->ChildId);
-
-			const FMixtormatLayer* SourceLayer = Layers.FindByPredicate(
-				[&NextOwnerId](const FMixtormatLayer& Candidate) { return Candidate.LayerId == NextOwnerId; });
-			const FMixtormatLayerChild* Next = SourceLayer
-				? SourceLayer->Children.FindByPredicate(
-					[&NextChildId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == NextChildId; })
-				: nullptr;
+			const TPair<FGuid, FGuid> Address(OwnerId, Current->ChildId);
+			if (Visited.Contains(Address)) { return false; }
+			Visited.Add(Address);
+			const FMixtormatLayerChild* Next = MixtormatParameterBinding::FindChild(Scope, NextOwnerId, NextChildId);
 			if (!Next)
 			{
 				return false;
@@ -380,6 +371,53 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 	Target.OutputName = OutputName;
 	Target.Kind = Kind;
 	Target.GapMaskName = GapMaskName;
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	const auto RedirectToSource = [this, &Target, &Scope, Kind](const FGuid OwnerId, const FMixtormatLayerChild& Child)
+	{
+		FGuid SourceOwnerId, SourceChildId;
+		if (Kind != EMixtormatPreviewOutputKind::RegionIds
+			|| !ResolveRegionIdSource(Scope, OwnerId, Child, SourceOwnerId, SourceChildId)) { return false; }
+		Target.OwnerId = SourceOwnerId;
+		Target.ChildId = SourceChildId;
+		if (const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId))
+		{
+			const FMixtormatChildPreviewOutputSet Outputs = GetChildPreviewOutputSet(*Source);
+			if (Outputs.Primary.IsSet())
+			{
+				Target.OutputName = Outputs.Primary.GetValue().Name;
+				Target.GapMaskName = Outputs.Primary.GetValue().GapMaskName;
+			}
+		}
+		if (MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SourceOwnerId))
+		{
+			Target.OwnerId.Invalidate();
+			Target.ChildId.Invalidate();
+			if (const FMixtormatLayer* Member = WorkingLayers.FindByPredicate(
+				[OwnerId, SourceOwnerId](const FMixtormatLayer& Layer)
+				{
+					return Layer.LayerId == OwnerId && Layer.GroupId == SourceOwnerId && Layer.bEnabled;
+				}))
+			{
+				Target.OwnerId = Member->LayerId;
+				Target.ChildId = MixtormatLayerGroups::MakeEffectiveChildId(SourceOwnerId, SourceChildId, Member->LayerId);
+				return true;
+			}
+			int32 First = INDEX_NONE, Last = INDEX_NONE;
+			if (MixtormatLayerGroups::GetGroupRange(WorkingLayers, SourceOwnerId, First, Last))
+			{
+				for (int32 Index = First; Index <= Last; ++Index)
+				{
+					if (WorkingLayers.IsValidIndex(Index) && WorkingLayers[Index].bEnabled)
+					{
+						Target.OwnerId = WorkingLayers[Index].LayerId;
+						Target.ChildId = MixtormatLayerGroups::MakeEffectiveChildId(SourceOwnerId, SourceChildId, Target.OwnerId);
+						break;
+					}
+				}
+			}
+		}
+		return true;
+	};
 
 	if (SelectedLayerIndex != INDEX_NONE)
 	{
@@ -398,13 +436,7 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 		// An instance or reference has no map of its own to show: it reads its source's, so that is
 		// what the eye and the I key preview. The still-valid check re-resolves through here too,
 		// so the preview survives for as long as the instance stays selected.
-		FGuid SourceOwnerId, SourceChildId;
-		if (Kind == EMixtormatPreviewOutputKind::RegionIds && Child
-			&& ResolveRegionIdSource(WorkingLayers, Layer.LayerId, *Child, SourceOwnerId, SourceChildId))
-		{
-			Target.OwnerId = SourceOwnerId;
-			Target.ChildId = SourceChildId;
-		}
+		RedirectToSource(Layer.LayerId, *Child);
 		return Target;
 	}
 
@@ -417,6 +449,7 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 	{
 		return Target;
 	}
+	if (RedirectToSource(SelectedGroupId, Group->Children[SelectedGroupChildIndex])) { return Target; }
 	const FGuid AuthoredChildId = Group->Children[SelectedGroupChildIndex].ChildId;
 
 	// Flatten to one concrete member before this leaves the editor: the compositor never learns
@@ -494,6 +527,10 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	if (!IsGroupChildEnabled(Child))
 	{
 		return false;
+	}
+	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	{
+		return IsOutputReferenceAvailable(GetSelectedChildAddress());
 	}
 	if (Child.Type == EMixtormatLayerChildType::Effect)
 	{

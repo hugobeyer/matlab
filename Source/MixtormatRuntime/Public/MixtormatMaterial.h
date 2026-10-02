@@ -2138,12 +2138,16 @@ struct MIXTORMATRUNTIME_API FMixtormatCombineIdFilter
 UENUM(BlueprintType)
 enum class EMixtormatIdGroupMode : uint8
 {
-	Difference UMETA(DisplayName = "Difference"),
-	MaxId UMETA(DisplayName = "Max ID")
+	Difference = 0 UMETA(DisplayName = "Difference"),
+	MaxId = 1 UMETA(DisplayName = "Max ID"),
+	Pair = 2 UMETA(DisplayName = "Pair"),
+	MinId = 3 UMETA(DisplayName = "Min ID")
 };
 
-// Combines exactly two Region-ID children. Difference creates a stable extra ID where
-// both children overlap with different IDs. Max ID selects the larger valid ID per pixel.
+// Ordered live inputs are ordinary RegionIds OutputReference child rows whose
+// ScopeOwnerChildId names this group's child. Fold them in authored row order.
+// Legacy nested Region-ID producers remain supported; no input payload is duplicated here.
+// Difference preserves equal IDs and hashes unequal overlaps; Max/Min select valid IDs.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatIdGroup
 {
@@ -2154,6 +2158,9 @@ struct MIXTORMATRUNTIME_API FMixtormatIdGroup
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group")
 	EMixtormatIdGroupMode Mode = EMixtormatIdGroupMode::Difference;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ID Group", meta = (ClampMin = "1", ClampMax = "16", UIMin = "1", UIMax = "16"))
+	int32 BoundaryWidth = 1;
 };
 
 USTRUCT(BlueprintType)
@@ -3333,7 +3340,7 @@ enum class EMixtormatLayerChildType : uint8
 	// asking which node produced it -- Pattern, Cluster and Combine are all equally valid sources.
 	UvFromIds UMETA(DisplayName = "UV From IDs"),
 	ReliefFromIds UMETA(DisplayName = "Relief From IDs"),
-	// Appended for serialization safety. Owns exactly two nested Region-ID producers.
+	// Appended for serialization safety. Owns ordered scoped Region-ID references/legacy producers.
 	IdGroup UMETA(DisplayName = "ID Group"),
 	OutputReference UMETA(DisplayName = "Output Reference"),
 	BoundaryFromIds UMETA(DisplayName = "Boundary From IDs")

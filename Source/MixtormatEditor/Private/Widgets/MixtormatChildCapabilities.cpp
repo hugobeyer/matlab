@@ -253,7 +253,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			EMixtormatPreviewOutputKind::WarpedUVGrid, false, false, false, NAME_None,
 			true, EMixtormatPublishedFieldKind::UVMap});
 	}
-	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	if (Child.Type == EMixtormatLayerChildType::OutputReference
+		&& Child.OutputReference.Kind != EMixtormatPublishedFieldKind::RegionIds)
 	{
 		const EMixtormatPublishedFieldKind Kind = Child.OutputReference.Kind;
 		const bool bIds = Kind == EMixtormatPublishedFieldKind::RegionIds;

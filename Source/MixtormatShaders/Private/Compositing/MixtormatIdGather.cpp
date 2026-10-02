@@ -101,18 +101,22 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	if (LayerChild.Type == EMixtormatLayerChildType::OutputReference)
 	{
 		const FMixtormatOutputReference& Reference = LayerChild.OutputReference;
-		const int32 SourceIndex = MixtormatOutputReferences::ResolveEarlierSource(
-			EffectiveLayers, LayerIndex, Reference);
-		if (!Layer.bEnabled || SourceIndex == INDEX_NONE
-			|| (LayerChild.ScopeOwnerChildId.IsValid() && Reference.Kind != EMixtormatPublishedFieldKind::RegionIds))
+		const bool bRegionIds = Reference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+		const int32 ReferencedSourceChildIndex = bRegionIds
+			? MixtormatOutputReferences::ResolveSource(EffectiveLayers, LayerIndex, SourceChildIndex, Reference)
+			: MixtormatOutputReferences::ResolveEarlierSource(EffectiveLayers, LayerIndex, Reference);
+		if (!Layer.bEnabled || !Reference.bEnabled || (!bRegionIds && ReferencedSourceChildIndex == INDEX_NONE)
+			|| (LayerChild.ScopeOwnerChildId.IsValid() && !bRegionIds))
 		{
 			return true;
 		}
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::OutputReference;
+		// This is the destination row, never the referenced producer's authored index.
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FOutputReferenceRenderData& Out = ChildData.OutputReference;
-		Out.Source = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
+		// Retain invalid RegionIds rows so they shadow older maps rather than select a nearest source.
+		Out.Source = {Reference.SourceLayerId, ReferencedSourceChildIndex, Reference.OutputName};
 		Out.Kind = Reference.Kind;
 		Out.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
 		Out.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
@@ -274,6 +278,7 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		ChildData.Type = EMixtormatLayerChildType::IdGroup;
 		ChildData.SourceChildIndex = SourceChildIndex;
 		ChildData.IdGroup.Mode = Group.Mode;
+		ChildData.IdGroup.BoundaryWidth = FMath::Clamp(Group.BoundaryWidth, 1, 16);
 		return true;
 	}
 

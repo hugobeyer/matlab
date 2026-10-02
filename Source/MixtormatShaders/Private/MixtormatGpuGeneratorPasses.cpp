@@ -1939,17 +1939,17 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 	{
 		if (Child.Type != EMixtormatLayerChildType::OutputReference) { continue; }
 		const FOutputReferenceRenderData& Reference = Child.OutputReference;
+		if (Reference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+		{
+			AddRegionIdReferencePass(Ctx, LayerCtx, Layer, Child, false);
+			continue;
+		}
 		const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Reference.Source);
 		if (!Source || Source->Kind != Reference.Kind || !Source->IsComplete()) { continue; }
 		// Copy the bundle before Add can reallocate the registry. No producer is reevaluated.
 		const FPublishedField Field = *Source;
 		Ctx.PublishedFieldOutputs.Add(
 			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Reference.Source.Output}, Field);
-		if (Reference.Kind == EMixtormatPublishedFieldKind::RegionIds)
-		{
-			PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Field.Texture);
-			continue;
-		}
 		if (Reference.Kind == EMixtormatPublishedFieldKind::UVMap)
 		{
 			LayerCtx.ReferencedUV = Field.Texture;
@@ -1998,6 +1998,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	for (const FChildRenderData& Child : Layer.Children)
 	{
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		// Only already-published maps may feed groups/references before this module.
+		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		FGeneratorBundle Module;
 		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
 		switch (Child.Generator.Type)

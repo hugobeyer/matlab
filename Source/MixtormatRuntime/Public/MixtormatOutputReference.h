@@ -61,4 +61,23 @@ namespace MixtormatOutputReferences
 		const TArray<FMixtormatLayer>& Layers,
 		int32 DestinationLayerIndex,
 		const FMixtormatOutputReference& Reference);
+
+	// Effective layers (expand layer groups first). Destination must be an existing child;
+	// Reference replaces that child's field edge for validation, so editor proposals need not
+	// mutate the asset. RegionIds may read completed local producers or earlier layers only.
+	// Checks enabled producers, scope completion order, group/input and Combine dependencies,
+	// and active-path cycles. Availability of the actual texture is checked by the compositor.
+	// Flow/UV retain their existing earlier-layer-only contract.
+	MIXTORMATRUNTIME_API bool ValidateDependency(
+		const TArray<FMixtormatLayer>& Layers,
+		const FGuid& DestinationLayerId,
+		const FGuid& DestinationChildId,
+		const FMixtormatOutputReference& Reference);
+
+	// Returns the authored source index only after ValidateDependency succeeds.
+	MIXTORMATRUNTIME_API int32 ResolveSource(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 DestinationLayerIndex,
+		int32 DestinationChildIndex,
+		const FMixtormatOutputReference& Reference);
 }

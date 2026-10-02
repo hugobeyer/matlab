@@ -1676,8 +1676,11 @@ namespace MixtormatGpuCompositor
 			}
 			if (Child->Type == EMixtormatLayerChildType::OutputReference)
 			{
-				const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Child->OutputReference.Source);
-				bHashed = Source && Source->bHashedIds;
+				// Preserve the resolved alias metadata, including invalid and local references.
+				// Its local source may sort after a group output during layer-end publication.
+				const FPublishedField* Alias = Ctx.PublishedFieldOutputs.Find(
+					FPublishedFieldKey{Layer.LayerId, Map.Key, FName(TEXT("RegionIds"))});
+				bHashed = !Alias || Alias->bHashedIds;
 			}
 			Ctx.PublishedFieldOutputs.Add(
 				FPublishedFieldKey{Layer.LayerId, Map.Key, FName(TEXT("RegionIds"))},
@@ -1761,6 +1764,64 @@ namespace MixtormatGpuCompositor
 				Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution, LayerCtx.LayerIndex));
 	}
 
+	bool AddRegionIdReferencePass(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, const bool bFinalizeUnavailable)
+	{
+		if (!Layer.bEnabled || Child.Type != EMixtormatLayerChildType::OutputReference
+			|| Child.OutputReference.Kind != EMixtormatPublishedFieldKind::RegionIds) { return false; }
+		if (LayerCtx.RegionIdMaps.ContainsByPredicate([&](const TPair<int32, FRDGTextureRef>& Map)
+		{
+			return Map.Key == Child.SourceChildIndex && Map.Value
+				&& Map.Value->Desc.Format == PF_R32_UINT && Map.Value->Desc.Extent == Ctx.Request.Resolution;
+		})) { return true; }
+		const FPublishedFieldKey& Address = Child.OutputReference.Source;
+		FPublishedField Field;
+		Field.Kind = EMixtormatPublishedFieldKind::RegionIds;
+		const bool bLocal = Address.LayerId == Layer.LayerId;
+		const bool bValidAddress = Address.ChildIndex >= 0
+			&& Address.Output == FName(TEXT("RegionIds"))
+			&& (!bLocal || Address.ChildIndex < Child.SourceChildIndex);
+		if (bValidAddress && bLocal && Address.ChildIndex < Child.SourceChildIndex)
+		{
+			const TPair<int32, FRDGTextureRef>* Source = LayerCtx.RegionIdMaps.FindByPredicate(
+				[&](const TPair<int32, FRDGTextureRef>& Map) { return Map.Key == Address.ChildIndex; });
+			if (Source) { Field.Texture = Source->Value; }
+			// Local aliases may carry full-width IDs. Never treat them as direct pixel addresses.
+			Field.bHashedIds = true;
+		}
+		else if (bValidAddress && !bLocal)
+		{
+			const int32 SourceLayer = Ctx.Request.Layers.IndexOfByPredicate(
+				[&](const FLayerRenderData& Candidate) { return Candidate.LayerId == Address.LayerId; });
+			if (SourceLayer >= 0 && SourceLayer < LayerCtx.LayerIndex)
+			{
+				const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Address);
+				if (Source && Source->Kind == EMixtormatPublishedFieldKind::RegionIds) { Field = *Source; }
+			}
+		}
+		if (!Field.IsComplete() || Field.Texture->Desc.Extent != Ctx.Request.Resolution)
+		{
+			// A valid local source may still be waiting for its generator or nested group.
+			if (bValidAddress && bLocal && !bFinalizeUnavailable) { return false; }
+			Field.Texture = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Ctx.Request.Resolution, PF_R32_UINT, FClearValueBinding::None,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.OutputReference.InvalidIds"));
+			AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(Field.Texture), 0xffffffffu);
+			Field.bHashedIds = true;
+		}
+		PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex, Field.Texture);
+		Ctx.PublishedFieldOutputs.Add(
+			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("RegionIds"))}, Field);
+		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::RegionIds,
+			NAME_None, LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewRegionIdsBlitPass(Ctx.GraphBuilder, Field.Texture, nullptr,
+				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Ctx.Request.Resolution);
+		}
+		return true;
+	}
+
 	FRDGTextureRef AddIdGroupPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -1791,7 +1852,8 @@ namespace MixtormatGpuCompositor
 				{
 					return Map.Key == Candidate.SourceChildIndex;
 				});
-			if (!Entry || !Entry->Value)
+			if (!Entry || !Entry->Value || Entry->Value->Desc.Format != PF_R32_UINT
+				|| Entry->Value->Desc.Extent != Size)
 			{
 				// A Combine with no preceding producer contributes no IDs.
 				continue;
@@ -1801,6 +1863,7 @@ namespace MixtormatGpuCompositor
 				GroupIds = Entry->Value; // One producer is an exact passthrough.
 				continue;
 			}
+
 			const FRDGTextureRef Folded = GraphBuilder.CreateTexture(IdDesc, TEXT("Mixtormat.IdGroup.Ids"));
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupResolveCS::FParameters>();
 			P->OutputSize = Size;
@@ -1834,7 +1897,7 @@ namespace MixtormatGpuCompositor
 		{
 			auto* P = GraphBuilder.AllocParameters<FMixtormatIdGroupBoundaryCS::FParameters>();
 			P->OutputSize = Size;
-			P->OutlineWidth = 1;
+			P->OutlineWidth = FMath::Clamp(Child.IdGroup.BoundaryWidth, 1, 16);
 			P->GroupIds = GroupIds;
 			P->OutputBoundary = GraphBuilder.CreateUAV(Boundary);
 			TShaderMapRef<FMixtormatIdGroupBoundaryCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1851,6 +1914,65 @@ namespace MixtormatGpuCompositor
 				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
 		}
 		return GroupIds;
+	}
+
+	void AddReadyRegionIdPasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const int32 BeforeChildIndex, const bool bFinalizeUnavailable)
+	{
+		if (!Layer.bEnabled) { return; }
+		const auto IsPublished = [&](const int32 Index)
+		{
+			return LayerCtx.RegionIdMaps.ContainsByPredicate(
+				[&](const TPair<int32, FRDGTextureRef>& Map)
+				{
+					return Map.Key == Index && Map.Value && Map.Value->Desc.Format == PF_R32_UINT
+						&& Map.Value->Desc.Extent == Ctx.Request.Resolution;
+				});
+		};
+		TSet<int32> ActiveScopes;
+		TFunction<bool(int32, int32)> ResolveScope;
+		ResolveScope = [&](const int32 ScopeOwner, const int32 Depth)
+		{
+			if (Depth > 128 || ActiveScopes.Contains(ScopeOwner)) { return false; }
+			ActiveScopes.Add(ScopeOwner);
+			bool bReady = true;
+			for (const FChildRenderData& Child : Layer.Children)
+			{
+				if (Child.ScopeOwnerSourceChildIndex != ScopeOwner
+					|| (ScopeOwner == INDEX_NONE && Child.SourceChildIndex >= BeforeChildIndex)) { continue; }
+				if (Child.Type == EMixtormatLayerChildType::OutputReference
+					&& Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+				{
+					if (!AddRegionIdReferencePass(Ctx, LayerCtx, Layer, Child, bFinalizeUnavailable)) { bReady = false; }
+				}
+				else if (Child.Type == EMixtormatLayerChildType::IdGroup && !IsPublished(Child.SourceChildIndex))
+				{
+					if (ResolveScope(Child.SourceChildIndex, Depth + 1))
+					{
+						PublishRegionIds(LayerCtx.RegionIdMaps, Child.SourceChildIndex,
+							AddIdGroupPasses(Ctx, LayerCtx, Layer, Child));
+					}
+					else { bReady = false; }
+				}
+				else if (Child.Type == EMixtormatLayerChildType::CombineId)
+				{
+					AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
+					// A pending Combine must not freeze its enclosing group's partial fold.
+					// At the authored row, legacy unavailable producers still contribute no IDs.
+					if (!IsPublished(Child.SourceChildIndex) && !bFinalizeUnavailable) { bReady = false; }
+				}
+				else if ((Child.Type == EMixtormatLayerChildType::PatternId
+					|| Child.Type == EMixtormatLayerChildType::Filter)
+					&& !IsPublished(Child.SourceChildIndex) && !bFinalizeUnavailable)
+				{
+					bReady = false;
+				}
+			}
+			ActiveScopes.Remove(ScopeOwner);
+			return bReady;
+		};
+		ResolveScope(INDEX_NONE, 0);
 	}
 
 	// Schedule independent producers early for generators. Breakup-dependent Combine
@@ -2207,30 +2329,9 @@ namespace MixtormatGpuCompositor
 				PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, RegionIds);
 			}
 
-			// Resolve each scope in authored order. Nested groups finish before a sibling
-			// Combine reads them, and before the enclosing group folds their output.
-			TFunction<void(int32)> ResolveScope;
-			ResolveScope = [&](const int32 ScopeOwner)
-			{
-				for (const FChildRenderData& ScopedChild : Layer.Children)
-				{
-					if (ScopedChild.ScopeOwnerSourceChildIndex != ScopeOwner)
-					{
-						continue;
-					}
-					if (ScopedChild.Type == EMixtormatLayerChildType::IdGroup)
-					{
-						ResolveScope(ScopedChild.SourceChildIndex);
-						PublishRegionIds(RegionIdMaps, ScopedChild.SourceChildIndex,
-							AddIdGroupPasses(Ctx, LayerCtx, Layer, ScopedChild));
-					}
-					else if (ScopedChild.Type == EMixtormatLayerChildType::CombineId)
-					{
-						AddCombineIdProducerPass(Ctx, LayerCtx, Layer, ScopedChild);
-					}
-				}
-			};
-			ResolveScope(INDEX_NONE);
+			// Only resolve groups whose references already have their exact source maps.
+			// Generator-dependent groups are retried after module publication, not frozen empty.
+			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, MAX_int32, false);
 		}
 	}
 
