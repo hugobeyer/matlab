@@ -137,19 +137,47 @@ namespace MixtormatComposeHash
 		{
 			FScriptSetHelper Helper(Set, ValuePtr);
 			Value(Helper.Num());
+			TArray<uint64> ElementHashes;
+			ElementHashes.Reserve(Helper.Num());
+			TSet<const UObject*> ContainerVisited = Visited;
 			for (FScriptSetHelper::FIterator It(Helper); It; ++It)
 			{
-				Property(Set->ElementProp, Helper.GetElementPtr(It));
+				// Preserve depth/skips and ancestor visits, but isolate sibling traversal state.
+				FHasher ElementHasher = *this;
+				ElementHasher.Hash = FHasher().Hash;
+				ElementHasher.Property(Set->ElementProp, Helper.GetElementPtr(It));
+				ElementHashes.Add(ElementHasher.Get());
+				ContainerVisited.Append(ElementHasher.Visited);
+			}
+			Visited = MoveTemp(ContainerVisited);
+			ElementHashes.Sort();
+			for (const uint64 ElementHash : ElementHashes)
+			{
+				Value(ElementHash);
 			}
 		}
 		else if (const FMapProperty* Map = CastField<FMapProperty>(Prop))
 		{
 			FScriptMapHelper Helper(Map, ValuePtr);
 			Value(Helper.Num());
+			TArray<uint64> EntryHashes;
+			EntryHashes.Reserve(Helper.Num());
+			TSet<const UObject*> ContainerVisited = Visited;
 			for (FScriptMapHelper::FIterator It(Helper); It; ++It)
 			{
-				Property(Map->KeyProp, Helper.GetKeyPtr(It));
-				Property(Map->ValueProp, Helper.GetValuePtr(It));
+				// Key and value share one traversal; other entries cannot affect it.
+				FHasher EntryHasher = *this;
+				EntryHasher.Hash = FHasher().Hash;
+				EntryHasher.Property(Map->KeyProp, Helper.GetKeyPtr(It));
+				EntryHasher.Property(Map->ValueProp, Helper.GetValuePtr(It));
+				EntryHashes.Add(EntryHasher.Get());
+				ContainerVisited.Append(EntryHasher.Visited);
+			}
+			Visited = MoveTemp(ContainerVisited);
+			EntryHashes.Sort();
+			for (const uint64 EntryHash : EntryHashes)
+			{
+				Value(EntryHash);
 			}
 		}
 		else if (CastField<FSoftObjectProperty>(Prop))

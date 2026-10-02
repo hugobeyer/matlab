@@ -185,8 +185,13 @@ bool SMixtormat::ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) c
 
 int32 SMixtormat::ResolvePasteInsertIndex(
 	const FMixtormatChildAddress& Dest,
-	const int32 AnchorChildIndex) const
+	const int32 AnchorChildIndex,
+	FGuid* OutScopeOwnerChildId) const
 {
+	if (OutScopeOwnerChildId)
+	{
+		OutScopeOwnerChildId->Invalidate();
+	}
 	if (!ChildClipboard.IsSet())
 	{
 		return INDEX_NONE;
@@ -209,7 +214,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
 			&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, Insert) ? Insert : INDEX_NONE;
 	}
-	const auto ValidateInsert = [this, &Clipboard, DestContainer, &Dest, AnchorChildIndex](int32 Insert, const bool bScoped) -> int32
+	const auto ValidateInsert = [this, &Clipboard, DestContainer, &Dest, AnchorChildIndex, OutScopeOwnerChildId](int32 Insert, const bool bScoped) -> int32
 	{
 		FMixtormatLayerChild Payload = Clipboard.Payload;
 		Payload.ChildId = FGuid::NewGuid();
@@ -303,6 +308,10 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 					return INDEX_NONE;
 				}
 			}
+		}
+		if (OutScopeOwnerChildId)
+		{
+			*OutScopeOwnerChildId = Payload.ScopeOwnerChildId;
 		}
 		// Plain copies of gate/field reference nodes retain their live output dependency too.
 		return CanReadPublishedOutputAt(Scope, Payload, Dest.OwnerId, Insert)
@@ -496,7 +505,8 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 
 FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 AnchorChildIndex)
 {
-	const int32 Insert = ResolvePasteInsertIndex(Dest, AnchorChildIndex);
+	FGuid ScopeOwnerChildId;
+	const int32 Insert = ResolvePasteInsertIndex(Dest, AnchorChildIndex, &ScopeOwnerChildId);
 	TArray<FMixtormatLayerChild>* DestContainer = ResolveContainer(Dest);
 	if (Insert == INDEX_NONE || !DestContainer)
 	{
@@ -544,8 +554,7 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		FMixtormatLayerChild Pasted = Clipboard.Payload;
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
-		Pasted.ScopeOwnerChildId = IsGeneratorFlow(Pasted)
-			? (*DestContainer)[AnchorChildIndex].ChildId : FGuid();
+		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
 		if (Pasted.Type == EMixtormatLayerChildType::IdGroup)
 		{
 			TArray<FMixtormatLayerChild> Copies;

@@ -205,6 +205,7 @@ namespace
 	const FMixtormatParameterAuthoringEntry* FindEffective(
 		const FMixtormatParameterDefinitionKey& Key)
 	{
+		MixtormatParameterAuthoring::LoadFromDisk();
 		if (const FMixtormatParameterAuthoringEntry* Pending = PendingEntries().Find(Key))
 		{
 			return Pending;

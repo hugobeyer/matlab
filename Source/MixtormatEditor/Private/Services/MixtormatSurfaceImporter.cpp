@@ -1092,6 +1092,11 @@ FMixtormatSurfaceDeletionResult FMixtormatSurfaceImporter::DeleteShippedSurface(
 		return Result;
 	}
 	UMixtormatSurface* Surface = Cast<UMixtormatSurface>(SurfacePath.TryLoad());
+	if (!Surface)
+	{
+		Result.Errors.Add(TEXT("Built-in surface could not be loaded for deletion; no files or assets were deleted."));
+		return Result;
+	}
 	const FString BaseName = Surface->SourceTextureBaseName;
 	FString SourceRoot = GetPluginTexturesRoot();
 	FPaths::NormalizeDirectoryName(SourceRoot);

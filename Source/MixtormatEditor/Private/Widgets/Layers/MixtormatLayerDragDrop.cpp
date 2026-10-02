@@ -41,7 +41,8 @@ namespace MixtormatLayersPrivate
 
 FReply SMixtormat::HandleLayerDropped(
 	const int32 SourceLayerIndex,
-	const int32 TargetLayerIndex)
+	const int32 TargetLayerIndex,
+	const bool bRecordHistory)
 {
 	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
 		|| !WorkingLayers.IsValidIndex(TargetLayerIndex)
@@ -87,6 +88,11 @@ FReply SMixtormat::HandleLayerDropped(
 		WorkingStatusText = JoinedGroupId.IsValid()
 			? TEXT("Moved layer into group")
 			: TEXT("Moved layer out of its group");
+	}
+	if (bRecordHistory)
+	{
+		RecordEditHistory();
+		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	}
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
@@ -318,11 +324,12 @@ FReply SMixtormat::HandleLayerDroppedOnGroup(
 	// The top of the run. A layer joining a group has to land inside it, and the top is the one
 	// position that is unambiguous whether the layer came from above or below.
 	const int32 TargetIndex = SourceLayerIndex < FirstIndex ? LastIndex : FirstIndex;
-	const FReply Result = HandleLayerDropped(SourceLayerIndex, TargetIndex);
+	// Record once below, after the explicit group membership is finalized.
+	const FReply Result = HandleLayerDropped(SourceLayerIndex, TargetIndex, false);
 
 	// HandleLayerDropped derives membership from the neighbours, which is right for a reorder but
 	// not for this: the user named the group, so say so rather than letting adjacency decide.
-	if (WorkingLayers.IsValidIndex(TargetIndex))
+	if (Result.IsEventHandled() && WorkingLayers.IsValidIndex(TargetIndex))
 	{
 		WorkingLayers[TargetIndex].GroupId = TargetGroupId;
 		MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
@@ -591,9 +598,6 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	}
 	SetLayerExpanded(DestLayerIndex, true);
 	SelectWorkingChild(DestLayerIndex, InsertAt);
-	// Recorded here, unlike MoveChildToLayer/MoveChildToGroup, which record nothing -- see the note
-	// on those two. Un-sharing is destructive to every other member of the group, so it is the last
-	// move that should be missing from the undo stack.
 	RecordEditHistory();
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
@@ -602,10 +606,7 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	return FReply::Handled();
 }
 
-// Note: neither this nor MoveChildToGroup calls RecordEditHistory or marks the document dirty,
-// so a move between two containers is currently absent from the undo stack. MoveGroupChildToLayer
-// does record, because leaving a group destroys the child for every other member -- but the
-// inconsistency is real and predates it.
+
 FReply SMixtormat::MoveChildToLayer(
 	const int32 SourceLayerIndex,
 	const int32 ChildIndex,
@@ -668,6 +669,8 @@ FReply SMixtormat::MoveChildToLayer(
 
 	SetLayerExpanded(DestLayerIndex, true);
 	SelectWorkingChild(DestLayerIndex, InsertAt);
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();
@@ -726,6 +729,8 @@ FReply SMixtormat::MoveChildToGroup(
 
 	CollapsedGroupIds.Remove(GroupId);
 	SelectGroupChild(GroupId, InsertAt);
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();

@@ -259,7 +259,7 @@ private:
 	FReply AddWorkingLayer(EMixtormatLayerType LayerType);
 	FReply DuplicateSelectedLayer();
 	FReply DeleteSelectedLayer();
-	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex);
+	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex, bool bRecordHistory = true);
 	FReply SelectWorkingLayer(int32 LayerIndex);
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
@@ -345,7 +345,8 @@ private:
 	// Where the clipboard's child may land at Dest, given the row the paste was asked from.
 	// INDEX_NONE when nothing in Dest can take it (wrong kind for Dest, or -- for Mode::Instance --
 	// no position in Dest can read the source). Valid for every clipboard mode, not only Instance.
-	int32 ResolvePasteInsertIndex(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
+	int32 ResolvePasteInsertIndex(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex,
+			FGuid* OutScopeOwnerChildId = nullptr) const;
 	bool CanPasteChild(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
 	FText GetChildPasteReason(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex) const;
 	FReply PasteChild(const FMixtormatChildAddress& Dest, int32 AnchorChildIndex = INDEX_NONE);

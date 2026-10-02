@@ -53,9 +53,21 @@ namespace MixtormatOutputReferences
 				return Child.OutputReference.bEnabled
 					&& Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
 			case EMixtormatLayerChildType::Effect:
-				return Child.Effect.bEnabled && (Child.Effect.Effect.Get()
-					? Child.Effect.Effect.Get()->EffectType : Child.Effect.ProceduralType)
-					== EMixtormatEffectType::Breakup;
+			{
+				if (!Child.Effect.bEnabled) { return false; }
+				if (Child.Effect.Effect.IsNull())
+				{
+					return Child.Effect.ProceduralType == EMixtormatEffectType::Breakup;
+				}
+				const UMixtormatEffect* Asset = Child.Effect.Effect.Get();
+				if (!Asset)
+				{
+					// Dependency validation runs in editor actions and game-thread compose gathering.
+					if (!IsInGameThread()) { return false; }
+					Asset = Child.Effect.Effect.LoadSynchronous();
+				}
+				return Asset && Asset->EffectType == EMixtormatEffectType::Breakup;
+			}
 			default: return false;
 			}
 		}

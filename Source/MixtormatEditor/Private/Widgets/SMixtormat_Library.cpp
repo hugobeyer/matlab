@@ -957,6 +957,12 @@ void SMixtormat::DeleteBuiltInSurface(const FSoftObjectPath AssetPath)
 		return;
 	}
 	const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.TryLoad());
+	if (!Surface)
+	{
+		RefreshSurfaceList();
+		WorkingStatusText = TEXT("Developer material deletion failed: surface could not be loaded");
+		return;
+	}
 	const FText MaterialName = Surface->DisplayName.IsEmpty()
 		? FText::FromString(Surface->GetName()) : Surface->DisplayName;
 	bool bConfirmed = false;
