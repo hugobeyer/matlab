@@ -1,0 +1,51 @@
+#ifndef GEOLOGY_MATH_CLH
+#define GEOLOGY_MATH_CLH
+
+// Portable OpenCL C 1.2. No Houdini types or implicit image bindings.
+#define GEOLOGY_INVALID_ID (-2147483647 - 1)
+
+inline uint geology_hash(uint value)
+{
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    return value ^ (value >> 16);
+}
+
+inline float geology_random(int index, uint seed, uint stream)
+{
+    uint bits = geology_hash(as_uint(index) ^ geology_hash(seed + stream));
+    return (float)(bits >> 8) * (1.0f / 16777216.0f);
+}
+
+inline size_t geology_index(uint3 cell, uint4 resolution)
+{
+    return (size_t)cell.x + (size_t)resolution.x *
+        ((size_t)cell.y + (size_t)resolution.y * (size_t)cell.z);
+}
+
+inline float3 geology_position(uint3 cell, float4 domain_min, float4 voxel_size)
+{
+    return domain_min.xyz + (convert_float3(cell) + 0.5f) * voxel_size.xyz;
+}
+
+inline int geology_parameters_valid(float4 shear_fold, float4 bedding,
+                                    float4 thickness)
+{
+    // Bounding each boundary's displacement keeps all intervals ordered.
+    return all(isfinite(shear_fold)) && all(isfinite(bedding)) &&
+        all(isfinite(thickness)) && bedding.z > 0.0f &&
+        thickness.x > 0.0f && thickness.y >= 0.0f &&
+        thickness.z >= 0.0f && thickness.y + thickness.z < 0.45f &&
+        thickness.w >= 0.0f;
+}
+
+inline float geology_box(float3 p, float3 half_extent)
+{
+    float3 d = fabs(p) - half_extent;
+    return length(fmax(d, (float3)(0.0f))) +
+        fmin(fmax(d.x, fmax(d.y, d.z)), 0.0f);
+}
+
+#endif

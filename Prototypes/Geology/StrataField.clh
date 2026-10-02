@@ -1,0 +1,34 @@
+#ifndef STRATA_FIELD_CLH
+#define STRATA_FIELD_CLH
+
+#include "StratigraphicCoordinates.clh"
+
+typedef struct
+{
+    float field;
+    float boundary_distance;
+    float local_thickness;
+} StrataField;
+
+inline StrataField strata_field(GeologyCoordinates q, GeologyStratigraphy bed,
+                                float nominal_thickness, float gap_fraction)
+{
+    // Gradient correction gives first-order world distances, NOT an exact SDF.
+    float lower_scale = length(q.grad_h - bed.lower.gradient);
+    float upper_scale = length(q.grad_h - bed.upper.gradient);
+    float lower_distance = (q.uvh.z - bed.lower.height) / lower_scale;
+    float upper_distance = (bed.upper.height - q.uvh.z) / upper_scale;
+
+    // Both neighbors use the same half-aperture at their shared boundary.
+    // Stage 2 uses enlarged uniform parting for inspection, not delamination.
+    float half_gap = 0.5f * nominal_thickness * gap_fraction;
+    StrataField result;
+    result.field = gap_fraction == 0.0f ? -INFINITY :
+        fmax((bed.lower.height + half_gap - q.uvh.z) / lower_scale,
+             (q.uvh.z - bed.upper.height + half_gap) / upper_scale);
+    result.boundary_distance = fmin(lower_distance, upper_distance);
+    result.local_thickness = bed.local_thickness;
+    return result;
+}
+
+#endif

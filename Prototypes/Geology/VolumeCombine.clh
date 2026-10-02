@@ -1,0 +1,21 @@
+#ifndef GEOLOGY_VOLUME_COMBINE_CLH
+#define GEOLOGY_VOLUME_COMBINE_CLH
+
+#include "GeologyMath.clh"
+
+// Negative = rock. The outer envelope and cutaway never alter material IDs.
+inline float geology_combine_block(float strata, float3 p, float4 block,
+                                   float4 cutaway)
+{
+    float field = fmax(strata, geology_box(p, block.xyz));
+    if (cutaway.w > 0.5f)
+    {
+        // Remove the intersection x>cutaway.x, y>cutaway.y, z>cutaway.z.
+        float3 planes = cutaway.xyz - p;
+        float cutter = fmax(planes.x, fmax(planes.y, planes.z));
+        field = fmax(field, -cutter);
+    }
+    return field;
+}
+
+#endif

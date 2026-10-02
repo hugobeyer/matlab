@@ -1,0 +1,92 @@
+#ifndef STRATIGRAPHIC_COORDINATES_CLH
+#define STRATIGRAPHIC_COORDINATES_CLH
+
+#include "GeologyCoordinates.clh"
+
+typedef struct
+{
+    float height;
+    float3 gradient;
+} GeologyBoundary;
+
+typedef struct
+{
+    int layer_id;
+    float phase;
+    float w;
+    GeologyBoundary lower;
+    GeologyBoundary upper;
+    float3 grad_w;
+    float3 normal;
+    float3 tangent;
+    float local_thickness;
+    float jacobian;
+} GeologyStratigraphy;
+
+// thickness = (nominal H thickness, boundary jitter, boundary wave amplitude,
+//              boundary wave frequency). Jitter/wave amplitudes are fractions.
+// A boundary is keyed by its own ID, not by whichever adjacent bed queries it.
+inline GeologyBoundary geology_boundary(int id, GeologyCoordinates q,
+                                        float4 thickness, uint seed)
+{
+    const float tau = 6.28318530718f;
+    float offset = 2.0f * geology_random(id, seed, 2003u) - 1.0f;
+    float au = thickness.w * q.uvh.x + tau * geology_random(id, seed, 2011u);
+    float av = 0.83f * thickness.w * q.uvh.y +
+        tau * geology_random(id, seed, 2017u);
+    float wave = sin(au) * cos(av);
+    GeologyBoundary result;
+    result.height = thickness.x *
+        ((float)id + thickness.y * offset + thickness.z * wave);
+    result.gradient = thickness.x * thickness.z * thickness.w *
+        (cos(au) * cos(av) * q.grad_u -
+         0.83f * sin(au) * sin(av) * q.grad_v);
+    return result;
+}
+
+inline GeologyStratigraphy geology_stratigraphy(GeologyCoordinates q,
+                                               float4 thickness, uint seed)
+{
+    // Since |boundary displacement| < 0.45 nominal beds, the true interval
+    // can only be the floor interval or one of its two immediate neighbors.
+    int id = convert_int_rtn(q.uvh.z / thickness.x);
+    GeologyBoundary lower = geology_boundary(id, q, thickness, seed);
+    GeologyBoundary upper = geology_boundary(id + 1, q, thickness, seed);
+    if (q.uvh.z < lower.height)
+    {
+        --id;
+        upper = lower;
+        lower = geology_boundary(id, q, thickness, seed);
+    }
+    else if (q.uvh.z >= upper.height)
+    {
+        ++id;
+        lower = upper;
+        upper = geology_boundary(id + 1, q, thickness, seed);
+    }
+
+    float interval = upper.height - lower.height;
+    float phase = (q.uvh.z - lower.height) / interval;
+    float3 dw = (q.grad_h - lower.gradient -
+        phase * (upper.gradient - lower.gradient)) / interval;
+    float3 n = normalize(dw);
+    float3 t = normalize(cross(q.grad_v, dw));
+    // Positive Jacobian guarantees this sign; keep the convention explicit.
+    if (dot(t, q.grad_u) < 0.0f)
+        t = -t;
+
+    GeologyStratigraphy result;
+    result.layer_id = id;
+    result.phase = phase;
+    result.w = (float)id + phase;
+    result.lower = lower;
+    result.upper = upper;
+    result.grad_w = dw;
+    result.normal = n;
+    result.tangent = t;
+    result.local_thickness = 1.0f / length(dw);
+    result.jacobian = dot(q.grad_u, cross(q.grad_v, dw));
+    return result;
+}
+
+#endif

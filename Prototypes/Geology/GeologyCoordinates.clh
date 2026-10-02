@@ -1,0 +1,50 @@
+#ifndef GEOLOGY_COORDINATES_CLH
+#define GEOLOGY_COORDINATES_CLH
+
+#include "GeologyMath.clh"
+
+typedef struct
+{
+    float3 uvh;   // U, V, continuous pre-stratigraphic coordinate H.
+    float3 grad_u;
+    float3 grad_v;
+    float3 grad_h;
+} GeologyCoordinates;
+
+// shear_fold = (primary shear, depth shear, fold amplitude, fold frequency U)
+// bedding    = (slope U, slope V, positive compression scale, fold frequency V)
+// Three invertible shear stages followed by a positive scale. Flat V = -world Z
+// makes (U,V,H) right-handed with bedding normal +world Y.
+inline GeologyCoordinates geology_coordinates(float3 p, float4 shear_fold,
+                                              float4 bedding, uint seed)
+{
+    const float tau = 6.28318530718f;
+    float phase = tau * geology_random(0, seed, 1009u);
+    float angle_a = 2.1f * p.z + 0.7f * p.y + phase;
+    float u = p.x + shear_fold.x * sin(angle_a);
+    float3 du = (float3)(1.0f, 0.0f, 0.0f) +
+        shear_fold.x * cos(angle_a) * (float3)(0.0f, 0.7f, 2.1f);
+
+    float angle_b = 1.7f * u + 0.6f * phase;
+    float v = -p.z + shear_fold.y * sin(angle_b);
+    float3 dv = (float3)(0.0f, 0.0f, -1.0f) +
+        1.7f * shear_fold.y * cos(angle_b) * du;
+
+    float angle_u = shear_fold.w * u + phase;
+    float angle_v = bedding.w * v + 0.3f * phase;
+    float fold = shear_fold.z * sin(angle_u) * cos(angle_v);
+    float fold_u = shear_fold.z * shear_fold.w * cos(angle_u) * cos(angle_v);
+    float fold_v = -shear_fold.z * bedding.w * sin(angle_u) * sin(angle_v);
+    float h = (p.y - bedding.x * u - bedding.y * v - fold) / bedding.z;
+    float3 dh = ((float3)(0.0f, 1.0f, 0.0f) -
+        (bedding.x + fold_u) * du - (bedding.y + fold_v) * dv) / bedding.z;
+
+    GeologyCoordinates result;
+    result.uvh = (float3)(u, v, h);
+    result.grad_u = du;
+    result.grad_v = dv;
+    result.grad_h = dh;
+    return result;
+}
+
+#endif
