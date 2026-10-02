@@ -366,7 +366,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float IDR3 = WEIdRand(Rid, Seed + 71u, 0x8da6b343u) * 2.0f - 1.0f;
 	const float IDRadiusMul = max(1.0f + IDR0 * IDAmount * IDRadius, 0.15f);
 	const int RegionRadius = clamp((int)floor((float)BaseRadius * IDRadiusMul + 0.5f), 1, 64);
-	const int DirectionCount = max(Directions, 8);
+	const int DirectionCount = clamp(Directions, 8, 32);
 
 	const float2 WarpedUV = WEWarp(UV, max(WarpScale, 1), Seed + 41u, WarpAmount);
 	const float Macro = WEFbm(WarpedUV, max(MacroScale, 1), Seed + 11u) * 2.0f - 1.0f;

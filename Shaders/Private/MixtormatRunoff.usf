@@ -144,6 +144,11 @@ float MixtormatRunoffHash(float2 Cell, uint InSeed)
 	return frac((P.x + P.y) * P.z);
 }
 
+float2 MixtormatRunoffWrap(float2 X, float Period)
+{
+	return X - floor(X / Period) * Period;
+}
+
 // Value noise on a wrapped integer lattice.
 //
 // Tileable by construction: the lattice coordinate is taken modulo the period before it is
@@ -162,10 +167,10 @@ float MixtormatRunoffValueNoise(float2 UV, float Period, uint InSeed)
 	// grid visible once the field is used as a displacement, which is exactly what it is used for.
 	F = F * F * F * (F * (F * 6.0f - 15.0f) + 10.0f);
 
-	const float2 C00 = fmod(Cell + float2(0.0f, 0.0f), SafePeriod);
-	const float2 C10 = fmod(Cell + float2(1.0f, 0.0f), SafePeriod);
-	const float2 C01 = fmod(Cell + float2(0.0f, 1.0f), SafePeriod);
-	const float2 C11 = fmod(Cell + float2(1.0f, 1.0f), SafePeriod);
+	const float2 C00 = MixtormatRunoffWrap(Cell + float2(0.0f, 0.0f), SafePeriod);
+	const float2 C10 = MixtormatRunoffWrap(Cell + float2(1.0f, 0.0f), SafePeriod);
+	const float2 C01 = MixtormatRunoffWrap(Cell + float2(0.0f, 1.0f), SafePeriod);
+	const float2 C11 = MixtormatRunoffWrap(Cell + float2(1.0f, 1.0f), SafePeriod);
 
 	const float V00 = MixtormatRunoffHash(C00, InSeed);
 	const float V10 = MixtormatRunoffHash(C10, InSeed);
@@ -454,7 +459,8 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// the same control that softens the streak. Derived rather than exposed for that reason: a
 	// lip width that did not track softness would need re-tuning every time the streak moved.
 	const float LipWidth = 0.35f + StreakSoftness * 0.35f;
-	const float InvLipWidth = 1.0f / LipWidth;
+	const float SafeLipWidth = max(LipWidth, 1.0e-5f);
+	const float InvLipWidth = 1.0f / SafeLipWidth;
 
 	const float2 Gravity = MixtormatRunoffGravity();
 	const float SafeSoftness = max(StreakSoftness, 0.05f);
