@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatParameterBinding.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
 
@@ -644,6 +645,14 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 			MixtormatUI::LucideIcon(TEXT("refresh-cw")),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::RefreshBuiltInSurface, AssetPath));
 	}
+	if (!bIsUserAsset && FMixtormatSurfaceImporter::CanDeleteShippedSurface(AssetPath))
+	{
+		Menu.Item(
+			LOCTEXT("DeleteBuiltInMaterial", "Developer: Delete Material…"),
+			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			FSimpleDelegate::CreateSP(this, &SMixtormat::DeleteBuiltInSurface, AssetPath))
+			.Destructive();
+	}
 	Menu.Separator()
 		.Item(
 			LOCTEXT("RemoveImportedMaterial", "Remove Imported Material…"),
@@ -938,6 +947,90 @@ void SMixtormat::BrowseLibraryAsset(const FSoftObjectPath AssetPath)
 	FContentBrowserModule& ContentBrowserModule =
 		FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 	ContentBrowserModule.Get().SyncBrowserToAssets({Asset});
+}
+
+void SMixtormat::DeleteBuiltInSurface(const FSoftObjectPath AssetPath)
+{
+	if (!MixtormatParameterUi::IsDeveloperMetaEnabled()
+		|| !FMixtormatSurfaceImporter::CanDeleteShippedSurface(AssetPath))
+	{
+		return;
+	}
+	const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.TryLoad());
+	const FText MaterialName = Surface->DisplayName.IsEmpty()
+		? FText::FromString(Surface->GetName()) : Surface->DisplayName;
+	bool bConfirmed = false;
+	TSharedPtr<SWindow> ConfirmationWindow;
+	TSharedPtr<SButton> CancelButton;
+	SAssignNew(ConfirmationWindow, SWindow)
+		.Title(LOCTEXT("DeleteBuiltInMaterialTitle", "Delete Built-In Material"))
+		.ClientSize(FVector2D(560.0f, 320.0f))
+		.SupportsMaximize(false)
+		.SupportsMinimize(false)
+		[
+			SNew(SBorder)
+			.Padding(MixtormatTokens::DialogPadding)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().FillHeight(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::Format(LOCTEXT("DeleteBuiltInMaterialConfirmation",
+						"Permanently delete '{0}'?\n\nThis deletes:\n- shipped source texture files\n- generated Mixtormat surface asset\n- imported textures (including packed-height variants)\n- preview material instance\n- thumbnail\n\nRebuilding the built-in library will NOT restore this material unless its source files are added again. The open composition will not be edited."), MaterialName))
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+					.Padding(0.0f, MixtormatTokens::DialogActionsTopMargin, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SAssignNew(CancelButton, SButton)
+						.Text(LOCTEXT("CancelDeleteBuiltInMaterial", "Cancel"))
+						.OnClicked_Lambda([&ConfirmationWindow]()
+						{
+							ConfirmationWindow->RequestDestroyWindow();
+							return FReply::Handled();
+						})
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("ConfirmDeleteBuiltInMaterial", "Delete Material"))
+						.OnClicked_Lambda([&ConfirmationWindow, &bConfirmed]()
+						{
+							bConfirmed = true;
+							ConfirmationWindow->RequestDestroyWindow();
+							return FReply::Handled();
+						})
+					]
+				]
+			]
+		];
+	ConfirmationWindow->SetWidgetToFocusOnActivate(CancelButton);
+	FSlateApplication::Get().AddModalWindow(ConfirmationWindow.ToSharedRef(),
+		FSlateApplication::Get().FindWidgetWindow(AsShared()), false);
+	if (!bConfirmed)
+	{
+		return;
+	}
+
+	const FMixtormatSurfaceDeletionResult Result = FMixtormatSurfaceImporter::DeleteShippedSurface(AssetPath);
+	if (Result.bSurfaceDeleted && SelectedSurfacePath == AssetPath)
+	{
+		SelectedSurfacePath.Reset();
+		SelectedLibrarySurfaceName = FText::GetEmpty();
+		SelectedPreviewMaterial.Reset();
+	}
+	RebuildCategoryList();
+	RebuildSurfaceList();
+	RebuildUserLibraryList();
+	WorkingStatusText = Result.Errors.IsEmpty()
+		? TEXT("Developer material deleted") : TEXT("Developer material deletion failed");
+	if (!Result.Errors.IsEmpty())
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(FString::Join(Result.Errors, TEXT("\n"))));
+	}
 }
 
 void SMixtormat::RemoveImportedSurface(const FSoftObjectPath AssetPath)

@@ -1395,6 +1395,7 @@ private:
 	void AddReferenceLayerFromComposition(FSoftObjectPath AssetPath);
 	void BrowseLibraryAsset(FSoftObjectPath AssetPath);
 	void RefreshBuiltInSurface(FSoftObjectPath AssetPath);
+	void DeleteBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
 	TSharedRef<SWidget> BuildInspectorPanel();

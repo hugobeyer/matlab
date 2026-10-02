@@ -21,6 +21,12 @@ struct FMixtormatImportResult
 	FText ToMessage() const;
 };
 
+struct FMixtormatSurfaceDeletionResult
+{
+	bool bSurfaceDeleted = false;
+	TArray<FString> Errors;
+};
+
 class FMixtormatSurfaceImporter final
 {
 public:
@@ -33,6 +39,8 @@ public:
 	static FMixtormatImportResult ImportDefaultLibrary();
 	static FMixtormatImportResult ReimportShippedLibrary();
 	static FMixtormatImportResult ReimportShippedSurface(const FSoftObjectPath& SurfacePath);
+	static bool CanDeleteShippedSurface(const FSoftObjectPath& SurfacePath);
+	static FMixtormatSurfaceDeletionResult DeleteShippedSurface(const FSoftObjectPath& SurfacePath);
 	static FMixtormatImportResult ImportFromDialog();
 	static FMixtormatImportResult ImportMasksFromDialog();
 	static FMixtormatImportResult ImportMaskDirectory(const FString& SourceDirectory);

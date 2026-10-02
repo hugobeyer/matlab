@@ -5,6 +5,7 @@
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
 #include "Services/MixtormatThumbnailRenderer.h"
+#include "UI/Parameters/MixtormatParameterUiMeta.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AssetImportTask.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -28,6 +29,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialInstanceConstant.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
+#include "Misc/PackageName.h"
 #include "Misc/SecureHash.h"
 #include "ObjectTools.h"
 #include "Subsystems/EditorAssetSubsystem.h"
@@ -1056,6 +1058,226 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ReimportShippedSurface(
 	Result.Errors.Add(FString::Printf(
 		TEXT("No shipped source PNG set was found for %s."),
 		*SourceBaseName));
+	return Result;
+}
+
+bool FMixtormatSurfaceImporter::CanDeleteShippedSurface(const FSoftObjectPath& SurfacePath)
+{
+	if (!MixtormatParameterUi::IsDeveloperMetaEnabled())
+	{
+		return false;
+	}
+	if (!SurfacePath.GetLongPackageName().StartsWith(FMixtormatPaths::SurfacesRoot() + TEXT("/")))
+	{
+		return false;
+	}
+	const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(SurfacePath.TryLoad());
+	if (!Surface || Surface->GetOutermost()->GetName() != SurfacePath.GetLongPackageName())
+	{
+		return false;
+	}
+	const FString& BaseName = Surface->SourceTextureBaseName;
+	return !BaseName.IsEmpty()
+		&& BaseName != TEXT(".") && BaseName != TEXT("..")
+		&& ObjectTools::SanitizeObjectName(BaseName) == BaseName;
+}
+
+FMixtormatSurfaceDeletionResult FMixtormatSurfaceImporter::DeleteShippedSurface(
+	const FSoftObjectPath& SurfacePath)
+{
+	FMixtormatSurfaceDeletionResult Result;
+	if (!CanDeleteShippedSurface(SurfacePath))
+	{
+		Result.Errors.Add(TEXT("Deletion requires developer mode and a built-in surface with a valid source texture base name."));
+		return Result;
+	}
+	UMixtormatSurface* Surface = Cast<UMixtormatSurface>(SurfacePath.TryLoad());
+	const FString BaseName = Surface->SourceTextureBaseName;
+	FString SourceRoot = GetPluginTexturesRoot();
+	FPaths::NormalizeDirectoryName(SourceRoot);
+	if (SourceRoot.IsEmpty() || !FPaths::CollapseRelativeDirectories(SourceRoot))
+	{
+		Result.Errors.Add(TEXT("Could not resolve the shipped source texture root."));
+		return Result;
+	}
+
+	TArray<FString> SourceFiles;
+	TArray<FString> MatchingSourceDirectories;
+	for (const FString& Directory : EnumerateShippedSourceDirectories())
+	{
+		TArray<FString> Files;
+		IFileManager::Get().FindFiles(Files, *(Directory / TEXT("*.png")), true, false);
+		for (const FString& File : Files)
+		{
+			FString ParsedBase;
+			MixtormatImporter::EMapType MapType;
+			if (!MixtormatImporter::ParseMapName(FPaths::GetBaseFilename(File), ParsedBase, MapType)
+				|| !ParsedBase.Equals(BaseName, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			FString Filename = FPaths::ConvertRelativePathToFull(Directory / File);
+			FPaths::NormalizeFilename(Filename);
+			if (!FPaths::CollapseRelativeDirectories(Filename) || !FPaths::IsUnderDirectory(Filename, SourceRoot))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("Refused source file outside the shipped texture root: %s"), *Filename));
+				continue;
+			}
+			SourceFiles.AddUnique(Filename);
+			MatchingSourceDirectories.AddUnique(Directory);
+		}
+	}
+	if (SourceFiles.IsEmpty())
+	{
+		Result.Errors.Add(FString::Printf(TEXT("No shipped source PNG files were found for %s."), *BaseName));
+	}
+	if (MatchingSourceDirectories.Num() > 1)
+	{
+		Result.Errors.Add(FString::Printf(TEXT("Source set %s is ambiguous across shipped directories: %s"),
+			*BaseName, *FString::Join(MatchingSourceDirectories, TEXT(", "))));
+	}
+
+	FAssetRegistryModule& RegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	if (RegistryModule.Get().IsLoadingAssets())
+	{
+		Result.Errors.Add(TEXT("Cannot validate the deletion set while the Asset Registry is discovering assets."));
+		return Result;
+	}
+	const FString PluginContentDirectory = FPaths::ConvertRelativePathToFull(FMixtormatPaths::PluginBaseDir() / TEXT("Content"));
+	TArray<FAssetData> Assets;
+	TArray<UObject*> ObjectsToDelete;
+	TArray<FString> PackageFiles;
+	const auto AddAsset = [&Assets, &ObjectsToDelete, &PackageFiles, &Result, &PluginContentDirectory](UObject* Asset, const FString& Root, const TArray<FString>& Names)
+	{
+		if (!Asset)
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Could not resolve generated asset in %s: %s"),
+				*Root, *FString::Join(Names, TEXT(", "))));
+			return;
+		}
+		const FString Package = Asset->GetOutermost()->GetName();
+		if (!Package.StartsWith(Root + TEXT("/")) || !Names.Contains(Asset->GetName()))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Refused unrelated or unmanaged asset: %s"), *Asset->GetPathName()));
+			return;
+		}
+		FString Filename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(Package, Filename, FPackageName::GetAssetPackageExtension()))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Could not resolve package file: %s"), *Package));
+			return;
+		}
+		Filename = FPaths::ConvertRelativePathToFull(Filename);
+		FPaths::NormalizeFilename(Filename);
+		if (!FPaths::CollapseRelativeDirectories(Filename) || !FPaths::IsUnderDirectory(Filename, PluginContentDirectory))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Refused package file outside plugin content: %s"), *Filename));
+			return;
+		}
+		Assets.AddUnique(FAssetData(Asset));
+		ObjectsToDelete.AddUnique(Asset);
+		PackageFiles.AddUnique(Filename);
+	};
+	const FString SurfaceName = Surface->GetName();
+	FString PreviewName = SurfaceName;
+	PreviewName.RemoveFromStart(TEXT("DA_"));
+	PreviewName = TEXT("MI_") + PreviewName;
+	AddAsset(Surface, FMixtormatPaths::SurfacesRoot(), {SurfaceName});
+	AddAsset(Surface->PreviewMaterial, FMixtormatPaths::MaterialsRoot() + TEXT("/Instances"), {PreviewName});
+	AddAsset(Surface->Thumbnail, FMixtormatPaths::SurfaceThumbnailsRoot(), {SurfaceName + TEXT("_Thumbnail")});
+	if (!Surface->BaseColor)
+	{
+		Result.Errors.Add(TEXT("Could not resolve the surface's imported base-color texture directory."));
+	}
+	else
+	{
+		const FString TextureDirectory = FPackageName::GetLongPackagePath(Surface->BaseColor->GetOutermost()->GetName());
+		if (!TextureDirectory.StartsWith(FMixtormatPaths::TexturesRoot() + TEXT("/")))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Refused unmanaged texture directory: %s"), *TextureDirectory));
+		}
+		else
+		{
+			const TArray<FString> PackedNames = {BaseName + TEXT("_RAM"), BaseName + TEXT("_RAMH"), BaseName + TEXT("_RAMH_Derived")};
+			AddAsset(Surface->BaseColor, TextureDirectory, {BaseName + TEXT("_BC")});
+			AddAsset(Surface->Normal, TextureDirectory, {BaseName + TEXT("_N")});
+			AddAsset(Surface->RoughnessAOMetallic, TextureDirectory, PackedNames);
+			for (const FString& Name : PackedNames)
+			{
+				const FSoftObjectPath Path(FString::Printf(TEXT("%s/%s.%s"), *TextureDirectory, *Name, *Name));
+				UObject* Asset = Path.TryLoad();
+				if (!Asset && (RegistryModule.Get().GetAssetByObjectPath(Path).IsValid()
+					|| FPackageName::DoesPackageExist(Path.GetLongPackageName())))
+				{
+					Result.Errors.Add(FString::Printf(TEXT("Could not load generated packed texture: %s"), *Path.ToString()));
+				}
+				if (Asset && !Asset->IsA<UTexture2D>())
+				{
+					Result.Errors.Add(FString::Printf(TEXT("Refused non-texture asset at packed texture path: %s"), *Path.ToString()));
+				}
+				else if (Asset)
+				{
+					AddAsset(Asset, TextureDirectory, {Name});
+				}
+			}
+		}
+	}
+	for (const FAssetData& Asset : Assets)
+	{
+		TArray<FAssetData> PackageAssets;
+		RegistryModule.Get().GetAssetsByPackageName(Asset.PackageName, PackageAssets);
+		for (const FAssetData& PackageAsset : PackageAssets)
+		{
+			if (!Assets.Contains(PackageAsset))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("Refused package containing an unrelated asset: %s"),
+					*PackageAsset.GetSoftObjectPath().ToString()));
+			}
+		}
+	}
+	if (!Result.Errors.IsEmpty())
+	{
+		return Result;
+	}
+
+	// Delete only the validated objects, without Force Delete's reference replacement.
+	// Compositions retain their authored paths; keep PNGs unless all packages were removed.
+	ObjectTools::DeleteObjectsUnchecked(ObjectsToDelete);
+	const TArray<FString> ScanRoots = {FMixtormatPaths::SurfacesRoot(), FMixtormatPaths::TexturesRoot(),
+		FMixtormatPaths::SurfaceThumbnailsRoot(), FMixtormatPaths::MaterialsRoot() + TEXT("/Instances")};
+	RegistryModule.Get().ScanPathsSynchronous(ScanRoots, true);
+	for (const FAssetData& Asset : Assets)
+	{
+		if (RegistryModule.Get().GetAssetByObjectPath(Asset.GetSoftObjectPath()).IsValid())
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Generated asset was not deleted (failed or cancelled): %s"), *Asset.GetSoftObjectPath().ToString()));
+		}
+	}
+	for (const FString& Filename : PackageFiles)
+	{
+		if (IFileManager::Get().FileExists(*Filename))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Generated package file was not deleted: %s"), *Filename));
+		}
+	}
+	Result.bSurfaceDeleted = !RegistryModule.Get().GetAssetByObjectPath(SurfacePath).IsValid()
+		&& !FPackageName::DoesPackageExist(SurfacePath.GetLongPackageName());
+	if (!Result.bSurfaceDeleted)
+	{
+		Result.Errors.Add(FString::Printf(TEXT("Surface deletion could not be verified: %s"), *SurfacePath.ToString()));
+	}
+	if (!Result.Errors.IsEmpty())
+	{
+		Result.Errors.Add(TEXT("Source PNG files were retained because generated asset deletion was incomplete."));
+		return Result;
+	}
+	for (const FString& Filename : SourceFiles)
+	{
+		if (!IFileManager::Get().Delete(*Filename, true, false, true) || IFileManager::Get().FileExists(*Filename))
+		{
+			Result.Errors.Add(FString::Printf(TEXT("Could not delete shipped source PNG: %s"), *Filename));
+		}
+	}
 	return Result;
 }
 
