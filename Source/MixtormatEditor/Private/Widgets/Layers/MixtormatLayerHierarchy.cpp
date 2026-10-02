@@ -1,0 +1,1221 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "Widgets/SMixtormat.h"
+#include "Widgets/SMixtormatInternal.h"
+#include "MixtormatLayerGroups.h"
+#include "MixtormatParameterBinding.h"
+#include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "Widgets/SToolTip.h"
+
+#define LOCTEXT_NAMESPACE "SMixtormat"
+
+using namespace MixtormatLayersPrivate;
+
+namespace MixtormatLayersPrivate
+{
+
+	// Every child shows what kind of thing it is, masks included. An 11px thumbnail of a mask is a
+	// grey smudge that says less than the glyph does, and it cost a pooled thumbnail per row; which
+	// mask it actually is now answers on hover, at a size worth looking at.
+
+	TSharedRef<SWidget> MakeChildTypeIcon(const FMixtormatLayerChild& Child)
+	{
+		return SNew(SImage)
+			.Image(Child.Type == EMixtormatLayerChildType::Effect
+					// A generator takes the effect glyph rather than the generated-mask one. It is
+					// neither, but of the two it is the structural node -- it writes height -- and
+					// the generated glyph on this row would suggest coverage.
+					|| Child.Type == EMixtormatLayerChildType::Generator
+				? MixtormatIcons::Effect()
+				: (Child.Type == EMixtormatLayerChildType::Generated
+						|| Child.Type == EMixtormatLayerChildType::Craquelure
+						|| Child.Type == EMixtormatLayerChildType::Filter
+						|| Child.Type == EMixtormatLayerChildType::HsvFilter
+						|| Child.Type == EMixtormatLayerChildType::RandomId
+						|| Child.Type == EMixtormatLayerChildType::RampId
+						|| Child.Type == EMixtormatLayerChildType::UvFromIds
+						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+						|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
+						|| Child.Type == EMixtormatLayerChildType::PatternId
+						|| Child.Type == EMixtormatLayerChildType::CombineId
+						|| Child.Type == EMixtormatLayerChildType::IdGroup
+						|| Child.Type == EMixtormatLayerChildType::OutputReference)
+					? MixtormatIcons::Generated()
+					: MixtormatIcons::Mask())
+			.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
+	}
+
+	FText OutputReferenceKindText(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.OutputReference.Kind)
+		{
+		case EMixtormatPublishedFieldKind::RegionIds: return LOCTEXT("OutputReferenceIdsKind", "REF · IDs");
+		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("OutputReferenceFlowKind", "REF · FLOW");
+		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("OutputReferenceUvKind", "REF · UVs");
+		}
+		return LOCTEXT("OutputReferenceKind", "REF · FIELD");
+	}
+
+	// Tree connector for a scoped row: a tee while another child of the same owner follows it,
+	// an elbow on the last one. Null for a top-level child.
+
+	const FSlateBrush* ScopeConnectorFor(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		if (!Children.IsValidIndex(ChildIndex) || !Children[ChildIndex].ScopeOwnerChildId.IsValid())
+		{
+			return nullptr;
+		}
+		const FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
+		for (int32 Later = ChildIndex + 1; Later < Children.Num(); ++Later)
+		{
+			if (Children[Later].ScopeOwnerChildId == OwnerId)
+			{
+				return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeTee"));
+			}
+		}
+		return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeElbow"));
+	}
+
+	// How far a row is indented.
+	//
+	// Real scope and nothing else. Combine IDs used to be indented one extra level whenever an ID
+	// producer sat above it, on the theory that the indent showed what it reads -- but every ID
+	// consumer in the plugin reads the nearest producer above it, Combine included, and indenting
+	// only this one claimed a containment that does not exist. Pattern IDs, Cluster IDs and
+	// Combine IDs are siblings in the stack, and the row now says so. A genuine ScopeOwnerChildId
+	// still indents, here as everywhere.
+
+	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
+	{
+		return GetScopeDepth(Children, ChildIndex);
+	}
+}
+
+bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
+{
+	const FMixtormatLayerChild* Selected = ResolveChildAt(GetSelectedChildAddress());
+	if (!Selected) { return false; }
+	if (Selected->Type == EMixtormatLayerChildType::OutputReference && !Selected->IsInstance())
+	{
+		return Selected->OutputReference.SourceLayerId == OwnerId
+			&& Selected->OutputReference.SourceChildId == ChildId;
+	}
+	return Selected->IsInstance() && Selected->SourceChildId == ChildId
+		&& (!Selected->SourceLayerId.IsValid() || Selected->SourceLayerId == OwnerId);
+}
+
+TArray<int32> SMixtormat::GetSelectedLayerIndices() const
+{
+	TArray<int32> Indices;
+	for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
+	{
+		if (SelectedLayerIds.Contains(WorkingLayers[Index].LayerId))
+		{
+			Indices.Add(Index);
+		}
+	}
+	// Falling back to the inspector's layer keeps the button working before anything has been
+	// multi-selected, which is the state the panel opens in.
+	if (Indices.IsEmpty() && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		Indices.Add(SelectedLayerIndex);
+	}
+	return Indices;
+}
+
+bool SMixtormat::IsGroupExpanded(const FGuid& GroupId) const
+{
+	return !CollapsedGroupIds.Contains(GroupId);
+}
+
+FReply SMixtormat::ToggleGroupExpanded(const FGuid GroupId)
+{
+	if (CollapsedGroupIds.Contains(GroupId))
+	{
+		CollapsedGroupIds.Remove(GroupId);
+	}
+	else
+	{
+		CollapsedGroupIds.Add(GroupId);
+	}
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
+{
+	SelectedGroupId = GroupId;
+	// The header, not one of its shared children.
+	SelectedGroupChildIndex = INDEX_NONE;
+	// One subject for the inspector: picking the group drops the layer-child selection rather
+	// than leaving two things looking selected at once.
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = INDEX_NONE;
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	return FReply::Handled();
+}
+
+bool SMixtormat::IsLayerExpanded(const int32 LayerIndex) const
+{
+	return WorkingLayers.IsValidIndex(LayerIndex)
+		&& ExpandedLayerIds.Contains(WorkingLayers[LayerIndex].LayerId);
+}
+
+void SMixtormat::SetLayerExpanded(const int32 LayerIndex, const bool bExpanded)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return;
+	}
+	const FGuid& LayerId = WorkingLayers[LayerIndex].LayerId;
+	if (bExpanded)
+	{
+		ExpandedLayerIds.Add(LayerId);
+	}
+	else
+	{
+		ExpandedLayerIds.Remove(LayerId);
+	}
+}
+
+bool SMixtormat::IsLayerMultiSelected(const int32 LayerIndex) const
+{
+	return WorkingLayers.IsValidIndex(LayerIndex)
+		&& SelectedLayerIds.Contains(WorkingLayers[LayerIndex].LayerId);
+}
+
+void SMixtormat::UpdateMultiSelection(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return;
+	}
+	const FGuid ClickedId = WorkingLayers[LayerIndex].LayerId;
+
+	// Read live rather than plumbed through the row: OnSelected is a bare FSimpleDelegate, and it
+	// runs synchronously out of the row's OnMouseButtonDown, so the keys held are still the keys
+	// that were held for this click.
+	const FModifierKeysState Modifiers = FSlateApplication::Get().GetModifierKeys();
+	const bool bToggle = Modifiers.IsControlDown() || Modifiers.IsCommandDown();
+	const bool bExtend = Modifiers.IsShiftDown();
+
+	if (bExtend && SelectionAnchorLayerId.IsValid())
+	{
+		const int32 AnchorIndex = WorkingLayers.IndexOfByPredicate(
+			[this](const FMixtormatLayer& Candidate)
+			{
+				return Candidate.LayerId == SelectionAnchorLayerId;
+			});
+		if (AnchorIndex != INDEX_NONE)
+		{
+			SelectedLayerIds.Reset();
+			const int32 First = FMath::Min(AnchorIndex, LayerIndex);
+			const int32 Last = FMath::Max(AnchorIndex, LayerIndex);
+			for (int32 Index = First; Index <= Last; ++Index)
+			{
+				SelectedLayerIds.Add(WorkingLayers[Index].LayerId);
+			}
+			return;
+		}
+	}
+
+	if (bToggle)
+	{
+		// A plain toggle, including off. SelectedLayerIndex follows the click regardless, because
+		// what the inspector shows and what the Group button acts on are two different questions.
+		if (SelectedLayerIds.Contains(ClickedId))
+		{
+			SelectedLayerIds.Remove(ClickedId);
+		}
+		else
+		{
+			SelectedLayerIds.Add(ClickedId);
+		}
+		SelectionAnchorLayerId = ClickedId;
+		return;
+	}
+
+	// Clicking inside an existing multi-selection keeps it. Right-click runs through here before
+	// the context menu opens, so collapsing here would mean picking three layers and then being
+	// offered "Create Group" for one of them -- the selection destroyed by the act of acting on it.
+	if (SelectedLayerIds.Num() > 1 && SelectedLayerIds.Contains(ClickedId))
+	{
+		return;
+	}
+
+	SelectedLayerIds.Reset();
+	SelectedLayerIds.Add(ClickedId);
+	SelectionAnchorLayerId = ClickedId;
+}
+
+FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	const bool bWasBypassingChild = bBypassSelectedChild;
+	bBypassSelectedChild = false;
+	SelectedLayerIndex = LayerIndex;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = INDEX_NONE;
+	bHasSelectedLayer = true;
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	UpdateMultiSelection(LayerIndex);
+	SyncSelectedLayerControls();
+	RebuildMaskList();
+	// No RebuildLayerList here. Selection highlight is an attribute lambda on each row, so it
+	// repaints on its own -- and a rebuild would destroy the row that is, right now, part way
+	// through opening its context menu on its own SMenuAnchor.
+	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
+	{
+		RefreshLayeredPreview(false);
+	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!ResolveChild(LayerIndex, ChildIndex))
+	{
+		return FReply::Handled();
+	}
+
+	const bool bWasBypassingChild = bBypassSelectedChild;
+	bBypassSelectedChild = false;
+	SelectedLayerIndex = LayerIndex;
+	const bool bEffect = ResolveChild(LayerIndex, ChildIndex)->Type
+		== EMixtormatLayerChildType::Effect;
+	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
+	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
+	bHasSelectedLayer = true;
+	SyncSelectedLayerControls();
+	// No RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
+	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
+	// its context menu on, closing it before it could show.
+	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
+	{
+		RefreshLayeredPreview(false);
+	}
+	return FReply::Handled();
+}
+
+FText SMixtormat::GetSelectedBadgeText() const
+{
+	// The inspector strip mirrors the row that selected it, so it prints the same derived mark --
+	// the child's when a child is selected, the layer's otherwise.
+	if (const FMixtormatLayerChild* GroupChild =
+		SelectedLayerIndex == INDEX_NONE ? ResolveChild(INDEX_NONE, GetSelectedChildIndex()) : nullptr)
+	{
+		return MixtormatLayerBadges::ForChild(*GroupChild);
+	}
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		return FText::GetEmpty();
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	const int32 ChildIndex = GetSelectedChildIndex();
+	return Layer.Children.IsValidIndex(ChildIndex)
+		? MixtormatLayerBadges::ForChild(Layer.Children[ChildIndex])
+		: MixtormatLayerBadges::ForLayer(Layer);
+}
+
+void SMixtormat::SyncSelectedLayerControls()
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		bHasSelectedLayer = false;
+		return;
+	}
+
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	CurrentTiling = FMath::Max(1.0f, FMath::RoundToFloat(Layer.Tiling));
+	CurrentRoughnessBias = Layer.RoughnessBias;
+	CurrentRoughnessContrast = Layer.RoughnessContrast;
+	CurrentRoughnessOffset = Layer.RoughnessOffset;
+
+	if (SelectedSurfaceText.IsValid())
+	{
+		SelectedSurfaceText->SetText(GetLayerDisplayName(SelectedLayerIndex));
+	}
+	if (SelectedIdentityText.IsValid())
+	{
+		// The row's source field, not the layer's kind: "MAT - RUST ORANGE" answers what the layer
+		// is made of, which is what the stack prints in the same position.
+		SelectedIdentityText->SetText(GetLayerSourceText(SelectedLayerIndex));
+	}
+	if (SelectedThumbnailBox.IsValid())
+	{
+		const int32 RowThumbnailCount = LayerThumbnails.Num();
+		SelectedThumbnailBox->SetContent(BuildLayerThumbnail(SelectedLayerIndex));
+		// BuildLayerThumbnail parks what it made in the row list. The strip is not a row and is
+		// remade on every selection, so its thumbnail moves to its own slot and replaces the last
+		// one instead of piling up until the stack next rebuilds.
+		if (LayerThumbnails.Num() > RowThumbnailCount)
+		{
+			SelectedStripThumbnail = LayerThumbnails.Pop();
+		}
+	}
+	const int32 SelectedChildIndex = GetSelectedChildIndex();
+	if (Layer.Children.IsValidIndex(SelectedChildIndex))
+	{
+		const FMixtormatLayerChild& Child = Layer.Children[SelectedChildIndex];
+		if (SelectedSurfaceText.IsValid())
+		{
+			SelectedSurfaceText->SetText(GetLayerChildName(Child));
+		}
+		if (SelectedIdentityText.IsValid())
+		{
+			// Mirror the row's target/owner label so nested selection keeps its context.
+			SelectedIdentityText->SetText(
+				GetLayerChildSourceText(SelectedLayerIndex, SelectedChildIndex));
+		}
+	}
+}
+
+TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
+{
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	// A band above the rows rather than a wash over them: the values still have to be read, and
+	// what changes is who may write them.
+	auto Action = [this, &Style](const FText& Label, const FText& Hint, TFunction<void()> OnClick)
+	{
+		return SNew(SButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+			.ContentPadding(MixtormatTokens::RowGap)
+			.ToolTipText(Hint)
+			.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+			];
+	};
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return IsSelectedChildInstance() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.Padding(FMargin(MixtormatTokens::CardGap, 0.0f, MixtormatTokens::CardGap, MixtormatTokens::CardGap))
+		[
+			SNew(SBorder)
+			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+			.Padding(FMargin(MixtormatTokens::CardGap))
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]() { return GetSelectedInstanceSourceText(); })
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT(
+						"InstanceReadOnlyHint",
+						"Inherited from the source and read-only here. Break Instance to edit a copy."))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					[
+						Action(
+							LOCTEXT("InstanceGoToSource", "Go to Source"),
+							LOCTEXT("InstanceGoToSourceHint", "Select the child this instance mirrors."),
+							[this]() { GoToChildInstanceSource(GetSelectedChildAddress()); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					[
+						Action(
+							LOCTEXT("InstanceBreak", "Break Instance"),
+							LOCTEXT("InstanceBreakHint", "Keep the values it is showing as this child's own and edit them here."),
+							[this]() { BreakChildInstanceAt(GetSelectedChildAddress()); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SMixtormatChip)
+						.Text(LOCTEXT("InstanceReplaceSource", "Replace Source"))
+						.OnGetMenuContent_Lambda([this]()
+						{
+							return BuildReplaceInstanceSourceMenu(GetSelectedChildAddress());
+						})
+					]
+				]
+			]
+		];
+}
+
+FReply SMixtormat::ToggleLayerExpanded(const int32 LayerIndex)
+{
+	SetLayerExpanded(LayerIndex, !IsLayerExpanded(LayerIndex));
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	// A fill layer has no asset to preview, so its own colour is the thumbnail. Read through a
+	// lambda rather than captured, because the colour picker edits it live.
+	if (Layer.Type == EMixtormatLayerType::Generator)
+	{
+		return SNew(SBox)
+			.WidthOverride(MixtormatTokens::LayerThumbnailSize)
+			.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+			.HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(SImage).Image(MixtormatIcons::Effect())
+				.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()))
+			];
+	}
+	if (Layer.Type == EMixtormatLayerType::Fill)
+	{
+		return SNew(SColorBlock)
+			.Color_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					? WorkingLayers[LayerIndex].BaseColor
+					: MixtormatPalette::Panel();
+			})
+			.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+	}
+
+	// Thumbnails are pooled and must be kept alive for as long as the widget is: LayerThumbnails
+	// is that ownership, and RebuildLayerList resets it in step with the rows.
+	const int32 Size = static_cast<int32>(MixtormatTokens::LayerThumbnailSize);
+	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
+		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
+		&& !Layer.NormalTexture.IsNull())
+	{
+		if (UTexture2D* Texture = Layer.NormalTexture.LoadSynchronous())
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail =
+				MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
+		}
+	}
+	else if (!Layer.SourceComposition.IsNull())
+	{
+		if (UMixtormatMaterial* Composition = Layer.SourceComposition.LoadSynchronous())
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
+				FAssetData(Composition), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
+		}
+	}
+	else if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
+	{
+		if (Surface->PreviewMaterial)
+		{
+			TSharedPtr<FAssetThumbnail> Thumbnail = MakeShared<FAssetThumbnail>(
+				FAssetData(Surface->PreviewMaterial.Get()), Size, Size, ThumbnailPool);
+			LayerThumbnails.Add(Thumbnail);
+			return Thumbnail->MakeThumbnailWidget(MixtormatUI::CleanThumbnailConfig());
+		}
+	}
+
+	return SNew(SColorBlock)
+		.Color(MixtormatPalette::Panel())
+		.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+}
+
+FText SMixtormat::GetLayerDisplayName(const int32 LayerIndex) const
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	if (Layer.SourceComposition.IsNull())
+	{
+		return Layer.DisplayName;
+	}
+	const FText Name = Layer.DisplayName.IsEmpty()
+		? FText::FromString(Layer.SourceComposition.ToSoftObjectPath().GetAssetName())
+		: Layer.DisplayName;
+	return FText::Format(LOCTEXT("ReferenceLayerName", "{0} (ref)"), Name);
+}
+
+FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+
+	if (!Layer.SourceComposition.IsNull())
+	{
+		const UMixtormatMaterial* Composition = Layer.SourceComposition.LoadSynchronous();
+		const FText Name = Composition && !Composition->DisplayName.IsEmpty()
+			? Composition->DisplayName
+			: FText::FromString(Layer.SourceComposition.ToSoftObjectPath().GetAssetName());
+		return Composition
+			? FText::Format(LOCTEXT("ReferenceLayerSource", "REF - {0}"), Name)
+			: FText::Format(LOCTEXT("MissingReferenceLayerSource", "MISSING REF - {0}"), Name);
+	}
+
+	// What the layer is made of, which is a different question from what it is called. A surface
+	// name when there is one, because that is the answer a user is scanning for; the layer's kind
+	// only when there is no asset behind it to name.
+	if (Layer.Type == EMixtormatLayerType::Fill)
+	{
+		return LOCTEXT("FillLayerSource", "FILL");
+	}
+	if (Layer.Type == EMixtormatLayerType::Generator)
+	{
+		return LOCTEXT("GeneratorLayerSource", "GEN");
+	}
+	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
+		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
+		&& !Layer.NormalTexture.IsNull())
+	{
+		return FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName().ToUpper());
+	}
+	if (const UMixtormatSurface* Surface = Layer.SourceSurface.LoadSynchronous())
+	{
+		const FText Name = Surface->DisplayName.IsEmpty()
+			? FText::FromString(Layer.SourceSurface.ToSoftObjectPath().GetAssetName())
+			: Surface->DisplayName;
+		return FText::FromString(Name.ToString().ToUpper());
+	}
+	return LOCTEXT("MaterialLayerSource", "MATERIAL");
+}
+
+FText SMixtormat::GetLayerChildSourceText(
+	const int32 LayerIndex,
+	const int32 ChildIndex) const
+{
+	if (!ResolveChild(LayerIndex, ChildIndex))
+	{
+		return FText::GetEmpty();
+	}
+
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+	if (Child.Type == EMixtormatLayerChildType::OutputReference)
+	{
+		return OutputReferenceKindText(Child);
+	}
+	if (!Child.ScopeOwnerChildId.IsValid())
+	{
+		return IsFlowWarp(Child)
+			? LOCTEXT("FlowWarpLayerTarget", "TARGET · LAYER")
+			: MixtormatLayerBadges::KindForChild(Child);
+	}
+
+	const int32 OwnerIndex = FindChildById(Layer.Children, Child.ScopeOwnerChildId);
+	if (!Layer.Children.IsValidIndex(OwnerIndex))
+	{
+		return LOCTEXT("MissingScopeOwner", "OWNER MISSING");
+	}
+	const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
+	if (IsGeneratorFlow(Child))
+	{
+		return LOCTEXT("GeneratorFlowTarget", "TARGET · GEN");
+	}
+	if (IsFlowWarp(Child))
+	{
+		return Owner.Type == EMixtormatLayerChildType::Mask
+			? LOCTEXT("FlowWarpMaskTarget", "TARGET · MASK")
+			: LOCTEXT("FlowWarpEffectTarget", "TARGET · FX");
+	}
+	if (Child.Type == EMixtormatLayerChildType::Mask)
+	{
+		if (Owner.Type == EMixtormatLayerChildType::Generator)
+		{
+			// Not "GATES". A mask under an effect decides where that effect is allowed to act;
+			// a mask under a generator steers it -- seed placement, propagation cost, carve
+			// depth -- and only reaches a plain multiply at the very end. Calling both gating
+			// would teach the wrong thing about Mask Influence on the one row where it matters.
+			return LOCTEXT("GeneratorSteerMask", "STEERS · GEN");
+		}
+		return IsFlowWarp(Owner)
+			? LOCTEXT("FlowWarpGateMask", "GATES · WARP")
+			: LOCTEXT("EffectGateMask", "GATES · FX");
+	}
+	if (IsMaskFilter(Child))
+	{
+		return LOCTEXT("MaskFilterSource", "FILTER · MASK");
+	}
+	return MixtormatLayerBadges::KindForChild(Child);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerChildIcon(const int32 LayerIndex, const int32 ChildIndex)
+{
+	return MakeChildTypeIcon(*ResolveChild(LayerIndex, ChildIndex));
+}
+
+TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex, const int32 ChildIndex)
+{
+	// Which mask this row is carrying, answered by showing it. The row itself only has room for a
+	// glyph, so the picture is what hovering buys -- at the size the picker draws one, since the
+	// question being asked is the same question the picker answers.
+	const FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
+	if (Child.Type != EMixtormatLayerChildType::Mask)
+	{
+		return nullptr;
+	}
+
+	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
+		? Child.Mask.Mask.ToSoftObjectPath()
+		: Child.Mask.MaskTexture.ToSoftObjectPath();
+	UObject* MaskObject = MaskPath.TryLoad();
+	if (!MaskObject)
+	{
+		return nullptr;
+	}
+
+	UTexture2D* Texture = Cast<UTexture2D>(MaskObject);
+	if (const UMixtormatMask* MaskAsset = Cast<UMixtormatMask>(MaskObject))
+	{
+		Texture = MaskAsset->Thumbnail ? MaskAsset->Thumbnail.Get() : MaskAsset->MaskTexture.Get();
+	}
+	if (!Texture)
+	{
+		return nullptr;
+	}
+
+	const int32 Size = static_cast<int32>(MixtormatTokens::MaskTileSize);
+	TSharedPtr<FAssetThumbnail> Thumbnail =
+		MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
+	LayerThumbnails.Add(Thumbnail);
+
+	return SNew(SToolTip)
+		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel")))
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::MaskTileSize)
+				.HeightOverride(MixtormatTokens::MaskTileSize)
+				[
+					Thumbnail->MakeThumbnailWidget()
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+				.Text(FText::FromString(MaskPath.GetAssetName()))
+			]
+		];
+}
+
+bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
+{
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Effect:      return Child.Effect.bEnabled;
+	case EMixtormatLayerChildType::Generated:   return Child.Generated.bEnabled;
+	case EMixtormatLayerChildType::Craquelure:  return Child.Craquelure.bEnabled;
+	case EMixtormatLayerChildType::ColorId:     return Child.ColorId.bEnabled;
+	case EMixtormatLayerChildType::Filter:      return Child.Filter.bEnabled;
+	case EMixtormatLayerChildType::HsvFilter:   return Child.HsvFilter.bEnabled;
+	case EMixtormatLayerChildType::RandomId:    return Child.RandomId.bEnabled;
+	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
+	case EMixtormatLayerChildType::UvFromIds:   return Child.UvId.bEnabled;
+	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
+	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
+	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
+	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
+	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
+	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
+	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
+	default:                                    return Child.Mask.bEnabled;
+	}
+}
+
+void SMixtormat::ClearLayerSelection()
+{
+	SelectedLayerIndex = INDEX_NONE;
+	bHasSelectedLayer = false;
+	SelectedMaskIndex = INDEX_NONE;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedLayerIds.Reset();
+	SyncSelectedLayerControls();
+	RebuildMaskList();
+}
+
+bool SMixtormat::HasAnySelection() const
+{
+	return WorkingLayers.IsValidIndex(SelectedLayerIndex) || SelectedGroupId.IsValid();
+}
+
+FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
+{
+	SelectedGroupId = GroupId;
+	SelectedGroupChildIndex = ChildIndex;
+	// ResolveChild only reaches a group's shared stack when there is no layer index, so the layer
+	// lane has to be cleared before the mask/effect lanes can address a shared child at all.
+	SelectedLayerIndex = INDEX_NONE;
+	bHasSelectedLayer = false;
+	// The inspector's payload panels are selected by these two lanes, not by SelectedGroupChildIndex:
+	// every one of them except the effect panel reads SelectedMaskIndex, so every non-effect type
+	// rides the mask lane -- the same split SelectWorkingChild makes for a layer's own children.
+	// Resolving first also keeps an empty or missing group (FinishGroupChildEdit passes Num() - 1)
+	// from pointing a lane at an index that is not there.
+	const FMixtormatLayerChild* Child = ResolveChild(INDEX_NONE, ChildIndex);
+	const bool bEffect = Child && Child->Type == EMixtormatLayerChildType::Effect;
+	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
+	SelectedMaskIndex = (Child && !bEffect) ? ChildIndex : INDEX_NONE;
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	return FReply::Handled();
+}
+
+// A shared child's row. ID children can reorder within their scope or move into an ID Group
+// in either container. Scoped mask/flow tools still travel with their owner. Ordinary shared
+// children keep the existing header/layer gestures; only an ID Group accepts cross-group drops.
+TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const int32 ChildIndex)
+{
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group || !Group->Children.IsValidIndex(ChildIndex))
+	{
+		return SNullWidget::NullWidget;
+	}
+	const FMixtormatLayerChild& Child = Group->Children[ChildIndex];
+	const FText ChildName = GetLayerChildName(Child);
+	// Doubles as "can leave the group" on the layer-side targets, so it has to match every guard
+	// MoveGroupChildToLayer applies -- otherwise a row lights up for a release that is then
+	// refused. A top-level mask filter is unreachable today (one only ever arrives scoped), but
+	// the two ends are kept in step rather than relying on that.
+	const bool bCanReorder = IsIdGroupChild(Child)
+		|| (!Child.ScopeOwnerChildId.IsValid() && !IsMaskFilter(Child));
+
+	return SNew(SMixtormatGroupChildDropTarget)
+		.GroupId(GroupId)
+		.ChildIndex(ChildIndex)
+		.OnChildReordered(this, &SMixtormat::ReorderGroupChild)
+		[
+			SNew(SMixtormatIdGroupChildDropTarget)
+			.Address(MakeGroupChildAddress(GroupId, ChildIndex))
+			.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
+			.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
+			[
+			SNew(SMixtormatLayerChildRow)
+			.Name(ChildName)
+			.Icon()[MakeChildTypeIcon(Child)]
+			.Connector(ScopeConnectorFor(Group->Children, ChildIndex))
+			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
+			// a layer, and this child's container is a group.
+			.Kind(Child.Type == EMixtormatLayerChildType::OutputReference
+				? OutputReferenceKindText(Child) : MixtormatLayerBadges::KindForChild(Child))
+			.Badge(MixtormatLayerBadges::ForChild(Child))
+			.bActive_Lambda([this, GroupId, ChildIndex]()
+			{
+				const FMixtormatLayerGroup* Current =
+					MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				return Current && Current->Children.IsValidIndex(ChildIndex)
+					&& IsGroupChildEnabled(Current->Children[ChildIndex]);
+			})
+			.bSelected_Lambda([this, GroupId, ChildIndex]()
+			{
+				return SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex;
+			})
+			.bInstanceSource_Lambda([this, GroupId, ChildIndex]()
+			{
+				const FMixtormatLayerGroup* Current =
+					MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				return Current && Current->Children.IsValidIndex(ChildIndex)
+					&& IsSourceOfSelectedInstance(GroupId, Current->Children[ChildIndex].ChildId);
+			})
+			.OnSelected_Lambda([this, GroupId, ChildIndex]() { SelectGroupChild(GroupId, ChildIndex); })
+			.OnToggleActive_Lambda([this, GroupId, ChildIndex]()
+			{
+				ToggleGroupChildEnabled(GroupId, ChildIndex);
+			})
+			.OnGetContextMenu_Lambda([this, GroupId, ChildIndex]()
+			{
+				return BuildGroupChildContextMenu(GroupId, ChildIndex);
+			})
+			// Decided here, not in the lambda: Child is a reference into an array the row outlives,
+			// and the answer cannot change without the row being rebuilt anyway.
+			.OnDragDetected_Lambda([this, GroupId, ChildIndex, ChildName, bCanReorder]
+				(const FGeometry&, const FPointerEvent&)
+			{
+				return FReply::Handled().BeginDragDrop(
+					FMixtormatChildDragDropOp::NewFromGroup(GroupId, ChildIndex, ChildName, bCanReorder));
+			})
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
+{
+	const TSharedRef<SMixtormatLayerGroupRow> Row = SNew(SMixtormatLayerGroupRow)
+		.Name_Lambda([this, GroupId]()
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			return Group ? Group->DisplayName : FText::GetEmpty();
+		})
+		.MemberCount_Lambda([this, GroupId]()
+		{
+			int32 Count = 0;
+			for (const FMixtormatLayer& Layer : WorkingLayers)
+			{
+				Count += Layer.GroupId == GroupId ? 1 : 0;
+			}
+			return Count;
+		})
+		.bEnabled_Lambda([this, GroupId]()
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			return !Group || Group->bEnabled;
+		})
+		.bExpanded_Lambda([this, GroupId]() { return IsGroupExpanded(GroupId); })
+		.bSelected_Lambda([this, GroupId]() { return SelectedGroupId == GroupId; })
+		.AccentColor_Lambda([this, GroupId]()
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			return Group ? Group->AccentColor : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		})
+		.OnSelected_Lambda([this, GroupId]() { SelectLayerGroup(GroupId); })
+		.OnToggleExpanded_Lambda([this, GroupId]() { ToggleGroupExpanded(GroupId); })
+		.OnToggleEnabled_Lambda([this, GroupId]()
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			SetLayerGroupEnabled(GroupId, Group ? !Group->bEnabled : true);
+		})
+		.OnNameCommitted_Lambda([this, GroupId](const FText& Text, ETextCommit::Type)
+		{
+			RenameLayerGroup(GroupId, Text);
+		})
+		.OnDragDetected_Lambda([this, GroupId](const FGeometry&, const FPointerEvent&)
+		{
+			const FMixtormatLayerGroup* Group =
+				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+			return Group
+				? FReply::Handled().BeginDragDrop(
+					FMixtormatGroupDragDropOp::New(GroupId, Group->DisplayName))
+				: FReply::Unhandled();
+		})
+		.OnGetContextMenu(this, &SMixtormat::BuildLayerGroupContextMenu, GroupId);
+	GroupRowWidgets.Add(GroupId, Row);
+	return Row;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
+{
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FText DisplayName = GetLayerDisplayName(LayerIndex);
+	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
+
+	const FGuid LayerId = Layer.LayerId;
+	TSharedPtr<SMixtormatLayerRow> Row;
+	TSharedRef<SMixtormatLayerContainer> Container = SNew(SMixtormatLayerContainer)
+		.bExpanded_Lambda([WeakOwner, LayerIndex]()
+		{
+			const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+			return Owner.IsValid() && Owner->IsLayerExpanded(LayerIndex);
+		})
+		.Header()
+		[
+			SAssignNew(Row, SMixtormatLayerRow)
+			.Name(DisplayName)
+			// The raw authored name, not the decorated one above: committing "Foo (ref)" back
+			// would write the decoration into the layer and it would grow on every rename.
+			.EditableName_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					? WorkingLayers[LayerIndex].DisplayName
+					: FText::GetEmpty();
+			})
+			.OnNameCommitted_Lambda([this, LayerId](const FText& Text, ETextCommit::Type)
+			{
+				RenameLayer(LayerId, Text);
+			})
+			.bReference(!Layer.SourceComposition.IsNull())
+			.bHoldsInstanceSource_Lambda([this, LayerIndex]()
+			{
+				// A collapsed layer hides the source row that would otherwise carry the marker.
+				const FMixtormatLayerChild* Selected =
+					ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+				return Selected && Selected->IsInstance()
+					&& WorkingLayers.IsValidIndex(LayerIndex)
+					&& !IsLayerExpanded(LayerIndex)
+					&& (Selected->SourceLayerId.IsValid()
+						? Selected->SourceLayerId == WorkingLayers[LayerIndex].LayerId
+						: SelectedLayerIndex == LayerIndex);
+			})
+			.Source(GetLayerSourceText(LayerIndex))
+			.Badge(MixtormatLayerBadges::ForLayer(Layer))
+			.ColorBadge_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex)
+					&& WorkingLayers[LayerIndex].Type != EMixtormatLayerType::Generator
+					? MixtormatLayerBadges::ForColorBlendMode(
+						WorkingLayers[LayerIndex].BaseColorBlendMode)
+					: FText::GetEmpty();
+			})
+			.bCanDisable(true)
+			.Thumbnail()[BuildLayerThumbnail(LayerIndex)]
+			.bEnabled_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].bEnabled;
+			})
+			.bExpanded_Lambda([WeakOwner, LayerIndex]()
+			{
+				const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+				return Owner.IsValid() && Owner->IsLayerExpanded(LayerIndex);
+			})
+			.bHasChildren_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.Num() > 0;
+			})
+			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerHeightOpMenu(LayerIndex); })
+			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
+			.OnGetColorBadgeMenu_Lambda([this, LayerIndex]()
+			{
+				SelectWorkingLayer(LayerIndex);
+				return BuildBaseColorBlendModeMenu();
+			})
+			.bSelected_Lambda([this, LayerIndex]()
+			{
+				return SelectedLayerIndex == LayerIndex || IsLayerMultiSelected(LayerIndex);
+			})
+			.bSolo_Lambda([this, LayerIndex]() { return SoloLayerIndex == LayerIndex; })
+			.OnSelected_Lambda([this, LayerIndex]() { SelectWorkingLayer(LayerIndex); })
+			.OnToggleExpanded_Lambda([this, LayerIndex]() { ToggleLayerExpanded(LayerIndex); })
+			.OnToggleEnabled_Lambda([this, LayerIndex]()
+			{
+				if (!WorkingLayers.IsValidIndex(LayerIndex))
+				{
+					return;
+				}
+				SetWorkingLayerEnabled(
+					WorkingLayers[LayerIndex].bEnabled ? ECheckBoxState::Unchecked : ECheckBoxState::Checked,
+					LayerIndex);
+			})
+			.OnToggleSolo_Lambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); })
+			.OnGetContextMenu(this, &SMixtormat::BuildLayerContextMenu, LayerIndex)
+			.OnDragDetected_Lambda([this, LayerIndex, DisplayName](const FGeometry&, const FPointerEvent&)
+			{
+				return FReply::Handled().BeginDragDrop(
+					FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName));
+			})
+		];
+
+	LayerRowWidgets.Add(LayerId, Row);
+
+	for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+	{
+		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
+		const bool bBlur = Child.Type == EMixtormatLayerChildType::Blur;
+		const bool bCurvature = Child.Type == EMixtormatLayerChildType::Curvature;
+		// Procedural children share row actions, not mask blending semantics.
+		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
+			|| Child.Type == EMixtormatLayerChildType::Craquelure
+			|| Child.Type == EMixtormatLayerChildType::ColorId
+			|| Child.Type == EMixtormatLayerChildType::Filter
+			|| Child.Type == EMixtormatLayerChildType::HsvFilter
+			|| Child.Type == EMixtormatLayerChildType::RandomId
+			|| Child.Type == EMixtormatLayerChildType::RampId
+			|| Child.Type == EMixtormatLayerChildType::UvFromIds
+			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
+			|| Child.Type == EMixtormatLayerChildType::PatternId
+			|| Child.Type == EMixtormatLayerChildType::CombineId
+			|| Child.Type == EMixtormatLayerChildType::IdGroup
+			|| Child.Type == EMixtormatLayerChildType::OutputReference
+			// A generator joins them for the row, not for the semantics. What the shared
+			// procedural row gives it is the right ones: an enable toggle that writes its own
+			// flag, a context menu with no blend mode on it, and the shared duplicate/instance
+			// items. It is not a mask and must not fall through to the mask row, which would
+			// toggle FMixtormatLayerChild::Mask on a child that has none.
+			|| Child.Type == EMixtormatLayerChildType::Generator;
+		const FText ChildName = GetLayerChildName(Child);
+
+		Container->AddChild(
+			SNew(SBox)
+			// One indent for being under the layer plus one per scope level. Without the base level a
+			// top-level child (the first ID Group, say) sat flush with the layer header while its own
+			// scoped children stepped in, so the owner read as a sibling of the layer.
+			.Padding(FMargin(
+				(1 + GetDisplayScopeDepth(Layer.Children, ChildIndex)) * MixtormatTokens::LayerScopeIndent,
+				0.0f,
+				0.0f,
+				0.0f))
+			[
+			SNew(SMixtormatChildDropTarget)
+			.LayerIndex(LayerIndex)
+			.ChildIndex(ChildIndex)
+			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
+			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+			.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
+			[
+				SNew(SMixtormatIdGroupChildDropTarget)
+				.Address(MakeChildAddress(LayerIndex, ChildIndex))
+				.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
+				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
+				[
+				SNew(SMixtormatLayerChildRow)
+				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
+				.Name(ChildName)
+				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
+				.Badge(MixtormatLayerBadges::ForChild(Child))
+				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
+				.Connector(ScopeConnectorFor(Layer.Children, ChildIndex))
+				// Only children that have a blend mode get a badge menu: masks, and generated
+				// masks that emit coverage (not filters, ID nodes or generators).
+				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Mask
+					? FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, ChildIndex)
+					: (Child.Type == EMixtormatLayerChildType::Generated
+						|| Child.Type == EMixtormatLayerChildType::Craquelure
+						|| Child.Type == EMixtormatLayerChildType::ColorId
+						|| Child.Type == EMixtormatLayerChildType::RandomId)
+						? FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex)
+						: FOnGetContent())
+				.bActive_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return IsLayerChildEnabled(LayerIndex, ChildIndex);
+				})
+				.bSelected_Lambda([this, LayerIndex, ChildIndex, bEffect]()
+				{
+					// Effects and masks are selected through separate indices, so which one to
+					// compare against depends on what the child is.
+					return SelectedLayerIndex == LayerIndex
+						&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
+				})
+				.bPreviewing_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					if (!WorkingLayers.IsValidIndex(LayerIndex)
+						|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+					{
+						return false;
+					}
+					// The two sources RefreshLayeredPreview feeds the compositor from: a child-output
+					// preview names its child by GUID, a layer-mask preview by the selection.
+					switch (DebugPreviewMode)
+					{
+					case EMixtormatDebugPreviewMode::ChildOutput:
+						return ChildPreviewTarget.OwnerId == WorkingLayers[LayerIndex].LayerId
+							&& ChildPreviewTarget.ChildId == WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+					case EMixtormatDebugPreviewMode::LayerMask:
+						return SelectedLayerIndex == LayerIndex && GetSelectedChildIndex() == ChildIndex;
+					default:
+						return false;
+					}
+				})
+				.bInstanceSource_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return WorkingLayers.IsValidIndex(LayerIndex)
+						&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+						&& IsSourceOfSelectedInstance(
+							WorkingLayers[LayerIndex].LayerId,
+							WorkingLayers[LayerIndex].Children[ChildIndex].ChildId);
+				})
+				.OnSelected_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					SelectWorkingChild(LayerIndex, ChildIndex);
+				})
+				.OnToggleActive_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
+				{
+					const ECheckBoxState Next = IsLayerChildEnabled(LayerIndex, ChildIndex)
+						? ECheckBoxState::Unchecked
+						: ECheckBoxState::Checked;
+					if (bEffect)
+					{
+						ToggleLayerEffect(LayerIndex, ChildIndex);
+					}
+					else if (bGenerated)
+					{
+						SetGeneratedEnabled(Next, LayerIndex, ChildIndex);
+					}
+					else
+					{
+						SetMaskEnabled(Next, LayerIndex, ChildIndex);
+					}
+				})
+				.OnGetContextMenu_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated, bBlur, bCurvature]()
+				{
+					if (bBlur || bCurvature)
+					{
+						// One menu: a blur and a curvature offer the same actions, because what
+						// they have in common -- scoped, consumed, instanceable -- is everything
+						// the menu is about.
+						return BuildBlurContextMenu(LayerIndex, ChildIndex);
+					}
+					if (bGenerated)
+					{
+						return BuildGeneratedContextMenu(LayerIndex, ChildIndex);
+					}
+					return bEffect
+						? BuildEffectContextMenu(LayerIndex, ChildIndex)
+						: BuildMaskContextMenu(LayerIndex, ChildIndex);
+				})
+				// Decided here, not in the lambda: Child is a reference into an array the row
+				// outlives, and the answer cannot change without the row being rebuilt anyway.
+				.OnDragDetected_Lambda(
+					[this, LayerIndex, ChildIndex, ChildName,
+										 bCanLeaveLayer = !IsMaskFilter(Child) && !IsGeneratorFlow(Child)]
+					(const FGeometry&, const FPointerEvent&)
+				{
+					return FReply::Handled().BeginDragDrop(
+						FMixtormatChildDragDropOp::New(
+							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
+				})
+				]
+			]
+		]);
+	}
+
+	return SNew(SMixtormatLayerRowDropTarget)
+		.TargetLayerIndex(LayerIndex)
+		.OnLayerInsertedAt(this, &SMixtormat::HandleLayerInsertedAt)
+		.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)
+		.OnSurfaceInsertedAt(this, &SMixtormat::HandleSurfaceDroppedAt)
+		.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+		.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
+		.OnMaskDropped(this, &SMixtormat::AssignMaskToLayer)
+		[
+			Container
+		];
+}
+
+bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIndex) const
+{
+	if (!ResolveChild(LayerIndex, ChildIndex))
+	{
+		return false;
+	}
+	const FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
+	switch (Child.Type)
+	{
+	case EMixtormatLayerChildType::Effect:    return Child.Effect.bEnabled;
+	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
+	case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
+	case EMixtormatLayerChildType::ColorId:   return Child.ColorId.bEnabled;
+	case EMixtormatLayerChildType::Filter:    return Child.Filter.bEnabled;
+	case EMixtormatLayerChildType::HsvFilter: return Child.HsvFilter.bEnabled;
+	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
+	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
+	case EMixtormatLayerChildType::UvFromIds: return Child.UvId.bEnabled;
+	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
+	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
+	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
+	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
+	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
+	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
+	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
+	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
+	case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
+	default:                                  return Child.Mask.bEnabled;
+	}
+}
+
+#undef LOCTEXT_NAMESPACE
