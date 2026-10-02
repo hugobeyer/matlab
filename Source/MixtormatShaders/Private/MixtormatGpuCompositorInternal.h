@@ -265,6 +265,9 @@ namespace MixtormatGpuCompositor
 		FName PublishedSourceOutput;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
+		bool bNormalizeInput = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
 		FVector2f UVOffset = FVector2f::ZeroVector;
 		bool bFlipU = false;
@@ -303,6 +306,9 @@ namespace MixtormatGpuCompositor
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 		bool bInvert = false;
+		bool bNormalizeInput = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
 		FVector2f UVOffset = FVector2f::ZeroVector;
 		bool bFlipU = false;
@@ -563,6 +569,9 @@ namespace MixtormatGpuCompositor
 		int32 WarpRadius = 1;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Multiply;
 		float Weight = 1.0f;
+		bool bNormalizeInput = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
 		float Offset = 0.0f;
@@ -597,6 +606,9 @@ namespace MixtormatGpuCompositor
 		uint32 WarpSeed = 7;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
 		bool bInvert = false;
+		bool bNormalizeInput = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
 		float Weight = 1.0f;
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
@@ -728,6 +740,9 @@ namespace MixtormatGpuCompositor
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 		bool bInvert = false;
+		bool bNormalizeInput = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
 		float Balance = 0.5f;
 		float Contrast = 1.0f;
 		float Offset = 0.0f;

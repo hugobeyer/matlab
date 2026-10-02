@@ -1183,7 +1183,17 @@ void SMixtormat::AddMaskShapingRows(
 {
 	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
 	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
-		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
+		LOCTEXT("MaskNormalizeInputLabel", "Normalize Input"), Resolve,
+		&FMixtormatMaskShaping::bNormalizeInput));
+	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatMaskShaping>(
+			LOCTEXT("MaskInputMinLabel", "Input Min"), Resolve, &FMixtormatMaskShaping::InputMin,
+			0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("MaskInputMinHint", "Black point applied after optional input normalization.")),
+		MakeMemberSlider<FMixtormatMaskShaping>(
+			LOCTEXT("MaskInputMaxLabel", "Input Max"), Resolve, &FMixtormatMaskShaping::InputMax,
+			0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("MaskInputMaxHint", "White point applied after optional input normalization."))));
 	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskShaping>(
 			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,
@@ -1197,6 +1207,8 @@ void SMixtormat::AddMaskShapingRows(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("MaskOffsetHint", "Lifts the whole mask after contrast. Plus one reaches full white and minus one full black from any input, whatever the contrast is set to.")));
+	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
+		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
 }
 
 #undef LOCTEXT_NAMESPACE

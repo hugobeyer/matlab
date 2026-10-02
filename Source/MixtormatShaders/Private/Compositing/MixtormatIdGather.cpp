@@ -261,6 +261,9 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		RandomData.BlendMode = RandomId.BlendMode;
 		RandomData.Weight = RandomId.Weight;
 		RandomData.bInvert = RandomId.Shaping.bInvert;
+		RandomData.bNormalizeInput = RandomId.Shaping.bNormalizeInput;
+		RandomData.InputMin = RandomId.Shaping.InputMin;
+		RandomData.InputMax = RandomId.Shaping.InputMax;
 		RandomData.Balance = RandomId.Shaping.Balance;
 		RandomData.Contrast = RandomId.Shaping.Contrast;
 		RandomData.Offset = RandomId.Shaping.Offset;
@@ -526,6 +529,9 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		IdData.BlendMode = ColorIdMask.BlendMode;
 		IdData.Weight = ColorIdMask.Weight;
 		IdData.bInvert = ColorIdMask.Shaping.bInvert;
+		IdData.bNormalizeInput = ColorIdMask.Shaping.bNormalizeInput;
+		IdData.InputMin = ColorIdMask.Shaping.InputMin;
+		IdData.InputMax = ColorIdMask.Shaping.InputMax;
 		IdData.Tiling = FVector2f(
 			static_cast<float>(FMath::Max(ColorIdMask.TilingX, 1)),
 			static_cast<float>(FMath::Max(ColorIdMask.TilingY, 1)));

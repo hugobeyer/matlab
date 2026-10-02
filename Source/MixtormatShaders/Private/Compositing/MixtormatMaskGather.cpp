@@ -122,6 +122,9 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		MaskData.bFlipU = MaskLayer.bFlipU;
 		MaskData.bFlipV = MaskLayer.bFlipV;
 		MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
+		MaskData.bNormalizeInput = MaskLayer.Shaping.bNormalizeInput;
+		MaskData.InputMin = MaskLayer.Shaping.InputMin;
+		MaskData.InputMax = MaskLayer.Shaping.InputMax;
 		MaskData.Balance = MaskLayer.Shaping.Balance;
 		MaskData.Contrast = MaskLayer.Shaping.Contrast;
 		MaskData.Offset = MaskLayer.Shaping.Offset;
@@ -193,6 +196,9 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		GeneratedData.WarpRadius = FMath::Max(GeneratedMask.WarpRadius, 1);
 		GeneratedData.BlendMode = GeneratedMask.BlendMode;
 		GeneratedData.Weight = GeneratedMask.Weight;
+		GeneratedData.bNormalizeInput = GeneratedMask.Shaping.bNormalizeInput;
+		GeneratedData.InputMin = GeneratedMask.Shaping.InputMin;
+		GeneratedData.InputMax = GeneratedMask.Shaping.InputMax;
 		GeneratedData.Balance = GeneratedMask.Shaping.Balance;
 		GeneratedData.Contrast = GeneratedMask.Shaping.Contrast;
 		GeneratedData.Offset = GeneratedMask.Shaping.Offset;
@@ -246,6 +252,9 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		CrackData.BlendMode = Craquelure.BlendMode;
 		CrackData.Weight = Craquelure.Weight;
 		CrackData.bInvert = Craquelure.Shaping.bInvert;
+		CrackData.bNormalizeInput = Craquelure.Shaping.bNormalizeInput;
+		CrackData.InputMin = Craquelure.Shaping.InputMin;
+		CrackData.InputMax = Craquelure.Shaping.InputMax;
 		CrackData.Balance = Craquelure.Shaping.Balance;
 		CrackData.Contrast = Craquelure.Shaping.Contrast;
 		CrackData.Offset = Craquelure.Shaping.Offset;

@@ -26,6 +26,17 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 {
 	GENERATED_BODY()
 
+	// Remaps this node's incoming scalar field from its measured minimum and maximum to 0..1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping")
+	bool bNormalizeInput = false;
+
+	// Black and white points applied after optional input normalization.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float InputMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float InputMax = 1.0f;
+
 	// Flips the mask after every other stage, so it inverts what you see rather than what was
 	// sampled.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping")
