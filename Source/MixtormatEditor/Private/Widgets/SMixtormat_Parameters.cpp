@@ -945,25 +945,63 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 				: FText::GetEmpty());
 	}
 
-	AddInfo(
-		LOCTEXT("DevInfoDefault", "Default"),
-		Key.IsSet()
-			? FText::AsNumber(MixtormatParameterUi::ResolveUiDefault(Key.GetValue(), 0.0f))
-			: LOCTEXT("DevInfoNoDefinition", "no definition"),
-		LOCTEXT("DevInfoDefaultHint", "The compiled reset value: the property's CDO initializer, read through reflection."));
+	if (Target.ValueType == EMixtormatParameterValueType::Enum)
+	{
+		const UEnum* Enum = Key.IsSet()
+			? MixtormatParameterAuthoring::ResolveParameterEnum(Key.GetValue()) : nullptr;
+		const FName CompiledName = Key.IsSet()
+			? MixtormatParameterAuthoring::ResolveCompiledEnumDefault(Key.GetValue()) : NAME_None;
+		const int64 CompiledValue = Enum
+			? Enum->GetValueByNameString(CompiledName.ToString()) : INDEX_NONE;
+		AddInfo(
+			LOCTEXT("DevInfoDefault", "Compiled Default"),
+			Enum && CompiledValue != INDEX_NONE
+				? Enum->GetDisplayNameTextByValue(CompiledValue)
+				: LOCTEXT("DevInfoNoDefinition", "no definition"),
+			LOCTEXT("DevInfoDefaultHint", "The compiled reset value: the property's reflected enum initializer."));
+	}
+	else
+	{
+		AddInfo(
+			LOCTEXT("DevInfoDefault", "Default"),
+			Key.IsSet()
+				? FText::AsNumber(MixtormatParameterUi::ResolveUiDefault(Key.GetValue(), 0.0f))
+				: LOCTEXT("DevInfoNoDefinition", "no definition"),
+			LOCTEXT("DevInfoDefaultHint", "The compiled reset value: the property's CDO initializer, read through reflection."));
+	}
 
+
+	if (Key.IsSet() && (MixtormatParameterAuthoring::HasShippedAuthoring(Key.GetValue())
+		|| MixtormatParameterAuthoring::HasPendingAuthoring(Key.GetValue())))
+	{
+		if (Target.ValueType == EMixtormatParameterValueType::Enum)
+		{
+			const UEnum* Enum = MixtormatParameterAuthoring::ResolveParameterEnum(Key.GetValue());
+			const FName DefaultName = MixtormatParameterAuthoring::ResolveAuthoringEnumDefault(Key.GetValue());
+			const int64 DefaultValue = Enum
+				? Enum->GetValueByNameString(DefaultName.ToString()) : INDEX_NONE;
+			AddInfo(
+				LOCTEXT("DevInfoAuthoringDefault", "Authoring Default"),
+				Enum && DefaultValue != INDEX_NONE
+					? Enum->GetDisplayNameTextByValue(DefaultValue)
+					: LOCTEXT("DevInfoNoDefinition", "no definition"),
+				LOCTEXT("DevInfoAuthoringDefaultHint", "The plugin authoring database's reset value -- what new instances and Reset use. Existing authored materials are untouched."));
+		}
+		else
+		{
+			AddInfo(
+				LOCTEXT("DevInfoAuthoringDefault", "Authoring Default"),
+				FText::AsNumber(MixtormatParameterAuthoring::ResolveAuthoringDefault(Key.GetValue(), 0.0f)),
+				LOCTEXT("DevInfoAuthoringDefaultHint", "The plugin authoring database's reset value -- what new instances and Reset use. Existing authored materials are untouched."));
+		}
+	}
+
+	if (Target.ValueType != EMixtormatParameterValueType::Enum)
+	{
 	FMixtormatParameterUiResolution Shipped;
 	const bool bShippedResolved = Key.IsSet()
 		? MixtormatParameterUi::TryResolveUi(Key.GetValue(), Shipped)
 		: false;
-	if (Key.IsSet() && MixtormatParameterAuthoring::HasShippedAuthoring(Key.GetValue()))
-	{
-		AddInfo(
-			LOCTEXT("DevInfoAuthoringDefault", "Authoring Default"),
-			FText::AsNumber(MixtormatParameterAuthoring::ResolveAuthoringDefault(Key.GetValue(), 0.0f)),
-			LOCTEXT("DevInfoAuthoringDefaultHint", "The plugin authoring database's reset value -- what new instances and Reset use. Existing authored materials are untouched."));
-	}
-
 	const bool bSessionOverride = Key.IsSet() && MixtormatParameterUi::HasUiRangeOverride(Key.GetValue());
 	const FText ShippedUi = bShippedResolved
 		? FText::Format(LOCTEXT("DevInfoUiRange", "{0} .. {1}"),
@@ -1018,6 +1056,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 				? LOCTEXT("DevInfoSaturatesYes", "yes")
 				: LOCTEXT("DevInfoSaturatesNo", "no"),
 			LOCTEXT("DevInfoSaturatesHint", "The shader saturates this value (or the channel it feeds) after binding, so values past the range are legal but stop changing the result."));
+	}
 	}
 
 	MixtormatMenu::FBuilder Menu;
@@ -1152,21 +1191,34 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		{
 			Entry = *Shipped;
 		}
-		if (!Entry.Default.IsSet())
+		if (Key.ValueType == EMixtormatParameterValueType::Enum)
 		{
-			Entry.Default = MixtormatParameterAuthoring::ResolveAuthoringDefault(Key, 0.0f);
+			Entry.Default.Reset();
+			Entry.UiMin.Reset();
+			Entry.UiMax.Reset();
+			Entry.Snap.Reset();
+			Entry.ClampMin.Reset();
+			Entry.ClampMax.Reset();
+			Entry.DefaultEnum = MixtormatParameterAuthoring::ResolveAuthoringEnumDefault(Key);
 		}
-		if (!Entry.UiMin.IsSet())
+		else
 		{
-			Entry.UiMin = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 0.0f, false);
-		}
-		if (!Entry.UiMax.IsSet())
-		{
-			Entry.UiMax = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 1.0f, true);
-		}
-		if (!Entry.Snap.IsSet())
-		{
-			Entry.Snap = MixtormatParameterAuthoring::ResolveAuthoringSnap(Key, 0.0f);
+			if (!Entry.Default.IsSet())
+			{
+				Entry.Default = MixtormatParameterAuthoring::ResolveAuthoringDefault(Key, 0.0f);
+			}
+			if (!Entry.UiMin.IsSet())
+			{
+				Entry.UiMin = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 0.0f, false);
+			}
+			if (!Entry.UiMax.IsSet())
+			{
+				Entry.UiMax = MixtormatParameterAuthoring::ResolveAuthoringUiBound(Key, 1.0f, true);
+			}
+			if (!Entry.Snap.IsSet())
+			{
+				Entry.Snap = MixtormatParameterAuthoring::ResolveAuthoringSnap(Key, 0.0f);
+			}
 		}
 		return Entry;
 	};
@@ -1259,27 +1311,80 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				})))
 		];
 
-	// Soft ranges seeded from the UI range as the menu opened: the default scrubs inside it,
-	// each end scrubs one span outward from where it is, snap within a tenth of the span.
-	const double UiLow = static_cast<double>(Current.UiMin.GetValue());
-	const double UiHigh = static_cast<double>(Current.UiMax.GetValue());
-	const double Span = FMath::Max(FMath::Abs(UiHigh - UiLow), 1.0e-3);
-	// The back-end clamp as it resolves right now (pending edit included), so editing it below
-	// immediately bounds the Default and UI range rows too.
-	const auto ClampAttribute = [Key](const bool bMax)
-	{
-		return TAttribute<double>::CreateLambda([Key, bMax]() -> double
-		{
-			const TOptional<float> Clamp = MixtormatParameterAuthoring::ResolveAuthoringClamp(Key, bMax);
-			return Clamp.IsSet()
-				? static_cast<double>(Clamp.GetValue())
-				: (bMax ? UE_BIG_NUMBER : -UE_BIG_NUMBER);
-		});
-	};
-	const TAttribute<double> HardLow = ClampAttribute(false);
-	const TAttribute<double> HardHigh = ClampAttribute(true);
-	const bool bIntegerKey = Key.ValueType == EMixtormatParameterValueType::Int;
 
+	if (Key.ValueType == EMixtormatParameterValueType::Enum)
+	{
+		const UEnum* Enum = MixtormatParameterAuthoring::ResolveParameterEnum(Key);
+		Rows->AddSlot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			[
+				MixtormatRow::Make(
+					LOCTEXT("DevAuthoringDefault", "Default/Reset"),
+					MixtormatRow::MakeChip(
+						TAttribute<FText>::CreateLambda([Enum, EffectiveEntry]()
+						{
+							const FMixtormatParameterAuthoringEntry Entry = EffectiveEntry();
+						const int64 Value = Enum
+							? Enum->GetValueByNameString(Entry.DefaultEnum.Get(NAME_None).ToString())
+							: INDEX_NONE;
+						return Enum && Value != INDEX_NONE
+							? Enum->GetDisplayNameTextByValue(Value)
+							: FText::GetEmpty();
+						}),
+						FOnGetContent::CreateLambda([this, Enum, Update, EffectiveEntry]()
+						{
+							return BuildEnumMenu(
+								Enum,
+								[EffectiveEntry, Enum]() -> int64
+								{
+									const FMixtormatParameterAuthoringEntry Entry = EffectiveEntry();
+									return Enum
+										? Enum->GetValueByNameString(Entry.DefaultEnum.Get(NAME_None).ToString())
+										: INDEX_NONE;
+								},
+								[Update, Enum](const int64 Value)
+								{
+									if (!Enum || Value == INDEX_NONE)
+									{
+										return;
+									}
+									FString EntryName = Enum->GetNameByValue(Value).ToString();
+									const int32 Separator = EntryName.Find(TEXT("::"));
+									if (Separator != INDEX_NONE)
+									{
+										EntryName.RightChopInline(Separator + 2);
+									}
+									Update([EntryName](FMixtormatParameterAuthoringEntry& Entry)
+									{
+										Entry.DefaultEnum = FName(*EntryName);
+									});
+								},
+								FSimpleDelegate());
+						})))
+			];
+	}
+	else
+	{
+		// Soft ranges seeded from the UI range as the menu opened: the default scrubs inside it,
+		// each end scrubs one span outward from where it is, snap within a tenth of the span.
+		const double UiLow = static_cast<double>(Current.UiMin.GetValue());
+		const double UiHigh = static_cast<double>(Current.UiMax.GetValue());
+		const double Span = FMath::Max(FMath::Abs(UiHigh - UiLow), 1.0e-3);
+		// The back-end clamp as it resolves right now (pending edit included), so editing it below
+		// immediately bounds the Default and UI range rows too.
+		const auto ClampAttribute = [Key](const bool bMax)
+		{
+			return TAttribute<double>::CreateLambda([Key, bMax]() -> double
+			{
+				const TOptional<float> Clamp = MixtormatParameterAuthoring::ResolveAuthoringClamp(Key, bMax);
+				return Clamp.IsSet()
+					? static_cast<double>(Clamp.GetValue())
+					: (bMax ? UE_BIG_NUMBER : -UE_BIG_NUMBER);
+			});
+		};
+		const TAttribute<double> HardLow = ClampAttribute(false);
+		const TAttribute<double> HardHigh = ClampAttribute(true);
+		const bool bIntegerKey = Key.ValueType == EMixtormatParameterValueType::Int;
 	Rows->AddSlot().AutoHeight()[MixtormatRow::MakeCaption(LOCTEXT("DevAuthoringVisual", "Visual"))];
 	AddEditRow(LOCTEXT("DevAuthoringDefault", "Default/Reset"),
 		[](const FMixtormatParameterAuthoringEntry& Entry) { return Entry.Default.Get(0.0f); },
@@ -1370,6 +1475,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 	};
 	AddClampRow(LOCTEXT("DevAuthoringClampMin", "Clamp Min"), false);
 	AddClampRow(LOCTEXT("DevAuthoringClampMax", "Clamp Max"), true);
+	}
 
 	FString ShaderInfo = FString::Printf(
 		TEXT("normalization: %s | saturates: %s"),

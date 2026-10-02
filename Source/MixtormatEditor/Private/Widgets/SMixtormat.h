@@ -164,6 +164,12 @@ private:
 		TWeakPtr<SWidget> Widget;
 		FSimpleDelegate Reset;
 	};
+
+	struct FEnumResetBinding
+	{
+		TWeakPtr<SWidget> Widget;
+		FSimpleDelegate Reset;
+	};
 	void BuildWorkspaceUI();
 	void HandleReferencedCompositionUpdated(const FAssetData& AssetData);
 	FReply OpenLiveThemePanel();
@@ -1233,18 +1239,36 @@ private:
 			}
 		};
 
-		TSharedRef<SWidget> Row = MixtormatRow::Make(
-			Label,
-			MixtormatRow::MakeChip(
-				TAttribute<FText>::CreateLambda([Enum, ActiveValue]() -> FText
+		TSharedRef<SWidget> EnumChip = MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([Enum, ActiveValue]() -> FText
+			{
+				return Enum->GetDisplayNameTextByValue(ActiveValue());
+			}),
+			FOnGetContent::CreateLambda([this, Enum, ActiveValue, WriteValue, AfterWrite]()
+			{
+				return BuildEnumMenu(Enum, ActiveValue, WriteValue, AfterWrite);
+			}));
+		TSharedRef<SWidget> Row = MixtormatRow::Make(Label, EnumChip, ToolTip);
+		FEnumResetBinding& ResetBinding = EnumResetBindings.AddDefaulted_GetRef();
+		ResetBinding.Widget = EnumChip;
+		ResetBinding.Reset = FSimpleDelegate::CreateLambda(
+			[this, Enum, ResolveTarget, WriteValue, AfterWrite]()
+			{
+				const TOptional<FMixtormatParameterDefinitionKey> Key =
+					MixtormatParameterUi::DefinitionKeyOf(ResolveTarget());
+				if (!Enum || !Key.IsSet())
 				{
-					return Enum->GetDisplayNameTextByValue(ActiveValue());
-				}),
-				FOnGetContent::CreateLambda([this, Enum, ActiveValue, WriteValue, AfterWrite]()
+					return;
+				}
+				const FName DefaultName =
+					MixtormatParameterAuthoring::ResolveAuthoringEnumDefault(Key.GetValue());
+				const int64 DefaultValue = Enum->GetValueByNameString(DefaultName.ToString());
+				if (DefaultValue != INDEX_NONE)
 				{
-					return BuildEnumMenu(Enum, ActiveValue, WriteValue, AfterWrite);
-				})),
-			ToolTip);
+					WriteValue(DefaultValue);
+					AfterWrite.ExecuteIfBound();
+				}
+			});
 		return WrapParameterControl(Row, ResolveTarget);
 	}
 
@@ -1464,6 +1488,7 @@ private:
 	TArray<FEditHistoryState> UndoHistory;
 	TArray<FEditHistoryState> RedoHistory;
 	TArray<FNumericResetBinding> NumericResetBindings;
+	TArray<FEnumResetBinding> EnumResetBindings;
 	TOptional<FMixtormatParameterAddress> ParameterReferenceClipboard;
 
 	// The child clipboard keeps the payload, so a Copy still pastes after its source is deleted,

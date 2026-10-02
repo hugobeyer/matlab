@@ -476,6 +476,20 @@ bool SMixtormat::ResetHoveredNumericControl()
 			return true;
 		}
 	}
+	for (int32 Index = EnumResetBindings.Num() - 1; Index >= 0; --Index)
+	{
+		const TSharedPtr<SWidget> Widget = EnumResetBindings[Index].Widget.Pin();
+		if (!Widget.IsValid())
+		{
+			EnumResetBindings.RemoveAtSwap(Index);
+			continue;
+		}
+		if (Widget->IsHovered())
+		{
+			EnumResetBindings[Index].Reset.ExecuteIfBound();
+			return true;
+		}
+	}
 	return false;
 }
 

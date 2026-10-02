@@ -155,6 +155,7 @@ EActiveTimerReturnType SMixtormat::ApplyPendingTheme(double CurrentTime, float D
 	MainSwitcher.Reset();
 	LeftSwitcher.Reset();
 	NumericResetBindings.Reset();
+	EnumResetBindings.Reset();
 	FMixtormatStyle::Refresh();
 	BuildWorkspaceUI();
 	MainSwitcher->SetActiveWidgetIndex(Page);

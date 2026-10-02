@@ -51,6 +51,67 @@ namespace
 		return Struct ? Struct->FindPropertyByName(Key.Parameter) : nullptr;
 	}
 
+	const UEnum* EnumForProperty(const FProperty* Property)
+	{
+		if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+		{
+			return EnumProperty->GetEnum();
+		}
+		if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+		{
+			return ByteProperty->Enum;
+		}
+		return nullptr;
+	}
+
+	int64 ReadEnumValue(const FProperty* Property, const void* Container)
+	{
+		if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+		{
+			return EnumProperty->GetUnderlyingProperty()->GetSignedIntPropertyValue(
+				EnumProperty->ContainerPtrToValuePtr<void>(Container));
+		}
+		if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property);
+			ByteProperty && ByteProperty->Enum)
+		{
+			return ByteProperty->GetPropertyValue(
+				ByteProperty->ContainerPtrToValuePtr<uint8>(Container));
+		}
+		return INDEX_NONE;
+	}
+
+	void WriteEnumValue(const FProperty* Property, void* Container, const int64 Value)
+	{
+		if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+		{
+			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(
+				EnumProperty->ContainerPtrToValuePtr<void>(Container), Value);
+		}
+		else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property);
+			ByteProperty && ByteProperty->Enum)
+		{
+			ByteProperty->SetPropertyValue(
+				ByteProperty->ContainerPtrToValuePtr<uint8>(Container), static_cast<uint8>(Value));
+		}
+	}
+
+	FName EnumEntryName(const UEnum* Enum, const int64 Value)
+	{
+		return Enum ? FName(*InnerNameOf(Enum, Value)) : NAME_None;
+	}
+
+	int64 EnumValueByEntryName(const UEnum* Enum, const FName EntryName)
+	{
+		if (!Enum || EntryName.IsNone())
+		{
+			return INDEX_NONE;
+		}
+		const int64 Value = Enum->GetValueByNameString(EntryName.ToString());
+		return Value != INDEX_NONE
+			&& EnumEntryName(Enum, Value) == EntryName
+			? Value : INDEX_NONE;
+	}
+
 	FString FamilyForKey(const FMixtormatParameterDefinitionKey& Key)
 	{
 		if (const FProperty* Property = PropertyForKey(Key))
@@ -156,10 +217,48 @@ namespace MixtormatParameterAuthoring
 {
 	bool IsPersistentlyEditable(const FMixtormatParameterDefinitionKey& Key)
 	{
-		// Broadly open: any parameter the reflection can address as a numeric property is
-		// developer-editable. Structural fields (assets, bools, enums) simply have no numeric
-		// property and are excluded by construction.
-		return MixtormatParameterUi::TryFindNumericProperty(Key) != nullptr;
+		if (Key.ValueType == EMixtormatParameterValueType::Enum)
+		{
+			return ResolveParameterEnum(Key) != nullptr;
+		}
+		return (Key.ValueType == EMixtormatParameterValueType::Float
+			|| Key.ValueType == EMixtormatParameterValueType::Int)
+			&& MixtormatParameterUi::TryFindNumericProperty(Key) != nullptr;
+	}
+
+	const UEnum* ResolveParameterEnum(const FMixtormatParameterDefinitionKey& Key)
+	{
+		return Key.ValueType == EMixtormatParameterValueType::Enum
+			? EnumForProperty(PropertyForKey(Key)) : nullptr;
+	}
+
+	FName ResolveCompiledEnumDefault(const FMixtormatParameterDefinitionKey& Key)
+	{
+		const UScriptStruct* Struct = StructForKey(Key);
+		const FProperty* Property = PropertyForKey(Key);
+		const UEnum* Enum = ResolveParameterEnum(Key);
+		if (!Struct || !Property || !Enum)
+		{
+			return NAME_None;
+		}
+		FStructOnScope Defaults(Struct);
+		return EnumEntryName(Enum, ReadEnumValue(Property, Defaults.GetStructMemory()));
+	}
+
+	FName ResolveAuthoringEnumDefault(const FMixtormatParameterDefinitionKey& Key)
+	{
+		LoadFromDisk();
+		const FName CompiledDefault = ResolveCompiledEnumDefault(Key);
+		if (const FMixtormatParameterAuthoringEntry* Entry = FindEffective(Key);
+			Entry && Entry->DefaultEnum.IsSet())
+		{
+			const UEnum* Enum = ResolveParameterEnum(Key);
+			if (EnumValueByEntryName(Enum, Entry->DefaultEnum.GetValue()) != INDEX_NONE)
+			{
+				return Entry->DefaultEnum.GetValue();
+			}
+		}
+		return CompiledDefault;
 	}
 
 	const FMixtormatParameterAuthoringEntry* TryGetShipped(const FMixtormatParameterDefinitionKey& Key)
@@ -336,7 +435,9 @@ namespace MixtormatParameterAuthoring
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: ShippedEntries())
 		{
-			if (!Pair.Value.Default.IsSet())
+			if (Pair.Key.ValueType == EMixtormatParameterValueType::Enum
+				? !Pair.Value.DefaultEnum.IsSet()
+				: !Pair.Value.Default.IsSet())
 			{
 				continue;
 			}
@@ -354,7 +455,17 @@ namespace MixtormatParameterAuthoring
 			{
 				continue;
 			}
-			if (Pair.Key.ValueType == EMixtormatParameterValueType::Float)
+			if (Pair.Key.ValueType == EMixtormatParameterValueType::Enum)
+			{
+				const UEnum* Enum = EnumForProperty(Property);
+				const int64 AuthoredValue = EnumValueByEntryName(
+					Enum, Pair.Value.DefaultEnum.GetValue());
+				FStructOnScope Defaults(Struct);
+				const int64 CompiledValue = ReadEnumValue(Property, Defaults.GetStructMemory());
+				WriteEnumValue(Property, Payload,
+					AuthoredValue != INDEX_NONE ? AuthoredValue : CompiledValue);
+			}
+			else if (Pair.Key.ValueType == EMixtormatParameterValueType::Float)
 			{
 				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 				{
@@ -440,6 +551,12 @@ namespace MixtormatParameterAuthoring
 				FMixtormatParameterAuthoringEntry Entry;
 				Entry.Label = (*EntryObject)->GetStringField(TEXT("label"));
 				Entry.Default = ReadFloatField(*EntryObject, TEXT("default"));
+				FString DefaultEnum;
+				if ((*EntryObject)->TryGetStringField(TEXT("defaultEnum"), DefaultEnum)
+					&& !DefaultEnum.IsEmpty())
+				{
+					Entry.DefaultEnum = FName(*DefaultEnum);
+				}
 				Entry.UiMin = ReadFloatField(*EntryObject, TEXT("uiMin"));
 				Entry.UiMax = ReadFloatField(*EntryObject, TEXT("uiMax"));
 				Entry.Snap = ReadFloatField(*EntryObject, TEXT("snap"));
@@ -453,6 +570,18 @@ namespace MixtormatParameterAuthoring
 				{
 					ValueType = EMixtormatParameterValueType::Int;
 					ParameterName.LeftChopInline(4);
+				}
+				else if (ParameterName.EndsWith(TEXT(":Enum")))
+				{
+					ValueType = EMixtormatParameterValueType::Enum;
+					ParameterName.LeftChopInline(5);
+					// Numeric fields are not a fallback representation for an enum.
+					Entry.Default.Reset();
+					Entry.UiMin.Reset();
+					Entry.UiMax.Reset();
+					Entry.Snap.Reset();
+					Entry.ClampMin.Reset();
+					Entry.ClampMax.Reset();
 				}
 
 				// Bare names remain Effect; qualified names resolve through the serialized
@@ -508,12 +637,22 @@ namespace MixtormatParameterAuthoring
 			{
 				Entry->SetStringField(TEXT("label"), Pair.Value.Label);
 			}
-			WriteFloat(Entry, TEXT("default"), Pair.Value.Default);
-			WriteFloat(Entry, TEXT("uiMin"), Pair.Value.UiMin);
-			WriteFloat(Entry, TEXT("uiMax"), Pair.Value.UiMax);
-			WriteFloat(Entry, TEXT("snap"), Pair.Value.Snap);
-			WriteFloat(Entry, TEXT("clampMin"), Pair.Value.ClampMin);
-			WriteFloat(Entry, TEXT("clampMax"), Pair.Value.ClampMax);
+			if (Pair.Key.ValueType == EMixtormatParameterValueType::Enum)
+			{
+				if (Pair.Value.DefaultEnum.IsSet())
+				{
+					Entry->SetStringField(TEXT("defaultEnum"), Pair.Value.DefaultEnum.GetValue().ToString());
+				}
+			}
+			else
+			{
+				WriteFloat(Entry, TEXT("default"), Pair.Value.Default);
+				WriteFloat(Entry, TEXT("uiMin"), Pair.Value.UiMin);
+				WriteFloat(Entry, TEXT("uiMax"), Pair.Value.UiMax);
+				WriteFloat(Entry, TEXT("snap"), Pair.Value.Snap);
+				WriteFloat(Entry, TEXT("clampMin"), Pair.Value.ClampMin);
+				WriteFloat(Entry, TEXT("clampMax"), Pair.Value.ClampMax);
+			}
 			(*FamilyObject)->SetObjectField(KeyNameOf(Pair.Key), Entry);
 		}
 

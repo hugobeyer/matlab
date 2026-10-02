@@ -7,9 +7,9 @@
 #include "MixtormatParameterDefinition.h"
 
 // The plugin-owned authoring database: persistent overrides of an authoring setup --
-// display label, default/reset value, UI range and snap -- for any parameter reflection can
-// address as a numeric property. Everything else about a parameter (identity, type, default,
-// family, UI ergonomics) is discovered from the UPROPERTY itself; only the shader contract
+// display label, default/reset value, UI range and snap -- for numeric properties, plus stable
+// enum defaults for reflected enum properties. Everything else about a parameter (identity, type,
+// default, family, UI ergonomics) is discovered from the UPROPERTY itself; only the shader contract
 // lives in the runtime table (MixtormatParameterDefinition.h).
 //
 // Storage is a JSON file inside the plugin (Config/MixtormatParameterAuthoring.json),
@@ -21,8 +21,8 @@
 //
 //     unsaved developer edit  ->  shipped plugin database  ->  compiled C++ fallback
 //
-// Hard runtime safety is untouched by all of it: SanitizeFloat/SanitizeInt32 and the shader
-// still own what is legal. The database can widen a slider; it can never widen a Hard bound.
+// Hard runtime safety is untouched by all of it: numeric sanitizers and the shader still own
+// what is legal. Numeric authoring can widen a slider; it can never widen a Hard bound.
 struct FMixtormatParameterAuthoringEntry
 {
 	// Display-only. Empty means "no override" -- the Inspector's LOCTEXT label stays. Never
@@ -31,6 +31,8 @@ struct FMixtormatParameterAuthoringEntry
 
 	// Stored parameter units (the units the member itself holds, pre-ValueScale).
 	TOptional<float> Default;
+	// Stable reflected enum entry name; never stored as its numeric value.
+	TOptional<FName> DefaultEnum;
 
 	// Drag-range ergonomics. Never clamps: typed values still pass through, and these never
 	// become shader clamps or hard bounds.
@@ -46,7 +48,8 @@ struct FMixtormatParameterAuthoringEntry
 
 	bool IsEmpty() const
 	{
-		return Label.IsEmpty() && !Default.IsSet() && !UiMin.IsSet() && !UiMax.IsSet() && !Snap.IsSet()
+		return Label.IsEmpty() && !Default.IsSet() && !DefaultEnum.IsSet()
+			&& !UiMin.IsSet() && !UiMax.IsSet() && !Snap.IsSet()
 			&& !ClampMin.IsSet() && !ClampMax.IsSet();
 	}
 };
@@ -55,6 +58,9 @@ namespace MixtormatParameterAuthoring
 {
 	// True only for definitions whose policy opted them in.
 	bool IsPersistentlyEditable(const FMixtormatParameterDefinitionKey& Key);
+	const UEnum* ResolveParameterEnum(const FMixtormatParameterDefinitionKey& Key);
+	FName ResolveCompiledEnumDefault(const FMixtormatParameterDefinitionKey& Key);
+	FName ResolveAuthoringEnumDefault(const FMixtormatParameterDefinitionKey& Key);
 
 	// Shipped database (loaded from the plugin JSON at first use).
 	const FMixtormatParameterAuthoringEntry* TryGetShipped(const FMixtormatParameterDefinitionKey& Key);
