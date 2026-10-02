@@ -112,6 +112,7 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
+		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -185,6 +186,7 @@ private:
 	void ToggleOverlayUi();
 	void ToggleDisplacement();
 	void CycleChannelPreview();
+	void CycleModulePreview();
 	void ApplyChannelPreview();
 	void UpdateCamera();
 	void UpdateStudioFloor();
@@ -242,6 +244,7 @@ private:
 	FSimpleDelegate OnToggleOverlayUi;
 	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnChannelPreviewChanged;
+	FSimpleDelegate OnCycleModulePreview;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;

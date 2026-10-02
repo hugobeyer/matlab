@@ -396,6 +396,13 @@ public:
 		}
 		// Temporary: cycles the raw-channel diagnostic view. No toolbar yet -- WorkingStatusText
 		// is the only indication, same as every other viewport hotkey here.
+		if (EventArgs.Event == IE_Pressed
+			&& (EventArgs.Key == EKeys::U || EventArgs.Key == EKeys::M)
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			Owner.CycleModulePreview();
+			return true;
+		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V)
 		{
 			// Shift+V jumps straight back to Material instead of cycling through every channel.
@@ -485,6 +492,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
+	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -1239,6 +1247,11 @@ void SMixtormatPreviewViewport::ResetChannelPreview()
 	ChannelPreview = EMixtormatChannelPreview::Material;
 	ApplyChannelPreview();
 	OnChannelPreviewChanged.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::CycleModulePreview()
+{
+	OnCycleModulePreview.ExecuteIfBound();
 }
 
 void SMixtormatPreviewViewport::CycleChannelPreview()

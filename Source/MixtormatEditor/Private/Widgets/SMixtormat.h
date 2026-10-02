@@ -218,6 +218,7 @@ private:
 	TSharedRef<SWidget> MakeChildOutputPreviewButton(
 		const FMixtormatChildPreviewOutputSet& OutputSet);
 	FReply ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target);
+	FReply CycleSelectedModulePreview();
 	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
 	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
 	// concrete enabled member layer and that member's effective child id here, so nothing

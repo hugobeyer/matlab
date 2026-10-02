@@ -285,6 +285,85 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 		.OnClicked_Lambda([this, Mode]() { ToggleFeaturePreview(Mode); });
 }
 
+FReply SMixtormat::CycleSelectedModulePreview()
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+	if (!Child || !IsGroupChildEnabled(*Child))
+	{
+		return FReply::Handled();
+	}
+
+	struct FCandidate
+	{
+		EMixtormatDebugPreviewMode Mode;
+		FMixtormatChildPreviewTarget Target;
+	};
+	TArray<FCandidate> Candidates;
+	const bool bMaskProducer = Child->Type == EMixtormatLayerChildType::Mask
+		|| Child->Type == EMixtormatLayerChildType::Generated
+		|| Child->Type == EMixtormatLayerChildType::Craquelure
+		|| Child->Type == EMixtormatLayerChildType::ColorId
+		|| Child->Type == EMixtormatLayerChildType::RandomId;
+	if (bMaskProducer)
+	{
+		Candidates.Add({EMixtormatDebugPreviewMode::LayerMask, FMixtormatChildPreviewTarget()});
+	}
+	Candidates.Add({EMixtormatDebugPreviewMode::LayerUV, FMixtormatChildPreviewTarget()});
+
+	const FMixtormatChildPreviewOutputSet Outputs = GetChildPreviewOutputSet(*Child);
+	if (IsChildOutputPreviewReady(*Child))
+	{
+		TArray<FMixtormatPreviewOutputDesc> Descriptors;
+		if (Outputs.Primary.IsSet())
+		{
+			Descriptors.Add(Outputs.Primary.GetValue());
+		}
+		Descriptors.Append(Outputs.Secondary);
+		for (const FMixtormatPreviewOutputDesc& Output : Descriptors)
+		{
+			Candidates.Add({
+				EMixtormatDebugPreviewMode::ChildOutput,
+				ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.GapMaskName)});
+		}
+	}
+	if (Candidates.IsEmpty())
+	{
+		return FReply::Handled();
+	}
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->ResetChannelPreview();
+		}
+	}
+
+	int32 CurrentIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+	{
+		if (Candidates[Index].Mode == DebugPreviewMode
+			&& (DebugPreviewMode != EMixtormatDebugPreviewMode::ChildOutput
+				|| Candidates[Index].Target == ChildPreviewTarget))
+		{
+			CurrentIndex = Index;
+			break;
+		}
+	}
+	const int32 NextIndex = CurrentIndex + 1;
+	if (NextIndex >= Candidates.Num())
+	{
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		ChildPreviewTarget = FMixtormatChildPreviewTarget();
+	}
+	else
+	{
+		DebugPreviewMode = Candidates[NextIndex].Mode;
+		ChildPreviewTarget = Candidates[NextIndex].Target;
+	}
+	RefreshLayeredPreview(false);
+	return FReply::Handled();
+}
+
 FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target)
 {
 	if (!Target.IsValid())
@@ -1342,6 +1421,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 						TEXT("Preview: %s"),
 						*PreviewViewports[0]->GetChannelPreviewLabel());
 				}
+			}))
+			.OnCycleModulePreview(FSimpleDelegate::CreateLambda([this]()
+			{
+				CycleSelectedModulePreview();
 			}));
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
