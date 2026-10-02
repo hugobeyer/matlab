@@ -382,7 +382,10 @@ float3 AdjustHSV(float3 RGB)
 float AdjustRoughness(float Roughness)
 {
 	float SafeBias = max(RoughnessBias, 0.01f);
-	float Biased = Roughness / ((((1.0f / SafeBias) - 2.0f) * (1.0f - Roughness)) + 1.0f);
+	// At bias 1 the denominator is Roughness; avoid cancellation near its zero endpoint.
+	float Denominator = SafeBias == 1.0f
+		? Roughness : ((((1.0f / SafeBias) - 2.0f) * (1.0f - Roughness)) + 1.0f);
+	float Biased = Roughness / (Roughness == 0.0f ? 1.0f : Denominator);
 	float Contrasted = 0.5f + (Biased - 0.5f) * (RoughnessContrast + 1.0f);
 	return saturate(Contrasted + RoughnessOffset);
 }
