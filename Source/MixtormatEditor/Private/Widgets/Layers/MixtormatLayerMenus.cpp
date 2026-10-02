@@ -22,7 +22,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 	};
 	for (const auto& Entry : Entries)
 	{
-		Menu.Item(Entry.Key, MixtormatIcons::Effect(),
+		Menu.Item(Entry.Key, MixtormatIcons::Generator(),
 			FSimpleDelegate::CreateLambda([this, Type = Entry.Value]() { AddGeneratorLayer(Type); }));
 	}
 	return Menu.Build();
@@ -46,7 +46,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 		{
 			AddLayerOrStartMaterial(EMixtormatLayerType::Fill);
 		}));
-	Menu.SubMenu(LOCTEXT("ColumnAddGeneratorLayer", "Generator Layer"), MixtormatIcons::Effect(),
+	Menu.SubMenu(LOCTEXT("ColumnAddGeneratorLayer", "Generator Layer"), MixtormatIcons::Generator(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorLayerMenu));
 	return Menu.Build();
 }
@@ -766,7 +766,7 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 	{
 		Menu.SubMenu(
 			LOCTEXT("AddGeneratorChild", "Generators"),
-			MixtormatIcons::Effect(),
+			MixtormatIcons::Generator(),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorsMenu, Target));
 	}
 }
@@ -982,7 +982,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	MixtormatMenu::FBuilder Menu;
 	Menu.Item(
 		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
 			CreateChild(Target, EMixtormatChildCreation::StrataCarver);
@@ -990,7 +990,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(
 		LOCTEXT("AddCracksChild", "Cracks"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
 			CreateChild(Target, EMixtormatChildCreation::Cracks);
@@ -998,7 +998,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(
 		LOCTEXT("AddRockFormationChild", "Rock Formation"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
 			CreateChild(Target, EMixtormatChildCreation::RockFormation);
@@ -1006,7 +1006,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(
 		LOCTEXT("AddPebblesChild", "Pebbles"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target]()
 		{
 			CreateChild(Target, EMixtormatChildCreation::Pebbles);

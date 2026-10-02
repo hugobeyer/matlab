@@ -27,6 +27,7 @@ namespace MixtormatIcons
 	// A layer child, by what kind of thing it is.
 	const FSlateBrush* Mask();
 	const FSlateBrush* Effect();
+	const FSlateBrush* Generator();
 	const FSlateBrush* Generated();
 
 	// A layer, by what kind of thing it is: a square for a material, a circle for a fill -- the

@@ -21,11 +21,9 @@ namespace MixtormatLayersPrivate
 	TSharedRef<SWidget> MakeChildTypeIcon(const FMixtormatLayerChild& Child)
 	{
 		return SNew(SImage)
-			.Image(Child.Type == EMixtormatLayerChildType::Effect
-					// A generator takes the effect glyph rather than the generated-mask one. It is
-					// neither, but of the two it is the structural node -- it writes height -- and
-					// the generated glyph on this row would suggest coverage.
-					|| Child.Type == EMixtormatLayerChildType::Generator
+			.Image(Child.Type == EMixtormatLayerChildType::Generator
+				? MixtormatIcons::Generator()
+				: Child.Type == EMixtormatLayerChildType::Effect
 				? MixtormatIcons::Effect()
 				: (Child.Type == EMixtormatLayerChildType::Generated
 						|| Child.Type == EMixtormatLayerChildType::Craquelure
@@ -476,7 +474,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 			.HeightOverride(MixtormatTokens::LayerThumbnailSize)
 			.HAlign(HAlign_Center).VAlign(VAlign_Center)
 			[
-				SNew(SImage).Image(MixtormatIcons::Effect())
+				SNew(SImage).Image(MixtormatIcons::Generator())
 				.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()))
 			];
 	}
