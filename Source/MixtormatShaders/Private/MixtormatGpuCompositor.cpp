@@ -105,6 +105,7 @@ public:
 		SHADER_PARAMETER(uint32, OverrideMetallic)
 		SHADER_PARAMETER(uint32, CompositionMode)
 		SHADER_PARAMETER(uint32, IsFill)
+		SHADER_PARAMETER(uint32, IsGenerator)
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, PreparedLayerMode)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
@@ -788,6 +789,7 @@ namespace MixtormatGpuCompositor
 		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
 		Parameters->CompositionMode = Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
+		Parameters->IsGenerator = Layer.bGenerator ? 1u : 0u;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->PreparedLayerMode = PreparedLayerMode;
 		// A generator wrote this layer's height, so it has one even with no RAMH (a fill).

@@ -101,6 +101,7 @@ uint OverrideRoughness;
 uint OverrideMetallic;
 uint CompositionMode;
 uint IsFill;
+uint IsGenerator;
 uint HasSurface;
 // 0: direct composite, 1: prepare incoming channels, 2: composite prepared channels.
 uint PreparedLayerMode;
@@ -976,8 +977,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// substrate into these buffers before the first layer runs, so there is always something
 	// real beneath and every layer reads it the same way.
 	float4 PreviousBaseColor = PreviousBC.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	float3 PreviousNormal =
-		DecodeNormal(PreviousN.SampleLevel(LinearWrapSampler, UV, 0.0f), 1.0f, 0);
+	float4 PreviousNormalEncoded = PreviousN.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	float3 PreviousNormal = DecodeNormal(PreviousNormalEncoded, 1.0f, 0);
 	float4 PreviousPacked = PreviousRAM.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float PreviousHeightValue = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float PreviousOccupancyValue = PreviousOccupancy.SampleLevel(LinearWrapSampler, UV, 0.0f);
@@ -1326,9 +1327,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);
-	OutputN[DispatchThreadId.xy] = float4(EncodeNormal(ResultNormal), 1.0f);
-	OutputRAM[DispatchThreadId.xy] = float4(ResultRoughness, ResultAO, ResultMetallic, ResultF0);
+	OutputBC[DispatchThreadId.xy] = IsGenerator != 0
+		? PreviousBaseColor
+		: float4(ResultBaseColor, 1.0f);
+	OutputN[DispatchThreadId.xy] = IsGenerator != 0
+		? PreviousNormalEncoded
+		: float4(EncodeNormal(ResultNormal), 1.0f);
+	OutputRAM[DispatchThreadId.xy] = IsGenerator != 0
+		? PreviousPacked
+		: float4(ResultRoughness, ResultAO, ResultMetallic, ResultF0);
 	// Peel relief rides on top of the layer's own height so the lip and the coverage
 	// boundary are derived from the same field, rather than the peel changing coverage
 	// while the height silently reverted to whatever sat underneath.
@@ -1340,5 +1347,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Unclipped for every layer, not only live compositions. See Final > Auto Remap Height.
 	OutputHeight[DispatchThreadId.xy] = ResultHeight;
 	// A detail layer contributes only a normal, so it puts nothing on the ground.
-	OutputOccupancy[DispatchThreadId.xy] = max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
+	OutputOccupancy[DispatchThreadId.xy] = IsGenerator != 0
+		? PreviousOccupancyValue
+		: max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
 }

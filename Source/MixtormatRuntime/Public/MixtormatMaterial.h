@@ -99,11 +99,11 @@ struct MIXTORMATRUNTIME_API FMixtormatHeightBlend
 	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
-	EMixtormatHeightOp Op = EMixtormatHeightOp::Max;
+	EMixtormatHeightOp Op = EMixtormatHeightOp::HeightBlend;
 
 	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "0.5"))
-	float Softness = 0.1f;
+	float Softness = 0.0f;
 
 	// How much of the op's height reaches the result.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
@@ -3237,10 +3237,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
 	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 
-	// Modules compose into their Generator layer in child order. The first module created on a
-	// layer replaces its neutral running height; later modules add unless the artist changes it.
+	// Modules compose additively into their Generator layer in child order unless changed.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
-	FMixtormatHeightBlend HeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Replace);
+	FMixtormatHeightBlend HeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Add);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
 	FMixtormatStrataCarver StrataCarver;
