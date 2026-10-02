@@ -672,7 +672,7 @@ void FMixtormatStyle::Refresh()
 	// A line in the gutter means "between"; a tinted row means "into". They have to look
 	// different, or dropping an effect beside a layer versus into it is a coin flip.
 
-	const auto SetIcon = [&Icon](
+	const auto SetBrandArtwork = [&Icon](
 		const FName Key,
 		const TCHAR* FileName,
 		const FVector2D Size)
@@ -686,7 +686,7 @@ void FMixtormatStyle::Refresh()
 	};
 
 	// UI glyphs: 64 px white-on-transparent PNGs sliced from one sheet at a uniform scale, so
-	// every icon shares a stroke weight. White so the brush tint colours them, as with the SVGs.
+	// every icon shares a stroke weight. White so the brush tint colours them.
 	const auto SetPngIcon = [&Icon](const FName Key, const TCHAR* FileName, const FVector2D Size)
 	{
 		StyleInstance->Set(
@@ -764,8 +764,8 @@ void FMixtormatStyle::Refresh()
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the
 	// logo, so every size below holds those ratios rather than squashing the glyph.
-	SetIcon(TEXT("Mixtormat.Brand.Icon"), TEXT("Icons/mixtormat-icon"), FVector2D(MixtormatTokens::BrandIconWidth, MixtormatTokens::BrandIconHeight));
-	SetIcon(TEXT("Mixtormat.Brand.Logo"), TEXT("Icons/mixtormat-logo"), FVector2D(MixtormatTokens::BrandLogoWidth, MixtormatTokens::BrandLogoHeight));
+	SetBrandArtwork(TEXT("Mixtormat.Brand.Icon"), TEXT("Icons/mixtormat-icon"), FVector2D(MixtormatTokens::BrandIconWidth, MixtormatTokens::BrandIconHeight));
+	SetBrandArtwork(TEXT("Mixtormat.Brand.Logo"), TEXT("Icons/mixtormat-logo"), FVector2D(MixtormatTokens::BrandLogoWidth, MixtormatTokens::BrandLogoHeight));
 
 	// Viewport watermark. Tinted dark and mostly transparent so it sits under the material
 	// rather than competing with it, and small enough to stay out of the way.

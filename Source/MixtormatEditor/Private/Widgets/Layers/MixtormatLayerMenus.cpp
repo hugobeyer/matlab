@@ -294,7 +294,7 @@ void SMixtormat::AddSharedChildMenuItems(
 	{
 		Menu.Separator();
 		Menu.Item(LOCTEXT("GoToOutputSourceContext", "Go to Source"),
-			FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.ArrowUp")),
+			MixtormatIcons::ArrowUp(),
 			FSimpleDelegate::CreateLambda([this, Address]() { GoToChildInstanceSource(Address); }))
 			.Enabled(MixtormatParameterBinding::FindChild(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 				Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId) != nullptr);
@@ -313,7 +313,7 @@ void SMixtormat::AddSharedChildMenuItems(
 	Menu.Caption(LOCTEXT("ChildInstanceCaption", "Instance"));
 	Menu.Item(
 		LOCTEXT("GoToInstanceSourceContext", "Go to Source"),
-		FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.ArrowUp")),
+		MixtormatIcons::ArrowUp(),
 		FSimpleDelegate::CreateLambda([this, Address]()
 		{
 			GoToChildInstanceSource(Address);
@@ -1525,12 +1525,12 @@ TSharedRef<SWidget> SMixtormat::BuildMaskLibraryContextMenu(const FSoftObjectPat
 	Menu.Caption(LOCTEXT("LibraryMaskContextCaption", "Library Mask"))
 		.Item(
 			LOCTEXT("BrowseLibraryMask", "Show in Content Browser"),
-			MixtormatUI::LucideIcon(TEXT("folder-open")),
+			MixtormatIcons::Folder(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath))
 		.Separator()
 		.Item(
 			LOCTEXT("RemoveImportedMask", "Remove Imported Mask…"),
-			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			MixtormatIcons::Trash(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::RemoveImportedMask, AssetPath))
 		.Enabled(bIsUserAsset)
 		.Destructive();

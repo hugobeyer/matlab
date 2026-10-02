@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
@@ -68,10 +69,10 @@ namespace MixtormatLayersPrivate
 		{
 			if (Children[Later].ScopeOwnerChildId == OwnerId)
 			{
-				return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeTee"));
+				return MixtormatIcons::TreeTee();
 			}
 		}
-		return MixtormatIcons::Get(TEXT("Mixtormat.Icon.TreeElbow"));
+		return MixtormatIcons::TreeElbow();
 	}
 
 	// How far a row is indented.

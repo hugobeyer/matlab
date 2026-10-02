@@ -137,9 +137,9 @@ namespace MixtormatUI
 				.HeightOverride(12.0f)
 				[
 					SNew(SImage)
-					.Image(Style.GetBrush(bIsUserAsset
-						? TEXT("Mixtormat.Icon.Folder")
-						: TEXT("Mixtormat.Brand.Icon")))
+					.Image(bIsUserAsset
+						? MixtormatIcons::Folder()
+						: Style.GetBrush(TEXT("Mixtormat.Brand.Icon")))
 				]
 			];
 	}
@@ -311,22 +311,6 @@ namespace MixtormatUI
 		ValidateHeightReferences(Layers);
 	}
 
-	inline const FSlateBrush* LucideIcon(const FName IconName)
-	{
-		static TMap<FName, TSharedPtr<FSlateVectorImageBrush>> Brushes;
-		TSharedPtr<FSlateVectorImageBrush>& Brush = Brushes.FindOrAdd(IconName);
-		if (!Brush.IsValid())
-		{
-			const FString IconPath = FPaths::Combine(
-				FMixtormatPaths::ResourcesDir(),
-				TEXT("Icons"),
-				IconName.ToString() + TEXT(".svg"));
-			Brush = MakeShared<FSlateVectorImageBrush>(
-				IconPath,
-				FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
-		}
-		return Brush.Get();
-	}
 
 	inline FText MaskBlendModeText(const EMixtormatMaskBlendMode Mode)
 	{

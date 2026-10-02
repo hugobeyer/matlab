@@ -431,7 +431,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 						.WidthOverride(MixtormatTokens::ToolbarIconSize)
 						.HeightOverride(MixtormatTokens::ToolbarIconSize)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+							SNew(SImage).Image(MixtormatIcons::Folder())
 						]
 					]
 				]
@@ -531,7 +531,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						.WidthOverride(MixtormatTokens::ToolbarIconSize)
 						.HeightOverride(MixtormatTokens::ToolbarIconSize)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+							SNew(SImage).Image(MixtormatIcons::Refresh())
 						]
 					]
 				]
@@ -550,7 +550,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						.WidthOverride(MixtormatTokens::ToolbarIconSize)
 						.HeightOverride(MixtormatTokens::ToolbarIconSize)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Settings")))
+							SNew(SImage).Image(MixtormatIcons::Settings())
 						]
 					]
 				]
@@ -632,31 +632,31 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceLibraryContextMenu(const FSoftObject
 	Menu.Caption(LOCTEXT("LibraryMaterialContextCaption", "Library Material"))
 		.Item(
 			LOCTEXT("AddLibraryMaterialLayer", "Add as Material Layer"),
-			MixtormatUI::LucideIcon(TEXT("plus")),
+			MixtormatIcons::Add(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::AddSurfaceFromLibrary, AssetPath))
 		.Item(
 			LOCTEXT("BrowseLibraryMaterial", "Show in Content Browser"),
-			MixtormatUI::LucideIcon(TEXT("folder-open")),
+			MixtormatIcons::Folder(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath));
 	if (bCanDeveloperRefresh)
 	{
 		Menu.Item(
 			LOCTEXT("RefreshBuiltInMaterial", "Developer: Refresh / Reimport from Source"),
-			MixtormatUI::LucideIcon(TEXT("refresh-cw")),
+			MixtormatIcons::Refresh(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::RefreshBuiltInSurface, AssetPath));
 	}
 	if (!bIsUserAsset && FMixtormatSurfaceImporter::CanDeleteShippedSurface(AssetPath))
 	{
 		Menu.Item(
 			LOCTEXT("DeleteBuiltInMaterial", "Developer: Delete Material…"),
-			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			MixtormatIcons::Trash(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::DeleteBuiltInSurface, AssetPath))
 			.Destructive();
 	}
 	Menu.Separator()
 		.Item(
 			LOCTEXT("RemoveImportedMaterial", "Remove Imported Material…"),
-			MixtormatUI::LucideIcon(TEXT("trash-2")),
+			MixtormatIcons::Trash(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::RemoveImportedSurface, AssetPath))
 		.Enabled(bIsUserAsset)
 		.Destructive();
@@ -742,21 +742,21 @@ TSharedRef<SWidget> SMixtormat::BuildCompositionLibraryContextMenu(const FSoftOb
 	Menu.Caption(LOCTEXT("SavedMixContextCaption", "Saved Mix"))
 		.Item(
 			LOCTEXT("AddCompositionReferenceLayer", "Add as Reference Layer"),
-			MixtormatUI::LucideIcon(TEXT("layers")),
+			MixtormatIcons::Add(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::AddReferenceLayerFromComposition, AssetPath))
 		.Enabled(Composition != nullptr)
 		.Item(
 			LOCTEXT("AddCompositionLayers", "Add All Layers"),
-			MixtormatUI::LucideIcon(TEXT("layers")),
+			MixtormatIcons::Add(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::AddCompositionLayers, AssetPath))
 		.Item(
 			LOCTEXT("AddCompositionBakedLayer", "Add as Baked Layer"),
-			MixtormatUI::LucideIcon(TEXT("box")),
+			MixtormatIcons::LayerMaterial(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::AddBakedLayerFromComposition, AssetPath))
 		.Enabled(bHasBakedSurface)
 		.Item(
 			LOCTEXT("BrowseComposition", "Show in Content Browser"),
-			MixtormatUI::LucideIcon(TEXT("folder-open")),
+			MixtormatIcons::Folder(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::BrowseLibraryAsset, AssetPath));
 	return Menu.Build();
 }

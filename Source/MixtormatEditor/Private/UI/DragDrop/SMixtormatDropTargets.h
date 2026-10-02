@@ -14,6 +14,7 @@
 #include "CoreMinimal.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatStyle.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/DragDrop/MixtormatDragDropOps.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Layout/SBorder.h"
@@ -234,7 +235,7 @@ public:
 				bMaskDragOver = true;
 				Operation->SetToolTip(
 					LOCTEXT("ReleaseMaskLayer", "Release to append this mask"),
-					FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+					MixtormatIcons::Add());
 			}
 		}
 	}
@@ -304,7 +305,7 @@ public:
 						? LOCTEXT("UnshareChildToLayer", "Move {0} out of its group, into this layer")
 						: LOCTEXT("MoveChildToLayer", "Move {0} to this layer"),
 					ChildOp->Name),
-				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
 
@@ -329,7 +330,7 @@ public:
 		const FText Hint = Zone == EMixtormatRowDropZone::Before
 			? LOCTEXT("DropAboveRow", "Release to place above this layer")
 			: LOCTEXT("DropBelowRow", "Release to place below this layer");
-		const FSlateBrush* HintIcon = FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add"));
+		const FSlateBrush* HintIcon = MixtormatIcons::Add();
 		if (LayerOp.IsValid())
 		{
 			LayerOp->SetToolTip(Hint, HintIcon);
@@ -535,7 +536,7 @@ public:
 			Zone = EMixtormatRowDropZone::Into;
 			ChildOp->SetToolTip(
 				FText::Format(LOCTEXT("MoveChildToGroupDrag", "Share {0} across this group"), ChildOp->Name),
-				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
 
@@ -553,7 +554,7 @@ public:
 					: Zone == EMixtormatRowDropZone::Before
 						? LOCTEXT("DropAboveGroup", "Release to place above this group")
 						: LOCTEXT("DropBelowGroup", "Release to place below this group"),
-				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
 		if (const TSharedPtr<FMixtormatSurfaceDragDropOp> SurfaceOp =
@@ -568,7 +569,7 @@ public:
 							? LOCTEXT("InsertSurfaceAboveGroup", "Insert {0} above this group")
 							: LOCTEXT("InsertSurfaceBelowGroup", "Insert {0} below this group"),
 					SurfaceOp->DisplayName),
-				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
 		if (GroupOp.IsValid() && GroupOp->GroupId.IsValid() && GroupOp->GroupId != TargetGroupId)
@@ -580,7 +581,7 @@ public:
 				Zone == EMixtormatRowDropZone::Before
 					? LOCTEXT("DropAboveGroup", "Release to place above this group")
 					: LOCTEXT("DropBelowGroup", "Release to place below this group"),
-				FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Icon.Add")));
+				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
 		return FReply::Unhandled();

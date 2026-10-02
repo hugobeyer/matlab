@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
@@ -994,7 +995,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	const auto AddMeshButton = [this, &GeometryControls, OverlayToggle](
 		const EMixtormatPreviewMesh MeshType,
 		const FText& ToolTip,
-		const FName IconName)
+		const FSlateBrush* Icon)
 	{
 		GeometryControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 		[
@@ -1018,17 +1019,17 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.VAlign(VAlign_Center)
 					[
 						SNew(SImage)
-						.Image(FMixtormatStyle::Get().GetBrush(IconName))
+						.Image(Icon)
 						.ColorAndOpacity(FSlateColor::UseForeground())
 					]
 				]
 			]
 		];
 	};
-	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere"), TEXT("Mixtormat.Icon.Sphere"));
-	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), TEXT("Mixtormat.Icon.Cylinder"));
-	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), TEXT("Mixtormat.Icon.Cube"));
-	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), TEXT("Mixtormat.Icon.Plane"));
+	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere"), MixtormatIcons::Sphere());
+	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), MixtormatIcons::Cylinder());
+	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), MixtormatIcons::Cube());
+	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), MixtormatIcons::Plane());
 	GeometryControls->AddSlot().AutoHeight().Padding(
 		0.0f,
 		0.0f,
@@ -1066,7 +1067,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	const auto AddPresetButton = [this, &LightingControls, OverlayToggle](
 		const EMixtormatStudioLighting Preset,
 		const FText& ToolTip,
-		const FName IconName)
+		const FSlateBrush* Icon)
 	{
 		LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 		[
@@ -1092,18 +1093,18 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.VAlign(VAlign_Center)
 					[
 						SNew(SImage)
-						.Image(FMixtormatStyle::Get().GetBrush(IconName))
+						.Image(Icon)
 						.ColorAndOpacity(FSlateColor::UseForeground())
 					]
 				]
 			]
 		];
 	};
-	AddPresetButton(EMixtormatStudioLighting::Neutral, LOCTEXT("NeutralStudioButton", "Neutral studio"), TEXT("Mixtormat.Icon.LightNeutral"));
-	AddPresetButton(EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioButton", "Soft studio"), TEXT("Mixtormat.Icon.LightSoft"));
-	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), TEXT("Mixtormat.Icon.LightDramatic"));
-	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), TEXT("Mixtormat.Icon.LightRim"));
-	AddPresetButton(EMixtormatStudioLighting::Workshop, LOCTEXT("WorkshopStudioButton", "Workshop lighting"), TEXT("Mixtormat.Icon.Globe"));
+	AddPresetButton(EMixtormatStudioLighting::Neutral, LOCTEXT("NeutralStudioButton", "Neutral studio"), MixtormatIcons::LightNeutral());
+	AddPresetButton(EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioButton", "Soft studio"), MixtormatIcons::LightSoft());
+	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), MixtormatIcons::LightDramatic());
+	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), MixtormatIcons::LightRim());
+	AddPresetButton(EMixtormatStudioLighting::Workshop, LOCTEXT("WorkshopStudioButton", "Workshop lighting"), MixtormatIcons::Globe());
 	LightingControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ViewportOverlayButtonGap)
 	[
 		SNew(SBox)
@@ -1124,7 +1125,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				.VAlign(VAlign_Center)
 				[
 					SNew(SImage)
-					.Image(Style.GetBrush(TEXT("Mixtormat.Icon.Refresh")))
+					.Image(MixtormatIcons::Refresh())
 					.ColorAndOpacity(FSlateColor::UseForeground())
 				]
 			]

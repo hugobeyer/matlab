@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
 #include "HAL/PlatformProcess.h"
@@ -116,7 +117,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Add")))
+								SNew(SImage).Image(MixtormatIcons::Add())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -138,7 +139,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+								SNew(SImage).Image(MixtormatIcons::Folder())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -161,7 +162,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Save")))
+								SNew(SImage).Image(MixtormatIcons::Save())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -184,7 +185,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.SaveAs")))
+								SNew(SImage).Image(MixtormatIcons::SaveAs())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -220,7 +221,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Cube")))
+								SNew(SImage).Image(MixtormatIcons::Cube())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -243,7 +244,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Documentation")))
+								SNew(SImage).Image(MixtormatIcons::Documentation())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -266,7 +267,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.WidthOverride(MixtormatTokens::ToolbarIconSize)
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
-								SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Settings")))
+								SNew(SImage).Image(MixtormatIcons::Settings())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)

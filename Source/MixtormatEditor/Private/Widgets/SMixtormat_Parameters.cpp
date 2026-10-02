@@ -7,6 +7,7 @@
 #include "MixtormatParameterBinding.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 #include "UI/Parameters/SMixtormatParameterControl.h"
@@ -554,7 +555,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 	Menu.Caption(LOCTEXT("ParameterReferenceCaption", "Parameter"))
 		.Item(
 			LOCTEXT("CopyParameterReference", "Copy Reference"),
-			Style.GetBrush(TEXT("Mixtormat.Icon.Duplicate")),
+			MixtormatIcons::Duplicate(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::CopyParameterReference, Target))
 		.Enabled(Target.IsValid())
 		.Item(
@@ -569,7 +570,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 		.Enabled(TAttribute<bool>::CreateLambda([this, Target]() { return IsParameterReferenced(Target); }))
 		.Item(
 			LOCTEXT("GoToParameterReferenceSource", "Go to Source"),
-			Style.GetBrush(TEXT("Mixtormat.Icon.ArrowUp")),
+			MixtormatIcons::ArrowUp(),
 			FSimpleDelegate::CreateSP(this, &SMixtormat::GoToParameterReferenceSource, Target))
 		.Enabled(TAttribute<bool>::CreateLambda([this, Target]()
 		{

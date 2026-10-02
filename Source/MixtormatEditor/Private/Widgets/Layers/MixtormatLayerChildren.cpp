@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
@@ -1457,7 +1458,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 						.WidthOverride(MixtormatTokens::ToolbarIconSize)
 						.HeightOverride(MixtormatTokens::ToolbarIconSize)
 						[
-							SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.Icon.Folder")))
+							SNew(SImage).Image(MixtormatIcons::Folder())
 						]
 					]
 				]

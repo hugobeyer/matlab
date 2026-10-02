@@ -4,12 +4,50 @@
 
 #include "Style/MixtormatStyle.h"
 
-namespace MixtormatIcons
+namespace
 {
 	const FSlateBrush* Get(const FName Key)
 	{
 		return FMixtormatStyle::Get().GetBrush(Key);
 	}
+
+}
+
+namespace MixtormatIcons
+{
+	const FSlateBrush* Save() { return Get(TEXT("Mixtormat.Icon.Save")); }
+	const FSlateBrush* SaveAs() { return Get(TEXT("Mixtormat.Icon.SaveAs")); }
+	const FSlateBrush* Settings() { return Get(TEXT("Mixtormat.Icon.Settings")); }
+	const FSlateBrush* Grip() { return Get(TEXT("Mixtormat.Icon.Grip")); }
+	const FSlateBrush* ArrowUp() { return Get(TEXT("Mixtormat.Icon.ArrowUp")); }
+	const FSlateBrush* ArrowDown() { return Get(TEXT("Mixtormat.Icon.ArrowDown")); }
+	const FSlateBrush* Cube() { return Get(TEXT("Mixtormat.Icon.Cube")); }
+	const FSlateBrush* Sphere() { return Get(TEXT("Mixtormat.Icon.Sphere")); }
+	const FSlateBrush* Plane() { return Get(TEXT("Mixtormat.Icon.Plane")); }
+	const FSlateBrush* Cylinder() { return Get(TEXT("Mixtormat.Icon.Cylinder")); }
+	const FSlateBrush* Globe() { return Get(TEXT("Mixtormat.Icon.Globe")); }
+	const FSlateBrush* Nodes() { return Get(TEXT("Mixtormat.Icon.Nodes")); }
+	const FSlateBrush* Camera() { return Get(TEXT("Mixtormat.Icon.Camera")); }
+	const FSlateBrush* Search() { return Get(TEXT("Mixtormat.Icon.Search")); }
+	const FSlateBrush* Documentation() { return Get(TEXT("Mixtormat.Icon.Documentation")); }
+	const FSlateBrush* Feedback() { return Get(TEXT("Mixtormat.Icon.Feedback")); }
+	const FSlateBrush* LightNeutral() { return Get(TEXT("Mixtormat.Icon.LightNeutral")); }
+	const FSlateBrush* LightSoft() { return Get(TEXT("Mixtormat.Icon.LightSoft")); }
+	const FSlateBrush* LightDramatic() { return Get(TEXT("Mixtormat.Icon.LightDramatic")); }
+	const FSlateBrush* LightRim() { return Get(TEXT("Mixtormat.Icon.LightRim")); }
+	const FSlateBrush* QualityLow() { return Get(TEXT("Mixtormat.Icon.QualityLow")); }
+	const FSlateBrush* QualityMedium() { return Get(TEXT("Mixtormat.Icon.QualityMedium")); }
+	const FSlateBrush* QualityHigh() { return Get(TEXT("Mixtormat.Icon.QualityHigh")); }
+	const FSlateBrush* ChevronUp() { return Get(TEXT("Mixtormat.Icon.ChevronUp")); }
+	const FSlateBrush* ChevronDownBold() { return Get(TEXT("Mixtormat.Icon.ChevronDownBold")); }
+	const FSlateBrush* HierarchyRoot() { return Get(TEXT("Mixtormat.Icon.HierarchyRoot")); }
+	const FSlateBrush* Indent1() { return Get(TEXT("Mixtormat.Icon.Indent1")); }
+	const FSlateBrush* Indent2() { return Get(TEXT("Mixtormat.Icon.Indent2")); }
+	const FSlateBrush* Indent3() { return Get(TEXT("Mixtormat.Icon.Indent3")); }
+	const FSlateBrush* TreeElbow() { return Get(TEXT("Mixtormat.Icon.TreeElbow")); }
+	const FSlateBrush* TreeBranchDotted() { return Get(TEXT("Mixtormat.Icon.TreeBranchDotted")); }
+	const FSlateBrush* TreeTee() { return Get(TEXT("Mixtormat.Icon.TreeTee")); }
+	const FSlateBrush* TreeCross() { return Get(TEXT("Mixtormat.Icon.TreeCross")); }
 
 	const FSlateBrush* Eye()          { return Get(TEXT("Mixtormat.Icon.Eye")); }
 	const FSlateBrush* EyeOff()       { return Get(TEXT("Mixtormat.Icon.EyeOff")); }
