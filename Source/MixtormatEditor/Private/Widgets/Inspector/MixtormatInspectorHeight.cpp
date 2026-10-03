@@ -59,6 +59,28 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			Delta);
 	};
 
+	const TSharedRef<SVerticalBox> ContactCards = SNew(SVerticalBox);
+	const TSharedRef<SVerticalBox> ContactBorders = AddCard(
+		ContactCards, LOCTEXT("HeightContactBorders", "CONTACT BORDERS"));
+	const TSharedRef<SVerticalBox> ContactAO = AddCard(
+		ContactBorders, LOCTEXT("HeightContactAOGroup", "CONTACT AO"), nullptr,
+		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::ContactAO,
+			LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"),
+			MixtormatTokens::GroupCardLeadingIconSize));
+	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMixtormatLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f));
+	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMixtormatLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
+	const TSharedRef<SVerticalBox> BorderNormal = AddCard(
+		ContactBorders, LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL"), nullptr,
+		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::BorderNormal,
+			LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"),
+			MixtormatTokens::GroupCardLeadingIconSize));
+	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f));
+	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
+
+	// Both contact effects differentiate the same height field. Smooth that shared field
+	// before either reads it; width changes the band, not its underlying detail.
+	AddSliderRow(ContactBorders, NumericRow(LOCTEXT("HeightBorderSmoothing", "Smoothing"), &FMixtormatLayer::HeightBorderSmoothing, 1.0f, 32.0f, 0.25f, 1.0f));
+
 	return SNew(SBox)
 		.Visibility_Lambda([this]()
 		{
@@ -172,50 +194,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
 			[
-				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("HeightContactBorders", "CONTACT BORDERS"))
-				.InitiallyExpanded(true)
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[SNew(STextBlock).Text(LOCTEXT("HeightContactAOGroup", "CONTACT AO")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))]
-						+ SHorizontalBox::Slot().AutoWidth()
-						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::ContactAO, LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))]
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMixtormatLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMixtormatLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[SNew(STextBlock).Text(LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL")).Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))]
-						+ SHorizontalBox::Slot().AutoWidth()
-						[MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::BorderNormal, LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))]
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-					[NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f)]
-
-
-					// Shared by both effects above, because both are built from the same field and
-					// both stipple for the same reason: the height underneath carries detail at
-					// every scale, and the field is differentiated at one texel and scaled by
-					// OutputSize. Width cannot fix that -- Width is a softness in the height
-					// domain, so it widens the band without changing what the band is made of.
-					//
-					// This blurs the height the field is derived from, with the same separable
-					// Gaussian the mask smoothing uses. Only these two effects read the blurred
-					// copy, and both fields are flat outside the band, so the smoothing is
-					// confined to the contact width by construction rather than by a mask.
-					+ SVerticalBox::Slot().AutoHeight()
-					[NumericRow(LOCTEXT("HeightBorderSmoothing", "Smoothing"), &FMixtormatLayer::HeightBorderSmoothing, 1.0f, 32.0f, 0.25f, 1.0f)]
-				]
+				ContactCards
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[

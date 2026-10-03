@@ -49,7 +49,7 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 		FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.ValueSlider.Entry"));
 
 	ChildSlot
-	.Padding(FMargin(MixtormatTokens::RowTextInset, 0.0f))
+	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(MixtormatTokens::DraggerTextInset, 0.0f); }))
 	.VAlign(VAlign_Center)
 	[
 		SAssignNew(EntryWidget, SEditableText)
@@ -564,13 +564,13 @@ int32 SMixtormatSlider::OnPaint(
 	const float TextHeight = FontMeasure->Measure(TEXT("0"), LabelStyle.Font).Y;
 	const float TextY = (static_cast<float>(Size.Y) - TextHeight) * 0.5f;
 	const float ValueWidth = FontMeasure->Measure(ValueText, ValueStyle.Font).X;
-	const float LabelX = MixtormatTokens::RowTextInset
+	const float LabelX = MixtormatTokens::DraggerTextInset
 		+ (bModified && bEnabled ? MixtormatTokens::ModifiedLabelInset : 0.0f);
 
 	// A long label is cut where the value begins rather than overrunning it. Slate's ellipsis
 	// policy belongs to STextBlock and is not available to a painted string, so the clip is the
 	// equivalent -- and at this row height a hard cut reads better than an ellipsis anyway.
-	const float LabelRoom = static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::RowTextInset * 2.0f - LabelX;
+	const float LabelRoom = static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::DraggerTextInset * 2.0f - LabelX;
 	if (LabelRoom > 1.0f)
 	{
 		OutDrawElements.PushClip(FSlateClippingZone(AllottedGeometry.MakeChild(
@@ -597,7 +597,7 @@ int32 SMixtormatSlider::OnPaint(
 		AllottedGeometry.ToPaintGeometry(
 			FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y)),
 			FSlateLayoutTransform(
-				FVector2f(static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::RowTextInset, TextY))),
+				FVector2f(static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::DraggerTextInset, TextY))),
 		FText::FromString(ValueText),
 		ValueStyle.Font,
 		ESlateDrawEffect::None,

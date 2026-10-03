@@ -209,7 +209,8 @@ private:
 	FReply ToggleFeaturePreview(EMixtormatDebugPreviewMode Mode);
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
 		EMixtormatDebugPreviewMode Mode,
-		const FText& ToolTip);
+		const FText& ToolTip,
+		float IconSize = MixtormatTokens::LayerEyeSize);
 	// The generic child preview: a normal single-click eye for OutputSet.Primary (the same
 	// SMixtormatIconButton widget and toggle behaviour every other feature-preview eye uses), plus
 	// -- only when OutputSet.Secondary is non-empty -- a small chevron beside it opening a
@@ -748,7 +749,8 @@ private:
 	TSharedRef<SVerticalBox> AddCard(
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		const FText& Title,
-		const TSharedPtr<SWidget>& HeaderAction = nullptr);
+		const TSharedPtr<SWidget>& HeaderAction = nullptr,
+		const TSharedPtr<SWidget>& LeadingHeaderContent = nullptr);
 
 	void AddSliderRow(
 		const TSharedRef<SVerticalBox>& TargetPanel,
@@ -1246,8 +1248,8 @@ private:
 			FOnGetContent::CreateLambda([this, Enum, ActiveValue, WriteValue, AfterWrite]()
 			{
 				return BuildEnumMenu(Enum, ActiveValue, WriteValue, AfterWrite);
-			}));
-		TSharedRef<SWidget> Row = MixtormatRow::Make(Label, EnumChip, ToolTip);
+			}), nullptr, TAttribute<FText>(), 0.0f);
+		TSharedRef<SWidget> Row = MixtormatRow::MakeDropdown(Label, EnumChip, ToolTip);
 		FEnumResetBinding& ResetBinding = EnumResetBindings.AddDefaulted_GetRef();
 		ResetBinding.Widget = EnumChip;
 		ResetBinding.Reset = FSimpleDelegate::CreateLambda(

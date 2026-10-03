@@ -19,6 +19,7 @@ void SMixtormatDriverPopover::Construct(const FArguments& InArgs)
 			.WidthOverride(MixtormatTokens::DriverPopoverWidth)
 			[
 				SNew(SMixtormatInspectorCard)
+				.CompactLayout(true)
 				.Title(InArgs._Title)
 				[
 					InArgs._Content.Widget

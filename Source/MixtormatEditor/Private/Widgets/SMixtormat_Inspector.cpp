@@ -204,8 +204,8 @@
 //
 // No group header of its own. This is one run of values inside Surface Adjustments, and a second
 // header bar over it only repeated the one already above -- with a chevron that hid controls the
-// panel exists to offer. The eye that previews the feature mask sits at the end of the title
-// line, where a card's actions go.
+// panel exists to offer. The feature preview eye leads the card title;
+// other actions remain at the trailing edge.
 
 
 
@@ -233,12 +233,14 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			? &WorkingLayers[SelectedLayerIndex].HeightBlend : nullptr;
 	};
 	const TSharedRef<SVerticalBox> GeneratorComposition = SNew(SVerticalBox);
-	AddSliderRow(GeneratorComposition, MakeMemberEnum<FMixtormatHeightBlend, EMixtormatHeightOp>(
+	const TSharedRef<SVerticalBox> GeneratorHeight = AddCard(
+		GeneratorComposition, LOCTEXT("CardHeightBlend", "Height Blend"));
+	AddSliderRow(GeneratorHeight, MakeMemberEnum<FMixtormatHeightBlend, EMixtormatHeightOp>(
 		LOCTEXT("GeneratorLayerHeightOperation", "Height Operation"), GeneratorBlend,
 		&FMixtormatHeightBlend::Op,
 		LOCTEXT("GeneratorLayerHeightOperationHint", "How the generated height stack combines with the layer below."),
 		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
-	AddSliderRow(GeneratorComposition,
+	AddSliderRow(GeneratorHeight,
 		SNew(SBox).Visibility_Lambda([GeneratorBlend]()
 		{
 			const FMixtormatHeightBlend* Blend = GeneratorBlend();
@@ -249,10 +251,12 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			MakeMemberSlider<FMixtormatHeightBlend>(LOCTEXT("GeneratorLayerSoftness", "Softness"),
 				GeneratorBlend, &FMixtormatHeightBlend::Softness, 0.0, 0.5, 0.1, 0.001)
 		]);
-	AddSliderRow(GeneratorComposition, MakeMemberSlider<FMixtormatHeightBlend>(
+	AddSliderRow(GeneratorHeight, MakeMemberSlider<FMixtormatHeightBlend>(
 		LOCTEXT("GeneratorLayerAmount", "Amount"), GeneratorBlend,
 		&FMixtormatHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01));
-	AddSliderRow(GeneratorComposition, MakeMemberSlider<FMixtormatLayer>(
+	const TSharedRef<SVerticalBox> GeneratorBlending = AddCard(
+			GeneratorComposition, LOCTEXT("CardBlendingOpacity", "Blending / Opacity"));
+		AddSliderRow(GeneratorBlending, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("GeneratorLayerOpacity", "Opacity"), LayerForRows(),
 		&FMixtormatLayer::Opacity, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("GeneratorLayerOpacityHint", "Weights this layer's height coverage, including the Height Blend contest.")));
@@ -279,7 +283,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 	AddSliderRow(GeneratorHeightBlend, MakeMemberSlider<FMixtormatHeightBlend>(
 		LOCTEXT("GeneratorLayerBlendBias", "Blend Bias"), GeneratorBlend,
 		&FMixtormatHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01));
-	AddSliderRow(GeneratorComposition, GeneratorHeightBlend);
+	AddSliderRow(GeneratorHeight, GeneratorHeightBlend);
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const TSharedRef<SVerticalBox> BlendPanel = SNew(SVerticalBox);
 	AddHeightBlendRows(
@@ -491,10 +495,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Title(LOCTEXT("GeneratorLayerHeading", "GENERATOR LAYER"))
 							.InitiallyExpanded(true)
 							[
-								SNew(SMixtormatInspectorGroup)
-								.Title(LOCTEXT("CompositionLabel", "COMPOSITION"))
-								.InitiallyExpanded(true)
-								[GeneratorComposition]
+								GeneratorComposition
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight()
@@ -521,10 +522,15 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						// meant the segment could say BLEND while the box said the layer was detail.
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 						[
-							SNew(SMixtormatChip)
+							SNew(SBox)
 							.Visibility_Lambda([this]() { return WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].ChannelMode == EMixtormatLayerChannelMode::NormalDetail ? EVisibility::Visible : EVisibility::Collapsed; })
+							[
+								MixtormatRow::MakeDropdown(
+									LOCTEXT("NormalSourceLabel", "Normal Source"),
+									SNew(SMixtormatChip).MinWidth(0.0f)
 							.Text_Lambda([this]() { if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) return LOCTEXT("NormalSource", "Choose Normal Source..."); const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex]; return Layer.NormalSourceType == EMixtormatNormalSourceType::Texture ? FText::FromString(Layer.NormalTexture.ToSoftObjectPath().GetAssetName()) : LOCTEXT("SurfaceNormal", "Surface Normal"); })
-							.OnGetMenuContent_Lambda([this]() { return BuildNormalSourceMenu(SelectedLayerIndex); })
+							.OnGetMenuContent_Lambda([this]() { return BuildNormalSourceMenu(SelectedLayerIndex); }))
+							]
 						]
 						+ SVerticalBox::Slot().AutoHeight()
 						[
@@ -636,10 +642,18 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								// below opens to decide where the layer runs over what is under it.
 								+ SVerticalBox::Slot().AutoHeight()
 								[
-									BlendPanel
+									SNew(SMixtormatInspectorCard)
+									.Title(LOCTEXT("CardHeightBlend", "Height Blend"))
+									[BlendPanel]
 								]
 
-								// One control, not three fields. BLEND / OVER / COAT / DETAIL are the
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::CardGap, 0.0f, 0.0f)
+																[
+																	SNew(SMixtormatInspectorCard)
+																	.Title(LOCTEXT("CardBlendingOpacity", "Blending / Opacity"))
+																	[
+																		SNew(SVerticalBox)
+																// One control, not three fields. BLEND / OVER / COAT / DETAIL are the
 								// only combinations of ChannelMode, CompositionMode and NormalBlendMode
 								// that mean anything, and they are the same four words the layer's
 								// badge prints -- so the stack and the inspector teach one vocabulary.
@@ -676,7 +690,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 								[
 									MixtormatRow::MakePair(
-										MixtormatRow::Make(
+										MixtormatRow::MakeDropdown(
 											LOCTEXT("BaseColorBlendLabel", "Blend"),
 											MixtormatRow::MakeChip(
 												TAttribute<FText>::CreateLambda([this]()
@@ -686,7 +700,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 															WorkingLayers[SelectedLayerIndex].BaseColorBlendMode)
 														: FText::GetEmpty();
 												}),
-												FOnGetContent::CreateSP(this, &SMixtormat::BuildBaseColorBlendModeMenu)),
+												FOnGetContent::CreateSP(this, &SMixtormat::BuildBaseColorBlendModeMenu),
+																								nullptr, TAttribute<FText>(), 0.0f),
 											LOCTEXT("BaseColorBlendHint", "How this layer's base colour combines with what is composited below it. Normal replaces, which is what every layer did before this control existed. Affects base colour only.")),
 										MakeMemberSlider<FMixtormatLayer>(
 											LOCTEXT("BaseColorBlendAmountLabel", "Amount"),
@@ -708,6 +723,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::Opacity, 0.0, 1.0, 1.0, 0.01)
 							]
+									]
+								]
 								+ SVerticalBox::Slot()
 								.AutoHeight()
 								.Padding(0.0f, MixtormatTokens::CardGap, 0.0f, 0.0f)

@@ -100,7 +100,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 	// source is read -- and as three rows they left most of the width empty while pushing the
 	// card taller than the values above it. The chip takes the compact width so the flips fit
 	// beside it rather than under it.
-	AddSliderRow(Transform, MixtormatRow::Make(
+	AddSliderRow(Transform, MixtormatRow::MakeDropdown(
 		LOCTEXT("UVRotationLabel", "Rotate"),
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
@@ -180,9 +180,11 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 	TSharedRef<SVerticalBox> Masks = AddCard(
 		Panel,
 		LOCTEXT("CardFeaturedMasks", "Featured Masks"),
+		nullptr,
 		MakeFeaturePreviewButton(
 			EMixtormatDebugPreviewMode::GeneratedFeature,
-			LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")));
+			LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"),
+			MixtormatTokens::GroupCardLeadingIconSize));
 
 	AddSliderRow(Masks, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("FeatureInfluenceLabel", "Normal Influence"), Layer(), &FMixtormatLayer::FeatureInfluence, 0.0, 1.0, 0.0, 0.01));

@@ -188,9 +188,8 @@ TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildC
 	{
 		if (!PairedCopies.Contains(Copy.Name)) { AddOutputRow(Copy.Label, nullptr, &Copy); }
 	}
-	return SNew(SMixtormatInspectorGroup)
+	return SNew(SMixtormatInspectorCard)
 		.Title(LOCTEXT("InspectorChildOutputsHeading", "OUTPUTS"))
-		.InitiallyExpanded(true)
 		[Panel];
 }
 
@@ -201,7 +200,9 @@ void SMixtormat::AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel)
 		FMixtormatGenerator* Generator = GetSelectedGenerator();
 		return Generator ? &Generator->HeightBlend : nullptr;
 	};
-	AddHeightBlendRows(Panel, Blend,
+	const TSharedRef<SVerticalBox> HeightBlend = AddCard(
+			Panel, LOCTEXT("GeneratorModuleHeightBlend", "Height Blend"));
+		AddHeightBlendRows(HeightBlend, Blend,
 		LOCTEXT("GeneratorBlendOpHint", "How this module combines with the height the modules above it built. The first module replaces; later ones add. Add and Subtract are signed about 0.5. Min, Max, Difference and Height Blend behave like Replace where nothing is below. Height Blend lets this module run over the height above it where its coverage is strong."),
 		LOCTEXT("GeneratorBlendAmountHint", "How much of this module reaches the layer, multiplied by its own coverage."));
 
@@ -225,7 +226,7 @@ void SMixtormat::AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel)
 			LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend, &FMixtormatHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
 		MakeMemberSlider<FMixtormatHeightBlend>(
 			LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend, &FMixtormatHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01)));
-	AddSliderRow(Panel, Settings);
+	AddSliderRow(HeightBlend, Settings);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
@@ -366,7 +367,8 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 		LOCTEXT("CrackDepth", "Depth"), Crack, &FMixtormatCracks::CrackDepth, 0.0, 2.0, 0.415, 0.01,
 		LOCTEXT("CrackDepthHint", "Groove depth at the base width, relative to the cell. Wider cracks cut deeper.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpShape", "Shape")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("CrackGrpShape", "Shape"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackRough", "Rough"), Crack, &FMixtormatCracks::CrackRough, 0.0, 1.0, 0.361, 0.01,
@@ -382,7 +384,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackFeather", "Feather"), Crack, &FMixtormatCracks::CrackFeather, 0.0, 1.0, 0.176, 0.01,
 			LOCTEXT("CrackFeatherHint", "Small gives fault-like kinks, large gives soft bends."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpWidth", "Width Variation")));
+	Panel = AddCard(Cards, LOCTEXT("CrackGrpWidth", "Width Variation"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackLineVariation", "Per Crack"), Crack, &FMixtormatCracks::CrackLineVariation, 0.0, 1.0, 0.541, 0.01,
@@ -398,7 +400,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackWidthScale", "Along Scale"), Crack, &FMixtormatCracks::CrackWidthScale, 0.5, 32.0, 6.44, 0.1,
 			LOCTEXT("CrackWidthScaleHint", "Wobbles per cell width along a crack."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpRim", "Rims and Gaps")));
+	Panel = AddCard(Cards, LOCTEXT("CrackGrpRim", "Rims and Gaps"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackChip", "Chips"), Crack, &FMixtormatCracks::CrackChip, 0.0, 1.0, 0.3, 0.01,
@@ -414,7 +416,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackGapWidth", "Floor Width"), Crack, &FMixtormatCracks::CrackGapWidth, 0.0, 4.0, 1.5, 0.05,
 			LOCTEXT("CrackGapWidthHint", "Flat floor width relative to the crack width, within the same height profile."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpPieces", "Pieces")));
+	Panel = AddCard(Cards, LOCTEXT("CrackGrpPieces", "Pieces"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackSlip", "Slip"), Crack, &FMixtormatCracks::CrackSlip, 0.0, 1.0, 0.1, 0.01,
@@ -423,7 +425,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackTilt", "Tilt"), Crack, &FMixtormatCracks::CrackTilt, 0.0, 1.0, 0.1, 0.01,
 			LOCTEXT("CrackTiltHint", "Every piece tips its own random way."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpChamfer", "Chamfer")));
+	Panel = AddCard(Cards, LOCTEXT("CrackGrpChamfer", "Chamfer"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackChamferAmount", "Amount"), Crack, &FMixtormatCracks::CrackChamferAmount, 0.0, 1.0, 0.0, 0.01,
@@ -432,7 +434,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackChamferEdge", "Edge Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
 			LOCTEXT("CrackChamferEdgeHint", "Wall-profile transition distance in cell widths; independent of crack width, with no built-in propagation noise."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CrackGrpHeight", "Height")));
+	Panel = AddCard(Cards, LOCTEXT("CrackGrpHeight", "Height"));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
 		LOCTEXT("CrackHeightScale", "Height Scale"), Crack, &FMixtormatCracks::CrackHeightScale, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("CrackHeightScaleHint", "Scales the crack field. The layer's height is the flat midpoint plus the cracks; the layer's Height Op decides how it meets the stack below. Add carves them into the height below.")));
@@ -476,7 +478,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 						LOCTEXT("CracksEnabledHint", "Enable these cracks"))
 				])
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -538,7 +540,8 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 		LOCTEXT("PebbleRotation", "Rotation"), Pebble, &FMixtormatPebbles::PebbleRotation, 0.0, 180.0, 180.0, 1.0,
 		LOCTEXT("PebbleRotationHint", "Maximum random rotation, degrees.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PebbleGrpShape", "Shape")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("PebbleGrpShape", "Shape"));
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatPebbles>(
 		LOCTEXT("PebbleDirection", "Cut Direction"), Pebble, &FMixtormatPebbles::PebbleDirection,
 		LOCTEXT("PebbleDirectionHint", "How the cut planes are oriented: evenly spread, random, opposed pairs, golden angle, or biased to the axes.")));
@@ -553,7 +556,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 		LOCTEXT("PebbleChamfer", "Chamfer"), Pebble, &FMixtormatPebbles::PebbleChamfer, 0.0, 0.2, 0.02, 0.001,
 		LOCTEXT("PebbleChamferHint", "Edge chamfer between cuts.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PebbleGrpHeight", "Height")));
+	Panel = AddCard(Cards, LOCTEXT("PebbleGrpHeight", "Height"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatPebbles>(
 			LOCTEXT("PebbleSteepness", "Steepness"), Pebble, &FMixtormatPebbles::PebbleSteepness, 0.0, 16.0, 5.6, 0.05,
@@ -632,7 +635,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 						LOCTEXT("PebblesEnabledHint", "Enable these pebbles"))
 				])
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -643,7 +646,8 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	AddGeneratorBlendRows(Panel);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpShape", "SHAPE")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("RockGrpShape", "SHAPE"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockStyle", "Style"), Rock, &FMixtormatRockFormation::RockStyle, 0.0, 1.0, 0.05, 0.01,
@@ -687,7 +691,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockSkew", "Skew"), Rock, &FMixtormatRockFormation::RockSkew, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("RockSkewHint", "Offsets rock rows diagonally in cell widths while preserving tile wrapping."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpTilt", "TILT")));
+	Panel = AddCard(Cards, LOCTEXT("RockGrpTilt", "TILT"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockTiltAngle", "Angle"), Rock, &FMixtormatRockFormation::RockTiltAngle, -1.0, 1.0, 0.1, 0.01,
@@ -708,7 +712,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockSpinRandom", "Spin Random"), Rock, &FMixtormatRockFormation::RockSpinRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("RockSpinRandomHint", "Random spin per chunk. 1 adds up to half a turn in either direction."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpEdges", "EDGES")));
+	Panel = AddCard(Cards, LOCTEXT("RockGrpEdges", "EDGES"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockGap", "Gap"), Rock, &FMixtormatRockFormation::RockGap, -1.0, 1.0, 1.0, 0.01,
@@ -743,7 +747,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockRimChipSize", "Rim Chip Size"), Rock, &FMixtormatRockFormation::RockRimChipSize, 0.0, 1.0, 0.075, 0.001,
 			LOCTEXT("RockRimChipSizeHint", "Chip size relative to each chunk."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpFacets", "FACETS")));
+	Panel = AddCard(Cards, LOCTEXT("RockGrpFacets", "FACETS"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockFacetChips", "Chips"), Rock, &FMixtormatRockFormation::RockFacetChips, 0.0, 1.0, 0.5, 0.01,
@@ -764,7 +768,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockFacetAlignHint", "Positive swings facet planes toward the lean's low side; negative toward its high side.")),
 		SNullWidget::NullWidget));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RockGrpHeight", "HEIGHT")));
+	Panel = AddCard(Cards, LOCTEXT("RockGrpHeight", "HEIGHT"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberEnum<FMixtormatRockFormation, EMixtormatRockHeightMode>(
 			LOCTEXT("RockHeightMode", "Mode"), Rock, &FMixtormatRockFormation::RockHeightMode,
@@ -813,7 +817,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 						LOCTEXT("RockFormationEnabledHint", "Enable this rock formation"))
 				])
 			[
-				Panel
+				Cards
 			]
 		];
 }

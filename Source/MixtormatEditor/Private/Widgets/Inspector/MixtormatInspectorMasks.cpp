@@ -213,7 +213,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 	// Integer producers do not use mask blending or weight. Surface guides are mixed before IDs exist.
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("ClusterSource", "Source"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -224,7 +224,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 					? LOCTEXT("ClusterSourceCompositeChip", "Composite Below")
 					: LOCTEXT("ClusterSourceLayerChip", "Layer Surface");
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildClusterSourceMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildClusterSourceMenu), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("SurfaceIdSourceHint", "Layer Surface reads this layer's maps through its UV transform. Composite Below reads the accumulated surface beneath it without retilling. On the bottom layer, the layer's own maps are used.")));
 
 	if (bSurfaceIds)
@@ -232,7 +232,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 		const auto FeatureRow = [this](const FText& Label,
 			EMixtormatSurfaceIdFeature FMixtormatClusterFilter::* Member)
 		{
-			return MixtormatRow::Make(Label, MixtormatRow::MakeChip(
+			return MixtormatRow::MakeDropdown(Label, MixtormatRow::MakeChip(
 				TAttribute<FText>::CreateLambda([this, Member]()
 				{
 					const FMixtormatClusterFilter* C = GetSelectedFilter();
@@ -261,7 +261,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 							}));
 					}
 					return Menu.Build();
-				})),
+				}), nullptr, TAttribute<FText>(), 0.0f),
 				LOCTEXT("SurfaceIdFeatureHint", "Choose a continuous surface guide. Curvature reads height; Normal Flatness measures neighboring normal agreement, including tilted flat patches. Matching bands share an ID even across disconnected areas."));
 		};
 		AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -392,7 +392,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("CraqMode", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -403,7 +403,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 					? LOCTEXT("CraqModePropagated", "Propagated")
 					: LOCTEXT("CraqModeLattice", "Lattice");
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureModeMenu), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("CraqModeHint", "Lattice measures distance to a Voronoi cell wall. Propagated grows cracks through stress, toughness, and curl-flow fields.")));
 
 	// Scale and Jitter are shared. Each mode used to declare its own -- Cells/Jitter for the
@@ -425,7 +425,8 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 	TSharedRef<SVerticalBox> GrowGroup = SNew(SVerticalBox);
 	GrowGroup->SetVisibility(PropagatedOnly);
 
-	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpGrowth", "Growth")));
+	const TSharedRef<SVerticalBox> GrowCards = GrowGroup;
+	GrowGroup = AddCard(GrowCards, LOCTEXT("CraqGrpGrowth", "Growth"));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqDensity", "Density"), &FMixtormatCraquelure::Density, 0.0, 1.0, 0.35, 0.01,
 			LOCTEXT("CraqDensityHint", "Fraction of cells that actually get a nucleus: how many separate cracks there are, as opposed to how far each one runs.")),
@@ -451,7 +452,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		Slider(LOCTEXT("CraqRoughness", "Roughness"), &FMixtormatCraquelure::Roughness, 0.0, 8.0, 0.32, 0.01,
 			LOCTEXT("CraqRoughnessHint", "Incoherent wander: per-step randomness in the scoring. Low gives clean arcs, high gives a brittle, ragged line. Kept apart from Flow because directional and random wander are different looks."))));
 
-	AddSliderRow(GrowGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpAdvanced", "Advanced")));
+	GrowGroup = AddCard(GrowCards, LOCTEXT("CraqGrpAdvanced", "Advanced"));
 	AddSliderRow(GrowGroup, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqThreshold", "Threshold"), &FMixtormatCraquelure::GrowthThreshold, 0.0, 3.0, 0.55, 0.01,
 			LOCTEXT("CraqThresholdHint", "The score a step has to beat to happen at all. Raising it starves growth, which is what decides how much of the surface ends up cracked.")),
@@ -459,11 +460,10 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 			LOCTEXT("CraqCollision", "Collision"), Craq, &FMixtormatCraquelure::CollisionLimit, 1.0, 8.0, 2,
 			LOCTEXT("CraqCollisionHint", "Cracked neighbours a pixel may already have and still be grown into. At 2 a crack reaching an older one stops, because the older crack already released the stress driving it -- that is the right-angle junction of a drying film. Raise it and cracks cross, which reads as scratches rather than fracture."))));
 
-	Panel->AddSlot().AutoHeight()[GrowGroup];
+	Panel->AddSlot().AutoHeight()[GrowCards];
 
 	// Always shown rather than behind an output mode. Relief height also drives its normal.
-	TSharedRef<SVerticalBox> ReliefGroup = SNew(SVerticalBox);
-	AddSliderRow(ReliefGroup, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpRelief", "Relief")));
+	const TSharedRef<SVerticalBox> ReliefGroup = AddCard(Panel, LOCTEXT("CraqGrpRelief", "Relief"));
 	AddSliderRow(ReliefGroup,
 		Slider(LOCTEXT("CraqReliefDepth", "Height"), &FMixtormatCraquelure::ReliefDepth, 0.0, 0.5, 0.04, 0.001,
 			LOCTEXT("CraqReliefDepthHint", "How deep the crack cuts into the composited height and its derived normal. The groove is a cone on the distance to the crack -- the eikonal solution, so its wall has one constant slope -- subtracted under a minimum, so this can only lower the height. 0 skips the pass.")));
@@ -480,9 +480,8 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 	AddSliderRow(ReliefGroup, Slider(
 		LOCTEXT("CraqReliefWidthVar", "Width Var"), &FMixtormatCraquelure::ReliefWidthVariation, 0.0, 1.0, 0.0, 0.01,
 		LOCTEXT("CraqReliefWidthVarHint", "Per-crack variation in the groove's mouth, so some dishes sit wider than others without moving the crack itself. 0 leaves Groove constant across the network.")));
-	Panel->AddSlot().AutoHeight()[ReliefGroup];
-
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpWarp", "Warp")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+	Panel = AddCard(Cards, LOCTEXT("CraqGrpWarp", "Warp"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("CraqWarp", "Amount"), &FMixtormatCraquelure::Warp, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("CraqWarpHint", "Bends the finished network. Applied where the crack field is read rather than to how it grows, so it costs one pass and rebuilds nothing -- dragging this is a cache hit, unlike every control above it. Periodic curl noise, which is divergence-free and wraps on its own period, so the result still tiles.")),
@@ -494,8 +493,8 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		LOCTEXT("CraqSeed", "Seed"), Craq, &FMixtormatCraquelure::Seed, 0.0, 64.0, 1,
 		LOCTEXT("CraqSeedHint", "Reshuffles the crack network without changing its scale or density. The warp is seeded off this too, so reseeding moves both rather than leaving a second seed to remember.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("CraqGrpBlend", "Blend")));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	Panel = AddCard(Cards, LOCTEXT("CraqGrpBlend", "Blend"));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("CraqBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -503,7 +502,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 				const FMixtormatCraquelure* C = GetSelectedCraquelure();
 				return C ? MixtormatUI::MaskBlendModeText(C->BlendMode) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureBlendModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCraquelureBlendModeMenu), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("CraqBlendModeHint", "How the crack network combines with the mask accumulated above it in this layer.")));
 
 	AddSliderRow(Panel, Slider(LOCTEXT("CraqWeight", "Weight"), &FMixtormatCraquelure::Weight, 0.0, 1.0, 1.0, 0.01,
@@ -511,7 +510,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	// The shared shaping block, so Invert / Balance / Contrast / Offset behave here exactly as they
 	// do on a texture mask instead of being a fourth hand-written copy with its own ranges.
-	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatCraquelure* C = GetSelectedCraquelure();
 		return C ? &C->Shaping : nullptr;
@@ -528,7 +527,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 					EMixtormatDebugPreviewMode::LayerMask,
 					LOCTEXT("PreviewCraquelure", "Preview this crack network in unlit dark red and cyan")))
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -614,14 +613,13 @@ TSharedRef<SWidget> SMixtormat::BuildMaskRotationMenu()
 
 TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 {
-	// The panel already grouped itself with SIGNALS / SHAPING / BLEND headers; those become row
-	// captions so they share the inspector's rhythm instead of being bespoke text blocks.
+	// Each named section owns its rows in a shared inspector card.
 	const auto Gen = [this]() { return GetSelectedGeneratedMask(); };
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("GenBlendMode", "Blend Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -632,9 +630,10 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 			FOnGetContent::CreateLambda([this]()
 			{
 				return BuildGeneratedBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
-			}))));
+			}), nullptr, TAttribute<FText>(), 0.0f)));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GenHdrSignals", "Signals")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+	Panel = AddCard(Cards, LOCTEXT("GenHdrSignals", "Signals"));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenCurvatureWeight", "Cavity / Curvature"), Gen, &FMixtormatGeneratedMask::CurvatureWeight, -1.0, 1.0, 0.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
@@ -669,29 +668,33 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenHeightBiasCtl", "Height Bias"), Gen, &FMixtormatGeneratedMask::HeightBias, -1.0, 1.0, 0.0, 0.01));
 
+	Panel = Cards;
 	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatGeneratedMask* Generated = GetSelectedGeneratedMask();
 		return Generated ? &Generated->Shaping : nullptr;
 	});
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratedMask>(
+
+	const TSharedRef<SVerticalBox> GeneratedRows = AddCard(
+		Cards, LOCTEXT("GenHdrShaping", "Generated Shaping"));
+	AddSliderRow(GeneratedRows, MakeMemberToggle<FMixtormatGeneratedMask>(
 		LOCTEXT("GenNormalizeWeights", "Normalize Weights"), Gen, &FMixtormatGeneratedMask::bNormalizeWeights));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(GeneratedRows, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatGeneratedMask>(
 			LOCTEXT("GenBroadness", "Broadness"), Gen, &FMixtormatGeneratedMask::Broadness, 1.0, 32.0, 2),
 		MakeMemberSliderInt<FMixtormatGeneratedMask>(
 			LOCTEXT("GenSmoothing", "Smoothing"), Gen, &FMixtormatGeneratedMask::Smoothing, 1.0, 4.0, 2)));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
+	AddSliderRow(GeneratedRows, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenBiasCtl", "Bias"), Gen, &FMixtormatGeneratedMask::Bias, 0.001, 0.999, 0.5, 0.01));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(GeneratedRows, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatGeneratedMask>(
 			LOCTEXT("GenWarpAmount", "Warp"), Gen, &FMixtormatGeneratedMask::WarpAmount, 0.0, 0.05, 0.0, 0.001),
 		MakeMemberSliderInt<FMixtormatGeneratedMask>(
 			LOCTEXT("GenWarpRadius", "Radius"), Gen, &FMixtormatGeneratedMask::WarpRadius, 1.0, 16.0, 1)));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
+	AddSliderRow(GeneratedRows, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenWarpSource", "Warp Flow (Normal to Height)"), Gen, &FMixtormatGeneratedMask::WarpSource, 0.0, 1.0, 0.0, 0.01));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GenHdrBlend", "Blend")));
+	Panel = AddCard(Cards, LOCTEXT("GenHdrBlend", "Blend"));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratedMask>(
 		LOCTEXT("GenGenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01));
 
@@ -729,7 +732,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 						LOCTEXT("GeneratedEnabledHint", "Enable this generated mask"))
 				])
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -810,7 +813,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("CurvatureSourceLabel", "Source"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -823,10 +826,10 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
 			FOnGetContent::CreateLambda([this]()
 			{
 				return BuildCurvatureSourceMenu(SelectedLayerIndex, SelectedMaskIndex);
-			})),
+			}), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("CurvatureSourceHint", "Which field is measured. Surface Height is what this layer is being laid onto, so the mask follows shape already in the surface. Mask Itself reads the mask at this point in the chain -- after a Blur, if one precedes this, which is usually what gives a painted edge enough shape to measure at all.")));
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("CurvatureModeLabel", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -839,7 +842,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
 			FOnGetContent::CreateLambda([this]()
 			{
 				return BuildCurvatureModeMenu(SelectedLayerIndex, SelectedMaskIndex);
-			})),
+			}), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("CurvatureModeHint", "Gaussian is zero on anything that could be unrolled flat, so a cylinder reads like a plane and only corners survive it. Mean is the average bend, which is what finds edges and creases. Max and Min Principal are the sharpest convex and concave bends at each point, taken in whichever direction they actually run rather than averaged against the flat axis.")));
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -925,16 +928,18 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBlurControls()
 TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 {
 	// Shared by layer-scoped and feature-scoped mask rows: one generic binding per row,
-	// captions for grouping, and pairs where both labels are one short word.
+	// cards for grouping, and pairs where both labels are one short word.
 	const auto Mask = [this]() { return GetSelectedLayerMask(); };
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
 		.Visibility_Lambda([this]() { return GetSelectedLayerMask() ? EVisibility::Visible : EVisibility::Collapsed; });
 
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+	const TSharedRef<SVerticalBox> Cards = Panel;
+	Panel = SNew(SVerticalBox);
+	Cards->AddSlot().AutoHeight()
 	[
-		SNew(STextBlock)
-		.Text_Lambda([this]()
+		SNew(SMixtormatInspectorCard)
+		.Title_Lambda([this]()
 		{
 			const FMixtormatMaskLayer* Selected = GetSelectedLayerMask();
 			if (!Selected)
@@ -954,7 +959,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				: Selected->MaskTexture.ToSoftObjectPath();
 			return FText::FromString(Path.GetAssetName());
 		})
-		.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontBody))
+		[
+			Panel
+		]
 	];
 
 	// The asset, on the node itself. Before this the only way to change a texture mask's map was
@@ -974,7 +981,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				: EVisibility::Collapsed;
 		})
 		[
-			MixtormatRow::Make(
+			MixtormatRow::MakeDropdown(
 				LOCTEXT("SelectedMaskAsset", "Mask"),
 				MixtormatRow::MakeChip(
 					TAttribute<FText>::CreateLambda([this]()
@@ -1009,7 +1016,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 									&& (M->Mask.ToSoftObjectPath() == Path
 										|| M->MaskTexture.ToSoftObjectPath() == Path);
 							});
-					})),
+					}), nullptr, TAttribute<FText>(), 0.0f),
 				LOCTEXT("SelectedMaskAssetHint",
 					"The map this mask reads. Picking one here is the same operation as dragging "
 					"a mask onto the layer from the gallery -- same child, same defaults taken "
@@ -1038,7 +1045,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				: EVisibility::Collapsed;
 		})
 		[
-			MixtormatRow::Make(
+			MixtormatRow::MakeDropdown(
 				LOCTEXT("SelectedMaskLayerValueChannel", "Channel"),
 				MixtormatRow::MakeChip(
 					TAttribute<FText>::CreateLambda([this]()
@@ -1049,7 +1056,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 							: FText::GetEmpty();
 					}),
 					FOnGetContent::CreateSP(
-						this, &SMixtormat::BuildMaskLayerValueChannelMenu)),
+						this, &SMixtormat::BuildMaskLayerValueChannelMenu), nullptr, TAttribute<FText>(), 0.0f),
 				LOCTEXT("SelectedMaskLayerValueChannelHint",
 					"Which scalar to take. Luminance is Rec. 709 over the layer's linear albedo "
 					"and is what reads as brightness; the single channels are the raw albedo "
@@ -1059,7 +1066,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 					"there is no second set of range controls here."))
 		]);
 
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("SelectedMaskBlendMode", "Blend Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1072,7 +1079,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			FOnGetContent::CreateLambda([this]()
 			{
 				return BuildMaskBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
-			}))));
+			}), nullptr, TAttribute<FText>(), 0.0f)));
 
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatMaskLayer>(
 		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
@@ -1084,7 +1091,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	// resolution -- there is no map to tile, offset, flip or turn -- so the whole block is
 	// collapsed rather than shown inert. This is the other half of removing the Source dropdown:
 	// the inspector is now specific to what the mask actually reads.
-	const TSharedRef<SVerticalBox> Placement = SNew(SVerticalBox)
+	const TSharedRef<SVerticalBox> PlacementCard = SNew(SVerticalBox)
 		.Visibility_Lambda([this]()
 		{
 			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
@@ -1092,7 +1099,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				? EVisibility::Collapsed
 				: EVisibility::Visible;
 		});
-	AddSliderRow(Placement, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpPlacement", "Placement")));
+	const TSharedRef<SVerticalBox> Placement = AddCard(PlacementCard, LOCTEXT("MaskGrpPlacement", "Placement"));
 	AddSliderRow(Placement, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatMaskLayer>(
 			LOCTEXT("MaskTilingXLabel", "Tiling X"), Mask, &FMixtormatMaskLayer::TilingX, 1.0, 16.0, 1,
@@ -1112,7 +1119,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			LOCTEXT("MaskFlipULabel", "Flip U"), Mask, &FMixtormatMaskLayer::bFlipU),
 		MakeMemberToggle<FMixtormatMaskLayer>(
 			LOCTEXT("MaskFlipVLabel", "Flip V"), Mask, &FMixtormatMaskLayer::bFlipV)));
-	AddSliderRow(Placement, MixtormatRow::Make(
+	AddSliderRow(Placement, MixtormatRow::MakeDropdown(
 		LOCTEXT("MaskRotationLabel", "Rotate"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1120,10 +1127,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
 				return M ? MixtormatUI::UVRotationText(M->Rotation) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
 
-	AddSliderRow(Panel, Placement);
+	AddSliderRow(Panel, PlacementCard);
 
 	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
 	{
@@ -1175,16 +1182,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 				])
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[Panel]
+				+ SVerticalBox::Slot().AutoHeight()[Cards]
 			]
 		];
 }
 
 void SMixtormat::AddMaskShapingRows(
-	const TSharedRef<SVerticalBox>& TargetPanel,
+	const TSharedRef<SVerticalBox>& Cards,
 	TFunction<FMixtormatMaskShaping*()> Resolve)
 {
-	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskGrpShape", "Shaping")));
+	const TSharedRef<SVerticalBox> TargetPanel = AddCard(Cards, LOCTEXT("MaskGrpShape", "Shaping"));
 	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
 		LOCTEXT("MaskNormalizeInputLabel", "Normalize Input"), Resolve,
 		&FMixtormatMaskShaping::bNormalizeInput));
@@ -1246,6 +1253,7 @@ void SMixtormat::AddMaskShapingRows(
 		LOCTEXT("MaskOffsetHint", "Lifts the whole mask after contrast. Plus one reaches full white and minus one full black from any input, whatever the contrast is set to.")));
 	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
 		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
+
 }
 
 #undef LOCTEXT_NAMESPACE

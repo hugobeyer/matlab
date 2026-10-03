@@ -439,8 +439,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// lands within Threshold of a chosen colour, which is the mode for a map that arrived with the
 	// mesh. The two share nothing but the blend and shaping tail, so each hides the other's rows
 	// rather than leaving half the panel inert.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpSelection", "Selection")));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("IdGrpSelection", "Selection"), nullptr,
+			MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerMask,
+				LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan"),
+				MixtormatTokens::GroupCardLeadingIconSize));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdSelectionMode", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -448,7 +452,8 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				const FMixtormatColorIdMask* C = GetSelectedColorId();
 				return C ? MixtormatUI::ColorIdModeText(C->Mode) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdModeMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("IdSelectionModeHint",
 			"Exact ID selects one discrete Region ID from the ID node above this mask, as an "
 			"integer comparison -- so the selection is unaffected by whatever colour the Region "
@@ -522,7 +527,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// Everything from here to the end of Placement belongs to Color Range. An Exact ID mask has
 	// no map to pick, no colours to list and nothing to place: it reads the Region IDs at the
 	// composition's own resolution, where a UV transform would interpolate labels.
-	const TSharedRef<SVerticalBox> Range = SNew(SVerticalBox)
+	TSharedRef<SVerticalBox> Range = SNew(SVerticalBox)
 		.Visibility_Lambda([this]()
 		{
 			const FMixtormatColorIdMask* C = GetSelectedColorId();
@@ -534,7 +539,8 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// The map. Any Texture2D rather than the library gallery the other mask slots offer: an ID
 	// map arrives with the mesh from whatever built it, and it is not a Mixtormat asset and never
 	// will be.
-	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpSource", "ID Map")));
+	const TSharedRef<SVerticalBox> RangeCards = Range;
+		Range = AddCard(RangeCards, LOCTEXT("IdGrpSource", "ID Map"));
 	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
 	[
 		SNew(SObjectPropertyEntryBox)
@@ -560,7 +566,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// The selection. One row per colour: a swatch that opens a picker, and a button that drops
 	// it. Rebuilt rather than bound, because the row count is the data here -- adding an ID adds
 	// a widget, which no attribute can express.
-	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpColors", "Selected IDs")));
+	Range = AddCard(RangeCards, LOCTEXT("IdGrpColors", "Selected IDs"));
 
 	// Every row that could exist is laid out once and shows itself when the selection reaches it.
 	// The panel is built at construction, long before anything is selected, so a loop over the
@@ -628,7 +634,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		Slider(LOCTEXT("IdWidth", "Width"), &FMixtormatColorIdMask::Softness, 0.0, 0.5, 0.02, 0.001,
 			LOCTEXT("IdWidthHint", "Width of the transition either side of Threshold. The map is point sampled -- the average of two IDs is a third colour that names neither -- so the selection edge is a hard texel boundary, and this is what feathers it."))));
 
-	AddSliderRow(Range, MixtormatRow::MakeCaption(LOCTEXT("IdGrpPlacement", "Placement")));
+	Range = AddCard(RangeCards, LOCTEXT("IdGrpPlacement", "Placement"));
 	AddSliderRow(Range, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatColorIdMask>(
 			LOCTEXT("IdTilingX", "Tiling X"), Id, &FMixtormatColorIdMask::TilingX, 1.0, 16.0, 1,
@@ -648,7 +654,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		MakeMemberToggle<FMixtormatColorIdMask>(
 			LOCTEXT("IdFlipV", "Flip V"), Id, &FMixtormatColorIdMask::bFlipV,
 			LOCTEXT("IdFlipVHint", "Mirrors the map vertically before it is tiled. The usual fix when a map was authored under the other texture-coordinate convention."))));
-	AddSliderRow(Range, MixtormatRow::Make(
+	AddSliderRow(Range, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdRotation", "Rotation"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -656,13 +662,14 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				const FMixtormatColorIdMask* C = GetSelectedColorId();
 				return C ? MixtormatUI::UVRotationText(C->Rotation) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdRotationMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdRotationMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("IdRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams.")));
 
-	AddSliderRow(Panel, Range);
+	AddSliderRow(Cards, RangeCards);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("IdGrpBlend", "Blend")));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	Panel = AddCard(Cards, LOCTEXT("IdGrpBlend", "Blend"));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -670,7 +677,8 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				const FMixtormatColorIdMask* C = GetSelectedColorId();
 				return C ? MixtormatUI::MaskBlendModeText(C->BlendMode) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdBlendModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildColorIdBlendModeMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("IdBlendModeHint", "How the selection combines with the mask accumulated above it in this layer. Max is what unions two ID nodes; Multiply is what intersects one with a painted mask.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("IdWeight", "Weight"), &FMixtormatColorIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("IdWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")));
@@ -679,6 +687,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		FMixtormatColorIdMask* ColorId = GetSelectedColorId();
 		return ColorId ? &ColorId->Shaping : nullptr;
 	});
+	Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedColorId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -686,10 +695,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("ColorIdHeading", "COLOR ID"))
 			.InitiallyExpanded(true)
-			.HeaderAction(
-				MakeFeaturePreviewButton(
-					EMixtormatDebugPreviewMode::LayerMask,
-					LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan")))
+
 			[
 				Panel
 			]
@@ -804,7 +810,8 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 	// the texture already sits; a palette lets the variation be aimed at colours that were
 	// chosen. Same row shape as the colour ID selection, for the same reason: a colour is picked
 	// by looking at it.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("HsvGrpPalette", "Palette")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("HsvGrpPalette", "Palette"));
 
 	// Every row that could exist is laid out once and shows itself when the data reaches it. The
 	// panel is built at construction, long before anything is selected, so a loop over the
@@ -869,7 +876,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 
 	// Min/max pairs rather than a +/- amount, so variation can be biased: hue 0 to 0.1 shifts
 	// only warm, which a symmetric amount cannot express.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("HsvGrpJitter", "Jitter")));
+	Panel = AddCard(Cards, LOCTEXT("HsvGrpJitter", "Jitter"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("HsvHueMin", "Hue Min"), &FMixtormatHsvIdFilter::HueMin, -1.0, 1.0, 0.0, 0.005,
 			LOCTEXT("HsvHueMinHint", "Added, because hue is circular. -1 to 1 spans a full turn either way, the same convention as the layer's own Hue Shift -- so a couple of hundredths is already clearly visible on a flat surface. Both ends at 0 switches hue jitter off.")),
@@ -889,6 +896,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatHsvIdFilter>(
 		LOCTEXT("HsvSeed", "Seed"), Hsv, &FMixtormatHsvIdFilter::Seed, 0.0, 64.0, 1,
 		LOCTEXT("HsvSeedHint", "Reshuffles which region gets which colour without changing any of the ranges. All five draws -- palette position, tint amount, hue, saturation, value -- come off one hash of this and the region ID, so they move together.")));
+			Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedHsvFilter() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1064,10 +1072,12 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	const TSharedRef<SVerticalBox> LegacyTreatment = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> LegacyTreatment = SNew(SVerticalBox);
+		const TSharedRef<SVerticalBox> LegacyCards = LegacyTreatment;
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpLattice", "Lattice")));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("PatternGrpLattice", "Lattice"));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("PatternMode", "Pattern Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1077,7 +1087,8 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 					? MixtormatUI::PatternModeText(Pattern->PatternMode)
 					: FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildPatternModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildPatternModeMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("PatternModeHint", "Selects the procedural topology used to publish Pattern regions. Fracture Plates generates hierarchical irregular fracture plates for cracked plaster, concrete, asphalt, stone, and similar broken surfaces.")));
 	AddSliderRow(Panel,
 		SNew(SBox)
@@ -1089,7 +1100,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 				: EVisibility::Collapsed;
 		})
 		[
-			MixtormatRow::Make(
+			MixtormatRow::MakeDropdown(
 				LOCTEXT("PatternGridMode", "Grid Mode"),
 				MixtormatRow::MakeChip(
 					TAttribute<FText>::CreateLambda([this]()
@@ -1099,7 +1110,8 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 							? MixtormatUI::GridModeText(Pattern->GridMode)
 							: FText::GetEmpty();
 					}),
-					FOnGetContent::CreateSP(this, &SMixtormat::BuildGridModeMenu)),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildGridModeMenu),
+										nullptr, TAttribute<FText>(), 0.0f),
 				LOCTEXT("PatternGridModeHint", "Selects the straight, staggered, or diamond Grid topology."))
 		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -1163,16 +1175,16 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 	// lattice rows above and stay there -- Fracture Plates is a Pattern topology like the others,
 	// not a second pattern system with its own copy of the lattice.
 	const TSharedRef<SVerticalBox> FractureRows = SNew(SVerticalBox);
-	AddSliderRow(FractureRows,
-		MixtormatRow::MakeCaption(LOCTEXT("PatternGrpFracture", "Fracture Plates")));
-	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+	const TSharedRef<SVerticalBox> FractureCard = AddCard(
+		FractureRows, LOCTEXT("PatternGrpFracture", "Fracture Plates"));
+	AddSliderRow(FractureCard, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternFractureSizeVariation", "Size Variation"),
 			&FMixtormatPatternFilter::FractureSizeVariation, 0.0, 1.0, 0.3, 0.01,
 			LOCTEXT("PatternFractureSizeVariationHint", "Spread of the additive power weights that decide how much territory a plate wins from its neighbours. At 0 every plate is the same importance and the result is even pavement; raising it grows a few plates at the expense of the rest, which is where the mix of very large and small pieces comes from. Additive rather than multiplicative, so a weight moves a boundary while leaving it straight.")),
 		Slider(LOCTEXT("PatternFractureSecondaryAmount", "Secondary Amount"),
 			&FMixtormatPatternFilter::FractureSecondaryAmount, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("PatternFractureSecondaryAmountHint", "Probability that a primary plate fractures internally at all. A plate that does not stays whole and publishes one ID, so this is the control for how much of the surface reads as large unbroken pieces against locally shattered ones."))));
-	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+	AddSliderRow(FractureCard, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatPatternFilter>(
 			LOCTEXT("PatternFractureSecondaryMin", "Secondary Min"), Pattern,
 			&FMixtormatPatternFilter::FractureSecondaryMin, 2.0, 8.0, 2,
@@ -1181,21 +1193,21 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternFractureSecondaryMax", "Secondary Max"), Pattern,
 			&FMixtormatPatternFilter::FractureSecondaryMax, 2.0, 8.0, 3,
 			LOCTEXT("PatternFractureSecondaryMaxHint", "Most pieces a fracturing plate breaks into. Raised below Secondary Min, it follows it."))));
-	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+	AddSliderRow(FractureCard, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternFractureSecondaryRadius", "Secondary Radius"),
 			&FMixtormatPatternFilter::FractureSecondaryRadius, 0.05, 0.75, 0.34, 0.005,
 			LOCTEXT("PatternFractureSecondaryRadiusHint", "How far the secondary sites sit from their parent's, in cell fractions. Small values put the split near the middle of the plate; large ones push the pieces out toward its walls. The split is always clipped to its parent, whatever this is set to.")),
 		Slider(LOCTEXT("PatternFractureSecondaryJitter", "Secondary Jitter"),
 			&FMixtormatPatternFilter::FractureSecondaryJitter, 0.0, 1.0, 0.55, 0.01,
 			LOCTEXT("PatternFractureSecondaryJitterHint", "Breaks up the even ring the secondary sites are laid on, in angle and in radius, so a split plate does not come out as a regular pie."))));
-	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+	AddSliderRow(FractureCard, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternFractureEdgeIrregularity", "Edge Irregularity"),
 			&FMixtormatPatternFilter::FractureEdgeIrregularity, 0.0, 32.0, 8.0, 0.1,
 			LOCTEXT("PatternFractureEdgeIrregularityHint", "How far, in output pixels, the fracture field displaces a plate wall from the straight line the power diagram would give it. The field is piecewise planar, so the wall stays a chain of straight runs meeting at angles rather than becoming a curve.")),
 		Slider(LOCTEXT("PatternFractureEdgeScale", "Edge Scale"),
 			&FMixtormatPatternFilter::FractureEdgeScale, 8.0, 512.0, 96.0, 1.0,
 			LOCTEXT("PatternFractureEdgeScaleHint", "The run length of those straight segments, in output pixels. Absolute: Rows and Columns do not stretch it, so changing the plate count leaves the crack character alone."))));
-	AddSliderRow(FractureRows, MixtormatRow::MakePair(
+	AddSliderRow(FractureCard, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternFractureEdgeDetail", "Edge Detail"),
 			&FMixtormatPatternFilter::FractureEdgeDetail, 0.0, 16.0, 2.5, 0.05,
 			LOCTEXT("PatternFractureEdgeDetailHint", "A second, shorter octave of the same field: the small branching kinks that sit on the long primary fracture runs.")),
@@ -1225,7 +1237,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 		SNew(STextBlock)
 		.AutoWrapText(true)
 		.Text(LegacyHint));
-	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpUV", "UV Variation")));
+	LegacyTreatment = AddCard(LegacyCards, LOCTEXT("PatternGrpUV", "UV Variation"));
 	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Toggle(LOCTEXT("PatternUVEnable", "Enable"), &FMixtormatPatternFilter::bUVVariation,
 			LOCTEXT("PatternUVEnableHint", "Transforms the layer source independently around each pattern region centre.")),
@@ -1250,7 +1262,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 		Toggle(LOCTEXT("PatternFlipV", "Flip V"), &FMixtormatPatternFilter::bRandomFlipV,
 			LOCTEXT("PatternFlipVHint", "Randomly mirrors the source across V per region."))));
 
-	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpRelief", "Relief")));
+	LegacyTreatment = AddCard(LegacyCards, LOCTEXT("PatternGrpRelief", "Relief"));
 	AddSliderRow(LegacyTreatment,
 		Slider(LOCTEXT("PatternGapHeight", "Gap Height"), &FMixtormatPatternFilter::GapHeight, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternGapHeightHint", "Where the grout sits relative to the cells. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Needs a Gap above 0 -- without one every pixel belongs to a cell and there is nothing outside the IDs to move.")));
@@ -1274,7 +1286,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LOCTEXT("PatternFeatherGainHint", "What the feather does on the way up, rather than how wide it is. The run-out is a straight line, and a straight line is the one shape a normal map cannot show -- a normal reads a change in slope, and a constant ramp has none, so the band lights as a single flat facet however much height it moves. Gain bends the curve: the slope leaving the wall goes from 1 to 1 + Gain, and past 1 it arcs above the face and leaves a raised lip just inside the edge. Both ends stay pinned, so the grout wall and the flat face never move.")));
 
 
-	AddSliderRow(LegacyTreatment, MixtormatRow::MakeCaption(LOCTEXT("PatternGrpEdges", "Edges")));
+	LegacyTreatment = AddCard(LegacyCards, LOCTEXT("PatternGrpEdges", "Edges"));
 	AddSliderRow(LegacyTreatment, MixtormatRow::MakePair(
 		Slider(LOCTEXT("PatternBevelHeight", "Height"), &FMixtormatPatternFilter::BevelHeight, -1.0, 1.0, 0.0, 0.001,
 			LOCTEXT("PatternBevelHeightHint", "Stands each cell proud of the grout, with the chamfer ramping down to it. Negative sinks the cell face below the grout instead. The gap itself is untouched either way -- that is Gap Height.")),
@@ -1297,7 +1309,12 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 		Slider(LOCTEXT("PatternEdgeRoughnessAmount", "Amount"), &FMixtormatPatternFilter::EdgeRoughnessAmount, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("PatternEdgeRoughnessAmountHint", "Strength of edge roughness. 0 leaves the packed roughness channel unchanged."))));
 
-	Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
+	const TSharedRef<SVerticalBox> LegacyContainer = SNew(SVerticalBox);
+		const TSharedRef<SVerticalBox> LegacyRows = AddCard(
+			LegacyContainer, LOCTEXT("PatternLegacyTreatmentHeading", "LEGACY TREATMENT"));
+		AddSliderRow(LegacyRows, LegacyCards);
+		Panel = Cards;
+		Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
 	[
 		SNew(SBox)
 		.Visibility_Lambda([HasLegacyTreatment]()
@@ -1305,12 +1322,10 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			return HasLegacyTreatment() ? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("PatternLegacyTreatmentHeading", "LEGACY TREATMENT"))
-			.InitiallyExpanded(false)
+			SNew(SBox)
 			.ToolTipText(LegacyHint)
 			[
-				LegacyTreatment
+				LegacyContainer
 			]
 		]
 	];
@@ -1378,13 +1393,14 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 
 	// Relief first, because it is the whole point of the node. The gradient controls below shape
 	// what the ramp does; these decide whether it does anything at all.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpRelief", "Relief")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("RampGrpRelief", "Relief"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("RampIntensity", "Intensity"), &FMixtormatRampIdFilter::HeightAmount, 0.0, 0.5, 0.05, 0.001,
 			LOCTEXT("RampIntensityHint", "How strongly each region's ramp meets the surface. A blend weight, so 0 leaves the surface untouched under every mode and skips the pass entirely.")),
 		Slider(LOCTEXT("RampIntensityRandom", "Random Intensity"), &FMixtormatRampIdFilter::IntensityRandom, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("RampIntensityRandomHint", "Per-region jitter on that strength. 0 leaves every region at full Intensity -- unlike Pattern IDs' Height pair, a uniform ramp strength is meaningful on its own, since every region still tilts in its own direction."))));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("RampBlendMode", "Blend"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1392,10 +1408,11 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 				const FMixtormatRampIdFilter* R = GetSelectedRampId();
 				return R ? MixtormatUI::MaskBlendModeText(R->BlendMode) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildRampIdBlendModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildRampIdBlendModeMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("RampBlendModeHint", "How the ramp meets the height under it. Add/Sub is the centred case -- a region rises on one side exactly as much as it falls on the other -- and Min carves, Multiply darkens. The normal is derived from the blended height rather than blended separately, so it always describes the surface actually written.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RampGrpGradient", "Gradient")));
+	Panel = AddCard(Cards, LOCTEXT("RampGrpGradient", "Gradient"));
 	AddSliderRow(Panel, MixtormatRow::Make(
 		LOCTEXT("RampRotate", "Random Rotation"),
 		MixtormatRow::MakeCheckbox(
@@ -1437,6 +1454,7 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatRampIdFilter>(
 		LOCTEXT("RampSeed", "Seed"), Ramp, &FMixtormatRampIdFilter::Seed, 0.0, 64.0, 1,
 		LOCTEXT("RampSeedHint", "Reshuffles which region gets which angle and strength without changing any of the ranges. Independent of the cluster filter's controls, so reseeding here does not re-segment.")));
+			Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRampId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1518,7 +1536,8 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpTransform", "Transform")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("UvIdGrpTransform", "Transform"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("UvIdRotationMin", "Rotation Min"), &FMixtormatUvIdFilter::RotationMin, -360.0, 360.0, 0.0, 1.0,
 			LOCTEXT("UvIdRotationMinHint", "The low end of each region's rotation draw, in degrees. Equal limits turn every region by the same fixed amount.")),
@@ -1547,10 +1566,11 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 		&FMixtormatUvIdFilter::bRandomFlipV,
 		LOCTEXT("UvIdFlipVHint", "The same across V.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("UvIdGrpRandom", "Random")));
+	Panel = AddCard(Cards, LOCTEXT("UvIdGrpRandom", "Random"));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatUvIdFilter>(
 		LOCTEXT("UvIdSeed", "Seed"), Uv, &FMixtormatUvIdFilter::Seed, 0.0, 64.0, 1,
 		LOCTEXT("UvIdSeedHint", "Reshuffles which region gets which rotation, scale, offset and flip without changing any of the ranges. Independent of the producer's seed, so reseeding here does not re-generate the regions.")));
+			Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedUvId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1601,7 +1621,7 @@ TSharedRef<SWidget> SMixtormat::BuildBoundaryIdControls()
 			Label, Boundary, Member, Min, Max, Default, 0.01, Hint);
 	};
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("BoundaryIdSource", "Region IDs"),
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("BoundaryIdSource", "Region IDs"),
 		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
 		{
 			const FMixtormatBoundaryIdFilter* Selected = GetSelectedBoundaryId();
@@ -1635,15 +1655,17 @@ TSharedRef<SWidget> SMixtormat::BuildBoundaryIdControls()
 				if (Group.GroupId == Ref.SourceLayerId) return FindLabel(Group.DisplayName, Group.Children);
 			}
 			return LOCTEXT("BoundaryIdMissingSource", "Missing Region IDs source");
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBoundaryIdSourceMenu)),
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBoundaryIdSourceMenu),
+					nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("BoundaryIdSourceHint", "Unassigned reads the nearest preceding valid Region IDs. Explicit sources must precede this child; unavailable sources do not fall back to another map.")));
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdBoundaryGroup", "Boundary")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("BoundaryIdBoundaryGroup", "Boundary"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BoundaryIdWidth", "Width"), &FMixtormatBoundaryIdFilter::WidthPixels, 0.0, 64.0, 4.0,
 			LOCTEXT("BoundaryIdWidthHint", "Boundary width in output pixels.")),
 		Slider(LOCTEXT("BoundaryIdSoftness", "Softness"), &FMixtormatBoundaryIdFilter::Softness, 0.0, 1.0, 0.5,
 			LOCTEXT("BoundaryIdSoftnessHint", "Softness of the boundary mask transition."))));
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdGapGroup", "Gap")));
+	Panel = AddCard(Cards, LOCTEXT("BoundaryIdGapGroup", "Gap"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BoundaryIdGapWidth", "Width"), &FMixtormatBoundaryIdFilter::GapWidthPixels, 0.0, 64.0, 8.0,
 			LOCTEXT("BoundaryIdGapWidthHint", "Gap mask width in output pixels; does not change the source IDs.")),
@@ -1652,7 +1674,7 @@ TSharedRef<SWidget> SMixtormat::BuildBoundaryIdControls()
 	AddSliderRow(Panel, Slider(LOCTEXT("BoundaryIdGapBias", "Bias"),
 		&FMixtormatBoundaryIdFilter::GapBiasPixels, -64.0, 64.0, 0.0,
 		LOCTEXT("BoundaryIdGapBiasHint", "Expands or shrinks the gap radius in output pixels; does not assign an inside/outside sign.")));
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BoundaryIdDistanceGroup", "Distance")));
+	Panel = AddCard(Cards, LOCTEXT("BoundaryIdDistanceGroup", "Distance"));
 	AddSliderRow(Panel, Slider(LOCTEXT("BoundaryIdDistanceRange", "Range"),
 		&FMixtormatBoundaryIdFilter::DistanceRangePixels, 0.25, 256.0, 64.0,
 		LOCTEXT("BoundaryIdDistanceRangeHint", "Pixel range mapped into the scalar Distance output.")));
@@ -1660,6 +1682,7 @@ TSharedRef<SWidget> SMixtormat::BuildBoundaryIdControls()
 		LOCTEXT("BoundaryIdInvertDistance", "Invert Distance"), Boundary,
 		&FMixtormatBoundaryIdFilter::bInvertDistance,
 		LOCTEXT("BoundaryIdInvertDistanceHint", "Invert Distance without changing Boundary or Gap.")));
+			Panel = Cards;
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedBoundaryId() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
@@ -1702,14 +1725,15 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpHeight", "Height")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("ReliefIdGrpHeight", "Height"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("ReliefIdHeight", "Amount"), &FMixtormatReliefIdFilter::HeightAmount, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("ReliefIdHeightHint", "The elevation every region gets above the surface under it. Each region is a flat face at its own height -- tilting one is Ramp From IDs, which composites over this.")),
 		Slider(LOCTEXT("ReliefIdHeightRandom", "Variation"), &FMixtormatReliefIdFilter::HeightRandom, 0.0, 1.0, 0.5, 0.01,
 			LOCTEXT("ReliefIdHeightRandomHint", "How far below Amount a region may be drawn, as a multiplier on it. One-sided: at 0 every region sits at full Amount, at 1 they spread down to the base. A region that went below the base would feather back up at its own boundary and read as a recessed panel in a raised frame."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpProfile", "Profile")));
+	Panel = AddCard(Cards, LOCTEXT("ReliefIdGrpProfile", "Profile"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("ReliefIdProfile", "Profile"), &FMixtormatReliefIdFilter::Profile, -1.0, 1.0, 0.25, 0.01,
 			LOCTEXT("ReliefIdProfileHint", "The chamfer's cross-section. -1 is a cove that hugs the boundary then sweeps up into the face, 0 a straight flat chamfer, +1 a bullnose that rounds over onto it. Both ends stay pinned, so this changes the shape and never the width or height.")),
@@ -1724,7 +1748,7 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 		Slider(LOCTEXT("ReliefIdFeatherGain", "Feather Gain"), &FMixtormatReliefIdFilter::FeatherGain, 0.0, 4.0, 0.0, 0.01,
 			LOCTEXT("ReliefIdFeatherGainHint", "What the run-out does on the way up, rather than how wide it is. A straight ramp has no change in slope and lights as one flat facet; Gain bends it, and past 1 leaves a raised lip just inside the edge -- the rolled-over rim of a settled tile.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpBevel", "Bevel")));
+	Panel = AddCard(Cards, LOCTEXT("ReliefIdGrpBevel", "Bevel"));
 	AddSliderRow(Panel,
 		Slider(LOCTEXT("ReliefIdBevelHeight", "Height"), &FMixtormatReliefIdFilter::BevelHeight, -1.0, 1.0, 0.0, 0.01,
 			LOCTEXT("ReliefIdBevelHeightHint", "Signed, and it lifts the region face: positive stands the region proud with the chamfer ramping down to the boundary, negative sinks the face instead. The region-less band is untouched either way -- that is Gap Height below.")));
@@ -1760,7 +1784,7 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 		Slider(LOCTEXT("ReliefIdGapHeight", "Gap Height"), &FMixtormatReliefIdFilter::GapHeight, -1.0, 1.0, 0.0, 0.01,
 			LOCTEXT("ReliefIdGapHeightHint", "Where a region-less band sits relative to the regions -- Pattern IDs' grout, or any pixel the producer marked invalid. Negative sinks it into a trench, positive stands it proud as a raised mortar line. Gap width is topology and stays on the producer; only its height lives here, so the two compose instead of fighting.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpEdge", "Edge")));
+	Panel = AddCard(Cards, LOCTEXT("ReliefIdGrpEdge", "Edge"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("ReliefIdEdgeRoughness", "Roughness"), &FMixtormatReliefIdFilter::EdgeRoughness, 0.0, 1.0, 0.65, 0.01,
 			LOCTEXT("ReliefIdEdgeRoughnessHint", "The roughness written along region boundaries -- the scuffed, unpolished band a worn edge has.")),
@@ -1768,10 +1792,11 @@ TSharedRef<SWidget> SMixtormat::BuildReliefIdControls()
 			LOCTEXT("ReliefIdEdgeRoughnessAmountHint", "How strongly that band replaces the roughness already there. At 0 the edge shading pass is skipped entirely."))));
 
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("ReliefIdGrpRandom", "Random")));
+	Panel = AddCard(Cards, LOCTEXT("ReliefIdGrpRandom", "Random"));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatReliefIdFilter>(
 		LOCTEXT("ReliefIdSeed", "Seed"), Relief, &FMixtormatReliefIdFilter::Seed, 0.0, 64.0, 1,
 		LOCTEXT("ReliefIdSeedHint", "Reshuffles which region gets which height, chamfer width and profile without changing any of the ranges. Independent of the producer's seed, so reseeding here does not re-generate the regions.")));
+			Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedReliefId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1833,7 +1858,7 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupFeatureMenu()
 TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddSliderRow(Panel, MixtormatRow::Make(
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdGroupModeLabel", "Operation"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1851,7 +1876,8 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 				default: return LOCTEXT("IdGroupModeDifference", "Difference");
 				}
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		TAttribute<FText>::CreateLambda([this]()
 		{
 			const FMixtormatIdGroup* Group = GetSelectedIdGroup();
@@ -1867,9 +1893,10 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 				return LOCTEXT("IdGroupDifferenceHint", "Fold ordered Region IDs sources, preserving equal IDs and hashing unequal overlaps.");
 			}
 		})));
-	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("IdGroupSourcesLabel", "Sources"),
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("IdGroupSourcesLabel", "Sources"),
 		MixtormatRow::MakeChip(LOCTEXT("IdGroupAddSource", "Add Source"),
-			FOnGetContent::CreateLambda([this]() { return BuildIdGroupSourceMenu(GetSelectedChildAddress()); })),
+			FOnGetContent::CreateLambda([this]() { return BuildIdGroupSourceMenu(GetSelectedChildAddress()); }),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("IdGroupSourcesHint", "Add live Region IDs references. Reorder or remove their subordinate rows in the stack; producers stay in place.")));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
 		LOCTEXT("IdGroupBoundaryWidth", "Boundary Width"),
@@ -1983,8 +2010,9 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 		LOCTEXT("RandomSeed", "Seed"), Random, &FMixtormatRandomIdMask::Seed, 0.0, 64.0, 1,
 		LOCTEXT("RandomSeedHint", "Reshuffles which region gets which value without changing the range. Independent of the cluster filter's own controls, so reseeding here does not re-segment -- it is the cheap dial.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RandomGrpBlend", "Blend")));
-	AddSliderRow(Panel, MixtormatRow::Make(
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("RandomGrpBlend", "Blend"));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("RandomBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this]()
@@ -1992,7 +2020,8 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 				const FMixtormatRandomIdMask* R = GetSelectedRandomId();
 				return R ? MixtormatUI::MaskBlendModeText(R->BlendMode) : FText::GetEmpty();
 			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildRandomIdBlendModeMenu)),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildRandomIdBlendModeMenu),
+						nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("RandomBlendModeHint", "How the per-region value combines with the mask accumulated above it in this layer. Multiply against a painted mask is the common one: vary only where you already wanted the layer.")));
 
 	AddSliderRow(Panel, Slider(LOCTEXT("RandomWeight", "Weight"), &FMixtormatRandomIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
@@ -2006,6 +2035,7 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 		FMixtormatRandomIdMask* R = GetSelectedRandomId();
 		return R ? &R->Shaping : nullptr;
 	});
+	Panel = Cards;
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRandomId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -2050,7 +2080,7 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddSliderRow(Panel, MixtormatRow::Make(LOCTEXT("OutputReferenceSource", "Source"),
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("OutputReferenceSource", "Source"),
 		SNew(SBox)
 		.IsEnabled_Lambda([this]()
 		{
@@ -2063,7 +2093,8 @@ TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
 			{
 				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 				return Child ? GetLayerChildName(*Child) : FText::GetEmpty();
-			}), FOnGetContent::CreateLambda([this]() { return BuildOutputReferenceSourceMenu(GetSelectedChildAddress()); }))
+			}), FOnGetContent::CreateLambda([this]() { return BuildOutputReferenceSourceMenu(GetSelectedChildAddress()); }),
+							nullptr, TAttribute<FText>(), 0.0f)
 		], LOCTEXT("OutputReferenceSourceHint", "A live output address, not a copy of the producer.")));
 	Panel->AddSlot().AutoHeight()
 	[

@@ -56,6 +56,42 @@ TSharedRef<SWidget> Make(
 	return Sized;
 }
 
+TSharedRef<SWidget> MakeDropdown(
+	const FText& Label,
+	const TSharedRef<SWidget>& Control,
+	const TAttribute<FText>& ToolTip)
+{
+	TSharedRef<SBox> Sized = SNew(SBox)
+		.HeightOverride_Lambda([]() { return FOptionalSize(MixtormatTokens::RowHeight); })
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(TAttribute<float>::CreateLambda([]() { return MixtormatTokens::DropdownLabelRatio; }))
+			.HAlign(HAlign_Fill)
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
+			[
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+				.Text(Label)
+				.Justification(ETextJustify::Left)
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(TAttribute<float>::CreateLambda([]() { return 1.0f - MixtormatTokens::DropdownLabelRatio; }))
+			.HAlign(HAlign_Fill)
+			.VAlign(VAlign_Center)
+			[
+				Control
+			]
+		];
+	if (ToolTip.IsSet())
+	{
+		Sized->SetToolTipText(ToolTip);
+	}
+	return Sized;
+}
+
 TSharedRef<SWidget> MakeTrailing(
 	const FText& Label,
 	const TSharedRef<SWidget>& TrailingContent,
@@ -187,11 +223,13 @@ TSharedRef<SWidget> MakeChip(
 	const TAttribute<FText>& Text,
 	const FOnGetContent& OnGetMenuContent,
 	const TSharedPtr<SWidget>& LeadingContent,
-	const TAttribute<FText>& ToolTip)
+	const TAttribute<FText>& ToolTip,
+	const float MinWidth)
 {
 	// The chip ignores a null leading slot, so there is no branch here: an absent thumbnail is
 	// SNullWidget rather than a differently-constructed chip.
 	return SNew(SMixtormatChip)
+		.MinWidth(MinWidth)
 		.Text(Text)
 		.ToolTip(ToolTip)
 		.OnGetMenuContent(OnGetMenuContent)

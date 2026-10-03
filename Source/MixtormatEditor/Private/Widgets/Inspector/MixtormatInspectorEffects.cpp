@@ -14,7 +14,8 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpSeeding", "Seeding")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("PPeelGrpSeeding", "Seeding"));
 
 	// Seed Mask, not "Peel Mask" and emphatically not "Mask". Two different masks reach a peel and
 	// they do opposite things:
@@ -26,17 +27,10 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 	//                  effect: it decides where the result is allowed to show.
 	//
 	// Calling both "Mask" is what made the pair unreadable. They are deliberately not merged.
-	// Kept as a bespoke row because it picks an asset, not a value.
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
-	[
-		SNew(SBox).HeightOverride(MixtormatTokens::RowHeight)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-			[SNew(STextBlock).Text(LOCTEXT("PPeelSeedMaskSlot", "Seed Mask"))]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("PPeelSeedMaskSlot", "Seed Mask"),
 				SNew(SMixtormatChip)
+				.MinWidth(0.0f)
 				.ToolTip(LOCTEXT("PPeelSeedMaskSlotHint", "Where this peel starts. Mask Influence scales it, Adhesion is the threshold it has to cross, and procedural growth spreads outward from it. A scoped Mask child independently gates only the finished result."))
 				.Text_Lambda([this]()
 						{
@@ -106,10 +100,8 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 							}
 							return FReply::Handled();
 						}));
-				})
-			]
-		]
-	];
+				}),
+		LOCTEXT("PPeelSeedMaskSlotHint", "Where this peel starts. Mask Influence scales it, Adhesion is the threshold it has to cross, and procedural growth spreads outward from it. A scoped Mask child independently gates only the finished result.")));
 
 	// Paired: both labels are one short word, and at the inspector's width each half is about
 	// 139px. Anything longer would clip, which is why Adhesion's weights below are not paired.
@@ -120,7 +112,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 			[this]() { return GetSelectedProceduralPeel(); },
 			&FMixtormatLayerEffect::bPeelMaskInvert)));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpAdhesion", "Adhesion")));
+	Panel = AddCard(Cards, LOCTEXT("PPeelGrpAdhesion", "Adhesion"));
 	AddPeelSlider(Panel, LOCTEXT("PPeelMaskW", "Mask Influence"), &FMixtormatLayerEffect::PeelSeedMaskWeight, 0.0, 4.0, 0.0, 0.01,
 		LOCTEXT("PPeelMaskWHint", "Scales the Seed Mask before the Adhesion threshold. At 0 nothing crosses it and there is no peel at all, whichever mask is chosen. This is a seeding weight -- it has no effect on a scoped mask gating the result."));
 	AddPeelSlider(Panel, LOCTEXT("PPeelAdhesion", "Adhesion"), &FMixtormatLayerEffect::PeelSeedThreshold, 0.0, 1.0, 0.62, 0.01,
@@ -137,7 +129,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		[this]() { return GetSelectedProceduralPeel(); },
 		&FMixtormatLayerEffect::bPeelNormalizeSeedWeights));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpPropagation", "Propagation")));
+	Panel = AddCard(Cards, LOCTEXT("PPeelGrpPropagation", "Propagation"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSliderInt(LOCTEXT("PPeelCurvRadius", "Radius"), &FMixtormatLayerEffect::PeelCurvatureRadius, 1.0, 64.0, 2),
 		MakePeelSlider(LOCTEXT("PPeelPropagation", "Propagation"), &FMixtormatLayerEffect::PeelGrowthStrength, 0.05, 32.0, 1.0, 0.05)));
@@ -145,7 +137,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		MakePeelSlider(LOCTEXT("PPeelFront", "Front"), &FMixtormatLayerEffect::Front, -1.0, 1.0, 0.08, 0.005),
 		MakePeelSlider(LOCTEXT("PPeelWidth", "Width"), &FMixtormatLayerEffect::Width, 0.000001, 0.25, 0.015, 0.001)));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpShape", "Peel Shape")));
+	Panel = AddCard(Cards, LOCTEXT("PPeelGrpShape", "Peel Shape"));
 	AddPeelSlider(Panel, LOCTEXT("PPeelStrength", "Strength"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSlider(LOCTEXT("PPeelMacroWarp", "Macro Warp"), &FMixtormatLayerEffect::MacroWarp, -1.0, 1.0, 0.01, 0.005),
@@ -167,7 +159,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		&FMixtormatLayerEffect::PeelType,
 		LOCTEXT("PPeelTypeHint", "Curled lifts a flap ahead of the front and folds it back behind. Flat is the chip.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("PPeelGrpRelief", "Relief")));
+	Panel = AddCard(Cards, LOCTEXT("PPeelGrpRelief", "Relief"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakePeelSlider(LOCTEXT("PPeelThickness", "Thickness"), &FMixtormatLayerEffect::Thickness, 0.0, 1.0, 0.04, 0.005),
 		MakePeelSlider(LOCTEXT("PPeelLift", "Lift"), &FMixtormatLayerEffect::Lift, 0.0, 1.0, 0.2, 0.01)));
@@ -185,7 +177,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 			.Title(LOCTEXT("ProcPeelHeading", "PEELING"))
 			.InitiallyExpanded(true)
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -213,17 +205,9 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		TSoftObjectPtr<UMixtormatMask> FMixtormatLayerEffect::* MaskMember,
 		TSoftObjectPtr<UTexture2D> FMixtormatLayerEffect::* TextureMember)
 	{
-		return SNew(SBox)
-			.HeightOverride(MixtormatTokens::RowHeight)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-				[
-					SNew(STextBlock).Text(Label)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
+		return MixtormatRow::MakeDropdown(Label,
 					SNew(SMixtormatChip)
+					.MinWidth(0.0f)
 					.ToolTip(Hint)
 					.Text_Lambda([this, MaskMember, TextureMember, Fallback]()
 					{
@@ -298,9 +282,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 									})
 								]
 							];
-					})
-				]
-			];
+					}), Hint);
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
@@ -311,7 +293,8 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		LOCTEXT("StainStrength", "Amount"), &FMixtormatLayerEffect::Strength, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("StainStrengthHint", "Final blend of the selected wet or deposit mask. At 0 the transport solve is skipped.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpSource", "Source")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("StainGrpSource", "Source"));
 	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		MakeMaskRow(
@@ -333,7 +316,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		0.0, 1.0, 0.12, 0.005,
 		LOCTEXT("StainSourceAmountHint", "Liquid injected from the mask and from enabled curvature sources each iteration.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpDirt", "Dirt / Minerals")));
+	Panel = AddCard(Cards, LOCTEXT("StainGrpDirt", "Dirt / Minerals"));
 	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 	[
 		MakeMaskRow(
@@ -358,7 +341,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 	// Where liquid comes from when nothing authored says. Four weights over the surface
 	// accumulated below the layer, so a stain can be driven entirely by geometry -- the Liquid
 	// Mask above is an option, not a requirement.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpSurface", "Auto Source")));
+	Panel = AddCard(Cards, LOCTEXT("StainGrpSurface", "Auto Source"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("StainConcavity", "Concavity"), &FMixtormatLayerEffect::StainConcavityWeight, 0.0, 2.0, 0.35, 0.01,
 			LOCTEXT("StainConcavityHint", "Adds source in cavities, using the compositor's existing curvature analysis.")),
@@ -378,12 +361,12 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 	// One control where there were two. Roughness and Porosity read the same channel, so on any
 	// dielectric they were the same number -- and Porosity duplicated Absorption, which already
 	// scales how much the material takes up.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpMaterial", "Material Response")));
+	Panel = AddCard(Cards, LOCTEXT("StainGrpMaterial", "Material Response"));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("StainSurfaceResponse", "Surface Response"), &FMixtormatLayerEffect::StainSurfaceResponse, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("StainSurfaceResponseHint", "How much of the solve comes from the material beneath the layer. Its roughness drives drag, wandering and lateral spread; its roughness against one-minus-metallic drives absorption, so a rough dielectric drinks and polished or metallic surfaces do not. 1 uses the surface directly, 0 solves against a neutral middle. Absorption is the separate control for how much this particular material takes up.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpTransport", "Transport")));
+	Panel = AddCard(Cards, LOCTEXT("StainGrpTransport", "Transport"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("StainGravity", "Gravity"), &FMixtormatLayerEffect::StainGravity, -2.0, 2.0, 1.0, 0.01,
 			LOCTEXT("StainGravityHint", "Signed V-axis gravity. Negate it when the material's UVs run the other way.")),
@@ -403,7 +386,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		0.0, 1.0, 0.20, 0.01,
 		LOCTEXT("StainDryingHint", "Evaporation and residue deposition rate. More drying shifts coverage from wet to deposit.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("StainGrpQuality", "Quality")));
+	Panel = AddCard(Cards, LOCTEXT("StainGrpQuality", "Quality"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("StainIterations", "Iterations"), Stain,
@@ -431,7 +414,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 					EMixtormatDebugPreviewMode::Stain,
 					LOCTEXT("PreviewStain", "Preview the resolved stain coverage in unlit dark red and cyan")))
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -454,7 +437,8 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpStreak", "Streak")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("RunoffGrpStreak", "Streak"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("RunoffGravityAngle", "Gravity Angle"),
 			&FMixtormatLayerEffect::RunoffGravityAngle, -180.0, 180.0, -90.0, 1.0,
@@ -467,13 +451,13 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 		&FMixtormatLayerEffect::RunoffStreakSoftness, 0.05, 1.0, 0.46, 0.01,
 		LOCTEXT("RunoffStreakSoftnessHint", "How gradually a run fades over its length. Low values keep it tight and stop it abruptly; high values let it fade out over most of its reach. It also widens the terminal lip, because a soft run deposits over a longer stretch than a sharp one.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpSource", "Source")));
+	Panel = AddCard(Cards, LOCTEXT("RunoffGrpSource", "Source"));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("RunoffSurfaceInfluence", "Surface Influence"),
 		&FMixtormatLayerEffect::RunoffSurfaceInfluence, 0.0, 1.0, 0.95, 0.01,
 		LOCTEXT("RunoffSurfaceInfluenceHint", "How much the height underneath decides where runoff starts. At 1 only cavities and the upper edges of ledges source it, which is where dirt collects. At 0 the height is ignored and the incoming mask alone is the source, for streaking from a painted mark on a flat surface.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpStrata", "Strata")));
+	Panel = AddCard(Cards, LOCTEXT("RunoffGrpStrata", "Strata"));
 	AddSliderRow(Panel, Slider(
 		LOCTEXT("RunoffStrataAmount", "Strata Amount"),
 		&FMixtormatLayerEffect::RunoffStrataAmount, 0.0, 1.0, 0.75, 0.01,
@@ -490,7 +474,7 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 		&FMixtormatLayerEffect::RunoffLipStrength, 0.0, 1.0, 0.55, 0.01,
 		LOCTEXT("RunoffLipStrengthHint", "The narrow deposit left where a run stops, the way a drying streak leaves a tidemark. 0 ends every run on a clean fade; 1 puts a defined crust at the end of each stratum. Its width follows Streak Softness.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("RunoffGrpOutput", "Output")));
+	Panel = AddCard(Cards, LOCTEXT("RunoffGrpOutput", "Output"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("RunoffStrength", "Strength"),
 			&FMixtormatLayerEffect::RunoffStrength, 0.0, 1.0, 0.25, 0.01,
@@ -515,7 +499,7 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 					EMixtormatDebugPreviewMode::Runoff,
 					LOCTEXT("PreviewRunoff", "Preview the resolved runoff coverage before Strength blends it into the mask chain")))
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -533,7 +517,8 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 	// The order the chain runs in, which is also the order these rows are listed in.
 	// Brightness and contrast are linear operations and belong above the tonemap; gamma is
 	// display shaping and belongs below it.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpLinear", "Linear")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("GradeGrpLinear", "Linear"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(
 			LOCTEXT("GradeBrightness", "Brightness"), Grade, &FMixtormatLayerEffect::GradeBrightness, 0.0, 4.0, 1.0, 0.01,
@@ -545,7 +530,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradePivot", "Pivot"), Grade, &FMixtormatLayerEffect::GradeContrastPivot, 0.0, 1.0, 0.18, 0.01,
 		LOCTEXT("GradePivotHint", "The value contrast pivots about. 0.18 is linear mid grey and is correct for this data; 0.5 is what display-referred habits reach for, which is why it is a control.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpLevels", "Levels")));
+	Panel = AddCard(Cards, LOCTEXT("GradeGrpLevels", "Levels"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(
 			LOCTEXT("GradeInputMin", "Input Min"), Grade, &FMixtormatLayerEffect::GradeInputMin, 0.0, 1.0, 0.0, 0.01,
@@ -571,7 +556,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradeBiasB", "Bias B"), Grade, &FMixtormatLayerEffect::GradeBiasB, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("GradeBiasBHint", "Added after the levels remap and the linear stage, ahead of the tonemap. 0 is the identity.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpTonemap", "Tonemap")));
+	Panel = AddCard(Cards, LOCTEXT("GradeGrpTonemap", "Tonemap"));
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
 		LOCTEXT("GradeTonemap", "Tonemap"), [this]() { return GetSelectedGrade(); },
 		&FMixtormatLayerEffect::GradeTonemap,
@@ -580,7 +565,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		LOCTEXT("GradeTonemapStrength", "Strength"), Grade, &FMixtormatLayerEffect::GradeTonemapStrength, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("GradeTonemapStrengthHint", "Blend between the untonemapped and tonemapped result, so an operator can be dialled in rather than only switched on.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("GradeGrpDisplay", "Display")));
+	Panel = AddCard(Cards, LOCTEXT("GradeGrpDisplay", "Display"));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayerEffect>(
 		LOCTEXT("GradeGamma", "Gamma"), Grade, &FMixtormatLayerEffect::GradeGamma, 0.05, 4.0, 1.0, 0.01,
 		LOCTEXT("GradeGammaHint", "Applied as pow(c, 1/Gamma), so above 1 lifts the midtones. That is the convention every grading UI uses; the reciprocal is easy to get backwards.")));
@@ -593,7 +578,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 			.Title(LOCTEXT("GradeHeading", "GRADE"))
 			.InitiallyExpanded(true)
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -670,7 +655,8 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 		&FMixtormatLayerEffect::FlowWarpDirection, -180.0, 180.0, 0.0, 1.0,
 		LOCTEXT("FlowWarpDirectionHint", "Rotates the curl without rotating its tileable lattice.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("FlowWarpSlopeGroup", "Slope Guidance")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("FlowWarpSlopeGroup", "Slope Guidance"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(
 			LOCTEXT("FlowWarpMaskSlope", "Mask Slope"), Flow,
@@ -690,7 +676,7 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 			&FMixtormatLayerEffect::FlowWarpDerivativeKernelY, 1.0, 64.0, 2.0, 1.0,
 			LOCTEXT("FlowWarpKernelYHint", "Vertical derivative radius in pixels. Larger values smooth finer slope detail."))));
 
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
+	AddSliderRow(Cards, MakeMemberEnum<FMixtormatLayerEffect>(
 		LOCTEXT("FlowWarpBlend", "Blend"), Flow, &FMixtormatLayerEffect::FlowWarpBlendMode,
 		LOCTEXT("FlowWarpBlendHint", "Replace uses the warped sample. Min or Max Height chooses between original and warped height, then keeps every material channel from that same sample.")));
 
@@ -701,7 +687,7 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 			.Title(LOCTEXT("FlowWarpHeading", "FLOW WARP"))
 			.InitiallyExpanded(true)
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -720,7 +706,8 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpShape", "Shape")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("BreakupGrpShape", "Shape"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("BreakupScale", "Scale"), Breakup,
@@ -745,7 +732,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 32.0, 5.6, 0.1,
 			LOCTEXT("BreakupDistortionHint", "Seamless multi-scale domain warp; no repeating sine-wave deformation."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpStructure", "Structure")));
+	Panel = AddCard(Cards, LOCTEXT("BreakupGrpStructure", "Structure"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupRelief", "Relief"), &FMixtormatLayerEffect::BreakupRelief,
 			-0.5, 0.5, -0.06, 0.0025,
@@ -772,7 +759,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			0.0, 0.5, 0.035, 0.001,
 			LOCTEXT("BreakupPushReliefHint", "Adds real height separation so Push remains visible on a flat source."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpVariation", "Variation")));
+	Panel = AddCard(Cards, LOCTEXT("BreakupGrpVariation", "Variation"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupDetail", "Detail"), &FMixtormatLayerEffect::BreakupDetail,
 			0.0, 1.0, 0.5, 0.01),
@@ -785,7 +772,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 			LOCTEXT("BreakupSeed", "Seed"), Breakup,
 			&FMixtormatLayerEffect::BreakupSeed, 0.0, 9999.0, 1)));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpShading", "Shading")));
+	Panel = AddCard(Cards, LOCTEXT("BreakupGrpShading", "Shading"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupNormalStrength", "Normal"), &FMixtormatLayerEffect::BreakupNormalStrength,
 			0.0, 4.0, 2.0, 0.05,
@@ -797,7 +784,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 		LOCTEXT("BreakupRoughness", "Roughness"), &FMixtormatLayerEffect::BreakupRoughnessAmount,
 		-1.0, 1.0, 0.0, 0.01));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpAdvanced", "Advanced")));
+	Panel = AddCard(Cards, LOCTEXT("BreakupGrpAdvanced", "Advanced"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupSizeVariation", "Size Variation"), &FMixtormatLayerEffect::BreakupSizeVariation,
 			0.0, 1.0, 0.3125, 0.01),
@@ -819,7 +806,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 		LOCTEXT("BreakupPushWidth", "Push Width"), &FMixtormatLayerEffect::BreakupPushWidth,
 		0.001, 64.0, 24.0, 0.5));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("BreakupGrpOutput", "Output")));
+	Panel = AddCard(Cards, LOCTEXT("BreakupGrpOutput", "Output"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("BreakupAmount", "Amount"), &FMixtormatLayerEffect::BreakupAmount,
 			0.0, 1.0, 1.0, 0.01,
@@ -841,7 +828,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 				MakeChildOutputPreviewButton(
 					GetPreviewOutputSetForEffectType(EMixtormatEffectType::Breakup)))
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -863,7 +850,8 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpShape", "Shape")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("WearGrpShape", "Shape"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("WearRadius", "Radius"), Wear, &FMixtormatLayerEffect::EdgeWearRadius, 1.0, 64.0, 24,
@@ -876,7 +864,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		Slider(LOCTEXT("WearFeather", "Feather"), &FMixtormatLayerEffect::EdgeWearFeather, 0.0, 8.0, 1.0, 0.01,
 			LOCTEXT("WearFeatherHint", "Softens the erosion threshold; it does not blur the finished height."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpDirection", "Direction")));
+	Panel = AddCard(Cards, LOCTEXT("WearGrpDirection", "Direction"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(
 			LOCTEXT("WearDirections", "Directions"), Wear, &FMixtormatLayerEffect::EdgeWearDirections, 8.0, 32.0, 16,
@@ -889,7 +877,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		Slider(LOCTEXT("WearGravityAngle", "Angle"), &FMixtormatLayerEffect::EdgeWearGravityAngle, -360.0, 360.0, 90.0, 1.0,
 			LOCTEXT("WearGravityAngleHint", "Gravity direction in tangent-space degrees."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpVariation", "Variation")));
+	Panel = AddCard(Cards, LOCTEXT("WearGrpVariation", "Variation"));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatLayerEffect>(
 		LOCTEXT("WearSeed", "Seed"), Wear, &FMixtormatLayerEffect::EdgeWearSeed, 0.0, 1024.0, 1,
 		LOCTEXT("WearSeedHint", "Reseeds the periodic resistance fields and independent per-region draws.")));
@@ -912,7 +900,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		LOCTEXT("WearNoiseContrast", "Noise Contrast"), &FMixtormatLayerEffect::EdgeWearNoiseContrast, 0.05, 8.0, 0.5, 0.01,
 		LOCTEXT("WearNoiseContrastHint", "Signed shaping of the combined resistance field.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpId", "Per ID")));
+	Panel = AddCard(Cards, LOCTEXT("WearGrpId", "Per ID"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("WearIdVariation", "Variation"), &FMixtormatLayerEffect::EdgeWearIdVariation, 0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("WearIdVariationHint", "Master amount for deterministic variation from the nearest Region ID.")),
@@ -924,7 +912,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		LOCTEXT("WearIdNoise", "Noise"), &FMixtormatLayerEffect::EdgeWearIdNoise, 0.0, 4.0, 1.0, 0.01,
 		LOCTEXT("WearIdNoiseHint", "Varies the relative Macro/Cell/Ridge/Micro family weights independently per Region ID.")));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("WearGrpOutput", "Output")));
+	Panel = AddCard(Cards, LOCTEXT("WearGrpOutput", "Output"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(
 			LOCTEXT("WearRoughnessWeight", "Roughness Weight"),
@@ -947,7 +935,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 				MakeChildOutputPreviewButton(
 					GetPreviewOutputSetForEffectType(EMixtormatEffectType::WornEdges)))
 			[
-				Panel
+				Cards
 			]
 		];
 }
@@ -956,14 +944,15 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpFilter", "Filter")));
+	const TSharedRef<SVerticalBox> Cards = Panel;
+		Panel = AddCard(Cards, LOCTEXT("EroGrpFilter", "Filter"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
 			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
 		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
 
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpWear", "Wear")));
+	Panel = AddCard(Cards, LOCTEXT("EroGrpWear", "Wear"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 3.0, 1,
 			LOCTEXT("EroRadiusHint", "Derivative span in texels for the slope and curvature readings. 1 is the normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost is fixed whatever the span.")),
@@ -989,7 +978,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 
 
 	// Erosion contributes no base colour. Its resolved mask only weights surface channels.
-	AddSliderRow(Panel, MixtormatRow::MakeCaption(LOCTEXT("EroGrpOutput", "Output")));
+	Panel = AddCard(Cards, LOCTEXT("EroGrpOutput", "Output"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroRoughAmount", "Roughness"), &FMixtormatLayerEffect::ErosionRoughnessAmount, -1.0, 1.0, 0.0, 0.01,
 			LOCTEXT("EroRoughAmountHint", "Signed, mask-weighted offset on composited roughness; positive moves toward rough.")),
@@ -1004,7 +993,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			.Title(LOCTEXT("ErosionHeading", "EROSION"))
 			.InitiallyExpanded(true)
 			[
-				Panel
+				Cards
 			]
 		];
 }

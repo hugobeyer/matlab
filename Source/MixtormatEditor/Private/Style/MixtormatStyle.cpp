@@ -607,7 +607,7 @@ void FMixtormatStyle::Refresh()
 		.SetBackgroundImageHovered(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
 		.SetBackgroundImageFocused(FSlateRoundedBoxBrush(RaisedPanel, MixtormatTokens::CornerRadius, AccentBright, MixtormatTokens::OutlineWidth))
 		.SetForegroundColor(FSlateColor(Text))
-		.SetPadding(FMargin(MixtormatTokens::RowTextInset - 1.0f, 0.0f));
+		.SetPadding(FMargin(MixtormatTokens::DraggerTextInset - 1.0f, 0.0f));
 	// The entry replaces the value in place, so it matches the face it is typing over.
 	SliderEntry.TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);

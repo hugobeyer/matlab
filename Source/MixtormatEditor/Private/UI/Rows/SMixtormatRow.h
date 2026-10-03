@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "Framework/SlateDelegates.h"
 #include "Widgets/SWidget.h"
 #include "Styling/SlateTypes.h"
@@ -25,6 +26,12 @@ namespace MixtormatRow
 	TSharedRef<SWidget> Make(
 		const FText& Label,
 		const TSharedRef<SWidget>& TrailingContent,
+		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+
+	// A left label column and a dropdown filling the remaining row width.
+	TSharedRef<SWidget> MakeDropdown(
+		const FText& Label,
+		const TSharedRef<SWidget>& Control,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>());
 
 	// A label that sits beside its control rather than across the row from it. The label column
@@ -69,5 +76,6 @@ namespace MixtormatRow
 		const TAttribute<FText>& Text,
 		const FOnGetContent& OnGetMenuContent,
 		const TSharedPtr<SWidget>& LeadingContent = nullptr,
-		const TAttribute<FText>& ToolTip = TAttribute<FText>());
+		const TAttribute<FText>& ToolTip = TAttribute<FText>(),
+		float MinWidth = MixtormatTokens::RowFieldMinWidth);
 }

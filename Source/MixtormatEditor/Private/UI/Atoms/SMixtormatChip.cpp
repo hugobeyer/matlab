@@ -40,6 +40,9 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 		SNew(STextBlock)
 		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
 		.Text(InArgs._Text)
+		.AutoWrapText(false)
+		.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+		.Clipping(EWidgetClipping::ClipToBounds)
 	];
 
 	Content->AddSlot()

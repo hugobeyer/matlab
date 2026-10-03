@@ -40,6 +40,7 @@ namespace MixtormatPalette
 	inline FLinearColor Panel()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Panel"), Hex(0x191B1D)); }
 	inline FLinearColor PanelBottom()  { return Hex(0x141617); }
 	inline FLinearColor RaisedPanel()  { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanel"), Hex(0x202224)); }
+	inline FLinearColor GroupCardBackground() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupCardBackground"), Hex(0x202224)); }
 	inline FLinearColor RaisedPanelHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanelHover"), Hex(0x26292B)); }
 	inline FLinearColor Viewport()     { return Hex(0x161719); }
 	inline FLinearColor ThumbnailBackground() { return Hex(0x101112); }

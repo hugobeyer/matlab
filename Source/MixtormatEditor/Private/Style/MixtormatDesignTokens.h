@@ -42,7 +42,7 @@ namespace MixtormatTokens
 	// Vertical gap between two stacked value rows. Every slider in a panel is spaced by this and
 	// nothing else -- it was a literal 2 in AddSliderRow and in forty inline slot paddings, which
 	// is why a panel's rows never quite lined up with each other's spacing.
-	inline float SliderRowGap = 4.0f;
+	inline float SliderRowGap = 3.0f;
 
 	// Text inset from the row's leading and trailing edges. Shared by the slider's painted text
 	// and by the label of every composed row, so they line up down the column.
@@ -329,9 +329,20 @@ namespace MixtormatTokens
 	// and a card's own gutter stacks on top of it; matching the two would indent every slider
 	// twice and leave the column looking margin-heavy at the inspector's width.
 	inline float CardPadding = 4.0f;
-	inline float CardGap = 4.0f;
+	inline float CardGap = 10.0f;
 	// Between a card's title and the sheet under it.
 	inline float CardTitleGap = 3.0f;
+
+	// Inspector-column cards use a stepped, half-width title silhouette. Popovers keep
+	// the compact sheet layout and its existing CardPadding/CardTitleGap values.
+	inline float GroupCardHorizontalPadding = 8.0f;
+	inline float GroupCardTitleHeight = 24.0f;
+	inline float GroupCardTitleDropDepth = 11.0f;
+	inline float GroupCardTitleWidthRatio = 0.5f;
+	inline float GroupCardLeadingIconSize = 14.0f;
+	inline float GroupCardLeadingGap = 3.0f;
+	inline float DropdownLabelRatio = 0.35f;
+	inline float DraggerTextInset = 10.0f;
 
 	// The breathing room under any heading -- a card title, a group header -- and again at the
 	// bottom of what it heads. Small on purpose: it is there so a run of rows is not flush

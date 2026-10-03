@@ -268,7 +268,8 @@ FReply SMixtormat::ToggleFeaturePreview(const EMixtormatDebugPreviewMode Mode)
 
 TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	const EMixtormatDebugPreviewMode Mode,
-	const FText& ToolTip)
+	const FText& ToolTip,
+	const float IconSize)
 {
 	// The same widget the layer stack's eye is, deliberately. This was a plated SButton with its
 	// own 14px box and its own teal, so the two eyes in the tool -- one saying "this layer is
@@ -276,7 +277,7 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	// controls doing unrelated things. One eye, one behaviour: no plate in any state, the accent
 	// when it is on.
 	return SNew(SMixtormatIconButton)
-		.Size(MixtormatTokens::LayerEyeSize)
+		.Size(IconSize)
 		.ToolTipText(ToolTip)
 		.bActive_Lambda([this, Mode]() { return DebugPreviewMode == Mode; })
 		.Icon_Lambda([this, Mode]()

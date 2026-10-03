@@ -347,7 +347,8 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 TSharedRef<SVerticalBox> SMixtormat::AddCard(
 	const TSharedRef<SVerticalBox>& TargetPanel,
 	const FText& Title,
-	const TSharedPtr<SWidget>& HeaderAction)
+	const TSharedPtr<SWidget>& HeaderAction,
+	const TSharedPtr<SWidget>& LeadingHeaderContent)
 {
 	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 	TargetPanel->AddSlot()
@@ -357,6 +358,7 @@ TSharedRef<SVerticalBox> SMixtormat::AddCard(
 			SNew(SMixtormatInspectorCard)
 			.Title(Title)
 			.HeaderAction(HeaderAction)
+			.LeadingHeaderContent(LeadingHeaderContent)
 			[
 				Rows
 			]
