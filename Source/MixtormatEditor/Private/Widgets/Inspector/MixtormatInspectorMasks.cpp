@@ -3,11 +3,13 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatStyle.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatTile.h"
 #include "UI/Controls/SMixtormatScalarRamp.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -1195,9 +1197,17 @@ void SMixtormat::AddMaskShapingRows(
 			LOCTEXT("MaskInputMaxLabel", "Input Max"), Resolve, &FMixtormatMaskShaping::InputMax,
 			0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("MaskInputMaxHint", "White point applied after optional input normalization."))));
-	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskCurveBiasLabel", "Curve Bias")));
 	AddSliderRow(TargetPanel,
-		SNew(SMixtormatScalarRamp)
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGapTight)
+		[
+			SNew(STextBlock)
+			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.Text(LOCTEXT("MaskCurveBiasLabel", "Curve Bias"))
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SMixtormatScalarRamp)
 		.Ramp_Lambda([Resolve]()
 		{
 			const FMixtormatMaskShaping* Shaping = Resolve();
@@ -1219,7 +1229,8 @@ void SMixtormat::AddMaskShapingRows(
 			}
 		})
 		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
-		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); }));
+		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); })
+		]);
 	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskShaping>(
 			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,
