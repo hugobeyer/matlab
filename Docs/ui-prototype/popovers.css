@@ -7,6 +7,7 @@ input, textarea, [contenteditable=true] { user-select: text; -webkit-user-select
 .context-menu { min-width: var(--menu-width); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; padding: var(--menu-padding); }
 .menu-caption { padding: 5px 8px; font-size: var(--caption-size); letter-spacing: .8px; color: rgb(var(--text-rgb) / var(--text-muted-opacity)); }
 .menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--menu-row-height); padding: 0 8px; border-radius: 2px; text-align: left; white-space: nowrap; }
+.menu-item .asset-icon { width: var(--menu-icon-size); height: var(--menu-icon-size); opacity: var(--menu-icon-opacity); }
 .menu-item .menu-shortcut { margin-left: auto; font-size: 9px; color: rgb(var(--text-rgb) / .4); padding-left: 12px; }
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: linear-gradient(rgb(var(--panel-rgb)), rgb(var(--layer-hover-bottom-rgb))); outline: none; }
 .menu-item:disabled { opacity: var(--text-disabled-opacity); }

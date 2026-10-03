@@ -6,13 +6,13 @@
   color-scheme: dark;
 
   /* BASE PALETTE — channels allow independent opacity and blending. */
-  --ground-rgb: 17 18 19;
+  --ground-rgb: 14 15 16;
   /* Source-matched roles from MixtormatPalette.h, in sRGB channels. */
   --panel-rgb: 25 27 29;
   --panel-bottom-rgb: 20 22 23;
   --group-ground-rgb: 12 13 14;
   --header-tint-rgb: 37 40 43;
-  --header-tint-opacity: .72;
+  --header-tint-opacity: .3;
   --header-hover-rgb: 53 82 94;
   --header-hover-opacity: .85;
   --hairline-rgb: 111 125 130;
@@ -37,10 +37,14 @@
   --overlay-press-accent: .35;
   --overlay-icon-rest-opacity: .45;
   --splitter-size: 1px;
-  --splitter-hit-size: 5px;
+  --splitter-hit-size: 6px;
   --text-rgb: 192 195 197;
-  --accent-rgb: 77 143 168;
-  --modified-rgb: 194 138 61;
+  --accent-rgb: 105 128 165;
+  --modified-rgb: 230 145 25;
+    /* The leading stripe on a value row that differs from its default. Its weight and thickness
+       are authored separately; --modified-rgb is shared with the dirty mark and placeholders. */
+    --modified-stripe-width: 2px;
+    --modified-stripe-opacity: .8;
   --warning-rgb: 194 110 100;
   --shade-rgb: 0 0 0;
   --text-muted-opacity: .58;
@@ -50,55 +54,137 @@
   --surface-lift-opacity: .05;
   --surface-blend-mode: plus-lighter;
   --well-blend-mode: multiply;
+  --foldout-blend-mode: plus-lighter;
+  --foldout-accent-blend-mode: multiply;
+  --card-blend-mode: plus-lighter;
+  --group-button-blend-mode: normal;
+  --layer-blend-mode: normal;
+  --layer-group-blend-mode: normal;
 
-  --hover-lift-opacity: .3;
+  --hover-lift-opacity: .47;
   --well-shade-top: .55;
   --well-shade-bottom: .25;
-  --well-border-opacity: .4;
-  --well-border-bottom-opacity: .06;
+  --well-border-opacity: .63;
+  /* Endpoint opacity is multiplied by the state's overall border intensity. */
+  --well-border-top-opacity: 1;
+  --well-border-bottom-opacity: 1;
+  --well-border-hover-top-opacity: 1;
+  --well-border-hover-bottom-opacity: 1;
   --well-border-width: 1px;
-  --well-radius: 3px;
-  --fill-lift-opacity: .9;
-  --fill-shade-bottom: .25;
+  /* The outline is its own color, not the well's ground: a border painted in the ground it sits
+     on is invisible. Sources: MixtormatPalette WellOutline / WellOutlineHover.
+     Saturation boosts the source before additive compositing, without changing the well fill. */
+  --well-border-rgb: 36 39 41;
+  --well-border-hover-rgb: 56 61 65;
+  --well-border-hover-opacity: 1;
+  --well-border-saturation: 2;
+  --well-radius: 0px;
   --zero-tick-opacity: .16;
 
-  /* FOLDOUTS — flush; gradient and top hairline belong only to these. */
-  --foldout-height: 25px;
-  --foldout-title-size: 7px;
-  --foldout-title-tracking: 1.4px;
+  /* Saturation affects paint layers only: 0 is grayscale, 1 is unchanged. */
+  --foldout-saturation: 1;
+  --foldout-hover-saturation: 1;
+  --card-header-saturation: 1;
+  --card-body-saturation: 1;
+  --layer-saturation: 1;
+  --layer-hover-saturation: 1;
+  --layer-selected-saturation: 1;
+  --layer-group-saturation: 1;
+  --child-saturation: 1;
+  --child-hover-saturation: 1;
+  --child-selected-saturation: 1;
+  --child-left-rgb: 23 25 27;
+  --child-right-rgb: 37 41 44;
+  --child-left-opacity: 0;
+  --child-right-opacity: 0;
+  --child-hover-left-opacity: .72;
+  --child-hover-right-opacity: .82;
+  --child-selected-left-opacity: .9;
+  --child-selected-right-opacity: .94;
+  --fill-saturation: 1;
+  --fill-hover-saturation: 1;
+  --fill-active-saturation: 1;
+  --fill-disabled-saturation: 1;
+  --well-saturation: 1;
+  --well-hover-saturation: 1;
 
+  /* SLIDER FILL — accent as the additive source, per SMixtormatSlider.cpp.
+     Body is a vertical accent ramp; the shade is a separate horizontal multiply pass
+     with a midpoint, so the fill reads as eased rather than lit from one edge.
+     Opacities are percentages of the accent, added over the well's own ground. */
+  --fill-body-top: .45;
+  --fill-body-bottom: .16;
+  --fill-body-hover-top: .84;
+  --fill-body-hover-bottom: .46;
+  --fill-body-active-top: .63;
+  --fill-body-active-bottom: .88;
+  --fill-disabled-opacity: .12;
+  --fill-shade-start: .25;
+  --fill-shade-mid: 0;
+  --fill-shade-end: .02;
+  --fill-shade-mid-position: 63%;
+  /* Falloff power for both vertical ramps: <1 fades earlier, 1 is linear, >1 holds the top. */
+  --fill-falloff-power: .05;
+
+  /* FOLDOUTS — flush; gradient and top hairline belong only to these. */
+  --foldout-height: 20px;
+  --foldout-title-size: 9px;
+  --foldout-title-weight: 400;
+  --foldout-title-tracking: 1px;
+  --foldout-title-opacity: .65;
+
+  /* Additive lift, expressed as a percentage of the tint color. Contribution reaches zero at
+     the body seam, so the header dissolves into the body it opens.
+     Falloff power: below 1 fades earlier, 1 is linear, above 1 holds the top longer. */
+  --foldout-falloff-power: .4;
+    /* A saturated accent multiplied over the header lift: darkens and saturates the top edge
+       rather than adding light, so the header reads as tinted without brightening. Separate from
+       the additive lift's own tint color, and weighted separately for rest and hover. */
+    --foldout-accent-multiply-opacity: .18;
+    --foldout-accent-hover-multiply-opacity: .32;
   --foldout-hairline-opacity: .16;
   --foldout-gutter: 7px;
   --foldout-body-top: 5px;
   --foldout-body-bottom: 6px;
+  /* Outer vertical spacing and the header's own vertical padding, independent of its height.
+     min-height is used rather than height so padding adds to the bar instead of eating it. */
+  --foldout-outer-top: 0px;
+  --foldout-outer-bottom: 0px;
+  --foldout-header-padding-top: 0px;
+  --foldout-header-padding-bottom: 0px;
 
   /* GROUP CARDS — no foldout behavior, notch, title strip, or hairline. */
-  --card-radius: 3px;
-  --card-header-height: 24px;
-  --card-header-opacity: 1;
-  --card-body-opacity: .01;
-  --card-header-left: 8px;
+  --card-radius: 0px;
+  --card-header-height: 16px;
+  --card-header-opacity: .94;
+  --card-body-opacity: .24;
+  --card-header-left: 11px;
   --card-header-top: 0px;
   --card-header-right: 8px;
   --card-header-bottom: 0px;
   --card-outer-left: 0px;
   --card-outer-top: 0px;
   --card-outer-right: 0px;
-  --card-outer-bottom: 10px;
-  --card-body-horizontal: 8px;
-  --card-body-top: 2px;
-  --card-body-bottom: 4px;
-  --card-title-size: 8px;
+  --card-outer-bottom: 3px;
+  --card-body-horizontal: 7px;
+  --card-body-top: 3px;
+  --card-body-bottom: 7px;
+  /* Vertical margins between the header and the body it titles, independent of body padding. */
+  --card-header-margin-top: 1px;
+  --card-header-margin-bottom: 0px;
+  --card-title-size: 9px;
   --card-title-weight: 400;
-  --card-title-tracking: .8px;
-  --card-title-opacity: .7;
-  --card-eye-size: 14px;
-  --card-leading-gap: 4px;
+  --card-title-tracking: .6px;
+  --card-title-opacity: .63;
+  --card-eye-size: 12px;
+  --card-leading-gap: 10px;
+  /* Card header uses the same sampled power curve as the foldout header, on its own exponent. */
+  --card-falloff-power: .9;
 
   /* CONTROLS */
   --row-height: 18px;
-  --row-gap: 3px;
-  --paired-gap: 3px;
+  --row-gap: 4px;
+  --paired-gap: 4px;
   --dragger-text-inset: 10px;
   --dropdown-label-ratio: .35;
   --dropdown-label-gap: 6px;
@@ -106,6 +192,41 @@
   --toggle-fill-inset: 3px;
   --icon-size: 14px;
   --icon-hit-padding: 3px;
+  /* ICON ROLES — each context keeps its own glyph size and rest opacity. Equal values today do
+     not mean one role: a foldout header, a card header, a layer row, the top bar, and the
+     viewport overlay are tuned separately in Unreal and retune independently here. */
+  /* Icons rest dimmed rather than full-strength: a glyph at 60% reads as secondary to the
+     label beside it, which is how the Slate rows present them. Each role keeps its own value
+     so a context that needs more weight can be lifted without touching the rest. */
+  --foldout-icon-size: 14px;
+  --foldout-icon-opacity: .6;
+  --card-icon-size: 12px;
+  --card-icon-opacity: .52;
+  --layer-icon-size: 14px;
+  --layer-icon-opacity: .6;
+  --topbar-icon-size: 12px;
+  --topbar-icon-opacity: .6;
+  --overlay-icon-size: 14px;
+  --overlay-icon-opacity: .6;
+  --overlay-grip-opacity: .45;
+  --menu-icon-size: 14px;
+  --menu-icon-opacity: .6;
+  /* Panel toolbars (Add layer and friends): add-layer is the only glyph there today. */
+  --toolbar-icon-size: 14px;
+  --toolbar-icon-opacity: .6;
+  /* Layer-module glyph, distinct from the row-level icon size. */
+  --layer-module-icon-size: 16px;
+  --layer-module-icon-opacity: .6;
+  /* An icon button whose toggle is off: dimmed further than the resting role opacity. */
+  --icon-off-opacity: .45;
+  --gallery-swatch-radius: 2px;
+  --thumbnail-radius: 2px;
+  /* Icon-sheet preview tiles in the UI Style popup, larger than an in-panel icon. */
+  --icon-sheet-preview-size: 24px;
+  /* Viewport rail buttons and the workspace resize grip: their own hit targets, not --icon-size. */
+  --rail-icon-size: 24px;
+  --window-grip-size: 15px;
+  --window-grip-opacity: .45;
   --button-height: 24px;
 
   /* TYPOGRAPHY */
@@ -113,20 +234,31 @@
   --body-size: 10px;
   --dragger-font-size: 9px;
   --value-weight: 600;
+  /* Control type sits below the surrounding labels: a row's name and a dropdown's caption read
+     as quiet context beside the number they belong to. The value keeps more of its own weight. */
+  --control-label-opacity: .78;
+  --control-value-opacity: .88;
   --caption-size: 9px;
 
   /* SHELL / LAYERS / GALLERIES / POPOVERS — independent contexts. */
   --left-width: 240px;
-  --inspector-width: 300px;
+  --inspector-width: 520px;
   --topbar-height: 38px;
   --status-height: 24px;
   --gallery-height: 185px;
   --shell-gap: 1px;
   --panel-padding: 7px;
-  --layer-height: 28px;
+  --layer-height: 29px;
   --child-height: 22px;
+  /* Layer-group rows are a layer row without a thumbnail: their own height and type, sized to
+     the child tier. Independent of both foldout and Group Card headers. */
+  --layer-group-height: 22px;
+  --layer-group-title-size: 10px;
+  --layer-group-title-weight: 400;
   --layer-indent: 28px;
   --layer-gap: 2px;
+  --layer-badge-width: 44px;
+  --badge-width: 64px;
   --thumbnail-size: 24px;
   --gallery-tile-size: 79px;
   --gallery-gap: 5px;

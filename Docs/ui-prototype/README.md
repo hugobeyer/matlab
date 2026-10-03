@@ -9,10 +9,22 @@ external font, network asset, or dependency is needed.
 - `components.css`: shared component rules, state styling, and responsive shell.
 - `inspector-data.js`: representative inspector hierarchy and demo values.
 - `app.js`: component construction, parameter history, action routing, token editor.
+- `falloff.js`: samples the authored power curve into derived gradient stops.
 - `index.html`: workspace structure; no inline styles or scripts.
 - `workspace-controls.js`: splitters, floating-window reference, viewport overlays, PNG icons.
 - `popovers.css` / `popovers.js`: shared right-click menu and hover/focus-help treatment.
 - `icons/`: all 57 PNG icons copied from the plugin; `Icon128.png` is the plugin icon.
+
+## Fonts
+
+UI Style → Typography provides the default font, Roboto, and Inter. Reset and JSON
+export include `--font-family`. Font selection applies to the entire prototype.
+
+`fonts.css` loads bundled upright variable TTFs from `fonts/`; no CDN is used.
+Sources: Google Fonts repository, `ofl/inter/Inter[opsz,wght].ttf` and
+`ofl/roboto/Roboto[wdth,wght].ttf`. Each family's OFL license is included alongside it.
+For Unreal migration, use static weight instances for predictable Slate results;
+these variable files have not been validated in Unreal. No Unreal files were changed.
 
 ## Coverage
 

@@ -71,9 +71,10 @@
     row.classList.toggle('disabled', !!spec.disabled);
     row.setAttribute('aria-disabled', String(!!spec.disabled));
     const fill = node('span', 'drag-fill');
+    const shade = node('span', 'drag-shade');
     const label = node('span', 'drag-label', spec.label);
     const value = node('span', 'drag-value');
-    row.append(fill, label, value);
+    row.append(fill, shade, label, value);
     if (spec.min < 0 && spec.max > 0) {
       row.classList.add('signed');
       row.append(node('span', 'zero-tick'));
@@ -85,9 +86,12 @@
       row.classList.toggle('modified', Math.abs(model.value - model.defaultValue) > .000001);
       const fraction = (model.value - spec.min) / (spec.max - spec.min);
       const origin = spec.min < 0 && spec.max > 0 ? -spec.min / (spec.max - spec.min) : 0;
-      fill.style.left = `${Math.min(fraction, origin) * 100}%`;
-      fill.style.width = `${Math.abs(fraction - origin) * 100}%`;
-      fill.style.right = 'auto';
+      const left = `${Math.min(fraction, origin) * 100}%`;
+      const width = `${Math.abs(fraction - origin) * 100}%`;
+      // Both fill passes share one geometry, so they stay registered while scrubbing.
+      [fill, shade].forEach(layer => {
+        layer.style.left = left; layer.style.width = width; layer.style.right = 'auto';
+      });
     }
     function set(number) { model.value = clamp(number); paint(); }
     function reset() {
@@ -101,6 +105,7 @@
       const before = model.value;
       const start = event.clientX;
       row.setPointerCapture(event.pointerId);
+      row.classList.add('dragging');
       const move = next => {
         const sensitivity = next.shiftKey ? .001 : .01;
         set(before + (next.clientX - start) * (spec.max - spec.min) * sensitivity);
@@ -109,11 +114,14 @@
         row.removeEventListener('pointermove', move);
         row.removeEventListener('pointerup', end);
         row.removeEventListener('pointercancel', end);
+        row.removeEventListener('lostpointercapture', end);
+        row.classList.remove('dragging');
         history([{ key, before, after: model.value }]);
       };
       row.addEventListener('pointermove', move);
       row.addEventListener('pointerup', end);
       row.addEventListener('pointercancel', end);
+      row.addEventListener('lostpointercapture', end);
     });
     function edit() {
       if (spec.disabled || row.querySelector('input')) return;
@@ -242,6 +250,8 @@
       const section = node('details', 'foldout'); section.open = spec.open;
       section.dataset.slate = 'SMixtormatInspectorGroup';
       const header = node('summary', '', spec.title.toUpperCase());
+            // Own element so the accent multiply pass can composite separately from the additive lift.
+            header.append(node('span', 'foldout-tint'));
       const body = node('div', 'foldout-body');
       spec.rows.forEach((row, index) => body.append(build(row, `${key}.${index}`)));
       section.append(header, body); return section;
@@ -295,7 +305,7 @@
       if (layer.schema) select.dataset.inspector = layer.schema;
       else select.disabled = true;
       row.append(select);
-      if (layer.source) row.append(node('span', 'layer-source', layer.source));
+      if (layer.source) row.append(node('span', 'layer-source badge', layer.source));
       tree.append(row);
     });
   }
@@ -320,43 +330,81 @@
   byId('lightSelect').addEventListener('change', event => { byId('viewport').dataset.light = event.target.value; });
 
   // --- Token editing: authored defaults remain in tokens.css -------------------------------
+  const FALLOFF_NOTE = 'Below 1 fades earlier, 1 is linear, above 1 holds the top longer.';
   const groups = {
+    'Typography': [
+      ['body-size', 6, 24, 1, 'px'], ['dragger-font-size', 6, 24, 1, 'px'],
+      ['caption-size', 6, 24, 1, 'px'], ['value-weight', 100, 900, 100],
+      ['card-title-size', 7, 20, 1, 'px'], ['card-title-weight', 400, 700, 100],
+      ['card-title-tracking', 0, 3, .1, 'px'],
+      ['foldout-title-size', 6, 16, 1, 'px'], ['foldout-title-weight', 100, 900, 100], ['foldout-title-tracking', 0, 4, .1, 'px'],
+      ['layer-group-title-size', 6, 18, 1, 'px'], ['layer-group-title-weight', 400, 700, 100]
+    ],
+    'Gradient saturation': [
+      ...['foldout', 'foldout-hover', 'card-header', 'card-body', 'layer', 'layer-hover',
+        'layer-selected', 'layer-group', 'child', 'child-hover', 'child-selected',
+        'fill', 'fill-hover', 'fill-active', 'fill-disabled', 'well', 'well-hover']
+        .map(role => [`${role}-saturation`, 0, 4, .1, '', '0 is grayscale; 1 preserves the source; above 1 increases saturation. Neutral colors have no saturation to increase.'])
+    ],
+    'Child layer gradients': [
+      ...['child-left', 'child-right', 'child-hover-left', 'child-hover-right',
+        'child-selected-left', 'child-selected-right'].map(role => [`${role}-opacity`, 0, 1, .01])
+    ],
     'Compositing': [
       ['surface-lift-opacity', 0, 1, .01], ['hover-lift-opacity', 0, 1, .01],
       ['well-shade-top', 0, 1, .01], ['well-shade-bottom', 0, 1, .01],
-      ['well-border-opacity', 0, 1, .01], ['well-border-bottom-opacity', 0, 1, .01],
-      ['fill-lift-opacity', 0, 1, .01], ['zero-tick-opacity', 0, 1, .01]
+      ['well-border-opacity', 0, 1, .01], ['well-border-top-opacity', 0, 1, .01], ['well-border-bottom-opacity', 0, 1, .01], ['well-border-hover-opacity', 0, 1, .01], ['well-border-hover-top-opacity', 0, 1, .01], ['well-border-hover-bottom-opacity', 0, 1, .01], ['well-border-saturation', 0, 4, .1],
+      ['zero-tick-opacity', 0, 1, .01]
+    ],
+    'Slider fill': [
+      ['fill-body-top', 0, 1, .01], ['fill-body-bottom', 0, 1, .01],
+      ['fill-body-hover-top', 0, 1, .01], ['fill-body-hover-bottom', 0, 1, .01],
+      ['fill-body-active-top', 0, 1, .01], ['fill-body-active-bottom', 0, 1, .01],
+      ['fill-disabled-opacity', 0, 1, .01],
+      ['fill-shade-start', 0, 1, .01], ['fill-shade-mid', 0, 1, .01], ['fill-shade-end', 0, 1, .01],
+      ['fill-shade-mid-position', 0, 100, 1, '%'],
+      ['fill-falloff-power', .05, 4, .05, '', FALLOFF_NOTE]
     ],
     'Group cards': [
       ['card-header-opacity', 0, 1, .01], ['card-body-opacity', 0, 1, .01],
-      ['card-radius', 0, 12, 1, 'px'], ['card-header-height', 16, 64, 1, 'px'],
+      ['card-radius', 0, 12, 1, 'px'], ['card-header-height', 12, 64, 1, 'px'],
       ...['left', 'top', 'right', 'bottom'].map(side => [`card-header-${side}`, 0, 32, 1, 'px']),
       ...['left', 'top', 'right', 'bottom'].map(side => [`card-outer-${side}`, 0, 32, 1, 'px']),
       ['card-body-horizontal', 0, 32, 1, 'px'], ['card-body-top', 0, 32, 1, 'px'], ['card-body-bottom', 0, 32, 1, 'px'],
-      ['card-title-size', 7, 20, 1, 'px'], ['card-title-weight', 400, 700, 100],
-      ['card-title-tracking', 0, 3, .1, 'px'], ['card-title-opacity', 0, 1, .01],
-      ['card-eye-size', 8, 24, 1, 'px'], ['card-leading-gap', 0, 16, 1, 'px']
+      ['card-header-margin-top', 0, 24, 1, 'px'], ['card-header-margin-bottom', 0, 24, 1, 'px'],
+      ['card-title-opacity', 0, 1, .01],
+      ['card-eye-size', 8, 24, 1, 'px'], ['card-leading-gap', 0, 16, 1, 'px'],
+      ['card-falloff-power', .05, 4, .05, '', FALLOFF_NOTE], ['card-icon-size', 6, 32, 1, 'px'], ['card-icon-opacity', 0, 1, .01]
     ],
-    'Foldouts': [['foldout-height', 20, 40, 1, 'px'], ['foldout-gutter', 0, 20, 1, 'px'], ['header-tint-opacity', 0, 1, .01], ['header-hover-opacity', 0, 1, .01], ['foldout-hairline-opacity', 0, 1, .01], ['hairline-hover-opacity', 0, 1, .01]],
-        'Layer and overlay states': [['group-cross-opacity', 0, 1, .01], ['overlay-ground-opacity', 0, 1, .01], ['overlay-plate-opacity', 0, 1, .01], ['overlay-hover-accent', 0, 1, .01], ['overlay-press-accent', 0, 1, .01], ['overlay-icon-rest-opacity', 0, 1, .01]],
-    'Context menus and hover help': [['popup-lip-height', 10, 50, 1, 'px'], ['popup-tint-opacity', 0, 1, .01], ['popup-border-opacity', 0, 1, .01], ['popup-shadow-opacity', 0, 1, .01], ['menu-width', 150, 360, 5, 'px'], ['menu-row-height', 18, 32, 1, 'px'], ['menu-padding', 0, 12, 1, 'px'], ['help-max-width', 200, 500, 5, 'px'], ['help-padding', 4, 20, 1, 'px'], ['help-delay', 150, 1000, 50, 'ms']],
-    'Controls': [['row-height', 16, 36, 1, 'px'], ['row-gap', 0, 12, 1, 'px'], ['paired-gap', 0, 12, 1, 'px'], ['dragger-text-inset', 2, 20, 1, 'px'], ['dropdown-label-ratio', .15, .6, .01], ['well-border-width', 0, 3, .5, 'px'], ['well-radius', 0, 12, 1, 'px']],
-    'Workspace': [['left-width', 160, 640, 5, 'px'], ['inspector-width', 200, 720, 5, 'px'], ['gallery-height', 80, 500, 5, 'px'], ['gallery-tile-size', 50, 140, 2, 'px'], ['splitter-size', 1, 5, 1, 'px'], ['splitter-hit-size', 5, 12, 1, 'px']]
+    'Foldouts': [['foldout-height', 12, 48, 1, 'px'], ['foldout-title-opacity', 0, 1, .01], ['foldout-gutter', 0, 20, 1, 'px'], ['foldout-outer-top', 0, 24, 1, 'px'], ['foldout-outer-bottom', 0, 24, 1, 'px'], ['foldout-header-padding-top', 0, 16, 1, 'px'], ['foldout-header-padding-bottom', 0, 16, 1, 'px'], ['foldout-body-top', 0, 24, 1, 'px'], ['foldout-body-bottom', 0, 24, 1, 'px'], ['header-tint-opacity', 0, 1, .01], ['header-hover-opacity', 0, 1, .01], ['foldout-falloff-power', .05, 4, .05, '', FALLOFF_NOTE], ['foldout-accent-multiply-opacity', 0, 1, .01], ['foldout-accent-hover-multiply-opacity', 0, 1, .01], ['foldout-hairline-opacity', 0, 1, .01], ['hairline-hover-opacity', 0, 1, .01], ['foldout-icon-size', 6, 32, 1, 'px'], ['foldout-icon-opacity', 0, 1, .01]],
+        'Layer rows': [['layer-height', 18, 48, 1, 'px'], ['child-height', 14, 40, 1, 'px'], ['layer-group-height', 14, 40, 1, 'px'], ['layer-badge-width', 32, 80, 1, 'px'], ['layer-icon-size', 6, 32, 1, 'px'], ['layer-icon-opacity', 0, 1, .01], ['toolbar-icon-size', 6, 32, 1, 'px'], ['toolbar-icon-opacity', 0, 1, .01]],
+    'Layer and overlay states': [['group-cross-opacity', 0, 1, .01], ['overlay-ground-opacity', 0, 1, .01], ['overlay-plate-opacity', 0, 1, .01], ['overlay-hover-accent', 0, 1, .01], ['overlay-press-accent', 0, 1, .01], ['overlay-icon-rest-opacity', 0, 1, .01], ['overlay-icon-size', 6, 32, 1, 'px'], ['overlay-icon-opacity', 0, 1, .01], ['overlay-grip-opacity', 0, 1, .01]],
+    'Context menus and hover help': [['popup-lip-height', 10, 50, 1, 'px'], ['popup-tint-opacity', 0, 1, .01], ['popup-border-opacity', 0, 1, .01], ['popup-shadow-opacity', 0, 1, .01], ['menu-icon-size', 6, 32, 1, 'px'], ['menu-icon-opacity', 0, 1, .01], ['menu-width', 150, 360, 5, 'px'], ['menu-row-height', 18, 32, 1, 'px'], ['menu-padding', 0, 12, 1, 'px'], ['help-max-width', 200, 500, 5, 'px'], ['help-padding', 4, 20, 1, 'px'], ['help-delay', 150, 1000, 50, 'ms']],
+    'Controls': [['row-height', 16, 36, 1, 'px'], ['row-gap', 0, 12, 1, 'px'], ['paired-gap', 0, 12, 1, 'px'], ['dragger-text-inset', 2, 20, 1, 'px'], ['dropdown-label-ratio', .15, .6, .01], ['control-label-opacity', 0, 1, .01], ['control-value-opacity', 0, 1, .01], ['well-border-width', 0, 3, .5, 'px'], ['well-radius', 0, 12, 1, 'px'], ['modified-stripe-width', 0, 8, .5, 'px'], ['modified-stripe-opacity', 0, 1, .01], ['icon-size', 8, 32, 1, 'px'], ['icon-hit-padding', 0, 8, .5, 'px'], ['icon-off-opacity', 0, 1, .01], ['layer-module-icon-size', 8, 32, 1, 'px'], ['layer-module-icon-opacity', 0, 1, .01], ['badge-width', 48, 96, 1, 'px'], ['thumbnail-size', 12, 64, 1, 'px'], ['thumbnail-radius', 0, 12, 1, 'px'], ['gallery-swatch-radius', 0, 12, 1, 'px'], ['icon-sheet-preview-size', 8, 48, 1, 'px'], ['rail-icon-size', 12, 48, 1, 'px'], ['window-grip-size', 6, 32, 1, 'px'], ['window-grip-opacity', 0, 1, .01]],
+    'Workspace': [['left-width', 160, 640, 5, 'px'], ['inspector-width', 200, 720, 5, 'px'], ['gallery-height', 80, 500, 5, 'px'], ['gallery-tile-size', 50, 140, 2, 'px'], ['splitter-size', 1, 5, 1, 'px'], ['splitter-hit-size', 5, 12, 1, 'px'], ['topbar-icon-size', 6, 32, 1, 'px'], ['topbar-icon-opacity', 0, 1, .01]]
   };
   const tokenDefaults = new Map();
   const tokenInputs = new Map();
   const computed = getComputedStyle(root);
   function renderTokens() {
     const controls = byId('tokenControls');
+    const sections = [];
+    const addSection = (title, build) => {
+      const section = node('section', 'token-section');
+      section.append(node('div', 'token-category', title));
+      section.append(build());
+      sections.push({ title, element: section });
+      controls.append(section);
+    };
     Object.entries(groups).forEach(([category, entries]) => {
-      const section = node('section');
-      section.append(node('div', 'token-category', category.toUpperCase()));
-      entries.forEach(([name, min, max, step, unit = '']) => {
+      addSection(category.toUpperCase(), () => {
+      const section = node('div', 'token-grid');
+      entries.forEach(([name, min, max, step, unit = '', note = '']) => {
         const cssName = `--${name}`;
         const authored = computed.getPropertyValue(cssName).trim();
         tokenDefaults.set(cssName, authored);
         const row = node('div', 'token-row'); row.dataset.tokenName = name; row.dataset.cssToken = cssName;
-        row.dataset.help = `${category} · ${name}\nRange: ${min}–${max}${unit}. Default: ${authored}. Right-click for token actions.`;
+        row.dataset.help = `${category} · ${name}\nRange: ${min}–${max}${unit}. Default: ${authored}.${note ? ` ${note}` : ''} Right-click for token actions.`;
         const label = node('label', '', name); label.htmlFor = `token-${name}`;
         const input = node('input'); input.id = label.htmlFor; input.type = 'number';
         input.min = min; input.max = max; input.step = step; input.value = parseFloat(authored);
@@ -364,15 +412,39 @@
           const value = input.valueAsNumber;
           if (!Number.isFinite(value) || value < min || value > max) return;
           root.style.setProperty(cssName, `${value}${unit}`);
+          window.MixtormatPrototype.refreshFalloff();
         });
         const reset = node('button', '', '↺'); reset.setAttribute('aria-label', `Reset ${name}`);
-        reset.addEventListener('click', () => { root.style.removeProperty(cssName); input.value = parseFloat(authored); });
+        reset.addEventListener('click', () => { root.style.removeProperty(cssName); input.value = parseFloat(authored); window.MixtormatPrototype.refreshFalloff(); });
         tokenInputs.set(cssName, input); row.append(label, input, reset); section.append(row);
       });
-      controls.append(section);
+      return section;
+      });
     });
-    const palette = node('section'); palette.append(node('div', 'token-category', 'BASE PALETTE'));
-    ['ground', 'text', 'accent', 'modified'].forEach(name => {
+    {
+      const section = sections.find(section => section.title === 'TYPOGRAPHY').element.querySelector('.token-grid');
+      const cssName = '--font-family';
+      const authored = computed.getPropertyValue(cssName).trim();
+      tokenDefaults.set(cssName, authored);
+      const row = node('div', 'token-row');
+      row.dataset.tokenName = 'font-family'; row.dataset.cssToken = cssName;
+      row.dataset.help = 'UI font family. Roboto and Inter are bundled locally. Right-click for token actions.';
+      const label = node('label', '', 'font-family'); label.htmlFor = 'token-font-family';
+      const select = node('select'); select.id = label.htmlFor;
+      const fonts = new Map([[authored, 'Default font'], ["'Roboto', sans-serif", 'Roboto'], ["'Inter', sans-serif", 'Inter']]);
+      fonts.forEach((title, value) => {
+        const option = node('option', '', title); option.value = value; select.append(option);
+      });
+      select.value = authored;
+      select.addEventListener('change', () => root.style.setProperty(cssName, select.value));
+      const reset = node('button', '', '↺'); reset.setAttribute('aria-label', 'Reset font family');
+      reset.addEventListener('click', () => resetToken(cssName));
+      tokenInputs.set(cssName, select);
+      row.append(label, select, reset); section.prepend(row);
+    }
+    addSection('BASE PALETTE', () => {
+    const section = node('div', 'token-grid');
+    ['ground', 'text', 'accent', 'modified', 'child-left', 'child-right', 'child-hover-left', 'child-hover-right', 'child-selected-left', 'child-selected-right'].forEach(name => {
       const cssName = `--${name}-rgb`;
       const channels = computed.getPropertyValue(cssName).trim(); tokenDefaults.set(cssName, channels);
       const toHex = value => `#${value.split(/\s+/).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}`;
@@ -383,25 +455,64 @@
       input.addEventListener('input', () => root.style.setProperty(cssName, [1, 3, 5].map(index => parseInt(input.value.slice(index, index + 2), 16)).join(' ')));
       const reset = node('button', '', '↺'); reset.setAttribute('aria-label', `Reset ${name}`);
       reset.addEventListener('click', () => { root.style.removeProperty(cssName); input.value = toHex(channels); });
-      tokenInputs.set(cssName, input); row.append(label, input, reset); palette.append(row);
+      tokenInputs.set(cssName, input); row.append(label, input, reset); section.append(row);
     });
-    controls.append(palette);
-    const blends = node('section'); blends.append(node('div', 'token-category', 'BLEND OPERATIONS'));
-    ['surface-blend-mode', 'well-blend-mode'].forEach(name => {
+    return section;
+    });
+    addSection('BLEND OPERATIONS', () => {
+    const section = node('div', 'token-grid');
+    ['surface-blend-mode', 'well-blend-mode', 'foldout-blend-mode', 'foldout-accent-blend-mode', 'card-blend-mode', 'group-button-blend-mode', 'layer-blend-mode', 'layer-group-blend-mode'].forEach(name => {
       const cssName = `--${name}`; const authored = computed.getPropertyValue(cssName).trim(); tokenDefaults.set(cssName, authored);
       const row = node('div', 'token-row'); row.dataset.tokenName = name; row.dataset.cssToken = cssName;
       row.dataset.help = `${name}: plus-lighter adds the source color; multiply darkens it; screen lifts it; normal uses source-over opacity.`;
       const label = node('label', '', name); const select = node('select');
       select.id = `token-${name}`; label.htmlFor = select.id;
-      ['plus-lighter', 'multiply', 'screen', 'normal'].forEach(mode => select.append(node('option', '', mode)));
+      ['normal', 'plus-lighter', 'multiply', 'screen', 'overlay', 'soft-light', 'hard-light', 'color-dodge', 'color-burn', 'darken', 'lighten', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'].forEach(mode => select.append(node('option', '', mode)));
       select.value = authored; select.addEventListener('change', () => root.style.setProperty(cssName, select.value));
-      tokenInputs.set(cssName, select); row.append(label, select); blends.append(row);
+      tokenInputs.set(cssName, select); row.append(label, select); section.append(row);
     });
-    controls.append(blends);
+    return section;
+    });
+    // Tab strip: one button per category, arrow-key navigable like the other tab lists.
+    const tabs = node('div', 'token-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Token categories');
+    sections.forEach((section, index) => {
+      const button = node('button', '', section.title);
+      button.type = 'button'; button.setAttribute('role', 'tab');
+      button.addEventListener('click', () => selectTokenTab(index));
+      tabs.append(button);
+    });
+    tabs.addEventListener('keydown', event => {
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      const current = sections.findIndex(section => !section.element.hidden);
+      const next = (current + step + sections.length) % sections.length;
+      selectTokenTab(next); tabs.children[next].focus();
+    });
+    controls.prepend(tabs);
+    selectTokenTab(0);
   }
+
+  // One category at a time: the panel is for tweaking, and a tab strip keeps every token
+  // reachable without a long scroll through the ones you are not working on.
+  function selectTokenTab(index) {
+    const controls = byId('tokenControls');
+    const tabs = controls.querySelector('.token-tabs');
+    const sections = [...controls.querySelectorAll('.token-section')];
+    tabs?.querySelectorAll('button').forEach((button, i) => {
+      button.setAttribute('aria-selected', String(i === index));
+      button.tabIndex = i === index ? 0 : -1;
+    });
+    sections.forEach((section, i) => { section.hidden = i !== index; });
+  }
+
   byId('tokenSearch').addEventListener('input', event => {
     const search = event.target.value.toLowerCase();
+    const controls = byId('tokenControls');
+    // A search spans every category, so the tab strip steps aside while one is active.
     document.querySelectorAll('.token-row').forEach(row => { row.hidden = !row.dataset.tokenName.includes(search); });
+    controls.classList.toggle('searching', Boolean(search));
+    controls.querySelectorAll('.token-section').forEach(section => { section.hidden = false; });
   });
   function exportTokens() {
     const current = getComputedStyle(root);
@@ -411,6 +522,7 @@
     const authored = tokenDefaults.get(name);
     if (authored === undefined) return;
     root.style.removeProperty(name);
+        window.MixtormatPrototype.refreshFalloff();
     const input = tokenInputs.get(name);
     if (input?.type === 'number') input.value = parseFloat(authored);
     else if (input?.type === 'color') input.value = `#${authored.split(/\s+/).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}`;
