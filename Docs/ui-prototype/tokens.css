@@ -1,0 +1,152 @@
+/* Mixtormat visual contract. Only this file contains authored colors and dimensions.
+   Additive surfaces reuse the base RGB: source + source * opacity, not white tint.
+   CSS plus-lighter = additive compositing; multiply layers darken the same ground.
+   These browser blend operations are a visual reference, not Slate API names. */
+:root {
+  color-scheme: dark;
+
+  /* BASE PALETTE — channels allow independent opacity and blending. */
+  --ground-rgb: 17 18 19;
+  /* Source-matched roles from MixtormatPalette.h, in sRGB channels. */
+  --panel-rgb: 25 27 29;
+  --panel-bottom-rgb: 20 22 23;
+  --group-ground-rgb: 12 13 14;
+  --header-tint-rgb: 37 40 43;
+  --header-tint-opacity: .72;
+  --header-hover-rgb: 53 82 94;
+  --header-hover-opacity: .85;
+  --hairline-rgb: 111 125 130;
+  --hairline-hover-rgb: 127 196 219;
+  --hairline-hover-opacity: .85;
+  --layer-hover-top-rgb: 45 49 52;
+  --layer-hover-bottom-rgb: 34 38 41;
+  --layer-selected-top-rgb: 56 62 66;
+  --layer-selected-bottom-rgb: 42 47 50;
+  --child-hover-left-rgb: 23 25 27;
+  --child-hover-right-rgb: 37 41 44;
+  --child-selected-left-rgb: 29 32 34;
+  --child-selected-right-rgb: 48 53 57;
+  --group-cross-rgb: 51 56 60;
+  --group-cross-opacity: .5;
+  --overlay-plate-rgb: 21 22 24;
+  --overlay-plate-opacity: .85;
+  --overlay-top-rgb: 7 8 8;
+  --overlay-bottom-rgb: 12 14 15;
+  --overlay-ground-opacity: .62;
+  --overlay-hover-accent: .18;
+  --overlay-press-accent: .35;
+  --overlay-icon-rest-opacity: .45;
+  --splitter-size: 1px;
+  --splitter-hit-size: 5px;
+  --text-rgb: 192 195 197;
+  --accent-rgb: 77 143 168;
+  --modified-rgb: 194 138 61;
+  --warning-rgb: 194 110 100;
+  --shade-rgb: 0 0 0;
+  --text-muted-opacity: .58;
+  --text-disabled-opacity: .32;
+
+  /* SHARED COMPOSITING — no separate flat colors for every state. */
+  --surface-lift-opacity: .05;
+  --surface-blend-mode: plus-lighter;
+  --well-blend-mode: multiply;
+
+  --hover-lift-opacity: .3;
+  --well-shade-top: .55;
+  --well-shade-bottom: .25;
+  --well-border-opacity: .4;
+  --well-border-bottom-opacity: .06;
+  --well-border-width: 1px;
+  --well-radius: 3px;
+  --fill-lift-opacity: .9;
+  --fill-shade-bottom: .25;
+  --zero-tick-opacity: .16;
+
+  /* FOLDOUTS — flush; gradient and top hairline belong only to these. */
+  --foldout-height: 25px;
+  --foldout-title-size: 7px;
+  --foldout-title-tracking: 1.4px;
+
+  --foldout-hairline-opacity: .16;
+  --foldout-gutter: 7px;
+  --foldout-body-top: 5px;
+  --foldout-body-bottom: 6px;
+
+  /* GROUP CARDS — no foldout behavior, notch, title strip, or hairline. */
+  --card-radius: 3px;
+  --card-header-height: 24px;
+  --card-header-opacity: 1;
+  --card-body-opacity: .01;
+  --card-header-left: 8px;
+  --card-header-top: 0px;
+  --card-header-right: 8px;
+  --card-header-bottom: 0px;
+  --card-outer-left: 0px;
+  --card-outer-top: 0px;
+  --card-outer-right: 0px;
+  --card-outer-bottom: 10px;
+  --card-body-horizontal: 8px;
+  --card-body-top: 2px;
+  --card-body-bottom: 4px;
+  --card-title-size: 8px;
+  --card-title-weight: 400;
+  --card-title-tracking: .8px;
+  --card-title-opacity: .7;
+  --card-eye-size: 14px;
+  --card-leading-gap: 4px;
+
+  /* CONTROLS */
+  --row-height: 18px;
+  --row-gap: 3px;
+  --paired-gap: 3px;
+  --dragger-text-inset: 10px;
+  --dropdown-label-ratio: .35;
+  --dropdown-label-gap: 6px;
+  --toggle-size: 16px;
+  --toggle-fill-inset: 3px;
+  --icon-size: 14px;
+  --icon-hit-padding: 3px;
+  --button-height: 24px;
+
+  /* TYPOGRAPHY */
+  --font-family: 'Segoe UI', Arial, sans-serif;
+  --body-size: 10px;
+  --dragger-font-size: 9px;
+  --value-weight: 600;
+  --caption-size: 9px;
+
+  /* SHELL / LAYERS / GALLERIES / POPOVERS — independent contexts. */
+  --left-width: 240px;
+  --inspector-width: 300px;
+  --topbar-height: 38px;
+  --status-height: 24px;
+  --gallery-height: 185px;
+  --shell-gap: 1px;
+  --panel-padding: 7px;
+  --layer-height: 28px;
+  --child-height: 22px;
+  --layer-indent: 28px;
+  --layer-gap: 2px;
+  --thumbnail-size: 24px;
+  --gallery-tile-size: 79px;
+  --gallery-gap: 5px;
+  --popover-width: 245px;
+  --popover-padding: 10px;
+  --popover-gap: 6px;
+  --dialog-width: 430px;
+  --dialog-padding: 16px;
+
+  /* CONTEXT MENUS / HOVER HELP — source MenuGroundTop / MenuGround / MenuTint. */
+  --popup-top-rgb: 26 28 30;
+  --popup-bottom-rgb: 21 22 23;
+  --popup-lip-height: 25px;
+  --popup-tint-opacity: .1;
+  --popup-border-opacity: .16;
+  --popup-shadow-opacity: .52;
+  --menu-width: 190px;
+  --menu-row-height: 20px;
+  --menu-padding: 3px;
+  --help-max-width: 310px;
+  --help-padding: 9px;
+  --help-delay: 350ms;
+}

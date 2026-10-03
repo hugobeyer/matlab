@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mixtormat · UI visual contract</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="popovers.css">
+  <script defer src="inspector-data.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="workspace-controls.js"></script>
+  <script defer src="popovers.js"></script>
+</head>
+<body>
+  <div class="workspace" data-slate="SMixtormat">
+    <header class="topbar">
+      <div class="brand" aria-label="Mixtormat prototype">
+        MIXTOR<span>MAT</span>
+        <small></small>VISUAL CONTRACT</small>
+      </div>
+      <div class="document-name">
+        Weathered Alloy
+        <span class="dirty-mark" id="dirtyMark">DEMO</span>
+      </div>
+      <nav class="top-actions" aria-label="Document actions">
+        <button data-action="undo" id="undoButton" disabled>Undo</button>
+        <button data-action="redo" id="redoButton" disabled>Redo</button>
+        <span class="toolbar-divider"></span>
+        <button data-action="new">NEW</button>
+        <button data-action="load">LOAD</button>
+        <button data-action="save">SAVE</button>
+        <button data-action="export">SAVE AS…</button>
+        <button data-action="style">UI STYLE</button>
+        <button data-action="bake">BAKE</button>
+        <button data-action="contract">CONTRACT</button>
+      </nav>
+    </header>
+
+    <main class="main-grid">
+      <aside class="left-panel panel" aria-label="Layer stack and library">
+        <div class="tabs" role="tablist" aria-label="Left panel">
+          <button role="tab" aria-selected="true" data-left-tab="layers">LAYERS</button>
+          <button role="tab" aria-selected="false" data-left-tab="library">LIBRARY</button>
+        </div>
+        <section id="layersPanel">
+          <div class="panel-toolbar">
+            <span class="caption">LAYER STACK</span>
+            <button class="icon-button" data-action="add-layer" title="Add a demo layer" aria-label="Add layer">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4v16M4 12h16"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="layerTree" class="layer-tree" role="list" data-slate="SMixtormatLayerContainer"></div>
+          <div class="panel-footnote">
+            Select a row to inspect its component.<br>
+            Eye: visibility · dotted icon: parameter driver
+          </div>
+        </section>
+        <section id="libraryPanel" hidden>
+          <div class="panel-toolbar">
+            <span class="caption">SAVED MIXES</span>
+          </div>
+          <button class="saved-mix" data-inspector="surface">
+            <strong>Weathered Alloy</strong>
+            <span>4 layers · demo composition</span>
+          </button>
+          <button class="saved-mix" data-inspector="generator">
+            <strong>Procedural Relief</strong>
+            <span>Generator · editable sample</span>
+          </button>
+          <div class="panel-toolbar">
+            <span class="caption">IMPORTED SURFACES</span>
+          </div>
+          <p class="panel-footnote">Visual placeholders only. No assets are imported or changed.</p>
+        </section>
+      </aside>
+
+      <section class="center-panel">
+        <div class="preview-toolbar">
+          <div class="segmented" id="channels" aria-label="Preview channel">
+            <button aria-pressed="true" data-channel="material">Material</button>
+            <button aria-pressed="false" data-channel="basecolor">BC</button>
+            <button aria-pressed="false" data-channel="normal">Normal</button>
+            <button aria-pressed="false" data-channel="ram">RAM</button>
+            <button aria-pressed="false" data-channel="height">Height</button>
+          </div>
+          <div class="preview-options">
+            <label for="meshSelect">Mesh</label>
+            <select id="meshSelect">
+              <option>Sphere</option>
+              <option>Plane</option>
+            </select>
+            <label for="lightSelect">Light</label>
+            <select id="lightSelect">
+              <option>Studio</option>
+              <option>Outdoor</option>
+              <option>Neutral</option>
+            </select>
+          </div>
+        </div>
+        <div class="viewport" id="viewport" data-channel="material" data-mesh="Sphere" data-light="Studio">
+          <div class="viewport-label">
+            PERSPECTIVE
+            <span>SIMULATED MATERIAL PREVIEW</span>
+          </div>
+          <div class="preview-ground"></div>
+          <div class="material-sphere" aria-label="Procedural CSS material placeholder">
+            <div class="material-grain"></div>
+          </div>
+          <div class="viewport-rail">
+            <button class="icon-button" data-action="frame" title="Frame preview" aria-label="Frame preview">F</button>
+            <button class="icon-button" data-action="wire" aria-pressed="false" title="Wireframe reference" aria-label="Wireframe">▦</button>
+            <button class="icon-button" data-action="debug" aria-pressed="false" title="Debug view" aria-label="Debug view">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h18v18H3zM3 12h18M12 3v18"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="viewport-bottom">
+            <span id="debugLabel">Composite</span>
+            <span>CSS illustration · not a shader or render</span>
+          </div>
+        </div>
+        <section class="gallery panel" id="gallery">
+          <div class="gallery-toolbar">
+            <div class="tabs" role="tablist" aria-label="Gallery type">
+              <button role="tab" aria-selected="true" data-gallery="materials">MATERIALS</button>
+              <button role="tab" aria-selected="false" data-gallery="masks">MASKS</button>
+            </div>
+            <input id="gallerySearch" type="search" placeholder="Search gallery…" aria-label="Search gallery">
+            <select id="galleryCategory" aria-label="Gallery family">
+              <option>All</option>
+              <option>Metal</option>
+              <option>Stone</option>
+              <option>Organic</option>
+            </select>
+            <button data-action="gallery">Collapse</button>
+          </div>
+          <div class="gallery-grid" id="galleryGrid"></div>
+        </section>
+      </section>
+
+      <aside class="inspector panel" aria-label="Inspector" data-slate="SMixtormat.BuildInspectorPanel">
+        <div class="selection-header">
+          <div class="thumbnail metal"></div>
+          <div>
+            <strong id="selectionName">Weathered Alloy</strong>
+            <span id="selectionKind">Material layer</span>
+          </div>
+          <span class="badge" id="selectionBadge">COMBINE</span>
+        </div>
+        <div class="inspector-toolbar">
+          <span class="caption">INSPECTOR</span>
+          <button data-action="collapse">Collapse all</button>
+          <button data-action="states">States</button>
+        </div>
+        <div id="inspectorContent" class="inspector-content"></div>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status" role="status" aria-live="polite">Visual prototype · no Unreal bindings · select layers to explore</span>
+      <span>Mixtormat / shared component contract</span>
+    </footer>
+  </div>
+
+  <aside id="styleDrawer" class="style-drawer" aria-label="Live prototype style tokens" hidden>
+    <header>
+      <div>
+        <strong>UI STYLE</strong>
+        <small>Additive / multiply surface system</small>
+      </div>
+      <button data-action="close-style" aria-label="Close style panel">×</button>
+    </header>
+    <p class="panel-footnote">Base RGB → additive lift → multiply well shade → gradient opacity. No white lift. Edits affect this prototype only.</p>
+    <input type="search" id="tokenSearch" placeholder="Find token…" aria-label="Search style tokens">
+    <div id="tokenControls" class="token-controls"></div>
+    <footer>
+      <button data-action="reset-style">Reset style</button>
+      <button data-action="export-tokens">Export tokens</button>
+    </footer>
+  </aside>
+
+  <div id="popover" class="popover" hidden></div>
+  <dialog id="modal">
+    <div id="modalContent"></div>
+    <form method="dialog">
+      <button>Close</button>
+    </form>
+  </dialog>
+</body>
+</html>

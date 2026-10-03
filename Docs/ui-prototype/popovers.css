@@ -1,0 +1,16 @@
+/* Shared non-modal popover surface: menu lip, subtle frame, and shadow.
+   No browser-native context menu or title tooltip is used inside the prototype. */
+body { user-select: none; -webkit-user-select: none; }
+input, textarea, [contenteditable=true] { user-select: text; -webkit-user-select: text; }
+.floating-surface { position: fixed; isolation: isolate; z-index: 60; border-radius: var(--well-radius); border: 1px solid rgb(var(--hairline-rgb) / var(--popup-border-opacity)); color: rgb(var(--text-rgb)); background: linear-gradient(rgb(var(--popup-top-rgb)), rgb(var(--popup-bottom-rgb)) var(--popup-lip-height)); box-shadow: 4px 6px 18px rgb(var(--shade-rgb) / var(--popup-shadow-opacity)); }
+.floating-surface::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; mix-blend-mode: plus-lighter; background: linear-gradient(rgb(var(--accent-rgb) / var(--popup-tint-opacity)), rgb(var(--accent-rgb) / 0) var(--popup-lip-height)); }
+.context-menu { min-width: var(--menu-width); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; padding: var(--menu-padding); }
+.menu-caption { padding: 5px 8px; font-size: var(--caption-size); letter-spacing: .8px; color: rgb(var(--text-rgb) / var(--text-muted-opacity)); }
+.menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--menu-row-height); padding: 0 8px; border-radius: 2px; text-align: left; white-space: nowrap; }
+.menu-item .menu-shortcut { margin-left: auto; font-size: 9px; color: rgb(var(--text-rgb) / .4); padding-left: 12px; }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: linear-gradient(rgb(var(--panel-rgb)), rgb(var(--layer-hover-bottom-rgb))); outline: none; }
+.menu-item:disabled { opacity: var(--text-disabled-opacity); }
+.menu-separator { height: 1px; margin: 4px 5px; background: rgb(var(--hairline-rgb) / var(--foldout-hairline-opacity)); }
+.help-popover { z-index: 61; pointer-events: none; width: max-content; max-width: min(var(--help-max-width), calc(100vw - 16px)); padding: var(--help-padding); font-size: var(--body-size); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.help-popover .help-title { color: rgb(var(--text-rgb)); display: block; margin-bottom: 3px; font-weight: 600; }
+.help-popover .help-body { color: rgb(var(--text-rgb) / .7); }
