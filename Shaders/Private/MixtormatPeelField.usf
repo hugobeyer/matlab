@@ -21,7 +21,7 @@ RWTexture2D<float4> OutputFieldB;
 
 int2 OutputSize;
 int2 SolveSize;
-int Mode;
+
 uint SurfaceValid;
 uint FlipNormalY;
 
@@ -963,10 +963,11 @@ float PeelLiftVariationField(float2 uv)
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	int2 res =
-		Mode == 2
-		? OutputSize
-		: SolveSize;
+#if PEEL_FIELD_MODE == 2
+	int2 res = OutputSize;
+#else
+	int2 res = SolveSize;
+#endif
 
 	if (any(
 		DispatchThreadId.xy
@@ -986,7 +987,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		(float2(pixel) + 0.5f)
 		/ rf;
 
-	if (Mode == 0)
+#if PEEL_FIELD_MODE == 0
 	{
 		float adhesion;
 
@@ -1089,7 +1090,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	if (Mode == 1)
+#elif PEEL_FIELD_MODE == 1
 	{
 		float2 self =
 			PreviousArrival.Load(
@@ -1207,6 +1208,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
+#elif PEEL_FIELD_MODE == 2
 	float2 arrivalData =
 		PreviousArrival.SampleLevel(
 			LinearWrapSampler,
@@ -1453,4 +1455,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			saturate(
 				curl),
 			heightDelta);
+#endif
 }

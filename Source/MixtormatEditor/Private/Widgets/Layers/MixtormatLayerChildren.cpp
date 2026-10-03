@@ -7,6 +7,7 @@
 #include "MixtormatParameterBinding.h"
 #include "MixtormatOutputReference.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "Widgets/MixtormatChildCapabilities.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -18,11 +19,7 @@ namespace MixtormatLayersPrivate
 
 	EMixtormatEffectType EffectTypeOf(const FMixtormatLayerChild& Child)
 	{
-		if (const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous())
-		{
-			return Asset->EffectType;
-		}
-		return Child.Effect.ProceduralType;
+		return ResolveChildEffectType(Child);
 	}
 
 	bool IsFlowWarp(const FMixtormatLayerChild& Child)
@@ -1134,10 +1131,9 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 
 	if (Child.Type == EMixtormatLayerChildType::Effect)
 	{
-		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-		if (Asset)
+		if (!Child.Effect.Effect.IsNull())
 		{
-			switch (Asset->EffectType)
+			switch (ResolveChildEffectType(Child))
 			{
 			case EMixtormatEffectType::Peeling: return LOCTEXT("PeelingEffectName", "Peeling");
 			case EMixtormatEffectType::Stain:

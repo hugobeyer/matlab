@@ -2,7 +2,7 @@
 
 #include "UI/Layers/MixtormatLayerBadges.h"
 
-#include "MixtormatEffect.h"
+#include "Widgets/MixtormatChildCapabilities.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
 
@@ -172,10 +172,7 @@ namespace MixtormatLayerBadges
 	{
 		if (Child.Type == EMixtormatLayerChildType::Effect)
 		{
-			// An asset-backed effect takes its type from the asset; a procedural one has no asset
-			// to load and carries the type on the child itself.
-			const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-			const EMixtormatEffectType Type = Asset ? Asset->EffectType : Child.Effect.ProceduralType;
+			const EMixtormatEffectType Type = ResolveChildEffectType(Child);
 			if (Type == EMixtormatEffectType::Stain)
 			{
 				return Child.Effect.StainMode == EMixtormatStainMode::Deposit

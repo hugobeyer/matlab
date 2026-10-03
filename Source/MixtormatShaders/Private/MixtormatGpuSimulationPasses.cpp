@@ -71,10 +71,13 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatPeelFieldCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatPeelFieldCS, FGlobalShader);
 
+	// 0 = Seed, 1 = Solve, 2 = Resolve.
+	class FMode : SHADER_PERMUTATION_INT("PEEL_FIELD_MODE", 3);
+	using FPermutationDomain = TShaderPermutationDomain<FMode>;
+
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(int32, Mode)
 		SHADER_PARAMETER(uint32, SurfaceValid)
 		SHADER_PARAMETER(uint32, FlipNormalY)
 
@@ -583,7 +586,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef* const EffectTargets = LayerCtx.EffectTargets;
 		FRDGTextureRef* const EffectHeightTargets = LayerCtx.EffectHeightTargets;
 		const FRDGTextureRef PeelFieldDummy = LayerCtx.PeelFieldDummy;
-		TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+
 		TShaderMapRef<FMixtormatPeelingCS> PeelingShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		// Build the procedural field first: seed its threshold contour, propagate it, then
 		// resolve the finished field at full resolution.
@@ -724,7 +727,7 @@ namespace MixtormatGpuCompositor
 				FMixtormatPeelFieldCS::FParameters* FP = CommonParameters;
 				FP->OutputSize = Request.Resolution;
 				FP->SolveSize = SolveRes;
-				FP->Mode = 0;
+
 				FP->PreviousArrival = Arrival[1];
 				FP->OutputArrival = ArrivalUAVs[0];
 				FP->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
@@ -799,10 +802,14 @@ namespace MixtormatGpuCompositor
 				FMixtormatPeelFieldCS::FParameters* FP =
 					GraphBuilder.AllocParameters<FMixtormatPeelFieldCS::FParameters>();
 				*FP = *CommonParameters;
-				FP->Mode = ModeIndex;
+				FMixtormatPeelFieldCS::FPermutationDomain Permutation;
+				Permutation.Set<FMixtormatPeelFieldCS::FMode>(ModeIndex);
+				TShaderMapRef<FMixtormatPeelFieldCS> PeelFieldShader(
+					GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 				FP->PreviousArrival = InArrival;
 				FP->OutputArrival = ArrivalUAVs[OutArrival == Arrival[0] ? 0 : 1];
 
+				ClearUnusedGraphResources(PeelFieldShader, FP);
 				const FIntPoint PassRes = ModeIndex == 2 ? Request.Resolution : SolveRes;
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,

@@ -57,6 +57,9 @@ struct FMixtormatChildCapabilities
 // instance is selected.
 FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child);
 
+// Reads the resolved asset or its searchable metadata; never loads an effect asset.
+EMixtormatEffectType ResolveChildEffectType(const FMixtormatLayerChild& Child);
+
 // Convenience for a probe built from just a type (an inspector group whose panel is only ever
 // visible while a child of one known, fixed kind is selected).
 FMixtormatChildCapabilities GetChildCapabilitiesForChildType(EMixtormatLayerChildType Type);

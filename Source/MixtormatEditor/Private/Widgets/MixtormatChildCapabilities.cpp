@@ -3,14 +3,33 @@
 #include "Widgets/MixtormatChildCapabilities.h"
 
 #include "MixtormatEffect.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Modules/ModuleManager.h"
 
-namespace
+EMixtormatEffectType ResolveChildEffectType(const FMixtormatLayerChild& Child)
 {
-	EMixtormatEffectType ResolveChildEffectType(const FMixtormatLayerChild& Child)
+	if (const UMixtormatEffect* Asset = Child.Effect.Effect.Get())
 	{
-		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-		return Asset ? Asset->EffectType : Child.Effect.ProceduralType;
+		return Asset->EffectType;
 	}
+	if (!Child.Effect.Effect.IsNull())
+	{
+		FAssetRegistryModule& RegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		const FAssetData AssetData = RegistryModule.Get().GetAssetByObjectPath(
+			Child.Effect.Effect.ToSoftObjectPath());
+		FString TypeName;
+		if (AssetData.GetTagValue(TEXT("EffectType"), TypeName))
+		{
+			const UEnum* Enum = StaticEnum<EMixtormatEffectType>();
+			const int64 Value = Enum->GetValueByNameString(TypeName);
+			if (Value != INDEX_NONE && Enum->IsValidEnumValue(Value))
+			{
+				return static_cast<EMixtormatEffectType>(Value);
+			}
+		}
+	}
+	return Child.Effect.ProceduralType;
 }
 
 FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child)
