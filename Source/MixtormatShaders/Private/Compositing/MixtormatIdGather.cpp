@@ -260,13 +260,7 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		RandomData.Seed = static_cast<uint32>(RandomId.Seed);
 		RandomData.BlendMode = RandomId.BlendMode;
 		RandomData.Weight = RandomId.Weight;
-		RandomData.bInvert = RandomId.Shaping.bInvert;
-		RandomData.bNormalizeInput = RandomId.Shaping.bNormalizeInput;
-		RandomData.InputMin = RandomId.Shaping.InputMin;
-		RandomData.InputMax = RandomId.Shaping.InputMax;
-		RandomData.Balance = RandomId.Shaping.Balance;
-		RandomData.Contrast = RandomId.Shaping.Contrast;
-		RandomData.Offset = RandomId.Shaping.Offset;
+		static_cast<FMixtormatMaskShaping&>(RandomData) = RandomId.Shaping;
 		return true;
 	}
 
@@ -509,10 +503,7 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		IdData.Softness = ColorIdMask.Softness;
 		IdData.BlendMode = ColorIdMask.BlendMode;
 		IdData.Weight = ColorIdMask.Weight;
-		IdData.bInvert = ColorIdMask.Shaping.bInvert;
-		IdData.bNormalizeInput = ColorIdMask.Shaping.bNormalizeInput;
-		IdData.InputMin = ColorIdMask.Shaping.InputMin;
-		IdData.InputMax = ColorIdMask.Shaping.InputMax;
+		static_cast<FMixtormatMaskShaping&>(IdData) = ColorIdMask.Shaping;
 		IdData.Tiling = FVector2f(
 			static_cast<float>(FMath::Max(ColorIdMask.TilingX, 1)),
 			static_cast<float>(FMath::Max(ColorIdMask.TilingY, 1)));
@@ -520,9 +511,7 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		IdData.bFlipU = ColorIdMask.bFlipU;
 		IdData.bFlipV = ColorIdMask.bFlipV;
 		IdData.Rotation = static_cast<int32>(ColorIdMask.Rotation);
-		IdData.Balance = ColorIdMask.Shaping.Balance;
-		IdData.Contrast = ColorIdMask.Shaping.Contrast;
-		IdData.Offset = ColorIdMask.Shaping.Offset;
+
 		Data.bHasMask = true;
 		return true;
 	}

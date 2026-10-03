@@ -2,7 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 
 // Craquelure. A crack network on a cellular lattice, blended into the layer mask.
 //
@@ -39,11 +39,7 @@ int WarpPeriod;
 uint WarpSeed;
 
 uint BlendMode;
-uint Invert;
 float Weight;
-float Balance;
-float Contrast;
-float Offset;
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -111,7 +107,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputDistance[DispatchThreadId.xy] =
 		float4(DistancePixels, (float)(Cell.EdgeId % 16777213u), 0.0f, 0.0f);
 
-	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
-	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+	const float Incoming = MixtormatShapeMaskInput(saturate(Crack));
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

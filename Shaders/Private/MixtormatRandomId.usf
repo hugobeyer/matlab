@@ -1,7 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // Random value per region. Reads a cluster filter's ID map and emits one 0..1 value per region,
@@ -30,11 +30,7 @@ float MinValue;
 float MaxValue;
 
 uint BlendMode;
-uint Invert;
 float Weight;
-float Balance;
-float Contrast;
-float Offset;
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -64,8 +60,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Shaping is what replaces the prototype's ramp mode. Contrast about the 0.5 midpoint pulls
 	// most regions toward the mean and leaves a few outliers, which is the distribution that
 	// reads as subtle -- and it is the same function every other mask node in the plugin uses.
-	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
-
-	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+	Incoming = MixtormatShapeMaskInput(Incoming);
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

@@ -52,7 +52,7 @@ float Depth;
 // @param ErosionRadius
 int Radius;
 // @param ErosionIterations
-int Iterations;
+int Iterations; // C++ safety cap limits dispatch count to 1–64; this shader uses the same count for step stability.
 int Stride;
 // @param ErosionGravityForce
 float GravityForce;

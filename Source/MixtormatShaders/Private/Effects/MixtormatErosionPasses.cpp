@@ -357,6 +357,9 @@ namespace MixtormatGpuCompositor
 				AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 			}
 
+			// Bound dispatch work and use the same count for shader step stability.
+			const int32 ErosionIterations = FMath::Clamp(Ero.ErosionIterations, 1, 64);
+
 			// Each wear iteration re-derives its slope and curvature from the current
 			// working height, so no pass can feed a masked boundary or quantized
 			// intermediate back into the next one; every reading is analysis-only --
@@ -371,7 +374,7 @@ namespace MixtormatGpuCompositor
 				Parameters->Amount = Ero.ErosionAmount;
 				Parameters->Depth = Ero.ErosionDepth;
 				Parameters->Radius = Ero.ErosionRadius;
-				Parameters->Iterations = Ero.ErosionIterations;
+				Parameters->Iterations = ErosionIterations;
 				Parameters->GravityForce = Ero.ErosionGravityForce;
 				Parameters->SlopePower = Ero.ErosionSlopePower;
 				Parameters->Deposit = Ero.ErosionDeposit;
@@ -407,10 +410,6 @@ namespace MixtormatGpuCompositor
 			// The wear loop runs the exposed iteration count, ping-ponging between the
 			// two height targets: every pass analyses the previous pass's output, never
 			// the original input, so wear propagates and deepens with iteration count.
-			// Max, not clamp: a typed count below 1 has no meaning -- the loop and the
-			// ping-pong indexing both need at least one pass -- but nothing above is
-			// restricted.
-			const int32 ErosionIterations = FMath::Max(Ero.ErosionIterations, 1);
 
 			for (int32 Iteration = 0; Iteration < ErosionIterations; ++Iteration)
 			{

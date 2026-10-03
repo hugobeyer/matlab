@@ -2,7 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
 // Colour ID mask. Isolates the regions of an ID map that carry one of a set of chosen colours.
@@ -49,11 +49,7 @@ float Tolerance;
 float Softness;
 
 uint BlendMode;
-uint Invert;
 float Weight;
-float Balance;
-float Contrast;
-float Offset;
 
 float2 Tiling;
 float2 UVOffset;
@@ -85,9 +81,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float ExactIncoming = (RegionId != MIXTORMAT_INVALID_REGION && RegionId == ExactRegionId)
 			? 1.0f
 			: 0.0f;
-		ExactIncoming = MixtormatShapeMask(ExactIncoming, Contrast, Offset, Balance, Invert);
-		const float ExactResult = MixtormatApplyMaskOperation(BlendMode, Previous, ExactIncoming);
-		OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, ExactResult, Weight));
+		ExactIncoming = MixtormatShapeMaskInput(ExactIncoming);
+		OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, ExactIncoming, BlendMode, Weight);
 		return;
 	}
 
@@ -117,8 +112,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Incoming = max(Incoming, 1.0f - smoothstep(Inner, Outer, Distance));
 	}
 
-	Incoming = MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
-
-	const float OperationResult = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, OperationResult, Weight));
+	Incoming = MixtormatShapeMaskInput(Incoming);
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

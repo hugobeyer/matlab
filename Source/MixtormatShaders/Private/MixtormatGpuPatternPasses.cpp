@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuPatternPassesInternal.h"
+#include "MixtormatGpuMaskShaping.h"
 #include "Compositing/MixtormatComposeHash.h"
 
 #include "GlobalShader.h"
@@ -119,11 +120,8 @@ public:
 		SHADER_PARAMETER(float, MinValue)
 		SHADER_PARAMETER(float, MaxValue)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -665,11 +663,9 @@ namespace MixtormatGpuCompositor
 		RandomParameters->MinValue = RandomId.MinValue;
 		RandomParameters->MaxValue = RandomId.MaxValue;
 		RandomParameters->BlendMode = static_cast<uint32>(RandomId.BlendMode);
-		RandomParameters->Invert = RandomId.bInvert ? 1u : 0u;
+
 		RandomParameters->Weight = RandomId.Weight;
-		RandomParameters->Balance = RandomId.Balance;
-		RandomParameters->Contrast = RandomId.Contrast;
-		RandomParameters->Offset = RandomId.Offset;
+
 		RandomParameters->PreviousMask = MaskTargets[MaskReadIndex];
 		RandomParameters->RegionIds = RegionIds;
 		RandomParameters->LinearWrapSampler =
@@ -677,11 +673,12 @@ namespace MixtormatGpuCompositor
 		RandomParameters->OutputMask =
 			GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 
-		FComputeShaderUtils::AddPass(
+		AddMaskNodePass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.RandomId.Layer%d.Child%d", LayerIndex, ChildIndex),
 			RandomIdShader,
 			RandomParameters,
+			RandomId,
 			FIntVector(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),

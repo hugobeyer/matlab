@@ -1,0 +1,25 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
+
+int2 OutputSize;
+uint Initialize;
+uint BlendMode;
+float Weight;
+Texture2D<float> SourceMask;
+Texture2D<float> PreviousMask;
+RWTexture2D<float> OutputMask;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+	const float Previous = Initialize != 0u ? 0.0f : PreviousMask.Load(int3(Pixel, 0));
+	const float Incoming = MixtormatShapeMaskInput(SourceMask.Load(int3(Pixel, 0)));
+	OutputMask[Pixel] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
+}

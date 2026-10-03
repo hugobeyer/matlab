@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatGpuMaskShaping.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
@@ -22,16 +23,13 @@ public:
 		SHADER_PARAMETER(uint32, UsePreShaped)
 		SHADER_PARAMETER(uint32, Initialize)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
 		SHADER_PARAMETER(FVector2f, Tiling)
 		SHADER_PARAMETER(FVector2f, UVOffset)
 		SHADER_PARAMETER(uint32, FlipU)
 		SHADER_PARAMETER(uint32, FlipV)
 		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
@@ -61,15 +59,12 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, UsePreShaped)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(FVector2f, Tiling)
 		SHADER_PARAMETER(FVector2f, UVOffset)
 		SHADER_PARAMETER(uint32, FlipU)
 		SHADER_PARAMETER(uint32, FlipV)
 		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
@@ -143,11 +138,8 @@ public:
 		SHADER_PARAMETER(float, Tolerance)
 		SHADER_PARAMETER(float, Softness)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER(FVector2f, Tiling)
 		SHADER_PARAMETER(FVector2f, UVOffset)
 		SHADER_PARAMETER(uint32, FlipU)
@@ -203,11 +195,8 @@ public:
 		SHADER_PARAMETER(float, WarpSource)
 		SHADER_PARAMETER(int32, WarpRadius)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
@@ -344,7 +333,8 @@ namespace MixtormatGpuCompositor
 	// dispatch, skipping an axis whose radius is zero. The caller then runs the mask shader as it
 	// always did, but reading what comes back here straight through instead of re-sampling.
 	//
-	// Returns null when nothing is to be blurred, which is the signal to take the single-pass
+	// Normalization also needs a local field before shaping, even without blur or curvature.
+	// Returns null when no filtering or normalization is requested, retaining the single-pass
 	// path. Shared by the layer mask chain and the scoped feature masks because they are the same
 	// node with the same controls -- a blur that worked on one and not the other would be a
 	// distinction the recipe never made.
@@ -359,7 +349,7 @@ namespace MixtormatGpuCompositor
 		const int32 ChildIndex)
 	{
 		const bool bBlurs = Mask.BlurRadiusX > 0.0f || Mask.BlurRadiusY > 0.0f;
-		if (!bBlurs && Mask.CurvatureFilters.IsEmpty())
+		if (!bBlurs && Mask.CurvatureFilters.IsEmpty() && !Mask.bNormalizeInput)
 		{
 			return nullptr;
 		}
@@ -376,16 +366,14 @@ namespace MixtormatGpuCompositor
 		ShapeParameters->UsePreShaped = 0u;
 		ShapeParameters->Initialize = 1u;
 		ShapeParameters->BlendMode = static_cast<uint32>(EMixtormatMaskBlendMode::Replace);
-		ShapeParameters->Invert = Mask.bInvert ? 1u : 0u;
+
 		ShapeParameters->Weight = 1.0f;
 		ShapeParameters->Tiling = Mask.Tiling;
 		ShapeParameters->UVOffset = Mask.UVOffset;
 		ShapeParameters->FlipU = Mask.bFlipU ? 1u : 0u;
 		ShapeParameters->FlipV = Mask.bFlipV ? 1u : 0u;
 		ShapeParameters->Rotation = Mask.Rotation;
-		ShapeParameters->Balance = Mask.Balance;
-		ShapeParameters->Contrast = Mask.Contrast;
-		ShapeParameters->Offset = Mask.Offset;
+
 		ShapeParameters->PreviousMask = PreviousMask;
 		ShapeParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 		ShapeParameters->IncomingMask = ResolveMaskSourceTexture(
@@ -396,11 +384,12 @@ namespace MixtormatGpuCompositor
 		ShapeParameters->LinearWrapSampler =
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		ShapeParameters->OutputMask = GraphBuilder.CreateUAV(ShapedTarget);
-		FComputeShaderUtils::AddPass(
+		AddMaskNodePass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.MaskShape.Layer%d.Child%d", LayerIndex, ChildIndex),
 			MaskShader,
 			ShapeParameters,
+			Mask,
 			FIntVector(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
@@ -556,16 +545,14 @@ namespace MixtormatGpuCompositor
 			MP->UsePreShaped = ScopedPreShaped ? 1u : 0u;
 			MP->Initialize = 0u;
 			MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
-			MP->Invert = Mask.bInvert ? 1u : 0u;
+			BindMaskShaping(*MP, Mask);
 			MP->Weight = Mask.Weight;
 			MP->Tiling = Mask.Tiling;
 			MP->UVOffset = Mask.UVOffset;
 			MP->FlipU = Mask.bFlipU ? 1u : 0u;
 			MP->FlipV = Mask.bFlipV ? 1u : 0u;
 			MP->Rotation = Mask.Rotation;
-			MP->Balance = Mask.Balance;
-			MP->Contrast = Mask.Contrast;
-			MP->Offset = Mask.Offset;
+
 			MP->PreviousMask = FeatureMask;
 			MP->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			MP->IncomingMask = ResolveMaskSourceTexture(
@@ -677,11 +664,9 @@ namespace MixtormatGpuCompositor
 		GeneratedParameters->WarpSource = Generated.WarpSource;
 		GeneratedParameters->WarpRadius = Generated.WarpRadius;
 		GeneratedParameters->BlendMode = static_cast<uint32>(Generated.BlendMode);
-		GeneratedParameters->Invert = Generated.bInvert ? 1u : 0u;
+
 		GeneratedParameters->Weight = Generated.Weight;
-		GeneratedParameters->Balance = Generated.Balance;
-		GeneratedParameters->Contrast = Generated.Contrast;
-		GeneratedParameters->Offset = Generated.Offset;
+
 		GeneratedParameters->PreviousMask = MaskTargets[MaskReadIndex];
 		GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
 		GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
@@ -691,15 +676,17 @@ namespace MixtormatGpuCompositor
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		GeneratedParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 
-		FComputeShaderUtils::AddPass(
+		AddMaskNodePass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.GeneratedMask.Layer%d.Child%d", LayerIndex, ChildIndex),
 			GeneratedMaskShader,
 			GeneratedParameters,
+			Generated,
 			FIntVector(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-				1));
+				1),
+			LayerIndex == 0);
 		CombinedMask = MaskTargets[MaskWriteIndex];
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
@@ -795,11 +782,9 @@ namespace MixtormatGpuCompositor
 		IdParameters->Tolerance = ColorId.Tolerance;
 		IdParameters->Softness = ColorId.Softness;
 		IdParameters->BlendMode = static_cast<uint32>(ColorId.BlendMode);
-		IdParameters->Invert = ColorId.bInvert ? 1u : 0u;
+
 		IdParameters->Weight = ColorId.Weight;
-		IdParameters->Balance = ColorId.Balance;
-		IdParameters->Contrast = ColorId.Contrast;
-		IdParameters->Offset = ColorId.Offset;
+
 		IdParameters->Tiling = ColorId.Tiling;
 		IdParameters->UVOffset = ColorId.UVOffset;
 		IdParameters->FlipU = ColorId.bFlipU ? 1u : 0u;
@@ -824,11 +809,12 @@ namespace MixtormatGpuCompositor
 		IdParameters->OutputMask =
 			GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 
-		FComputeShaderUtils::AddPass(
+		AddMaskNodePass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.ColorId.Layer%d.Child%d", LayerIndex, ChildIndex),
 			ColorIdShader,
 			IdParameters,
+			ColorId,
 			FIntVector(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
@@ -909,15 +895,13 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.AllocParameters<FMixtormatMaskResolveCS::FParameters>();
 			Resolve->OutputSize = Request.Resolution;
 			Resolve->UsePreShaped = PreShapedMask ? 1u : 0u;
-			Resolve->Invert = Mask.bInvert ? 1u : 0u;
+			BindMaskShaping(*Resolve, Mask);
 			Resolve->Tiling = Mask.Tiling;
 			Resolve->UVOffset = Mask.UVOffset;
 			Resolve->FlipU = Mask.bFlipU ? 1u : 0u;
 			Resolve->FlipV = Mask.bFlipV ? 1u : 0u;
 			Resolve->Rotation = Mask.Rotation;
-			Resolve->Balance = Mask.Balance;
-			Resolve->Contrast = Mask.Contrast;
-			Resolve->Offset = Mask.Offset;
+
 			Resolve->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			Resolve->IncomingMask = IncomingMask;
 			Resolve->PreShapedMask = FilteredMask;
@@ -963,16 +947,14 @@ namespace MixtormatGpuCompositor
 			MaskParameters->UsePreShaped = PreShapedMask ? 1u : 0u;
 			MaskParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
 			MaskParameters->BlendMode = static_cast<uint32>(Mask.BlendMode);
-			MaskParameters->Invert = Mask.bInvert ? 1u : 0u;
+			BindMaskShaping(*MaskParameters, Mask);
 			MaskParameters->Weight = Mask.Weight;
 			MaskParameters->Tiling = Mask.Tiling;
 			MaskParameters->UVOffset = Mask.UVOffset;
 			MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
 			MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
 			MaskParameters->Rotation = Mask.Rotation;
-			MaskParameters->Balance = Mask.Balance;
-			MaskParameters->Contrast = Mask.Contrast;
-			MaskParameters->Offset = Mask.Offset;
+
 			MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
 			MaskParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			MaskParameters->IncomingMask = IncomingMask;

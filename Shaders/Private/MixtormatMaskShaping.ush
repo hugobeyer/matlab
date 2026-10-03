@@ -1,0 +1,53 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_MASK_SHAPING_USH
+#define MIXTORMAT_MASK_SHAPING_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+
+uint Invert;
+float Balance;
+float Contrast;
+float Offset;
+float2 MaskInputLevels;
+uint MaskRawOutput;
+
+float MixtormatRemapMaskInput(float Value, float2 Levels)
+{
+	// Neutral levels must preserve HDR/signed inputs until the existing shaping saturation.
+	if (Levels.x == 0.0f && Levels.y == 1.0f)
+	{
+		return Value;
+	}
+	const float Span = Levels.y - Levels.x;
+	// Equal endpoints form a threshold; reversed endpoints reverse the mapping.
+	if (abs(Span) <= 1.0e-6f)
+	{
+		return Value >= Levels.x ? 1.0f : 0.0f;
+	}
+	return saturate((Value - Levels.x) / Span);
+}
+
+float MixtormatShapeMaskInput(float Incoming)
+{
+	if (MaskRawOutput != 0u)
+	{
+		// Keep the measured field finite; invalid samples contribute zero.
+		return isnan(Incoming) || isinf(Incoming) ? 0.0f : Incoming;
+	}
+	// Future curve remapping belongs in the shared shaping helper, not individual producers.
+	return MixtormatShapeMask(MixtormatRemapMaskInput(Incoming, MaskInputLevels),
+		Contrast, Offset, Balance, Invert);
+}
+
+float MixtormatBlendShapedMask(float Previous, float Incoming, uint BlendMode, float Weight)
+{
+	if (MaskRawOutput != 0u)
+	{
+		return Incoming;
+	}
+	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
+	return saturate(lerp(Previous, Result, Weight));
+}
+
+#endif

@@ -222,6 +222,176 @@ namespace MixtormatCompositorTests
 
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatMaskInputLevelsTest,
+	"Mixtormat.Compositor.MaskShaping.InputLevels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatMaskInputLevelsTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution))))
+	{
+		return false;
+	}
+	TStrongObjectPtr<UTexture2D> Texture(MakeTwoToneIdMap(
+		FColor(51, 51, 51), FColor(204, 204, 204)));
+	if (!TestNotNull(TEXT("Mask fixture exists"), Texture.Get()))
+	{
+		return false;
+	}
+	FMixtormatLayerChild Child;
+	Child.Type = EMixtormatLayerChildType::Mask;
+	Child.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(Texture.Get());
+	TArray<FMixtormatLayer> Layers{MakeLayerWithChild(Child)};
+	const int32 Left = (TestResolution / 2) * TestResolution + TestResolution / 4;
+	const int32 Right = (TestResolution / 2) * TestResolution + 3 * TestResolution / 4;
+	const auto Check = [&](const TCHAR* Label, float ExpectedLeft, float ExpectedRight)
+	{
+		TArray<FLinearColor> Pixels;
+		if (!TestTrue(Label, ComposeAndWait(Compositor, Layers, LayerMaskDebug()))
+			|| !TestTrue(TEXT("Mask reads back"), ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+		{
+			return false;
+		}
+		TestTrue(*FString::Printf(TEXT("%s left"), Label),
+			FMath::IsNearlyEqual(DebugValue(Pixels[Left]), ExpectedLeft, 0.015f));
+		TestTrue(*FString::Printf(TEXT("%s right"), Label),
+			FMath::IsNearlyEqual(DebugValue(Pixels[Right]), ExpectedRight, 0.015f));
+		return true;
+	};
+	if (!Check(TEXT("Neutral levels preserve input"), 0.2f, 0.8f)) { return false; }
+	FMixtormatMaskShaping& Shaping = Layers[0].Children[0].Mask.Shaping;
+	Shaping.InputMin = 0.2f;
+	Shaping.InputMax = 0.8f;
+	if (!Check(TEXT("Levels work without normalization"), 0.0f, 1.0f)) { return false; }
+	Shaping.InputMin = 0.8f;
+	Shaping.InputMax = 0.2f;
+	if (!Check(TEXT("Reversed levels"), 1.0f, 0.0f)) { return false; }
+	Shaping.InputMin = Shaping.InputMax = 0.5f;
+	if (!Check(TEXT("Equal levels form a threshold"), 0.0f, 1.0f)) { return false; }
+	Shaping = FMixtormatMaskShaping();
+	Shaping.bNormalizeInput = true;
+	if (!Check(TEXT("Measured normalization"), 0.0f, 1.0f)) { return false; }
+	Shaping.InputMax = 2.0f;
+	if (!Check(TEXT("Levels follow normalization"), 0.0f, 0.5f)) { return false; }
+
+	// Blur consumes the already-shaped local mask, and the final merge must not shape again.
+	FMixtormatLayerChild Blur;
+	Blur.Type = EMixtormatLayerChildType::Blur;
+	Blur.ScopeOwnerChildId = Layers[0].Children[0].ChildId;
+	Blur.Blur.RadiusX = 2.0f;
+	Blur.Blur.RadiusY = 2.0f;
+	Layers[0].Children.Add(Blur);
+	if (!Check(TEXT("Normalized blurred mask is shaped once"), 0.0f, 0.5f)) { return false; }
+
+	// A constant input uses the existing measured-field utility's zero-span policy.
+	TStrongObjectPtr<UTexture2D> Constant(MakeTwoToneIdMap(
+		FColor(128, 128, 128), FColor(128, 128, 128)));
+	if (!TestNotNull(TEXT("Constant mask exists"), Constant.Get())) { return false; }
+	Layers[0].Children[0].Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(Constant.Get());
+	if (!Check(TEXT("Constant normalization maps to zero"), 0.0f, 0.0f)) { return false; }
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatSharedMaskShapingTest,
+	"Mixtormat.Compositor.MaskShaping.AllProducers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter
+		| EAutomationTestFlags::NonNullRHI)
+
+bool FMixtormatSharedMaskShapingTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatCompositorTests;
+	(void)Parameters;
+	FMixtormatGpuCompositor Compositor;
+	if (!TestTrue(TEXT("Compositor initialises"),
+		Compositor.Initialize(FIntPoint(TestResolution, TestResolution)))) { return false; }
+	TStrongObjectPtr<UTexture2D> Texture(MakeTwoToneIdMap(FColor::Red, FColor::Blue));
+	if (!TestNotNull(TEXT("Source fixture exists"), Texture.Get())) { return false; }
+	for (int32 Kind = 0; Kind < 6; ++Kind)
+	{
+		FMixtormatLayer Lower;
+		Lower.Type = EMixtormatLayerType::Fill;
+		FMixtormatLayer Upper = Lower;
+		Upper.LayerId = FGuid::NewGuid();
+		FMixtormatLayerChild Child;
+		if (Kind == 5)
+		{
+			FMixtormatLayerChild Pattern;
+			Pattern.Type = EMixtormatLayerChildType::PatternId;
+			Upper.Children.Add(Pattern);
+		}
+		FMixtormatMaskShaping* Shaping = nullptr;
+		switch (Kind)
+		{
+		case 0:
+			Child.Type = EMixtormatLayerChildType::Mask;
+			Child.Mask.MaskTexture = TSoftObjectPtr<UTexture2D>(Texture.Get());
+			Shaping = &Child.Mask.Shaping;
+			break;
+		case 1:
+			Child.Type = EMixtormatLayerChildType::Generated;
+			Child.Generated.HeightWeight = 1.0f;
+			Child.Generated.BlendMode = EMixtormatMaskBlendMode::Replace;
+			Shaping = &Child.Generated.Shaping;
+			break;
+		case 2:
+		case 3:
+			Child.Type = EMixtormatLayerChildType::Craquelure;
+			Child.Craquelure.Mode = Kind == 2
+				? EMixtormatCraquelureMode::Lattice : EMixtormatCraquelureMode::Propagated;
+			Child.Craquelure.Iterations = 4;
+			Child.Craquelure.ReliefDepth = 0.0f;
+			Child.Craquelure.BlendMode = EMixtormatMaskBlendMode::Replace;
+			Shaping = &Child.Craquelure.Shaping;
+			break;
+		case 4:
+			Child.Type = EMixtormatLayerChildType::ColorId;
+			Child.ColorId.IdTexture = TSoftObjectPtr<UTexture2D>(Texture.Get());
+			Child.ColorId.Colors.Add(FLinearColor::Red);
+			Shaping = &Child.ColorId.Shaping;
+			break;
+		default:
+			Child.Type = EMixtormatLayerChildType::RandomId;
+			Shaping = &Child.RandomId.Shaping;
+			break;
+		}
+		for (int32 Normalize = 0; Normalize < 2; ++Normalize)
+		{
+			for (int32 Bright = 0; Bright < 2; ++Bright)
+			{
+				Shaping->bNormalizeInput = Normalize != 0;
+				Shaping->InputMin = Shaping->InputMax = Bright ? -1.0f : 2.0f;
+				FMixtormatLayer Current = Upper;
+				Current.Children.Add(Child);
+				FMixtormatDebugPreviewSettings Debug = LayerMaskDebug();
+				Debug.LayerIndex = 1;
+				Debug.ChildIndex = Current.Children.Num() - 1;
+				TArray<FLinearColor> Pixels;
+				const FString Label = FString::Printf(TEXT("Producer %d normalize %d bright %d"),
+					Kind, Normalize, Bright);
+				if (!TestTrue(*Label, ComposeAndWait(Compositor, TArray<FMixtormatLayer>{Lower, Current}, Debug))
+					|| !TestTrue(TEXT("Producer preview reads"), ReadTarget(Compositor.GetDebugOutput(), Pixels)))
+				{
+					return false;
+				}
+				bool bExpected = true;
+				for (const FLinearColor& Pixel : Pixels)
+				{
+					bExpected &= FMath::IsNearlyEqual(DebugValue(Pixel), float(Bright), 0.015f);
+				}
+				TestTrue(*Label, bExpected);
+			}
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMixtormatClusterIdsTest,
 	"Mixtormat.Compositor.ClusterIds",
 	EAutomationTestFlags::EditorContext
@@ -1010,6 +1180,22 @@ bool FMixtormatScopedGradeMaskTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(ScopedPixels[LeftIndex].R, 0.25f, 0.01f));
 	TestTrue(TEXT("Scoped Grade changes only masked-in pixels"),
 		FMath::IsNearlyEqual(ScopedPixels[RightIndex].R, 0.50f, 0.01f));
+
+	Layers[0].Children[1].Mask.Shaping.bNormalizeInput = true;
+	Layers[0].Children[1].Mask.Shaping.InputMax = 2.0f;
+	TArray<FLinearColor> NormalizedScopePixels;
+	if (!TestTrue(TEXT("Scoped normalized levels compose"),
+		ComposeAndWait(Compositor, Layers, FMixtormatDebugPreviewSettings()))
+		|| !TestTrue(TEXT("Scoped normalized levels read"),
+			ReadTarget(Compositor.GetBaseColorOutput(), NormalizedScopePixels)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Scoped normalization leaves the masked-out side unchanged"),
+		FMath::IsNearlyEqual(NormalizedScopePixels[LeftIndex].R, 0.25f, 0.01f));
+	TestTrue(TEXT("Scoped input levels shape once before Grade"),
+		FMath::IsNearlyEqual(NormalizedScopePixels[RightIndex].R, 0.375f, 0.01f));
+	Layers[0].Children[1].Mask.Shaping = FMixtormatMaskShaping();
 
 	FMixtormatLayerChild& LaterGrade = Layers[0].Children.AddDefaulted_GetRef();
 	LaterGrade.Type = EMixtormatLayerChildType::Effect;

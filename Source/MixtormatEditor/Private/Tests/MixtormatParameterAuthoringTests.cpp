@@ -133,12 +133,15 @@ bool FMixtormatShaderParamScannerTest::RunTest(const FString& Parameters)
 	};
 	const auto IsCppDerivedContract = [](const FMixtormatParameterDefinitionKey& Key)
 	{
-		// These values are derived or applied in C++, not represented by a direct .usf uniform.
+		// These values are derived, applied, or packed into composite arrays in C++,
+		// not represented by a direct .usf uniform. Grade uses GradeParamsA.y / GradeParamsB.y.
 		return (Key.Owner == EMixtormatParameterOwnerType::Layer
 				&& (Key.Parameter == TEXT("IOR") || Key.Parameter == TEXT("FuzzInfluence")))
 			|| (Key.Owner == EMixtormatParameterOwnerType::Effect
 				&& (Key.Parameter == TEXT("EdgeWearRoughnessWeight")
-					|| Key.Parameter == TEXT("EdgeWearRoughnessOffset")));
+					|| Key.Parameter == TEXT("EdgeWearRoughnessOffset")
+					|| Key.Parameter == TEXT("GradeTonemapStrength")
+					|| Key.Parameter == TEXT("GradeGamma")));
 	};
 
 	for (const FMixtormatShaderParamTag& Tag : Tags)

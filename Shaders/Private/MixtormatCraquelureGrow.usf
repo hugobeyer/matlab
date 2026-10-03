@@ -2,7 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 
 // Propagated craquelure. Cracks nucleate at seed points and grow outward as a cellular
@@ -69,11 +69,7 @@ uint Initialize;
 float Width;
 float Variation;
 uint BlendMode;
-uint Invert;
 float Weight;
-float Balance;
-float Contrast;
-float Offset;
 
 Texture2D<float4> PreviousState;
 Texture2D<float4> PreviousDirection;
@@ -517,7 +513,6 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// wall id.
 	Crack *= lerp(1.0f, MixtormatCellRandom01((uint)NearestId), Variation);
 
-	const float Incoming = MixtormatShapeMask(saturate(Crack), Contrast, Offset, Balance, Invert);
-	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+	const float Incoming = MixtormatShapeMaskInput(saturate(Crack));
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

@@ -276,7 +276,8 @@ void GatherStain(
 		1.0f, static_cast<float>(LayerEffect.StainDirtMaskTiling));
 	EffectData.bStainSourceMaskInvert = LayerEffect.bStainSourceMaskInvert;
 	EffectData.bStainDirtMaskInvert = LayerEffect.bStainDirtMaskInvert;
-	EffectData.StainIterations = FMath::Max(LayerEffect.StainIterations, 4);
+	// Safety cap for shader dispatch work; independent of editor ranges.
+	EffectData.StainIterations = FMath::Clamp(LayerEffect.StainIterations, 4, 128);
 	EffectData.StainSeed = static_cast<uint32>(FMath::Max(LayerEffect.StainSeed, 1));
 	EffectData.StainSourceAmount = LayerEffect.StainSourceAmount;
 	EffectData.StainGravity = LayerEffect.StainGravity;

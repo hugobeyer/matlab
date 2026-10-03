@@ -5,8 +5,8 @@
 #include "CoreMinimal.h"
 #include "MixtormatMaskShaping.generated.h"
 
-// The shaping chain every mask-producing node shares: contrast about the midpoint, an offset that
-// lifts the whole signal, a balance that thins or thickens what is left, then invert.
+// The shaping chain every mask-producing node shares: optional measured normalization, input
+// levels, contrast/offset, balance, then invert. UI ranges are not runtime clamps.
 //
 // The maths has always been shared -- one MixtormatShapeMask in MixtormatMaskOps.ush, called by
 // the texture mask, the generated mask, craquelure and the colour ID. What was not shared was
@@ -27,6 +27,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 	GENERATED_BODY()
 
 	// Remaps this node's incoming scalar field from its measured minimum and maximum to 0..1.
+		// Uses the shared GPU field-range utility: a constant field maps to zero before levels/shaping.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping")
 	bool bNormalizeInput = false;
 
@@ -43,14 +44,13 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 	bool bInvert = false;
 
 	// Thins toward black above 0.5, thickens toward white below it, as a power curve -- so it
-	// erodes what is there rather than fading it out. The shader saturates this, which is why the
-	// clamp is 0-1 and not the 0-2 and 0-16 it used to be in various places.
+	// erodes what is there rather than fading it out. The existing shader saturates this value;
+	// the metadata below describes only its editor range.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Balance = 0.5f;
 
 	// About a fixed 0.5 midpoint, which is the correct pivot because masks are stored raw rather
-	// than sRGB. The clamp stays generous for assets authored against the old range; the editor
-	// slider is the narrower one, since everything useful lives under about 4.
+	// than sRGB. The editor range does not restrict values from saved assets or bindings.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float Contrast = 1.0f;
 

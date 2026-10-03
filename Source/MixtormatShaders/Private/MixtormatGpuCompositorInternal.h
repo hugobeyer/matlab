@@ -7,6 +7,7 @@
 #include "MixtormatEffect.h"
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMask.h"
+#include "MixtormatMaskShaping.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterDefinition.h"
 #include "RendererInterface.h"
@@ -257,7 +258,7 @@ namespace MixtormatGpuCompositor
 		int32 FlowSteps = 16;
 	};
 
-	struct FMaskRenderData
+	struct FMaskRenderData : FMixtormatMaskShaping
 	{
 		FTextureRHIRef Texture;
 		FGuid PublishedSourceLayerId;
@@ -265,18 +266,11 @@ namespace MixtormatGpuCompositor
 		FName PublishedSourceOutput;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
-		bool bNormalizeInput = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
 		FVector2f UVOffset = FVector2f::ZeroVector;
 		bool bFlipU = false;
 		bool bFlipV = false;
 		int32 Rotation = 0;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-		bool bInvert = false;
 		// Reads the layer's own resolved values instead of an authored texture. Texture stays
 		// unset in that case -- there is nothing to register.
 		bool bLayerValues = false;
@@ -294,7 +288,7 @@ namespace MixtormatGpuCompositor
 		TArray<FMixtormatMaskCurvature, TInlineAllocator<2>> CurvatureFilters;
 	};
 
-	struct FColorIdRenderData
+	struct FColorIdRenderData : FMixtormatMaskShaping
 	{
 		FTextureRHIRef IdTexture;
 		EMixtormatColorIdMode Mode = EMixtormatColorIdMode::ColorRange;
@@ -305,18 +299,11 @@ namespace MixtormatGpuCompositor
 		float Softness = 0.02f;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
-		bool bInvert = false;
-		bool bNormalizeInput = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
 		FVector2f UVOffset = FVector2f::ZeroVector;
 		bool bFlipU = false;
 		bool bFlipV = false;
 		int32 Rotation = 0;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
 	};
 
 	struct FEffectRenderData
@@ -547,7 +534,7 @@ namespace MixtormatGpuCompositor
 		float GeneratorFlowFalloff = 1.0f;
 	};
 
-	struct FGeneratedMaskRenderData
+	struct FGeneratedMaskRenderData : FMixtormatMaskShaping
 	{
 		float CurvatureWeight = 0.0f;
 		float CurvatureBias = 0.0f;
@@ -569,18 +556,11 @@ namespace MixtormatGpuCompositor
 		int32 WarpRadius = 1;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Multiply;
 		float Weight = 1.0f;
-		bool bNormalizeInput = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
-		bool bInvert = false;
 	};
 
 	// Craquelure. No surface inputs at all -- that is the whole reason it left the generated
 	// mask, whose every signal is derived from the surface accumulated below it.
-	struct FCraquelureRenderData
+	struct FCraquelureRenderData : FMixtormatMaskShaping
 	{
 		bool bEnabled = true;
 		EMixtormatCraquelureMode Mode = EMixtormatCraquelureMode::Propagated;
@@ -605,14 +585,7 @@ namespace MixtormatGpuCompositor
 		int32 WarpPeriod = 4;
 		uint32 WarpSeed = 7;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Max;
-		bool bInvert = false;
-		bool bNormalizeInput = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
 		float Weight = 1.0f;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
 
 		// Propagated mode only.
 		int32 Iterations = 48;
@@ -732,20 +705,13 @@ namespace MixtormatGpuCompositor
 		int32 BoundaryWidth = 1;
 	};
 
-	struct FRandomIdRenderData
+	struct FRandomIdRenderData : FMixtormatMaskShaping
 	{
 		float MinValue = 0.0f;
 		float MaxValue = 1.0f;
 		uint32 Seed = 1;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
-		bool bInvert = false;
-		bool bNormalizeInput = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
-		float Balance = 0.5f;
-		float Contrast = 1.0f;
-		float Offset = 0.0f;
 	};
 
 	struct FRampIdRenderData
@@ -1778,10 +1744,6 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
-	void AddGradePasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer);
 
 	// MixtormatGpuSimulationPasses.cpp -- Wet Stain and Procedural Peeling: the iterative,
 	// ping-ponged solves.

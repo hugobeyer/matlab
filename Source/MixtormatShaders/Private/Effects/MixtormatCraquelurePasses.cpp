@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "../MixtormatGpuCompositorInternal.h"
+#include "../MixtormatGpuMaskShaping.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
@@ -11,8 +12,8 @@
 //
 // Its own node rather than a signal on the generated mask: that node reads the surface below
 // and early-returns when there is none, while this is generated from a lattice and means
-// something on the bottom layer. The mask tail is shared through MixtormatMaskOps.ush rather
-// than through a shared parameter struct, so this one carries no surface textures at all.
+// something on the bottom layer. Shaping/binding are shared with other mask producers,
+// while this producer carries no surface textures at all.
 class FMixtormatCraquelureCS final : public FGlobalShader
 {
 public:
@@ -31,11 +32,8 @@ public:
 		SHADER_PARAMETER(int32, WarpPeriod)
 		SHADER_PARAMETER(uint32, WarpSeed)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
@@ -145,11 +143,8 @@ public:
 		SHADER_PARAMETER(float, Width)
 		SHADER_PARAMETER(float, Variation)
 		SHADER_PARAMETER(uint32, BlendMode)
-		SHADER_PARAMETER(uint32, Invert)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
-		SHADER_PARAMETER(float, Offset)
 		// The warp is read here now rather than during growth, and the uniforms are declared at
 		// file scope in a shader with three entry points -- so every struct that compiles
 		// MixtormatCraquelureGrow.usf has to declare them, not just the pass that grows.
@@ -693,11 +688,9 @@ namespace MixtormatGpuCompositor
 			ResolveParameters->Width = Crack.Width;
 			ResolveParameters->Variation = Crack.Variation;
 			ResolveParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
-			ResolveParameters->Invert = Crack.bInvert ? 1u : 0u;
+
 			ResolveParameters->Weight = Crack.Weight;
-			ResolveParameters->Balance = Crack.Balance;
-			ResolveParameters->Contrast = Crack.Contrast;
-			ResolveParameters->Offset = Crack.Offset;
+
 			ResolveParameters->Warp = Crack.Warp;
 			ResolveParameters->WarpPeriod = Crack.WarpPeriod;
 			ResolveParameters->WarpSeed = Crack.WarpSeed;
@@ -708,11 +701,12 @@ namespace MixtormatGpuCompositor
 			ResolveParameters->OutputMask =
 				GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 
-			FComputeShaderUtils::AddPass(
+			AddMaskNodePass(
 				GraphBuilder,
 				RDG_EVENT_NAME("Mixtormat.Craquelure.Resolve.Layer%d.Child%d", LayerIndex, ChildIndex),
 				CraquelureResolveShader,
 				ResolveParameters,
+				Crack,
 				CrackGroups);
 
 			CombinedMask = MaskTargets[MaskWriteIndex];
@@ -743,11 +737,9 @@ namespace MixtormatGpuCompositor
 		CrackParameters->WarpPeriod = Crack.WarpPeriod;
 		CrackParameters->WarpSeed = Crack.WarpSeed;
 		CrackParameters->BlendMode = static_cast<uint32>(Crack.BlendMode);
-		CrackParameters->Invert = Crack.bInvert ? 1u : 0u;
+
 		CrackParameters->Weight = Crack.Weight;
-		CrackParameters->Balance = Crack.Balance;
-		CrackParameters->Contrast = Crack.Contrast;
-		CrackParameters->Offset = Crack.Offset;
+
 		CrackParameters->PreviousMask = MaskTargets[MaskReadIndex];
 		CrackParameters->LinearWrapSampler =
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
@@ -755,11 +747,12 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 		CrackParameters->OutputDistance = GraphBuilder.CreateUAV(CraqDistance);
 
-		FComputeShaderUtils::AddPass(
+		AddMaskNodePass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.Craquelure.Layer%d.Child%d", LayerIndex, ChildIndex),
 			CraquelureShader,
 			CrackParameters,
+			Crack,
 			FIntVector(
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),

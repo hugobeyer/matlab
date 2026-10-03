@@ -2,7 +2,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IncomingMask;
@@ -18,14 +18,11 @@ int2 OutputSize;
 uint UsePreShaped;
 uint Initialize;
 uint BlendMode;
-uint Invert;
 // Which scalar to take out of the four-channel source. EMixtormatLayerValueChannel by value, and
 // 1 -- plain red -- for an authored texture, which is what this shader always read.
 uint SourceChannel;
 float Weight;
-float Balance;
-float Contrast;
-float Offset;
+
 
 // Source placement. Offset is in UV and unrelated to the Offset above, which lifts the mask
 // value rather than moving where it is read from.
@@ -74,7 +71,7 @@ float SampleIncomingMask(float2 UV)
 	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
 	const float Incoming =
 		SelectMaskChannel(IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f));
-	return MixtormatShapeMask(Incoming, Contrast, Offset, Balance, Invert);
+	return MixtormatShapeMaskInput(Incoming);
 }
 
 [numthreads(8, 8, 1)]
@@ -117,6 +114,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	const float Incoming = SampleIncomingMask(UV);
-	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

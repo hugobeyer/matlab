@@ -122,13 +122,7 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		MaskData.bFlipU = MaskLayer.bFlipU;
 		MaskData.bFlipV = MaskLayer.bFlipV;
 		MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
-		MaskData.bNormalizeInput = MaskLayer.Shaping.bNormalizeInput;
-		MaskData.InputMin = MaskLayer.Shaping.InputMin;
-		MaskData.InputMax = MaskLayer.Shaping.InputMax;
-		MaskData.Balance = MaskLayer.Shaping.Balance;
-		MaskData.Contrast = MaskLayer.Shaping.Contrast;
-		MaskData.Offset = MaskLayer.Shaping.Offset;
-		MaskData.bInvert = MaskLayer.Shaping.bInvert;
+		static_cast<FMixtormatMaskShaping&>(MaskData) = MaskLayer.Shaping;
 		// Blur is a node in the recipe -- so it can be driven, published and instanced --
 		// but a pair of numbers by the time the passes see it. Summed rather than maxed:
 		// two blurs stacked on one mask should soften more than either alone, which is
@@ -196,13 +190,7 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		GeneratedData.WarpRadius = FMath::Max(GeneratedMask.WarpRadius, 1);
 		GeneratedData.BlendMode = GeneratedMask.BlendMode;
 		GeneratedData.Weight = GeneratedMask.Weight;
-		GeneratedData.bNormalizeInput = GeneratedMask.Shaping.bNormalizeInput;
-		GeneratedData.InputMin = GeneratedMask.Shaping.InputMin;
-		GeneratedData.InputMax = GeneratedMask.Shaping.InputMax;
-		GeneratedData.Balance = GeneratedMask.Shaping.Balance;
-		GeneratedData.Contrast = GeneratedMask.Shaping.Contrast;
-		GeneratedData.Offset = GeneratedMask.Shaping.Offset;
-		GeneratedData.bInvert = GeneratedMask.Shaping.bInvert;
+		static_cast<FMixtormatMaskShaping&>(GeneratedData) = GeneratedMask.Shaping;
 		GeneratedData.RidgeWeight = GeneratedMask.RidgeWeight;
 		Data.bHasMask = true;
 		return true;
@@ -251,13 +239,7 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		CrackData.Variation = Craquelure.Variation;
 		CrackData.BlendMode = Craquelure.BlendMode;
 		CrackData.Weight = Craquelure.Weight;
-		CrackData.bInvert = Craquelure.Shaping.bInvert;
-		CrackData.bNormalizeInput = Craquelure.Shaping.bNormalizeInput;
-		CrackData.InputMin = Craquelure.Shaping.InputMin;
-		CrackData.InputMax = Craquelure.Shaping.InputMax;
-		CrackData.Balance = Craquelure.Shaping.Balance;
-		CrackData.Contrast = Craquelure.Shaping.Contrast;
-		CrackData.Offset = Craquelure.Shaping.Offset;
+		static_cast<FMixtormatMaskShaping&>(CrackData) = Craquelure.Shaping;
 
 		CrackData.Mode = Craquelure.Mode;
 		CrackData.ReliefDepth = Craquelure.ReliefDepth;
