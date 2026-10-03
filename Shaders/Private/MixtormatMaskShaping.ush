@@ -4,6 +4,7 @@
 #define MIXTORMAT_MASK_SHAPING_USH
 
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatScalarRampCapacity.ush"
 
 uint Invert;
 float Balance;
@@ -11,6 +12,41 @@ float Contrast;
 float Offset;
 float2 MaskInputLevels;
 uint MaskRawOutput;
+uint ScalarRampCount;
+uint ScalarRampInterpolation;
+float4 ScalarRampPoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+
+float MixtormatEvalScalarRamp(float InputX)
+{
+	const uint Count = min(ScalarRampCount, (uint)MIXTORMAT_SCALAR_RAMP_MAX_POINTS);
+	if (Count < 2u) { return InputX; }
+	if (Count == 2u && ScalarRampInterpolation == 1u
+		&& abs(ScalarRampPoints[0].x) < 1.0e-6f && abs(ScalarRampPoints[0].y) < 1.0e-6f
+		&& abs(ScalarRampPoints[1].x - 1.0f) < 1.0e-6f && abs(ScalarRampPoints[1].y - 1.0f) < 1.0e-6f)
+	{
+		return InputX;
+	}
+	const float X = saturate(InputX);
+	uint Segment = Count - 2u;
+	[loop] for (uint I = 0u; I + 1u < Count; ++I)
+	{
+		if (X <= ScalarRampPoints[I + 1u].x) { Segment = I; break; }
+	}
+	const float4 A = ScalarRampPoints[Segment];
+	const float4 B = ScalarRampPoints[Segment + 1u];
+	const float H = max(B.x - A.x, 1.0e-6f);
+	const float T = saturate((X - A.x) / H);
+	if (ScalarRampInterpolation == 0u) { return X >= 1.0f ? B.y : A.y; }
+	if (ScalarRampInterpolation == 1u) { return lerp(A.y, B.y, T); }
+	if (ScalarRampInterpolation == 2u)
+	{
+		const float T2 = T*T, T3 = T2*T;
+		return (2*T3-3*T2+1)*A.y + (T3-2*T2+T)*H*A.z
+			+ (-2*T3+3*T2)*B.y + (T3-T2)*H*B.z;
+	}
+	const float U = 1.0f - T;
+	return clamp(U*A.y + T*B.y + ((U*U*U-U)*A.w + (T*T*T-T)*B.w) * H*H / 6.0f, -3.0f, 3.0f);
+}
 
 float MixtormatRemapMaskInput(float Value, float2 Levels)
 {
@@ -35,9 +71,9 @@ float MixtormatShapeMaskInput(float Incoming)
 		// Keep the measured field finite; invalid samples contribute zero.
 		return isnan(Incoming) || isinf(Incoming) ? 0.0f : Incoming;
 	}
-	// Future curve remapping belongs in the shared shaping helper, not individual producers.
-	return MixtormatShapeMask(MixtormatRemapMaskInput(Incoming, MaskInputLevels),
-		Contrast, Offset, Balance, Invert);
+	const float Leveled = MixtormatRemapMaskInput(Incoming, MaskInputLevels);
+	const float CurveBiased = MixtormatEvalScalarRamp(Leveled);
+	return MixtormatShapeMask(CurveBiased, Contrast, Offset, Balance, Invert);
 }
 
 float MixtormatBlendShapedMask(float Previous, float Incoming, uint BlendMode, float Weight)

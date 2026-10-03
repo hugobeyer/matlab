@@ -7,6 +7,7 @@
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatTile.h"
+#include "UI/Controls/SMixtormatScalarRamp.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -1194,6 +1195,31 @@ void SMixtormat::AddMaskShapingRows(
 			LOCTEXT("MaskInputMaxLabel", "Input Max"), Resolve, &FMixtormatMaskShaping::InputMax,
 			0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("MaskInputMaxHint", "White point applied after optional input normalization."))));
+	AddSliderRow(TargetPanel, MixtormatRow::MakeCaption(LOCTEXT("MaskCurveBiasLabel", "Curve Bias")));
+	AddSliderRow(TargetPanel,
+		SNew(SMixtormatScalarRamp)
+		.Ramp_Lambda([Resolve]()
+		{
+			const FMixtormatMaskShaping* Shaping = Resolve();
+			return Shaping ? Shaping->CurveBias : FMixtormatScalarRamp();
+		})
+		.Height(MixtormatTokens::ScalarRampHeight)
+		.CanonicalYMin(0.0f)
+		.CanonicalYMax(1.0f)
+		.SoftYMin(-1.5f)
+		.SoftYMax(1.5f)
+		.ExtendedYMin(-3.0f)
+		.ExtendedYMax(3.0f)
+		.OnChanged_Lambda([this, Resolve](const FMixtormatScalarRamp& Ramp)
+		{
+			if (FMixtormatMaskShaping* Shaping = Resolve())
+			{
+				Shaping->CurveBias = Ramp;
+				RefreshLayeredPreview();
+			}
+		})
+		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
+		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); }));
 	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatMaskShaping>(
 			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,

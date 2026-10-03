@@ -3,6 +3,7 @@
 #pragma once
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatScalarRampMath.h"
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
 #include "ShaderParameterStruct.h"
@@ -14,7 +15,10 @@
 	SHADER_PARAMETER(float, Contrast) \
 	SHADER_PARAMETER(float, Offset) \
 	SHADER_PARAMETER(FVector2f, MaskInputLevels) \
-	SHADER_PARAMETER(uint32, MaskRawOutput)
+	SHADER_PARAMETER(uint32, MaskRawOutput) \
+	SHADER_PARAMETER(uint32, ScalarRampCount) \
+	SHADER_PARAMETER(uint32, ScalarRampInterpolation) \
+	SHADER_PARAMETER_ARRAY(FVector4f, ScalarRampPoints, [FMixtormatScalarRamp::MaxPoints])
 
 namespace MixtormatGpuCompositor
 {
@@ -27,6 +31,14 @@ namespace MixtormatGpuCompositor
 		Parameters.Offset = Shaping.Offset;
 		Parameters.MaskInputLevels = FVector2f(Shaping.InputMin, Shaping.InputMax);
 		Parameters.MaskRawOutput = 0u;
+		const MixtormatScalarRampMath::FGpuPayload Ramp =
+			MixtormatScalarRampMath::PrepareGpuPayload(Shaping.CurveBias);
+		Parameters.ScalarRampCount = Ramp.PointCount;
+		Parameters.ScalarRampInterpolation = Ramp.Interpolation;
+		for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+		{
+			Parameters.ScalarRampPoints[Index] = Ramp.Points[Index];
+		}
 	}
 
 	void AddNormalizedMaskShapingPass(

@@ -229,6 +229,19 @@ void UMixtormatMaterial::PostLoad()
 	// IDs, so those have to be settled before it looks at them.
 	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups);
 	MixtormatLayerGroups::ValidateGroups(Layers, LayerGroups);
+	const auto SanitizeChildren = [](TArray<FMixtormatLayerChild>& Children)
+	{
+		for (FMixtormatLayerChild& Child : Children)
+		{
+			Child.Mask.Shaping.CurveBias.Sanitize();
+			Child.Generated.Shaping.CurveBias.Sanitize();
+			Child.Craquelure.Shaping.CurveBias.Sanitize();
+			Child.ColorId.Shaping.CurveBias.Sanitize();
+			Child.RandomId.Shaping.CurveBias.Sanitize();
+		}
+	};
+	for (FMixtormatLayer& Layer : Layers) { SanitizeChildren(Layer.Children); }
+	for (FMixtormatLayerGroup& Group : LayerGroups) { SanitizeChildren(Group.Children); }
 }
 
 FPrimaryAssetId UMixtormatMaterial::GetPrimaryAssetId() const

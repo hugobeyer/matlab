@@ -47,6 +47,17 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 #define THEME_NUMBER(Category, Name, Min, Max) \
 	{TEXT(#Name), TEXT(Category), &MixtormatTokens::Name, MixtormatTokens::Name, Min, Max}
 	static const TArray<FMixtormatThemeNumber> Entries = {
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampHeight, 48.0f, 240.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampCurveThickness, 0.5f, 5.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampGridThickness, 0.25f, 3.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampMajorGridThickness, 0.25f, 4.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampPointSize, 3.0f, 16.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampIconSize, 8.0f, 28.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampIconGap, 0.0f, 16.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampToolbarGap, 0.0f, 20.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampToolbarGroupGap, 0.0f, 32.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampToolbarHeight, 14.0f, 40.0f),
+		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampViewportPadding, 0.0f, 32.0f),
 		THEME_NUMBER("Rows", RowHeight, 12.0f, 48.0f),
 		THEME_NUMBER("Rows", RowGap, 0.0f, 24.0f),
 		THEME_NUMBER("Rows", SegmentedControlGap, 0.0f, 24.0f),
@@ -149,6 +160,10 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 {
 #define THEME_COLOR(Name) {TEXT(#Name), MixtormatPalette::Name()}
 	static const TArray<FMixtormatThemeColor> Entries = {
+		THEME_COLOR(ScalarRampBackground), THEME_COLOR(ScalarRampOutsideRangeBackground),
+		THEME_COLOR(ScalarRampGrid), THEME_COLOR(ScalarRampMajorGrid), THEME_COLOR(ScalarRampCurve),
+		THEME_COLOR(ScalarRampFill), THEME_COLOR(ScalarRampPoint), THEME_COLOR(ScalarRampPointHover),
+		THEME_COLOR(ScalarRampPointSelected),
 		THEME_COLOR(Window), THEME_COLOR(TopBar), THEME_COLOR(Shell),
 		THEME_COLOR(Panel), THEME_COLOR(RaisedPanel), THEME_COLOR(RaisedPanelHover),
 		THEME_COLOR(GroupSurround), THEME_COLOR(HeaderTint), THEME_COLOR(HeaderText),

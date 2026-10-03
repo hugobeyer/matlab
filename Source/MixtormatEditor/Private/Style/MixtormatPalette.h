@@ -206,4 +206,15 @@ namespace MixtormatPalette
 	inline FLinearColor LayerChildSelectedRight(){ return Hex(0x303539, 0.94f); }
 	inline FLinearColor LayerHiddenTop()   { return Hex(0x191B1D); }
 	inline FLinearColor LayerHiddenEnd()   { return Hex(0x101112); }
+
+	// Scalar-ramp editor colors are semantic roles so the live style panel can tune them.
+	inline FLinearColor ScalarRampBackground() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampBackground"), Hex(0x090A0B)); }
+	inline FLinearColor ScalarRampOutsideRangeBackground() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampOutsideRangeBackground"), Hex(0x050606)); }
+	inline FLinearColor ScalarRampGrid() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampGrid"), Hex(0xFFFFFF, 0.07f)); }
+	inline FLinearColor ScalarRampMajorGrid() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampMajorGrid"), Hex(0xFFFFFF, 0.14f)); }
+	inline FLinearColor ScalarRampCurve() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampCurve"), Hex(0x7FC4DB)); }
+	inline FLinearColor ScalarRampFill() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampFill"), Hex(0x4D8FA8, 0.18f)); }
+	inline FLinearColor ScalarRampPoint() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampPoint"), Hex(0xD7E5EA)); }
+	inline FLinearColor ScalarRampPointHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampPointHover"), Hex(0xFFFFFF)); }
+	inline FLinearColor ScalarRampPointSelected() { return FMixtormatLiveTheme::ResolveColor(TEXT("ScalarRampPointSelected"), Hex(0x6CA8BF)); }
 }

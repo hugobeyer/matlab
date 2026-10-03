@@ -77,4 +77,10 @@ namespace MixtormatIcons
 	// The tick in a menu's icon gutter.
 	const FSlateBrush* Check();
 	const FSlateBrush* Trash();
+	const FSlateBrush* ScalarRampConstant();
+	const FSlateBrush* ScalarRampLinear();
+	const FSlateBrush* ScalarRampSpline();
+	const FSlateBrush* ScalarRampBSpline();
+	const FSlateBrush* ScalarRampFrame();
+	const FSlateBrush* ScalarRampReset();
 }

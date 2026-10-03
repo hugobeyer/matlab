@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MixtormatScalarRamp.h"
 #include "MixtormatMaskShaping.generated.h"
 
 // The shaping chain every mask-producing node shares: optional measured normalization, input
@@ -40,6 +41,10 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 
 	// Flips the mask after every other stage, so it inverts what you see rather than what was
 	// sampled.
+	// Identity by default, preserving every existing mask's output.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping")
+	FMixtormatScalarRamp CurveBias;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping")
 	bool bInvert = false;
 

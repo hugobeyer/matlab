@@ -212,6 +212,19 @@ namespace MixtormatTokens
 	// Menu and toolbar glyphs, which sit alone rather than inside a dense row.
 	constexpr float IconBrushSizeLarge = 28.0f;
 
+	// ---- Scalar Ramp / Curve Editor -----------------------------------------------------------
+	inline float ScalarRampHeight = 112.0f;
+	inline float ScalarRampCurveThickness = 1.6f;
+	inline float ScalarRampGridThickness = 0.7f;
+	inline float ScalarRampMajorGridThickness = 1.2f;
+	inline float ScalarRampPointSize = 7.0f;
+	inline float ScalarRampIconSize = 13.0f;
+	inline float ScalarRampIconGap = 2.0f;
+	inline float ScalarRampToolbarGap = 3.0f;
+	inline float ScalarRampToolbarGroupGap = 8.0f;
+	inline float ScalarRampToolbarHeight = 20.0f;
+	inline float ScalarRampViewportPadding = 8.0f;
+
 	// ---- Brand ------------------------------------------------------------------------------
 	// The mark's own proportions, so none of these derive from anything else.
 	constexpr float BrandIconWidth = 20.0f;

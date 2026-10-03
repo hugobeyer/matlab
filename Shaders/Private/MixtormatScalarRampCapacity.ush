@@ -1,0 +1,2 @@
+#pragma once
+#define MIXTORMAT_SCALAR_RAMP_MAX_POINTS 8

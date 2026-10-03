@@ -728,6 +728,12 @@ void FMixtormatStyle::Refresh()
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/quality-high"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampConstant"), TEXT("Icons/ramp-constant"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something

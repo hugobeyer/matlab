@@ -581,7 +581,7 @@ void SMixtormat::RefreshLayeredPreview(const bool bMarkDirty)
 	// the badge and the inspector all read the authored payload to find that out.
 	SyncChildInstances();
 
-	bInteractiveEdit = IsInteractiveEdit();
+	bInteractiveEdit = IsInteractiveEdit() || bInteractiveEdit;
 	bPreviewSubmitPending = true;
 
 	if (bMarkDirty)

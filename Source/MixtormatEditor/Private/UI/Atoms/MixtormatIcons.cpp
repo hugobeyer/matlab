@@ -72,4 +72,10 @@ namespace MixtormatIcons
 	const FSlateBrush* Folder()        { return Get(TEXT("Mixtormat.Icon.Folder")); }
 	const FSlateBrush* Check()        { return Get(TEXT("Mixtormat.Icon.Check")); }
 	const FSlateBrush* Trash()        { return Get(TEXT("Mixtormat.Icon.Trash")); }
+	const FSlateBrush* ScalarRampConstant() { return Get(TEXT("Mixtormat.Icon.ScalarRampConstant")); }
+	const FSlateBrush* ScalarRampLinear() { return Get(TEXT("Mixtormat.Icon.ScalarRampLinear")); }
+	const FSlateBrush* ScalarRampSpline() { return Get(TEXT("Mixtormat.Icon.ScalarRampSpline")); }
+	const FSlateBrush* ScalarRampBSpline() { return Get(TEXT("Mixtormat.Icon.ScalarRampBSpline")); }
+	const FSlateBrush* ScalarRampFrame() { return Get(TEXT("Mixtormat.Icon.ScalarRampFrame")); }
+	const FSlateBrush* ScalarRampReset() { return Get(TEXT("Mixtormat.Icon.ScalarRampReset")); }
 }
