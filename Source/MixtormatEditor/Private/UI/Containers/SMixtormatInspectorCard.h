@@ -6,7 +6,9 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-// Related inspector values on a continuous stepped sheet; popovers opt into the compact layout.
+class SBox;
+
+// Related inspector values on a rounded rectangular sheet; popovers opt into the compact layout.
 class SMixtormatInspectorCard final : public SCompoundWidget
 {
 public:
@@ -33,4 +35,5 @@ public:
 
 private:
 	bool bCompactLayout = false;
+	TSharedPtr<SBox> HeaderBox;
 };

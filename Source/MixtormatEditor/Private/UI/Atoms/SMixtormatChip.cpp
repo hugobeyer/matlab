@@ -10,6 +10,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -73,6 +74,10 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 		[
 			// The chip is a well like any other: darker than the body it sits in, no border.
 			// Lifts to the hover well while hovered or open, like the slider trough.
+			SNew(SBorder)
+			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.WellOutline")))
+			.Padding(0.0f)
+			[
 			SNew(SMixtormatGradientBox)
 			.StartColor_Lambda([this]()
 			{
@@ -94,6 +99,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 				[
 					Content
 				]
+			]
 			]
 		]
 	];

@@ -165,17 +165,8 @@ TSharedRef<SWidget> MakeInspectorHairline(const TAttribute<bool>& bShown)
 
 TSharedRef<SWidget> MakeCaption(const FText& Caption)
 {
-	// A subgroup header: optional hairline above it, then the caption text.
+	// A subgroup header with its own top spacing, but no hairline; foldout headers own those.
 	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, MixtormatTokens::CaptionHeightAbove, 0.0f, 0.0f)
-		[
-			MakeInspectorHairline(TAttribute<bool>::CreateLambda([]()
-			{
-				return MixtormatTokens::InspectorHairlineAboveSubgroups >= 0.5f;
-			}))
-		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[

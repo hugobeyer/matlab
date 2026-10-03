@@ -110,22 +110,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				])
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(STextBlock)
-				.Text_Lambda([this]()
-				{
-					if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
-					{
-						return FText::GetEmpty();
-					}
-					const UMixtormatSurface* Surface =
-						WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous();
-					return MixtormatUI::HeightBlendSourceText(Surface);
-				})
-				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-			]
-			+ SVerticalBox::Slot().AutoHeight()
+
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
 			[
 				NumericRow(LOCTEXT("HeightMaskStrength", "Blend Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
 			]

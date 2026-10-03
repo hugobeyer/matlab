@@ -353,7 +353,6 @@ TSharedRef<SVerticalBox> SMixtormat::AddCard(
 	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 	TargetPanel->AddSlot()
 		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::CardGap)
 		[
 			SNew(SMixtormatInspectorCard)
 			.Title(Title)

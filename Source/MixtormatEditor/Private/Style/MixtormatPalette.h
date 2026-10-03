@@ -40,7 +40,15 @@ namespace MixtormatPalette
 	inline FLinearColor Panel()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Panel"), Hex(0x191B1D)); }
 	inline FLinearColor PanelBottom()  { return Hex(0x141617); }
 	inline FLinearColor RaisedPanel()  { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanel"), Hex(0x202224)); }
-	inline FLinearColor GroupCardBackground() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupCardBackground"), Hex(0x202224)); }
+	inline FLinearColor GroupCardBackground()
+		{
+			FLinearColor Color = FMixtormatLiveTheme::ResolveColor(TEXT("GroupCardBackground"), RaisedPanel());
+			// Add the background itself at five percent opacity; preserve its hue and alpha.
+			Color.R = FMath::Clamp(Color.R + Color.R * 0.05f, 0.0f, 1.0f);
+			Color.G = FMath::Clamp(Color.G + Color.G * 0.05f, 0.0f, 1.0f);
+			Color.B = FMath::Clamp(Color.B + Color.B * 0.05f, 0.0f, 1.0f);
+			return Color;
+		}
 	inline FLinearColor RaisedPanelHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanelHover"), Hex(0x26292B)); }
 	inline FLinearColor Viewport()     { return Hex(0x161719); }
 	inline FLinearColor ThumbnailBackground() { return Hex(0x101112); }
@@ -80,8 +88,18 @@ namespace MixtormatPalette
 	inline FLinearColor WellBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottom"), Hex(0x0C0E0F)); }
 	inline FLinearColor WellTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTopHover"), Hex(0x0A0B0C)); }
 	inline FLinearColor WellBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottomHover"), Hex(0x121416)); }
-	inline FLinearColor WellOutline()  { return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutline"), Hex(0x242729)); }
-	inline FLinearColor WellOutlineHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutlineHover"), Hex(0x383D41)); }
+	inline FLinearColor WellOutline()
+	{
+		FLinearColor Color = FMixtormatLiveTheme::ResolveColor(TEXT("WellOutline"), Hex(0x242729));
+		Color.A *= 0.4f;
+		return Color;
+	}
+	inline FLinearColor WellOutlineHover()
+	{
+		FLinearColor Color = FMixtormatLiveTheme::ResolveColor(TEXT("WellOutlineHover"), Hex(0x383D41));
+		Color.A *= 0.4f;
+		return Color;
+	}
 	inline FLinearColor WellEntry()    { return FMixtormatLiveTheme::ResolveColor(TEXT("WellEntry"), Hex(0x070808)); }
 
 	// ---- Active -----------------------------------------------------------------------------
@@ -123,7 +141,12 @@ namespace MixtormatPalette
 	// amber so a reference row being previewed still reads as both.
 	inline FLinearColor PreviewDot()   { return FMixtormatLiveTheme::ResolveColor(TEXT("PreviewDot"), Hex(0xFF7A1A)); }
 	inline FLinearColor Destructive()  { return Hex(0xC46A6A); }
-	inline FLinearColor Tick()         { return Hex(0x4A4D4F); }
+	inline FLinearColor Tick()
+		{
+			FLinearColor Color = WellOutline();
+			Color.A *= 0.4f;
+			return Color;
+		}
 	inline FLinearColor SegmentSeam()  { return Hex(0xFFFFFF, 0.08f); }
 
 	// ---- Type -------------------------------------------------------------------------------
@@ -142,6 +165,7 @@ namespace MixtormatPalette
 	// Between CaptionText and HeaderText on purpose: a card title outranks the captions inside
 	// the card and sits under the foldout header that contains it.
 	inline FLinearColor CardTitleText(){ return FMixtormatLiveTheme::ResolveColor(TEXT("CardTitleText"), Hex(0x8C8C8C)); }
+	inline FLinearColor GroupCardTitleText() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupCardTitleText"), Hex(0x8C8C8C)); }
 	inline FLinearColor BadgeText()    { return Hex(0xFFFFFF, 0.6f); }
 	inline FLinearColor BadgeSurface() { return Hex(0x0d0d0d); }
 	// Plate behind each viewport rail button; hover/press add Accent to it.

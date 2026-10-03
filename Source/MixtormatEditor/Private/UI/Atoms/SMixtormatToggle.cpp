@@ -8,6 +8,7 @@
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SBorder.h"
 
 void SMixtormatToggle::Construct(const FArguments& InArgs)
 {
@@ -26,6 +27,10 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 		[
 			// The well. Same gradient and radius as a chip or a slider trough, because it is the
 			// same thing: a recess in the panel that a value sits in.
+			SNew(SBorder)
+			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.WellOutline")))
+			.Padding(0.0f)
+			[
 			SNew(SMixtormatGradientBox)
 			.StartColor(MixtormatPalette::WellTop())
 			.EndColor(MixtormatPalette::WellBottom())
@@ -52,6 +57,7 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 						.CornerRadius(MixtormatTokens::CornerRadiusInner)
 					]
 				]
+			]
 			]
 		]
 	];

@@ -333,10 +333,23 @@ namespace MixtormatTokens
 	// Between a card's title and the sheet under it.
 	inline float CardTitleGap = 3.0f;
 
-	// Inspector-column cards use a stepped, half-width title silhouette. Popovers keep
-	// the compact sheet layout and its existing CardPadding/CardTitleGap values.
+	// Inspector-column cards use a rounded sheet with proportional title/action slots.
+	// Popovers keep the compact layout and its existing CardPadding/CardTitleGap values.
+	inline float GroupCardHeaderOpacity = 1.0f;
+	inline float GroupCardBodyOpacity = 0.01f;
 	inline float GroupCardHorizontalPadding = 8.0f;
+	inline float GroupCardHeaderPaddingLeft = 8.0f;
+	inline float GroupCardHeaderPaddingTop = 0.0f;
+	inline float GroupCardHeaderPaddingRight = 8.0f;
+	inline float GroupCardHeaderPaddingBottom = 0.0f;
+	inline float GroupCardOuterMarginLeft = 0.0f;
+	inline float GroupCardOuterMarginTop = 0.0f;
+	inline float GroupCardOuterMarginRight = 0.0f;
+	inline float GroupCardOuterMarginBottom = 10.0f;
+	inline float GroupCardContentPaddingTop = 2.0f;
+	inline float GroupCardContentPaddingBottom = 2.0f;
 	inline float GroupCardTitleHeight = 24.0f;
+	// Retained for theme compatibility; inspector cards no longer use a title drop.
 	inline float GroupCardTitleDropDepth = 11.0f;
 	inline float GroupCardTitleWidthRatio = 0.5f;
 	inline float GroupCardLeadingIconSize = 14.0f;
@@ -368,7 +381,7 @@ namespace MixtormatTokens
 	inline float InspectorHairlineThickness = 1.0f;
 	inline float InspectorHairlineInset = 12.0f;
 	inline float InspectorHairlineUnderHeader = 0.0f;
-	inline float InspectorHairlineAboveSubgroups = 1.0f;
+
 	inline float InspectorMaskGalleryMaxHeight = 420.0f;
 	inline float InspectorFeatureButtonGap = 3.0f;
 	inline float InspectorColorSwatchWidth = 108.0f;
@@ -503,6 +516,7 @@ namespace MixtormatTokens
 	// sheet; a caption names a run of rows inside one. They were the same style, which is why a
 	// card read as another caption that happened to sit higher up.
 	inline float FontCardTitle = 8.0f;
+	inline float FontGroupCardTitle = 8.0f;
 	inline float FontTile = 8.0f;
 	// Group headers: small tracked caps. A header names a group rather than being read as content,
 	// so it sits under the caption tier -- the extra header height carries it instead of the type.
@@ -519,11 +533,13 @@ namespace MixtormatTokens
 	// At or above 0.5 the face is Bold, below it Regular -- there is no half-weight in the
 	// default font family, so the slider is a switch that happens to be continuous.
 	inline float CardTitleBold = 0.0f;
+	inline float GroupCardTitleBold = 0.0f;
 	inline float GroupHeaderBold = 1.0f;
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.
 	constexpr int32 CaptionLetterSpacing = 140;
+	inline float GroupCardTitleLetterSpacing = static_cast<float>(CaptionLetterSpacing);
 	constexpr int32 GroupHeaderLetterSpacing = 160;
 	// The layer source is caps too, but it runs alongside a mixed-case name rather than standing
 	// alone, so it is opened up less -- full caption spacing made it the loudest thing in the row.

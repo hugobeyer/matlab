@@ -577,6 +577,9 @@ void FMixtormatStyle::Refresh()
 
 	StyleInstance->Set(TEXT("Mixtormat.SegmentSeam"), new FSlateColorBrush(MixtormatPalette::SegmentSeam()));
 
+	StyleInstance->Set(TEXT("Mixtormat.WellOutline"), new FSlateRoundedBoxBrush(
+		FLinearColor::Transparent, MixtormatTokens::CornerRadius,
+		MixtormatPalette::WellOutline(), MixtormatTokens::OutlineWidth));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(MixtormatPalette::Tick()));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
@@ -637,6 +640,18 @@ void FMixtormatStyle::Refresh()
 	CardTitleFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
 	CardTitle.SetFont(CardTitleFont);
 	StyleInstance->Set(TEXT("Mixtormat.CardTitle"), CardTitle);
+
+	FTextBlockStyle GroupCardTitle = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(
+			MixtormatStylePrivate::Weight(MixtormatTokens::GroupCardTitleBold),
+			MixtormatTokens::FontGroupCardTitle))
+		.SetColorAndOpacity(MixtormatPalette::GroupCardTitleText())
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo GroupCardTitleFont = GroupCardTitle.Font;
+	GroupCardTitleFont.LetterSpacing = FMath::RoundToInt(MixtormatTokens::GroupCardTitleLetterSpacing);
+	GroupCardTitle.SetFont(GroupCardTitleFont);
+	StyleInstance->Set(TEXT("Mixtormat.GroupCardTitle"), GroupCardTitle);
 
 	FTextBlockStyle RowLabel = SliderLabel;
 	RowLabel.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
