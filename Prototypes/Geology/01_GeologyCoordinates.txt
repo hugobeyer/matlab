@@ -1,0 +1,119 @@
+#runover vdb
+#bind vdb size_ref float port=size_ref nouipromote voxelsize
+#bind vdb !&geology_uvw float[3] port=geology_uvw
+#bind vdb !&bedding_normal float[3] port=bedding_normal
+#bind vdb !&bedding_tangent_u float[3] port=bedding_tangent_u
+#bind vdb !&bedding_tangent_v float[3] port=bedding_tangent_v
+#bind vdb !&strata_coord float port=strata_coord
+#bind vdb !&break_coord_u float port=break_coord_u
+#bind vdb !&break_coord_v float port=break_coord_v
+#bind parm seed int val=1729
+#bind parm global_slope_u float val=0.08
+#bind parm global_slope_v float val=-0.04
+#bind parm compression float val=1
+#bind parm fold_amount float val=0.12
+#bind parm fold_frequency_u float val=2.4
+#bind parm fold_frequency_v float val=1.9
+#bind parm primary_shear float val=0.06
+#bind parm secondary_shear float val=0.04
+#bind parm warp_amount float val=0.025
+#bind parm warp_scale float val=1.6
+
+// Houdini 22 COP OpenCL; paste the entire file into one OpenCL COP.
+// size_ref supplies the voxel domain, not density. Activate the desired domain.
+// U,V,W remain physical material units: there is NO layer normalization here.
+// Frequencies are radians per material unit; warp_scale is a material length.
+// Each shear updates one coordinate using only the other coordinates.
+// Its determinant is one; composition is invertible, followed by positive scaling.
+// Safety clamps apply to controls; finite world positions within +/-100 are untouched.
+// Outside that domain position saturation is intentional, not invertible.
+
+float gc_safe(float x, float lo, float hi)
+{
+    return clamp(isfinite(x) ? x : 0.0f, lo, hi);
+}
+
+uint gc_hash(uint x)
+{
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    return x ^ (x >> 16);
+}
+
+float gc_phase(uint seed, uint salt)
+{
+    return 6.28318530718f * (float)(gc_hash(seed ^ salt) >> 8) / 16777216.0f;
+}
+
+// Analytic forward-mode derivatives: gradients always refer to world XYZ.
+void gc_shear(__private float *a, __private float3 *ga,
+              float b, float3 gb, float amount, float frequency, float phase)
+{
+    float t = frequency * b + phase;
+    *a += amount * sin(t);
+    *ga += (amount * frequency * cos(t)) * gb;
+}
+
+float3 gc_unit(float3 g)
+{
+    return g / fmax(length(g), 1.0e-12f);
+}
+
+@KERNEL
+{
+    float3 p = @size_ref.pos;
+    p = (float3)(gc_safe(p.x, -100.0f, 100.0f),
+                 gc_safe(p.y, -100.0f, 100.0f),
+                 gc_safe(p.z, -100.0f, 100.0f));
+    uint seed = (uint)@seed;
+    float su = gc_safe(@global_slope_u, -4.0f, 4.0f);
+    float sv = gc_safe(@global_slope_v, -4.0f, 4.0f);
+    float compression = gc_safe(@compression, 0.1f, 10.0f);
+    float fold = gc_safe(@fold_amount, -1.0f, 1.0f);
+    float fu = gc_safe(@fold_frequency_u, 0.0f, 32.0f);
+    float fv = gc_safe(@fold_frequency_v, 0.0f, 32.0f);
+    float primary = gc_safe(@primary_shear, -0.5f, 0.5f);
+    float secondary = gc_safe(@secondary_shear, -0.5f, 0.5f);
+    float warp = gc_safe(@warp_amount, 0.0f, 0.5f);
+    float wf = 1.0f / gc_safe(@warp_scale, 0.25f, 100.0f);
+
+    // Right-handed initial material frame: U=X, V=-Z, W=Y.
+    float U = p.x, V = -p.z, W = p.y;
+    float3 gU = (float3)(1, 0, 0);
+    float3 gV = (float3)(0, 0, -1);
+    float3 gW = (float3)(0, 1, 0);
+
+    // Primary deformation precedes bedding construction. Order is significant.
+    gc_shear(&U, &gU, W, gW, primary, 1.3f, gc_phase(seed, 11u));
+    gc_shear(&V, &gV, U, gU, secondary, 1.1f, gc_phase(seed, 23u));
+
+    // Optional three low-frequency shears; zero warp_amount disables all three.
+    gc_shear(&U, &gU, V, gV, warp, wf, gc_phase(seed, 37u));
+    gc_shear(&V, &gV, W, gW, warp, 0.83f * wf, gc_phase(seed, 53u));
+    gc_shear(&W, &gW, U, gU, warp, 0.71f * wf, gc_phase(seed, 71u));
+
+    // Bedding slope is a W shear, as is the bounded sin(U)*cos(V) fold.
+    W += su * U + sv * V;
+    gW += su * gU + sv * gV;
+    float a = fu * U + gc_phase(seed, 89u);
+    float b = fv * V + gc_phase(seed, 107u);
+    W += fold * sin(a) * cos(b);
+    gW += fold * (fu * cos(a) * cos(b) * gU
+                 - fv * sin(a) * sin(b) * gV);
+
+    // Larger compression packs the same material-coordinate interval in less space.
+    W *= compression;
+    gW *= compression;
+    // det(dUVW/dXYZ) = compression > 0 in the unsaturated domain.
+    float3 N = gc_unit(gW);
+    float3 Tu = gc_unit(cross(gV, gW));
+    float3 Tv = cross(N, Tu);
+
+    @geology_uvw.set((float3)(U, V, W));
+    @bedding_normal.set(N);
+    @bedding_tangent_u.set(Tu);
+    @bedding_tangent_v.set(Tv);
+    @strata_coord.set(W);
+    @break_coord_u.set(U);
+    @break_coord_v.set(V);
+}

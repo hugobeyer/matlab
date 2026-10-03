@@ -1,0 +1,143 @@
+#runover vdb
+#bind vdb size_ref float port=size_ref nouipromote voxelsize
+#bind vdb geology_uvw float3 port=geology_uvw
+#bind vdb layer_id float port=layer_id
+#bind vdb layer_phase float port=layer_phase
+#bind vdb local_thickness float port=local_thickness
+#bind vdb !&piece_id float port=piece_id
+#bind vdb !&fracture_distance float port=fracture_distance
+#bind vdb !&fracture_mask float port=fracture_mask
+#bind vdb !&piece_local_uvw float3 port=piece_local_uvw
+#bind vdb !&fracture_activation float port=fracture_activation
+#bind parm break_frequency_u float val=1.35
+#bind parm break_frequency_v float val=0.8
+#bind parm break_skew_u float val=0.16
+#bind parm break_skew_v float val=-0.12
+#bind parm break_warp float val=0.045
+#bind parm break_warp_scale float val=2
+#bind parm layer_stagger float val=0.3
+#bind parm size_variation float val=0.8
+#bind parm fracture_width float val=0.045
+#bind parm fracture_persistence float val=4
+#bind parm fracture_length float val=1
+#bind parm fracture_depth float val=1.6
+#bind parm secondary_joint_amount float val=0.55
+#bind parm secondary_joint_angle float val=25
+#bind parm seed int val=1729
+
+uint g03_hash(uint x)
+{
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    return x ^ (x >> 16);
+}
+float g03_random(int a, int b, int c, uint seed)
+{
+    uint x = as_uint(a) ^ g03_hash(as_uint(b)) ^ g03_hash(as_uint(c) + seed);
+    return (float)(g03_hash(x) >> 8) * (1.0f / 16777216.0f);
+}
+float g03_edge(int k, int family, float variation, uint seed)
+{
+    return (float)k + 0.36f * variation *
+        (2.0f * g03_random(k, family, 113, seed) - 1.0f);
+}
+int g03_segment(float j, int family, float variation, uint seed)
+{
+    int k = convert_int_rtn(clamp(j, -126.0f, 126.0f));
+    if (j < g03_edge(k, family, variation, seed)) --k;
+    else if (j >= g03_edge(k + 1, family, variation, seed)) ++k;
+    return k;
+}
+
+@KERNEL
+{
+    float3 P = @size_ref.pos;
+    float3 q = @geology_uvw.worldSample(P);
+    float phase = clamp(@layer_phase.worldSample(P), 0.0f, 1.0f);
+    int layer = convert_int_rte(clamp(@layer_id.worldSample(P), -128.0f, 127.0f));
+    float s = (float)layer + phase;
+    float thick = fmax(@local_thickness.worldSample(P), 0.001f);
+    float eps = fmax(0.5f * @size_ref.voxelsize.x, 0.0001f);
+    float3 dx = (@geology_uvw.worldSample(P + (float3)(eps,0,0)) -
+                 @geology_uvw.worldSample(P - (float3)(eps,0,0))) / (2.0f*eps);
+    float3 dy = (@geology_uvw.worldSample(P + (float3)(0,eps,0)) -
+                 @geology_uvw.worldSample(P - (float3)(0,eps,0))) / (2.0f*eps);
+    float3 dz = (@geology_uvw.worldSample(P + (float3)(0,0,eps)) -
+                 @geology_uvw.worldSample(P - (float3)(0,0,eps))) / (2.0f*eps);
+    float3 gu = (float3)(dx.x,dy.x,dz.x);
+    float3 gv = (float3)(dx.y,dy.y,dz.y);
+    float3 gw = (float3)(dx.z,dy.z,dz.z);
+    float3 gs = @layer_id.worldGradient(P) + @layer_phase.worldGradient(P);
+    float fu = clamp(@break_frequency_u, 0.05f, 12.0f);
+    float fv = clamp(@break_frequency_v, 0.05f, 12.0f);
+    float persistence = clamp(@fracture_persistence, 1.0f, 12.0f);
+    float depth = clamp(@fracture_depth, 0.1f, 6.0f);
+    float extent = clamp(@fracture_length, 0.2f, 1.5f);
+    float variation = clamp(@size_variation, 0.0f, 1.0f);
+    float stagger = clamp(@layer_stagger, 0.0f, 0.75f);
+    float warp = clamp(@break_warp, 0.0f, 0.25f);
+    float scale = clamp(@break_warp_scale, 0.0f, 8.0f);
+    float ku = clamp(@break_skew_u, -1.0f, 1.0f);
+    float kv = clamp(@break_skew_v, -1.0f, 1.0f);
+    uint seed = (uint)@seed;
+    float phi = 6.2831853f * g03_random(0,0,17,seed);
+    float au = scale*q.y + 0.4f*q.z + phi;
+    float av = scale*q.x - 0.3f*q.z + phi;
+    float su = 0.9f*s/persistence + phi;
+    float sv = 0.7f*s/persistence + phi;
+    float angle = clamp(@secondary_joint_angle,-75.0f,75.0f)*0.01745329252f;
+    float ca = cos(angle), sa = sin(angle);
+    float ju = fu*(q.x + ku*q.z + warp*sin(au)) + stagger*sin(su);
+    float jv = fv*(ca*q.y + sa*q.x + kv*q.z + warp*sin(av)) +
+               0.6f*stagger*cos(sv);
+    float3 gju = fu*(gu + ku*gw + warp*cos(au)*(scale*gv+0.4f*gw)) +
+                 stagger*cos(su)*0.9f/persistence*gs;
+    float3 gjv = fv*(ca*gv + sa*gu + kv*gw + warp*cos(av)*(scale*gu-0.3f*gw)) -
+                 0.6f*stagger*sin(sv)*0.7f/persistence*gs;
+    int iu = g03_segment(ju,0,variation,seed);
+    int iv = g03_segment(jv,1,variation,seed);
+    float u0 = g03_edge(iu,0,variation,seed), u1 = g03_edge(iu+1,0,variation,seed);
+    float v0 = g03_edge(iv,1,variation,seed), v1 = g03_edge(iv+1,1,variation,seed);
+    float pu = clamp((ju-u0)/fmax(u1-u0,0.01f),0.0f,1.0f);
+    float pv = clamp((jv-v0)/fmax(v1-v0,0.01f),0.0f,1.0f);
+    // Exact 24-bit regional ID; not a connected-component claim at finite tips.
+    uint id = ((uint)(layer+128)<<16) | ((uint)(iu+128)<<8) | (uint)(iv+128);
+    @piece_id.set((float)id);
+    @piece_local_uvw.set((float3)(2.0f*pu-1.0f,2.0f*pv-1.0f,2.0f*phase-1.0f));
+
+    float cut = 1000.0f, activation = 0.0f;
+    float width = clamp(@fracture_width,0.0f,0.2f);
+    int band = convert_int_rtn(s/persistence);
+    for (int family=0; family<2; ++family)
+    {
+        float j = family==0 ? ju : jv;
+        float metric = fmax(length(family==0 ? gju : gjv),0.001f);
+        float tangent = family==0 ? q.y : ca*q.x-sa*q.y;
+        int seg = family==0 ? iu : iv;
+        int tile = convert_int_rtn(clamp(tangent/depth,-100.0f,100.0f));
+        for (int side=0; side<2; ++side)
+        for (int db=-1; db<=1; ++db)
+        for (int dt=-1; dt<=1; ++dt)
+        {
+            int edge = seg+side, cohort = band+db, patch = tile+dt;
+            uint fs = seed + (uint)family*31337u;
+            float r = g03_random(edge,cohort,patch,fs);
+            if (family==1 && r>=clamp(@secondary_joint_amount,0.0f,1.0f)) continue;
+            float sc = ((float)cohort+0.5f+0.2f*(r-0.5f))*persistence;
+            float tc = ((float)patch+0.5f+0.25f*(r-0.5f))*depth;
+            float sr = 0.5f*persistence*extent*(0.7f+0.3f*r);
+            float tr = 0.5f*depth*(0.75f+0.25f*g03_random(edge,patch,cohort,fs+71u));
+            float2 rel = (float2)((s-sc)/fmax(sr,0.01f),(tangent-tc)/fmax(tr,0.01f));
+            float radial = length(rel);
+            float taper = smoothstep(0.0f,0.25f,1.0f-radial);
+            float plane = fabs(j-g03_edge(edge,family,variation,seed))/metric;
+            float support = (radial-1.0f)*fmin(tr,sr*thick);
+            float patch_cut = fmax(plane-0.5f*width*taper,support);
+            if (width>0.0f) cut = fmin(cut,patch_cut);
+            activation = fmax(activation,taper*exp(-plane/fmax(width,0.001f)));
+        }
+    }
+    @fracture_distance.set(cut);
+    @fracture_mask.set(1.0f-smoothstep(-eps,eps,cut));
+    @fracture_activation.set(activation);
+}

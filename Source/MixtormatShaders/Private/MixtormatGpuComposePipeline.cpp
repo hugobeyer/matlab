@@ -481,6 +481,21 @@ namespace MixtormatGpuCompositor
 					TEXT("Mixtormat.EmptyDriverSignal"));
 				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyDriverSignal), FVector4f::Zero());
 
+				// The composite's debug slot on every layer that is not the selected debug layer.
+				// RDG takes the dependency from the binding, not from the branch the shader takes,
+				// so binding the real target there would put the whole layer stack into that
+				// full-resolution texture's chain for a write that never happens. Cleared to zero so
+				// a stray write would show up rather than read back as uninitialised memory.
+				FRDGTextureRef& EmptyDebugOutput = Ctx.EmptyDebugOutput;
+				EmptyDebugOutput = GraphBuilder.CreateTexture(
+					FRDGTextureDesc::Create2D(
+						FIntPoint(1, 1),
+						PF_FloatRGBA,
+						FClearValueBinding::None,
+						TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.EmptyDebugOutput"));
+				AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EmptyDebugOutput), FVector4f::Zero());
+
 				// Demand-driven: only layers some other layer's Driver actually names get a snapshot,
 				// because the mask pair is rotated across the whole graph and a layer's combined mask
 				// is overwritten by the next layer that runs. Collected before the loop so layer N

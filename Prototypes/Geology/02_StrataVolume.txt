@@ -1,0 +1,154 @@
+#runover vdb
+#bind vdb size_ref float port=size_ref nouipromote voxelsize
+#bind vdb geology_uvw float[3] port=geology_uvw read
+#bind vdb !&density_strata float port=density_strata
+#bind vdb !&layer_id float port=layer_id
+#bind vdb !&layer_phase float port=layer_phase
+#bind vdb !&boundary_distance float port=boundary_distance
+#bind vdb !&local_thickness float port=local_thickness
+#bind vdb !&lower_boundary float port=lower_boundary
+#bind vdb !&upper_boundary float port=upper_boundary
+#bind parm layer_thickness float val=0.20
+#bind parm thickness_variation float val=0.25
+#bind parm layer_skew_u float val=0.055
+#bind parm layer_skew_v float val=0.03
+#bind parm layer_warp float val=0.055
+#bind parm layer_warp_frequency_u float val=1.7
+#bind parm layer_warp_frequency_v float val=1.4
+#bind parm layer_detail float val=0.006
+#bind parm layer_detail_frequency float val=6
+#bind parm boundary_jitter float val=0.035
+#bind parm gap_fraction float val=0.22
+#bind parm seed int val=1729
+
+// Standalone Houdini 22 COP OpenCL. Input 01's physical geology_uvw, not layer phase.
+// Activate the domain AND a one-voxel sampling halo in geology_uvw.
+// Distances are first-order world distances, not exact Euclidean SDFs.
+// Boundary outputs are unopened W coordinates; layer_id is the signed integer ID.
+// ID+phase is continuous across shared boundaries, including negative layers.
+float sv_safe(float x, float lo, float hi)
+{
+    return clamp(isfinite(x) ? x : 0.0f, lo, hi);
+}
+float3 sv_sample(float3 q)
+{
+    return (float3)(sv_safe(q.x,-10000.0f,10000.0f),
+                    sv_safe(q.y,-10000.0f,10000.0f), sv_safe(q.z,-10000.0f,10000.0f));
+}
+uint sv_hash(uint x)
+{
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    return x ^ (x >> 16);
+}
+float sv_random(int k, uint seed, uint salt)
+{
+    return (float)(sv_hash((uint)k ^ seed ^ salt) >> 8) / 16777216.0f;
+}
+float sv_increment(int k, uint seed, float h, float variation)
+{
+    return h * (1.0f + variation * (2.0f * sv_random(k,seed,17u) - 1.0f));
+}
+// Canonical sum order makes shared boundaries identical regardless of search path.
+float sv_base(int k, uint seed, float h, float variation)
+{
+    float b=0.0f;
+    for (int i=0; i<abs(k); ++i)
+        b += k>0 ? sv_increment(i,seed,h,variation) : -sv_increment(-i-1,seed,h,variation);
+    return b;
+}
+// Shared boundary ID controls every offset. Returns (W, dW/dU, dW/dV).
+float3 sv_boundary(int k, float base, float2 uv, uint seed,
+                   float4 amp, float detail, float2 freq, float df)
+{
+    float j = 2.0f * sv_random(k,seed,31u) - 1.0f;
+    float su = amp.y * (2.0f * sv_random(k,seed,47u) - 1.0f);
+    float sv = amp.z * (2.0f * sv_random(k,seed,61u) - 1.0f);
+    float a = freq.x * uv.x + 6.28318530718f * sv_random(k,seed,79u);
+    float b = freq.y * uv.y + 6.28318530718f * sv_random(k,seed,97u);
+    float c = df * (uv.x + 0.73f * uv.y) + 6.28318530718f * sv_random(k,seed,113u);
+    float tu = tanh(uv.x), tv = tanh(uv.y);
+    float value = base + amp.x*j + su*tu + sv*tv
+                  + amp.w*sin(a)*cos(b) + detail*sin(c);
+    float du = su*(1.0f-tu*tu) + amp.w*freq.x*cos(a)*cos(b) + detail*df*cos(c);
+    float dv = sv*(1.0f-tv*tv) - amp.w*freq.y*sin(a)*sin(b) + detail*df*0.73f*cos(c);
+    return (float3)(value,du,dv);
+}
+@KERNEL
+{
+    float3 p = sv_sample(@size_ref.pos);
+    float3 q = sv_sample(@geology_uvw.worldSample(p));
+    uint seed = (uint)@seed;
+    float h = sv_safe(@layer_thickness,0.04f,10.0f);
+    float variation = sv_safe(@thickness_variation,0.0f,0.75f);
+    float4 amp = (float4)(sv_safe(@boundary_jitter,0.0f,1.0f),
+        sv_safe(@layer_skew_u,-1.0f,1.0f), sv_safe(@layer_skew_v,-1.0f,1.0f),
+        sv_safe(@layer_warp,0.0f,1.0f));
+    float detail = sv_safe(@layer_detail,0.0f,1.0f);
+    float2 freq = (float2)(sv_safe(@layer_warp_frequency_u,0.0f,32.0f),
+                           sv_safe(@layer_warp_frequency_v,0.0f,32.0f));
+    float df = sv_safe(@layer_detail_frequency,0.0f,64.0f);
+    float sum = dot(fabs(amp),(float4)(1.0f)) + detail;
+    float scale = fmin(1.0f,0.4f*(1.0f-variation)/fmax(sum,1.0e-8f));
+    float A = sum * scale;
+    amp *= h * scale; detail *= h * scale;
+    // |offset| <= h*A, so every interval >= h*(1-variation-2*A) > 0.
+    // This proof holds for ALL U,V: tanh, sine and cosine are bounded.
+    float lower_bound_interval = h * (1.0f-variation-2.0f*A);
+    float gap = h * fmin(sv_safe(@gap_fraction,0.0f,1.0f),
+                         0.75f * lower_bound_interval/h);
+
+    // B(0)=0; B(k+1)-B(k) is a positive, deterministic per-layer increment.
+    // Clamp BEFORE float-to-int conversion. Supported IDs: -128 through 127.
+    int k = (int)floor(clamp(q.z/h,-128.0f,127.0f));
+    float base = sv_base(k,seed,h,variation);
+    float3 lo = sv_boundary(k,base,q.xy,seed,amp,detail,freq,df);
+    float next = sv_base(k+1,seed,h,variation);
+    float3 hi = sv_boundary(k+1,next,q.xy,seed,amp,detail,freq,df);
+    // At most 255 moves span the supported IDs, starting at floor(W/h).
+    for (int step=0; step<256; ++step)
+    {
+        if (q.z<lo.x && k>-128)
+        {
+            --k;
+        }
+        else if (q.z>=hi.x && k<127) { ++k; }
+        else break;
+        base = sv_base(k,seed,h,variation);
+        lo = sv_boundary(k,base,q.xy,seed,amp,detail,freq,df);
+        next = sv_base(k+1,seed,h,variation);
+        hi = sv_boundary(k+1,next,q.xy,seed,amp,detail,freq,df);
+    }
+    // Exactly six offset samples form dUVW/dXYZ; center sample above locates the bed.
+    float3 vs = (float3)(@size_ref.voxelsize);
+    float ex=sv_safe(fabs(vs.x),1.0e-5f,10.0f);
+    float ey=sv_safe(fabs(vs.y),1.0e-5f,10.0f);
+    float ez=sv_safe(fabs(vs.z),1.0e-5f,10.0f);
+    float3 dx = (sv_sample(@geology_uvw.worldSample(p+(float3)(ex,0,0)))
+                -sv_sample(@geology_uvw.worldSample(p-(float3)(ex,0,0))))/(2.0f*ex);
+    float3 dy = (sv_sample(@geology_uvw.worldSample(p+(float3)(0,ey,0)))
+                -sv_sample(@geology_uvw.worldSample(p-(float3)(0,ey,0))))/(2.0f*ey);
+    float3 dz = (sv_sample(@geology_uvw.worldSample(p+(float3)(0,0,ez)))
+                -sv_sample(@geology_uvw.worldSample(p-(float3)(0,0,ez))))/(2.0f*ez);
+    float3 gU=(float3)(dx.x,dy.x,dz.x), gV=(float3)(dx.y,dy.y,dz.y);
+    float3 gW=(float3)(dx.z,dy.z,dz.z);
+    float3 gLo=gW-lo.y*gU-lo.z*gV, gHi=gW-hi.y*gU-hi.z*gV;
+    float nLo=fmax(length(gLo),1.0e-6f), nHi=fmax(length(gHi),1.0e-6f);
+    float interval=fmax(hi.x-lo.x,1.0e-6f);
+    float phase=clamp((q.z-lo.x)/interval,0.0f,1.0f);
+    float density=fmax((lo.x+0.5f*gap-q.z)/nLo,(q.z-hi.x+0.5f*gap)/nHi);
+    // Same global material aperture on both sides of every shared boundary.
+    // With no gaps, all touching beds form one solid: no internal zero surfaces.
+    if (gap==0.0f) density=-1000.0f;
+    // Out-of-range W: finite empty sentinel (except gap=0); diagnostics saturate.
+    int inside = q.z>=lo.x && q.z<hi.x;
+    if (!inside && gap>0.0f) density=1000.0f;
+    @density_strata.set(density);
+    @layer_id.set((float)k);
+    @layer_phase.set(phase);
+    @boundary_distance.set(fmin(fabs(q.z-lo.x)/nLo,fabs(q.z-hi.x)/nHi));
+    // Full unopened bed thickness using the midpoint boundary-residual gradient.
+    @local_thickness.set(interval/fmax(length(0.5f*(gLo+gHi)),1.0e-6f));
+    @lower_boundary.set(lo.x);
+    @upper_boundary.set(hi.x);
+}

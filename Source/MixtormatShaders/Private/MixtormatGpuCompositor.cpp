@@ -1174,7 +1174,13 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
 		Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
 		Parameters->OutputOccupancy = GraphBuilder.CreateUAV(LayerCtx.OccupancyTargets[WriteIndex]);
-		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex]);
+		// Only the selected layer writes debug output, and WriteDebug is already the shader's own
+		// guard on that block. Binding the real target on every other layer would declare a UAV
+		// dependency on the full-resolution debug target for a write that never happens, so those
+		// bind the graph's 1x1 stand-in instead: valid, never touched, and off the real chain.
+		Parameters->OutputDebug = Parameters->WriteDebug != 0
+			? GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex])
+			: GraphBuilder.CreateUAV(Ctx.EmptyDebugOutput);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,

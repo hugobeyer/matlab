@@ -1379,6 +1379,8 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef EmptyPatternUV = nullptr;
 		FRDGTextureRef EmptyPatternOrientation = nullptr;
 		FRDGTextureRef EmptyDriverSignal = nullptr;
+		// RGBA, unlike the three above: the composite declares its debug slot as RWTexture2D<float4>.
+		FRDGTextureRef EmptyDebugOutput = nullptr;
 
 		TSet<FGuid> DriverSnapshotDemand;
 		TMap<FGuid, FRDGTextureRef> DriverSnapshots;
