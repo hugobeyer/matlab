@@ -61,6 +61,9 @@ namespace MixtormatIcons
 	const FSlateBrush* Effect();
 	const FSlateBrush* Generator();
 	const FSlateBrush* Generated();
+	// IDs and anything derived from them. Distinct from Generated: Generated Mask emits 0..1
+	// coverage and joins the mask chain, an ID map does not.
+	const FSlateBrush* Ids();
 
 	// A layer, by what kind of thing it is: a square for a material, a circle for a fill -- the
 	// same two shapes the add bar and the rows use, so one glyph teaches both.

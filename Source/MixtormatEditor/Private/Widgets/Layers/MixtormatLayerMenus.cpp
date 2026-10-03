@@ -748,11 +748,11 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 {
 	Menu.SubMenu(
 		LOCTEXT("AddIdsChild", "IDs"),
-		MixtormatIcons::Generated(),
+		MixtormatIcons::Ids(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddIdsMenu, Target));
 	Menu.SubMenu(
 		LOCTEXT("AddFilterChild", "Filter"),
-		MixtormatIcons::Generated(),
+		MixtormatIcons::Ids(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFiltersMenu, Target));
 	Menu.SubMenu(
 		LOCTEXT("AddMasksChild", "Masks"),
@@ -789,7 +789,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 		}
 		Menu.Item(
 			Entry.Key,
-			MixtormatIcons::Generated(),
+			MixtormatIcons::Ids(),
 			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
 			{
 				CreateChild(Target, Kind);
@@ -824,7 +824,7 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupSourceMenu(const FMixtormatChildAddr
 					&& IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
 					&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, ResolveChildIndexAt(Dest));
 			Menu.Item(FText::Format(LOCTEXT("IdGroupSourceEntry", "{0} / {1}"), OwnerName,
-				GetLayerChildName(Producer)), MixtormatIcons::Generated(),
+				GetLayerChildName(Producer)), MixtormatIcons::Ids(),
 				FSimpleDelegate::CreateLambda([this, Dest, Source, Ref = Reference.OutputReference, bAdd]()
 				{
 					if (bAdd) { AddIdGroupSource(Source, Dest); }
@@ -864,17 +864,17 @@ void SMixtormat::AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixto
 		: FMixtormatAddTarget::Layer(WorkingLayers.IndexOfByPredicate(
 			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; }));
 	Target.ScopeOwnerChildId = Owner.ChildId;
-	Menu.SubMenu(LOCTEXT("IdGroupAddSource", "Add Source"), MixtormatIcons::Generated(),
+	Menu.SubMenu(LOCTEXT("IdGroupAddSource", "Add Source"), MixtormatIcons::Ids(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupSourceMenu, Owner));
 	const bool bEnabled = CanCreateChild(Target);
 	Menu.SubMenu(
 		LOCTEXT("IdGroupAddIds", "Add IDs"),
-		MixtormatIcons::Generated(),
+		MixtormatIcons::Ids(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddIdsMenu, Target))
 		.Enabled(TAttribute<bool>(bEnabled));
 	Menu.SubMenu(
 		LOCTEXT("IdGroupAddFromIds", "Add From IDs"),
-		MixtormatIcons::Generated(),
+		MixtormatIcons::Ids(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFromIdsMenu, Target))
 		.Enabled(TAttribute<bool>(bEnabled));
 	Menu.Separator();
@@ -897,7 +897,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddFromIdsMenu(const FMixtormatAddTarget Ta
 	{
 		Menu.Item(
 			Entry.Key,
-			MixtormatIcons::Generated(),
+			MixtormatIcons::Ids(),
 			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]() { CreateChild(Target, Kind); }))
 			.Enabled(TAttribute<bool>(bEnabled));
 	}
@@ -921,7 +921,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Ta
 	{
 		Menu.Item(
 			Entry.Key,
-			MixtormatIcons::Generated(),
+			MixtormatIcons::Ids(),
 			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
 			{
 				CreateChild(Target, Kind);

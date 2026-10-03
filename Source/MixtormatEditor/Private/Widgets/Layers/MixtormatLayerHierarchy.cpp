@@ -21,13 +21,19 @@ namespace MixtormatLayersPrivate
 
 	TSharedRef<SWidget> MakeChildTypeIcon(const FMixtormatLayerChild& Child)
 	{
+		// Generated Mask and IDs are different categories and no longer share a glyph: the first
+		// emits 0..1 coverage into the mask chain, the second emits an ID map. Everything that only
+		// reads or coarsens an ID map -- the HSV/Ramp/UV/Relief/Boundary consumers, Color ID,
+		// Cluster and Surface IDs -- is the ID family, not the Generated family. Craquelure stays
+		// beside Generated because it is a coverage producer, and an Output Reference stays there
+		// because it can name a Flow or UV field as readily as an ID map.
 		return SNew(SImage)
 			.Image(Child.Type == EMixtormatLayerChildType::Generator
 				? MixtormatIcons::Generator()
 				: Child.Type == EMixtormatLayerChildType::Effect
 				? MixtormatIcons::Effect()
-				: (Child.Type == EMixtormatLayerChildType::Generated
-						|| Child.Type == EMixtormatLayerChildType::Craquelure
+				: (Child.Type == EMixtormatLayerChildType::PatternId
+						|| Child.Type == EMixtormatLayerChildType::ColorId
 						|| Child.Type == EMixtormatLayerChildType::Filter
 						|| Child.Type == EMixtormatLayerChildType::HsvFilter
 						|| Child.Type == EMixtormatLayerChildType::RandomId
@@ -35,12 +41,14 @@ namespace MixtormatLayersPrivate
 						|| Child.Type == EMixtormatLayerChildType::UvFromIds
 						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 						|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
-						|| Child.Type == EMixtormatLayerChildType::PatternId
 						|| Child.Type == EMixtormatLayerChildType::CombineId
-						|| Child.Type == EMixtormatLayerChildType::IdGroup
-						|| Child.Type == EMixtormatLayerChildType::OutputReference)
-					? MixtormatIcons::Generated()
-					: MixtormatIcons::Mask())
+						|| Child.Type == EMixtormatLayerChildType::IdGroup)
+					? MixtormatIcons::Ids()
+					: (Child.Type == EMixtormatLayerChildType::Generated
+							|| Child.Type == EMixtormatLayerChildType::Craquelure
+							|| Child.Type == EMixtormatLayerChildType::OutputReference)
+						? MixtormatIcons::Generated()
+						: MixtormatIcons::Mask())
 			.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
 	}
 

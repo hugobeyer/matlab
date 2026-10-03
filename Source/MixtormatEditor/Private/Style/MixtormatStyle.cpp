@@ -732,11 +732,14 @@ void FMixtormatStyle::Refresh()
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something
 	// that shapes coverage, a bolt for an effect, a mountain for a procedural generator,
-	// and a shoot for generated masks, IDs, and data producers.
+	// a shoot for generated masks, and a cluster for IDs and data producers.
 	SetPngIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/mask"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
+	// IDs and ID-derived data are their own category, not Generated Mask. They were borrowing that
+	// glyph only because there was no icon for them yet.
+	SetPngIcon(TEXT("Mixtormat.Icon.Ids"), TEXT("Icons/ids"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	// Layer kinds. A square for a material, a circle for a fill -- the shapes the add bar uses.
 	SetPngIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/layer-material"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/layer-fill"), FVector2D(MixtormatTokens::IconBrushSize, MixtormatTokens::IconBrushSize));
