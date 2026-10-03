@@ -1,5 +1,7 @@
 # Mixtormat — IDs / Filters / Masks / Peeling Refactor Plan
 
+> Retirement update: Combine IDs is not a supported functional feature. Its original numeric child slot remains reserved as `ReservedCombineId`. Current ID-composition planning uses ID Group, not Combine merge/subtract behavior. Repo-audit notes below are historical, not current support claims.
+
 ## Goal
 
 Refactor Mixtormat's child taxonomy and editor UX so each node has one clear responsibility:
@@ -19,11 +21,10 @@ The end result should improve context menus, layer-stack readability, inspector 
 Validated against current `main` during planning:
 
 - `Random From IDs` is a mask/coverage node in the current runtime and belongs under **Masks**, not Filter.
-- `BuildCombineIdControls()` exists, but Combine IDs is omitted from the child-inspector ownership visibility checks.
-- `GetDisplayScopeDepth()` currently adds fake nesting to Combine IDs when an ID producer exists above it.
+
 - the normal mask inspector still exposes the Texture / Layer Values source dropdown.
 - Pattern currently emits more metadata than IDs + Gap; the existing relief path uses edge/ramp data.
-- Pattern UV variation currently depends on Pattern-local metadata, so generic Cluster/Combine support needs a region bounds/center/orientation derivation path first.
+- Pattern UV variation depended on Pattern-local metadata at audit time; generic ID Group support must not assume those analytic centers.
 - Peeling is already procedural in the compositor; remaining work is editor/registry/data cleanup and migration.
 - group creation must receive an explicit procedural Peeling entry before asset-backed Peeling is removed.
 
@@ -38,12 +39,12 @@ Define the intended ownership first.
 IDs create or modify Region IDs.
 
 - Pattern IDs
-- Cluster IDs
-- Combine IDs
+- Cluster IDs (historical producer; authoring retired)
+- ID Group
 
 Rules:
 - Pattern IDs and Cluster IDs are producers.
-- Combine IDs consumes the nearest Region IDs and outputs modified Region IDs.
+- ID Group composes Region-ID inputs using its own height/curvature-guided grouping contract; it is not a merge/subtract replacement.
 - IDs do **not** directly modify height, normal, roughness, AO, albedo, or UVs.
 - Region-ID preview belongs here.
 
@@ -61,7 +62,7 @@ Target ID-driven filters:
 Rules:
 - `From IDs` nodes read the nearest valid Region IDs above them.
 - They never regenerate IDs.
-- They should work after Pattern IDs, Cluster IDs, Combine IDs, and any other valid Region-ID producer already recognized by the compositor.
+- They should work after Pattern IDs, ID Group where it publishes Region IDs, and any other valid producer recognized by the compositor.
 
 ## Masks
 
@@ -117,8 +118,7 @@ Add
 ├─ Effect
 ├─ IDs
 │  ├─ Pattern IDs
-│  ├─ Cluster IDs
-│  └─ Combine IDs
+│  └─ ID Group
 ├─ Filter
 │  ├─ HSV From IDs
 │  ├─ Ramp From IDs
@@ -473,7 +473,7 @@ Semantics:
 
 Current Pattern UV logic depends on Pattern-produced local metadata such as analytic cell centers/orientation.
 
-Before promising Cluster IDs / Combine IDs parity:
+Before promising generic ID Group parity:
 - add or reuse a generic region bounds/center/orientation derivation pass
 - generalize only if mathematically valid
 - prefer a stable ID-driven transform that does not require Pattern-specific analytic centers
@@ -482,7 +482,7 @@ Before promising Cluster IDs / Combine IDs parity:
 Acceptance:
 - Pattern IDs -> UV From IDs
 - Cluster IDs -> UV From IDs
-- Pattern/Cluster -> Combine IDs -> UV From IDs
+- ID Group -> UV From IDs, only where valid Region IDs and required metadata are published
 - disabling UV From IDs restores original sampling while IDs remain unchanged
 
 ---
@@ -563,8 +563,8 @@ Do not duplicate Gap Width in Relief From IDs.
 
 Must work after:
 - Pattern IDs
-- Cluster IDs
-- Combine IDs
+- Cluster IDs (existing valid producer only; authoring retired)
+- ID Group where it publishes valid Region IDs
 - Breakup Region IDs if Breakup is already a valid Region-ID producer
 
 Use existing nearest-ID-producer semantics.
@@ -573,73 +573,15 @@ Acceptance:
 - Pattern IDs alone changes IDs only
 - Pattern IDs + Relief recreates old Pattern relief closely
 - Cluster IDs + Relief works without Pattern-specific assumptions
-- Combine changes the IDs Relief consumes
+- Relief consumes the Region IDs published by ID Group without Pattern-specific assumptions
 
 ---
 
-# Phase 6 — Combine IDs inspector and row UX
+# Phase 6 — ID Group inspector and row UX
 
-## Fix inspector bug
+Use ID Group's own input/grouping contract and the shared capability/preview path. Do not revive retired merge/subtract controls or badges.
 
-`BuildCombineIdControls()` already exists.
-
-`BuildInspectorPanel()` currently omits `GetSelectedCombineId()` from the child-inspector ownership checks.
-
-Add it to:
-- child inspector visibility
-- inverse normal-layer inspector visibility
-
-Selecting Combine IDs must show:
-- Mode
-- Amount
-- Passes
-- Seed
-- Region IDs preview eye
-
-Use the existing shared capability/preview path.
-
-## Remove fake indentation
-
-Current `GetDisplayScopeDepth()` artificially adds depth to Combine IDs when an ID producer exists above it.
-
-Remove that behavior.
-
-Combine consumes nearest IDs by stack order, but it is not scope-owned.
-
-Target:
-
-```text
-Pattern IDs
-Cluster IDs
-Combine IDs
-```
-
-same hierarchy level unless real `ScopeOwnerChildId` says otherwise.
-
-## Clean row labels
-
-Current redundant style:
-
-```text
-Pattern IDs     PAT    FILT
-Cluster IDs     FILT   FILT
-Combine IDs     CMB    MERGE
-```
-
-Target:
-
-```text
-Pattern IDs
-Cluster IDs
-Combine IDs             MERGE
-```
-
-Rules:
-- remove redundant PAT / FILT / CMB
-- Pattern and Cluster need no useless right badge
-- Combine keeps dynamic `MERGE / SUB`
-- no row-height increase
-- prefer changes in `MixtormatLayerBadges::KindForChild / ForChild` over Slate one-offs
+Keep real ownership visible; do not infer scope from the presence of an earlier ID producer. Avoid redundant kind badges and row-height increases. Prefer the existing `MixtormatLayerBadges::KindForChild / ForChild` path over Slate one-offs.
 
 ---
 
@@ -940,7 +882,7 @@ UV From IDs
 Relief From IDs
 ```
 
-If Combine IDs already exists, determine whether old behavior should be driven from pre-combine or post-combine IDs before inserting the migrated filters.
+Retired Combine IDs slots do not provide functional outputs. Preserve their original numeric slot as `ReservedCombineId`; do not promise pre/post-composition evaluation or silently reinterpret saved data as ID Group.
 
 Do not guess.
 
@@ -971,8 +913,8 @@ Pattern IDs:
 Cluster IDs:
 - Region IDs preview
 
-Combine IDs:
-- combined Region IDs preview
+ID Group:
+- Region IDs preview only when its supported implementation publishes that output
 
 ## Relief From IDs
 
@@ -1014,21 +956,13 @@ Add/update automation coverage.
 - disable restores original mapping
 - Pattern source
 - Cluster source
-- Combine source
 
 ## Relief From IDs
 - Pattern source
 - Cluster source
-- Combine source
 - changes height/normal/roughness/AO
 - disable restores appearance while IDs remain
 
-## Combine IDs
-- inspector appears
-- preview eye appears
-- Pattern -> Combine
-- Cluster -> Combine
-- Combine -> Combine
 
 ## Masks
 - Texture Mask creation
@@ -1075,7 +1009,7 @@ Target compact stack:
 ```text
 Pattern IDs
 Cluster IDs
-Combine IDs           MERGE
+ID Group
 UV From IDs
 Relief From IDs
 Texture Mask
@@ -1099,7 +1033,7 @@ Document:
 - IDs concept
 - From IDs concept
 - Pattern IDs topology-only behavior
-- Combine IDs
+- ID Group
 - UV From IDs
 - Relief From IDs
 - mask types
@@ -1205,7 +1139,7 @@ The refactor is complete when:
 
 1. Pattern IDs produces Region IDs/gap only.
 2. Cluster IDs produces IDs only.
-3. Combine IDs modifies IDs only.
+3. ID Group composes Region IDs according to its own supported contract.
 4. UV From IDs consumes IDs and changes source mapping.
 5. Relief From IDs consumes IDs and changes height/normal/roughness/AO.
 6. Masks are clearly split into Texture / Layer Values / Generated / Color ID / Random From IDs.
@@ -1213,7 +1147,7 @@ The refactor is complete when:
 8. No Texture/Layer Values Source dropdown remains in the normal mask inspector.
 9. Peeling is procedural-only.
 10. Peeling Seed Mask is clearly distinct from a scoped effect gate.
-11. Combine IDs inspector and eye preview work.
+11. ID Group inspector and preview match its supported capabilities.
 12. ID rows no longer use fake hierarchy or redundant labels.
 13. Eligible X/Y pairs can auto-link, unlink, and clear without overwriting explicit user references.
 14. Layer/group/instance/clipboard behavior remains consistent.

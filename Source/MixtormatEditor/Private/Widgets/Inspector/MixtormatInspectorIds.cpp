@@ -275,7 +275,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
 				SNew(STextBlock)
 				.AutoWrapText(true)
 				.Text(LOCTEXT("RegionIdPickerUnavailable",
-					"Turn on the Region IDs preview on the Pattern IDs, Cluster IDs or Combine IDs "
+					"Turn on the Region IDs preview on the Pattern IDs, Cluster IDs or ID Group "
 					"node above this mask -- the eye in its inspector header -- then open this "
 					"again. The picker reads the ID map that preview is built from."))
 			];
@@ -434,7 +434,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// SELECTION first, because it decides what the rest of this panel is even about.
 	//
 	// Exact ID compares the integer Region ID published by the nearest ID node above this mask --
-	// Pattern IDs, Cluster IDs or Combine IDs -- and is the mode to reach for when the regions
+	// Pattern IDs, Cluster IDs or ID Group -- and is the mode to reach for when the regions
 	// were generated in this stack. Color Range samples an authored ID map and accepts whatever
 	// lands within Threshold of a chosen colour, which is the mode for a map that arrived with the
 	// mesh. The two share nothing but the blend and shaping tail, so each hides the other's rows
@@ -1523,7 +1523,7 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 		Slider(LOCTEXT("UvIdRotationMin", "Rotation Min"), &FMixtormatUvIdFilter::RotationMin, -360.0, 360.0, 0.0, 1.0,
 			LOCTEXT("UvIdRotationMinHint", "The low end of each region's rotation draw, in degrees. Equal limits turn every region by the same fixed amount.")),
 		Slider(LOCTEXT("UvIdRotationMax", "Rotation Max"), &FMixtormatUvIdFilter::RotationMax, -360.0, 360.0, 360.0, 1.0,
-			LOCTEXT("UvIdRotationMaxHint", "The high end of that draw. The angle is taken about the region's own centre, which is measured from the ID map rather than supplied by the producer -- so this works after Pattern IDs, Cluster IDs or Combine IDs alike."))));
+			LOCTEXT("UvIdRotationMaxHint", "The high end of that draw. The angle is taken about the region's own centre, which is measured from the ID map rather than supplied by the producer -- so this works after Pattern IDs, Cluster IDs or ID Group alike."))));
 	AddSliderRow(Panel, Checkbox(
 		LOCTEXT("UvIdOrthogonal", "Orthogonal"),
 		&FMixtormatUvIdFilter::bOrthogonal,
@@ -1918,145 +1918,6 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const TPair<FText, EMixtormatIdCombineMode> Modes[] = {
-		{ LOCTEXT("CombineModeMerge", "Merge"), EMixtormatIdCombineMode::Merge },
-		{ LOCTEXT("CombineModeSubtract", "Subtract"), EMixtormatIdCombineMode::Subtract },
-	};
-	for (const TPair<FText, EMixtormatIdCombineMode>& Entry : Modes)
-	{
-		Menu.Item(
-			Entry.Key,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, Mode = Entry.Value]()
-			{
-				if (FMixtormatCombineIdFilter* C = GetSelectedCombineId())
-				{
-					C->Mode = Mode;
-					RefreshLayeredPreview();
-					RebuildLayerList();
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Mode = Entry.Value]()
-			{
-				const FMixtormatCombineIdFilter* C = GetSelectedCombineId();
-				return C && C->Mode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildCombineIdModeMenuFor(
-	const int32 LayerIndex,
-	const int32 ChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	const TPair<FText, EMixtormatIdCombineMode> Modes[] = {
-		{ LOCTEXT("CombineModeMerge", "Merge"), EMixtormatIdCombineMode::Merge },
-		{ LOCTEXT("CombineModeSubtract", "Subtract"), EMixtormatIdCombineMode::Subtract },
-	};
-	for (const TPair<FText, EMixtormatIdCombineMode>& Entry : Modes)
-	{
-		Menu.Item(
-			Entry.Key,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode = Entry.Value]()
-			{
-				if (FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex))
-				{
-					if (Child->Type == EMixtormatLayerChildType::CombineId)
-					{
-						Child->CombineId.Mode = Mode;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				}
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode = Entry.Value]()
-			{
-				const FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex);
-				return Child
-					&& Child->Type == EMixtormatLayerChildType::CombineId
-					&& Child->CombineId.Mode == Mode;
-			}));
-	}
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildCombineIdControls()
-{
-	const auto Combine = [this]() { return GetSelectedCombineId(); };
-
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-
-	AddSliderRow(Panel, MixtormatRow::Make(
-		LOCTEXT("CombineModeLabel", "Mode"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatCombineIdFilter* C = GetSelectedCombineId();
-				if (!C)
-				{
-					return FText::GetEmpty();
-				}
-				return C->Mode == EMixtormatIdCombineMode::Subtract
-					? LOCTEXT("CombineModeSubtract", "Subtract")
-					: LOCTEXT("CombineModeMerge", "Merge");
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildCombineIdModeMenu)),
-		LOCTEXT("CombineModeHint", "Merge draws once per neighbouring pair and joins them, so the whole map comes out coarser with its shapes still in family. Subtract draws whole regions and dissolves the chosen ones into whatever they border, so the survivors keep their exact outline and the map reads as pieces removed from it.")));
-
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCombineIdFilter>(
-		LOCTEXT("CombineAmount", "Amount"), Combine, &FMixtormatCombineIdFilter::Amount, 0.0, 1.0, 0.35, 0.01,
-		LOCTEXT("CombineAmountHint", "Chance that any one candidate takes. 0 passes the ID map through untouched; 1 collapses every region that touches another into a single one.")));
-
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatCombineIdFilter>(
-		LOCTEXT("CombinePasses", "Passes"), Combine, &FMixtormatCombineIdFilter::Passes, 1.0, 8.0, 1,
-		LOCTEXT("CombinePassesHint", "How many rounds of merging run -- the unsubdivide depth. Each round draws with its own salt and tests the regions the previous round produced, so raising it keeps coarsening rather than re-deciding the same pairs. Two rounds at a low Amount grows clusters of clusters; one round at a high Amount grows one big cluster.")));
-
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatCombineIdFilter>(
-		LOCTEXT("CombineSeed", "Seed"), Combine, &FMixtormatCombineIdFilter::Seed, 0.0, 64.0, 0,
-		LOCTEXT("CombineSeedHint", "Reshuffles which regions join without changing how many do. Independent of the seed on whatever produced the IDs, so reseeding here does not re-segment.")));
-
-	return SNew(SBox)
-		.Visibility_Lambda([this]() { return GetSelectedCombineId() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
-		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("CombineIdHeading", "COMBINE IDS"))
-			.InitiallyExpanded(true)
-			.HeaderAction(
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
-				[
-					MakeChildOutputPreviewButton(
-						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::CombineId))
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					MixtormatRow::MakeCheckbox(
-						TAttribute<ECheckBoxState>::CreateLambda([this]()
-						{
-							const FMixtormatCombineIdFilter* Selected = GetSelectedCombineId();
-							return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-						}),
-						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-						{
-							if (FMixtormatCombineIdFilter* Selected = GetSelectedCombineId())
-							{
-								Selected->bEnabled = State == ECheckBoxState::Checked;
-								RefreshLayeredPreview();
-								RebuildLayerList();
-							}
-						}),
-						LOCTEXT("CombineEnabledHint", "Enable this ID combiner"))
-				])
-			[
-				Panel
-			]
-		];
-}
 
 TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 {

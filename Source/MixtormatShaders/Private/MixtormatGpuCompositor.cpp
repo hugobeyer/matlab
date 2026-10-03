@@ -468,7 +468,7 @@ namespace MixtormatGpuCompositor
 	// Two producers of this binding, and the order between them is the whole point of Prompt 2's
 	// split. `UV From IDs` is the architecture: it consumes whatever Region IDs sit above its own
 	// row and publishes a transform, so the same node works after Pattern IDs, Cluster IDs or
-	// Combine IDs. Pattern IDs' own UV block is the legacy path, kept live and unchanged so a
+	// ID Group. Pattern IDs' own UV block is the legacy path, kept live and unchanged so a
 	// material authored before the split renders exactly as it did.
 	//
 	// Both paths compete in authored child order. Select one treatment rather than compounding
@@ -2065,7 +2065,7 @@ bool FMixtormatPrompt2RegionUVTest::RunTest(const FString& Parameters)
 			if (Parameters == TEXT("RegionSources"))
 			{
 				// Exercise the real publication/lookup helpers, not producer shader generation.
-				PublishRegionIds(LayerCtx.RegionIdMaps, 6, LaterIds); // Combine
+				PublishRegionIds(LayerCtx.RegionIdMaps, 6, LaterIds); // ID Group
 				PublishRegionIds(LayerCtx.RegionIdMaps, 1, PatternIds); // Pattern
 				PublishRegionIds(LayerCtx.RegionIdMaps, 3, UvIds); // Cluster
 				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 1) == nullptr,
@@ -2075,7 +2075,7 @@ bool FMixtormatPrompt2RegionUVTest::RunTest(const FString& Parameters)
 				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 6) == UvIds,
 					TEXT("Cluster is the nearest earlier source"));
 				Check(FindRegionIdsAbove(LayerCtx.RegionIdMaps, 7) == LaterIds,
-					TEXT("Combine is the nearest earlier source despite publication order"));
+					TEXT("ID Group is the nearest earlier source despite publication order"));
 				GraphBuilder.Execute();
 				return;
 			}

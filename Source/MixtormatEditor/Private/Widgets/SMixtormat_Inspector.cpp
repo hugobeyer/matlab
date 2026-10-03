@@ -391,14 +391,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
-							// Both halves of the Pattern split. Missing from these lists, a new
-							// node shows the layer's own sections instead of its own -- which is
-							// exactly how Combine IDs' bug read.
+							// Both halves of the Pattern split claim their own inspector sections.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
 							|| GetSelectedBoundaryId()
 							|| GetSelectedIdGroup()
-							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.
@@ -434,7 +431,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildBoundaryIdControls()]
 					+ SScrollBox::Slot()[BuildIdGroupControls()]
 					+ SScrollBox::Slot()[BuildOutputReferenceControls()]
-					+ SScrollBox::Slot()[BuildCombineIdControls()]
+
 					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 					+ SScrollBox::Slot()[BuildCracksControls()]
 					+ SScrollBox::Slot()[BuildRockFormationControls()]
@@ -466,14 +463,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							|| GetSelectedHsvFilter()
 							|| GetSelectedRandomId()
 							|| GetSelectedRampId()
-							// Both halves of the Pattern split. Missing from these lists, a new
-							// node shows the layer's own sections instead of its own -- which is
-							// exactly how Combine IDs' bug read.
+							// Both halves of the Pattern split claim their own inspector sections.
 							|| GetSelectedUvId()
 							|| GetSelectedReliefId()
 							|| GetSelectedBoundaryId()
 							|| GetSelectedIdGroup()
-							|| GetSelectedCombineId()
 							// The category, not the kind. A generator whose panel is not yet
 							// written still has to claim the inspector, or it would show the
 							// layer's own sections instead and read as a broken selection.

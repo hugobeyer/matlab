@@ -6,6 +6,8 @@ The current design has two important constraints: nearest-earlier region lookup 
 
 # Mixtormat Layer-Local Typed Graph Proposal
 
+> Retirement update: Combine IDs is not a supported functional feature. Preserve its original numeric child slot as `ReservedCombineId`; do not migrate it into an active graph operation. ID Group is the current ID-composition direction, with its own contract.
+
 ## Architectural baseline
 
 - The artist-facing model remains an ordered layer stack.
@@ -23,7 +25,7 @@ The current implementation already provides useful seams:
 - Breakup already produces field, IDs, gap, edge, and pieces separately.
 - `ResolveMaskSourceTexture` is the correct shared source-resolution choke point.
 - `FMixtormatChildCapabilities` is the beginning of a shared output descriptor system.
-- `FindRegionIdsAbove` and the reverse scans in Combine ID are the main implicit-dependency mechanisms to remove.
+- `FindRegionIdsAbove` is an implicit-dependency mechanism to replace with explicit supported producer inputs.
 
 ---
 
@@ -307,7 +309,7 @@ It publishes outputs even when the form amount is zero if those outputs are dema
 
 - A mask.
 - Worn Edges.
-- Combine IDs.
+- ID Group, where its supported contract accepts Region IDs.
 - Preview.
 - Copy/instance references.
 
@@ -353,20 +355,13 @@ Worn Edges should consume Breakup’s `Edge` or `RegionIds` output through an ex
 
 ---
 
-# 5. Replacing fragile Combine ID behavior
+# 5. Explicit ID Group dependencies
 
-## 5.1 Explicit input
+## 5.1 Explicit inputs
 
-Combine ID should have an explicit `RegionIds` input port.
+Model ID Group's Region-ID inputs explicitly according to its supported grouping contract. Do not substitute retired Combine merge/subtract semantics.
 
-It must not discover its source by scanning:
-
-- Earlier children.
-- The nearest region producer.
-- Special Breakup cases.
-- Current publication order.
-
-Legacy assets with no explicit source receive an adapter-generated edge using current nearest-producer semantics.
+Avoid discovering dependencies through earlier-child scans, special Breakup cases, or current publication order. Reserved retired slots must not receive adapter-generated functional edges.
 
 ## 5.2 Opaque region identity
 
@@ -382,21 +377,11 @@ The graph must prohibit:
 
 A transformed region output receives a new region namespace and provenance.
 
-## 5.3 Combine output
+## 5.3 ID Group output
 
-Combine should declare:
+Document ID Group's input/output region namespaces, determinism, validity/gap behavior, and whether grouping changes region identity. Declare only outputs its supported implementation publishes.
 
-- Input region namespace.
-- Output region namespace.
-- Operation mode.
-- Determinism policy.
-- Validity/gap behavior.
-- Number of solve rounds or equivalent quality parameter.
-- Whether the output preserves or intentionally changes region identity.
-
-The current `Amount`, `Seed`, `Passes`, and subtract mode remain serialized parameters. Their exact mathematical behavior should be documented before replacing the shader algorithm.
-
-Until that behavior is documented, the migration should preserve the current implementation behind the new typed contract rather than reinterpret it.
+Do not retain retired composition parameters or shader evaluation behind a new typed contract. Preserving a reserved numeric slot does not make that slot a functional producer.
 
 ---
 
@@ -762,7 +747,7 @@ Migrate in this order:
 1. Pattern IDs.
 2. Cluster IDs.
 3. Breakup topology outputs.
-4. Combine IDs.
+4. ID Group, according to its own supported contract.
 5. ID consumers such as Random, HSV, Ramp, Relief, and drivers.
 
 Each producer should be validated through:

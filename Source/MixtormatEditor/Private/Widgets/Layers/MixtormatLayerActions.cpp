@@ -1276,7 +1276,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 	case EMixtormatLayerChildType::ReliefFromIds: Child.ReliefId.bEnabled = !Child.ReliefId.bEnabled; break;
 	case EMixtormatLayerChildType::BoundaryFromIds: Child.BoundaryId.bEnabled = !Child.BoundaryId.bEnabled; break;
 	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
-	case EMixtormatLayerChildType::CombineId:   Child.CombineId.bEnabled = !Child.CombineId.bEnabled; break;
+
 	case EMixtormatLayerChildType::IdGroup:     Child.IdGroup.bEnabled = !Child.IdGroup.bEnabled; break;
 	case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = !Child.OutputReference.bEnabled; break;
 	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
@@ -1426,9 +1426,8 @@ FReply SMixtormat::ToggleLayerSolo(const int32 LayerIndex)
 
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
-	// Cluster IDs remains unavailable; Combine IDs can be authored inside an explicit ID Group.
-	if (Kind == EMixtormatChildCreation::ClusterIds
-		|| (Kind == EMixtormatChildCreation::CombineIds && !Target.ScopeOwnerChildId.IsValid()))
+	// Cluster IDs remains unavailable.
+	if (Kind == EMixtormatChildCreation::ClusterIds)
 	{
 		return FReply::Handled();
 	}
@@ -1643,12 +1642,6 @@ FReply SMixtormat::AddStrataCarverToLayer(const int32 LayerIndex)
 		EMixtormatChildCreation::StrataCarver);
 }
 
-FReply SMixtormat::AddCombineIdToLayer(const int32 LayerIndex)
-{
-	return CreateChild(
-		FMixtormatAddTarget::Layer(LayerIndex),
-		EMixtormatChildCreation::CombineIds);
-}
 
 FReply SMixtormat::AddRampIdToLayer(const int32 LayerIndex)
 {
@@ -1725,7 +1718,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::ReliefFromIds
 		&& ChildType != EMixtormatLayerChildType::BoundaryFromIds
 		&& ChildType != EMixtormatLayerChildType::PatternId
-		&& ChildType != EMixtormatLayerChildType::CombineId
+
 		&& ChildType != EMixtormatLayerChildType::IdGroup
 		&& ChildType != EMixtormatLayerChildType::OutputReference
 		&& ChildType != EMixtormatLayerChildType::Generator)
@@ -1813,9 +1806,7 @@ void SMixtormat::SetGeneratedEnabled(
 	case EMixtormatLayerChildType::PatternId:
 		Child.PatternId.bEnabled = bEnabled;
 		break;
-	case EMixtormatLayerChildType::CombineId:
-		Child.CombineId.bEnabled = bEnabled;
-		break;
+
 	case EMixtormatLayerChildType::IdGroup:
 		Child.IdGroup.bEnabled = bEnabled;
 		break;

@@ -102,7 +102,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (FractureSource != MIXTORMAT_FRACTURE_GENERATED && HasRegionIds != 0)
 	{
-		// Pattern/Cluster/Combine IDs already solved the useful structure. Fracture only extracts
+		// Upstream Region IDs already solved the useful structure. Fracture only extracts
 		// their exact one-pixel boundary and gives each region pair one symmetric lineage ID.
 		const uint Center = RegionAt(Pixel);
 		if (Center != MIXTORMAT_INVALID_REGION)

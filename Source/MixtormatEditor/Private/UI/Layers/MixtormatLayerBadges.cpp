@@ -193,14 +193,7 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.ColorId.BlendMode);
 		}
-		if (Child.Type == EMixtormatLayerChildType::CombineId)
-		{
-			// The mode, not the category: two of these in a row differ by exactly this, and
-			// which one a row is doing is what the column is scanned for.
-			return Child.CombineId.Mode == EMixtormatIdCombineMode::Subtract
-				? LOCTEXT("CombineIdBadgeSubtract", "SUB")
-				: LOCTEXT("CombineIdBadgeMerge", "MERGE");
-		}
+
 		if (Child.Type == EMixtormatLayerChildType::Filter
 			|| Child.Type == EMixtormatLayerChildType::PatternId
 			|| Child.Type == EMixtormatLayerChildType::HsvFilter
@@ -270,13 +263,10 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Generated: return LOCTEXT("ChildKindGenerated", "GMSK");
 		case EMixtormatLayerChildType::Craquelure: return LOCTEXT("ChildKindCraquelure", "CRAQ");
 		case EMixtormatLayerChildType::ColorId:   return LOCTEXT("ChildKindColorId", "ID");
-		// Cluster IDs, Pattern IDs and Combine IDs carry no kind mark. FILT, PAT and CMB each
-		// abbreviated a name the row spells out in full two columns to the left, and the three of
-		// them stacked read as a hierarchy that is not there. Combine keeps its right-hand badge,
-		// which says MERGE or SUB -- the one thing about that row the name does not.
+		// Cluster IDs, Pattern IDs and ID Group need no kind mark: the row names them in full.
 		case EMixtormatLayerChildType::Filter:    return FText::GetEmpty();
 		case EMixtormatLayerChildType::PatternId: return FText::GetEmpty();
-		case EMixtormatLayerChildType::CombineId: return FText::GetEmpty();
+
 		case EMixtormatLayerChildType::IdGroup:   return FText::GetEmpty();
 		case EMixtormatLayerChildType::HsvFilter: return LOCTEXT("ChildKindHsvFilter", "HSV");
 		case EMixtormatLayerChildType::RandomId:  return LOCTEXT("ChildKindRandomId", "RND");

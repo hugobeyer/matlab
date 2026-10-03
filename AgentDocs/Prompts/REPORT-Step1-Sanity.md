@@ -1,5 +1,7 @@
 # Step 1 sanity report — 2026-10-01
 
+> Historical audit snapshot. Combine IDs is now retired, not a supported functional feature. References below record the audited state only; the original numeric child slot is reserved as `ReservedCombineId`.
+
 **Stopped after numbered step 1. Generator-layer work has not started.**
 
 ## Scope and starting state

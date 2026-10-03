@@ -777,16 +777,13 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddPatternIdChild", "Pattern IDs"), EMixtormatChildCreation::PatternIds },
 		{ LOCTEXT("AddSurfaceIdsChild", "Surface IDs"), EMixtormatChildCreation::SurfaceIds },
-		{ LOCTEXT("AddCombineIdsChild", "Combine IDs"), EMixtormatChildCreation::CombineIds },
+
 		{ LOCTEXT("AddIdGroupChild", "ID Group"), EMixtormatChildCreation::IdGroup },
 	};
 	const bool bEnabled = CanCreateChild(Target);
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
-		if (Entry.Value == EMixtormatChildCreation::CombineIds && !Target.ScopeOwnerChildId.IsValid())
-		{
-			continue;
-		}
+
 		Menu.Item(
 			Entry.Key,
 			MixtormatIcons::Ids(),
@@ -1182,7 +1179,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::ReliefFromIds
 		|| RowType == EMixtormatLayerChildType::BoundaryFromIds
 		|| RowType == EMixtormatLayerChildType::PatternId
-		|| RowType == EMixtormatLayerChildType::CombineId
+
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
 		|| bGenerator;
@@ -1225,17 +1222,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildGeneratedBlendModeMenu, LayerIndex, ChildIndex));
 		Menu.Separator();
 	}
-	// Merge against Subtract is the one thing about a combiner worth switching without going to
-	// the inspector first, because the two read so differently on the same map.
-	if (RowType == EMixtormatLayerChildType::CombineId)
-	{
-		Menu.SubMenu(
-			LOCTEXT("CombineModeContext", "Combine Mode"),
-			nullptr,
-			FOnGetContent::CreateSP(
-				this, &SMixtormat::BuildCombineIdModeMenuFor, LayerIndex, ChildIndex));
-		Menu.Separator();
-	}
+
 	Menu.Item(
 		LOCTEXT("DuplicateGeneratedChild", "Duplicate"),
 		MixtormatIcons::Duplicate(),
@@ -1287,9 +1274,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		case EMixtormatLayerChildType::PatternId:
 			RemoveLabel = LOCTEXT("RemovePatternIdChild", "Remove Pattern IDs");
 			break;
-		case EMixtormatLayerChildType::CombineId:
-			RemoveLabel = LOCTEXT("RemoveCombineIdChild", "Remove Combine IDs");
-			break;
+
 		case EMixtormatLayerChildType::IdGroup:
 			RemoveLabel = LOCTEXT("RemoveIdGroupChild", "Remove ID Group");
 			break;

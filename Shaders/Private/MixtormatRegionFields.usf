@@ -8,9 +8,9 @@
 //
 // This is the file that makes UV From IDs and Relief From IDs producer-agnostic. Pattern IDs
 // publishes an analytic feature centre and an analytic edge-distance field alongside its IDs,
-// because it knows the lattice it drew; Cluster IDs and Combine IDs know nothing of the kind, and
-// a consumer written against Pattern's extras can only ever work after Pattern. Everything here
-// is recovered from the ID map, so all three producers are equally good sources -- and for a
+// because it knows the lattice it drew; Cluster IDs and ID Group provide no such analytic fields.
+// A consumer written against Pattern's extras can only ever work after Pattern. Everything here
+// is recovered from the ID map, so all ID producers are equally good sources -- and for a
 // Pattern source the per-region draws below land on exactly the same salts Pattern uses, so the
 // treatment matches rather than merely resembling it.
 //

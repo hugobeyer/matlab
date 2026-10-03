@@ -896,8 +896,7 @@ namespace MixtormatGpuCompositor
 						{
 							const FChildRenderData& Child = Layer.Children[ChildIndex];
 							if (Child.Type == EMixtormatLayerChildType::IdGroup
-								|| Child.Type == EMixtormatLayerChildType::OutputReference
-								|| Child.Type == EMixtormatLayerChildType::CombineId)
+								|| Child.Type == EMixtormatLayerChildType::OutputReference)
 							{
 								// Finalize unavailable inputs at their owning row, with unfiltered maps.
 								// Never execute a future producer to satisfy a local reference.
@@ -941,12 +940,7 @@ namespace MixtormatGpuCompositor
 								// effect branch below.
 								continue;
 							}
-							if (Child.Type == EMixtormatLayerChildType::CombineId)
-							{
-								// Breakup-dependent chains become available at their authored row.
-								AddCombineIdProducerPass(Ctx, LayerCtx, Layer, Child);
-								continue;
-							}
+
 							if (Child.Type == EMixtormatLayerChildType::Generated)
 							{
 								AddGeneratedMaskPass(Ctx, LayerCtx, Layer, Child, ChildIndex);
@@ -1042,7 +1036,7 @@ namespace MixtormatGpuCompositor
 
 						}
 
-						// All IDs, including Breakup-dependent Combine chains, now exist.
+						// Child-loop ID producers are now available.
 						CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
 						// Structural operators consume local ramp relief, never the already-blended substrate.
@@ -1105,8 +1099,8 @@ namespace MixtormatGpuCompositor
 
 						// The raw ids behind the Region IDs preview, for the Exact ID picker.
 						//
-						// Here rather than inside each producer: Cluster, Pattern and Combine write
-						// their debug colour inline in their own kernels and Breakup goes through the
+						// Here rather than inside each producer: Cluster and Pattern write
+						// their debug colour inline in their own kernels; ID Group and Breakup use the
 						// blit pass, so there is no one place a producer colours itself. There is one
 						// place they all publish -- LayerCtx.RegionIdMaps -- and by the end of the
 						// layer every one of them has. Keyed on the same child index the preview

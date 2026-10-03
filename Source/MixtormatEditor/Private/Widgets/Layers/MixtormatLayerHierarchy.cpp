@@ -41,7 +41,7 @@ namespace MixtormatLayersPrivate
 						|| Child.Type == EMixtormatLayerChildType::UvFromIds
 						|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 						|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
-						|| Child.Type == EMixtormatLayerChildType::CombineId
+
 						|| Child.Type == EMixtormatLayerChildType::IdGroup)
 					? MixtormatIcons::Ids()
 					: (Child.Type == EMixtormatLayerChildType::Generated
@@ -83,14 +83,7 @@ namespace MixtormatLayersPrivate
 		return MixtormatIcons::TreeElbow();
 	}
 
-	// How far a row is indented.
-	//
-	// Real scope and nothing else. Combine IDs used to be indented one extra level whenever an ID
-	// producer sat above it, on the theory that the indent showed what it reads -- but every ID
-	// consumer in the plugin reads the nearest producer above it, Combine included, and indenting
-	// only this one claimed a containment that does not exist. Pattern IDs, Cluster IDs and
-	// Combine IDs are siblings in the stack, and the row now says so. A genuine ScopeOwnerChildId
-	// still indents, here as everywhere.
+	// Indentation represents authored scope, not an ID producer-consumer relationship.
 
 	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
 	{
@@ -732,7 +725,7 @@ bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
 	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
-	case EMixtormatLayerChildType::CombineId:   return Child.CombineId.bEnabled;
+
 	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
 	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
@@ -1036,7 +1029,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 			|| Child.Type == EMixtormatLayerChildType::PatternId
-			|| Child.Type == EMixtormatLayerChildType::CombineId
+
 			|| Child.Type == EMixtormatLayerChildType::IdGroup
 			|| Child.Type == EMixtormatLayerChildType::OutputReference
 			// A generator joins them for the row, not for the semantics. What the shared
@@ -1215,7 +1208,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
 	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
 	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
-	case EMixtormatLayerChildType::CombineId: return Child.CombineId.bEnabled;
+
 	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
 	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;

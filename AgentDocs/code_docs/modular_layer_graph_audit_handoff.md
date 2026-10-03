@@ -1,5 +1,7 @@
 # Mixtormat Modular Layer Graph — Audit Handoff
 
+> Historical audit snapshot. Combine IDs is now retired, not a supported functional feature. Findings below preserve the audited state; recommendations to rework Combine IDs are superseded, not current work. ID Group is the current ID-composition direction.
+
 Status: architecture audit complete; S2 implemented and the user reports a successful build.
 
 This document records four parallel vertical audits:

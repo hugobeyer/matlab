@@ -8,7 +8,7 @@
 // Pieces, Worn Edges' Wear): these are already-produced textures, not values the composite or a
 // producer's own kernel computes, so rather than teach every producer shader a WriteDebug branch
 // of its own, one small pass colours whichever texture the target names, after the fact.
-// Cluster/Pattern/Combine Region IDs keep their own inline debug write instead of switching to
+// Cluster/Pattern Region IDs keep their own inline debug write instead of switching to
 // this: they already exist and already work, and Pattern additionally blackens its own invalid
 // pixels inline, which this pass exists to do for Breakup instead.
 //
@@ -101,7 +101,7 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 	// Gap pixels are grout, not a region -- coloured the same pure black an invalid id gets
-	// elsewhere (Pattern/Combine IDs), rather than as one more random hashed colour. 0.5 sits at
+	// elsewhere (Pattern IDs), rather than as one more random hashed colour. 0.5 sits at
 	// the midpoint of Breakup's soft falloff, so a gap reads as a clean edge rather than a smeared
 	// fringe of near-black.
 	if (SourceHasGapMask != 0 && SourceGapMask.Load(int3(Pixel, 0)) >= 0.5f)

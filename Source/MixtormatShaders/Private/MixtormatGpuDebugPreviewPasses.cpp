@@ -8,9 +8,9 @@
 
 // Generic child-output preview: colours an already-built texture into OutputDebug after the fact,
 // for a producer whose own kernel has no debug write of its own (Breakup's Region IDs/Gap/Edge/
-// Pieces, Worn Edges' Wear, Pattern IDs' Gap). Cluster/Pattern/Combine Region IDs keep their own
+// Pieces, Worn Edges' Wear, Pattern IDs' Gap). Cluster/Pattern Region IDs keep their own
 // inline debug write instead of routing through here -- see MixtormatClusterIds.usf and
-// MixtormatCombineIds.usf, which already do the same hash this file's region-ids kernel does.
+// MixtormatPatternIds.usf, which already do the same hash this file's region-ids kernel does.
 
 class FMixtormatDebugPreviewMaskCS final : public FGlobalShader
 {

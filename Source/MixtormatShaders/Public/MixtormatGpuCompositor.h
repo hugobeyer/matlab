@@ -38,7 +38,7 @@ enum class EMixtormatDebugPreviewMode : uint8
 	// Written by the runoff resolve, for the same reason Stain writes its own: the composite
 	// would otherwise overwrite the child's published preview with a flat DebugValue.
 	Runoff,
-	// One generic mode for every named mask/ID output a child publishes (Cluster/Pattern/Combine
+	// One generic mode for every named mask/ID output a child publishes (Cluster/Pattern/ID Group
 	// Region IDs, Breakup's Region IDs/Gap/Edge/Pieces, Worn Edges' Wear, ...), addressed by
 	// ChildTarget rather than by a dedicated mode per producer -- see FMixtormatChildPreviewTarget.
 	// LayerIndex/ChildIndex are resolved from ChildTarget once, at composite time.
@@ -83,7 +83,7 @@ struct FMixtormatChildPreviewTarget
 	// child that the region-id colourist should read to force a pixel to black instead of a
 	// hashed colour -- Breakup's Region IDs know nothing about grout on their own, so the preview
 	// borrows Breakup's own Gap mask to say which pixels are invalid. NAME_None when the ID map
-	// already encodes its own invalid pixels (Cluster IDs has none; Pattern/Combine IDs blacken
+	// already encodes its own invalid pixels (Cluster IDs has none; Pattern IDs blacken
 	// them inside their own kernel and need no second texture here).
 	FName GapMaskName;
 

@@ -12,7 +12,7 @@ namespace MixtormatGpuCompositor
 		{
 		case EMixtormatLayerChildType::PatternId:
 		case EMixtormatLayerChildType::Filter:
-		case EMixtormatLayerChildType::CombineId:
+
 		case EMixtormatLayerChildType::IdGroup:
 		case EMixtormatLayerChildType::ColorId:
 		case EMixtormatLayerChildType::HsvFilter:

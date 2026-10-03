@@ -799,16 +799,6 @@ namespace MixtormatGpuCompositor
 		uint32 Seed = 1;
 	};
 
-	// Combine IDs. Both a consumer and a producer: it reads the nearest map above it and
-	// republishes a coarser one at its own index, so the nearest-producer rule downstream picks
-	// it up exactly as it would a cluster filter or a pattern.
-	struct FCombineIdRenderData
-	{
-		float Amount = 0.35f;
-		uint32 Seed = 0;
-		int32 Passes = 1;
-		bool bSubtract = false;
-	};
 
 	// Strata Carver settings: the beds, their profile and the bend.
 	struct FStrataCarverRenderData
@@ -965,7 +955,7 @@ namespace MixtormatGpuCompositor
 		FHsvIdFilterRenderData HsvFilter;
 		FRandomIdRenderData RandomId;
 		FRampIdRenderData RampId;
-		FCombineIdRenderData CombineId;
+
 		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
 		FUvIdRenderData UvId;
@@ -1649,11 +1639,6 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);
 
-	void AddCombineIdProducerPass(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer,
-		const FChildRenderData& Child);
 
 	void CollectPendingRampTilts(
 		FMixtormatComposeContext& Ctx,
@@ -1872,7 +1857,7 @@ namespace MixtormatGpuCompositor
 	// GapMask may be null: pass a Mask-kind published output on the same child to force its
 	// active pixels to black instead of a hashed colour (Breakup), or null when the id map has
 	// no separate gap concept to combine (Cluster IDs) or already blackens its own invalid
-	// pixels inline (Pattern/Combine IDs).
+	// pixels inline (Pattern IDs).
 	// Writes the raw Region ID of every pixel into OutputPick as a float, and the no-region
 	// sentinel as -1. Float rather than uint because a UTextureRenderTarget2D reads back cleanly
 	// as FLinearColor, and the composition tops out at 4096 squared -- 16,777,216 ids, which is

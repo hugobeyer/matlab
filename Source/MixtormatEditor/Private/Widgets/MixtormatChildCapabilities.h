@@ -35,8 +35,8 @@ struct FMixtormatPublishedOutputDesc
 	bool bSecondaryPreview = false;
 
 	// Only meaningful when Kind == RegionIds and the compositor cannot already tell an invalid pixel
-	// from a valid one by itself (Breakup's Region IDs; Cluster/Pattern/Combine IDs need nothing
-	// here -- Cluster has no invalid pixels, Pattern/Combine blacken their own inline).
+	// from a valid one by itself (Breakup's Region IDs; Cluster/Pattern IDs need nothing
+	// here -- Cluster has no invalid pixels, Pattern blackens its own inline).
 	FName PreviewGapMaskName;
 
 	// Typed fields retain their full payload instead of being coerced into scalar masks.

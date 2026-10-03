@@ -52,7 +52,7 @@ enum class EMixtormatChildCreation : uint8
 	IdGroup,
 	SurfaceIds,
 	ClusterIds,
-	CombineIds,
+
 	HsvFromIds,
 	RampFromIds,
 	UvFromIds,
@@ -228,7 +228,7 @@ private:
 		FName OutputName, EMixtormatPreviewOutputKind Kind, FName GapMaskName = NAME_None) const;
 	// The generic replacement for the old Pattern/Cluster-only CanPreviewSelectedFilter: enabled
 	// state plus whatever domain readiness a child's own output kind genuinely requires (Cluster
-	// IDs' packed-source requirement, Combine IDs needing a producer above it to combine).
+	// IDs' packed-source requirement).
 	bool IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) const;
 	bool IsSelectedOutputPreviewReady() const;
 	FReply SetStudioLighting(EMixtormatStudioLighting LightingPreset);
@@ -496,11 +496,10 @@ private:
 	const FMixtormatGenerator* GetSelectedGenerator() const;
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
-	FReply AddCombineIdToLayer(int32 LayerIndex);
+
 	FMixtormatIdGroup* GetSelectedIdGroup();
 	const FMixtormatIdGroup* GetSelectedIdGroup() const;
-	FMixtormatCombineIdFilter* GetSelectedCombineId();
-	const FMixtormatCombineIdFilter* GetSelectedCombineId() const;
+
 	FMixtormatRampIdFilter* GetSelectedRampId();
 	const FMixtormatRampIdFilter* GetSelectedRampId() const;
 	TSharedRef<SWidget> BuildRampIdControls();
@@ -517,9 +516,7 @@ private:
 	TSharedRef<SWidget> BuildIdGroupControls();
 	TSharedRef<SWidget> BuildIdGroupFeatureMenu();
 	TSharedRef<SWidget> BuildChildOutputsControls(const FMixtormatChildCapabilities& Capabilities);
-	TSharedRef<SWidget> BuildCombineIdControls();
-	TSharedRef<SWidget> BuildCombineIdModeMenu();
-	TSharedRef<SWidget> BuildCombineIdModeMenuFor(int32 LayerIndex, int32 ChildIndex);
+
 
 	FReply AddRandomIdToLayer(int32 LayerIndex);
 	FMixtormatRandomIdMask* GetSelectedRandomId();

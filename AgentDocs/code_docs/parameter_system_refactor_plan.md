@@ -310,7 +310,7 @@ annotations, render-data literal reverts.
    this pass), gather extraction, annotations, DB reachable immediately.
 2. Stain: decide pass-through (current) vs bounds; annotate or leave contract-free.
 3. Mask-child families (Generated, Craquelure, ColorId, Cluster, Hsv, Random, Ramp,
-   Pattern, UvId, ReliefId, CombineId) + `FMixtormatStrataCarver`: migrate gathers into
+   Pattern, UvId, ReliefId, IdGroup) + `FMixtormatStrataCarver`: migrate gathers into
    the gather file, extend the editor resolver's owner switch, extend the completeness
    test prefixes.
 4. `MixtormatLayerPreview` / `BakeService` `DA_*` material parameters: **out of scope** —

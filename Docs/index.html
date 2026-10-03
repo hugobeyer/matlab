@@ -612,8 +612,8 @@ pre{
 <p>Build regions from color information. This is useful when an authored ID texture or color-coded source already contains the segmentation you need.</p>
 </div>
 <div class="card">
-<h3>Cluster IDs &amp; Combine IDs (legacy)</h3>
-<p>Earlier nodes that coarsened and merged region maps. Authoring is retired in 1.0 — existing recipes keep evaluating exactly as authored, so nothing visually changes on load — but new materials compose IDs from Pattern IDs and the From-IDs filters instead.</p>
+<h3>Retired ID nodes</h3>
+<p>Cluster IDs and Combine IDs are retired authoring nodes. Combine IDs is not a supported functional feature; its original numeric child-type slot is reserved for serialization and does not imply evaluation support. Use Pattern IDs and the From-IDs filters for new materials; ID Group is the explicit ID-composition direction described above.</p>
 </div>
 <div class="card">
 <h3>Pattern IDs</h3>

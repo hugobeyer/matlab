@@ -7,10 +7,10 @@
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatMaterial.h"
-#include "MixtormatSurface.h"
+
 #include "RenderingThread.h"
 #include "TextureResource.h"
-#include "UObject/StrongObjectPtr.h"
+
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -118,45 +118,6 @@ namespace MixtormatChildOutputPreviewTests
 		}) == false;
 	}
 
-	UTexture2D* MakeTwoBandRAMH()
-	{
-		UTexture2D* Texture = UTexture2D::CreateTransient(Resolution, Resolution, PF_B8G8R8A8);
-		if (!Texture)
-		{
-			return nullptr;
-		}
-		Texture->SRGB = false;
-		Texture->CompressionSettings = TC_VectorDisplacementmap;
-		Texture->Filter = TF_Nearest;
-		Texture->MipGenSettings = TMGS_NoMipmaps;
-
-		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
-		FColor* Pixels = static_cast<FColor*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
-		for (int32 Y = 0; Y < Resolution; ++Y)
-		{
-			for (int32 X = 0; X < Resolution; ++X)
-			{
-				const bool bLeft = X < Resolution / 2;
-				Pixels[Y * Resolution + X] =
-					FColor(bLeft ? 48 : 208, 128, 0, bLeft ? 48 : 208);
-			}
-		}
-		Mip.BulkData.Unlock();
-		Texture->UpdateResource();
-		FlushRenderingCommands();
-		return Texture;
-	}
-
-	UMixtormatSurface* MakeSurface(UTexture2D* RAMH)
-	{
-		UMixtormatSurface* Surface = NewObject<UMixtormatSurface>(
-			GetTransientPackage(), NAME_None, RF_Transient);
-		if (Surface)
-		{
-			Surface->RoughnessAOMetallic = RAMH;
-		}
-		return Surface;
-	}
 
 	FMixtormatLayerChild MakePattern()
 	{
@@ -234,58 +195,7 @@ bool FMixtormatChildOutputPreviewGateTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Pattern gaps preview as black"), CountBlackPixels(PatternPixels) > 0);
 	}
 
-	// Combine IDs with Pattern upstream.
-	{
-		FMixtormatLayer Layer = PatternLayer;
-		// Close grout so neighbouring IDs share boundaries and Amount 1 can coarsen them.
-		Layer.Children[0].PatternId.GapPixels = 0.0f;
-		FMixtormatLayerChild& Combine = Layer.Children.AddDefaulted_GetRef();
-		Combine.Type = EMixtormatLayerChildType::CombineId;
-		Combine.CombineId.Amount = 1.0f;
-		TArray<FLinearColor> Pixels;
-		if (!TestTrue(TEXT("Pattern to Combine IDs preview composes"),
-				ComposeAndWait(Compositor, {Layer}, NoGroups,
-					ChildOutput(Layer, Combine, EMixtormatPreviewOutputKind::RegionIds)))
-			|| !TestTrue(TEXT("Pattern Combine IDs preview reads"), ReadDebug(Compositor, Pixels)))
-		{
-			return false;
-		}
-		TestTrue(TEXT("Pattern Combine IDs keeps valid regions"), CountRegionColors(Pixels) > 0);
-		TestTrue(TEXT("Pattern Combine IDs coarsens the source"),
-			CountRegionColors(Pixels) < CountRegionColors(PatternPixels));
-	}
 
-	// Combine IDs with Cluster upstream.
-	{
-		TStrongObjectPtr<UTexture2D> RAMH(MakeTwoBandRAMH());
-		TStrongObjectPtr<UMixtormatSurface> Surface(MakeSurface(RAMH.Get()));
-		if (!TestNotNull(TEXT("Cluster fixture texture exists"), RAMH.Get())
-			|| !TestNotNull(TEXT("Cluster fixture surface exists"), Surface.Get()))
-		{
-			return false;
-		}
-
-		FMixtormatLayer Layer;
-		Layer.Type = EMixtormatLayerType::Fill;
-		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(FSoftObjectPath(Surface.Get()));
-		FMixtormatLayerChild& Cluster = Layer.Children.AddDefaulted_GetRef();
-		Cluster.Type = EMixtormatLayerChildType::Filter;
-		Cluster.Filter.Threshold = 0.33f;
-		Cluster.Filter.HeightInfluence = 1.0f;
-		FMixtormatLayerChild& Combine = Layer.Children.AddDefaulted_GetRef();
-		Combine.Type = EMixtormatLayerChildType::CombineId;
-		Combine.CombineId.Amount = 0.0f;
-
-		TArray<FLinearColor> Pixels;
-		if (!TestTrue(TEXT("Cluster to Combine IDs preview composes"),
-				ComposeAndWait(Compositor, {Layer}, NoGroups,
-					ChildOutput(Layer, Combine, EMixtormatPreviewOutputKind::RegionIds)))
-			|| !TestTrue(TEXT("Cluster Combine IDs preview reads"), ReadDebug(Compositor, Pixels)))
-		{
-			return false;
-		}
-		TestTrue(TEXT("Cluster Combine IDs publishes both source regions"), CountRegionColors(Pixels) >= 2);
-	}
 
 	UTexture2D* WhiteMask = LoadObject<UTexture2D>(
 		nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));

@@ -331,7 +331,7 @@ namespace MixtormatLayersPrivate
 		{
 		case EMixtormatLayerChildType::PatternId: if (!Child.PatternId.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::Filter: if (!Child.Filter.bEnabled) { return false; } break;
-		case EMixtormatLayerChildType::CombineId: if (!Child.CombineId.bEnabled) { return false; } break;
+
 		case EMixtormatLayerChildType::IdGroup: if (!Child.IdGroup.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::OutputReference: if (!Child.OutputReference.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::Generator: if (!Child.Generator.bEnabled) { return false; } break;
@@ -478,7 +478,7 @@ namespace MixtormatLayersPrivate
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::PatternId:
-		case EMixtormatLayerChildType::CombineId:
+
 		case EMixtormatLayerChildType::IdGroup:
 		case EMixtormatLayerChildType::ColorId:
 		case EMixtormatLayerChildType::HsvFilter:
@@ -591,7 +591,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::IdGroup:         return EMixtormatLayerChildType::IdGroup;
 		case EMixtormatChildCreation::SurfaceIds:      return EMixtormatLayerChildType::Filter;
 		case EMixtormatChildCreation::ClusterIds:      return EMixtormatLayerChildType::Filter;
-		case EMixtormatChildCreation::CombineIds:      return EMixtormatLayerChildType::CombineId;
+
 		case EMixtormatChildCreation::HsvFromIds:      return EMixtormatLayerChildType::HsvFilter;
 		case EMixtormatChildCreation::RampFromIds:     return EMixtormatLayerChildType::RampId;
 		case EMixtormatChildCreation::UvFromIds:       return EMixtormatLayerChildType::UvFromIds;
@@ -840,7 +840,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::ReliefFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::BoundaryFromIds
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::PatternId
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::CombineId
+
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::IdGroup
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::OutputReference
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
@@ -1228,10 +1228,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("PatternIdChildName", "Pattern IDs");
 	}
-	if (Child.Type == EMixtormatLayerChildType::CombineId)
-	{
-		return LOCTEXT("CombineIdChildName", "Combine IDs");
-	}
+
 	if (Child.Type == EMixtormatLayerChildType::IdGroup)
 	{
 		return LOCTEXT("IdGroupChildName", "ID Group");
@@ -1786,25 +1783,6 @@ const FMixtormatIdGroup* SMixtormat::GetSelectedIdGroup() const
 	return Child.Type == EMixtormatLayerChildType::IdGroup ? &Child.IdGroup : nullptr;
 }
 
-FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId()
-{
-	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
-	{
-		return nullptr;
-	}
-	FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child.Type == EMixtormatLayerChildType::CombineId ? &Child.CombineId : nullptr;
-}
-
-const FMixtormatCombineIdFilter* SMixtormat::GetSelectedCombineId() const
-{
-	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
-	{
-		return nullptr;
-	}
-	const FMixtormatLayerChild& Child = *ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-	return Child.Type == EMixtormatLayerChildType::CombineId ? &Child.CombineId : nullptr;
-}
 
 FMixtormatRampIdFilter* SMixtormat::GetSelectedRampId()
 {

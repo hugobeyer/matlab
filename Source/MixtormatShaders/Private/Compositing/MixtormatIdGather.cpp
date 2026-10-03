@@ -285,25 +285,6 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		return true;
 	}
 
-	if (LayerChild.Type == EMixtormatLayerChildType::CombineId)
-	{
-		const FMixtormatCombineIdFilter& Combine = LayerChild.CombineId;
-		if (!Layer.bEnabled || !Combine.bEnabled)
-		{
-			return true;
-		}
-
-		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
-		ChildData.Type = EMixtormatLayerChildType::CombineId;
-		ChildData.SourceChildIndex = SourceChildIndex;
-		ChildData.CombineId.Amount = FMath::IsFinite(Combine.Amount)
-			? Combine.Amount : 0.0f;
-		ChildData.CombineId.Seed = static_cast<uint32>(Combine.Seed);
-		ChildData.CombineId.Passes = FMath::Max(Combine.Passes, 1);
-		ChildData.CombineId.bSubtract =
-			Combine.Mode == EMixtormatIdCombineMode::Subtract;
-		return true;
-	}
 
 	if (LayerChild.Type == EMixtormatLayerChildType::PatternId)
 	{

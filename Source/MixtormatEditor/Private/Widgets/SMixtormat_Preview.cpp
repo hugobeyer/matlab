@@ -556,33 +556,6 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 	return Target;
 }
 
-namespace
-{
-	// Combine IDs cannot combine anything without a producer above it in the same layer's child
-	// chain (Cluster IDs, Pattern IDs, Breakup, or another Combine IDs) -- the exact requirement
-	// MixtormatGpuPatternPasses.cpp's FindRegionIdsAbove enforces at compose time. Mirrored here,
-	// on the authored (not effective/expanded) array the editor already has, purely to disable the
-	// eye cleanly instead of leaving it clickable with nothing to show.
-	int32 CountRegionIdProducersAbove(
-		const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
-	{
-		int32 Count = 0;
-		for (int32 Index = ChildIndex - 1; Index >= 0; --Index)
-		{
-			const EMixtormatLayerChildType Type = Children[Index].Type;
-			if (Type == EMixtormatLayerChildType::Filter
-				|| Type == EMixtormatLayerChildType::PatternId
-				|| Type == EMixtormatLayerChildType::CombineId
-				|| Type == EMixtormatLayerChildType::IdGroup
-				|| (Type == EMixtormatLayerChildType::Effect
-					&& Children[Index].Effect.ProceduralType == EMixtormatEffectType::Breakup))
-			{
-				++Count;
-			}
-		}
-		return Count;
-	}
-}
 
 bool SMixtormat::IsSelectedOutputPreviewReady() const
 {
@@ -665,30 +638,7 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	}
 	// An ID Group folds however many producers sit inside it -- none, one, several, or nested
 	// groups -- so it always has a map to show.
-	if (Child.Type == EMixtormatLayerChildType::CombineId)
-	{
-		// A group-authored Combine IDs child is checked against its own authored array (Group's
-		// shared stack), same as a plain layer's Children -- the producer-above requirement is
-		// about position within the one stack a child actually lives in, group or not.
-		const TArray<FMixtormatLayerChild>* Siblings = nullptr;
-		int32 ChildIndex = INDEX_NONE;
-		if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-		{
-			Siblings = &WorkingLayers[SelectedLayerIndex].Children;
-			ChildIndex = GetSelectedChildIndex();
-		}
-		else if (const FMixtormatLayerGroup* Group =
-			MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId))
-		{
-			Siblings = &Group->Children;
-			ChildIndex = SelectedGroupChildIndex;
-		}
-		if (!Siblings || !Siblings->IsValidIndex(ChildIndex))
-		{
-			return false;
-		}
-		return CountRegionIdProducersAbove(*Siblings, ChildIndex) >= 1;
-	}
+
 	if (Child.Type != EMixtormatLayerChildType::Filter)
 	{
 		return true;
