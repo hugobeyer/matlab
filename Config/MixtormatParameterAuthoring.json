@@ -392,6 +392,13 @@
 			"snap": 0,
 			"clampMin": 1,
 			"clampMax": 512
+		},
+		"PatternId.Seed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 100,
+			"snap": 0
 		}
 	},
 	"Relief From IDs":

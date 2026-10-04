@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Style/MixtormatThemeSchema.h"
+#include "Style/MixtormatStyleLocator.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SScrollBox;
@@ -19,6 +20,7 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	virtual ~SMixtormatLiveThemePanel() override;
 
 private:
 	bool PropertyVisible(const Mixtormat::FMixtormatThemeProperty& Property) const;
@@ -39,6 +41,8 @@ private:
 	FReply Load();
 	FReply ResetAll();
 	void SelectTab(int32 Index);
+	void LocateTarget(Mixtormat::EMixtormatStyleTarget Target);
+	EActiveTimerReturnType AdvanceLocateFlash(double CurrentTime, float DeltaTime);
 	void UpdateStatus(const FString& Prefix);
 
 	TSharedRef<SWidget> MakePropertyRow(const Mixtormat::FMixtormatThemeProperty& Property);
@@ -50,4 +54,6 @@ private:
 	FString Status;
 	TMap<FName, float> PendingNumbers;
 	TSharedPtr<SScrollBox> PropertyScroll;
+	Mixtormat::EMixtormatStyleTarget LocatedTarget = Mixtormat::EMixtormatStyleTarget::None;
+	int32 LocateFlashPhase = INDEX_NONE;
 };

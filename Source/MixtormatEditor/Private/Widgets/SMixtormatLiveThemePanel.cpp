@@ -3,7 +3,9 @@
 #include "Widgets/SMixtormatLiveThemePanel.h"
 
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatStyleLocator.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
 
@@ -15,6 +17,7 @@
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -218,10 +221,16 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 	];
 }
 
+SMixtormatLiveThemePanel::~SMixtormatLiveThemePanel()
+{
+	Mixtormat::FMixtormatStyleLocator::End();
+}
+
 TSharedRef<SWidget> SMixtormatLiveThemePanel::MakePropertyRow(
 	const Mixtormat::FMixtormatThemeProperty& P)
 {
 	const Mixtormat::FMixtormatThemeProperty* Property = &P;
+	const Mixtormat::EMixtormatStyleTarget Target = Mixtormat::FMixtormatStyleLocator::TargetFor(P);
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
 		.ToolTipText(P.Help.IsEmpty()
 			? FText::FromString(P.Id.ToString())
@@ -332,6 +341,33 @@ TSharedRef<SWidget> SMixtormatLiveThemePanel::MakePropertyRow(
 		];
 		break;
 	}
+
+	Row->AddSlot().AutoWidth().Padding(ResetGap, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+	[
+		SNew(SButton)
+			.ContentPadding(FMargin(2.0f))
+			.IsEnabled(Target != Mixtormat::EMixtormatStyleTarget::None)
+			.ToolTipText(FText::Format(
+				LOCTEXT("LocateTarget", "Locate / blink: {0}"),
+				Mixtormat::FMixtormatStyleLocator::Label(Target)))
+			.OnClicked_Lambda([this, Target]()
+			{
+				LocateTarget(Target);
+				return FReply::Handled();
+			})
+			[
+				SNew(SBox)
+				.WidthOverride(14.0f)
+				.HeightOverride(14.0f)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SImage)
+					.Image(MixtormatIcons::Eye())
+					.ColorAndOpacity(FSlateColor::UseForeground())
+				]
+			]
+	];
 
 	Row->AddSlot().AutoWidth().Padding(ResetGap, 0.0f).VAlign(VAlign_Center)
 	[
@@ -549,6 +585,69 @@ void SMixtormatLiveThemePanel::SelectTab(const int32 Index)
 	if (PropertyScroll.IsValid())
 	{
 		PropertyScroll->ScrollToStart();
+	}
+}
+
+void SMixtormatLiveThemePanel::LocateTarget(const Mixtormat::EMixtormatStyleTarget Target)
+{
+	Mixtormat::FMixtormatStyleLocator::End();
+	LocateFlashPhase = INDEX_NONE;
+	LocatedTarget = Mixtormat::EMixtormatStyleTarget::None;
+
+	if (Target == Mixtormat::EMixtormatStyleTarget::None)
+	{
+		Status = TEXT("This property has no live locate target.");
+		return;
+	}
+
+	if (!Mixtormat::FMixtormatStyleLocator::Begin(Target))
+	{
+		Status = FString::Printf(
+			TEXT("Target is not currently visible: %s."),
+			*Mixtormat::FMixtormatStyleLocator::Label(Target).ToString());
+		return;
+	}
+
+	LocatedTarget = Target;
+	LocateFlashPhase = 0;
+	Status = FString::Printf(
+		TEXT("Blinking: %s."),
+		*Mixtormat::FMixtormatStyleLocator::Label(Target).ToString());
+
+	RegisterActiveTimer(
+		0.14f,
+		FWidgetActiveTimerDelegate::CreateSP(
+			this, &SMixtormatLiveThemePanel::AdvanceLocateFlash));
+}
+
+EActiveTimerReturnType SMixtormatLiveThemePanel::AdvanceLocateFlash(
+	double CurrentTime, float DeltaTime)
+{
+	(void)CurrentTime;
+	(void)DeltaTime;
+
+	if (LocatedTarget == Mixtormat::EMixtormatStyleTarget::None)
+	{
+		Mixtormat::FMixtormatStyleLocator::End();
+		return EActiveTimerReturnType::Stop;
+	}
+
+	++LocateFlashPhase;
+	switch (LocateFlashPhase)
+	{
+	case 1:
+		Mixtormat::FMixtormatStyleLocator::SetDimmed(false);
+		return EActiveTimerReturnType::Continue;
+
+	case 2:
+		Mixtormat::FMixtormatStyleLocator::SetDimmed(true);
+		return EActiveTimerReturnType::Continue;
+
+	default:
+		Mixtormat::FMixtormatStyleLocator::End();
+		LocatedTarget = Mixtormat::EMixtormatStyleTarget::None;
+		LocateFlashPhase = INDEX_NONE;
+		return EActiveTimerReturnType::Stop;
 	}
 }
 
