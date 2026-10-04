@@ -1425,7 +1425,8 @@ void SMixtormatPreviewViewport::FocusCamera()
 	const float FitDistance = MixtormatPreviewSceneSettings::CalculateFocusDistance(
 		static_cast<float>(Bounds.SphereRadius),
 		CameraFov,
-		GetCachedGeometry().GetLocalSize());
+		GetCachedGeometry().GetLocalSize(),
+		MixtormatPreviewCamera::ViewportFocusMargin);
 
 	CameraDistance = FMath::Clamp(
 		FitDistance,

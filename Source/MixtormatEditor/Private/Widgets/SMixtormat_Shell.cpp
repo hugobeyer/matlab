@@ -328,6 +328,15 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 
 TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 {
+	// Every rebuild runs a full layout pass, and that pass reports slot values back through
+	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
+	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
+	bSuppressSplitWriteBack = true;
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float)
+	{
+		bSuppressSplitWriteBack = false;
+		return EActiveTimerReturnType::Stop;
+	}));
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.IsEnabled_Lambda([this]() { return !bIsBaking; })
@@ -353,24 +362,43 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
 				.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
 				+ SSplitter::Slot()
-								.Value_Lambda([this]() { return bBottomLibraryCollapsed ? 0.99f : PreviewHeightFraction; })
-								.OnSlotResized_Lambda([this](float Value)
-								{
-									if (!bBottomLibraryCollapsed)
-									{
-										PreviewHeightFraction = Value;
-									}
-								})
-								[BuildPreviewPanel()]
+					.Value_Lambda([this]()
+					{
+						return bBottomLibraryCollapsed
+							? 0.99f
+							: FMath::Clamp(PreviewHeightFraction, 0.2f, 0.95f);
+					})
+					.OnSlotResized_Lambda([this](float Value)
+					{
+						// SSplitter reports every slot's computed value, including the ones it works
+						// out for itself while arranging. Echoing those back fought the arrangement
+						// and is what collapsed the gallery on a rebuild; only a settled layout -- or
+						// a real drag, which is the only thing that changes the value afterwards --
+						// is allowed to become the new remembered split.
+						if (!bSuppressSplitWriteBack && !bBottomLibraryCollapsed)
+						{
+							PreviewHeightFraction = FMath::Clamp(Value, 0.2f, 0.95f);
+						}
+					})
+					[BuildPreviewPanel()]
 				+ SSplitter::Slot()
-								.Value_Lambda([this]() { return bBottomLibraryCollapsed ? 0.01f : LibraryHeightFraction; })
-								.OnSlotResized_Lambda([this](float Value)
-								{
-									if (!bBottomLibraryCollapsed)
-									{
-										LibraryHeightFraction = Value;
-									}
-								})
+					// Derived, not stored: the two slots must always sum to 1, and two independent
+					// values are what let them disagree.
+					.Value_Lambda([this]()
+					{
+						return bBottomLibraryCollapsed
+							? 0.01f
+							: 1.0f - FMath::Clamp(PreviewHeightFraction, 0.2f, 0.95f);
+					})
+					.OnSlotResized_Lambda([this](float Value)
+					{
+						// Dragging the lower handle moves this slot; the split is remembered from the
+						// preview side so the stored value stays the one the panel is authored in.
+						if (!bSuppressSplitWriteBack && !bBottomLibraryCollapsed)
+						{
+							PreviewHeightFraction = FMath::Clamp(1.0f - Value, 0.2f, 0.95f);
+						}
+					})
 								[
 									SNew(SOverlay)
 									+ SOverlay::Slot()

@@ -1433,9 +1433,15 @@ private:
 	float ShellLeftFraction = 0.19f;
 	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;
-	float PreviewHeightFraction = 0.64f;
-	float LibraryHeightFraction = 0.36f;
+	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
+	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
+	// derived from this one, so the pair can never disagree or renormalise against each other.
+	float PreviewHeightFraction = 0.66f;
 	bool bBottomLibraryCollapsed = false;
+	// SSplitter reports every slot's post-arrangement value, including the ones it computes itself
+	// while laying out. Writing those back discarded the user's split on every LiveTheme refresh and
+	// on the first arrangement after a rebuild, so write-back stays muted until layout has settled.
+	bool bSuppressSplitWriteBack = true;
 	float MaterialLibraryFraction = 0.72f;
 	float MaskLibraryFraction = 0.28f;
 	// One page since the mixer and presets mock-ups were removed. Kept as a switcher rather than

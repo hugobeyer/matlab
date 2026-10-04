@@ -23,6 +23,36 @@
 // `--foldout-accent-blend-mode`; `:89`, `--layer-group-blend-mode`), and both need real compositing.
 namespace MixtormatCompositing
 {
+	// The four blend operations the prototype authors as `*-blend-mode` tokens. Slate has no
+	// equivalent, so the mode is stored as an enum and resolved by ApplyBlend rather than by a
+	// string comparison at a paint site.
+	//
+	// Stored in MixtormatTokens as an int32 index so the live-theme registry can point at it
+	// without casting an enum pointer; BlendModeOf below is the typed read.
+	enum class EMixtormatBlendMode : int32
+	{
+		Normal = 0,
+		Additive = 1,
+		Multiply = 2,
+		SoftLight = 3,
+	};
+
+	inline const TCHAR* BlendModeLabel(const EMixtormatBlendMode Mode)
+	{
+		switch (Mode)
+		{
+		case EMixtormatBlendMode::Additive: return TEXT("Additive / Plus Lighter");
+		case EMixtormatBlendMode::Multiply: return TEXT("Multiply");
+		case EMixtormatBlendMode::SoftLight: return TEXT("Soft Light");
+		case EMixtormatBlendMode::Normal:
+		default: return TEXT("Normal");
+		}
+	}
+
+	inline EMixtormatBlendMode BlendModeOf(const int32 Value)
+	{
+		return static_cast<EMixtormatBlendMode>(FMath::Clamp(Value, 0, 3));
+	}
 	// CSS `filter: saturate(x)`: push every channel away from (or toward) the colour's own luma.
 	//
 	// This is a property of the paint layer, not of the palette. One accent appears at three
@@ -150,5 +180,37 @@ namespace MixtormatCompositing
 		Result.B = FMath::Lerp(Backdrop.B, SoftLightChannel(Backdrop.B, Source.B), Coverage);
 		Result.A = Backdrop.A;
 		return Result;
+	}
+
+	// CSS `normal`: standard source-over, src * alpha over dst * (1 - alpha).
+	//
+	// Every other mode above is expressed as "backdrop plus a contribution", because that is the
+	// shape the visual contract needs -- a lift has to leave the surface beneath it as opaque as it
+	// found it. Normal is the one mode whose contract *is* transparency, so it is written out
+	// rather than approximated: a caller that picks Normal wants the two colours to combine the way
+	// a browser would, including the alpha term.
+	inline FLinearColor Normal(const FLinearColor& Backdrop, const FLinearColor& Source, const float Strength = 1.0f)
+	{
+		const float Alpha = FMath::Clamp(Source.A * Strength, 0.0f, 1.0f);
+		FLinearColor Result = Backdrop;
+		Result.R = FMath::Lerp(Backdrop.R, Source.R, Alpha);
+		Result.G = FMath::Lerp(Backdrop.G, Source.G, Alpha);
+		Result.B = FMath::Lerp(Backdrop.B, Source.B, Alpha);
+		Result.A = FMath::Lerp(Backdrop.A, 1.0f, Alpha);
+		return Result;
+	}
+
+	// The single dispatcher every paint layer uses, so no call site reimplements a blend.
+	inline FLinearColor ApplyBlend(const EMixtormatBlendMode Mode, const FLinearColor& Backdrop,
+		const FLinearColor& Source, const float Strength = 1.0f)
+	{
+		switch (Mode)
+		{
+		case EMixtormatBlendMode::Additive: return Additive(Backdrop, Source, Strength);
+		case EMixtormatBlendMode::Multiply: return Multiply(Backdrop, Source);
+		case EMixtormatBlendMode::SoftLight: return SoftLight(Backdrop, Source, Strength);
+		case EMixtormatBlendMode::Normal:
+		default: return Normal(Backdrop, Source, Strength);
+		}
 	}
 }

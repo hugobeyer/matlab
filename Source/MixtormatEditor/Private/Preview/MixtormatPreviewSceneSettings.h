@@ -31,6 +31,10 @@ namespace MixtormatPreviewCamera
 	constexpr float YawDefault = 195.0f;
 	constexpr float PitchDefault = -8.0f;
 	constexpr float FocusMargin = 1.15f;
+	// The live preview frames the material in a panel that also has to breathe: the viewport sits
+	// between a toolbar and the gallery divider, so a sphere fitted edge to edge reads as cropped
+	// and crowds both. Thumbnails keep the tight margin, because a tile has no margin to give.
+	constexpr float ViewportFocusMargin = 1.32f;
 }
 
 namespace MixtormatPreviewSceneSettings

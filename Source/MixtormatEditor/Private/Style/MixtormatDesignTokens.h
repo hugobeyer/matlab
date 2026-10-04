@@ -329,8 +329,11 @@ namespace MixtormatTokens
 	// meant neither could be tuned without moving the other.
 	inline float FontControlLabel = 10.0f;
 	inline float FontControlValue = 10.0f;
-	inline float ControlLabelBold = 0.0f;
-	inline float ControlValueBold = 1.0f;
+	// Binary weight switches. These are booleans, not numbers: a weight is Regular or Bold, and
+	// editing it on a 0..1 slider made a switch read as a quantity. The underlying face selection is
+	// still a real Regular/Bold pair, because that is all the shipped family resolves.
+	inline bool ControlLabelBold = false;
+	inline bool ControlValueBold = true;
 	// Authored in CSS px. Slate's LetterSpacing is in 1/1000 em, so a px value has to be converted
 	// against the font size rather than copied: 0px here is 0 in both, but any future non-zero
 	// value is not the same number in the two units.
@@ -340,7 +343,7 @@ namespace MixtormatTokens
 		// which is 7px tracked caps -- a caption's role, not a section heading's. The prototype's own
 		// values are a larger size, a normal weight and 1px of tracking.
 		inline float FontFoldoutTitle = 9.0f;
-		inline float FoldoutTitleBold = 0.0f;
+		inline bool FoldoutTitleBold = false;
 		// Authored in CSS px, like every tracking value here. Converted against FontFoldoutTitle when
 		// it reaches FSlateFontInfo, because Slate's LetterSpacing is in 1/1000 em: 1px at a 9px face
 		// is 111, not 1. Copying the number across would open a 1/1000 em gap and read as none at all.
@@ -406,6 +409,30 @@ namespace MixtormatTokens
 	inline float ScalarRampToolbarGroupGap = 8.0f;
 	inline float ScalarRampToolbarHeight = 20.0f;
 	inline float ScalarRampViewportPadding = 8.0f;
+
+	// ---- Blend modes -----------------------------------------------------------------------
+	// The eight `*-blend-mode` tokens the prototype authors, as indices into
+	// MixtormatCompositing::EMixtormatBlendMode: 0 Normal, 1 Additive (plus-lighter), 2 Multiply,
+	// 3 SoftLight. Defaults are the authored CSS values, not a house style.
+	//
+	// Stored as int32 because the live-theme registry points at them directly and because the paint
+	// path should never compare a string; BlendModeOf is the typed read at each call site.
+	inline int32 SurfaceBlendMode = 1;
+	inline int32 WellBlendMode = 2;
+	inline int32 FoldoutBlendMode = 0;
+	inline int32 FoldoutAccentBlendMode = 3;
+	inline int32 CardBlendMode = 1;
+	inline int32 GroupButtonBlendMode = 0;
+	inline int32 LayerBlendMode = 0;
+	inline int32 LayerGroupBlendMode = 3;
+
+	// ---- Discrete choices -----------------------------------------------------------------
+	// Index into the matching Options list in the registry. Only values Mixtormat actually ships
+	// and can resolve are offered -- the font list is not a system font enumeration.
+	// 0 Inter, 1 Roboto.
+	inline int32 FontFamily = 0;
+	// 0 none, 1 uppercase (dragger-label-case in the prototype).
+	inline int32 DraggerLabelCase = 0;
 
 	// ---- Brand ------------------------------------------------------------------------------
 	// The mark's own proportions, so none of these derive from anything else.
@@ -765,9 +792,9 @@ namespace MixtormatTokens
 	// Weight as a number, because the live theme carries numbers and colours and nothing else.
 	// At or above 0.5 the face is Bold, below it Regular -- there is no half-weight in the
 	// default font family, so the slider is a switch that happens to be continuous.
-	inline float CardTitleBold = 0.0f;
-	inline float GroupCardTitleBold = 0.0f;
-	inline float GroupHeaderBold = 1.0f;
+	inline bool CardTitleBold = false;
+	inline bool GroupCardTitleBold = false;
+	inline bool GroupHeaderBold = true;
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.
