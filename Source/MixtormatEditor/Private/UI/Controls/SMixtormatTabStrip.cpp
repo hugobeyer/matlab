@@ -3,6 +3,7 @@
 #include "UI/Controls/SMixtormatTabStrip.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatStyle.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -29,6 +30,49 @@ namespace
 						? TEXT("Mixtormat.TabUnderlineSelected")
 						: TEXT("Mixtormat.TabUnderline"));
 				})
+			];
+	}
+
+	TSharedRef<SWidget> MakeGroupTab(
+		const FText& Label, const FText& ToolTip, const TAttribute<bool>& bSelected,
+		const FSimpleDelegate& OnChosen, const FCheckBoxStyle& CheckBoxStyle, const bool bShowSeparator)
+	{
+		const TSharedRef<SCheckBox> CheckBox = SNew(SCheckBox)
+			.Style(&CheckBoxStyle)
+			.ToolTipText(ToolTip)
+			.IsChecked_Lambda([bSelected]()
+			{
+				return bSelected.Get(false) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			})
+			.OnCheckStateChanged_Lambda([OnChosen](ECheckBoxState) { OnChosen.ExecuteIfBound(); });
+		const TWeakPtr<SCheckBox> WeakCheckBox = CheckBox;
+		CheckBox->SetContent(
+			SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				.ColorAndOpacity(FSlateColor::UseForeground())
+				.Text(Label)
+				.Justification(ETextJustify::Center)
+			]);
+		return SNew(SBox)
+			.WidthOverride(MixtormatTokens::TabWidth)
+			.HeightOverride(MixtormatTokens::GroupButtonHeight)
+			[
+				SNew(SMixtormatGroupButtonSurface)
+				.Selected(bSelected)
+				.ShowSeparator(bShowSeparator)
+				.Hovered_Lambda([WeakCheckBox]()
+				{
+					const TSharedPtr<SCheckBox> Widget = WeakCheckBox.Pin();
+					return Widget.IsValid() && Widget->IsHovered();
+				})
+				.Pressed_Lambda([WeakCheckBox]()
+				{
+					const TSharedPtr<SCheckBox> Widget = WeakCheckBox.Pin();
+					return Widget.IsValid() && Widget->IsPressed();
+				})
+				[CheckBox]
 			];
 	}
 
@@ -96,6 +140,8 @@ namespace
 void SMixtormatTabStrip::Construct(const FArguments& InArgs)
 {
 	ActiveIndex = InArgs._ActiveIndex;
+	GroupButtonCheckBoxStyle = MixtormatGroupButton::MakeCheckBoxStyle(
+		FMixtormatStyle::Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.TabToggle")));
 
 	TSharedRef<SHorizontalBox> Strip = SNew(SHorizontalBox);
 	for (int32 Index = 0; Index < InArgs._Options.Num(); ++Index)
@@ -104,6 +150,18 @@ void SMixtormatTabStrip::Construct(const FArguments& InArgs)
 			[Active = ActiveIndex, Index]() { return Active.Get(0) == Index; });
 
 		const FMixtormatOnSegmentChosen OnChosen = InArgs._OnChosen;
+		if (InArgs._UseGroupButtonVisuals)
+		{
+			Strip->AddSlot().AutoWidth()
+			[
+				MakeGroupTab(InArgs._Options[Index],
+					InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty(),
+					bSelected,
+					FSimpleDelegate::CreateLambda([OnChosen, Index]() { OnChosen.ExecuteIfBound(Index); }),
+					GroupButtonCheckBoxStyle, Index + 1 < InArgs._Options.Num())
+			];
+			continue;
+		}
 		Strip->AddSlot().AutoWidth()
 		[
 			MakeTab(
@@ -117,10 +175,13 @@ void SMixtormatTabStrip::Construct(const FArguments& InArgs)
 	// The rule carries on past the last tab, always in the resting brush. That run of it is what
 	// closes the top of the panel: without it the tabs float above an open edge, and the selected
 	// tab has nothing to be joined to.
-	Strip->AddSlot().FillWidth(1.0f).VAlign(VAlign_Bottom)
-	[
-		MakeUnderline(false)
-	];
+	if (!InArgs._UseGroupButtonVisuals)
+	{
+		Strip->AddSlot().FillWidth(1.0f).VAlign(VAlign_Bottom)
+		[
+			MakeUnderline(false)
+		];
+	}
 
 	ChildSlot[Strip];
 }

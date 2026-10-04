@@ -6,7 +6,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatPalette.h"
 #include "Rendering/DrawElements.h"
-#include "UI/Primitives/MixtormatGradientPainter.h"
+#include "Layout/ArrangedChildren.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -30,67 +30,61 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 
 	if (!bCompactLayout)
 	{
-		TSharedRef<SHorizontalBox> Label = SNew(SHorizontalBox)
-					.Clipping(EWidgetClipping::ClipToBounds);
+		CardStack = Stack;
+		TSharedRef<SHorizontalBox> Header = SNew(SHorizontalBox);
 		if (InArgs._LeadingHeaderContent.IsValid())
 		{
-			Label->AddSlot().AutoWidth().VAlign(VAlign_Center)
+			Header->AddSlot().AutoWidth().VAlign(VAlign_Center)
 			.Padding(0.0f, 0.0f, MixtormatTokens::GroupCardLeadingGap, 0.0f)
 			[
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::GroupCardLeadingIconSize)
-				.HeightOverride(MixtormatTokens::GroupCardLeadingIconSize)
-				[ InArgs._LeadingHeaderContent.ToSharedRef() ]
+				// The caller owns glyph size, hit padding, state and callbacks. Do not squeeze
+				// an interactive widget into a glyph-sized box or dim all of its states here.
+				InArgs._LeadingHeaderContent.ToSharedRef()
 			];
 		}
-		Label->AddSlot().FillWidth(1.0f).VAlign(VAlign_Center)
+		Header->AddSlot().FillWidth(1.0f).VAlign(VAlign_Center)
 		[
-			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupCardTitle")))
-			.Text(UpperTitle)
-			.AutoWrapText(false)
+			SNew(SBox)
+			// Like CSS min-width:0: long titles consume allotted space, not desired width.
+			.WidthOverride(0.0f)
 			.Clipping(EWidgetClipping::ClipToBounds)
-		];
-		Stack->AddSlot().AutoHeight()
-		[
-			SAssignNew(HeaderBox, SBox).MinDesiredHeight(
-				MixtormatTokens::GroupCardTitleHeight + MixtormatTokens::GroupCardHeaderPaddingTop
-					+ MixtormatTokens::GroupCardHeaderPaddingBottom)
 			[
-				SNew(SHorizontalBox)
-				// Keep padding inside the proportional title/action slots.
-				+ SHorizontalBox::Slot().FillWidth(MixtormatTokens::GroupCardTitleWidthRatio)
-				.VAlign(VAlign_Top)
-				[
-					SNew(SBox)
-					// The label must not contribute its unbounded text width to the card's desired size.
-					.WidthOverride(0.0f)
-					.HeightOverride(MixtormatTokens::GroupCardTitleHeight
-						+ MixtormatTokens::GroupCardHeaderPaddingTop + MixtormatTokens::GroupCardHeaderPaddingBottom)
-					.Padding(FMargin(MixtormatTokens::GroupCardHeaderPaddingLeft,
-						MixtormatTokens::GroupCardHeaderPaddingTop,
-						MixtormatTokens::GroupCardHeaderPaddingRight,
-						MixtormatTokens::GroupCardHeaderPaddingBottom))
-					.Clipping(EWidgetClipping::ClipToBounds)
-					[ Label ]
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f - MixtormatTokens::GroupCardTitleWidthRatio)
-				[
-					SNew(SBox)
-					.HAlign(HAlign_Right).VAlign(VAlign_Center)
-					.Padding(FMargin(MixtormatTokens::GroupCardHeaderPaddingLeft,
-						MixtormatTokens::GroupCardHeaderPaddingTop,
-						MixtormatTokens::GroupCardHeaderPaddingRight,
-						MixtormatTokens::GroupCardHeaderPaddingBottom))
-					.Clipping(EWidgetClipping::ClipToBounds)
-					[ InArgs._HeaderAction.IsValid() ? InArgs._HeaderAction.ToSharedRef() : SNullWidget::NullWidget ]
-				]
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupCardTitle")))
+				.Text(UpperTitle)
+				.AutoWrapText(false)
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+				.Clipping(EWidgetClipping::ClipToBounds)
 			]
 		];
+		if (InArgs._HeaderAction.IsValid())
+		{
+			Header->AddSlot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(MixtormatTokens::GroupCardLeadingGap, 0.0f, 0.0f, 0.0f)
+			[ InArgs._HeaderAction.ToSharedRef() ];
+		}
 		Stack->AddSlot().AutoHeight()
-		.Padding(MixtormatTokens::GroupCardHorizontalPadding, MixtormatTokens::GroupCardContentPaddingTop,
-			MixtormatTokens::GroupCardHorizontalPadding, MixtormatTokens::GroupCardContentPaddingBottom)
-		[ InArgs._Content.Widget ];
+		.Padding(0.0f, MixtormatTokens::GroupCardHeaderMarginTop,
+			0.0f, MixtormatTokens::GroupCardHeaderMarginBottom)
+		[
+			SAssignNew(HeaderBox, SBox)
+			.MinDesiredHeight(MixtormatTokens::GroupCardTitleHeight)
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(MixtormatTokens::GroupCardHeaderPaddingLeft,
+				MixtormatTokens::GroupCardHeaderPaddingTop,
+				MixtormatTokens::GroupCardHeaderPaddingRight,
+				MixtormatTokens::GroupCardHeaderPaddingBottom))
+			[ Header ]
+		];
+		Stack->AddSlot().AutoHeight()
+		[
+			SAssignNew(BodyBox, SBox)
+			.Padding(FMargin(MixtormatTokens::GroupCardHorizontalPadding,
+				MixtormatTokens::GroupCardContentPaddingTop,
+				MixtormatTokens::GroupCardHorizontalPadding,
+				MixtormatTokens::GroupCardContentPaddingBottom))
+			[ InArgs._Content.Widget ]
+		];
 		ChildSlot
 		.Padding(FMargin(MixtormatTokens::GroupCardOuterMarginLeft,
 			MixtormatTokens::GroupCardOuterMarginTop,
@@ -190,23 +184,53 @@ int32 SMixtormatInspectorCard::OnPaint(const FPaintArgs& Args, const FGeometry& 
 	const FGeometry CardGeometry = AllottedGeometry.MakeChild(Size,
 		FSlateLayoutTransform(FVector2f(MixtormatTokens::GroupCardOuterMarginLeft,
 			MixtormatTokens::GroupCardOuterMarginTop)));
-	const float HeaderHeight = HeaderBox->GetCachedGeometry().GetLocalSize().Y;
-	const float HeaderEnd = Size.Y > 0.0f ? FMath::Clamp(HeaderHeight / Size.Y, 0.0f, 1.0f) : 0.0f;
-	const FLinearColor Tint = InWidgetStyle.GetColorAndOpacityTint();
+	if (Size.X <= 0.0f || Size.Y <= 0.0f)
+	{
+		return LayerId;
+	}
+
+	MixtormatGroupCard::FSurface Surface;
+	Surface.Size = Size;
+	// Arrange this frame's slots explicitly: cached geometry is from the previous paint and
+	// gives a stale seam on first paint, resize or a change in action/content desired height.
+	FArrangedChildren Arranged(EVisibility::Visible);
+	CardStack->ArrangeChildren(CardGeometry, Arranged);
+	for (int32 Index = 0; Index < Arranged.Num(); ++Index)
+	{
+		const FArrangedWidget& Child = Arranged[Index];
+		const float Top = CardGeometry.AbsoluteToLocal(
+			Child.Geometry.LocalToAbsolute(FVector2D::ZeroVector)).Y;
+		if (Child.Widget == HeaderBox)
+		{
+			Surface.HeaderTop = Top;
+			Surface.HeaderHeight = Child.Geometry.GetLocalSize().Y;
+		}
+		else if (Child.Widget == BodyBox)
+		{
+			Surface.BodyTop = Top;
+			Surface.BodyHeight = Child.Geometry.GetLocalSize().Y;
+		}
+	}
+	Surface.AuthoredHeaderHeight = MixtormatTokens::GroupCardTitleHeight;
+	Surface.Radius = MixtormatTokens::GroupCardRadius;
+	Surface.Reach = MixtormatTokens::GroupCardGradientReach;
+	Surface.Power = MixtormatTokens::GroupCardFalloffPower;
+	Surface.HeaderOpacity = MixtormatTokens::GroupCardHeaderOpacity;
+	Surface.BodyOpacity = MixtormatTokens::GroupCardBodyOpacity;
+	Surface.HeaderSaturation = MixtormatTokens::GroupCardHeaderSaturation;
+	Surface.BodySaturation = MixtormatTokens::GroupCardBodySaturation;
+
+	Surface.Ground = MixtormatPalette::Ground();
 	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
 		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
-	const FLinearColor Background = MixtormatPalette::GroupCardBackground() * Tint;
-	FLinearColor HeaderColor = Background;
-	HeaderColor.A *= MixtormatTokens::GroupCardHeaderOpacity;
-	FLinearColor BodyColor = Background;
-	BodyColor.A *= MixtormatTokens::GroupCardBodyOpacity;
-	const MixtormatGradient::FStop Stops[] = {
-		{0.0f, HeaderColor}, {HeaderEnd, BodyColor}, {1.0f, BodyColor}
-	};
-	const float Radius = MixtormatTokens::CornerRadius;
-	MixtormatGradient::Paint(OutDrawElements, LayerId, CardGeometry.ToPaintGeometry(),
-		Size, Orient_Vertical, MakeArrayView(Stops), FVector4f(Radius, Radius, Radius, Radius));
-
-	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect,
-		OutDrawElements, LayerId + 2, InWidgetStyle, bParentEnabled);
+	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(OutDrawElements, CardGeometry, Surface.Radius);
+	SurfacePainter.Paint(OutDrawElements, LayerId, CardGeometry, Surface,
+		InWidgetStyle.GetColorAndOpacityTint(), Effect);
+	const int32 LastLayer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect,
+		OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);
+	for (int32 Index = 0; Index < ClipCount; ++Index)
+	{
+		OutDrawElements.PopClip();
+	}
+	return LastLayer;
 }

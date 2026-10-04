@@ -12,16 +12,19 @@ struct FMixtormatThemeNumber
 	float Default;
 	float Minimum;
 	float Maximum;
+	bool bExposeInUI = true;
 };
 
 struct FMixtormatThemeColor
 {
 	FName Name;
 	FLinearColor Default;
+	FString Category;
+	bool bExposeInUI = true;
 };
 
-// The curated registry is shared by the panel, validation, reset and persistence.
-// Unused tokens and derived values are deliberately not exposed as editable controls.
+// Category and exposure are UI metadata only; hidden legacy entries remain valid persisted keys.
+// The registry is shared by the panel, validation, reset and persistence.
 class FMixtormatLiveTheme final
 {
 public:
@@ -29,6 +32,7 @@ public:
 	static void Initialize();
 	static const TArray<FMixtormatThemeNumber>& Numbers();
 	static const TArray<FMixtormatThemeColor>& Colors();
+	static const TArray<FString>& Categories();
 	static FLinearColor ResolveColor(FName Name, const FLinearColor& Default);
 	static bool SetNumber(FName Name, float Value);
 	static bool SetColor(FName Name, const FLinearColor& Value);

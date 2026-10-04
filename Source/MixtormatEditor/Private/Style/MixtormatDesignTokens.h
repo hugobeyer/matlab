@@ -451,7 +451,7 @@ namespace MixtormatTokens
 	// ---- Badge ------------------------------------------------------------------------------
 	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
 	// word changes without the column moving.
-	inline float BadgeWidth = 52.0f;
+	inline float BadgeWidth = 44.0f;
 	// Matches the badge's old flat brush radius.
 	inline float BadgeCornerRadius = 1.0f;
 	constexpr float BadgeHeight = 16.0f;
@@ -509,24 +509,33 @@ namespace MixtormatTokens
 	// Inspector-column cards use a rounded sheet with proportional title/action slots.
 	// Popovers keep the compact layout and its existing CardPadding/CardTitleGap values.
 	inline float GroupCardHeaderOpacity = 1.0f;
-	inline float GroupCardBodyOpacity = 0.01f;
-	inline float GroupCardHorizontalPadding = 8.0f;
-	inline float GroupCardHeaderPaddingLeft = 8.0f;
+	inline float GroupCardBodyOpacity = 0.09f;
+			inline float GroupCardRadius = 3.0f;
+			inline float GroupCardHeaderMarginTop = 1.0f;
+			inline float GroupCardHeaderMarginBottom = 0.0f;
+			inline float GroupCardFalloffPower = 0.65f;
+			inline float GroupCardGradientReach = 0.0f;
+			inline float GroupCardHeaderSaturation = 2.0f;
+			inline float GroupCardBodySaturation = 2.2f;
+			inline float GroupCardTitleOpacity = 0.75f;
+			inline float GroupCardTitleDisabledOpacity = 0.32f;
+	inline float GroupCardHorizontalPadding = 7.0f;
+	inline float GroupCardHeaderPaddingLeft = 11.0f;
 	inline float GroupCardHeaderPaddingTop = 0.0f;
 	inline float GroupCardHeaderPaddingRight = 8.0f;
 	inline float GroupCardHeaderPaddingBottom = 0.0f;
 	inline float GroupCardOuterMarginLeft = 0.0f;
-	inline float GroupCardOuterMarginTop = 0.0f;
+	inline float GroupCardOuterMarginTop = 2.0f;
 	inline float GroupCardOuterMarginRight = 0.0f;
-	inline float GroupCardOuterMarginBottom = 10.0f;
-	inline float GroupCardContentPaddingTop = 2.0f;
-	inline float GroupCardContentPaddingBottom = 2.0f;
-	inline float GroupCardTitleHeight = 24.0f;
+	inline float GroupCardOuterMarginBottom = 2.0f;
+	inline float GroupCardContentPaddingTop = 3.0f;
+	inline float GroupCardContentPaddingBottom = 7.0f;
+	inline float GroupCardTitleHeight = 16.0f;
 	// Retained for theme compatibility; inspector cards no longer use a title drop.
 	inline float GroupCardTitleDropDepth = 11.0f;
 	inline float GroupCardTitleWidthRatio = 0.5f;
-	inline float GroupCardLeadingIconSize = 14.0f;
-	inline float GroupCardLeadingGap = 3.0f;
+	inline float GroupCardLeadingIconSize = 12.0f;
+	inline float GroupCardLeadingGap = 10.0f;
 	inline float DropdownLabelRatio = 0.35f;
 	// Horizontal inset of a value row's text from its edges. The prototype gives a row 8px; the old
 	// 10 was half a control's width pushed in, which is why a row's label sat visibly off-centre
@@ -642,11 +651,39 @@ namespace MixtormatTokens
 	// rows in the tool. Each value below is a separate decision -- a layer and its children are
 	// deliberately different heights, and the indent is what carries the hierarchy now that no
 	// connector rail is drawn between them.
-	inline float LayerRowHeight = 28.0f;
-	inline float LayerChildRowHeight = 22.0f;
+	inline float LayerRowHeight = 26.0f;
+			inline float LayerSaturation = 1.3f;
+			inline float LayerHoverSaturation = 1.4f;
+			inline float LayerSelectedSaturation = 2.3f;
+			inline float LayerGroupSaturation = 1.0f;
+			inline float ChildSaturation = 1.2f;
+			inline float ChildHoverSaturation = 2.0f;
+			inline float ChildSelectedSaturation = 1.0f;
+			inline float ChildLeftOpacity = 0.3f;
+			inline float ChildRightOpacity = 0.46f;
+			inline float ChildHoverLeftOpacity = 0.72f;
+			inline float ChildHoverRightOpacity = 1.0f;
+			inline float ChildSelectedLeftOpacity = 0.9f;
+			inline float ChildSelectedRightOpacity = 0.94f;
+			inline float LayerActiveHairlineWidth = 1.0f;
+			inline float LayerActiveHairlineOpacity = 0.6f;
+			inline float LayerActiveGlowOpacity = 0.18f;
+			inline float LayerActiveGlowReach = 32.0f;
+			inline float LayerActiveGlowSaturation = 1.5f;
+			inline float LayerIconSize = 14.0f;
+			inline float LayerIconOpacity = 0.6f;
+			inline float LayerVisibilitySize = 6.0f;
+			inline float LayerVisibilityRadius = 2.0f;
+			inline float IconOffOpacity = 0.42f;
+			inline float FoldoutIconOpacity = 0.65f;
+			inline float FoldoutIconHoverOpacity = 0.85f;
+			inline float LayerGroupTitleSize = 10.0f;
+			inline float LayerGroupTitleWeight = 400.0f;
+			inline float LayerHierarchyLineWidth = 1.0f;
+	inline float LayerChildRowHeight = 18.0f;
 	// A group header is a layer row without the thumbnail, so it sits at child height rather than
 	// layer height -- the stack reads as groups of layers, not as a taller kind of layer.
-	inline float LayerGroupRowHeight = 22.0f;
+	inline float LayerGroupRowHeight = 18.0f;
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
 	inline float LayerThumbnailSize = 20.0f;
@@ -662,7 +699,7 @@ namespace MixtormatTokens
 	inline float LayerRowInsetTrailing = 6.0f;
 	// Between every element within a row -- eye to thumbnail, name to source, badge to chevron.
 	// One value, so the row reads as evenly spaced rather than as clusters.
-	inline float LayerItemGap = 7.0f;
+	inline float LayerItemGap = 3.0f;
 	// The name sits closer to its thumbnail than the standard gap, so the two read as one unit
 	// against the source text on the far side.
 	constexpr float LayerNameInset = 4.0f;
@@ -671,7 +708,7 @@ namespace MixtormatTokens
 	inline float LayerEyeSize = 15.0f;
 	inline float LayerChildIconSize = 16.0f;
 	// Opacity of the tree connector (tee / elbow) before a scoped child's glyph.
-	inline float LayerConnectorOpacity = 0.45f;
+	inline float LayerConnectorOpacity = 0.24f;
 	// The count-and-create bar above the rows: the icon buttons are what governs its natural
 	// height, plus three pixels of breathing room now that it carries the label as well.
 	inline float LayerStackHeaderHeight = IconButtonSize + 3.0f;
@@ -717,7 +754,8 @@ namespace MixtormatTokens
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.
 	constexpr int32 CaptionLetterSpacing = 140;
-	inline float GroupCardTitleLetterSpacing = static_cast<float>(CaptionLetterSpacing);
+	// CSS 0.6px / 8px * 1000; persisted value remains in Slate's 1/1000-em units.
+			inline float GroupCardTitleLetterSpacing = 75.0f;
 	constexpr int32 GroupHeaderLetterSpacing = 160;
 	// The layer source is caps too, but it runs alongside a mixed-case name rather than standing
 	// alone, so it is opened up less -- full caption spacing made it the loudest thing in the row.

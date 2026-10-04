@@ -7,7 +7,9 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Layers/SMixtormatLayerConnector.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -35,11 +37,12 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 		[
 			// Horizontal, not vertical: children stay dark at the left and lift toward the right,
 			// so they remain subordinate to the owning layer's top-to-bottom gradient.
-			SNew(SMixtormatGradientBox)
+			SNew(SMixtormatLayerSurface)
+			.Kind(SMixtormatLayerSurface::EKind::Child)
 			.StartColor(this, &SMixtormatLayerChildRow::GetTintEnd)
 			.EndColor(this, &SMixtormatLayerChildRow::GetTintStart)
-			.Orientation(Orient_Horizontal)
-			.CornerRadius(MixtormatTokens::CornerRadius)
+			.bSelected(bSelected)
+			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				SNew(SOverlay)
 				+ SOverlay::Slot()
@@ -76,15 +79,14 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
 					[
-						// Dimmer than the glyph: it shows structure, not identity.
+						// Keep the caller's scoped/last-child decision and the original column width.
 						SNew(SBox)
 						.WidthOverride(MixtormatTokens::LayerChildIconSize)
-						.HeightOverride(MixtormatTokens::LayerChildIconSize)
-						.Visibility(InArgs._Connector ? EVisibility::Visible : EVisibility::Collapsed)
+						.HeightOverride(MixtormatTokens::LayerChildRowHeight)
+						.Visibility(InArgs._Connector ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
 						[
-							SNew(SImage)
-							.Image(InArgs._Connector)
-							.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText().CopyWithNewOpacity(MixtormatTokens::LayerConnectorOpacity)))
+							SNew(SMixtormatLayerConnector)
+							.bLast(InArgs._Connector == MixtormatIcons::TreeElbow())
 						]
 					]
 					+ SHorizontalBox::Slot()
@@ -177,7 +179,7 @@ FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 {
 	if (bSelected.Get(false))
 	{
-		return MixtormatPalette::LayerChildSelectedRight();
+		return MixtormatPalette::LayerChildSelectedRight().CopyWithNewOpacity(MixtormatTokens::ChildSelectedRightOpacity);
 	}
 	if (bInstanceSource.Get(false))
 	{
@@ -187,14 +189,15 @@ FLinearColor SMixtormatLayerChildRow::GetTintStart() const
 		Glow.A = 0.10f;
 		return Glow;
 	}
-	return IsHovered() ? MixtormatPalette::LayerChildHoverRight() : FLinearColor::Transparent;
+	return MixtormatPalette::LayerChildHoverRight().CopyWithNewOpacity(IsHovered()
+		? MixtormatTokens::ChildHoverRightOpacity : MixtormatTokens::ChildRightOpacity);
 }
 
 FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
 {
 	if (bSelected.Get(false))
 	{
-		return MixtormatPalette::LayerChildSelectedLeft();
+		return MixtormatPalette::LayerChildSelectedLeft().CopyWithNewOpacity(MixtormatTokens::ChildSelectedLeftOpacity);
 	}
 	if (bInstanceSource.Get(false))
 	{
@@ -202,7 +205,8 @@ FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
 		Glow.A = 0.55f;
 		return Glow;
 	}
-	return IsHovered() ? MixtormatPalette::LayerChildHoverLeft() : FLinearColor::Transparent;
+	return MixtormatPalette::LayerChildHoverLeft().CopyWithNewOpacity(IsHovered()
+		? MixtormatTokens::ChildHoverLeftOpacity : MixtormatTokens::ChildLeftOpacity);
 }
 
 FReply SMixtormatLayerChildRow::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)

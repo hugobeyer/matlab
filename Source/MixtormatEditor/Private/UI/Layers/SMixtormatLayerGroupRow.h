@@ -63,7 +63,7 @@ private:
 	FSlateColor GetNameColor() const;
 	float GetAccentStrength() const;
 	FLinearColor GetCrossStart() const;
-	FLinearColor GetCrossEnd() const;
+
 	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);
 
 	TAttribute<bool> bGroupEnabled;

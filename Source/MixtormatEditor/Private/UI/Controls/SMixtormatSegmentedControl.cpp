@@ -3,6 +3,7 @@
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
@@ -19,6 +20,8 @@ namespace
 	public:
 		SLATE_BEGIN_ARGS(SMixtormatSegment) {}
 			SLATE_ARGUMENT(FText, Text)
+			SLATE_ARGUMENT(bool, UseGroupButtonVisuals)
+			SLATE_ARGUMENT(bool, ShowSeparator)
 			SLATE_ATTRIBUTE(bool, bActive)
 			SLATE_EVENT(FSimpleDelegate, OnChosen)
 		SLATE_END_ARGS()
@@ -27,6 +30,31 @@ namespace
 		{
 			bActive = InArgs._bActive;
 			OnChosen = InArgs._OnChosen;
+			bUseGroupButtonVisuals = InArgs._UseGroupButtonVisuals;
+
+			if (bUseGroupButtonVisuals)
+			{
+				ChildSlot
+				[
+					SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
+					[
+						SNew(SMixtormatGroupButtonSurface)
+						.Hovered_Lambda([this]() { return IsHovered(); })
+						.Selected(bActive)
+						.ShowSeparator(InArgs._ShowSeparator)
+						[
+							SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+								.ColorAndOpacity(this, &SMixtormatSegment::GetTextColor)
+								.Text(InArgs._Text)
+							]
+						]
+					]
+				];
+				return;
+			}
 
 			ChildSlot
 			[
@@ -87,6 +115,10 @@ namespace
 		}
 		FSlateColor GetTextColor() const
 		{
+			if (bUseGroupButtonVisuals)
+			{
+				return FSlateColor::UseForeground();
+			}
 			if (IsActive())
 			{
 				return FSlateColor(MixtormatPalette::SegmentActiveText());
@@ -94,6 +126,7 @@ namespace
 			return FSlateColor(IsHovered() ? MixtormatPalette::RowText() : MixtormatPalette::BadgeText());
 		}
 
+		bool bUseGroupButtonVisuals = false;
 		TAttribute<bool> bActive;
 		FSimpleDelegate OnChosen;
 	};
@@ -107,7 +140,7 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 	for (int32 Index = 0; Index < InArgs._Options.Num(); ++Index)
 	{
 		// A hairline between cells only -- never before the first, never around the strip.
-		if (Index > 0)
+		if (Index > 0 && !InArgs._UseGroupButtonVisuals)
 		{
 			Strip->AddSlot()
 			.AutoWidth()
@@ -126,6 +159,8 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 		.FillWidth(1.0f)
 		[
 			SNew(SMixtormatSegment)
+			.UseGroupButtonVisuals(InArgs._UseGroupButtonVisuals)
+			.ShowSeparator(Index + 1 < InArgs._Options.Num())
 			.Text(InArgs._Options[Index])
 			.ToolTipText(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
 			.bActive_Lambda([this, Index]() { return ActiveIndex.Get(0) == Index; })
@@ -134,6 +169,12 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 				Chosen.ExecuteIfBound(Index);
 			}))
 		];
+	}
+
+	if (InArgs._UseGroupButtonVisuals)
+	{
+		ChildSlot[Strip];
+		return;
 	}
 
 	ChildSlot

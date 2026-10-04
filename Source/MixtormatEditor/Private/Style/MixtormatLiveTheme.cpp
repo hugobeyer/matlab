@@ -44,8 +44,9 @@ void FMixtormatLiveTheme::Initialize()
 
 const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 {
-#define THEME_NUMBER(Category, Name, Min, Max) \
-	{TEXT(#Name), TEXT(Category), &MixtormatTokens::Name, MixtormatTokens::Name, Min, Max}
+#define THEME_NUMBER_UI(Category, Name, Min, Max, Expose) \
+	{TEXT(#Name), TEXT(Category), &MixtormatTokens::Name, MixtormatTokens::Name, Min, Max, Expose}
+#define THEME_NUMBER(Category, Name, Min, Max) THEME_NUMBER_UI(Category, Name, Min, Max, true)
 	static const TArray<FMixtormatThemeNumber> Entries = {
 		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampHeight, 48.0f, 240.0f),
 		THEME_NUMBER("Scalar Ramp / Curve Editor", ScalarRampCurveThickness, 0.5f, 5.0f),
@@ -147,13 +148,21 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Sliders", DragThreshold, 0.0f, 16.0f),
 		THEME_NUMBER("Surfaces", CornerRadius, 0.0f, 12.0f),
 		THEME_NUMBER("Surfaces", OutlineWidth, 0.0f, 4.0f),
-		THEME_NUMBER("Surfaces", PanelGutter, 0.0f, 32.0f),
-		THEME_NUMBER("Surfaces", GroupHeaderHeight, 16.0f, 64.0f),
+		// No live readers remain; retain both persisted names for existing theme files.
+		THEME_NUMBER_UI("Surfaces", PanelGutter, 0.0f, 32.0f, false),
+		THEME_NUMBER_UI("Surfaces", GroupHeaderHeight, 16.0f, 64.0f, false),
 		THEME_NUMBER("Surfaces", GroupOuterGap, 0.0f, 24.0f),
 		THEME_NUMBER("Surfaces", GroupHeaderItemGap, 0.0f, 24.0f),
 		THEME_NUMBER("Surfaces", CardPadding, 0.0f, 32.0f),
 		THEME_NUMBER("Surfaces", CardGap, 0.0f, 32.0f),
 		THEME_NUMBER("Surfaces", CardTitleGap, 0.0f, 24.0f),
+		THEME_NUMBER("Group Cards", GroupCardRadius, 0.0f, 12.0f),
+		THEME_NUMBER("Group Cards", GroupCardHeaderMarginTop, 0.0f, 24.0f),
+		THEME_NUMBER("Group Cards", GroupCardHeaderMarginBottom, 0.0f, 24.0f),
+		THEME_NUMBER("Group Cards", GroupCardFalloffPower, 0.01f, 4.0f),
+		THEME_NUMBER("Group Cards", GroupCardGradientReach, 0.0f, 128.0f),
+		THEME_NUMBER("Group Cards", GroupCardHeaderSaturation, 0.0f, 4.0f),
+		THEME_NUMBER("Group Cards", GroupCardBodySaturation, 0.0f, 4.0f),
 		THEME_NUMBER("Group Cards", GroupCardHeaderOpacity, 0.0f, 1.0f),
 		THEME_NUMBER("Group Cards", GroupCardBodyOpacity, 0.0f, 1.0f),
 		THEME_NUMBER("Group Cards", GroupCardHorizontalPadding, 0.0f, 32.0f),
@@ -170,11 +179,11 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Group Cards", FontGroupCardTitle, 6.0f, 20.0f),
 		THEME_NUMBER("Group Cards", GroupCardTitleBold, 0.0f, 1.0f),
 		THEME_NUMBER("Group Cards", GroupCardTitleLetterSpacing, 0.0f, 1000.0f),
-		THEME_NUMBER("Surfaces", GroupCardTitleHeight, 16.0f, 64.0f),
-		THEME_NUMBER("Surfaces", GroupCardTitleDropDepth, 0.0f, 32.0f),
-		THEME_NUMBER("Surfaces", GroupCardTitleWidthRatio, 0.5f, 0.5f),
-		THEME_NUMBER("Surfaces", GroupCardLeadingIconSize, 8.0f, 32.0f),
-		THEME_NUMBER("Surfaces", GroupCardLeadingGap, 0.0f, 24.0f),
+		THEME_NUMBER("Group Cards", GroupCardTitleHeight, 16.0f, 64.0f),
+		THEME_NUMBER("Group Cards", GroupCardTitleDropDepth, 0.0f, 32.0f),
+		THEME_NUMBER("Group Cards", GroupCardTitleWidthRatio, 0.5f, 0.5f),
+		THEME_NUMBER("Group Cards", GroupCardLeadingIconSize, 8.0f, 32.0f),
+		THEME_NUMBER("Group Cards", GroupCardLeadingGap, 0.0f, 24.0f),
 		THEME_NUMBER("Surfaces", HeaderContentGap, 0.0f, 24.0f),
 		THEME_NUMBER("Buttons", ButtonHeight, 16.0f, 48.0f),
 		THEME_NUMBER("Buttons", ButtonPaddingCompact, 0.0f, 32.0f),
@@ -218,6 +227,34 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Layers", GroupRowCrossStrength, 0.0f, 1.0f),
 		THEME_NUMBER("Layers", GroupAccentStrength, 0.0f, 1.0f),
 		THEME_NUMBER("Layers", GroupAccentSelectedStrength, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", LayerHoverSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", LayerSelectedSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", LayerGroupSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", ChildSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", ChildHoverSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", ChildSelectedSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", ChildLeftOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", ChildRightOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", ChildHoverLeftOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", ChildHoverRightOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", ChildSelectedLeftOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", ChildSelectedRightOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerActiveHairlineWidth, 0.0f, 4.0f),
+		THEME_NUMBER("Layers", LayerActiveHairlineOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerActiveGlowOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerActiveGlowReach, 0.0f, 128.0f),
+		THEME_NUMBER("Layers", LayerActiveGlowSaturation, 0.0f, 3.0f),
+		THEME_NUMBER("Layers", LayerIconSize, 6.0f, 32.0f),
+		THEME_NUMBER("Layers", LayerIconOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerVisibilitySize, 0.0f, 32.0f),
+		THEME_NUMBER("Layers", LayerVisibilityRadius, 0.0f, 16.0f),
+		THEME_NUMBER("Layers", IconOffOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Foldouts", FoldoutIconOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Foldouts", FoldoutIconHoverOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Layers", LayerGroupTitleSize, 6.0f, 24.0f),
+		THEME_NUMBER("Layers", LayerGroupTitleWeight, 400.0f, 700.0f),
+		THEME_NUMBER("Layers", LayerHierarchyLineWidth, 0.0f, 4.0f),
 		THEME_NUMBER("Layers", LayerRowHeight, 20.0f, 64.0f),
 		THEME_NUMBER("Layers", LayerChildRowHeight, 16.0f, 48.0f),
 		THEME_NUMBER("Layers", LayerGroupRowHeight, 16.0f, 48.0f),
@@ -262,37 +299,77 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Typography", GroupHeaderBold, 0.0f, 1.0f)
 	};
 #undef THEME_NUMBER
+#undef THEME_NUMBER_UI
 	return Entries;
 }
 
 const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 {
-#define THEME_COLOR(Name) {TEXT(#Name), MixtormatPalette::Name()}
+#define THEME_COLOR(Category, Name) {TEXT(#Name), MixtormatPalette::Name(), TEXT(Category), true}
 	static const TArray<FMixtormatThemeColor> Entries = {
-		THEME_COLOR(ScalarRampBackground), THEME_COLOR(ScalarRampOutsideRangeBackground),
-		THEME_COLOR(ScalarRampGrid), THEME_COLOR(ScalarRampMajorGrid), THEME_COLOR(ScalarRampCurve),
-		THEME_COLOR(ScalarRampFill), THEME_COLOR(ScalarRampPoint), THEME_COLOR(ScalarRampPointHover),
-		THEME_COLOR(ScalarRampPointSelected),
-		THEME_COLOR(Window), THEME_COLOR(TopBar), THEME_COLOR(Shell),
-				THEME_COLOR(Ground),
-		THEME_COLOR(Panel), THEME_COLOR(RaisedPanel), THEME_COLOR(RaisedPanelHover),
-		THEME_COLOR(GroupSurround), THEME_COLOR(GroupCardBackground), THEME_COLOR(HeaderTint), THEME_COLOR(Hairline), THEME_COLOR(HairlineHover), THEME_COLOR(HeaderText),
-		THEME_COLOR(RowText), THEME_COLOR(CaptionText), THEME_COLOR(CardTitleText),
-		THEME_COLOR(GroupCardTitleText),
-		THEME_COLOR(LayerName),
-		THEME_COLOR(LayerSource), THEME_COLOR(LayerEdge), THEME_COLOR(Accent),
-		THEME_COLOR(AccentBright), THEME_COLOR(SelectionFill), THEME_COLOR(FocusFill),
-		THEME_COLOR(Border), THEME_COLOR(BorderStrong), THEME_COLOR(WellTop),
-		THEME_COLOR(WellBottom), THEME_COLOR(FillTop), THEME_COLOR(FillBottom),
-		THEME_COLOR(FillTopHover), THEME_COLOR(FillBottomHover), THEME_COLOR(Modified), THEME_COLOR(PreviewDot),
-		THEME_COLOR(MenuGround), THEME_COLOR(MenuTint),
-		THEME_COLOR(BadgeTop), THEME_COLOR(BadgeBottom), THEME_COLOR(BadgeHairline),
-		THEME_COLOR(InspectorHairline), THEME_COLOR(OverlayButtonPlate),
-		THEME_COLOR(WellTopHover), THEME_COLOR(WellBottomHover), THEME_COLOR(WellOutline),
-		THEME_COLOR(WellOutlineHover), THEME_COLOR(WellEntry),
-		THEME_COLOR(IconRest), THEME_COLOR(IconHover), THEME_COLOR(GroupRowCross)
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampBackground),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampOutsideRangeBackground),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampGrid),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampMajorGrid),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampCurve),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampFill),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampPoint),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampPointHover),
+		THEME_COLOR("Scalar Ramp / Curve Editor", ScalarRampPointSelected),
+		THEME_COLOR("Shell", Window), THEME_COLOR("Shell", TopBar), THEME_COLOR("Shell", Shell),
+		THEME_COLOR("Base Palette", Ground),
+		THEME_COLOR("Surfaces", Panel), THEME_COLOR("Surfaces", RaisedPanel),
+		THEME_COLOR("Surfaces", RaisedPanelHover), THEME_COLOR("Foldouts", GroupSurround),
+		THEME_COLOR("Group Cards", GroupCardBackground), THEME_COLOR("Foldouts", HeaderTint),
+		THEME_COLOR("Foldouts", Hairline), THEME_COLOR("Foldouts", HairlineHover),
+		THEME_COLOR("Foldouts", HeaderText),
+		THEME_COLOR("Rows", RowText), THEME_COLOR("Typography", CaptionText),
+		THEME_COLOR("Surfaces", CardTitleText), THEME_COLOR("Group Cards", GroupCardTitleText),
+		THEME_COLOR("Layers", LayerName), THEME_COLOR("Layers", LayerSource),
+		THEME_COLOR("Layers", LayerEdge), THEME_COLOR("Base Palette", Accent),
+		THEME_COLOR("Base Palette", AccentBright), THEME_COLOR("Base Palette", SelectionFill),
+		THEME_COLOR("Base Palette", FocusFill), THEME_COLOR("Surfaces", Border),
+		THEME_COLOR("Surfaces", BorderStrong), THEME_COLOR("Controls / Well", WellTop),
+		THEME_COLOR("Controls / Well", WellBottom), THEME_COLOR("Controls / Fill", FillTop),
+		THEME_COLOR("Controls / Fill", FillBottom), THEME_COLOR("Controls / Fill", FillTopHover),
+		THEME_COLOR("Controls / Fill", FillBottomHover), THEME_COLOR("Sliders", Modified),
+		THEME_COLOR("Preview overlays", PreviewDot),
+		THEME_COLOR("Menus and dialogs", MenuGround), THEME_COLOR("Menus and dialogs", MenuTint),
+		THEME_COLOR("Layers", BadgeTop), THEME_COLOR("Layers", BadgeBottom),
+		THEME_COLOR("Layers", BadgeHairline), THEME_COLOR("Inspector", InspectorHairline),
+		THEME_COLOR("Preview overlays", OverlayButtonPlate),
+		THEME_COLOR("Controls / Well", WellTopHover), THEME_COLOR("Controls / Well", WellBottomHover),
+		THEME_COLOR("Controls / Well", WellOutline), THEME_COLOR("Controls / Well", WellOutlineHover),
+		THEME_COLOR("Controls / Well", WellEntry),
+		THEME_COLOR("Buttons", IconRest), THEME_COLOR("Buttons", IconHover),
+		THEME_COLOR("Layers", GroupRowCross)
 	};
 #undef THEME_COLOR
+	return Entries;
+}
+
+const TArray<FString>& FMixtormatLiveTheme::Categories()
+{
+	static const TArray<FString> Entries = []()
+	{
+		TArray<FString> Result;
+		for (const FMixtormatThemeNumber& Entry : Numbers())
+		{
+			if (Entry.bExposeInUI)
+			{
+				Result.AddUnique(Entry.Category);
+			}
+		}
+		for (const FMixtormatThemeColor& Entry : Colors())
+		{
+			if (Entry.bExposeInUI)
+			{
+				Result.AddUnique(Entry.Category);
+			}
+		}
+		Result.Sort();
+		return Result;
+	}();
 	return Entries;
 }
 

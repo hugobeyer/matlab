@@ -7,7 +7,8 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Framework/Application/SlateApplication.h"
@@ -64,6 +65,9 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const TAttribute<int32> MemberCount = InArgs._MemberCount;
+	FSlateFontInfo GroupFont = Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")).Font;
+	GroupFont.Size = FMath::RoundToInt(MixtormatTokens::LayerGroupTitleSize);
+	GroupFont.TypefaceFontName = MixtormatTokens::LayerGroupTitleWeight >= 600.0f ? FName(TEXT("Bold")) : FName(TEXT("Regular"));
 
 	ChildSlot
 	[
@@ -72,16 +76,13 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SMixtormatLayerSurface)
+			.Kind(SMixtormatLayerSurface::EKind::Group)
 			.StartColor(this, &SMixtormatLayerGroupRow::GetBackgroundStart)
 			.EndColor(this, &SMixtormatLayerGroupRow::GetBackgroundEnd)
-			// The cross pass, left to right over the top-down one. Two axes is the group row's
-			// signature: a layer ramps top-down only and a child row left-right only, so a header
-			// doing both is distinguishable from either without a glyph to say so.
-			.MultiplyStart(this, &SMixtormatLayerGroupRow::GetCrossStart)
-			.MultiplyEnd(this, &SMixtormatLayerGroupRow::GetCrossEnd)
-			.Orientation(Orient_Vertical)
-			.CornerRadius(MixtormatTokens::CornerRadius)
+			.CrossColor(this, &SMixtormatLayerGroupRow::GetCrossStart)
+			.bSelected(bSelected)
+			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				SNew(SBox)
 				.HeightOverride(MixtormatTokens::LayerGroupRowHeight)
@@ -100,22 +101,35 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
 					[
-						SNew(SMixtormatIconButton)
+						SNew(SMixtormatLayerIcon)
 						.Size(MixtormatTokens::LayerEyeSize)
-						.Icon_Lambda([this]()
-						{
-							return bGroupEnabled.Get(true)
-								? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
-						})
+						.bVisibility(true)
+						.bOn(bGroupEnabled)
 						.ToolTipText(LOCTEXT(
 							"GroupEyeHint",
 							"Show or hide every layer in this group. Each layer keeps its own visibility."))
 						.OnClicked(OnToggleEnabled)
 					]
 
-					// No folder glyph where a layer carries its thumbnail: the row is already
-					// unmistakably a group from its height, its inset and the layers nested under
-					// it, so the icon was repeating what the shape already said.
+					// Reserve the thumbnail column even though a group has no thumbnail.
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::LayerThumbnailSize)
+						.HAlign(HAlign_Right)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::LayerIconSize)
+							.HeightOverride(MixtormatTokens::LayerIconSize)
+							[
+								SNew(SImage).Image(MixtormatIcons::Folder())
+								.ColorAndOpacity(MixtormatPalette::RowText().CopyWithNewOpacity(MixtormatTokens::LayerIconOpacity))
+							]
+						]
+					]
 
 					+ SHorizontalBox::Slot()
 					.FillWidth(1.0f)
@@ -127,6 +141,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						[
 							SNew(STextBlock)
 							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+							.Font(GroupFont)
 							.ColorAndOpacity(this, &SMixtormatLayerGroupRow::GetNameColor)
 							.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 							.Text(InArgs._Name)
@@ -163,7 +178,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
-						SNew(SMixtormatIconButton)
+						SNew(SMixtormatLayerIcon)
 						.Size(MixtormatTokens::ChevronSize)
 						.Icon_Lambda([this]()
 						{
@@ -208,12 +223,6 @@ FLinearColor SMixtormatLayerGroupRow::GetCrossStart() const
 	return FLinearColor(Base.R, Base.G, Base.B, MixtormatTokens::GroupRowCrossStrength);
 }
 
-// Transparent, so the pass fades out entirely and the vertical gradient is what the right-hand
-// side of the row shows.
-FLinearColor SMixtormatLayerGroupRow::GetCrossEnd() const
-{
-	return FLinearColor::Transparent;
-}
 
 FLinearColor SMixtormatLayerGroupRow::GetBackgroundStart() const
 {

@@ -102,7 +102,7 @@ public:
 private:
 	FLinearColor GetBackgroundStart() const;
 	FLinearColor GetBackgroundEnd() const;
-	const FSlateBrush* GetHairlineBrush() const;
+
 	FSlateColor GetNameColor() const;
 	void HandleEyeClicked(const FPointerEvent& MouseEvent);
 	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);

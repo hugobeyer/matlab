@@ -8,7 +8,8 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBorder.h"
@@ -41,13 +42,11 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	const bool bCanDisable = InArgs._bCanDisable;
 	const TAttribute<bool> bSolo = InArgs._bSolo;
 
-	TSharedRef<SWidget> Eye = SNew(SMixtormatIconButton)
+	TSharedRef<SWidget> Eye = SNew(SMixtormatLayerIcon)
 		.Size(MixtormatTokens::LayerEyeSize)
+		.bVisibility(true)
+		.bOn(bLayerEnabled)
 		.bActive(bSolo)
-		.Icon_Lambda([this]()
-		{
-			return bLayerEnabled.Get(true) ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
-		})
 		.ToolTipText(bCanDisable
 			? LOCTEXT("LayerEyeHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
 			: LOCTEXT("LayerEyeLockedHint", "This layer's visibility is locked."))
@@ -62,28 +61,14 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SMixtormatLayerSurface)
 			.StartColor(this, &SMixtormatLayerRow::GetBackgroundStart)
 			.EndColor(this, &SMixtormatLayerRow::GetBackgroundEnd)
-			.Orientation(Orient_Vertical)
-			.CornerRadius(MixtormatTokens::CornerRadius)
+			.bSelected(bSelected)
+			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
-				// The additive lip along the top edge. It is the seam between one layer and the
-				// one above it, and it is what makes the row read as the header of everything
-				// indented under it rather than as another item in a flat list.
-				//
-				// Overlaid rather than stacked above the row: a hairline in its own slot would add
-				// its height to every row, and the stack is already the tightest thing in the tool.
+				// The surface paints its lip and glow without adding layout or hit-test slots.
 				SNew(SOverlay)
-				+ SOverlay::Slot()
-				.VAlign(VAlign_Top)
-				[
-					SNew(SBox)
-					.HeightOverride(MixtormatTokens::HairlineThickness)
-					[
-						SNew(SImage).Image(this, &SMixtormatLayerRow::GetHairlineBrush)
-					]
-				]
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Left)
 				[
@@ -213,7 +198,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						.VAlign(VAlign_Center)
 						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
 						[
-							SNew(SMixtormatIconButton)
+							SNew(SMixtormatLayerIcon)
 							.Size(MixtormatTokens::ChevronSize)
 							.IsEnabled(InArgs._bHasChildren)
 							.Icon_Lambda([this, bHasChildren = InArgs._bHasChildren]()
@@ -263,12 +248,6 @@ FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
 	return IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom();
 }
 
-const FSlateBrush* SMixtormatLayerRow::GetHairlineBrush() const
-{
-	return FMixtormatStyle::Get().GetBrush(bSelected.Get(false)
-		? TEXT("Mixtormat.HeaderHairlineGlow")
-		: TEXT("Mixtormat.HeaderHairline"));
-}
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const
 {

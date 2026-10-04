@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+#include "UI/Containers/MixtormatGroupCardPainter.h"
 
 class SBox;
+class SVerticalBox;
 
 // Related inspector values on a rounded rectangular sheet; popovers opt into the compact layout.
 class SMixtormatInspectorCard final : public SCompoundWidget
@@ -36,4 +38,7 @@ public:
 private:
 	bool bCompactLayout = false;
 	TSharedPtr<SBox> HeaderBox;
+	TSharedPtr<SBox> BodyBox;
+	TSharedPtr<SVerticalBox> CardStack;
+	mutable MixtormatGroupCard::FSurfacePainter SurfacePainter;
 };

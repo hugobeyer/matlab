@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Styling/SlateTypes.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -25,8 +26,10 @@ class SMixtormatTabStrip final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatTabStrip)
-		: _ActiveIndex(0)
+		: _UseGroupButtonVisuals(true)
+		, _ActiveIndex(0)
 	{}
+		SLATE_ARGUMENT(bool, UseGroupButtonVisuals)
 		SLATE_ARGUMENT(TArray<FText>, Options)
 		SLATE_ARGUMENT(TArray<FText>, ToolTips)
 		SLATE_ATTRIBUTE(int32, ActiveIndex)
@@ -37,4 +40,6 @@ public:
 
 private:
 	TAttribute<int32> ActiveIndex;
+	// Checkbox children hold this address; never give them a temporary/local adapter.
+	FCheckBoxStyle GroupButtonCheckBoxStyle;
 };

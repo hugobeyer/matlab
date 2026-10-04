@@ -4,6 +4,8 @@
 
 #include "Widgets/SCompoundWidget.h"
 
+class SScrollBox;
+
 class SMixtormatLiveThemePanel final : public SCompoundWidget
 {
 public:
@@ -22,9 +24,14 @@ private:
 	FReply Load();
 	FReply ResetAll();
 	bool Matches(const FString& Name, const FString& Category) const;
+	bool HasMatches(const FString& Category = FString()) const;
+	void SelectCategory(const FString& Category);
 
 	TAttribute<bool> CanEdit;
 	FSimpleDelegate OnThemeChanged;
+	// Empty selects All; search text survives category changes and live workspace refreshes.
+	FString SelectedCategory;
 	FString Filter;
+	TSharedPtr<SScrollBox> TokenScroll;
 	FString Status;
 };

@@ -8,11 +8,13 @@
 #include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -34,88 +36,143 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 	OnThemeChanged = InArgs._OnThemeChanged;
 	Status = TEXT("Changes preview automatically. Save stores this theme; Load restores it.");
 
-	const TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
-	for (const FMixtormatThemeNumber& Entry : FMixtormatLiveTheme::Numbers())
+	const TSharedRef<SWrapBox> Tabs = SNew(SWrapBox).UseAllottedSize(true);
+	TArray<FString> TabCategories = {FString()};
+	TabCategories.Append(FMixtormatLiveTheme::Categories());
+	for (const FString& Category : TabCategories)
 	{
-		const FString Name = Entry.Name.ToString();
-		Rows->AddSlot().AutoHeight().Padding(0.0f, RowGap)
+		Tabs->AddSlot()
 		[
-			SNew(SHorizontalBox)
-			.Visibility_Lambda([this, Name, Category = Entry.Category]()
+			SNew(SCheckBox)
+			.Style(FAppStyle::Get(), TEXT("ToggleButtonCheckbox"))
+			.IsChecked_Lambda([this, Category]()
 			{
-				return Matches(Name, Category) ? EVisibility::Visible : EVisibility::Collapsed;
+				return SelectedCategory == Category ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 			})
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			.OnCheckStateChanged_Lambda([this, Category](ECheckBoxState) { SelectCategory(Category); })
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Entry.Category + TEXT(" / ") + Name))
-				.AutoWrapText(true)
-			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(ResetGap, 0.0f)
-			[
-				SNew(SBox).WidthOverride(ControlWidth)
-				[
-					SNew(SSpinBox<float>)
-					.MinValue(Entry.Minimum).MaxValue(Entry.Maximum)
-					.MinSliderValue(Entry.Minimum).MaxSliderValue(Entry.Maximum)
-					.Delta(Entry.Category == TEXT("Typography") ? 1.0f : 0.5f)
-					.Value_Lambda([Entry]() { return *Entry.Value; })
-					.OnValueChanged(this, &SMixtormatLiveThemePanel::ChangeNumber, Entry.Name)
-				]
-			]
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SButton).Text(LOCTEXT("ResetToken", "Reset"))
-				.IsEnabled_Lambda([Entry]() { return !FMath::IsNearlyEqual(*Entry.Value, Entry.Default); })
-				.OnClicked_Lambda([this, Entry]()
-				{
-					ChangeNumber(Entry.Default, Entry.Name);
-					return FReply::Handled();
-				})
+				.Text(Category.IsEmpty() ? LOCTEXT("AllCategories", "All") : FText::FromString(Category))
 			]
 		];
 	}
-	for (const FMixtormatThemeColor& Entry : FMixtormatLiveTheme::Colors())
+
+	const TSharedRef<SVerticalBox> Sections = SNew(SVerticalBox);
+	for (const FString& Category : FMixtormatLiveTheme::Categories())
 	{
+		const TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 		Rows->AddSlot().AutoHeight().Padding(0.0f, RowGap)
 		[
-			SNew(SHorizontalBox)
-			.Visibility_Lambda([this, Name = Entry.Name.ToString()]()
+			SNew(STextBlock).Text(FText::FromString(Category))
+		];
+		for (const FMixtormatThemeNumber& Entry : FMixtormatLiveTheme::Numbers())
+		{
+			if (!Entry.bExposeInUI || Entry.Category != Category)
 			{
-				return Matches(Name, TEXT("Colors")) ? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				continue;
+			}
+			const FString Name = Entry.Name.ToString();
+			Rows->AddSlot().AutoHeight().Padding(0.0f, RowGap)
 			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("Colors / ") + Entry.Name.ToString()))
-			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(ResetGap, 0.0f)
-			[
-				SNew(SBox).WidthOverride(ControlWidth)
+				SNew(SHorizontalBox)
+				.ToolTipText(FText::FromString(FString::Printf(TEXT("%s / %s\nDefault: %g. Range: %g–%g."),
+					*Entry.Category, *Name, Entry.Default, Entry.Minimum, Entry.Maximum)))
+				.Visibility_Lambda([this, Name, Category = Entry.Category]()
+				{
+					return Matches(Name, Category) ? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
-					SNew(SButton)
-					.ToolTipText(FText::FromName(Entry.Name))
-					.OnClicked(this, &SMixtormatLiveThemePanel::OpenColor, Entry.Name)
+					SNew(STextBlock)
+					.Text(FText::FromString(Name))
+					.AutoWrapText(true)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(ResetGap, 0.0f)
+				[
+					SNew(SBox).WidthOverride(ControlWidth)
 					[
-						SNew(SColorBlock).Size(FVector2D(ControlWidth, 18.0f))
-						.Color_Lambda([Entry]() { return FMixtormatLiveTheme::ResolveColor(Entry.Name, Entry.Default); })
+						SNew(SSpinBox<float>)
+						.MinValue(Entry.Minimum).MaxValue(Entry.Maximum)
+						.MinSliderValue(Entry.Minimum).MaxSliderValue(Entry.Maximum)
+						.Delta(Entry.Category == TEXT("Typography") ? 1.0f : 0.5f)
+						.Value_Lambda([Entry]() { return *Entry.Value; })
+						.OnValueChanged(this, &SMixtormatLiveThemePanel::ChangeNumber, Entry.Name)
 					]
 				]
-			]
-			+ SHorizontalBox::Slot().AutoWidth()
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SButton).Text(LOCTEXT("ResetToken", "Reset"))
+					.IsEnabled_Lambda([Entry]() { return !FMath::IsNearlyEqual(*Entry.Value, Entry.Default); })
+					.OnClicked_Lambda([this, Entry]()
+					{
+						ChangeNumber(Entry.Default, Entry.Name);
+						return FReply::Handled();
+					})
+				]
+			];
+		}
+		for (const FMixtormatThemeColor& Entry : FMixtormatLiveTheme::Colors())
+		{
+			if (!Entry.bExposeInUI || Entry.Category != Category)
+			{
+				continue;
+			}
+			Rows->AddSlot().AutoHeight().Padding(0.0f, RowGap)
 			[
-				SNew(SButton).Text(LOCTEXT("ResetColor", "Reset"))
-				.IsEnabled_Lambda([Entry]()
+				SNew(SHorizontalBox)
+				.ToolTipText(FText::FromString(Entry.Category + TEXT(" / ") + Entry.Name.ToString()
+					+ TEXT("\nDefault (linear RGBA): ") + Entry.Default.ToString() + TEXT(". Range: 0–1 per channel.")))
+				.Visibility_Lambda([this, Name = Entry.Name.ToString(), Category = Entry.Category]()
 				{
-					return !FMixtormatLiveTheme::ResolveColor(Entry.Name, Entry.Default).Equals(Entry.Default);
+					return Matches(Name, Category) ? EVisibility::Visible : EVisibility::Collapsed;
 				})
-				.OnClicked_Lambda([this, Entry]()
-				{
-					ChangeColor(Entry.Default, Entry.Name);
-					return FReply::Handled();
-				})
-			]
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock).Text(FText::FromName(Entry.Name)).AutoWrapText(true)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(ResetGap, 0.0f)
+				[
+					SNew(SBox).WidthOverride(ControlWidth)
+					[
+						SNew(SButton)
+						.ToolTipText(FText::FromName(Entry.Name))
+						.OnClicked(this, &SMixtormatLiveThemePanel::OpenColor, Entry.Name)
+						[
+							SNew(SColorBlock).Size(FVector2D(ControlWidth, 18.0f))
+							.Color_Lambda([Entry]() { return FMixtormatLiveTheme::ResolveColor(Entry.Name, Entry.Default); })
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SButton).Text(LOCTEXT("ResetColor", "Reset"))
+					.IsEnabled_Lambda([Entry]()
+					{
+						return !FMixtormatLiveTheme::ResolveColor(Entry.Name, Entry.Default).Equals(Entry.Default);
+					})
+					.OnClicked_Lambda([this, Entry]()
+					{
+						ChangeColor(Entry.Default, Entry.Name);
+						return FReply::Handled();
+					})
+				]
+			];
+		}
+		Sections->AddSlot().AutoHeight()
+		[
+			SNew(SBox)
+			.Visibility_Lambda([this, Category]()
+			{
+				return HasMatches(Category) ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[Rows]
 		];
 	}
+	Sections->AddSlot().AutoHeight().Padding(0.0f, RowGap)
+	[
+		SNew(STextBlock).Text(LOCTEXT("NoMatchingTokens", "No matching tokens in this category."))
+		.Visibility_Lambda([this]() { return HasMatches() ? EVisibility::Collapsed : EVisibility::Visible; })
+	];
 
 	ChildSlot
 	[
@@ -134,8 +191,20 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, RowGap)
 			[
 				SNew(SSearchBox)
-				.HintText(LOCTEXT("SearchTokens", "Search names or categories: spacing, layers, typography, colors..."))
-				.OnTextChanged_Lambda([this](const FText& Text) { Filter = Text.ToString().TrimStartAndEnd(); })
+				.HintText_Lambda([this]()
+				{
+					return SelectedCategory.IsEmpty()
+						? LOCTEXT("SearchAllTokens", "Search all names or categories...")
+						: FText::Format(LOCTEXT("SearchCategoryTokens", "Search within {0}..."), FText::FromString(SelectedCategory));
+				})
+				.OnTextChanged_Lambda([this](const FText& Text)
+				{
+					Filter = Text.ToString().TrimStartAndEnd();
+					if (TokenScroll.IsValid())
+					{
+						TokenScroll->ScrollToStart();
+					}
+				})
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, RowGap)
 			[
@@ -151,8 +220,10 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 				+ SHorizontalBox::Slot().AutoWidth()
 				[SNew(SButton).Text(LOCTEXT("ResetTheme", "Reset All")).OnClicked(this, &SMixtormatLiveThemePanel::ResetAll)]
 			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, RowGap)
+			[Tabs]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
-			[SNew(SScrollBox) + SScrollBox::Slot()[Rows]]
+			[SAssignNew(TokenScroll, SScrollBox) + SScrollBox::Slot()[Sections]]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, RowGap)
 			[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(Status); }).AutoWrapText(true)]
 			+ SVerticalBox::Slot().AutoHeight()
@@ -163,7 +234,38 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 
 bool SMixtormatLiveThemePanel::Matches(const FString& Name, const FString& Category) const
 {
-	return Filter.IsEmpty() || Name.Contains(Filter) || Category.Contains(Filter);
+	return (SelectedCategory.IsEmpty() || SelectedCategory == Category)
+		&& (Filter.IsEmpty() || Name.Contains(Filter) || Category.Contains(Filter));
+}
+
+bool SMixtormatLiveThemePanel::HasMatches(const FString& Category) const
+{
+	for (const FMixtormatThemeNumber& Entry : FMixtormatLiveTheme::Numbers())
+	{
+		if (Entry.bExposeInUI && (Category.IsEmpty() || Category == Entry.Category)
+			&& Matches(Entry.Name.ToString(), Entry.Category))
+		{
+			return true;
+		}
+	}
+	for (const FMixtormatThemeColor& Entry : FMixtormatLiveTheme::Colors())
+	{
+		if (Entry.bExposeInUI && (Category.IsEmpty() || Category == Entry.Category)
+			&& Matches(Entry.Name.ToString(), Entry.Category))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void SMixtormatLiveThemePanel::SelectCategory(const FString& Category)
+{
+	SelectedCategory = Category;
+	if (TokenScroll.IsValid())
+	{
+		TokenScroll->ScrollToStart();
+	}
 }
 
 void SMixtormatLiveThemePanel::ChangeNumber(const float Value, const FName Name)
