@@ -30,6 +30,28 @@ namespace Mixtormat
 		Color,
 	};
 
+	// Explicit semantic locator ownership for UI STYLE rows.
+	//
+	// This deliberately lives on the schema property instead of being inferred from tab/id.
+	// None means there is no honest live target yet; the locate button stays disabled.
+	enum class EMixtormatStyleTarget : uint8
+	{
+		None,
+		Global,
+		ControlWell,
+		ControlFill,
+		ControlToggle,
+		ControlLayout,
+		Foldout,
+		Card,
+		Layer,
+		Button,
+		Menu,
+		Preview,
+		Gallery,
+		Shell,
+	};
+
 	// Refresh mode for a theme property change. Strongest wins when coalescing.
 	// Paint < Layout < StyleRefresh < Reconstruct
 	enum class EMixtormatThemeRefreshMode : uint8
@@ -49,6 +71,7 @@ namespace Mixtormat
 		EMixtormatThemeTab Tab = EMixtormatThemeTab::Global;
 		EMixtormatThemePropertyKind Kind = EMixtormatThemePropertyKind::Number;
 		EMixtormatThemeRefreshMode RefreshMode = EMixtormatThemeRefreshMode::Reconstruct;
+		EMixtormatStyleTarget LocateTarget = EMixtormatStyleTarget::None;
 
 		float Minimum = 0.0f;
 		float Maximum = 1.0f;

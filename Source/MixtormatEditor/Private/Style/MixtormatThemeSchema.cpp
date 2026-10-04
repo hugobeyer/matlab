@@ -17,6 +17,7 @@ namespace Mixtormat
 {
 	using ETab = EMixtormatThemeTab;
 	using EKind = EMixtormatThemePropertyKind;
+	using ETarget = EMixtormatStyleTarget;
 
 	namespace
 	{
@@ -123,13 +124,26 @@ FMixtormatThemeProperty Number(
 			return { TEXT("Regular"), TEXT("SemiBold"), TEXT("Bold") };
 		}
 
+	void SetLocateTarget(
+		TArray<FMixtormatThemeProperty>& Properties,
+		const int32 BeginIndex,
+		const ETarget Target)
+	{
+		for (int32 Index = BeginIndex; Index < Properties.Num(); ++Index)
+		{
+			Properties[Index].LocateTarget = Target;
+		}
+	}
+
 void AddIconRole(
 			TArray<FMixtormatThemeProperty>& Out,
 			const EMixtormatIconRole Role,
 			const TCHAR* Prefix,
 			const TCHAR* Label,
+			const ETarget LocateTarget,
 			EMixtormatThemeRefreshMode RefreshMode = EMixtormatThemeRefreshMode::Reconstruct)
 		{
+			const int32 LocateBegin = Out.Num();
 			const uint8 Index = static_cast<uint8>(Role);
 			const EMixtormatThemeRefreshMode OpacityRefreshMode =
 				Role == EMixtormatIconRole::PreviewToolbar || Role == EMixtormatIconRole::Menu
@@ -156,6 +170,7 @@ void AddIconRole(
 			Out.Add(Number(*Id(TEXT("DisabledOpacity")), ETab::Global, *Section, TEXT("Disabled Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].DisabledOpacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].DisabledOpacity = V; }, TEXT(""), OpacityRefreshMode));
+			SetLocateTarget(Out, LocateBegin, LocateTarget);
 		}
 
 	void AddTextRole(
@@ -214,6 +229,7 @@ void AddIconRole(
 	BLEND(Id, Tab, Section, Label, Path, EMixtormatThemeRefreshMode::Paint)
 
 // GLOBAL / semantic palette. OverlayGround is intentionally omitted: no production reader.
+		int32 LocateBegin = P.Num();
 		COL_DEF("Palette.Ground", Global, "Palette", "Ground", Palette.Ground);
 		COL_DEF("Palette.Shell", Global, "Palette", "Shell", Palette.Shell);
 		COL_DEF("Palette.Panel", Global, "Palette", "Panel", Palette.Panel);
@@ -225,20 +241,31 @@ void AddIconRole(
 		COL_DEF("Palette.Error", Global, "Palette", "Error", Palette.Error);
 		COL_DEF("Palette.Shade", Global, "Palette", "Shade", Palette.Shade);
 		COL_DEF("Palette.Hairline", Global, "Palette", "Hairline", Palette.Hairline);
+		SetLocateTarget(P, LocateBegin, ETarget::Global);
+
+		LocateBegin = P.Num();
 		COL_DEF("Palette.MenuGround", Global, "Palette", "Menu Ground", Palette.MenuGround);
+		SetLocateTarget(P, LocateBegin, ETarget::Menu);
+
+		LocateBegin = P.Num();
 		COL_DEF("Palette.ThumbnailGround", Global, "Palette", "Thumbnail Ground", Palette.ThumbnailGround);
+		SetLocateTarget(P, LocateBegin, ETarget::Gallery);
 
-				AddIconRole(P, EMixtormatIconRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"));
-				AddIconRole(P, EMixtormatIconRole::PanelToolbar, TEXT("PanelToolbar"), TEXT("Panel Toolbar"));
-				AddIconRole(P, EMixtormatIconRole::PreviewToolbar, TEXT("PreviewToolbar"), TEXT("Preview Toolbar"));
-				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"));
-				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"));
-				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"));
+				// TopBar and PanelToolbar use generic icon-button widgets with no role identity,
+				// so locating either would blink unrelated controls. Leave them disabled until
+				// those consumers expose a semantic locator identity.
+				AddIconRole(P, EMixtormatIconRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"), ETarget::None);
+				AddIconRole(P, EMixtormatIconRole::PanelToolbar, TEXT("PanelToolbar"), TEXT("Panel Toolbar"), ETarget::None);
+				AddIconRole(P, EMixtormatIconRole::PreviewToolbar, TEXT("PreviewToolbar"), TEXT("Preview Toolbar"), ETarget::Preview);
+				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"), ETarget::Layer);
+				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"), ETarget::Layer);
+				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"), ETarget::Foldout);
 
-				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"));
+				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"), ETarget::Menu);
 
 
 // CONTROLS
+		LocateBegin = P.Num();
 		NUM_DEF("Well.Radius", Controls, "Well", "Radius", Well.Radius, 0, 12, .5, 1);
 		BLEND_DEF("Well.ShadeBlend", Controls, "Well", "Shade Blend", Well.ShadeBlend);
 		NUM_DEF("Well.ShadeTop", Controls, "Well", "Shade Top", Well.ShadeTop, 0, 1, .01, 2);
@@ -252,7 +279,9 @@ void AddIconRole(
 		NUM_DEF("Well.BorderHoverBottomOpacity", Controls, "Well", "Hover Border Bottom", Well.BorderHoverBottomOpacity, 0, 1, .01, 2);
 		NUM_DEF("Well.BorderSaturation", Controls, "Well", "Border Saturation", Well.BorderSaturation, 0, 4, .05, 2);
 		NUM_DEF("Well.HoverLiftOpacity", Controls, "Well", "Hover Lift", Well.HoverLiftOpacity, 0, 1, .01, 2);
+		SetLocateTarget(P, LocateBegin, ETarget::ControlWell);
 
+		LocateBegin = P.Num();
 		BLEND_DEF("Fill.BodyBlend", Controls, "Fill", "Body Blend", Fill.BodyBlend);
 		BLEND_DEF("Fill.ShadeBlend", Controls, "Fill", "Shade Blend", Fill.ShadeBlend);
 		NUM_DEF("Fill.Top", Controls, "Fill", "Top", Fill.Top, 0, 1, .01, 2);
@@ -271,12 +300,16 @@ void AddIconRole(
 		NUM_DEF("Fill.ShadeEnd", Controls, "Fill", "Shade End", Fill.ShadeEnd, 0, 1, .01, 2);
 		NUM_DEF("Fill.ShadeMidPosition", Controls, "Fill", "Shade Mid Position", Fill.ShadeMidPosition, 0, 1, .01, 2);
 		NUM_DEF("Fill.FalloffPower", Controls, "Fill", "Falloff Power", Fill.FalloffPower, .01, 4, .05, 2);
+		SetLocateTarget(P, LocateBegin, ETarget::ControlFill);
 
+		LocateBegin = P.Num();
 		NUM("Toggle.Size", Controls, "Toggle", "Size", Toggle.Size, 8, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("Toggle.FillInset", Controls, "Toggle", "Fill Inset", Toggle.FillInset, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("Toggle.DisabledShadeTop", Controls, "Toggle", "Disabled Shade Top", Toggle.DisabledShadeTop, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("Toggle.DisabledShadeBottom", Controls, "Toggle", "Disabled Shade Bottom", Toggle.DisabledShadeBottom, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		SetLocateTarget(P, LocateBegin, ETarget::ControlToggle);
 
+		LocateBegin = P.Num();
 		NUM("ControlLayout.RowHeight", Controls, "Layout", "Row Height", ControlLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.RowGap", Controls, "Layout", "Row Gap", ControlLayout.RowGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.PairedGap", Controls, "Layout", "Paired Gap", ControlLayout.PairedGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
@@ -290,8 +323,10 @@ void AddIconRole(
 		NUM("ControlLayout.DropdownLabelRatio", Controls, "Layout", "Dropdown Label Ratio", ControlLayout.DropdownLabelRatio, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.PanelGutter", Controls, "Layout", "Panel Gutter", ControlLayout.PanelGutter, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM_DEF("ControlLayout.DisabledLabelOpacity", Controls, "Layout", "Disabled Label Opacity", ControlLayout.DisabledLabelOpacity, 0, 1, .01, 2);
+		SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
 
 // FOLDOUTS
+		LocateBegin = P.Num();
 		COL_DEF("Foldout.LiftTint", Foldouts, "Surface", "Lift Tint", Foldout.LiftTint);
 		COL_DEF("Foldout.HoverTint", Foldouts, "Surface", "Hover Tint", Foldout.HoverTint);
 		COL_DEF("Foldout.HairlineHoverTint", Foldouts, "Surface", "Hover Hairline Tint", Foldout.HairlineHoverTint);
@@ -319,8 +354,10 @@ void AddIconRole(
 		NUM("FoldoutLayout.HeaderPaddingTop", Foldouts, "Layout", "Header Padding Top", FoldoutLayout.HeaderPaddingTop, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("FoldoutLayout.HeaderPaddingBottom", Foldouts, "Layout", "Header Padding Bottom", FoldoutLayout.HeaderPaddingBottom, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM_DEF("FoldoutLayout.Radius", Foldouts, "Layout", "Radius", FoldoutLayout.Radius, 0, 12, .5, 1);
+		SetLocateTarget(P, LocateBegin, ETarget::Foldout);
 
 // CARDS
+		LocateBegin = P.Num();
 		BLEND_DEF("Card.Blend", Cards, "Surface", "Blend", Card.Blend);
 		NUM_DEF("Card.HeaderOpacity", Cards, "Surface", "Header Opacity", Card.HeaderOpacity, 0, 1, .01, 2);
 		NUM_DEF("Card.BodyOpacity", Cards, "Surface", "Body Opacity", Card.BodyOpacity, 0, 1, .01, 2);
@@ -341,8 +378,10 @@ void AddIconRole(
 		NUM("CardLayout.BodyBottom", Cards, "Layout", "Body Bottom", CardLayout.BodyBottom, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.Padding", Cards, "Layout", "Padding", CardLayout.Padding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.Gap", Cards, "Layout", "Gap", CardLayout.Gap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		SetLocateTarget(P, LocateBegin, ETarget::Card);
 
 // LAYERS
+		LocateBegin = P.Num();
 		BLEND_DEF("Layer.Blend", Layers, "Rows", "Blend", Layer.Blend);
 		BLEND_DEF("Layer.GroupBlend", Layers, "Rows", "Group Blend", Layer.GroupBlend);
 		NUM_DEF("Layer.RestSaturation", Layers, "Rows", "Rest Saturation", Layer.RestSaturation, 0, 4, .05, 2);
@@ -402,8 +441,10 @@ void AddIconRole(
 		NUM("LayerLayout.ThumbnailSize", Layers, "Layout", "Thumbnail Size", LayerLayout.ThumbnailSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ItemGap", Layers, "Layout", "Item Gap", LayerLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ChildIndent", Layers, "Layout", "Child Indent", LayerLayout.ChildIndent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		SetLocateTarget(P, LocateBegin, ETarget::Layer);
 
 // BUTTONS
+		LocateBegin = P.Num();
 		NUM("Button.Height", Buttons, "Body", "Height", Button.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("Button.HorizontalPadding", Buttons, "Body", "Horizontal Padding", Button.HorizontalPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		BLEND_DEF("Button.BodyBlend", Buttons, "Body", "Body Blend", Button.BodyBlend);
@@ -424,8 +465,10 @@ void AddIconRole(
 		NUM_DEF("Button.SeparatorHeight", Buttons, "Separator", "Height", Button.SeparatorHeight, 0, 32, 1, 0);
 		NUM_DEF("Button.SeparatorOpacity", Buttons, "Separator", "Opacity", Button.SeparatorOpacity, 0, 1, .01, 2);
 		NUM_DEF("Button.TextOpacity", Buttons, "Text", "Text Opacity", Button.TextOpacity, 0, 1, .01, 2);
+		SetLocateTarget(P, LocateBegin, ETarget::Button);
 
 // MENUS
+		LocateBegin = P.Num();
 		COL_DEF("Menu.LipSource", Menus, "Surface", "Lip Source", Menu.LipSource);
 		COL_DEF("Menu.DestructiveText", Menus, "Surface", "Destructive Text", Menu.DestructiveText);
 		COL_DEF("Menu.DestructiveHover", Menus, "Surface", "Destructive Hover", Menu.DestructiveHover);
@@ -445,8 +488,10 @@ void AddIconRole(
 		NUM("MenuLayout.CaptionInsetBelow", Menus, "Layout", "Caption Inset Below", MenuLayout.CaptionInsetBelow, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("MenuLayout.SeparatorMargin", Menus, "Layout", "Separator Margin", MenuLayout.SeparatorMargin, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("MenuLayout.ChevronSize", Menus, "Layout", "Chevron Size", MenuLayout.ChevronSize, 4, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		SetLocateTarget(P, LocateBegin, ETarget::Menu);
 
 				// PREVIEW
+				LocateBegin = P.Num();
 				COL_DEF("Preview.PlateSource", Preview, "Overlay Plate", "Plate Source", Preview.PlateSource);
 				NUM_DEF("Preview.PlateOpacity", Preview, "Overlay Plate", "Plate Opacity", Preview.PlateOpacity, 0, 1, .01, 2);
 				NUM_DEF("Preview.IconRestOpacity", Preview, "Overlay Plate", "Label Rest Opacity", Preview.IconRestOpacity, 0, 1, .01, 2);
@@ -459,8 +504,10 @@ void AddIconRole(
 				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				SetLocateTarget(P, LocateBegin, ETarget::Preview);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
+				LocateBegin = P.Num();
 				NUM_DEF("Gallery.BorderWidth", GalleryShell, "Gallery Surface", "Border Width", Gallery.BorderWidth, 0, 4, .25, 2);
 				NUM_DEF("Gallery.BorderOpacity", GalleryShell, "Gallery Surface", "Border Opacity", Gallery.BorderOpacity, 0, 1, .01, 2);
 				NUM_DEF("Gallery.HoverLiftOpacity", GalleryShell, "Gallery Surface", "Hover Lift", Gallery.HoverLiftOpacity, 0, 1, .01, 2);
@@ -473,6 +520,9 @@ void AddIconRole(
 				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				SetLocateTarget(P, LocateBegin, ETarget::Gallery);
+
+				LocateBegin = P.Num();
 				COL_DEF("ShellTheme.SplitterHoverSource", GalleryShell, "Shell / Splitter", "Hover Source", ShellTheme.SplitterHoverSource);
 				NUM_DEF("ShellTheme.SplitterOpacity", GalleryShell, "Shell / Splitter", "Rest Opacity", ShellTheme.SplitterOpacity, 0, 1, .01, 2);
 				NUM_DEF("ShellTheme.SplitterHoverOpacity", GalleryShell, "Shell / Splitter", "Hover Opacity", ShellTheme.SplitterHoverOpacity, 0, 1, .01, 2);
@@ -481,6 +531,7 @@ void AddIconRole(
 				NUM("Shell.PanelPadding", GalleryShell, "Shell / Layout", "Panel Padding", Shell.PanelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				SetLocateTarget(P, LocateBegin, ETarget::Shell);
 
 				AddTextRole(P, EMixtormatTextRole::Body, TEXT("Body"), TEXT("Body"));
 				AddTextRole(P, EMixtormatTextRole::ControlLabel, TEXT("ControlLabel"), TEXT("Control Label"));

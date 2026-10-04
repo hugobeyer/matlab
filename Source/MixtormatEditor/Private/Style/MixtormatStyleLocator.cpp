@@ -34,11 +34,27 @@ namespace Mixtormat
 			case EMixtormatStyleTarget::Shell:
 				return Is(Type, TEXT("SMixtormat"));
 
-			case EMixtormatStyleTarget::Controls:
+			case EMixtormatStyleTarget::ControlWell:
 				return Is(Type, TEXT("SMixtormatSlider"))
 					|| Is(Type, TEXT("SMixtormatToggle"))
 					|| Is(Type, TEXT("SMixtormatWellBox"))
 					|| Is(Type, TEXT("SMixtormatInspectorWell"));
+
+			case EMixtormatStyleTarget::ControlFill:
+				return Is(Type, TEXT("SMixtormatSlider"))
+					|| Is(Type, TEXT("SMixtormatToggle"));
+
+			case EMixtormatStyleTarget::ControlToggle:
+				return Is(Type, TEXT("SMixtormatToggle"));
+
+			case EMixtormatStyleTarget::ControlLayout:
+				return Is(Type, TEXT("SMixtormatSlider"))
+					|| Is(Type, TEXT("SMixtormatToggle"))
+					|| Is(Type, TEXT("SMixtormatWellBox"))
+					|| Is(Type, TEXT("SMixtormatInspectorWell"))
+					|| Is(Type, TEXT("SMixtormatScalarRamp"))
+					|| Is(Type, TEXT("SMixtormatSegmentedControl"))
+					|| Is(Type, TEXT("SMixtormatTabStrip"));
 
 			case EMixtormatStyleTarget::Foldout:
 				return Is(Type, TEXT("SMixtormatFoldoutHeader"));
@@ -100,55 +116,11 @@ namespace Mixtormat
 				Collect(Children->GetChildAt(Index), Target);
 			}
 		}
-
-		bool Starts(const FString& Value, const TCHAR* Prefix)
-		{
-			return Value.StartsWith(Prefix, ESearchCase::CaseSensitive);
-		}
 	}
 
 	EMixtormatStyleTarget FMixtormatStyleLocator::TargetFor(const FMixtormatThemeProperty& Property)
 	{
-		const FString Id = Property.Id.ToString();
-
-		switch (Property.Tab)
-		{
-		case EMixtormatThemeTab::Controls: return EMixtormatStyleTarget::Controls;
-		case EMixtormatThemeTab::Foldouts: return EMixtormatStyleTarget::Foldout;
-		case EMixtormatThemeTab::Cards: return EMixtormatStyleTarget::Card;
-		case EMixtormatThemeTab::Layers: return EMixtormatStyleTarget::Layer;
-		case EMixtormatThemeTab::Buttons: return EMixtormatStyleTarget::Button;
-		case EMixtormatThemeTab::Menus: return EMixtormatStyleTarget::Menu;
-		case EMixtormatThemeTab::Preview: return EMixtormatStyleTarget::Preview;
-
-		case EMixtormatThemeTab::GalleryShell:
-			return Starts(Id, TEXT("Shell"))
-				? EMixtormatStyleTarget::Shell
-				: EMixtormatStyleTarget::Gallery;
-
-		case EMixtormatThemeTab::Typography:
-			// Role-to-widget registration is not implemented yet. A generic component target is
-			// misleading for semantic typography, so every Typography locate button stays disabled.
-			return EMixtormatStyleTarget::None;
-
-		case EMixtormatThemeTab::Global:
-			if (Id == TEXT("Palette.MenuGround")) return EMixtormatStyleTarget::Menu;
-			if (Id == TEXT("Palette.ThumbnailGround")) return EMixtormatStyleTarget::Gallery;
-
-			if (Starts(Id, TEXT("Icons.TopBar."))) return EMixtormatStyleTarget::Button;
-			if (Starts(Id, TEXT("Icons.PanelToolbar."))) return EMixtormatStyleTarget::Button;
-			if (Starts(Id, TEXT("Icons.PreviewToolbar."))) return EMixtormatStyleTarget::Preview;
-			if (Starts(Id, TEXT("Icons.LayerEye."))
-				|| Starts(Id, TEXT("Icons.LayerDisclosure."))) return EMixtormatStyleTarget::Layer;
-			if (Starts(Id, TEXT("Icons.FoldoutDisclosure."))) return EMixtormatStyleTarget::Foldout;
-			if (Starts(Id, TEXT("Icons.CardLeading."))) return EMixtormatStyleTarget::Card;
-			if (Starts(Id, TEXT("Icons.Menu."))) return EMixtormatStyleTarget::Menu;
-			if (Starts(Id, TEXT("Icons.GalleryToolbar."))) return EMixtormatStyleTarget::Gallery;
-			return EMixtormatStyleTarget::Global;
-
-		default:
-			return EMixtormatStyleTarget::None;
-		}
+		return Property.LocateTarget;
 	}
 
 	FText FMixtormatStyleLocator::Label(const EMixtormatStyleTarget Target)
@@ -156,7 +128,10 @@ namespace Mixtormat
 		switch (Target)
 		{
 		case EMixtormatStyleTarget::Global: return NSLOCTEXT("MixtormatStyleLocator", "Global", "Mixtormat workspace");
-		case EMixtormatStyleTarget::Controls: return NSLOCTEXT("MixtormatStyleLocator", "Controls", "Controls");
+		case EMixtormatStyleTarget::ControlWell: return NSLOCTEXT("MixtormatStyleLocator", "ControlWell", "Control wells");
+		case EMixtormatStyleTarget::ControlFill: return NSLOCTEXT("MixtormatStyleLocator", "ControlFill", "Slider / toggle fills");
+		case EMixtormatStyleTarget::ControlToggle: return NSLOCTEXT("MixtormatStyleLocator", "ControlToggle", "Toggles");
+		case EMixtormatStyleTarget::ControlLayout: return NSLOCTEXT("MixtormatStyleLocator", "ControlLayout", "Inspector controls");
 		case EMixtormatStyleTarget::Foldout: return NSLOCTEXT("MixtormatStyleLocator", "Foldout", "Foldout");
 		case EMixtormatStyleTarget::Card: return NSLOCTEXT("MixtormatStyleLocator", "Card", "Inspector card");
 		case EMixtormatStyleTarget::Layer: return NSLOCTEXT("MixtormatStyleLocator", "Layer", "Layer rows");
