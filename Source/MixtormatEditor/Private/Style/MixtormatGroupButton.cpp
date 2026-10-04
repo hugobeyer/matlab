@@ -103,6 +103,9 @@ int32 SMixtormatGroupButtonSurface::OnPaint(const FPaintArgs& Args, const FGeome
 		return MixtormatGradient::LerpSRGB(BodyTop, BodyBottom, T);
 	};
 	const FLinearColor Tint = WidgetStyle.GetColorAndOpacityTint();
+	// The plate, hairline and separator composites are one authored blend-mode choice, read once
+	// per paint so every layer in the group-button surface stays on the same operation.
+	const auto EdgeBlend = MixtormatCompositing::BlendModeOf(GroupButtonBlendMode);
 	const auto Ramp = [&](const FVector2f& Offset, const FVector2f& Extent, const int32 Layer,
 		const FLinearColor& Start, const FLinearColor& End)
 	{
@@ -117,27 +120,27 @@ int32 SMixtormatGroupButtonSurface::OnPaint(const FPaintArgs& Args, const FGeome
 			Orient_Horizontal, ESlateDrawEffect::None, FVector4f(0.0f));
 	};
 
-	// Normal source-over plate, then additive edges resolved over that exact plate.
+	// Normal source-over plate, then blended edges resolved over that exact plate.
 	Ramp(FVector2f::ZeroVector, Size, LayerId, BodyAt(0.0f), BodyAt(1.0f));
 	FLinearColor HairlineSource = MixtormatCompositing::Saturate(Accent, GroupButtonHairlineSaturation).GetClamped();
 	HairlineSource.A = Hairline * Dim;
 	const float LineHeight = FMath::Clamp(GroupButtonHairlineWidth, 0.0f, Size.Y);
 	Ramp(FVector2f::ZeroVector, FVector2f(Size.X, LineHeight), LayerId + 1,
-		MixtormatCompositing::Additive(BodyAt(0.0f), HairlineSource),
-		MixtormatCompositing::Additive(BodyAt(Size.Y > 0.0f ? LineHeight / Size.Y : 0.0f), HairlineSource));
+		MixtormatCompositing::ApplyBlend(EdgeBlend, BodyAt(0.0f), HairlineSource),
+		MixtormatCompositing::ApplyBlend(EdgeBlend, BodyAt(Size.Y > 0.0f ? LineHeight / Size.Y : 0.0f), HairlineSource));
 	if (bShowSeparator && Size.Y > 0.0f)
 	{
 		const float Width = FMath::Clamp(GroupButtonSeparatorWidth, 0.0f, Size.X);
 		const float Height = FMath::Clamp(GroupButtonSeparatorHeight, 0.0f, Size.Y);
 		const float Y = (Size.Y - Height) * 0.5f;
-		// CSS puts separator and hairline in the same filtered additive layer.
+		// CSS puts separator and hairline in the same filtered blend layer.
 		FLinearColor Separator = MixtormatCompositing::Saturate(MixtormatPalette::RowText(), GroupButtonHairlineSaturation).GetClamped();
 		Separator.A = GroupButtonSeparatorOpacity * Dim;
 		const auto EdgeAt = [&](const float Position, const bool bOnHairline)
 		{
 			FLinearColor Color = BodyAt(Position / Size.Y);
-			if (bOnHairline) { Color = MixtormatCompositing::Additive(Color, HairlineSource); }
-			return MixtormatCompositing::Additive(Color, Separator);
+			if (bOnHairline) { Color = MixtormatCompositing::ApplyBlend(EdgeBlend, Color, HairlineSource); }
+			return MixtormatCompositing::ApplyBlend(EdgeBlend, Color, Separator);
 		};
 		// Split at the hairline seam rather than interpolating its light down the separator.
 		const float Split = FMath::Clamp(LineHeight, Y, Y + Height);

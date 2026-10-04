@@ -706,6 +706,30 @@ void FMixtormatStyle::Refresh()
 	SliderEntry.TextStyle.SetFont(SliderValue.Font);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);
 
+	// A search field is a well that happens to take text. Left on the editor's own editable-text
+	// style it kept that style's pill radius and hairline, so it read as a foreign control sitting
+	// in a row of Mixtormat wells rather than as one of them. Same ground, same well outline, same
+	// radius token, same label face as the rest of the inspector.
+	{
+		const FSlateRoundedBoxBrush SearchBackground(
+			MixtormatPalette::WellTop(), MixtormatTokens::WellRadius,
+			MixtormatPalette::WellOutline(), MixtormatTokens::WellBorderWidth);
+		const FSlateRoundedBoxBrush SearchBackgroundHovered(
+			MixtormatPalette::WellTopHover(), MixtormatTokens::WellRadius,
+			MixtormatPalette::WellOutlineHover(), MixtormatTokens::WellBorderWidth);
+		FEditableTextBoxStyle SearchStyle =
+			AppStyle.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
+		SearchStyle
+			.SetBackgroundImageNormal(SearchBackground)
+			.SetBackgroundImageHovered(SearchBackgroundHovered)
+			.SetBackgroundImageFocused(SearchBackgroundHovered)
+			.SetBackgroundImageReadOnly(SearchBackground)
+			.SetForegroundColor(FSlateColor(MixtormatPalette::WellEntry()))
+			.SetPadding(FMargin(MixtormatTokens::DraggerTextInset * 0.5f, 0.0f))
+			.SetTextStyle(SliderLabel);
+		StyleInstance->Set(TEXT("Mixtormat.SearchBox"), SearchStyle);
+	}
+
 	// ---- Row furniture ----------------------------------------------------------------------
 	// Sub-group caption, and the hairline that separates two runs of rows without naming them.
 	FTextBlockStyle RowCaption = FTextBlockStyle()

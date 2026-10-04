@@ -5,6 +5,7 @@
 #include "Layout/Clipping.h"
 #include "Math/NumericLimits.h"
 #include "Style/MixtormatCompositing.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "UI/Primitives/MixtormatGradientPainter.h"
 
 namespace MixtormatGroupCard
@@ -115,7 +116,8 @@ namespace MixtormatGroupCard
 				{
 					FLinearColor Lift = Source;
 					Lift.A = FMath::Clamp(Stops[Row].Opacity, 0.0f, 1.0f);
-					Color = MixtormatCompositing::Additive(Ground, Lift);
+					Color = MixtormatCompositing::ApplyBlend(
+										MixtormatCompositing::BlendModeOf(MixtormatTokens::CardBlendMode), Ground, Lift);
 				}
 				Positions.Add(FVector2f(0.0f, Y));
 				Positions.Add(FVector2f(Width, Y));

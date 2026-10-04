@@ -95,13 +95,20 @@ int32 SMixtormatFoldoutHeader::OnPaint(
 		LiftOpacity, 0.0f, MixtormatTokens::FoldoutFalloffPower,
 		0.0f, 1.0f, MixtormatTokens::GradientSamplesPerSpan);
 
-	// Each stop is the lift composited additively onto the ground, so the ramp is a ramp of
-	// *results* rather than a translucent overlay -- the overlay would darken the ground toward
-	// black on the way, which is the opposite of what an additive lift does.
+	// Each stop is the lift composited onto the ground, so the ramp is a ramp of *results* rather
+	// than a translucent overlay -- the overlay would darken the ground toward black on the way,
+	// which is the opposite of what an additive lift does.
+	//
+	// The operation is FoldoutBlendMode, which is what the prototype puts on this exact layer
+	// (`.foldout > summary::before`). Default Normal is not the same picture as the Additive this
+	// used to hardcode: source-over pulls the ground toward the lift instead of only adding light
+	// to it. The token is the authored value and wins.
+	const MixtormatCompositing::EMixtormatBlendMode LiftBlend =
+		MixtormatCompositing::BlendModeOf(MixtormatTokens::FoldoutBlendMode);
 	for (MixtormatGradient::FStop& Stop : LiftStops)
 	{
-		Stop.Color = MixtormatCompositing::Additive(
-			MixtormatPalette::Ground(), Stop.Color);
+		Stop.Color = MixtormatCompositing::ApplyBlend(
+			LiftBlend, MixtormatPalette::Ground(), Stop.Color);
 	}
 	MixtormatGradient::Paint(
 		OutDrawElements, LayerId + 1, PaintGeometry, Size,
@@ -128,10 +135,12 @@ int32 SMixtormatFoldoutHeader::OnPaint(
 	// rather than painted as a translucent overlay. Compositing the whole accent ramp against one
 	// constant colour would make the top edge blend against the fully-lifted header and the seam
 	// against almost-nothing, which is exactly the seam that has to disappear.
+	const MixtormatCompositing::EMixtormatBlendMode AccentBlend =
+		MixtormatCompositing::BlendModeOf(MixtormatTokens::FoldoutAccentBlendMode);
 	for (int32 Index = 0; Index < AccentStops.Num() && Index < LiftStops.Num(); ++Index)
 	{
-		AccentStops[Index].Color = MixtormatCompositing::SoftLight(
-			LiftStops[Index].Color, AccentStops[Index].Color);
+		AccentStops[Index].Color = MixtormatCompositing::ApplyBlend(
+			AccentBlend, LiftStops[Index].Color, AccentStops[Index].Color);
 	}
 	MixtormatGradient::Paint(
 		OutDrawElements, LayerId + 2, PaintGeometry, Size,

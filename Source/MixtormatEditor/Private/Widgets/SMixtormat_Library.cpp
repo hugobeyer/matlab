@@ -8,6 +8,7 @@
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
+#include "Widgets/Input/SEditableTextBox.h"
 
 #include "ObjectTools.h"
 
@@ -397,7 +398,8 @@ void SMixtormat::RebuildUserLibraryList()
 TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const TSharedRef<SSearchBox> SearchBox = SNew(SSearchBox)
+	const TSharedRef<SEditableTextBox> SearchBox = SNew(SEditableTextBox)
+		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
 		.HintText(LOCTEXT("SearchUserLibraryHint", "Search saved mixes..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
 		{
@@ -492,7 +494,8 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const bool bHasDeveloperSources =
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
-	const TSharedRef<SSearchBox> SearchBox = SNew(SSearchBox)
+	const TSharedRef<SEditableTextBox> SearchBox = SNew(SEditableTextBox)
+		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
 		.HintText(LOCTEXT("SearchHint", "Search materials..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
 		{
@@ -536,7 +539,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(MixtormatTokens::RowGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
 				[
 					SNew(SMixtormatGroupAction)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)

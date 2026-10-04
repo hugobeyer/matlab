@@ -37,6 +37,13 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 	const FLinearColor End = EndColor.Get();
 	const FLinearColor Cross = CrossColor.Get();
 	const FLinearColor Ground = MixtormatPalette::Ground();
+	// The row's own paint layer is the only thing the blend-mode tokens govern: an ordinary layer
+	// or child row composites its tint gradient with --layer-blend-mode, and the group cross pass
+	// composites the whole band with --layer-group-blend-mode. Resolved once per paint, not per
+	// stop, so the mode is a scalar the inner lambda closes over.
+	const EMixtormatBlendMode Blend = Group
+		? BlendModeOf(LayerGroupBlendMode)
+		: BlendModeOf(LayerBlendMode);
 	const FLinearColor Tint = WidgetStyle.GetColorAndOpacityTint();
 	const float Reach = FMath::Min(Size.Y, FMath::Max(0.0f, LayerActiveGlowReach));
 	const FLinearColor Glow = Saturate(MixtormatPalette::Accent().CopyWithNewOpacity(
@@ -47,14 +54,15 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 		FLinearColor Source = MixtormatGradient::LerpSRGB(Start, End, Child ? X : Y / Size.Y);
 		if (Group)
 		{
-			// The horizontal cross is normal-composited inside the group paint layer;
-			// that entire layer is soft-light composited over the row's ground.
+			// The horizontal cross is normal-composited inside the group paint layer; that
+			// entire layer is then composited over the row's ground by Blend below.
 			const float Coverage = Cross.A * (1.0f - X);
 			Source = MixtormatGradient::LerpSRGB(Source, Cross.CopyWithNewOpacity(Source.A), Coverage);
 		}
 		Source = Saturate(Source, Saturation);
-		FLinearColor Result = Group ? SoftLight(Ground, Source)
-			: FMath::Lerp(Ground, Source.CopyWithNewOpacity(1.0f), Source.A);
+		// Normal over an opaque ground reduces to the lerp this used to be spelled out as, so
+		// the authored default is byte-identical; the other modes are what the token can now pick.
+		FLinearColor Result = ApplyBlend(Blend, Ground, Source);
 		if (Selected && Reach > 0.0f)
 		{
 			Result = Additive(Result, Glow, FMath::Max(0.0f, 1.0f - Y / Reach));

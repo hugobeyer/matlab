@@ -361,14 +361,23 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		#define THEME_CHOICE(Category, Name, Default, ...) \
 			{TEXT(#Name), TEXT(Category), &MixtormatTokens::Name, \
 				TArray<FString>{ __VA_ARGS__ }, Default, true}
+		// Registered but not editable: the layer this names is authored, but the current painter cannot
+		// resolve it without changing how its stops are sampled. Kept deserializable so a theme saved from
+		// a build that showed it still loads; hidden so it is not a dropdown that does nothing.
+		#define THEME_CHOICE_UI(Category, Name, Default, Expose, ...) \
+			{TEXT(#Name), TEXT(Category), &MixtormatTokens::Name, \
+				TArray<FString>{ __VA_ARGS__ }, Default, Expose}
 		#define THEME_BLEND_CHOICE(Category, Name, Default) \
 			THEME_CHOICE(Category, Name, Default, TEXT("Normal"), TEXT("Additive / Plus Lighter"), \
+				TEXT("Multiply"), TEXT("Soft Light"))
+		#define THEME_BLEND_CHOICE_UI(Category, Name, Default, Expose) \
+			THEME_CHOICE_UI(Category, Name, Default, Expose, TEXT("Normal"), TEXT("Additive / Plus Lighter"), \
 				TEXT("Multiply"), TEXT("Soft Light"))
 			// Blend indices match MixtormatCompositing::EMixtormatBlendMode, and each default is the value
 			// tokens.css authors for that surface -- not a house style.
 			static const TArray<FMixtormatThemeChoice> Entries = {
-				THEME_BLEND_CHOICE("Surfaces", SurfaceBlendMode, 1),
-				THEME_BLEND_CHOICE("Controls / Well", WellBlendMode, 2),
+				THEME_BLEND_CHOICE_UI("Surfaces", SurfaceBlendMode, 1, false),
+				THEME_BLEND_CHOICE_UI("Controls / Well", WellBlendMode, 2, false),
 				THEME_BLEND_CHOICE("Foldouts", FoldoutBlendMode, 0),
 				THEME_BLEND_CHOICE("Foldouts", FoldoutAccentBlendMode, 3),
 				THEME_BLEND_CHOICE("Group Cards", CardBlendMode, 1),
@@ -379,7 +388,9 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 				THEME_CHOICE("Controls / Text", DraggerLabelCase, 0, TEXT("None"), TEXT("Uppercase")),
 			};
 		#undef THEME_BLEND_CHOICE
+		#undef THEME_BLEND_CHOICE_UI
 		#undef THEME_CHOICE
+		#undef THEME_CHOICE_UI
 			return Entries;
 		}
 
