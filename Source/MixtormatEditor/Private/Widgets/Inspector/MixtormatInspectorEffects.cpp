@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -230,7 +231,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 					{
 						return SNew(SBox)
 							.WidthOverride(MixtormatTokens::MaskPickerWidth)
-							.Padding(MixtormatTokens::TileGap)
+							.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 							[
 								SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight()
@@ -265,7 +266,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 									]
 								]
 								+ SVerticalBox::Slot().AutoHeight()
-								.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
+								.Padding(0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap, 0.0f, 0.0f)
 								[
 									SNew(SButton)
 									.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -295,7 +296,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 
 	const TSharedRef<SVerticalBox> Cards = Panel;
 		Panel = AddCard(Cards, LOCTEXT("StainGrpSource", "Source"));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		MakeMaskRow(
 			LOCTEXT("StainSourceMask", "Liquid Mask"),
@@ -317,7 +318,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		LOCTEXT("StainSourceAmountHint", "Liquid injected from the mask and from enabled curvature sources each iteration.")));
 
 	Panel = AddCard(Cards, LOCTEXT("StainGrpDirt", "Dirt / Minerals"));
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		MakeMaskRow(
 			LOCTEXT("StainDirtMask", "Dirt Mask"),

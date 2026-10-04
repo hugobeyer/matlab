@@ -428,7 +428,7 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 	{
 		return SNew(SButton)
 			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(MixtormatTokens::RowGap)
+			.ContentPadding(FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 			.ToolTipText(Hint)
 			.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
 			[
@@ -458,7 +458,7 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 					.AutoWrapText(true)
 				]
 				+ SVerticalBox::Slot().AutoHeight()
-				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				.Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT(
@@ -468,17 +468,17 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 					.AutoWrapText(true)
 				]
 				+ SVerticalBox::Slot().AutoHeight()
-				.Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+				.Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f)
 					[
 						Action(
 							LOCTEXT("InstanceGoToSource", "Go to Source"),
 							LOCTEXT("InstanceGoToSourceHint", "Select the child this instance mirrors."),
 							[this]() { GoToChildInstanceSource(GetSelectedChildAddress()); })
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f)
 					[
 						Action(
 							LOCTEXT("InstanceBreak", "Break Instance"),
@@ -515,8 +515,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 	if (Layer.Type == EMixtormatLayerType::Generator)
 	{
 		return SNew(SBox)
-			.WidthOverride(MixtormatTokens::LayerThumbnailSize)
-			.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize)
 			.HAlign(HAlign_Center).VAlign(VAlign_Center)
 			[
 				SNew(SImage).Image(MixtormatIcons::Generator())
@@ -532,12 +532,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 					? WorkingLayers[LayerIndex].BaseColor
 					: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
 			})
-			.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+			.Size(FVector2D(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize, FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize));
 	}
 
 	// Thumbnails are pooled and must be kept alive for as long as the widget is: LayerThumbnails
 	// is that ownership, and RebuildLayerList resets it in step with the rows.
-	const int32 Size = static_cast<int32>(MixtormatTokens::LayerThumbnailSize);
+	const int32 Size = static_cast<int32>(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize);
 	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
 		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
 		&& !Layer.NormalTexture.IsNull())
@@ -573,7 +573,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 
 	return SNew(SColorBlock)
 		.Color(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel))
-		.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
+		.Size(FVector2D(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize, FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize));
 }
 
 FText SMixtormat::GetLayerDisplayName(const int32 LayerIndex) const
@@ -725,7 +725,7 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 		return nullptr;
 	}
 
-	const int32 Size = static_cast<int32>(MixtormatTokens::MaskTileSize);
+	const int32 Size = static_cast<int32>(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize);
 	TSharedPtr<FAssetThumbnail> Thumbnail =
 		MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
 	LayerThumbnails.Add(Thumbnail);
@@ -737,13 +737,13 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::MaskTileSize)
-				.HeightOverride(MixtormatTokens::MaskTileSize)
+				.WidthOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize)
+				.HeightOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize)
 				[
 					Thumbnail->MakeThumbnailWidget()
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))

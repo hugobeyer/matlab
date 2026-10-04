@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -271,7 +272,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
 	if (!CanPickRegionId())
 	{
 		return SNew(SBox)
-			.Padding(MixtormatTokens::TileGap)
+			.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 			.WidthOverride(MixtormatTokens::MaskPickerWidth * 0.5f)
 			[
 				SNew(STextBlock)
@@ -297,12 +298,12 @@ TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
 
 	const float ViewSize = MixtormatTokens::MaskPickerWidth;
 	return SNew(SBox)
-		.Padding(MixtormatTokens::TileGap)
+		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		.WidthOverride(ViewSize)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 			[
 				SNew(STextBlock)
 				.AutoWrapText(true)
@@ -488,7 +489,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				LOCTEXT("IdExactRegion", "Region ID"),
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, MixtormatTokens::TileGap, 0.0f)
+				.Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap, 0.0f)
 				[
 					// The eyedropper. Opens the live Region IDs preview and takes the integer id
 					// of whatever is clicked -- never a colour, and never a guess at which id a
@@ -551,7 +552,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// will be.
 	const TSharedRef<SVerticalBox> RangeCards = Range;
 		Range = AddCard(RangeCards, LOCTEXT("IdGrpSource", "ID Map"));
-	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 	[
 		SNew(SObjectPropertyEntryBox)
 		.AllowedClass(UTexture2D::StaticClass())
@@ -584,7 +585,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	for (int32 ColorIndex = 0; ColorIndex < FMixtormatColorIdMask::MaxColors; ++ColorIndex)
 	{
 		{
-			Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+			Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 			[
 				SNew(SHorizontalBox)
 				.Visibility_Lambda([this, ColorIndex]()
@@ -611,7 +612,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				.Padding(MixtormatTokens::TileGap, 0.0f, 0.0f, 0.0f)
+				.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
 					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -622,7 +623,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		}
 	}
 
-	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	Range->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 	[
 		SNew(SButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -828,7 +829,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 	// current entries would bake in whatever the count happened to be then -- which is zero.
 	for (int32 ColorIndex = 0; ColorIndex < FMixtormatHsvIdFilter::MaxPaletteColors; ++ColorIndex)
 	{
-		Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+		Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		[
 			SNew(SHorizontalBox)
 			.Visibility_Lambda([this, ColorIndex]()
@@ -855,7 +856,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			.Padding(MixtormatTokens::TileGap, 0.0f, 0.0f, 0.0f)
+			.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SButton)
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -865,7 +866,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 		];
 	}
 
-	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::TileGap)
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 	[
 		SNew(SButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
@@ -1324,7 +1325,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			LegacyContainer, LOCTEXT("PatternLegacyTreatmentHeading", "LEGACY TREATMENT"));
 		AddSliderRow(LegacyRows, LegacyCards);
 		Panel = Cards;
-		Panel->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, 0.0f)
+		Panel->AddSlot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
 	[
 		SNew(SBox)
 		.Visibility_Lambda([HasLegacyTreatment]()

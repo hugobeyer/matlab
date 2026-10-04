@@ -54,7 +54,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		{
 			const int32 Resolution = InArgs._ThumbnailResolution > 0
 				? InArgs._ThumbnailResolution
-				: FMath::RoundToInt(TileSize.Get(MixtormatTokens::MaskTileSize));
+				: FMath::RoundToInt(TileSize.Get(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize));
 			Thumbnail = MakeShared<FAssetThumbnail>(
 				InArgs._ThumbnailAsset,
 				Resolution,
@@ -151,11 +151,11 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		SNew(SBox)
 		.WidthOverride_Lambda([this]()
 		{
-			return TileSize.Get(MixtormatTokens::MaskTileSize);
+			return TileSize.Get(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize);
 		})
 		.HeightOverride_Lambda([this]()
 		{
-			return TileSize.Get(MixtormatTokens::MaskTileSize);
+			return TileSize.Get(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize);
 		})
 		[
 			SNew(SBorder)
@@ -192,7 +192,7 @@ int32 SMixtormatTile::OnPaint(
 
 FVector2D SMixtormatTile::ComputeDesiredSize(float) const
 {
-	const float CurrentTileSize = TileSize.Get(MixtormatTokens::MaskTileSize);
+	const float CurrentTileSize = TileSize.Get(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize);
 	return FVector2D(CurrentTileSize, CurrentTileSize);
 }
 

@@ -4,7 +4,6 @@
 
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
@@ -190,7 +189,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			.RenderOpacity(BadgeTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 			.ColorAndOpacity(InArgs._StateColor.IsSet()
 				? InArgs._StateColor
-				: TAttribute<FSlateColor>(FSlateColor(MixtormatPalette::Modified())))
+				: TAttribute<FSlateColor>(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified))))
 			.Text(InArgs._StateText)
 			.Visibility_Lambda([State = InArgs._StateText]()
 			{

@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -151,7 +152,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
 	{
 		Body->AddSlot()
 		.AutoHeight()
-		.Padding(0.0f, MixtormatTokens::TileGap, 0.0f, 0.0f)
+		.Padding(0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap, 0.0f, 0.0f)
 		[
 			Footer.ToSharedRef()
 		];
@@ -159,7 +160,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
 
 	return SNew(SBox)
 		.WidthOverride(MixtormatTokens::MaskPickerWidth)
-		.Padding(MixtormatTokens::TileGap)
+		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		[
 			Body
 		];

@@ -62,8 +62,8 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 	.Padding(MixtormatTokens::ChipGap, 0.0f, 0.0f, 0.0f)
 	[
 		SNew(SBox)
-		.WidthOverride(MixtormatTokens::ChevronSize)
-		.HeightOverride(MixtormatTokens::ChevronSize)
+		.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize)
 		[
 			SNew(SImage)
 			.Image(MixtormatIcons::ChevronDown())

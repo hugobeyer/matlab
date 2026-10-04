@@ -3,6 +3,7 @@
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -13,7 +14,7 @@ void SMixtormatDriverPopover::Construct(const FArguments& InArgs)
 	[
 		SNew(SMixtormatMenuPanel)
 		.MinWidth(MixtormatTokens::DriverPopoverWidth)
-		.Padding(FMargin(MixtormatTokens::MenuPanelPadding))
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().MenuLayout.PanelPadding))
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::DriverPopoverWidth)

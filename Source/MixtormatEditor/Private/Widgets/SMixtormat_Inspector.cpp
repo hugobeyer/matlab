@@ -316,7 +316,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						// the row in the stack that selected it, so moving from one to the other
 						// re-reads nothing.
 						SNew(SBox)
-						.HeightOverride(MixtormatTokens::LayerRowHeight)
+						.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.RowHeight)
 						.Padding(FMargin(
 							MixtormatTokens::LayerRowInsetLeading,
 							0.0f,
@@ -327,8 +327,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 							[
 								SAssignNew(SelectedThumbnailBox, SBox)
-								.WidthOverride(MixtormatTokens::LayerThumbnailSize)
-								.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+								.WidthOverride(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize)
+								.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize)
 							]
 							+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 							.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
@@ -338,7 +338,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+							.Padding(FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f)
 							[
 								SAssignNew(SelectedIdentityText, STextBlock)
 								.Text(LOCTEXT("NoIdentity", "—"))
@@ -525,7 +525,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
 						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
 						// meant the segment could say BLEND while the box said the layer was detail.
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 						[
 							SNew(SBox)
 							.Visibility_Lambda([this]() { return WorkingLayers.IsValidIndex(SelectedLayerIndex) && WorkingLayers[SelectedLayerIndex].ChannelMode == EMixtormatLayerChannelMode::NormalDetail ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -551,7 +551,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.InitiallyExpanded(true)
 							[
 								SNew(SVerticalBox)
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								SNew(SHorizontalBox)
 								+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
@@ -575,7 +575,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									]
 								]
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillRoughness", "Roughness"),
@@ -585,7 +585,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::Roughness, 0.0, 1.0, 0.5, 0.01)
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillIOR", "IOR"),
@@ -595,7 +595,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									},
 									&FMixtormatLayer::IOR, 1.0, 3.0, 1.5, 0.01)
 							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("FillMetallic", "Metallic"),
@@ -607,7 +607,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							]
 							// A fill has no surface, so its height is this one value. It is the
 							// fill's own material property, not a height-mask setting.
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								SNew(SBox)
 								.Visibility_Lambda([this]()
@@ -692,7 +692,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								// The mode and how far it is taken, on one row. Base colour only:
 								// a mode that suits colour rarely suits roughness, and roughness
 								// already has Bias, Contrast and Offset of its own.
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 								[
 									MixtormatRow::MakePair(
 										MixtormatRow::MakeDropdown(
@@ -718,7 +718,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 											LOCTEXT("BaseColorBlendAmountHint", "How much of the blend mode happens -- it lerps between this layer's plain colour and the blended result. Not a fourth opacity: Opacity, the mask chain and Base Color Influence all decide coverage, this decides mode strength. At Normal there is nothing to fade and it does nothing.")))
 								]
 
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								MakeMemberSlider<FMixtormatLayer>(
 									LOCTEXT("OpacityLabel", "Opacity"),

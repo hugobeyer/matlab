@@ -7,6 +7,7 @@
 #include "MixtormatParameterBinding.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
@@ -587,9 +588,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 		.Widget(
 			SNew(SBox)
 			.Padding(FMargin(
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap,
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap))
 			.IsEnabled_Lambda([this, Target]() { return IsParameterReferenced(Target); })
 			[
@@ -1064,9 +1065,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 	Menu.Caption(FText::FromName(Target.Parameter))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap,
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(260.0f)
@@ -1147,9 +1148,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 	Menu.Caption(LOCTEXT("DevOverrideCaption", "Override UI Range"))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap,
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(300.0f)
@@ -1434,7 +1435,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f)
 				[
 					MixtormatRow::MakeCheckbox(
 						TAttribute<ECheckBoxState>::CreateLambda([IsSet]()
@@ -1489,9 +1490,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 	Menu.Caption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup"))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap,
-				MixtormatTokens::MenuItemInset,
+				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				MixtormatTokens::DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(320.0f)

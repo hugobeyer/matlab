@@ -894,8 +894,8 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1.0f, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::ChevronSize * 0.6f)
-				.HeightOverride(MixtormatTokens::ChevronSize * 0.6f)
+				.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+				.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
 				[
 					SNew(SImage)
 					.Image(MixtormatIcons::ChevronDown())

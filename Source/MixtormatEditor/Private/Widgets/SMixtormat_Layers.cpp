@@ -214,7 +214,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							// pair up on the trailing edge, same grouping as the text buttons below.
 							+ SHorizontalBox::Slot().FillWidth(1.0f)
 							.HAlign(HAlign_Left).VAlign(VAlign_Center)
-							.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+							.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f)
 							[
 								SNew(STextBlock)
 								.Text_Lambda([this]()
@@ -285,7 +285,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.HeightOverride(MixtormatTokens::ButtonHeight)
+							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
 								SNew(SMixtormatGroupAction, true)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -316,7 +316,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						
 						[
 							SNew(SBox)
-							.HeightOverride(MixtormatTokens::ButtonHeight)
+							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
 								SNew(SMixtormatGroupAction, true)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
@@ -356,10 +356,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
+						.Padding(FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
 						[
 							SNew(SBox)
-							.HeightOverride(MixtormatTokens::ButtonHeight)
+							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
 								SNew(SMixtormatGroupAction, false)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))

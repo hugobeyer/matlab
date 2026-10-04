@@ -5,6 +5,7 @@
 #include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/SlateBrush.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -32,7 +33,7 @@ class SMixtormatTile final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatTile)
-		: _TileSize(MixtormatTokens::MaskTileSize)
+		: _TileSize(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize)
 		, _ThumbnailResolution(0)
 		, _bShowName(true)
 		, _bShowNameOnHover(false)

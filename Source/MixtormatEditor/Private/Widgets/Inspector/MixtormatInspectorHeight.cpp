@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
@@ -129,26 +130,26 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			[
 				SNew(SVerticalBox)
 
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 			[
 				NumericRow(LOCTEXT("HeightMaskStrength", "Blend Strength"), &FMixtormatLayer::HeightBlendAmount, 0.0f, 4.0f, 0.01f, 1.0f)
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 				[
 					BlendRow(LOCTEXT("HeightBlendThreshold", "Threshold"), &FMixtormatHeightBlend::Threshold, 0.0f, 1.0f, 0.01f, 0.5f)
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 				[
 					BlendRow(LOCTEXT("HeightSoftness", "Edge Softness"), &FMixtormatHeightBlend::EdgeSoftness, 0.0f, 1.0f, 0.005f, 0.1f)
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 				[
 					BlendRow(LOCTEXT("BaseHeightBias", "Base Bias"), &FMixtormatHeightBlend::BaseBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 				[
 					BlendRow(LOCTEXT("BlendHeightBias", "Blend Bias"), &FMixtormatHeightBlend::BlendBias, -1.0f, 1.0f, 0.01f, 0.0f)
 				]
@@ -163,7 +164,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 				// blurred copy makes that a ramp, and once the radius is wide enough for a shape's
 				// two blurred edges to overlap, its interior domes -- a fillet rather than a
 				// softened edge. At 0 the two blur passes are skipped entirely.
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 				[
 					NumericRow(LOCTEXT("HeightSmoothRadius", "Smooth Radius"), &FMixtormatLayer::HeightSmoothRadius, 0.0f, 32.0f, 0.5f, 0.0f)
 				]
@@ -172,7 +173,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					NumericRow(LOCTEXT("HeightSmoothAmount", "Smooth Amount"), &FMixtormatLayer::HeightSmoothAmount, 0.0f, 1.0f, 0.01f, 1.0f)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 			[
 				SNew(SBox)
 				.Visibility_Lambda([this]()
@@ -196,7 +197,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 					NumericRow(LOCTEXT("ConstantHeight", "Layer Height (No RAMH)"), &FMixtormatLayer::ConstantHeight, 0.0f, 1.0f, 0.01f, 0.5f)
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::SliderRowGap, 0.0f, MixtormatTokens::SliderRowGap)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 			[
 				ContactCards
 			]

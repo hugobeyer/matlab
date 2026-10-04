@@ -538,7 +538,7 @@ int32 SMixtormatSlider::OnPaint(
 		: !FMath::IsNearlyEqual(Value, DefaultValueAttribute.Get(0.0), 1.0e-6);
 	if (bModified && bEnabled)
 	{
-		FLinearColor Marker = MixtormatPalette::Modified();
+		FLinearColor Marker = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified);
 		Marker.A *= MixtormatTokens::ModifiedStripeOpacity;
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
