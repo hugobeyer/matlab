@@ -7,19 +7,17 @@
 
 // The shared control well: the recess a slider trough, a dropdown chip and a toggle all sit in.
 //
-// The prototype composes it from three stacked layers, and the order matters because each one is
-// a different operation against the same ground (components.css:212-218):
+// It is no longer built here. The recipe comes from MixtormatRecipes and the painting from
+// MixtormatSurfacePainter, so this file is only the two-phase shape a widget needs:
 //
-//   1. ground      the surface colour itself
-//   2. shade       a black vertical ramp at 0.64 -> 0.13, multiply
-//   3. border      a 1px outline, plus-lighter, whose alpha falls top to bottom
+//   PaintBackground  the ground and the black vertical recess (0.64 -> 0.13, Multiply)
+//   PaintBorder      the hairline outline, whose alpha falls top to bottom
 //
-// That third layer is why this is a painter and not a brush. `FSlateRoundedBoxBrush` carries one
-// border colour for all four edges, so the authored falloff (0.33 at the top, 0.11 at the bottom)
-// cannot be expressed in it at all -- every well read as evenly outlined all the way round. Two
-// thin bars, one per edge, carry it exactly and cost one draw element each.
+// The split exists because the slider paints its fill between them. The fill has to sit under the
+// rim, and the recess has to sit under the fill, so "one call that does everything" cannot express
+// the order.
 //
-// This is deliberately the only place the well is built. The slider, the chip and the toggle each
+// It is deliberately still the only place the well is built. The slider, the chip and the toggle each
 // used to assemble their own version, which is why they drifted apart: the slider had a border, the
 // chip had a border and no recess, and the toggle had neither.
 namespace MixtormatWell
