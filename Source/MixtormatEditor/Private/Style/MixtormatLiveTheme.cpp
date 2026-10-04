@@ -4,6 +4,7 @@
 
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatGroupButtonTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -185,6 +186,26 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 		THEME_NUMBER("Group Cards", GroupCardLeadingIconSize, 8.0f, 32.0f),
 		THEME_NUMBER("Group Cards", GroupCardLeadingGap, 0.0f, 24.0f),
 		THEME_NUMBER("Surfaces", HeaderContentGap, 0.0f, 24.0f),
+		THEME_NUMBER("Buttons", GroupButtonGradientTop, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonGradientBottom, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonHoverGradientTop, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonHoverGradientBottom, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonSelectedGradientTop, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonSelectedGradientBottom, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonGradientSaturation, 0.0f, 4.0f),
+		THEME_NUMBER("Buttons", GroupButtonHairlineOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonHoverHairlineOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonSelectedHairlineOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonHairlineWidth, 0.0f, 4.0f),
+		THEME_NUMBER("Buttons", GroupButtonHairlineSaturation, 0.0f, 4.0f),
+		THEME_NUMBER("Buttons", GroupButtonFontSize, 6.0f, 20.0f),
+		THEME_NUMBER("Buttons", GroupButtonFontWeight, 100.0f, 900.0f),
+		THEME_NUMBER("Buttons", GroupButtonTracking, 0.0f, 4.0f),
+		THEME_NUMBER("Buttons", GroupButtonHeight, 12.0f, 40.0f),
+		THEME_NUMBER("Buttons", GroupButtonTextOpacity, 0.0f, 1.0f),
+		THEME_NUMBER("Buttons", GroupButtonSeparatorWidth, 0.0f, 4.0f),
+		THEME_NUMBER("Buttons", GroupButtonSeparatorHeight, 0.0f, 32.0f),
+		THEME_NUMBER("Buttons", GroupButtonSeparatorOpacity, 0.0f, 1.0f),
 		THEME_NUMBER("Buttons", ButtonHeight, 16.0f, 48.0f),
 		THEME_NUMBER("Buttons", ButtonPaddingCompact, 0.0f, 32.0f),
 		THEME_NUMBER("Buttons", ButtonPaddingPrimary, 0.0f, 32.0f),

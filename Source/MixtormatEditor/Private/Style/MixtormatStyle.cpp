@@ -6,6 +6,7 @@
 #include "Style/MixtormatMutableStyleSet.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatGroupButtonTokens.h"
 #include "Style/MixtormatPalette.h"
 
 #include "Brushes/SlateColorBrush.h"
@@ -342,6 +343,18 @@ void FMixtormatStyle::Refresh()
 		.SetCheckedPressedImage(FSlateRoundedBoxBrush(FocusFill, MixtormatTokens::CornerRadius))
 		.SetPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabToggle"), TabToggle);
+
+	FSlateFontInfo GroupButtonFont = FCoreStyle::GetDefaultFontStyle(
+		MixtormatTokens::GroupButtonFontWeight >= 600.0f ? TEXT("Bold") : TEXT("Regular"),
+		MixtormatTokens::GroupButtonFontSize);
+	GroupButtonFont.LetterSpacing = FMath::RoundToInt(
+		MixtormatTokens::GroupButtonTracking / FMath::Max(MixtormatTokens::GroupButtonFontSize, 0.01f) * 1000.0f);
+	FTextBlockStyle GroupButtonText = FTextBlockStyle()
+		.SetFont(GroupButtonFont)
+		.SetColorAndOpacity(RowText)
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	StyleInstance->Set(TEXT("Mixtormat.GroupButtonText"), GroupButtonText);
 
 	// Viewport rail buttons: each on its own rounded plate. Hover and press add the accent to the
 	// plate; the glyph is dimmed at rest and full on hover (rail icons draw in the foreground).
