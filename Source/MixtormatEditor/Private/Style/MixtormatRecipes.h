@@ -80,6 +80,12 @@ namespace Mixtormat
 		Hover,
 	};
 
+	enum class EMixtormatMenuRowState : uint8 { Normal, Hover, Checked, Disabled, Destructive, DestructiveHover };
+
+	FMixtormatSurfaceRecipe MakeMenuPanelRecipe(const FMixtormatTheme& Theme, float MenuHeight);
+	FMixtormatSurfaceRecipe MakeMenuRowRecipe(
+		const FMixtormatTheme& Theme, EMixtormatMenuRowState State);
+
 	// Ground, a black Multiply shade falling top to bottom, and a hairline outline.
 	//
 	// The two states differ only in the border's four opacity numbers. Base and shade are identical

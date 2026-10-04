@@ -3,11 +3,11 @@
 #include "UI/Menus/SMixtormatMenuItem.h"
 
 #include "Framework/Application/SlateApplication.h"
-#include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 
@@ -32,11 +32,11 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, MixtormatTokens::MenuItemGap, 0.0f)
+		.Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().MenuLayout.ItemGap, 0.0f)
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::MenuIconSize)
-			.HeightOverride(MixtormatTokens::MenuIconSize)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::Menu)].GlyphSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::Menu)].GlyphSize)
 			[
 				SNew(SImage)
 				.Image_Lambda([this, Icon]()
@@ -63,7 +63,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		Row->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::MenuItemGap, 0.0f, 0.0f, 0.0f)
+		.Padding(FMixtormatThemeStore::GetResolved().MenuLayout.ItemGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(STextBlock)
 			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MenuShortcut")))
@@ -76,11 +76,11 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		Row->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::MenuItemGap, 0.0f, 0.0f, 0.0f)
+		.Padding(FMixtormatThemeStore::GetResolved().MenuLayout.ItemGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::ChevronSize)
-			.HeightOverride(MixtormatTokens::ChevronSize)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize)
 			[
 				SNew(SImage)
 				.Image(MixtormatIcons::ChevronRight())
@@ -90,19 +90,24 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 	}
 
 	TSharedRef<SWidget> Surface =
-		SNew(SMixtormatGradientBox)
-		.StartColor(this, &SMixtormatMenuItem::GetFillTop)
-		.EndColor(this, &SMixtormatMenuItem::GetFillBottom)
-		.MultiplyStart(this, &SMixtormatMenuItem::GetShadeStart)
-		.MultiplyMid(this, &SMixtormatMenuItem::GetShadeMid)
-		.MultiplyMidPosition(MixtormatTokens::MultiplyMidPosition)
-		.MultiplyEnd(this, &SMixtormatMenuItem::GetShadeEnd)
-		.Orientation(Orient_Vertical)
-		.CornerRadius(MixtormatTokens::WellRadius)
+		SNew(SMixtormatSurfaceBox)
+		.Recipe_Lambda([this]()
+		{
+			const Mixtormat::EMixtormatMenuRowState State = !IsRowEnabled()
+				? Mixtormat::EMixtormatMenuRowState::Disabled
+				: bDestructive
+					? (IsHovered() ? Mixtormat::EMixtormatMenuRowState::DestructiveHover : Mixtormat::EMixtormatMenuRowState::Destructive)
+					: bChecked.Get(false)
+						? Mixtormat::EMixtormatMenuRowState::Checked
+						: IsHovered()
+							? Mixtormat::EMixtormatMenuRowState::Hover
+							: Mixtormat::EMixtormatMenuRowState::Normal;
+			return Mixtormat::MakeMenuRowRecipe(FMixtormatThemeStore::GetTheme(), State);
+		})
 		[
 			SNew(SBox)
-			.HeightOverride(MixtormatTokens::MenuItemHeight)
-			.Padding(FMargin(MixtormatTokens::MenuItemInset, 0.0f))
+			.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.RowHeight)
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset, 0.0f))
 			[
 				Row
 			]
@@ -132,66 +137,33 @@ bool SMixtormatMenuItem::IsRowEnabled() const
 	return bRowEnabled.Get(true);
 }
 
-FLinearColor SMixtormatMenuItem::GetFillTop() const
-{
-	if ((!IsHovered() && !bChecked.Get(false)) || !IsRowEnabled())
-	{
-		return FLinearColor::Transparent;
-	}
-	return bDestructive ? MixtormatPalette::DestructiveTop() : MixtormatPalette::Panel();
-}
-
-FLinearColor SMixtormatMenuItem::GetFillBottom() const
-{
-	if ((!IsHovered() && !bChecked.Get(false)) || !IsRowEnabled())
-	{
-		return FLinearColor::Transparent;
-	}
-	return bDestructive ? MixtormatPalette::DestructiveBottom() : MixtormatPalette::LayerHoverBottom();
-}
-
-// The shade only exists while there is a fill under it to shade.
-FLinearColor SMixtormatMenuItem::GetShadeStart() const
-{
-	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyStart() : FLinearColor::Transparent;
-}
-
-FLinearColor SMixtormatMenuItem::GetShadeMid() const
-{
-	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyMid() : FLinearColor::Transparent;
-}
-
-FLinearColor SMixtormatMenuItem::GetShadeEnd() const
-{
-	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyEnd() : FLinearColor::Transparent;
-}
 
 FSlateColor SMixtormatMenuItem::GetLabelColor() const
 {
 	if (!IsRowEnabled())
 	{
-		FLinearColor Color = MixtormatPalette::RowText();
-		Color.A *= MixtormatTokens::TextDisabledOpacity;
-		return FSlateColor(Color);
+		return FSlateColor(FMixtormatThemeStore::GetResolved().Menus.ItemDisabled);
 	}
 	if (bChecked.Get(false) && !bDestructive)
 	{
-		return FSlateColor(MixtormatPalette::Accent());
+		return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
 	}
 	return FSlateColor(bDestructive
-		? MixtormatPalette::Destructive()
-		: MixtormatPalette::RowText());
+		? FMixtormatThemeStore::GetResolved().Menus.DestructiveText
+		: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 }
 
 FSlateColor SMixtormatMenuItem::GetIconColor() const
 {
-	FLinearColor Color = bChecked.Get(false) && !bDestructive
-		? MixtormatPalette::Accent()
-		: (bDestructive ? MixtormatPalette::Destructive() : MixtormatPalette::RowText());
-	Color.A *= MixtormatTokens::MenuIconOpacity;
+	FLinearColor Color = bDestructive
+		? FMixtormatThemeStore::GetResolved().Menus.DestructiveText
+		: bChecked.Get(false)
+			? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)
+			: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+	Color.A *= FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::Menu)].RestOpacity;
 	if (!IsRowEnabled())
 	{
-		Color.A *= MixtormatTokens::TextDisabledOpacity;
+		Color.A *= FMixtormatThemeStore::GetResolved().Menus.ItemDisabled.A;
 	}
 	return FSlateColor(Color);
 }

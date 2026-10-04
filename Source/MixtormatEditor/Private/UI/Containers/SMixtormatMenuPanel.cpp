@@ -2,9 +2,9 @@
 
 #include "UI/Containers/SMixtormatMenuPanel.h"
 
-#include "Style/MixtormatCompositing.h"
-#include "Style/MixtormatPalette.h"
-#include "UI/Primitives/MixtormatGradientPainter.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Widgets/Layout/SBox.h"
 
 void SMixtormatMenuPanel::Construct(const FArguments& InArgs)
@@ -29,34 +29,12 @@ int32 SMixtormatMenuPanel::OnPaint(
 	const FWidgetStyle& InWidgetStyle,
 	const bool bParentEnabled) const
 {
-	const FVector2f Size = FVector2f(AllottedGeometry.GetLocalSize());
-
-	// Both the ground ramp and additive tint finish at the fixed lip height. Short popups
-	// show only the corresponding part of that ramp, rather than compressing it to fit.
-	const float LipProgress = MixtormatTokens::MenuLipHeight > UE_SMALL_NUMBER
-		? FMath::Min(Size.Y / MixtormatTokens::MenuLipHeight, 1.0f)
-		: 1.0f;
-	const float LipStop = Size.Y > UE_SMALL_NUMBER
-		? FMath::Min(MixtormatTokens::MenuLipHeight / Size.Y, 1.0f)
-		: 1.0f;
-	const FLinearColor Top = MixtormatCompositing::Additive(
-		MixtormatPalette::MenuGroundTop(), MixtormatPalette::MenuTint());
-	const FLinearColor Bottom = MixtormatPalette::MenuGround();
-	const FLinearColor LipEnd = MixtormatGradient::LerpSRGB(Top, Bottom, LipProgress);
-	const MixtormatGradient::FStop Ground[] = {
-		{ 0.0f, Top },
-		{ LipStop, LipEnd },
-		{ 1.0f, LipEnd },
-	};
-	MixtormatGradient::Paint(
-		OutDrawElements,
-		LayerId,
-		AllottedGeometry.ToPaintGeometry(),
-		Size,
-		Orient_Vertical,
-		Ground,
-		FVector4f(MixtormatTokens::WellRadius));
-
+	const float MenuHeight = AllottedGeometry.GetLocalSize().Y;
+	const Mixtormat::FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+	Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeMenuPanelRecipe(Theme, MenuHeight);
+	const int32 SurfaceLayer = Mixtormat::FMixtormatSurfacePainter::PaintSurface(
+		OutDrawElements, LayerId, AllottedGeometry, Recipe,
+		FMixtormatThemeStore::GetResolved().Palette, InWidgetStyle);
 	return SCompoundWidget::OnPaint(
-		Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);
+		Args, AllottedGeometry, MyCullingRect, OutDrawElements, SurfaceLayer + 1, InWidgetStyle, bParentEnabled);
 }

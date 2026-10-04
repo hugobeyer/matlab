@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Style/MixtormatDesignTokens.h"
+
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -20,7 +20,7 @@ class SMixtormatMenuPanel final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatMenuPanel)
-		: _Padding(FMargin(MixtormatTokens::MenuPanelPadding))
+		: _Padding(FMargin(0.0f))
 		, _MinWidth(0.0f)
 	{}
 		SLATE_ARGUMENT(FMargin, Padding)

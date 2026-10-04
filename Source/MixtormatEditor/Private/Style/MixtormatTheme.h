@@ -516,6 +516,8 @@ namespace Mixtormat
 		float ItemHoverOpacity = 1.0f;
 		float ItemCheckedOpacity = 1.0f;
 		float ItemDisabledOpacity = 0.32f;
+		FLinearColor DestructiveText = FLinearColor(0.78f, 0.28f, 0.24f, 1.0f);
+		FLinearColor DestructiveHover = FLinearColor(0.45f, 0.12f, 0.12f, 1.0f);
 		float CornerRadius = 0.0f;
 	};
 
@@ -633,8 +635,10 @@ namespace Mixtormat
 		float ItemInset = 3.0f;
 		float ItemGap = 0.0f;
 		float PanelPadding = 3.0f;
+		float CaptionInsetAbove = 4.0f;
+		float CaptionInsetBelow = 2.0f;
 		float SeparatorMargin = 0.0f;
-		float IconSize = 14.0f;
+		float ChevronSize = 10.0f;
 	};
 
 	struct FMixtormatPreviewMetrics

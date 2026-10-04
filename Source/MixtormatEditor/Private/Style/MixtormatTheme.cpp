@@ -297,9 +297,17 @@ namespace Mixtormat
 		T.MenuLayout.LipHeight = 25.0f;                // --popup-lip-height
 		T.Menu.LipTintOpacity = 0.1f;                 // --popup-tint-opacity
 		T.Menu.BorderOpacity = 0.16f;                 // --popup-border-opacity
+		T.Menu.ItemHoverOpacity = 1.0f;
+		T.Menu.ItemCheckedOpacity = 1.0f;
 		T.Menu.ItemDisabledOpacity = 0.32f;           // --text-disabled-opacity
+		T.Menu.DestructiveText = SRGB(194, 110, 100);
+		T.Menu.DestructiveHover = SRGB(74, 38, 38);
 		T.MenuLayout.PanelPadding = 3.0f;
-		T.MenuLayout.IconSize = 14.0f;                // --menu-icon-size
+		T.MenuLayout.CaptionInsetAbove = 4.0f;
+		T.MenuLayout.CaptionInsetBelow = 2.0f;
+		T.MenuLayout.ItemGap = 5.0f;
+		T.MenuLayout.SeparatorMargin = 3.0f;
+		T.MenuLayout.ChevronSize = 10.0f;
 
 		// ---- Preview / Gallery / Shell ------------------------------------------------
 		T.Preview.PlateSource = SRGB(21, 22, 24);      // --overlay-plate-rgb
@@ -496,6 +504,8 @@ namespace Mixtormat
 		Clamp01(TEXT("Menu.LipTintOpacity"), InOutTheme.Menu.LipTintOpacity);
 		Clamp01(TEXT("Menu.BorderOpacity"), InOutTheme.Menu.BorderOpacity);
 		Clamp01(TEXT("Menu.ItemDisabledOpacity"), InOutTheme.Menu.ItemDisabledOpacity);
+		Clamp01(TEXT("Menu.ItemHoverOpacity"), InOutTheme.Menu.ItemHoverOpacity);
+		Clamp01(TEXT("Menu.ItemCheckedOpacity"), InOutTheme.Menu.ItemCheckedOpacity);
 		Clamp01(TEXT("Gallery.BorderOpacity"), InOutTheme.Gallery.BorderOpacity);
 		Clamp01(TEXT("Gallery.HoverLiftOpacity"), InOutTheme.Gallery.HoverLiftOpacity);
 		Clamp01(TEXT("Gallery.SelectedEdgeOpacity"), InOutTheme.Gallery.SelectedEdgeOpacity);
@@ -547,6 +557,15 @@ namespace Mixtormat
 		ClampMin(TEXT("LayerHierarchy.Width"), InOutTheme.LayerHierarchy.Width, 0.0f);
 		ClampMin(TEXT("GalleryLayout.TileSize"), InOutTheme.GalleryLayout.TileSize, 1.0f);
 		ClampMin(TEXT("MenuLayout.RowHeight"), InOutTheme.MenuLayout.RowHeight, 1.0f);
+		ClampMin(TEXT("MenuLayout.LipHeight"), InOutTheme.MenuLayout.LipHeight, 0.0f);
+		ClampMin(TEXT("MenuLayout.Width"), InOutTheme.MenuLayout.Width, 0.0f);
+		ClampMin(TEXT("MenuLayout.ItemInset"), InOutTheme.MenuLayout.ItemInset, 0.0f);
+		ClampMin(TEXT("MenuLayout.ItemGap"), InOutTheme.MenuLayout.ItemGap, 0.0f);
+		ClampMin(TEXT("MenuLayout.PanelPadding"), InOutTheme.MenuLayout.PanelPadding, 0.0f);
+		ClampMin(TEXT("MenuLayout.CaptionInsetAbove"), InOutTheme.MenuLayout.CaptionInsetAbove, 0.0f);
+		ClampMin(TEXT("MenuLayout.CaptionInsetBelow"), InOutTheme.MenuLayout.CaptionInsetBelow, 0.0f);
+		ClampMin(TEXT("MenuLayout.SeparatorMargin"), InOutTheme.MenuLayout.SeparatorMargin, 0.0f);
+		ClampMin(TEXT("MenuLayout.ChevronSize"), InOutTheme.MenuLayout.ChevronSize, 1.0f);
 
 		// The fill's shade midpoint is a position on its axis, so it is clamped rather than
 		// rejected: an out-of-range midpoint still describes a ramp, just a shifted one.

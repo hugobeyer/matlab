@@ -409,10 +409,12 @@ namespace Mixtormat
 			FMixtormatResolvedMenuStyle& Menu = OutStyle.Menus;
 			Menu.Ground = P.Get(EMixtormatColorRole::MenuGround);
 
-			// Build the authored local lip source with the accent as a tint/composite layer.
+			// Resolve the local popup top, then tint it toward Accent at the authored strength.
 			FMixtormatColorRef LipRef;
 			LipRef.LocalColor = Theme.Menu.LipSource;
-			Menu.Lip = ResolveColor(P, LipRef);
+			const FLinearColor LipSource = ResolveColor(P, LipRef);
+			Menu.Lip = FMath::Lerp(LipSource, P.Get(EMixtormatColorRole::Accent),
+				Theme.Menu.LipTintOpacity);
 
 			FMixtormatColorRef BorderRef = MakeColorRef(EMixtormatColorRole::Hairline);
 			BorderRef.Opacity = Theme.Menu.BorderOpacity;
@@ -420,6 +422,8 @@ namespace Mixtormat
 
 			Menu.ItemHover = P.Get(EMixtormatColorRole::Panel);
 			Menu.ItemChecked = P.Get(EMixtormatColorRole::Accent);
+			Menu.DestructiveText = Theme.Menu.DestructiveText;
+			Menu.DestructiveHover = Theme.Menu.DestructiveHover;
 
 			FMixtormatColorRef DisabledRef = MakeColorRef(EMixtormatColorRole::Text);
 			DisabledRef.Opacity = Theme.Menu.ItemDisabledOpacity;
@@ -498,8 +502,7 @@ namespace Mixtormat
 		OutStyle.CardLayout = Theme.CardLayout;
 		OutStyle.LayerLayout = Theme.LayerLayout;
 		OutStyle.MenuLayout = Theme.MenuLayout;
-		OutStyle.MenuLayout.Width = Theme.MenuLayout.Width;
-		OutStyle.MenuLayout.RowHeight = Theme.MenuLayout.RowHeight;
+
 		OutStyle.PreviewLayout = Theme.PreviewLayout;
 		OutStyle.GalleryLayout = Theme.GalleryLayout;
 		OutStyle.ShellLayout = Theme.Shell;

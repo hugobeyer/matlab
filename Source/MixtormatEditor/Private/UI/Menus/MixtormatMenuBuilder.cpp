@@ -2,12 +2,12 @@
 
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
-#include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Menus/SMixtormatMenuItem.h"
 #include "Widgets/Images/SImage.h"
+#include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -108,6 +108,7 @@ namespace MixtormatMenu
 	TSharedRef<SWidget> FBuilder::Build() const
 	{
 		const ISlateStyle& Style = FMixtormatStyle::Get();
+		const Mixtormat::FMixtormatMenuMetrics& Layout = FMixtormatThemeStore::GetResolved().MenuLayout;
 		TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 
 		for (const FEntry& Entry : Entries)
@@ -117,11 +118,7 @@ namespace MixtormatMenu
 			case EKind::Caption:
 				Rows->AddSlot()
 				.AutoHeight()
-				.Padding(FMargin(
-					MixtormatTokens::MenuItemInset,
-					MixtormatTokens::MenuCaptionInsetAbove,
-					MixtormatTokens::MenuItemInset,
-					MixtormatTokens::MenuCaptionInsetBelow))
+				.Padding(FMargin(Layout.ItemInset, Layout.CaptionInsetAbove, Layout.ItemInset, Layout.CaptionInsetBelow))
 				[
 					SNew(STextBlock)
 					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MenuCaption")))
@@ -132,12 +129,14 @@ namespace MixtormatMenu
 			case EKind::Separator:
 				Rows->AddSlot()
 				.AutoHeight()
-				.Padding(0.0f, MixtormatTokens::MenuSeparatorMargin)
+				.Padding(0.0f, Layout.SeparatorMargin)
 				[
 					SNew(SBox)
-					.HeightOverride(MixtormatTokens::HairlineThickness)
+					.HeightOverride(1.0f)
 					[
-						SNew(SImage).Image(Style.GetBrush(TEXT("Mixtormat.MenuSeparator")))
+						SNew(SImage)
+						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Menus.Border))
 					]
 				];
 				break;
@@ -165,7 +164,8 @@ namespace MixtormatMenu
 		}
 
 		return SNew(SMixtormatMenuPanel)
-			.MinWidth(MixtormatTokens::MenuWidth)
+			.MinWidth(Layout.Width)
+			.Padding(FMargin(Layout.PanelPadding))
 			[
 				Rows
 			];

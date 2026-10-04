@@ -362,6 +362,95 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakeMenuPanelRecipe(const FMixtormatTheme& Theme, const float MenuHeight)
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::MenuGround);
+		Recipe.Radius = Theme.Menu.CornerRadius;
+
+		// Stops are placed in panel coordinates, but their values are sampled over the fixed
+		// physical lip. A short panel gets only the prefix of that 25px treatment.
+		const float LipHeight = FMath::Max(Theme.MenuLayout.LipHeight, UE_SMALL_NUMBER);
+		const float AvailableHeight = FMath::Clamp(MenuHeight, 0.0f, LipHeight);
+		const float PanelHeight = FMath::Max(MenuHeight, UE_SMALL_NUMBER);
+		const float SampleFraction = AvailableHeight / LipHeight;
+		const float PanelFraction = AvailableHeight / PanelHeight;
+		FMixtormatRamp LipRamp;
+		LipRamp.Axis = EMixtormatAxis::Vertical;
+		constexpr int32 Samples = 6;
+		for (int32 Index = 0; Index < Samples; ++Index)
+		{
+			const float T = static_cast<float>(Index) / (Samples - 1);
+			LipRamp.Points.Add({ T * PanelFraction, 1.0f - T * SampleFraction });
+		}
+		if (PanelFraction < 1.0f)
+		{
+			LipRamp.Points.Add({ 1.0f, 0.0f });
+		}
+
+		FMixtormatColorRef LipSource;
+		LipSource.LocalColor = Theme.Menu.LipSource;
+		FMixtormatPaintLayer Lip;
+		Lip.Source = LipSource;
+		Lip.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		Lip.OpacityRamp = LipRamp;
+		Recipe.Layers.Add(Lip);
+
+		FMixtormatPaintLayer Tint;
+		Tint.Source = MakeColorRef(EMixtormatColorRole::Accent);
+		Tint.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		Tint.Strength = Theme.Menu.LipTintOpacity;
+		Tint.OpacityRamp = LipRamp;
+		Recipe.Layers.Add(Tint);
+
+		FMixtormatBorderLayer Border;
+		Border.Source = MakeColorRef(EMixtormatColorRole::Hairline);
+		Border.Width = 1.0f;
+		Border.OpacityRamp = MakeLinearRamp(EMixtormatAxis::None, Theme.Menu.BorderOpacity, Theme.Menu.BorderOpacity, 2);
+		Border.bTop = Border.bBottom = Border.bLeft = Border.bRight = true;
+		Recipe.Borders.Add(Border);
+		return Recipe;
+	}
+
+	FMixtormatSurfaceRecipe MakeMenuRowRecipe(const FMixtormatTheme& Theme, const EMixtormatMenuRowState State)
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::MenuGround);
+		Recipe.Radius = Theme.Menu.CornerRadius;
+		FMixtormatColorRef Source;
+		float Opacity = 0.0f;
+		switch (State)
+		{
+		case EMixtormatMenuRowState::Hover:
+			Source = MakeColorRef(EMixtormatColorRole::Panel);
+			Opacity = Theme.Menu.ItemHoverOpacity;
+			break;
+		case EMixtormatMenuRowState::Checked:
+			Source = MakeColorRef(EMixtormatColorRole::Panel);
+			Opacity = Theme.Menu.ItemCheckedOpacity;
+			break;
+		case EMixtormatMenuRowState::Disabled:
+			break;
+		case EMixtormatMenuRowState::Destructive:
+			break;
+		case EMixtormatMenuRowState::DestructiveHover:
+			Source.LocalColor = Theme.Menu.DestructiveHover;
+			Opacity = Theme.Menu.ItemHoverOpacity;
+			break;
+		default:
+			break;
+		}
+		if (Opacity > 0.0f)
+		{
+			FMixtormatPaintLayer Layer;
+			Layer.Source = Source;
+			Layer.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+			Layer.Strength = Opacity;
+			Recipe.Layers.Add(Layer);
+		}
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeWellRecipe(const FMixtormatTheme& Theme, const EMixtormatWellState State)
 	{
 		FMixtormatSurfaceRecipe Recipe;

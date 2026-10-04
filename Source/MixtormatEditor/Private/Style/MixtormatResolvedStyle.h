@@ -211,6 +211,8 @@ namespace Mixtormat
 		FLinearColor ItemHover;
 		FLinearColor ItemChecked;
 		FLinearColor ItemDisabled;
+		FLinearColor DestructiveText;
+		FLinearColor DestructiveHover;
 
 		float CornerRadius = 0.0f;
 	};

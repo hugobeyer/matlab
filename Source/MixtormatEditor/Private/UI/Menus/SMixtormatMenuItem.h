@@ -60,11 +60,7 @@ public:
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 private:
-	FLinearColor GetFillTop() const;
-	FLinearColor GetFillBottom() const;
-	FLinearColor GetShadeStart() const;
-	FLinearColor GetShadeMid() const;
-	FLinearColor GetShadeEnd() const;
+
 	FSlateColor GetLabelColor() const;
 	FSlateColor GetIconColor() const;
 	bool IsRowEnabled() const;
