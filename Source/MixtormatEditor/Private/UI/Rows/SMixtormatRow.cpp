@@ -137,7 +137,7 @@ TSharedRef<SWidget> MakePair(const TSharedRef<SWidget>& Left, const TSharedRef<S
 {
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f)[Left]
-		+ SHorizontalBox::Slot().AutoWidth()[SNew(SSpacer).Size(FVector2D(MixtormatTokens::RowGap * 2.0f, 0.0f))]
+		+ SHorizontalBox::Slot().AutoWidth()[SNew(SSpacer).Size(FVector2D(MixtormatTokens::PairedGap, 0.0f))]
 		+ SHorizontalBox::Slot().FillWidth(1.0f)[Right];
 }
 

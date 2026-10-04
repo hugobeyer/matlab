@@ -33,6 +33,11 @@ namespace MixtormatTokens
 	// types is what makes a panel of mixed controls read as a single column.
 	inline float RowHeight = 18.0f;
 	inline float RowGap = 3.0f;
+	// Gap between the two halves of a paired row. Paired controls sit inside one row's slot, so
+	// they are a control-layout value rather than a value-stack gap -- which is why this is not
+	// RowGap. It used to be derived as RowGap * 2.0f, which held them 6px apart against the
+	// authored 3px: two adjacent sliders read as one control until the cursor moved.
+	inline float PairedGap = 3.0f;
 	constexpr float RowGapTight = 2.0f;
 	// A segmented control heading a run of rows takes more air under it than two rows take
 	// between them: it is the mode switch everything below is read against, not another
@@ -122,7 +127,7 @@ namespace MixtormatTokens
 	inline float TabWidth = 88.0f;
 	inline float TabUnderlineThickness = 1.0f;
 	constexpr float TabLabelBottomInset = 0.0f;
-	inline float ToolbarIconSize = 12.0f;
+	inline float ToolbarIconSize = 18.0f;
 	inline float ViewportOverlayInset = 8.0f;
 	constexpr float PreviewToolbarButtonSize = 24.0f;
 	// Inner inset of a viewport overlay cluster -- the gap between its gradient plate and the
@@ -166,7 +171,7 @@ namespace MixtormatTokens
 
 	// ---- Slider -----------------------------------------------------------------------------
 	// Leading stripe marking a value that differs from its default.
-	constexpr float ModifiedStripeWidth = 3.0f;
+	inline float ModifiedStripeWidth = 3.0f;
 	// The label shifts right by this much when the stripe is showing, so text never sits on it.
 	constexpr float ModifiedLabelInset = 5.0f;
 	// Pixels of travel before a press becomes a scrub rather than a click-to-type.
@@ -197,11 +202,12 @@ namespace MixtormatTokens
 	// ---- Icons ------------------------------------------------------------------------------
 	// Sized per role, not per pixel budget: the eye is the only thing in a layer row a user aims
 	// at, so it is the largest; a disclosure chevron is read, not clicked, and stays small.
-	constexpr float IconButtonSize = 14.0f;
+	inline float IconButtonSize = 14.0f;
 	// Added around an icon button's glyph, not to it: the box that takes the click grows by this
-	// while the drawn icon stays IconButtonSize. A 14px target is under half the ~24px a pointer
-	// reliably hits, and these are the most-clicked controls in the panel.
-	inline float IconButtonHitSlop = 8.0f;
+	// while the drawn icon stays IconButtonSize. It is the *total* growth, not a per-side value --
+	// the box is computed once as GlyphSize + this, so a per-side 2.5px of padding is 5 here. At
+	// IconButtonSize 14 that makes the target 19px against the ~24px a pointer reliably hits.
+	inline float IconButtonHitSlop = 5.0f;
 	inline float ChevronSize = 14.0f;
 	constexpr float StatusDotSize = 8.0f;
 
@@ -246,7 +252,7 @@ namespace MixtormatTokens
 	constexpr float MenuCaptionInsetAbove = 6.0f;
 	constexpr float MenuCaptionInsetBelow = 3.0f;
 	constexpr float MenuSeparatorMargin = 4.0f;
-	constexpr float MenuIconSize = 12.0f;
+	inline float MenuIconSize = 14.0f;
 	constexpr float MenuCornerRadius = 3.0f;
 	// Where the menu's tint has landed on its ground. The canvas puts this at a fixed 22px rather
 	// than a fraction, so a tall menu and a short one have the same lip rather than the same ramp.
@@ -278,7 +284,7 @@ namespace MixtormatTokens
 	// ---- Badge ------------------------------------------------------------------------------
 	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
 	// word changes without the column moving.
-	constexpr float BadgeWidth = 52.0f;
+	inline float BadgeWidth = 52.0f;
 	// Matches the badge's old flat brush radius.
 	inline float BadgeCornerRadius = 1.0f;
 	constexpr float BadgeHeight = 16.0f;
@@ -389,8 +395,8 @@ namespace MixtormatTokens
 
 	// ---- Shell and dialogs ------------------------------------------------------------------
 	inline float PanelPadding = 4.0f;
-	constexpr float SplitterHandleSize = 1.0f;
-	constexpr float SplitterHitSize = 5.0f;
+	inline float SplitterHandleSize = 1.0f;
+	inline float SplitterHitSize = 5.0f;
 	inline float LayerStackWidth = 240.0f;
 	inline float InspectorWidth = 300.0f;
 	inline float TopBarHeight = 32.0f;
@@ -471,7 +477,7 @@ namespace MixtormatTokens
 	inline float LayerGroupRowHeight = 22.0f;
 	// The image, not a plate around it: layer thumbnails have no border, so this is the whole
 	// footprint.
-	inline float LayerThumbnailSize = 24.0f;
+	inline float LayerThumbnailSize = 20.0f;
 	// Children sit under the layer name; each scoped ownership level steps in again.
 	inline float LayerChildIndent = 28.0f;
 	inline float LayerScopeIndent = 14.0f;
@@ -511,7 +517,7 @@ namespace MixtormatTokens
 	// A value row's label and its number. One step under body and carried in a heavier face: the
 	// rows are the densest thing in the tool, and weight reads at this size where size does not.
 	inline float FontSliderLabel = 9.0f;
-	inline float FontCaption = 8.0f;
+	inline float FontCaption = 11.0f;
 	// A card's own title, apart from the caption tier it used to borrow. A card title heads a
 	// sheet; a caption names a run of rows inside one. They were the same style, which is why a
 	// card read as another caption that happened to sit higher up.
@@ -546,16 +552,18 @@ namespace MixtormatTokens
 	constexpr int32 LayerSourceLetterSpacing = 60;
 
 	// Called after every live edit/load/reset; derived dimensions are not independent knobs.
+	//
+	// Only relationships that hold unconditionally live here. A value that merely happened to
+	// equal another when both were authored -- TabHeight against ButtonHeight, MenuItemHeight
+	// against ButtonHeight, MenuLipHeight against GroupHeaderHeight, SegmentHeight against
+	// RowHeight, FontSliderLabel against FontBody -- is not a relationship, so editing one of
+	// the pair silently dragged the other with it. Those five are authored independently now,
+	// and the authored defaults are unchanged: the UI looks identical until one is retuned.
 	inline void RecomputeDerived()
 	{
 		CornerRadiusInner = CornerRadius * 0.5f;
-		TabHeight = ButtonHeight;
 		TabUnderlineThickness = OutlineWidth;
-		SegmentHeight = RowHeight;
-		MenuItemHeight = ButtonHeight;
-		MenuLipHeight = GroupHeaderHeight;
 		LayerEdgeWidth = OutlineWidth;
 		FontLayerName = FontBody;
-		FontSliderLabel = FontBody - 1.0f;
 	}
 }

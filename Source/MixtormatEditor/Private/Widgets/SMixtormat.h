@@ -210,7 +210,10 @@ private:
 	TSharedRef<SWidget> MakeFeaturePreviewButton(
 		EMixtormatDebugPreviewMode Mode,
 		const FText& ToolTip,
-		float IconSize = MixtormatTokens::LayerEyeSize);
+		// Card default, not the layer stack's eye: every caller of this is a card header action,
+		// and the handful that are not pass an explicit size anyway. LayerEyeSize is a layer-stack
+		// token and reading it here coupled the card's chrome to the stack's row metrics.
+		float IconSize = MixtormatTokens::GroupCardLeadingIconSize);
 	// The generic child preview: a normal single-click eye for OutputSet.Primary (the same
 	// SMixtormatIconButton widget and toggle behaviour every other feature-preview eye uses), plus
 	// -- only when OutputSet.Secondary is non-empty -- a small chevron beside it opening a
