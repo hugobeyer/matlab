@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -20,7 +21,7 @@ class SMixtormatStatusDot final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatStatusDot)
-		: _Size(MixtormatTokens::StatusDotSize)
+		: _Size(FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize)
 		, _bFilled(false)
 	{}
 		SLATE_ARGUMENT(float, Size)

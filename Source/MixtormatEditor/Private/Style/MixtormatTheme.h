@@ -573,6 +573,15 @@ namespace Mixtormat
 		// one number on the state modifier so a disabled control is the same control at lower
 		// strength rather than a separately authored look.
 		float DisabledLabelOpacity = 0.32f;
+
+		// Shared geometry previously living only in MixtormatTokens / DesignTokens.
+		float CornerRadius = 3.0f;
+		float OutlineWidth = 1.0f;
+		float IconBrushSize = 20.0f;
+		float IconBrushSizeLarge = 28.0f;
+		float IconButtonSize = 14.0f;
+		float StatusDotSize = 8.0f;
+		float ToolbarLabelPadding = 5.0f;
 	};
 
 	struct FMixtormatFoldoutMetrics

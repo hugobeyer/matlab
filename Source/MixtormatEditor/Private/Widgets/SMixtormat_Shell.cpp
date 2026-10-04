@@ -146,7 +146,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Add()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("NewMaterialTop", "NEW"))
 							.Font(TopBarTextStyle.Font)
@@ -171,7 +171,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Folder()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("LoadMaterialTop", "LOAD"))
 							.Font(TopBarTextStyle.Font)
@@ -197,7 +197,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Save()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "SAVE"))
 							.Font(TopBarTextStyle.Font)
@@ -223,7 +223,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::SaveAs()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "SAVE AS..."))
 							.Font(TopBarTextStyle.Font)
@@ -262,7 +262,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Cube()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("BakeMaterialTop", "BAKE"))
 							.Font(TopBarTextStyle.Font)
@@ -288,7 +288,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Documentation()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
 							.Font(TopBarTextStyle.Font)
@@ -314,7 +314,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 								SNew(SImage).Image(MixtormatIcons::Settings()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SettingsTop", "SETTINGS"))
 							.Font(TopBarTextStyle.Font)

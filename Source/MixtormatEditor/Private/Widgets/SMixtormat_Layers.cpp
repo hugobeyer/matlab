@@ -296,13 +296,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(MixtormatTokens::IconButtonSize)
-										.HeightOverride(MixtormatTokens::IconButtonSize)
+										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerMaterial())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerBottom", "Layer"))
 									]
@@ -342,13 +342,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(MixtormatTokens::IconButtonSize)
-										.HeightOverride(MixtormatTokens::IconButtonSize)
+										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::Folder())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("CreateGroupBottom", "Group"))
 									]
@@ -370,13 +370,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(MixtormatTokens::IconButtonSize)
-										.HeightOverride(MixtormatTokens::IconButtonSize)
+										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerFill())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddFillLayerBottom", "Fill Layer"))
 									]

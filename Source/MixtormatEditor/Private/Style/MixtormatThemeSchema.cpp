@@ -336,6 +336,13 @@ void AddIconRole(
 		NUM("ControlLayout.DropdownLabelRatio", Controls, "Layout", "Dropdown Label Ratio", ControlLayout.DropdownLabelRatio, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.PanelGutter", Controls, "Layout", "Panel Gutter", ControlLayout.PanelGutter, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM_DEF("ControlLayout.DisabledLabelOpacity", Controls, "Layout", "Disabled Label Opacity", ControlLayout.DisabledLabelOpacity, 0, 1, .01, 2);
+		NUM("ControlLayout.CornerRadius", Controls, "Layout", "Corner Radius", ControlLayout.CornerRadius, 0, 24, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.OutlineWidth", Controls, "Layout", "Outline Width", ControlLayout.OutlineWidth, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.IconBrushSize", Controls, "Layout", "Icon Brush Size", ControlLayout.IconBrushSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.IconBrushSizeLarge", Controls, "Layout", "Icon Brush Size Large", ControlLayout.IconBrushSizeLarge, 8, 96, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.IconButtonSize", Controls, "Layout", "Icon Button Size", ControlLayout.IconButtonSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.StatusDotSize", Controls, "Layout", "Status Dot Size", ControlLayout.StatusDotSize, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ToolbarLabelPadding", Controls, "Layout", "Toolbar Label Padding", ControlLayout.ToolbarLabelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
 
 // FOLDOUTS

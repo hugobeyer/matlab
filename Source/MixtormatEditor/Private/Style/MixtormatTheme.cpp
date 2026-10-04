@@ -159,6 +159,13 @@ namespace Mixtormat
 		T.ControlLayout.ButtonHeight = 24.0f;         // --button-height
 		T.ControlLayout.DropdownLabelRatio = 0.45f;   // --dropdown-label-ratio
 				T.ControlLayout.DisabledLabelOpacity = 0.32f; // --text-disabled-opacity
+		T.ControlLayout.CornerRadius = 3.0f;
+		T.ControlLayout.OutlineWidth = 1.0f;
+		T.ControlLayout.IconBrushSize = 20.0f;
+		T.ControlLayout.IconBrushSizeLarge = 28.0f;
+		T.ControlLayout.IconButtonSize = 14.0f;
+		T.ControlLayout.StatusDotSize = 8.0f;
+		T.ControlLayout.ToolbarLabelPadding = 5.0f;
 
 		// ---- Foldout ------------------------------------------------------------------
 		// --header-tint-rgb 37 40 43 at --header-tint-opacity .9. These two tokens are the foldout's

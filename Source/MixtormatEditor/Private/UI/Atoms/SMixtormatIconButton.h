@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatTheme.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -25,7 +26,7 @@ class SMixtormatIconButton final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatIconButton)
 		: _Icon(nullptr)
-		, _Size(MixtormatTokens::IconButtonSize)
+		, _Size(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
 		, _Role(Mixtormat::EMixtormatIconRole::Count)
 		, _bActive(false)
 	{}

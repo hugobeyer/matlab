@@ -3,6 +3,7 @@
 #include "UI/Parameters/SMixtormatParameterControl.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"
 #include "UI/Menus/SMixtormatPopupAnchor.h"
 #include "Framework/Application/SlateApplication.h"
@@ -49,7 +50,7 @@ void SMixtormatParameterControl::Construct(const FArguments& InArgs)
 					.OnGetMenuContent(InArgs._OnGetDriverContent)
 					[
 						SNew(SMixtormatStatusDot)
-						.Size(MixtormatTokens::StatusDotSize)
+						.Size(FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize)
 						.BrushName(TAttribute<FName>::CreateSP(
 							this, &SMixtormatParameterControl::GetStateBrushName))
 						.ToolTip(TAttribute<FText>::CreateSP(this, &SMixtormatParameterControl::GetStateToolTip))
