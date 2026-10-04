@@ -94,4 +94,29 @@ namespace MixtormatGradient
 			ESlateDrawEffect::None,
 			CornerRadii);
 	}
+
+	float FalloffValue(const float T, const float Start, const float End, const float Power)
+	{
+		return Start + (End - Start) * FMath::Pow(T, FMath::Max(Power, 0.01f));
+	}
+
+	void AppendFalloffStops(
+		TArray<FStop, TInlineAllocator<16>>& OutStops,
+		const FLinearColor& Color,
+		const float StartOpacity,
+		const float EndOpacity,
+		const float Power,
+		const float PositionStart,
+		const float PositionEnd,
+		const int32 SampleCount)
+	{
+		const int32 Samples = FMath::Max(SampleCount, 2);
+		for (int32 Index = 0; Index < Samples; ++Index)
+		{
+			const float T = static_cast<float>(Index) / static_cast<float>(Samples - 1);
+			FLinearColor Stop = Color;
+			Stop.A = FalloffValue(T, StartOpacity, EndOpacity, Power);
+			OutStops.Add({ FMath::Lerp(PositionStart, PositionEnd, T), Stop });
+		}
+	}
 }

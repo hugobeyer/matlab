@@ -37,6 +37,16 @@ namespace MixtormatPalette
 	inline FLinearColor Window()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Window"), Hex(0x0F0F0F)); }
 	inline FLinearColor TopBar()       { return FMixtormatLiveTheme::ResolveColor(TEXT("TopBar"), Hex(0x171819)); }
 	inline FLinearColor Shell()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Shell"), Hex(0x111213)); }
+	// The base everything else sits on: 14 15 16, the prototype's --ground-rgb.
+	//
+	// Deliberately its own role and not an alias for Shell (17 18 19) or Panel (25 27 29). The
+	// prototype paints its cards, foldout bodies and panel columns off ground rather than off a
+	// panel, and a card body at 9% over ground is a different value than the same 9% over a panel.
+	// Aliasing would make that difference invisible in the token and permanent in the result.
+	//
+	// Nothing reads this yet -- Phase 2 introduces the source; the surfaces adopt it as they are
+	// restyled, so a change here is a change to what "the ground" means rather than a repaint.
+	inline FLinearColor Ground()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Ground"), Hex(0x0E0F10)); }
 	inline FLinearColor Panel()        { return FMixtormatLiveTheme::ResolveColor(TEXT("Panel"), Hex(0x191B1D)); }
 	inline FLinearColor PanelBottom()  { return Hex(0x141617); }
 	inline FLinearColor RaisedPanel()  { return FMixtormatLiveTheme::ResolveColor(TEXT("RaisedPanel"), Hex(0x202224)); }

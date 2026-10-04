@@ -201,6 +201,7 @@ const TArray<FMixtormatThemeColor>& FMixtormatLiveTheme::Colors()
 		THEME_COLOR(ScalarRampFill), THEME_COLOR(ScalarRampPoint), THEME_COLOR(ScalarRampPointHover),
 		THEME_COLOR(ScalarRampPointSelected),
 		THEME_COLOR(Window), THEME_COLOR(TopBar), THEME_COLOR(Shell),
+				THEME_COLOR(Ground),
 		THEME_COLOR(Panel), THEME_COLOR(RaisedPanel), THEME_COLOR(RaisedPanelHover),
 		THEME_COLOR(GroupSurround), THEME_COLOR(GroupCardBackground), THEME_COLOR(HeaderTint), THEME_COLOR(HeaderText),
 		THEME_COLOR(RowText), THEME_COLOR(CaptionText), THEME_COLOR(CardTitleText),
