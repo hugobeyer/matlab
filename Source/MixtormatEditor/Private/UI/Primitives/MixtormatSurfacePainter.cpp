@@ -204,10 +204,11 @@ namespace Mixtormat
 
 		if (OutSamples.Axis == EMixtormatAxis::None)
 		{
-			// Flat. One colour, and the painter can draw a box -- the allocation-free path, and the
-			// common case for a rest-state well or a border plate.
+			// Flat. One position, and the shared compositing loop below produces the single colour
+			// for it -- which starts from Base, so the base must NOT also be added here. Seeding
+			// Colors as well as Positions leaves the two arrays a different length, and the painter
+			// then walks Colors and indexes Positions past its end.
 			OutSamples.Positions.Add(0.0f);
-			OutSamples.Colors.Add(Base);
 		}
 		else
 		{
@@ -258,7 +259,12 @@ namespace Mixtormat
 			OutSamples.Colors.Add(Color);
 		}
 
-		return OutSamples.Colors.Num();
+		// The invariant the painter relies on when it walks Colors and indexes Positions in step. A
+				// mismatch here is an out-of-bounds read in PaintBody, several frames away from its cause,
+				// so it is checked at the place that can produce it.
+			check(OutSamples.Colors.Num() == OutSamples.Positions.Num());
+
+			return OutSamples.Colors.Num();
 	}
 
 	int32 FMixtormatSurfacePainter::PaintBody(
