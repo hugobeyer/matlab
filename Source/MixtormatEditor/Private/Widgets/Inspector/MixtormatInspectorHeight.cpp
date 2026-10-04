@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -66,6 +67,12 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 	const TSharedRef<SVerticalBox> ContactAO = AddCard(
 		ContactBorders, LOCTEXT("HeightContactAOGroup", "CONTACT AO"), nullptr,
 		SNew(SMixtormatLayerIcon)
+			.Icon_Lambda([this]()
+			{
+				return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO
+					? MixtormatIcons::Eye()
+					: MixtormatIcons::EyeOff();
+			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
 			.ToolTipText(LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))
@@ -75,6 +82,12 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 	const TSharedRef<SVerticalBox> BorderNormal = AddCard(
 		ContactBorders, LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL"), nullptr,
 		SNew(SMixtormatLayerIcon)
+			.Icon_Lambda([this]()
+			{
+				return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal
+					? MixtormatIcons::Eye()
+					: MixtormatIcons::EyeOff();
+			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
 			.ToolTipText(LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))

@@ -40,9 +40,24 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 		? IconStyle.DisabledOpacity
 		: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
 		: IconStyle.RestOpacity;
-	FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(Size,
-		FSlateLayoutTransform(Offset)), bVisibility ? (On ? &Filled : &Hollow) : Icon.Get(),
-		ESlateDrawEffect::None, Color * WidgetStyle.GetColorAndOpacityTint());
+	// A visibility square owns its brush; every other use borrows the caller's, and an unbound
+	// Icon attribute resolves to null. MakeBox dereferences the brush, so a non-visibility caller
+	// that omits .Icon(...) would fault here rather than draw nothing.
+	const FSlateBrush* Brush = bVisibility
+		? (On ? &Filled : &Hollow)
+		: Icon.Get();
+
+	if (Brush)
+	{
+		FSlateDrawElement::MakeBox(
+			Elements,
+			LayerId,
+			Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(Offset)),
+			Brush,
+			ESlateDrawEffect::None,
+			Color * WidgetStyle.GetColorAndOpacityTint());
+	}
+
 	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId + 1,
 		WidgetStyle, bParentEnabled);
 }

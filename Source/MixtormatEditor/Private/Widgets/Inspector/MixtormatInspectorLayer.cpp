@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -183,6 +184,12 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 		LOCTEXT("CardFeaturedMasks", "Featured Masks"),
 		nullptr,
 		SNew(SMixtormatLayerIcon)
+			.Icon_Lambda([this]()
+			{
+				return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature
+					? MixtormatIcons::Eye()
+					: MixtormatIcons::EyeOff();
+			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
 			.ToolTipText(LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"))
