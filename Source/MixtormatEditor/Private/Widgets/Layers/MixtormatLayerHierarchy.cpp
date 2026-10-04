@@ -98,7 +98,7 @@ namespace MixtormatLayersPrivate
 		const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
 		const Mixtormat::FMixtormatHierarchyTheme& Hierarchy = FMixtormatThemeStore::GetResolved().LayerHierarchy;
 		Paint.RowHeight = Layout.ChildRowHeight;
-		Paint.BranchInset = Layout.PaddingX + Layout.ChildIndent;
+		Paint.BranchInset = Layout.PaddingX;
 		if (!Children.IsValidIndex(ChildIndex))
 		{
 			return Paint;
@@ -1087,16 +1087,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			SNew(SMixtormatLayerHierarchy)
 			.Hierarchy(ChildHierarchyPaint(Layer.Children, ChildIndex))
 			[
-			SNew(SBox)
-			// One indent for being under the layer plus one per scope level. Without the base level a
-			// top-level child (the first ID Group, say) sat flush with the layer header while its own
-			// scoped children stepped in, so the owner read as a sibling of the layer.
-			.Padding(FMargin(
-				(1 + GetDisplayScopeDepth(Layer.Children, ChildIndex)) * MixtormatTokens::LayerScopeIndent,
-				0.0f,
-				0.0f,
-				0.0f))
-			[
 			SNew(SMixtormatChildDropTarget)
 			.LayerIndex(LayerIndex)
 			.ChildIndex(ChildIndex)
@@ -1110,6 +1100,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 				[
 				SNew(SMixtormatLayerChildRow)
+				.ExtraIndent(GetDisplayScopeDepth(Layer.Children, ChildIndex) * FMixtormatThemeStore::GetResolved().LayerHierarchy.Indent)
 				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
 				.Name(ChildName)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
@@ -1217,7 +1208,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				})
 				]
 			]
-		]
 		]);
 }
 

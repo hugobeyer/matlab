@@ -397,6 +397,7 @@ void AddIconRole(
 		LocateBegin = P.Num();
 		BLEND_DEF("Layer.Blend", Layers, "Rows", "Blend", Layer.Blend);
 		BLEND_DEF("Layer.GroupBlend", Layers, "Rows", "Group Blend", Layer.GroupBlend);
+		NUM_DEF("Layer.Radius", Layers, "Surface", "Corner Radius", Layer.Radius, 0, 8, .25, 2);
 		NUM_DEF("Layer.RestSaturation", Layers, "Rows", "Rest Saturation", Layer.RestSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.HoverSaturation", Layers, "Rows", "Hover Saturation", Layer.HoverSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.SelectedSaturation", Layers, "Rows", "Selected Saturation", Layer.SelectedSaturation, 0, 4, .05, 2);

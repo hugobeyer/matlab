@@ -234,7 +234,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); })
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
+							.Padding(0.0f, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
 							[
 								SNew(SMixtormatIconButton)
 								.Icon(MixtormatIcons::LayerFill())
@@ -287,7 +287,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							SNew(SBox)
 							.HeightOverride(MixtormatTokens::ButtonHeight)
 							[
-								SNew(SButton)
+								SNew(SMixtormatGroupAction, true)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 								.ToolTipText(LOCTEXT("AddMaterialLayerBottomHint", "Add a material layer from the selected library surface."))
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
@@ -313,12 +313,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						// selection, so it belongs with the other things that change the stack
 						// rather than with anything a single row owns.
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
+						
 						[
 							SNew(SBox)
 							.HeightOverride(MixtormatTokens::ButtonHeight)
 							[
-								SNew(SButton)
+								SNew(SMixtormatGroupAction, true)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 								.IsEnabled_Lambda([this]() { return CanCreateGroupFromSelection(); })
 								.ToolTipText_Lambda([this]()
@@ -361,7 +361,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							SNew(SBox)
 							.HeightOverride(MixtormatTokens::ButtonHeight)
 							[
-								SNew(SButton)
+								SNew(SMixtormatGroupAction, false)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 								.ToolTipText(LOCTEXT("AddFillLayerBottomHint", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })

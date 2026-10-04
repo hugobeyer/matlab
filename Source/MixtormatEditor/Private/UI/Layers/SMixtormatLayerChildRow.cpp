@@ -7,7 +7,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatTypography.h"
 #include "UI/Atoms/SMixtormatBadge.h"
-#include "UI/Atoms/SMixtormatStatusDot.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
 #include "UI/Layers/SMixtormatLayerConnector.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -75,12 +75,24 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 				// Same leading/trailing insets as a layer row, plus the child indent, so both
 				// follow the Leading/Trailing inset tokens together.
 				.Padding(FMargin(
-					Layout.PaddingX + Layout.ChildIndent,
+					Layout.PaddingX + Layout.ChildIndent + InArgs._ExtraIndent,
 					0.0f,
 					Layout.PaddingX,
 					0.0f))
 				[
 					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
+					[
+						SNew(SMixtormatLayerIcon)
+						.bVisibility(true)
+						.bOn(InArgs._bActive)
+						.bActive(InArgs._bPreviewing)
+						.ToolTipText(LOCTEXT("ChildToggleHint", "Enable or disable this child."))
+						.OnClicked(InArgs._OnToggleActive)
+					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
@@ -158,25 +170,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 								: EVisibility::Visible;
 						})
 					]
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(Layout.ItemGap, 0.0f, 0.0f, 0.0f)
-					[
-						SNew(SMixtormatStatusDot)
-						.Size(MixtormatTokens::StatusDotSize)
-						.bFilled(InArgs._bActive)
-						// Unnamed falls back to the filled/hollow pair, so the toggle state comes back
-						// the moment the preview stops.
-						.BrushName_Lambda([bPreviewing = InArgs._bPreviewing]()
-						{
-							return bPreviewing.Get(false)
-								? FName(TEXT("Mixtormat.StatusDot.Previewing"))
-								: NAME_None;
-						})
-						.ToolTip(LOCTEXT("ChildDotHint", "Enable or disable this child."))
-						.OnClicked(InArgs._OnToggleActive)
-					]
+
 				]
 				]
 			]

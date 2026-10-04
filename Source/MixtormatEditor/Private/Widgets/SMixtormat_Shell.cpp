@@ -420,24 +420,22 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 										SNew(SBox)
 										.WidthOverride(MixtormatTokens::BottomLibraryCollapseButtonWidth)
 										.HeightOverride(MixtormatTokens::BottomLibraryCollapseButtonHeight)
+										.HAlign(HAlign_Center)
+										.VAlign(VAlign_Center)
 										[
-											SNew(SHorizontalBox)
-											// The label names the control but is not the control: it never
-											// takes the pointer, so the hover plate and the tooltip belong to the
-											// chevron alone rather than reading as one wide chip.
-											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
+											SAssignNew(BottomLibraryToggleButton, SButton)
+											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+											.ContentPadding(0.0f)
+											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
+											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 											[
-												SNew(STextBlock)
-												.Text(LOCTEXT("BottomLibraryToggleLabel", "Gallery"))
-												.Visibility(EVisibility::HitTestInvisible)
-											]
-											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-											[
-												SAssignNew(BottomLibraryToggleButton, SButton)
-												.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-												.ContentPadding(0.0f)
-												.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
-												.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+												SNew(SBox)
+												.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+													static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
+												.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+													static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
+												.HAlign(HAlign_Center)
+												.VAlign(VAlign_Center)
 												[
 													SNew(SImage)
 													.Image_Lambda([this]()
@@ -452,7 +450,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 									]
 								]
 			]
-			+ SSplitter::Slot()
++ SSplitter::Slot()
 						.Value_Lambda([this]() { return ShellRightFraction; })
 						.OnSlotResized_Lambda([this](float Value) { ShellRightFraction = Value; })
 			[

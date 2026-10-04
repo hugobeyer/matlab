@@ -525,10 +525,12 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
 			[
-				SearchBox
+				SNew(SBox).HeightOverride(LibraryStyle.Buttons.Height)[SearchBox]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
+				SNew(SBox).HeightOverride(LibraryStyle.Buttons.Height)
+				[
 				SNew(SMixtormatChip)
 				.Text_Lambda([this]()
 				{
@@ -541,6 +543,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
 						+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)];
 				})
+				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(
 				LibraryStyle.GalleryLayout.TileGap, 0.0f, 0.0f, 0.0f)
@@ -605,7 +608,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 				.ThumbnailAsset(ThumbnailAsset)
 				.ThumbnailPool(ThumbnailPool)
 				.bShowName(false)
-				.bShowNameOnHover(true)
+				.bShowNameOnHover(false)
 				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)

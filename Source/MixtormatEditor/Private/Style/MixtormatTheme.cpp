@@ -212,6 +212,7 @@ namespace Mixtormat
 		T.CardLayout.BodyBottom = 7.0f;               // --card-body-bottom
 
 		// ---- Layer ---------------------------------------------------------------------
+		T.Layer.Radius = 2.0f;
 		// --layer-*, --child-*, --layer-group-*
 		T.Layer.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 		T.Layer.GroupBlend = MixtormatCompositing::EMixtormatBlendMode::SoftLight;  // --layer-group-blend-mode
@@ -225,6 +226,8 @@ namespace Mixtormat
 		T.Layer.RestStrength = 1.0f;
 		T.Layer.HoverStrength = 1.0f;
 		T.Layer.SelectedStrength = 1.0f;
+		T.Layer.HairlineWidth = 1.0f;
+		T.Layer.HairlineOpacity = 0.22f;
 		T.Layer.RowBottom = SRGB(20, 22, 23);
 		T.Layer.HoverTop = SRGB(45, 49, 52);
 		T.Layer.HoverBottom = SRGB(34, 38, 41);
@@ -251,27 +254,28 @@ namespace Mixtormat
 		T.Layer.ActiveGlow.HairlineOpacity = 0.6f;    // --layer-active-hairline-opacity
 
 		T.Layer.ActiveHairlineWidth = 1.0f;
-		T.Layer.ActiveHairlineOpacity = 0.6f;
+		T.Layer.ActiveHairlineOpacity = 0.55f;
 
 		// --layer-hierarchy-line-*
 		T.LayerHierarchy.Source = MakeColorRef(EMixtormatColorRole::Text);
 		T.LayerHierarchy.Indent = 22.0f;
 		T.LayerHierarchy.Width = 1.0f;
-		T.LayerHierarchy.Opacity = 0.280f;
-		T.LayerHierarchy.ParentJoinOffset = 10.0f;
+		T.LayerHierarchy.Opacity = 0.30f;
+		T.LayerHierarchy.ParentJoinOffset = 0.0f;
 		T.LayerHierarchy.ChildArmLength = 12.0f;
 
-		T.LayerLayout.RowHeight = 24.0f;              // --layer-height
+		T.LayerLayout.RowHeight = 23.0f;              // --layer-height
 		T.LayerLayout.GroupRowHeight = 22.0f;         // --layer-group-height
 		T.LayerLayout.ChildRowHeight = 20.0f;         // --child-height
 		T.LayerLayout.Gap = 1.0f;                     // --layer-gap
-		T.LayerLayout.ColumnGutter = 8.0f;
+		T.LayerLayout.ColumnGutter = 4.0f;
 		T.LayerLayout.ThumbnailSize = 18.0f;          // --thumbnail-size
 		T.LayerLayout.ChildIndent = 22.0f;            // --layer-indent
 
 		// ---- Button --------------------------------------------------------------------
 		// --group-button-*
 		T.Button.Height = 24.0f;
+		T.Button.HorizontalPadding = 8.0f;
 		T.Button.BodyBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;    // --group-button-blend-mode
 		T.Button.HairlineBlend = MixtormatCompositing::EMixtormatBlendMode::Additive;
 		T.Button.RestTop = 0.18f;
@@ -282,13 +286,13 @@ namespace Mixtormat
 		T.Button.SelectedBottom = 0.12f;
 		T.Button.GradientSaturation = 1.5f;
 		T.Button.HairlineWidth = 1.0f;
-		T.Button.HairlineOpacity = 0.16f;
-		T.Button.HairlineHoverOpacity = 0.4f;
+		T.Button.HairlineOpacity = 0.18f;
+		T.Button.HairlineHoverOpacity = 0.38f;
 		T.Button.HairlineSelectedOpacity = 0.6f;
 		T.Button.HairlineSaturation = 1.5f;
 		T.Button.SeparatorWidth = 1.0f;
 		T.Button.SeparatorHeight = 14.0f;
-		T.Button.SeparatorOpacity = 0.08f;
+		T.Button.SeparatorOpacity = 0.16f;
 		// --group-button-text-opacity .78
 		T.Button.TextOpacity = 0.78f;
 
@@ -329,7 +333,7 @@ namespace Mixtormat
 		T.PreviewLayout.FinalPopupWidth = 232.0f;
 
 		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
-		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
+		T.GalleryLayout.TileGap = 4.0f;               // --gallery-gap
 
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height
 		T.Shell.TopBarActionInset = 4.0f;
@@ -346,13 +350,10 @@ namespace Mixtormat
 
 		// ---- Icons ---------------------------------------------------------------------
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::TopBar)] = Icon(18.0f, 0.6f);           // --topbar-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(13.000f, 0.600f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].GlyphSize = 13.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].ButtonSize = 24.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].HitSize = 26.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].RestOpacity = 0.600f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].HoverOpacity = 1.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].DisabledOpacity = 0.320f;     // --toolbar-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(12.0f, 0.62f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].GlyphSize = 12.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].ButtonSize = 22.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].HitSize = 24.0f;     // --toolbar-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(15.000f, 0.600f);
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].GlyphSize = 15.000f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].ButtonSize = 26.000f;
@@ -360,31 +361,20 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].RestOpacity = 0.600f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].HoverOpacity = 1.000f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].DisabledOpacity = 0.320f;   // --overlay-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(11.000f, 0.450f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].GlyphSize = 11.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].ButtonSize = 20.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HitSize = 22.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].RestOpacity = 0.450f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HoverOpacity = 1.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].DisabledOpacity = 0.280f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 1.000f;         // --layer-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(10.0f, 0.48f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].GlyphSize = 10.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].ButtonSize = 18.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HitSize = 20.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.0f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 0.75f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(10.000f, 0.600f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].GlyphSize = 10.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].ButtonSize = 18.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].HitSize = 20.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].RestOpacity = 0.600f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].HoverOpacity = 1.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].DisabledOpacity = 0.320f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(10.000f, 0.600f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].GlyphSize = 10.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].ButtonSize = 18.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].HitSize = 20.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].RestOpacity = 0.600f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].HoverOpacity = 1.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].DisabledOpacity = 0.320f; // --foldout-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 1.0f;         // --layer-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(9.0f, 0.60f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].GlyphSize = 9.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].ButtonSize = 18.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].HitSize = 20.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(9.0f, 0.60f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].GlyphSize = 9.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].ButtonSize = 18.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].HitSize = 20.0f; // --foldout-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)] = Icon(12.000f, 0.600f);
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].GlyphSize = 12.000f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].ButtonSize = 20.000f;
@@ -399,13 +389,10 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].RestOpacity = 0.600f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].HoverOpacity = 1.000f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].DisabledOpacity = 0.320f;             // --menu-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(12.000f, 0.600f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 12.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 24.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 26.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].RestOpacity = 0.600f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HoverOpacity = 1.000f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].DisabledOpacity = 0.320f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(11.0f, 0.62f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 11.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 22.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 24.0f;
 
 		// ---- Typography ----------------------------------------------------------------
 		// Weights below are the ones tokens.css authors, not a guess from a bold flag. Two

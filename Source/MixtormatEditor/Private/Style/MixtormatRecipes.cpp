@@ -191,6 +191,7 @@ namespace Mixtormat
 				: Right;
 			FMixtormatSurfaceRecipe Recipe;
 			Recipe.Base = MakeColorRef(EMixtormatColorRole::Ground);
+			Recipe.Radius = L.Radius;
 			FMixtormatPaintLayer Body;
 			Body.Source = LocalLayerSource(Start, Saturation);
 			Body.SourceEnd = LocalLayerSource(End, Saturation);

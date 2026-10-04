@@ -401,6 +401,7 @@ namespace Mixtormat
 	// state; group rows add a Soft Light cross pass. Nothing here is a state colour.
 	struct FMixtormatLayerTheme
 	{
+		float Radius = 2.0f;
 		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 		MixtormatCompositing::EMixtormatBlendMode GroupBlend = MixtormatCompositing::EMixtormatBlendMode::SoftLight;
 
