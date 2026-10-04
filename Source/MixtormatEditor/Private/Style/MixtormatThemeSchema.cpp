@@ -131,6 +131,10 @@ void AddIconRole(
 			EMixtormatThemeRefreshMode RefreshMode = EMixtormatThemeRefreshMode::Reconstruct)
 		{
 			const uint8 Index = static_cast<uint8>(Role);
+			const EMixtormatThemeRefreshMode OpacityRefreshMode =
+				Role == EMixtormatIconRole::PreviewToolbar || Role == EMixtormatIconRole::Menu
+					? EMixtormatThemeRefreshMode::Paint
+					: EMixtormatThemeRefreshMode::Reconstruct;
 			const FString Section = FString::Printf(TEXT("Icons / %s"), Label);
 			auto Id = [Prefix](const TCHAR* Suffix)
 			{
@@ -145,13 +149,13 @@ void AddIconRole(
 
 			Out.Add(Number(*Id(TEXT("RestOpacity")), ETab::Global, *Section, TEXT("Rest Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].RestOpacity; },
-				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].RestOpacity = V; }, TEXT(""), EMixtormatThemeRefreshMode::Paint));
+				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].RestOpacity = V; }, TEXT(""), OpacityRefreshMode));
 			Out.Add(Number(*Id(TEXT("HoverOpacity")), ETab::Global, *Section, TEXT("Hover Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].HoverOpacity; },
-				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].HoverOpacity = V; }, TEXT(""), EMixtormatThemeRefreshMode::Paint));
+				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].HoverOpacity = V; }, TEXT(""), OpacityRefreshMode));
 			Out.Add(Number(*Id(TEXT("DisabledOpacity")), ETab::Global, *Section, TEXT("Disabled Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].DisabledOpacity; },
-				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].DisabledOpacity = V; }, TEXT(""), EMixtormatThemeRefreshMode::Paint));
+				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].DisabledOpacity = V; }, TEXT(""), OpacityRefreshMode));
 		}
 
 	void AddTextRole(
@@ -273,18 +277,18 @@ void AddIconRole(
 		NUM("Toggle.DisabledShadeTop", Controls, "Toggle", "Disabled Shade Top", Toggle.DisabledShadeTop, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("Toggle.DisabledShadeBottom", Controls, "Toggle", "Disabled Shade Bottom", Toggle.DisabledShadeBottom, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 
-		NUM("ControlLayout.RowHeight", Controls, "Layout", "Row Height", ControlLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.RowGap", Controls, "Layout", "Row Gap", ControlLayout.RowGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.PairedGap", Controls, "Layout", "Paired Gap", ControlLayout.PairedGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.RowTextInset", Controls, "Layout", "Row Text Inset", ControlLayout.RowTextInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.RowLabelGap", Controls, "Layout", "Row Label Gap", ControlLayout.RowLabelGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.RowFieldMinWidth", Controls, "Layout", "Field Min Width", ControlLayout.RowFieldMinWidth, 0, 400, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.ColorSwatchWidth", Controls, "Layout", "Color Swatch Width", ControlLayout.ColorSwatchWidth, 0, 240, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.ColorSwatchHeight", Controls, "Layout", "Color Swatch Height", ControlLayout.ColorSwatchHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.ButtonHeight", Controls, "Layout", "Button Height", ControlLayout.ButtonHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.SegmentedControlGap", Controls, "Layout", "Segmented Gap", ControlLayout.SegmentedControlGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.DropdownLabelRatio", Controls, "Layout", "Dropdown Label Ratio", ControlLayout.DropdownLabelRatio, 0, 1, .01, 2, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("ControlLayout.PanelGutter", Controls, "Layout", "Panel Gutter", ControlLayout.PanelGutter, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("ControlLayout.RowHeight", Controls, "Layout", "Row Height", ControlLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.RowGap", Controls, "Layout", "Row Gap", ControlLayout.RowGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.PairedGap", Controls, "Layout", "Paired Gap", ControlLayout.PairedGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.RowTextInset", Controls, "Layout", "Row Text Inset", ControlLayout.RowTextInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.RowLabelGap", Controls, "Layout", "Row Label Gap", ControlLayout.RowLabelGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.RowFieldMinWidth", Controls, "Layout", "Field Min Width", ControlLayout.RowFieldMinWidth, 0, 400, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorSwatchWidth", Controls, "Layout", "Color Swatch Width", ControlLayout.ColorSwatchWidth, 0, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorSwatchHeight", Controls, "Layout", "Color Swatch Height", ControlLayout.ColorSwatchHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ButtonHeight", Controls, "Layout", "Button Height", ControlLayout.ButtonHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.SegmentedControlGap", Controls, "Layout", "Segmented Gap", ControlLayout.SegmentedControlGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DropdownLabelRatio", Controls, "Layout", "Dropdown Label Ratio", ControlLayout.DropdownLabelRatio, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.PanelGutter", Controls, "Layout", "Panel Gutter", ControlLayout.PanelGutter, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM_DEF("ControlLayout.DisabledLabelOpacity", Controls, "Layout", "Disabled Label Opacity", ControlLayout.DisabledLabelOpacity, 0, 1, .01, 2);
 
 // FOLDOUTS
@@ -306,14 +310,14 @@ void AddIconRole(
 		NUM_DEF("Foldout.LiftFalloff.Start", Foldouts, "Falloff", "Start", Foldout.LiftFalloff.Start, 0, 1, .01, 2);
 		NUM_DEF("Foldout.LiftFalloff.End", Foldouts, "Falloff", "End", Foldout.LiftFalloff.End, 0, 1, .01, 2);
 		NUM_DEF("Foldout.LiftFalloff.Power", Foldouts, "Falloff", "Power", Foldout.LiftFalloff.Power, .01, 4, .05, 2);
-		NUM("FoldoutLayout.Height", Foldouts, "Layout", "Height", FoldoutLayout.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.Gutter", Foldouts, "Layout", "Gutter", FoldoutLayout.Gutter, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.BodyTop", Foldouts, "Layout", "Body Top", FoldoutLayout.BodyTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.BodyBottom", Foldouts, "Layout", "Body Bottom", FoldoutLayout.BodyBottom, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.OuterTop", Foldouts, "Layout", "Outer Top", FoldoutLayout.OuterTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.OuterBottom", Foldouts, "Layout", "Outer Bottom", FoldoutLayout.OuterBottom, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.HeaderPaddingTop", Foldouts, "Layout", "Header Padding Top", FoldoutLayout.HeaderPaddingTop, 0, 16, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("FoldoutLayout.HeaderPaddingBottom", Foldouts, "Layout", "Header Padding Bottom", FoldoutLayout.HeaderPaddingBottom, 0, 16, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("FoldoutLayout.Height", Foldouts, "Layout", "Height", FoldoutLayout.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.Gutter", Foldouts, "Layout", "Gutter", FoldoutLayout.Gutter, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.BodyTop", Foldouts, "Layout", "Body Top", FoldoutLayout.BodyTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.BodyBottom", Foldouts, "Layout", "Body Bottom", FoldoutLayout.BodyBottom, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.OuterTop", Foldouts, "Layout", "Outer Top", FoldoutLayout.OuterTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.OuterBottom", Foldouts, "Layout", "Outer Bottom", FoldoutLayout.OuterBottom, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.HeaderPaddingTop", Foldouts, "Layout", "Header Padding Top", FoldoutLayout.HeaderPaddingTop, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("FoldoutLayout.HeaderPaddingBottom", Foldouts, "Layout", "Header Padding Bottom", FoldoutLayout.HeaderPaddingBottom, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM_DEF("FoldoutLayout.Radius", Foldouts, "Layout", "Radius", FoldoutLayout.Radius, 0, 12, .5, 1);
 
 // CARDS
@@ -400,8 +404,8 @@ void AddIconRole(
 		NUM("LayerLayout.ChildIndent", Layers, "Layout", "Child Indent", LayerLayout.ChildIndent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 
 // BUTTONS
-		NUM("Button.Height", Buttons, "Body", "Height", Button.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("Button.HorizontalPadding", Buttons, "Body", "Horizontal Padding", Button.HorizontalPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("Button.Height", Buttons, "Body", "Height", Button.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("Button.HorizontalPadding", Buttons, "Body", "Horizontal Padding", Button.HorizontalPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		BLEND_DEF("Button.BodyBlend", Buttons, "Body", "Body Blend", Button.BodyBlend);
 		BLEND_DEF("Button.HairlineBlend", Buttons, "Hairline", "Hairline Blend", Button.HairlineBlend);
 		NUM_DEF("Button.RestTop", Buttons, "Body", "Rest Top", Button.RestTop, 0, 1, .01, 2);
@@ -431,16 +435,16 @@ void AddIconRole(
 		NUM_DEF("Menu.ItemCheckedOpacity", Menus, "Rows", "Checked Opacity", Menu.ItemCheckedOpacity, 0, 1, .01, 2);
 		NUM_DEF("Menu.ItemDisabledOpacity", Menus, "Rows", "Disabled Opacity", Menu.ItemDisabledOpacity, 0, 1, .01, 2);
 		NUM_DEF("Menu.CornerRadius", Menus, "Surface", "Corner Radius", Menu.CornerRadius, 0, 12, .5, 1);
-		NUM("MenuLayout.Width", Menus, "Layout", "Width", MenuLayout.Width, 120, 480, 1, 0, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.LipHeight", Menus, "Layout", "Lip Height", MenuLayout.LipHeight, 4, 80, 1, 0, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.RowHeight", Menus, "Layout", "Row Height", MenuLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.ItemInset", Menus, "Layout", "Item Inset", MenuLayout.ItemInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.ItemGap", Menus, "Layout", "Item Gap", MenuLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.PanelPadding", Menus, "Layout", "Panel Padding", MenuLayout.PanelPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.CaptionInsetAbove", Menus, "Layout", "Caption Inset Above", MenuLayout.CaptionInsetAbove, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.CaptionInsetBelow", Menus, "Layout", "Caption Inset Below", MenuLayout.CaptionInsetBelow, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.SeparatorMargin", Menus, "Layout", "Separator Margin", MenuLayout.SeparatorMargin, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-		NUM("MenuLayout.ChevronSize", Menus, "Layout", "Chevron Size", MenuLayout.ChevronSize, 4, 32, 1, 0, EMixtormatThemeRefreshMode::Layout);
+		NUM("MenuLayout.Width", Menus, "Layout", "Width", MenuLayout.Width, 120, 480, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.LipHeight", Menus, "Layout", "Lip Height", MenuLayout.LipHeight, 4, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.RowHeight", Menus, "Layout", "Row Height", MenuLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.ItemInset", Menus, "Layout", "Item Inset", MenuLayout.ItemInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.ItemGap", Menus, "Layout", "Item Gap", MenuLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.PanelPadding", Menus, "Layout", "Panel Padding", MenuLayout.PanelPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.CaptionInsetAbove", Menus, "Layout", "Caption Inset Above", MenuLayout.CaptionInsetAbove, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.CaptionInsetBelow", Menus, "Layout", "Caption Inset Below", MenuLayout.CaptionInsetBelow, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.SeparatorMargin", Menus, "Layout", "Separator Margin", MenuLayout.SeparatorMargin, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("MenuLayout.ChevronSize", Menus, "Layout", "Chevron Size", MenuLayout.ChevronSize, 4, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 
 				// PREVIEW
 				COL_DEF("Preview.PlateSource", Preview, "Overlay Plate", "Plate Source", Preview.PlateSource);
@@ -448,13 +452,13 @@ void AddIconRole(
 				NUM_DEF("Preview.IconRestOpacity", Preview, "Overlay Plate", "Label Rest Opacity", Preview.IconRestOpacity, 0, 1, .01, 2);
 				NUM_DEF("Preview.HoverAccent", Preview, "Overlay Plate", "Hover Accent", Preview.HoverAccent, 0, 1, .01, 2);
 				NUM_DEF("Preview.PressAccent", Preview, "Overlay Plate", "Press Accent", Preview.PressAccent, 0, 1, .01, 2);
-				NUM("PreviewLayout.OverlayInset", Preview, "Layout", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Layout);
+				NUM("PreviewLayout.OverlayInset", Preview, "Layout", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 
-				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Layout);
-				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Layout);
+				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
 				NUM_DEF("Gallery.BorderWidth", GalleryShell, "Gallery Surface", "Border Width", Gallery.BorderWidth, 0, 4, .25, 2);
@@ -463,20 +467,20 @@ void AddIconRole(
 				NUM_DEF("Gallery.SelectedEdgeWidth", GalleryShell, "Gallery Surface", "Selected Edge Width", Gallery.SelectedEdgeWidth, 0, 4, .25, 2);
 				NUM_DEF("Gallery.SelectedEdgeOpacity", GalleryShell, "Gallery Surface", "Selected Edge Opacity", Gallery.SelectedEdgeOpacity, 0, 1, .01, 2);
 				NUM_DEF("Gallery.CornerRadius", GalleryShell, "Gallery Surface", "Corner Radius", Gallery.CornerRadius, 0, 12, .5, 1);
-				NUM("GalleryLayout.TileGap", GalleryShell, "Gallery Layout", "Tile Gap", GalleryLayout.TileGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("GalleryLayout.TilePadding", GalleryShell, "Gallery Layout", "Tile Padding", GalleryLayout.TilePadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("GalleryLayout.CaptionHeight", GalleryShell, "Gallery Layout", "Caption Height", GalleryLayout.CaptionHeight, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
+				NUM("GalleryLayout.TileGap", GalleryShell, "Gallery Layout", "Tile Gap", GalleryLayout.TileGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.TilePadding", GalleryShell, "Gallery Layout", "Tile Padding", GalleryLayout.TilePadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.CaptionHeight", GalleryShell, "Gallery Layout", "Caption Height", GalleryLayout.CaptionHeight, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				COL_DEF("ShellTheme.SplitterHoverSource", GalleryShell, "Shell / Splitter", "Hover Source", ShellTheme.SplitterHoverSource);
 				NUM_DEF("ShellTheme.SplitterOpacity", GalleryShell, "Shell / Splitter", "Rest Opacity", ShellTheme.SplitterOpacity, 0, 1, .01, 2);
 				NUM_DEF("ShellTheme.SplitterHoverOpacity", GalleryShell, "Shell / Splitter", "Hover Opacity", ShellTheme.SplitterHoverOpacity, 0, 1, .01, 2);
-				NUM("Shell.TopBarHeight", GalleryShell, "Shell / Layout", "Top Bar Height", Shell.TopBarHeight, 20, 64, 1, 0, EMixtormatThemeRefreshMode::Layout);
-				NUM("Shell.StatusBarHeight", GalleryShell, "Shell / Layout", "Status Bar Height", Shell.StatusBarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Layout);
-				NUM("Shell.PanelPadding", GalleryShell, "Shell / Layout", "Panel Padding", Shell.PanelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Layout);
-				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2, EMixtormatThemeRefreshMode::Layout);
-				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Layout);
+				NUM("Shell.TopBarHeight", GalleryShell, "Shell / Layout", "Top Bar Height", Shell.TopBarHeight, 20, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.StatusBarHeight", GalleryShell, "Shell / Layout", "Status Bar Height", Shell.StatusBarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.PanelPadding", GalleryShell, "Shell / Layout", "Panel Padding", Shell.PanelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 
 				AddTextRole(P, EMixtormatTextRole::Body, TEXT("Body"), TEXT("Body"));
 				AddTextRole(P, EMixtormatTextRole::ControlLabel, TEXT("ControlLabel"), TEXT("Control Label"));

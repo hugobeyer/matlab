@@ -144,9 +144,10 @@ void SMixtormat::RequestThemeRefresh(EThemeRefreshMode Mode)
 		Invalidate(EInvalidateWidgetReason::Layout);
 		return;
 	case EThemeRefreshMode::StyleRefresh:
-		FMixtormatStyle::Refresh();
-		Invalidate(EInvalidateWidgetReason::Layout);
-		return;
+		// The legacy style set does not consume FMixtormatThemeStore values yet.
+		// Existing schema entries in this transitional category must reconstruct.
+		Mode = EThemeRefreshMode::Reconstruct;
+		break;
 	case EThemeRefreshMode::Reconstruct:
 		break;
 	}
