@@ -698,24 +698,15 @@ namespace Mixtormat
 
 	// ---- Typography -------------------------------------------------------------------------
 
-	// One family. Inter is shipped in Resources/Fonts and registered with Slate's font cache;
-	// offering Roboto as well would mean offering a face the plugin does not carry.
+	// One backend: Unreal's native default composite, selected only by FMixtormatTypography.
 	enum class EMixtormatFontFamily : uint8
 	{
-		Inter,
+		NativeDefault,
 	};
 
-	// Only weights that actually resolve to a real face. A numeric weight slider would be a
-	// dropdown of lies.
-	//
-	// SemiBold is here because the prototype authors it. tokens.css sets --value-weight: 600, and
-	// the two-face Regular/Bold pair could only approximate that -- everything from 500 up became
-	// Bold, so control values rendered heavier than the design intended. Slate 5.8 has no
-	// variation-axis support, so each of these is a separate static instance file rather than an
-	// axis position.
-	//
-	// The enumerators are dense indices, NOT the CSS weights. They index the shipped-face table,
-	// and 400/600/700 would both overflow uint8 and silently index nothing.
+	// Authored semantic weights, independent of the backend's available faces.
+	// FMixtormatTypography maps SemiBold to native Medium in UE 5.8.
+	// The enumerators remain dense indices, NOT the CSS weights.
 	enum class EMixtormatFontWeight : uint8
 	{
 		Regular = 0,
@@ -723,7 +714,7 @@ namespace Mixtormat
 		Bold = 2,
 	};
 
-	// The CSS weight each shipped face was instanced at. Returns 400/600/700.
+	// The authored CSS weight, not the native face's weight. Returns 400/600/700.
 	inline int32 ToCssWeight(const EMixtormatFontWeight Weight)
 	{
 		switch (Weight)
@@ -784,7 +775,7 @@ namespace Mixtormat
 		// Indexed by EMixtormatTextRole, for the same reason the icon roles are.
 		FMixtormatTextSpec Roles[static_cast<uint8>(EMixtormatTextRole::Count)];
 
-		EMixtormatFontFamily Family = EMixtormatFontFamily::Inter;
+		EMixtormatFontFamily Family = EMixtormatFontFamily::NativeDefault;
 	};
 
 	// ---- Theme ------------------------------------------------------------------------------

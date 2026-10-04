@@ -232,48 +232,86 @@ afterwards, so no fixed width is exposed as an editable property.
 | `--layer-group-title-size` / `-weight` | `Typography[LayerName]` |
 | `--menu-caption-letter-spacing`, `--layer-source-letter-spacing` | per-role `TrackingPx` |
 
-Tracking is authored in CSS pixels everywhere and converted centrally to Slate's 1/1000 em at
-font-construction time. No call site writes a raw Slate letter-spacing value.
+Semantic tracking is authored in CSS pixels and converted centrally to Slate's 1/1000 em at
+font-construction time. Existing legacy caption-tier tokens already in Slate units remain unchanged;
+this backend swap does not migrate or retune them.
 
 ### Font resource strategy
 
-| Concern | Resolution |
-|---|---|
-| Files | `Resources/Fonts/Inter-Regular.ttf`, `Inter-SemiBold.ttf`, `Inter-Bold.ttf` |
-| Source | Static instances generated from `Resources/Fonts/Inter.ttf` with `fontTools.varLib.instancer` (OFL variable face, `wght` 100–900, `opsz` 14–32) |
-| Axis pinning | `wght` pinned per face, `opsz` pinned to 14 — its minimum. Mixtormat renders 8–11px, and leaving optical size live would mean the outlines were never resolved for the sizes actually used |
-| License | `Resources/Fonts/Inter-OFL.txt` ships unmodified beside the faces |
-| Path resolution | `IPluginManager::Get().FindPlugin("Mixtormat")->GetBaseDir() / "Resources" / "Fonts"` |
-| Loading | `EFontLoadingPolicy::LazyLoad` — files are on disk in editor and packaged builds |
-| Hinting | `EFontHinting::Default`, so each face's own hinting applies |
-| Ownership | `FStandaloneCompositeFont` (derives `FCompositeFont` + `FGCObject`), held in a function-local static for module lifetime |
-| Registration | **None.** `FSlateFontInfo::GetCompositeFont()` returns `CompositeFont.Get()` directly when `FontObject` is not an `IFontProviderInterface`, and `FCompositeFontCache` builds its typeface cache lazily from the pointer. There is no `AddFont` entry point to call |
+The isolated pre-Stage-6 backend swap uses `FCoreStyle::GetDefaultFontStyle` only inside
+`FMixtormatTypography::MakeFont`. Unreal owns the shared composite font; Mixtormat needs no
+plugin font loading, lifecycle, availability checks, registration, or engine-font fallback branch.
+Semantic roles, authored sizes/weights, CSS tracking conversion, casing and call sites are preserved.
 
-`Inter.ttf` itself is **not loaded at runtime**. It is the provenance for the static faces only.
+#### Verified UE 5.8 evidence
+
+Inspected read-only under `C:/Program Files/Epic Games/UE_5.8/Engine`:
+
+- `Source/Runtime/SlateCore/Private/Fonts/LegacySlateFontInfoCache.cpp:111–122`:
+  `GetDefaultFont` registers `Regular`, `Italic`, `Bold`, `BoldItalic`, `BoldCondensed`,
+  `BoldCondensedItalic`, `Black`, `BlackItalic`, `Medium`, `Light`, `VeryLight`, and `Mono`.
+  There is no default `SemiBold` face. The three selected faces use default hinting and lazy loading.
+- `Source/Runtime/SlateCore/Private/Styling/CoreStyle.cpp`:
+  `GetDefaultFont` exposes that cache's composite; `GetDefaultFontStyle` constructs font info from it.
+- `Source/Runtime/SlateCore/Public/Styling/CoreStyle.h:51`:
+  the API accepts a typeface `FName` and a **float** size; no size rounding is needed.
+- `Source/Runtime/SlateCore/Public/Styling/SlateStyleMacros.h:21`:
+  `DEFAULT_FONT` expands to `FCoreStyle::GetDefaultFontStyle`.
+- `Source/Runtime/SlateCore/Private/Styling/StarshipCoreStyle.cpp:88–97`:
+  Starship uses the same default composite. `FStyleFonts` uses Regular 10 for normal text,
+  Regular 8 for small text, and Bold 8 for small bold text (lines 33–39).
+- `Source/Editor/EditorStyle/Private/StarshipStyle.cpp:205,318–326,3657`:
+  editor styles inherit CoreStyle; small/tiny text uses Regular, and
+  `PropertyWindow.NormalFont` uses `FStyleFonts::Get().Small`.
+- `Source/Runtime/SlateCore/Private/Styling/AppStyle.cpp` and
+  `Source/Runtime/SlateCore/Public/Styling/AppStyle.h:91–93`:
+  AppStyle selects/looks up styles rather than providing a different font backend.
+  Borrowing a named style would also borrow its authored size/settings, with no font benefit here.
+- Verified assets: `Content/Slate/Fonts/Roboto-Regular.ttf`, `Roboto-Medium.ttf`, `Roboto-Bold.ttf`.
 
 ### Weights
 
-The prototype's authored weights are 400, 600 and 700, and those are the centres of the shipped
-faces — so an authored value lands on the face it asked for rather than on a midpoint between two.
-
-| `EMixtormatFontWeight` | CSS weight | File | Typeface entry |
+| Semantic weight | Authored CSS weight | Native typeface | Engine asset |
 |---|---|---|---|
-| `Regular` | 400 | `Inter-Regular.ttf` | `Regular` |
-| `SemiBold` | 600 | `Inter-SemiBold.ttf` | `SemiBold` |
-| `Bold` | 700 | `Inter-Bold.ttf` | `Bold` |
+| `Regular` | 400 | `Regular` | `Roboto-Regular.ttf` |
+| `SemiBold` | 600 | `Medium` | `Roboto-Medium.ttf` |
+| `Bold` | 700 | `Bold` | `Roboto-Bold.ttf` |
 
-**Why SemiBold exists.** `tokens.css` authors `--value-weight: 600`. The previous two-face
-Regular/Bold mapping split at 500, so every authored 600 resolved to Bold and rendered at 700 —
-control values were visibly heavier than the design. `FMixtormatTypography::FromCssWeight` snaps
-to the nearest shipped face instead.
+Medium is the supported intermediate face, not an exact 600-weight match. It keeps SemiBold
+visually distinct from Bold without synthetic weight or scaling. `FromCssWeight` still uses
+its original 500/650 boundaries; `ToCssWeight` still reports authored 400/600/700.
+Expect different glyph widths, baselines, line metrics, hinting and potentially wrapping/clipping.
+SemiBold can look lighter. No compensating size, padding, tracking, or control changes were made.
+Visual validation is deferred; no build/test/editor launch was performed for this swap.
 
-**Why static files and not the variable font.** `Inter.ttf` is a variable face (`fvar`, `gvar`,
-`avar`, `HVAR` — confirmed by reading the sfnt table directory) and contains all these instances.
-UE 5.8 SlateCore has no variation-axis support of any kind: no `FT_Set_Var_Design_Coordinates`, no
-weight axis, nothing under `SlateCore/Public` or `SlateCore/Private`. A typeface entry resolves to a
-**file**, which is exactly how the engine builds its own default font (`Roboto-Regular.ttf`,
-`Roboto-Bold.ttf`, … each appended as a separate entry). Pointing two typeface names at one
-variable TTF would produce two entries with identical outlines.
+### Resource audit and scope
+
+Removed the unused runtime assets `Resources/Fonts/Inter.ttf`, `Inter-Regular.ttf`,
+`Inter-SemiBold.ttf`, `Inter-Bold.ttf`, and `Inter-OFL.txt`. There is no runtime branding exception.
+The separate `Docs/ui-prototype/fonts/Inter.ttf` and its `Inter-OFL.txt` remain deliberately:
+`Docs/ui-prototype/fonts.css` loads that copy for the HTML prototype's font-family comparison.
+Historical Inter requirements in the rewrite/port plans are superseded by this backend decision.
+
+The legacy family label now says Unreal Default; it does not select the backend or reconnect
+semantic typography to LiveTheme. The family enum retains its ordinal but is named `NativeDefault`.
+Unused plugin-font lifecycle/availability/path APIs were removed, not retained as no-ops.
+
+### Source audit after the swap
+
+- No font-related Inter references or `FStandaloneCompositeFont` remain in `Source`.
+  Substring matches in `Interface`, `Internal`, and `Interpolate` are unrelated identifiers.
+- No explicit `FSlateFontInfo(...)` or named constructor calls remain in Mixtormat source.
+  Existing font-info copies, return types, and declarations are not independent font backends.
+- `FCoreStyle::GetDefaultFontStyle` remains at these seven construction sites:
+  - `Style/MixtormatTypography.cpp`: the single central native backend lookup.
+  - `UI/DragDrop/MixtormatDragDropOps.h:86,303`: deferred surface/layer ghost labels, untouched.
+  - `Widgets/Dialogs/SMixtormatBakeSettingsDialog.cpp:59,88,104,135`:
+    destination, base name, settings and output-preview labels; out of scope, untouched.
+  Paths above are relative to `Source/MixtormatEditor/Private`.
+- `MixtormatStyle.cpp` still forwards all font creation through its `Font` helper to
+  `FMixtormatTypography::MakeFont`; pre-existing Slate-unit caption overrides are unchanged.
+- Library font call sites remain routed through `FMixtormatTypography`; no widget edits required.
+- Stage 6, surface recipes, control styling, row geometry, and animation are untouched.
 
 ## Deliberately not mapped
 

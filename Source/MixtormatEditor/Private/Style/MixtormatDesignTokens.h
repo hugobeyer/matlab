@@ -427,9 +427,8 @@ namespace MixtormatTokens
 	inline int32 LayerGroupBlendMode = 3;
 
 	// ---- Discrete choices -----------------------------------------------------------------
-	// Index into the matching Options list in the registry. Only values Mixtormat actually ships
-	// and can resolve are offered -- the font list is not a system font enumeration.
-	// 0 Inter, 1 Roboto.
+	// Index into the matching Options list in the legacy registry.
+	// 0 Unreal Default; display metadata only, not a backend selector.
 	inline int32 FontFamily = 0;
 	// 0 none, 1 uppercase (dragger-label-case in the prototype).
 	inline int32 DraggerLabelCase = 0;

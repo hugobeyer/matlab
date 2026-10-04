@@ -8,6 +8,12 @@
 **Migration policy:** **none**  
 **Primary source of truth:** `Docs/ui-prototype/`
 
+**Pre-Stage-6 typography amendment:** The runtime Inter backend requirements below are superseded.
+Keep semantic typography, sizes, authored weights, tracking and casing; use Unreal's native default
+font centrally through `FMixtormatTypography` (Regular / Medium / Bold). See the verified engine
+sources and resource audit in `Docs/ui-prototype/UNREAL_STYLE_MAPPING.md`, Typography.
+Stage 6 is not started by this isolated backend swap.
+
 ---
 
 # 0. Rewrite mandate

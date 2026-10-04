@@ -9,16 +9,14 @@
 
 FName MixtormatFont::RequestedTypeface()
 {
-	// The shipped family is Inter and nothing else, so the token index is clamped rather than
-	// mapped through a list. The old build of this file also accepted "Roboto"; offering a face
-	// the plugin does not ship produced a dropdown that changed nothing on screen.
-	return FName(TEXT("Inter"));
+	// Display-only backend label; the legacy family token does not select a font.
+	return FName(TEXT("Unreal Default"));
 }
 
 FName MixtormatFont::ResolvedTypeface()
 {
 	// The typeface name no longer selects the face. FSlateFontInfo resolves the family through
-	// the composite font, and MixtormatTypography selects Regular or Bold inside it. This returns
+	// the composite font, and MixtormatTypography selects the native face inside it. This returns
 	// the family name purely so the UI STYLE font readout and any legacy call site keep working.
 	return RequestedTypeface();
 }

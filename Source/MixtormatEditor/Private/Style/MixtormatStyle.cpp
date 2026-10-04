@@ -62,12 +62,7 @@ namespace MixtormatStylePrivate
 			constexpr Mixtormat::EMixtormatFontWeight SemiBold = Mixtormat::EMixtormatFontWeight::SemiBold;
 			constexpr Mixtormat::EMixtormatFontWeight Bold = Mixtormat::EMixtormatFontWeight::Bold;
 
-			// Every Mixtormat font is built here, from the shipped Inter file.
-			//
-			// This is the only font construction left in the file. It used to be seventeen call sites
-			// into FCoreStyle::GetDefaultFontStyle, which meant the style set was registered against
-			// the engine's Roboto and Inter was never actually on screen -- so no amount of judging the
-			// typography could have been trusted while that was true.
+			// All text styles in this file use the centralized native Unreal font backend.
 			//
 			// `TrackingPx` is CSS pixels and is converted against the size here, once. Tokens that are
 			// already in Slate's 1/1000 em are NOT passed through this: they are assigned to

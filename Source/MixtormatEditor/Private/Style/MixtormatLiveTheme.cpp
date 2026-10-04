@@ -384,7 +384,7 @@ const TArray<FMixtormatThemeNumber>& FMixtormatLiveTheme::Numbers()
 				THEME_BLEND_CHOICE("Buttons", GroupButtonBlendMode, 0),
 				THEME_BLEND_CHOICE("Layers", LayerBlendMode, 0),
 				THEME_BLEND_CHOICE("Layers", LayerGroupBlendMode, 3),
-				THEME_CHOICE("Typography", FontFamily, 0, TEXT("Inter"), TEXT("Roboto")),
+				THEME_CHOICE("Typography", FontFamily, 0, TEXT("Unreal Default")),
 				THEME_CHOICE("Controls / Text", DraggerLabelCase, 0, TEXT("None"), TEXT("Uppercase")),
 			};
 		#undef THEME_BLEND_CHOICE

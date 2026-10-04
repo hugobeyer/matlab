@@ -257,7 +257,7 @@ namespace Mixtormat
 		// Copied, not derived: the text spec is already the painter's input, and re-deriving it
 		// would be a second place to change what a role means.
 		FMixtormatTextSpec Roles[RoleCount];
-		EMixtormatFontFamily Family = EMixtormatFontFamily::Inter;
+		EMixtormatFontFamily Family = EMixtormatFontFamily::NativeDefault;
 	};
 
 	// The complete resolved style. Rebuilt wholesale; never patched in place, so a theme edit
