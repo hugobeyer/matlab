@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -371,7 +372,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						[
 							SNew(STextBlock)
 							.Text(LOCTEXT("GlobalEmpty", "No global settings yet."))
-							.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText().CopyWithNewOpacity(0.5f)))
+							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(0.5f)))
 						]
 					]
 				]

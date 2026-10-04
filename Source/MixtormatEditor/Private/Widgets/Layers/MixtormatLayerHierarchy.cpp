@@ -50,7 +50,7 @@ namespace MixtormatLayersPrivate
 							|| Child.Type == EMixtormatLayerChildType::OutputReference)
 						? MixtormatIcons::Generated()
 						: MixtormatIcons::Mask())
-			.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()));
+			.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text)));
 	}
 
 	FText OutputReferenceKindText(const FMixtormatLayerChild& Child)
@@ -520,7 +520,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 			.HAlign(HAlign_Center).VAlign(VAlign_Center)
 			[
 				SNew(SImage).Image(MixtormatIcons::Generator())
-				.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()))
+				.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text)))
 			];
 	}
 	if (Layer.Type == EMixtormatLayerType::Fill)
@@ -530,7 +530,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
 					? WorkingLayers[LayerIndex].BaseColor
-					: MixtormatPalette::Panel();
+					: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
 			})
 			.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
 	}
@@ -572,7 +572,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 	}
 
 	return SNew(SColorBlock)
-		.Color(MixtormatPalette::Panel())
+		.Color(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel))
 		.Size(FVector2D(MixtormatTokens::LayerThumbnailSize, MixtormatTokens::LayerThumbnailSize));
 }
 

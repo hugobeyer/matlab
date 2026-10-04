@@ -3,7 +3,6 @@
 #include "UI/Atoms/SMixtormatChip.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -68,7 +67,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 		[
 			SNew(SImage)
 			.Image(MixtormatIcons::ChevronDown())
-			.ColorAndOpacity(FSlateColor(MixtormatPalette::CaptionText()))
+			.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
 		]
 	];
 

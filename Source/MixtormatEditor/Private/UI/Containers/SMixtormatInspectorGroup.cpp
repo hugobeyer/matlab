@@ -141,7 +141,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				.ColorAndOpacity(TAttribute<FSlateColor>(FSlateColor(
 										// The chevron reads at the title's own colour and opacity, so it sits at the
 										// same weight as the words beside it rather than as a separate mark.
-										TintAt(MixtormatPalette::RowText(), DisclosureIcon.RestOpacity))))
+										TintAt(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text), DisclosureIcon.RestOpacity))))
 					]
 				]
 		];

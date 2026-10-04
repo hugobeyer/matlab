@@ -23,7 +23,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Services/MixtormatPaths.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionCustom.h"
 #include "Materials/MaterialExpressionIf.h"
@@ -320,7 +320,7 @@ public:
 
 	virtual FLinearColor GetBackgroundColor() const override
 	{
-		return MixtormatPalette::PreviewBackground();
+		return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
 	}
 
 	// A debug or channel view wants a literal read of the composited texture -- the studio look's

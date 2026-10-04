@@ -3,7 +3,7 @@
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
 #include "Layout/ArrangedChildren.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -62,7 +62,7 @@ int32 SMixtormatLayerGroupContainer::OnPaint(const FPaintArgs& Args, const FGeom
 	Surface.BodyOpacity = MixtormatTokens::GroupCardBodyOpacity;
 	Surface.HeaderSaturation = MixtormatTokens::GroupCardHeaderSaturation;
 	Surface.BodySaturation = MixtormatTokens::GroupCardBodySaturation;
-	Surface.Ground = MixtormatPalette::Ground();
+	Surface.Ground = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
 	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
 		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
 	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(Elements, Geometry, Surface.Radius);

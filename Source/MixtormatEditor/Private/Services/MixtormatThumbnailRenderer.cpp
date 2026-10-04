@@ -35,7 +35,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "SceneView.h"
 #include "Services/MixtormatPaths.h"
 #include "ShaderCompiler.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
@@ -476,7 +476,7 @@ public:
 
 		TStrongObjectPtr<UTextureRenderTarget2D> RenderTarget(
 			NewObject<UTextureRenderTarget2D>(GetTransientPackage()));
-		RenderTarget->ClearColor = MixtormatPalette::PreviewBackground();
+		RenderTarget->ClearColor = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
 		RenderTarget->bAutoGenerateMips = false;
 		RenderTarget->InitCustomFormat(Resolution, Resolution, PF_B8G8R8A8, false);
 		RenderTarget->UpdateResourceImmediate(true);
@@ -538,7 +538,7 @@ public:
 			nullptr,
 			PreviewScene.GetWorld(),
 			GMaxRHIFeatureLevel);
-		Canvas.Clear(MixtormatPalette::PreviewBackground());
+		Canvas.Clear(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround));
 		Canvas.Flush_GameThread();
 		FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"))
 			.BeginRenderingViewFamily(&Canvas, &ViewFamily);

@@ -71,7 +71,7 @@ FSlateColor SMixtormatIconButton::GetGlyphColor() const
 	}
 	if (bActive.Get(false))
 	{
-		return IsHovered() ? MixtormatPalette::AccentBright() : MixtormatPalette::Accent();
+		return IsHovered() ? MixtormatPalette::AccentBright() : FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	}
 	return IsHovered() ? MixtormatPalette::IconHover() : MixtormatPalette::IconRest();
 }

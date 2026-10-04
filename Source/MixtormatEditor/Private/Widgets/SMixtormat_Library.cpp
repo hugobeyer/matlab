@@ -420,7 +420,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
 
 	return SNew(SBorder)
-		.Padding(MixtormatTokens::PanelPadding)
+		.Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding)
 		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 		[
 			SNew(SVerticalBox)
