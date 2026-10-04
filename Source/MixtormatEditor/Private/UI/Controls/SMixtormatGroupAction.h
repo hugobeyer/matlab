@@ -42,6 +42,7 @@ public:
 			.Enabled_Lambda([this]() { return IsEnabled(); })
 			[
 				SNew(SBox).MinDesiredHeight(MinHeightOverride >= 0.0f ? MinHeightOverride : FMixtormatThemeStore::GetResolved().Buttons.Height)
+		.Padding(FMargin(0.0f, 0.0f, 1.0f, 0.0f))
 				[
 					SNew(SMixtormatGroupButtonSurface)
 					.Hovered_Lambda([this]() { return IsHovered(); })

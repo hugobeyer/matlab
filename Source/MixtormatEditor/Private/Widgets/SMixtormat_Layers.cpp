@@ -112,7 +112,7 @@ void SMixtormat::RebuildLayerList()
 			// The tee spans the entire expanded member, continuing behind all of its descendants.
 			SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
 			[
-				SNew(SBox).Padding(FMargin(HierarchyStyle.Indent, 0.0f, 0.0f, 0.0f))
+				SNew(SBox).Padding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
 				[BuildLayerRow(LayerIndex)]
 			]
 		];

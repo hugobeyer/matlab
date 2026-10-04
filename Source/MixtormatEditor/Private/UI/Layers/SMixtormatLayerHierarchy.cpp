@@ -53,6 +53,7 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 		Stroke(X, -Gap, X, Hierarchy.bLast ? Mid : Size.Y + Gap);
 		Stroke(X, Mid + Weight * 0.5f,
 			X + HierarchyStyle.ChildArmLength, Mid + Weight * 0.5f);
+		LayerId += 1;
 	}
 	if (Hierarchy.bHasChildren)
 		{
@@ -61,6 +62,7 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 			const Mixtormat::FMixtormatIconStyle& ChildIcon = FMixtormatThemeStore::GetResolved().Icons.Roles[
 				static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 			const float Start = Mid + ChildIcon.GlyphSize * 0.5f + HierarchyStyle.ParentJoinOffset;
+		const float End = Geometry.GetLocalSize().Y - 1.0f;
 			Stroke(X, FMath::Min(Start, Size.Y), X, Size.Y + Gap);
 		}
 		for (const float Indent : Hierarchy.AncestorIndents)

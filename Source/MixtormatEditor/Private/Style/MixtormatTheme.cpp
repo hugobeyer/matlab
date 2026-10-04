@@ -106,7 +106,7 @@ namespace Mixtormat
 
 		// ---- Well ---------------------------------------------------------------------
 		// --well-radius, --well-blend-mode, --well-shade-*, --well-border-*
-		T.Well.Radius = 0.0f;
+		T.Well.Radius = 2.0f;
 		T.Well.ShadeBlend = MixtormatCompositing::EMixtormatBlendMode::Multiply;
 		T.Well.ShadeTop = 0.64f;
 		T.Well.ShadeBottom = 0.13f;
@@ -255,19 +255,19 @@ namespace Mixtormat
 
 		// --layer-hierarchy-line-*
 		T.LayerHierarchy.Source = MakeColorRef(EMixtormatColorRole::Text);
-		T.LayerHierarchy.Indent = 28.0f;
+		T.LayerHierarchy.Indent = 22.0f;
 		T.LayerHierarchy.Width = 1.0f;
-		T.LayerHierarchy.Opacity = 0.24f;
-		T.LayerHierarchy.ParentJoinOffset = 0.0f;
-		T.LayerHierarchy.ChildArmLength = 8.0f;
+		T.LayerHierarchy.Opacity = 0.280f;
+		T.LayerHierarchy.ParentJoinOffset = 10.0f;
+		T.LayerHierarchy.ChildArmLength = 12.0f;
 
-		T.LayerLayout.RowHeight = 26.0f;              // --layer-height
-		T.LayerLayout.GroupRowHeight = 18.0f;         // --layer-group-height
-		T.LayerLayout.ChildRowHeight = 18.0f;         // --child-height
-		T.LayerLayout.Gap = 2.0f;                     // --layer-gap
-		T.LayerLayout.ColumnGutter = 7.0f;
-		T.LayerLayout.ThumbnailSize = 20.0f;          // --thumbnail-size
-		T.LayerLayout.ChildIndent = 28.0f;            // --layer-indent
+		T.LayerLayout.RowHeight = 24.0f;              // --layer-height
+		T.LayerLayout.GroupRowHeight = 22.0f;         // --layer-group-height
+		T.LayerLayout.ChildRowHeight = 20.0f;         // --child-height
+		T.LayerLayout.Gap = 1.0f;                     // --layer-gap
+		T.LayerLayout.ColumnGutter = 8.0f;
+		T.LayerLayout.ThumbnailSize = 18.0f;          // --thumbnail-size
+		T.LayerLayout.ChildIndent = 22.0f;            // --layer-indent
 
 		// ---- Button --------------------------------------------------------------------
 		// --group-button-*
@@ -325,19 +325,19 @@ namespace Mixtormat
 		T.PreviewLayout.OverlayButtonGap = 4.0f;
 		T.PreviewLayout.ComparisonToggleGap = 4.0f;
 		T.PreviewLayout.ResolutionControlWidth = 92.0f;
-		T.PreviewLayout.TogglePadding = 2.0f;
+		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 232.0f;
 
 		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
 		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
 
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height
-		T.Shell.TopBarActionInset = 0.0f;
-		T.Shell.StatusBarHeight = 24.0f;              // --status-height
-		T.Shell.PanelPadding = 7.0f;                  // --panel-padding
-		T.Shell.ScrollbarThickness = 4.0f;
-		T.Shell.ScrollbarThumbOpacity = 0.22f;
-		T.Shell.ScrollbarHoverOpacity = 0.42f;
+		T.Shell.TopBarActionInset = 4.0f;
+		T.Shell.StatusBarHeight = 22.0f;              // --status-height
+		T.Shell.PanelPadding = 8.0f;                  // --panel-padding
+		T.Shell.ScrollbarThickness = 5.0f;
+		T.Shell.ScrollbarThumbOpacity = 0.180f;
+		T.Shell.ScrollbarHoverOpacity = 0.340f;
 		T.Shell.SplitterVisualWidth = 1.0f;           // --splitter-size
 		T.Shell.SplitterHitWidth = 6.0f;              // --splitter-hit-size
 		T.ShellTheme.SplitterHoverSource = SRGB(127, 196, 219); // --hairline-hover-rgb
@@ -346,16 +346,66 @@ namespace Mixtormat
 
 		// ---- Icons ---------------------------------------------------------------------
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::TopBar)] = Icon(18.0f, 0.6f);           // --topbar-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(14.0f, 0.6f);     // --toolbar-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(20.0f, 0.6f, 2.0f, 2.0f);   // --overlay-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(14.0f, 0.38f);         // --layer-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(13.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].GlyphSize = 13.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].ButtonSize = 24.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].HitSize = 26.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)].DisabledOpacity = 0.320f;     // --toolbar-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(15.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].GlyphSize = 15.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].ButtonSize = 26.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].HitSize = 28.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)].DisabledOpacity = 0.320f;   // --overlay-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(11.000f, 0.450f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].GlyphSize = 11.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].ButtonSize = 20.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HitSize = 22.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].RestOpacity = 0.450f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].DisabledOpacity = 0.280f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 1.000f;         // --layer-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 0.75f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(14.0f, 0.6f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(10.0f, 0.65f); // --foldout-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)] = Icon(12.0f, 0.52f);     // --card-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)] = Icon(14.0f, 0.6f);             // --menu-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(14.0f, 0.6f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(10.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].GlyphSize = 10.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].ButtonSize = 18.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].HitSize = 20.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].DisabledOpacity = 0.320f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(10.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].GlyphSize = 10.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].ButtonSize = 18.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].HitSize = 20.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)].DisabledOpacity = 0.320f; // --foldout-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)] = Icon(12.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].GlyphSize = 12.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].ButtonSize = 20.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].HitSize = 22.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)].DisabledOpacity = 0.320f;     // --card-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)] = Icon(13.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].GlyphSize = 13.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].ButtonSize = 24.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].HitSize = 26.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].DisabledOpacity = 0.320f;             // --menu-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(12.000f, 0.600f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 12.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 24.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 26.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].RestOpacity = 0.600f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HoverOpacity = 1.000f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].DisabledOpacity = 0.320f;
 
 		// ---- Typography ----------------------------------------------------------------
 		// Weights below are the ones tokens.css authors, not a guess from a bold flag. Two

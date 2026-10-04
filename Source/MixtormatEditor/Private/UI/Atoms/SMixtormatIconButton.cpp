@@ -32,6 +32,8 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 		.Enabled_Lambda([this]() { return IsEnabled(); })
 		[
 		SNew(SBox)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
 		.WidthOverride(TargetSize)
 		.HeightOverride(TargetSize)
 		.HAlign(HAlign_Center)

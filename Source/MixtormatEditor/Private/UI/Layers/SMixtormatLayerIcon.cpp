@@ -17,7 +17,7 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 	Filled = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius);
 	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, IconStyle.MarkRadius,
-		FLinearColor::White, IconStyle.MarkOutlineWidth);
+		FLinearColor::White, FMath::Max(1.0f, IconStyle.MarkOutlineWidth));
 	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
 		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
 	ChildSlot[SNew(SBox).WidthOverride(TargetSize).HeightOverride(TargetSize)];
