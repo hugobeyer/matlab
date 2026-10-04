@@ -257,7 +257,64 @@ namespace MixtormatTokens
 	inline float ToggleDisabledShadeTop = 0.3f;
 	inline float ToggleDisabledShadeBottom = 0.12f;
 
-	// ---- Control type ----------------------------------------------------------------------
+	// ---- Foldout ----------------------------------------------------------------------------
+		// The collapsible group header. Its geometry is authored separately from the generic group
+		// header it used to borrow, because the two are not the same control: a foldout is flush with
+		// the body it opens and has no surrounding margin, and its header padding adds to its height
+		// rather than being eaten by it.
+		inline float FoldoutHeight = 20.0f;
+		inline float FoldoutGutter = 9.0f;
+		inline float FoldoutBodyTop = 5.0f;
+		inline float FoldoutBodyBottom = 6.0f;
+		inline float FoldoutOuterTop = 1.0f;
+		inline float FoldoutOuterBottom = 1.0f;
+		inline float FoldoutHeaderPaddingTop = 1.0f;
+		inline float FoldoutHeaderPaddingBottom = 2.0f;
+		// The prototype rounds nothing but cards, so a foldout is square. Its own token rather than
+		// the global CornerRadius, which several unrelated surfaces still read.
+		inline float FoldoutRadius = 0.0f;
+
+		// The header's additive lift: a tint added over the ground, reaching zero at the body seam so
+		// the header dissolves into the body rather than ending at it.
+		inline float HeaderTintOpacity = 0.9f;
+		inline float HeaderHoverOpacity = 0.85f;
+		inline float HairlineHoverOpacity = 0.85f;
+		// Exponent on both the lift and the accent cross pass. Below 1 fades earlier, 1 is linear,
+		// above 1 holds the top longer. The prototype authors 0.95, which is nearly linear.
+		inline float FoldoutFalloffPower = 0.95f;
+
+		// A saturated accent over the lift, fading to nothing at the same seam. This is the soft-light
+		// layer in the prototype: it darkens and saturates the top edge rather than adding light to
+		// it, which is why it has to be its own element rather than part of the lift.
+		inline float FoldoutAccentMultiplyOpacity = 0.8f;
+		inline float FoldoutAccentHoverMultiplyOpacity = 1.0f;
+
+		// The hairline is its own one-pixel layer at the header's top edge, not the foldout's outline.
+		// Its intensity and its saturation are separate: the prototype saturates the line itself,
+		// which is what makes a near-neutral grey read as a lit edge.
+		inline float FoldoutHairlineOpacity = 0.46f;
+		inline float FoldoutHairlineSaturation = 2.0f;
+		inline float FoldoutHairlineHoverSaturation = 1.4f;
+
+		// Saturation of the header's own paint layer. Applied per layer rather than to the palette
+		// role, because the tint role is also read by surfaces that are not saturated this way.
+		inline float FoldoutSaturation = 0.6f;
+		inline float FoldoutHoverSaturation = 1.0f;
+
+		// The chevron is a separate role, not ChevronSize. ChevronSize is shared with the chip, the menu
+		// item, the layer group row and the child-output preview, so using it here would resize five
+		// callers whenever the foldout's glyph changes.
+		inline float FoldoutIconSize = 10.0f;
+		// Padding around that glyph inside its own hit box -- an interaction affordance, not a row gap.
+		// The prototype's disclosure is a 16px box holding a 10px glyph; it is NOT a leading offset on
+		// the row, which is what an earlier revision of this wrongly used it for.
+		inline float FoldoutIconPadding = 3.0f;
+				// Retained for saved LiveTheme compatibility; no longer used as vertical slot padding.
+				inline float FoldoutChevronInset = 3.0f;
+		// The summary's gap between chevron, title and trailing actions.
+		inline float FoldoutHeaderGap = 7.0f;
+
+		// ---- Control type ----------------------------------------------------------------------
 	// The label and the value are two roles, not one at two weights. The label is quiet context
 	// beside the number; the value keeps more of its own presence. Driving both from a single size
 	// meant neither could be tuned without moving the other.
@@ -269,6 +326,18 @@ namespace MixtormatTokens
 	// against the font size rather than copied: 0px here is 0 in both, but any future non-zero
 	// value is not the same number in the two units.
 	inline float ControlLabelLetterSpacing = 0.0f;
+
+		// Foldout titles are their own type role. They were reading the compact Group Header tier,
+		// which is 7px tracked caps -- a caption's role, not a section heading's. The prototype's own
+		// values are a larger size, a normal weight and 1px of tracking.
+		inline float FontFoldoutTitle = 9.0f;
+		inline float FoldoutTitleBold = 0.0f;
+		// Authored in CSS px, like every tracking value here. Converted against FontFoldoutTitle when
+		// it reaches FSlateFontInfo, because Slate's LetterSpacing is in 1/1000 em: 1px at a 9px face
+		// is 111, not 1. Copying the number across would open a 1/1000 em gap and read as none at all.
+		inline float FoldoutTitleTracking = 1.0f;
+		inline float FoldoutTitleOpacity = 0.74f;
+		inline float FoldoutTitleDisabledOpacity = 0.32f;
 
 	// ---- Slider ----------------------------------------------------------------------------
 	inline float TickInsetY = 4.0f;

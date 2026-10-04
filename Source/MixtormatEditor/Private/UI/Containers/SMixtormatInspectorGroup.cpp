@@ -2,11 +2,13 @@
 
 #include "UI/Containers/SMixtormatInspectorGroup.h"
 
+#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
+#include "UI/Containers/SMixtormatFoldoutHeader.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -25,6 +27,15 @@ namespace
 {
 	// Weak, so a group that is torn down and rebuilt on the next selection leaves nothing behind.
 	TArray<TWeakPtr<SMixtormatInspectorGroup>> LiveInspectorGroups;
+
+	// Opacity applied to a shared role's alpha, so two weights of one colour differ in strength
+	// rather than in hue. Lerping the RGB toward transparent instead would darken the colour too.
+	FLinearColor TintAt(const FLinearColor& Color, const float Opacity)
+	{
+		FLinearColor Result = Color;
+		Result.A *= Opacity;
+		return Result;
+	}
 }
 
 TArray<TSharedRef<SMixtormatInspectorGroup>> SMixtormatInspectorGroup::GetLiveGroups()
@@ -88,29 +99,67 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		Header->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, MixtormatTokens::GroupHeaderItemGap, 0.0f)
+		.Padding(0.0f, 0.0f, MixtormatTokens::FoldoutHeaderGap, 0.0f)
 		[
+			// The disclosure is a box of glyph-plus-padding with the glyph centred in it, matching
+			// the prototype's calc(icon-size + 2 * icon-padding). The padding goes INSIDE the box; it
+			// is not a leading offset on the row, which would shift the chevron out of the gutter and
+			// make the gap to the title unequal.
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::ChevronSize)
-			.HeightOverride(MixtormatTokens::ChevronSize)
+			.WidthOverride(MixtormatTokens::FoldoutIconSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
+			.HeightOverride(MixtormatTokens::FoldoutIconSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
 			[
+				SNew(SBox)
+				.WidthOverride(MixtormatTokens::FoldoutIconSize)
+				.HeightOverride(MixtormatTokens::FoldoutIconSize)
+				[
 				SNew(SImage)
-				.Image_Lambda([this]()
+				// The chevron is an immediate state swap between the two authored PNGs, not a rotation. A rotation
+									// would need a painted transform per frame; the animation phase can interpolate
+									// between the two orientations there. Hit testing is unaffected either way: the
+									// glyph is decoration inside the slot, and the click target is the bar around it.
+									.Image_Lambda([this]()
 				{
 					return bExpanded ? MixtormatIcons::ChevronDown() : MixtormatIcons::ChevronRight();
 				})
-				.ColorAndOpacity(FSlateColor(MixtormatPalette::HeaderText()))
-			]
+				.ColorAndOpacity(TAttribute<FSlateColor>(FSlateColor(
+										// The chevron reads at the title's own colour and opacity, so it sits at the
+										// same weight as the words beside it rather than as a separate mark.
+										TintAt(MixtormatPalette::RowText(), MixtormatTokens::FoldoutTitleOpacity))))
+					]
+				]
 		];
 	}
 	Header->AddSlot()
 	.FillWidth(1.0f)
 	.VAlign(VAlign_Center)
 	[
+		// A plain STextBlock. The foldout title's style is resolved once, here, from the style set's
+		// entry -- and deliberately not mutated afterwards.
+		//
+		// STextBlock declares TextStyle with SLATE_STYLE_ARGUMENT, which takes a raw
+		// const FTextBlockStyle* and offers no TAttribute overload, so the style cannot be bound.
+		// Per-frame style mutation is unnecessary: LiveTheme rebuilds the workspace after refresh.
+		//
+		// Font size, weight and tracking therefore only change when the workspace is rebuilt, which is
+		// exactly what a LiveTheme edit already does. Only the colour needs to follow the enabled
+		// state at runtime, and ColorAndOpacity is a real SLATE_ATTRIBUTE, so it binds.
 		SNew(STextBlock)
-		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.SectionHeader")))
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.FoldoutTitle")))
 		// Title only: the chevron, state, action and reset keep their slots.
 		.Justification_Lambda([]() { return MixtormatRow::JustifyFor(MixtormatTokens::GroupHeaderAlign); })
+		.ColorAndOpacity_Lambda([this]()
+		{
+			// Colours are rebuilt per read rather than held as pointers: a pointer into the style set
+			// would outlive a theme refresh, and this costs one FLinearColor copy.
+			FLinearColor Tint = MixtormatPalette::RowText();
+			Tint.A *= IsEnabled()
+				? MixtormatTokens::FoldoutTitleOpacity
+				: MixtormatTokens::FoldoutTitleDisabledOpacity;
+			return FSlateColor(Tint);
+		})
 		.Text(InArgs._Title)
 	];
 
@@ -120,7 +169,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		Header->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+		.Padding(MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(STextBlock)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.BadgeText")))
@@ -140,7 +189,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		Header->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::GroupHeaderItemGap, 0.0f, 0.0f, 0.0f)
+		.Padding(MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f, 0.0f)
 		[
 			InArgs._HeaderAction.ToSharedRef()
 		];
@@ -152,7 +201,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		Header->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::GroupHeaderItemGap, 0.0f, 0.0f, 0.0f)
+		.Padding(MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(SMixtormatIconButton)
 			.Icon(MixtormatIcons::Refresh())
@@ -176,89 +225,68 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
+		.Padding(0.0f, MixtormatTokens::FoldoutOuterTop, 0.0f, 0.0f)
 		[
 			// The bar itself is the click target and the hover surface. A button on top of it would
 			// light a button-shaped patch inside the header instead of the header.
-			SNew(SMixtormatGradientBox)
-			// Start is the visual top: the painter maps stop 0 to Y 0. A comment here used to
-			// claim Slate inverted the order and the two colours were assigned accordingly,
-			// which is why the tint sat along the bottom edge and hover lit the wrong side.
 			//
-			// The bottom is the body's own colour, by token rather than by a matching hex, so
-			// the header dissolves into the body it opens and stays that way if either moves.
-			.StartColor(this, &SMixtormatInspectorGroup::GetHeaderTint)
-			.EndColor(MixtormatPalette::GroupSurround())
-			.Orientation(Orient_Vertical)
-			.CornerRadii(FVector4f(
-				MixtormatTokens::CornerRadius,
-				MixtormatTokens::CornerRadius,
-				0.0f,
-				0.0f))
+			// The header surface is painted behind this whole slot, not inside it: the button must
+			// stay behaviour-only, or its own hover and pressed plates would draw over the lift.
+			SNew(SMixtormatFoldoutHeader)
+			.IsHovered(this, &SMixtormatInspectorGroup::IsHovered)
+			.bEnabled(this, &SMixtormatInspectorGroup::IsEnabled)
 			[
-				// The lip sits over the header's top edge and spans its full width, so it is
-				// outside the gutter padding -- inside it, the line would stop short of both ends
-				// and read as an underline on the title rather than as the seam of the group.
-				SNew(SOverlay)
-				+ SOverlay::Slot()
-				.VAlign(VAlign_Top)
-				[
-					SNew(SBox)
-					.HeightOverride(MixtormatTokens::HairlineThickness)
+				// The whole bar is the click target. An invisible button rather than a mouse
+				// handler on the group, because the group also contains the body and a press
+				// down there must not collapse what the user is reaching into.
+				bCollapsible
+				? StaticCastSharedRef<SWidget>(
+					SNew(SButton)
+					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(
+						TEXT("Mixtormat.InspectorHeaderButton")))
+					.ContentPadding(FMargin(0.0f))
+					.OnClicked(this, &SMixtormatInspectorGroup::ToggleExpanded)
 					[
-						SNew(SImage)
-						.Image_Lambda([this]()
-						{
-							// Swapped rather than tinted: the glow is a different colour, not a
-							// brighter one, and a gradient cannot draw a one-pixel edge.
-							return FMixtormatStyle::Get().GetBrush(IsHovered()
-								? TEXT("Mixtormat.HeaderHairlineGlow")
-								: TEXT("Mixtormat.HeaderHairline"));
-						})
-					]
-				]
-				+ SOverlay::Slot()
-				[
-					// The whole bar is the click target. An invisible button rather than a mouse
-					// handler on the group, because the group also contains the body and a press
-					// down there must not collapse what the user is reaching into.
-					bCollapsible
-					? StaticCastSharedRef<SWidget>(
-						SNew(SButton)
-						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(
-							TEXT("Mixtormat.InspectorHeaderButton")))
-						.ContentPadding(FMargin(0.0f))
-						.OnClicked(this, &SMixtormatInspectorGroup::ToggleExpanded)
-						[
-							SNew(SBox)
-							.HeightOverride(MixtormatTokens::GroupHeaderHeight)
-							.Padding(FMargin(MixtormatTokens::PanelGutter, 0.0f))
-							.VAlign(VAlign_Center)
-							[
-								Header
-							]
-						])
-					: StaticCastSharedRef<SWidget>(
 						SNew(SBox)
-						.HeightOverride(MixtormatTokens::GroupHeaderHeight)
-						.Padding(FMargin(MixtormatTokens::PanelGutter, 0.0f))
+						.Padding(FMargin(
+							MixtormatTokens::FoldoutGutter,
+							MixtormatTokens::FoldoutHeaderPaddingTop,
+							MixtormatTokens::FoldoutGutter,
+							MixtormatTokens::FoldoutHeaderPaddingBottom))
 						.VAlign(VAlign_Center)
 						[
 							Header
-						])
-				]
+						]
+					])
+				: StaticCastSharedRef<SWidget>(
+					SNew(SBox)
+					.Padding(FMargin(
+						MixtormatTokens::FoldoutGutter,
+						MixtormatTokens::FoldoutHeaderPaddingTop,
+						MixtormatTokens::FoldoutGutter,
+						MixtormatTokens::FoldoutHeaderPaddingBottom))
+					.VAlign(VAlign_Center)
+					[
+						Header
+					])
 			]
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::FoldoutOuterBottom)
 		[
 			SNew(SBorder)
 			.Visibility_Lambda([this]() { return IsExpanded() ? EVisibility::Visible : EVisibility::Collapsed; })
+			// The body is Ground, like the header's own base. It used to be GroupSurround, which is
+			// a darker value from a different compositing context -- the header lift fell to that
+			// colour and so the seam matched, but the body itself read as a shade darker than the
+			// surface it was opening into.
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.GroupBody")))
 			.Padding(FMargin(
-				MixtormatTokens::PanelGutter,
-				MixtormatTokens::HeaderContentGap,
-				MixtormatTokens::PanelGutter,
-				MixtormatTokens::HeaderContentGap))
+				MixtormatTokens::FoldoutGutter,
+				MixtormatTokens::FoldoutBodyTop,
+				MixtormatTokens::FoldoutGutter,
+				MixtormatTokens::FoldoutBodyBottom))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
@@ -279,16 +307,6 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		]
 		]
 	];
-}
-
-FLinearColor SMixtormatInspectorGroup::GetHeaderTint() const
-{
-	// Hover carries the accent, at the tint's own weight, along the top edge only -- the bottom
-	// stop is the body colour either way, so the accent falls off within the bar instead of
-	// washing the whole header.
-	return IsHovered()
-		? MixtormatPalette::HeaderTintHoverAccent()
-		: MixtormatPalette::HeaderTint();
 }
 
 TSharedRef<SWidget> SMixtormatInspectorGroup::BuildDefaultContextMenu()

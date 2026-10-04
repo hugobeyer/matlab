@@ -197,6 +197,35 @@ void FMixtormatStyle::Refresh()
 	SectionHeader.SetFont(SectionHeaderFont);
 	StyleInstance->Set(TEXT("Mixtormat.SectionHeader"), SectionHeader);
 
+		// The foldout title is a section heading, not a caption. It was reading SectionHeader above --
+		// the compact Group Header tier, 7px tracked caps -- which is a caption's role and made every
+		// foldout read as a label above its contents rather than as the name of a section.
+		//
+		// Tracking converts from the authored px into Slate's 1/1000 em against this face's own size:
+		// 1px at a 9px face is 111, not 1. The conversion is done here rather than in the token because
+		// the divisor is the font size, which is itself a token.
+		FSlateFontInfo FoldoutTitleFont = FCoreStyle::GetDefaultFontStyle(
+			MixtormatStylePrivate::Weight(MixtormatTokens::FoldoutTitleBold),
+			MixtormatTokens::FontFoldoutTitle);
+		FoldoutTitleFont.LetterSpacing = FMath::RoundToInt(
+			MixtormatTokens::FoldoutTitleTracking / FMath::Max(MixtormatTokens::FontFoldoutTitle, 0.01f)
+			* 1000.0f);
+
+		FLinearColor FoldoutTitleColor = RowText;
+		FoldoutTitleColor.A *= MixtormatTokens::FoldoutTitleOpacity;
+
+		FTextBlockStyle FoldoutTitle = FTextBlockStyle()
+			.SetFont(FoldoutTitleFont)
+			.SetColorAndOpacity(FoldoutTitleColor)
+			.SetShadowOffset(FVector2D::ZeroVector)
+			.SetShadowColorAndOpacity(FLinearColor::Transparent);
+		StyleInstance->Set(TEXT("Mixtormat.FoldoutTitle"), FoldoutTitle);
+
+		FTextBlockStyle FoldoutTitleDisabled = FoldoutTitle;
+		FoldoutTitleDisabled.SetColorAndOpacity(MixtormatStylePrivate::AtOpacity(
+			RowText, MixtormatTokens::FoldoutTitleDisabledOpacity));
+		StyleInstance->Set(TEXT("Mixtormat.FoldoutTitleDisabled"), FoldoutTitleDisabled);
+
 	FTextBlockStyle Muted = FTextBlockStyle()
 		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
 		.SetColorAndOpacity(MutedText)
@@ -518,7 +547,10 @@ void FMixtormatStyle::Refresh()
 	// so a rounded corner there is a shape nobody can see. Only the header rounds, along its top
 	// edge, where it does have a colour of its own to be shaped.
 	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::GroupSurround()));
-	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::GroupSurround()));
+	// A foldout body is Ground: same base as its header and as every card, so the header's lift
+	// actually dissolves into it. It was GroupSurround, which matched only because the old header
+	// faded to that colour too -- a coincidence between two independently-authored values.
+	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Ground()));
 
 	// A card: one titled run of rows, raised off the body.
 	StyleInstance->Set(

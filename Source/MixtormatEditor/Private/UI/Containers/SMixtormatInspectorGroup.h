@@ -4,17 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "Framework/SlateDelegates.h"
+#include "Styling/SlateTypes.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SMenuAnchor;
 
-// A collapsible section: a 22px header bar over a body of rows.
+// A collapsible section: a header bar over a body of rows.
 //
-// The header carries a translucent blue tint at its top lip, settling to the body's flat panel
-// colour by its base, with an additive hairline along that top edge -- light catching a raised
-// lip rather than a border drawn on it. The whole bar is the hover surface and the whole bar is
-// the click target; nothing sits on top of it with its own hover.
+// The header carries an additive tint at its top lip, falling to zero at the body seam, with a
+// saturated accent crossing over it and a one-pixel lit hairline along its top edge -- light
+// catching a raised lip rather than a border drawn on it. The whole bar is the hover surface and
+// the whole bar is the click target; nothing sits on top of it with its own hover.
 //
 // Header anatomy is fixed so it never moves between groups:
 //   chevron - title - state - custom actions - reset
@@ -87,8 +88,7 @@ private:
 	FReply ToggleExpanded();
 
 	bool bCollapsible = true;
-	FLinearColor GetHeaderTint() const;
-	TSharedRef<SWidget> BuildDefaultContextMenu();
+		TSharedRef<SWidget> BuildDefaultContextMenu();
 
 	bool bExpanded = false;
 	FSimpleDelegate OnReset;

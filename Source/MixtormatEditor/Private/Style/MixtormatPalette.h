@@ -78,12 +78,29 @@ namespace MixtormatPalette
 	// A hovered header's top edge. The accent at the tint's own weight, so hover reads as the
 	// same lip catching light rather than as a differently-coloured bar.
 	inline FLinearColor HeaderTintHoverAccent() { return Hex(0x35525E, 0.85f); }
-	// The hairline over that edge, lit. Bright enough to read as a glow against the accent
-	// beneath it, which the flat divider grey does not.
+	// The hairline as its own role. FoldoutHairline/FoldoutHairlineHover are the foldout's readings
+	// of it -- the registered keys are "Hairline" and "HairlineHover", so a live edit to either
+	// moves every surface that draws that line, which is what a shared role means.
+	inline FLinearColor Hairline()     { return FMixtormatLiveTheme::ResolveColor(TEXT("Hairline"), Hex(0x6F7D82, 0.16f)); }
+	inline FLinearColor HairlineHover(){ return FMixtormatLiveTheme::ResolveColor(TEXT("HairlineHover"), Hex(0x7FC4DB, 0.85f)); }
+	// The hairline over a lit edge. Kept distinct from HairlineHover because the two are authored
+	// at different weights for different edges and other surfaces still read this one.
 	inline FLinearColor HairlineGlow() { return Hex(0x7FC4DB, 0.85f); }
-	inline FLinearColor Hairline()     { return Hex(0x6F7D82, 0.16f); }
 	inline FLinearColor Divider()      { return Hex(0x242729); }
-	inline FLinearColor FocusFill()    { return FMixtormatLiveTheme::ResolveColor(TEXT("FocusFill"), Hex(0x4D8FA8, 0.10f)); }
+	// The foldout header's additive lift, and the ground it lifts. The prototype composites the
+		// lift additively over Ground and saturates the *result*, so both the opacity and the
+		// saturation are properties of this paint layer rather than of a stored colour.
+		inline FLinearColor FoldoutLift()       { return FMixtormatLiveTheme::ResolveColor(TEXT("HeaderTint"), Hex(0x252828, MixtormatTokens::HeaderTintOpacity)); }
+		inline FLinearColor FoldoutLiftHover()  { return Hex(0x35525E, MixtormatTokens::HeaderHoverOpacity); }
+		// The accent cross pass. Fades to zero contribution at the body seam so it hands the header to
+		// the body without leaving a mark of its own there.
+		inline FLinearColor FoldoutAccent()         { return Accent(); }
+		inline FLinearColor FoldoutAccentHover()    { return Accent(); }
+		// The hairline: its own colour at its own opacity, saturated at paint time.
+		inline FLinearColor FoldoutHairline()       { return FMixtormatLiveTheme::ResolveColor(TEXT("Hairline"), Hex(0x6F7D82, MixtormatTokens::FoldoutHairlineOpacity)); }
+		inline FLinearColor FoldoutHairlineHover()  { return FMixtormatLiveTheme::ResolveColor(TEXT("HairlineHover"), Hex(0x7FC4DB, MixtormatTokens::HairlineHoverOpacity)); }
+
+		inline FLinearColor FocusFill()    { return FMixtormatLiveTheme::ResolveColor(TEXT("FocusFill"), Hex(0x4D8FA8, 0.10f)); }
 	inline FLinearColor SelectionFill(){ return FMixtormatLiveTheme::ResolveColor(TEXT("SelectionFill"), Hex(0x4D8FA8, 0.16f)); }
 
 	// ---- Viewport overlay -------------------------------------------------------------------
