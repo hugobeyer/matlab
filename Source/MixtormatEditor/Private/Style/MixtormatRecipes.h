@@ -62,6 +62,7 @@ namespace Mixtormat
 
 		// Ground only, for container margins and gaps between separately arranged bands.
 	FMixtormatSurfaceRecipe MakeGroundRecipe();
+	FMixtormatSurfaceRecipe MakePreviewClusterRecipe(const FMixtormatTheme& Theme);
 
 	// Ground -> local lift -> Accent, then an enabled-only Additive top hairline.
 	FMixtormatSurfaceRecipe MakeFoldoutRecipe(

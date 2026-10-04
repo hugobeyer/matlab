@@ -10,6 +10,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBox.h"
@@ -73,8 +74,10 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
+		SNew(SMixtormatHelp)
+		.Text(InArgs._ToolTip)
+		[
 		SAssignNew(ComboButton, SComboButton)
-		.ToolTipText(InArgs._ToolTip)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
 		.Method(EPopupMethod::UseCurrentWindow)
 		.HasDownArrow(false)
@@ -101,6 +104,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 					]
 				]
 			]
+		]
 		]
 	];
 }

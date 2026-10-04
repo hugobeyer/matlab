@@ -183,7 +183,6 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 		LOCTEXT("CardFeaturedMasks", "Featured Masks"),
 		nullptr,
 		SNew(SMixtormatLayerIcon)
-			.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
 			.ToolTipText(LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"))

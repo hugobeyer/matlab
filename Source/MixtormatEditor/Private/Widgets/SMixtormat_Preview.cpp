@@ -11,6 +11,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SComboButton.h"
@@ -27,13 +28,20 @@ namespace
 	public:
 		SLATE_BEGIN_ARGS(SMixtormatPreviewPlate) : _bChecked(false) {}
 			SLATE_ATTRIBUTE(bool, bChecked)
+			SLATE_ATTRIBUTE(FText, ToolTip)
 			SLATE_DEFAULT_SLOT(FArguments, Content)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& Args)
 		{
 			bChecked = Args._bChecked;
-			ChildSlot[Args._Content.Widget];
+			ChildSlot
+			[
+				SNew(SMixtormatHelp)
+				.Text(Args._ToolTip)
+				.Enabled_Lambda([this]() { return IsEnabled(); })
+				[Args._Content.Widget]
+			];
 		}
 
 		int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect,
@@ -115,6 +123,14 @@ namespace
 			Style.SetNormalPadding(FMargin(0.0f)).SetPressedPadding(FMargin(0.0f));
 			return Style;
 		}
+
+	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content)
+	{
+		return SNew(SMixtormatSurfaceBox)
+			.Recipe_Lambda([]() { return Mixtormat::MakePreviewClusterRecipe(FMixtormatThemeStore::GetTheme()); })
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayClusterInset))
+			[Content];
+	}
 
 	const FCheckBoxStyle& GetPreviewOverlayToggleStyle()
 	{
@@ -859,7 +875,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 		.HasDownArrow(false)
 		.ContentPadding(FMargin(0.0f))
 		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
-		.ToolTipText(LOCTEXT("PreviewChildOutputMenuHint", "Choose which output to preview"))
+		
 		.ButtonContent()
 		[
 			SNew(SHorizontalBox)
@@ -1376,7 +1392,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		LOCTEXT("PreviewAaTsrHint", "Temporal Super-Resolution, the project default. Click again to turn anti-aliasing off.")};
 
 	TSharedRef<SVerticalBox> RenderControls = SNew(SVerticalBox);
-	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
 		.Options(AntiAliasingOptions)
@@ -1420,7 +1436,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	];
 
 	TSharedRef<SVerticalBox> SceneControls = SNew(SVerticalBox);
-	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
 		.Options(QualityOptions)
@@ -1436,7 +1452,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				: EMixtormatPreviewQuality::Default);
 		})
 	];
-	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		MixtormatRow::Make(
 			LOCTEXT("PreviewDisplacement", "Displacement"),
@@ -1472,7 +1488,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	// Light and skylight, under the displacement amount and above the camera block: they change
 	// how the surface reads without changing what the surface is, which is the same class of
 	// control as displacement preview.
-	SceneControls->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::RowGap, 0.0f, 0.0f)
+	SceneControls->AddSlot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
 	[
 		MakeSlider(
 			LOCTEXT("PreviewLightIntensityLabel", "Light"),
@@ -1570,7 +1586,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[RenderControls]
+			[MakePreviewCluster(RenderControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
 		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
@@ -1578,30 +1594,31 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			[
+				MakePreviewCluster(
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[ComparisonControls]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.ToolbarGap, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(SComboButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
-					.Method(EPopupMethod::UseCurrentWindow)
-					.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
-					.ToolTipText(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
-					.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
-					.ButtonContent()
+					SNew(SMixtormatPreviewPlate)
+					.ToolTip(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
 					[
-						SNew(STextBlock)
-						.Font(PreviewLabelTextStyle.Font)
-						.ColorAndOpacity_Lambda([this]()
-						{
-							return GetPreviewOverlayLabelColor(false, false);
-						})
-						.Text(LOCTEXT("FinalCompositeButton", "Final"))
-					]
-				]
+						SNew(SComboButton)
+							.ButtonStyle(&GetPreviewOverlayButtonStyle())
+							.Method(EPopupMethod::UseCurrentWindow)
+							.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
+							.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+							.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
+							.ButtonContent()
+							[
+								SNew(STextBlock)
+								.Font(PreviewLabelTextStyle.Font)
+								.ColorAndOpacity_Lambda([this]() { return GetPreviewOverlayLabelColor(false, false); })
+								.Text(LOCTEXT("FinalCompositeButton", "Final"))
+							]
+						]
+				])
 			]
 		]
 		+ SOverlay::Slot()
@@ -1635,14 +1652,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[LightingControls]
+			[MakePreviewCluster(LightingControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
 		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[GeometryControls]
+			[MakePreviewCluster(GeometryControls)]
 		]
 		// Quality and displacement bottom left, where the status readout was. That line said
 		// Real-time, SM6 and a layer count, none of which changes in response to anything the
@@ -1652,14 +1669,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[SceneControls]
+			[MakePreviewCluster(SceneControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
 		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[OutputControls]
+			[MakePreviewCluster(OutputControls)]
 		]
 		// FOV bottom centre, in the slot the watermark held.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
@@ -1667,7 +1684,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			[CameraControls]
+			[MakePreviewCluster(CameraControls)]
 		];
 
 	if (!bReusingViewport)

@@ -5,6 +5,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "Widgets/SToolTip.h"
 
@@ -94,9 +95,10 @@ namespace MixtormatLayersPrivate
 		const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex, const bool bGroupShared)
 	{
 		FMixtormatLayerHierarchyPaint Paint;
-		Paint.RowHeight = MixtormatTokens::LayerChildRowHeight;
-				// Match the child row's own leading inset, without changing its layout or drop target.
-				Paint.BranchInset = MixtormatTokens::LayerRowInsetLeading + MixtormatTokens::LayerChildIndent;
+		const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+		const Mixtormat::FMixtormatHierarchyTheme& Hierarchy = FMixtormatThemeStore::GetResolved().LayerHierarchy;
+		Paint.RowHeight = Layout.ChildRowHeight;
+		Paint.BranchInset = Layout.PaddingX + Layout.ChildIndent;
 		if (!Children.IsValidIndex(ChildIndex))
 		{
 			return Paint;
@@ -113,7 +115,7 @@ namespace MixtormatLayersPrivate
 			return false;
 		};
 		const int32 Depth = GetDisplayScopeDepth(Children, ChildIndex);
-		Paint.Indent = (1 + Depth) * MixtormatTokens::LayerScopeIndent;
+		Paint.Indent = (1 + Depth) * Hierarchy.Indent;
 		Paint.bLast = !HasLaterSibling(ChildIndex);
 		Paint.bHasChildren = Children.IsValidIndex(ChildIndex + 1)
 			&& Children[ChildIndex + 1].ScopeOwnerChildId == Children[ChildIndex].ChildId;
@@ -125,7 +127,7 @@ namespace MixtormatLayersPrivate
 			if (Current == INDEX_NONE) { break; }
 			if (HasLaterSibling(Current))
 			{
-				Paint.AncestorIndents.Add(Level * MixtormatTokens::LayerScopeIndent);
+				Paint.AncestorIndents.Add(Level * Hierarchy.Indent);
 			}
 		}
 		return Paint;

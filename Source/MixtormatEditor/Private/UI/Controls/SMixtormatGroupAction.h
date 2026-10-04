@@ -15,7 +15,7 @@
 class SMixtormatGroupAction : public SButton
 {
 public:
-	void Construct(const SButton::FArguments& InArgs, const bool bShowSeparator = true)
+	void Construct(const SButton::FArguments& InArgs, const bool bShowSeparator = true, const float MinHeightOverride = -1.0f)
 	{
 		ButtonStyle = MixtormatGroupButton::MakeButtonStyle(*InArgs._ButtonStyle);
 		const FTextBlockStyle& TextStyle = FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText"));
@@ -41,7 +41,7 @@ public:
 			.Text(InArgs._ToolTipText)
 			.Enabled_Lambda([this]() { return IsEnabled(); })
 			[
-				SNew(SBox).MinDesiredHeight(FMixtormatThemeStore::GetResolved().Buttons.Height)
+				SNew(SBox).MinDesiredHeight(MinHeightOverride >= 0.0f ? MinHeightOverride : FMixtormatThemeStore::GetResolved().Buttons.Height)
 				[
 					SNew(SMixtormatGroupButtonSurface)
 					.Hovered_Lambda([this]() { return IsHovered(); })

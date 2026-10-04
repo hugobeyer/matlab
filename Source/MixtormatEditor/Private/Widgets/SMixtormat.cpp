@@ -57,8 +57,12 @@ void SMixtormat::BuildWorkspaceUI()
 			+ SVerticalBox::Slot().AutoHeight()[BuildTopBar()]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SAssignNew(MainSwitcher, SWidgetSwitcher)
-				+ SWidgetSwitcher::Slot()[BuildAuthoringPage()]
+				SNew(SBox)
+				.Clipping(EWidgetClipping::ClipToBounds)
+				[
+					SAssignNew(MainSwitcher, SWidgetSwitcher)
+					+ SWidgetSwitcher::Slot()[BuildAuthoringPage()]
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()[BuildStatusBar()]
 		]
@@ -374,7 +378,7 @@ void SMixtormat::AddSliderRow(
 {
 	TargetPanel->AddSlot()
 		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SliderRowGap)
+		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 		[Row];
 }
 

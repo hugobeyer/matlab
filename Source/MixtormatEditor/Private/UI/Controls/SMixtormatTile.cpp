@@ -27,10 +27,6 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 	{
 		SetToolTipText(InArgs._ToolTip);
 	}
-	else if (!InArgs._DisplayName.IsEmpty())
-	{
-		SetToolTipText(InArgs._DisplayName);
-	}
 
 	CaptionTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(

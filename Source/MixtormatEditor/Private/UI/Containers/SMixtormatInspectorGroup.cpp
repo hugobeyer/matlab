@@ -303,7 +303,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::HeaderContentGap)
+				.Padding(0.0f, 0.0f, 0.0f, Layout.BodyTop)
 				[
 					MixtormatRow::MakeInspectorHairline(TAttribute<bool>::CreateLambda([]()
 					{

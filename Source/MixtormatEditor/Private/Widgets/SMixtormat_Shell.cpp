@@ -18,6 +18,12 @@ namespace
 {
 	using SMixtormatShellAction = SMixtormatGroupAction;
 
+	float TopBarActionHeight()
+	{
+		const Mixtormat::FMixtormatShellMetrics& S = FMixtormatThemeStore::GetResolved().ShellLayout;
+		return FMath::Max(1.0f, S.TopBarHeight - S.TopBarActionInset * 2.0f);
+	}
+
 	float TopBarIconSize()
 	{
 		return FMixtormatThemeStore::GetResolved().Icons.Roles[
@@ -97,7 +103,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return !UndoHistory.IsEmpty(); })
 					.Text(LOCTEXT("UndoMaterialEditCompact", "Undo"))
@@ -106,7 +112,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return !RedoHistory.IsEmpty(); })
 					.Text(LOCTEXT("RedoMaterialEditCompact", "Redo"))
@@ -121,19 +127,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.Font(TopBarTextStyle.Font)
 					.ColorAndOpacity(TopBarTextStyle.ColorAndOpacity)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5.0f, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(STextBlock)
-					.Visibility_Lambda([this]() { return bIsWorkingMaterialDirty ? EVisibility::Visible : EVisibility::Collapsed; })
-					.Text(LOCTEXT("WorkingMaterialEdited", "EDITED"))
-					.Font(TopBarTextStyle.Font)
-					.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
-					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified)))
-				]
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ToolTipText(LOCTEXT("NewMaterialTopHint", "Start a new material workspace, confirming unsaved changes first."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
@@ -160,7 +157,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.OnClicked(this, &SMixtormat::OpenWorkingMaterial)
 					[
@@ -185,7 +182,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 					.OnClicked(this, &SMixtormat::SaveWorkingMaterial)
@@ -211,7 +208,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 					.OnClicked(this, &SMixtormat::SaveWorkingMaterialAs)
@@ -237,7 +234,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.Text(LOCTEXT("OpenLiveTheme", "UI STYLE"))
@@ -249,7 +246,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				// icon and label structure as New, Load, Save and Save As.
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return WorkingMaterialAsset.IsValid() && bHasWorkingMaterial; })
 					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
@@ -276,7 +273,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction)
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ToolTipText(LOCTEXT("DocumentationTopHint", "Open Mixtormat documentation."))
 					.OnClicked(this, &SMixtormat::OpenDocumentation)
@@ -302,7 +299,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction, false)
+					SNew(SMixtormatShellAction, false, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.OnClicked(this, &SMixtormat::OpenSettings)
 					.ToolTipText(LOCTEXT("SettingsTopHint", "Open Mixtormat settings."))
@@ -423,9 +420,6 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 										SNew(SBox)
 										.WidthOverride(MixtormatTokens::BottomLibraryCollapseButtonWidth)
 										.HeightOverride(MixtormatTokens::BottomLibraryCollapseButtonHeight)
-										.RenderTransform(FSlateRenderTransform(FVector2D(
-											0.0f,
-											-FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)))
 										[
 											SNew(SHorizontalBox)
 											// The label names the control but is not the control: it never

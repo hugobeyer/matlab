@@ -8,6 +8,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
 
@@ -20,9 +21,12 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 	// would mean reimplementing focus and input handling to get a rectangle drawn differently.
 	ChildSlot
 	[
+		SNew(SMixtormatHelp)
+		.Text(InArgs._ToolTip)
+		.Enabled_Lambda([this]() { return IsEnabled(); })
+		[
 		SNew(SCheckBox)
 		.Style(&FMixtormatStyle::Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.Toggle")))
-		.ToolTipText(InArgs._ToolTip)
 		.IsChecked(InArgs._IsChecked)
 		.OnCheckStateChanged(InArgs._OnCheckStateChanged)
 		[
@@ -40,9 +44,7 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 				SNew(SMixtormatWellBox)
 				.IsHovered(this, &SMixtormatToggle::IsHovered)
 				.IsEnabled(this, &SMixtormatToggle::IsEnabled)
-				.bDisabledShade(true)
-				.DisabledShadeTop(FMixtormatThemeStore::GetResolved().Toggles.DisabledShadeTop)
-				.DisabledShadeBottom(FMixtormatThemeStore::GetResolved().Toggles.DisabledShadeBottom)
+				.bDisabledShade(false)
 				[
 					// The fill is the same recipe the slider paints, at the toggle's inset size --
 					// one vocabulary for both. Painting a recipe rather than two colours is what
@@ -67,6 +69,7 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 					]
 				]
 			]
+		]
 		]
 	];
 }

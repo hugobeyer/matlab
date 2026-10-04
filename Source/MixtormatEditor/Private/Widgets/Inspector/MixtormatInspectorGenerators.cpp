@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "UI/Containers/SMixtormatMenuPanel.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -500,12 +501,16 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 	AddSliderRow(Panel, MakeMemberToggle<FMixtormatFinalSettings>(
 		LOCTEXT("FinalAutoRemapHeight", "Auto Remap Height"), Final, &FMixtormatFinalSettings::bAutoRemapHeight,
 		LOCTEXT("FinalAutoRemapHeightHint", "Remap the finished height to 0-1 from its own lowest and highest point, before AO and normals.")));
-	return SNew(SBox)
-		.WidthOverride(MixtormatTokens::InspectorWidth)
-		.Padding(MixtormatTokens::ViewportOverlayClusterInset)
-		.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+	const Mixtormat::FMixtormatPreviewMetrics& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
+	return SNew(SMixtormatMenuPanel)
+		.MinWidth(Layout.FinalPopupWidth)
+		.Padding(FMargin(Layout.OverlayClusterInset))
 		[
-			Panel
+			SNew(SBox)
+			.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+			[
+				Panel
+			]
 		];
 }
 

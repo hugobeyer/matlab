@@ -10,6 +10,9 @@
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
+#include "UI/Atoms/SMixtormatChip.h"
+#include "UI/Atoms/SMixtormatIconButton.h"
+#include "UI/Primitives/SMixtormatWellBox.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
@@ -403,7 +406,7 @@ void SMixtormat::RebuildUserLibraryList()
 TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const TSharedRef<SEditableTextBox> SearchBox = SNew(SEditableTextBox)
+	const TSharedRef<SEditableTextBox> SearchEdit = SNew(SEditableTextBox)
 		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
 		.HintText(LOCTEXT("SearchUserLibraryHint", "Search saved mixes..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
@@ -413,7 +416,8 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 				HandleUserLibrarySearchChanged(Text);
 			}
 		});
-	SearchBox->SetText(FText::FromString(UserLibrarySearchText));
+	SearchEdit->SetText(FText::FromString(UserLibrarySearchText));
+	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
 
 	return SNew(SBorder)
 		.Padding(MixtormatTokens::PanelPadding)
@@ -429,24 +433,18 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(FMargin(0.0f))
-					.ToolTipText(LOCTEXT("ChooseUserTextureFolderHint", "Import a texture folder into the user library"))
-					.OnClicked(this, &SMixtormat::ImportSurfaces)
-					[
-						SNew(SBox)
-						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
-						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
-						[
-							SNew(SImage).Image(MixtormatIcons::Folder())
-						]
-					]
+					SNew(SMixtormatIconButton)
+					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Icon(MixtormatIcons::Folder())
+					.ToolTip(LOCTEXT("ChooseUserTextureFolderHint", "Import a texture folder into the user library"))
+					.OnClicked(FSimpleDelegate::CreateLambda([this]() { ImportSurfaces(); }))
 				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
 				SNew(SScrollBox)
+				.ScrollBarStyle(&Style.GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+				.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
 				+ SScrollBox::Slot()
 				[
 					SAssignNew(UserLibraryListBox, SVerticalBox)
@@ -500,7 +498,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const bool bHasDeveloperSources =
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
-	const TSharedRef<SEditableTextBox> SearchBox = SNew(SEditableTextBox)
+	const TSharedRef<SEditableTextBox> SearchEdit = SNew(SEditableTextBox)
 		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
 		.HintText(LOCTEXT("SearchHint", "Search materials..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
@@ -511,17 +509,13 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				HandleSearchChanged(Text);
 			}
 		});
-	SearchBox->SetText(FText::FromString(SearchText));
+	SearchEdit->SetText(FText::FromString(SearchText));
+	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
 
 	// The two developer actions beside the category dropdown. Their gaps come from the gallery's own
 	// spacing rather than the legacy 3px RowGap, which left two 30px buttons almost touching, and their
 	// glyphs read the PanelToolbar icon role for size and resting opacity like every other icon.
 	const Mixtormat::FMixtormatResolvedStyle& LibraryStyle = FMixtormatThemeStore::GetResolved();
-	const Mixtormat::FMixtormatIconStyle& ToolbarIcon = LibraryStyle.Icons.Roles[
-		static_cast<uint8>(Mixtormat::EMixtormatIconRole::PanelToolbar)];
-	const FSlateColor ToolbarIconTint = FSlateColor(
-		LibraryStyle.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
-			.CopyWithNewOpacity(ToolbarIcon.RestOpacity));
 
 	return SNew(SBorder)
 		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)
@@ -535,23 +529,18 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SComboButton)
-				.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-				.ContentPadding(FMargin(MixtormatTokens::RowLabelGap, MixtormatTokens::RowGap))
-				.ButtonContent()
-				[
-					SNew(STextBlock)
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-					.Text_Lambda([this]()
-					{
-						return CategoryFilter.IsNone() ? LOCTEXT("AllCategory", "All Materials") : FText::FromName(CategoryFilter);
-					})
-				]
-				.MenuContent()
-				[
-					SNew(SScrollBox)
-					+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)]
-				]
+				SNew(SMixtormatChip)
+				.Text_Lambda([this]()
+				{
+					return CategoryFilter.IsNone() ? LOCTEXT("AllCategory", "All Materials") : FText::FromName(CategoryFilter);
+				})
+				.OnGetMenuContent_Lambda([this]()
+				{
+					return SNew(SScrollBox)
+						.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+						.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
+						+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)];
+				})
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(
 				LibraryStyle.GalleryLayout.TileGap, 0.0f, 0.0f, 0.0f)
@@ -559,41 +548,21 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, LibraryStyle.GalleryLayout.TileGap, 0.0f)
 				[
-					SNew(SMixtormatGroupAction)
+					SNew(SMixtormatIconButton)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT("RefreshLibraryHint", "Refresh Library"))
-					.OnClicked(this, &SMixtormat::RefreshSurfaceList)
-					[
-						SNew(SBox)
-						.WidthOverride(ToolbarIcon.GlyphSize)
-						.HeightOverride(ToolbarIcon.GlyphSize)
-						[
-							SNew(SImage)
-							.Image(MixtormatIcons::Refresh())
-							.ColorAndOpacity(ToolbarIconTint)
-						]
-					]
+					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Icon(MixtormatIcons::Refresh())
+					.ToolTip(LOCTEXT("RefreshLibraryHint", "Refresh Library"))
+					.OnClicked(FSimpleDelegate::CreateLambda([this]() { RefreshSurfaceList(); }))
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
-					SNew(SMixtormatGroupAction, false)
+					SNew(SMixtormatIconButton)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT(
-						"RebuildBuiltInLibraryHint",
-						"Developer only: rebuild built-in assets from plugin source PNGs"))
-					.OnClicked(this, &SMixtormat::RebuildBuiltInLibrary)
-					[
-						SNew(SBox)
-						.WidthOverride(ToolbarIcon.GlyphSize)
-						.HeightOverride(ToolbarIcon.GlyphSize)
-						[
-							SNew(SImage)
-							.Image(MixtormatIcons::Settings())
-							.ColorAndOpacity(ToolbarIconTint)
-						]
-					]
+					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Icon(MixtormatIcons::Settings())
+					.ToolTip(LOCTEXT("RebuildBuiltInLibraryHint", "Developer only: rebuild built-in assets from plugin source PNGs"))
+					.OnClicked(FSimpleDelegate::CreateLambda([this]() { RebuildBuiltInLibrary(); }))
 				]
 			]
 		];
@@ -618,20 +587,6 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 	const FSoftObjectPath& AssetPath,
 	const FAssetData& ThumbnailAsset)
 {
-	FText HoverName = Name;
-	if (const UMixtormatSurface* Surface = Cast<UMixtormatSurface>(AssetPath.ResolveObject()))
-	{
-		const FString Family = Surface->Family.ToString();
-		if (!Family.IsEmpty()
-			&& !Name.ToString().StartsWith(Family, ESearchCase::IgnoreCase))
-		{
-			HoverName = FText::Format(
-				LOCTEXT("SurfaceHoverNameWithFamily", "{0} · {1}"),
-				FText::FromString(Family),
-				Name);
-		}
-	}
-
 	return SNew(SMixtormatSurfaceCard)
 		.DisplayName(Name)
 		.SurfacePath(AssetPath)
@@ -646,13 +601,12 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 			[
 				SNew(SMixtormatTile)
 				.TileSize(MaterialGalleryTileSize)
-				.DisplayName(HoverName)
+				.DisplayName(Name)
 				.ThumbnailAsset(ThumbnailAsset)
 				.ThumbnailPool(ThumbnailPool)
 				.bShowName(false)
-				.bShowNameOnHover(false)
+				.bShowNameOnHover(true)
 				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
-				.ToolTip(HoverName)
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
 			[

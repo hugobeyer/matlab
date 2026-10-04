@@ -13,6 +13,7 @@
 
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateImageBrush.h"
+#include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 
 #include "Misc/Paths.h"
@@ -746,23 +747,34 @@ void FMixtormatStyle::Refresh()
 	// in a row of Mixtormat wells rather than as one of them. Same ground, same well outline, same
 	// radius token, same label face as the rest of the inspector.
 	{
-		const FSlateRoundedBoxBrush SearchBackground(
-			MixtormatPalette::WellTop(), MixtormatTokens::WellRadius,
-			MixtormatPalette::WellOutline(), MixtormatTokens::WellBorderWidth);
-		const FSlateRoundedBoxBrush SearchBackgroundHovered(
-			MixtormatPalette::WellTopHover(), MixtormatTokens::WellRadius,
-			MixtormatPalette::WellOutlineHover(), MixtormatTokens::WellBorderWidth);
+		const FSlateNoResource SearchBackground;
 		FEditableTextBoxStyle SearchStyle =
 			AppStyle.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
 		SearchStyle
 			.SetBackgroundImageNormal(SearchBackground)
-			.SetBackgroundImageHovered(SearchBackgroundHovered)
-			.SetBackgroundImageFocused(SearchBackgroundHovered)
+			.SetBackgroundImageHovered(SearchBackground)
+			.SetBackgroundImageFocused(SearchBackground)
 			.SetBackgroundImageReadOnly(SearchBackground)
 			.SetForegroundColor(FSlateColor(MixtormatPalette::WellEntry()))
 			.SetPadding(FMargin(MixtormatTokens::DraggerTextInset * 0.5f, 0.0f))
 			.SetTextStyle(SliderLabel);
 		StyleInstance->Set(TEXT("Mixtormat.SearchBox"), SearchStyle);
+	}
+
+	// One shared thin scrollbar for Mixtormat-owned surfaces.
+	{
+		const Mixtormat::FMixtormatResolvedStyle& R = FMixtormatThemeStore::GetResolved();
+		const FSlateNoResource Empty;
+		const FLinearColor C = R.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+		const FSlateColorBrush Normal(C.CopyWithNewOpacity(R.ShellLayout.ScrollbarThumbOpacity));
+		const FSlateColorBrush Hover(C.CopyWithNewOpacity(R.ShellLayout.ScrollbarHoverOpacity));
+		FScrollBarStyle B;
+		B.SetHorizontalBackgroundImage(Empty).SetVerticalBackgroundImage(Empty)
+		 .SetHorizontalTopSlotImage(Empty).SetHorizontalBottomSlotImage(Empty)
+		 .SetVerticalTopSlotImage(Empty).SetVerticalBottomSlotImage(Empty)
+		 .SetNormalThumbImage(Normal).SetHoveredThumbImage(Hover).SetDraggedThumbImage(Hover)
+		 .SetThickness(R.ShellLayout.ScrollbarThickness);
+		StyleInstance->Set(TEXT("Mixtormat.ScrollBar"), B);
 	}
 
 	// ---- Row furniture ----------------------------------------------------------------------

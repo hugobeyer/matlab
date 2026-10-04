@@ -7,6 +7,8 @@
 #include "CoreMinimal.h"
 #include "Brushes/SlateNoResource.h"
 #include "Styling/CoreStyle.h"
+#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Gallery/MixtormatGalleryDelegates.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
@@ -34,6 +36,8 @@ public:
 		SScrollBox::Construct(
 			SScrollBox::FArguments()
 			.Style(&GalleryStyle)
+			.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+			.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
 			.Orientation(InArgs._Orientation)
 			+ SScrollBox::Slot()
 			[

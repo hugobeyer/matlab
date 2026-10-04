@@ -623,6 +623,7 @@ namespace Mixtormat
 		float ChildRowHeight = 18.0f;
 
 		float Gap = 2.0f;
+		float ColumnGutter = 7.0f;
 		float PaddingX = 0.0f;
 
 		float ThumbnailSize = 20.0f;
@@ -656,6 +657,7 @@ namespace Mixtormat
 		float ComparisonToggleGap = 4.0f;
 		float ResolutionControlWidth = 92.0f;
 		float TogglePadding = 2.0f;
+		float FinalPopupWidth = 232.0f;
 	};
 
 	struct FMixtormatGalleryMetrics
@@ -691,8 +693,12 @@ namespace Mixtormat
 		// and friends), not theme values: a theme must not be able to resize a panel the user has
 		// already arranged, so there is deliberately no authored width or height seed here.
 		float TopBarHeight = 38.0f;
+		float TopBarActionInset = 0.0f;
 		float StatusBarHeight = 24.0f;
 		float PanelPadding = 7.0f;
+		float ScrollbarThickness = 4.0f;
+		float ScrollbarThumbOpacity = 0.22f;
+		float ScrollbarHoverOpacity = 0.42f;
 
 		// Visual treatment of a splitter, which *is* styleable even though its behaviour is not.
 		float SplitterVisualWidth = 1.0f;
@@ -715,6 +721,8 @@ namespace Mixtormat
 		float RestOpacity = 0.6f;
 		float HoverOpacity = 1.0f;
 		float DisabledOpacity = 0.32f;
+		float MarkRadius = 0.0f;
+		float MarkOutlineWidth = 0.0f;
 	};
 
 	enum class EMixtormatIconRole : uint8

@@ -8,6 +8,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -99,15 +100,18 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 		Strip->AddSlot()
 		.FillWidth(1.0f)
 		[
-			SNew(SMixtormatSegment)
-			.ShowSeparator(Index + 1 < InArgs._Options.Num())
-			.Text(InArgs._Options[Index])
-			.ToolTipText(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
-			.bActive_Lambda([this, Index]() { return ActiveIndex.Get(0) == Index; })
-			.OnChosen(FSimpleDelegate::CreateLambda([Chosen, Index]()
-			{
-				Chosen.ExecuteIfBound(Index);
-			}))
+			SNew(SMixtormatHelp)
+			.Text(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
+			[
+				SNew(SMixtormatSegment)
+				.ShowSeparator(Index + 1 < InArgs._Options.Num())
+				.Text(InArgs._Options[Index])
+				.bActive_Lambda([this, Index]() { return ActiveIndex.Get(0) == Index; })
+				.OnChosen(FSimpleDelegate::CreateLambda([Chosen, Index]()
+				{
+					Chosen.ExecuteIfBound(Index);
+				}))
+			]
 		];
 	}
 

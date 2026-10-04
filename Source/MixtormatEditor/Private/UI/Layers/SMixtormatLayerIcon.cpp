@@ -2,7 +2,6 @@
 
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Rendering/DrawElements.h"
-#include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
 
@@ -14,12 +13,13 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 	Icon = InArgs._Icon;
 	OnClicked = InArgs._OnClicked;
 	OnClickedWithModifiers = InArgs._OnClickedWithModifiers;
-	Filled = FSlateRoundedBoxBrush(FLinearColor::White, MixtormatTokens::LayerVisibilityRadius);
-	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, MixtormatTokens::LayerVisibilityRadius,
-		FLinearColor::White, 1.0f);
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
 		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
-	const float TargetSize = IconStyle.GlyphSize + MixtormatTokens::IconButtonHitSlop;
+	Filled = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius);
+	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, IconStyle.MarkRadius,
+		FLinearColor::White, IconStyle.MarkOutlineWidth);
+	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
+		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
 	ChildSlot[SNew(SBox).WidthOverride(TargetSize).HeightOverride(TargetSize)];
 }
 
@@ -38,7 +38,7 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 		? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
 	Color.A = !Enabled
 		? IconStyle.DisabledOpacity
-		: IsHovered() ? IconStyle.HoverOpacity
+		: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
 		: IconStyle.RestOpacity;
 	FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(Size,
 		FSlateLayoutTransform(Offset)), bVisibility ? (On ? &Filled : &Hollow) : Icon.Get(),

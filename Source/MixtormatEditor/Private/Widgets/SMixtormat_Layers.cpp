@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Style/MixtormatThemeStore.h"
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
@@ -22,6 +23,9 @@ void SMixtormat::RebuildLayerList()
 	LayerRowWidgets.Reset();
 	GroupRowWidgets.Reset();
 
+	const Mixtormat::FMixtormatLayerMetrics& LayerLayout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatHierarchyTheme& HierarchyStyle = FMixtormatThemeStore::GetResolved().LayerHierarchy;
+
 	// Only the visual parent changes; every existing row target keeps its own geometry and handlers.
 	TSharedPtr<SVerticalBox> GroupBody;
 	for (int32 LayerIndex = 0; LayerIndex < WorkingLayers.Num(); ++LayerIndex)
@@ -33,7 +37,7 @@ void SMixtormat::RebuildLayerList()
 		{
 			LayerListBox->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, 2.0f)
+			.Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 			[
 				BuildLayerRow(LayerIndex)
 			];
@@ -65,7 +69,7 @@ void SMixtormat::RebuildLayerList()
 				.Header()[Header]
 				.Body()
 				[
-					SNew(SBox).Padding(FMargin(0.0f, 2.0f, 0.0f, 0.0f))
+					SNew(SBox).Padding(FMargin(0.0f, LayerLayout.Gap, 0.0f, 0.0f))
 					[GroupBody.ToSharedRef()]
 				]
 			];
@@ -88,7 +92,7 @@ void SMixtormat::RebuildLayerList()
 				// depth-times-indent a layer's own children get, so a blur under a shared mask
 				// reads as being under it rather than beside it.
 				const FMixtormatLayerHierarchyPaint Hierarchy = ChildHierarchyPaint(Group->Children, ChildIndex, true);
-				GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+				GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 				[
 					SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
 					[
@@ -100,15 +104,15 @@ void SMixtormat::RebuildLayerList()
 		}
 
 		FMixtormatLayerHierarchyPaint Hierarchy;
-		Hierarchy.Indent = MixtormatTokens::LayerScopeIndent;
-		Hierarchy.RowHeight = MixtormatTokens::LayerRowHeight;
+		Hierarchy.Indent = HierarchyStyle.Indent;
+		Hierarchy.RowHeight = LayerLayout.RowHeight;
 		Hierarchy.bLast = LayerIndex == GroupLastIndex;
-		GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+		GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 		[
 			// The tee spans the entire expanded member, continuing behind all of its descendants.
 			SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
 			[
-				SNew(SBox).Padding(FMargin(MixtormatTokens::LayerScopeIndent, 0.0f, 0.0f, 0.0f))
+				SNew(SBox).Padding(FMargin(HierarchyStyle.Indent, 0.0f, 0.0f, 0.0f))
 				[BuildLayerRow(LayerIndex)]
 			]
 		];
@@ -153,6 +157,7 @@ void SMixtormat::RebuildMaskList()
 TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatLayerMetrics& LayerLayout = FMixtormatThemeStore::GetResolved().LayerLayout;
 	return SNew(SMixtormatLayerDropTarget)
 		.OnSurfaceDropped(this, &SMixtormat::HandleSurfaceDropped)
 		.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerColumnContextMenu))
@@ -161,7 +166,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 			.WidthOverride(MixtormatTokens::LayerStackWidth)
 			[
 				SNew(SBorder)
-				.Padding(MixtormatTokens::PanelPadding)
+				.Padding(LayerLayout.ColumnGutter)
 				.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
 				[
 					SNew(SVerticalBox)
@@ -269,7 +274,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					// spelled out in text since this is the row a user lands on with an empty
 					// stack and no icon-only glyph to already have learned. Right-aligned to match
 					// the header pair's trailing edge.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::LayerRowGap, 0.0f, 0.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
 					[
 						SNew(SHorizontalBox)
 						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })

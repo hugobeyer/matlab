@@ -253,6 +253,15 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakePreviewClusterRecipe(const FMixtormatTheme& Theme)
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.bTranslucent = true;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::OverlayGround);
+		Recipe.Radius = Theme.Well.Radius;
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeFoldoutRecipe(const FMixtormatTheme& Theme,
 		const bool bHovered, const bool bEnabled)
 	{

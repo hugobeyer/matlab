@@ -10,6 +10,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/SMixtormatToggle.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
@@ -65,7 +66,7 @@ TSharedRef<SWidget> Make(
 		];
 	if (ToolTip.IsSet())
 	{
-		Sized->SetToolTipText(ToolTip);
+		return SNew(SMixtormatHelp).Text(ToolTip)[Sized];
 	}
 	return Sized;
 }
@@ -103,7 +104,7 @@ TSharedRef<SWidget> MakeDropdown(
 		];
 	if (ToolTip.IsSet())
 	{
-		Sized->SetToolTipText(ToolTip);
+		return SNew(SMixtormatHelp).Text(ToolTip)[Sized];
 	}
 	return Sized;
 }
@@ -146,7 +147,7 @@ TSharedRef<SWidget> MakeTrailing(
 		];
 	if (ToolTip.IsSet())
 	{
-		Sized->SetToolTipText(ToolTip);
+		return SNew(SMixtormatHelp).Text(ToolTip)[Sized];
 	}
 	return Sized;
 }

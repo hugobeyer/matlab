@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatTheme.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -25,10 +26,12 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatIconButton)
 		: _Icon(nullptr)
 		, _Size(MixtormatTokens::IconButtonSize)
+		, _Role(Mixtormat::EMixtormatIconRole::Count)
 		, _bActive(false)
 	{}
 		SLATE_ATTRIBUTE(const FSlateBrush*, Icon)
 		SLATE_ARGUMENT(float, Size)
+		SLATE_ARGUMENT(Mixtormat::EMixtormatIconRole, Role)
 		// Active swaps the glyph to the accent, for a toggle that lives as an icon.
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(FText, ToolTip)
@@ -49,6 +52,7 @@ private:
 	FSlateColor GetGlyphColor() const;
 
 	TAttribute<bool> bActive;
+	Mixtormat::EMixtormatIconRole Role = Mixtormat::EMixtormatIconRole::Count;
 	FSimpleDelegate OnClicked;
 	FOnMixtormatIconClicked OnClickedWithModifiers;
 	bool bPressed = false;

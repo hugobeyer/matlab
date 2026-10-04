@@ -170,6 +170,15 @@ void AddIconRole(
 			Out.Add(Number(*Id(TEXT("DisabledOpacity")), ETab::Global, *Section, TEXT("Disabled Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].DisabledOpacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].DisabledOpacity = V; }, TEXT(""), OpacityRefreshMode));
+			if (Role == EMixtormatIconRole::LayerEye)
+			{
+				Out.Add(Number(*Id(TEXT("Radius")), ETab::Global, *Section, TEXT("Mark Radius"), 0, 12, .25f, 2,
+					[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].MarkRadius; },
+					[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].MarkRadius = V; }, TEXT(""), RefreshMode));
+				Out.Add(Number(*Id(TEXT("OutlineWidth")), ETab::Global, *Section, TEXT("Outline Width"), 0, 4, .25f, 2,
+					[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].MarkOutlineWidth; },
+					[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].MarkOutlineWidth = V; }, TEXT(""), RefreshMode));
+			}
 			SetLocateTarget(Out, LocateBegin, LocateTarget);
 		}
 
@@ -228,7 +237,7 @@ void AddIconRole(
 #define BLEND_DEF(Id, Tab, Section, Label, Path) \
 	BLEND(Id, Tab, Section, Label, Path, EMixtormatThemeRefreshMode::Paint)
 
-// GLOBAL / semantic palette. OverlayGround is intentionally omitted: no production reader.
+// GLOBAL / semantic palette. OverlayGround is consumed by preview cluster grounds.
 		int32 LocateBegin = P.Num();
 		COL_DEF("Palette.Ground", Global, "Palette", "Ground", Palette.Ground);
 		COL_DEF("Palette.Shell", Global, "Palette", "Shell", Palette.Shell);
@@ -250,6 +259,10 @@ void AddIconRole(
 		LocateBegin = P.Num();
 		COL_DEF("Palette.ThumbnailGround", Global, "Palette", "Thumbnail Ground", Palette.ThumbnailGround);
 		SetLocateTarget(P, LocateBegin, ETarget::Gallery);
+
+		LocateBegin = P.Num();
+		COL_DEF("Palette.OverlayGround", Global, "Palette", "Overlay Ground", Palette.OverlayGround);
+		SetLocateTarget(P, LocateBegin, ETarget::Preview);
 
 				// TopBar and PanelToolbar use generic icon-button widgets with no role identity,
 				// so locating either would blink unrelated controls. Leave them disabled until
@@ -437,6 +450,7 @@ void AddIconRole(
 		NUM("LayerLayout.GroupRowHeight", Layers, "Layout", "Group Row Height", LayerLayout.GroupRowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ChildRowHeight", Layers, "Layout", "Child Row Height", LayerLayout.ChildRowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.Gap", Layers, "Layout", "Gap", LayerLayout.Gap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerLayout.ColumnGutter", Layers, "Layout", "Column Gutter", LayerLayout.ColumnGutter, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.PaddingX", Layers, "Layout", "Padding X", LayerLayout.PaddingX, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ThumbnailSize", Layers, "Layout", "Thumbnail Size", LayerLayout.ThumbnailSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ItemGap", Layers, "Layout", "Item Gap", LayerLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
@@ -504,6 +518,7 @@ void AddIconRole(
 				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				SetLocateTarget(P, LocateBegin, ETarget::Preview);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
@@ -527,8 +542,12 @@ void AddIconRole(
 				NUM_DEF("ShellTheme.SplitterOpacity", GalleryShell, "Shell / Splitter", "Rest Opacity", ShellTheme.SplitterOpacity, 0, 1, .01, 2);
 				NUM_DEF("ShellTheme.SplitterHoverOpacity", GalleryShell, "Shell / Splitter", "Hover Opacity", ShellTheme.SplitterHoverOpacity, 0, 1, .01, 2);
 				NUM("Shell.TopBarHeight", GalleryShell, "Shell / Layout", "Top Bar Height", Shell.TopBarHeight, 20, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.TopBarActionInset", GalleryShell, "Shell / Layout", "Top Bar Action Inset", Shell.TopBarActionInset, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.StatusBarHeight", GalleryShell, "Shell / Layout", "Status Bar Height", Shell.StatusBarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.PanelPadding", GalleryShell, "Shell / Layout", "Panel Padding", Shell.PanelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.ScrollbarThickness", GalleryShell, "Shell / Scrollbar", "Thickness", Shell.ScrollbarThickness, 2, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM_DEF("Shell.ScrollbarThumbOpacity", GalleryShell, "Shell / Scrollbar", "Thumb Opacity", Shell.ScrollbarThumbOpacity, 0, 1, .01, 2);
+				NUM_DEF("Shell.ScrollbarHoverOpacity", GalleryShell, "Shell / Scrollbar", "Hover Opacity", Shell.ScrollbarHoverOpacity, 0, 1, .01, 2);
 				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				SetLocateTarget(P, LocateBegin, ETarget::Shell);

@@ -378,6 +378,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SScrollBox)
+					.ScrollBarStyle(&Style.GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+					.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
 					// Readable, not editable. The rows keep their values and their layout; only
 					// the writing is taken away, which is what an instance means.
 					.IsEnabled_Lambda([this]() { return !IsSelectedChildInstance(); })
@@ -448,6 +450,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					// within one is handed unbounded height and never scrolls -- the layer
 					// inspector simply ran off the bottom of the panel.
 					SNew(SScrollBox)
+					.ScrollBarStyle(&Style.GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+					.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
 					// The exact inverse of the child inspector above it: a selected child owns
 					// the panel on its own, and the layer's own sections come back when nothing
 					// is selected. Both lists have to name every child type or a new one shows

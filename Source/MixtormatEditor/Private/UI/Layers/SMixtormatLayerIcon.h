@@ -10,9 +10,8 @@ class SMixtormatLayerIcon final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerIcon)
-		: _Size(0.0f), _bVisibility(false), _bOn(true), _bActive(false)
+		: _bVisibility(false), _bOn(true), _bActive(false)
 	{}
-		SLATE_ARGUMENT(float, Size)
 		SLATE_ARGUMENT(bool, bVisibility)
 		SLATE_ATTRIBUTE(bool, bOn)
 		SLATE_ATTRIBUTE(bool, bActive)

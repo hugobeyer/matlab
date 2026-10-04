@@ -4,26 +4,33 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 
 void SMixtormatIconButton::Construct(const FArguments& InArgs)
 {
 	bActive = InArgs._bActive;
+	Role = InArgs._Role;
 	OnClicked = InArgs._OnClicked;
 	OnClickedWithModifiers = InArgs._OnClickedWithModifiers;
-	if (InArgs._ToolTip.IsSet())
-	{
-		SetToolTipText(InArgs._ToolTip);
-	}
-
 	// Two boxes: the outer one is the click target and the inner one is the glyph. Hit testing
 	// follows geometry, so growing the outer box alone makes the button easier to hit without
 	// making the icon bigger or the row louder.
-	const float GlyphSize = InArgs._Size;
-	const float TargetSize = GlyphSize + MixtormatTokens::IconButtonHitSlop;
+	const bool bSemanticRole = Role != Mixtormat::EMixtormatIconRole::Count;
+	const Mixtormat::FMixtormatIconStyle* Semantic = bSemanticRole
+		? &FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Role)] : nullptr;
+	const float GlyphSize = Semantic ? Semantic->GlyphSize : InArgs._Size;
+	const float TargetSize = Semantic
+		? (Semantic->HitSize > 0.0f ? Semantic->HitSize : Semantic->ButtonSize)
+		: GlyphSize + MixtormatTokens::IconButtonHitSlop;
 	ChildSlot
 	[
+		SNew(SMixtormatHelp)
+		.Text(InArgs._ToolTip)
+		.Enabled_Lambda([this]() { return IsEnabled(); })
+		[
 		SNew(SBox)
 		.WidthOverride(TargetSize)
 		.HeightOverride(TargetSize)
@@ -39,12 +46,23 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 				.ColorAndOpacity(this, &SMixtormatIconButton::GetGlyphColor)
 			]
 		]
+		]
 	];
 }
 
 FSlateColor SMixtormatIconButton::GetGlyphColor() const
 {
 	// No plate, so every state has to live in the glyph itself.
+	if (Role != Mixtormat::EMixtormatIconRole::Count)
+	{
+		const Mixtormat::FMixtormatResolvedStyle& R = FMixtormatThemeStore::GetResolved();
+		const Mixtormat::FMixtormatIconStyle& I = R.Icons.Roles[static_cast<uint8>(Role)];
+		const FLinearColor C = bActive.Get(false)
+			? R.Palette.Get(Mixtormat::EMixtormatColorRole::Accent)
+			: R.Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+		return FSlateColor(C.CopyWithNewOpacity(!IsEnabled()
+			? I.DisabledOpacity : IsHovered() ? I.HoverOpacity : I.RestOpacity));
+	}
 	if (!IsEnabled())
 	{
 		return MixtormatPalette::IconRest().CopyWithNewOpacity(0.25f);

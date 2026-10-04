@@ -255,13 +255,17 @@ namespace Mixtormat
 
 		// --layer-hierarchy-line-*
 		T.LayerHierarchy.Source = MakeColorRef(EMixtormatColorRole::Text);
+		T.LayerHierarchy.Indent = 28.0f;
 		T.LayerHierarchy.Width = 1.0f;
 		T.LayerHierarchy.Opacity = 0.24f;
+		T.LayerHierarchy.ParentJoinOffset = 0.0f;
+		T.LayerHierarchy.ChildArmLength = 8.0f;
 
 		T.LayerLayout.RowHeight = 26.0f;              // --layer-height
 		T.LayerLayout.GroupRowHeight = 18.0f;         // --layer-group-height
 		T.LayerLayout.ChildRowHeight = 18.0f;         // --child-height
 		T.LayerLayout.Gap = 2.0f;                     // --layer-gap
+		T.LayerLayout.ColumnGutter = 7.0f;
 		T.LayerLayout.ThumbnailSize = 20.0f;          // --thumbnail-size
 		T.LayerLayout.ChildIndent = 28.0f;            // --layer-indent
 
@@ -322,13 +326,18 @@ namespace Mixtormat
 		T.PreviewLayout.ComparisonToggleGap = 4.0f;
 		T.PreviewLayout.ResolutionControlWidth = 92.0f;
 		T.PreviewLayout.TogglePadding = 2.0f;
+		T.PreviewLayout.FinalPopupWidth = 232.0f;
 
 		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
 		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
 
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height
+		T.Shell.TopBarActionInset = 0.0f;
 		T.Shell.StatusBarHeight = 24.0f;              // --status-height
 		T.Shell.PanelPadding = 7.0f;                  // --panel-padding
+		T.Shell.ScrollbarThickness = 4.0f;
+		T.Shell.ScrollbarThumbOpacity = 0.22f;
+		T.Shell.ScrollbarHoverOpacity = 0.42f;
 		T.Shell.SplitterVisualWidth = 1.0f;           // --splitter-size
 		T.Shell.SplitterHitWidth = 6.0f;              // --splitter-hit-size
 		T.ShellTheme.SplitterHoverSource = SRGB(127, 196, 219); // --hairline-hover-rgb
@@ -339,7 +348,9 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::TopBar)] = Icon(18.0f, 0.6f);           // --topbar-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(14.0f, 0.6f);     // --toolbar-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(20.0f, 0.6f, 2.0f, 2.0f);   // --overlay-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(14.0f, 0.6f);          // --layer-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(14.0f, 0.38f);         // --layer-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 0.75f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(14.0f, 0.6f);
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(10.0f, 0.65f); // --foldout-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::CardLeading)] = Icon(12.0f, 0.52f);     // --card-icon-*

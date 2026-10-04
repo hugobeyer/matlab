@@ -2,7 +2,6 @@
 
 #include "UI/Layers/SMixtormatLayerHierarchy.h"
 #include "Rendering/DrawElements.h"
-#include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
 
@@ -53,13 +52,15 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 		const float X = Hierarchy.BranchInset + Hierarchy.Indent - HalfIndent + Weight * 0.5f;
 		Stroke(X, -Gap, X, Hierarchy.bLast ? Mid : Size.Y + Gap);
 		Stroke(X, Mid + Weight * 0.5f,
-			FMath::Max(X, Hierarchy.BranchInset + Hierarchy.Indent - Layout.ItemGap), Mid + Weight * 0.5f);
+			X + HierarchyStyle.ChildArmLength, Mid + Weight * 0.5f);
 	}
 	if (Hierarchy.bHasChildren)
 		{
 			// Start below the parent's glyph; meet the first scoped child's stem across the row gap.
 			const float X = Hierarchy.BranchInset + Hierarchy.Indent + HalfIndent + Weight * 0.5f;
-			const float Start = Mid + MixtormatTokens::LayerChildIconSize * 0.5f;
+			const Mixtormat::FMixtormatIconStyle& ChildIcon = FMixtormatThemeStore::GetResolved().Icons.Roles[
+				static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)];
+			const float Start = Mid + ChildIcon.GlyphSize * 0.5f + HierarchyStyle.ParentJoinOffset;
 			Stroke(X, FMath::Min(Start, Size.Y), X, Size.Y + Gap);
 		}
 		for (const float Indent : Hierarchy.AncestorIndents)

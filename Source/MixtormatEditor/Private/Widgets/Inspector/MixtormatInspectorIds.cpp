@@ -443,7 +443,6 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	const TSharedRef<SVerticalBox> Cards = Panel;
 		Panel = AddCard(Cards, LOCTEXT("IdGrpSelection", "Selection"), nullptr,
 			SNew(SMixtormatLayerIcon)
-				.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
 				.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
 				.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
 				.ToolTipText(LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan"))
