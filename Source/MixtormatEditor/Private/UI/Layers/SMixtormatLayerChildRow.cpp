@@ -3,7 +3,7 @@
 #include "UI/Layers/SMixtormatLayerChildRow.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"
@@ -38,10 +38,9 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 			// Horizontal, not vertical: children stay dark at the left and lift toward the right,
 			// so they remain subordinate to the owning layer's top-to-bottom gradient.
 			SNew(SMixtormatLayerSurface)
-			.Kind(SMixtormatLayerSurface::EKind::Child)
-			.StartColor(this, &SMixtormatLayerChildRow::GetTintEnd)
-			.EndColor(this, &SMixtormatLayerChildRow::GetTintStart)
+			.Kind(Mixtormat::EMixtormatLayerKind::Child)
 			.bSelected(bSelected)
+			.bInstanceSource(bInstanceSource)
 			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				SNew(SOverlay)
@@ -58,7 +57,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					[
 						SNew(SImage)
 						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.ColorAndOpacity(FSlateColor(MixtormatPalette::AccentBright()))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 					]
 				]
 				+ SOverlay::Slot()
@@ -175,39 +174,6 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	];
 }
 
-FLinearColor SMixtormatLayerChildRow::GetTintStart() const
-{
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerChildSelectedRight().CopyWithNewOpacity(MixtormatTokens::ChildSelectedRightOpacity);
-	}
-	if (bInstanceSource.Get(false))
-	{
-		// The selection's gradient mirrored (strong on the left) and softer, so the source reads
-		// as linked to the selection without reading as a second selection.
-		FLinearColor Glow = MixtormatPalette::Accent();
-		Glow.A = 0.10f;
-		return Glow;
-	}
-	return MixtormatPalette::LayerChildHoverRight().CopyWithNewOpacity(IsHovered()
-		? MixtormatTokens::ChildHoverRightOpacity : MixtormatTokens::ChildRightOpacity);
-}
-
-FLinearColor SMixtormatLayerChildRow::GetTintEnd() const
-{
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerChildSelectedLeft().CopyWithNewOpacity(MixtormatTokens::ChildSelectedLeftOpacity);
-	}
-	if (bInstanceSource.Get(false))
-	{
-		FLinearColor Glow = MixtormatPalette::Accent();
-		Glow.A = 0.55f;
-		return Glow;
-	}
-	return MixtormatPalette::LayerChildHoverLeft().CopyWithNewOpacity(IsHovered()
-		? MixtormatTokens::ChildHoverLeftOpacity : MixtormatTokens::ChildLeftOpacity);
-}
 
 FReply SMixtormatLayerChildRow::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)
 {

@@ -86,7 +86,17 @@ namespace Mixtormat
 		const FMixtormatStateModifier& State,
 		FMixtormatSurfaceSamples& OutSamples);
 
-	// A ramp's value at position T. Piecewise-linear between authored points, clamped at the ends.
+	// Ignores Base; blends only Layers over the supplied backdrop. Matching axes sample along
+			// the output gradient; orthogonal axes sample at the caller's normalized band position.
+			// OutSamples must be distinct from BackdropSamples.
+			int32 CompositeOverlay(
+				const FMixtormatSurfaceRecipe& Recipe,
+				const FMixtormatResolvedPalette& Palette,
+				const FMixtormatSurfaceSamples& BackdropSamples,
+				float BackdropPosition,
+				FMixtormatSurfaceSamples& OutSamples);
+
+			// A ramp's value at position T. Piecewise-linear between authored points, clamped at the ends.
 	// An empty ramp is 1.0 and a single-point ramp is that point's value -- a ramp with nothing to
 	// ramp through must not silently become no-opaque.
 	float EvaluateRamp(const FMixtormatRamp& Ramp, const float T);
@@ -164,7 +174,28 @@ namespace Mixtormat
 			const FMixtormatSurfaceSamples& BodySamples,
 			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 
-		// Borders only, on their own layer. A blended border has to composite against the body it
+		// CompositeOverlay followed by the normal PaintBody path; no component-specific math.
+				static int32 PaintOverlay(
+					FSlateWindowElementList& Elements,
+					int32 LayerId,
+					const FGeometry& Geometry,
+					const FMixtormatSurfaceRecipe& Recipe,
+					const FMixtormatResolvedPalette& Palette,
+					const FMixtormatSurfaceSamples& BackdropSamples,
+					float BackdropPosition,
+					const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
+
+				static int32 PaintOverlay(
+					FSlateWindowElementList& Elements,
+					int32 LayerId,
+					const FPaintGeometry& PaintGeometry,
+					const FMixtormatSurfaceRecipe& Recipe,
+					const FMixtormatResolvedPalette& Palette,
+					const FMixtormatSurfaceSamples& BackdropSamples,
+					float BackdropPosition,
+					const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
+
+				// Borders only, on their own layer. A blended border has to composite against the body it
 		// was drawn over, so this takes the body's samples rather than re-deriving a colour that
 		// would not match what is already on screen.
 		//

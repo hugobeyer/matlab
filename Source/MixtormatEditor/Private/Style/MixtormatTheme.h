@@ -131,6 +131,8 @@ namespace Mixtormat
 	struct FMixtormatPaintLayer
 	{
 		FMixtormatColorRef Source;
+		// Optional colour endpoint, interpolated along OpacityRamp.Axis independently of opacity.
+		TOptional<FMixtormatColorRef> SourceEnd;
 		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 
 		FMixtormatRamp OpacityRamp;
@@ -402,9 +404,32 @@ namespace Mixtormat
 		float HoverSaturation = 1.4f;
 		float SelectedSaturation = 2.3f;
 
-		float RestStrength = 0.12f;
-		float HoverStrength = 0.18f;
-		float SelectedStrength = 0.24f;
+		float RestStrength = 1.0f;
+		float HoverStrength = 1.0f;
+		float SelectedStrength = 1.0f;
+
+		FLinearColor RowBottom;
+		FLinearColor HoverTop;
+		FLinearColor HoverBottom;
+		FLinearColor SelectedTop;
+		FLinearColor SelectedBottom;
+		FLinearColor ChildLeft;
+		FLinearColor ChildRight;
+		FLinearColor ChildSelectedLeft;
+		FLinearColor ChildSelectedRight;
+		FLinearColor Cross;
+		FLinearColor HiddenTop;
+		FLinearColor HiddenEnd;
+		float GroupTintStrength = 0.35f;
+		float GroupTintSelectedStrength = 0.55f;
+		float ReferenceHiddenTint = 0.08f;
+		float ReferenceSelectedTint = 0.38f;
+		float ReferenceHoverTint = 0.30f;
+		float ReferenceRestTint = 0.22f;
+		float InstanceSourceLeftTint = 0.55f;
+		float InstanceSourceRightTint = 0.10f;
+		float HairlineWidth = 1.0f;
+		float HairlineOpacity = 0.46f;
 
 		float GroupSaturation = 1.0f;
 		float GroupStrength = 0.5f;
@@ -413,7 +438,10 @@ namespace Mixtormat
 		float ChildSaturation = 1.2f;
 		float ChildHoverSaturation = 2.0f;
 		float ChildSelectedSaturation = 1.0f;
-		float ChildStrength = 0.46f;
+		float ChildLeftOpacity = 0.3f;
+					float ChildHoverLeftOpacity = 0.72f;
+					float ChildSelectedLeftOpacity = 0.9f;
+					float ChildStrength = 0.46f;
 		float ChildHoverStrength = 1.0f;
 		float ChildSelectedStrength = 0.94f;
 

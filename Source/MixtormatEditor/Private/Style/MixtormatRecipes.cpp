@@ -8,7 +8,29 @@ namespace Mixtormat
 {
 	namespace
 	{
-		// The well's ground and recess, shared by the well, the fill and the checked toggle.
+		// Match luminance before tinting so group/reference hues preserve the row's state contrast.
+				FLinearColor TintTowards(const FLinearColor& Base, const FLinearColor& Accent, float Strength)
+				{
+					const float Luminance = Accent.GetLuminance();
+					if (Accent.A <= 0.0f || Strength <= 0.0f || Luminance <= KINDA_SMALL_NUMBER)
+					{
+						return Base;
+					}
+					const float Scale = Base.GetLuminance() / Luminance;
+					return FMath::Lerp(Base,
+						FLinearColor(Accent.R * Scale, Accent.G * Scale, Accent.B * Scale, Base.A),
+						FMath::Clamp(Strength, 0.0f, 1.0f));
+				}
+
+				FMixtormatColorRef LocalLayerSource(const FLinearColor& Color, float Saturation)
+				{
+					FMixtormatColorRef Ref;
+					Ref.LocalColor = Color;
+					Ref.Saturation = Saturation;
+					return Ref;
+				}
+
+				// The well's ground and recess, shared by the well, the fill and the checked toggle.
 		//
 		// Built into an existing recipe rather than returned on its own so the three callers cannot
 		// drift apart -- which is exactly what happened when the slider, the chip and the toggle
@@ -112,7 +134,119 @@ namespace Mixtormat
 		return Ramp;
 	}
 
-	FMixtormatSurfaceRecipe MakeGroundRecipe()
+	FMixtormatSurfaceRecipe MakeLayerBodyRecipe(
+			const FMixtormatTheme& Theme, const FMixtormatLayerRecipeContext& Context)
+		{
+			const FMixtormatLayerTheme& L = Theme.Layer;
+			const bool bChild = Context.Kind == EMixtormatLayerKind::Child;
+			FLinearColor Start = Theme.Palette.Panel;
+			FLinearColor End = L.RowBottom;
+			if (bChild)
+			{
+				Start = Context.bSelected ? L.ChildSelectedLeft : L.ChildLeft;
+				End = Context.bSelected ? L.ChildSelectedRight : L.ChildRight;
+			}
+			else if (Context.bSelected)
+			{
+				Start = L.SelectedTop;
+				End = L.SelectedBottom;
+			}
+			else if (Context.bHovered)
+			{
+				Start = L.HoverTop;
+				End = L.HoverBottom;
+			}
+			if (!Context.bVisible)
+			{
+				Start = L.HiddenTop;
+				End = L.HiddenEnd;
+			}
+			if (Context.Kind == EMixtormatLayerKind::Group && Context.bVisible)
+			{
+				const float Tint = Context.bSelected ? L.GroupTintSelectedStrength : L.GroupTintStrength;
+				Start = TintTowards(Start, Context.GroupTint, Tint);
+				End = TintTowards(End, Context.GroupTint, Tint);
+			}
+			if (Context.bReference)
+			{
+				const float Tint = !Context.bVisible ? L.ReferenceHiddenTint
+					: Context.bSelected ? L.ReferenceSelectedTint
+					: Context.bHovered ? L.ReferenceHoverTint : L.ReferenceRestTint;
+				Start = FMath::Lerp(Theme.Palette.Panel, Theme.Palette.Modified, Tint);
+			}
+			const bool bInstanceSource = bChild && Context.bInstanceSource && !Context.bSelected;
+			if (bInstanceSource)
+			{
+				Start = Theme.Palette.Accent;
+				End = Theme.Palette.Accent;
+			}
+			const float Saturation = bChild
+				? (Context.bSelected ? L.ChildSelectedSaturation : Context.bHovered ? L.ChildHoverSaturation : L.ChildSaturation)
+				: (Context.bSelected ? L.SelectedSaturation : Context.bHovered ? L.HoverSaturation : L.RestSaturation);
+			const float Right = bInstanceSource ? L.InstanceSourceRightTint : bChild
+				? (Context.bSelected ? L.ChildSelectedStrength : Context.bHovered ? L.ChildHoverStrength : L.ChildStrength)
+				: (Context.bSelected ? L.SelectedStrength : Context.bHovered ? L.HoverStrength : L.RestStrength);
+			const float Left = bInstanceSource ? L.InstanceSourceLeftTint : bChild
+				? (Context.bSelected ? L.ChildSelectedLeftOpacity : Context.bHovered ? L.ChildHoverLeftOpacity : L.ChildLeftOpacity)
+				: Right;
+			FMixtormatSurfaceRecipe Recipe;
+			Recipe.Base = MakeColorRef(EMixtormatColorRole::Ground);
+			FMixtormatPaintLayer Body;
+			Body.Source = LocalLayerSource(Start, Saturation);
+			Body.SourceEnd = LocalLayerSource(End, Saturation);
+			Body.Blend = L.Blend;
+			Body.OpacityRamp = MakeLinearRamp(bChild ? EMixtormatAxis::Horizontal : EMixtormatAxis::Vertical, Left, Right);
+			Recipe.Layers.Add(Body);
+			return Recipe;
+		}
+
+		FMixtormatSurfaceRecipe MakeLayerGroupCrossRecipe(
+			const FMixtormatTheme& Theme, const FMixtormatLayerRecipeContext& Context)
+		{
+			FMixtormatSurfaceRecipe Recipe;
+			FMixtormatPaintLayer Cross;
+			const float Tint = Context.bSelected ? Theme.Layer.GroupTintSelectedStrength : Theme.Layer.GroupTintStrength;
+			Cross.Source = LocalLayerSource(TintTowards(Theme.Layer.Cross, Context.GroupTint, Tint), Theme.Layer.GroupSaturation);
+			Cross.Blend = Theme.Layer.GroupBlend;
+			Cross.Strength = Theme.Layer.GroupStrength;
+			Cross.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Horizontal, 1.0f, 0.0f);
+			Cross.bEnabled = Context.Kind == EMixtormatLayerKind::Group && Context.bVisible;
+			Recipe.Layers.Add(Cross);
+			return Recipe;
+		}
+
+		FMixtormatSurfaceRecipe MakeLayerGlowRecipe(const FMixtormatTheme& Theme, float ReachFraction)
+		{
+			FMixtormatSurfaceRecipe Recipe;
+			FMixtormatPaintLayer Glow;
+			Glow.Source = Theme.Layer.ActiveGlow.Source;
+			Glow.Source.Saturation = Theme.Layer.ActiveGlow.Saturation;
+			Glow.Strength = Theme.Layer.ActiveGlow.Opacity;
+			Glow.Blend = Theme.Layer.ActiveGlow.Blend;
+			const float Reach = FMath::Clamp(ReachFraction, 0.0f, 1.0f);
+			Glow.bEnabled = Reach > 0.0f;
+			Glow.OpacityRamp.Axis = EMixtormatAxis::Vertical;
+			Glow.OpacityRamp.Points.Add({ 0.0f, 1.0f });
+			Glow.OpacityRamp.Points.Add({ Reach, 0.0f });
+			if (Reach < 1.0f) { Glow.OpacityRamp.Points.Add({ 1.0f, 0.0f }); }
+			Recipe.Layers.Add(Glow);
+			return Recipe;
+		}
+
+		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(const FMixtormatTheme& Theme, bool bSelected)
+		{
+			FMixtormatSurfaceRecipe Recipe;
+			FMixtormatPaintLayer Hairline;
+			Hairline.Source = MakeColorRef(bSelected ? EMixtormatColorRole::Accent : EMixtormatColorRole::Hairline);
+			Hairline.Source.Saturation = bSelected ? Theme.Layer.ActiveGlow.Saturation : 1.0f;
+			Hairline.Strength = bSelected ? Theme.Layer.ActiveHairlineOpacity : Theme.Layer.HairlineOpacity;
+			Hairline.Blend = bSelected ? MixtormatCompositing::EMixtormatBlendMode::Additive : MixtormatCompositing::EMixtormatBlendMode::Normal;
+			Hairline.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Horizontal, 1.0f, 1.0f, 2);
+			Recipe.Layers.Add(Hairline);
+			return Recipe;
+		}
+
+		FMixtormatSurfaceRecipe MakeGroundRecipe()
 	{
 		FMixtormatSurfaceRecipe Recipe;
 		Recipe.Base = MakeColorRef(EMixtormatColorRole::Ground);

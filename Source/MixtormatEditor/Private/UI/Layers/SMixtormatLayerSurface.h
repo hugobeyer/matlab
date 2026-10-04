@@ -4,21 +4,23 @@
 
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Style/MixtormatRecipes.h"
 
 // Paint only: content retains its layout, input routing and drop-target geometry.
 class SMixtormatLayerSurface final : public SCompoundWidget
 {
 public:
-	enum class EKind : uint8 { Layer, Group, Child };
+
 	SLATE_BEGIN_ARGS(SMixtormatLayerSurface)
-		: _Kind(EKind::Layer), _StartColor(FLinearColor::Transparent)
-		, _EndColor(FLinearColor::Transparent), _CrossColor(FLinearColor::Transparent)
+		: _Kind(Mixtormat::EMixtormatLayerKind::Layer), _GroupTint(FLinearColor::Transparent)
+		, _bVisible(true), _bReference(false), _bInstanceSource(false)
 		, _bSelected(false), _bHovered(false)
 	{}
-		SLATE_ARGUMENT(EKind, Kind)
-		SLATE_ATTRIBUTE(FLinearColor, StartColor)
-		SLATE_ATTRIBUTE(FLinearColor, EndColor)
-		SLATE_ATTRIBUTE(FLinearColor, CrossColor)
+		SLATE_ARGUMENT(Mixtormat::EMixtormatLayerKind, Kind)
+		SLATE_ATTRIBUTE(FLinearColor, GroupTint)
+		SLATE_ATTRIBUTE(bool, bVisible)
+		SLATE_ATTRIBUTE(bool, bReference)
+		SLATE_ATTRIBUTE(bool, bInstanceSource)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		SLATE_ATTRIBUTE(bool, bHovered)
 		SLATE_DEFAULT_SLOT(FArguments, Content)
@@ -30,7 +32,7 @@ public:
 		const FWidgetStyle& WidgetStyle, bool bParentEnabled) const override;
 
 private:
-	EKind Kind;
-	TAttribute<FLinearColor> StartColor, EndColor, CrossColor;
-	TAttribute<bool> bSelected, bHovered;
+	Mixtormat::EMixtormatLayerKind Kind;
+	TAttribute<FLinearColor> GroupTint;
+	TAttribute<bool> bSelected, bHovered, bVisible, bReference, bInstanceSource;
 };

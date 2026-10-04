@@ -38,7 +38,29 @@ namespace Mixtormat
 	// the kind of substitution that survives every structural check.
 	FMixtormatRamp MakeFalloffRamp(EMixtormatAxis Axis, float Start, float End, float Power, int32 Samples);
 
-	// Ground only, for container margins and gaps between separately arranged bands.
+	enum class EMixtormatLayerKind : uint8 { Layer, Group, Child };
+
+		struct FMixtormatLayerRecipeContext
+		{
+			EMixtormatLayerKind Kind = EMixtormatLayerKind::Layer;
+			bool bHovered = false;
+			bool bSelected = false;
+			bool bVisible = true;
+			bool bReference = false;
+			bool bInstanceSource = false;
+			FLinearColor GroupTint = FLinearColor::Transparent;
+		};
+
+		FMixtormatSurfaceRecipe MakeLayerBodyRecipe(
+			const FMixtormatTheme& Theme, const FMixtormatLayerRecipeContext& Context);
+		// Pure overlays: Base is ignored by CompositeOverlay. Caller owns band/edge geometry.
+		FMixtormatSurfaceRecipe MakeLayerGroupCrossRecipe(
+			const FMixtormatTheme& Theme, const FMixtormatLayerRecipeContext& Context);
+		FMixtormatSurfaceRecipe MakeLayerGlowRecipe(const FMixtormatTheme& Theme, float ReachFraction);
+		// Non-selected hairlines are for Layer/Group only; selected hairlines apply to every kind.
+		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(const FMixtormatTheme& Theme, bool bSelected);
+
+		// Ground only, for container margins and gaps between separately arranged bands.
 	FMixtormatSurfaceRecipe MakeGroundRecipe();
 
 	// Ground -> local lift -> Accent, then an enabled-only Additive top hairline.

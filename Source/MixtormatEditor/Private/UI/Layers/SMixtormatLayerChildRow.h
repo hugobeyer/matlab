@@ -60,8 +60,6 @@ public:
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 private:
-	FLinearColor GetTintStart() const;
-	FLinearColor GetTintEnd() const;
 
 	TAttribute<bool> bSelected;
 	TAttribute<bool> bInstanceSource;

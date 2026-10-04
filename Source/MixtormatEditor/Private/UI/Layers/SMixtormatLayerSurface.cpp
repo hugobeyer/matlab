@@ -2,19 +2,18 @@
 
 #include "UI/Layers/SMixtormatLayerSurface.h"
 
-#include "Style/MixtormatCompositing.h"
-#include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
-#include "UI/Primitives/MixtormatGradientPainter.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
 
 void SMixtormatLayerSurface::Construct(const FArguments& InArgs)
 {
 	Kind = InArgs._Kind;
-	StartColor = InArgs._StartColor;
-	EndColor = InArgs._EndColor;
-	CrossColor = InArgs._CrossColor;
+	GroupTint = InArgs._GroupTint;
 	bSelected = InArgs._bSelected;
 	bHovered = InArgs._bHovered;
+	bVisible = InArgs._bVisible;
+	bReference = InArgs._bReference;
+	bInstanceSource = InArgs._bInstanceSource;
 	ChildSlot[InArgs._Content.Widget];
 }
 
@@ -22,120 +21,123 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 	const FSlateRect& CullingRect, FSlateWindowElementList& Elements, const int32 LayerId,
 	const FWidgetStyle& WidgetStyle, const bool bParentEnabled) const
 {
-	using namespace MixtormatTokens;
-	using namespace MixtormatCompositing;
+	using namespace Mixtormat;
 	const FVector2f Size(Geometry.GetLocalSize());
-	const bool Selected = bSelected.Get(false);
-	const bool Hovered = bHovered.Get(false);
-	const bool Child = Kind == EKind::Child;
-	const bool Group = Kind == EKind::Group;
-	const float Saturation = Child
-		? (Selected ? ChildSelectedSaturation : Hovered ? ChildHoverSaturation : ChildSaturation)
-		: (Selected ? LayerSelectedSaturation : Hovered ? LayerHoverSaturation
-			: Group ? LayerGroupSaturation : LayerSaturation);
-	const FLinearColor Start = StartColor.Get();
-	const FLinearColor End = EndColor.Get();
-	const FLinearColor Cross = CrossColor.Get();
-	const FLinearColor Ground = MixtormatPalette::Ground();
-	// The row's own paint layer is the only thing the blend-mode tokens govern: an ordinary layer
-	// or child row composites its tint gradient with --layer-blend-mode, and the group cross pass
-	// composites the whole band with --layer-group-blend-mode. Resolved once per paint, not per
-	// stop, so the mode is a scalar the inner lambda closes over.
-	const EMixtormatBlendMode Blend = Group
-		? BlendModeOf(LayerGroupBlendMode)
-		: BlendModeOf(LayerBlendMode);
-	const FLinearColor Tint = WidgetStyle.GetColorAndOpacityTint();
-	const float Reach = FMath::Min(Size.Y, FMath::Max(0.0f, LayerActiveGlowReach));
-	const FLinearColor Glow = Saturate(MixtormatPalette::Accent().CopyWithNewOpacity(
-		LayerActiveGlowOpacity), LayerActiveGlowSaturation);
-
-	const auto ColorAt = [&](const float X, const float Y, const bool Hairline)
+	if (Size.X <= 0.0f || Size.Y <= 0.0f)
 	{
-		FLinearColor Source = MixtormatGradient::LerpSRGB(Start, End, Child ? X : Y / Size.Y);
+		return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId,
+			WidgetStyle, bParentEnabled);
+	}
+	const FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+	const FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+	FMixtormatLayerRecipeContext Context;
+	Context.Kind = Kind;
+	Context.bSelected = bSelected.Get(false);
+	Context.bHovered = bHovered.Get(false);
+	Context.bVisible = bVisible.Get(true);
+	Context.bReference = bReference.Get(false);
+	Context.bInstanceSource = bInstanceSource.Get(false);
+	Context.GroupTint = GroupTint.Get(FLinearColor::Transparent);
+	const bool Group = Kind == EMixtormatLayerKind::Group;
+	const bool Child = Kind == EMixtormatLayerKind::Child;
+	FMixtormatSurfaceDrawStyle DrawStyle;
+	DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
+	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
+		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+
+	// Body -> group cross -> selected glow -> selected/general hairline -> foreground content.
+	const FMixtormatSurfaceRecipe Body = MakeLayerBodyRecipe(Theme, Context);
+	const FMixtormatSurfaceRecipe Cross = MakeLayerGroupCrossRecipe(Theme, Context);
+	const float Reach = FMath::Min(Size.Y, FMath::Max(0.0f, Theme.Layer.ActiveGlow.Reach));
+	const FMixtormatSurfaceRecipe Glow = MakeLayerGlowRecipe(Theme, Reach / Size.Y);
+	FMixtormatSurfaceSamples BodySamples;
+	CompositeSurface(Body, Palette, FMixtormatStateModifier(), BodySamples);
+	FMixtormatSurfacePainter::PaintBody(Elements, LayerId, Geometry, Body, BodySamples, DrawStyle);
+
+	// Geometry-only adapter: each horizontal band samples the vertical backdrop. The cross
+	// and glow remain separate generic passes; all color resolution and blending stays shared.
+	const auto BandGeometry = [&](float Top, float Height)
+	{
+		return Geometry.ToPaintGeometry(FVector2f(Size.X, Height),
+			FSlateLayoutTransform(FVector2f(0.0f, Top)));
+	};
+	const auto BackdropAt = [&](float Y, FMixtormatSurfaceSamples& Samples)
+	{
 		if (Group)
 		{
-			// The horizontal cross is normal-composited inside the group paint layer; that
-			// entire layer is then composited over the row's ground by Blend below.
-			const float Coverage = Cross.A * (1.0f - X);
-			Source = MixtormatGradient::LerpSRGB(Source, Cross.CopyWithNewOpacity(Source.A), Coverage);
-		}
-		Source = Saturate(Source, Saturation);
-		// Normal over an opaque ground reduces to the lerp this used to be spelled out as, so
-		// the authored default is byte-identical; the other modes are what the token can now pick.
-		FLinearColor Result = ApplyBlend(Blend, Ground, Source);
-		if (Selected && Reach > 0.0f)
-		{
-			Result = Additive(Result, Glow, FMath::Max(0.0f, 1.0f - Y / Reach));
-		}
-		if (Hairline)
-		{
-			if (Selected)
-			{
-				Result = Additive(Result, Saturate(MixtormatPalette::Accent().CopyWithNewOpacity(
-					LayerActiveHairlineOpacity), LayerActiveGlowSaturation));
-			}
-			else
-			{
-				const FLinearColor Line = MixtormatPalette::Hairline().CopyWithNewOpacity(FoldoutHairlineOpacity);
-				Result = FMath::Lerp(Result, Line.CopyWithNewOpacity(1.0f), Line.A);
-			}
-		}
-		return Result * Tint;
-	};
-
-	if (Size.X > 0.0f && Size.Y > 0.0f)
-	{
-		if (Group || Child)
-		{
-			// Two-axis compositing needs a backdrop sample, not a translucent accent wash.
-			// One logical-pixel band keeps the cross and glow independent without textures.
-			const int32 Bands = FMath::Max(1, FMath::CeilToInt(Size.Y));
-			for (int32 Band = 0; Band < Bands; ++Band)
-			{
-				const float Top = Size.Y * Band / Bands;
-				const float Bottom = Size.Y * (Band + 1) / Bands;
-				MixtormatGradient::FStop Stops[13];
-				for (int32 Index = 0; Index < UE_ARRAY_COUNT(Stops); ++Index)
-				{
-					const float X = static_cast<float>(Index) / (UE_ARRAY_COUNT(Stops) - 1);
-					Stops[Index] = { X, ColorAt(X, (Top + Bottom) * 0.5f, false) };
-				}
-				const FVector2f BandSize(Size.X, Bottom - Top);
-				MixtormatGradient::Paint(Elements, LayerId, Geometry.ToPaintGeometry(BandSize,
-					FSlateLayoutTransform(FVector2f(0.0f, Top))), BandSize, Orient_Horizontal,
-					MakeArrayView(Stops), FVector4f(0.0f));
-			}
+			CompositeOverlay(Cross, Palette, BodySamples, Y, Samples);
 		}
 		else
 		{
-			TArray<MixtormatGradient::FStop, TInlineAllocator<16>> Stops;
-			// Include the reach endpoint explicitly: the glow must stop, not stretch to the bottom.
-			for (int32 Index = 0; Index <= 12; ++Index)
-			{
-				const float Y = (Selected && Reach > 0.0f ? Reach : Size.Y) * Index / 12.0f;
-				Stops.Add({ Y / Size.Y, ColorAt(0.0f, Y, false) });
-			}
-			if (Selected && Reach > 0.0f && Reach < Size.Y)
-			{
-				Stops.Add({ 1.0f, ColorAt(0.0f, Size.Y, false) });
-			}
-			MixtormatGradient::Paint(Elements, LayerId, Geometry.ToPaintGeometry(), Size,
-				Orient_Vertical, MakeArrayView(Stops), FVector4f(0.0f));
+			Samples = BodySamples;
 		}
-		if (Selected || !Child)
+	};
+	const auto GlowAt = [&](float Y)
+	{
+		FMixtormatSurfaceRecipe Band = Glow;
+		for (FMixtormatPaintLayer& Layer : Band.Layers)
 		{
-			const float Thickness = FMath::Clamp(Selected ? LayerActiveHairlineWidth : HairlineThickness, 0.0f, Size.Y);
-			MixtormatGradient::FStop LineStops[13];
-			for (int32 Index = 0; Index < UE_ARRAY_COUNT(LineStops); ++Index)
-			{
-				const float X = static_cast<float>(Index) / (UE_ARRAY_COUNT(LineStops) - 1);
-				LineStops[Index] = { X, ColorAt(X, 0.0f, true) };
-			}
-			const FVector2f LineSize(Size.X, Thickness);
-			MixtormatGradient::Paint(Elements, LayerId + 1, Geometry.ToPaintGeometry(LineSize,
-				FSlateLayoutTransform()), LineSize, Orient_Horizontal, MakeArrayView(LineStops), FVector4f(0.0f));
+			const float Coverage = EvaluateRamp(Layer.OpacityRamp, Y);
+			Layer.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Horizontal, Coverage, Coverage, 2);
+		}
+		return Band;
+	};
+	int32 PaintLayer = LayerId;
+	if (Group)
+	{
+		++PaintLayer;
+		const int32 Bands = FMath::Max(1, FMath::CeilToInt(Size.Y));
+		for (int32 Band = 0; Band < Bands; ++Band)
+		{
+			const float Top = Size.Y * Band / Bands;
+			const float Bottom = Size.Y * (Band + 1) / Bands;
+			FMixtormatSurfacePainter::PaintOverlay(Elements, PaintLayer,
+				BandGeometry(Top, Bottom - Top), Cross, Palette, BodySamples,
+				(Top + Bottom) * 0.5f / Size.Y, DrawStyle);
 		}
 	}
-	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId + 2,
+	if (Context.bSelected && Reach > 0.0f)
+	{
+		++PaintLayer;
+		if (!Group && !Child)
+		{
+			FMixtormatSurfacePainter::PaintOverlay(Elements, PaintLayer, Geometry,
+				Glow, Palette, BodySamples, 0.0f, DrawStyle);
+		}
+		else
+		{
+			const int32 Bands = FMath::Max(1, FMath::CeilToInt(Reach));
+			for (int32 Band = 0; Band < Bands; ++Band)
+			{
+				const float Top = Reach * Band / Bands;
+				const float Bottom = Reach * (Band + 1) / Bands;
+				const float Y = (Top + Bottom) * 0.5f / Size.Y;
+				FMixtormatSurfaceSamples Backdrop;
+				BackdropAt(Y, Backdrop);
+				FMixtormatSurfacePainter::PaintOverlay(Elements, PaintLayer,
+					BandGeometry(Top, Bottom - Top), GlowAt(Y), Palette, Backdrop, Y, DrawStyle);
+			}
+		}
+	}
+	if (Context.bSelected || !Child)
+	{
+		const float Width = FMath::Clamp(Context.bSelected
+			? Theme.Layer.ActiveHairlineWidth : Theme.Layer.HairlineWidth, 0.0f, Size.Y);
+		if (Width > 0.0f)
+		{
+			FMixtormatSurfaceSamples Backdrop;
+			BackdropAt(0.0f, Backdrop);
+			if (Context.bSelected && Reach > 0.0f)
+			{
+				FMixtormatSurfaceSamples WithGlow;
+				CompositeOverlay(GlowAt(0.0f), Palette, Backdrop, 0.0f, WithGlow);
+				Backdrop = WithGlow;
+			}
+			FMixtormatSurfacePainter::PaintOverlay(Elements, ++PaintLayer,
+				BandGeometry(0.0f, Width), MakeLayerHairlineRecipe(Theme, Context.bSelected),
+				Palette, Backdrop, 0.0f, DrawStyle);
+		}
+	}
+	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, PaintLayer + 1,
 		WidgetStyle, bParentEnabled);
 }

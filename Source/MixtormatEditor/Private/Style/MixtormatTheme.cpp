@@ -222,9 +222,21 @@ namespace Mixtormat
 		T.Layer.ChildSaturation = 1.2f;
 		T.Layer.ChildHoverSaturation = 2.0f;
 		T.Layer.ChildSelectedSaturation = 1.0f;
-		T.Layer.RestStrength = 0.12f;
-		T.Layer.HoverStrength = 0.18f;
-		T.Layer.SelectedStrength = 0.24f;
+		T.Layer.RestStrength = 1.0f;
+		T.Layer.HoverStrength = 1.0f;
+		T.Layer.SelectedStrength = 1.0f;
+		T.Layer.RowBottom = SRGB(20, 22, 23);
+		T.Layer.HoverTop = SRGB(45, 49, 52);
+		T.Layer.HoverBottom = SRGB(34, 38, 41);
+		T.Layer.SelectedTop = SRGB(56, 62, 66);
+		T.Layer.SelectedBottom = SRGB(42, 47, 50);
+		T.Layer.ChildLeft = SRGB(23, 25, 27);
+		T.Layer.ChildRight = SRGB(37, 41, 44);
+		T.Layer.ChildSelectedLeft = SRGB(29, 32, 34);
+		T.Layer.ChildSelectedRight = SRGB(48, 53, 57);
+		T.Layer.Cross = SRGB(51, 56, 60);
+		T.Layer.HiddenTop = SRGB(25, 27, 29);
+		T.Layer.HiddenEnd = SRGB(16, 17, 18);
 		T.Layer.GroupStrength = 0.5f;                // --group-cross-opacity
 		T.Layer.ChildStrength = 0.46f;               // --child-right-opacity
 		T.Layer.ChildHoverStrength = 1.0f;           // --child-hover-right-opacity
@@ -439,6 +451,26 @@ namespace Mixtormat
 		Clamp01(TEXT("Layer.ActiveGlow.HairlineOpacity"), InOutTheme.Layer.ActiveGlow.HairlineOpacity);
 		Clamp01(TEXT("Layer.ActiveHairlineOpacity"), InOutTheme.Layer.ActiveHairlineOpacity);
 		Clamp01(TEXT("Layer.GroupStrength"), InOutTheme.Layer.GroupStrength);
+				Clamp01(TEXT("Layer.RestStrength"), InOutTheme.Layer.RestStrength);
+				Clamp01(TEXT("Layer.HoverStrength"), InOutTheme.Layer.HoverStrength);
+				Clamp01(TEXT("Layer.SelectedStrength"), InOutTheme.Layer.SelectedStrength);
+				Clamp01(TEXT("Layer.GroupTintStrength"), InOutTheme.Layer.GroupTintStrength);
+				Clamp01(TEXT("Layer.GroupTintSelectedStrength"), InOutTheme.Layer.GroupTintSelectedStrength);
+				Clamp01(TEXT("Layer.ReferenceHiddenTint"), InOutTheme.Layer.ReferenceHiddenTint);
+				Clamp01(TEXT("Layer.ReferenceSelectedTint"), InOutTheme.Layer.ReferenceSelectedTint);
+				Clamp01(TEXT("Layer.ReferenceHoverTint"), InOutTheme.Layer.ReferenceHoverTint);
+				Clamp01(TEXT("Layer.ReferenceRestTint"), InOutTheme.Layer.ReferenceRestTint);
+				Clamp01(TEXT("Layer.InstanceSourceLeftTint"), InOutTheme.Layer.InstanceSourceLeftTint);
+				Clamp01(TEXT("Layer.InstanceSourceRightTint"), InOutTheme.Layer.InstanceSourceRightTint);
+				Clamp01(TEXT("Layer.ChildLeftOpacity"), InOutTheme.Layer.ChildLeftOpacity);
+				Clamp01(TEXT("Layer.ChildHoverLeftOpacity"), InOutTheme.Layer.ChildHoverLeftOpacity);
+				Clamp01(TEXT("Layer.ChildSelectedLeftOpacity"), InOutTheme.Layer.ChildSelectedLeftOpacity);
+				Clamp01(TEXT("Layer.HairlineOpacity"), InOutTheme.Layer.HairlineOpacity);
+				ClampSaturation(TEXT("Layer.GroupSaturation"), InOutTheme.Layer.GroupSaturation);
+				ClampSaturation(TEXT("Layer.ChildSaturation"), InOutTheme.Layer.ChildSaturation);
+				ClampSaturation(TEXT("Layer.ChildHoverSaturation"), InOutTheme.Layer.ChildHoverSaturation);
+				ClampSaturation(TEXT("Layer.ChildSelectedSaturation"), InOutTheme.Layer.ChildSelectedSaturation);
+				ClampSaturation(TEXT("Layer.ActiveGlow.Saturation"), InOutTheme.Layer.ActiveGlow.Saturation);
 		Clamp01(TEXT("Layer.ChildStrength"), InOutTheme.Layer.ChildStrength);
 		Clamp01(TEXT("Layer.ChildHoverStrength"), InOutTheme.Layer.ChildHoverStrength);
 		Clamp01(TEXT("Layer.ChildSelectedStrength"), InOutTheme.Layer.ChildSelectedStrength);
@@ -497,7 +529,10 @@ namespace Mixtormat
 				ClampMin(TEXT("Card.Reach"), InOutTheme.Card.Reach, 0.0f);
 		ClampMin(TEXT("Button.Height"), InOutTheme.Button.Height, 1.0f);
 		ClampMin(TEXT("Button.HairlineWidth"), InOutTheme.Button.HairlineWidth, 0.0f);
-		ClampMin(TEXT("LayerLayout.RowHeight"), InOutTheme.LayerLayout.RowHeight, 1.0f);
+		ClampMin(TEXT("Layer.HairlineWidth"), InOutTheme.Layer.HairlineWidth, 0.0f);
+				ClampMin(TEXT("Layer.ActiveHairlineWidth"), InOutTheme.Layer.ActiveHairlineWidth, 0.0f);
+				ClampMin(TEXT("Layer.ActiveGlow.Reach"), InOutTheme.Layer.ActiveGlow.Reach, 0.0f);
+				ClampMin(TEXT("LayerLayout.RowHeight"), InOutTheme.LayerLayout.RowHeight, 1.0f);
 		ClampMin(TEXT("LayerLayout.GroupRowHeight"), InOutTheme.LayerLayout.GroupRowHeight, 1.0f);
 		ClampMin(TEXT("LayerLayout.ChildRowHeight"), InOutTheme.LayerLayout.ChildRowHeight, 1.0f);
 		ClampMin(TEXT("LayerHierarchy.Width"), InOutTheme.LayerHierarchy.Width, 0.0f);

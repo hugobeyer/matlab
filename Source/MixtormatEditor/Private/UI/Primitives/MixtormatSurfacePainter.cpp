@@ -30,6 +30,12 @@ namespace Mixtormat
 			Ref.Saturation *= State.Saturation;
 
 			FLinearColor Source = ResolveColor(Palette, Ref);
+			if (Layer.SourceEnd.IsSet() && !State.SourceOverride.IsSet())
+			{
+				FMixtormatColorRef End = Layer.SourceEnd.GetValue();
+				End.Saturation *= State.Saturation;
+				Source = FMath::Lerp(Source, ResolveColor(Palette, End), FMath::Clamp(T, 0.0f, 1.0f));
+			}
 			Source.A *= EvaluateRamp(Layer.OpacityRamp, T) * Layer.Strength * State.Strength * State.Opacity;
 			return Source;
 		}
@@ -58,10 +64,7 @@ namespace Mixtormat
 			return nullptr;
 		}
 
-		// The body colour at a position along its axis, for a border to blend against.
-		//
-		// Indexed rather than interpolated: the samples are already spaced along the axis, and
-		// interpolating a second time would bend the curve again for no gain.
+		// Sample the painted piecewise-linear gradient using its actual authored positions.
 		FLinearColor SampleBodyAt(const FMixtormatSurfaceSamples& Samples, const float T)
 		{
 			if (Samples.Colors.Num() == 0)
@@ -72,10 +75,18 @@ namespace Mixtormat
 			{
 				return Samples.Colors[0];
 			}
-			const int32 Index = FMath::Clamp(
-				FMath::RoundToInt(T * static_cast<float>(Samples.Colors.Num() - 1)),
-				0, Samples.Colors.Num() - 1);
-			return Samples.Colors[Index];
+			if (T <= Samples.Positions[0]) { return Samples.Colors[0]; }
+			for (int32 Index = 1; Index < Samples.Colors.Num(); ++Index)
+			{
+				if (T <= Samples.Positions[Index])
+				{
+					const float Span = Samples.Positions[Index] - Samples.Positions[Index - 1];
+					return Span <= UE_SMALL_NUMBER ? Samples.Colors[Index]
+						: FMath::Lerp(Samples.Colors[Index - 1], Samples.Colors[Index],
+							(T - Samples.Positions[Index - 1]) / Span);
+				}
+			}
+			return Samples.Colors.Last();
 		}
 
 		// EOrientation is an *unscoped* UENUM in SlateCore, so its values are spelled bare. This
@@ -164,15 +175,19 @@ namespace Mixtormat
 		}
 	}
 
-	int32 CompositeSurface(
+	static int32 CompositeLayers(
 		const FMixtormatSurfaceRecipe& Recipe,
 		const FMixtormatResolvedPalette& Palette,
 		const FMixtormatStateModifier& State,
+		const FMixtormatSurfaceSamples* BackdropSamples,
+		float BackdropPosition,
 		FMixtormatSurfaceSamples& OutSamples)
 	{
+		check(BackdropSamples != &OutSamples);
 		OutSamples.Reset();
 
-		const FLinearColor Base = ResolveColor(Palette, Recipe.Base);
+		const FLinearColor Base = BackdropSamples == nullptr
+					? ResolveColor(Palette, Recipe.Base) : FLinearColor::Transparent;
 
 		// The axis is whichever ramp has the most authored points along a single direction. Picking
 		// the busiest rather than the first means a surface whose first layer is a flat accent still
@@ -236,10 +251,24 @@ namespace Mixtormat
 			}
 		}
 
-		for (int32 StopIndex = 0; StopIndex < OutSamples.Positions.Num(); ++StopIndex)
+		// Keep backdrop breakpoints when an overlay runs along the same axis.
+				if (BackdropSamples != nullptr && BackdropSamples->Axis == OutSamples.Axis)
+				{
+					for (float Position : BackdropSamples->Positions)
+					{
+						if (OutSamples.Positions.Num() < FMixtormatSurfaceSamples::MaxStops)
+						{
+							OutSamples.Positions.AddUnique(Position);
+						}
+					}
+					OutSamples.Positions.Sort();
+				}
+
+				for (int32 StopIndex = 0; StopIndex < OutSamples.Positions.Num(); ++StopIndex)
 		{
 			const float T = OutSamples.Positions[StopIndex];
-			FLinearColor Color = Base;
+			FLinearColor Color = BackdropSamples == nullptr ? Base
+							: SampleBodyAt(*BackdropSamples, BackdropSamples->Axis == OutSamples.Axis ? T : BackdropPosition);
 
 			for (const FMixtormatPaintLayer& Layer : Recipe.Layers)
 			{
@@ -266,6 +295,55 @@ namespace Mixtormat
 			check(OutSamples.Colors.Num() == OutSamples.Positions.Num());
 
 			return OutSamples.Colors.Num();
+	}
+
+	int32 CompositeSurface(
+		const FMixtormatSurfaceRecipe& Recipe,
+		const FMixtormatResolvedPalette& Palette,
+		const FMixtormatStateModifier& State,
+		FMixtormatSurfaceSamples& OutSamples)
+	{
+		return CompositeLayers(Recipe, Palette, State, nullptr, 0.0f, OutSamples);
+	}
+
+	int32 CompositeOverlay(
+		const FMixtormatSurfaceRecipe& Recipe,
+		const FMixtormatResolvedPalette& Palette,
+		const FMixtormatSurfaceSamples& BackdropSamples,
+		float BackdropPosition,
+		FMixtormatSurfaceSamples& OutSamples)
+	{
+		return CompositeLayers(Recipe, Palette, FMixtormatStateModifier(),
+			&BackdropSamples, BackdropPosition, OutSamples);
+	}
+
+	int32 FMixtormatSurfacePainter::PaintOverlay(
+		FSlateWindowElementList& Elements,
+		int32 LayerId,
+		const FGeometry& Geometry,
+		const FMixtormatSurfaceRecipe& Recipe,
+		const FMixtormatResolvedPalette& Palette,
+		const FMixtormatSurfaceSamples& BackdropSamples,
+		float BackdropPosition,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
+	{
+		return PaintOverlay(Elements, LayerId, Geometry.ToPaintGeometry(), Recipe,
+			Palette, BackdropSamples, BackdropPosition, DrawStyle);
+	}
+
+	int32 FMixtormatSurfacePainter::PaintOverlay(
+		FSlateWindowElementList& Elements,
+		int32 LayerId,
+		const FPaintGeometry& PaintGeometry,
+		const FMixtormatSurfaceRecipe& Recipe,
+		const FMixtormatResolvedPalette& Palette,
+		const FMixtormatSurfaceSamples& BackdropSamples,
+		float BackdropPosition,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
+	{
+		FMixtormatSurfaceSamples Samples;
+		CompositeOverlay(Recipe, Palette, BackdropSamples, BackdropPosition, Samples);
+		return PaintBody(Elements, LayerId, PaintGeometry, Recipe, Samples, DrawStyle);
 	}
 
 	int32 FMixtormatSurfacePainter::PaintBody(

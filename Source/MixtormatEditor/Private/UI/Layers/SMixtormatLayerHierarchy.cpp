@@ -3,7 +3,7 @@
 #include "UI/Layers/SMixtormatLayerHierarchy.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
 
 void SMixtormatLayerHierarchy::Construct(const FArguments& InArgs)
@@ -21,7 +21,8 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 	const int32 ChildLayer = SCompoundWidget::OnPaint(Args, Geometry, CullingRect,
 		Elements, LayerId, Style, bParentEnabled);
 	const FVector2f Size(Geometry.GetLocalSize());
-	const float Weight = FMath::Max(0.0f, MixtormatTokens::LayerHierarchyLineWidth);
+	const Mixtormat::FMixtormatResolvedLayerStyle& LayerStyle = FMixtormatThemeStore::GetResolved().Layers;
+	const float Weight = FMath::Max(0.0f, LayerStyle.HierarchyWidth);
 	if (Weight <= 0.0f || Size.X <= 0.0f || Size.Y <= 0.0f)
 	{
 		return ChildLayer;
@@ -29,8 +30,7 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 	const float Gap = MixtormatTokens::LayerRowGap;
 	const float HalfIndent = MixtormatTokens::LayerScopeIndent * 0.5f;
 	const float Mid = FMath::Min(Hierarchy.RowHeight, Size.Y) * 0.5f;
-	const FLinearColor Color = MixtormatPalette::RowText().CopyWithNewOpacity(
-		MixtormatTokens::LayerConnectorOpacity) * Style.GetColorAndOpacityTint();
+	const FLinearColor Color = LayerStyle.HierarchyRail * Style.GetColorAndOpacityTint();
 	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
 		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
 	const auto Stroke = [&](float X1, float Y1, float X2, float Y2)

@@ -3,7 +3,7 @@
 #include "UI/Layers/SMixtormatLayerRow.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatBadge.h"
@@ -62,9 +62,9 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
 			SNew(SMixtormatLayerSurface)
-			.StartColor(this, &SMixtormatLayerRow::GetBackgroundStart)
-			.EndColor(this, &SMixtormatLayerRow::GetBackgroundEnd)
 			.bSelected(bSelected)
+			.bVisible(bLayerEnabled)
+			.bReference(bReference)
 			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				// The surface paints its lip and glow without adding layout or hit-test slots.
@@ -81,7 +81,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 					[
 						SNew(SImage)
 						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.ColorAndOpacity(FSlateColor(MixtormatPalette::AccentBright()))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 					]
 				]
 				+ SOverlay::Slot()
@@ -219,48 +219,16 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	];
 }
 
-FLinearColor SMixtormatLayerRow::GetBackgroundStart() const
-{
-	if (bReference.Get(false))
-	{
-		const float TintAmount = !bLayerEnabled.Get(true) ? 0.08f
-			: bSelected.Get(false) ? 0.38f : IsHovered() ? 0.30f : 0.22f;
-		return FMath::Lerp(MixtormatPalette::Panel(), MixtormatPalette::Modified(), TintAmount);
-	}
-	if (!bLayerEnabled.Get(true))
-	{
-		return MixtormatPalette::LayerHiddenTop();
-	}
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerSelectedTop();
-	}
-	return IsHovered() ? MixtormatPalette::LayerHoverTop() : MixtormatPalette::Panel();
-}
-
-FLinearColor SMixtormatLayerRow::GetBackgroundEnd() const
-{
-	if (!bLayerEnabled.Get(true))
-	{
-		return MixtormatPalette::LayerHiddenEnd();
-	}
-	if (bSelected.Get(false))
-	{
-		return MixtormatPalette::LayerSelectedBottom();
-	}
-	return IsHovered() ? MixtormatPalette::LayerHoverBottom() : MixtormatPalette::PanelBottom();
-}
-
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const
 {
+	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
 	if (!bLayerEnabled.Get(true))
 	{
-		return FSlateColor(MixtormatPalette::DisabledText());
+		return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 	}
-	return FSlateColor(bSelected.Get(false) || IsHovered()
-		? MixtormatPalette::RowText()
-		: MixtormatPalette::LayerName());
+	return FSlateColor(Palette.Get(bSelected.Get(false) || IsHovered()
+		? Mixtormat::EMixtormatColorRole::Text : Mixtormat::EMixtormatColorRole::TextMuted));
 }
 
 void SMixtormatLayerRow::HandleEyeClicked(const FPointerEvent& MouseEvent)

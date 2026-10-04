@@ -58,11 +58,9 @@ public:
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 private:
-	FLinearColor GetBackgroundStart() const;
-	FLinearColor GetBackgroundEnd() const;
+
 	FSlateColor GetNameColor() const;
-	float GetAccentStrength() const;
-	FLinearColor GetCrossStart() const;
+
 
 	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);
 

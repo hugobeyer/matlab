@@ -3,7 +3,7 @@
 #include "UI/Layers/SMixtormatLayerConnector.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
 
 FVector2D SMixtormatLayerConnector::ComputeDesiredSize(float) const
@@ -16,7 +16,8 @@ int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geom
 	const FWidgetStyle& Style, bool bParentEnabled) const
 {
 	const FVector2f Size(Geometry.GetLocalSize());
-	const float Weight = FMath::Max(0.0f, MixtormatTokens::LayerHierarchyLineWidth);
+	const Mixtormat::FMixtormatResolvedLayerStyle& LayerStyle = FMixtormatThemeStore::GetResolved().Layers;
+	const float Weight = FMath::Max(0.0f, LayerStyle.HierarchyWidth);
 		if (Weight <= 0.0f || Size.X <= 0.0f || Size.Y <= 0.0f)
 		{
 			return LayerId;
@@ -27,8 +28,7 @@ int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geom
 	const float X = FMath::Max(0.0f, Size.X - Reach);
 	const float Mid = Size.Y * 0.5f;
 	const float Gap = MixtormatTokens::LayerRowGap;
-	const FLinearColor Color = MixtormatPalette::RowText().CopyWithNewOpacity(
-		MixtormatTokens::LayerConnectorOpacity) * Style.GetColorAndOpacityTint();
+	const FLinearColor Color = LayerStyle.HierarchyRail * Style.GetColorAndOpacityTint();
 	const auto Stroke = [&](const FVector2f& Start, const FVector2f& End)
 	{
 		const bool bVertical = FMath::IsNearlyEqual(Start.X, End.X);

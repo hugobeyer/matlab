@@ -2,7 +2,8 @@
 
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Rendering/DrawElements.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
 
 void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
@@ -29,8 +30,9 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	const float GlyphSize = bVisibility ? MixtormatTokens::LayerVisibilitySize : MixtormatTokens::FoldoutIconSize;
 	const FVector2f Size(GlyphSize, GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
-	FLinearColor Color = (bActive.Get(false) || IsHovered()) && Enabled
-		? MixtormatPalette::Accent() : MixtormatPalette::RowText();
+	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+	FLinearColor Color = Palette.Get((bActive.Get(false) || IsHovered()) && Enabled
+		? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
 	Color.A = bVisibility
 		? (IsHovered() && Enabled ? 1.0f : On ? MixtormatTokens::LayerIconOpacity : MixtormatTokens::IconOffOpacity)
 		: (IsHovered() && Enabled ? MixtormatTokens::FoldoutIconHoverOpacity : MixtormatTokens::FoldoutIconOpacity);

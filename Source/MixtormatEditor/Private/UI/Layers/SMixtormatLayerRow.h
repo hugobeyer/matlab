@@ -100,8 +100,6 @@ public:
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 private:
-	FLinearColor GetBackgroundStart() const;
-	FLinearColor GetBackgroundEnd() const;
 
 	FSlateColor GetNameColor() const;
 	void HandleEyeClicked(const FPointerEvent& MouseEvent);
