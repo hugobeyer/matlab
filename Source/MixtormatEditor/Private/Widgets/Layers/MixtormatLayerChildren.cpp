@@ -1454,8 +1454,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 							[
 								SNew(SBox)
-								.WidthOverride(MixtormatTokens::ToolbarIconSize)
-								.HeightOverride(MixtormatTokens::ToolbarIconSize)
+								.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
+								.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
 								[SNew(SImage).Image(MixtormatIcons::Folder())]
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(MixtormatTokens::RowGap, 0.0f, 0.0f, 0.0f)

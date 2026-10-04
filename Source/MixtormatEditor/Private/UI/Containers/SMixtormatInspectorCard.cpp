@@ -140,10 +140,12 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 			TitleLine->AddSlot().AutoWidth().VAlign(VAlign_Center)
 			.Padding(0.0f, 0.0f, MixtormatTokens::GroupCardLeadingGap, 0.0f)
 			[
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::GroupCardLeadingIconSize)
-				.HeightOverride(MixtormatTokens::GroupCardLeadingIconSize)
-				[ InArgs._LeadingHeaderContent.ToSharedRef() ]
+				// Same rule as the full card header at the top of this function: the caller owns
+				// glyph size, hit padding, state and callbacks. Clamping the widget to a
+				// glyph-sized square here would crop that padding back off, so the click target
+				// would end up smaller than the header's own lead glyph and the two card layouts
+				// would disagree about how wide the leading control is.
+				InArgs._LeadingHeaderContent.ToSharedRef()
 			];
 		}
 		TitleLine->AddSlot()

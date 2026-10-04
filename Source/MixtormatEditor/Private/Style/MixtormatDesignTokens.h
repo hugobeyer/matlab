@@ -128,6 +128,15 @@ namespace MixtormatTokens
 	inline float TabUnderlineThickness = 1.0f;
 	constexpr float TabLabelBottomInset = 0.0f;
 	inline float ToolbarIconSize = 18.0f;
+		// Panel toolbars (library search row, Add-layer strip, inspector toolbar) are a separate role:
+		// the prototype authors --toolbar-icon-size independently of --topbar-icon-size, and the top
+		// bar's 18px glyphs are far too loud inside a dense panel toolbar.
+		inline float PanelToolbarIconSize = 14.0f;
+		// Resting opacity for top-bar action glyphs (.top-actions .asset-icon).
+		inline float TopBarIconOpacity = 0.6f;
+		// A shared action's horizontal padding. components.css gives every button `padding: 0 8px`,
+		// which is not the panel gutter the actions were inheriting.
+		inline float GroupButtonPaddingHorizontal = 8.0f;
 	inline float ViewportOverlayInset = 8.0f;
 	constexpr float PreviewToolbarButtonSize = 24.0f;
 	// Inner inset of a viewport overlay cluster -- the gap between its gradient plate and the
@@ -481,16 +490,16 @@ namespace MixtormatTokens
 	constexpr float MaskGalleryTileMinimum = 52.0f;
 	constexpr float MaskGalleryTileMaximum = 124.0f;
 	constexpr float MaskGalleryTileStep = 12.0f;
-	inline float MaskGalleryTileGap = 1.0f;
+	inline float MaskGalleryTileGap = 5.0f;
 	constexpr float TileGap = 4.0f;
 	constexpr float MaterialGalleryTileDefault = 96.0f;
 	constexpr float MaterialGalleryTileMinimum = 72.0f;
 	constexpr float MaterialGalleryTileMaximum = 144.0f;
 	constexpr float MaterialGalleryTileStep = 12.0f;
-	constexpr float MaterialGalleryTileGap = 1.0f;
-	constexpr float MaterialGalleryTilePadding = 2.0f;
+	constexpr float MaterialGalleryTileGap = 5.0f;
+	constexpr float MaterialGalleryTilePadding = 5.0f;
 	constexpr float MaterialGalleryHeaderGap = 2.0f;
-	constexpr float TileNameStripHeight = 13.0f;
+	constexpr float TileNameStripHeight = 12.0f;
 	constexpr float TileBadgeHeight = 16.0f;
 	// Two different insets: one sits on the picture, the other outside it between the image and
 	// its selection outline.
@@ -579,13 +588,13 @@ namespace MixtormatTokens
 	inline float InspectorColorSwatchHeight = 18.0f;
 
 	// ---- Shell and dialogs ------------------------------------------------------------------
-	inline float PanelPadding = 4.0f;
+	inline float PanelPadding = 7.0f;
 	inline float SplitterHandleSize = 1.0f;
-	inline float SplitterHitSize = 5.0f;
-	inline float LayerStackWidth = 240.0f;
-	inline float InspectorWidth = 300.0f;
-	inline float TopBarHeight = 32.0f;
-	inline float StatusBarHeight = 18.0f;
+	inline float SplitterHitSize = 6.0f;
+	inline float LayerStackWidth = 423.0f;
+	inline float InspectorWidth = 520.0f;
+	inline float TopBarHeight = 38.0f;
+	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;
 	inline float BottomLibraryCollapseButtonHeight = 24.0f;
 	// The mask gallery's starting tile size, and only that -- despite the name, nothing draws a
@@ -738,16 +747,19 @@ namespace MixtormatTokens
 	// card read as another caption that happened to sit higher up.
 	inline float FontCardTitle = 8.0f;
 	inline float FontGroupCardTitle = 8.0f;
-	inline float FontTile = 8.0f;
+	inline float FontTile = 9.0f;
 	// Group headers: small tracked caps. A header names a group rather than being read as content,
 	// so it sits under the caption tier -- the extra header height carries it instead of the type.
 	inline float FontGroupHeader = 7.0f;
 	// A layer's source and its badge are both 8px and both secondary to the name, but they are
 	// named apart from the group header so the stack can be retuned without touching panels.
 	inline float FontLayerSource = 8.0f;
-	inline float FontBadge = 7.0f;
+	inline float FontBadge = 8.0f;
 	inline float FontDialogLabel = 9.0f;
 	inline float FontMaskBarHeading = 9.0f;
+		// A menu row's right-hand shortcut is authored at 9px, not at the caption's 11px.
+		inline float FontMenuShortcut = 9.0f;
+		inline float ShortcutTextOpacity = 0.4f;
 	inline float FontDragGhostLabel = 9.0f;
 
 	// Weight as a number, because the live theme carries numbers and colours and nothing else.
@@ -759,10 +771,13 @@ namespace MixtormatTokens
 
 	// Letter spacing is in 1/1000 em. Applied to the all-caps captions and group headers, where
 	// tight caps are hard to read at this size.
-	constexpr int32 CaptionLetterSpacing = 140;
+	// CSS 1px at an 11px caption: 1/11*1000 = 91. This was 140, which opened the caps to 1.54px.
+		constexpr int32 CaptionLetterSpacing = 91;
 	// CSS 0.6px / 8px * 1000; persisted value remains in Slate's 1/1000-em units.
 			inline float GroupCardTitleLetterSpacing = 75.0f;
 	constexpr int32 GroupHeaderLetterSpacing = 160;
+		// CSS .8px at an 11px caption: 0.8/11*1000 = 73. Shared by the menu section caption.
+		constexpr int32 MenuCaptionLetterSpacing = 73;
 	// The layer source is caps too, but it runs alongside a mixed-case name rather than standing
 	// alone, so it is opened up less -- full caption spacing made it the loudest thing in the row.
 	constexpr int32 LayerSourceLetterSpacing = 60;

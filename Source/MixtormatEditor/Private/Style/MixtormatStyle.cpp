@@ -590,15 +590,15 @@ void FMixtormatStyle::Refresh()
 				StyleInstance->Set(TEXT("Mixtormat.HelpTitle"), HelpTitle);
 
 		FTextBlockStyle MenuShortcut = FTextBlockStyle(MenuLabel)
-			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
+			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontMenuShortcut))
 			.SetColorAndOpacity(MixtormatPalette::ShortcutText());
 		StyleInstance->Set(TEXT("Mixtormat.MenuShortcut"), MenuShortcut);
 
 		FTextBlockStyle MenuCaption = FTextBlockStyle(MenuLabel)
-			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontGroupHeader))
+			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
 			.SetColorAndOpacity(MixtormatPalette::CaptionText());
 		FSlateFontInfo MenuCaptionFont = MenuCaption.Font;
-		MenuCaptionFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
+		MenuCaptionFont.LetterSpacing = MixtormatTokens::MenuCaptionLetterSpacing;
 		MenuCaption.SetFont(MenuCaptionFont);
 		StyleInstance->Set(TEXT("Mixtormat.MenuCaption"), MenuCaption);
 

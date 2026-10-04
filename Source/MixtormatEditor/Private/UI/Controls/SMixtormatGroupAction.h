@@ -39,7 +39,7 @@ public:
 					.Hovered_Lambda([this]() { return IsHovered(); })
 					.Pressed_Lambda([this]() { return IsPressed(); })
 					.ShowSeparator(bShowSeparator)
-					.Padding(FMargin(MixtormatTokens::PanelPadding, 0.0f))
+					.Padding(FMargin(MixtormatTokens::GroupButtonPaddingHorizontal, 0.0f))
 					[Content]
 				]
 			]

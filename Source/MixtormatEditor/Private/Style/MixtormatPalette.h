@@ -256,7 +256,8 @@ namespace MixtormatPalette
 	inline FLinearColor BadgeBottomHover() { return Hex(0x121315); }
 	inline FLinearColor BadgeHairline() { return FMixtormatLiveTheme::ResolveColor(TEXT("BadgeHairline"), Hex(0xFFFFFF, 0.14f)); }
 	inline FLinearColor DisabledText() { return Hex(0xFFFFFF, 0.20f); }
-	inline FLinearColor ShortcutText() { return Hex(0xFFFFFF, 0.24f); }
+	// CSS text-rgb at 40%: a shortcut is a quiet right-hand annotation, not a dimmed label.
+		inline FLinearColor ShortcutText() { return RowText().CopyWithNewOpacity(MixtormatTokens::ShortcutTextOpacity); }
 
 	// The brand mark sunk into an empty viewport. Black rather than a grey, so it darkens whatever
 	// it sits on instead of fighting it -- the viewport's background is not ours to know.

@@ -429,8 +429,8 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 					.OnClicked(this, &SMixtormat::ImportSurfaces)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::ToolbarIconSize)
-						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
+						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
 						[
 							SNew(SImage).Image(MixtormatIcons::Folder())
 						]
@@ -545,8 +545,8 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					.OnClicked(this, &SMixtormat::RefreshSurfaceList)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::ToolbarIconSize)
-						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
+						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
 						[
 							SNew(SImage).Image(MixtormatIcons::Refresh())
 						]
@@ -563,8 +563,8 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					.OnClicked(this, &SMixtormat::RebuildBuiltInLibrary)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::ToolbarIconSize)
-						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
+						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
 						[
 							SNew(SImage).Image(MixtormatIcons::Settings())
 						]

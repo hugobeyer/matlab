@@ -133,6 +133,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Add())
+																		// .top-actions .asset-icon opacity, so the glyph reads as an
+																		// annotation rather than the loudest thing in the bar.
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -157,6 +161,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Folder())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -182,6 +188,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Save())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -207,6 +215,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::SaveAs())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -245,6 +255,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Cube())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -270,6 +282,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Documentation())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -295,6 +309,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 							.HeightOverride(MixtormatTokens::ToolbarIconSize)
 							[
 								SNew(SImage).Image(MixtormatIcons::Settings())
+																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
+																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)

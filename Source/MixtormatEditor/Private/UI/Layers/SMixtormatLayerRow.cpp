@@ -198,8 +198,11 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						.VAlign(VAlign_Center)
 						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
 						[
+							// FoldoutIconSize, not ChevronSize: the disclosure's glyph is the
+							// foldout role, and SMixtormatLayerIcon adds its hit slop to this on
+							// top, so the target stays wider than the square glyph box.
 							SNew(SMixtormatLayerIcon)
-							.Size(MixtormatTokens::ChevronSize)
+							.Size(MixtormatTokens::FoldoutIconSize)
 							.IsEnabled(InArgs._bHasChildren)
 							.Icon_Lambda([this, bHasChildren = InArgs._bHasChildren]()
 							{
