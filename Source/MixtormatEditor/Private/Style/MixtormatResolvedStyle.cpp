@@ -409,10 +409,9 @@ namespace Mixtormat
 			FMixtormatResolvedMenuStyle& Menu = OutStyle.Menus;
 			Menu.Ground = P.Get(EMixtormatColorRole::MenuGround);
 
-			// The lip is the only tinted part of the ground, and it is the accent rather than a
-			// second grey -- a menu edge that catches the same light the controls do.
-			FMixtormatColorRef LipRef = MakeColorRef(EMixtormatColorRole::Accent);
-			LipRef.Opacity = Theme.Menu.LipTintOpacity;
+			// Build the authored local lip source with the accent as a tint/composite layer.
+			FMixtormatColorRef LipRef;
+			LipRef.LocalColor = Theme.Menu.LipSource;
 			Menu.Lip = ResolveColor(P, LipRef);
 
 			FMixtormatColorRef BorderRef = MakeColorRef(EMixtormatColorRole::Hairline);
@@ -426,8 +425,6 @@ namespace Mixtormat
 			DisabledRef.Opacity = Theme.Menu.ItemDisabledOpacity;
 			Menu.ItemDisabled = ResolveColor(P, DisabledRef);
 
-			Menu.Width = Theme.Menu.Width;
-			Menu.ItemHeight = Theme.Menu.ItemHeight;
 			Menu.CornerRadius = Theme.Menu.CornerRadius;
 		}
 
@@ -451,19 +448,22 @@ namespace Mixtormat
 			Gallery.CaptionGround = P.Get(EMixtormatColorRole::Shade);
 			Gallery.BorderWidth = Theme.Gallery.BorderWidth;
 			Gallery.HoverLiftOpacity = Theme.Gallery.HoverLiftOpacity;
-			Gallery.TileSize = Theme.Gallery.TileSize;
 			Gallery.CornerRadius = Theme.Gallery.CornerRadius;
 		}
 
 		// ---- Preview -------------------------------------------------------------------
 		{
 			FMixtormatResolvedPreviewStyle& Preview = OutStyle.Preview;
-			FMixtormatColorRef PlateRef = MakeColorRef(EMixtormatColorRole::OverlayGround);
+			FMixtormatColorRef PlateRef;
+			PlateRef.LocalColor = Theme.Preview.PlateSource;
 			Preview.OverlayPlate = ResolveColor(P, PlateRef);
-			Preview.OverlayPlateOpacity = Theme.Preview.OverlayPlateOpacity;
-			Preview.HoverAccent = Theme.Preview.OverlayHoverAccent;
-			Preview.PressAccent = Theme.Preview.OverlayPressAccent;
-			Preview.ToolbarIconSize = Theme.PreviewLayout.IconSize;
+			Preview.OverlayGround = P.Get(EMixtormatColorRole::OverlayGround);
+			Preview.OverlayPlateOpacity = Theme.Preview.PlateOpacity;
+			Preview.HoverAccent = Theme.Preview.HoverAccent;
+			Preview.PressAccent = Theme.Preview.PressAccent;
+			Preview.IconOpacity = Theme.Preview.IconOpacity;
+			Preview.IconRestOpacity = Theme.Preview.IconRestOpacity;
+			Preview.GripOpacity = Theme.Preview.GripOpacity;
 		}
 
 		// ---- Shell ---------------------------------------------------------------------
@@ -472,13 +472,15 @@ namespace Mixtormat
 			Shell.Ground = P.Get(EMixtormatColorRole::Shell);
 
 			FMixtormatColorRef SepRef = MakeColorRef(EMixtormatColorRole::Hairline);
-			SepRef.Opacity = Theme.Shell.SplitterOpacity;
+			SepRef.Opacity = Theme.ShellTheme.SplitterOpacity;
 			Shell.Separator = ResolveColor(P, SepRef);
 
-			Shell.SeparatorWidth = Theme.Shell.SplitterVisualWidth;
-			Shell.SeparatorHitWidth = Theme.Shell.SplitterHitWidth;
-			Shell.SeparatorOpacity = Theme.Shell.SplitterOpacity;
-			Shell.SeparatorHoverOpacity = Theme.Shell.SplitterHoverOpacity;
+			FMixtormatColorRef HoverRef;
+			HoverRef.LocalColor = Theme.ShellTheme.SplitterHoverSource;
+			HoverRef.Opacity = Theme.ShellTheme.SplitterHoverOpacity;
+			Shell.SeparatorHover = ResolveColor(P, HoverRef);
+			Shell.SeparatorOpacity = Theme.ShellTheme.SplitterOpacity;
+			Shell.SeparatorHoverOpacity = Theme.ShellTheme.SplitterHoverOpacity;
 		}
 
 		// ---- Icons / Typography / Geometry ----------------------------------------------
@@ -496,6 +498,8 @@ namespace Mixtormat
 		OutStyle.CardLayout = Theme.CardLayout;
 		OutStyle.LayerLayout = Theme.LayerLayout;
 		OutStyle.MenuLayout = Theme.MenuLayout;
+		OutStyle.MenuLayout.Width = Theme.MenuLayout.Width;
+		OutStyle.MenuLayout.RowHeight = Theme.MenuLayout.RowHeight;
 		OutStyle.PreviewLayout = Theme.PreviewLayout;
 		OutStyle.GalleryLayout = Theme.GalleryLayout;
 		OutStyle.ShellLayout = Theme.Shell;

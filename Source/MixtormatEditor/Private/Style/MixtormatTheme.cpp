@@ -290,26 +290,29 @@ namespace Mixtormat
 
 		// ---- Menu ----------------------------------------------------------------------
 		// --menu-*, --popup-*
-		T.Menu.Width = 190.0f;
-		T.Menu.ItemHeight = 20.0f;
-		T.Menu.Padding = 3.0f;
-		T.Menu.LipHeight = 25.0f;                     // --popup-lip-height
+		T.Menu.LipSource = SRGB(26, 28, 30);           // --popup-top-rgb
+		T.MenuLayout.Width = 190.0f;                   // --menu-width
+		T.MenuLayout.RowHeight = 20.0f;                // --menu-row-height
+		T.MenuLayout.ItemInset = 3.0f;                 // --menu-padding
+		T.MenuLayout.LipHeight = 25.0f;                // --popup-lip-height
 		T.Menu.LipTintOpacity = 0.1f;                 // --popup-tint-opacity
 		T.Menu.BorderOpacity = 0.16f;                 // --popup-border-opacity
 		T.Menu.ItemDisabledOpacity = 0.32f;           // --text-disabled-opacity
-		T.MenuLayout.PanelPadding = 3.0f;             // --menu-padding
+		T.MenuLayout.PanelPadding = 3.0f;
 		T.MenuLayout.IconSize = 14.0f;                // --menu-icon-size
 
 		// ---- Preview / Gallery / Shell ------------------------------------------------
-		T.Preview.OverlayPlateOpacity = 0.62f;        // --overlay-ground-opacity
-		T.Preview.OverlayHoverAccent = 0.18f;         // --overlay-hover-accent
-		T.Preview.OverlayPressAccent = 0.35f;         // --overlay-press-accent
-		T.PreviewLayout.IconSize = 14.0f;             // --overlay-icon-size
+		T.Preview.PlateSource = SRGB(21, 22, 24);      // --overlay-plate-rgb
+		T.Preview.PlateOpacity = 0.85f;               // --overlay-plate-opacity
+		T.Preview.IconOpacity = 0.6f;                 // --overlay-icon-opacity
+		T.Preview.IconRestOpacity = 0.45f;            // --overlay-icon-rest-opacity
+		T.Preview.GripOpacity = 0.45f;                // --overlay-grip-opacity
+		T.Preview.HoverAccent = 0.18f;                // --overlay-hover-accent
+		T.Preview.PressAccent = 0.35f;                // --overlay-press-accent
+		T.PreviewLayout.IconSize = 24.0f;             // --rail-icon-size
 
-		T.Gallery.TileSize = 80.0f;                   // --gallery-tile-size
-		T.Gallery.TileGap = 5.0f;                     // --gallery-gap
-		T.GalleryLayout.TileSize = 80.0f;
-		T.GalleryLayout.TileGap = 5.0f;
+		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
+		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
 
 		T.Shell.LeftWidthSeed = 423.0f;               // --left-width
 		T.Shell.InspectorWidthSeed = 520.0f;          // --inspector-width
@@ -320,6 +323,9 @@ namespace Mixtormat
 		T.Shell.PanelPadding = 7.0f;                  // --panel-padding
 		T.Shell.SplitterVisualWidth = 1.0f;           // --splitter-size
 		T.Shell.SplitterHitWidth = 6.0f;              // --splitter-hit-size
+		T.ShellTheme.SplitterHoverSource = SRGB(127, 196, 219); // --hairline-hover-rgb
+		T.ShellTheme.SplitterOpacity = 0.46f;         // --foldout-hairline-opacity
+		T.ShellTheme.SplitterHoverOpacity = 0.85f;    // --hairline-hover-opacity
 
 		// ---- Icons ---------------------------------------------------------------------
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::TopBar)] = Icon(18.0f, 0.6f);           // --topbar-icon-*
@@ -493,11 +499,14 @@ namespace Mixtormat
 		Clamp01(TEXT("Gallery.BorderOpacity"), InOutTheme.Gallery.BorderOpacity);
 		Clamp01(TEXT("Gallery.HoverLiftOpacity"), InOutTheme.Gallery.HoverLiftOpacity);
 		Clamp01(TEXT("Gallery.SelectedEdgeOpacity"), InOutTheme.Gallery.SelectedEdgeOpacity);
-		Clamp01(TEXT("Preview.OverlayPlateOpacity"), InOutTheme.Preview.OverlayPlateOpacity);
-		Clamp01(TEXT("Preview.OverlayHoverAccent"), InOutTheme.Preview.OverlayHoverAccent);
-		Clamp01(TEXT("Preview.OverlayPressAccent"), InOutTheme.Preview.OverlayPressAccent);
-		Clamp01(TEXT("Shell.SplitterOpacity"), InOutTheme.Shell.SplitterOpacity);
-		Clamp01(TEXT("Shell.SplitterHoverOpacity"), InOutTheme.Shell.SplitterHoverOpacity);
+		Clamp01(TEXT("Preview.PlateOpacity"), InOutTheme.Preview.PlateOpacity);
+		Clamp01(TEXT("Preview.IconOpacity"), InOutTheme.Preview.IconOpacity);
+		Clamp01(TEXT("Preview.IconRestOpacity"), InOutTheme.Preview.IconRestOpacity);
+		Clamp01(TEXT("Preview.GripOpacity"), InOutTheme.Preview.GripOpacity);
+		Clamp01(TEXT("Preview.HoverAccent"), InOutTheme.Preview.HoverAccent);
+		Clamp01(TEXT("Preview.PressAccent"), InOutTheme.Preview.PressAccent);
+		Clamp01(TEXT("Shell.SplitterOpacity"), InOutTheme.ShellTheme.SplitterOpacity);
+		Clamp01(TEXT("Shell.SplitterHoverOpacity"), InOutTheme.ShellTheme.SplitterHoverOpacity);
 
 		// A falloff with zero or negative samples describes a flat fill, not a curve. Two stops is
 		// the minimum that still renders as a gradient.
@@ -536,8 +545,8 @@ namespace Mixtormat
 		ClampMin(TEXT("LayerLayout.GroupRowHeight"), InOutTheme.LayerLayout.GroupRowHeight, 1.0f);
 		ClampMin(TEXT("LayerLayout.ChildRowHeight"), InOutTheme.LayerLayout.ChildRowHeight, 1.0f);
 		ClampMin(TEXT("LayerHierarchy.Width"), InOutTheme.LayerHierarchy.Width, 0.0f);
-		ClampMin(TEXT("Gallery.TileSize"), InOutTheme.Gallery.TileSize, 1.0f);
-		ClampMin(TEXT("Menu.ItemHeight"), InOutTheme.Menu.ItemHeight, 1.0f);
+		ClampMin(TEXT("GalleryLayout.TileSize"), InOutTheme.GalleryLayout.TileSize, 1.0f);
+		ClampMin(TEXT("MenuLayout.RowHeight"), InOutTheme.MenuLayout.RowHeight, 1.0f);
 
 		// The fill's shade midpoint is a position on its axis, so it is clamped rather than
 		// rejected: an out-of-range midpoint still describes a ramp, just a shifted one.

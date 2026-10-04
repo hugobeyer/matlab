@@ -509,32 +509,18 @@ namespace Mixtormat
 	// keep a normal row's shape and change only hue, so the gesture reads the same as a hover.
 	struct FMixtormatMenuTheme
 	{
-		float Width = 190.0f;
-		float ItemHeight = 20.0f;
-		float Padding = 3.0f;
-		float CornerRadius = 0.0f;
-
-		// The lip at the very top of the menu, the only place the ground is tinted.
-		float LipHeight = 25.0f;
+		// Component-local lip source and accent tint; never a global palette role.
+		FLinearColor LipSource = FLinearColor::White;
 		float LipTintOpacity = 0.1f;
 		float BorderOpacity = 0.16f;
-
 		float ItemHoverOpacity = 1.0f;
 		float ItemCheckedOpacity = 1.0f;
 		float ItemDisabledOpacity = 0.32f;
-
-		float SeparatorMargin = 0.0f;
+		float CornerRadius = 0.0f;
 	};
 
 	struct FMixtormatGalleryTheme
 	{
-		float TileSize = 80.0f;
-		float TileGap = 5.0f;
-		float TilePadding = 0.0f;
-
-		float CaptionHeight = 0.0f;
-		float CaptionInset = 0.0f;
-
 		float BorderWidth = 1.0f;
 		float BorderOpacity = 0.16f;
 		float HoverLiftOpacity = 0.38f;
@@ -547,19 +533,13 @@ namespace Mixtormat
 
 	struct FMixtormatPreviewTheme
 	{
-		float ToolbarButtonSize = 0.0f;
-		float ToolbarIconSize = 14.0f;
-		float ToolbarGap = 0.0f;
-
-		float OverlayInset = 0.0f;
-		float OverlayClusterInset = 0.0f;
-		float OverlayPlateOpacity = 0.62f;
-		float OverlayHoverAccent = 0.18f;
-		float OverlayPressAccent = 0.35f;
-
-		// Controls are specified as fractions of the split, not as fixed pixels -- the split is
-		// user-resizable, so a pixel height here would be a value nothing reads.
-		float SplitFraction = 0.0f;
+		FLinearColor PlateSource = FLinearColor::White;
+		float PlateOpacity = 0.85f;
+		float IconOpacity = 0.6f;
+		float IconRestOpacity = 0.45f;
+		float GripOpacity = 0.45f;
+		float HoverAccent = 0.18f;
+		float PressAccent = 0.35f;
 	};
 
 	// ---- Geometry ---------------------------------------------------------------------------
@@ -647,10 +627,13 @@ namespace Mixtormat
 
 	struct FMixtormatMenuMetrics
 	{
+		float Width = 190.0f;
+		float LipHeight = 25.0f;
 		float RowHeight = 20.0f;
-		float ItemInset = 0.0f;
+		float ItemInset = 3.0f;
 		float ItemGap = 0.0f;
 		float PanelPadding = 3.0f;
+		float SeparatorMargin = 0.0f;
 		float IconSize = 14.0f;
 	};
 
@@ -660,6 +643,10 @@ namespace Mixtormat
 		float ButtonSize = 0.0f;
 		float IconSize = 14.0f;
 		float ViewportPadding = 0.0f;
+		float OverlayInset = 0.0f;
+		float OverlayClusterInset = 0.0f;
+		float ToolbarGap = 0.0f;
+		float SplitFraction = 0.0f;
 	};
 
 	struct FMixtormatGalleryMetrics
@@ -668,6 +655,14 @@ namespace Mixtormat
 		float TileGap = 5.0f;
 		float TilePadding = 0.0f;
 		float CaptionHeight = 0.0f;
+		float CaptionInset = 0.0f;
+	};
+
+	struct FMixtormatShellTheme
+	{
+		FLinearColor SplitterHoverSource = FLinearColor::White;
+		float SplitterOpacity = 0.46f;
+		float SplitterHoverOpacity = 0.85f;
 	};
 
 	struct FMixtormatShellMetrics
@@ -686,8 +681,7 @@ namespace Mixtormat
 		// Visual treatment of a splitter, which *is* styleable even though its behaviour is not.
 		float SplitterVisualWidth = 1.0f;
 		float SplitterHitWidth = 6.0f;
-		float SplitterOpacity = 0.16f;
-		float SplitterHoverOpacity = 0.85f;
+
 	};
 
 	// ---- Icons ------------------------------------------------------------------------------
@@ -849,6 +843,7 @@ namespace Mixtormat
 		FMixtormatGalleryTheme Gallery;
 		FMixtormatGalleryMetrics GalleryLayout;
 
+		FMixtormatShellTheme ShellTheme;
 		FMixtormatShellMetrics Shell;
 
 		FMixtormatIconTheme Icons;

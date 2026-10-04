@@ -212,8 +212,6 @@ namespace Mixtormat
 		FLinearColor ItemChecked;
 		FLinearColor ItemDisabled;
 
-		float Width = 190.0f;
-		float ItemHeight = 20.0f;
 		float CornerRadius = 0.0f;
 	};
 
@@ -227,26 +225,27 @@ namespace Mixtormat
 
 		float BorderWidth = 1.0f;
 		float HoverLiftOpacity = 0.0f;
-		float TileSize = 80.0f;
 		float CornerRadius = 0.0f;
 	};
 
 	struct FMixtormatResolvedPreviewStyle
 	{
 		FLinearColor OverlayPlate;
-		float OverlayPlateOpacity = 0.62f;
+		FLinearColor OverlayGround;
+		float OverlayPlateOpacity = 0.85f;
 		float HoverAccent = 0.18f;
 		float PressAccent = 0.35f;
-		float ToolbarIconSize = 14.0f;
+		float IconOpacity = 0.6f;
+		float IconRestOpacity = 0.45f;
+		float GripOpacity = 0.45f;
 	};
 
 	struct FMixtormatResolvedShellStyle
 	{
 		FLinearColor Ground;
 		FLinearColor Separator;
-		float SeparatorWidth = 1.0f;
-		float SeparatorHitWidth = 6.0f;
-		float SeparatorOpacity = 0.16f;
+		FLinearColor SeparatorHover;
+		float SeparatorOpacity = 0.46f;
 		float SeparatorHoverOpacity = 0.85f;
 	};
 
