@@ -226,7 +226,10 @@ namespace Mixtormat
 		FLinearColor CaptionGround;
 
 		float BorderWidth = 1.0f;
-		float HoverLiftOpacity = 0.0f;
+		float BorderOpacity = 0.16f;
+		float HoverLiftOpacity = 0.38f;
+		float SelectedEdgeWidth = 1.0f;
+		float SelectedEdgeOpacity = 1.0f;
 		float CornerRadius = 0.0f;
 	};
 

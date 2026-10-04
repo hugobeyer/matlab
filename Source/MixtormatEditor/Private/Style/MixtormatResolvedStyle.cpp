@@ -451,7 +451,10 @@ namespace Mixtormat
 
 			Gallery.CaptionGround = P.Get(EMixtormatColorRole::Shade);
 			Gallery.BorderWidth = Theme.Gallery.BorderWidth;
+			Gallery.BorderOpacity = Theme.Gallery.BorderOpacity;
 			Gallery.HoverLiftOpacity = Theme.Gallery.HoverLiftOpacity;
+			Gallery.SelectedEdgeWidth = Theme.Gallery.SelectedEdgeWidth;
+			Gallery.SelectedEdgeOpacity = Theme.Gallery.SelectedEdgeOpacity;
 			Gallery.CornerRadius = Theme.Gallery.CornerRadius;
 		}
 

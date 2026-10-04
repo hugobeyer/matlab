@@ -5,7 +5,11 @@
 #include "AssetThumbnail.h"
 #include "Engine/Texture2D.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -28,12 +32,14 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		SetToolTipText(InArgs._DisplayName);
 	}
 
-	const ISlateStyle& Style = FMixtormatStyle::Get();
+	CaptionTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(
+			FMixtormatThemeStore::GetResolved().Typography, Mixtormat::EMixtormatTextRole::GalleryCaption),
+		FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 
-	// The image. Thumbnails render asynchronously through the shared pool, so an unrendered one
-	// shows the tile background rather than nothing at all.
-	TSharedRef<SWidget> Image = SNew(SImage)
-		.Image(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")));
+	// The image. Thumbnails render asynchronously through the shared pool; the recipe-painted tile
+	// surface remains visible behind an unrendered thumbnail.
+	TSharedRef<SWidget> Image = SNew(SImage);
 	if (InArgs._ThumbnailAsset.IsValid())
 	{
 		if (UTexture2D* Texture = Cast<UTexture2D>(InArgs._ThumbnailAsset.GetAsset()))
@@ -81,18 +87,18 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		Stack->AddSlot()
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Top)
-		.Padding(MixtormatTokens::TileImageInset)
+		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 		[
-			SNew(SBorder)
+			SNew(SMixtormatSurfaceBox)
 			.Visibility_Lambda([Badge = InArgs._Badge]()
 			{
 				return Badge.Get(FText::GetEmpty()).IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible;
 			})
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Tile.NameStrip")))
-			.Padding(FMargin(MixtormatTokens::TileTextInset, 0.0f))
+			.Recipe(Mixtormat::MakeGalleryCaptionRecipe(FMixtormatThemeStore::GetResolved()))
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionInset, 0.0f))
 			[
 				SNew(STextBlock)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.Tile.Name")))
+				.TextStyle(&CaptionTextStyle)
 				.Text(InArgs._Badge)
 			]
 		];
@@ -112,15 +118,14 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 					? EVisibility::HitTestInvisible
 					: EVisibility::Collapsed;
 			})
-			.HeightOverride(MixtormatTokens::TileNameStripHeight)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionHeight)
 			[
-				SNew(SBorder)
-				.BorderImage(Style.GetBrush(TEXT("Mixtormat.Tile.NameStrip")))
-				.Padding(FMargin(MixtormatTokens::TileTextInset, 0.0f))
-				.VAlign(VAlign_Center)
+				SNew(SMixtormatSurfaceBox)
+				.Recipe(Mixtormat::MakeGalleryCaptionRecipe(FMixtormatThemeStore::GetResolved()))
+				.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionInset, 0.0f))
 				[
 					SNew(STextBlock)
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.Tile.Name")))
+					.TextStyle(&CaptionTextStyle)
 					.Text(InArgs._DisplayName)
 				]
 			]
@@ -132,7 +137,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		Stack->AddSlot()
 		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Top)
-		.Padding(MixtormatTokens::TileImageInset)
+		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]()
@@ -158,8 +163,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 		})
 		[
 			SNew(SBorder)
-			.BorderImage(this, &SMixtormatTile::GetBorderBrush)
-			.Padding(MixtormatTokens::OutlineWidth)
+			.Padding(0.0f)
 			[
 				Stack
 			]
@@ -167,16 +171,27 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 	];
 }
 
-const FSlateBrush* SMixtormatTile::GetBorderBrush() const
+int32 SMixtormatTile::OnPaint(
+	const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect,
+	FSlateWindowElementList& Elements, const int32 LayerId, const FWidgetStyle& WidgetStyle,
+	const bool bParentEnabled) const
 {
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	if (bSelected.Get(false))
-	{
-		return Style.GetBrush(TEXT("Mixtormat.Tile.Selected"));
-	}
-	return Style.GetBrush(IsHovered()
-		? TEXT("Mixtormat.Tile.Hovered")
-		: TEXT("Mixtormat.Tile.Normal"));
+	using namespace Mixtormat;
+	const bool bSelectedNow = bSelected.Get(false);
+	const EMixtormatGalleryTileState State = bSelectedNow
+		? (IsHovered() ? EMixtormatGalleryTileState::SelectedHover : EMixtormatGalleryTileState::Selected)
+		: (IsHovered() ? EMixtormatGalleryTileState::Hover : EMixtormatGalleryTileState::Rest);
+	const FMixtormatSurfaceRecipe Recipe = MakeGalleryTileRecipe(FMixtormatThemeStore::GetResolved(), State);
+	FMixtormatSurfaceSamples Samples;
+	const FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+	CompositeSurface(Recipe, Palette, FMixtormatStateModifier(), Samples);
+	FMixtormatSurfaceDrawStyle DrawStyle;
+	DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
+	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled) ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+	int32 SurfaceLayer = FMixtormatSurfacePainter::PaintBody(Elements, LayerId, Geometry, Recipe, Samples, DrawStyle);
+	SurfaceLayer = FMixtormatSurfacePainter::PaintBorders(
+		Elements, SurfaceLayer, Geometry, Recipe, Palette, WidgetStyle, Samples, DrawStyle);
+	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, SurfaceLayer + 1, WidgetStyle, bParentEnabled);
 }
 
 FVector2D SMixtormatTile::ComputeDesiredSize(float) const

@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Styling/SlateBrush.h"
+#include "Styling/SlateTypes.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/StrongObjectPtr.h"
@@ -62,13 +63,16 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect,
+		FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle& WidgetStyle,
+		bool bParentEnabled) const override;
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override;
 
 private:
-	const FSlateBrush* GetBorderBrush() const;
+
 
 	TAttribute<float> TileSize;
 	TAttribute<bool> bSelected;
@@ -80,5 +84,6 @@ private:
 	TSharedPtr<FAssetThumbnail> Thumbnail;
 	TStrongObjectPtr<UTexture2D> ThumbnailTexture;
 	TUniquePtr<FSlateBrush> ThumbnailBrush;
+	FTextBlockStyle CaptionTextStyle;
 	bool bPressed = false;
 };

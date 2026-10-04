@@ -1463,7 +1463,7 @@ private:
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FDelegateHandle AssetUpdatedHandle;
-	float MaterialGalleryTileSize = MixtormatTokens::MaterialGalleryTileDefault;
+	float MaterialGalleryTileSize = 0.0f;
 	float MaskGalleryTileSize = MixtormatTokens::MaskBarTileSize;
 	TArray<TSharedPtr<FAssetThumbnail>> LayerThumbnails;
 	// The inspector strip's own thumbnail. Kept apart from LayerThumbnails because the strip is

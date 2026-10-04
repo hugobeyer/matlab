@@ -451,6 +451,52 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakeGalleryTileRecipe(
+		const FMixtormatResolvedStyle& Style, const EMixtormatGalleryTileState State)
+	{
+		const FMixtormatResolvedGalleryStyle& Gallery = Style.Gallery;
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::ThumbnailGround);
+		Recipe.Radius = Gallery.CornerRadius;
+
+		if (State == EMixtormatGalleryTileState::Hover
+			|| State == EMixtormatGalleryTileState::SelectedHover)
+		{
+			FMixtormatPaintLayer Lift;
+			Lift.Source = MakeColorRef(EMixtormatColorRole::Accent);
+			Lift.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+			Lift.Strength = Gallery.HoverLiftOpacity;
+			Recipe.Layers.Add(Lift);
+		}
+
+		FMixtormatBorderLayer Border;
+		Border.Source = MakeColorRef(EMixtormatColorRole::Hairline);
+		Border.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		Border.Width = Gallery.BorderWidth;
+		Border.OpacityRamp = MakeLinearRamp(EMixtormatAxis::None, Gallery.BorderOpacity, Gallery.BorderOpacity, 2);
+		Border.bTop = Border.bBottom = Border.bLeft = Border.bRight = true;
+		Recipe.Borders.Add(Border);
+
+		if (State == EMixtormatGalleryTileState::Selected
+			|| State == EMixtormatGalleryTileState::SelectedHover)
+		{
+			FMixtormatBorderLayer Selected = Border;
+			Selected.Source = MakeColorRef(EMixtormatColorRole::Accent);
+			Selected.Width = Gallery.SelectedEdgeWidth;
+			Selected.OpacityRamp = MakeLinearRamp(EMixtormatAxis::None,
+				Gallery.SelectedEdgeOpacity, Gallery.SelectedEdgeOpacity, 2);
+			Recipe.Borders.Add(Selected);
+		}
+		return Recipe;
+	}
+
+	FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe(const FMixtormatResolvedStyle&)
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::Shade);
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
 		const FMixtormatTheme& Theme, const EMixtormatPreviewPlateState State)
 	{

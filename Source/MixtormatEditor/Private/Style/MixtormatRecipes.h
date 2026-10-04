@@ -86,6 +86,11 @@ namespace Mixtormat
 	FMixtormatSurfaceRecipe MakeMenuRowRecipe(
 		const FMixtormatTheme& Theme, EMixtormatMenuRowState State);
 
+enum class EMixtormatGalleryTileState : uint8 { Rest, Hover, Selected, SelectedHover };
+FMixtormatSurfaceRecipe MakeGalleryTileRecipe(
+		const FMixtormatResolvedStyle& Style, EMixtormatGalleryTileState State);
+	FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe(const FMixtormatResolvedStyle& Style);
+
 enum class EMixtormatPreviewPlateState : uint8 { Rest, Hover, Pressed, Checked };
 FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
 	const FMixtormatTheme& Theme, EMixtormatPreviewPlateState State = EMixtormatPreviewPlateState::Rest);

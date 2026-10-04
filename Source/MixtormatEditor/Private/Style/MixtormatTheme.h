@@ -661,9 +661,11 @@ namespace Mixtormat
 	{
 		float TileSize = 80.0f;
 		float TileGap = 5.0f;
-		float TilePadding = 0.0f;
-		float CaptionHeight = 0.0f;
-		float CaptionInset = 0.0f;
+		float TilePadding = 5.0f;
+		float CaptionHeight = 12.0f;
+		float CaptionInset = 4.0f;
+		float OverlayInset = 3.0f;
+		float HeaderGap = 2.0f;
 	};
 
 	struct FMixtormatShellTheme

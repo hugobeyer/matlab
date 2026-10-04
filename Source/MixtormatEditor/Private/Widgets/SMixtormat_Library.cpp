@@ -8,6 +8,7 @@
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
 #include "Style/MixtormatTypography.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
@@ -470,7 +471,7 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 						.OnSlotResized_Lambda([this](float Value) { MaterialLibraryFraction = Value; })
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(MixtormatTokens::MaterialGalleryTilePadding, MixtormatTokens::MaterialGalleryHeaderGap)
+				+ SVerticalBox::Slot().AutoHeight().Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding, FMixtormatThemeStore::GetResolved().GalleryLayout.HeaderGap)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
@@ -480,7 +481,7 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()[BuildLibraryPage()]
-					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(MixtormatTokens::MaterialGalleryTilePadding)[BuildSurfaceList()]
+					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)[BuildSurfaceList()]
 				]
 			]
 			+ SSplitter::Slot()
@@ -510,9 +511,9 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 		});
 	SearchBox->SetText(FText::FromString(SearchText));
 	return SNew(SBorder)
-		.Padding(MixtormatTokens::MaterialGalleryTilePadding)
+		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
@@ -589,8 +590,8 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceList()
 			SAssignNew(SurfaceListBox, SWrapBox)
 			.UseAllottedSize(true)
 			.InnerSlotPadding(FVector2D(
-				MixtormatTokens::MaterialGalleryTileGap,
-				MixtormatTokens::MaterialGalleryTileGap))
+				FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap,
+				FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap))
 		];
 }
 

@@ -517,6 +517,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Gallery.BorderOpacity"), InOutTheme.Gallery.BorderOpacity);
 		Clamp01(TEXT("Gallery.HoverLiftOpacity"), InOutTheme.Gallery.HoverLiftOpacity);
 		Clamp01(TEXT("Gallery.SelectedEdgeOpacity"), InOutTheme.Gallery.SelectedEdgeOpacity);
+
 		Clamp01(TEXT("Preview.PlateOpacity"), InOutTheme.Preview.PlateOpacity);
 		Clamp01(TEXT("Preview.OverlayGroundOpacity"), InOutTheme.Preview.OverlayGroundOpacity);
 		Clamp01(TEXT("Preview.IconOpacity"), InOutTheme.Preview.IconOpacity);
@@ -550,6 +551,9 @@ namespace Mixtormat
 			}
 		};
 
+		ClampMin(TEXT("Gallery.BorderWidth"), InOutTheme.Gallery.BorderWidth, 0.0f);
+		ClampMin(TEXT("Gallery.SelectedEdgeWidth"), InOutTheme.Gallery.SelectedEdgeWidth, 0.0f);
+		ClampMin(TEXT("Gallery.CornerRadius"), InOutTheme.Gallery.CornerRadius, 0.0f);
 		ClampMin(TEXT("Well.Radius"), InOutTheme.Well.Radius, 0.0f);
 		ClampMin(TEXT("Well.BorderWidth"), InOutTheme.Well.BorderWidth, 0.0f);
 		ClampMin(TEXT("Toggle.Size"), InOutTheme.Toggle.Size, 1.0f);
@@ -565,6 +569,12 @@ namespace Mixtormat
 		ClampMin(TEXT("LayerLayout.ChildRowHeight"), InOutTheme.LayerLayout.ChildRowHeight, 1.0f);
 		ClampMin(TEXT("LayerHierarchy.Width"), InOutTheme.LayerHierarchy.Width, 0.0f);
 		ClampMin(TEXT("GalleryLayout.TileSize"), InOutTheme.GalleryLayout.TileSize, 1.0f);
+		ClampMin(TEXT("GalleryLayout.TileGap"), InOutTheme.GalleryLayout.TileGap, 0.0f);
+		ClampMin(TEXT("GalleryLayout.TilePadding"), InOutTheme.GalleryLayout.TilePadding, 0.0f);
+		ClampMin(TEXT("GalleryLayout.CaptionHeight"), InOutTheme.GalleryLayout.CaptionHeight, 0.0f);
+		ClampMin(TEXT("GalleryLayout.CaptionInset"), InOutTheme.GalleryLayout.CaptionInset, 0.0f);
+		ClampMin(TEXT("GalleryLayout.OverlayInset"), InOutTheme.GalleryLayout.OverlayInset, 0.0f);
+		ClampMin(TEXT("GalleryLayout.HeaderGap"), InOutTheme.GalleryLayout.HeaderGap, 0.0f);
 		ClampMin(TEXT("MenuLayout.RowHeight"), InOutTheme.MenuLayout.RowHeight, 1.0f);
 		ClampMin(TEXT("MenuLayout.LipHeight"), InOutTheme.MenuLayout.LipHeight, 0.0f);
 		ClampMin(TEXT("MenuLayout.Width"), InOutTheme.MenuLayout.Width, 0.0f);

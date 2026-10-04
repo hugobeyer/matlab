@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "Style/MixtormatThemeStore.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -14,6 +15,7 @@
 
 void SMixtormat::Construct(const FArguments& InArgs)
 {
+	MaterialGalleryTileSize = FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize;
 	ThumbnailPool = MakeShared<FAssetThumbnailPool>(64);
 	FAssetRegistryModule& AssetRegistryModule =
 		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
