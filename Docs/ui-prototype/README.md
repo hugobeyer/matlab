@@ -84,6 +84,11 @@ a complete mirror of every engine parameter or visibility branch.
   They have no title, no drag, and no background plate.
 - UI STYLE → Plugin PNG icon sheet displays the complete copied icon set.
 
+## Unreal port
+
+The migration plan, the audit of the existing Slate style system, and the
+translation rules are in `UNREAL_PORT_PLAN.md`. No plugin source has been changed.
+
 ## Compositing contract
 
 Palette roles use RGB channel data. Source-matched layer-state and foldout-gradient
