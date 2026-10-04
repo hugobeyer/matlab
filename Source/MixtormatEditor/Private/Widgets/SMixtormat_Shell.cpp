@@ -5,7 +5,8 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
-#include "Brushes/SlateColorBrush.h"
+#include "UI/Controls/MixtormatShellSplitterStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "HAL/PlatformProcess.h"
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
@@ -14,16 +15,22 @@
 
 namespace
 {
-	const FSplitterStyle& ShellSplitterStyle()
+	using SMixtormatShellAction = SMixtormatGroupAction;
+
+	float TopBarIconSize()
 	{
-		// SSplitter retains the style address; refresh this stable storage with each shell rebuild.
-		static FSplitterStyle Style;
-		Style.SetHandleNormalBrush(FSlateColorBrush(MixtormatPalette::FoldoutHairline()));
-		Style.SetHandleHighlightBrush(FSlateColorBrush(MixtormatPalette::HairlineHover()));
-		return Style;
+		return FMixtormatThemeStore::GetResolved().Icons.Roles[
+			static_cast<uint8>(Mixtormat::EMixtormatIconRole::TopBar)].GlyphSize;
 	}
 
-	using SMixtormatShellAction = SMixtormatGroupAction;
+	FSlateColor TopBarIconTint()
+	{
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		const Mixtormat::FMixtormatIconStyle& Icon = Resolved.Icons.Roles[
+			static_cast<uint8>(Mixtormat::EMixtormatIconRole::TopBar)];
+		return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+			.CopyWithNewOpacity(Icon.RestOpacity));
+	}
 }
 
 // Window chrome: top bar, page routing, splitters, status bar.
@@ -74,12 +81,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 	const bool bHasDeveloperSources =
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	return SNew(SBox)
-		.HeightOverride(MixtormatTokens::TopBarHeight)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.TopBarHeight)
 		[
 			SNew(SBorder)
-			.Padding(FMargin(MixtormatTokens::PanelPadding, 0.0f))
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f))
 			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
+			.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 			[
 				SNew(SHorizontalBox)
 
@@ -101,7 +108,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ToolTipText(LOCTEXT("RedoMaterialEditHint", "Redo the last Mixtormat recipe edit (Ctrl+Y or Ctrl+Shift+Z)."))
 					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
 				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(MixtormatTokens::PanelPadding, 0.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return FText::FromString(WorkingMaterialName); })
@@ -114,7 +121,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.Visibility_Lambda([this]() { return bIsWorkingMaterialDirty ? EVisibility::Visible : EVisibility::Collapsed; })
 					.Text(LOCTEXT("WorkingMaterialEdited", "EDITED"))
 					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
-					.ColorAndOpacity(FSlateColor(MixtormatPalette::Modified()))
+					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified)))
 				]
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -129,14 +136,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Add())
-																		// .top-actions .asset-icon opacity, so the glyph reads as an
-																		// annotation rather than the loudest thing in the bar.
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Add()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -157,12 +160,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Folder())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Folder()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -184,12 +185,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Save())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Save()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -211,12 +210,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::SaveAs())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::SaveAs()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -251,12 +248,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Cube())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Cube()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -278,12 +273,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Documentation())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Documentation()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -305,12 +298,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::ToolbarIconSize)
-							.HeightOverride(MixtormatTokens::ToolbarIconSize)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
 							[
-								SNew(SImage).Image(MixtormatIcons::Settings())
-																		.ColorAndOpacity(FSlateColor(MixtormatPalette::RowText()
-																			.CopyWithNewOpacity(MixtormatTokens::TopBarIconOpacity)))
+								SNew(SImage).Image(MixtormatIcons::Settings()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
@@ -340,12 +331,13 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.IsEnabled_Lambda([this]() { return !bIsBaking; })
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Window")))
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
 		[
 			SNew(SSplitter)
-			.Style(&ShellSplitterStyle())
-			.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
-			.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+			.Style(&MixtormatShell::GetSplitterStyle())
+			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
+			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 			+ SSplitter::Slot()
 						.Value_Lambda([this]() { return ShellLeftFraction; })
 						.OnSlotResized_Lambda([this](float Value) { ShellLeftFraction = Value; })
@@ -357,10 +349,10 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						.OnSlotResized_Lambda([this](float Value) { ShellCenterFraction = Value; })
 			[
 				SNew(SSplitter)
-				.Style(&ShellSplitterStyle())
+				.Style(&MixtormatShell::GetSplitterStyle())
 				.Orientation(Orient_Vertical)
-				.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
-				.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+				.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
+				.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 				+ SSplitter::Slot()
 					.Value_Lambda([this]()
 					{
@@ -419,7 +411,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 										.HeightOverride(MixtormatTokens::BottomLibraryCollapseButtonHeight)
 										.RenderTransform(FSlateRenderTransform(FVector2D(
 											0.0f,
-											-MixtormatTokens::SplitterHandleSize)))
+											-FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)))
 										[
 											SAssignNew(BottomLibraryToggleButton, SButton)
 											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
@@ -464,7 +456,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
@@ -492,18 +484,18 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBox)
-		.HeightOverride(MixtormatTokens::StatusBarHeight)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.StatusBarHeight)
 		[
 			SNew(SBorder)
-			.Padding(FMargin(MixtormatTokens::PanelPadding, 0.0f))
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f))
 			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
+			.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 			[
 				SNew(SOverlay)
 				+ SOverlay::Slot()
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
+					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText"))).ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))]
 					+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
 					[
 						SNew(STextBlock)
@@ -515,8 +507,10 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 							return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
 						})
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
 					]
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))]
+					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText"))).ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))]
 				]
 
 			]

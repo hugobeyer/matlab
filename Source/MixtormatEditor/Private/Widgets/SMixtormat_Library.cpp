@@ -10,6 +10,7 @@
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
+#include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
 #include "ObjectTools.h"
@@ -460,12 +461,13 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SSplitter)
+			.Style(&MixtormatShell::GetSplitterStyle())
 			.Orientation(Orient_Horizontal)
-			.PhysicalSplitterHandleSize(MixtormatTokens::SplitterHandleSize)
-			.HitDetectionSplitterHandleSize(MixtormatTokens::SplitterHitSize)
+			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
+			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 			+ SSplitter::Slot()
 						.Value_Lambda([this]() { return MaterialLibraryFraction; })
 						.OnSlotResized_Lambda([this](float Value) { MaterialLibraryFraction = Value; })

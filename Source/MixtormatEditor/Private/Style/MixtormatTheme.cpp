@@ -575,6 +575,12 @@ namespace Mixtormat
 		ClampMin(TEXT("GalleryLayout.CaptionInset"), InOutTheme.GalleryLayout.CaptionInset, 0.0f);
 		ClampMin(TEXT("GalleryLayout.OverlayInset"), InOutTheme.GalleryLayout.OverlayInset, 0.0f);
 		ClampMin(TEXT("GalleryLayout.HeaderGap"), InOutTheme.GalleryLayout.HeaderGap, 0.0f);
+		ClampMin(TEXT("Shell.TopBarHeight"), InOutTheme.Shell.TopBarHeight, 1.0f);
+		ClampMin(TEXT("Shell.StatusBarHeight"), InOutTheme.Shell.StatusBarHeight, 1.0f);
+		ClampMin(TEXT("Shell.Gap"), InOutTheme.Shell.Gap, 0.0f);
+		ClampMin(TEXT("Shell.PanelPadding"), InOutTheme.Shell.PanelPadding, 0.0f);
+		ClampMin(TEXT("Shell.SplitterVisualWidth"), InOutTheme.Shell.SplitterVisualWidth, 0.0f);
+		ClampMin(TEXT("Shell.SplitterHitWidth"), InOutTheme.Shell.SplitterHitWidth, 0.0f);
 		ClampMin(TEXT("MenuLayout.RowHeight"), InOutTheme.MenuLayout.RowHeight, 1.0f);
 		ClampMin(TEXT("MenuLayout.LipHeight"), InOutTheme.MenuLayout.LipHeight, 0.0f);
 		ClampMin(TEXT("MenuLayout.Width"), InOutTheme.MenuLayout.Width, 0.0f);

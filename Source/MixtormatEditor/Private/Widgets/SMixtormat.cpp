@@ -50,7 +50,8 @@ void SMixtormat::BuildWorkspaceUI()
 	[
 		SNew(SBorder)
 		.Padding(0.0f)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Window")))
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()[BuildTopBar()]
