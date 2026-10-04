@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -58,6 +59,6 @@ void SMixtormatLayerContainer::AddChild(const TSharedRef<SWidget>& Child)
 {
 	if (Children.IsValid())
 	{
-		Children->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::LayerRowGap, 0.0f, 0.0f)[Child];
+		Children->AddSlot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.Gap, 0.0f, 0.0f)[Child];
 	}
 }

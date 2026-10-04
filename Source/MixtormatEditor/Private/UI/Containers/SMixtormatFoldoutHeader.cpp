@@ -2,7 +2,7 @@
 
 #include "UI/Containers/SMixtormatFoldoutHeader.h"
 
-#include "Style/MixtormatDesignTokens.h"
+
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
@@ -25,9 +25,9 @@ FVector2D SMixtormatFoldoutHeader::ComputeDesiredSize(const float LayoutScaleMul
 	return FVector2D(
 		ChildSize.X,
 		FMath::Max(ChildSize.Y,
-			MixtormatTokens::FoldoutHeight
-				+ MixtormatTokens::FoldoutHeaderPaddingTop
-				+ MixtormatTokens::FoldoutHeaderPaddingBottom));
+			FMixtormatThemeStore::GetResolved().FoldoutLayout.Height
+				+ FMixtormatThemeStore::GetResolved().FoldoutLayout.HeaderPaddingTop
+				+ FMixtormatThemeStore::GetResolved().FoldoutLayout.HeaderPaddingBottom));
 }
 
 int32 SMixtormatFoldoutHeader::OnPaint(

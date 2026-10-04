@@ -26,8 +26,8 @@ public:
 		// drop the widget's opacity. A faded well, fill and label read as one uniformly dimmed
 		// object; a disabled control needs the recess to stay *relative* to what is inside it.
 		SLATE_ARGUMENT(bool, bDisabledShade)
-		SLATE_ARGUMENT(float, DisabledShadeTop)
-		SLATE_ARGUMENT(float, DisabledShadeBottom)
+		SLATE_ATTRIBUTE(float, DisabledShadeTop)
+		SLATE_ATTRIBUTE(float, DisabledShadeBottom)
 		// Required, not decorative: without a declared slot the generated arguments have no
 		// operator[], so a caller's `[ ... ]` fails to parse rather than failing to compile.
 		SLATE_DEFAULT_SLOT(FArguments, Content)
@@ -48,6 +48,6 @@ private:
 	TAttribute<bool> Hovered;
 	TAttribute<bool> Enabled;
 	bool bDrawDisabledShade = false;
-	float DisabledShadeTop = 0.0f;
-	float DisabledShadeBottom = 0.0f;
+	TAttribute<float> DisabledShadeTop;
+	TAttribute<float> DisabledShadeBottom;
 };

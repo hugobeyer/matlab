@@ -5,6 +5,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "MixtormatScalarRampMath.h"
@@ -107,7 +108,7 @@ int32 SMixtormatScalarRamp::HitPoint(const FVector2f& Pos, const FVector2D& Size
 
 FVector2D SMixtormatScalarRamp::ComputeDesiredSize(float) const
 {
-	return FVector2D(MixtormatTokens::RowFieldMinWidth * 2.0f,
+	return FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.RowFieldMinWidth * 2.0f,
 		Height + MixtormatTokens::ScalarRampViewportPadding * 2.0f
 		+ MixtormatTokens::ScalarRampToolbarHeight + MixtormatTokens::ScalarRampToolbarGap);
 }

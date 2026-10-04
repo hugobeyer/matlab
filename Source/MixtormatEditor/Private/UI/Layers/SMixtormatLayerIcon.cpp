@@ -17,7 +17,9 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 	Filled = FSlateRoundedBoxBrush(FLinearColor::White, MixtormatTokens::LayerVisibilityRadius);
 	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, MixtormatTokens::LayerVisibilityRadius,
 		FLinearColor::White, 1.0f);
-	const float TargetSize = InArgs._Size + MixtormatTokens::IconButtonHitSlop;
+	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
+		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
+	const float TargetSize = IconStyle.GlyphSize + MixtormatTokens::IconButtonHitSlop;
 	ChildSlot[SNew(SBox).WidthOverride(TargetSize).HeightOverride(TargetSize)];
 }
 
@@ -27,19 +29,17 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 {
 	const bool On = bOn.Get(true);
 	const bool Enabled = IsEnabled() && bParentEnabled;
-	const float GlyphSize = bVisibility ? MixtormatTokens::LayerVisibilitySize : MixtormatTokens::FoldoutIconSize;
-	const FVector2f Size(GlyphSize, GlyphSize);
+	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
+		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
+	const FVector2f Size(IconStyle.GlyphSize, IconStyle.GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
 	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
 	FLinearColor Color = Palette.Get((bActive.Get(false) || IsHovered()) && Enabled
 		? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
-	Color.A = bVisibility
-		? (IsHovered() && Enabled ? 1.0f : On ? MixtormatTokens::LayerIconOpacity : MixtormatTokens::IconOffOpacity)
-		: (IsHovered() && Enabled ? MixtormatTokens::FoldoutIconHoverOpacity : MixtormatTokens::FoldoutIconOpacity);
-	if (!Enabled)
-	{
-		Color.A *= 0.25f;
-	}
+	Color.A = !Enabled
+		? IconStyle.DisabledOpacity
+		: IsHovered() ? IconStyle.HoverOpacity
+		: IconStyle.RestOpacity;
 	FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(Size,
 		FSlateLayoutTransform(Offset)), bVisibility ? (On ? &Filled : &Hollow) : Icon.Get(),
 		ESlateDrawEffect::None, Color * WidgetStyle.GetColorAndOpacityTint());

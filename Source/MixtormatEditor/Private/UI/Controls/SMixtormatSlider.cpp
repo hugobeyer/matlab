@@ -167,7 +167,8 @@ void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit:
 
 FVector2D SMixtormatSlider::ComputeDesiredSize(float) const
 {
-	return FVector2D(MixtormatTokens::RowFieldMinWidth, MixtormatTokens::RowHeight);
+	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
+		return FVector2D(Layout.RowFieldMinWidth, Layout.RowHeight);
 }
 
 FCursorReply SMixtormatSlider::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

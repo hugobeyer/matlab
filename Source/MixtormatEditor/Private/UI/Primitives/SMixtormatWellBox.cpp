@@ -51,8 +51,8 @@ int32 SMixtormatWellBox::OnPaint(
 	if (bDrawDisabledShade && !Enabled.Get(true))
 	{
 		const MixtormatGradient::FStop Shade[] = {
-			{ 0.0f, FLinearColor(0.0f, 0.0f, 0.0f, DisabledShadeTop) },
-			{ 1.0f, FLinearColor(0.0f, 0.0f, 0.0f, DisabledShadeBottom) },
+			{ 0.0f, FLinearColor(0.0f, 0.0f, 0.0f, DisabledShadeTop.Get(0.0f)) },
+			{ 1.0f, FLinearColor(0.0f, 0.0f, 0.0f, DisabledShadeBottom.Get(0.0f)) },
 		};
 		MixtormatGradient::Paint(
 			OutDrawElements, Layer, AllottedGeometry.ToPaintGeometry(), Size,

@@ -6,6 +6,7 @@
 #include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
@@ -37,7 +38,7 @@ namespace
 			// therefore the same recipe and two painters.
 			ChildSlot
 			[
-				SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
+				SNew(SBox).MinDesiredHeight(FMixtormatThemeStore::GetResolved().Buttons.Height)
 				[
 					SNew(SMixtormatGroupButtonSurface)
 					.Hovered_Lambda([this]() { return IsHovered(); })

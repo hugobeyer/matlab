@@ -27,8 +27,10 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 	{
 		return ChildLayer;
 	}
-	const float Gap = MixtormatTokens::LayerRowGap;
-	const float HalfIndent = MixtormatTokens::LayerScopeIndent * 0.5f;
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatHierarchyTheme& HierarchyStyle = FMixtormatThemeStore::GetResolved().LayerHierarchy;
+	const float Gap = Layout.Gap;
+	const float HalfIndent = HierarchyStyle.Indent * 0.5f;
 	const float Mid = FMath::Min(Hierarchy.RowHeight, Size.Y) * 0.5f;
 	const FLinearColor Color = LayerStyle.HierarchyRail * Style.GetColorAndOpacityTint();
 	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
@@ -51,7 +53,7 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 		const float X = Hierarchy.BranchInset + Hierarchy.Indent - HalfIndent + Weight * 0.5f;
 		Stroke(X, -Gap, X, Hierarchy.bLast ? Mid : Size.Y + Gap);
 		Stroke(X, Mid + Weight * 0.5f,
-			FMath::Max(X, Hierarchy.BranchInset + Hierarchy.Indent - MixtormatTokens::LayerItemGap), Mid + Weight * 0.5f);
+			FMath::Max(X, Hierarchy.BranchInset + Hierarchy.Indent - Layout.ItemGap), Mid + Weight * 0.5f);
 	}
 	if (Hierarchy.bHasChildren)
 		{

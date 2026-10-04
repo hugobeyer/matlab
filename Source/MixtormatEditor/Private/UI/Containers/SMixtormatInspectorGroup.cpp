@@ -7,6 +7,7 @@
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Containers/SMixtormatFoldoutHeader.h"
@@ -93,6 +94,9 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 {
 	bCollapsible = InArgs._Collapsible;
 	bExpanded = InArgs._InitiallyExpanded;
+	const Mixtormat::FMixtormatFoldoutMetrics& Layout = FMixtormatThemeStore::GetResolved().FoldoutLayout;
+	const Mixtormat::FMixtormatIconStyle& DisclosureIcon = FMixtormatThemeStore::GetResolved().Icons.Roles[
+		static_cast<uint8>(Mixtormat::EMixtormatIconRole::FoldoutDisclosure)];
 
 	TSharedRef<SHorizontalBox> Header = SNew(SHorizontalBox);
 	if (bCollapsible)
@@ -107,14 +111,14 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			// is not a leading offset on the row, which would shift the chevron out of the gutter and
 			// make the gap to the title unequal.
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::FoldoutIconSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
-			.HeightOverride(MixtormatTokens::FoldoutIconSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
+			.WidthOverride(DisclosureIcon.GlyphSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
+			.HeightOverride(DisclosureIcon.GlyphSize + MixtormatTokens::FoldoutIconPadding * 2.0f)
 			.HAlign(HAlign_Center)
 			.VAlign(VAlign_Center)
 			[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::FoldoutIconSize)
-				.HeightOverride(MixtormatTokens::FoldoutIconSize)
+				.WidthOverride(DisclosureIcon.GlyphSize)
+				.HeightOverride(DisclosureIcon.GlyphSize)
 				[
 				SNew(SImage)
 				// The chevron is an immediate state swap between the two authored PNGs, not a rotation. A rotation
@@ -128,7 +132,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				.ColorAndOpacity(TAttribute<FSlateColor>(FSlateColor(
 										// The chevron reads at the title's own colour and opacity, so it sits at the
 										// same weight as the words beside it rather than as a separate mark.
-										TintAt(MixtormatPalette::RowText(), MixtormatTokens::FoldoutTitleOpacity))))
+										TintAt(MixtormatPalette::RowText(), DisclosureIcon.RestOpacity))))
 					]
 				]
 		];
@@ -226,7 +230,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0.0f, MixtormatTokens::FoldoutOuterTop, 0.0f, 0.0f)
+		.Padding(0.0f, Layout.OuterTop, 0.0f, 0.0f)
 		[
 			// The bar itself is the click target and the hover surface. A button on top of it would
 			// light a button-shaped patch inside the header instead of the header.
@@ -250,10 +254,10 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 					[
 						SNew(SBox)
 						.Padding(FMargin(
-							MixtormatTokens::FoldoutGutter,
-							MixtormatTokens::FoldoutHeaderPaddingTop,
-							MixtormatTokens::FoldoutGutter,
-							MixtormatTokens::FoldoutHeaderPaddingBottom))
+							Layout.Gutter,
+							Layout.HeaderPaddingTop,
+							Layout.Gutter,
+							Layout.HeaderPaddingBottom))
 						.VAlign(VAlign_Center)
 						[
 							Header
@@ -262,10 +266,10 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 				: StaticCastSharedRef<SWidget>(
 					SNew(SBox)
 					.Padding(FMargin(
-						MixtormatTokens::FoldoutGutter,
-						MixtormatTokens::FoldoutHeaderPaddingTop,
-						MixtormatTokens::FoldoutGutter,
-						MixtormatTokens::FoldoutHeaderPaddingBottom))
+						Layout.Gutter,
+						Layout.HeaderPaddingTop,
+						Layout.Gutter,
+						Layout.HeaderPaddingBottom))
 					.VAlign(VAlign_Center)
 					[
 						Header
@@ -274,17 +278,17 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::FoldoutOuterBottom)
+		.Padding(0.0f, 0.0f, 0.0f, Layout.OuterBottom)
 		[
 			SNew(SMixtormatSurfaceBox)
 			.Visibility_Lambda([this]() { return IsExpanded() ? EVisibility::Visible : EVisibility::Collapsed; })
 			.Recipe(Mixtormat::MakeGroundRecipe())
 			.InheritWidgetStyle(true)
 			.Padding(FMargin(
-				MixtormatTokens::FoldoutGutter,
-				MixtormatTokens::FoldoutBodyTop,
-				MixtormatTokens::FoldoutGutter,
-				MixtormatTokens::FoldoutBodyBottom))
+				Layout.Gutter,
+				Layout.BodyTop,
+				Layout.Gutter,
+				Layout.BodyBottom))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()

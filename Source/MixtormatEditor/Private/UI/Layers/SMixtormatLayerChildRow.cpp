@@ -27,6 +27,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	OnRowDragDetected = InArgs._OnDragDetected;
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
 
 	ChildSlot
 	[
@@ -63,25 +64,25 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 				+ SOverlay::Slot()
 				[
 				SNew(SBox)
-				.HeightOverride(MixtormatTokens::LayerChildRowHeight)
+				.HeightOverride(Layout.ChildRowHeight)
 				// Same leading/trailing insets as a layer row, plus the child indent, so both
 				// follow the Leading/Trailing inset tokens together.
 				.Padding(FMargin(
-					MixtormatTokens::LayerRowInsetLeading + MixtormatTokens::LayerChildIndent,
+					Layout.PaddingX + Layout.ChildIndent,
 					0.0f,
-					MixtormatTokens::LayerRowInsetTrailing,
+					Layout.PaddingX,
 					0.0f))
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						// Keep the caller's scoped/last-child decision and the original column width.
 						SNew(SBox)
 						.WidthOverride(MixtormatTokens::LayerChildIconSize)
-						.HeightOverride(MixtormatTokens::LayerChildRowHeight)
+						.HeightOverride(Layout.ChildRowHeight)
 						.Visibility(InArgs._Connector ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
 						[
 							SNew(SMixtormatLayerConnector)
@@ -91,7 +92,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(SBox)
 						.WidthOverride(MixtormatTokens::LayerChildIconSize)
@@ -113,9 +114,9 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					.Padding(
-						MixtormatTokens::LayerItemGap,
+						Layout.ItemGap,
 						0.0f,
-						MixtormatTokens::LayerItemGap,
+						Layout.ItemGap,
 						0.0f)
 					[
 						SNew(STextBlock)
@@ -151,7 +152,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
+					.Padding(Layout.ItemGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SMixtormatStatusDot)
 						.Size(MixtormatTokens::StatusDotSize)

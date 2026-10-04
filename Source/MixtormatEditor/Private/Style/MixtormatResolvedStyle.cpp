@@ -372,6 +372,7 @@ namespace Mixtormat
 			const FLinearColor Accent = P.Get(EMixtormatColorRole::Accent);
 			Button.Base = P.Get(EMixtormatColorRole::Ground);
 			Button.Height = Theme.Button.Height;
+			Button.HorizontalPadding = Theme.Button.HorizontalPadding;
 			Button.HairlineWidth = Theme.Button.HairlineWidth;
 
 			auto BodyRamp = [&Accent, &Theme](const float Top, const float Bottom, FMixtormatResolvedRamp& Out)
@@ -501,6 +502,7 @@ namespace Mixtormat
 		OutStyle.FoldoutLayout = Theme.FoldoutLayout;
 		OutStyle.CardLayout = Theme.CardLayout;
 		OutStyle.LayerLayout = Theme.LayerLayout;
+		OutStyle.LayerHierarchy = Theme.LayerHierarchy;
 		OutStyle.MenuLayout = Theme.MenuLayout;
 
 		OutStyle.PreviewLayout = Theme.PreviewLayout;

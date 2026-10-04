@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
@@ -17,6 +18,8 @@
 
 void SMixtormatChip::Construct(const FArguments& InArgs)
 {
+	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
+	const float MinWidth = InArgs._MinWidth > 0.0f ? InArgs._MinWidth : Layout.RowFieldMinWidth;
 	TSharedRef<SHorizontalBox> Content = SNew(SHorizontalBox);
 
 	if (InArgs._LeadingContent.Widget != SNullWidget::NullWidget)
@@ -85,7 +88,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 				.Padding(FMargin(MixtormatTokens::ChipTextInset, 0.0f, MixtormatTokens::ChipGap, 0.0f))
 				[
 					SNew(SBox)
-					.MinDesiredWidth(InArgs._MinWidth)
+					.MinDesiredWidth(MinWidth)
 					.HeightOverride(MixtormatTokens::ChipHeight)
 					[
 						Content

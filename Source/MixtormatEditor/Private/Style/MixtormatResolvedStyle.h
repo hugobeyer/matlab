@@ -201,6 +201,7 @@ namespace Mixtormat
 		float SeparatorHeight = 14.0f;
 
 		float Height = 24.0f;
+		float HorizontalPadding = 0.0f;
 	};
 
 	struct FMixtormatResolvedMenuStyle
@@ -291,6 +292,7 @@ namespace Mixtormat
 		FMixtormatFoldoutMetrics FoldoutLayout;
 		FMixtormatCardMetrics CardLayout;
 		FMixtormatLayerMetrics LayerLayout;
+		FMixtormatHierarchyTheme LayerHierarchy;
 		FMixtormatMenuMetrics MenuLayout;
 		FMixtormatPreviewMetrics PreviewLayout;
 		FMixtormatGalleryMetrics GalleryLayout;

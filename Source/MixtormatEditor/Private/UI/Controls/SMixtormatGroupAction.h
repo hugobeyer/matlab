@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
@@ -40,13 +41,13 @@ public:
 			.Text(InArgs._ToolTipText)
 			.Enabled_Lambda([this]() { return IsEnabled(); })
 			[
-				SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
+				SNew(SBox).MinDesiredHeight(FMixtormatThemeStore::GetResolved().Buttons.Height)
 				[
 					SNew(SMixtormatGroupButtonSurface)
 					.Hovered_Lambda([this]() { return IsHovered(); })
 					.Pressed_Lambda([this]() { return IsPressed(); })
 					.ShowSeparator(bShowSeparator)
-					.Padding(FMargin(MixtormatTokens::GroupButtonPaddingHorizontal, 0.0f))
+					.Padding(FMargin(FMixtormatThemeStore::GetResolved().Buttons.HorizontalPadding, 0.0f))
 					[Content]
 				]
 			]

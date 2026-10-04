@@ -4,6 +4,7 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatPalette.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/SMixtormatChip.h"
@@ -26,12 +27,13 @@ TSharedRef<SWidget> Make(
 	// names instead of across a gap from it. Every caller here is a label in front of a chip,
 	// dropdown or toggle, and a label pinned to the far left left the pairing to be inferred
 	// from vertical position alone.
+	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
 		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
+		.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 		[
 			SNew(STextBlock)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
@@ -45,7 +47,7 @@ TSharedRef<SWidget> Make(
 		];
 
 	TSharedRef<SBox> Sized = SNew(SBox)
-		.HeightOverride(MixtormatTokens::RowHeight)
+		.HeightOverride(Layout.RowHeight)
 		[
 			Row
 		];
@@ -61,15 +63,16 @@ TSharedRef<SWidget> MakeDropdown(
 	const TSharedRef<SWidget>& Control,
 	const TAttribute<FText>& ToolTip)
 {
+	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
 	TSharedRef<SBox> Sized = SNew(SBox)
-		.HeightOverride_Lambda([]() { return FOptionalSize(MixtormatTokens::RowHeight); })
+		.HeightOverride_Lambda([]() { return FOptionalSize(FMixtormatThemeStore::GetResolved().ControlLayout.RowHeight); })
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
-			.FillWidth(TAttribute<float>::CreateLambda([]() { return MixtormatTokens::DropdownLabelRatio; }))
+			.FillWidth(TAttribute<float>::CreateLambda([]() { return FMixtormatThemeStore::GetResolved().ControlLayout.DropdownLabelRatio; }))
 			.HAlign(HAlign_Fill)
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
+			.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 			[
 				SNew(STextBlock)
 				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
@@ -78,7 +81,7 @@ TSharedRef<SWidget> MakeDropdown(
 				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 			]
 			+ SHorizontalBox::Slot()
-			.FillWidth(TAttribute<float>::CreateLambda([]() { return 1.0f - MixtormatTokens::DropdownLabelRatio; }))
+			.FillWidth(TAttribute<float>::CreateLambda([]() { return 1.0f - FMixtormatThemeStore::GetResolved().ControlLayout.DropdownLabelRatio; }))
 			.HAlign(HAlign_Fill)
 			.VAlign(VAlign_Center)
 			[
@@ -97,6 +100,7 @@ TSharedRef<SWidget> MakeTrailing(
 	const TSharedRef<SWidget>& TrailingContent,
 	const TAttribute<FText>& ToolTip)
 {
+	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
 		// The spacer takes the slack, so label and control stay together at the right edge
 		// however wide the panel gets.
@@ -108,7 +112,7 @@ TSharedRef<SWidget> MakeTrailing(
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
+		.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 		[
 			SNew(STextBlock)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
@@ -122,7 +126,7 @@ TSharedRef<SWidget> MakeTrailing(
 		];
 
 	TSharedRef<SBox> Sized = SNew(SBox)
-		.HeightOverride(MixtormatTokens::RowHeight)
+		.HeightOverride(Layout.RowHeight)
 		[
 			Row
 		];
@@ -137,7 +141,7 @@ TSharedRef<SWidget> MakePair(const TSharedRef<SWidget>& Left, const TSharedRef<S
 {
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f)[Left]
-		+ SHorizontalBox::Slot().AutoWidth()[SNew(SSpacer).Size(FVector2D(MixtormatTokens::PairedGap, 0.0f))]
+		+ SHorizontalBox::Slot().AutoWidth()[SNew(SSpacer).Size(FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.PairedGap, 0.0f))]
 		+ SHorizontalBox::Slot().FillWidth(1.0f)[Right];
 }
 

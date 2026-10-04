@@ -37,6 +37,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 	OnRowDragDetected = InArgs._OnDragDetected;
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
 	const TAttribute<int32> MemberCount = InArgs._MemberCount;
 
 	// A group row's title is its own size and weight, so it is built by the typography system
@@ -63,11 +64,11 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				SNew(SBox)
-				.HeightOverride(MixtormatTokens::LayerGroupRowHeight)
+				.HeightOverride(Layout.GroupRowHeight)
 				.Padding(FMargin(
-					MixtormatTokens::LayerRowInsetLeading,
+					Layout.PaddingX,
 					0.0f,
-					MixtormatTokens::LayerRowInsetTrailing,
+					Layout.PaddingX,
 					0.0f))
 				[
 					SNew(SHorizontalBox)
@@ -77,10 +78,9 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(SMixtormatLayerIcon)
-						.Size(MixtormatTokens::LayerEyeSize)
 						.bVisibility(true)
 						.bOn(bGroupEnabled)
 						.ToolTipText(LOCTEXT(
@@ -93,10 +93,10 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::LayerThumbnailSize)
+						.WidthOverride(Layout.ThumbnailSize)
 						.HAlign(HAlign_Right)
 						[
 							SNew(SBox)
@@ -142,7 +142,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(MixtormatTokens::LayerItemGap, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+					.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(STextBlock)
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
@@ -156,11 +156,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
-						// FoldoutIconSize, not ChevronSize: the disclosure's glyph is the foldout
-						// role, and SMixtormatLayerIcon adds its hit slop to this on top, so the
-						// target stays wider than the square glyph box.
 						SNew(SMixtormatLayerIcon)
-						.Size(MixtormatTokens::FoldoutIconSize)
 						.Icon_Lambda([this]()
 						{
 							return bExpanded.Get(true)

@@ -132,9 +132,7 @@ namespace Mixtormat
 			Out.Add(Number(*Id(TEXT("ButtonSize")), ETab::Global, *Section, TEXT("Button Size"), 4.0f, 96.0f, 1.0f, 0,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].ButtonSize; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].ButtonSize = V; }));
-			Out.Add(Number(*Id(TEXT("HitSize")), ETab::Global, *Section, TEXT("Hit Size"), 4.0f, 112.0f, 1.0f, 0,
-				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].HitSize; },
-				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].HitSize = V; }));
+
 			Out.Add(Number(*Id(TEXT("RestOpacity")), ETab::Global, *Section, TEXT("Rest Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].RestOpacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].RestOpacity = V; }));
@@ -221,9 +219,9 @@ namespace Mixtormat
 				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"));
 				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"));
 				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"));
-				AddIconRole(P, EMixtormatIconRole::CardLeading, TEXT("CardLeading"), TEXT("Card Leading"));
+
 				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"));
-				AddIconRole(P, EMixtormatIconRole::GalleryToolbar, TEXT("GalleryToolbar"), TEXT("Gallery Toolbar"));
+
 
 				// CONTROLS
 				NUM("Well.Radius", Controls, "Well", "Radius", Well.Radius, 0, 12, .5, 1);
@@ -440,7 +438,7 @@ namespace Mixtormat
 				NUM("Preview.HoverAccent", Preview, "Overlay Plate", "Hover Accent", Preview.HoverAccent, 0, 1, .01, 2);
 				NUM("Preview.PressAccent", Preview, "Overlay Plate", "Press Accent", Preview.PressAccent, 0, 1, .01, 2);
 				NUM("PreviewLayout.OverlayInset", Preview, "Layout", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1);
-				NUM("PreviewLayout.OverlayClusterInset", Preview, "Layout", "Cluster Inset", PreviewLayout.OverlayClusterInset, 0, 24, .5, 1);
+
 				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1);
 				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1);
 				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1);
@@ -469,21 +467,8 @@ namespace Mixtormat
 				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2);
 				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1);
 
-				// TYPOGRAPHY. Native Unreal font backend only; no fake family dropdown.
-				AddTextRole(P, EMixtormatTextRole::Body, TEXT("Body"), TEXT("Body"));
-				AddTextRole(P, EMixtormatTextRole::ControlLabel, TEXT("ControlLabel"), TEXT("Control Label"));
-				AddTextRole(P, EMixtormatTextRole::ControlValue, TEXT("ControlValue"), TEXT("Control Value"));
-				AddTextRole(P, EMixtormatTextRole::Caption, TEXT("Caption"), TEXT("Caption"));
-				AddTextRole(P, EMixtormatTextRole::FoldoutTitle, TEXT("FoldoutTitle"), TEXT("Foldout Title"));
-				AddTextRole(P, EMixtormatTextRole::CardTitle, TEXT("CardTitle"), TEXT("Card Title"));
-				AddTextRole(P, EMixtormatTextRole::LayerName, TEXT("LayerName"), TEXT("Layer Name"));
-				AddTextRole(P, EMixtormatTextRole::LayerSource, TEXT("LayerSource"), TEXT("Layer Source"));
-				AddTextRole(P, EMixtormatTextRole::Menu, TEXT("Menu"), TEXT("Menu"));
-				AddTextRole(P, EMixtormatTextRole::MenuShortcut, TEXT("MenuShortcut"), TEXT("Menu Shortcut"));
+				// GalleryCaption is the only typography role with a production reader in this pass.
 				AddTextRole(P, EMixtormatTextRole::GalleryCaption, TEXT("GalleryCaption"), TEXT("Gallery Caption"));
-				AddTextRole(P, EMixtormatTextRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"));
-				AddTextRole(P, EMixtormatTextRole::PreviewLabel, TEXT("PreviewLabel"), TEXT("Preview Label"));
-				AddTextRole(P, EMixtormatTextRole::Badge, TEXT("Badge"), TEXT("Badge"));
 
 #undef BLEND
 #undef COL

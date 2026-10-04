@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Style/MixtormatDesignTokens.h"
+
 #include "Framework/SlateDelegates.h"
 #include "Widgets/SWidget.h"
 #include "Styling/SlateTypes.h"
@@ -77,5 +77,5 @@ namespace MixtormatRow
 		const FOnGetContent& OnGetMenuContent,
 		const TSharedPtr<SWidget>& LeadingContent = nullptr,
 		const TAttribute<FText>& ToolTip = TAttribute<FText>(),
-		float MinWidth = MixtormatTokens::RowFieldMinWidth);
+		float MinWidth = 0.0f);
 }

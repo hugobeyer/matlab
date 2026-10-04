@@ -2,7 +2,7 @@
 
 #include "UI/Atoms/SMixtormatToggle.h"
 
-#include "Style/MixtormatDesignTokens.h"
+
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
@@ -34,15 +34,15 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 			// fade the well, the fill and the label together and break the relationship between
 			// them that makes a disabled control read as disabled rather than as faded.
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::ToggleSize)
-			.HeightOverride(MixtormatTokens::ToggleSize)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().Toggles.Size)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().Toggles.Size)
 			[
 				SNew(SMixtormatWellBox)
 				.IsHovered(this, &SMixtormatToggle::IsHovered)
 				.IsEnabled(this, &SMixtormatToggle::IsEnabled)
 				.bDisabledShade(true)
-				.DisabledShadeTop(MixtormatTokens::ToggleDisabledShadeTop)
-				.DisabledShadeBottom(MixtormatTokens::ToggleDisabledShadeBottom)
+				.DisabledShadeTop(FMixtormatThemeStore::GetResolved().Toggles.DisabledShadeTop)
+				.DisabledShadeBottom(FMixtormatThemeStore::GetResolved().Toggles.DisabledShadeBottom)
 				[
 					// The fill is the same recipe the slider paints, at the toggle's inset size --
 					// one vocabulary for both. Painting a recipe rather than two colours is what
@@ -52,14 +52,18 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 					// The well's rim must stay continuous across the fill, so this surface's own
 					// borders are not drawn.
 					.PaintBorders(false)
-					.Padding(FMargin(MixtormatTokens::ToggleFillInset))
+					.Padding(FMargin(FMixtormatThemeStore::GetResolved().Toggles.FillInset))
 					[
 						SNew(SBox)
 						// Sized explicitly: a gradient box has no intrinsic size of its own, so an
 						// unsized one here would collapse to nothing and the toggle would never
 						// appear to fill.
-						.WidthOverride(MixtormatTokens::ToggleFillSize)
-						.HeightOverride(MixtormatTokens::ToggleFillSize)
+						.WidthOverride(FMath::Max(0.0f,
+							FMixtormatThemeStore::GetResolved().Toggles.Size
+							- FMixtormatThemeStore::GetResolved().Toggles.FillInset * 2.0f))
+						.HeightOverride(FMath::Max(0.0f,
+							FMixtormatThemeStore::GetResolved().Toggles.Size
+							- FMixtormatThemeStore::GetResolved().Toggles.FillInset * 2.0f))
 					]
 				]
 			]

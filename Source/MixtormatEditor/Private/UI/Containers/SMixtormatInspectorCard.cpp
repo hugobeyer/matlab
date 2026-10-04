@@ -60,6 +60,7 @@ namespace
 void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 {
 	bCompactLayout = InArgs._CompactLayout;
+	const Mixtormat::FMixtormatCardMetrics& Layout = FMixtormatThemeStore::GetResolved().CardLayout;
 	TSharedRef<SVerticalBox> Stack = SNew(SVerticalBox);
 	const TAttribute<FText> Title = InArgs._Title;
 	const TAttribute<FText> UpperTitle = TAttribute<FText>::CreateLambda([Title]()
@@ -79,7 +80,7 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 		if (InArgs._LeadingHeaderContent.IsValid())
 		{
 			Header->AddSlot().AutoWidth().VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, MixtormatTokens::GroupCardLeadingGap, 0.0f)
+			.Padding(0.0f, 0.0f, Layout.Gap, 0.0f)
 			[
 				// The caller owns glyph size, hit padding, state and callbacks. Do not squeeze
 				// an interactive widget into a glyph-sized box or dim all of its states here.
@@ -100,37 +101,37 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 		if (InArgs._HeaderAction.IsValid())
 		{
 			Header->AddSlot().AutoWidth().VAlign(VAlign_Center)
-			.Padding(MixtormatTokens::GroupCardLeadingGap, 0.0f, 0.0f, 0.0f)
+			.Padding(Layout.Gap, 0.0f, 0.0f, 0.0f)
 			[ InArgs._HeaderAction.ToSharedRef() ];
 		}
 		Stack->AddSlot().AutoHeight()
-		.Padding(0.0f, MixtormatTokens::GroupCardHeaderMarginTop,
-			0.0f, MixtormatTokens::GroupCardHeaderMarginBottom)
+		.Padding(0.0f, Layout.HeaderMarginTop,
+			0.0f, Layout.HeaderMarginBottom)
 		[
 			SAssignNew(HeaderBox, SBox)
-			.MinDesiredHeight(MixtormatTokens::GroupCardTitleHeight)
+			.MinDesiredHeight(Layout.HeaderHeight)
 			.VAlign(VAlign_Center)
-			.Padding(FMargin(MixtormatTokens::GroupCardHeaderPaddingLeft,
-				MixtormatTokens::GroupCardHeaderPaddingTop,
-				MixtormatTokens::GroupCardHeaderPaddingRight,
-				MixtormatTokens::GroupCardHeaderPaddingBottom))
+			.Padding(FMargin(Layout.HeaderLeft,
+				Layout.HeaderTop,
+				Layout.HeaderRight,
+				Layout.HeaderBottom))
 			[ Header ]
 		];
 		Stack->AddSlot().AutoHeight()
 		[
 			SAssignNew(BodyBox, SBox)
-			.Padding(FMargin(MixtormatTokens::GroupCardHorizontalPadding,
-				MixtormatTokens::GroupCardContentPaddingTop,
-				MixtormatTokens::GroupCardHorizontalPadding,
-				MixtormatTokens::GroupCardContentPaddingBottom))
+			.Padding(FMargin(Layout.BodyHorizontal,
+				Layout.BodyTop,
+				Layout.BodyHorizontal,
+				Layout.BodyBottom))
 			[ InArgs._Content.Widget ]
 		];
 		ChildSlot
-		.Padding(FMargin(MixtormatTokens::GroupCardOuterMarginLeft,
-			MixtormatTokens::GroupCardOuterMarginTop,
-			MixtormatTokens::GroupCardOuterMarginRight,
-			MixtormatTokens::GroupCardOuterMarginBottom))
-		[ Stack ];
+		.Padding(FMargin(Layout.OuterLeft,
+			Layout.OuterTop,
+			Layout.OuterRight,
+			Layout.OuterBottom))
+	[ Stack ];
 		return;
 	}
 
@@ -143,7 +144,7 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 		if (bHasLeading)
 		{
 			TitleLine->AddSlot().AutoWidth().VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, MixtormatTokens::GroupCardLeadingGap, 0.0f)
+			.Padding(0.0f, 0.0f, Layout.Gap, 0.0f)
 			[
 				// Same rule as the full card header at the top of this function: the caller owns
 				// glyph size, hit padding, state and callbacks. Clamping the widget to a
@@ -178,7 +179,7 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 
 		Stack->AddSlot()
 		.AutoHeight()
-		.Padding(MixtormatTokens::CardPadding, 0.0f, MixtormatTokens::CardPadding, MixtormatTokens::CardTitleGap)
+		.Padding(Layout.Padding, 0.0f, Layout.Padding, Layout.Gap)
 		[
 			TitleLine
 		];
@@ -200,10 +201,10 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 		// The vertical inset is the gap every run of rows gets under its heading, top and
 		// bottom, so a card's first and last row are not flush against its edge.
 		.Padding(FMargin(
-			MixtormatTokens::CardPadding,
-			MixtormatTokens::HeaderContentGap,
-			MixtormatTokens::CardPadding,
-			MixtormatTokens::HeaderContentGap))
+			Layout.Padding,
+			Layout.Gap,
+			Layout.Padding,
+			Layout.Gap))
 		[
 			InArgs._Content.Widget
 		]
@@ -225,15 +226,13 @@ int32 SMixtormatInspectorCard::OnPaint(const FPaintArgs& Args, const FGeometry& 
 			OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	}
 
+	const Mixtormat::FMixtormatCardMetrics& Layout = FMixtormatThemeStore::GetResolved().CardLayout;
 	const FVector2f OuterSize(AllottedGeometry.GetLocalSize());
 	const FVector2f Size(
-		FMath::Max(0.0f, OuterSize.X - MixtormatTokens::GroupCardOuterMarginLeft
-			- MixtormatTokens::GroupCardOuterMarginRight),
-		FMath::Max(0.0f, OuterSize.Y - MixtormatTokens::GroupCardOuterMarginTop
-			- MixtormatTokens::GroupCardOuterMarginBottom));
+		FMath::Max(0.0f, OuterSize.X - Layout.OuterLeft - Layout.OuterRight),
+		FMath::Max(0.0f, OuterSize.Y - Layout.OuterTop - Layout.OuterBottom));
 	const FGeometry CardGeometry = AllottedGeometry.MakeChild(Size,
-		FSlateLayoutTransform(FVector2f(MixtormatTokens::GroupCardOuterMarginLeft,
-			MixtormatTokens::GroupCardOuterMarginTop)));
+		FSlateLayoutTransform(FVector2f(Layout.OuterLeft, Layout.OuterTop)));
 	if (Size.X <= 0.0f || Size.Y <= 0.0f)
 	{
 		return LayerId;

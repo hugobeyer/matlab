@@ -39,11 +39,11 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	OnNameCommitted = InArgs._OnNameCommitted;
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
 	const bool bCanDisable = InArgs._bCanDisable;
 	const TAttribute<bool> bSolo = InArgs._bSolo;
 
 	TSharedRef<SWidget> Eye = SNew(SMixtormatLayerIcon)
-		.Size(MixtormatTokens::LayerEyeSize)
 		.bVisibility(true)
 		.bOn(bLayerEnabled)
 		.bActive(bSolo)
@@ -87,11 +87,11 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 				+ SOverlay::Slot()
 				[
 					SNew(SBox)
-					.HeightOverride(MixtormatTokens::LayerRowHeight)
+					.HeightOverride(Layout.RowHeight)
 					.Padding(FMargin(
-						MixtormatTokens::LayerRowInsetLeading,
+						Layout.PaddingX,
 						0.0f,
-						MixtormatTokens::LayerRowInsetTrailing,
+						Layout.PaddingX,
 						0.0f))
 					[
 						SNew(SHorizontalBox)
@@ -100,7 +100,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+						.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 						[
 							Eye
 						]
@@ -109,11 +109,11 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+						.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 						[
 							SNew(SBox)
-							.WidthOverride(MixtormatTokens::LayerThumbnailSize)
-							.HeightOverride(MixtormatTokens::LayerThumbnailSize)
+							.WidthOverride(Layout.ThumbnailSize)
+							.HeightOverride(Layout.ThumbnailSize)
 							[
 								InArgs._Thumbnail.Widget
 							]
@@ -153,9 +153,9 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.VAlign(VAlign_Center)
 						.Padding(
-							MixtormatTokens::LayerItemGap,
+							Layout.ItemGap,
 							0.0f,
-							MixtormatTokens::LayerItemGap,
+							Layout.ItemGap,
 							0.0f)
 						[
 							SNew(STextBlock)
@@ -169,7 +169,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, MixtormatTokens::LayerItemGap, 0.0f)
+						.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 						[
 							SNew(SMixtormatBadge)
 							.Text(InArgs._ColorBadge)
@@ -196,13 +196,9 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerItemGap, 0.0f, 0.0f, 0.0f)
+						.Padding(Layout.ItemGap, 0.0f, 0.0f, 0.0f)
 						[
-							// FoldoutIconSize, not ChevronSize: the disclosure's glyph is the
-							// foldout role, and SMixtormatLayerIcon adds its hit slop to this on
-							// top, so the target stays wider than the square glyph box.
 							SNew(SMixtormatLayerIcon)
-							.Size(MixtormatTokens::FoldoutIconSize)
 							.IsEnabled(InArgs._bHasChildren)
 							.Icon_Lambda([this, bHasChildren = InArgs._bHasChildren]()
 							{

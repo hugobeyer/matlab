@@ -8,7 +8,8 @@
 
 FVector2D SMixtormatLayerConnector::ComputeDesiredSize(float) const
 {
-	return FVector2D(MixtormatTokens::LayerChildIconSize, MixtormatTokens::LayerChildRowHeight);
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+		return FVector2D(MixtormatTokens::LayerChildIconSize, Layout.ChildRowHeight);
 }
 
 int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geometry,
@@ -24,10 +25,11 @@ int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geom
 		}
 		const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
 			? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
-	const float Reach = MixtormatTokens::LayerChildIndent * 0.5f;
+	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const float Reach = Layout.ChildIndent * 0.5f;
 	const float X = FMath::Max(0.0f, Size.X - Reach);
 	const float Mid = Size.Y * 0.5f;
-	const float Gap = MixtormatTokens::LayerRowGap;
+	const float Gap = Layout.Gap;
 	const FLinearColor Color = LayerStyle.HierarchyRail * Style.GetColorAndOpacityTint();
 	const auto Stroke = [&](const FVector2f& Start, const FVector2f& End)
 	{
@@ -43,6 +45,6 @@ int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geom
 			FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), Effect, Color);
 	};
 	Stroke(FVector2f(X + Weight * 0.5f, -Gap), FVector2f(X + Weight * 0.5f, bLast ? Mid : Size.Y + Gap));
-	Stroke(FVector2f(X, Mid + Weight * 0.5f), FVector2f(Size.X - MixtormatTokens::LayerItemGap, Mid + Weight * 0.5f));
+	Stroke(FVector2f(X, Mid + Weight * 0.5f), FVector2f(Size.X - Layout.ItemGap, Mid + Weight * 0.5f));
 	return LayerId;
 }

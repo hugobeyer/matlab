@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -58,7 +59,7 @@ namespace
 			]);
 		return SNew(SBox)
 			.WidthOverride(bStretch ? FOptionalSize() : FOptionalSize(MixtormatTokens::TabWidth))
-			.HeightOverride(MixtormatTokens::GroupButtonHeight)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().Buttons.Height)
 			[
 				SNew(SMixtormatGroupButtonSurface)
 				.Selected(bSelected)
