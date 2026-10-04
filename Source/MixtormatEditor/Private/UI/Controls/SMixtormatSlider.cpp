@@ -5,10 +5,12 @@
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "UI/Controls/MixtormatEntryCommit.h"
+#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Primitives/MixtormatGradientPainter.h"
+#include "UI/Primitives/MixtormatWell.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Input/SEditableText.h"
 
@@ -408,46 +410,44 @@ int32 SMixtormatSlider::OnPaint(
 	const bool bEnabled = ShouldBeEnabled(bParentEnabled);
 	const bool bHighlight = IsHovered() || bDragging;
 	const FVector2D Size = AllottedGeometry.GetLocalSize();
+	const FVector2f LocalSize(static_cast<float>(Size.X), static_cast<float>(Size.Y));
 
-	const TCHAR* BackgroundKey =
-		!bEnabled ? TEXT("Mixtormat.ValueSlider.BackgroundDisabled")
-		: bEditing ? TEXT("Mixtormat.ValueSlider.BackgroundEntry")
-		: bMovedPastThreshold ? TEXT("Mixtormat.ValueSlider.BackgroundActive")
-		: bHighlight ? TEXT("Mixtormat.ValueSlider.BackgroundHovered")
-		: TEXT("Mixtormat.ValueSlider.Background");
+	// Every visual state below is resolved to numbers and colours here, once, rather than by
+	// choosing between named brushes.
+	//
+	// That is a structural change, not a cosmetic one. Brush *names* cannot be interpolated: a
+	// later state animation needs a rest value and a state value it can lerp between, and four
+	// opaque brushes give it nothing to lerp. Resolving state to alpha/saturation/offset keeps both
+	// endpoints available for that pass without touching this function again.
+	//
+	// It also removes the entry and disabled brushes entirely. Those were flat, which is why a
+	// typing field and a disabled trough looked like different objects from a live one rather than
+	// as the same control in a different state.
+	const bool bHovered = IsHovered();
+	const bool bScrubbing = bMovedPastThreshold;
+	const float FillSaturation = !bEnabled
+		? MixtormatTokens::FillDisabledSaturation
+		: bScrubbing ? MixtormatTokens::FillActiveSaturation
+		: bHighlight ? MixtormatTokens::FillHoverSaturation
+		: MixtormatTokens::FillSaturation;
+	const float FillTopAlpha = !bEnabled
+		? MixtormatTokens::FillDisabledOpacity
+		: bScrubbing ? MixtormatTokens::FillBodyActiveTop
+		: bHighlight ? MixtormatTokens::FillBodyHoverTop
+		: MixtormatTokens::FillBodyTop;
+	const float FillBottomAlpha = !bEnabled
+		? MixtormatTokens::FillDisabledOpacity
+		: bScrubbing ? MixtormatTokens::FillBodyActiveBottom
+		: bHighlight ? MixtormatTokens::FillBodyHoverBottom
+		: MixtormatTokens::FillBodyBottom;
 
-	// MakeBox forwards InTint verbatim -- it does NOT multiply by the brush's own tint, and InTint
-	// defaults to white. Every painted element here has to pass the brush tint explicitly or it
-	// renders white whatever colour the style registered. SBorder and SImage do this for you,
-	// which is why only the hand-painted widget was affected.
-	const FSlateBrush* BackgroundBrush = Style.GetBrush(BackgroundKey);
-	FSlateDrawElement::MakeBox(
-		OutDrawElements,
-		LayerId,
-		AllottedGeometry.ToPaintGeometry(),
-		BackgroundBrush,
-		ESlateDrawEffect::None,
-		BackgroundBrush->GetTint(InWidgetStyle));
-
-	// The same well ramp the dropdown chips paint (darker at the top), inset by the outline so
-	// the brush's border stays visible. Typing and disabled keep their flat brushes.
-	if (bEnabled && !bEditing)
-	{
-		const bool bLifted = bHighlight || bMovedPastThreshold;
-		const MixtormatGradient::FStop Well[] = {
-			{ 0.0f, bLifted ? MixtormatPalette::WellTopHover() : MixtormatPalette::WellTop() },
-			{ 1.0f, bLifted ? MixtormatPalette::WellBottomHover() : MixtormatPalette::WellBottom() },
-		};
-		const float Inset = MixtormatTokens::OutlineWidth;
-		const FVector2f WellSize(
-			FMath::Max(static_cast<float>(Size.X) - Inset * 2.0f, 0.0f),
-			FMath::Max(static_cast<float>(Size.Y) - Inset * 2.0f, 0.0f));
-		MixtormatGradient::Paint(
-			OutDrawElements, LayerId,
-			AllottedGeometry.ToPaintGeometry(WellSize, FSlateLayoutTransform(FVector2f(Inset, Inset))),
-			WellSize, Orient_Vertical, Well,
-			FVector4f(FMath::Max(MixtormatTokens::CornerRadius - Inset, 0.0f)));
-	}
+	// The well. Ground, recess and border are the shared painter's job now, so the trough, the
+	// chip and the toggle cannot drift apart again.
+	MixtormatWell::FParams WellParams;
+	WellParams.bHovered = bHighlight;
+	WellParams.bFlat = bEditing;
+	MixtormatWell::PaintBackground(
+		OutDrawElements, LayerId, AllottedGeometry, LocalSize, WellParams);
 
 	if (bEditing)
 	{
@@ -480,22 +480,13 @@ int32 SMixtormatSlider::OnPaint(
 	if (FillRight - FillLeft > MixtormatTokens::MinPaintedFill)
 	{
 		// Two stacked gradients, as the design specifies the fill: a vertical ramp for the body,
-		// and a horizontal black shade over it that falls away fast and then holds. Painted rather
-		// than brushed because Slate has neither a gradient brush nor a multiply blend -- and a
-		// flat brush here is what made the bar read as a solid block with an eased edge.
-		const bool bScrubbing = bMovedPastThreshold;
-		const FLinearColor BodyTop =
-			!bEnabled ? MixtormatPalette::FillDisabled()
-			: bScrubbing ? MixtormatPalette::FillTopActive()
-			: bHighlight ? MixtormatPalette::FillTopHover()
-			: MixtormatPalette::FillTop();
-		const FLinearColor BodyBottom =
-			!bEnabled ? MixtormatPalette::FillDisabled()
-			: bScrubbing ? MixtormatPalette::FillBottomActive()
-			: bHighlight ? MixtormatPalette::FillBottomHover()
-			: MixtormatPalette::FillBottom();
-
-		const FVector2f FillSize(FillRight - FillLeft, static_cast<float>(Size.Y));
+		// and a horizontal black shade over it that falls away fast and then holds.
+		//
+		// The body is the accent added at a falling opacity, sampled through the shared power curve
+		// rather than interpolated straight between its endpoints. FillFalloffPower is 0.05, so the
+		// ramp holds near its top value and drops late -- a straight lerp here would read as an even
+		// fade and lose the "lit surface" quality the design is after.
+		const FVector2f FillSize(FillRight - FillLeft, LocalSize.Y);
 		// Drawn at the fill's own size rather than full-size behind a clip. The clipped version
 		// collapsed to a couple of pixels at the bottom of the row -- correct width, no height --
 		// and this is the same explicitly-sized geometry the tick and the stripe below already
@@ -503,54 +494,76 @@ int32 SMixtormatSlider::OnPaint(
 		const FPaintGeometry FillGeometry = AllottedGeometry.ToPaintGeometry(
 			FillSize, FSlateLayoutTransform(FVector2f(FillLeft, 0.0f)));
 
-		const MixtormatGradient::FStop Body[] = {
-			{ 0.0f, BodyTop },
-			{ 1.0f, BodyBottom },
-		};
+		// Saturation is applied to these stops alone. The accent underneath is untouched, which
+		// is what lets the same accent stay unsaturated everywhere else it is used.
+		// Sampled rather than two endpoints, so the authored exponent reaches Slate instead of
+		// being flattened into a linear vertex interpolation.
+		TArray<MixtormatGradient::FStop, TInlineAllocator<16>> Body;
+		MixtormatGradient::AppendFalloffStops(
+			Body,
+			MixtormatCompositing::Saturate(MixtormatPalette::Accent(), FillSaturation),
+			FillTopAlpha,
+			FillBottomAlpha,
+			MixtormatTokens::FillFalloffPower,
+			0.0f, 1.0f,
+			MixtormatTokens::GradientSamplesPerSpan);
 		MixtormatGradient::Paint(
 			OutDrawElements, LayerId + 1, FillGeometry, FillSize,
-			Orient_Vertical, Body, FVector4f(MixtormatTokens::CornerRadius));
+			Orient_Vertical, Body, FVector4f(0.0f));
 
+		// The shade pass: black at alpha across the fill, with its own authored midpoint. Same
+		// multiply semantics as the well's recess and the gradient box's cross-axis pass -- Slate has
+		// no multiply blend, so black-at-alpha is how it is expressed everywhere here.
 		const MixtormatGradient::FStop Shade[] = {
 			{ 0.0f, MixtormatPalette::MultiplyStart() },
-			{ MixtormatTokens::MultiplyMidPosition, MixtormatPalette::MultiplyMid() },
+			{ MixtormatTokens::FillShadeMidPosition, MixtormatPalette::MultiplyMid() },
 			{ 1.0f, MixtormatPalette::MultiplyEnd() },
 		};
 		MixtormatGradient::Paint(
 			OutDrawElements, LayerId + 2, FillGeometry, FillSize,
-			Orient_Horizontal, Shade, FVector4f(MixtormatTokens::CornerRadius));
+			Orient_Horizontal, Shade, FVector4f(0.0f));
 	}
 
-	// Centre tick, so zero is still locatable when the fill is empty.
+	// The well's border goes on last, over the fill, so the rim stays continuous across it.
+	MixtormatWell::PaintBorder(
+		OutDrawElements, LayerId + 3, AllottedGeometry, LocalSize, WellParams);
+
+	// Centre tick, so zero is still locatable when the fill is empty. Drawn in ground rather than
+	// in a grey, so it reads as a gap in the fill instead of as a hairline laid over it.
 	if (bBidirectional)
 	{
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
 			LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(
-				FVector2f(MixtormatTokens::TickWidth, static_cast<float>(Size.Y) - MixtormatTokens::TickInsetY * 2.0f),
-				FSlateLayoutTransform(FVector2f(OriginFraction * static_cast<float>(Size.X), MixtormatTokens::TickInsetY))),
-			Style.GetBrush(TEXT("Mixtormat.ValueSlider.Tick")),
+				FVector2f(MixtormatTokens::TickWidth, LocalSize.Y - MixtormatTokens::TickInsetY * 2.0f),
+				FSlateLayoutTransform(FVector2f(OriginFraction * LocalSize.X, MixtormatTokens::TickInsetY))),
+			FAppStyle::GetBrush("WhiteBrush"),
 			ESlateDrawEffect::None,
-			Style.GetBrush(TEXT("Mixtormat.ValueSlider.Tick"))->GetTint(InWidgetStyle));
+			MixtormatPalette::ZeroTick());
 	}
 
 	// Leading stripe when the value differs from its default. Survives at this row height where a
 	// dot or an italic label would not, and does not compete with the blue fill.
+	//
+	// Width and intensity are separate authored values. The comparison against DefaultValueAttribute
+	// is untouched -- only the paint changed.
 	const bool bModified = bInteger
 		? FMath::RoundToInt(Value) != FMath::RoundToInt(DefaultValueAttribute.Get(0.0))
 		: !FMath::IsNearlyEqual(Value, DefaultValueAttribute.Get(0.0), 1.0e-6);
 	if (bModified && bEnabled)
 	{
+		FLinearColor Marker = MixtormatPalette::Modified();
+		Marker.A *= MixtormatTokens::ModifiedStripeOpacity;
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
 			LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(
-				FVector2f(MixtormatTokens::ModifiedStripeWidth, static_cast<float>(Size.Y)),
+				FVector2f(MixtormatTokens::ModifiedStripeWidth, LocalSize.Y),
 				FSlateLayoutTransform(FVector2f::ZeroVector)),
-			Style.GetBrush(TEXT("Mixtormat.ValueSlider.Modified")),
+			FAppStyle::GetBrush("WhiteBrush"),
 			ESlateDrawEffect::None,
-			Style.GetBrush(TEXT("Mixtormat.ValueSlider.Modified"))->GetTint(InWidgetStyle));
+			Marker);
 	}
 
 	const FTextBlockStyle& LabelStyle = Style.GetWidgetStyle<FTextBlockStyle>(

@@ -50,10 +50,20 @@ namespace MixtormatStylePrivate
 	// The live theme carries numbers, so weight arrives as one. The default font family has no
 	// half-weight, so anything from the midpoint up is Bold and the rest Regular.
 	const TCHAR* Weight(const float Bold)
-	{
-		return Bold >= 0.5f ? TEXT("Bold") : TEXT("Regular");
+		{
+			return Bold >= 0.5f ? TEXT("Bold") : TEXT("Regular");
+		}
+
+		// Opacity applied to a shared role's alpha rather than to a separate grey role, so two weights
+		// of the same colour differ only in strength. Lerping the RGB toward transparent instead would
+		// darken the hue as well, which is a different token pretending to be this one.
+		FLinearColor AtOpacity(const FLinearColor& Color, const float Opacity)
+		{
+			FLinearColor Result = Color;
+			Result.A *= Opacity;
+			return Result;
+		}
 	}
-}
 
 TSharedPtr<FMixtormatMutableStyleSet> FMixtormatStyle::StyleInstance;
 
@@ -583,24 +593,51 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(MixtormatPalette::Tick()));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
+	// ---- Control type ----------------------------------------------------------------------
+	// The label and the value are authored separately, which they were not before: both were
+	// driven from FontSliderLabel and differed only in weight. The design treats a row's name as
+	// quiet context beside its number, so the label needs its own size, weight and opacity and the
+	// value needs its own -- tuning one must not drag the other.
+	//
+	// Tracking is authored in CSS px and applied here in 1/1000 em, so it is converted against the
+	// label's own size rather than copied across. At the authored 0px the conversion is the
+	// identity, which is why the value is the token itself.
+	// Opacity is applied to the shared row-text role's alpha rather than to a separate grey role, so
+	// label and value stay the same hue and differ only in weight -- which is what the design
+	// asks for.
+	const FLinearColor LabelColor = AtOpacity(RowText, MixtormatTokens::ControlLabelOpacity);
+	const FLinearColor ValueColor = AtOpacity(RowText, MixtormatTokens::ControlValueOpacity);
+
+	FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle(
+		Weight(MixtormatTokens::ControlLabelBold), MixtormatTokens::FontControlLabel);
+	LabelFont.LetterSpacing = FMath::RoundToInt(MixtormatTokens::ControlLabelLetterSpacing);
+
 	FTextBlockStyle SliderLabel = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontSliderLabel))
-		.SetColorAndOpacity(RowText)
+		.SetFont(LabelFont)
+		.SetColorAndOpacity(LabelColor)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Label"), SliderLabel);
 
-	// Values retain their heavier face and use a uniform advance, which makes a column of numbers
-	// line up on the decimal point without putting the same visual weight on the label.
-	FTextBlockStyle SliderValue = SliderLabel;
-	FSlateFontInfo ValueFont = FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel);
+	// Values keep their heavier face and a uniform advance, which makes a column of numbers line
+	// up on the decimal point without putting the same visual weight on the label.
+	FTextBlockStyle SliderValue = FTextBlockStyle()
+		.SetFont(FCoreStyle::GetDefaultFontStyle(
+			Weight(MixtormatTokens::ControlValueBold), MixtormatTokens::FontControlValue))
+		.SetColorAndOpacity(ValueColor)
+		.SetShadowOffset(FVector2D::ZeroVector)
+		.SetShadowColorAndOpacity(FLinearColor::Transparent);
+	FSlateFontInfo ValueFont = SliderValue.Font;
 	ValueFont.bForceMonospaced = true;
 	ValueFont.MonospacedWidth = 0.52f;
 	SliderValue.SetFont(ValueFont);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Value"), SliderValue);
 
+	// Disabled dims the row's text by an authored factor rather than swapping to a separate grey
+	// role, so it stays the same hue as the enabled text rather than becoming a different colour.
+	const FLinearColor DisabledColor = AtOpacity(RowText, MixtormatTokens::TextDisabledOpacity);
 	FTextBlockStyle SliderLabelDisabled = SliderLabel;
-	SliderLabelDisabled.SetColorAndOpacity(DisabledText);
+	SliderLabelDisabled.SetColorAndOpacity(DisabledColor);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.LabelDisabled"), SliderLabelDisabled);
 
 	FEditableTextBoxStyle SliderEntry =
@@ -612,7 +649,7 @@ void FMixtormatStyle::Refresh()
 		.SetForegroundColor(FSlateColor(Text))
 		.SetPadding(FMargin(MixtormatTokens::DraggerTextInset - 1.0f, 0.0f));
 	// The entry replaces the value in place, so it matches the face it is typing over.
-	SliderEntry.TextStyle.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel));
+	SliderEntry.TextStyle.SetFont(SliderValue.Font);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);
 
 	// ---- Row furniture ----------------------------------------------------------------------

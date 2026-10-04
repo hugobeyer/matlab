@@ -171,11 +171,111 @@ namespace MixtormatTokens
 
 	// ---- Slider -----------------------------------------------------------------------------
 	// Leading stripe marking a value that differs from its default.
-	inline float ModifiedStripeWidth = 3.0f;
+	// Width and intensity of the leading stripe marking a value that differs from its default.
+		// The prototype authors these separately because the weight is a geometry decision and the
+		// intensity is a paint one, and it is free to do so -- it has no persisted themes to break.
+		inline float ModifiedStripeWidth = 2.0f;
+		inline float ModifiedStripeOpacity = 0.8f;
 	// The label shifts right by this much when the stripe is showing, so text never sits on it.
 	constexpr float ModifiedLabelInset = 5.0f;
-	// Pixels of travel before a press becomes a scrub rather than a click-to-type.
-	inline float DragThreshold = 4.0f;
+	// ---- Well --------------------------------------------------------------------------------
+	// The recess every control sits in. Its three authored parts, in the order they composite:
+	//
+	//   1. Ground        the surface's own colour, not a panel shade. A card body and a panel column
+	//                    are both painted off ground, so aliasing this to Panel would make a 9%
+	//                    body mean two different things.
+	//   2. Shade         a black multiply ramp, 0.64 at the top to 0.13 at the bottom. That top
+	//                    value is far heavier than anything the old flat trough carried, which is
+	//                    what turns the trough from "a darker rectangle" into a recess.
+	//   3. Border        a 1px outline whose alpha *falls* from top to bottom, so the rim reads as
+	//                    catching light along the top edge and disappearing at the foot.
+	//
+	// The border's two endpoints are separate tokens rather than one opacity times a flat
+	// multiplier. The prototype masks the outline with a vertical gradient, and a single flat alpha
+	// cannot express that -- it was the reason every well read as evenly outlined all the way round.
+	inline float WellShadeTop = 0.64f;
+	inline float WellShadeBottom = 0.13f;
+	inline float WellBorderWidth = 1.0f;
+	// The outline's overall weight, and its intensity at the top and bottom edges. The endpoints
+	// are multiplied into this at paint time, so all three stay independently tunable.
+	inline float WellBorderOpacity = 0.86f;
+	inline float WellBorderTopOpacity = 0.33f;
+	inline float WellBorderBottomOpacity = 0.11f;
+	// Hover keeps the same falloff shape and lifts both ends.
+	inline float WellBorderHoverOpacity = 0.47f;
+	inline float WellBorderHoverTopOpacity = 0.78f;
+	inline float WellBorderHoverBottomOpacity = 0.44f;
+	// The border is saturated before it is composited. The prototype reaches this through a filter
+	// on the border layer alone, which Slate has no equivalent for; applying it per paint layer is
+	// the same operation done somewhere Slate can express it.
+	inline float WellBorderSaturation = 2.0f;
+	// How much the ground lifts on hover. The prototype inset-shadows a translucent ground over
+	// itself, which reads as the surface brightening rather than as a highlight being drawn.
+	inline float WellHoverLiftOpacity = 0.38f;
+	// The prototype's wells are square. This is its own token rather than the global CornerRadius,
+	// which other surfaces read and which stays at its current value.
+	inline float WellRadius = 0.0f;
+	// The centre mark on a range that spans zero, drawn in ground over the fill. The old value was
+	// derived by multiplying the well outline down twice; it is authored here directly.
+	inline float ZeroTickOpacity = 0.16f;
+
+	// ---- Control fill ----------------------------------------------------------------------
+	// The value fill is the accent added over the well, at authored opacity -- not a separate flat
+	// grey family. Every number below is a percentage of the accent, which is what lets one colour
+	// serve the rest, hover, active and disabled states at four different strengths.
+	inline float FillBodyTop = 0.45f;
+	inline float FillBodyBottom = 0.16f;
+	inline float FillBodyHoverTop = 0.84f;
+	inline float FillBodyHoverBottom = 0.46f;
+	// Active inverts the ramp: brighter at the bottom than the top, because the fill is being
+	// dragged and reads as lit from below.
+	inline float FillBodyActiveTop = 0.63f;
+	inline float FillBodyActiveBottom = 0.88f;
+	inline float FillDisabledOpacity = 0.12f;
+	// The horizontal darkening pass over the fill. Separate from the body because it is a multiply
+	// against the same ground, and one background list cannot mix two blend modes.
+	inline float FillShadeStart = 0.25f;
+	inline float FillShadeMid = 0.0f;
+	inline float FillShadeEnd = 0.02f;
+	inline float FillShadeMidPosition = 0.63f;
+	// Exponent on the vertical body ramp. 0.05 is a very shallow curve: the fill holds close to its
+	// top value and drops late, so the bar reads as a lit surface rather than as a fade.
+	inline float FillFalloffPower = 0.05f;
+	// Saturation per paint layer, never applied to Accent() itself -- the accent is also used
+	// unsaturated elsewhere, and the toggle fill borrows the same numbers at the same values.
+	inline float FillSaturation = 0.7f;
+	inline float FillHoverSaturation = 1.4f;
+	inline float FillActiveSaturation = 1.0f;
+	inline float FillDisabledSaturation = 0.5f;
+
+	// ---- Control text -----------------------------------------------------------------------
+	inline float ControlLabelOpacity = 0.75f;
+	inline float ControlValueOpacity = 0.9f;
+	inline float TextDisabledOpacity = 0.32f;
+
+	// ---- Toggle ----------------------------------------------------------------------------
+	inline float ToggleDisabledShadeTop = 0.3f;
+	inline float ToggleDisabledShadeBottom = 0.12f;
+
+	// ---- Control type ----------------------------------------------------------------------
+	// The label and the value are two roles, not one at two weights. The label is quiet context
+	// beside the number; the value keeps more of its own presence. Driving both from a single size
+	// meant neither could be tuned without moving the other.
+	inline float FontControlLabel = 10.0f;
+	inline float FontControlValue = 10.0f;
+	inline float ControlLabelBold = 0.0f;
+	inline float ControlValueBold = 1.0f;
+	// Authored in CSS px. Slate's LetterSpacing is in 1/1000 em, so a px value has to be converted
+	// against the font size rather than copied: 0px here is 0 in both, but any future non-zero
+	// value is not the same number in the two units.
+	inline float ControlLabelLetterSpacing = 0.0f;
+
+	// ---- Slider ----------------------------------------------------------------------------
+	inline float TickInsetY = 4.0f;
+	inline float TickWidth = 1.0f;
+	// Narrower than this and the painted fill is a sliver rather than a bar, so it is skipped --
+	// a half pixel of colour reads as a rendering artefact, not as a value near zero.
+	constexpr float MinPaintedFill = 0.5f;
 	// Drag-rate multipliers: Shift, and Ctrl+Shift. The base rate sweeps the range over the row's
 	// own width, so the fill follows the cursor.
 	inline float FineDragScale = 0.1f;
@@ -184,12 +284,10 @@ namespace MixtormatTokens
 	constexpr float DragWrapMargin = 2.0f;
 	// Not read by the slider any more; still registered in MixtormatLiveTheme.cpp. Delete both.
 	inline float DragRangeDistance = 320.0f;
-	// Centre tick on a range that spans zero.
-	constexpr float TickInsetY = 4.0f;
-	constexpr float TickWidth = 1.0f;
-	// Narrower than this and the painted fill is a sliver rather than a bar, so it is skipped --
-	// a half pixel of colour reads as a rendering artefact, not as a value near zero.
-	constexpr float MinPaintedFill = 0.5f;
+	// Pixels of travel before a press becomes a scrub rather than a click-to-type.
+	inline float DragThreshold = 4.0f;
+	// Centre tick on a range that spans zero: TickInsetY, TickWidth and ZeroTickOpacity live in
+	// the Well block above, with the rest of the control's own paint values.
 
 	// ---- Segmented control ------------------------------------------------------------------
 	inline float SegmentHeight = 18.0f;
@@ -361,7 +459,10 @@ namespace MixtormatTokens
 	inline float GroupCardLeadingIconSize = 14.0f;
 	inline float GroupCardLeadingGap = 3.0f;
 	inline float DropdownLabelRatio = 0.35f;
-	inline float DraggerTextInset = 10.0f;
+	// Horizontal inset of a value row's text from its edges. The prototype gives a row 8px; the old
+	// 10 was half a control's width pushed in, which is why a row's label sat visibly off-centre
+	// against the chip beside it.
+	inline float DraggerTextInset = 8.0f;
 
 	// The breathing room under any heading -- a card title, a group header -- and again at the
 	// bottom of what it heads. Small on purpose: it is there so a run of rows is not flush
@@ -433,14 +534,16 @@ namespace MixtormatTokens
 
 	// ---- Toggle -----------------------------------------------------------------------------
 	// A square well that fills rather than marking itself with a glyph. A check or a cross is a
-	// second shape to read at 14px and neither survives the size; a filled box is legible as a
+	// second shape to read at 16px and neither survives the size; a filled box is legible as a
 	// state at a glance, and it is the same well-and-fill vocabulary the sliders and chips use.
-	constexpr float ToggleSize = 14.0f;
-	// Inset of the fill from the well that holds it, on every side. One pixel: enough for the
-	// well's edge to stay visible around the fill, which is what makes it read as filled rather
-	// than as a lighter square.
-	constexpr float ToggleFillInset = 1.0f;
-	constexpr float ToggleFillSize = ToggleSize - ToggleFillInset * 2.0f;
+	inline float ToggleSize = 16.0f;
+	// Inset of the fill from the well that holds it, on every side. The design gives the well its
+	// own 1px border and the fill its own 3px inset, so the rim and the fill's margin are separate
+	// decisions rather than one derived from the other.
+	inline float ToggleFillInset = 3.0f;
+	// Derived, not constexpr: the size and the inset are independently editable now, so the fill's
+	// box cannot be a compile-time constant derived from them. RecomputeDerived keeps it in step.
+	inline float ToggleFillSize = ToggleSize - ToggleFillInset * 2.0f;
 
 	// A chip's inline thumbnail -- enough to confirm which asset is bound without opening the
 	// picker, since the row already carries the name.
@@ -565,5 +668,9 @@ namespace MixtormatTokens
 		TabUnderlineThickness = OutlineWidth;
 		LayerEdgeWidth = OutlineWidth;
 		FontLayerName = FontBody;
+		// A genuine geometric relationship: the fill is inset from the well on every side, so it is
+		// always this much smaller. Unlike the five decoupled above, neither value is meant to move
+		// without the other changing the fill's size.
+		ToggleFillSize = ToggleSize - ToggleFillInset * 2.0f;
 	}
 }

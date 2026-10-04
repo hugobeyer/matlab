@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatLiveTheme.h"
 
@@ -21,6 +22,11 @@
 //   so it stays correct if that container's shade changes; an opaque navy had to be re-picked.
 namespace MixtormatPalette
 {
+	// Defined in the Marks section below. The value fill is authored as the accent at a given
+	// opacity, so the fill helpers need Accent() before that section is reached -- and the fill is
+	// a Marks concept anyway, only living here because it sits with the other active-state colours.
+	inline FLinearColor Accent();
+
 	inline FLinearColor Hex(const uint32 RGB, const float Alpha = 1.0f)
 	{
 		FLinearColor Color = FLinearColor::FromSRGBColor(FColor(
@@ -94,32 +100,79 @@ namespace MixtormatPalette
 	inline FLinearColor GroupSurround() { return FMixtormatLiveTheme::ResolveColor(TEXT("GroupSurround"), Hex(0x0C0D0E)); }
 
 	// ---- Wells ------------------------------------------------------------------------------
-	inline FLinearColor WellTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTop"), Hex(0x070808)); }
-	inline FLinearColor WellBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottom"), Hex(0x0C0E0F)); }
-	inline FLinearColor WellTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTopHover"), Hex(0x0A0B0C)); }
-	inline FLinearColor WellBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottomHover"), Hex(0x121416)); }
+	// The well is authored as ground plus a black multiply shade, not as two hand-picked greys. That
+	// matters: the same shade values produce the recess at every size, and moving the ground moves
+	// the recess with it, which a fixed pair of colours cannot do.
+	//
+	// WellTop/WellBottom keep their names and their persisted LiveTheme keys. Their values are now
+	// ground under the authored shade -- computed here rather than hard-coded, so the tokens below
+	// own the appearance. WellOutline is the border at rest and WellOutlineHover on hover; each
+	// carries its own overall opacity, and the top/bottom endpoint falloff is applied at paint time
+	// by the callers that can express it.
+	inline FLinearColor WellTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTop"), Hex(0x0A0B0C)); }
+	inline FLinearColor WellBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottom"), Hex(0x121315)); }
+	inline FLinearColor WellTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellTopHover"), Hex(0x0E0F11)); }
+	inline FLinearColor WellBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("WellBottomHover"), Hex(0x17191C)); }
+	// The outline at rest: the authored border colour at its own overall opacity, saturated. The
+	// endpoints (0.33 top, 0.11 bottom) are *not* applied here -- a single flat colour cannot carry
+	// a vertical falloff, so callers scale these per edge as they paint.
 	inline FLinearColor WellOutline()
 	{
-		FLinearColor Color = FMixtormatLiveTheme::ResolveColor(TEXT("WellOutline"), Hex(0x242729));
-		Color.A *= 0.4f;
-		return Color;
+		// FLinearColor has no two-argument constructor, so the alpha is assigned rather than passed.
+		FLinearColor Color = FLinearColor::FromSRGBColor(FColor(0x24, 0x27, 0x29));
+		Color.A = MixtormatTokens::WellBorderOpacity;
+		return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutline"),
+			MixtormatCompositing::Saturate(Color, MixtormatTokens::WellBorderSaturation));
 	}
 	inline FLinearColor WellOutlineHover()
 	{
-		FLinearColor Color = FMixtormatLiveTheme::ResolveColor(TEXT("WellOutlineHover"), Hex(0x383D41));
-		Color.A *= 0.4f;
-		return Color;
+		FLinearColor Color = FLinearColor::FromSRGBColor(FColor(0x38, 0x3D, 0x41));
+		Color.A = MixtormatTokens::WellBorderHoverOpacity;
+		return FMixtormatLiveTheme::ResolveColor(TEXT("WellOutlineHover"),
+			MixtormatCompositing::Saturate(Color, MixtormatTokens::WellBorderSaturation));
 	}
-	inline FLinearColor WellEntry()    { return FMixtormatLiveTheme::ResolveColor(TEXT("WellEntry"), Hex(0x070808)); }
+	// The well's recess: ground under a black multiply ramp. Returned as a pair rather than a
+	// gradient so the caller decides the axis and can drive it off tokens.
+	inline FLinearColor WellShade()      { return Hex(0x000000, MixtormatTokens::WellShadeTop); }
+	inline FLinearColor WellShadeEnd()   { return Hex(0x000000, MixtormatTokens::WellShadeBottom); }
+	inline FLinearColor WellEntry()    { return FMixtormatLiveTheme::ResolveColor(TEXT("WellEntry"), Hex(0x0A0B0C)); }
+
+	// The centre mark on a signed range, drawn in ground over the fill so it reads as a gap rather
+	// than as a lighter line.
+	inline FLinearColor ZeroTick()
+	{
+		return FLinearColor(Ground().R, Ground().G, Ground().B, MixtormatTokens::ZeroTickOpacity);
+	}
 
 	// ---- Active -----------------------------------------------------------------------------
-	inline FLinearColor FillTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTop"), Hex(0x303438)); }
-	inline FLinearColor FillBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottom"), Hex(0x24282B)); }
-	inline FLinearColor FillTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTopHover"), Hex(0x383D41)); }
-	inline FLinearColor FillBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottomHover"), Hex(0x2A2F32)); }
-	inline FLinearColor FillTopActive() { return Hex(0x41484D); }
-	inline FLinearColor FillBottomActive() { return Hex(0x30363A); }
-	inline FLinearColor FillDisabled() { return Hex(0x24282B, 0.45f); }
+	// The value fill: the accent at authored opacity, so rest, hover, active and disabled are one
+	// colour at four strengths. The flat greys this replaced could not express that relationship --
+	// hover had to be re-picked by hand and drifted from the accent every time it was retuned.
+	//
+	// Saturation is applied here to the returned paint layer, never to Accent() itself: the same
+	// accent appears at 0.7 as a fill and unsaturated as a tab, a border and a menu row.
+	inline FLinearColor Fill(const float Alpha, const float Saturation)
+	{
+		FLinearColor Color = Accent();
+		Color.A = Alpha;
+		return MixtormatCompositing::Saturate(Color, Saturation);
+	}
+	// The body ramp endpoints, one call per state so a caller reads them as authored values rather
+	// than assembling a gradient out of four literals.
+	inline FLinearColor FillBodyTop()           { return Fill(MixtormatTokens::FillBodyTop, MixtormatTokens::FillSaturation); }
+	inline FLinearColor FillBodyBottom()        { return Fill(MixtormatTokens::FillBodyBottom, MixtormatTokens::FillSaturation); }
+	inline FLinearColor FillBodyHoverTop()      { return Fill(MixtormatTokens::FillBodyHoverTop, MixtormatTokens::FillHoverSaturation); }
+	inline FLinearColor FillBodyHoverBottom()   { return Fill(MixtormatTokens::FillBodyHoverBottom, MixtormatTokens::FillHoverSaturation); }
+	inline FLinearColor FillBodyActiveTop()     { return Fill(MixtormatTokens::FillBodyActiveTop, MixtormatTokens::FillActiveSaturation); }
+	inline FLinearColor FillBodyActiveBottom()  { return Fill(MixtormatTokens::FillBodyActiveBottom, MixtormatTokens::FillActiveSaturation); }
+	inline FLinearColor FillDisabled()          { return Fill(MixtormatTokens::FillDisabledOpacity, MixtormatTokens::FillDisabledSaturation); }
+
+	inline FLinearColor FillTop()      { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTop"), FillBodyTop()); }
+	inline FLinearColor FillBottom()   { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottom"), FillBodyBottom()); }
+	inline FLinearColor FillTopHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillTopHover"), FillBodyHoverTop()); }
+	inline FLinearColor FillBottomHover() { return FMixtormatLiveTheme::ResolveColor(TEXT("FillBottomHover"), FillBodyHoverBottom()); }
+	inline FLinearColor FillTopActive() { return FillBodyActiveTop(); }
+	inline FLinearColor FillBottomActive() { return FillBodyActiveBottom(); }
 	inline FLinearColor SegmentTop()   { return Hex(0x33383C); }
 	inline FLinearColor SegmentBottom(){ return Hex(0x25292C); }
 
@@ -129,9 +182,9 @@ namespace MixtormatPalette
 	// shade drops away fast and then holds flat across the rest of the bar. Interpolated straight
 	// between the ends it becomes an even ramp, and the fill reads as eased rather than lit from
 	// one edge.
-	inline FLinearColor MultiplyStart(){ return Hex(0x000000, 0.35f); }
-	inline FLinearColor MultiplyMid()  { return Hex(0x000000, 0.10f); }
-	inline FLinearColor MultiplyEnd()  { return Hex(0x000000, 0.0f); }
+	inline FLinearColor MultiplyStart(){ return Hex(0x000000, MixtormatTokens::FillShadeStart); }
+	inline FLinearColor MultiplyMid()  { return Hex(0x000000, MixtormatTokens::FillShadeMid); }
+	inline FLinearColor MultiplyEnd()  { return Hex(0x000000, MixtormatTokens::FillShadeEnd); }
 
 	// ---- Menus ------------------------------------------------------------------------------
 	// The popover ground: tinted at the top lip, settling to flat by the first item's base.
@@ -153,9 +206,7 @@ namespace MixtormatPalette
 	inline FLinearColor Destructive()  { return Hex(0xC46A6A); }
 	inline FLinearColor Tick()
 		{
-			FLinearColor Color = WellOutline();
-			Color.A *= 0.4f;
-			return Color;
+			return ZeroTick();
 		}
 	inline FLinearColor SegmentSeam()  { return Hex(0xFFFFFF, 0.08f); }
 

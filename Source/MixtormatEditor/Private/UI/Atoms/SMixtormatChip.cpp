@@ -7,6 +7,7 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Primitives/SMixtormatWellBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBox.h"
@@ -72,34 +73,24 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 		.OnGetMenuContent(InArgs._OnGetMenuContent)
 		.ButtonContent()
 		[
-			// The chip is a well like any other: darker than the body it sits in, no border.
-			// Lifts to the hover well while hovered or open, like the slider trough.
-			SNew(SBorder)
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.WellOutline")))
-			.Padding(0.0f)
-			[
-			SNew(SMixtormatGradientBox)
-			.StartColor_Lambda([this]()
+			// The chip is a well like any other: the shared well painter, so it cannot drift from the
+			// slider trough or the toggle. Lifts to hover while hovered or open, like the trough.
+			SNew(SMixtormatWellBox)
+			.IsHovered_Lambda([this]()
 			{
-				return IsHovered() || (ComboButton.IsValid() && ComboButton->IsOpen())
-					? MixtormatPalette::WellTopHover() : MixtormatPalette::WellTop();
+				return IsHovered() || (ComboButton.IsValid() && ComboButton->IsOpen());
 			})
-			.EndColor_Lambda([this]()
-			{
-				return IsHovered() || (ComboButton.IsValid() && ComboButton->IsOpen())
-					? MixtormatPalette::WellBottomHover() : MixtormatPalette::WellBottom();
-			})
-			.Orientation(Orient_Vertical)
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(FMargin(MixtormatTokens::ChipTextInset, 0.0f, MixtormatTokens::ChipGap, 0.0f))
 			[
-				SNew(SBox)
-				.MinDesiredWidth(InArgs._MinWidth)
-				.HeightOverride(MixtormatTokens::ChipHeight)
+				SNew(SMixtormatGradientBox)
+				.Padding(FMargin(MixtormatTokens::ChipTextInset, 0.0f, MixtormatTokens::ChipGap, 0.0f))
 				[
-					Content
+					SNew(SBox)
+					.MinDesiredWidth(InArgs._MinWidth)
+					.HeightOverride(MixtormatTokens::ChipHeight)
+					[
+						Content
+					]
 				]
-			]
 			]
 		]
 	];
