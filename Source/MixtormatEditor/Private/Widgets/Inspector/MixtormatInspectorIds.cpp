@@ -7,6 +7,7 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -441,9 +442,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 	// rather than leaving half the panel inert.
 	const TSharedRef<SVerticalBox> Cards = Panel;
 		Panel = AddCard(Cards, LOCTEXT("IdGrpSelection", "Selection"), nullptr,
-			MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerMask,
-				LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan"),
-				MixtormatTokens::GroupCardLeadingIconSize));
+			SNew(SMixtormatLayerIcon)
+				.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
+				.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
+				.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
+				.ToolTipText(LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan"))
+				.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::LayerMask); }));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdSelectionMode", "Mode"),
 		MixtormatRow::MakeChip(

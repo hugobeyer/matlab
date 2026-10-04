@@ -27,9 +27,12 @@ class SMixtormatTabStrip final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatTabStrip)
 		: _UseGroupButtonVisuals(true)
+		, _StretchTabs(false)
 		, _ActiveIndex(0)
 	{}
 		SLATE_ARGUMENT(bool, UseGroupButtonVisuals)
+		// Shell tabs share the available column width; compact callers keep their fixed width.
+		SLATE_ARGUMENT(bool, StretchTabs)
 		SLATE_ARGUMENT(TArray<FText>, Options)
 		SLATE_ARGUMENT(TArray<FText>, ToolTips)
 		SLATE_ATTRIBUTE(int32, ActiveIndex)

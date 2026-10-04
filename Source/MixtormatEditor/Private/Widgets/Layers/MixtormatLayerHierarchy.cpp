@@ -89,6 +89,47 @@ namespace MixtormatLayersPrivate
 	{
 		return GetScopeDepth(Children, ChildIndex);
 	}
+
+	FMixtormatLayerHierarchyPaint ChildHierarchyPaint(
+		const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex, const bool bGroupShared)
+	{
+		FMixtormatLayerHierarchyPaint Paint;
+		Paint.RowHeight = MixtormatTokens::LayerChildRowHeight;
+				// Match the child row's own leading inset, without changing its layout or drop target.
+				Paint.BranchInset = MixtormatTokens::LayerRowInsetLeading + MixtormatTokens::LayerChildIndent;
+		if (!Children.IsValidIndex(ChildIndex))
+		{
+			return Paint;
+		}
+		const auto HasLaterSibling = [&Children, bGroupShared](const int32 Index)
+		{
+			const FGuid ParentId = Children[Index].ScopeOwnerChildId;
+			// Shared roots are followed by the group's member layers on the same trunk.
+			if (bGroupShared && !ParentId.IsValid()) { return true; }
+			for (int32 Later = Index + 1; Later < Children.Num(); ++Later)
+			{
+				if (Children[Later].ScopeOwnerChildId == ParentId) { return true; }
+			}
+			return false;
+		};
+		const int32 Depth = GetDisplayScopeDepth(Children, ChildIndex);
+		Paint.Indent = (1 + Depth) * MixtormatTokens::LayerScopeIndent;
+		Paint.bLast = !HasLaterSibling(ChildIndex);
+		Paint.bHasChildren = Children.IsValidIndex(ChildIndex + 1)
+			&& Children[ChildIndex + 1].ScopeOwnerChildId == Children[ChildIndex].ChildId;
+		int32 Current = ChildIndex;
+		// Bound traversal also handles malformed/cyclic authored scopes without retaining pointers.
+		for (int32 Level = Depth; Level > 0; --Level)
+		{
+			Current = FindChildById(Children, Children[Current].ScopeOwnerChildId);
+			if (Current == INDEX_NONE) { break; }
+			if (HasLaterSibling(Current))
+			{
+				Paint.AncestorIndents.Add(Level * MixtormatTokens::LayerScopeIndent);
+			}
+		}
+		return Paint;
+	}
 }
 
 bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
@@ -805,7 +846,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
 			.Icon()[MakeChildTypeIcon(Child)]
-			.Connector(ScopeConnectorFor(Group->Children, ChildIndex))
+			// The caller paints the branch in the existing scope gutter.
 			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through
 			// a layer, and this child's container is a group.
 			.Kind(Child.Type == EMixtormatLayerChildType::OutputReference
@@ -1041,6 +1082,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		const FText ChildName = GetLayerChildName(Child);
 
 		Container->AddChild(
+			SNew(SMixtormatLayerHierarchy)
+			.Hierarchy(ChildHierarchyPaint(Layer.Children, ChildIndex))
+			[
 			SNew(SBox)
 			// One indent for being under the layer plus one per scope level. Without the base level a
 			// top-level child (the first ID Group, say) sat flush with the layer header while its own
@@ -1069,7 +1113,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
-				.Connector(ScopeConnectorFor(Layer.Children, ChildIndex))
+				// The caller paints the branch in the existing scope gutter.
 				// Only children that have a blend mode get a badge menu: masks, and generated
 				// masks that emit coverage (not filters, ID nodes or generators).
 				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Mask
@@ -1171,10 +1215,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				})
 				]
 			]
+		]
 		]);
-	}
+}
 
-	return SNew(SMixtormatLayerRowDropTarget)
+return SNew(SMixtormatLayerRowDropTarget)
 		.TargetLayerIndex(LayerIndex)
 		.OnLayerInsertedAt(this, &SMixtormat::HandleLayerInsertedAt)
 		.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)

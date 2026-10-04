@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "UI/Layers/SMixtormatLayerGroupContainer.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -21,9 +22,8 @@ void SMixtormat::RebuildLayerList()
 	LayerRowWidgets.Reset();
 	GroupRowWidgets.Reset();
 
-	// A group-aware walk of the same array, in the same order. The stack the compositor sees is
-	// untouched -- this only decides which rows are drawn and how far in. Because a group's
-	// members are contiguous, a header is emitted exactly once, at its first member.
+	// Only the visual parent changes; every existing row target keeps its own geometry and handlers.
+	TSharedPtr<SVerticalBox> GroupBody;
 	for (int32 LayerIndex = 0; LayerIndex < WorkingLayers.Num(); ++LayerIndex)
 	{
 		const FGuid GroupId = WorkingLayers[LayerIndex].GroupId;
@@ -46,11 +46,8 @@ void SMixtormat::RebuildLayerList()
 		MixtormatLayerGroups::GetGroupRange(WorkingLayers, GroupId, GroupFirstIndex, GroupLastIndex);
 		if (bFirstMember)
 		{
-			LayerListBox->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, 2.0f)
-			[
-				SNew(SMixtormatGroupRowDropTarget)
+			GroupBody = SNew(SVerticalBox);
+			const TSharedRef<SWidget> Header = SNew(SMixtormatGroupRowDropTarget)
 				.TargetGroupId(GroupId)
 				.FirstMemberIndex(GroupFirstIndex)
 				.LastMemberIndex(GroupLastIndex)
@@ -61,6 +58,15 @@ void SMixtormat::RebuildLayerList()
 				.OnChildDropped(this, &SMixtormat::MoveChildToGroup)
 				[
 					BuildLayerGroupRow(GroupId)
+				];
+			LayerListBox->AddSlot().AutoHeight()
+			[
+				SNew(SMixtormatLayerGroupContainer)
+				.Header()[Header]
+				.Body()
+				[
+					SNew(SBox).Padding(FMargin(0.0f, 2.0f, 0.0f, 0.0f))
+					[GroupBody.ToSharedRef()]
 				]
 			];
 		}
@@ -81,25 +87,30 @@ void SMixtormat::RebuildLayerList()
 				// One indent for being inside the group, plus one per scope level -- the same
 				// depth-times-indent a layer's own children get, so a blur under a shared mask
 				// reads as being under it rather than beside it.
-				LayerListBox->AddSlot()
-				.AutoHeight()
-				.Padding(
-					MixtormatTokens::LayerScopeIndent
-						* (1 + GetDisplayScopeDepth(Group->Children, ChildIndex)),
-					0.0f,
-					0.0f,
-					2.0f)
+				const FMixtormatLayerHierarchyPaint Hierarchy = ChildHierarchyPaint(Group->Children, ChildIndex, true);
+				GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
 				[
-					BuildGroupChildRow(GroupId, ChildIndex)
+					SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
+					[
+						SNew(SBox).Padding(FMargin(Hierarchy.Indent, 0.0f, 0.0f, 0.0f))
+						[BuildGroupChildRow(GroupId, ChildIndex)]
+					]
 				];
 			}
 		}
 
-		LayerListBox->AddSlot()
-		.AutoHeight()
-		.Padding(MixtormatTokens::LayerScopeIndent, 0.0f, 0.0f, 2.0f)
+		FMixtormatLayerHierarchyPaint Hierarchy;
+		Hierarchy.Indent = MixtormatTokens::LayerScopeIndent;
+		Hierarchy.RowHeight = MixtormatTokens::LayerRowHeight;
+		Hierarchy.bLast = LayerIndex == GroupLastIndex;
+		GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
 		[
-			BuildLayerRow(LayerIndex)
+			// The tee spans the entire expanded member, continuing behind all of its descendants.
+			SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
+			[
+				SNew(SBox).Padding(FMargin(MixtormatTokens::LayerScopeIndent, 0.0f, 0.0f, 0.0f))
+				[BuildLayerRow(LayerIndex)]
+			]
 		];
 	}
 }

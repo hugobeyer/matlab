@@ -14,15 +14,13 @@
 // container behind it. That is why it is the only place besides the drag ghost that gets a drop
 // shadow, and why its tint has to land on an opaque ground of its own.
 //
-// Three stops, from the canvas: tinted blue at the very top, on flat ground by the base of the
-// first row, and a hair darker for the rest. The middle stop sits at a FIXED height rather than a
-// fraction, so a menu of two items and a menu of twelve have the same lip instead of the same
-// ramp -- which is the difference between a lit edge and a blue wash.
+// The opaque ground and additive tint settle at a fixed lip height. The remaining body is flat,
+// so menus of different lengths retain the same top edge rather than stretching the ramp.
 class SMixtormatMenuPanel final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatMenuPanel)
-		: _Padding(FMargin(0.0f, MixtormatTokens::MenuPanelPadding))
+		: _Padding(FMargin(MixtormatTokens::MenuPanelPadding))
 		, _MinWidth(0.0f)
 	{}
 		SLATE_ARGUMENT(FMargin, Padding)

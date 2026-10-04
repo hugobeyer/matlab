@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
+#include "Widgets/Gallery/MixtormatGalleryCaption.h"
 
 #include "AssetThumbnail.h"
 #include "InputCoreTypes.h"
@@ -27,7 +28,7 @@ void SMixtormatSurfaceCard::Construct(const FArguments& InArgs)
 			SNew(SOverlay)
 			+ SOverlay::Slot()
 			[
-				InArgs._Content.Widget
+				MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName)
 			]
 			+ SOverlay::Slot()
 			.HAlign(HAlign_Fill)

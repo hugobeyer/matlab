@@ -28,7 +28,8 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 				.WidthOverride(MixtormatTokens::LayerEdgeWidth)
 				.Visibility_Lambda([bExpanded]()
 				{
-					return bExpanded.Get(false) ? EVisibility::Visible : EVisibility::Collapsed;
+					// Keep header columns stable when the existing expanded rail is hidden.
+					return bExpanded.Get(false) ? EVisibility::HitTestInvisible : EVisibility::Hidden;
 				})
 				[
 					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerEdge")))

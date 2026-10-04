@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/Gallery/SMixtormatMaskCard.h"
+#include "Widgets/Gallery/MixtormatGalleryCaption.h"
 
 #include "AssetThumbnail.h"
 #include "InputCoreTypes.h"
@@ -24,7 +25,7 @@ void SMixtormatMaskCard::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			InArgs._Content.Widget
+			MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName)
 		]
 	];
 }

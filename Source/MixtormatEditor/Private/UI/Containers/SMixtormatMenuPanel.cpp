@@ -2,40 +2,20 @@
 
 #include "UI/Containers/SMixtormatMenuPanel.h"
 
+#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatPalette.h"
-#include "Style/MixtormatStyle.h"
 #include "UI/Primitives/MixtormatGradientPainter.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/SOverlay.h"
 
 void SMixtormatMenuPanel::Construct(const FArguments& InArgs)
 {
 	ChildSlot
 	[
-		SNew(SOverlay)
-
-		// The additive lip, over the top edge -- the same seam a group header carries, so a menu
-		// reads as another sheet in the same stack rather than as a different kind of surface.
-		+ SOverlay::Slot()
-		.VAlign(VAlign_Top)
+		SNew(SBox)
+		.MinDesiredWidth(InArgs._MinWidth)
+		.Padding(InArgs._Padding)
 		[
-			SNew(SBox)
-			.HeightOverride(MixtormatTokens::HairlineThickness)
-			[
-				SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.HeaderHairline")))
-			]
-		]
-
-		+ SOverlay::Slot()
-		[
-			SNew(SBox)
-			.MinDesiredWidth(InArgs._MinWidth)
-			.Padding(InArgs._Padding)
-			[
-				InArgs._Content.Widget
-			]
+			InArgs._Content.Widget
 		]
 	];
 }
@@ -51,17 +31,22 @@ int32 SMixtormatMenuPanel::OnPaint(
 {
 	const FVector2f Size = FVector2f(AllottedGeometry.GetLocalSize());
 
-	// The middle stop is a height, not a fraction: the tint has to be spent by the bottom of the
-	// first row whatever the menu's length. Clamped below one so a menu shorter than its own lip
-	// still gets a ramp rather than a flat tinted block.
+	// Both the ground ramp and additive tint finish at the fixed lip height. Short popups
+	// show only the corresponding part of that ramp, rather than compressing it to fit.
+	const float LipProgress = MixtormatTokens::MenuLipHeight > UE_SMALL_NUMBER
+		? FMath::Min(Size.Y / MixtormatTokens::MenuLipHeight, 1.0f)
+		: 1.0f;
 	const float LipStop = Size.Y > UE_SMALL_NUMBER
 		? FMath::Min(MixtormatTokens::MenuLipHeight / Size.Y, 1.0f)
 		: 1.0f;
-
+	const FLinearColor Top = MixtormatCompositing::Additive(
+		MixtormatPalette::MenuGroundTop(), MixtormatPalette::MenuTint());
+	const FLinearColor Bottom = MixtormatPalette::MenuGround();
+	const FLinearColor LipEnd = MixtormatGradient::LerpSRGB(Top, Bottom, LipProgress);
 	const MixtormatGradient::FStop Ground[] = {
-		{ 0.0f, MixtormatPalette::MenuTint() },
-		{ LipStop, MixtormatPalette::MenuGroundTop() },
-		{ 1.0f, MixtormatPalette::MenuGround() },
+		{ 0.0f, Top },
+		{ LipStop, LipEnd },
+		{ 1.0f, LipEnd },
 	};
 	MixtormatGradient::Paint(
 		OutDrawElements,
@@ -70,7 +55,7 @@ int32 SMixtormatMenuPanel::OnPaint(
 		Size,
 		Orient_Vertical,
 		Ground,
-		FVector4f(MixtormatTokens::MenuCornerRadius));
+		FVector4f(MixtormatTokens::WellRadius));
 
 	return SCompoundWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);

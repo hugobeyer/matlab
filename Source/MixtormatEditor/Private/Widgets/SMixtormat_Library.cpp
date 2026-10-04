@@ -7,6 +7,7 @@
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
+#include "UI/Controls/SMixtormatGroupAction.h"
 
 #include "ObjectTools.h"
 
@@ -451,8 +452,9 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBorder)
-		.Padding(3.0f)
-		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+		.Padding(0.0f)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
 		[
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
@@ -463,17 +465,17 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 						.OnSlotResized_Lambda([this](float Value) { MaterialLibraryFraction = Value; })
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(MixtormatTokens::MaterialGalleryTilePadding, MixtormatTokens::MaterialGalleryHeaderGap)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(150.0f)[BuildLibraryPage()]]
-					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(4.0f, 0.0f)[BuildSurfaceList()]
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()[BuildLibraryPage()]
+					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(MixtormatTokens::MaterialGalleryTilePadding)[BuildSurfaceList()]
 				]
 			]
 			+ SSplitter::Slot()
@@ -502,28 +504,43 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 		});
 	SearchBox->SetText(FText::FromString(SearchText));
 	return SNew(SBorder)
-		.Padding(MixtormatTokens::PanelPadding)
-		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+		.Padding(MixtormatTokens::MaterialGalleryTilePadding)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
 			[
 				SearchBox
 			]
-			+ SVerticalBox::Slot().AutoHeight()
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SAssignNew(CategoryListBox, SVerticalBox)
+				SNew(SComboButton)
+				.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+				.ContentPadding(FMargin(MixtormatTokens::RowLabelGap, MixtormatTokens::RowGap))
+				.ButtonContent()
+				[
+					SNew(STextBlock)
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+					.Text_Lambda([this]()
+					{
+						return CategoryFilter.IsNone() ? LOCTEXT("AllCategory", "All Materials") : FText::FromName(CategoryFilter);
+					})
+				]
+				.MenuContent()
+				[
+					SNew(SScrollBox)
+					+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)]
+				]
 			]
-			+ SVerticalBox::Slot().FillHeight(1.0f)[SNew(SSpacer)]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(MixtormatTokens::RowGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
-					SNew(SButton)
+					SNew(SMixtormatGroupAction)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT("RefreshLibraryHint", "Refresh Library"))
 					.OnClicked(this, &SMixtormat::RefreshSurfaceList)
 					[
@@ -535,12 +552,11 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 						]
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::LibraryBrowseButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth()
 				[
-					SNew(SButton)
+					SNew(SMixtormatGroupAction, false)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT(
 						"RebuildBuiltInLibraryHint",
 						"Developer only: rebuild built-in assets from plugin source PNGs"))

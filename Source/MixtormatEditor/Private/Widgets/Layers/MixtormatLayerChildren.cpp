@@ -1422,41 +1422,54 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SBorder)
-		.Padding(FMargin(8.0f, 7.0f))
-		.BorderImage(Style.GetBrush(TEXT("Mixtormat.InsetPanel")))
+		.Padding(0.0f)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor_Lambda([]() { return MixtormatPalette::Ground(); })
 		.Visibility_Lambda([this]()
 		{
 			return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(MixtormatTokens::MaterialGalleryTilePadding, MixtormatTokens::MaterialGalleryHeaderGap)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
-					.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontMaskBarHeading))
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ContentPadding(FMargin(0.0f))
-					.ToolTipText(LOCTEXT("ImportUserMasksHint", "Import PNG masks from a folder"))
-					.OnClicked(this, &SMixtormat::ImportMasks)
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 					[
-						SNew(SBox)
-						.WidthOverride(MixtormatTokens::ToolbarIconSize)
-						.HeightOverride(MixtormatTokens::ToolbarIconSize)
+						SNew(STextBlock)
+						.Text(LOCTEXT("MaskGalleryHeading", "MASKS"))
+						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+						.ToolTipText(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(SMixtormatGroupAction, false)
+						.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+						.ToolTipText(LOCTEXT("ImportUserMasksHint", "Import PNG masks from a folder"))
+						.OnClicked(this, &SMixtormat::ImportMasks)
 						[
-							SNew(SImage).Image(MixtormatIcons::Folder())
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(SBox)
+								.WidthOverride(MixtormatTokens::ToolbarIconSize)
+								.HeightOverride(MixtormatTokens::ToolbarIconSize)
+								[SNew(SImage).Image(MixtormatIcons::Folder())]
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(MixtormatTokens::RowGap, 0.0f, 0.0f, 0.0f)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("ImportMaskGalleryAction", "IMPORT"))
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+								.ColorAndOpacity(FSlateColor::UseForeground())
+							]
 						]
 					]
 				]
 			]
-			+ SVerticalBox::Slot().FillHeight(1.0f)
+			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(MixtormatTokens::MaterialGalleryTilePadding)
 			[
 				SNew(SMixtormatGalleryScrollBox)
 				.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)

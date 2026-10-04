@@ -43,7 +43,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 				{
 					return bChecked.Get(false) ? MixtormatIcons::Check() : Icon;
 				})
-				.ColorAndOpacity(this, &SMixtormatMenuItem::GetLabelColor)
+				.ColorAndOpacity(this, &SMixtormatMenuItem::GetIconColor)
 			]
 		]
 
@@ -84,7 +84,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 			[
 				SNew(SImage)
 				.Image(MixtormatIcons::ChevronRight())
-				.ColorAndOpacity(this, &SMixtormatMenuItem::GetLabelColor)
+				.ColorAndOpacity(this, &SMixtormatMenuItem::GetIconColor)
 			]
 		];
 	}
@@ -98,7 +98,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		.MultiplyMidPosition(MixtormatTokens::MultiplyMidPosition)
 		.MultiplyEnd(this, &SMixtormatMenuItem::GetShadeEnd)
 		.Orientation(Orient_Vertical)
-		.CornerRadius(MixtormatTokens::CornerRadius)
+		.CornerRadius(MixtormatTokens::WellRadius)
 		[
 			SNew(SBox)
 			.HeightOverride(MixtormatTokens::MenuItemHeight)
@@ -134,52 +134,66 @@ bool SMixtormatMenuItem::IsRowEnabled() const
 
 FLinearColor SMixtormatMenuItem::GetFillTop() const
 {
-	if (!IsHovered() || !IsRowEnabled())
+	if ((!IsHovered() && !bChecked.Get(false)) || !IsRowEnabled())
 	{
 		return FLinearColor::Transparent;
 	}
-	return bDestructive ? MixtormatPalette::DestructiveTop() : MixtormatPalette::FillTop();
+	return bDestructive ? MixtormatPalette::DestructiveTop() : MixtormatPalette::Panel();
 }
 
 FLinearColor SMixtormatMenuItem::GetFillBottom() const
 {
-	if (!IsHovered() || !IsRowEnabled())
+	if ((!IsHovered() && !bChecked.Get(false)) || !IsRowEnabled())
 	{
 		return FLinearColor::Transparent;
 	}
-	return bDestructive ? MixtormatPalette::DestructiveBottom() : MixtormatPalette::FillBottom();
+	return bDestructive ? MixtormatPalette::DestructiveBottom() : MixtormatPalette::LayerHoverBottom();
 }
 
 // The shade only exists while there is a fill under it to shade.
 FLinearColor SMixtormatMenuItem::GetShadeStart() const
 {
-	return IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyStart() : FLinearColor::Transparent;
+	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyStart() : FLinearColor::Transparent;
 }
 
 FLinearColor SMixtormatMenuItem::GetShadeMid() const
 {
-	return IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyMid() : FLinearColor::Transparent;
+	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyMid() : FLinearColor::Transparent;
 }
 
 FLinearColor SMixtormatMenuItem::GetShadeEnd() const
 {
-	return IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyEnd() : FLinearColor::Transparent;
+	return bDestructive && IsHovered() && IsRowEnabled() ? MixtormatPalette::MultiplyEnd() : FLinearColor::Transparent;
 }
 
 FSlateColor SMixtormatMenuItem::GetLabelColor() const
 {
 	if (!IsRowEnabled())
 	{
-		return FSlateColor(MixtormatPalette::DisabledText());
+		FLinearColor Color = MixtormatPalette::RowText();
+		Color.A *= MixtormatTokens::TextDisabledOpacity;
+		return FSlateColor(Color);
 	}
-	if (IsHovered())
+	if (bChecked.Get(false) && !bDestructive)
 	{
-		// White on both fills: the destructive row is already saying it in red at rest.
-		return FSlateColor(FLinearColor::White);
+		return FSlateColor(MixtormatPalette::Accent());
 	}
 	return FSlateColor(bDestructive
 		? MixtormatPalette::Destructive()
 		: MixtormatPalette::RowText());
+}
+
+FSlateColor SMixtormatMenuItem::GetIconColor() const
+{
+	FLinearColor Color = bChecked.Get(false) && !bDestructive
+		? MixtormatPalette::Accent()
+		: (bDestructive ? MixtormatPalette::Destructive() : MixtormatPalette::RowText());
+	Color.A *= MixtormatTokens::MenuIconOpacity;
+	if (!IsRowEnabled())
+	{
+		Color.A *= MixtormatTokens::TextDisabledOpacity;
+	}
+	return FSlateColor(Color);
 }
 
 FCursorReply SMixtormatMenuItem::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

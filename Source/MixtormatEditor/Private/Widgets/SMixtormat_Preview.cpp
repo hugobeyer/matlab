@@ -902,7 +902,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[
 				SNew(STextBlock)
 				.Text(Label)
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				.ColorAndOpacity(FSlateColor::UseForeground())
 			]
 		];
 	};
@@ -937,7 +938,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(STextBlock)
 			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
+			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+			.ColorAndOpacity(FSlateColor::UseForeground())
 		]
 	];
 
@@ -1010,7 +1012,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[
 				SNew(STextBlock)
 				.Text(LOCTEXT("GlobalUVRotation90", "90°"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontCaption))
+				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				.ColorAndOpacity(FSlateColor::UseForeground())
 			]
 		]
 	];
@@ -1098,6 +1101,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					: EVisibility::Visible;
 			})
 			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.ContentPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f))
 			.ToolTipText(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
 			.OnClicked_Lambda([this]()
 			{
@@ -1108,6 +1112,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			})
 			[
 				SNew(STextBlock)
+				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+				.ColorAndOpacity(FSlateColor::UseForeground())
 				.Text_Lambda([this]()
 				{
 					switch (DebugPreviewMode)
@@ -1159,6 +1165,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(SBox).WidthOverride(MixtormatTokens::PreviewResolutionControlWidth)
 			[
 				SNew(SMixtormatSegmentedControl)
+				.UseGroupButtonVisuals(true)
 				.Options(ResolutionOptions)
 				.ActiveIndex_Lambda([this]()
 				{
@@ -1200,6 +1207,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
+		.UseGroupButtonVisuals(true)
 		.Options(AntiAliasingOptions)
 		.ToolTips(AntiAliasingToolTips)
 		.ActiveIndex_Lambda([this]() -> int32
@@ -1244,6 +1252,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
+		.UseGroupButtonVisuals(true)
 		.Options(QualityOptions)
 		.ToolTips(QualityToolTips)
 		.ActiveIndex_Lambda([this]()
@@ -1387,24 +1396,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		// says nothing about the material.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
-			[
-				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[RenderControls]
-			]
+			[RenderControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -1422,7 +1421,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.ButtonContent()
 					[
 						SNew(STextBlock)
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+						.ColorAndOpacity(FSlateColor::UseForeground())
 						.Text(LOCTEXT("FinalCompositeButton", "Final"))
 					]
 				]
@@ -1456,22 +1456,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[LightingControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[GeometryControls]
 		]
 		// Quality and displacement bottom left, where the status readout was. That line said
@@ -1479,38 +1471,22 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		// user can do here, so it was three constants and a number already on screen.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
-			[
-				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[SceneControls]
-			]
+			[SceneControls]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
 			[OutputControls]
 		]
 		// FOV bottom centre, in the slot the watermark held.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(MixtormatTokens::ViewportOverlayInset)
 		[
-			SNew(SMixtormatGradientBox)
+			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
-			.StartColor(MixtormatPalette::OverlayPlateTop())
-			.EndColor(MixtormatPalette::OverlayPlateBottom())
-			.CornerRadius(MixtormatTokens::CornerRadius)
-			.Padding(MixtormatTokens::ViewportOverlayClusterInset)
-			[
-				SNew(SBox).WidthOverride(MixtormatTokens::InspectorWidth * 0.5f)[CameraControls]
-			]
+			[CameraControls]
 		];
 
 	if (!bReusingViewport)

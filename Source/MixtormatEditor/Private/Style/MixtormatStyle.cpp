@@ -580,6 +580,15 @@ void FMixtormatStyle::Refresh()
 			.SetShadowColorAndOpacity(FLinearColor::Transparent);
 		StyleInstance->Set(TEXT("Mixtormat.MenuLabel"), MenuLabel);
 
+				FLinearColor HelpBodyColor = MixtormatPalette::RowText();
+				HelpBodyColor.A *= MixtormatTokens::HelpBodyOpacity;
+				FTextBlockStyle HelpBody = FTextBlockStyle(MenuLabel)
+					.SetColorAndOpacity(HelpBodyColor);
+				StyleInstance->Set(TEXT("Mixtormat.HelpBody"), HelpBody);
+				FTextBlockStyle HelpTitle = FTextBlockStyle(MenuLabel)
+					.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontBody));
+				StyleInstance->Set(TEXT("Mixtormat.HelpTitle"), HelpTitle);
+
 		FTextBlockStyle MenuShortcut = FTextBlockStyle(MenuLabel)
 			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
 			.SetColorAndOpacity(MixtormatPalette::ShortcutText());

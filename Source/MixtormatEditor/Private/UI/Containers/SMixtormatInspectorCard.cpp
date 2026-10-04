@@ -13,6 +13,45 @@
 #include "Widgets/Text/STextBlock.h"
 #include "UI/Rows/SMixtormatRow.h"
 
+namespace
+{
+	// Resolve inherited disabled state at paint time without Slate's additional disabled shader.
+	class SMixtormatGroupCardTitle final : public SCompoundWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatGroupCardTitle) {}
+			SLATE_ATTRIBUTE(FText, Text)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs)
+		{
+			ChildSlot
+			[
+				SNew(STextBlock)
+				// Copy the font; no style-set pointer survives a theme refresh.
+				.Font(FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupCardTitle")).Font)
+				.ColorAndOpacity_Lambda([]() { return FSlateColor(MixtormatPalette::GroupCardTitleText()); })
+				.Text(InArgs._Text)
+				.AutoWrapText(false)
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+				.Clipping(EWidgetClipping::ClipToBounds)
+			];
+		}
+
+		virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry,
+			const FSlateRect& CullingRect, FSlateWindowElementList& Elements, int32 LayerId,
+			const FWidgetStyle& Style, bool bParentEnabled) const override
+		{
+			FWidgetStyle TitleStyle = Style;
+			TitleStyle.BlendColorAndOpacityTint(FLinearColor(1.0f, 1.0f, 1.0f,
+				ShouldBeEnabled(bParentEnabled) ? MixtormatTokens::GroupCardTitleOpacity
+					: MixtormatTokens::GroupCardTitleDisabledOpacity));
+			return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements,
+				LayerId, TitleStyle, true);
+		}
+	};
+}
+
 void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 {
 	bCompactLayout = InArgs._CompactLayout;
@@ -49,12 +88,8 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 			.WidthOverride(0.0f)
 			.Clipping(EWidgetClipping::ClipToBounds)
 			[
-				SNew(STextBlock)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupCardTitle")))
+				SNew(SMixtormatGroupCardTitle)
 				.Text(UpperTitle)
-				.AutoWrapText(false)
-				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-				.Clipping(EWidgetClipping::ClipToBounds)
 			]
 		];
 		if (InArgs._HeaderAction.IsValid())

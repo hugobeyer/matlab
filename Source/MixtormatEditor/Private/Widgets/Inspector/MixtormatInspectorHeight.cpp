@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -64,16 +65,22 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 		ContactCards, LOCTEXT("HeightContactBorders", "CONTACT BORDERS"));
 	const TSharedRef<SVerticalBox> ContactAO = AddCard(
 		ContactBorders, LOCTEXT("HeightContactAOGroup", "CONTACT AO"), nullptr,
-		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::ContactAO,
-			LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"),
-			MixtormatTokens::GroupCardLeadingIconSize));
+		SNew(SMixtormatLayerIcon)
+			.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
+			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
+			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
+			.ToolTipText(LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))
+			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::ContactAO); }));
 	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMixtormatLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f));
 	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMixtormatLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
 	const TSharedRef<SVerticalBox> BorderNormal = AddCard(
 		ContactBorders, LOCTEXT("HeightBorderNormalGroup", "BORDER NORMAL"), nullptr,
-		MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::BorderNormal,
-			LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"),
-			MixtormatTokens::GroupCardLeadingIconSize));
+		SNew(SMixtormatLayerIcon)
+			.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
+			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
+			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
+			.ToolTipText(LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))
+			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::BorderNormal); }));
 	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f));
 	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
 

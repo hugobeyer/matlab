@@ -6,6 +6,7 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -181,10 +182,12 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 		Panel,
 		LOCTEXT("CardFeaturedMasks", "Featured Masks"),
 		nullptr,
-		MakeFeaturePreviewButton(
-			EMixtormatDebugPreviewMode::GeneratedFeature,
-			LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"),
-			MixtormatTokens::GroupCardLeadingIconSize));
+		SNew(SMixtormatLayerIcon)
+			.Size(MixtormatTokens::GroupCardLeadingIconSize).bVisibility(true)
+			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
+			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
+			.ToolTipText(LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"))
+			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::GeneratedFeature); }));
 
 	AddSliderRow(Masks, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("FeatureInfluenceLabel", "Normal Influence"), Layer(), &FMixtormatLayer::FeatureInfluence, 0.0, 1.0, 0.0, 0.01));

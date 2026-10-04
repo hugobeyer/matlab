@@ -420,6 +420,12 @@ namespace MixtormatTokens
 	constexpr float MenuCaptionInsetBelow = 3.0f;
 	constexpr float MenuSeparatorMargin = 4.0f;
 	inline float MenuIconSize = 14.0f;
+		inline float MenuIconOpacity = 0.6f;
+		inline float HelpMaxWidth = 310.0f;
+		inline float HelpPadding = 9.0f;
+			inline float HelpBodyOpacity = 0.7f;
+		// Slate active-timer intervals are seconds; prototype help-delay is 350ms.
+		inline float HelpDelay = 0.35f;
 	constexpr float MenuCornerRadius = 3.0f;
 	// Where the menu's tint has landed on its ground. The canvas puts this at a fixed 22px rather
 	// than a fraction, so a tall menu and a short one have the same lip rather than the same ramp.

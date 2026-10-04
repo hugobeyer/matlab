@@ -11,10 +11,15 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerConnector) : _bLast(false) {}
 		SLATE_ARGUMENT(bool, bLast)
 	SLATE_END_ARGS()
-	void Construct(const FArguments& InArgs) { bLast = InArgs._bLast; }
+	void Construct(const FArguments& InArgs)
+		{
+			bLast = InArgs._bLast;
+			StrokePoints.SetNumUninitialized(2);
+		}
 	virtual FVector2D ComputeDesiredSize(float) const override;
 	virtual int32 OnPaint(const FPaintArgs&, const FGeometry&, const FSlateRect&,
 		FSlateWindowElementList&, int32, const FWidgetStyle&, bool) const override;
 private:
 	bool bLast = false;
+	mutable TArray<FVector2D> StrokePoints;
 };

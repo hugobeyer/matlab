@@ -35,7 +35,8 @@ namespace
 
 	TSharedRef<SWidget> MakeGroupTab(
 		const FText& Label, const FText& ToolTip, const TAttribute<bool>& bSelected,
-		const FSimpleDelegate& OnChosen, const FCheckBoxStyle& CheckBoxStyle, const bool bShowSeparator)
+		const FSimpleDelegate& OnChosen, const FCheckBoxStyle& CheckBoxStyle,
+		const bool bShowSeparator, const bool bStretch)
 	{
 		const TSharedRef<SCheckBox> CheckBox = SNew(SCheckBox)
 			.Style(&CheckBoxStyle)
@@ -56,7 +57,7 @@ namespace
 				.Justification(ETextJustify::Center)
 			]);
 		return SNew(SBox)
-			.WidthOverride(MixtormatTokens::TabWidth)
+			.WidthOverride(bStretch ? FOptionalSize() : FOptionalSize(MixtormatTokens::TabWidth))
 			.HeightOverride(MixtormatTokens::GroupButtonHeight)
 			[
 				SNew(SMixtormatGroupButtonSurface)
@@ -152,14 +153,19 @@ void SMixtormatTabStrip::Construct(const FArguments& InArgs)
 		const FMixtormatOnSegmentChosen OnChosen = InArgs._OnChosen;
 		if (InArgs._UseGroupButtonVisuals)
 		{
-			Strip->AddSlot().AutoWidth()
-			[
-				MakeGroupTab(InArgs._Options[Index],
-					InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty(),
-					bSelected,
-					FSimpleDelegate::CreateLambda([OnChosen, Index]() { OnChosen.ExecuteIfBound(Index); }),
-					GroupButtonCheckBoxStyle, Index + 1 < InArgs._Options.Num())
-			];
+			const TSharedRef<SWidget> Tab = MakeGroupTab(InArgs._Options[Index],
+				InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty(),
+				bSelected,
+				FSimpleDelegate::CreateLambda([OnChosen, Index]() { OnChosen.ExecuteIfBound(Index); }),
+				GroupButtonCheckBoxStyle, Index + 1 < InArgs._Options.Num(), InArgs._StretchTabs);
+			if (InArgs._StretchTabs)
+			{
+				Strip->AddSlot().FillWidth(1.0f)[Tab];
+			}
+			else
+			{
+				Strip->AddSlot().AutoWidth()[Tab];
+			}
 			continue;
 		}
 		Strip->AddSlot().AutoWidth()

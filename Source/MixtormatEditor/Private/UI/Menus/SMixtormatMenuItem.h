@@ -66,6 +66,7 @@ private:
 	FLinearColor GetShadeMid() const;
 	FLinearColor GetShadeEnd() const;
 	FSlateColor GetLabelColor() const;
+	FSlateColor GetIconColor() const;
 	bool IsRowEnabled() const;
 
 	TAttribute<bool> bChecked;

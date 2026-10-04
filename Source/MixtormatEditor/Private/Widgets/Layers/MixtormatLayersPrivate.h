@@ -4,6 +4,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "MixtormatParameterBinding.h"
+#include "UI/Layers/SMixtormatLayerHierarchy.h"
 
 // Shared declarations for the private Layers implementation; bodies live in one .cpp each.
 namespace MixtormatLayersPrivate
@@ -66,6 +67,9 @@ namespace MixtormatLayersPrivate
 	const FSlateBrush* ScopeConnectorFor(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex);
 
 	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex);
+
+	FMixtormatLayerHierarchyPaint ChildHierarchyPaint(
+		const TArray<FMixtormatLayerChild>& Children, int32 ChildIndex, bool bGroupShared = false);
 
 	bool IsDescendantOf(
 		const TArray<FMixtormatLayerChild>& Children,
