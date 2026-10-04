@@ -7,7 +7,7 @@
 #include "Style/MixtormatTheme.h"
 
 // Owns the theme and the resolved style derived from it.
-//
+// 
 // This is the answer to "where does a widget get its colours from" -- one object, one accessor.
 // Before this existed the only way to reach a resolved value was to rebuild the whole chain, which
 // is why nothing had tried.
@@ -58,7 +58,21 @@ public:
 	// can be known to survive a pure invalidation. Stage 5 shrinks this as widgets adopt recipes.
 	static bool ConsumeRebuildRequest();
 
+	// Startup load result for UI status display.
+	enum class EStartupLoadResult : uint8
+	{
+		LoadedSavedTheme,
+		UsingCompiledDefaults,
+		SavedThemeInvalid
+	};
+
+	// Get the startup load result (valid after EnsureInitialised).
+	static EStartupLoadResult GetStartupLoadResult();
+
 private:
 	// Idempotent, and separate from Refresh so the lazy path cannot recurse.
 	static void EnsureInitialised();
+	
+	// Loads saved theme from disk if valid, otherwise uses compiled defaults.
+	static void LoadSavedThemeOrDefaults();
 };

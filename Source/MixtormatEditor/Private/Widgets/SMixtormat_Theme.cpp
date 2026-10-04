@@ -1,8 +1,8 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
-
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeSchema.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Modules/ModuleManager.h"
@@ -107,7 +107,7 @@ FReply SMixtormat::OpenLiveThemePanel()
 		return FReply::Handled();
 	}
 	const TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(LOCTEXT("ThemeWindowTitle", "Mixtormat — UI Style"))
+		.Title(LOCTEXT("ThemeWindowTitle", "Mixtormat \u2014 UI Style"))
 		.ClientSize(FVector2D(620.0f, 720.0f))
 		.SupportsMaximize(true)
 		.SupportsMinimize(true)
@@ -118,18 +118,43 @@ FReply SMixtormat::OpenLiveThemePanel()
 				const TSharedPtr<SMixtormat> Editor = Owner.Pin();
 				return Editor.IsValid() && !Editor->bIsBaking;
 			})
-			.OnThemeChanged(FSimpleDelegate::CreateSP(this, &SMixtormat::RequestThemeRefresh))
+			.OnThemeChanged_Lambda([Owner = TWeakPtr<SMixtormat>(SharedThis(this))](Mixtormat::EMixtormatThemeRefreshMode Mode)
+			{
+				if (const TSharedPtr<SMixtormat> Editor = Owner.Pin())
+				{
+					Editor->RequestThemeRefresh(static_cast<SMixtormat::EThemeRefreshMode>(static_cast<uint8>(Mode)));
+				}
+			})
 		];
 	LiveThemeWindow = Window;
 	FSlateApplication::Get().AddWindow(Window);
 	return FReply::Handled();
 }
 
-void SMixtormat::RequestThemeRefresh()
+void SMixtormat::RequestThemeRefresh(EThemeRefreshMode Mode)
 {
+	// Paint and layout readers resolve values dynamically, so update their subtree immediately.
+	// Only construction-cached values need the coalesced workspace reconstruction.
+	switch (Mode)
+	{
+	case EThemeRefreshMode::Paint:
+		Invalidate(EInvalidateWidgetReason::Paint);
+		return;
+	case EThemeRefreshMode::Layout:
+		Invalidate(EInvalidateWidgetReason::Layout);
+		return;
+	case EThemeRefreshMode::StyleRefresh:
+		FMixtormatStyle::Refresh();
+		Invalidate(EInvalidateWidgetReason::Layout);
+		return;
+	case EThemeRefreshMode::Reconstruct:
+		break;
+	}
+
 	if (!bThemeRefreshPending)
 	{
 		bThemeRefreshPending = true;
+		PendingRefreshMode = EThemeRefreshMode::Reconstruct;
 		RegisterActiveTimer(0.1f, FWidgetActiveTimerDelegate::CreateSP(this, &SMixtormat::ApplyPendingTheme));
 	}
 }
@@ -143,27 +168,59 @@ EActiveTimerReturnType SMixtormat::ApplyPendingTheme(double CurrentTime, float D
 		return EActiveTimerReturnType::Continue;
 	}
 	bThemeRefreshPending = false;
+	
 	const int32 Page = MainSwitcher.IsValid() ? MainSwitcher->GetActiveWidgetIndex() : 0;
-	FThemeLayoutState LayoutState;
-	int32 ScrollIndex = 0;
-	int32 GroupIndex = 0;
-	TransferLayoutState(ChildSlot.GetWidget(), LayoutState, false, ScrollIndex, GroupIndex);
+	
+	switch (PendingRefreshMode)
+	{
+	case EThemeRefreshMode::Paint:
+		{
+			// Invalidate paint only - no layout or reconstruction
+			FMixtormatStyle::Refresh();
+			Invalidate(EInvalidateWidgetReason::Paint);
+			break;
+		}
+	case EThemeRefreshMode::Layout:
+		{
+			// Invalidate layout
+			FMixtormatStyle::Refresh();
+			Invalidate(EInvalidateWidgetReason::Layout);
+			break;
+		}
+	case EThemeRefreshMode::StyleRefresh:
+		{
+			// Call legacy style refresh for migrated widgets
+			FMixtormatStyle::Refresh();
+			Invalidate(EInvalidateWidgetReason::Layout);
+			break;
+		}
+	case EThemeRefreshMode::Reconstruct:
+		{
+			// Full workspace reconstruction with layout state preservation
+			FThemeLayoutState LayoutState;
+			int32 ScrollIndex = 0;
+			int32 GroupIndex = 0;
+			TransferLayoutState(ChildSlot.GetWidget(), LayoutState, false, ScrollIndex, GroupIndex);
 
-	// Retain SMixtormat, its recipe/history and its existing viewport. Only layout widgets go
-	// away. In-place style refresh also keeps raw brush/style references in open popups valid.
-	ChildSlot[SNullWidget::NullWidget];
-	MainSwitcher.Reset();
-	LeftSwitcher.Reset();
-	NumericResetBindings.Reset();
-	EnumResetBindings.Reset();
-	FMixtormatStyle::Refresh();
-	BuildWorkspaceUI();
-	MainSwitcher->SetActiveWidgetIndex(Page);
-	SyncSelectedLayerControls();
-	ScrollIndex = 0;
-	GroupIndex = 0;
-	TransferLayoutState(ChildSlot.GetWidget(), LayoutState, true, ScrollIndex, GroupIndex);
-	Invalidate(EInvalidateWidgetReason::Layout);
+			// Retain SMixtormat, its recipe/history and its existing viewport. Only layout widgets go
+			// away. In-place style refresh also keeps raw brush/style references in open popups valid.
+			ChildSlot[SNullWidget::NullWidget];
+			MainSwitcher.Reset();
+			LeftSwitcher.Reset();
+			NumericResetBindings.Reset();
+			EnumResetBindings.Reset();
+			FMixtormatStyle::Refresh();
+			BuildWorkspaceUI();
+			MainSwitcher->SetActiveWidgetIndex(Page);
+			SyncSelectedLayerControls();
+			ScrollIndex = 0;
+			GroupIndex = 0;
+			TransferLayoutState(ChildSlot.GetWidget(), LayoutState, true, ScrollIndex, GroupIndex);
+			Invalidate(EInvalidateWidgetReason::Layout);
+			break;
+		}
+	}
+	
 	return EActiveTimerReturnType::Stop;
 }
 

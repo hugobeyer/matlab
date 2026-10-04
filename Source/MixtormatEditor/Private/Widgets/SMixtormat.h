@@ -175,7 +175,16 @@ private:
 	FReply OpenLiveThemePanel();
 	FReply OpenDocumentation();
 	FReply OpenSettings();
-	void RequestThemeRefresh();
+	// Theme refresh modes
+	enum class EThemeRefreshMode : uint8
+	{
+		Paint,
+		Layout,
+		StyleRefresh,
+		Reconstruct
+	};
+
+	void RequestThemeRefresh(EThemeRefreshMode Mode = EThemeRefreshMode::Reconstruct);
 	EActiveTimerReturnType ApplyPendingTheme(double CurrentTime, float DeltaTime);
 	FReply ShowLeftPage(int32 PageIndex);
 	FReply ImportSurfaces();
@@ -1430,6 +1439,7 @@ private:
 
 	TWeakPtr<SWindow> LiveThemeWindow;
 	bool bThemeRefreshPending = false;
+	EThemeRefreshMode PendingRefreshMode = EThemeRefreshMode::Reconstruct;
 	float ShellLeftFraction = 0.19f;
 	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;

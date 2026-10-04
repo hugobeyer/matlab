@@ -1,6 +1,16 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatThemeSchema.h"
+#include "Services/MixtormatPaths.h"
+
+#include "Dom/JsonObject.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 namespace
 {
@@ -12,6 +22,7 @@ namespace
 	TArray<FText> GValidationIssues;
 	bool GInitialised = false;
 	bool GRebuildRequested = false;
+	FMixtormatThemeStore::EStartupLoadResult GStartupLoadResult = FMixtormatThemeStore::EStartupLoadResult::UsingCompiledDefaults;
 }
 
 void FMixtormatThemeStore::EnsureInitialised()
@@ -19,10 +30,35 @@ void FMixtormatThemeStore::EnsureInitialised()
 	if (!GInitialised)
 	{
 		GInitialised = true;
+		LoadSavedThemeOrDefaults();
+	}
+}
+
+void FMixtormatThemeStore::LoadSavedThemeOrDefaults()
+{
+	const FString SavePath = Mixtormat::FMixtormatThemeSchema::SavePath();
+	if (!IFileManager::Get().FileExists(*SavePath))
+	{
 		GTheme = Mixtormat::MakeDefaultTheme();
 		Mixtormat::ValidateTheme(GTheme, GValidationIssues);
 		Mixtormat::ResolveTheme(GTheme, GResolved);
+		GStartupLoadResult = EStartupLoadResult::UsingCompiledDefaults;
+		return;
 	}
+
+	FString Error;
+	TArray<FText> Issues;
+	if (Mixtormat::FMixtormatThemeSchema::Load(Error, Issues))
+	{
+		GStartupLoadResult = EStartupLoadResult::LoadedSavedTheme;
+		return;
+	}
+
+	GTheme = Mixtormat::MakeDefaultTheme();
+	Mixtormat::ValidateTheme(GTheme, GValidationIssues);
+	Mixtormat::ResolveTheme(GTheme, GResolved);
+	GStartupLoadResult = EStartupLoadResult::SavedThemeInvalid;
+	GValidationIssues.Add(FText::FromString(Error));
 }
 
 const Mixtormat::FMixtormatResolvedStyle& FMixtormatThemeStore::GetResolved()
@@ -82,4 +118,10 @@ bool FMixtormatThemeStore::ConsumeRebuildRequest()
 	const bool bWasRequested = GRebuildRequested;
 	GRebuildRequested = false;
 	return bWasRequested;
+}
+
+FMixtormatThemeStore::EStartupLoadResult FMixtormatThemeStore::GetStartupLoadResult()
+{
+	EnsureInitialised();
+	return GStartupLoadResult;
 }

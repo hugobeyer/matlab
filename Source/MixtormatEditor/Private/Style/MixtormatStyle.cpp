@@ -2,6 +2,7 @@
 
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatLiveTheme.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatMutableStyleSet.h"
 
@@ -96,6 +97,8 @@ void FMixtormatStyle::Initialize()
 {
 	if (!StyleInstance.IsValid())
 	{
+		// Resolve the authored Stage-9 theme before any production style or workspace construction.
+		FMixtormatThemeStore::GetResolved();
 		FMixtormatLiveTheme::Initialize();
 		FString ThemeLoadError;
 		FMixtormatLiveTheme::Load(ThemeLoadError);

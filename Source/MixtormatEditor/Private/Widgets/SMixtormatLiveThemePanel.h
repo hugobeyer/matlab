@@ -14,9 +14,11 @@ class SScrollBox;
 class SMixtormatLiveThemePanel final : public SCompoundWidget
 {
 public:
+	DECLARE_DELEGATE_OneParam(FOnThemeChanged, Mixtormat::EMixtormatThemeRefreshMode);
+
 	SLATE_BEGIN_ARGS(SMixtormatLiveThemePanel) : _CanEdit(true) {}
 		SLATE_ATTRIBUTE(bool, CanEdit)
-		SLATE_EVENT(FSimpleDelegate, OnThemeChanged)
+		SLATE_EVENT(FOnThemeChanged, OnThemeChanged)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -34,7 +36,10 @@ private:
 	void CommitChoice(FName Id, int32 Value);
 	void CommitColor(FLinearColor Value, FName Id);
 	void ResetProperty(FName Id);
-	void CommitTheme(Mixtormat::FMixtormatTheme Theme, const FString& Message);
+	void CommitTheme(
+		Mixtormat::FMixtormatTheme Theme,
+		const FString& Message,
+		Mixtormat::EMixtormatThemeRefreshMode RefreshMode);
 
 	FReply OpenColor(FName Id);
 	FReply Save();
@@ -48,7 +53,7 @@ private:
 	TSharedRef<SWidget> MakePropertyRow(const Mixtormat::FMixtormatThemeProperty& Property);
 
 	TAttribute<bool> CanEdit;
-	FSimpleDelegate OnThemeChanged;
+	FOnThemeChanged OnThemeChanged;
 	int32 SelectedTab = INDEX_NONE; // INDEX_NONE = All, otherwise enum index.
 	FString Filter;
 	FString Status;

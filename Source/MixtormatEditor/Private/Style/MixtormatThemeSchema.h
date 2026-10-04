@@ -30,6 +30,16 @@ namespace Mixtormat
 		Color,
 	};
 
+	// Refresh mode for a theme property change. Strongest wins when coalescing.
+	// Paint < Layout < StyleRefresh < Reconstruct
+	enum class EMixtormatThemeRefreshMode : uint8
+	{
+		Paint,          // Invalidate paint only (OnPaint, recipes, palette colors, opacities, borders)
+		Layout,         // Invalidate layout (desired size, padding where widgets read dynamically)
+		StyleRefresh,   // Call FMixtormatStyle::Refresh() for legacy style-set consumers
+		Reconstruct     // Full workspace reconstruction (construction-cached values, topology changes)
+	};
+
 	struct FMixtormatThemeProperty
 	{
 		FName Id;
@@ -38,6 +48,7 @@ namespace Mixtormat
 		FString Help;
 		EMixtormatThemeTab Tab = EMixtormatThemeTab::Global;
 		EMixtormatThemePropertyKind Kind = EMixtormatThemePropertyKind::Number;
+		EMixtormatThemeRefreshMode RefreshMode = EMixtormatThemeRefreshMode::Reconstruct;
 
 		float Minimum = 0.0f;
 		float Maximum = 1.0f;
@@ -60,11 +71,8 @@ namespace Mixtormat
 	public:
 		static const TArray<FMixtormatThemeProperty>& Properties();
 		static const FMixtormatThemeProperty* Find(FName Id);
-
 		static FString TabLabel(EMixtormatThemeTab Tab);
 		static FString TabKey(EMixtormatThemeTab Tab);
-
-		// Fresh Stage-9 format. Deliberately unrelated to LiveTheme.json.
 		static FString SavePath();
 		static bool Save(FString& OutError);
 		static bool Load(FString& OutError, TArray<FText>& OutValidationIssues);

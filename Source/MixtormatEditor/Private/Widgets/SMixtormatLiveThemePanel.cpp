@@ -66,8 +66,22 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 {
 	CanEdit = InArgs._CanEdit;
 	OnThemeChanged = InArgs._OnThemeChanged;
-	Status = TEXT("Edits the resolved Mixtormat theme. Numeric drags commit once on release.");
-
+	
+	// Show startup load status
+	FMixtormatThemeStore::EStartupLoadResult LoadResult = FMixtormatThemeStore::GetStartupLoadResult();
+	switch (LoadResult)
+	{
+	case FMixtormatThemeStore::EStartupLoadResult::LoadedSavedTheme:
+		Status = TEXT("Loaded saved UI style theme.");
+		break;
+	case FMixtormatThemeStore::EStartupLoadResult::UsingCompiledDefaults:
+		Status = TEXT("Using compiled defaults (no saved theme found).");
+		break;
+	case FMixtormatThemeStore::EStartupLoadResult::SavedThemeInvalid:
+		Status = TEXT("Saved theme invalid, using compiled defaults.");
+		break;
+	}
+	
 	TArray<FText> Tabs;
 	Tabs.Add(LOCTEXT("AllTab", "ALL"));
 	for (uint8 I = 0; I < static_cast<uint8>(Mixtormat::EMixtormatThemeTab::Count); ++I)
@@ -454,7 +468,7 @@ void SMixtormatLiveThemePanel::PreviewNumber(const FName Id, const float Value)
 	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
 	P->SetNumber(Theme, Clamped);
 	FMixtormatThemeStore::SetTheme(MoveTemp(Theme));
-	OnThemeChanged.ExecuteIfBound();
+	OnThemeChanged.ExecuteIfBound(P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::CommitNumber(const FName Id, const float Value)
@@ -467,7 +481,7 @@ void SMixtormatLiveThemePanel::CommitNumber(const FName Id, const float Value)
 	PendingNumbers.Remove(Id);
 	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
 	P->SetNumber(Theme, FMath::Clamp(Value, P->Minimum, P->Maximum));
-	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."));
+	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::CommitBool(const FName Id, const bool Value)
@@ -479,7 +493,7 @@ void SMixtormatLiveThemePanel::CommitBool(const FName Id, const bool Value)
 	}
 	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
 	P->SetBool(Theme, Value);
-	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."));
+	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::CommitChoice(const FName Id, const int32 Value)
@@ -492,7 +506,7 @@ void SMixtormatLiveThemePanel::CommitChoice(const FName Id, const int32 Value)
 	}
 	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
 	P->SetChoice(Theme, Value);
-	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."));
+	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::CommitColor(const FLinearColor Value, const FName Id)
@@ -504,7 +518,7 @@ void SMixtormatLiveThemePanel::CommitColor(const FLinearColor Value, const FName
 	}
 	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
 	P->SetColor(Theme, Value);
-	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."));
+	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::ResetProperty(const FName Id)
@@ -528,15 +542,15 @@ void SMixtormatLiveThemePanel::ResetProperty(const FName Id)
 	case Mixtormat::EMixtormatThemePropertyKind::Color:
 		P->SetColor(Theme, P->GetColor(Default)); break;
 	}
-	CommitTheme(MoveTemp(Theme), TEXT("Property reset."));
+	CommitTheme(MoveTemp(Theme), TEXT("Property reset."), P->RefreshMode);
 }
 
 void SMixtormatLiveThemePanel::CommitTheme(
-	Mixtormat::FMixtormatTheme Theme, const FString& Message)
+	Mixtormat::FMixtormatTheme Theme, const FString& Message, Mixtormat::EMixtormatThemeRefreshMode RefreshMode)
 {
 	FMixtormatThemeStore::SetTheme(MoveTemp(Theme));
 	UpdateStatus(Message);
-	OnThemeChanged.ExecuteIfBound();
+	OnThemeChanged.ExecuteIfBound(RefreshMode);
 }
 
 FReply SMixtormatLiveThemePanel::OpenColor(const FName Id)
@@ -580,7 +594,7 @@ FReply SMixtormatLiveThemePanel::Load()
 	}
 	PendingNumbers.Reset();
 	UpdateStatus(TEXT("UI style theme loaded."));
-	OnThemeChanged.ExecuteIfBound();
+	OnThemeChanged.ExecuteIfBound(Mixtormat::EMixtormatThemeRefreshMode::Reconstruct);
 	return FReply::Handled();
 }
 
@@ -593,7 +607,7 @@ FReply SMixtormatLiveThemePanel::ResetAll()
 	PendingNumbers.Reset();
 	FMixtormatThemeStore::ResetToDefaults();
 	UpdateStatus(TEXT("Authored defaults restored."));
-	OnThemeChanged.ExecuteIfBound();
+	OnThemeChanged.ExecuteIfBound(Mixtormat::EMixtormatThemeRefreshMode::Reconstruct);
 	return FReply::Handled();
 }
 
