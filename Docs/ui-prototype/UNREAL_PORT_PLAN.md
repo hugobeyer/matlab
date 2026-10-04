@@ -459,39 +459,63 @@ separates them from the CSS-derived set. They are `constexpr`-free for the usual
 reason: `THEME_NUMBER` takes `&MixtormatTokens::Name`
 (`MixtormatLiveTheme.cpp:47-48`).
 
-### Recommended architecture: a shared state helper, not `FCurveSequence` alone
+### Recommended architecture: logical state channels, each with its own curve
 
-`FCurveSequence` is the right primitive for the **easing shape**, and the wrong
-primitive for the **state machine**. A curve sequence is evaluated at a time you supply;
-it has no notion of a target, so reversing a transition means either re-keying the curve
-at the current time or tracking the current value outside it. Re-keying on every
-interruption is exactly the code that produces jumps.
-
-The helper holds current and target per channel and borrows a curve only for the ramp:
+The unit is a **channel**, one per logical state: `Hover`, `Press`, `Selection`, `Open`.
+The helper above them knows only which state a widget is in; each channel owns an
+`FCurveSequence` with an `FCurveHandle`, and painters read the channel's evaluated value.
 
 ```
 struct FMixtormatStateChannel
 {
-    float Current = 0.0f;   // 0..1, the interpolated value painters read
-    float Target  = 0.0f;   // 0 or 1
+    FCurveSequence Sequence;   // one 0..1 handle, owned by the channel
+    FCurveHandle   Curve;
+
+    bool  bTarget = false;
+    float Value() const { return Sequence.Evaluate(Curve); }
+
+    void Play(bool bOn, float Duration);   // forwards, reverses or plays relative
 };
 
 struct FMixtormatStateAnim
 {
     FMixtormatStateChannel Hover, Press, Selection, Open;
-    TSharedPtr<FActiveTimerHandle> Timer;
 
-    void SetHoverTarget(bool bOn);   // and Press/Selection/Open
-    float HoverT() const { return Hover.Current; }
+    void SetHover(bool bOn);   // and Press/Selection/Open
+    float HoverT() const { return Hover.Value(); }
 };
 ```
 
-A `FCurveHandle` (or an `FCurveSequence` of one 0..1 span) supplies
-`Ease(elapsed / duration)` each tick. `Current` moves toward `Target` by evaluating the
-curve over the remaining fraction, so an interruption mid-flight reverses from wherever
-the value currently is. That handles every reversal case in the list below with no
-special-casing, and it is why the helper must own `Current`/`Target` rather than
-delegating to the curve.
+`FCurveSequence` covers the ordinary cases on its own:
+
+- `Play(StartTime, TargetDuration, InterpMode, CurveVisibility)` to run a channel forward;
+- `Reverse()` when a transition is interrupted, which continues from the current play
+  position rather than restarting — this is the hover-out-during-hover-in case, and it
+  does not require rebuilding or re-keying the curve;
+- `PlayReverse()` and `PlayRelative(StartTime, TargetDuration, ...)` where a simple
+  forward or reverse ramp is enough.
+
+`Reverse()` picking up from the current position is the whole reason this is not a
+hand-rolled tween: the interruption cases below need no special-casing because the
+sequence already knows where it is.
+
+Explicit numeric `Current`/`Target` state is still needed in two places, and only those
+two:
+
+1. **Arbitrary value transitions.** Anything that is not rest-to-hover — a jump from one
+   selected colour to another, a saturation retune mid-flight — is not a 0..1 ramp and
+   does not fit a fixed pair of keys.
+2. **Dynamic duration or easing.** A live-theme edit that changes
+   `HoverTransitionDuration` or `HoverEaseExponent` has to retarget a channel that is
+   already playing. Rebuilding keys mid-flight is what produces jumps, so this path
+   falls back to a stored current value.
+
+Keeping the channel's curve as the source of truth and the numeric pair as a fallback
+avoids maintaining two competing notions of "where is this channel right now".
+
+`FCurveSequence` tracks its own play position, duration and direction while running, and
+`IsPlaying()` reports whether a channel still needs ticking, so the widget's active timer
+can stop the moment every channel has settled. There is no permanent tick.
 
 `Disabled` is not a channel. It is a fixed state that suppresses the others, matching
 how the widget already branches on `ShouldBeEnabled` first
@@ -499,20 +523,23 @@ how the widget already branches on `ShouldBeEnabled` first
 
 ### Reverse and interrupted transitions
 
-Required behaviour, all of which fall out of the Current/Target model:
+Required behaviour. The ordinary cases are handled by the sequence's own reversal:
 
 | Case | Behaviour |
 | --- | --- |
-| Cursor leaves before hover-in finishes | `Target = 0`, ramp continues from current `HoverT`. No snap to 0 |
-| Press begins mid hover-in | `Press.Target = 1`; `Hover` keeps its own value. Channels are independent, not a single enum |
-| Press released off the glyph | `Press.Target = 0`. The visual must follow the same rule the click already uses — release outside the glyph cancels (`SMixtormatIconButton.cpp:91`) — otherwise the button looks cancelled but still fires |
-| Selection changes while hovered | `Selection` moves on its own curve; `HoverT` is unaffected. The paint blends both |
-| Foldout reverses while opening | `Open.Target` flips; the chevron and tint ramp back from current |
+| Cursor leaves before hover-in finishes | `Reverse()` on the hover channel. Continues from the current play position; no snap to 0 and no restart |
+| Press begins mid hover-in | `Press` plays forward on its own channel; `Hover` keeps its position. Channels are independent, not a single enum |
+| Press released off the glyph | `Reverse()` on press. The visual must follow the same rule the click already uses — release outside the glyph cancels (`SMixtormatIconButton.cpp:91`) — otherwise the button looks cancelled but still fires |
+| Selection changes while hovered | `Selection` plays on its own curve; `Hover` is unaffected. The paint blends both evaluated values |
+| Foldout reverses while opening | `Reverse()` on `Open`; chevron and tint ramp back from the current position |
 | Theme edit while a state is animating | Workspace rebuild destroys the widgets (`SMixtormat_Theme.cpp:146-166`). New widgets start at their target, so nothing dangles |
 
-The widget tree must be destroyed cleanly on rebuild. Any registered active timer is
-held by `TSharedPtr` on the widget, so a destroyed widget drops its timer with it — but
-this only holds if no timer is registered against a parent that outlives the rebuild.
+The two cases that fall back to explicit numeric state are a live-theme duration or
+easing change mid-flight, and a transition between two non-rest values.
+
+A destroyed widget must drop its active timer. Holding the handle as a `TSharedPtr` on
+the widget gives that for free, provided no timer is registered against a parent that
+outlives the workspace rebuild.
 
 ### What each state family interpolates
 
@@ -582,8 +609,9 @@ rotation or two states cross-faded, since the PNGs are fixed artwork.
 
 Hard constraints:
 
-- **No permanent ticking.** An active timer is registered on a state *change* and
-  unregistered when every channel reaches its target. Nothing runs at rest.
+- **No permanent ticking.** A channel's sequence runs only while it is playing, and
+  `IsPlaying()` is the gate: the widget's active timer stops as soon as every channel has
+  settled. Nothing runs at rest.
 - **Layer stack in particular.** Many rows exist at once, but only rows whose state is
   mid-transition should hold a timer. A fast sweep across a 100-row stack leaves a
   handful running briefly, not 100.
@@ -710,11 +738,12 @@ static form, with no motion, before any animation work begins.
 Entirely optional. Nothing here is required for CSS parity, because the prototype
 authors no transitions at all.
 
-15. **Shared state-animation primitive.** The current/target helper plus the six timing
-    tokens, registered under a Motion category. Fix the per-paint allocation in
-    `MixtormatGradient::Paint` (`MixtormatGradientPainter.cpp:71-72`) before anything
-    animates through it, or every animating gradient allocates per frame. Add the
-    reduced-motion toggle at the same time, so no family has to be written twice.
+15. **Shared state-animation primitive.** Per-channel `FCurveSequence`/`FCurveHandle`
+    over the four logical states, plus the six timing tokens registered under a Motion
+    category. Fix the per-paint allocation in `MixtormatGradient::Paint`
+    (`MixtormatGradientPainter.cpp:71-72`) before anything animates through it, or every
+    animating gradient allocates per frame. Add the reduced-motion toggle at the same
+    time, so no family has to be written twice.
 16. **Simple families first.** Icon button, toggle, tabs, segmented cells and top-bar
     buttons. These are the cheapest and validate the primitive end to end. Icon press
     becomes visible here for the first time (`SMixtormatIconButton.cpp:71`).
