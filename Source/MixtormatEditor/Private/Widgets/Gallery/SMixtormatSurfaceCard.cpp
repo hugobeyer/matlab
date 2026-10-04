@@ -1,11 +1,11 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
-#include "Widgets/Gallery/MixtormatGalleryCaption.h"
 
 #include "AssetThumbnail.h"
 #include "InputCoreTypes.h"
 #include "UI/DragDrop/MixtormatDragDropOps.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SOverlay.h"
@@ -25,30 +25,36 @@ void SMixtormatSurfaceCard::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			SNew(SOverlay)
-			+ SOverlay::Slot()
+			// No row under the swatch: the material name is not printed below the thumbnail. It is
+			// named in the hover popover instead, on the same host the buttons use for their help.
+			SNew(SMixtormatHelp)
+			.Text(DisplayName)
+			// Never two popovers at once: the context menu is the card's own, and this one is
+			// already open whenever the pointer that opens it is still resting on the swatch.
+			.Enabled_Lambda([this]()
+			{
+				return !ContextAnchor.IsValid() || !ContextAnchor->IsOpen();
+			})
 			[
-				// Hover-revealed, like the mask card: the material name appears under the swatch the
-				// pointer is on rather than on all of them at once.
-				MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName,
-					TAttribute<EVisibility>::CreateLambda([this]()
-					{
-						return IsHovered() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-					}))
-			]
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			[
-				SNew(SBox)
-				.Visibility_Lambda([this]()
-				{
-					return IsHovered()
-						? EVisibility::HitTestInvisible
-						: EVisibility::Collapsed;
-				})
+				SNew(SOverlay)
+				+ SOverlay::Slot()
 				[
-					InArgs._HoverContent.Widget
+					InArgs._Content.Widget
+				]
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Fill)
+				[
+					SNew(SBox)
+					.Visibility_Lambda([this]()
+					{
+						return IsHovered()
+							? EVisibility::HitTestInvisible
+							: EVisibility::Collapsed;
+					})
+					[
+						InArgs._HoverContent.Widget
+					]
 				]
 			]
 		]

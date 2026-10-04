@@ -1,11 +1,11 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/Gallery/SMixtormatMaskCard.h"
-#include "Widgets/Gallery/MixtormatGalleryCaption.h"
 
 #include "AssetThumbnail.h"
 #include "InputCoreTypes.h"
 #include "UI/DragDrop/MixtormatDragDropOps.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SMenuAnchor.h"
 
 void SMixtormatMaskCard::Construct(const FArguments& InArgs)
@@ -16,8 +16,8 @@ void SMixtormatMaskCard::Construct(const FArguments& InArgs)
 	ThumbnailPool = InArgs._ThumbnailPool;
 	OnSelected = InArgs._OnSelected;
 	OnGalleryZoom = InArgs._OnGalleryZoom;
-	// The caption names the mask on hover rather than permanently. The card is the hovered widget, so
-	// this reads as "the pointer is on this swatch" without the tile needing to report anything.
+	// No row under the swatch: the mask name is not printed below the thumbnail. It is named in the
+	// hover popover instead, which is the same host the buttons use for their help.
 	ChildSlot
 	.HAlign(HAlign_Left)
 	.VAlign(VAlign_Top)
@@ -28,11 +28,17 @@ void SMixtormatMaskCard::Construct(const FArguments& InArgs)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName,
-				TAttribute<EVisibility>::CreateLambda([this]()
-				{
-					return IsHovered() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-				}))
+			SNew(SMixtormatHelp)
+			.Text(DisplayName)
+			// Never two popovers at once: the context menu is the card's own, and this one is
+			// already open whenever the pointer that opens it is still resting on the swatch.
+			.Enabled_Lambda([this]()
+			{
+				return !ContextAnchor.IsValid() || !ContextAnchor->IsOpen();
+			})
+			[
+				InArgs._Content.Widget
+			]
 		]
 	];
 }
