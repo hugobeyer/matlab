@@ -86,6 +86,10 @@ namespace Mixtormat
 	FMixtormatSurfaceRecipe MakeMenuRowRecipe(
 		const FMixtormatTheme& Theme, EMixtormatMenuRowState State);
 
+enum class EMixtormatPreviewPlateState : uint8 { Rest, Hover, Pressed, Checked };
+FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
+	const FMixtormatTheme& Theme, EMixtormatPreviewPlateState State = EMixtormatPreviewPlateState::Rest);
+
 	// Ground, a black Multiply shade falling top to bottom, and a hairline outline.
 	//
 	// The two states differ only in the border's four opacity numbers. Base and shade are identical

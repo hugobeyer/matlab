@@ -537,6 +537,7 @@ namespace Mixtormat
 	{
 		FLinearColor PlateSource = FLinearColor::White;
 		float PlateOpacity = 0.85f;
+		float OverlayGroundOpacity = 0.62f;
 		float IconOpacity = 0.6f;
 		float IconRestOpacity = 0.45f;
 		float GripOpacity = 0.45f;
@@ -644,12 +645,15 @@ namespace Mixtormat
 	struct FMixtormatPreviewMetrics
 	{
 		float ToolbarHeight = 0.0f;
-		float ButtonSize = 0.0f;
-		float IconSize = 14.0f;
+		float RailIconSize = 24.0f;
 		float ViewportPadding = 0.0f;
-		float OverlayInset = 0.0f;
-		float OverlayClusterInset = 0.0f;
-		float ToolbarGap = 0.0f;
+		float OverlayInset = 8.0f;
+		float OverlayClusterInset = 2.0f;
+		float ToolbarGap = 5.0f;
+		float OverlayButtonGap = 4.0f;
+		float ComparisonToggleGap = 4.0f;
+		float ResolutionControlWidth = 92.0f;
+		float TogglePadding = 2.0f;
 		float SplitFraction = 0.0f;
 	};
 

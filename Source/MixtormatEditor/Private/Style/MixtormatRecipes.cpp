@@ -451,6 +451,47 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
+		const FMixtormatTheme& Theme, const EMixtormatPreviewPlateState State)
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::OverlayGround);
+
+		FMixtormatColorRef PlateSource;
+		PlateSource.LocalColor = Theme.Preview.PlateSource;
+		PlateSource.Opacity = Theme.Preview.PlateOpacity;
+		FMixtormatPaintLayer Plate;
+		Plate.Source = PlateSource;
+		Plate.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		Recipe.Layers.Add(Plate);
+
+		float AccentOpacity = 0.0f;
+		switch (State)
+		{
+		case EMixtormatPreviewPlateState::Hover:
+			AccentOpacity = Theme.Preview.HoverAccent;
+			break;
+		case EMixtormatPreviewPlateState::Pressed:
+			AccentOpacity = Theme.Preview.PressAccent;
+			break;
+		case EMixtormatPreviewPlateState::Checked:
+			// The prototype's checked plate is 60% of the hover contribution.
+			AccentOpacity = Theme.Preview.HoverAccent * 0.6f;
+			break;
+		default:
+			break;
+		}
+		if (AccentOpacity > 0.0f)
+		{
+			FMixtormatPaintLayer Accent;
+			Accent.Source = MakeColorRef(EMixtormatColorRole::Accent);
+			Accent.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+			Accent.Strength = AccentOpacity;
+			Recipe.Layers.Add(Accent);
+		}
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeWellRecipe(const FMixtormatTheme& Theme, const EMixtormatWellState State)
 	{
 		FMixtormatSurfaceRecipe Recipe;

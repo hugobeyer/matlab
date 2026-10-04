@@ -312,12 +312,20 @@ namespace Mixtormat
 		// ---- Preview / Gallery / Shell ------------------------------------------------
 		T.Preview.PlateSource = SRGB(21, 22, 24);      // --overlay-plate-rgb
 		T.Preview.PlateOpacity = 0.85f;               // --overlay-plate-opacity
+		T.Preview.OverlayGroundOpacity = 0.62f;        // --overlay-ground-opacity
 		T.Preview.IconOpacity = 0.6f;                 // --overlay-icon-opacity
 		T.Preview.IconRestOpacity = 0.45f;            // --overlay-icon-rest-opacity
 		T.Preview.GripOpacity = 0.45f;                // --overlay-grip-opacity
 		T.Preview.HoverAccent = 0.18f;                // --overlay-hover-accent
 		T.Preview.PressAccent = 0.35f;                // --overlay-press-accent
-		T.PreviewLayout.IconSize = 24.0f;             // --rail-icon-size
+		T.PreviewLayout.RailIconSize = 24.0f;        // --rail-icon-size
+		T.PreviewLayout.OverlayInset = 8.0f;
+		T.PreviewLayout.OverlayClusterInset = 2.0f;
+		T.PreviewLayout.ToolbarGap = 5.0f;
+		T.PreviewLayout.OverlayButtonGap = 4.0f;
+		T.PreviewLayout.ComparisonToggleGap = 4.0f;
+		T.PreviewLayout.ResolutionControlWidth = 92.0f;
+		T.PreviewLayout.TogglePadding = 2.0f;
 
 		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
 		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
@@ -338,7 +346,7 @@ namespace Mixtormat
 		// ---- Icons ---------------------------------------------------------------------
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::TopBar)] = Icon(18.0f, 0.6f);           // --topbar-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PanelToolbar)] = Icon(14.0f, 0.6f);     // --toolbar-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(14.0f, 0.6f);   // --overlay-icon-*
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::PreviewToolbar)] = Icon(20.0f, 0.6f, 2.0f, 2.0f);   // --overlay-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)] = Icon(14.0f, 0.6f);          // --layer-icon-*
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)] = Icon(14.0f, 0.6f);
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::FoldoutDisclosure)] = Icon(10.0f, 0.65f); // --foldout-icon-*
@@ -510,6 +518,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Gallery.HoverLiftOpacity"), InOutTheme.Gallery.HoverLiftOpacity);
 		Clamp01(TEXT("Gallery.SelectedEdgeOpacity"), InOutTheme.Gallery.SelectedEdgeOpacity);
 		Clamp01(TEXT("Preview.PlateOpacity"), InOutTheme.Preview.PlateOpacity);
+		Clamp01(TEXT("Preview.OverlayGroundOpacity"), InOutTheme.Preview.OverlayGroundOpacity);
 		Clamp01(TEXT("Preview.IconOpacity"), InOutTheme.Preview.IconOpacity);
 		Clamp01(TEXT("Preview.IconRestOpacity"), InOutTheme.Preview.IconRestOpacity);
 		Clamp01(TEXT("Preview.GripOpacity"), InOutTheme.Preview.GripOpacity);

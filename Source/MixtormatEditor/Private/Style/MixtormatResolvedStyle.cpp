@@ -462,12 +462,15 @@ namespace Mixtormat
 			PlateRef.LocalColor = Theme.Preview.PlateSource;
 			Preview.OverlayPlate = ResolveColor(P, PlateRef);
 			Preview.OverlayGround = P.Get(EMixtormatColorRole::OverlayGround);
+			Preview.OverlayGround.A *= Theme.Preview.OverlayGroundOpacity;
 			Preview.OverlayPlateOpacity = Theme.Preview.PlateOpacity;
+			Preview.OverlayGroundOpacity = Theme.Preview.OverlayGroundOpacity;
 			Preview.HoverAccent = Theme.Preview.HoverAccent;
 			Preview.PressAccent = Theme.Preview.PressAccent;
 			Preview.IconOpacity = Theme.Preview.IconOpacity;
 			Preview.IconRestOpacity = Theme.Preview.IconRestOpacity;
 			Preview.GripOpacity = Theme.Preview.GripOpacity;
+			Preview.RailIconSize = Theme.PreviewLayout.RailIconSize;
 		}
 
 		// ---- Shell ---------------------------------------------------------------------
