@@ -146,6 +146,16 @@ namespace Mixtormat
 		FMixtormatColorRef Source;
 		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 
+		// Opacity along the surface's axis, sampled at each edge's own position. Present because the
+		// well authors its outline as one overall intensity times a per-edge endpoint
+		// (0.33 top against 0.11 bottom): without a ramp the outline is a single flat colour, and
+		// those two authored endpoints have no representation at all.
+		//
+		// Sampled per edge, not along an edge: a top border takes T = 0 and a bottom border T = 1,
+		// so a vertical fade becomes a brighter top edge over a dimmer one. A fade *along* an edge
+		// would need the edge split into segments and is not authored anywhere.
+		FMixtormatRamp OpacityRamp;
+
 		float Width = 1.0f;
 
 		bool bTop = false;
