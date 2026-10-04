@@ -11,6 +11,7 @@
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "UI/Primitives/MixtormatWell.h"
 #include "Styling/SlateTypes.h"
@@ -37,6 +38,16 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	OnBeginDrag = InArgs._OnBeginDrag;
 	OnEndDrag = InArgs._OnEndDrag;
 	EntrySession = MakeShared<FMixtormatEntryCommit>();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	ControlLabelTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	DisabledControlLabelTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	ControlValueTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlValue),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 
 	if (InArgs._ToolTip.IsSet())
 	{
@@ -49,16 +60,14 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 			"Drag to adjust · click to type · Shift fine · Ctrl+Shift finer · Ctrl snap · MMB or hover + Backspace to reset"));
 	}
 
-	const FEditableTextBoxStyle& EntryStyle =
-		FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.ValueSlider.Entry"));
 
 	ChildSlot
 	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(MixtormatTokens::DraggerTextInset, 0.0f); }))
 	.VAlign(VAlign_Center)
 	[
 		SAssignNew(EntryWidget, SEditableText)
-		.Font(EntryStyle.TextStyle.Font)
-		.ColorAndOpacity(EntryStyle.ForegroundColor)
+		.Font(ControlValueTextStyle.Font)
+		.ColorAndOpacity(ControlValueTextStyle.ColorAndOpacity)
 		.SelectAllTextWhenFocused(true)
 		.ClearKeyboardFocusOnCommit(true)
 		.RevertTextOnEscape(true)
@@ -542,10 +551,8 @@ int32 SMixtormatSlider::OnPaint(
 			Marker);
 	}
 
-	const FTextBlockStyle& LabelStyle = Style.GetWidgetStyle<FTextBlockStyle>(
-		bEnabled ? TEXT("Mixtormat.ValueSlider.Label") : TEXT("Mixtormat.ValueSlider.LabelDisabled"));
-	const FTextBlockStyle& ValueStyle =
-		Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.ValueSlider.Value"));
+	const FTextBlockStyle& LabelStyle = bEnabled ? ControlLabelTextStyle : DisabledControlLabelTextStyle;
+	const FTextBlockStyle& ValueStyle = ControlValueTextStyle;
 
 	const TSharedRef<FSlateFontMeasure> FontMeasure =
 		FSlateApplication::Get().GetRenderer()->GetFontMeasureService();

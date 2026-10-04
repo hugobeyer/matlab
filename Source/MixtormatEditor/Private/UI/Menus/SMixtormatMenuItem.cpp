@@ -6,6 +6,7 @@
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
@@ -22,7 +23,14 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 	bDestructive = InArgs._bDestructive;
 	OnActivate = InArgs._OnActivate;
 
-	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::FMixtormatTextSpec MenuSpec = Mixtormat::FMixtormatTypography::GetSpec(
+		Resolved.Typography, Mixtormat::EMixtormatTextRole::Menu);
+	const FTextBlockStyle MenuTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		MenuSpec, Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle ShortcutTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::MenuShortcut),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 	const FSlateBrush* const Icon = InArgs._Icon;
 	const bool bHasSubMenu = InArgs._OnGetSubMenu.IsBound();
 
@@ -52,7 +60,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		.VAlign(VAlign_Center)
 		[
 			SNew(STextBlock)
-			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MenuLabel")))
+			.Font(MenuTextStyle.Font)
 			.ColorAndOpacity(this, &SMixtormatMenuItem::GetLabelColor)
 			.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 			.Text(InArgs._Label)
@@ -66,7 +74,8 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 		.Padding(FMixtormatThemeStore::GetResolved().MenuLayout.ItemGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(STextBlock)
-			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MenuShortcut")))
+			.Font(ShortcutTextStyle.Font)
+			.ColorAndOpacity(ShortcutTextStyle.ColorAndOpacity)
 			.Text(InArgs._Shortcut)
 		];
 	}
@@ -140,17 +149,24 @@ bool SMixtormatMenuItem::IsRowEnabled() const
 
 FSlateColor SMixtormatMenuItem::GetLabelColor() const
 {
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	FLinearColor Color;
 	if (!IsRowEnabled())
 	{
-		return FSlateColor(FMixtormatThemeStore::GetResolved().Menus.ItemDisabled);
+		Color = Resolved.Menus.ItemDisabled;
 	}
-	if (bChecked.Get(false) && !bDestructive)
+	else if (bChecked.Get(false) && !bDestructive)
 	{
-		return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
+		Color = Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	}
-	return FSlateColor(bDestructive
-		? FMixtormatThemeStore::GetResolved().Menus.DestructiveText
-		: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	else
+	{
+		Color = bDestructive ? Resolved.Menus.DestructiveText
+			: Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+	}
+	Color.A *= Mixtormat::FMixtormatTypography::GetSpec(
+		Resolved.Typography, Mixtormat::EMixtormatTextRole::Menu).Opacity;
+	return FSlateColor(Color);
 }
 
 FSlateColor SMixtormatMenuItem::GetIconColor() const

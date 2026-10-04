@@ -9,6 +9,7 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Framework/Application/SlateApplication.h"
@@ -71,12 +72,18 @@ namespace
 	FSlateColor GetPreviewOverlayLabelColor(const bool bHovered, const bool bPressed)
 	{
 		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		const float TypographyOpacity = Mixtormat::FMixtormatTypography::GetSpec(
+			Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel).Opacity;
 		if (bPressed)
 		{
-			return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
+			FLinearColor Color = Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
+			Color.A *= TypographyOpacity;
+			return FSlateColor(Color);
 		}
+		// Preview's rest opacity is the authored state treatment for this overlay label; the text
+		// role opacity is its independent typography treatment. Both are explicit source values.
 		return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
-			.CopyWithNewOpacity(bHovered ? 1.0f : Resolved.Preview.IconRestOpacity));
+			.CopyWithNewOpacity((bHovered ? 1.0f : Resolved.Preview.IconRestOpacity) * TypographyOpacity));
 	}
 
 	// The glyph inside an overlay control: `.viewport-overlay .asset-icon` is Text at the PreviewToolbar
@@ -980,10 +987,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
 	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle PreviewLabelTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	const FCheckBoxStyle* OverlayToggle = &GetPreviewOverlayToggleStyle();
 
 	TSharedRef<SHorizontalBox> ComparisonControls = SNew(SHorizontalBox);
-	const auto AddComparisonButton = [this, &ComparisonControls, OverlayToggle](
+	const auto AddComparisonButton = [this, &ComparisonControls, OverlayToggle, PreviewLabelTextStyle](
 		const bool bBefore,
 		const FText& Label,
 		const FText& ToolTip)
@@ -1023,7 +1034,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				[
 					SNew(STextBlock)
 					.Text(Label)
-					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+					.Font(PreviewLabelTextStyle.Font)
 					.ColorAndOpacity_Lambda([this, bBefore]()
 					{
 						const bool bChecked = SoloLayerIndex == INDEX_NONE && bShowCompositionBefore == bBefore;
@@ -1062,7 +1073,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(STextBlock)
 			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
-			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+			.Font(PreviewLabelTextStyle.Font)
 			.ColorAndOpacity_Lambda([this]()
 			{
 				return GetPreviewOverlayLabelColor(false,
@@ -1153,7 +1164,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[
 				SNew(STextBlock)
 				.Text(LOCTEXT("GlobalUVRotation90", "90°"))
-				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				.Font(PreviewLabelTextStyle.Font)
 				.ColorAndOpacity_Lambda([this]()
 				{
 					return GetPreviewOverlayLabelColor(false, bGlobalUVRotation90);
@@ -1273,7 +1284,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			})
 			[
 				SNew(STextBlock)
-				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+				.Font(PreviewLabelTextStyle.Font)
 				.ColorAndOpacity(FSlateColor::UseForeground())
 				.Text_Lambda([this]()
 				{
@@ -1493,7 +1504,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().PreviewLayout.ToolbarGap)
 	[
 		SNew(STextBlock)
-		.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Font(PreviewLabelTextStyle.Font)
+		.ColorAndOpacity(PreviewLabelTextStyle.ColorAndOpacity)
 		.Text_Lambda([this]()
 		{
 			return !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
@@ -1582,7 +1594,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.ButtonContent()
 					[
 						SNew(STextBlock)
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+						.Font(PreviewLabelTextStyle.Font)
 						.ColorAndOpacity_Lambda([this]()
 						{
 							return GetPreviewOverlayLabelColor(false, false);

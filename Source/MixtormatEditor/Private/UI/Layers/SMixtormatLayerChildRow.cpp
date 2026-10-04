@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatStatusDot.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
@@ -26,8 +27,14 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	OnSelected = InArgs._OnSelected;
 	OnRowDragDetected = InArgs._OnDragDetected;
 
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle NameTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle SourceTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const Mixtormat::FMixtormatLayerMetrics& Layout = Resolved.LayerLayout;
 
 	ChildSlot
 	[
@@ -106,7 +113,8 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+						.Font(NameTextStyle.Font)
+						.ColorAndOpacity(NameTextStyle.ColorAndOpacity)
 						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 						.Text(InArgs._Name)
 					]
@@ -120,7 +128,8 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						0.0f)
 					[
 						SNew(STextBlock)
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+						.Font(SourceTextStyle.Font)
+						.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
 						.Text(InArgs._Kind)
 						// Same reason as the badge below: a child with no kind mark should not
 						// spend the slot's padding saying nothing.

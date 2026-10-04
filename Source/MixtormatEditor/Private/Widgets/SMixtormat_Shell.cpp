@@ -7,6 +7,7 @@
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "HAL/PlatformProcess.h"
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
@@ -78,6 +79,10 @@ FReply SMixtormat::OpenSettings()
 TSharedRef<SWidget> SMixtormat::BuildTopBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle TopBarTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::TopBar),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	const bool bHasDeveloperSources =
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	return SNew(SBox)
@@ -113,14 +118,16 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return FText::FromString(WorkingMaterialName); })
 					.Clipping(EWidgetClipping::ClipToBounds)
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+					.Font(TopBarTextStyle.Font)
+					.ColorAndOpacity(TopBarTextStyle.ColorAndOpacity)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5.0f, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(STextBlock)
 					.Visibility_Lambda([this]() { return bIsWorkingMaterialDirty ? EVisibility::Visible : EVisibility::Collapsed; })
 					.Text(LOCTEXT("WorkingMaterialEdited", "EDITED"))
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+					.Font(TopBarTextStyle.Font)
+					.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified)))
 				]
 
@@ -145,7 +152,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("NewMaterialTop", "NEW"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -169,7 +177,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("LoadMaterialTop", "LOAD"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -194,7 +203,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "SAVE"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -219,7 +229,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "SAVE AS..."))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -257,7 +268,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("BakeMaterialTop", "BAKE"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -282,7 +294,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]
@@ -307,7 +320,8 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock).Text(LOCTEXT("SettingsTop", "SETTINGS"))
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
 						]
 					]

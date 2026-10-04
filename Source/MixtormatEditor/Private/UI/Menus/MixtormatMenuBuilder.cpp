@@ -3,6 +3,7 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "Style/MixtormatStyle.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Menus/SMixtormatMenuItem.h"
@@ -107,8 +108,11 @@ namespace MixtormatMenu
 
 	TSharedRef<SWidget> FBuilder::Build() const
 	{
-		const ISlateStyle& Style = FMixtormatStyle::Get();
-		const Mixtormat::FMixtormatMenuMetrics& Layout = FMixtormatThemeStore::GetResolved().MenuLayout;
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		const FTextBlockStyle CaptionTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+			Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Caption),
+			Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+		const Mixtormat::FMixtormatMenuMetrics& Layout = Resolved.MenuLayout;
 		TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 
 		for (const FEntry& Entry : Entries)
@@ -121,7 +125,8 @@ namespace MixtormatMenu
 				.Padding(FMargin(Layout.ItemInset, Layout.CaptionInsetAbove, Layout.ItemInset, Layout.CaptionInsetBelow))
 				[
 					SNew(STextBlock)
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MenuCaption")))
+					.Font(CaptionTextStyle.Font)
+					.ColorAndOpacity(CaptionTextStyle.ColorAndOpacity)
 					.Text(Entry.Label)
 				];
 				break;

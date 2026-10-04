@@ -127,16 +127,9 @@ namespace Mixtormat
 				: EMixtormatStyleTarget::Gallery;
 
 		case EMixtormatThemeTab::Typography:
-			if (Id.Contains(TEXT(".FoldoutTitle."))) return EMixtormatStyleTarget::Foldout;
-			if (Id.Contains(TEXT(".CardTitle."))) return EMixtormatStyleTarget::Card;
-			if (Id.Contains(TEXT(".LayerName.")) || Id.Contains(TEXT(".LayerSource."))
-				|| Id.Contains(TEXT(".Badge."))) return EMixtormatStyleTarget::Layer;
-			if (Id.Contains(TEXT(".Menu.")) || Id.Contains(TEXT(".MenuShortcut.")))
-				return EMixtormatStyleTarget::Menu;
-			if (Id.Contains(TEXT(".GalleryCaption."))) return EMixtormatStyleTarget::Gallery;
-			if (Id.Contains(TEXT(".TopBar."))) return EMixtormatStyleTarget::Button;
-			if (Id.Contains(TEXT(".PreviewLabel."))) return EMixtormatStyleTarget::Preview;
-			return EMixtormatStyleTarget::Controls;
+			// Role-to-widget registration is not implemented yet. A generic component target is
+			// misleading for semantic typography, so every Typography locate button stays disabled.
+			return EMixtormatStyleTarget::None;
 
 		case EMixtormatThemeTab::Global:
 			if (Id == TEXT("Palette.MenuGround")) return EMixtormatStyleTarget::Menu;

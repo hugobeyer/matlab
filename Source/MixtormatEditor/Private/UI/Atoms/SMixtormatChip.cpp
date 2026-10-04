@@ -6,6 +6,7 @@
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
@@ -18,7 +19,11 @@
 
 void SMixtormatChip::Construct(const FArguments& InArgs)
 {
-	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle ValueTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlValue),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const Mixtormat::FMixtormatControlMetrics& Layout = Resolved.ControlLayout;
 	const float MinWidth = InArgs._MinWidth > 0.0f ? InArgs._MinWidth : Layout.RowFieldMinWidth;
 	TSharedRef<SHorizontalBox> Content = SNew(SHorizontalBox);
 
@@ -43,7 +48,8 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 	.VAlign(VAlign_Center)
 	[
 		SNew(STextBlock)
-		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Font(ValueTextStyle.Font)
+		.ColorAndOpacity(ValueTextStyle.ColorAndOpacity)
 		.Text(InArgs._Text)
 		.AutoWrapText(false)
 		.OverflowPolicy(ETextOverflowPolicy::Ellipsis)

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Styling/SlateTypes.h"
 
 class SEditableText;
 class FMixtormatEntryCommit;
@@ -148,6 +149,9 @@ private:
 	FSimpleDelegate OnBeginDrag;
 	FSimpleDelegate OnEndDrag;
 
+	FTextBlockStyle ControlLabelTextStyle;
+	FTextBlockStyle DisabledControlLabelTextStyle;
+	FTextBlockStyle ControlValueTextStyle;
 	TSharedPtr<SEditableText> EntryWidget;
 	bool bEditing = false;
 	// Shared typed-entry rules (Enter/Tab/focus loss/left click accept; Escape/right click cancel).

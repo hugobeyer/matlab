@@ -8,6 +8,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Containers/SMixtormatFoldoutHeader.h"
@@ -94,7 +95,15 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 {
 	bCollapsible = InArgs._Collapsible;
 	bExpanded = InArgs._InitiallyExpanded;
-	const Mixtormat::FMixtormatFoldoutMetrics& Layout = FMixtormatThemeStore::GetResolved().FoldoutLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::FMixtormatTextSpec FoldoutTitleSpec = Mixtormat::FMixtormatTypography::GetSpec(
+		Resolved.Typography, Mixtormat::EMixtormatTextRole::FoldoutTitle);
+	const FTextBlockStyle FoldoutTitleStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		FoldoutTitleSpec, Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle BadgeTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Badge),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const Mixtormat::FMixtormatFoldoutMetrics& Layout = Resolved.FoldoutLayout;
 	const Mixtormat::FMixtormatIconStyle& DisclosureIcon = FMixtormatThemeStore::GetResolved().Icons.Roles[
 		static_cast<uint8>(Mixtormat::EMixtormatIconRole::FoldoutDisclosure)];
 
@@ -152,18 +161,18 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		// exactly what a LiveTheme edit already does. Only the colour needs to follow the enabled
 		// state at runtime, and ColorAndOpacity is a real SLATE_ATTRIBUTE, so it binds.
 		SNew(STextBlock)
-		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.FoldoutTitle")))
+		.Font(FoldoutTitleStyle.Font)
 		// Title only: the chevron, state, action and reset keep their slots.
 		.Justification_Lambda([]() { return MixtormatRow::JustifyFor(MixtormatTokens::GroupHeaderAlign); })
-		.ColorAndOpacity_Lambda([this]()
+		.ColorAndOpacity_Lambda([this, FoldoutTitleSpec]()
 		{
 			// Colours are rebuilt per read rather than held as pointers: a pointer into the style set
 			// would outlive a theme refresh, and this costs one FLinearColor copy.
-			FLinearColor Tint = MixtormatPalette::RowText();
-			Tint.A *= IsEnabled()
-				? MixtormatTokens::FoldoutTitleOpacity
-				: MixtormatTokens::FoldoutTitleDisabledOpacity;
-			return FSlateColor(Tint);
+			const Mixtormat::FMixtormatResolvedStyle& Current = FMixtormatThemeStore::GetResolved();
+			const FLinearColor Color = IsEnabled()
+				? Current.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+				: Current.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+			return Mixtormat::FMixtormatTypography::MakeTextStyle(FoldoutTitleSpec, Color).ColorAndOpacity;
 		})
 		.Text(InArgs._Title)
 	];
@@ -177,7 +186,8 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		.Padding(MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f, 0.0f)
 		[
 			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.BadgeText")))
+			.Font(BadgeTextStyle.Font)
+			.RenderOpacity(BadgeTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 			.ColorAndOpacity(InArgs._StateColor.IsSet()
 				? InArgs._StateColor
 				: TAttribute<FSlateColor>(FSlateColor(MixtormatPalette::Modified())))

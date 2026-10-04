@@ -5,6 +5,8 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "Widgets/Images/SImage.h"
@@ -20,6 +22,11 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 	{
 		SetToolTipText(InArgs._ToolTip);
 	}
+
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle BadgeTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Badge),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 
 	ChildSlot
 	[
@@ -60,7 +67,8 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
-					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.BadgeText")))
+					.Font(BadgeTextStyle.Font)
+					.ColorAndOpacity(BadgeTextStyle.ColorAndOpacity)
 					.Text(InArgs._Text)
 				]
 			]

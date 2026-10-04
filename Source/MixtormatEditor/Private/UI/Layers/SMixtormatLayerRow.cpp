@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
@@ -38,8 +39,14 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	EditableName = InArgs._EditableName;
 	OnNameCommitted = InArgs._OnNameCommitted;
 
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle NameTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle SourceTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const Mixtormat::FMixtormatLayerMetrics& Layout = Resolved.LayerLayout;
 	const bool bCanDisable = InArgs._bCanDisable;
 	const TAttribute<bool> bSolo = InArgs._bSolo;
 
@@ -132,7 +139,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 							+ SWidgetSwitcher::Slot()
 							[
 								SNew(STextBlock)
-								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
+								.Font(NameTextStyle.Font)
 								.ColorAndOpacity(this, &SMixtormatLayerRow::GetNameColor)
 								.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 								.Text(InArgs._Name)
@@ -159,7 +166,8 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 							0.0f)
 						[
 							SNew(STextBlock)
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							.Font(SourceTextStyle.Font)
+							.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
 							.Text(InArgs._Source)
 						]
 
@@ -218,13 +226,15 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 
 FSlateColor SMixtormatLayerRow::GetNameColor() const
 {
-	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
-	if (!bLayerEnabled.Get(true))
-	{
-		return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
-	}
-	return FSlateColor(Palette.Get(bSelected.Get(false) || IsHovered()
-		? Mixtormat::EMixtormatColorRole::Text : Mixtormat::EMixtormatColorRole::TextMuted));
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::EMixtormatColorRole Role = !bLayerEnabled.Get(true)
+		? Mixtormat::EMixtormatColorRole::TextMuted
+		: bSelected.Get(false) || IsHovered()
+			? Mixtormat::EMixtormatColorRole::Text : Mixtormat::EMixtormatColorRole::TextMuted;
+	FLinearColor Color = Resolved.Palette.Get(Role);
+	Color.A *= Mixtormat::FMixtormatTypography::GetSpec(
+		Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName).Opacity;
+	return FSlateColor(Color);
 }
 
 void SMixtormatLayerRow::HandleEyeClicked(const FPointerEvent& MouseEvent)

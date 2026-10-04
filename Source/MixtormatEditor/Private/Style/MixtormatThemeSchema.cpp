@@ -171,12 +171,7 @@ namespace Mixtormat
 			Out.Add(Number(*Id(TEXT("Opacity")), ETab::Typography, *Section, TEXT("Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Typography.Roles[Index].Opacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Typography.Roles[Index].Opacity = V; }));
-			Out.Add(Bool(*Id(TEXT("Uppercase")), ETab::Typography, *Section, TEXT("Uppercase"),
-				[Index](const FMixtormatTheme& T) { return T.Typography.Roles[Index].bUppercase; },
-				[Index](FMixtormatTheme& T, bool V) { T.Typography.Roles[Index].bUppercase = V; }));
-			Out.Add(Bool(*Id(TEXT("MonospacedNumbers")), ETab::Typography, *Section, TEXT("Monospaced Numbers"),
-				[Index](const FMixtormatTheme& T) { return T.Typography.Roles[Index].bMonospacedNumbers; },
-				[Index](FMixtormatTheme& T, bool V) { T.Typography.Roles[Index].bMonospacedNumbers = V; }));
+
 		}
 
 		const TArray<FMixtormatThemeProperty>& BuildProperties()
@@ -467,8 +462,20 @@ namespace Mixtormat
 				NUM("Shell.SplitterVisualWidth", GalleryShell, "Shell / Layout", "Splitter Visual Width", Shell.SplitterVisualWidth, 0, 12, .25, 2);
 				NUM("Shell.SplitterHitWidth", GalleryShell, "Shell / Layout", "Splitter Hit Width", Shell.SplitterHitWidth, 2, 24, .5, 1);
 
-				// GalleryCaption is the only typography role with a production reader in this pass.
+				AddTextRole(P, EMixtormatTextRole::Body, TEXT("Body"), TEXT("Body"));
+				AddTextRole(P, EMixtormatTextRole::ControlLabel, TEXT("ControlLabel"), TEXT("Control Label"));
+				AddTextRole(P, EMixtormatTextRole::ControlValue, TEXT("ControlValue"), TEXT("Control Value"));
+				AddTextRole(P, EMixtormatTextRole::Caption, TEXT("Caption"), TEXT("Caption"));
+				AddTextRole(P, EMixtormatTextRole::FoldoutTitle, TEXT("FoldoutTitle"), TEXT("Foldout Title"));
+				AddTextRole(P, EMixtormatTextRole::CardTitle, TEXT("CardTitle"), TEXT("Card Title"));
+				AddTextRole(P, EMixtormatTextRole::LayerName, TEXT("LayerName"), TEXT("Layer Name"));
+				AddTextRole(P, EMixtormatTextRole::LayerSource, TEXT("LayerSource"), TEXT("Layer Source"));
+				AddTextRole(P, EMixtormatTextRole::Menu, TEXT("Menu"), TEXT("Menu"));
+				AddTextRole(P, EMixtormatTextRole::MenuShortcut, TEXT("MenuShortcut"), TEXT("Menu Shortcut"));
 				AddTextRole(P, EMixtormatTextRole::GalleryCaption, TEXT("GalleryCaption"), TEXT("Gallery Caption"));
+				AddTextRole(P, EMixtormatTextRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"));
+				AddTextRole(P, EMixtormatTextRole::PreviewLabel, TEXT("PreviewLabel"), TEXT("Preview Label"));
+				AddTextRole(P, EMixtormatTextRole::Badge, TEXT("Badge"), TEXT("Badge"));
 
 #undef BLEND
 #undef COL

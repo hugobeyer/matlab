@@ -4,6 +4,8 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -68,14 +70,21 @@ TSharedRef<SWidget> SMixtormatHelp::BuildHelpContent()
 	const FString DisplayText = Text.ToString();
 	int32 Newline = INDEX_NONE;
 	const bool bHasTitle = DisplayText.FindChar(TEXT('\n'), Newline) && Newline > 0;
-	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle CaptionTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Caption),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const FTextBlockStyle BodyTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	TSharedRef<SVerticalBox> Lines = SNew(SVerticalBox);
 	if (bHasTitle)
 	{
 		Lines->AddSlot().AutoHeight()
 		[
 			SNew(STextBlock)
-			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.HelpTitle")))
+			.Font(CaptionTextStyle.Font)
+			.ColorAndOpacity(CaptionTextStyle.ColorAndOpacity)
 			.Text(FText::FromString(DisplayText.Left(Newline).TrimEnd()))
 			.AutoWrapText(true)
 		];
@@ -83,7 +92,8 @@ TSharedRef<SWidget> SMixtormatHelp::BuildHelpContent()
 	Lines->AddSlot().AutoHeight()
 	[
 		SNew(STextBlock)
-		.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.HelpBody")))
+		.Font(BodyTextStyle.Font)
+		.ColorAndOpacity(BodyTextStyle.ColorAndOpacity)
 		.Text(bHasTitle ? FText::FromString(DisplayText.Mid(Newline + 1)) : Text)
 		.AutoWrapText(true)
 	];

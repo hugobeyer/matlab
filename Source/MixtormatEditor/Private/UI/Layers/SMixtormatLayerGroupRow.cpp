@@ -36,18 +36,16 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 	OnNameCommitted = InArgs._OnNameCommitted;
 	OnRowDragDetected = InArgs._OnDragDetected;
 
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle NameTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle SourceTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const Mixtormat::FMixtormatLayerMetrics& Layout = Resolved.LayerLayout;
 	const TAttribute<int32> MemberCount = InArgs._MemberCount;
 
-	// A group row's title is its own size and weight, so it is built by the typography system
-	// rather than by patching a registered style's font. This used to copy Mixtormat.LayerName and
-	// overwrite TypefaceFontName, which only happened to work because that style's composite font
-	// happened to define "Regular" and "Bold" -- it bypassed the weight model entirely, so a
-	// SemiBold group title could not have been expressed at all.
-	FSlateFontInfo GroupFont = Mixtormat::FMixtormatTypography::MakeFont(
-		Mixtormat::FMixtormatTypography::FromCssWeight(MixtormatTokens::LayerGroupTitleWeight),
-		MixtormatTokens::LayerGroupTitleSize);
 
 	ChildSlot
 	[
@@ -118,8 +116,7 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						+ SWidgetSwitcher::Slot()
 						[
 							SNew(STextBlock)
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
-							.Font(GroupFont)
+							.Font(NameTextStyle.Font)
 							.ColorAndOpacity(this, &SMixtormatLayerGroupRow::GetNameColor)
 							.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 							.Text(InArgs._Name)
@@ -145,7 +142,8 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 					.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(STextBlock)
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+						.Font(SourceTextStyle.Font)
+						.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
 						.Text_Lambda([MemberCount]()
 						{
 							return FText::AsNumber(MemberCount.Get(0));
@@ -174,13 +172,15 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 
 FSlateColor SMixtormatLayerGroupRow::GetNameColor() const
 {
-	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
-	if (!bGroupEnabled.Get(true))
-	{
-		return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
-	}
-	return FSlateColor(Palette.Get(bSelected.Get(false) || IsHovered()
-		? Mixtormat::EMixtormatColorRole::Text : Mixtormat::EMixtormatColorRole::TextMuted));
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::EMixtormatColorRole Role = !bGroupEnabled.Get(true)
+		? Mixtormat::EMixtormatColorRole::TextMuted
+		: bSelected.Get(false) || IsHovered()
+			? Mixtormat::EMixtormatColorRole::Text : Mixtormat::EMixtormatColorRole::TextMuted;
+	FLinearColor Color = Resolved.Palette.Get(Role);
+	Color.A *= Mixtormat::FMixtormatTypography::GetSpec(
+		Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName).Opacity;
+	return FSlateColor(Color);
 }
 
 void SMixtormatLayerGroupRow::BeginRename()

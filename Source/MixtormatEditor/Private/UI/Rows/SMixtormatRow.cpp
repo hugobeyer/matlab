@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "Style/MixtormatPalette.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/SMixtormatChip.h"
@@ -17,6 +18,16 @@
 
 namespace MixtormatRow
 {
+namespace
+{
+	FTextBlockStyle TextStyle(const Mixtormat::EMixtormatTextRole Role, const Mixtormat::EMixtormatColorRole Color)
+	{
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		return Mixtormat::FMixtormatTypography::MakeTextStyle(
+			Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Role), Resolved.Palette.Get(Color));
+	}
+}
+
 
 TSharedRef<SWidget> Make(
 	const FText& Label,
@@ -36,7 +47,8 @@ TSharedRef<SWidget> Make(
 		.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 		[
 			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.Font(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).Font)
+			.ColorAndOpacity(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).ColorAndOpacity)
 			.Text(Label)
 		]
 		+ SHorizontalBox::Slot()
@@ -75,7 +87,8 @@ TSharedRef<SWidget> MakeDropdown(
 			.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 			[
 				SNew(STextBlock)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+				.Font(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).Font)
+				.ColorAndOpacity(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).ColorAndOpacity)
 				.Text(Label)
 				.Justification(ETextJustify::Left)
 				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
@@ -115,7 +128,8 @@ TSharedRef<SWidget> MakeTrailing(
 		.Padding(0.0f, 0.0f, Layout.RowLabelGap, 0.0f)
 		[
 			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.Font(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).Font)
+			.ColorAndOpacity(TextStyle(Mixtormat::EMixtormatTextRole::ControlLabel, Mixtormat::EMixtormatColorRole::Text).ColorAndOpacity)
 			.Text(Label)
 		]
 		+ SHorizontalBox::Slot()
@@ -182,7 +196,8 @@ TSharedRef<SWidget> MakeCaption(const FText& Caption)
 				MixtormatTokens::CaptionHeightBelow))
 			[
 				SNew(STextBlock)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
+				.Font(TextStyle(Mixtormat::EMixtormatTextRole::Caption, Mixtormat::EMixtormatColorRole::TextMuted).Font)
+				.ColorAndOpacity(TextStyle(Mixtormat::EMixtormatTextRole::Caption, Mixtormat::EMixtormatColorRole::TextMuted).ColorAndOpacity)
 				.Justification_Lambda([]() { return JustifyFor(MixtormatTokens::SubgroupHeaderAlign); })
 				.Text(Caption.ToUpper())
 			]

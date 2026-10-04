@@ -7,6 +7,7 @@
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Containers/MixtormatGroupCardPainter.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
@@ -30,11 +31,15 @@ namespace
 
 		void Construct(const FArguments& InArgs)
 		{
+			const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+			const FTextBlockStyle TitleStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+				Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle),
+				Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 			ChildSlot
 			[
 				SNew(STextBlock)
-				// Copy the font; no style-set pointer survives a theme refresh.
-				.Font(FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupCardTitle")).Font)
+				.Font(TitleStyle.Font)
+				.RenderOpacity(Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle).Opacity)
 				.ColorAndOpacity_Lambda([]() { return FSlateColor(MixtormatPalette::GroupCardTitleText()); })
 				.Text(InArgs._Text)
 				.AutoWrapText(false)
@@ -60,7 +65,11 @@ namespace
 void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 {
 	bCompactLayout = InArgs._CompactLayout;
-	const Mixtormat::FMixtormatCardMetrics& Layout = FMixtormatThemeStore::GetResolved().CardLayout;
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle CardTitleStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const Mixtormat::FMixtormatCardMetrics& Layout = Resolved.CardLayout;
 	TSharedRef<SVerticalBox> Stack = SNew(SVerticalBox);
 	const TAttribute<FText> Title = InArgs._Title;
 	const TAttribute<FText> UpperTitle = TAttribute<FText>::CreateLambda([Title]()
@@ -161,7 +170,8 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 			bHasTitle
 				? StaticCastSharedRef<SWidget>(
 					SNew(STextBlock)
-					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.CardTitle")))
+					.Font(CardTitleStyle.Font)
+					.ColorAndOpacity(CardTitleStyle.ColorAndOpacity)
 					.Justification_Lambda([]() { return MixtormatRow::JustifyFor(MixtormatTokens::SubgroupHeaderAlign); })
 					.Text(UpperTitle))
 				: SNullWidget::NullWidget
