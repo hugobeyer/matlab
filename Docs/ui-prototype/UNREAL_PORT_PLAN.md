@@ -25,6 +25,7 @@ Already present and reusable:
 | Preview overlays | `Private/Widgets/SMixtormat_Preview.cpp` `BuildPreviewPanel()` | the edge clusters match; the plates do not (see gaps) |
 | Layer stack | `Private/UI/Layers` | rows, group rows, children, badges, chevrons |
 | Controls | `Private/UI/Controls`, `Private/UI/Rows` | slider, toggle, segmented, dropdown row/chip |
+| State machinery | none | no `FCurveSequence`, no `FCurveHandle`, no per-frame timer. `RegisterActiveTimer` is used only as a debounce for theme refresh, preview compose and rename (`SMixtormat_Theme.cpp:131`, `SMixtormatPreviewViewport.cpp:596`, `MixtormatLayerActions.cpp:1352`). `Invalidate(EInvalidateWidgetReason::Paint)` appears only in `SMixtormatScalarRamp.cpp:186-305` |
 
 Gaps confirmed during the audit:
 
@@ -81,6 +82,12 @@ Gaps confirmed during the audit:
 - A theme edit is not a brush swap. `ApplyPendingTheme` captures layout state, empties
   `ChildSlot`, calls `FMixtormatStyle::Refresh()`, and rebuilds the workspace
   (`SMixtormat_Theme.cpp:146-166`).
+- Every interactive state snaps. State is a binary branch in a paint-time attribute
+  (`SMixtormatLayerRow.cpp:244-252`, `SMixtormatToggle.cpp:78-85`,
+  `SMixtormatSegmentedControl.cpp:75-95`) or a discrete brush swap
+  (`SMixtormatInspectorGroup.cpp:210-216`). `SMixtormatIconButton` tracks `bPressed`
+  but never paints it, so press has no visual at all
+  (`SMixtormatIconButton.cpp:71`, `:86`). See "State animations and interpolation".
 
 ## Complete token coverage
 
@@ -385,6 +392,248 @@ What it does **not** yet have, and what the port still owes it:
 Panel work is therefore step 13 below, and it should follow the token registrations:
 a control for a token that does not exist yet would be dead UI.
 
+## State animations and interpolation
+
+Every state in the plugin today snaps. State is read as a binary branch in a paint-time
+attribute — `IsHovered() ? LayerHoverTop() : Panel()`
+(`SMixtormatLayerRow.cpp:244-252`), `IsHovered() ? FillTopHover() : FillTop()`
+(`SMixtormatToggle.cpp:78-85`) — or as a discrete brush swap,
+`IsHovered() ? "Mixtormat.HeaderHairlineGlow" : "Mixtormat.HeaderHairline"`
+(`SMixtormatInspectorGroup.cpp:210-216`, `SMixtormatLayerRow.cpp:267-271`). Nothing
+interpolates, and `SMixtormatIconButton` tracks `bPressed` for click cancellation
+(`SMixtormatIconButton.cpp:71`, `:86`) but never paints it, so press is invisible.
+
+### What the prototype actually requires
+
+The prototype authors **no transitions at all**. There is no `transition`, `animation`
+or `@keyframes` declaration in `components.css`, `tokens.css`, `popovers.css` or
+`fonts.css`, and no `requestAnimationFrame` in any script. Hover, pressed, selected and
+open states are instantaneous in CSS.
+
+The only timing value in the whole contract is `--help-delay: 350ms`
+(`tokens.css:341`), and it is a **delay before the help appears**, not a transition: it
+is consumed by a `setTimeout` in `scheduleHelp` (`popovers.js:63-73`), with a hardcoded
+350ms fallback. `help-max-width` and `help-padding` are geometry.
+
+Therefore:
+
+- **Zero animation is required for CSS parity.** Every transition below is either
+  optional Unreal polish or, at most, parity with the one delay the prototype does
+  author.
+- `--help-delay` maps to the plugin's existing tooltip delay behaviour, which is an
+  editor `SToolTip` the plugin does not own. It is a behaviour port, not a timing token.
+- Adding animation must not be allowed to change any static comparison. Every state
+  still has to be validated in its final static form first.
+
+### Parity vs polish
+
+| Transition | Status | Note |
+| --- | --- | --- |
+| Hover help delay (`--help-delay`) | **parity** | The only authored timing. Belongs to tooltip behaviour, not to a motion system |
+| Everything else in this section | **polish** | Slate snaps today and the prototype snaps too; adding motion is a deliberate departure |
+
+This is stated plainly because the risk is that a motion pass is mistaken for parity
+work and used to paper over a static mismatch. It is not.
+
+### Timing tokens
+
+The prototype authors no durations and no easing curves, so the whole timing set is
+Unreal-only polish. Keep it small:
+
+| Token | Suggested default | Scope |
+| --- | --- | --- |
+| `HoverTransitionDuration` | 120ms | rest to hover and back, on every family |
+| `PressTransitionDuration` | 60ms | hover to pressed and back |
+| `SelectionTransitionDuration` | 100ms | rest/hover to selected and back |
+| `ExpandTransitionDuration` | 140ms | foldout chevron and tint only (see below) |
+| `PopupFadeDuration` | 100ms | optional entrance/exit for menus and help |
+| `HoverEaseExponent` | 1.0 | power curve, same idiom as `falloff.js` |
+
+Six values, not dozens. `HoverEaseExponent` deliberately reuses the existing power-curve
+vocabulary (`falloff.js:17`) instead of introducing a separate easing concept the rest
+of the plan does not already speak.
+
+These should be `inline float` and registered in `MixtormatLiveTheme` under a single
+**Motion** category, so the UI Style panel exposes them in one place and clearly
+separates them from the CSS-derived set. They are `constexpr`-free for the usual
+reason: `THEME_NUMBER` takes `&MixtormatTokens::Name`
+(`MixtormatLiveTheme.cpp:47-48`).
+
+### Recommended architecture: a shared state helper, not `FCurveSequence` alone
+
+`FCurveSequence` is the right primitive for the **easing shape**, and the wrong
+primitive for the **state machine**. A curve sequence is evaluated at a time you supply;
+it has no notion of a target, so reversing a transition means either re-keying the curve
+at the current time or tracking the current value outside it. Re-keying on every
+interruption is exactly the code that produces jumps.
+
+The helper holds current and target per channel and borrows a curve only for the ramp:
+
+```
+struct FMixtormatStateChannel
+{
+    float Current = 0.0f;   // 0..1, the interpolated value painters read
+    float Target  = 0.0f;   // 0 or 1
+};
+
+struct FMixtormatStateAnim
+{
+    FMixtormatStateChannel Hover, Press, Selection, Open;
+    TSharedPtr<FActiveTimerHandle> Timer;
+
+    void SetHoverTarget(bool bOn);   // and Press/Selection/Open
+    float HoverT() const { return Hover.Current; }
+};
+```
+
+A `FCurveHandle` (or an `FCurveSequence` of one 0..1 span) supplies
+`Ease(elapsed / duration)` each tick. `Current` moves toward `Target` by evaluating the
+curve over the remaining fraction, so an interruption mid-flight reverses from wherever
+the value currently is. That handles every reversal case in the list below with no
+special-casing, and it is why the helper must own `Current`/`Target` rather than
+delegating to the curve.
+
+`Disabled` is not a channel. It is a fixed state that suppresses the others, matching
+how the widget already branches on `ShouldBeEnabled` first
+(`SMixtormatIconButton.cpp:48-51`, `SMixtormatSlider.cpp:409`).
+
+### Reverse and interrupted transitions
+
+Required behaviour, all of which fall out of the Current/Target model:
+
+| Case | Behaviour |
+| --- | --- |
+| Cursor leaves before hover-in finishes | `Target = 0`, ramp continues from current `HoverT`. No snap to 0 |
+| Press begins mid hover-in | `Press.Target = 1`; `Hover` keeps its own value. Channels are independent, not a single enum |
+| Press released off the glyph | `Press.Target = 0`. The visual must follow the same rule the click already uses — release outside the glyph cancels (`SMixtormatIconButton.cpp:91`) — otherwise the button looks cancelled but still fires |
+| Selection changes while hovered | `Selection` moves on its own curve; `HoverT` is unaffected. The paint blends both |
+| Foldout reverses while opening | `Open.Target` flips; the chevron and tint ramp back from current |
+| Theme edit while a state is animating | Workspace rebuild destroys the widgets (`SMixtormat_Theme.cpp:146-166`). New widgets start at their target, so nothing dangles |
+
+The widget tree must be destroyed cleanly on rebuild. Any registered active timer is
+held by `TSharedPtr` on the widget, so a destroyed widget drops its timer with it — but
+this only holds if no timer is registered against a parent that outlives the rebuild.
+
+### What each state family interpolates
+
+Paint-only unless noted. "Geometry" is called out where it is deliberately excluded.
+
+| Family | Interpolates | Excluded |
+| --- | --- | --- |
+| Button rest/hover/pressed/selected | RGB, alpha, gradient stop values, saturation, hairline intensity | Any dimension |
+| Icon rest/hover/pressed | Glyph RGB and alpha, background plate alpha | Glyph size — `SMixtormatIconButton` fixes the glyph box at Construct (`:33-35`); animating it would relayout |
+| Foldout header hover | Tint RGB, tint alpha, saturation | Header height |
+| Foldout hairline | Hairline intensity / glow alpha | Hairline thickness |
+| Foldout accent tint | Multiply strength and the soft-light inputs | The tint's own geometry |
+| Disclosure chevron | Rotation about its centre | Layout slot |
+| Group Card hover/actions | Background alpha, header/body opacity, radius if stepped | Card margins |
+| Slider / well rest/hover/active/disabled | Fill gradient stops, shade alpha, saturation | Fill width — that is the value being dragged |
+| Well border endpoints | Per-endpoint alpha (the `well-border-top-opacity` / `-bottom` pair) | Border width |
+| Saturation between states | Per paint layer, lerped between the two authored values | Never hoisted into the palette |
+| Layer rest/hover/selected | Gradient start/end RGB, saturation, hairline | Row height and indent |
+| Layer active hairline/glow | Glow alpha, glow reach | Glow is a paint, not a layout change |
+| Child row hover/selected | Horizontal gradient endpoints | Indent |
+| Group row hover/selected | Cross-axis lift, saturation | Group row height |
+| Visibility squircle | Fill alpha, border colour | Squircle size |
+| Tabs | Brush tint / check-box state colours | Tab width |
+| Segmented controls | Cell gradient stops, text colour | Cell height |
+| Top bar / group buttons | Plate RGB, gradient stops, text opacity | Button height |
+| Preview rail buttons | Accent add amount, glyph opacity | Button size |
+| Menus / popovers | Optional opacity fade | Menu width and row height |
+| Hover help | Entrance/exit opacity only, if built at all | Help geometry |
+| Vignettes | Optional opacity, when state-driven | Vignette radius and start |
+
+Two structural constraints carry across all of these:
+
+- **Saturation stays per paint layer.** An animated saturation is the caller's argument,
+  lerped between two authored values, never a property of the palette role. See the
+  audit note on one accent being used at 0.7, 1.5 and 1.5.
+- **Soft-light stays explicit compositing.** Animation changes the strength and the
+  inputs; it does not turn soft-light into an add.
+
+### Slider needs a structural change first
+
+`SMixtormatSlider::OnPaint` selects a **brush name** by state
+(`SMixtormatSlider.cpp:408-416`), so the fill cannot interpolate: there is no colour to
+lerp between, only four pre-baked brushes. The static port must move the fill to
+hand-painted gradient stops fed by attributes — which it needs anyway for the fill ramps
+and falloff in the surface steps — before any fill transition is possible. This is the
+one place where the static port and the animation port genuinely collide.
+
+### Expand/collapse: animate the indicator, not the height
+
+`SMixtormatInspectorGroup` toggles body visibility through
+`Visibility_Lambda` returning `Visible` or `Collapsed`
+(`SMixtormatInspectorGroup.cpp:254-255`). `Collapsed` removes the body from layout
+entirely, so there is no height to animate without a clipped-reveal implementation that
+would relayout every frame.
+
+Recommend the lower-risk option: **animate the chevron rotation and the header tint, and
+leave body visibility immediate.** Nothing in the prototype asks for an animated height
+— `<details>` in CSS opens instantly here, since there is no transition. If a reveal is
+wanted later, it belongs in its own step and must not change the expansion state, the
+scroll position or the layout-transfer behaviour in `ApplyPendingTheme`.
+
+The chevron is currently a binary brush swap, `bExpanded ? ChevronDown() :
+ChevronRight()` (`SMixtormatInspectorGroup.cpp:99-101`). Rotating needs a painted
+rotation or two states cross-faded, since the PNGs are fixed artwork.
+
+### Performance and lifecycle
+
+Hard constraints:
+
+- **No permanent ticking.** An active timer is registered on a state *change* and
+  unregistered when every channel reaches its target. Nothing runs at rest.
+- **Layer stack in particular.** Many rows exist at once, but only rows whose state is
+  mid-transition should hold a timer. A fast sweep across a 100-row stack leaves a
+  handful running briefly, not 100.
+- **No `FMixtormatStyle::Refresh()` per frame.** A live-theme edit rebuilds the
+  workspace; an animation frame must never do that. The style set stays static during
+  motion.
+- **No per-frame brush allocation.** Gradient brushes cannot be animated through the
+  style set at all — that is why `MixtormatGradient::Paint` exists. Note that it
+  currently heap-allocates a `TArray<FSlateGradientStop>` sized to the sampled spans on
+  **every** paint (`MixtormatGradientPainter.cpp:71-72`). At
+  `GradientSamplesPerSpan = 12` (`:69`) that is a per-frame allocation per animating
+  surface. The animation pass should move that to an inline allocator or a reusable
+  buffer; `SMixtormatGradientBox` already uses `TInlineAllocator<3>` for its multiply
+  stops (`SMixtormatGradientBox.cpp:67`), which is the pattern to follow.
+- **No widget-tree rebuild during a transition.** Animation lives inside an existing
+  painter.
+- **No material or viewport work.** Slate invalidation must not reach
+  `SMixtormatPreviewViewport`, whose compose path has its own active timer
+  (`SMixtormatPreviewViewport.cpp:596-598`). Paint-only invalidation keeps them separate.
+- **No writes to the live theme.** Animated intermediate values are widget-local. The
+  live theme holds authored targets only.
+
+### Ownership
+
+Three layers, and they must not blur:
+
+| Layer | Holds | Changes when |
+| --- | --- | --- |
+| `MixtormatDesignTokens` / `MixtormatLiveTheme` | Authored **target** values for every state | A theme edit, a load, a reset |
+| `MixtormatStyle` / `MixtormatPalette` | Static style resources and semantic colours | `Refresh()`, i.e. the same theme events |
+| Widget animation state | The **current interpolation** between those targets | Every frame of a running transition |
+
+A live-theme edit during a transition rebuilds the workspace, so widgets and their
+`Current` values are recreated at their targets. That is the correct outcome and needs no
+special handling beyond not leaking the timer.
+
+### Accessibility and behaviour
+
+Animation must not change click targets, drag/drop zones, transactions, selection
+behaviour, popup behaviour, expansion state, keyboard focus, tooltips or data bindings.
+In particular the 50%-of-row Into drop zone (`SMixtormatDropTargets.h:123-132`) is a
+fraction of row height and is unaffected by paint-only motion, because no animated
+property participates in layout.
+
+A reduced-motion path is required. The helper must be able to snap straight to target —
+set `Current = Target`, skip the timer — rather than each widget growing a second
+implementation. The project already has a settings surface (`OpenSettings`,
+`SMixtormat.h:178`), so a single toggle there is the natural home; the fallback when
+disabled is that every animated family behaves exactly as it does today.
+
 ## Work order
 
 Each step is independently reviewable and stops at a screenshot comparison. The order
@@ -416,9 +665,15 @@ is foundation first, then rendering primitives, then the surfaces that use them.
 
 ### Surfaces
 
+These steps are **static parity only**. Every state is validated here in its final
+static form, with no motion, before any animation work begins.
+
 4. **Controls.** Well fill shade and per-endpoint border falloff; slider fill, shade and
    falloff ramps; the modified stripe; the zero tick; toggle disabled shade; paired
-   spacing. All of these are hand-painted today, so none is a brush swap.
+   spacing. All of these are hand-painted today, so none is a brush swap. The slider fill
+   must become attribute-fed gradient stops here, not in the motion phase: `OnPaint`
+   currently picks a brush *name* by state (`SMixtormatSlider.cpp:408-416`) and cannot
+   interpolate until that changes.
 5. **Foldouts.** Geometry, title styling, the lift falloff, the soft-light tint layer,
    the hairline, the vignette, and the chevron states. Note `ChevronSize` is shared with
    the chip, the menu item, the layer group row and the child-output preview
@@ -447,7 +702,43 @@ is foundation first, then rendering primitives, then the surfaces that use them.
 13. **UI Style panel.** Tabs and real categories, two-column layout, default/range help,
     shared spacing.
 14. **Parity validation.** Screenshots plus Save to Load, rebuild state restoration,
-    splitters, gallery zoom, drag and drop, and open popups.
+    splitters, gallery zoom, drag and drop, and open popups. This is the gate: the
+    static port is not finished until every state reads correctly without motion.
+
+### Motion
+
+Entirely optional. Nothing here is required for CSS parity, because the prototype
+authors no transitions at all.
+
+15. **Shared state-animation primitive.** The current/target helper plus the six timing
+    tokens, registered under a Motion category. Fix the per-paint allocation in
+    `MixtormatGradient::Paint` (`MixtormatGradientPainter.cpp:71-72`) before anything
+    animates through it, or every animating gradient allocates per frame. Add the
+    reduced-motion toggle at the same time, so no family has to be written twice.
+16. **Simple families first.** Icon button, toggle, tabs, segmented cells and top-bar
+    buttons. These are the cheapest and validate the primitive end to end. Icon press
+    becomes visible here for the first time (`SMixtormatIconButton.cpp:71`).
+17. **Rows.** Layer, child and group rows. Largest count, so the timer-lifecycle and
+    allocation work from step 15 gets its real test. Only mid-transition rows hold a
+    timer.
+18. **Foldout indicator.** Chevron rotation and header tint. Body visibility stays
+    immediate; no height animation.
+19. **Motion validation.** The list in "Validation", plus a frame-cost check with a full
+    layer stack.
+
+### Structure during the static port that makes motion cheap later
+
+These are not extra work; they are choices in steps 4 to 11 that avoid a rewrite:
+
+- Paint state through **attribute bindings**, not branch-and-return, so an animated
+  value can flow into the existing `StartColor`/`EndColor`/`ColorAndOpacity` bindings.
+  Every affected widget already uses them (`SMixtormatLayerRow.cpp:65-67`,
+  `SMixtormatToggle.cpp:53-55`, `SMixtormatSegmentedControl.cpp:36-38`).
+- Keep a rest value and a state value **distinct** rather than collapsing to one
+  "current" colour, so a lerp has two endpoints.
+- Resolve both endpoints per paint from tokens, not from a pre-baked brush, so a
+  live-theme edit moves the endpoints without touching widget code.
+- Avoid animating anything that feeds `ComputeDesiredSize`.
 
 ### Notes on ordering
 
@@ -485,8 +776,51 @@ is foundation first, then rendering primitives, then the surfaces that use them.
   (`CardTitleBold`, `GroupCardTitleBold`, `GroupHeaderBold`) resolve through `Weight()`,
   a hard `>= 0.5 ? Bold : Regular` (`MixtormatStyle.cpp:50-54`, read at `:179`, `:633`,
   `:645`), so a real weight token needs a real typeface, not a switch.
+- **Motion is optional and separable.** Nothing in the motion phase gates static parity.
+  If it slips or regresses it can be dropped wholesale without touching the visual
+  contract, because every animated family keeps a correct static form underneath.
+- **A leaked active timer is the main lifecycle risk.** The helper holds its handle as a
+  `TSharedPtr` on the widget, so a destroyed widget drops it — but that only holds while
+  no timer is registered against a parent that outlives the workspace rebuild
+  (`SMixtormat_Theme.cpp:146-166`). Register timers on the widget that owns the state.
+- **Animation must not become the reason a static mismatch survives.** Every state is
+  signed off static first. A transition that makes a wrong value look intentional is a
+  regression, not a fix.
+- **Per-frame gradient allocation.** `MixtormatGradient::Paint` allocates on every paint
+  (`MixtormatGradientPainter.cpp:71-72`). Safe at rest, a real cost once a layer stack
+  animates. Fixed in step 15, before any motion.
 
 ## Validation
 
 Static review plus in-engine screenshots for each step. No build, test, or shell
 command was run to produce this plan.
+
+### Static parity
+
+As listed in work order step 14.
+
+### Motion
+
+Run only for the motion steps. Every case below should pass both with animation enabled
+and with the reduced-motion path, where the expected result is an immediate snap:
+
+| Case | What to check |
+| --- | --- |
+| Hover in and out | Reaches the authored value; no snap at the end |
+| Rapid enter/leave mid-transition | Reverses from the current value, never restarts from 0 |
+| Press and release | Press channel independent of hover |
+| Press then drag the cursor away | Visual releases and the click cancels, matching the existing rule at `SMixtormatIconButton.cpp:91` |
+| Selected while hovered | Both channels blend; selection settles correctly |
+| Selected to unselected | Returns to the hovered value, not the rest value |
+| Disabled | Fixed state; no channel animates |
+| Foldout open, close, reverse mid-open | Chevron and tint ramp; body visibility stays immediate |
+| Many layer rows present | Only mid-transition rows hold a timer; idle rows cost nothing |
+| Repeated mouse movement across the stack | No cumulative timer growth; frame cost stable |
+| Popup / help opening and closing | Entrance and exit, if built |
+| Live-theme change mid-animation | Workspace rebuilds; new widgets start at target; no stale state, no dangling timer |
+| Workspace rebuild while animating | No dangling timer, no stale brush |
+| Animations disabled | Every family snaps and behaves exactly as it does today |
+
+Across all of them, watch specifically for: visual jumps at the reversal point; perpetual
+Slate invalidation after everything settles; layout jitter from an animated property
+leaking into `ComputeDesiredSize`; per-frame allocations; and added input latency.
