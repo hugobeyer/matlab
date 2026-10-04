@@ -3,15 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatThemeSchema.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SScrollBox;
 
-// The token authoring panel.
-//
-// Rows are built once per registry entry and filtered with a per-row visibility lambda, so switching
-// tab or typing in the search box costs a visibility pass rather than a rebuild. Four editor kinds
-// share one row shell; which one a row uses comes from the registry type, not from its category name.
+// Stage-9 UI STYLE editor. The widget name stays stable until Stage 10 so the window owner does not
+// churn, but the old LiveTheme registry is no longer involved: every row edits FMixtormatTheme.
 class SMixtormatLiveThemePanel final : public SCompoundWidget
 {
 public:
@@ -23,26 +21,33 @@ public:
 	void Construct(const FArguments& InArgs);
 
 private:
-	void ChangeNumber(float Value, FName Name);
-	void ChangeBool(bool Value, FName Name);
-	void ChangeChoice(int32 Value, FName Name);
-	void ChangeColor(FLinearColor Value, FName Name);
-	FReply OpenColor(FName Name);
+	bool PropertyVisible(const Mixtormat::FMixtormatThemeProperty& Property) const;
+	bool SectionVisible(Mixtormat::EMixtormatThemeTab Tab, const FString& Section) const;
+	bool IsDefault(const Mixtormat::FMixtormatThemeProperty& Property) const;
+	float NumberValue(const Mixtormat::FMixtormatThemeProperty& Property) const;
+
+	void PreviewNumber(FName Id, float Value);
+	void CommitNumber(FName Id, float Value);
+	void CommitBool(FName Id, bool Value);
+	void CommitChoice(FName Id, int32 Value);
+	void CommitColor(FLinearColor Value, FName Id);
+	void ResetProperty(FName Id);
+	void CommitTheme(Mixtormat::FMixtormatTheme Theme, const FString& Message);
+
+	FReply OpenColor(FName Id);
 	FReply Save();
 	FReply Load();
 	FReply ResetAll();
-	bool Matches(const FString& Name) const;
-	bool HasMatches() const;
 	void SelectTab(int32 Index);
+	void UpdateStatus(const FString& Prefix);
+
+	TSharedRef<SWidget> MakePropertyRow(const Mixtormat::FMixtormatThemeProperty& Property);
 
 	TAttribute<bool> CanEdit;
 	FSimpleDelegate OnThemeChanged;
-	// Strip slot index; INDEX_NONE means All. Search text survives tab changes and refreshes.
-	int32 SelectedTab = INDEX_NONE;
+	int32 SelectedTab = INDEX_NONE; // INDEX_NONE = All, otherwise enum index.
 	FString Filter;
-	// Held on the widget, not in Construct: the search hint reads it on every tick of the text box,
-	// long after the local that built the tabs is gone.
-	TArray<FString> TabLabels;
-	TSharedPtr<SScrollBox> TokenScroll;
 	FString Status;
+	TMap<FName, float> PendingNumbers;
+	TSharedPtr<SScrollBox> PropertyScroll;
 };

@@ -512,6 +512,17 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 			}
 		});
 	SearchBox->SetText(FText::FromString(SearchText));
+
+	// The two developer actions beside the category dropdown. Their gaps come from the gallery's own
+	// spacing rather than the legacy 3px RowGap, which left two 30px buttons almost touching, and their
+	// glyphs read the PanelToolbar icon role for size and resting opacity like every other icon.
+	const Mixtormat::FMixtormatResolvedStyle& LibraryStyle = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::FMixtormatIconStyle& ToolbarIcon = LibraryStyle.Icons.Roles[
+		static_cast<uint8>(Mixtormat::EMixtormatIconRole::PanelToolbar)];
+	const FSlateColor ToolbarIconTint = FSlateColor(
+		LibraryStyle.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+			.CopyWithNewOpacity(ToolbarIcon.RestOpacity));
+
 	return SNew(SBorder)
 		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
@@ -542,10 +553,11 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)]
 				]
 			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(MixtormatTokens::RowGap, 0.0f, 0.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(
+				LibraryStyle.GalleryLayout.TileGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::RowGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, LibraryStyle.GalleryLayout.TileGap, 0.0f)
 				[
 					SNew(SMixtormatGroupAction)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
@@ -554,10 +566,12 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					.OnClicked(this, &SMixtormat::RefreshSurfaceList)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
-						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
+						.WidthOverride(ToolbarIcon.GlyphSize)
+						.HeightOverride(ToolbarIcon.GlyphSize)
 						[
-							SNew(SImage).Image(MixtormatIcons::Refresh())
+							SNew(SImage)
+							.Image(MixtormatIcons::Refresh())
+							.ColorAndOpacity(ToolbarIconTint)
 						]
 					]
 				]
@@ -572,10 +586,12 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 					.OnClicked(this, &SMixtormat::RebuildBuiltInLibrary)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::PanelToolbarIconSize)
-						.HeightOverride(MixtormatTokens::PanelToolbarIconSize)
+						.WidthOverride(ToolbarIcon.GlyphSize)
+						.HeightOverride(ToolbarIcon.GlyphSize)
 						[
-							SNew(SImage).Image(MixtormatIcons::Settings())
+							SNew(SImage)
+							.Image(MixtormatIcons::Settings())
+							.ColorAndOpacity(ToolbarIconTint)
 						]
 					]
 				]
