@@ -438,7 +438,23 @@ bool SMixtormatLiveThemePanel::IsDefault(const Mixtormat::FMixtormatThemePropert
 
 void SMixtormatLiveThemePanel::PreviewNumber(const FName Id, const float Value)
 {
-	PendingNumbers.Add(Id, Value);
+	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
+	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Number || !CanEdit.Get(true))
+	{
+		return;
+	}
+
+	// Keep the spin-box value local so dragging stays stable, but also push the authored value into
+	// ThemeStore immediately. The owner already coalesces RequestThemeRefresh() on a 0.1 s active
+	// timer, so a fast drag can generate many value events without rebuilding the workspace on every
+	// mouse move. Paint-only readers update on the next invalidation; construction-time layout/style
+	// readers update on the coalesced workspace refresh.
+	const float Clamped = FMath::Clamp(Value, P->Minimum, P->Maximum);
+	PendingNumbers.Add(Id, Clamped);
+	Mixtormat::FMixtormatTheme Theme = FMixtormatThemeStore::GetTheme();
+	P->SetNumber(Theme, Clamped);
+	FMixtormatThemeStore::SetTheme(MoveTemp(Theme));
+	OnThemeChanged.ExecuteIfBound();
 }
 
 void SMixtormatLiveThemePanel::CommitNumber(const FName Id, const float Value)
@@ -534,7 +550,9 @@ FReply SMixtormatLiveThemePanel::OpenColor(const FName Id)
 	FColorPickerArgs Args;
 	Args.ParentWidget = AsShared();
 	Args.bUseAlpha = true;
-	Args.bOnlyRefreshOnMouseUp = true;
+	// UI STYLE is an authoring viewport: colour edits should preview while the picker moves. The
+	// workspace owner coalesces rebuild requests, so this stays live without rebuilding per sample.
+	Args.bOnlyRefreshOnMouseUp = false;
 	Args.InitialColor = P->GetColor(FMixtormatThemeStore::GetTheme());
 	Args.OnColorCommitted = FOnLinearColorValueChanged::CreateSP(
 		this, &SMixtormatLiveThemePanel::CommitColor, Id);
