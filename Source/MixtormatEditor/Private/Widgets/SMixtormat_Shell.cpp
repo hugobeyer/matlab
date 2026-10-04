@@ -413,23 +413,25 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 											0.0f,
 											-FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)))
 										[
-											SAssignNew(BottomLibraryToggleButton, SButton)
-											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-											.ContentPadding(0.0f)
-											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
-											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+											SNew(SHorizontalBox)
+											// The label names the control but is not the control: it never
+											// takes the pointer, so the hover plate and the tooltip belong to the
+											// chevron alone rather than reading as one wide chip.
+											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
 											[
-												SNew(SHorizontalBox)
-												+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
-												[
-													SNew(STextBlock)
-													.Text(LOCTEXT("BottomLibraryToggleLabel", "Gallery"))
-													.Visibility(EVisibility::HitTestInvisible)
-												]
-												+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+												SNew(STextBlock)
+												.Text(LOCTEXT("BottomLibraryToggleLabel", "Gallery"))
+												.Visibility(EVisibility::HitTestInvisible)
+											]
+											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+											[
+												SAssignNew(BottomLibraryToggleButton, SButton)
+												.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+												.ContentPadding(0.0f)
+												.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
+												.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 												[
 													SNew(SImage)
-													.Visibility(EVisibility::HitTestInvisible)
 													.Image_Lambda([this]()
 													{
 														return bBottomLibraryCollapsed

@@ -96,6 +96,19 @@ namespace
 			.CopyWithNewOpacity(bHovered ? Icon.HoverOpacity : Icon.RestOpacity));
 	}
 
+	// A resourceless button style for overlay controls, so the SMixtormatPreviewPlate recipe is the only
+		// thing that draws a plate. Mixtormat.ViewportOverlayButton bakes a legacy plate brush into every
+		// state, which would double up on top of the recipe's.
+		const FButtonStyle& GetPreviewOverlayButtonStyle()
+		{
+			static FButtonStyle Style;
+			Style = FButtonStyle()
+				.SetNormal(FSlateNoResource()).SetHovered(FSlateNoResource())
+				.SetPressed(FSlateNoResource()).SetDisabled(FSlateNoResource());
+			Style.SetNormalPadding(FMargin(0.0f)).SetPressedPadding(FMargin(0.0f));
+			return Style;
+		}
+
 	const FCheckBoxStyle& GetPreviewOverlayToggleStyle()
 	{
 		// Rebuilt per call rather than held in a function-static: the padding comes from the resolved
@@ -1206,8 +1219,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			SNew(SMixtormatPreviewPlate)
 			[
+			// The resourceless overlay style, not Mixtormat.ViewportOverlayButton. That button style
+			// bakes its own legacy plate brush into every state, so keeping it here painted a second
+			// plate on top of the recipe's -- the one overlay control that did not match its neighbours.
 			SNew(SButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.ViewportOverlayButton")))
+			.ButtonStyle(&GetPreviewOverlayButtonStyle())
 			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
 			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
 			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)

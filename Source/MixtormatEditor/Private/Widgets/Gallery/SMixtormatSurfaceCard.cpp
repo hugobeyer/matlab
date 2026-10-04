@@ -28,7 +28,13 @@ void SMixtormatSurfaceCard::Construct(const FArguments& InArgs)
 			SNew(SOverlay)
 			+ SOverlay::Slot()
 			[
-				MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName)
+				// Hover-revealed, like the mask card: the material name appears under the swatch the
+				// pointer is on rather than on all of them at once.
+				MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName,
+					TAttribute<EVisibility>::CreateLambda([this]()
+					{
+						return IsHovered() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					}))
 			]
 			+ SOverlay::Slot()
 			.HAlign(HAlign_Fill)

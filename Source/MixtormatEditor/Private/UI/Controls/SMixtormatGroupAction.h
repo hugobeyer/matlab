@@ -21,8 +21,15 @@ public:
 		TSharedRef<SWidget> Content = InArgs._Content.Widget;
 		if (Content == SNullWidget::NullWidget)
 		{
-			Content = SNew(STextBlock).Text(InArgs._Text).TextStyle(&TextStyle)
-				.ColorAndOpacity(FSlateColor::UseForeground());
+			// Boxed and centred, not a bare text block. The surface gives every action the same
+			// MinDesiredHeight, but a bare STextBlock is arranged top-aligned inside that box while an
+			// icon+label row is centred by its slots -- so a text-only action sat visibly higher than
+			// its neighbours. This is the same wrapper SMixtormatSegment already uses.
+			Content = SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock).Text(InArgs._Text).TextStyle(&TextStyle)
+					.ColorAndOpacity(FSlateColor::UseForeground())
+			];
 		}
 		SButton::FArguments Args = InArgs;
 		Args.ButtonStyle(&ButtonStyle).ContentPadding(0.0f).TextStyle(&TextStyle)

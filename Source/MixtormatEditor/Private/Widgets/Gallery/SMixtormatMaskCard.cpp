@@ -16,16 +16,23 @@ void SMixtormatMaskCard::Construct(const FArguments& InArgs)
 	ThumbnailPool = InArgs._ThumbnailPool;
 	OnSelected = InArgs._OnSelected;
 	OnGalleryZoom = InArgs._OnGalleryZoom;
+	// The caption names the mask on hover rather than permanently. The card is the hovered widget, so
+	// this reads as "the pointer is on this swatch" without the tile needing to report anything.
 	ChildSlot
 	.HAlign(HAlign_Left)
 	.VAlign(VAlign_Top)
 	[
 		SAssignNew(ContextAnchor, SMenuAnchor)
 		.Placement(MenuPlacement_MenuRight)
+		.Method(EPopupMethod::CreateNewWindow)
 		.UseApplicationMenuStack(true)
 		.OnGetMenuContent(InArgs._OnGetContextMenu)
 		[
-			MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName)
+			MixtormatGallery::WithCaption(InArgs._Content.Widget, DisplayName,
+				TAttribute<EVisibility>::CreateLambda([this]()
+				{
+					return IsHovered() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+				}))
 		]
 	];
 }
