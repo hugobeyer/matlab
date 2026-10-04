@@ -9,7 +9,7 @@
 FVector2D SMixtormatLayerConnector::ComputeDesiredSize(float) const
 {
 	const Mixtormat::FMixtormatLayerMetrics& Layout = FMixtormatThemeStore::GetResolved().LayerLayout;
-		return FVector2D(MixtormatTokens::LayerChildIconSize, Layout.ChildRowHeight);
+		return FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize, Layout.ChildRowHeight);
 }
 
 int32 SMixtormatLayerConnector::OnPaint(const FPaintArgs&, const FGeometry& Geometry,

@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/SNullWidget.h"
@@ -148,7 +149,7 @@ TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildC
 		AddSliderRow(Panel, MixtormatRow::Make(Label,
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				.Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 			[
 				MakeChildOutputPreviewButton(PreviewSet)
 			]
@@ -305,7 +306,7 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton([]()
 					{
@@ -448,7 +449,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton([]()
 					{
@@ -609,7 +610,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton([]()
 					{
@@ -790,7 +791,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton([]()
 					{

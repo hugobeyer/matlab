@@ -4,6 +4,7 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -19,7 +20,7 @@ void SMixtormatBakeResultDialog::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SBorder)
-		.Padding(MixtormatTokens::DialogPadding)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
 		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 		[
 			SNew(SVerticalBox)
@@ -40,19 +41,19 @@ void SMixtormatBakeResultDialog::Construct(const FArguments& InArgs)
 				[
 					MakeActionButton(LOCTEXT("CloseBakeResult", "Close"), EMixtormatBakeResultAction::Close)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					MakeActionButton(LOCTEXT("RebakeBakeResult", "Re-bake"), EMixtormatBakeResultAction::Rebake)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					MakeActionButton(LOCTEXT("ApplyBakeResult", "Apply to Selected Actors"), EMixtormatBakeResultAction::Apply)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					MakeActionButton(LOCTEXT("OpenBakeResult", "Open Material Instance"), EMixtormatBakeResultAction::Open)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					MakeActionButton(LOCTEXT("RevealBakeResult", "Reveal Outputs"), EMixtormatBakeResultAction::Reveal)
 				]

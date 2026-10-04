@@ -1493,7 +1493,7 @@ void SMixtormat::ZoomMaskGallery(const int32 Direction)
 	MaskGalleryTileSize = FMath::Clamp(
 		MaskGalleryTileSize + Direction * MixtormatTokens::MaskGalleryTileStep,
 		MixtormatTokens::MaskGalleryTileMinimum,
-		MixtormatTokens::MaskGalleryTileMaximum);
+		FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileMaximum);
 	RebuildMaskList();
 }
 
@@ -1505,8 +1505,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
 		.UseAllottedSize(true)
 		.InnerSlotPadding(FVector2D(
-			MixtormatTokens::MaskGalleryTileGap,
-			MixtormatTokens::MaskGalleryTileGap));
+			FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileGap,
+			FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileGap));
 
 	for (const FMixtormatMaskEntry& Mask : FMixtormatRegistry::GetMasks())
 	{
@@ -1521,7 +1521,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 				.DisplayName(Mask.DisplayName)
 				.ThumbnailAsset(Mask.ThumbnailAsset)
 				.ThumbnailPool(ThumbnailPool)
-				.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+				.ThumbnailResolution(FMath::RoundToInt(FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileMaximum))
 				.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
 				.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnChosen, Path]()
 				{
@@ -1583,7 +1583,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					.DisplayName(Name)
 					.ThumbnailAsset(ThumbnailAsset)
 					.ThumbnailPool(ThumbnailPool)
-					.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+					.ThumbnailResolution(FMath::RoundToInt(FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileMaximum))
 					.bShowName(false)
 					.bShowNameOnHover(false)
 					.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })

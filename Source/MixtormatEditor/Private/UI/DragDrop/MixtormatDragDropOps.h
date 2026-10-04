@@ -13,8 +13,8 @@
 #include "AssetThumbnail.h"
 #include "DragAndDrop/DecoratedDragDropOp.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Images/SImage.h"
@@ -49,10 +49,10 @@ public:
 			InDisplayName);
 
 		TSharedRef<SWidget> ThumbnailWidget = SNew(SColorBlock)
-			.Color(MixtormatPalette::ThumbnailPlaceholder())
+			.Color(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::ThumbnailGround))
 			.Size(FVector2D(
-				MixtormatTokens::DragGhostThumbnailSize,
-				MixtormatTokens::DragGhostThumbnailSize));
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize));
 		if (ThumbnailAsset.IsValid() && ThumbnailPool.IsValid())
 		{
 			Operation->DragThumbnail = MakeShared<FAssetThumbnail>(
@@ -65,21 +65,21 @@ public:
 
 		Operation->DecoratorWidget =
 			SNew(SBorder)
-			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
+			.RenderOpacity(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostOpacity)
 			.Padding(FMargin(
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetY))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.PanelShadow")))
 			[
 				SNew(SBorder)
-				.Padding(MixtormatTokens::DragGhostPadding)
+				.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostPadding)
 				.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhostAccent")))
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-					[SNew(SBox).WidthOverride(MixtormatTokens::DragGhostThumbnailSize).HeightOverride(MixtormatTokens::DragGhostThumbnailSize)[ThumbnailWidget]]
+					[SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize)[ThumbnailWidget]]
 					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(MixtormatTokens::DragGhostTextGap, 0.0f).VAlign(VAlign_Center)
 					[
 						SNew(SVerticalBox)
@@ -122,10 +122,10 @@ public:
 		Operation->DefaultHoverText = FText::Format(LOCTEXT("AddMaskDrag", "Add {0} to a layer"), InDisplayName);
 
 		TSharedRef<SWidget> ThumbnailWidget = SNew(SColorBlock)
-			.Color(MixtormatPalette::ThumbnailPlaceholder())
+			.Color(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::ThumbnailGround))
 			.Size(FVector2D(
-				MixtormatTokens::DragGhostThumbnailSize,
-				MixtormatTokens::DragGhostThumbnailSize));
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize));
 		if (ThumbnailAsset.IsValid() && ThumbnailPool.IsValid())
 		{
 			Operation->DragThumbnail = MakeShared<FAssetThumbnail>(
@@ -136,20 +136,20 @@ public:
 			ThumbnailWidget = Operation->DragThumbnail->MakeThumbnailWidget();
 		}
 		Operation->DecoratorWidget = SNew(SBorder)
-			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
+			.RenderOpacity(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostOpacity)
 			.Padding(FMargin(
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetY))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.PanelShadow")))
 			[
 				SNew(SBorder)
-				.Padding(MixtormatTokens::DragGhostPadding)
+				.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostPadding)
 				.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhost")))
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(MixtormatTokens::DragGhostThumbnailSize).HeightOverride(MixtormatTokens::DragGhostThumbnailSize)[ThumbnailWidget]]
+					+ SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostThumbnailSize)[ThumbnailWidget]]
 					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DragGhostTextGap, 0.0f).VAlign(VAlign_Center)[SNew(STextBlock).Text(InDisplayName)]
 				]
 			];
@@ -193,16 +193,16 @@ public:
 		Operation->Name = Name;
 		Operation->DefaultHoverText = FText::Format(LOCTEXT("ReorderChildDrag", "Move {0}"), Name);
 		Operation->DecoratorWidget = SNew(SBorder)
-			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
+			.RenderOpacity(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostOpacity)
 			.Padding(FMargin(
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetY))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.PanelShadow")))
 			[
 				SNew(SBorder)
-				.Padding(FMargin(MixtormatTokens::DragGhostPadding, MixtormatTokens::DragGhostShadowInset))
+				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostPadding, FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset))
 				.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhost")))
 				[
 					SNew(SHorizontalBox)
@@ -252,8 +252,8 @@ public:
 		Operation->DefaultHoverText = FText::Format(
 			LOCTEXT("MoveGroupDrag", "Move {0}"), DisplayName);
 		Operation->DecoratorWidget = SNew(SBorder)
-			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
-			.Padding(FMargin(MixtormatTokens::DragGhostPadding, MixtormatTokens::DragGhostShadowOffsetY))
+			.RenderOpacity(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostOpacity)
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostPadding, FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhostAccent")))
 			[
 				SNew(STextBlock).Text(DisplayName)
@@ -286,16 +286,16 @@ public:
 			LOCTEXT("MoveLayerDrag", "Move {0}"),
 			DisplayName);
 		Operation->DecoratorWidget = SNew(SBorder)
-			.RenderOpacity(MixtormatTokens::DragGhostOpacity)
+			.RenderOpacity(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostOpacity)
 			.Padding(FMargin(
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
-				MixtormatTokens::DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetY))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowInset + FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.PanelShadow")))
 			[
 				SNew(SBorder)
-				.Padding(FMargin(MixtormatTokens::DragGhostPadding, MixtormatTokens::DragGhostShadowOffsetY))
+				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostPadding, FMixtormatThemeStore::GetResolved().ControlLayout.DragGhostShadowOffsetY))
 				.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.DragGhostAccent")))
 				[
 					SNew(SHorizontalBox)

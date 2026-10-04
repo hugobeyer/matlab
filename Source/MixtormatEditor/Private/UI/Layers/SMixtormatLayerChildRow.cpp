@@ -100,7 +100,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					[
 						// Keep the caller's scoped/last-child decision and the original column width.
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::LayerChildIconSize)
+						.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
 						.HeightOverride(Layout.ChildRowHeight)
 						.Visibility(InArgs._Connector ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
 						[
@@ -114,8 +114,8 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
 					[
 						SNew(SBox)
-						.WidthOverride(MixtormatTokens::LayerChildIconSize)
-						.HeightOverride(MixtormatTokens::LayerChildIconSize)
+						.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
+						.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
 						[
 							InArgs._Icon.Widget
 						]

@@ -230,7 +230,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 					.OnGetMenuContent_Lambda([this, MaskMember, TextureMember, Fallback]()
 					{
 						return SNew(SBox)
-							.WidthOverride(MixtormatTokens::MaskPickerWidth)
+							.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth)
 							.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 							[
 								SNew(SVerticalBox)

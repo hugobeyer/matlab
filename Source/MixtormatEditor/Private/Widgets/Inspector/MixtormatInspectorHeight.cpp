@@ -121,7 +121,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::HeightBlend,

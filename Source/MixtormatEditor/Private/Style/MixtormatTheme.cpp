@@ -166,6 +166,30 @@ namespace Mixtormat
 		T.ControlLayout.IconButtonSize = 14.0f;
 		T.ControlLayout.StatusDotSize = 8.0f;
 		T.ControlLayout.ToolbarLabelPadding = 5.0f;
+		T.ControlLayout.CornerRadiusInner = 1.5f;
+		T.ControlLayout.DraggerTextInset = 8.0f;
+		T.ControlLayout.ButtonPaddingCompact = 7.0f;
+		T.ControlLayout.ButtonPaddingTab = 8.0f;
+		T.ControlLayout.InspectorFeatureButtonGap = 3.0f;
+		T.ControlLayout.DriverPopoverInnerGap = 4.0f;
+		T.ControlLayout.DialogPadding = 12.0f;
+		T.ControlLayout.DialogButtonGap = 6.0f;
+		T.ControlLayout.GroupOuterGap = 3.0f;
+		T.ControlLayout.LayerChildIconSize = 16.0f;
+		T.ControlLayout.MaskPickerWidth = 600.0f;
+		T.ControlLayout.ThumbnailCardPadding = 2.0f;
+		T.ControlLayout.MaskGalleryTileGap = 5.0f;
+		T.ControlLayout.MaskGalleryTileMaximum = 124.0f;
+		T.ControlLayout.ScalarRampIconSize = 13.0f;
+		T.ControlLayout.ScalarRampToolbarHeight = 20.0f;
+		T.ControlLayout.ScalarRampToolbarGap = 3.0f;
+		T.ControlLayout.ScalarRampViewportPadding = 8.0f;
+		T.ControlLayout.ScalarRampIconGap = 2.0f;
+		T.ControlLayout.DragGhostOpacity = 0.93f;
+		T.ControlLayout.DragGhostThumbnailSize = 56.0f;
+		T.ControlLayout.DragGhostPadding = 7.0f;
+		T.ControlLayout.DragGhostShadowInset = 4.0f;
+		T.ControlLayout.DragGhostShadowOffsetY = 2.0f;
 
 		// ---- Foldout ------------------------------------------------------------------
 		// --header-tint-rgb 37 40 43 at --header-tint-opacity .9. These two tokens are the foldout's

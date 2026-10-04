@@ -343,6 +343,30 @@ void AddIconRole(
 		NUM("ControlLayout.IconButtonSize", Controls, "Layout", "Icon Button Size", ControlLayout.IconButtonSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.StatusDotSize", Controls, "Layout", "Status Dot Size", ControlLayout.StatusDotSize, 2, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ToolbarLabelPadding", Controls, "Layout", "Toolbar Label Padding", ControlLayout.ToolbarLabelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.CornerRadiusInner", Controls, "Layout", "Corner Radius Inner", ControlLayout.CornerRadiusInner, 0, 24, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DraggerTextInset", Controls, "Layout", "Dragger Text Inset", ControlLayout.DraggerTextInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ButtonPaddingCompact", Controls, "Layout", "Button Padding Compact", ControlLayout.ButtonPaddingCompact, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ButtonPaddingTab", Controls, "Layout", "Button Padding Tab", ControlLayout.ButtonPaddingTab, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.InspectorFeatureButtonGap", Controls, "Layout", "Inspector Feature Gap", ControlLayout.InspectorFeatureButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DriverPopoverInnerGap", Controls, "Layout", "Driver Popover Gap", ControlLayout.DriverPopoverInnerGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DialogPadding", Controls, "Layout", "Dialog Padding", ControlLayout.DialogPadding, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DialogButtonGap", Controls, "Layout", "Dialog Button Gap", ControlLayout.DialogButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.GroupOuterGap", Controls, "Layout", "Group Outer Gap", ControlLayout.GroupOuterGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.LayerChildIconSize", Controls, "Layout", "Layer Child Icon Size", ControlLayout.LayerChildIconSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.MaskPickerWidth", Controls, "Layout", "Mask Picker Width", ControlLayout.MaskPickerWidth, 200, 1200, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ThumbnailCardPadding", Controls, "Layout", "Thumbnail Card Padding", ControlLayout.ThumbnailCardPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.MaskGalleryTileGap", Controls, "Layout", "Mask Gallery Tile Gap", ControlLayout.MaskGalleryTileGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.MaskGalleryTileMaximum", Controls, "Layout", "Mask Gallery Tile Max", ControlLayout.MaskGalleryTileMaximum, 32, 256, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampIconSize", Controls, "Layout", "Scalar Ramp Icon Size", ControlLayout.ScalarRampIconSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampToolbarHeight", Controls, "Layout", "Scalar Ramp Toolbar Height", ControlLayout.ScalarRampToolbarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampToolbarGap", Controls, "Layout", "Scalar Ramp Toolbar Gap", ControlLayout.ScalarRampToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampViewportPadding", Controls, "Layout", "Scalar Ramp Viewport Padding", ControlLayout.ScalarRampViewportPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampIconGap", Controls, "Layout", "Scalar Ramp Icon Gap", ControlLayout.ScalarRampIconGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DragGhostOpacity", Controls, "Layout", "Drag Ghost Opacity", ControlLayout.DragGhostOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.DragGhostThumbnailSize", Controls, "Layout", "Drag Ghost Thumbnail", ControlLayout.DragGhostThumbnailSize, 16, 128, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DragGhostPadding", Controls, "Layout", "Drag Ghost Padding", ControlLayout.DragGhostPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.DragGhostShadowInset", Controls, "Layout", "Drag Ghost Shadow Inset", ControlLayout.DragGhostShadowInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.DragGhostShadowOffsetY", Controls, "Layout", "Drag Ghost Shadow Y", ControlLayout.DragGhostShadowOffsetY, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Paint);
 		SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
 
 // FOLDOUTS

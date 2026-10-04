@@ -121,19 +121,19 @@ void FMixtormatStyle::Refresh()
 	const FLinearColor Window = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
 	const FLinearColor TopBar = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
 	const FLinearColor Panel = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
-	const FLinearColor RaisedPanel = MixtormatPalette::RaisedPanel();
-	const FLinearColor RaisedPanelHover = MixtormatPalette::RaisedPanelHover();
-	const FLinearColor Viewport = MixtormatPalette::Viewport();
+	const FLinearColor RaisedPanel = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
+	const FLinearColor RaisedPanelHover = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
+	const FLinearColor Viewport = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
 	const FLinearColor ThumbnailBackground = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::ThumbnailGround);
-	const FLinearColor Border = MixtormatPalette::Border();
-	const FLinearColor BorderStrong = MixtormatPalette::BorderStrong();
-	const FLinearColor Shadow = MixtormatPalette::Shadow();
-	const FLinearColor Inset = MixtormatPalette::Inset();
+	const FLinearColor Border = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
+	const FLinearColor BorderStrong = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
+	const FLinearColor Shadow = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
+	const FLinearColor Inset = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
 	const FLinearColor Accent = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
-	const FLinearColor AccentHover = MixtormatPalette::AccentBright();
+	const FLinearColor AccentHover = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	const FLinearColor AccentPressed = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
-	const FLinearColor SelectionFill = MixtormatPalette::SelectionFill();
-	const FLinearColor FocusFill = MixtormatPalette::FocusFill();
+	const FLinearColor SelectionFill = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
+	const FLinearColor FocusFill = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	const FLinearColor Text = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 	const FLinearColor MutedText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
 	const FLinearColor DisabledText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
@@ -142,8 +142,8 @@ void FMixtormatStyle::Refresh()
 	const FLinearColor CaptionText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
 	const FLinearColor CardTitleText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 	const FLinearColor RowText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
-	const FLinearColor TroughSurface = MixtormatPalette::WellBottom();
-	const FLinearColor TroughLine = MixtormatPalette::WellOutline();
+	const FLinearColor TroughSurface = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
+	const FLinearColor TroughLine = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
 
 	if (bFirstRegistration)
 	{
@@ -198,7 +198,7 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(Inset, TabTopCorners));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderline"),
-		new FSlateColorBrush(MixtormatPalette::Divider()));
+		new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabUnderlineSelected"),
 		new FSlateColorBrush(Accent));
@@ -290,12 +290,12 @@ void FMixtormatStyle::Refresh()
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(MixtormatTokens::ThumbnailCardPadding))
+		.SetNormalPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ThumbnailCardPadding))
 		.SetPressedPadding(FMargin(
-			MixtormatTokens::ThumbnailCardPadding,
-			MixtormatTokens::ThumbnailCardPadding + MixtormatTokens::ButtonPressedOffset,
-			MixtormatTokens::ThumbnailCardPadding,
-			MixtormatTokens::ThumbnailCardPadding - MixtormatTokens::ButtonPressedOffset));
+			FMixtormatThemeStore::GetResolved().ControlLayout.ThumbnailCardPadding,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ThumbnailCardPadding + MixtormatTokens::ButtonPressedOffset,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ThumbnailCardPadding,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ThumbnailCardPadding - MixtormatTokens::ButtonPressedOffset));
 	StyleInstance->Set(TEXT("Mixtormat.ThumbnailCard"), ThumbnailCard);
 
 	FButtonStyle TopButton = FButtonStyle()
@@ -307,8 +307,8 @@ void FMixtormatStyle::Refresh()
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Accent))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f))
-		.SetPressedPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f));
+		.SetNormalPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+		.SetPressedPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TopButton"), TopButton);
 
 	FButtonStyle BottomLibraryCollapseButton = FButtonStyle()
@@ -320,8 +320,8 @@ void FMixtormatStyle::Refresh()
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Accent))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f))
-		.SetPressedPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f));
+		.SetNormalPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+		.SetPressedPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.BottomLibraryCollapseButton"), BottomLibraryCollapseButton);
 
 	FButtonStyle PrimaryButton = FButtonStyle()
@@ -344,8 +344,8 @@ void FMixtormatStyle::Refresh()
 		.SetNormalForeground(FSlateColor(MutedText))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
-		.SetNormalPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f))
-		.SetPressedPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
+		.SetNormalPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingTab, 0.0f))
+		.SetPressedPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabButton"), TabButton);
 
 	FButtonStyle TabButtonActive = FButtonStyle()
@@ -355,8 +355,8 @@ void FMixtormatStyle::Refresh()
 		.SetNormalForeground(FSlateColor(Text))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(Text))
-		.SetNormalPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f))
-		.SetPressedPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
+		.SetNormalPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingTab, 0.0f))
+		.SetPressedPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabButtonActive"), TabButtonActive);
 
 	FCheckBoxStyle TabToggle = FCheckBoxStyle()
@@ -367,7 +367,7 @@ void FMixtormatStyle::Refresh()
 		.SetCheckedImage(FSlateRoundedBoxBrush(SelectionFill, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius))
 		.SetCheckedHoveredImage(FSlateRoundedBoxBrush(FocusFill, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius))
 		.SetCheckedPressedImage(FSlateRoundedBoxBrush(FocusFill, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius))
-		.SetPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
+		.SetPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabToggle"), TabToggle);
 
 	// --group-button-font-weight is a real CSS number, so it is snapped to the nearest shipped
@@ -411,9 +411,9 @@ void FMixtormatStyle::Refresh()
 		.SetForegroundColor(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
 		.SetHoveredForegroundColor(FSlateColor(Text))
 		.SetPressedForegroundColor(FSlateColor(Text))
-		.SetCheckedForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
-		.SetCheckedHoveredForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
-		.SetCheckedPressedForegroundColor(FSlateColor(MixtormatPalette::AccentBright()))
+		.SetCheckedForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
+		.SetCheckedHoveredForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
+		.SetCheckedPressedForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 		.SetPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
@@ -457,7 +457,7 @@ void FMixtormatStyle::Refresh()
 		.SetDisabled(PlateRest)
 		.SetNormalForeground(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
 		.SetHoveredForeground(FSlateColor(Text))
-		.SetPressedForeground(FSlateColor(MixtormatPalette::AccentBright()))
+		.SetPressedForeground(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 		.SetDisabledForeground(FSlateColor(DisabledText))
 		.SetNormalPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding))
 		.SetPressedPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
@@ -482,7 +482,7 @@ void FMixtormatStyle::Refresh()
 
 	FSpinBoxStyle ScrubControl = AppStyle.GetWidgetStyle<FSpinBoxStyle>(TEXT("NumericEntrySpinBox"));
 	ScrubControl
-		.SetBackgroundBrush(FSlateRoundedBoxBrush(MixtormatPalette::WellBottom(), MixtormatTokens::CornerRadiusInner, Border, MixtormatTokens::ScrubControlOutlineWidth))
+		.SetBackgroundBrush(FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadiusInner, Border, MixtormatTokens::ScrubControlOutlineWidth))
 		.SetHoveredBackgroundBrush(FSlateRoundedBoxBrush(RaisedPanelHover, 1.0f, BorderStrong, MixtormatTokens::ScrubControlHoverOutlineWidth))
 		.SetActiveFillBrush(FSlateRoundedBoxBrush(FocusFill, 1.0f, Accent, MixtormatTokens::ScrubControlActiveOutlineWidth))
 		.SetInactiveFillBrush(FSlateRoundedBoxBrush(FLinearColor::Transparent, 1.0f))
@@ -502,7 +502,7 @@ void FMixtormatStyle::Refresh()
 	//
 	// `Colors.Secondary` is #383838, an outline grey. As a text colour on the #212121 panel it is
 	// nearly invisible, so subdued text derives from Foreground instead.
-	const FLinearColor AccentBright = MixtormatPalette::AccentBright();
+	const FLinearColor AccentBright = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	const FLinearColor SubduedText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
 	const FLinearColor ModifiedMarker = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified);
 
@@ -521,25 +521,25 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(TroughSurface, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, TroughLine, FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundHovered"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::WellBottomHover(), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, MixtormatPalette::WellOutlineHover(), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundActive"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::WellBottomHover(), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundEntry"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::WellEntry(), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundDisabled"),
-		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, MixtormatPalette::Divider(), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 
 	// Centre tick on a signed range, and the modified-from-default stripe.
 	// The badge: fixed-size mark carrying a row's composite mode.
 	StyleInstance->Set(
 		TEXT("Mixtormat.Badge"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::BadgeSurface(), 1.0f));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), 1.0f));
 	FTextBlockStyle BadgeText = FTextBlockStyle()
 		.SetFont(Font(Regular, MixtormatTokens::FontBadge))
-		.SetColorAndOpacity(MixtormatPalette::BadgeText())
+		.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo BadgeFont = BadgeText.Font;
@@ -561,10 +561,10 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified), FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize * 0.5f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Previewing"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::PreviewDot(), FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize * 0.5f));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize * 0.5f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Broken"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Destructive(), FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize * 0.5f));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Error), FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize * 0.5f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Hollow"),
 		new FSlateRoundedBoxBrush(
@@ -633,7 +633,7 @@ void FMixtormatStyle::Refresh()
 
 		StyleInstance->Set(
 			TEXT("Mixtormat.MenuSeparator"),
-			new FSlateColorBrush(MixtormatPalette::Divider()));
+			new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 	}
 
 	// The lip along the top edge of a header. A flat colour brush, because it is drawn into a
@@ -641,17 +641,17 @@ void FMixtormatStyle::Refresh()
 	// Slate has no top-only border, and a brush used as a BorderImage fills the whole area.
 	StyleInstance->Set(
 		TEXT("Mixtormat.HeaderHairline"),
-		new FSlateColorBrush(MixtormatPalette::Hairline()));
+		new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 	StyleInstance->Set(
 		TEXT("Mixtormat.HeaderHairlineGlow"),
-		new FSlateColorBrush(MixtormatPalette::HairlineGlow()));
+		new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 
 	// Layer stack: the enclosing edge, and the two type styles its rows use.
-	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));
+	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 
 	FTextBlockStyle LayerName = FTextBlockStyle()
 		.SetFont(Font(Regular, MixtormatTokens::FontLayerName))
-		.SetColorAndOpacity(MixtormatPalette::LayerName())
+		.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
 		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
@@ -659,7 +659,7 @@ void FMixtormatStyle::Refresh()
 
 	FTextBlockStyle LayerSource = FTextBlockStyle()
 		.SetFont(Font(Regular, MixtormatTokens::FontLayerSource))
-		.SetColorAndOpacity(MixtormatPalette::LayerSource())
+		.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
 		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
@@ -669,12 +669,12 @@ void FMixtormatStyle::Refresh()
 	LayerSource.SetFont(LayerSourceFont);
 	StyleInstance->Set(TEXT("Mixtormat.LayerSource"), LayerSource);
 
-	StyleInstance->Set(TEXT("Mixtormat.SegmentSeam"), new FSlateColorBrush(MixtormatPalette::SegmentSeam()));
+	StyleInstance->Set(TEXT("Mixtormat.SegmentSeam"), new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 
 	StyleInstance->Set(TEXT("Mixtormat.WellOutline"), new FSlateRoundedBoxBrush(
 		FLinearColor::Transparent, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius,
-		MixtormatPalette::WellOutline(), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
-	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(MixtormatPalette::Tick()));
+		FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline), FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
+	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Tick"), new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)));
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Modified"), new FSlateColorBrush(ModifiedMarker));
 
 	// ---- Control type ----------------------------------------------------------------------
@@ -737,7 +737,7 @@ void FMixtormatStyle::Refresh()
 		.SetBackgroundImageHovered(FSlateRoundedBoxBrush(RaisedPanel, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, AccentBright, FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth))
 		.SetBackgroundImageFocused(FSlateRoundedBoxBrush(RaisedPanel, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, AccentBright, FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth))
 		.SetForegroundColor(FSlateColor(Text))
-		.SetPadding(FMargin(MixtormatTokens::DraggerTextInset - 1.0f, 0.0f));
+		.SetPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset - 1.0f, 0.0f));
 	// The entry replaces the value in place, so it matches the face it is typing over.
 	SliderEntry.TextStyle.SetFont(SliderValue.Font);
 	StyleInstance->Set(TEXT("Mixtormat.ValueSlider.Entry"), SliderEntry);
@@ -755,8 +755,8 @@ void FMixtormatStyle::Refresh()
 			.SetBackgroundImageHovered(SearchBackground)
 			.SetBackgroundImageFocused(SearchBackground)
 			.SetBackgroundImageReadOnly(SearchBackground)
-			.SetForegroundColor(FSlateColor(MixtormatPalette::WellEntry()))
-			.SetPadding(FMargin(MixtormatTokens::DraggerTextInset * 0.5f, 0.0f))
+			.SetForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground)))
+			.SetPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset * 0.5f, 0.0f))
 			.SetTextStyle(SliderLabel);
 		StyleInstance->Set(TEXT("Mixtormat.SearchBox"), SearchStyle);
 	}
@@ -834,7 +834,7 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(ThumbnailBackground, FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius, AccentBright, FMixtormatThemeStore::GetResolved().ControlLayout.OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.Tile.NameStrip"),
-		new FSlateColorBrush(MixtormatPalette::TileNameStrip()));
+		new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade)));
 
 	FTextBlockStyle TileName = FTextBlockStyle()
 		.SetFont(Font(Regular, MixtormatTokens::FontTile))
@@ -904,12 +904,12 @@ void FMixtormatStyle::Refresh()
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/quality-high"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampConstant"), TEXT("Icons/ramp-constant"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(MixtormatTokens::ScalarRampIconSize, MixtormatTokens::ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampConstant"), TEXT("Icons/ramp-constant"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something
@@ -959,7 +959,7 @@ void FMixtormatStyle::Refresh()
 		new FSlateVectorImageBrush(
 			StyleInstance->RootToContentDir(TEXT("Icons/mixtormat-icon"), TEXT(".svg")),
 			FVector2D(MixtormatTokens::BrandWatermarkWidth, MixtormatTokens::BrandWatermarkHeight),
-			FSlateColor(MixtormatPalette::Watermark())));
+			FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))));
 
 	if (bFirstRegistration)
 	{

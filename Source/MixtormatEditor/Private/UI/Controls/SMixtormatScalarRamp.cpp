@@ -38,7 +38,7 @@ void SMixtormatScalarRamp::Construct(const FArguments& Args)
 	{
 		Toolbar->AddSlot().AutoWidth().Padding(LeftGap, 0.0f)
 		[
-			SNew(SMixtormatIconButton).Icon(Brush).Size(MixtormatTokens::ScalarRampIconSize)
+			SNew(SMixtormatIconButton).Icon(Brush).Size(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize)
 			.ToolTip(Tip).bActive(Active).OnClicked(Click)
 		];
 	};
@@ -47,37 +47,37 @@ void SMixtormatScalarRamp::Construct(const FArguments& Args)
 		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::Constant; }), 0.0f);
 	AddButton(MixtormatIcons::ScalarRampLinear(), FText::FromString(TEXT("Linear")),
 		FSimpleDelegate::CreateLambda([this]() { SelectInterpolation(EMixtormatScalarRampInterpolation::Linear); }),
-		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::Linear; }), MixtormatTokens::ScalarRampIconGap);
+		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::Linear; }), FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
 	AddButton(MixtormatIcons::ScalarRampSpline(), FText::FromString(TEXT("Spline")),
 		FSimpleDelegate::CreateLambda([this]() { SelectInterpolation(EMixtormatScalarRampInterpolation::Spline); }),
-		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::Spline; }), MixtormatTokens::ScalarRampIconGap);
+		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::Spline; }), FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
 	AddButton(MixtormatIcons::ScalarRampBSpline(), FText::FromString(TEXT("B-Spline")),
 		FSimpleDelegate::CreateLambda([this]() { SelectInterpolation(EMixtormatScalarRampInterpolation::BSpline); }),
-		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::BSpline; }), MixtormatTokens::ScalarRampIconGap);
+		TAttribute<bool>::CreateLambda([this]() { return Ramp.Interpolation == EMixtormatScalarRampInterpolation::BSpline; }), FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
 	AddButton(MixtormatIcons::ScalarRampFrame(), FText::FromString(TEXT("Auto Zoom")),
 		FSimpleDelegate::CreateLambda([this]() { bAutoZoom = true; FrameCurve(); }),
 		TAttribute<bool>::CreateLambda([this]() { return bAutoZoom; }), MixtormatTokens::ScalarRampToolbarGroupGap);
 	AddButton(MixtormatIcons::ScalarRampReset(), FText::FromString(TEXT("Reset Curve")),
-		FSimpleDelegate::CreateLambda([this]() { ResetCurve(); }), false, MixtormatTokens::ScalarRampIconGap);
+		FSimpleDelegate::CreateLambda([this]() { ResetCurve(); }), false, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
 
 	ChildSlot
 	[
 		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::ScalarRampToolbarGap)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap)
 		[
-			SNew(SBox).HeightOverride(MixtormatTokens::ScalarRampToolbarHeight)[Toolbar]
+			SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight)[Toolbar]
 		]
 		+ SVerticalBox::Slot().AutoHeight()
-		[SNew(SBox).HeightOverride(Height + MixtormatTokens::ScalarRampViewportPadding * 2.0f)]
+		[SNew(SBox).HeightOverride(Height + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding * 2.0f)]
 	];
 }
 
 FVector2f SMixtormatScalarRamp::ToGraph(const FGeometry& Geometry, const FVector2D& Position) const
 {
 	const FVector2D Size = Geometry.GetLocalSize();
-	const float Pad = MixtormatTokens::ScalarRampViewportPadding;
+	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
 	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	const float Y0 = MixtormatTokens::ScalarRampToolbarHeight + MixtormatTokens::ScalarRampToolbarGap + Pad;
+	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y) - Pad;
 	const float X = FMath::Clamp((static_cast<float>(Position.X) - X0) / FMath::Max(X1-X0, 1.0f), 0.0f, 1.0f);
 	const float MapMin=bDraggingPoint?DragViewYMin:ViewYMin;
@@ -88,9 +88,9 @@ FVector2f SMixtormatScalarRamp::ToGraph(const FGeometry& Geometry, const FVector
 
 FVector2f SMixtormatScalarRamp::ToScreen(const FVector2f& Point, const FVector2D& Size) const
 {
-	const float Pad = MixtormatTokens::ScalarRampViewportPadding;
+	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
 	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	const float Y0 = MixtormatTokens::ScalarRampToolbarHeight + MixtormatTokens::ScalarRampToolbarGap + Pad;
+	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y) - Pad;
 	return FVector2f(X0 + Point.X * (X1-X0), Y0 + (ViewYMax-Point.Y) / FMath::Max(ViewYMax-ViewYMin, 1.0e-4f) * (Y1-Y0));
 }
@@ -109,17 +109,17 @@ int32 SMixtormatScalarRamp::HitPoint(const FVector2f& Pos, const FVector2D& Size
 FVector2D SMixtormatScalarRamp::ComputeDesiredSize(float) const
 {
 	return FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.RowFieldMinWidth * 2.0f,
-		Height + MixtormatTokens::ScalarRampViewportPadding * 2.0f
-		+ MixtormatTokens::ScalarRampToolbarHeight + MixtormatTokens::ScalarRampToolbarGap);
+		Height + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding * 2.0f
+		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap);
 }
 
 int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Cull,
 	FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool Enabled) const
 {
 	const FVector2D Size = Geometry.GetLocalSize();
-	const float Pad = MixtormatTokens::ScalarRampViewportPadding;
+	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
 	const float X0 = Pad, X1 = static_cast<float>(Size.X)-Pad;
-	const float Y0 = MixtormatTokens::ScalarRampToolbarHeight + MixtormatTokens::ScalarRampToolbarGap + Pad;
+	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y)-Pad;
 	const FLinearColor Bg = MixtormatPalette::ScalarRampBackground();
 	const FVector2f GraphSize(X1-X0, Y1-Y0);
@@ -187,7 +187,7 @@ void SMixtormatScalarRamp::FrameCurve()
 	if (Bounds.MinY>=CanonicalYMin && Bounds.MaxY<=CanonicalYMax)
 	{ ViewYMin=CanonicalYMin; ViewYMax=CanonicalYMax; Invalidate(EInvalidateWidgetReason::Paint); return; }
 	const float Span=FMath::Max(Bounds.MaxY-Bounds.MinY,0.1f);
-	const float Padding=Span*MixtormatTokens::ScalarRampViewportPadding/FMath::Max(Height,1.0f);
+	const float Padding=Span*FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding/FMath::Max(Height,1.0f);
 	ViewYMin=FMath::Max(ExtendedYMin,Bounds.MinY-Padding);
 	ViewYMax=FMath::Min(ExtendedYMax,Bounds.MaxY+Padding);
 	if (ViewYMax-ViewYMin<0.1f) { ViewYMin=FMath::Max(ExtendedYMin,Bounds.MinY-0.05f); ViewYMax=FMath::Min(ExtendedYMax,Bounds.MaxY+0.05f); }

@@ -3,7 +3,6 @@
 #include "UI/Atoms/SMixtormatIconButton.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
@@ -67,13 +66,13 @@ FSlateColor SMixtormatIconButton::GetGlyphColor() const
 	}
 	if (!IsEnabled())
 	{
-		return MixtormatPalette::IconRest().CopyWithNewOpacity(0.25f);
+		return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(0.25f);
 	}
 	if (bActive.Get(false))
 	{
-		return IsHovered() ? MixtormatPalette::AccentBright() : FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
+		return IsHovered() ? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent) : FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	}
-	return IsHovered() ? MixtormatPalette::IconHover() : MixtormatPalette::IconRest();
+	return IsHovered() ? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text) : FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
 }
 
 FCursorReply SMixtormatIconButton::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

@@ -118,8 +118,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
 	TSharedRef<SWrapBox> Grid = SNew(SWrapBox)
 		.UseAllottedSize(true)
 		.InnerSlotPadding(FVector2D(
-			MixtormatTokens::MaskGalleryTileGap,
-			MixtormatTokens::MaskGalleryTileGap));
+			FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileGap,
+			FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileGap));
 
 	for (const FMixtormatMaskEntry& Entry : FMixtormatRegistry::GetMasks())
 	{
@@ -131,7 +131,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
 			.DisplayName(Entry.DisplayName)
 			.ThumbnailAsset(Entry.ThumbnailAsset)
 			.ThumbnailPool(ThumbnailPool)
-			.ThumbnailResolution(FMath::RoundToInt(MixtormatTokens::MaskGalleryTileMaximum))
+			.ThumbnailResolution(FMath::RoundToInt(FMixtormatThemeStore::GetResolved().ControlLayout.MaskGalleryTileMaximum))
 			.OnGalleryZoom(this, &SMixtormat::ZoomMaskGallery)
 			.bSelected_Lambda([IsSelected, Path]() { return IsSelected(Path); })
 			.OnActivated(FMixtormatOnTileActivated::CreateLambda([OnPicked, Path]()
@@ -159,7 +159,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskAssetPicker(
 	}
 
 	return SNew(SBox)
-		.WidthOverride(MixtormatTokens::MaskPickerWidth)
+		.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth)
 		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		[
 			Body
@@ -334,7 +334,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
 						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::Filter))
@@ -707,7 +707,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::LayerMask,
@@ -1156,7 +1156,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::LayerMask,

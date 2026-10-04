@@ -3,8 +3,8 @@
 #include "UI/Containers/SMixtormatInspectorWell.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -31,10 +31,10 @@ void SMixtormatInspectorWell::AddGroup(const TSharedRef<SWidget>& Group)
 		Stack->AddSlot()
 			.AutoHeight()
 			.Padding(
-				MixtormatTokens::GroupOuterGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap,
 				0.0f,
-				MixtormatTokens::GroupOuterGap,
-				MixtormatTokens::GroupOuterGap)
+				FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap)
 			[Group];
 	}
 }

@@ -687,7 +687,7 @@ void SMixtormat::RefreshBuiltInSurface(const FSoftObjectPath AssetPath)
 		.SupportsMinimize(false)
 		[
 			SNew(SBorder)
-			.Padding(MixtormatTokens::DialogPadding)
+			.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().FillHeight(1.0f)
@@ -973,7 +973,7 @@ void SMixtormat::DeleteBuiltInSurface(const FSoftObjectPath AssetPath)
 		.SupportsMinimize(false)
 		[
 			SNew(SBorder)
-			.Padding(MixtormatTokens::DialogPadding)
+			.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().FillHeight(1.0f)
@@ -997,7 +997,7 @@ void SMixtormat::DeleteBuiltInSurface(const FSoftObjectPath AssetPath)
 							return FReply::Handled();
 						})
 					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SButton)
 						.Text(LOCTEXT("ConfirmDeleteBuiltInMaterial", "Delete Material"))

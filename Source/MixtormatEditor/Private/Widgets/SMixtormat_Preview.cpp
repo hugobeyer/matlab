@@ -1289,7 +1289,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					: EVisibility::Visible;
 			})
 			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-			.ContentPadding(FMargin(MixtormatTokens::ButtonPaddingCompact, 0.0f))
+			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
 			.ToolTipText(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
 			.OnClicked_Lambda([this]()
 			{

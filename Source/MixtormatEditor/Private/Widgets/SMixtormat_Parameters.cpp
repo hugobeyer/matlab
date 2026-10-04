@@ -589,9 +589,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap,
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			.IsEnabled_Lambda([this, Target]() { return IsParameterReferenced(Target); })
 			[
 				SNew(SMixtormatSegmentedControl)
@@ -878,7 +878,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 	{
 		Rows->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				InfoRow(Label, Value, ToolTip)
 			];
@@ -1066,9 +1066,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap,
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(260.0f)
 				[
@@ -1107,7 +1107,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 		const float OtherFallback)
 	{
 		Rows->AddSlot().AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				MakeSlider(
 					Label,
@@ -1149,9 +1149,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap,
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(300.0f)
 				[
@@ -1236,7 +1236,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 	{
 		Rows->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				MixtormatRow::Make(Label, SNew(STextBlock).Text(Value))
 			];
@@ -1263,7 +1263,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		Options.HardMax = HardMax;
 		Rows->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				MakeSlider(
 					Label,
@@ -1297,7 +1297,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 	// and shader uniforms are untouched.
 	Rows->AddSlot()
 		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 		[
 			MixtormatRow::Make(
 				LOCTEXT("DevAuthoringLabel", "Label"),
@@ -1318,7 +1318,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 	{
 		const UEnum* Enum = MixtormatParameterAuthoring::ResolveParameterEnum(Key);
 		Rows->AddSlot().AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				MixtormatRow::Make(
 					LOCTEXT("DevAuthoringDefault", "Default/Reset"),
@@ -1432,7 +1432,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		Options.bExpandable = true;
 		Rows->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f)
@@ -1491,9 +1491,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap,
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap,
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
-				MixtormatTokens::DriverPopoverInnerGap))
+				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
 				SNew(SBox).WidthOverride(320.0f)
 				[
@@ -1838,7 +1838,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 	{
 		Rows->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::DriverPopoverInnerGap)
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
 				Row
 			];

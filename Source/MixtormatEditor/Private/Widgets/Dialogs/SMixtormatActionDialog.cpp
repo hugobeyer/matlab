@@ -4,6 +4,7 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -19,7 +20,7 @@ void SMixtormatActionDialog::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SBorder)
-		.Padding(MixtormatTokens::DialogPadding)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
 		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 		[
 			SNew(SVerticalBox)
@@ -43,7 +44,7 @@ void SMixtormatActionDialog::Construct(const FArguments& InArgs)
 					.OnClicked(this, &SMixtormatActionDialog::Cancel)
 				]
 
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
 					.Text(InArgs._ConfirmLabel)

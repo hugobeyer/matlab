@@ -7,7 +7,6 @@
 #include "UI/Controls/MixtormatEntryCommit.h"
 #include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
@@ -62,7 +61,7 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 
 
 	ChildSlot
-	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(MixtormatTokens::DraggerTextInset, 0.0f); }))
+	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset, 0.0f); }))
 	.VAlign(VAlign_Center)
 	[
 		SAssignNew(EntryWidget, SEditableText)
@@ -525,7 +524,7 @@ int32 SMixtormatSlider::OnPaint(
 				FSlateLayoutTransform(FVector2f(OriginFraction * LocalSize.X, MixtormatTokens::TickInsetY))),
 			FAppStyle::GetBrush("WhiteBrush"),
 			ESlateDrawEffect::None,
-			MixtormatPalette::ZeroTick());
+			FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline));
 	}
 
 	// Leading stripe when the value differs from its default. Survives at this row height where a
@@ -560,13 +559,13 @@ int32 SMixtormatSlider::OnPaint(
 	const float TextHeight = FontMeasure->Measure(TEXT("0"), LabelStyle.Font).Y;
 	const float TextY = (static_cast<float>(Size.Y) - TextHeight) * 0.5f;
 	const float ValueWidth = FontMeasure->Measure(ValueText, ValueStyle.Font).X;
-	const float LabelX = MixtormatTokens::DraggerTextInset
+	const float LabelX = FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset
 		+ (bModified && bEnabled ? MixtormatTokens::ModifiedLabelInset : 0.0f);
 
 	// A long label is cut where the value begins rather than overrunning it. Slate's ellipsis
 	// policy belongs to STextBlock and is not available to a painted string, so the clip is the
 	// equivalent -- and at this row height a hard cut reads better than an ellipsis anyway.
-	const float LabelRoom = static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::DraggerTextInset * 2.0f - LabelX;
+	const float LabelRoom = static_cast<float>(Size.X) - ValueWidth - FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset * 2.0f - LabelX;
 	if (LabelRoom > 1.0f)
 	{
 		OutDrawElements.PushClip(FSlateClippingZone(AllottedGeometry.MakeChild(
@@ -593,7 +592,7 @@ int32 SMixtormatSlider::OnPaint(
 		AllottedGeometry.ToPaintGeometry(
 			FVector2f(static_cast<float>(Size.X), static_cast<float>(Size.Y)),
 			FSlateLayoutTransform(
-				FVector2f(static_cast<float>(Size.X) - ValueWidth - MixtormatTokens::DraggerTextInset, TextY))),
+				FVector2f(static_cast<float>(Size.X) - ValueWidth - FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset, TextY))),
 		FText::FromString(ValueText),
 		ValueStyle.Font,
 		ESlateDrawEffect::None,

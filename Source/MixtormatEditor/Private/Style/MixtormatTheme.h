@@ -582,6 +582,32 @@ namespace Mixtormat
 		float IconButtonSize = 14.0f;
 		float StatusDotSize = 8.0f;
 		float ToolbarLabelPadding = 5.0f;
+
+		// Secondary layout metrics migrated from DesignTokens (batch 5).
+		float CornerRadiusInner = 1.5f;
+		float DraggerTextInset = 8.0f;
+		float ButtonPaddingCompact = 7.0f;
+		float ButtonPaddingTab = 8.0f;
+		float InspectorFeatureButtonGap = 3.0f;
+		float DriverPopoverInnerGap = 4.0f;
+		float DialogPadding = 12.0f;
+		float DialogButtonGap = 6.0f;
+		float GroupOuterGap = 3.0f;
+		float LayerChildIconSize = 16.0f;
+		float MaskPickerWidth = 600.0f;
+		float ThumbnailCardPadding = 2.0f;
+		float MaskGalleryTileGap = 5.0f;
+		float MaskGalleryTileMaximum = 124.0f;
+		float ScalarRampIconSize = 13.0f;
+		float ScalarRampToolbarHeight = 20.0f;
+		float ScalarRampToolbarGap = 3.0f;
+		float ScalarRampViewportPadding = 8.0f;
+		float ScalarRampIconGap = 2.0f;
+		float DragGhostOpacity = 0.93f;
+		float DragGhostThumbnailSize = 56.0f;
+		float DragGhostPadding = 7.0f;
+		float DragGhostShadowInset = 4.0f;
+		float DragGhostShadowOffsetY = 2.0f;
 	};
 
 	struct FMixtormatFoldoutMetrics

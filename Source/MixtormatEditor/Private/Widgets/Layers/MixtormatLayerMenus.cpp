@@ -6,6 +6,7 @@
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "Style/MixtormatThemeStore.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -516,7 +517,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAccentMenu(const FGuid GroupId)
 				})
 				[
 					SNew(SColorBlock)
-					.Color(Swatch.A > 0.0f ? Swatch : MixtormatPalette::RaisedPanel())
+					.Color(Swatch.A > 0.0f ? Swatch : FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel))
 					.ShowBackgroundForAlpha(false)
 					.Size(FVector2D(
 						MixtormatTokens::GroupAccentSwatchSize,

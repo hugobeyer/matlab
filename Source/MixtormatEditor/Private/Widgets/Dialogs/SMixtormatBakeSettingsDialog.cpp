@@ -8,6 +8,7 @@
 #include "Modules/ModuleManager.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -48,7 +49,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SBorder)
-		.Padding(MixtormatTokens::DialogPadding)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
 		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
 		[
 			SNew(SVerticalBox)
@@ -161,7 +162,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 					.Text(LOCTEXT("CancelBakeSettings", "Cancel"))
 					.OnClicked(this, &SMixtormatBakeSettingsDialog::Cancel)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("AcceptBakeSettings", "Bake"))

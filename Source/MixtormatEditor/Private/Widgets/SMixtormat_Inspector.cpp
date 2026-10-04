@@ -364,7 +364,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					{
 						return bHasWorkingMaterial && !HasAnySelection() ? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					.Padding(FMargin(MixtormatTokens::GroupOuterGap, 0.0f))
+					.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap, 0.0f))
 					[
 						SNew(SMixtormatInspectorGroup)
 						.Title(LOCTEXT("GlobalHeading", "GLOBAL"))

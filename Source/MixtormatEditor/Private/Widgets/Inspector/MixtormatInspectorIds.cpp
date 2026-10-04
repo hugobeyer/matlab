@@ -273,7 +273,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
 	{
 		return SNew(SBox)
 			.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
-			.WidthOverride(MixtormatTokens::MaskPickerWidth * 0.5f)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth * 0.5f)
 			[
 				SNew(STextBlock)
 				.AutoWrapText(true)
@@ -294,9 +294,9 @@ TSharedRef<SWidget> SMixtormat::BuildRegionIdPickerPopup()
 	UTextureRenderTarget2D* DebugTarget = PreviewViewports[0]->GetCompositedDebug();
 	RegionIdPreviewBrush->SetResourceObject(DebugTarget);
 	RegionIdPreviewBrush->ImageSize = FVector2D(
-		MixtormatTokens::MaskPickerWidth, MixtormatTokens::MaskPickerWidth);
+		FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth, FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth);
 
-	const float ViewSize = MixtormatTokens::MaskPickerWidth;
+	const float ViewSize = FMixtormatThemeStore::GetResolved().ControlLayout.MaskPickerWidth;
 	return SNew(SBox)
 		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		.WidthOverride(ViewSize)
@@ -1353,7 +1353,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 			.HeaderAction(
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()
-				.Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				.Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
 						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::PatternId))
@@ -1475,7 +1475,7 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
 						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::RampId))
@@ -1591,7 +1591,7 @@ TSharedRef<SWidget> SMixtormat::BuildUvIdControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(EMixtormatDebugPreviewMode::LayerUV,
 						LOCTEXT("UvIdPreviewUVHint", "Show the UV this layer samples as a gradient: red = U, green = V, with lines every eighth of a tile."))
@@ -1926,7 +1926,7 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeChildOutputPreviewButton(
 						GetPreviewOutputSetForChildType(EMixtormatLayerChildType::IdGroup))
@@ -2056,7 +2056,7 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, MixtormatTokens::InspectorFeatureButtonGap, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
 					MakeFeaturePreviewButton(
 						EMixtormatDebugPreviewMode::LayerMask,
