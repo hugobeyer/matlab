@@ -38,10 +38,28 @@
     root.style.setProperty('--fill-body-gradient-hover', ramp('--accent-rgb', read('--fill-body-hover-top'), read('--fill-body-hover-bottom'), fillPower));
     root.style.setProperty('--fill-body-gradient-active', ramp('--accent-rgb', read('--fill-body-active-top'), read('--fill-body-active-bottom'), fillPower));
 
-    // Card header: same curve, its own exponent. Lifts off the card's own body opacity rather
-    // than fading to zero, so the seam into the body below it stays continuous.
+    // Continue the header fade into the body and mirror its tail at the bottom.
+    // Cap each tail at half the body height so short cards cannot overlap the stops.
     const cardPower = read('--card-falloff-power');
-    root.style.setProperty('--card-header-gradient', ramp('--ground-rgb', read('--card-header-opacity'), read('--card-body-opacity'), cardPower));
+    const cardTop = read('--card-header-opacity');
+    const cardBottom = read('--card-body-opacity');
+    const reach = read('--card-gradient-reach');
+    const headerHeight = Math.max(read('--card-header-height'), 1);
+    const seam = headerHeight / (headerHeight + reach);
+    const opacityAt = t => cardTop + (cardBottom - cardTop) * Math.pow(t, Math.max(cardPower, .01));
+    const headerStops = [];
+    const bodyStops = [];
+    const bottomStops = [];
+    for (let index = 0; index < SAMPLES; index++) {
+      const t = index / (SAMPLES - 1);
+      headerStops.push(`rgb(var(--ground-rgb) / ${opacityAt(t * seam).toFixed(4)}) ${(t * 100).toFixed(1)}%`);
+      const color = `rgb(var(--ground-rgb) / ${opacityAt(seam + t * (1 - seam)).toFixed(4)})`;
+      const position = `min(${(t * reach).toFixed(2)}px, ${(t * 50).toFixed(1)}%)`;
+      bodyStops.push(`${color} ${position}`);
+      bottomStops.unshift(`${color} calc(100% - ${position})`);
+    }
+    root.style.setProperty('--card-header-gradient', `linear-gradient(${headerStops.join(', ')})`);
+    root.style.setProperty('--card-body-gradient', reach > 0 ? `linear-gradient(${[...bodyStops, ...bottomStops].join(', ')})` : `linear-gradient(rgb(var(--ground-rgb) / ${cardBottom}), rgb(var(--ground-rgb) / ${cardBottom}))`);
   }
 
   const ui = window.MixtormatPrototype;

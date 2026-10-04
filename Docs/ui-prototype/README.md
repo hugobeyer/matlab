@@ -14,6 +14,22 @@ external font, network asset, or dependency is needed.
 - `workspace-controls.js`: splitters, floating-window reference, viewport overlays, PNG icons.
 - `popovers.css` / `popovers.js`: shared right-click menu and hover/focus-help treatment.
 - `icons/`: all 57 PNG icons copied from the plugin; `Icon128.png` is the plugin icon.
+- `token-autosave.js`: optional Connect-autosave file bridge for token overrides.
+- `mixtormat-prototype-tokens*.json`: exported token snapshots. `tokens.css` holds the
+  authored defaults and is the reset source.
+
+## Token autosave
+
+In UI Style, click **Connect autosave** and choose an existing token export or a new
+JSON file. Existing overrides load on connection; edits and resets save after a
+500 ms pause. Normal exports remain available. Disconnect flushes pending edits.
+
+This requires a browser/context supporting `showSaveFilePicker` (typically desktop
+Chrome/Edge in a secure context). Unsupported browsers show a disabled action.
+File permission is granted through the browser picker. Reconnect after each reload;
+no handle or token data is kept in browser storage. `tokens.css` stays unchanged and
+remains the source of reset defaults. Invalid known values reject the entire import;
+unknown token keys are preserved in the selected JSON. Wait for **Saved** before closing.
 
 ## Fonts
 
@@ -37,10 +53,15 @@ Output, or States examples. Inspector schemas are representative; this is **not*
 a complete mirror of every engine parameter or visibility branch.
 
 - Drag numeric rows; Shift reduces sensitivity; arrows adjust; Enter/double-click edits.
-- Backspace resets a numeric row. Card reset restores its numeric controls.
+- Backspace resets a numeric row. Right-click a Group Card or foldout to reset its controls.
 - Undo/Redo tracks demo numeric, dropdown, toggle, and segmented-control changes.
 - Eyes and debug buttons demonstrate state; they do not evaluate a material.
-- Only outer foldouts collapse. Cards and nested cards do not collapse.
+  Layer and card visibility use small squircles rather than eye glyphs.
+- Inspector foldouts collapse. Layer groups and layers collapse too: groups on a
+  single click of the header or title, layers on double-click or the chevron.
+  Cards and nested cards do not collapse.
+- Dropdowns are styled buttons backed by the native `select`; the popup reuses the
+  right-click menu surface with checkmarks, type-to-find, and arrow navigation.
 - UI STYLE edits tokens; Export tokens writes a local JSON download.
 - Drag the UI Style title to move the popup; drag its bottom-right grip to resize it.
 - Its title/grip support arrow keys; double-click its title restores size and position.
@@ -51,10 +72,16 @@ a complete mirror of every engine parameter or visibility branch.
 - The scalar curve, viewport, and gallery thumbnails are labeled visual illustrations.
 - NEW/LOAD explain the real integration boundary. Bake execution is disabled.
 - Drag the thin column rails or the viewport/gallery rail to resize panels; arrows work too.
+  Column resizing does not change viewport overlay sizing.
+- Layer tree: **Layer**, **Group**, and **Fill Layer** buttons sit flush at the
+  bottom of the layer column. Rows align on shared eye, icon, label, source,
+  badge, and chevron columns with drawn hierarchy connectors.
 - Drag the title to move the prototype frame; resize with its bottom-right grip.
 - Double-click the title to restore the full-window layout.
-- OUTPUT / SCENE / CAMERA overlay tabs open source-aligned representative controls.
-- Drag the preview-control title to move its overlay inside the viewport.
+- Viewport overlays are fixed edge clusters mirroring `BuildPreviewPanel`: render
+  (top-left), comparison (top-center), scene (bottom-left), camera (bottom-center),
+  output resolution (bottom-right), plus light and mesh icon rails on the sides.
+  They have no title, no drag, and no background plate.
 - UI STYLE → Plugin PNG icon sheet displays the complete copied icon set.
 
 ## Compositing contract
@@ -64,9 +91,9 @@ endpoints come from `MixtormatPalette.h`; additive/multiply rules remain shared.
 
 | Layer | Source | Operation |
 | --- | --- | --- |
-| Raised panel | Same base RGB at 5% opacity | Additive `plus-lighter` |
+| Raised panel | Same base RGB at the authored lift opacity | Additive `plus-lighter` |
 | Group header | Same base RGB, top opacity to body opacity | Additive vertical gradient |
-| Group body | Same RGB, constant end opacity | Additive |
+| Group body | Same RGB, holds the body opacity | Additive |
 | Foldout header | Unreal HeaderTint → GroupSurround | Source alpha gradient |
 | Layer rows | Unreal normal/hover/selected palette | Vertical gradients |
 | Layer children | Unreal child tint endpoints | Horizontal alpha gradients |
@@ -74,17 +101,21 @@ endpoints come from `MixtormatPalette.h`; additive/multiply rules remain shared.
 | Dragger fill | Base RGB, vertical alpha gradient | Additive |
 | Well outline | Same RGB, subdued alpha | Top-to-bottom masked fade |
 
-A 5% additive layer means adding **the source color at 5% alpha**, not adding
-0.05 white to every RGB channel. Group Card header defaults to opacity 1;
-the fade reaches .01 at the actual header/body seam, and the body holds .01.
-No Group Card hairline, separate title strip, or stepped silhouette is present.
+An additive layer means adding **the source color at its authored alpha**, not adding
+that amount of white to every RGB channel. `--card-gradient-reach` extends the card
+fade past the header seam and mirrors its tail upward from the bottom without
+changing layout. No Group Card hairline, separate title strip, or stepped
+silhouette is present.
+Columns, Group Cards, and foldout bodies carry a radial vignette; it darkens by
+shade color only and uses no additive pass.
 Foldouts retain their top lip/hairline; layer rows retain the existing normal/selected lip.
 No inspector Group Card draws a hairline.
 
 Browser blending operates in the browser's compositing color space. Slate may
 need explicit per-channel math in its paint path. Match screenshots in-engine;
 do not assume CSS gamma, font metrics, focus handling, or native select rendering
-will be identical. The native select control is a semantic placeholder for a chip.
+will be identical. The hidden `select` is a semantic value holder only; its popup
+is the shared menu surface, so the chip's visuals are prototype-authored.
 
 ## Slate translation map
 

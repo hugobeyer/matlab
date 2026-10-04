@@ -79,9 +79,13 @@
       row.classList.add('signed');
       row.append(node('span', 'zero-tick'));
     }
-    const clamp = number => Math.max(spec.min, Math.min(spec.max, spec.integer ? Math.round(number) : number));
+    const clamp = number => {
+      const snapped = spec.step ? spec.min + Math.round((number - spec.min) / spec.step) * spec.step : (spec.integer ? Math.round(number) : number);
+      return Math.max(spec.min, Math.min(spec.max, snapped));
+    };
     function paint() {
-      value.textContent = spec.integer ? String(Math.round(model.value)) : Number(model.value).toFixed(3);
+      value.textContent = (spec.integer ? String(Math.round(model.value)) : Number(model.value).toFixed(3)) + (spec.unit || '');
+      if (spec.unit) row.setAttribute('aria-valuetext', value.textContent);
       row.setAttribute('aria-valuenow', model.value);
       row.classList.toggle('modified', Math.abs(model.value - model.defaultValue) > .000001);
       const fraction = (model.value - spec.min) / (spec.max - spec.min);
@@ -99,7 +103,7 @@
       set(model.defaultValue);
       history([{ key, before, after: model.value }]);
     }
-    row.title = `${spec.label} · drag · double-click/Enter to type · arrows to adjust · Shift fine · Backspace reset`;
+    row.title = `${spec.label} · drag · double-click/Enter to type · arrows to adjust · ${spec.step ? `snaps every ${spec.step}${spec.unit || ''}` : 'Shift fine'} · Backspace reset`;
     row.addEventListener('pointerdown', event => {
       if (spec.disabled || event.target.tagName === 'INPUT' || event.button !== 0) return;
       const before = model.value;
@@ -127,7 +131,7 @@
       if (spec.disabled || row.querySelector('input')) return;
       const input = node('input');
       input.type = 'number'; input.value = model.value;
-      input.step = spec.integer ? '1' : '0.001';
+      input.step = spec.step ? String(spec.step) : (spec.integer ? '1' : '0.001');
       input.setAttribute('aria-label', `${spec.label} numeric value`);
       const before = model.value;
       let closed = false;
@@ -156,7 +160,7 @@
       if (!['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const before = model.value;
-      const delta = spec.integer ? 1 : (spec.max - spec.min) * (event.shiftKey ? .001 : .01);
+      const delta = spec.step || (spec.integer ? 1 : (spec.max - spec.min) * (event.shiftKey ? .001 : .01));
       set(event.key === 'Home' ? spec.min : event.key === 'End' ? spec.max : model.value + (['ArrowLeft', 'ArrowDown'].includes(event.key) ? -delta : delta));
       history([{ key, before, after: model.value }]);
     });
@@ -165,11 +169,15 @@
   }
   function dropdown(spec, key) {
     const model = parameter(key, spec.selected);
-    const row = node('div', 'dropdown-row'); row.dataset.slate = 'MixtormatRow::MakeDropdown';
+    const row = node('div', `dropdown-row${spec.bare ? ' bare' : ''}`); row.dataset.slate = 'MixtormatRow::MakeDropdown'; row.dataset.parameter = key;
     const label = node('label', '', spec.label);
     const well = node('div', 'well');
     const select = node('select'); select.id = `param-${key.replace(/[^a-z0-9]/gi, '-')}`;
     label.htmlFor = select.id;
+    if (spec.bare) {
+      row.classList.remove('dropdown-row'); row.className = 'bare-dropdown';
+      select.setAttribute('aria-label', spec.label);
+    }
     spec.options.forEach((text, index) => {
       const option = node('option', '', text); option.value = index; select.append(option);
     });
@@ -179,11 +187,13 @@
       history([{ key, before, after: model.value }]);
       status(`${spec.label}: ${spec.options[model.value]} · demo parameter`);
     });
-    well.append(select); row.append(label, well); return row;
+    well.append(select);
+        if (spec.bare) { row.append(well); return row; }
+        row.append(label, well); return row;
   }
   function toggle(spec, key) {
     const model = parameter(key, spec.value);
-    const row = node('div', 'toggle-row'); row.dataset.slate = 'SMixtormatToggle';
+    const row = node('div', 'toggle-row'); row.dataset.slate = 'SMixtormatToggle'; row.dataset.parameter = key;
     const label = node('span', '', spec.label);
     const button = node('button', 'toggle well');
     button.setAttribute('aria-label', spec.label);
@@ -215,7 +225,7 @@
   }
   function segments(spec, key) {
     const model = parameter(key, 0);
-    const row = node('div', 'segmented'); row.dataset.slate = 'SMixtormatSegmentedControl';
+    const row = node('div', 'segmented'); row.dataset.slate = 'SMixtormatSegmentedControl'; row.dataset.parameter = key;
     spec.options.forEach((text, index) => {
       const button = node('button', '', text);
       button.setAttribute('aria-pressed', String(model.value === index));
@@ -243,6 +253,12 @@
     if (spec.type === 'toggle') return toggle(spec, key);
     if (spec.type === 'curve') return curve();
     if (spec.type === 'segments') return segments(spec, key);
+    if (spec.type === 'rows') {
+      // Flatten visual grouping while retaining existing parameter paths.
+      const fragment = document.createDocumentFragment();
+      spec.rows.forEach((item, index) => fragment.append(build(item, `${key}.${index}`)));
+      return fragment;
+    }
     if (spec.type === 'pair') {
       const row = node('div', 'pair'); spec.rows.forEach((item, index) => row.append(build(item, `${key}.${index}`))); return row;
     }
@@ -250,8 +266,14 @@
       const section = node('details', 'foldout'); section.open = spec.open;
       section.dataset.slate = 'SMixtormatInspectorGroup';
       const header = node('summary', '', spec.title.toUpperCase());
+      const disclosure = node('span', 'foldout-disclosure'); disclosure.setAttribute('aria-hidden', 'true');
+      const chevron = node('img', 'asset-icon'); chevron.src = `icons/chevron-${section.open ? 'down' : 'right'}.png`; chevron.alt = '';
+      disclosure.append(chevron); header.prepend(disclosure);
+      section.addEventListener('toggle', () => { chevron.src = `icons/chevron-${section.open ? 'down' : 'right'}.png`; });
             // Own element so the accent multiply pass can composite separately from the additive lift.
             header.append(node('span', 'foldout-tint'));
+                  const hairline = node('span', 'foldout-hairline');
+                  hairline.setAttribute('aria-hidden', 'true'); header.append(hairline);
       const body = node('div', 'foldout-body');
       spec.rows.forEach((row, index) => body.append(build(row, `${key}.${index}`)));
       section.append(header, body); return section;
@@ -264,13 +286,46 @@
       const actions = node('div', 'header-actions');
       if (spec.eye === 'right') actions.append(eyeButton(spec.title));
       if (spec.debug) actions.append(debugButton(spec.title));
-      const reset = icon('reset', `Reset ${spec.title}`, 'reset-group');
-      actions.append(reset); header.append(actions);
+      if (actions.children.length) header.append(actions);
       const body = node('div', 'card-body');
-      spec.rows.forEach((row, index) => body.append(build(row, `${key}.${index}`)));
+      const controls = spec.rows.map((row, index) => build(row, `${key}.${index}`));
+      if (spec.layout === 'transform') {
+        const tiling = node('div', 'transform-tiling-row');
+        tiling.append(controls[0], ...controls[4].children);
+        body.append(tiling, ...controls.slice(1, 4));
+      } else if (spec.layout === 'blend-controls') {
+        const index = spec.rows.findIndex(row => row.type === 'pair');
+        const [blend, value] = [...controls[index].children];
+        const inline = node('div', 'control-inline-row');
+        inline.append(blend, value, controls[index + 1]);
+        body.append(...controls.slice(0, index), inline, ...controls.slice(index + 2));
+      } else if (spec.compactToggles) {
+        let toggles;
+        controls.forEach((control, index) => {
+          if (spec.rows[index].type === 'toggle') {
+            if (!toggles) { toggles = node('div', 'compact-toggle-group'); body.append(toggles); }
+            toggles.append(control);
+          } else {
+            toggles = undefined; body.append(control);
+          }
+        });
+      } else {
+        body.append(...controls);
+      }
       card.append(header, body); return card;
     }
     return node('span', 'state-label', 'Unsupported prototype control');
+  }
+  function resetGroup(scope) {
+    const changes = [];
+    scope.querySelectorAll('[data-parameter]').forEach(control => {
+      const key = control.dataset.parameter; const model = state.parameters.get(key);
+      changes.push({ key, before: model.value, after: model.defaultValue }); model.value = model.defaultValue;
+    });
+    const open = [...byId('inspectorContent').querySelectorAll('details')].map(section => section.open);
+    history(changes); renderInspector();
+    byId('inspectorContent').querySelectorAll('details').forEach((section, index) => { section.open = open[index]; });
+    status('Group controls reset to defaults');
   }
   function renderInspector() {
     const schema = data.schemas[state.inspector];
@@ -293,20 +348,142 @@
   }
 
   // --- Workspace / galleries ---------------------------------------------------------------
+  const collapsedLayers = new WeakSet();
+  function layerDisclosure(layer, body, row) {
+    const button = icon('chevron-down', `Collapse ${layer.title}`);
+    button.classList.add('layer-disclosure');
+    const update = () => {
+      const collapsed = collapsedLayers.has(layer);
+      body.hidden = collapsed;
+      button.setAttribute('aria-expanded', String(!collapsed));
+      button.setAttribute('aria-controls', body.id);
+      if (layer.group) {
+        const title = row.querySelector('.layer-name');
+        title.setAttribute('aria-expanded', String(!collapsed));
+        title.setAttribute('aria-controls', body.id);
+      }
+      button.title = `${collapsed ? 'Expand' : 'Collapse'} ${layer.title}`;
+      button.setAttribute('aria-label', button.title);
+      button.querySelector('img').src = `icons/chevron-${collapsed ? 'right' : 'down'}.png`;
+    };
+    const toggle = () => {
+      if (layer.group) {
+        byId('layerTree').querySelectorAll('.layer-row.group.selected').forEach(group => group.classList.remove('selected'));
+        row.classList.add('selected');
+      }
+      if (collapsedLayers.has(layer)) collapsedLayers.delete(layer);
+      else collapsedLayers.add(layer);
+      update();
+    };
+    button.addEventListener('click', toggle);
+    if (layer.group) {
+      row.addEventListener('click', event => {
+        if (event.target.closest('.badge, .layer-badges, .layer-source, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+        const control = event.target.closest('button');
+        if (control && !control.classList.contains('layer-name')) return;
+        toggle();
+      });
+    } else {
+      row.addEventListener('dblclick', event => {
+        if (event.target.closest('.badge, .layer-badges, .layer-source, .layer-name, button, input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+        event.preventDefault();
+        toggle();
+      });
+    }
+    update(); return button;
+  }
   function renderLayers() {
     const tree = byId('layerTree'); tree.replaceChildren();
+    const groupBodies = new Map();
+    const layerBodies = new Map();
+    const childOwners = new Map();
+    let parent;
+    data.layers.forEach((layer, index) => {
+      if (layer.group) { parent = undefined; return; }
+      if (!layer.child) { parent = layer; return; }
+      if (!parent || parent.groupId !== layer.groupId) return;
+      childOwners.set(layer, parent);
+      if (!layerBodies.has(parent)) {
+        const body = node('div', 'layer-children');
+        body.id = `layer-children-${index}`;
+        body.setAttribute('role', 'list'); body.setAttribute('aria-label', `${parent.title} children`);
+        layerBodies.set(parent, body);
+      }
+    });
+    data.layers.filter(layer => layer.group && layer.id).forEach(layer => {
+      const body = node('div', 'card-body layer-group-body');
+      body.setAttribute('role', 'list'); body.setAttribute('aria-label', `${layer.title} layers`);
+      groupBodies.set(layer.id, body);
+    });
+    const groupMembers = new Map();
+    data.layers.filter(layer => layer.groupId && !layer.child && !layer.group).forEach(layer => {
+      if (!groupMembers.has(layer.groupId)) groupMembers.set(layer.groupId, []);
+      groupMembers.get(layer.groupId).push(layer);
+    });
+    const lastGroupMember = layer => {
+      const members = groupMembers.get(layer.groupId);
+      return members && members[members.length - 1] === layer;
+    };
     data.layers.forEach(layer => {
       const row = node('div', `layer-row${layer.child ? ' child' : ''}${layer.group ? ' group' : ''}`);
       row.setAttribute('role', 'listitem');
       if (layer.schema) row.dataset.inspector = layer.schema;
       row.append(eyeButton(layer.title));
-      if (layer.thumb) row.append(node('div', `thumbnail ${layer.thumb}`));
+      const leading = node('div', 'layer-leading');
+      const depth = layer.child ? (layer.groupId ? 2 : 1) : (layer.groupId ? 1 : 0);
+      if (depth) {
+        const owner = childOwners.get(layer);
+        const siblings = owner ? data.layers.filter(item => childOwners.get(item) === owner) : groupMembers.get(layer.groupId);
+        const last = siblings && siblings[siblings.length - 1] === layer;
+        const branch = node('span', `hierarchy-branch${last ? ' last-branch' : ''}`);
+        branch.setAttribute('aria-hidden', 'true'); leading.append(branch);
+        if (owner?.groupId && !lastGroupMember(owner)) {
+          const ancestor = node('span', 'hierarchy-ancestor');
+          ancestor.setAttribute('aria-hidden', 'true'); leading.append(ancestor);
+        }
+      }
+      if (layer.group) {
+        const folder = node('img', 'asset-icon'); folder.src = 'icons/folder.png'; folder.alt = '';
+        leading.append(folder);
+      } else if (layer.thumb) leading.append(node('div', `thumbnail ${layer.thumb}`));
+      row.append(leading);
       const select = node('button', 'layer-name', layer.title);
       if (layer.schema) select.dataset.inspector = layer.schema;
-      else select.disabled = true;
+      else select.disabled = !layer.group;
       row.append(select);
-      if (layer.source) row.append(node('span', 'layer-source badge', layer.source));
-      tree.append(row);
+      row.append(node('span', 'layer-source', layer.source || ''));
+      // Plugin order: optional color blend, then height operation; child badges are type-specific.
+      // Values here are representative demo data, not live engine state.
+      const badges = node('div', 'layer-badges');
+      [['colorBadge', 'Color blend'], ['heightBadge', 'Height operation'], ['blendBadge', 'Module mode']].forEach(([field, label]) => {
+        if (!layer[field]) return;
+        const badge = node('span', `badge layer-blend-badge ${field === 'colorBadge' ? 'color-slot' : 'operation-slot'}`, layer[field]);
+        badge.dataset.help = `${label}: ${layer[field]} · representative prototype value`;
+        badge.setAttribute('aria-label', `${label}: ${layer[field]}`);
+        badges.append(badge);
+      });
+      row.append(badges);
+      if (layer.group) {
+        const container = node('section', 'group-card layer-group-container');
+        container.setAttribute('role', 'listitem'); container.setAttribute('aria-label', layer.title);
+        row.removeAttribute('role'); row.classList.add('card-header');
+        const body = groupBodies.get(layer.id) || node('div', 'card-body layer-group-body');
+        body.id = `layer-group-${data.layers.indexOf(layer)}`;
+        row.append(layerDisclosure(layer, body, row));
+        container.append(row, body); tree.append(container);
+      } else {
+        const owner = childOwners.get(layer);
+        const destination = owner ? layerBodies.get(owner) : (groupBodies.get(layer.groupId) || tree);
+        const body = layerBodies.get(layer);
+        if (body) {
+          const container = node('div', 'layer-container');
+          container.setAttribute('role', 'listitem'); row.removeAttribute('role');
+          row.append(layerDisclosure(layer, body, row));
+          container.append(row, body); destination.append(container);
+        } else {
+          destination.append(row);
+        }
+      }
     });
   }
   function renderGallery() {
@@ -333,15 +510,18 @@
   const FALLOFF_NOTE = 'Below 1 fades earlier, 1 is linear, above 1 holds the top longer.';
   const groups = {
     'Typography': [
+      ['control-label-size', 6, 24, 1, 'px'], ['control-label-weight', 100, 900, 100],
+      ['control-label-tracking', 0, 4, .1, 'px'], ['control-label-opacity', 0, 1, .01],
       ['body-size', 6, 24, 1, 'px'], ['dragger-font-size', 6, 24, 1, 'px'],
       ['caption-size', 6, 24, 1, 'px'], ['value-weight', 100, 900, 100],
       ['card-title-size', 7, 20, 1, 'px'], ['card-title-weight', 400, 700, 100],
       ['card-title-tracking', 0, 3, .1, 'px'],
       ['foldout-title-size', 6, 16, 1, 'px'], ['foldout-title-weight', 100, 900, 100], ['foldout-title-tracking', 0, 4, .1, 'px'],
-      ['layer-group-title-size', 6, 18, 1, 'px'], ['layer-group-title-weight', 400, 700, 100]
+      ['layer-group-title-size', 6, 18, 1, 'px'], ['layer-group-title-weight', 400, 700, 100],
+      ['group-button-font-size', 6, 20, 1, 'px'], ['group-button-font-weight', 100, 900, 100], ['group-button-tracking', 0, 4, .1, 'px']
     ],
     'Gradient saturation': [
-      ...['foldout', 'foldout-hover', 'card-header', 'card-body', 'layer', 'layer-hover',
+      ...['foldout', 'foldout-hover', 'foldout-hairline', 'foldout-hairline-hover', 'card-header', 'card-body', 'layer', 'layer-hover',
         'layer-selected', 'layer-group', 'child', 'child-hover', 'child-selected',
         'fill', 'fill-hover', 'fill-active', 'fill-disabled', 'well', 'well-hover']
         .map(role => [`${role}-saturation`, 0, 4, .1, '', '0 is grayscale; 1 preserves the source; above 1 increases saturation. Neutral colors have no saturation to increase.'])
@@ -360,13 +540,24 @@
       ['fill-body-top', 0, 1, .01], ['fill-body-bottom', 0, 1, .01],
       ['fill-body-hover-top', 0, 1, .01], ['fill-body-hover-bottom', 0, 1, .01],
       ['fill-body-active-top', 0, 1, .01], ['fill-body-active-bottom', 0, 1, .01],
-      ['fill-disabled-opacity', 0, 1, .01],
+      ['fill-disabled-opacity', 0, 1, .01], ['toggle-disabled-shade-top', 0, 1, .01], ['toggle-disabled-shade-bottom', 0, 1, .01],
       ['fill-shade-start', 0, 1, .01], ['fill-shade-mid', 0, 1, .01], ['fill-shade-end', 0, 1, .01],
       ['fill-shade-mid-position', 0, 100, 1, '%'],
       ['fill-falloff-power', .05, 4, .05, '', FALLOFF_NOTE]
     ],
+    'Shared buttons': [
+      ['group-button-height', 12, 40, 1, 'px'], ['group-button-text-opacity', 0, 1, .01],
+      ['group-button-separator-width', 0, 4, .5, 'px'], ['group-button-separator-height', 0, 32, 1, 'px'], ['group-button-separator-opacity', 0, 1, .01],
+      ...['group-button', 'group-button-hover', 'group-button-selected'].flatMap(role => [
+        [`${role}-gradient-top`, 0, 1, .01], [`${role}-gradient-bottom`, 0, 1, .01],
+        [`${role}-hairline-opacity`, 0, 1, .01]
+      ]),
+      ['group-button-gradient-saturation', 0, 4, .1],
+      ['group-button-hairline-width', 0, 4, .5, 'px'], ['group-button-hairline-saturation', 0, 4, .1]
+    ],
     'Group cards': [
       ['card-header-opacity', 0, 1, .01], ['card-body-opacity', 0, 1, .01],
+      ['card-gradient-reach', 0, 128, 1, 'px', 'Extend the header fade into the body and mirror its tail at the bottom without changing layout.'],
       ['card-radius', 0, 12, 1, 'px'], ['card-header-height', 12, 64, 1, 'px'],
       ...['left', 'top', 'right', 'bottom'].map(side => [`card-header-${side}`, 0, 32, 1, 'px']),
       ...['left', 'top', 'right', 'bottom'].map(side => [`card-outer-${side}`, 0, 32, 1, 'px']),
@@ -376,11 +567,20 @@
       ['card-eye-size', 8, 24, 1, 'px'], ['card-leading-gap', 0, 16, 1, 'px'],
       ['card-falloff-power', .05, 4, .05, '', FALLOFF_NOTE], ['card-icon-size', 6, 32, 1, 'px'], ['card-icon-opacity', 0, 1, .01]
     ],
-    'Foldouts': [['foldout-height', 12, 48, 1, 'px'], ['foldout-title-opacity', 0, 1, .01], ['foldout-gutter', 0, 20, 1, 'px'], ['foldout-outer-top', 0, 24, 1, 'px'], ['foldout-outer-bottom', 0, 24, 1, 'px'], ['foldout-header-padding-top', 0, 16, 1, 'px'], ['foldout-header-padding-bottom', 0, 16, 1, 'px'], ['foldout-body-top', 0, 24, 1, 'px'], ['foldout-body-bottom', 0, 24, 1, 'px'], ['header-tint-opacity', 0, 1, .01], ['header-hover-opacity', 0, 1, .01], ['foldout-falloff-power', .05, 4, .05, '', FALLOFF_NOTE], ['foldout-accent-multiply-opacity', 0, 1, .01], ['foldout-accent-hover-multiply-opacity', 0, 1, .01], ['foldout-hairline-opacity', 0, 1, .01], ['hairline-hover-opacity', 0, 1, .01], ['foldout-icon-size', 6, 32, 1, 'px'], ['foldout-icon-opacity', 0, 1, .01]],
-        'Layer rows': [['layer-height', 18, 48, 1, 'px'], ['child-height', 14, 40, 1, 'px'], ['layer-group-height', 14, 40, 1, 'px'], ['layer-badge-width', 32, 80, 1, 'px'], ['layer-icon-size', 6, 32, 1, 'px'], ['layer-icon-opacity', 0, 1, .01], ['toolbar-icon-size', 6, 32, 1, 'px'], ['toolbar-icon-opacity', 0, 1, .01]],
-    'Layer and overlay states': [['group-cross-opacity', 0, 1, .01], ['overlay-ground-opacity', 0, 1, .01], ['overlay-plate-opacity', 0, 1, .01], ['overlay-hover-accent', 0, 1, .01], ['overlay-press-accent', 0, 1, .01], ['overlay-icon-rest-opacity', 0, 1, .01], ['overlay-icon-size', 6, 32, 1, 'px'], ['overlay-icon-opacity', 0, 1, .01], ['overlay-grip-opacity', 0, 1, .01]],
+    'Collapse icons': [
+      ['foldout-icon-size', 6, 32, 1, 'px'], ['foldout-icon-opacity', 0, 1, .01],
+      ['foldout-icon-padding', 0, 8, .5, 'px'], ['foldout-icon-hover-opacity', 0, 1, .01], ['foldout-icon-pressed-opacity', 0, 1, .01],
+      ['foldout-icon-background-opacity', 0, 1, .01], ['foldout-icon-hover-background-opacity', 0, 1, .01], ['foldout-icon-pressed-background-opacity', 0, 1, .01]
+    ],
+    'Foldouts': [['foldout-vignette-opacity', 0, 1, .01], ['foldout-vignette-start', 0, 95, 1, '%'], ['panel-vignette-opacity', 0, 1, .01], ['panel-vignette-start', 0, 95, 1, '%'], ['card-vignette-opacity', 0, 1, .01], ['card-vignette-start', 0, 95, 1, '%'], ['foldout-height', 12, 48, 1, 'px'], ['foldout-title-opacity', 0, 1, .01], ['foldout-gutter', 0, 20, 1, 'px'], ['foldout-outer-top', 0, 24, 1, 'px'], ['foldout-outer-bottom', 0, 24, 1, 'px'], ['foldout-header-padding-top', 0, 16, 1, 'px'], ['foldout-header-padding-bottom', 0, 16, 1, 'px'], ['foldout-body-top', 0, 24, 1, 'px'], ['foldout-body-bottom', 0, 24, 1, 'px'], ['header-tint-opacity', 0, 1, .01], ['header-hover-opacity', 0, 1, .01], ['foldout-falloff-power', .05, 4, .05, '', FALLOFF_NOTE], ['foldout-accent-multiply-opacity', 0, 1, .01], ['foldout-accent-hover-multiply-opacity', 0, 1, .01], ['foldout-hairline-opacity', 0, 1, .01], ['hairline-hover-opacity', 0, 1, .01]],
+        'Layer rows': [['layer-indent', 16, 40, 1, 'px'], ['layer-hierarchy-line-width', 0, 3, .5, 'px'], ['layer-hierarchy-line-opacity', 0, 1, .01], ['layer-visibility-size', 4, 16, 1, 'px'], ['layer-visibility-radius', 0, 8, .5, 'px'], ['layer-height', 18, 48, 1, 'px'], ['child-height', 14, 40, 1, 'px'], ['layer-group-height', 14, 40, 1, 'px'], ['layer-badge-width', 32, 80, 1, 'px'], ['layer-icon-size', 6, 32, 1, 'px'], ['layer-icon-opacity', 0, 1, .01], ['toolbar-icon-size', 6, 32, 1, 'px'], ['toolbar-icon-opacity', 0, 1, .01]],
+    'Layer active states': [
+      ['layer-active-hairline-width', 0, 4, .5, 'px'], ['layer-active-hairline-opacity', 0, 1, .01],
+      ['layer-active-glow-opacity', 0, 1, .01], ['layer-active-glow-reach', 0, 128, 1, 'px'], ['layer-active-glow-saturation', 0, 4, .1]
+    ],
+    'Layer and overlay states': [['overlay-control-width', 100, 400, 1, 'px'], ['group-cross-opacity', 0, 1, .01], ['overlay-ground-opacity', 0, 1, .01], ['overlay-plate-opacity', 0, 1, .01], ['overlay-hover-accent', 0, 1, .01], ['overlay-press-accent', 0, 1, .01], ['overlay-icon-rest-opacity', 0, 1, .01], ['overlay-icon-size', 6, 32, 1, 'px'], ['overlay-icon-opacity', 0, 1, .01], ['overlay-grip-opacity', 0, 1, .01]],
     'Context menus and hover help': [['popup-lip-height', 10, 50, 1, 'px'], ['popup-tint-opacity', 0, 1, .01], ['popup-border-opacity', 0, 1, .01], ['popup-shadow-opacity', 0, 1, .01], ['menu-icon-size', 6, 32, 1, 'px'], ['menu-icon-opacity', 0, 1, .01], ['menu-width', 150, 360, 5, 'px'], ['menu-row-height', 18, 32, 1, 'px'], ['menu-padding', 0, 12, 1, 'px'], ['help-max-width', 200, 500, 5, 'px'], ['help-padding', 4, 20, 1, 'px'], ['help-delay', 150, 1000, 50, 'ms']],
-    'Controls': [['row-height', 16, 36, 1, 'px'], ['row-gap', 0, 12, 1, 'px'], ['paired-gap', 0, 12, 1, 'px'], ['dragger-text-inset', 2, 20, 1, 'px'], ['dropdown-label-ratio', .15, .6, .01], ['control-label-opacity', 0, 1, .01], ['control-value-opacity', 0, 1, .01], ['well-border-width', 0, 3, .5, 'px'], ['well-radius', 0, 12, 1, 'px'], ['modified-stripe-width', 0, 8, .5, 'px'], ['modified-stripe-opacity', 0, 1, .01], ['icon-size', 8, 32, 1, 'px'], ['icon-hit-padding', 0, 8, .5, 'px'], ['icon-off-opacity', 0, 1, .01], ['layer-module-icon-size', 8, 32, 1, 'px'], ['layer-module-icon-opacity', 0, 1, .01], ['badge-width', 48, 96, 1, 'px'], ['thumbnail-size', 12, 64, 1, 'px'], ['thumbnail-radius', 0, 12, 1, 'px'], ['gallery-swatch-radius', 0, 12, 1, 'px'], ['icon-sheet-preview-size', 8, 48, 1, 'px'], ['rail-icon-size', 12, 48, 1, 'px'], ['window-grip-size', 6, 32, 1, 'px'], ['window-grip-opacity', 0, 1, .01]],
+    'Controls': [['row-height', 16, 36, 1, 'px'], ['row-gap', 0, 12, 1, 'px'], ['paired-gap', 0, 12, 1, 'px'], ['dragger-text-inset', 2, 20, 1, 'px'], ['dropdown-label-ratio', .15, .6, .01], ['control-value-opacity', 0, 1, .01], ['well-border-width', 0, 3, .5, 'px'], ['well-radius', 0, 12, 1, 'px'], ['modified-stripe-width', 0, 8, .5, 'px'], ['modified-stripe-opacity', 0, 1, .01], ['icon-size', 8, 32, 1, 'px'], ['icon-hit-padding', 0, 8, .5, 'px'], ['icon-off-opacity', 0, 1, .01], ['layer-module-icon-size', 8, 32, 1, 'px'], ['layer-module-icon-opacity', 0, 1, .01], ['badge-width', 48, 96, 1, 'px'], ['thumbnail-size', 12, 64, 1, 'px'], ['thumbnail-radius', 0, 12, 1, 'px'], ['gallery-swatch-radius', 0, 12, 1, 'px'], ['icon-sheet-preview-size', 8, 48, 1, 'px'], ['rail-icon-size', 12, 48, 1, 'px'], ['window-grip-size', 6, 32, 1, 'px'], ['window-grip-opacity', 0, 1, .01]],
     'Workspace': [['left-width', 160, 640, 5, 'px'], ['inspector-width', 200, 720, 5, 'px'], ['gallery-height', 80, 500, 5, 'px'], ['gallery-tile-size', 50, 140, 2, 'px'], ['splitter-size', 1, 5, 1, 'px'], ['splitter-hit-size', 5, 12, 1, 'px'], ['topbar-icon-size', 6, 32, 1, 'px'], ['topbar-icon-opacity', 0, 1, .01]]
   };
   const tokenDefaults = new Map();
@@ -442,9 +642,28 @@
       tokenInputs.set(cssName, select);
       row.append(label, select, reset); section.prepend(row);
     }
+    {
+      const section = sections.find(section => section.title === 'TYPOGRAPHY').element.querySelector('.token-grid');
+      const cssName = '--dragger-label-case';
+      const authored = computed.getPropertyValue(cssName).trim();
+      tokenDefaults.set(cssName, authored);
+      const row = node('div', 'token-row');
+      row.dataset.tokenName = 'dragger-label-case'; row.dataset.cssToken = cssName;
+      row.dataset.help = 'Slider fill label casing only; values and other labels remain unchanged.';
+      const label = node('label', '', 'Slider label case'); label.htmlFor = 'token-dragger-label-case';
+      const select = node('select'); select.id = label.htmlFor;
+      [['none', 'Original case'], ['lowercase', 'lowercase'], ['uppercase', 'UPPERCASE']].forEach(([value, title]) => {
+        const option = node('option', '', title); option.value = value; select.append(option);
+      });
+      select.value = authored;
+      select.addEventListener('change', () => root.style.setProperty(cssName, select.value));
+      const reset = node('button', '', '↺'); reset.setAttribute('aria-label', 'Reset slider label case');
+      reset.addEventListener('click', () => resetToken(cssName));
+      tokenInputs.set(cssName, select); row.append(label, select, reset); section.append(row);
+    }
     addSection('BASE PALETTE', () => {
     const section = node('div', 'token-grid');
-    ['ground', 'text', 'accent', 'modified', 'child-left', 'child-right', 'child-hover-left', 'child-hover-right', 'child-selected-left', 'child-selected-right'].forEach(name => {
+    ['ground', 'text', 'accent', 'modified', 'foldout-icon', 'foldout-icon-hover', 'foldout-icon-pressed', 'child-left', 'child-right', 'child-hover-left', 'child-hover-right', 'child-selected-left', 'child-selected-right'].forEach(name => {
       const cssName = `--${name}-rgb`;
       const channels = computed.getPropertyValue(cssName).trim(); tokenDefaults.set(cssName, channels);
       const toHex = value => `#${value.split(/\s+/).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}`;
@@ -518,6 +737,29 @@
     const current = getComputedStyle(root);
     return Object.fromEntries([...tokenDefaults.keys()].map(name => [name, current.getPropertyValue(name).trim()]));
   }
+  function applyTokens(tokens) {
+    const validated = [];
+    Object.entries(tokens).forEach(([name, value]) => {
+      const input = tokenInputs.get(name);
+      if (!input) return;
+      if (typeof value !== 'string') throw new Error(`Invalid value for ${name}`);
+      if (input.type === 'number') {
+        const unit = tokenDefaults.get(name).replace(/^[+-]?(?:\d*\.)?\d+/, '');
+        const number = Number(unit ? value.endsWith(unit) ? value.slice(0, -unit.length) : NaN : value);
+        if (!Number.isFinite(number) || number < Number(input.min) || number > Number(input.max)) throw new Error(`Out-of-range value for ${name}`);
+        validated.push([name, value, number]);
+      } else if (input.type === 'color') {
+        const channels = value.trim().split(/\s+/).map(Number);
+        if (channels.length !== 3 || channels.some(channel => !Number.isInteger(channel) || channel < 0 || channel > 255)) throw new Error(`Invalid RGB for ${name}`);
+        validated.push([name, value, `#${channels.map(channel => channel.toString(16).padStart(2, '0')).join('')}`]);
+      } else {
+        if (![...input.options].some(option => option.value === value)) throw new Error(`Unsupported choice for ${name}`);
+        validated.push([name, value, value]);
+      }
+    });
+    validated.forEach(([name, value, display]) => { root.style.setProperty(name, value); tokenInputs.get(name).value = display; });
+    window.MixtormatPrototype.refreshFalloff();
+  }
   function resetToken(name) {
     const authored = tokenDefaults.get(name);
     if (authored === undefined) return;
@@ -543,7 +785,7 @@
     byId('modal').showModal();
   }
   function driver(anchor) {
-    const popover = byId('popover'); popover.replaceChildren();
+    const popover = byId('popover'); popover.dataset.panel = 'driver'; popover.replaceChildren();
     const body = node('div', 'compact-card'); body.dataset.slate = 'SMixtormatDriverPopover / CompactLayout';
     body.append(node('h3', '', 'PARAMETER DRIVER · PREVIEW ONLY'), dropdown({ label: 'Source', options: ['None', 'Layer Output', 'Expression'], selected: 0 }, 'driver.source'), dragger({ label: 'Multiplier', value: 1, min: 0, max: 4 }, 'driver.multiplier'), dragger({ label: 'Offset', value: 0, min: -1, max: 1 }, 'driver.offset'), node('span', 'state-label', 'Compact geometry is independent of inspector cards.'));
     popover.append(body); popover.hidden = false;
@@ -552,7 +794,7 @@
     popover.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 210))}px`;
   }
   document.addEventListener('pointerdown', event => {
-    if (!byId('popover').contains(event.target) && !event.target.closest('[data-action=driver]')) byId('popover').hidden = true;
+    if (!byId('popover').contains(event.target) && !event.target.closest('[data-action=driver], [data-action=final-settings], .dropdown-trigger, [role=menuitemradio]')) byId('popover').hidden = true;
   });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') { byId('popover').hidden = true; byId('styleDrawer').hidden = true; }
@@ -609,15 +851,7 @@
         byId('debugLabel').textContent = active ? `Debug: ${button.dataset.title || 'Output'}` : 'Composite';
         status('Debug selection updated · visual indication only, no shader evaluation'); break;
       }
-      case 'reset-group': {
-        const changes = [];
-        const card = button.closest('.group-card');
-        card.querySelectorAll('[data-parameter]').forEach(row => {
-          const key = row.dataset.parameter; const model = state.parameters.get(key);
-          changes.push({ key, before: model.value, after: model.defaultValue }); model.value = model.defaultValue;
-        });
-        history(changes); renderInspector(); status('Numeric controls in this group reset'); break;
-      }
+      case 'reset-group': resetGroup(button.closest('.group-card')); break;
       case 'driver': driver(button); break;
       case 'wire': button.setAttribute('aria-pressed', String(byId('viewport').classList.toggle('wire'))); break;
       case 'frame': status('Preview framed · CSS illustration has a fixed camera'); break;
@@ -626,6 +860,8 @@
         byId('galleryGrid').hidden = collapsed; button.textContent = collapsed ? 'Expand' : 'Collapse'; break;
       }
       case 'add-layer': data.layers.push({ title: 'Demo layer', schema: 'surface', source: 'DEMO', thumb: 'metal' }); renderLayers(); status('Added a local demo layer; no asset changed'); break;
+      case 'add-group': data.layers.push({ title: 'Demo group', group: true, source: 'GROUP' }); renderLayers(); status('Added a local demo group; no asset changed'); break;
+      case 'add-fill-layer': data.layers.push({ title: 'Demo fill layer', schema: 'surface', source: 'FILL', thumb: 'metal' }); renderLayers(); status('Added a local demo fill layer; no asset changed'); break;
       case 'save': state.dirty = false; syncHistory(); status('Demo saved in memory only. SAVE AS exports the prototype state.'); break;
       case 'export': download('mixtormat-prototype-state.json', { version: 1, simulated: true, parameters: Object.fromEntries([...state.parameters].map(([key, value]) => [key, value.value])), tokens: exportTokens() }); break;
       case 'new': modal('New workspace', ['This prototype does not create Unreal assets. A new workspace would confirm unsaved changes, then start an empty recipe. The sample remains available for comparing components.']); break;
@@ -645,6 +881,6 @@
       ]); break;
     }
   });
-  window.MixtormatPrototype = { node, icon, dragger, dropdown, toggle, segments, status, parameter, renderInspector, resetToken, resetTokens, driver };
+  window.MixtormatPrototype = { node, icon, dragger, dropdown, toggle, segments, status, parameter, renderInspector, resetGroup, resetToken, resetTokens, driver, exportTokens, applyTokens };
   renderLayers(); renderInspector(); renderGallery(); renderTokens(); selectInspector('surface');
 })();

@@ -173,7 +173,11 @@
   });
 
   // Replace static glyphs with the actual plugin PNGs. Dynamic icons use app.js's factory.
-  document.querySelector('[data-action=add-layer]').replaceChildren(png('add'));
+
+  const layerActions = { 'add-layer': 'layer-material', 'add-group': 'folder', 'add-fill-layer': 'layer-fill' };
+  Object.entries(layerActions).forEach(([action, image]) => {
+    document.querySelector(`.layer-add-actions [data-action=${action}]`).prepend(png(image));
+  });
   document.querySelector('[data-action=debug]').replaceChildren(png('eye-off'));
   document.querySelector('[data-action=frame]').replaceChildren(png('camera'));
   document.querySelector('[data-action=wire]').replaceChildren(png('nodes'));
@@ -187,57 +191,107 @@
     document.querySelectorAll('.layer-row.child').forEach(row => {
       if (row.querySelector('.layer-module-icon')) return;
       const source = row.querySelector('.layer-source')?.textContent;
-      row.insertBefore(png(moduleIcon[source] || 'generated', 'layer-module-icon'), row.querySelector('.layer-name'));
+      row.querySelector('.layer-leading').append(png(moduleIcon[source] || 'generated', 'layer-module-icon'));
     });
   }
   layerIcons();
-  new MutationObserver(layerIcons).observe(document.getElementById('layerTree'), { childList: true });
+  new MutationObserver(layerIcons).observe(document.getElementById('layerTree'), { childList: true, subtree: true });
 
-  // Source-aligned OUTPUT / SCENE / CAMERA overlay component examples.
-  const overlay = ui.node('section', 'viewport-overlay'); overlay.dataset.slate = 'SMixtormat viewport overlays';
-  overlay.setAttribute('aria-label', 'Preview overlay controls');
-  const title = ui.node('div', 'overlay-title', 'PREVIEW CONTROLS');
-  title.append(png('grip')); overlay.append(title);
-  const tabs = ui.node('div', 'overlay-tabs'); overlay.append(tabs);
-  const definitions = [
-    { title: 'OUTPUT', image: 'nodes', rows: [
-      ui.dropdown({ label: 'Resolution', options: ['1K', '2K', '4K'], selected: 1 }, 'overlay.resolution'),
-      ui.segments({ options: ['DEFAULT', 'LUMEN'] }, 'overlay.quality'),
-      ui.segments({ options: ['FXAA', 'TSR'] }, 'overlay.aa'),
-      ui.dragger({ label: 'Scale', value: 150, min: 50, max: 200, integer: true }, 'overlay.scale')
-    ] },
-    { title: 'SCENE', image: 'light-neutral', rows: [
-      ui.toggle({ label: 'Displacement', value: true }, 'overlay.displacement'),
-      ui.dragger({ label: 'Amount', value: 1, min: 0, max: 4 }, 'overlay.amount'),
-      ui.dragger({ label: 'Light', value: .8, min: 0, max: 2 }, 'overlay.light'),
-      ui.dragger({ label: 'Skylight', value: .1, min: 0, max: 2 }, 'overlay.skylight')
-    ] },
-    { title: 'CAMERA', image: 'camera', rows: [
-      ui.dragger({ label: 'FOV', value: 45, min: 15, max: 100 }, 'overlay.fov'),
-      ui.dropdown({ label: 'Preset', options: ['Neutral', 'Soft', 'Dramatic', 'Rim'], selected: 0 }, 'overlay.preset')
-    ] }
-  ];
-  const panels = [];
-  definitions.forEach((definition, index) => {
-    const button = ui.node('button', '', definition.title);
-    button.prepend(png(definition.image)); button.setAttribute('aria-pressed', String(index === 0));
-    const panel = ui.node('div', 'overlay-controls'); panel.hidden = index !== 0;
-    panel.append(...definition.rows, ui.node('div', 'overlay-note', 'Reference controls · simulated rendering only'));
-    const panelId = `overlay-panel-${index}`; panel.id = panelId; button.setAttribute('aria-controls', panelId);
-    panels.push(panel);
-    button.addEventListener('click', () => {
-      const open = panel.hidden;
-      panels.forEach(item => { item.hidden = true; });
-      tabs.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', 'false'));
-      panel.hidden = !open; button.setAttribute('aria-pressed', String(open));
-    });
-    tabs.append(button); overlay.append(panel);
+  // Match BuildPreviewPanel's edge clusters, retaining the existing demo parameter keys.
+  // Shared factories provide the wells, gradients, borders, history and keyboard behavior.
+  function cluster(title, position, rows) {
+    const panel = ui.node('section', `viewport-overlay overlay-${position}`);
+    panel.dataset.slate = 'SMixtormat viewport overlays';
+    panel.setAttribute('aria-label', `${title} preview controls`);
+    const controls = ui.node('div', 'overlay-controls'); controls.append(...rows);
+    panel.append(controls); viewport.append(panel);
+
+    return controls;
+  }
+  cluster('RENDER', 'top-left', [
+    ui.segments({ options: ['FXAA', 'TSR'] }, 'overlay.aa'),
+    ui.dragger({ label: 'Scale', value: 150, min: 50, max: 200, integer: true }, 'overlay.scale')
+  ]);
+  cluster('SCENE', 'bottom-left', [
+    ui.segments({ options: ['DEFAULT', 'LUMEN'] }, 'overlay.quality'),
+    ui.toggle({ label: 'Displacement', value: true }, 'overlay.displacement'),
+    ui.dragger({ label: 'Amount', value: 1, min: 0, max: 4 }, 'overlay.amount'),
+    ui.dragger({ label: 'Light', value: .8, min: 0, max: 2 }, 'overlay.light'),
+    ui.dragger({ label: 'Skylight', value: .1, min: 0, max: 2 }, 'overlay.skylight')
+  ]);
+  ui.parameter('overlay.resolution', 1);
+  const resolution = cluster('OUTPUT', 'bottom-right', [
+    ui.segments({ options: ['1K', '2K', '4K'] }, 'overlay.resolution')
+  ]);
+  resolution.parentElement.classList.add('overlay-resolution');
+  const camera = cluster('CAMERA', 'bottom-center', [
+    ui.dragger({ label: 'FOV', value: 45, min: 15, max: 100 }, 'overlay.fov')
+  ]);
+
+  ui.parameter('overlay.comparison', 1);
+  const comparisonButtons = ui.segments({ options: ['BEFORE', 'AFTER'] }, 'overlay.comparison');
+  const bypassRow = ui.toggle({ label: 'Bypass child', value: false }, 'overlay.bypass-child');
+  const bypass = bypassRow.querySelector('button');
+  bypass.className = 'overlay-bypass';
+  bypass.replaceChildren(document.createTextNode('Bypass child'));
+  const final = ui.node('button', 'overlay-final', 'Final ▾');
+  final.dataset.action = 'final-settings';
+  final.setAttribute('aria-haspopup', 'dialog');
+  final.title = 'Final composite settings · prototype only';
+  final.addEventListener('click', () => {
+    const popover = document.getElementById('popover');
+    if (!popover.hidden && popover.dataset.panel === 'final') { popover.hidden = true; return; }
+    const body = ui.node('div', 'compact-card');
+    body.append(
+      ui.dragger({ label: 'AO', value: .5, min: 0, max: 1 }, 'overlay.final-ao'),
+      ui.dragger({ label: 'AO Radius', value: 8, min: 1, max: 64 }, 'overlay.final-ao-radius'),
+      ui.toggle({ label: 'Auto Remap Height', value: false }, 'overlay.final-auto-remap'),
+      ui.node('span', 'state-label', 'Prototype controls · not engine rendering')
+    );
+    popover.replaceChildren(body); popover.dataset.panel = 'final'; popover.hidden = false;
+    const rect = final.getBoundingClientRect();
+    popover.style.left = `${clamp(rect.left, 8, Math.max(8, window.innerWidth - popover.offsetWidth - 8))}px`;
+    popover.style.top = `${clamp(rect.bottom + 4, 8, Math.max(8, window.innerHeight - popover.offsetHeight - 8))}px`;
   });
-  viewport.append(overlay);
-  pointerDrag(title, event => ({ x: event.clientX, y: event.clientY, left: overlay.offsetLeft, top: overlay.offsetTop }), (event, start) => {
-    overlay.style.left = `${clamp(start.left + event.clientX - start.x, 0, viewport.clientWidth - overlay.offsetWidth)}px`;
-    overlay.style.top = `${clamp(start.top + event.clientY - start.y, 0, viewport.clientHeight - overlay.offsetHeight)}px`;
+  const comparison = cluster('COMPARISON', 'top-center', [comparisonButtons, bypass, final]);
+  comparison.parentElement.classList.add('overlay-comparison');
+
+  const preset = ui.dropdown({ label: 'Preset', options: ['Neutral', 'Soft', 'Dramatic', 'Rim', 'Workshop'], selected: 0 }, 'overlay.preset');
+  const lighting = cluster('LIGHT', 'left', []);
+  lighting.parentElement.classList.add('overlay-lighting');
+  const lightButtons = ui.node('div', 'viewport-rail overlay-light-rail');
+  ['light-neutral', 'light-soft', 'light-dramatic', 'light-rim', 'globe'].forEach((image, index) => {
+    const button = ui.icon(image, `${['Neutral', 'Soft', 'Dramatic', 'Rim', 'Workshop'][index]} lighting`);
+    const select = preset.querySelector('select');
+    button.setAttribute('aria-pressed', String(Number(select.value) === index));
+    button.addEventListener('click', () => { select.value = index; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    select.addEventListener('change', () => button.setAttribute('aria-pressed', String(Number(select.value) === index)));
+    lightButtons.append(button);
   });
+  preset.querySelector('select').addEventListener('change', event => {
+    viewport.dataset.light = ['Neutral', 'Soft', 'Dramatic', 'Rim', 'Workshop'][Number(event.target.value)];
+  });
+  preset.querySelector('select').dispatchEvent(new Event('change', { bubbles: true }));
+  lighting.append(lightButtons);
+  // Keep utility actions to the right of comparison controls, separate from the mesh rail.
+  const geometryRail = viewport.querySelector('.viewport-rail:not(.overlay-light-rail)');
+  const cameraActions = ui.node('div', 'viewport-camera-actions');
+  cameraActions.append(...geometryRail.children); comparison.append(cameraActions);
+  const geometry = cluster('MESH', 'right', [geometryRail]);
+  geometry.parentElement.classList.add('overlay-geometry');
+  ['Sphere', 'Cylinder', 'Cube', 'Plane'].forEach(mesh => {
+    const button = ui.icon(mesh.toLowerCase(), `${mesh} preview`);
+    const select = document.getElementById('meshSelect');
+    button.setAttribute('aria-pressed', String(select.value === mesh));
+    button.addEventListener('click', () => { select.value = mesh; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    select.addEventListener('change', () => button.setAttribute('aria-pressed', String(select.value === mesh)));
+    geometryRail.append(button);
+  });
+  const rotationRow = ui.toggle({ label: 'Rotate material UVs 90 degrees', value: false }, 'overlay.uv-rotation-90');
+  const rotation = rotationRow.querySelector('button');
+  rotation.className = 'icon-button'; rotation.replaceChildren(document.createTextNode('90°'));
+  rotation.addEventListener('click', () => viewport.classList.toggle('uv-rotated', rotation.getAttribute('aria-pressed') === 'true'));
+  geometryRail.append(rotation);
 
   // All copied icons can be inspected without invoking or changing Unreal functionality.
   const iconNames = ['add', 'arrow-down', 'arrow-up', 'camera', 'check', 'chevron-down-bold', 'chevron-down', 'chevron-right', 'chevron-up', 'cube', 'cylinder', 'documentation', 'duplicate', 'effect', 'eye-off', 'eye', 'feedback', 'folder', 'generated', 'generator', 'globe', 'grip', 'hierarchy-root', 'ids', 'indent-1', 'indent-2', 'indent-3', 'layer-fill', 'layer-material', 'light-dramatic', 'light-neutral', 'light-rim', 'light-soft', 'mask', 'nodes', 'overflow', 'plane', 'quality-high', 'quality-low', 'quality-medium', 'ramp-bspline', 'ramp-constant', 'ramp-frame', 'ramp-linear', 'ramp-reset', 'ramp-spline', 'refresh', 'save-as', 'save', 'search', 'settings', 'sphere', 'trash', 'tree-branch-dotted', 'tree-cross', 'tree-elbow', 'tree-tee'];

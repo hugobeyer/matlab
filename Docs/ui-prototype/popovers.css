@@ -6,11 +6,18 @@ input, textarea, [contenteditable=true] { user-select: text; -webkit-user-select
 .floating-surface::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; mix-blend-mode: plus-lighter; background: linear-gradient(rgb(var(--accent-rgb) / var(--popup-tint-opacity)), rgb(var(--accent-rgb) / 0) var(--popup-lip-height)); }
 .context-menu { min-width: var(--menu-width); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; padding: var(--menu-padding); }
 .menu-caption { padding: 5px 8px; font-size: var(--caption-size); letter-spacing: .8px; color: rgb(var(--text-rgb) / var(--text-muted-opacity)); }
-.menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--menu-row-height); padding: 0 8px; border-radius: 2px; text-align: left; white-space: nowrap; }
+.menu-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: var(--menu-row-height); padding: 0 8px; border-radius: var(--well-radius); text-align: left; white-space: nowrap; }
 .menu-item .asset-icon { width: var(--menu-icon-size); height: var(--menu-icon-size); opacity: var(--menu-icon-opacity); }
 .menu-item .menu-shortcut { margin-left: auto; font-size: 9px; color: rgb(var(--text-rgb) / .4); padding-left: 12px; }
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: linear-gradient(rgb(var(--panel-rgb)), rgb(var(--layer-hover-bottom-rgb))); outline: none; }
 .menu-item:disabled { opacity: var(--text-disabled-opacity); }
+.menu-item[aria-checked=true] { color: rgb(var(--accent-rgb)); background: linear-gradient(rgb(var(--panel-rgb)), rgb(var(--layer-hover-bottom-rgb))); }
+/* Trigger is a plain well surface: the arrow is pushed right and never takes a background. */
+.dropdown-trigger { display: flex; align-items: center; justify-content: flex-start; gap: var(--row-gap); width: 100%; min-width: 0; min-height: var(--row-height); padding: 0 6px; text-align: left; border: 0; border-radius: 0; background: transparent; color: rgb(var(--text-rgb) / var(--control-value-opacity)); }
+.dropdown-trigger:hover, .dropdown-trigger:active, .dropdown-trigger[aria-expanded=true] { background: transparent; }
+.dropdown-row .well > .dropdown-trigger, .bare-dropdown .dropdown-trigger { height: var(--row-height); border: 0; background: transparent; }
+.dropdown-selection { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown-trigger .asset-icon { flex-shrink: 0; margin-left: auto; width: var(--icon-size); height: var(--icon-size); opacity: var(--icon-off-opacity); }
 .menu-separator { height: 1px; margin: 4px 5px; background: rgb(var(--hairline-rgb) / var(--foldout-hairline-opacity)); }
 .help-popover { z-index: 61; pointer-events: none; width: max-content; max-width: min(var(--help-max-width), calc(100vw - 16px)); padding: var(--help-padding); font-size: var(--body-size); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .help-popover .help-title { color: rgb(var(--text-rgb)); display: block; margin-bottom: 3px; font-weight: 600; }

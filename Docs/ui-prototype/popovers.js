@@ -5,7 +5,7 @@
   const ui = window.MixtormatPrototype;
   const root = document.documentElement;
   const menu = ui.node('div', 'floating-surface context-menu');
-  menu.hidden = true; menu.setAttribute('role', 'menu');
+  menu.hidden = true; menu.id = 'prototype-choice-menu'; menu.setAttribute('role', 'menu');
   const help = ui.node('div', 'floating-surface help-popover');
   help.hidden = true; help.id = 'prototype-hover-help'; help.setAttribute('role', 'tooltip');
   document.body.append(menu, help);
@@ -94,6 +94,7 @@
 
   function closeMenu(restoreFocus = false) {
     menu.hidden = true;
+    menuAnchor?.setAttribute('aria-expanded', 'false');
     if (restoreFocus && menuAnchor?.isConnected) menuAnchor.focus?.();
     menuAnchor = null;
   }
@@ -107,8 +108,60 @@
     item.append(ui.node('span', '', label));
     if (options.shortcut) item.append(ui.node('span', 'menu-shortcut', options.shortcut));
     item.addEventListener('click', () => { closeMenu(); run(); });
-    menu.append(item);
+    menu.append(item); return item;
   }
+
+  const dropdowns = new Map();
+  function styleDropdown(select) {
+    if (dropdowns.has(select)) return;
+    const button = ui.node('button', 'dropdown-trigger'); button.type = 'button';
+    button.id = `${select.id || `dropdown-${dropdowns.size}`}-trigger`;
+    const labels = [...select.labels];
+    labels.forEach(label => { label.htmlFor = button.id; });
+    button.setAttribute('aria-label', labels.map(label => label.textContent).join(' ') || select.getAttribute('aria-label') || 'Select option');
+    button.setAttribute('aria-haspopup', 'menu'); button.setAttribute('aria-controls', menu.id); button.setAttribute('aria-expanded', 'false');
+    const text = ui.node('span', 'dropdown-selection');
+    const arrow = ui.node('img', 'asset-icon'); arrow.src = 'icons/chevron-down.png'; arrow.alt = '';
+    button.append(text, arrow);
+    const sync = () => { text.textContent = select.selectedOptions[0]?.textContent || ''; button.disabled = select.disabled; };
+    dropdowns.set(select, { button, sync });
+    select.classList.add('custom-dropdown-source'); select.hidden = true; select.before(button);
+    select.addEventListener('change', sync);
+    const open = () => {
+      if (select.disabled) return;
+      if (!menu.hidden && menuAnchor === button) { closeMenu(true); return; }
+      hideHelp(); closeMenu(); menuAnchor = button;
+      surfaceHost(button).append(menu); menu.replaceChildren(); menu.setAttribute('aria-label', button.getAttribute('aria-label'));
+      [...select.options].forEach(option => {
+        const item = action(option.textContent, () => {
+          select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); sync(); button.focus();
+        }, { disabled: option.disabled || !!option.closest('optgroup:disabled'), icon: option.selected ? 'check' : undefined });
+        if (!option.selected) item.prepend(ui.node('span', 'asset-icon'));
+        item.setAttribute('role', 'menuitemradio'); item.setAttribute('aria-checked', String(option.selected));
+      });
+      menu.hidden = false; button.setAttribute('aria-expanded', 'true');
+      const box = button.getBoundingClientRect(); position(menu, box.left, box.bottom + 2);
+      (menu.querySelector('[aria-checked=true]:not(:disabled)') || menu.querySelector('button:not(:disabled)'))?.focus();
+    };
+    button.addEventListener('click', open);
+    button.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(); }
+    });
+    sync();
+  }
+  function styleDropdowns(scope) {
+    if (scope.matches?.('select')) styleDropdown(scope);
+    scope.querySelectorAll?.('select').forEach(styleDropdown);
+  }
+  styleDropdowns(document);
+  new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(element => {
+    if (element.nodeType === Node.ELEMENT_NODE) styleDropdowns(element);
+  }))).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(() => {
+    dropdowns.forEach(({ sync }, select) => {
+      if (select.isConnected) sync(); else dropdowns.delete(select);
+    });
+  }).observe(root, { attributes: true, attributeFilter: ['style'] });
   const trigger = selector => document.querySelector(selector)?.click();
   const separator = () => menu.append(ui.node('div', 'menu-separator'));
   document.addEventListener('contextmenu', event => {
@@ -123,12 +176,12 @@
     const layer = target.closest('.layer-row');
     const foldout = target.closest('.foldout');
     const style = target.closest('#styleDrawer');
-    const caption = token ? token.dataset.cssToken : parameter ? parameter.getAttribute('aria-label') : card ? card.querySelector('.card-title').textContent : layer ? layer.querySelector('.layer-name').textContent : style ? 'UI Style' : 'Mixtormat';
+    const caption = token ? token.dataset.cssToken : parameter ? parameter.getAttribute('aria-label') : layer ? layer.querySelector('.layer-name').textContent : card ? card.querySelector('.card-title')?.textContent || card.getAttribute('aria-label') : foldout ? foldout.querySelector('summary').textContent : style ? 'UI Style' : 'Mixtormat';
     menu.setAttribute('aria-label', `${caption} context actions`);
     menu.append(ui.node('div', 'menu-caption', caption));
     if (token) {
       action('Reset this token', () => { ui.resetToken(token.dataset.cssToken); ui.status(`${token.dataset.cssToken} restored`); }, { icon: 'refresh' });
-      action('Edit value', () => token.querySelector('input, select')?.focus());
+      action('Edit value', () => token.querySelector('input, .dropdown-trigger, select')?.focus());
       separator();
     } else if (parameter) {
       const disabled = parameter.getAttribute('aria-disabled') === 'true';
@@ -136,7 +189,8 @@
       action('Parameter driver…', () => ui.driver(parameter), { icon: 'nodes', disabled });
       separator();
     }
-    if (card) action('Reset group values', () => card.querySelector('[data-action=reset-group]')?.click(), { icon: 'refresh' });
+    if (card) action('Reset group values', () => ui.resetGroup(card), { icon: 'refresh', disabled: !card.querySelector('[data-parameter]') });
+    if (foldout) action('Reset foldout values', () => ui.resetGroup(foldout), { icon: 'refresh', disabled: !foldout.querySelector('[data-parameter]') });
     if (layer) {
       action('Inspect', () => layer.querySelector('.layer-name')?.click(), { disabled: !!layer.querySelector('.layer-name')?.disabled });
       action('Toggle visibility', () => layer.querySelector('[data-action=eye]')?.click(), { icon: 'eye' });
@@ -156,6 +210,8 @@
     position(menu, event.clientX || box.left, event.clientY || box.bottom);
     menu.querySelector('button:not(:disabled)')?.focus();
   });
+  let menuSearch = '';
+  let menuSearchTime = 0;
   menu.addEventListener('keydown', event => {
     const items = [...menu.querySelectorAll('button:not(:disabled)')];
     const index = items.indexOf(document.activeElement);
@@ -165,6 +221,13 @@
     }
     if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault(); items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+    }
+    if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      const now = Date.now();
+      menuSearch = now - menuSearchTime > 700 ? event.key.toLowerCase() : menuSearch + event.key.toLowerCase();
+      menuSearchTime = now;
+      items.find(item => item.textContent.trim().toLowerCase().startsWith(menuSearch))?.focus();
     }
     if (event.key === 'Tab') closeMenu();
   });

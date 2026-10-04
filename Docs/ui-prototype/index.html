@@ -13,6 +13,7 @@
     <script defer src="falloff.js"></script>
   <script defer src="workspace-controls.js"></script>
   <script defer src="popovers.js"></script>
+  <script defer src="token-autosave.js"></script>
 </head>
 <body>
   <div class="workspace" data-slate="SMixtormat">
@@ -46,14 +47,7 @@
           <button role="tab" aria-selected="false" data-left-tab="library">LIBRARY</button>
         </div>
         <section id="layersPanel">
-          <div class="panel-toolbar">
-            <span class="caption">LAYER STACK</span>
-            <button class="icon-button" data-action="add-layer" title="Add a demo layer" aria-label="Add layer">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 4v16M4 12h16"></path>
-              </svg>
-            </button>
-          </div>
+
           <div id="layerTree" class="layer-tree" role="list" data-slate="SMixtormatLayerContainer"></div>
           <div class="panel-footnote">
             Select a row to inspect its component.<br>
@@ -77,10 +71,15 @@
           </div>
           <p class="panel-footnote">Visual placeholders only. No assets are imported or changed.</p>
         </section>
+        <footer class="layer-add-actions" aria-label="Add to layer stack">
+          <button data-action="add-layer" title="Add a demo layer">Layer</button>
+          <button data-action="add-group" title="Add a demo group">Group</button>
+          <button data-action="add-fill-layer" title="Add a demo fill layer">Fill Layer</button>
+        </footer>
       </aside>
 
       <section class="center-panel">
-        <div class="preview-toolbar">
+        <div class="preview-toolbar" hidden>
           <div class="segmented" id="channels" aria-label="Preview channel">
             <button aria-pressed="true" data-channel="material">Material</button>
             <button aria-pressed="false" data-channel="basecolor">BC</button>
@@ -92,6 +91,8 @@
             <label for="meshSelect">Mesh</label>
             <select id="meshSelect">
               <option>Sphere</option>
+              <option>Cylinder</option>
+              <option>Cube</option>
               <option>Plane</option>
             </select>
             <label for="lightSelect">Light</label>
@@ -121,7 +122,7 @@
             </button>
           </div>
           <div class="viewport-bottom">
-            <span id="debugLabel">Composite</span>
+            <span id="debugLabel" hidden>Composite</span>
             <span>CSS illustration · not a shader or render</span>
           </div>
         </div>
@@ -182,6 +183,8 @@
     <footer>
       <button data-action="reset-style">Reset style</button>
       <button data-action="export-tokens">Export tokens</button>
+      <button id="connectTokenAutosave" type="button">Connect autosave</button>
+      <small id="tokenAutosaveStatus" role="status">Disconnected · choose a JSON file to autosave</small>
     </footer>
   </aside>
 
