@@ -158,6 +158,7 @@ namespace Mixtormat
 		T.ControlLayout.RowLabelGap = 6.0f;           // --dropdown-label-gap
 		T.ControlLayout.ButtonHeight = 24.0f;         // --button-height
 		T.ControlLayout.DropdownLabelRatio = 0.45f;   // --dropdown-label-ratio
+				T.ControlLayout.DisabledLabelOpacity = 0.32f; // --text-disabled-opacity
 
 		// ---- Foldout ------------------------------------------------------------------
 		// --header-tint-rgb 37 40 43 at --header-tint-opacity .9. These two tokens are the foldout's
@@ -271,6 +272,8 @@ namespace Mixtormat
 		T.Button.SeparatorWidth = 1.0f;
 		T.Button.SeparatorHeight = 14.0f;
 		T.Button.SeparatorOpacity = 0.08f;
+		// --group-button-text-opacity .78
+		T.Button.TextOpacity = 0.78f;
 
 		// ---- Menu ----------------------------------------------------------------------
 		// --menu-*, --popup-*
@@ -448,6 +451,8 @@ namespace Mixtormat
 		Clamp01(TEXT("Button.HairlineHoverOpacity"), InOutTheme.Button.HairlineHoverOpacity);
 		Clamp01(TEXT("Button.HairlineSelectedOpacity"), InOutTheme.Button.HairlineSelectedOpacity);
 		Clamp01(TEXT("Button.SeparatorOpacity"), InOutTheme.Button.SeparatorOpacity);
+				Clamp01(TEXT("Button.TextOpacity"), InOutTheme.Button.TextOpacity);
+						Clamp01(TEXT("ControlLayout.DisabledLabelOpacity"), InOutTheme.ControlLayout.DisabledLabelOpacity);
 		Clamp01(TEXT("Menu.LipTintOpacity"), InOutTheme.Menu.LipTintOpacity);
 		Clamp01(TEXT("Menu.BorderOpacity"), InOutTheme.Menu.BorderOpacity);
 		Clamp01(TEXT("Menu.ItemDisabledOpacity"), InOutTheme.Menu.ItemDisabledOpacity);

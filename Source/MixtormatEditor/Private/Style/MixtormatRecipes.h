@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatResolvedStyle.h"
 #include "Style/MixtormatTheme.h"
 
 // Builds drawable recipes from the authored theme.
@@ -86,7 +87,12 @@ namespace Mixtormat
 		EMixtormatWellState WellState = EMixtormatWellState::Rest,
 		EMixtormatFillState FillState = EMixtormatFillState::Rest);
 
-	enum class EMixtormatButtonState : uint8
+	// The states a button surface can be in.
+//
+// Disabled is deliberately absent: it is the same numbers at a lower opacity, carried on
+// FMixtormatStateModifier rather than being a fourth appearance (§16). A widget with a Disabled
+// flag collapses it onto these three.
+enum class EMixtormatButtonState : uint8
 	{
 		Rest,
 		Hover,
@@ -94,7 +100,21 @@ namespace Mixtormat
 	};
 
 	// The shared button: an Accent body gradient over Ground, an Additive hairline whose blend is
-	// independent of the body's, and a separator. One recipe behind tabs, segmented controls,
+	// independent of the body's, and a separator tick. One recipe behind tabs, segmented controls,
 	// top-bar actions and layer-add actions (§20).
-	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, EMixtormatButtonState State = EMixtormatButtonState::Rest);
+	//
+	// `bShowSeparator` is a layout decision, not a visual one: the prototype draws the separator only
+	// on every button but the last in a run, and the recipe does not know what a run is.
+	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, EMixtormatButtonState State = EMixtormatButtonState::Rest, bool bShowSeparator = false);
+
+	// The label colour for a button state, from the resolved palette rather than the legacy one.
+	//
+	// Returned separately from the recipe because text is not a paint layer: it reaches the screen
+	// through the widget style's foreground, and a label has to be able to change colour without its
+	// plate changing. A selected button's label is Accent, everything else is Text at the authored
+	// button opacity.
+	FLinearColor MakeButtonTextColor(
+		const FMixtormatResolvedPalette& Palette,
+		const FMixtormatTheme& Theme,
+		EMixtormatButtonState State);
 }

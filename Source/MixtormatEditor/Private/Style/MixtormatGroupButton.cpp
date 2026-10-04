@@ -3,10 +3,9 @@
 #include "Style/MixtormatGroupButton.h"
 
 #include "Brushes/SlateNoResource.h"
-#include "Style/MixtormatCompositing.h"
-#include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
-#include "UI/Primitives/MixtormatGradientPainter.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
 
 namespace MixtormatGroupButton
 {
@@ -18,18 +17,39 @@ namespace MixtormatGroupButton
 		return bHovered ? EState::Hover : EState::Rest;
 	}
 
+	// The six widget states collapse onto the recipe's three plus a dim. The recipe has one surface
+	// per appearance, not one per interaction: Disabled and DisabledSelected are the same numbers at
+	// a lower opacity, which is what the old painter expressed by multiplying every layer by a Dim
+	// factor, and which is now a single number on the state modifier.
+	Mixtormat::EMixtormatButtonState ToButtonState(const EState State)
+	{
+		switch (State)
+		{
+		case EState::Hover: return Mixtormat::EMixtormatButtonState::Hover;
+		case EState::Selected:
+		case EState::Active:
+		case EState::DisabledSelected: return Mixtormat::EMixtormatButtonState::Selected;
+		case EState::Rest:
+		case EState::Disabled:
+		default: return Mixtormat::EMixtormatButtonState::Rest;
+		}
+	}
+
 	FLinearColor TextColor(const EState State)
 	{
-		const bool bSelected = State == EState::Selected || State == EState::Active || State == EState::DisabledSelected;
-		FLinearColor Color = bSelected ? MixtormatPalette::Accent() : MixtormatPalette::RowText();
-		Color.A = bSelected || State == EState::Hover ? 1.0f : MixtormatTokens::GroupButtonTextOpacity;
+		const Mixtormat::FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+		const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+
+		FLinearColor Color = Mixtormat::MakeButtonTextColor(Palette, Theme, ToButtonState(State));
 		if (State == EState::Disabled || State == EState::DisabledSelected)
 		{
-			Color.A *= MixtormatTokens::TextDisabledOpacity;
+			Color.A *= Theme.ControlLayout.DisabledLabelOpacity;
 		}
 		return Color;
 	}
 
+	// Resource-free adapters: the container owns all plate/hairline/separator paint.
+	// Copy the existing style to preserve sounds and interaction semantics.
 	FButtonStyle MakeButtonStyle(const FButtonStyle& Existing)
 	{
 		FButtonStyle Result = Existing;
@@ -63,11 +83,10 @@ void SMixtormatGroupButtonSurface::Construct(const FArguments& InArgs)
 	Selected = InArgs._Selected;
 	Ground = InArgs._Ground;
 	bShowSeparator = InArgs._ShowSeparator;
-	GradientStops.Reserve(13);
-	for (int32 Index = 0; Index < 13; ++Index)
-	{
-		GradientStops.Emplace(FVector2f::ZeroVector, FLinearColor::Transparent);
-	}
+
+	// No gradient-stop buffer any more. The old painter kept a 13-entry TArray alive across paints
+	// and rewrote it every time because it was doing the compositing itself; the recipe and painter
+	// do that now, so the widget holds no paint state at all.
 	ChildSlot.Padding(InArgs._Padding)[InArgs._Content.Widget];
 }
 
@@ -75,81 +94,37 @@ int32 SMixtormatGroupButtonSurface::OnPaint(const FPaintArgs& Args, const FGeome
 	const FSlateRect& CullingRect, FSlateWindowElementList& Elements, const int32 LayerId,
 	const FWidgetStyle& WidgetStyle, const bool bParentEnabled) const
 {
-	using namespace MixtormatTokens;
 	using namespace MixtormatGroupButton;
-	const FVector2f Size(Geometry.GetLocalSize());
-	const EState State = ResolveState(ShouldBeEnabled(bParentEnabled), Hovered.Get(false), Pressed.Get(false), Selected.Get(false));
-	const bool bSelected = State == EState::Selected || State == EState::Active || State == EState::DisabledSelected;
-	const bool bHover = State == EState::Hover;
-	const float Dim = State == EState::Disabled || State == EState::DisabledSelected ? TextDisabledOpacity : 1.0f;
-	const float Top = bSelected ? GroupButtonSelectedGradientTop : bHover ? GroupButtonHoverGradientTop : GroupButtonGradientTop;
-	const float Bottom = bSelected ? GroupButtonSelectedGradientBottom : bHover ? GroupButtonHoverGradientBottom : GroupButtonGradientBottom;
-	const float Hairline = bSelected ? GroupButtonSelectedHairlineOpacity : bHover ? GroupButtonHoverHairlineOpacity : GroupButtonHairlineOpacity;
-	const FLinearColor Backdrop = Ground.Get(MixtormatPalette::Ground());
-	const FLinearColor Accent = MixtormatPalette::Accent();
-	const FLinearColor GradientSource = MixtormatCompositing::Saturate(Accent, GroupButtonGradientSaturation).GetClamped();
-	const auto BlendBody = [&](const float Opacity)
-	{
-		const float Alpha = FMath::Clamp(Opacity * Dim, 0.0f, 1.0f);
-		return FLinearColor(
-			FMath::Lerp(Backdrop.R, GradientSource.R, Alpha),
-			FMath::Lerp(Backdrop.G, GradientSource.G, Alpha),
-			FMath::Lerp(Backdrop.B, GradientSource.B, Alpha), Backdrop.A);
-	};
-	const FLinearColor BodyTop = BlendBody(Top);
-	const FLinearColor BodyBottom = BlendBody(Bottom);
-	const auto BodyAt = [&](const float T)
-	{
-		return MixtormatGradient::LerpSRGB(BodyTop, BodyBottom, T);
-	};
-	const FLinearColor Tint = WidgetStyle.GetColorAndOpacityTint();
-	// The plate, hairline and separator composites are one authored blend-mode choice, read once
-	// per paint so every layer in the group-button surface stays on the same operation.
-	const auto EdgeBlend = MixtormatCompositing::BlendModeOf(GroupButtonBlendMode);
-	const auto Ramp = [&](const FVector2f& Offset, const FVector2f& Extent, const int32 Layer,
-		const FLinearColor& Start, const FLinearColor& End)
-	{
-		if (Extent.X <= 0.0f || Extent.Y <= 0.0f) { return; }
-		for (int32 Index = 0; Index < GradientStops.Num(); ++Index)
-		{
-			const float T = static_cast<float>(Index) / (GradientStops.Num() - 1);
-			GradientStops[Index] = FSlateGradientStop(FVector2f(0.0f, Extent.Y * T), MixtormatGradient::LerpSRGB(Start, End, T) * Tint);
-		}
-		FSlateDrawElement::MakeGradient(Elements, Layer,
-			Geometry.ToPaintGeometry(Extent, FSlateLayoutTransform(Offset)), GradientStops,
-			Orient_Horizontal, ESlateDrawEffect::None, FVector4f(0.0f));
-	};
 
-	// Normal source-over plate, then blended edges resolved over that exact plate.
-	Ramp(FVector2f::ZeroVector, Size, LayerId, BodyAt(0.0f), BodyAt(1.0f));
-	FLinearColor HairlineSource = MixtormatCompositing::Saturate(Accent, GroupButtonHairlineSaturation).GetClamped();
-	HairlineSource.A = Hairline * Dim;
-	const float LineHeight = FMath::Clamp(GroupButtonHairlineWidth, 0.0f, Size.Y);
-	Ramp(FVector2f::ZeroVector, FVector2f(Size.X, LineHeight), LayerId + 1,
-		MixtormatCompositing::ApplyBlend(EdgeBlend, BodyAt(0.0f), HairlineSource),
-		MixtormatCompositing::ApplyBlend(EdgeBlend, BodyAt(Size.Y > 0.0f ? LineHeight / Size.Y : 0.0f), HairlineSource));
-	if (bShowSeparator && Size.Y > 0.0f)
+	const Mixtormat::FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+
+	const EState State = ResolveState(ShouldBeEnabled(bParentEnabled), Hovered.Get(false),
+		Pressed.Get(false), Selected.Get(false));
+
+	// Disabled is not a seventh surface: it is the same plate at the authored disabled opacity,
+	// which is one number on the modifier rather than a second set of gradient endpoints.
+	Mixtormat::FMixtormatStateModifier Modifier;
+	if (State == EState::Disabled || State == EState::DisabledSelected)
 	{
-		const float Width = FMath::Clamp(GroupButtonSeparatorWidth, 0.0f, Size.X);
-		const float Height = FMath::Clamp(GroupButtonSeparatorHeight, 0.0f, Size.Y);
-		const float Y = (Size.Y - Height) * 0.5f;
-		// CSS puts separator and hairline in the same filtered blend layer.
-		FLinearColor Separator = MixtormatCompositing::Saturate(MixtormatPalette::RowText(), GroupButtonHairlineSaturation).GetClamped();
-		Separator.A = GroupButtonSeparatorOpacity * Dim;
-		const auto EdgeAt = [&](const float Position, const bool bOnHairline)
-		{
-			FLinearColor Color = BodyAt(Position / Size.Y);
-			if (bOnHairline) { Color = MixtormatCompositing::ApplyBlend(EdgeBlend, Color, HairlineSource); }
-			return MixtormatCompositing::ApplyBlend(EdgeBlend, Color, Separator);
-		};
-		// Split at the hairline seam rather than interpolating its light down the separator.
-		const float Split = FMath::Clamp(LineHeight, Y, Y + Height);
-		Ramp(FVector2f(Size.X - Width, Y), FVector2f(Width, Split - Y), LayerId + 2,
-			EdgeAt(Y, true), EdgeAt(Split, true));
-		Ramp(FVector2f(Size.X - Width, Split), FVector2f(Width, Y + Height - Split), LayerId + 2,
-			EdgeAt(Split, false), EdgeAt(Y + Height, false));
+		Modifier.Opacity = Theme.ControlLayout.DisabledLabelOpacity;
 	}
+
+	const Mixtormat::FMixtormatSurfaceRecipe Recipe =
+		Mixtormat::MakeButtonRecipe(Theme, ToButtonState(State), bShowSeparator);
+
+	Mixtormat::FMixtormatSurfaceSamples Samples;
+	Mixtormat::CompositeSurface(Recipe, Palette, Modifier, Samples);
+
+	// Body, then the hairline and the separator on top of it. Both edges carry their own blend,
+	// independent of the body's -- which is the prototype's structure and was the whole reason this
+	// surface had a hand-rolled painter.
+	int32 Layer = Mixtormat::FMixtormatSurfacePainter::PaintBody(
+		Elements, LayerId, Geometry, Recipe, Samples);
+	Layer = Mixtormat::FMixtormatSurfacePainter::PaintBorders(
+		Elements, Layer, Geometry, Recipe, Palette, WidgetStyle, Samples);
+
 	FWidgetStyle ContentStyle = WidgetStyle;
 	ContentStyle.SetForegroundColor(TextColor(State));
-	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId + 3, ContentStyle, bParentEnabled);
+	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, Layer + 1, ContentStyle, bParentEnabled);
 }

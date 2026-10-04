@@ -20,7 +20,6 @@ namespace
 	public:
 		SLATE_BEGIN_ARGS(SMixtormatSegment) {}
 			SLATE_ARGUMENT(FText, Text)
-			SLATE_ARGUMENT(bool, UseGroupButtonVisuals)
 			SLATE_ARGUMENT(bool, ShowSeparator)
 			SLATE_ATTRIBUTE(bool, bActive)
 			SLATE_EVENT(FSimpleDelegate, OnChosen)
@@ -30,50 +29,25 @@ namespace
 		{
 			bActive = InArgs._bActive;
 			OnChosen = InArgs._OnChosen;
-			bUseGroupButtonVisuals = InArgs._UseGroupButtonVisuals;
 
-			if (bUseGroupButtonVisuals)
-			{
-				ChildSlot
-				[
-					SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
-					[
-						SNew(SMixtormatGroupButtonSurface)
-						.Hovered_Lambda([this]() { return IsHovered(); })
-						.Selected(bActive)
-						.ShowSeparator(InArgs._ShowSeparator)
-						[
-							SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
-							[
-								SNew(STextBlock)
-								.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-								.ColorAndOpacity(this, &SMixtormatSegment::GetTextColor)
-								.Text(InArgs._Text)
-							]
-						]
-					]
-				];
-				return;
-			}
-
+			// One visual path. This used to branch on a UseGroupButtonVisuals flag and, when
+			// false, hand-roll the segment as a gradient box over SegmentTop/Bottom/Shade -- a
+			// second appearance for the same control that the prototype does not have:
+			// components.css styles `.segmented` in the same rule as `.tabs`. Both branches were
+			// therefore the same recipe and two painters.
 			ChildSlot
 			[
-				SNew(SBox)
-				.HeightOverride(MixtormatTokens::SegmentHeight)
+				SNew(SBox).MinDesiredHeight(MixtormatTokens::GroupButtonHeight)
 				[
-					SNew(SMixtormatGradientBox)
-					.StartColor(this, &SMixtormatSegment::GetTop)
-					.EndColor(this, &SMixtormatSegment::GetBottom)
-					.MultiplyStart(this, &SMixtormatSegment::GetMultiply)
-					.Orientation(Orient_Vertical)
-					.CornerRadius(MixtormatTokens::CornerRadiusInner)
+					SNew(SMixtormatGroupButtonSurface)
+					.Hovered_Lambda([this]() { return IsHovered(); })
+					.Selected(bActive)
+					.ShowSeparator(InArgs._ShowSeparator)
 					[
-						SNew(SBox)
-						.HAlign(HAlign_Center)
-						.VAlign(VAlign_Center)
+						SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock)
-							.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.BadgeText")))
+							.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
 							.ColorAndOpacity(this, &SMixtormatSegment::GetTextColor)
 							.Text(InArgs._Text)
 						]
@@ -100,33 +74,14 @@ namespace
 	private:
 		bool IsActive() const { return bActive.Get(false); }
 
-		FLinearColor GetTop() const
-		{
-			return IsActive() ? MixtormatPalette::SegmentTop() : FLinearColor::Transparent;
-		}
-		FLinearColor GetBottom() const
-		{
-			return IsActive() ? MixtormatPalette::SegmentBottom() : FLinearColor::Transparent;
-		}
-		FLinearColor GetMultiply() const
-		{
-			// A segment is only 16px wide, so it takes a lighter darkening pass than a full row.
-			return IsActive() ? MixtormatPalette::SegmentShade() : FLinearColor::Transparent;
-		}
 		FSlateColor GetTextColor() const
 		{
-			if (bUseGroupButtonVisuals)
-			{
-				return FSlateColor::UseForeground();
-			}
-			if (IsActive())
-			{
-				return FSlateColor(MixtormatPalette::SegmentActiveText());
-			}
-			return FSlateColor(IsHovered() ? MixtormatPalette::RowText() : MixtormatPalette::BadgeText());
+			// The plate owns the label's colour through the container's foreground, which resolves
+			// the button text colour from the palette. Setting it here would override that with a
+			// second, unrelated rule.
+			return FSlateColor::UseForeground();
 		}
 
-		bool bUseGroupButtonVisuals = false;
 		TAttribute<bool> bActive;
 		FSimpleDelegate OnChosen;
 	};
@@ -139,27 +94,11 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 	TSharedRef<SHorizontalBox> Strip = SNew(SHorizontalBox);
 	for (int32 Index = 0; Index < InArgs._Options.Num(); ++Index)
 	{
-		// A hairline between cells only -- never before the first, never around the strip.
-		if (Index > 0 && !InArgs._UseGroupButtonVisuals)
-		{
-			Strip->AddSlot()
-			.AutoWidth()
-			[
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::SegmentSeamWidth)
-				[
-					SNew(SImage)
-					.Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.SegmentSeam")))
-				]
-			];
-		}
-
 		const FMixtormatOnSegmentChosen Chosen = InArgs._OnChosen;
 		Strip->AddSlot()
 		.FillWidth(1.0f)
 		[
 			SNew(SMixtormatSegment)
-			.UseGroupButtonVisuals(InArgs._UseGroupButtonVisuals)
 			.ShowSeparator(Index + 1 < InArgs._Options.Num())
 			.Text(InArgs._Options[Index])
 			.ToolTipText(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
@@ -171,22 +110,8 @@ void SMixtormatSegmentedControl::Construct(const FArguments& InArgs)
 		];
 	}
 
-	if (InArgs._UseGroupButtonVisuals)
-	{
+		// No wrapper. The strip is a row of buttons that join: each segment draws its own body, and
+		// the separator tick between them comes from the button recipe rather than from a separate
+		// seam element or a padding box around the whole strip.
 		ChildSlot[Strip];
-		return;
 	}
-
-	ChildSlot
-	[
-		SNew(SMixtormatGradientBox)
-		.StartColor(MixtormatPalette::WellTop())
-		.EndColor(FLinearColor::Transparent)
-		.Orientation(Orient_Vertical)
-		.CornerRadius(MixtormatTokens::CornerRadius)
-		.Padding(FMargin(MixtormatTokens::SegmentSeamWidth))
-		[
-			Strip
-		]
-	];
-}

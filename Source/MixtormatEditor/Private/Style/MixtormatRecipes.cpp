@@ -249,7 +249,8 @@ namespace Mixtormat
 		return Recipe;
 	}
 
-	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, const EMixtormatButtonState State)
+	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, const EMixtormatButtonState State,
+			const bool bShowSeparator)
 	{
 		FMixtormatSurfaceRecipe Recipe;
 		Recipe.Base = MakeColorRef(EMixtormatColorRole::Ground);
@@ -306,6 +307,41 @@ namespace Mixtormat
 		Border.bTop = true;
 		Recipe.Borders.Add(Border);
 
+		// The separator is a second border on the right edge, carrying the SAME authored saturation and
+		// blend as the hairline but its own opacity -- which is exactly how the prototype authors it:
+		// both edges live in one filtered blend layer, and only the weight differs. Its EdgeFraction
+		// shortens it to the authored height and centres it, so it reads as a tick between two actions
+		// rather than as a column divider.
+		if (bShowSeparator)
+		{
+			FMixtormatColorRef Separator = MakeColorRef(EMixtormatColorRole::Text);
+			Separator.Saturation = Theme.Button.HairlineSaturation;
+			Separator.Opacity = Theme.Button.SeparatorOpacity;
+
+			FMixtormatBorderLayer Tick;
+			Tick.Source = Separator;
+			Tick.Blend = Theme.Button.HairlineBlend;
+			Tick.Width = Theme.Button.SeparatorWidth;
+			Tick.EdgeFraction = Theme.Button.Height > 0.0f
+				? FMath::Clamp(Theme.Button.SeparatorHeight / Theme.Button.Height, 0.0f, 1.0f)
+				: 1.0f;
+			Tick.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Vertical, 1.0f, 1.0f, 2);
+			Tick.bRight = true;
+			Recipe.Borders.Add(Tick);
+		}
+
 		return Recipe;
+	}
+
+	FLinearColor MakeButtonTextColor(const FMixtormatResolvedPalette& Palette, const FMixtormatTheme& Theme,
+			const EMixtormatButtonState State)
+	{
+		// Selected reads as Accent; every other state is the shared Text role at the button's own
+		// authored opacity, so the label is dimmed by one number rather than by a second grey.
+		const bool bSelected = State == EMixtormatButtonState::Selected;
+		FLinearColor Color = Palette.Get(
+			bSelected ? EMixtormatColorRole::Accent : EMixtormatColorRole::Text);
+		Color.A = (bSelected || State == EMixtormatButtonState::Hover) ? 1.0f : Theme.Button.TextOpacity;
+		return Color;
 	}
 }

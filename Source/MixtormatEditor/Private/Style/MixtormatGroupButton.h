@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatGroupButtonTokens.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatTheme.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -14,6 +16,9 @@ namespace MixtormatGroupButton
 
 	EState ResolveState(bool bEnabled, bool bHovered, bool bPressed, bool bSelected);
 	FLinearColor TextColor(EState State);
+	// The six widget states collapse onto the recipe's three; Disabled and DisabledSelected are the
+		// same numbers at a lower opacity rather than separate surfaces.
+		Mixtormat::EMixtormatButtonState ToButtonState(EState State);
 	// Resource-free adapters: the container owns all plate/hairline/separator paint.
 	// Copy the existing style to preserve sounds and interaction semantics.
 	FButtonStyle MakeButtonStyle(const FButtonStyle& Existing);
@@ -45,8 +50,9 @@ public:
 
 private:
 	TAttribute<bool> Hovered, Pressed, Selected;
+
+	// Retained so existing callers keep compiling. The recipe names the Ground role itself, so the
+	// surface no longer needs a backdrop handed to it -- which is why nothing reads this any more.
 	TAttribute<FLinearColor> Ground;
 	bool bShowSeparator = false;
-	// Slate takes an ordinary TArray; allocate once, reuse for every paint pass.
-	mutable TArray<FSlateGradientStop> GradientStops;
 };

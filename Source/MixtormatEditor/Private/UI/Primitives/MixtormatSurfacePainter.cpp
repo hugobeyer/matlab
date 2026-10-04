@@ -363,6 +363,8 @@ namespace Mixtormat
 				continue;
 			}
 
+			const float EdgeFraction = FMath::Clamp(Border.EdgeFraction, 0.0f, 1.0f);
+
 			const auto Edge = [&](const EMixtormatBorderEdge Which, const FVector2f& EdgeSize, const FVector2f& Offset)
 			{
 				const float T = BorderEdgePosition(Axis, Which);
@@ -381,22 +383,29 @@ namespace Mixtormat
 					White, ESlateDrawEffect::None, Color);
 			};
 
-			// Drawn inward from each edge, so the border never lands outside the surface it outlines.
+			// Drawn inward from each edge, so the border never lands outside the surface it
+			// outlines. EdgeFraction shortens an edge along its long axis and centres what is left,
+			// which is what turns a right-hand border into a separator tick.
+			const float EdgeWidth = Size.X * EdgeFraction;
+			const float EdgeHeight = Size.Y * EdgeFraction;
+			const float EdgeInsetX = (Size.X - EdgeWidth) * 0.5f;
+			const float EdgeInsetY = (Size.Y - EdgeHeight) * 0.5f;
+
 			if (Border.bTop)
 			{
-				Edge(EMixtormatBorderEdge::Top, FVector2f(Size.X, Width), FVector2f(0.0f, 0.0f));
+				Edge(EMixtormatBorderEdge::Top, FVector2f(EdgeWidth, Width), FVector2f(EdgeInsetX, 0.0f));
 			}
 			if (Border.bBottom)
 			{
-				Edge(EMixtormatBorderEdge::Bottom, FVector2f(Size.X, Width), FVector2f(0.0f, Size.Y - Width));
+				Edge(EMixtormatBorderEdge::Bottom, FVector2f(EdgeWidth, Width), FVector2f(EdgeInsetX, Size.Y - Width));
 			}
 			if (Border.bLeft)
 			{
-				Edge(EMixtormatBorderEdge::Left, FVector2f(Width, Size.Y), FVector2f(0.0f, 0.0f));
+				Edge(EMixtormatBorderEdge::Left, FVector2f(Width, EdgeHeight), FVector2f(0.0f, EdgeInsetY));
 			}
 			if (Border.bRight)
 			{
-				Edge(EMixtormatBorderEdge::Right, FVector2f(Width, Size.Y), FVector2f(Size.X - Width, 0.0f));
+				Edge(EMixtormatBorderEdge::Right, FVector2f(Width, EdgeHeight), FVector2f(Size.X - Width, EdgeInsetY));
 			}
 		}
 

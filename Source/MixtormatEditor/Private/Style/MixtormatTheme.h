@@ -162,6 +162,16 @@ namespace Mixtormat
 		bool bBottom = false;
 		bool bLeft = false;
 		bool bRight = false;
+
+		// How much of the edge's long axis this border spans, 1.0 being the whole edge.
+		//
+		// Present because a group button's separator is a centred bar rather than an edge: the
+		// prototype draws it 14px tall inside a 24px button. Without this the only expressible
+		// border is a full edge, and a full-height separator reads as a divider between two columns
+		// instead of as a tick between two actions.
+		//
+		// Scales the long axis on every edge: X for a top or bottom edge, Y for a side.
+		float EdgeFraction = 1.0f;
 	};
 
 	// A selected row's halo: a soft additive reach plus a crisp hairline on the top edge.
@@ -456,6 +466,10 @@ namespace Mixtormat
 		float SeparatorWidth = 1.0f;
 		float SeparatorHeight = 14.0f;
 		float SeparatorOpacity = 0.08f;
+
+		// The label's own opacity, so the plate and its text cannot be tuned independently and
+		// drift apart.
+		float TextOpacity = 0.78f;
 	};
 
 	// Menu ground plus an optional top lip, a border, and per-state item rows. Destructive rows
@@ -534,6 +548,11 @@ namespace Mixtormat
 		float SegmentedControlGap = 0.0f;
 		float DropdownLabelRatio = 0.45f;
 		float PanelGutter = 1.0f;
+
+		// How far a disabled control's whole surface drops, plate and label together. Applied as
+		// one number on the state modifier so a disabled control is the same control at lower
+		// strength rather than a separately authored look.
+		float DisabledLabelOpacity = 0.32f;
 	};
 
 	struct FMixtormatFoldoutMetrics

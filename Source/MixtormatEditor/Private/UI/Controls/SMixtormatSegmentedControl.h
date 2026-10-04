@@ -19,11 +19,8 @@ class SMixtormatSegmentedControl final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatSegmentedControl)
-		: _UseGroupButtonVisuals(false)
-		, _ActiveIndex(0)
+		: _ActiveIndex(0)
 	{}
-		// Opt in outside the deferred preview overlays; existing callers keep their visuals.
-		SLATE_ARGUMENT(bool, UseGroupButtonVisuals)
 		SLATE_ARGUMENT(TArray<FText>, Options)
 		SLATE_ARGUMENT(TArray<FText>, ToolTips)
 		SLATE_ATTRIBUTE(int32, ActiveIndex)

@@ -1165,7 +1165,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(SBox).WidthOverride(MixtormatTokens::PreviewResolutionControlWidth)
 			[
 				SNew(SMixtormatSegmentedControl)
-				.UseGroupButtonVisuals(true)
 				.Options(ResolutionOptions)
 				.ActiveIndex_Lambda([this]()
 				{
@@ -1207,7 +1206,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	RenderControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
-		.UseGroupButtonVisuals(true)
 		.Options(AntiAliasingOptions)
 		.ToolTips(AntiAliasingToolTips)
 		.ActiveIndex_Lambda([this]() -> int32
@@ -1252,7 +1250,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
 		SNew(SMixtormatSegmentedControl)
-		.UseGroupButtonVisuals(true)
 		.Options(QualityOptions)
 		.ToolTips(QualityToolTips)
 		.ActiveIndex_Lambda([this]()
