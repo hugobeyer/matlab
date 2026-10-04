@@ -652,7 +652,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									[BlendPanel]
 								]
 
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::CardGap, 0.0f, 0.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().CardLayout.Gap, 0.0f, 0.0f)
 																[
 																	SNew(SMixtormatInspectorCard)
 																	.Title(LOCTEXT("CardBlendingOpacity", "Blending / Opacity"))
@@ -664,7 +664,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								// badge prints -- so the stack and the inspector teach one vocabulary.
 								+ SVerticalBox::Slot()
 								.AutoHeight()
-								.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::SegmentedControlGap)
+								.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
 								[
 									SNew(SMixtormatSegmentedControl)
 									.Options(MixtormatLayerBadges::CompositionOptions())
@@ -732,7 +732,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								]
 								+ SVerticalBox::Slot()
 								.AutoHeight()
-								.Padding(0.0f, MixtormatTokens::CardGap, 0.0f, 0.0f)
+								.Padding(0.0f, FMixtormatThemeStore::GetResolved().CardLayout.Gap, 0.0f, 0.0f)
 								[
 									BuildColorAdjustmentCard()
 								]

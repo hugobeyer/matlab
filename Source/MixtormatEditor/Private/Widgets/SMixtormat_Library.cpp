@@ -523,7 +523,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::RowLabelGap, 0.0f)
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowLabelGap, 0.0f)
 			[
 				SNew(SBox).HeightOverride(LibraryStyle.Buttons.Height)[SearchBox]
 			]

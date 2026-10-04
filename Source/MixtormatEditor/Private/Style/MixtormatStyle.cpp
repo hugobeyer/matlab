@@ -118,30 +118,30 @@ void FMixtormatStyle::Refresh()
 
 	// The editor is intentionally independent of the host-editor theme. These local aliases keep
 	// the style registration readable while every actual colour remains defined in the palette.
-	const FLinearColor Window = MixtormatPalette::Window();
-	const FLinearColor TopBar = MixtormatPalette::TopBar();
-	const FLinearColor Panel = MixtormatPalette::Panel();
+	const FLinearColor Window = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
+	const FLinearColor TopBar = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
+	const FLinearColor Panel = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
 	const FLinearColor RaisedPanel = MixtormatPalette::RaisedPanel();
 	const FLinearColor RaisedPanelHover = MixtormatPalette::RaisedPanelHover();
 	const FLinearColor Viewport = MixtormatPalette::Viewport();
-	const FLinearColor ThumbnailBackground = MixtormatPalette::ThumbnailBackground();
+	const FLinearColor ThumbnailBackground = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::ThumbnailGround);
 	const FLinearColor Border = MixtormatPalette::Border();
 	const FLinearColor BorderStrong = MixtormatPalette::BorderStrong();
 	const FLinearColor Shadow = MixtormatPalette::Shadow();
 	const FLinearColor Inset = MixtormatPalette::Inset();
-	const FLinearColor Accent = MixtormatPalette::Accent();
+	const FLinearColor Accent = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	const FLinearColor AccentHover = MixtormatPalette::AccentBright();
-	const FLinearColor AccentPressed = MixtormatPalette::Accent();
+	const FLinearColor AccentPressed = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
 	const FLinearColor SelectionFill = MixtormatPalette::SelectionFill();
 	const FLinearColor FocusFill = MixtormatPalette::FocusFill();
-	const FLinearColor Text = MixtormatPalette::RowText();
-	const FLinearColor MutedText = MixtormatPalette::HeaderText();
-	const FLinearColor DisabledText = MixtormatPalette::DisabledText();
-	const FLinearColor Icon = MixtormatPalette::RowText();
-	const FLinearColor HeaderText = MixtormatPalette::HeaderText();
-	const FLinearColor CaptionText = MixtormatPalette::CaptionText();
-	const FLinearColor CardTitleText = MixtormatPalette::CardTitleText();
-	const FLinearColor RowText = MixtormatPalette::RowText();
+	const FLinearColor Text = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+	const FLinearColor MutedText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	const FLinearColor DisabledText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	const FLinearColor Icon = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+	const FLinearColor HeaderText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	const FLinearColor CaptionText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	const FLinearColor CardTitleText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+	const FLinearColor RowText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 	const FLinearColor TroughSurface = MixtormatPalette::WellBottom();
 	const FLinearColor TroughLine = MixtormatPalette::WellOutline();
 
@@ -170,7 +170,7 @@ void FMixtormatStyle::Refresh()
 	// difference rather than from a drawn edge.
 	StyleInstance->Set(
 		TEXT("Mixtormat.Panel"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Shell(), MixtormatTokens::CornerRadius));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell), MixtormatTokens::CornerRadius));
 	StyleInstance->Set(
 		TEXT("Mixtormat.InsetPanel"),
 		new FSlateRoundedBoxBrush(Inset, MixtormatTokens::InsetPanelCornerRadius, Shadow, MixtormatTokens::InsetPanelOutlineWidth));
@@ -192,7 +192,7 @@ void FMixtormatStyle::Refresh()
 		0.0f);
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabActive"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Shell(), TabTopCorners));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell), TabTopCorners));
 	StyleInstance->Set(
 		TEXT("Mixtormat.TabInactive"),
 		new FSlateRoundedBoxBrush(Inset, TabTopCorners));
@@ -388,7 +388,7 @@ void FMixtormatStyle::Refresh()
 	const FLinearColor OverlayPlate = MixtormatPalette::OverlayButtonPlate();
 	const auto AccentAdded = [&OverlayPlate](const float Amount)
 	{
-		FLinearColor Lit = OverlayPlate + MixtormatPalette::Accent() * Amount;
+		FLinearColor Lit = OverlayPlate + FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent) * Amount;
 		Lit.A = OverlayPlate.A;
 		return Lit;
 	};
@@ -503,8 +503,8 @@ void FMixtormatStyle::Refresh()
 	// `Colors.Secondary` is #383838, an outline grey. As a text colour on the #212121 panel it is
 	// nearly invisible, so subdued text derives from Foreground instead.
 	const FLinearColor AccentBright = MixtormatPalette::AccentBright();
-	const FLinearColor SubduedText = MixtormatPalette::HeaderText();
-	const FLinearColor ModifiedMarker = MixtormatPalette::Modified();
+	const FLinearColor SubduedText = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	const FLinearColor ModifiedMarker = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified);
 
 	// Blender-style value slider: one bar carrying label, fill and value. Kept as loose keys
 	// rather than a widget style so SMixtormatSlider can paint the fill clipped to the value
@@ -524,13 +524,13 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(MixtormatPalette::WellBottomHover(), MixtormatTokens::CornerRadius, MixtormatPalette::WellOutlineHover(), MixtormatTokens::OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundActive"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::WellBottomHover(), MixtormatTokens::CornerRadius, MixtormatPalette::Accent(), MixtormatTokens::OutlineWidth));
+		new FSlateRoundedBoxBrush(MixtormatPalette::WellBottomHover(), MixtormatTokens::CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), MixtormatTokens::OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundEntry"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::WellEntry(), MixtormatTokens::CornerRadius, MixtormatPalette::Accent(), MixtormatTokens::OutlineWidth));
+		new FSlateRoundedBoxBrush(MixtormatPalette::WellEntry(), MixtormatTokens::CornerRadius, FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), MixtormatTokens::OutlineWidth));
 	StyleInstance->Set(
 		TEXT("Mixtormat.ValueSlider.BackgroundDisabled"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Panel(), MixtormatTokens::CornerRadius, MixtormatPalette::Divider(), MixtormatTokens::OutlineWidth));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), MixtormatTokens::CornerRadius, MixtormatPalette::Divider(), MixtormatTokens::OutlineWidth));
 
 	// Centre tick on a signed range, and the modified-from-default stripe.
 	// The badge: fixed-size mark carrying a row's composite mode.
@@ -551,14 +551,14 @@ void FMixtormatStyle::Refresh()
 	// A circle is a rounded box whose radius is half its size.
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Filled"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Accent(), MixtormatTokens::StatusDotSize * 0.5f));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent), MixtormatTokens::StatusDotSize * 0.5f));
 	// A parameter's state, in the same circle at the same size -- only the hue changes, so the
 	// three states read as one readout in three conditions rather than three different marks.
 	// Modified is already the palette's "this is not the authored value"; Destructive is already
 	// its warning. Neither needs a colour of its own here.
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Reference"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Modified(), MixtormatTokens::StatusDotSize * 0.5f));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified), MixtormatTokens::StatusDotSize * 0.5f));
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Previewing"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::PreviewDot(), MixtormatTokens::StatusDotSize * 0.5f));
@@ -570,7 +570,7 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(
 			FLinearColor::Transparent,
 			MixtormatTokens::StatusDotSize * 0.5f,
-			MixtormatPalette::HeaderText(),
+			FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted),
 			MixtormatTokens::OutlineWidth));
 	// Container shell and group body. The header's lip is painted by the gradient box, not
 	// brushed, so only these two are flat fills.
@@ -587,28 +587,28 @@ void FMixtormatStyle::Refresh()
 	// The body is not rounded for the same reason -- it is the same colour as what is behind it,
 	// so a rounded corner there is a shape nobody can see. Only the header rounds, along its top
 	// edge, where it does have a colour of its own to be shaped.
-	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(MixtormatPalette::GroupSurround()));
+	StyleInstance->Set(TEXT("Mixtormat.InspectorWell"), new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground)));
 	// A foldout body is Ground: same base as its header and as every card, so the header's lift
 	// actually dissolves into it. It was GroupSurround, which matched only because the old header
 	// faded to that colour too -- a coincidence between two independently-authored values.
-	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(MixtormatPalette::Ground()));
+	StyleInstance->Set(TEXT("Mixtormat.GroupBody"), new FSlateColorBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground)));
 
 	// A card: one titled run of rows, raised off the body.
 	StyleInstance->Set(
 		TEXT("Mixtormat.Card"),
-		new FSlateRoundedBoxBrush(MixtormatPalette::Panel(), MixtormatTokens::CornerRadius));
+		new FSlateRoundedBoxBrush(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel), MixtormatTokens::CornerRadius));
 
 	// Our own popovers, which are widgets rather than multibox rows: a label, the shortcut printed
 	// quietly beside it, and the section caption above a run of them.
 	{
 		FTextBlockStyle MenuLabel = FTextBlockStyle()
 			.SetFont(Font(Regular, MixtormatTokens::FontBody))
-			.SetColorAndOpacity(MixtormatPalette::RowText())
+			.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 			.SetShadowOffset(FVector2D::ZeroVector)
 			.SetShadowColorAndOpacity(FLinearColor::Transparent);
 		StyleInstance->Set(TEXT("Mixtormat.MenuLabel"), MenuLabel);
 
-				FLinearColor HelpBodyColor = MixtormatPalette::RowText();
+				FLinearColor HelpBodyColor = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 				HelpBodyColor.A *= MixtormatTokens::HelpBodyOpacity;
 				FTextBlockStyle HelpBody = FTextBlockStyle(MenuLabel)
 					.SetColorAndOpacity(HelpBodyColor);
@@ -619,12 +619,12 @@ void FMixtormatStyle::Refresh()
 
 		FTextBlockStyle MenuShortcut = FTextBlockStyle(MenuLabel)
 			.SetFont(Font(Regular, MixtormatTokens::FontMenuShortcut))
-			.SetColorAndOpacity(MixtormatPalette::ShortcutText());
+			.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 		StyleInstance->Set(TEXT("Mixtormat.MenuShortcut"), MenuShortcut);
 
 		FTextBlockStyle MenuCaption = FTextBlockStyle(MenuLabel)
 			.SetFont(Font(Regular, MixtormatTokens::FontCaption))
-			.SetColorAndOpacity(MixtormatPalette::CaptionText());
+			.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 		FSlateFontInfo MenuCaptionFont = MenuCaption.Font;
 		// Caption tier, already in 1/1000 em -- assigned, not converted.
 		MenuCaptionFont.LetterSpacing = MixtormatTokens::MenuCaptionLetterSpacing;
@@ -805,7 +805,7 @@ void FMixtormatStyle::Refresh()
 
 	FTextBlockStyle GroupCardTitle = FTextBlockStyle()
 		.SetFont(Font(Weight(MixtormatTokens::GroupCardTitleBold), MixtormatTokens::FontGroupCardTitle))
-		.SetColorAndOpacity(MixtormatPalette::GroupCardTitleText())
+		.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo GroupCardTitleFont = GroupCardTitle.Font;
@@ -838,7 +838,7 @@ void FMixtormatStyle::Refresh()
 
 	FTextBlockStyle TileName = FTextBlockStyle()
 		.SetFont(Font(Regular, MixtormatTokens::FontTile))
-		.SetColorAndOpacity(MixtormatPalette::TileNameText())
+		.SetColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
 		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);

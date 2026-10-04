@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -122,7 +123,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.RowLabelGap, 0.0f, 0.0f, 0.0f)
 		[
 			MakeMemberToggle<FMixtormatLayer>(
 				LOCTEXT("UVFlipULabel", "Flip U"), Layer(), &FMixtormatLayer::bFlipU)
@@ -130,7 +131,7 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.RowLabelGap, 0.0f, 0.0f, 0.0f)
 		[
 			MakeMemberToggle<FMixtormatLayer>(
 				LOCTEXT("UVFlipVLabel", "Flip V"), Layer(), &FMixtormatLayer::bFlipV)

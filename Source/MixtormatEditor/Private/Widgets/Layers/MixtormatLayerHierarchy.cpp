@@ -443,11 +443,11 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 		{
 			return IsSelectedChildInstance() ? EVisibility::Visible : EVisibility::Collapsed;
 		})
-		.Padding(FMargin(MixtormatTokens::CardGap, 0.0f, MixtormatTokens::CardGap, MixtormatTokens::CardGap))
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().CardLayout.Gap, 0.0f, FMixtormatThemeStore::GetResolved().CardLayout.Gap, FMixtormatThemeStore::GetResolved().CardLayout.Gap))
 		[
 			SNew(SBorder)
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
-			.Padding(FMargin(MixtormatTokens::CardGap))
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().CardLayout.Gap))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()

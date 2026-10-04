@@ -506,7 +506,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::RowFieldMinWidth)
+				.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.RowFieldMinWidth)
 				[
 				SNew(SSpinBox<int32>)
 				.MinValue(0)

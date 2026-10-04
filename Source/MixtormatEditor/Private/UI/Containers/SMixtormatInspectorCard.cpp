@@ -4,7 +4,6 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -40,7 +39,7 @@ namespace
 				SNew(STextBlock)
 				.Font(TitleStyle.Font)
 				.RenderOpacity(Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle).Opacity)
-				.ColorAndOpacity_Lambda([]() { return FSlateColor(MixtormatPalette::GroupCardTitleText()); })
+				.ColorAndOpacity_Lambda([]() { return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text)); })
 				.Text(InArgs._Text)
 				.AutoWrapText(false)
 				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
