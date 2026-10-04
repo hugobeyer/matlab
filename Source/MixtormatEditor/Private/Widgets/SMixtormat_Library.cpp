@@ -7,6 +7,7 @@
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "Widgets/Gallery/SMixtormatGalleryScrollBox.h"
 #include "Widgets/Gallery/SMixtormatSurfaceCard.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
@@ -290,7 +291,8 @@ void SMixtormat::RebuildUserLibraryList()
 		[
 			SNew(STextBlock)
 			.Text(Label)
-			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
+			.Font(Mixtormat::FMixtormatTypography::MakeFont(
+				Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontSliderLabel))
 		];
 	};
 	const auto AddCard = [this, &Style](
@@ -315,7 +317,8 @@ void SMixtormat::RebuildUserLibraryList()
 					[
 						SNew(STextBlock)
 						.Text(Name)
-						.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontSliderLabel))
+						.Font(Mixtormat::FMixtormatTypography::MakeFont(
+							Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontSliderLabel))
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
 					[

@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
@@ -65,9 +66,15 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const TAttribute<int32> MemberCount = InArgs._MemberCount;
-	FSlateFontInfo GroupFont = Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")).Font;
-	GroupFont.Size = FMath::RoundToInt(MixtormatTokens::LayerGroupTitleSize);
-	GroupFont.TypefaceFontName = MixtormatTokens::LayerGroupTitleWeight >= 600.0f ? FName(TEXT("Bold")) : FName(TEXT("Regular"));
+
+	// A group row's title is its own size and weight, so it is built by the typography system
+	// rather than by patching a registered style's font. This used to copy Mixtormat.LayerName and
+	// overwrite TypefaceFontName, which only happened to work because that style's composite font
+	// happened to define "Regular" and "Bold" -- it bypassed the weight model entirely, so a
+	// SemiBold group title could not have been expressed at all.
+	FSlateFontInfo GroupFont = Mixtormat::FMixtormatTypography::MakeFont(
+		Mixtormat::FMixtormatTypography::FromCssWeight(MixtormatTokens::LayerGroupTitleWeight),
+		MixtormatTokens::LayerGroupTitleSize);
 
 	ChildSlot
 	[

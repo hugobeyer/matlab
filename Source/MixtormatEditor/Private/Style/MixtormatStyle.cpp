@@ -8,6 +8,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatGroupButtonTokens.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatTypography.h"
 
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateImageBrush.h"
@@ -15,7 +16,6 @@
 
 #include "Misc/Paths.h"
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
@@ -48,12 +48,41 @@ namespace MixtormatStylePrivate
 		return Color;
 	}
 
-	// The live theme carries numbers, so weight arrives as one. The default font family has no
-	// half-weight, so anything from the midpoint up is Bold and the rest Regular.
-	const TCHAR* Weight(const float Bold)
-		{
-			return Bold >= 0.5f ? TEXT("Bold") : TEXT("Regular");
-		}
+	// The weight a legacy bold-flag token resolves to.
+			//
+			// These tokens predate the three-face model and are binary, so a true flag means the heavier
+			// of the two faces that role uses. ControlValue is deliberately NOT routed through this:
+			// tokens.css authors it at 600, so it is called out as SemiBold at its call site.
+			Mixtormat::EMixtormatFontWeight Weight(const bool bBoldToken)
+			{
+				return bBoldToken ? Mixtormat::EMixtormatFontWeight::Bold : Mixtormat::EMixtormatFontWeight::Regular;
+			}
+
+			constexpr Mixtormat::EMixtormatFontWeight Regular = Mixtormat::EMixtormatFontWeight::Regular;
+			constexpr Mixtormat::EMixtormatFontWeight SemiBold = Mixtormat::EMixtormatFontWeight::SemiBold;
+			constexpr Mixtormat::EMixtormatFontWeight Bold = Mixtormat::EMixtormatFontWeight::Bold;
+
+			// Every Mixtormat font is built here, from the shipped Inter file.
+			//
+			// This is the only font construction left in the file. It used to be seventeen call sites
+			// into FCoreStyle::GetDefaultFontStyle, which meant the style set was registered against
+			// the engine's Roboto and Inter was never actually on screen -- so no amount of judging the
+			// typography could have been trusted while that was true.
+			//
+			// `TrackingPx` is CSS pixels and is converted against the size here, once. Tokens that are
+			// already in Slate's 1/1000 em are NOT passed through this: they are assigned to
+			// FSlateFontInfo::LetterSpacing directly, and converting them again would divide by the
+			// size a second time. See the caption tokens in MixtormatDesignTokens.h for which is which.
+			FSlateFontInfo Font(const Mixtormat::EMixtormatFontWeight Weight, const float Size, const float TrackingPx = 0.0f)
+			{
+				return Mixtormat::FMixtormatTypography::MakeFont(Weight, Size, TrackingPx);
+			}
+
+			// Some tokens still carry their weight as a 0..1 number and some as a bool. Both answer the
+			// same question for their roles, so both go through Weight().
+			//
+			// Removed: the old `const TCHAR* Weight(float)` that handed "Regular"/"Bold" strings to
+			// FCoreStyle. With three addressable faces a string is no longer enough to say which one.
 
 		// Opacity applied to a shared role's alpha rather than to a separate grey role, so two weights
 		// of the same colour differ only in strength. Lerping the RGB toward transparent instead would
@@ -187,13 +216,13 @@ void FMixtormatStyle::Refresh()
 		new FSlateRoundedBoxBrush(FocusFill, 1.0f, AccentHover, MixtormatTokens::CompactRowValidDropOutlineWidth));
 
 	FTextBlockStyle SectionHeader = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(
-			MixtormatStylePrivate::Weight(MixtormatTokens::GroupHeaderBold),
-			MixtormatTokens::FontGroupHeader))
+		.SetFont(Font(Weight(MixtormatTokens::GroupHeaderBold), MixtormatTokens::FontGroupHeader))
 		.SetColorAndOpacity(HeaderText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo SectionHeaderFont = SectionHeader.Font;
+	// Already in Slate's 1/1000 em: the caption-tier tracking tokens were authored at their
+	// converted value, so they are assigned rather than run through Font()'s px conversion.
 	SectionHeaderFont.LetterSpacing = MixtormatTokens::GroupHeaderLetterSpacing;
 	SectionHeader.SetFont(SectionHeaderFont);
 	StyleInstance->Set(TEXT("Mixtormat.SectionHeader"), SectionHeader);
@@ -202,15 +231,13 @@ void FMixtormatStyle::Refresh()
 		// the compact Group Header tier, 7px tracked caps -- which is a caption's role and made every
 		// foldout read as a label above its contents rather than as the name of a section.
 		//
-		// Tracking converts from the authored px into Slate's 1/1000 em against this face's own size:
-		// 1px at a 9px face is 111, not 1. The conversion is done here rather than in the token because
-		// the divisor is the font size, which is itself a token.
-		FSlateFontInfo FoldoutTitleFont = FCoreStyle::GetDefaultFontStyle(
-			MixtormatStylePrivate::Weight(MixtormatTokens::FoldoutTitleBold),
-			MixtormatTokens::FontFoldoutTitle);
-		FoldoutTitleFont.LetterSpacing = FMath::RoundToInt(
-			MixtormatTokens::FoldoutTitleTracking / FMath::Max(MixtormatTokens::FontFoldoutTitle, 0.01f)
-			* 1000.0f);
+		// Tracking converts from the authored px into Slate's 1/1000 em against this face's own
+		// size: 1px at a 9px face is 111, not 1. Font() owns that conversion, so the number below
+		// stays in the units the prototype authored it in.
+		FSlateFontInfo FoldoutTitleFont = Font(
+			Weight(MixtormatTokens::FoldoutTitleBold),
+			MixtormatTokens::FontFoldoutTitle,
+			MixtormatTokens::FoldoutTitleTracking);
 
 		FLinearColor FoldoutTitleColor = RowText;
 		FoldoutTitleColor.A *= MixtormatTokens::FoldoutTitleOpacity;
@@ -228,7 +255,7 @@ void FMixtormatStyle::Refresh()
 		StyleInstance->Set(TEXT("Mixtormat.FoldoutTitleDisabled"), FoldoutTitleDisabled);
 
 	FTextBlockStyle Muted = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
+		.SetFont(Font(Regular, MixtormatTokens::FontBody))
 		.SetColorAndOpacity(MutedText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -344,11 +371,12 @@ void FMixtormatStyle::Refresh()
 		.SetPadding(FMargin(MixtormatTokens::ButtonPaddingTab, 0.0f));
 	StyleInstance->Set(TEXT("Mixtormat.TabToggle"), TabToggle);
 
-	FSlateFontInfo GroupButtonFont = FCoreStyle::GetDefaultFontStyle(
-		MixtormatTokens::GroupButtonFontWeight >= 600.0f ? TEXT("Bold") : TEXT("Regular"),
-		MixtormatTokens::GroupButtonFontSize);
-	GroupButtonFont.LetterSpacing = FMath::RoundToInt(
-		MixtormatTokens::GroupButtonTracking / FMath::Max(MixtormatTokens::GroupButtonFontSize, 0.01f) * 1000.0f);
+	// --group-button-font-weight is a real CSS number, so it is snapped to the nearest shipped
+	// face rather than through the legacy bold flag.
+	FSlateFontInfo GroupButtonFont = Font(
+		Mixtormat::FMixtormatTypography::FromCssWeight(MixtormatTokens::GroupButtonFontWeight),
+		MixtormatTokens::GroupButtonFontSize,
+		MixtormatTokens::GroupButtonTracking);
 	FTextBlockStyle GroupButtonText = FTextBlockStyle()
 		.SetFont(GroupButtonFont)
 		.SetColorAndOpacity(RowText)
@@ -511,11 +539,12 @@ void FMixtormatStyle::Refresh()
 		TEXT("Mixtormat.Badge"),
 		new FSlateRoundedBoxBrush(MixtormatPalette::BadgeSurface(), 1.0f));
 	FTextBlockStyle BadgeText = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBadge))
+		.SetFont(Font(Regular, MixtormatTokens::FontBadge))
 		.SetColorAndOpacity(MixtormatPalette::BadgeText())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo BadgeFont = BadgeText.Font;
+	// Caption tier, already in 1/1000 em -- assigned, not converted.
 	BadgeFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
 	BadgeText.SetFont(BadgeFont);
 	StyleInstance->Set(TEXT("Mixtormat.BadgeText"), BadgeText);
@@ -574,7 +603,7 @@ void FMixtormatStyle::Refresh()
 	// quietly beside it, and the section caption above a run of them.
 	{
 		FTextBlockStyle MenuLabel = FTextBlockStyle()
-			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontBody))
+			.SetFont(Font(Regular, MixtormatTokens::FontBody))
 			.SetColorAndOpacity(MixtormatPalette::RowText())
 			.SetShadowOffset(FVector2D::ZeroVector)
 			.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -586,18 +615,19 @@ void FMixtormatStyle::Refresh()
 					.SetColorAndOpacity(HelpBodyColor);
 				StyleInstance->Set(TEXT("Mixtormat.HelpBody"), HelpBody);
 				FTextBlockStyle HelpTitle = FTextBlockStyle(MenuLabel)
-					.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontBody));
+					.SetFont(Font(Bold, MixtormatTokens::FontBody));
 				StyleInstance->Set(TEXT("Mixtormat.HelpTitle"), HelpTitle);
 
 		FTextBlockStyle MenuShortcut = FTextBlockStyle(MenuLabel)
-			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontMenuShortcut))
+			.SetFont(Font(Regular, MixtormatTokens::FontMenuShortcut))
 			.SetColorAndOpacity(MixtormatPalette::ShortcutText());
 		StyleInstance->Set(TEXT("Mixtormat.MenuShortcut"), MenuShortcut);
 
 		FTextBlockStyle MenuCaption = FTextBlockStyle(MenuLabel)
-			.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
+			.SetFont(Font(Regular, MixtormatTokens::FontCaption))
 			.SetColorAndOpacity(MixtormatPalette::CaptionText());
 		FSlateFontInfo MenuCaptionFont = MenuCaption.Font;
+		// Caption tier, already in 1/1000 em -- assigned, not converted.
 		MenuCaptionFont.LetterSpacing = MixtormatTokens::MenuCaptionLetterSpacing;
 		MenuCaption.SetFont(MenuCaptionFont);
 		StyleInstance->Set(TEXT("Mixtormat.MenuCaption"), MenuCaption);
@@ -621,7 +651,7 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(TEXT("Mixtormat.LayerEdge"), new FSlateColorBrush(MixtormatPalette::LayerEdge()));
 
 	FTextBlockStyle LayerName = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontLayerName))
+		.SetFont(Font(Regular, MixtormatTokens::FontLayerName))
 		.SetColorAndOpacity(MixtormatPalette::LayerName())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
@@ -629,12 +659,13 @@ void FMixtormatStyle::Refresh()
 	StyleInstance->Set(TEXT("Mixtormat.LayerName"), LayerName);
 
 	FTextBlockStyle LayerSource = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontLayerSource))
+		.SetFont(Font(Regular, MixtormatTokens::FontLayerSource))
 		.SetColorAndOpacity(MixtormatPalette::LayerSource())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)
 		.SetOverflowPolicy(ETextOverflowPolicy::Ellipsis);
 	FSlateFontInfo LayerSourceFont = LayerSource.Font;
+	// Caption tier, already in 1/1000 em -- assigned, not converted.
 	LayerSourceFont.LetterSpacing = MixtormatTokens::LayerSourceLetterSpacing;
 	LayerSource.SetFont(LayerSourceFont);
 	StyleInstance->Set(TEXT("Mixtormat.LayerSource"), LayerSource);
@@ -653,20 +684,22 @@ void FMixtormatStyle::Refresh()
 	// quiet context beside its number, so the label needs its own size, weight and opacity and the
 	// value needs its own -- tuning one must not drag the other.
 	//
-	// Tracking is authored in CSS px and applied here in 1/1000 em, so it is converted against the
-	// label's own size rather than copied across. At the authored 0px the conversion is the
-	// identity, which is why the value is the token itself.
+	// Tracking is authored in CSS px and converted against the label's own size inside Font().
+			// At the authored 0px the conversion is the identity, which is why the bug was invisible:
+			// the number was copied straight into Slate's 1/1000 em field and happened to be zero. Any
+			// non-zero value would have been 1000x too small.
+			FSlateFontInfo LabelFont = Font(
+				Weight(MixtormatTokens::ControlLabelBold),
+				MixtormatTokens::FontControlLabel,
+				MixtormatTokens::ControlLabelLetterSpacing);
+
 	// Opacity is applied to the shared row-text role's alpha rather than to a separate grey role, so
-	// label and value stay the same hue and differ only in weight -- which is what the design
-	// asks for.
-	const FLinearColor LabelColor = AtOpacity(RowText, MixtormatTokens::ControlLabelOpacity);
-	const FLinearColor ValueColor = AtOpacity(RowText, MixtormatTokens::ControlValueOpacity);
+			// label and value stay the same hue and differ only in weight -- which is what the design
+			// asks for.
+			const FLinearColor LabelColor = AtOpacity(RowText, MixtormatTokens::ControlLabelOpacity);
+		const FLinearColor ValueColor = AtOpacity(RowText, MixtormatTokens::ControlValueOpacity);
 
-	FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle(
-		Weight(MixtormatTokens::ControlLabelBold), MixtormatTokens::FontControlLabel);
-	LabelFont.LetterSpacing = FMath::RoundToInt(MixtormatTokens::ControlLabelLetterSpacing);
-
-	FTextBlockStyle SliderLabel = FTextBlockStyle()
+			FTextBlockStyle SliderLabel = FTextBlockStyle()
 		.SetFont(LabelFont)
 		.SetColorAndOpacity(LabelColor)
 		.SetShadowOffset(FVector2D::ZeroVector)
@@ -675,9 +708,13 @@ void FMixtormatStyle::Refresh()
 
 	// Values keep their heavier face and a uniform advance, which makes a column of numbers line
 	// up on the decimal point without putting the same visual weight on the label.
+	//
+	// SemiBold, not Bold, and not "whatever a bold flag implies": tokens.css authors
+	// --value-weight: 600. The previous mapping snapped everything from 500 up onto the engine's
+	// Bold face, so control values rendered at 700 against a design that asked for 600. That is
+	// the single most-visible thing this stage corrects.
 	FTextBlockStyle SliderValue = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(
-			Weight(MixtormatTokens::ControlValueBold), MixtormatTokens::FontControlValue))
+		.SetFont(Font(SemiBold, MixtormatTokens::FontControlValue))
 		.SetColorAndOpacity(ValueColor)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
@@ -733,11 +770,12 @@ void FMixtormatStyle::Refresh()
 	// ---- Row furniture ----------------------------------------------------------------------
 	// Sub-group caption, and the hairline that separates two runs of rows without naming them.
 	FTextBlockStyle RowCaption = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontCaption))
+		.SetFont(Font(Regular, MixtormatTokens::FontCaption))
 		.SetColorAndOpacity(CaptionText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo CaptionFont = RowCaption.Font;
+	// Caption tier, already in 1/1000 em -- assigned, not converted.
 	CaptionFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
 	RowCaption.SetFont(CaptionFont);
 	StyleInstance->Set(TEXT("Mixtormat.RowCaption"), RowCaption);
@@ -745,25 +783,23 @@ void FMixtormatStyle::Refresh()
 	// A card's title line. Same tracking as the caption it used to share a style with, but its own
 	// weight, size and colour -- the three things that decide whether a title reads as one.
 	FTextBlockStyle CardTitle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(
-			MixtormatStylePrivate::Weight(MixtormatTokens::CardTitleBold),
-			MixtormatTokens::FontCardTitle))
+		.SetFont(Font(Weight(MixtormatTokens::CardTitleBold), MixtormatTokens::FontCardTitle))
 		.SetColorAndOpacity(CardTitleText)
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo CardTitleFont = CardTitle.Font;
+	// Caption tier, already in 1/1000 em -- assigned, not converted.
 	CardTitleFont.LetterSpacing = MixtormatTokens::CaptionLetterSpacing;
 	CardTitle.SetFont(CardTitleFont);
 	StyleInstance->Set(TEXT("Mixtormat.CardTitle"), CardTitle);
 
 	FTextBlockStyle GroupCardTitle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(
-			MixtormatStylePrivate::Weight(MixtormatTokens::GroupCardTitleBold),
-			MixtormatTokens::FontGroupCardTitle))
+		.SetFont(Font(Weight(MixtormatTokens::GroupCardTitleBold), MixtormatTokens::FontGroupCardTitle))
 		.SetColorAndOpacity(MixtormatPalette::GroupCardTitleText())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent);
 	FSlateFontInfo GroupCardTitleFont = GroupCardTitle.Font;
+	// Persisted in Slate's 1/1000 em (see the token's own comment), so assigned, not converted.
 	GroupCardTitleFont.LetterSpacing = FMath::RoundToInt(MixtormatTokens::GroupCardTitleLetterSpacing);
 	GroupCardTitle.SetFont(GroupCardTitleFont);
 	StyleInstance->Set(TEXT("Mixtormat.GroupCardTitle"), GroupCardTitle);
@@ -791,7 +827,7 @@ void FMixtormatStyle::Refresh()
 		new FSlateColorBrush(MixtormatPalette::TileNameStrip()));
 
 	FTextBlockStyle TileName = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontTile))
+		.SetFont(Font(Regular, MixtormatTokens::FontTile))
 		.SetColorAndOpacity(MixtormatPalette::TileNameText())
 		.SetShadowOffset(FVector2D::ZeroVector)
 		.SetShadowColorAndOpacity(FLinearColor::Transparent)

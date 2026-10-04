@@ -2,55 +2,43 @@
 
 #include "Style/MixtormatFont.h"
 
-#include "Styling/CoreStyle.h"
-#include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatTheme.h"
+#include "Style/MixtormatTypography.h"
 
-namespace
-{
-	// Only families Mixtormat ships are selectable. This is deliberately not a system font
-	// enumeration: a UI STYLE dropdown that lists fonts the plugin does not carry would offer
-	// choices that silently render as something else.
-	const TCHAR* const FamilyNames[] = { TEXT("Inter"), TEXT("Roboto") };
-}
+// TEMPORARY BRIDGE -- delete at Stage 10. See MixtormatFont.h.
 
 FName MixtormatFont::RequestedTypeface()
 {
-	const int32 Index = FMath::Clamp(MixtormatTokens::FontFamily, 0, UE_ARRAY_COUNT(FamilyNames) - 1);
-	return FName(FamilyNames[Index]);
+	// The shipped family is Inter and nothing else, so the token index is clamped rather than
+	// mapped through a list. The old build of this file also accepted "Roboto"; offering a face
+	// the plugin does not ship produced a dropdown that changed nothing on screen.
+	return FName(TEXT("Inter"));
 }
 
 FName MixtormatFont::ResolvedTypeface()
 {
-	// Slate substitutes the engine default for a typeface name it cannot resolve, so an
-	// unregistered family degrades to the previous appearance instead of failing to paint. The
-	// shipped Inter face lives beside this module (Resources/Fonts) and is registered with the
-	// font cache when the plugin initialises; until that registration succeeds this name resolves
-	// to the default, which is why the fallback is silent rather than an error.
+	// The typeface name no longer selects the face. FSlateFontInfo resolves the family through
+	// the composite font, and MixtormatTypography selects Regular or Bold inside it. This returns
+	// the family name purely so the UI STYLE font readout and any legacy call site keep working.
 	return RequestedTypeface();
 }
 
 FSlateFontInfo MixtormatFont::Make(const bool bBold, const float Size)
 {
-	// Built from the engine default first so the result is always a valid FSlateFontInfo, then
-	// pointed at the Mixtormat family. Starting from a valid style matters: a hand-constructed
-	// FSlateFontInfo with no typeface resolves differently across platforms.
-	FSlateFontInfo Result = FCoreStyle::GetDefaultFontStyle(bBold ? TEXT("Bold") : TEXT("Regular"), Size);
-	Result.TypefaceFontName = ResolvedTypeface();
-	return Result;
+	return Mixtormat::FMixtormatTypography::MakeFont(
+		bBold ? Mixtormat::EMixtormatFontWeight::Bold : Mixtormat::EMixtormatFontWeight::Regular,
+		Size);
 }
 
 FSlateFontInfo MixtormatFont::MakeFromWeight(const float CssWeight, const float Size)
 {
-	// 600 is the prototype's value weight and 400 its label weight. The midpoint between them is
-	// 500, which is the closest a two-face mapping can come to "this is a bold run".
-	return Make(CssWeight >= 500.0f, Size);
+	// Forwards the real CSS weight rather than a bold flag. This used to split at 500, which mapped
+	// the prototype's --value-weight: 600 onto Bold and rendered it at 700.
+	return Mixtormat::FMixtormatTypography::MakeFont(
+		Mixtormat::FMixtormatTypography::FromCssWeight(CssWeight), Size);
 }
 
 int32 MixtormatFont::TrackingToSlate(const float TrackingPx, const float SizePx)
 {
-	if (SizePx <= UE_KINDA_SMALL_NUMBER)
-	{
-		return 0;
-	}
-	return FMath::RoundToInt(TrackingPx / SizePx * 1000.0f);
+	return Mixtormat::FMixtormatTypography::TrackingToSlate(TrackingPx, SizePx);
 }
