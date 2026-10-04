@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatTheme.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 
@@ -349,6 +350,73 @@ bool FMixtormatSurfaceStateModifierTest::RunTest(const FString& Parameters)
 	CompositeSurface(Tinted, Palette, Normalised, Samples);
 	TestTrue(TEXT("A blend override changes the compositing"),
 		!NearColor(Samples.Colors[0], FLinearColor(Ground.R, Ground.G, Ground.B, 1.0f)));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMixtormatSurfaceSaturationTest,
+	"Mixtormat.Style.SurfacePainter.CompositeSurface.SaturationOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMixtormatSurfaceSaturationTest::RunTest(const FString& Parameters)
+{
+	using namespace MixtormatSurfacePainterTests;
+	using namespace Mixtormat;
+
+	const FMixtormatResolvedPalette Palette = MakePalette();
+	for (int32 CaseIndex = 0; CaseIndex < 4; ++CaseIndex)
+	{
+		const bool bLocalColor = (CaseIndex & 1) != 0;
+		const bool bSourceOverride = (CaseIndex & 2) != 0;
+		const FString Context = FString::Printf(TEXT("%s %s"),
+			bLocalColor ? TEXT("LocalColor") : TEXT("Role"),
+			bSourceOverride ? TEXT("override") : TEXT("layer"));
+
+		FMixtormatColorRef Ref = MakeColorRef(EMixtormatColorRole::Accent);
+		if (bLocalColor)
+		{
+			Ref.LocalColor = FLinearColor(0.15f, 0.65f, 0.35f, 0.7f);
+		}
+		Ref.Saturation = 0.45f;
+		Ref.Opacity = 0.8f;
+
+		FMixtormatStateModifier State;
+		State.Saturation = 0.6f;
+		State.Strength = 0.7f;
+		State.Opacity = 0.75f;
+
+		FMixtormatPaintLayer Layer;
+		Layer.Source = bSourceOverride ? MakeColorRef(EMixtormatColorRole::Shade) : Ref;
+		Layer.Strength = 0.85f;
+		Layer.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		Layer.OpacityRamp = MakeRamp(EMixtormatAxis::Vertical);
+		if (bSourceOverride)
+		{
+			State.SourceOverride = Ref;
+		}
+
+		FMixtormatSurfaceRecipe Recipe = MakeFlatRecipe();
+		Recipe.Layers.Add(Layer);
+		FMixtormatSurfaceSamples Samples;
+		TestEqual(Context + TEXT(" yields two samples"),
+			CompositeSurface(Recipe, Palette, State, Samples), 2);
+
+		FMixtormatColorRef CombinedRef = Ref;
+		CombinedRef.Saturation *= State.Saturation;
+		const FLinearColor Resolved = ResolveColor(Palette, CombinedRef);
+		for (int32 Index = 0; Index < Samples.Colors.Num(); ++Index)
+		{
+			FLinearColor Source = Resolved;
+			Source.A *= EvaluateRamp(Layer.OpacityRamp, Samples.Positions[Index])
+				* Layer.Strength * State.Strength * State.Opacity;
+			FLinearColor Expected = MixtormatCompositing::ApplyBlend(
+				Layer.Blend, ResolveColor(Palette, Recipe.Base), Source);
+			Expected.A = 1.0f;
+			TestTrue(Context + FString::Printf(TEXT(" stop %d resolves saturation once"), Index),
+				NearColor(Samples.Colors[Index], Expected));
+		}
+	}
 
 	return true;
 }

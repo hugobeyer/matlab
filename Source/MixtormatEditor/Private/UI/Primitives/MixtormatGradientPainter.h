@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Rendering/DrawElements.h"
 
 class FSlateWindowElementList;
 struct FPaintGeometry;
@@ -51,7 +52,8 @@ namespace MixtormatGradient
 		const FVector2f& Size,
 		EOrientation CssOrientation,
 		TArrayView<const FStop> Stops,
-		const FVector4f& CornerRadii);
+		const FVector4f& CornerRadii,
+		ESlateDrawEffect DrawEffects = ESlateDrawEffect::None);
 
 	// The shared power-curve falloff, ported from the prototype's falloff.js.
 	//

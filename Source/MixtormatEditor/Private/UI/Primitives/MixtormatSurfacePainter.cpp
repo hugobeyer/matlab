@@ -25,12 +25,13 @@ namespace Mixtormat
 			// A state may replace a layer's source outright rather than nudging it. That is the
 			// difference between "hover is brighter" and "hover is a different colour"; both are
 			// legitimate, and which one a component uses is authored rather than guessed here.
-			const FMixtormatColorRef& Ref =
+			FMixtormatColorRef Ref =
 				State.SourceOverride.IsSet() ? State.SourceOverride.GetValue() : Layer.Source;
+			Ref.Saturation *= State.Saturation;
 
 			FLinearColor Source = ResolveColor(Palette, Ref);
 			Source.A *= EvaluateRamp(Layer.OpacityRamp, T) * Layer.Strength * State.Strength * State.Opacity;
-			return MixtormatCompositing::Saturate(Source, Ref.Saturation * State.Saturation);
+			return Source;
 		}
 
 		MixtormatCompositing::EMixtormatBlendMode LayerBlend(const FMixtormatPaintLayer& Layer, const FMixtormatStateModifier& State)
@@ -272,9 +273,10 @@ namespace Mixtormat
 		const int32 LayerId,
 		const FGeometry& Geometry,
 		const FMixtormatSurfaceRecipe& Recipe,
-		const FMixtormatSurfaceSamples& BodySamples)
+		const FMixtormatSurfaceSamples& BodySamples,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
 	{
-		return PaintBody(Elements, LayerId, Geometry.ToPaintGeometry(), Recipe, BodySamples);
+		return PaintBody(Elements, LayerId, Geometry.ToPaintGeometry(), Recipe, BodySamples, DrawStyle);
 	}
 
 	int32 FMixtormatSurfacePainter::PaintBody(
@@ -282,7 +284,8 @@ namespace Mixtormat
 		const int32 LayerId,
 		const FPaintGeometry& PaintGeometry,
 		const FMixtormatSurfaceRecipe& Recipe,
-		const FMixtormatSurfaceSamples& BodySamples)
+		const FMixtormatSurfaceSamples& BodySamples,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
 	{
 		const FVector2f Size = PaintGeometry.GetLocalSize();
 		if (Size.X <= 0.0f || Size.Y <= 0.0f || BodySamples.Colors.Num() == 0)
@@ -305,7 +308,7 @@ namespace Mixtormat
 		{
 			FSlateDrawElement::MakeBox(
 				Elements, LayerId, PaintGeometry, White,
-				ESlateDrawEffect::None, BodySamples.Colors[0]);
+				DrawStyle.Effects, BodySamples.Colors[0] * DrawStyle.Tint);
 			return LayerId;
 		}
 
@@ -316,20 +319,20 @@ namespace Mixtormat
 		{
 			// Two stops of the same colour: a zero-length span, which is how a uniform fill is
 			// expressed through an API that only speaks gradients.
-			Stops.Add({ 0.0f, BodySamples.Colors[0] });
-			Stops.Add({ 1.0f, BodySamples.Colors[0] });
+			Stops.Add({ 0.0f, BodySamples.Colors[0] * DrawStyle.Tint });
+			Stops.Add({ 1.0f, BodySamples.Colors[0] * DrawStyle.Tint });
 		}
 		else
 		{
 			for (int32 Index = 0; Index < BodySamples.Colors.Num(); ++Index)
 			{
-				Stops.Add({ BodySamples.Positions[Index], BodySamples.Colors[Index] });
+				Stops.Add({ BodySamples.Positions[Index], BodySamples.Colors[Index] * DrawStyle.Tint });
 			}
 		}
 
 		MixtormatGradient::Paint(
 			Elements, LayerId, PaintGeometry, Size,
-			SlateOrientation(BodySamples.Axis), Stops, Radii);
+			SlateOrientation(BodySamples.Axis), Stops, Radii, DrawStyle.Effects);
 		return LayerId;
 	}
 
@@ -340,7 +343,8 @@ namespace Mixtormat
 		const FMixtormatSurfaceRecipe& Recipe,
 		const FMixtormatResolvedPalette& Palette,
 		const FWidgetStyle& WidgetStyle,
-		const FMixtormatSurfaceSamples& BodySamples)
+		const FMixtormatSurfaceSamples& BodySamples,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
 	{
 		(void)WidgetStyle;
 
@@ -380,7 +384,7 @@ namespace Mixtormat
 				FSlateDrawElement::MakeBox(
 					Elements, LayerId,
 					Geometry.ToPaintGeometry(EdgeSize, FSlateLayoutTransform(Offset)),
-					White, ESlateDrawEffect::None, Color);
+					White, DrawStyle.Effects, Color * DrawStyle.Tint);
 			};
 
 			// Drawn inward from each edge, so the border never lands outside the surface it
@@ -419,13 +423,14 @@ namespace Mixtormat
 		const FMixtormatSurfaceRecipe& Recipe,
 		const FMixtormatResolvedPalette& Palette,
 		const FWidgetStyle& WidgetStyle,
-		const FMixtormatStateModifier& State)
+		const FMixtormatStateModifier& State,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
 	{
 		FMixtormatSurfaceSamples Samples;
 		CompositeSurface(Recipe, Palette, State, Samples);
 
-		const int32 NextLayer = PaintBody(Elements, LayerId, Geometry, Recipe, Samples);
-		return PaintBorders(Elements, NextLayer, Geometry, Recipe, Palette, WidgetStyle, Samples);
+		const int32 NextLayer = PaintBody(Elements, LayerId, Geometry, Recipe, Samples, DrawStyle);
+		return PaintBorders(Elements, NextLayer, Geometry, Recipe, Palette, WidgetStyle, Samples, DrawStyle);
 	}
 
 	int32 FMixtormatSurfacePainter::PaintSurface(
@@ -434,9 +439,10 @@ namespace Mixtormat
 		const FGeometry& Geometry,
 		const FMixtormatSurfaceRecipe& Recipe,
 		const FMixtormatResolvedPalette& Palette,
-		const FWidgetStyle& WidgetStyle)
+		const FWidgetStyle& WidgetStyle,
+		const FMixtormatSurfaceDrawStyle& DrawStyle)
 	{
 		return PaintSurfaceWithState(
-			Elements, LayerId, Geometry, Recipe, Palette, WidgetStyle, FMixtormatStateModifier());
+			Elements, LayerId, Geometry, Recipe, Palette, WidgetStyle, FMixtormatStateModifier(), DrawStyle);
 	}
 }

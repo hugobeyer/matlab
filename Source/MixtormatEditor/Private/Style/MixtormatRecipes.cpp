@@ -112,6 +112,122 @@ namespace Mixtormat
 		return Ramp;
 	}
 
+	FMixtormatSurfaceRecipe MakeGroundRecipe()
+	{
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::Ground);
+		return Recipe;
+	}
+
+	FMixtormatSurfaceRecipe MakeFoldoutRecipe(const FMixtormatTheme& Theme,
+		const bool bHovered, const bool bEnabled)
+	{
+		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
+		Recipe.Radius = Theme.FoldoutLayout.Radius;
+		const FMixtormatFoldoutTheme& Foldout = Theme.Foldout;
+		const float Saturation = bHovered ? Foldout.HoverSaturation : Foldout.LiftSaturation;
+		const FMixtormatFalloff& Falloff = Foldout.LiftFalloff;
+
+		FMixtormatPaintLayer Lift;
+		Lift.Source.LocalColor = bHovered ? Foldout.HoverTint : Foldout.LiftTint;
+		Lift.Source.Opacity = bHovered ? Foldout.HoverTintOpacity : Foldout.LiftOpacity;
+		Lift.Source.Saturation = Saturation;
+		Lift.Blend = Foldout.LiftBlend;
+		Lift.OpacityRamp = MakeFalloffRamp(EMixtormatAxis::Vertical,
+			Falloff.Start, Falloff.End, Falloff.Power, Falloff.Samples);
+		Recipe.Layers.Add(Lift);
+
+		FMixtormatPaintLayer Accent;
+		Accent.Source = MakeColorRef(EMixtormatColorRole::Accent);
+		Accent.Source.Opacity = bHovered ? Foldout.AccentHoverOpacity : Foldout.AccentOpacity;
+		Accent.Source.Saturation = Saturation;
+		Accent.Blend = Foldout.AccentBlend;
+		Accent.OpacityRamp = Lift.OpacityRamp;
+		Recipe.Layers.Add(Accent);
+
+		if (bEnabled)
+		{
+			FMixtormatBorderLayer Hairline;
+			Hairline.Source = MakeColorRef(EMixtormatColorRole::Hairline);
+			if (bHovered)
+			{
+				Hairline.Source.LocalColor = Foldout.HairlineHoverTint;
+			}
+			Hairline.Source.Opacity = bHovered ? Foldout.HairlineHoverOpacity : Foldout.HairlineOpacity;
+			Hairline.Source.Saturation = bHovered ? Foldout.HairlineHoverSaturation : Foldout.HairlineSaturation;
+			Hairline.Blend = MixtormatCompositing::EMixtormatBlendMode::Additive;
+			Hairline.bTop = true;
+			Recipe.Borders.Add(Hairline);
+		}
+		return Recipe;
+	}
+
+	FMixtormatSurfaceRecipe MakeCardHeaderRecipe(const FMixtormatTheme& Theme, const float Seam)
+	{
+		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
+		FMixtormatPaintLayer Header;
+		Header.Source = MakeColorRef(EMixtormatColorRole::Ground);
+		Header.Source.Saturation = Theme.Card.HeaderSaturation;
+		Header.Blend = Theme.Card.Blend;
+		Header.OpacityRamp.Axis = EMixtormatAxis::Vertical;
+
+		FMixtormatFalloff Falloff;
+		Falloff.Start = Theme.Card.HeaderOpacity;
+		Falloff.End = Theme.Card.BodyOpacity;
+		Falloff.Power = Theme.Card.FalloffPower;
+		const float ClampedSeam = FMath::Clamp(Seam, 0.0f, 1.0f);
+		for (int32 Index = 0; Index < 6; ++Index)
+		{
+			const float T = static_cast<float>(Index) / 5.0f;
+			Header.OpacityRamp.Points.Add({ T, EvaluateFalloff(Falloff, T * ClampedSeam) });
+		}
+		Recipe.Layers.Add(Header);
+		return Recipe;
+	}
+
+	FMixtormatSurfaceRecipe MakeCardBodyRecipe(const FMixtormatTheme& Theme,
+		const float Seam, const float TailFraction)
+	{
+		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
+		FMixtormatPaintLayer Body;
+		Body.Source = MakeColorRef(EMixtormatColorRole::Ground);
+		Body.Source.Saturation = Theme.Card.BodySaturation;
+		Body.Blend = Theme.Card.Blend;
+		if (TailFraction <= 0.0f)
+		{
+			Body.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Vertical,
+				Theme.Card.BodyOpacity, Theme.Card.BodyOpacity, 2);
+		}
+		else
+		{
+			FMixtormatFalloff Falloff;
+			Falloff.Start = Theme.Card.HeaderOpacity;
+			Falloff.End = Theme.Card.BodyOpacity;
+			Falloff.Power = Theme.Card.FalloffPower;
+			const float ClampedSeam = FMath::Clamp(Seam, 0.0f, 1.0f);
+			const float Tail = FMath::Min(TailFraction, 0.5f);
+			Body.OpacityRamp.Axis = EMixtormatAxis::Vertical;
+			for (int32 Index = 0; Index < 6; ++Index)
+			{
+				const float T = static_cast<float>(Index) / 5.0f;
+				Body.OpacityRamp.Points.Add({ T * Tail,
+					EvaluateFalloff(Falloff, ClampedSeam + T * (1.0f - ClampedSeam)) });
+			}
+			// Reuse the sampled values so the bottom is exactly the reversed body tail.
+			for (int32 Index = 5; Index >= 0; --Index)
+			{
+				const FMixtormatRampPoint Stop = Body.OpacityRamp.Points[Index];
+				const float Position = 1.0f - Stop.Position;
+				if (Position > Body.OpacityRamp.Points.Last().Position)
+				{
+					Body.OpacityRamp.Points.Add({ Position, Stop.Value });
+				}
+			}
+		}
+		Recipe.Layers.Add(Body);
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeWellRecipe(const FMixtormatTheme& Theme, const EMixtormatWellState State)
 	{
 		FMixtormatSurfaceRecipe Recipe;

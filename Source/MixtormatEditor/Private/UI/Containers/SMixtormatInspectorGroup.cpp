@@ -2,20 +2,21 @@
 
 #include "UI/Containers/SMixtormatInspectorGroup.h"
 
-#include "Style/MixtormatCompositing.h"
+
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatRecipes.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Containers/SMixtormatFoldoutHeader.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMenuAnchor.h"
-#include "Widgets/Layout/SBorder.h"
+
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
@@ -275,13 +276,10 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		.AutoHeight()
 		.Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::FoldoutOuterBottom)
 		[
-			SNew(SBorder)
+			SNew(SMixtormatSurfaceBox)
 			.Visibility_Lambda([this]() { return IsExpanded() ? EVisibility::Visible : EVisibility::Collapsed; })
-			// The body is Ground, like the header's own base. It used to be GroupSurround, which is
-			// a darker value from a different compositing context -- the header lift fell to that
-			// colour and so the seam matched, but the body itself read as a shade darker than the
-			// surface it was opening into.
-			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.GroupBody")))
+			.Recipe(Mixtormat::MakeGroundRecipe())
+			.InheritWidgetStyle(true)
 			.Padding(FMargin(
 				MixtormatTokens::FoldoutGutter,
 				MixtormatTokens::FoldoutBodyTop,

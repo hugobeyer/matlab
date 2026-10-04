@@ -13,8 +13,8 @@
 // colour references, blend modes and ramps" -- which is the whole content of the component
 // definition, and the reason a widget migrating to this system stops carrying colour logic.
 //
-// Recipes reference colour *roles*, not colours. That is the property worth protecting: retinting
-// the palette restyles every recipe without any of them changing.
+// Recipes reference palette roles or explicitly authored local source colours, never baked
+// compositing results. Tint, opacity and saturation are resolved by the shared painter.
 //
 // State is a parameter, not a second recipe. §16 forbids duplicating a surface per state, so
 // Rest/Hover/Active share their base and shade and differ only where the design genuinely authors
@@ -37,6 +37,20 @@ namespace Mixtormat
 	// two endpoints is a different gradient that happens to share its endpoints, and it is exactly
 	// the kind of substitution that survives every structural check.
 	FMixtormatRamp MakeFalloffRamp(EMixtormatAxis Axis, float Start, float End, float Power, int32 Samples);
+
+	// Ground only, for container margins and gaps between separately arranged bands.
+	FMixtormatSurfaceRecipe MakeGroundRecipe();
+
+	// Ground -> local lift -> Accent, then an enabled-only Additive top hairline.
+	FMixtormatSurfaceRecipe MakeFoldoutRecipe(
+		const FMixtormatTheme& Theme, bool bHovered = false, bool bEnabled = true);
+
+	// Callers map geometry to Seam = nominalHeader / (nominalHeader + max(reach, 0))
+	// and TailFraction = min(reach / bodyHeight, .5). Zero tail means a flat body.
+	// Bands stay square: the caller clips the whole group or supplies a compact-card radius.
+	FMixtormatSurfaceRecipe MakeCardHeaderRecipe(const FMixtormatTheme& Theme, float Seam);
+	FMixtormatSurfaceRecipe MakeCardBodyRecipe(
+		const FMixtormatTheme& Theme, float Seam, float TailFraction);
 
 	enum class EMixtormatWellState : uint8
 	{

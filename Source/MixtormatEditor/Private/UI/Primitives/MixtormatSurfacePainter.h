@@ -4,14 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Layout/Geometry.h"
+#include "Rendering/DrawElements.h"
 #include "Style/MixtormatResolvedStyle.h"
 #include "Style/MixtormatTheme.h"
 #include "Styling/SlateTypes.h"
 
-// FSlateWindowElementList is forward-declared rather than included, matching the other painting
-// primitives in this folder. Every use here is a reference in a signature; the one place that needs
-// the definition -- the .cpp, which calls FSlateDrawElement::MakeBox -- includes Rendering/DrawElements.h.
-class FSlateWindowElementList;
 
 // One painter for every Mixtormat surface.
 //
@@ -103,13 +100,20 @@ namespace Mixtormat
 	//   No axis          0, because there is nothing to vary along
 	float BorderEdgePosition(EMixtormatAxis Axis, EMixtormatBorderEdge Edge);
 
+	// Applied only when drawing; compositing and border math use untinted samples.
+	struct FMixtormatSurfaceDrawStyle
+	{
+		FLinearColor Tint = FLinearColor::White;
+		ESlateDrawEffect Effects = ESlateDrawEffect::None;
+	};
+
 	struct FMixtormatSurfacePainter final
 	{
 		// Paints a surface from a recipe: body, then borders. Returns the layer id actually used, so
 		// a caller painting several things in a fixed order (§63) can carry it forward rather than
 		// assuming it did not move.
 		//
-		// This is the plan's signature verbatim. The result is opaque: the recipe's Base is the
+		// Before draw-time tint, the result is opaque: the recipe's Base is the
 		// backdrop every layer composites against, and a surface that owns its rectangle does not
 		// also blend with whatever the widget happened to put behind it. A translucent surface is a
 		// different decision and belongs to a caller that owns its backdrop.
@@ -119,7 +123,8 @@ namespace Mixtormat
 			const FGeometry& Geometry,
 			const FMixtormatSurfaceRecipe& Recipe,
 			const FMixtormatResolvedPalette& Palette,
-			const FWidgetStyle& WidgetStyle);
+			const FWidgetStyle& WidgetStyle,
+			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 
 		// As above, with a state modifier applied. This is how hover works: the same recipe with
 		// different numbers, never a second recipe. §16 forbids duplicating a surface per state and
@@ -131,7 +136,8 @@ namespace Mixtormat
 			const FMixtormatSurfaceRecipe& Recipe,
 			const FMixtormatResolvedPalette& Palette,
 			const FWidgetStyle& WidgetStyle,
-			const FMixtormatStateModifier& State);
+			const FMixtormatStateModifier& State,
+			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 
 		// Body only. Exposed for a caller that must interleave something between body and hairline --
 		// the layer row's paint order in §63 puts the selected glow there.
@@ -140,7 +146,8 @@ namespace Mixtormat
 			int32 LayerId,
 			const FGeometry& Geometry,
 			const FMixtormatSurfaceRecipe& Recipe,
-			const FMixtormatSurfaceSamples& BodySamples);
+			const FMixtormatSurfaceSamples& BodySamples,
+			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 
 		// The same, for a sub-rect of a widget rather than the whole of it.
 		//
@@ -154,7 +161,8 @@ namespace Mixtormat
 			int32 LayerId,
 			const FPaintGeometry& PaintGeometry,
 			const FMixtormatSurfaceRecipe& Recipe,
-			const FMixtormatSurfaceSamples& BodySamples);
+			const FMixtormatSurfaceSamples& BodySamples,
+			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 
 		// Borders only, on their own layer. A blended border has to composite against the body it
 		// was drawn over, so this takes the body's samples rather than re-deriving a colour that
@@ -170,6 +178,7 @@ namespace Mixtormat
 			const FMixtormatSurfaceRecipe& Recipe,
 			const FMixtormatResolvedPalette& Palette,
 			const FWidgetStyle& WidgetStyle,
-			const FMixtormatSurfaceSamples& BodySamples);
+			const FMixtormatSurfaceSamples& BodySamples,
+			const FMixtormatSurfaceDrawStyle& DrawStyle = FMixtormatSurfaceDrawStyle());
 	};
 }

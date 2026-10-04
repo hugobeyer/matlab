@@ -5,9 +5,14 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatRecipes.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Containers/MixtormatGroupCardPainter.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Rendering/DrawElements.h"
 #include "Layout/ArrangedChildren.h"
-#include "Widgets/Layout/SBorder.h"
+
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -182,8 +187,16 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 	Stack->AddSlot()
 	.AutoHeight()
 	[
-		SNew(SBorder)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Card")))
+		SNew(SMixtormatSurfaceBox)
+		.Recipe_Lambda([]()
+		{
+			const Mixtormat::FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+			// Compact cards keep their title outside a flat body; no group-header tail is added.
+			Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeCardBodyRecipe(Theme, 1.0f, 0.0f);
+			Recipe.Radius = Theme.Card.Radius;
+			return Recipe;
+		})
+		.InheritWidgetStyle(true)
 		// The vertical inset is the gap every run of rows gets under its heading, top and
 		// bottom, so a card's first and last row are not flush against its edge.
 		.Padding(FMargin(
@@ -226,8 +239,10 @@ int32 SMixtormatInspectorCard::OnPaint(const FPaintArgs& Args, const FGeometry& 
 		return LayerId;
 	}
 
-	MixtormatGroupCard::FSurface Surface;
-	Surface.Size = Size;
+	float HeaderTop = 0.0f;
+	float HeaderHeight = 0.0f;
+	float BodyTop = 0.0f;
+	float BodyHeight = 0.0f;
 	// Arrange this frame's slots explicitly: cached geometry is from the previous paint and
 	// gives a stale seam on first paint, resize or a change in action/content desired height.
 	FArrangedChildren Arranged(EVisibility::Visible);
@@ -239,32 +254,58 @@ int32 SMixtormatInspectorCard::OnPaint(const FPaintArgs& Args, const FGeometry& 
 			Child.Geometry.LocalToAbsolute(FVector2D::ZeroVector)).Y;
 		if (Child.Widget == HeaderBox)
 		{
-			Surface.HeaderTop = Top;
-			Surface.HeaderHeight = Child.Geometry.GetLocalSize().Y;
+			HeaderTop = Top;
+			HeaderHeight = Child.Geometry.GetLocalSize().Y;
 		}
 		else if (Child.Widget == BodyBox)
 		{
-			Surface.BodyTop = Top;
-			Surface.BodyHeight = Child.Geometry.GetLocalSize().Y;
+			BodyTop = Top;
+			BodyHeight = Child.Geometry.GetLocalSize().Y;
 		}
 	}
-	Surface.AuthoredHeaderHeight = MixtormatTokens::GroupCardTitleHeight;
-	Surface.Radius = MixtormatTokens::GroupCardRadius;
-	Surface.Reach = MixtormatTokens::GroupCardGradientReach;
-	Surface.Power = MixtormatTokens::GroupCardFalloffPower;
-	Surface.HeaderOpacity = MixtormatTokens::GroupCardHeaderOpacity;
-	Surface.BodyOpacity = MixtormatTokens::GroupCardBodyOpacity;
-	Surface.HeaderSaturation = MixtormatTokens::GroupCardHeaderSaturation;
-	Surface.BodySaturation = MixtormatTokens::GroupCardBodySaturation;
+	using namespace Mixtormat;
+	const FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+	const FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+	HeaderTop = FMath::Clamp(HeaderTop, 0.0f, Size.Y);
+	const float HeaderEnd = FMath::Clamp(HeaderTop + HeaderHeight, HeaderTop, Size.Y);
+	BodyTop = FMath::Clamp(BodyTop, HeaderEnd, Size.Y);
+	const float BodyEnd = FMath::Clamp(BodyTop + BodyHeight, BodyTop, Size.Y);
 
-	Surface.Ground = MixtormatPalette::Ground();
-	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
+	// Geometry-only adapter: the authored minimum defines the curve domain, while this frame's
+	// arranged header defines the physical seam. Short bodies cap each mirrored tail at half-height.
+	const float Reach = FMath::Max(Theme.Card.Reach, 0.0f);
+	const float NominalHeight = FMath::Max(Theme.CardLayout.HeaderHeight, 1.0f);
+	const float Seam = NominalHeight / (NominalHeight + Reach);
+	const float TailFraction = BodyEnd > BodyTop ? FMath::Min(Reach / (BodyEnd - BodyTop), 0.5f) : 0.0f;
+	const FMixtormatSurfaceRecipe Ground = MakeGroundRecipe();
+	const FMixtormatSurfaceRecipe Header = MakeCardHeaderRecipe(Theme, Seam);
+	const FMixtormatSurfaceRecipe Body = MakeCardBodyRecipe(Theme, Seam, TailFraction);
+	FMixtormatSurfaceDrawStyle DrawStyle;
+	DrawStyle.Tint = InWidgetStyle.GetColorAndOpacityTint();
+	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
 		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
-	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(OutDrawElements, CardGeometry, Surface.Radius);
-	SurfacePainter.Paint(OutDrawElements, LayerId, CardGeometry, Surface,
-		InWidgetStyle.GetColorAndOpacityTint(), Effect);
+
+	// Retain the existing rounded overflow clip around both the surface AND nested children.
+	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(OutDrawElements, CardGeometry, Theme.Card.Radius);
+	int32 SurfaceLayer = LayerId;
+	const auto PaintBand = [&](const float Top, const float Bottom, const FMixtormatSurfaceRecipe& Recipe)
+	{
+		if (Bottom > Top)
+		{
+			const FGeometry Band = CardGeometry.MakeChild(FVector2f(Size.X, Bottom - Top),
+				FSlateLayoutTransform(FVector2f(0.0f, Top)));
+			SurfaceLayer = FMixtormatSurfacePainter::PaintSurface(
+				OutDrawElements, SurfaceLayer, Band, Recipe, Palette, InWidgetStyle, DrawStyle);
+		}
+	};
+	// Non-overlapping bands avoid applying inherited alpha twice over the header/body.
+	PaintBand(0.0f, HeaderTop, Ground);
+	PaintBand(HeaderTop, HeaderEnd, Header);
+	PaintBand(HeaderEnd, BodyTop, Ground);
+	PaintBand(BodyTop, BodyEnd, Body);
+	PaintBand(BodyEnd, Size.Y, Ground);
 	const int32 LastLayer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect,
-		OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);
+		OutDrawElements, SurfaceLayer + 1, InWidgetStyle, bParentEnabled);
 	for (int32 Index = 0; Index < ClipCount; ++Index)
 	{
 		OutDrawElements.PopClip();

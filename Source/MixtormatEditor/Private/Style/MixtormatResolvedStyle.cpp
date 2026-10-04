@@ -20,10 +20,9 @@ namespace Mixtormat
 
 	FLinearColor ResolveColor(const FMixtormatResolvedPalette& Palette, const FMixtormatColorRef& Ref)
 	{
-		FLinearColor Color = Palette.Get(Ref.Role);
+		FLinearColor Color = Ref.LocalColor.IsSet() ? Ref.LocalColor.GetValue() : Palette.Get(Ref.Role);
 
-		// Multiplier first: it is a tint of the role, so the saturation filter below should see the
-		// tinted colour rather than the untouched role.
+		// Multiplier first: tint either source before applying its saturation filter.
 		Color.R *= Ref.Multiplier.R;
 		Color.G *= Ref.Multiplier.G;
 		Color.B *= Ref.Multiplier.B;

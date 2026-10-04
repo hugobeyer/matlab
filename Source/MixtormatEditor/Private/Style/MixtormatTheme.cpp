@@ -176,7 +176,8 @@ namespace Mixtormat
 		T.Foldout.HoverSaturation = 1.0f;             // --foldout-hover-saturation
 		T.Foldout.AccentOpacity = 0.8f;               // --foldout-accent-multiply-opacity
 		T.Foldout.AccentHoverOpacity = 1.0f;          // --foldout-accent-hover-multiply-opacity
-		T.Foldout.HairlineOpacity = 0.46f;            // --foldout-hairline-opacity
+		T.Foldout.HairlineHoverTint = SRGB(127, 196, 219); // --hairline-hover-rgb
+				T.Foldout.HairlineOpacity = 0.46f;            // --foldout-hairline-opacity
 		T.Foldout.HairlineHoverOpacity = 0.85f;       // --hairline-hover-opacity
 		T.Foldout.HairlineSaturation = 2.0f;          // --foldout-hairline-saturation
 		T.Foldout.HairlineHoverSaturation = 1.4f;     // --foldout-hairline-hover-saturation
@@ -429,7 +430,8 @@ namespace Mixtormat
 				Clamp01(TEXT("Foldout.HoverTintOpacity"), InOutTheme.Foldout.HoverTintOpacity);
 				Clamp01(TEXT("Foldout.AccentOpacity"), InOutTheme.Foldout.AccentOpacity);
 		Clamp01(TEXT("Foldout.AccentHoverOpacity"), InOutTheme.Foldout.AccentHoverOpacity);
-		Clamp01(TEXT("Foldout.HairlineOpacity"), InOutTheme.Foldout.HairlineOpacity);
+		Clamp01(TEXT("Foldout.HairlineHoverTint.A"), InOutTheme.Foldout.HairlineHoverTint.A);
+				Clamp01(TEXT("Foldout.HairlineOpacity"), InOutTheme.Foldout.HairlineOpacity);
 		Clamp01(TEXT("Foldout.HairlineHoverOpacity"), InOutTheme.Foldout.HairlineHoverOpacity);
 		Clamp01(TEXT("Card.HeaderOpacity"), InOutTheme.Card.HeaderOpacity);
 		Clamp01(TEXT("Card.BodyOpacity"), InOutTheme.Card.BodyOpacity);
@@ -492,6 +494,7 @@ namespace Mixtormat
 		ClampMin(TEXT("Well.BorderWidth"), InOutTheme.Well.BorderWidth, 0.0f);
 		ClampMin(TEXT("Toggle.Size"), InOutTheme.Toggle.Size, 1.0f);
 		ClampMin(TEXT("Card.Radius"), InOutTheme.Card.Radius, 0.0f);
+				ClampMin(TEXT("Card.Reach"), InOutTheme.Card.Reach, 0.0f);
 		ClampMin(TEXT("Button.Height"), InOutTheme.Button.Height, 1.0f);
 		ClampMin(TEXT("Button.HairlineWidth"), InOutTheme.Button.HairlineWidth, 0.0f);
 		ClampMin(TEXT("LayerLayout.RowHeight"), InOutTheme.LayerLayout.RowHeight, 1.0f);

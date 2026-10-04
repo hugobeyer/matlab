@@ -98,6 +98,9 @@ namespace Mixtormat
 		// Per-channel tint applied after resolution. Lets a recipe reuse an existing role at a
 		// different weight without that weight becoming a palette entry.
 		FLinearColor Multiplier = FLinearColor::White;
+
+		// An authored surface-local source; uses the same tint, opacity and saturation as a role.
+		TOptional<FLinearColor> LocalColor;
 	};
 
 	// ---- Paint layers -----------------------------------------------------------------------
@@ -361,7 +364,9 @@ namespace Mixtormat
 		float AccentOpacity = 0.8f;
 		float AccentHoverOpacity = 1.0f;
 
-		float HairlineOpacity = 0.46f;
+		// --hairline-hover-rgb; the resting line still reads the shared Hairline role.
+					FLinearColor HairlineHoverTint;
+					float HairlineOpacity = 0.46f;
 		float HairlineHoverOpacity = 0.85f;
 		float HairlineSaturation = 2.0f;
 		float HairlineHoverSaturation = 1.4f;
@@ -380,7 +385,7 @@ namespace Mixtormat
 		float BodySaturation = 2.2f;
 
 		float FalloffPower = 0.65f;
-		// How far past the body the header's contribution reaches.
+		// How far into the body the header's contribution reaches.
 		float Reach = 0.0f;
 
 		float Radius = 3.0f;

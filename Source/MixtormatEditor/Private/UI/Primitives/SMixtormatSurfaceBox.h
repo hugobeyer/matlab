@@ -26,6 +26,7 @@ class SMixtormatSurfaceBox final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatSurfaceBox)
 		: _PaintBorders(true)
+		, _InheritWidgetStyle(false)
 		, _Padding(FMargin(0.0f))
 	{}
 		// The surface to paint. Bound to a function when the recipe depends on widget state.
@@ -37,6 +38,9 @@ public:
 		// Off for a surface whose borders belong to something else -- a fill painted inside a well,
 		// where the well's rim must stay continuous across it.
 		SLATE_ARGUMENT(bool, PaintBorders)
+
+		// Containers inherit tint and Slate's disabled effect; controls can author their own state.
+		SLATE_ARGUMENT(bool, InheritWidgetStyle)
 
 		// Inset for the content, so a fill can sit inside its well without a separate widget.
 		SLATE_ARGUMENT(FMargin, Padding)
@@ -58,4 +62,5 @@ public:
 private:
 	TAttribute<Mixtormat::FMixtormatSurfaceRecipe> Recipe;
 	bool bPaintBorders = true;
+	bool bInheritWidgetStyle = false;
 };

@@ -9,6 +9,7 @@ void SMixtormatSurfaceBox::Construct(const FArguments& InArgs)
 {
 	Recipe = InArgs._Recipe;
 	bPaintBorders = InArgs._PaintBorders;
+	bInheritWidgetStyle = InArgs._InheritWidgetStyle;
 
 	ChildSlot
 	.Padding(InArgs._Padding)
@@ -35,17 +36,24 @@ int32 SMixtormatSurfaceBox::OnPaint(
 
 	FMixtormatSurfaceSamples Samples;
 	CompositeSurface(Surface, Palette, FMixtormatStateModifier(), Samples);
+	FMixtormatSurfaceDrawStyle DrawStyle;
+	if (bInheritWidgetStyle)
+	{
+		DrawStyle.Tint = InWidgetStyle.GetColorAndOpacityTint();
+		DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
+			? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+	}
 
 	// Body first, then the hairlines on top of it, then the content above both. The borders
 	// composite against the body's own colours, which is why the samples are computed once and
 	// handed to both calls rather than each recompositing for itself.
 	int32 Layer = FMixtormatSurfacePainter::PaintBody(
-		OutDrawElements, LayerId, AllottedGeometry, Surface, Samples);
+		OutDrawElements, LayerId, AllottedGeometry, Surface, Samples, DrawStyle);
 
 	if (bPaintBorders)
 	{
 		Layer = FMixtormatSurfacePainter::PaintBorders(
-			OutDrawElements, Layer, AllottedGeometry, Surface, Palette, InWidgetStyle, Samples);
+			OutDrawElements, Layer, AllottedGeometry, Surface, Palette, InWidgetStyle, Samples, DrawStyle);
 	}
 
 	return SCompoundWidget::OnPaint(

@@ -58,7 +58,8 @@ namespace MixtormatGradient
 		const FVector2f& Size,
 		const EOrientation CssOrientation,
 		const TArrayView<const FStop> Stops,
-		const FVector4f& CornerRadii)
+		const FVector4f& CornerRadii,
+		const ESlateDrawEffect DrawEffects)
 	{
 		if (Stops.Num() < 2)
 		{
@@ -91,7 +92,7 @@ namespace MixtormatGradient
 			Geometry,
 			Sampled,
 			SlateAxis(CssOrientation),
-			ESlateDrawEffect::None,
+			DrawEffects,
 			CornerRadii);
 	}
 
