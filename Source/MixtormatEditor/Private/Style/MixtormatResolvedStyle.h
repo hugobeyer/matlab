@@ -235,16 +235,13 @@ namespace Mixtormat
 
 	struct FMixtormatResolvedPreviewStyle
 	{
+		// The plate colour at its authored alpha. Carried with its alpha rather than as a separate
+		// opacity so a caller cannot pair one with the other's stale value.
 		FLinearColor OverlayPlate;
-		FLinearColor OverlayGround;
 		float OverlayPlateOpacity = 0.85f;
-		float OverlayGroundOpacity = 0.62f;
+		float IconRestOpacity = 0.45f;
 		float HoverAccent = 0.18f;
 		float PressAccent = 0.35f;
-		float IconOpacity = 0.6f;
-		float IconRestOpacity = 0.45f;
-		float GripOpacity = 0.45f;
-		float RailIconSize = 24.0f;
 	};
 
 	struct FMixtormatResolvedShellStyle

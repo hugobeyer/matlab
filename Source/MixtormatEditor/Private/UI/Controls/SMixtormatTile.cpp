@@ -94,7 +94,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 			{
 				return Badge.Get(FText::GetEmpty()).IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible;
 			})
-			.Recipe(Mixtormat::MakeGalleryCaptionRecipe(FMixtormatThemeStore::GetResolved()))
+			.Recipe(Mixtormat::MakeGalleryCaptionRecipe())
 			.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionInset, 0.0f))
 			[
 				SNew(STextBlock)
@@ -121,7 +121,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 			.HeightOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionHeight)
 			[
 				SNew(SMixtormatSurfaceBox)
-				.Recipe(Mixtormat::MakeGalleryCaptionRecipe(FMixtormatThemeStore::GetResolved()))
+				.Recipe(Mixtormat::MakeGalleryCaptionRecipe())
 				.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.CaptionInset, 0.0f))
 				[
 					SNew(STextBlock)

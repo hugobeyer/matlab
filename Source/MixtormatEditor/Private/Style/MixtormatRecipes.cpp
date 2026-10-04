@@ -490,39 +490,45 @@ namespace Mixtormat
 		return Recipe;
 	}
 
-	FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe(const FMixtormatResolvedStyle&)
+	FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe()
 	{
 		FMixtormatSurfaceRecipe Recipe;
 		Recipe.Base = MakeColorRef(EMixtormatColorRole::Shade);
 		return Recipe;
 	}
 
+	// The translucent plate behind a viewport overlay control.
+//
+// The prototype's `rgb(var(--overlay-plate-rgb) / var(--overlay-plate-opacity))` is a plate
+	// drawn ON the rendered viewport, not a ground: the viewport has to show through it. That is why
+	// this is the one surface that is allowed to keep its alpha (see FMixtormatSurfaceRecipe::
+	// bTranslucent), and why its base is the plate colour itself.
+	//
+	// `--overlay-bottom-rgb` / `--overlay-ground-opacity` are a different surface -- the gradient
+	// behind a whole overlay cluster -- and are not mixed in here. Hover and press add the accent to
+	// the plate at their authored strengths, which is the CSS color-mix over the plate colour.
 	FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
-		const FMixtormatTheme& Theme, const EMixtormatPreviewPlateState State)
+		const FMixtormatResolvedStyle& Style, const EMixtormatPreviewPlateState State)
 	{
-		FMixtormatSurfaceRecipe Recipe;
-		Recipe.Base = MakeColorRef(EMixtormatColorRole::OverlayGround);
+		const FMixtormatResolvedPreviewStyle& Preview = Style.Preview;
 
-		FMixtormatColorRef PlateSource;
-		PlateSource.LocalColor = Theme.Preview.PlateSource;
-		PlateSource.Opacity = Theme.Preview.PlateOpacity;
-		FMixtormatPaintLayer Plate;
-		Plate.Source = PlateSource;
-		Plate.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
-		Recipe.Layers.Add(Plate);
+		FMixtormatSurfaceRecipe Recipe;
+		Recipe.bTranslucent = true;
+		Recipe.Base.LocalColor = Preview.OverlayPlate;
+		Recipe.Base.Opacity = Preview.OverlayPlateOpacity;
 
 		float AccentOpacity = 0.0f;
 		switch (State)
 		{
 		case EMixtormatPreviewPlateState::Hover:
-			AccentOpacity = Theme.Preview.HoverAccent;
+			AccentOpacity = Preview.HoverAccent;
 			break;
 		case EMixtormatPreviewPlateState::Pressed:
-			AccentOpacity = Theme.Preview.PressAccent;
+			AccentOpacity = Preview.PressAccent;
 			break;
 		case EMixtormatPreviewPlateState::Checked:
 			// The prototype's checked plate is 60% of the hover contribution.
-			AccentOpacity = Theme.Preview.HoverAccent * 0.6f;
+			AccentOpacity = Preview.HoverAccent * 0.6f;
 			break;
 		default:
 			break;

@@ -176,29 +176,51 @@ the row gradient, which is the bug this separation exists to prevent.
 | CSS | Unreal | Resolved | Painter |
 |---|---|---|---|
 | `--popup-bottom-rgb` | `Palette.MenuGround` | `Menus.Ground` | menu brush |
-| `--popup-top-rgb` / `--popup-tint-opacity` | `Menu.LipHeight` / `LipTintOpacity` | `Menus.Lip` | menu brush |
-| `--popup-border-opacity` | `Menu.BorderOpacity` | `Menus.Border` | menu brush |
-| `--menu-width` | `Menu.Width` | `Menus.Width` | layout |
-| `--menu-row-height` | `Menu.ItemHeight` | `Menus.ItemHeight` | layout |
-| `--menu-padding` | `MenuLayout.PanelPadding` | `MenuLayout.*` | layout |
+| `--popup-top-rgb` | `Menu.LipSource` | `Menus.Lip` | menu panel recipe |
+| `--popup-tint-opacity` | `Menu.LipTintOpacity` | `Menus.Lip` | menu panel recipe |
+| `--popup-border-opacity` | `Menu.BorderOpacity` | `Menus.Border` | menu panel recipe |
+| `--menu-width` | `MenuLayout.Width` | `MenuLayout.Width` | layout |
+| `--menu-row-height` | `MenuLayout.RowHeight` | `MenuLayout.RowHeight` | layout |
+| `--menu-padding` | `MenuLayout.PanelPadding` | `MenuLayout.PanelPadding` | layout |
 | `--text-disabled-opacity` | `Menu.ItemDisabledOpacity` | `Menus.ItemDisabled` | menu row |
+
+`--popup-top-rgb` is the lip *colour*; the lip's 25px height is a separate layout value
+(`MenuLayout.LipHeight`). The two were previously conflated into one row.
 
 ## Preview / gallery / shell
 
 | CSS | Unreal | Resolved | Painter |
 |---|---|---|---|
-| `--overlay-ground-opacity` | `Preview.OverlayPlateOpacity` | `Preview.OverlayPlateOpacity` | — |
-| `--overlay-hover-accent` | `Preview.OverlayHoverAccent` | `Preview.HoverAccent` | — |
-| `--overlay-press-accent` | `Preview.OverlayPressAccent` | `Preview.PressAccent` | — |
-| `--gallery-tile-size` | `Gallery.TileSize` | `Gallery.TileSize` | — |
-| `--gallery-gap` | `Gallery.TileGap` | `GalleryLayout.TileGap` | layout |
-| `--gallery-swatch-radius` / `--thumbnail-radius` | `Gallery.CornerRadius` | `Gallery.CornerRadius` | — |
-| `--splitter-size` | `Shell.SplitterVisualWidth` | `Shell.SeparatorWidth` | splitter |
-| `--splitter-hit-size` | `Shell.SplitterHitWidth` | `Shell.SeparatorHitWidth` | splitter |
-| `--left-width`, `--inspector-width`, `--gallery-height` | `Shell.*Seed` | `ShellLayout.*Seed` | initial ratio only |
+| `--overlay-plate-rgb` / `--overlay-plate-opacity` | `Preview.PlateSource` / `PlateOpacity` | `Preview.OverlayPlate` / `OverlayPlateOpacity` | `MakePreviewPlateRecipe` |
+| `--overlay-hover-accent` | `Preview.HoverAccent` | `Preview.HoverAccent` | `MakePreviewPlateRecipe` |
+| `--overlay-press-accent` | `Preview.PressAccent` | `Preview.PressAccent` | `MakePreviewPlateRecipe` |
+| `--overlay-icon-rest-opacity` | `Preview.IconRestOpacity` | `Preview.IconRestOpacity` | overlay label/icon foreground |
+| `--gallery-gap` | `GalleryLayout.TileGap` | `GalleryLayout.TileGap` | layout |
+| `--gallery-swatch-radius` / `--thumbnail-radius` | `Gallery.CornerRadius` | `Gallery.CornerRadius` | tile recipe |
+| `--splitter-size` | `ShellLayout.SplitterVisualWidth` | `ShellLayout.SplitterVisualWidth` | shared splitter adapter |
+| `--splitter-hit-size` | `ShellLayout.SplitterHitWidth` | `ShellLayout.SplitterHitWidth` | shared splitter adapter |
+| `--hairline-rgb` / `--foldout-hairline-opacity` | `Palette.Hairline` / `ShellTheme.SplitterOpacity` | `Shell.Separator` | shared splitter adapter |
+| `--hairline-hover-rgb` / `--hairline-hover-opacity` | `ShellTheme.SplitterHoverSource` / `SplitterHoverOpacity` | `Shell.SeparatorHover` | shared splitter adapter |
 
-Splitters stay a real `SSplitter`. The seeds initialise the ratio and do not constrain the user
-afterwards, so no fixed width is exposed as an editable property.
+The plate is a **translucent surface over the rendered viewport**, not a ground. It is the only
+recipe that sets `FMixtormatSurfaceRecipe::bTranslucent`, because every other surface owns its
+rectangle and is composited opaque. `--overlay-bottom-rgb` / `--overlay-ground-opacity` describe a
+separate overlay-cluster backdrop and are deliberately not mixed into the plate; mixing them is what
+previously forced the plate opaque.
+
+Splitters stay a real `SSplitter`, and both the main shell splitters and the bottom-library
+Materials/Masks splitter read one shared adapter (`MixtormatShell::GetSplitterStyle`).
+
+`--left-width`, `--inspector-width`, `--gallery-height` and `--shell-gap` are **deliberately not
+mapped**. The shell's column ratios are runtime state (`ShellLeftFraction` and friends) initialised
+in code; a theme field cannot be allowed to resize a panel the user has already arranged, so there
+is no authored seed for UI STYLE to expose.
+
+`--gallery-tile-size` seeds `GalleryLayout.TileSize` once at construction and is **not exposed in UI
+STYLE**: the running zoom is widget state stepping 72 → 144 by 12, so a live edit to the seed would
+appear to do nothing. Expose it only alongside an explicit "resets current zoom" behaviour.
+`--rail-icon-size` is likewise unmapped; the rail button size is the `PreviewToolbar` icon role's
+`ButtonSize`.
 
 ## Icons
 
@@ -325,3 +347,9 @@ place the rewrite refuses to add a value.
 | `--popup-shadow-opacity` | Drop shadow is Slate's own, not a composited layer. |
 | `--dialog-*`, `--popover-*`, `--badge-width`, `--help-*` | Secondary surfaces, not part of this rewrite's scope. |
 | `--well-border-rgb`, `--well-border-hover-rgb` | The well outline uses the `Hairline` role with `Well.BorderSaturation`, matching the shipped Unreal behaviour. Recorded so the difference from the prototype's darker outline is not mistaken for a bug. |
+| `--overlay-bottom-rgb`, `--overlay-ground-opacity` | The overlay-cluster backdrop. Not the per-control plate, and no production surface reproduces it today. `Palette.OverlayGround` still carries the colour but has no reader. |
+| `--rail-icon-size` | The rail button is the `PreviewToolbar` icon role's `ButtonSize` (24px); a second field for the same plate would be a third number for one thing. |
+| `--overlay-grip-opacity` | `.overlay-title .asset-icon` has no production control, so the token has nothing to drive. |
+| `--overlay-top-rgb` | Only `--overlay-top-rgb`/`--overlay-bottom-rgb` as a gradient are unmapped; the menu lip uses its own `--popup-top-rgb`. |
+| `--left-width`, `--inspector-width`, `--gallery-height`, `--shell-gap` | Shell column ratios are runtime state initialised in code, and `--shell-gap` has no production reader. A theme must not resize a panel the user has arranged. |
+| `--gallery-tile-size` | Seed for the initial tile size only. The running zoom is widget state (72 → 144 by 12), so exposing the seed in UI STYLE would look broken. |

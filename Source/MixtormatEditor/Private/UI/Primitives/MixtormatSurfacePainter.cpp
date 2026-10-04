@@ -285,7 +285,15 @@ namespace Mixtormat
 			// The surface owns its rectangle. Every blend above preserves the backdrop's alpha, so
 			// carrying it through would paint the base's translucency back over whatever the widget
 			// put behind -- reintroducing exactly the composite the recipe already performed.
-			Color.A = 1.0f;
+			//
+			// Except for a surface that says it is sitting on a backdrop the painter cannot see. A
+			// translucent plate over a rendered viewport has no such backdrop to composite against,
+			// so its alpha is the only record of how much of that viewport shows through, and forcing
+			// it opaque would turn the plate into the ground it is drawn on top of.
+			if (!Recipe.bTranslucent)
+			{
+				Color.A = 1.0f;
+			}
 			OutSamples.Colors.Add(Color);
 		}
 

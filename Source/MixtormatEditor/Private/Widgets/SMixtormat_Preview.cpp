@@ -46,7 +46,7 @@ namespace
 				? EMixtormatPreviewPlateState::Pressed
 				: bChecked.Get(false) ? EMixtormatPreviewPlateState::Checked
 				: IsHovered() ? EMixtormatPreviewPlateState::Hover : EMixtormatPreviewPlateState::Rest;
-			const FMixtormatSurfaceRecipe Recipe = MakePreviewPlateRecipe(FMixtormatThemeStore::GetTheme(), State);
+			const FMixtormatSurfaceRecipe Recipe = MakePreviewPlateRecipe(FMixtormatThemeStore::GetResolved(), State);
 			FMixtormatSurfaceDrawStyle DrawStyle;
 			DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
 			DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
@@ -62,20 +62,54 @@ namespace
 		TAttribute<bool> bChecked;
 	};
 
+	// The foreground a viewport-overlay control's label draws in.
+	//
+	// components.css states this three ways: a rail button's colour is `text` at
+	// `--overlay-icon-rest-opacity`, full `text` on hover, and `accent` when pressed. Resolving it
+	// here rather than leaving every label on FSlateColor::UseForeground() is what gives that token a
+	// production reader and what keeps hover/pressed response from depending on a legacy style brush.
+	FSlateColor GetPreviewOverlayLabelColor(const bool bHovered, const bool bPressed)
+	{
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		if (bPressed)
+		{
+			return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
+		}
+		return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+			.CopyWithNewOpacity(bHovered ? 1.0f : Resolved.Preview.IconRestOpacity));
+	}
+
+	// The glyph inside an overlay control: `.viewport-overlay .asset-icon` is Text at the PreviewToolbar
+	// role's rest opacity, lifts to full on hover, and takes the accent when its control is pressed.
+	// Reading the role's own opacities rather than a second authored copy is what stops --overlay-icon-
+	// opacity from existing twice under two names.
+	FSlateColor GetPreviewOverlayIconColor(const bool bHovered, const bool bPressed = false)
+	{
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		const Mixtormat::FMixtormatIconStyle& Icon = Resolved.Icons.Roles[
+			static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)];
+		if (bPressed)
+		{
+			return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
+		}
+		return FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+			.CopyWithNewOpacity(bHovered ? Icon.HoverOpacity : Icon.RestOpacity));
+	}
+
 	const FCheckBoxStyle& GetPreviewOverlayToggleStyle()
 	{
-		static FCheckBoxStyle Style = []()
-		{
-			FCheckBoxStyle Result = FCheckBoxStyle().SetCheckBoxType(ESlateCheckBoxType::ToggleButton);
-			Result.SetUncheckedImage(FSlateNoResource()).SetUncheckedHoveredImage(FSlateNoResource())
-				.SetUncheckedPressedImage(FSlateNoResource()).SetCheckedImage(FSlateNoResource())
-				.SetCheckedHoveredImage(FSlateNoResource()).SetCheckedPressedImage(FSlateNoResource())
-				.SetUndeterminedImage(FSlateNoResource()).SetUndeterminedHoveredImage(FSlateNoResource())
-				.SetUndeterminedPressedImage(FSlateNoResource()).SetBackgroundImage(FSlateNoResource())
-				.SetBackgroundHoveredImage(FSlateNoResource()).SetBackgroundPressedImage(FSlateNoResource())
-				.SetPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding));
-			return Result;
-		}();
+		// Rebuilt per call rather than held in a function-static: the padding comes from the resolved
+		// style, and a static captured it on first call only -- so a live-theme change to
+		// TogglePadding would silently not reach the widget.
+		static FCheckBoxStyle Style;
+		Style = FCheckBoxStyle().SetCheckBoxType(ESlateCheckBoxType::ToggleButton);
+		Style.SetUncheckedImage(FSlateNoResource()).SetUncheckedHoveredImage(FSlateNoResource())
+			.SetUncheckedPressedImage(FSlateNoResource()).SetCheckedImage(FSlateNoResource())
+			.SetCheckedHoveredImage(FSlateNoResource()).SetCheckedPressedImage(FSlateNoResource())
+			.SetUndeterminedImage(FSlateNoResource()).SetUndeterminedHoveredImage(FSlateNoResource())
+			.SetUndeterminedPressedImage(FSlateNoResource()).SetBackgroundImage(FSlateNoResource())
+			.SetBackgroundHoveredImage(FSlateNoResource()).SetBackgroundPressedImage(FSlateNoResource())
+			.SetPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding));
 		return Style;
 	}
 }
@@ -977,7 +1011,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					SNew(STextBlock)
 					.Text(Label)
 					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-					.ColorAndOpacity(FSlateColor::UseForeground())
+					.ColorAndOpacity_Lambda([this, bBefore]()
+					{
+						const bool bChecked = SoloLayerIndex == INDEX_NONE && bShowCompositionBefore == bBefore;
+						return GetPreviewOverlayLabelColor(false, bChecked);
+					})
 				]
 			]
 		];
@@ -1012,7 +1050,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(STextBlock)
 			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
 			.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-			.ColorAndOpacity(FSlateColor::UseForeground())
+			.ColorAndOpacity_Lambda([this]()
+			{
+				return GetPreviewOverlayLabelColor(false,
+					bBypassSelectedChild && GetSelectedChildIndex() != INDEX_NONE);
+			})
 		]
 		]
 	];
@@ -1050,7 +1092,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					[
 						SNew(SImage)
 						.Image(Icon)
-						.ColorAndOpacity(FSlateColor::UseForeground())
+						.ColorAndOpacity_Lambda([this, MeshType]()
+						{
+							// A selected rail button is aria-pressed in the prototype, so the accent reads
+							// as pressed rather than as a separate "selected" colour.
+							return GetPreviewOverlayIconColor(false, PreviewMesh == MeshType);
+						})
 					]
 				]
 			]
@@ -1094,7 +1141,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				SNew(STextBlock)
 				.Text(LOCTEXT("GlobalUVRotation90", "90°"))
 				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-				.ColorAndOpacity(FSlateColor::UseForeground())
+				.ColorAndOpacity_Lambda([this]()
+				{
+					return GetPreviewOverlayLabelColor(false, bGlobalUVRotation90);
+				})
 			]
 			]
 		]
@@ -1133,7 +1183,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					[
 						SNew(SImage)
 						.Image(Icon)
-						.ColorAndOpacity(FSlateColor::UseForeground())
+						.ColorAndOpacity_Lambda([this, Preset]()
+						{
+							return GetPreviewOverlayIconColor(false, StudioLighting == Preset);
+						})
 					]
 				]
 				]
@@ -1168,7 +1221,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				[
 					SNew(SImage)
 					.Image(MixtormatIcons::Refresh())
-					.ColorAndOpacity(FSlateColor::UseForeground())
+					.ColorAndOpacity_Lambda([this]()
+					{
+						return GetPreviewOverlayIconColor(false);
+					})
 				]
 			]
 			]
@@ -1511,7 +1567,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					[
 						SNew(STextBlock)
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-						.ColorAndOpacity(FSlateColor::UseForeground())
+						.ColorAndOpacity_Lambda([this]()
+						{
+							return GetPreviewOverlayLabelColor(false, false);
+						})
 						.Text(LOCTEXT("FinalCompositeButton", "Final"))
 					]
 				]

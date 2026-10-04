@@ -89,11 +89,20 @@ namespace Mixtormat
 enum class EMixtormatGalleryTileState : uint8 { Rest, Hover, Selected, SelectedHover };
 FMixtormatSurfaceRecipe MakeGalleryTileRecipe(
 		const FMixtormatResolvedStyle& Style, EMixtormatGalleryTileState State);
-	FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe(const FMixtormatResolvedStyle& Style);
+	// The caption strip: a flat Shade ground behind the tile's name. Structurally separate from the
+		// tile surface because it is an overlay on the picture rather than the picture's own ground, so
+		// it gets its own small recipe rather than a variant of the tile's.
+		FMixtormatSurfaceRecipe MakeGalleryCaptionRecipe();
 
 enum class EMixtormatPreviewPlateState : uint8 { Rest, Hover, Pressed, Checked };
-FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
-	const FMixtormatTheme& Theme, EMixtormatPreviewPlateState State = EMixtormatPreviewPlateState::Rest);
+// The translucent plate behind one viewport overlay control. Built from the resolved preview
+	// style because its whole point is carrying the authored plate alpha to the screen: the base is
+	// the plate colour at `--overlay-plate-opacity`, not an opaque ground with a plate laid over it.
+	//
+	// `--overlay-ground-opacity` belongs to the overlay cluster's own gradient backdrop, which this
+	// recipe deliberately does not reproduce. Combining the two here is what made the plate opaque.
+	FMixtormatSurfaceRecipe MakePreviewPlateRecipe(
+		const FMixtormatResolvedStyle& Style, EMixtormatPreviewPlateState State = EMixtormatPreviewPlateState::Rest);
 
 	// Ground, a black Multiply shade falling top to bottom, and a hairline outline.
 	//

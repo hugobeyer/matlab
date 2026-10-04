@@ -220,6 +220,10 @@ namespace Mixtormat
 		TArray<FMixtormatPaintLayer, TInlineAllocator<4>> Layers;
 		TArray<FMixtormatBorderLayer, TInlineAllocator<2>> Borders;
 		float Radius = 0.0f;
+		// Set by a surface that deliberately sits ON something the painter cannot see -- the preview
+		// plate over a rendered viewport -- so its authored alpha has to survive to the draw call.
+		// Every other surface owns its rectangle and is composited opaque.
+		bool bTranslucent = false;
 	};
 
 	// ---- State ------------------------------------------------------------------------------
@@ -537,10 +541,9 @@ namespace Mixtormat
 	{
 		FLinearColor PlateSource = FLinearColor::White;
 		float PlateOpacity = 0.85f;
-		float OverlayGroundOpacity = 0.62f;
-		float IconOpacity = 0.6f;
+		// Rail button label at rest. The glyph's own rest opacity is the PreviewToolbar icon role's,
+		// which is the same authored number; it is not repeated here.
 		float IconRestOpacity = 0.45f;
-		float GripOpacity = 0.45f;
 		float HoverAccent = 0.18f;
 		float PressAccent = 0.35f;
 	};
@@ -644,9 +647,8 @@ namespace Mixtormat
 
 	struct FMixtormatPreviewMetrics
 	{
-		float ToolbarHeight = 0.0f;
-		float RailIconSize = 24.0f;
-		float ViewportPadding = 0.0f;
+		// Rail buttons are sized by the PreviewToolbar icon role's ButtonSize, so there is no
+		// separate rail size to author: a second copy would be a third number for one plate.
 		float OverlayInset = 8.0f;
 		float OverlayClusterInset = 2.0f;
 		float ToolbarGap = 5.0f;
@@ -654,12 +656,20 @@ namespace Mixtormat
 		float ComparisonToggleGap = 4.0f;
 		float ResolutionControlWidth = 92.0f;
 		float TogglePadding = 2.0f;
-		float SplitFraction = 0.0f;
 	};
 
 	struct FMixtormatGalleryMetrics
 	{
+		// The gallery's INITIAL tile size, read once in SMixtormat::Construct. It is a seed, not a
+		// live style value: the running zoom lives on the widget and steps 72 -> 144 by 12, and
+		// re-reading this every frame would silently discard the user's zoom.
+		//
+		// Deliberately NOT exposed in UI STYLE. Editing it live would do nothing visible, because the
+		// already-running zoom would not follow it -- the worst kind of control. Expose it only if the
+		// contract becomes "editing this resets the current gallery zoom", which is a behaviour change
+		// and not a styling one.
 		float TileSize = 80.0f;
+
 		float TileGap = 5.0f;
 		float TilePadding = 5.0f;
 		float CaptionHeight = 12.0f;
@@ -677,21 +687,16 @@ namespace Mixtormat
 
 	struct FMixtormatShellMetrics
 	{
-		// Seed values only. The shell stays on a real SSplitter, so these initialise the ratio and
-		// do not constrain the user afterwards.
-		float LeftWidthSeed = 423.0f;
-		float InspectorWidthSeed = 520.0f;
-		float GalleryHeightSeed = 256.0f;
-
+		// Layout only. The shell's column ratios are runtime state on SMixtormat (ShellLeftFraction
+		// and friends), not theme values: a theme must not be able to resize a panel the user has
+		// already arranged, so there is deliberately no authored width or height seed here.
 		float TopBarHeight = 38.0f;
 		float StatusBarHeight = 24.0f;
-		float Gap = 1.0f;
 		float PanelPadding = 7.0f;
 
 		// Visual treatment of a splitter, which *is* styleable even though its behaviour is not.
 		float SplitterVisualWidth = 1.0f;
 		float SplitterHitWidth = 6.0f;
-
 	};
 
 	// ---- Icons ------------------------------------------------------------------------------

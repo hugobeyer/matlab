@@ -312,13 +312,9 @@ namespace Mixtormat
 		// ---- Preview / Gallery / Shell ------------------------------------------------
 		T.Preview.PlateSource = SRGB(21, 22, 24);      // --overlay-plate-rgb
 		T.Preview.PlateOpacity = 0.85f;               // --overlay-plate-opacity
-		T.Preview.OverlayGroundOpacity = 0.62f;        // --overlay-ground-opacity
-		T.Preview.IconOpacity = 0.6f;                 // --overlay-icon-opacity
 		T.Preview.IconRestOpacity = 0.45f;            // --overlay-icon-rest-opacity
-		T.Preview.GripOpacity = 0.45f;                // --overlay-grip-opacity
 		T.Preview.HoverAccent = 0.18f;                // --overlay-hover-accent
 		T.Preview.PressAccent = 0.35f;                // --overlay-press-accent
-		T.PreviewLayout.RailIconSize = 24.0f;        // --rail-icon-size
 		T.PreviewLayout.OverlayInset = 8.0f;
 		T.PreviewLayout.OverlayClusterInset = 2.0f;
 		T.PreviewLayout.ToolbarGap = 5.0f;
@@ -330,12 +326,8 @@ namespace Mixtormat
 		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
 		T.GalleryLayout.TileGap = 5.0f;               // --gallery-gap
 
-		T.Shell.LeftWidthSeed = 423.0f;               // --left-width
-		T.Shell.InspectorWidthSeed = 520.0f;          // --inspector-width
-		T.Shell.GalleryHeightSeed = 256.0f;           // --gallery-height
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height
 		T.Shell.StatusBarHeight = 24.0f;              // --status-height
-		T.Shell.Gap = 1.0f;                           // --shell-gap
 		T.Shell.PanelPadding = 7.0f;                  // --panel-padding
 		T.Shell.SplitterVisualWidth = 1.0f;           // --splitter-size
 		T.Shell.SplitterHitWidth = 6.0f;              // --splitter-hit-size
@@ -519,10 +511,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Gallery.SelectedEdgeOpacity"), InOutTheme.Gallery.SelectedEdgeOpacity);
 
 		Clamp01(TEXT("Preview.PlateOpacity"), InOutTheme.Preview.PlateOpacity);
-		Clamp01(TEXT("Preview.OverlayGroundOpacity"), InOutTheme.Preview.OverlayGroundOpacity);
-		Clamp01(TEXT("Preview.IconOpacity"), InOutTheme.Preview.IconOpacity);
 		Clamp01(TEXT("Preview.IconRestOpacity"), InOutTheme.Preview.IconRestOpacity);
-		Clamp01(TEXT("Preview.GripOpacity"), InOutTheme.Preview.GripOpacity);
 		Clamp01(TEXT("Preview.HoverAccent"), InOutTheme.Preview.HoverAccent);
 		Clamp01(TEXT("Preview.PressAccent"), InOutTheme.Preview.PressAccent);
 		Clamp01(TEXT("Shell.SplitterOpacity"), InOutTheme.ShellTheme.SplitterOpacity);
@@ -577,7 +566,6 @@ namespace Mixtormat
 		ClampMin(TEXT("GalleryLayout.HeaderGap"), InOutTheme.GalleryLayout.HeaderGap, 0.0f);
 		ClampMin(TEXT("Shell.TopBarHeight"), InOutTheme.Shell.TopBarHeight, 1.0f);
 		ClampMin(TEXT("Shell.StatusBarHeight"), InOutTheme.Shell.StatusBarHeight, 1.0f);
-		ClampMin(TEXT("Shell.Gap"), InOutTheme.Shell.Gap, 0.0f);
 		ClampMin(TEXT("Shell.PanelPadding"), InOutTheme.Shell.PanelPadding, 0.0f);
 		ClampMin(TEXT("Shell.SplitterVisualWidth"), InOutTheme.Shell.SplitterVisualWidth, 0.0f);
 		ClampMin(TEXT("Shell.SplitterHitWidth"), InOutTheme.Shell.SplitterHitWidth, 0.0f);
