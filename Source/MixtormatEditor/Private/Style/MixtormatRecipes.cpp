@@ -2,6 +2,8 @@
 
 #include "Style/MixtormatRecipes.h"
 
+#include "Style/MixtormatResolvedStyle.h"
+
 namespace Mixtormat
 {
 	namespace
@@ -89,6 +91,27 @@ namespace Mixtormat
 		return Ramp;
 	}
 
+	FMixtormatRamp MakeFalloffRamp(const EMixtormatAxis Axis, const float Start, const float End,
+		const float Power, const int32 Samples)
+	{
+		FMixtormatFalloff Falloff;
+		Falloff.Start = Start;
+		Falloff.End = End;
+		Falloff.Power = Power;
+
+		FMixtormatRamp Ramp;
+		Ramp.Axis = Axis;
+
+		const int32 Count = FMath::Max(Samples, 2);
+		Ramp.Points.Reserve(Count);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const float T = static_cast<float>(Index) / static_cast<float>(Count - 1);
+			Ramp.Points.Add({ T, EvaluateFalloff(Falloff, T) });
+		}
+		return Ramp;
+	}
+
 	FMixtormatSurfaceRecipe MakeWellRecipe(const FMixtormatTheme& Theme, const EMixtormatWellState State)
 	{
 		FMixtormatSurfaceRecipe Recipe;
@@ -138,6 +161,14 @@ namespace Mixtormat
 			Body.Saturation = Theme.Fill.ActiveSaturation;
 			break;
 
+		case EMixtormatFillState::Disabled:
+			// One weight at both ends, so a disabled fill is flat rather than merely paler -- it has
+			// to read as unavailable, not as a lighter value of the same thing.
+			Top = Theme.Fill.DisabledOpacity;
+			Bottom = Theme.Fill.DisabledOpacity;
+			Body.Saturation = Theme.Fill.DisabledSaturation;
+			break;
+
 		case EMixtormatFillState::Rest:
 		default:
 			Body.Saturation = Theme.Fill.Saturation;
@@ -147,7 +178,10 @@ namespace Mixtormat
 		FMixtormatPaintLayer BodyLayer;
 		BodyLayer.Source = Body;
 		BodyLayer.Blend = Theme.Fill.BodyBlend;
-		BodyLayer.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Vertical, Top, Bottom, 6);
+		// Through the authored power curve, not interpolated straight between its endpoints. The
+		// exponent is 0.05, so the body holds near its top value and drops late.
+		BodyLayer.OpacityRamp = MakeFalloffRamp(
+			EMixtormatAxis::Vertical, Top, Bottom, Theme.Fill.FalloffPower, 6);
 		Recipe.Layers.Add(BodyLayer);
 
 		// The shade pass is a separate layer on the other axis with a midpoint, which is what makes
@@ -167,13 +201,13 @@ namespace Mixtormat
 		return Recipe;
 	}
 
-	FMixtormatSurfaceRecipe MakeCheckedToggleRecipe(const FMixtormatTheme& Theme, const EMixtormatFillState FillState)
+	FMixtormatSurfaceRecipe MakeCheckedToggleRecipe(const FMixtormatTheme& Theme, const EMixtormatWellState WellState,
+		const EMixtormatFillState FillState)
 	{
-		FMixtormatSurfaceRecipe Recipe = MakeWellRecipe(Theme, EMixtormatWellState::Rest);
+		FMixtormatSurfaceRecipe Recipe = MakeWellRecipe(Theme, WellState);
 
-		// The toggle's fill is inset inside the well, so its rectangle is smaller. The layers are
-		// still built from the fill recipe: what changes is the caller's geometry, not the recipe,
-		// which is why there is no toggle-specific fill here.
+		// The fill layer, built from the same numbers as the slider's. There is no toggle-specific
+		// fill: a toggle's fill is a slider fill, which is the point of §19.
 		FMixtormatPaintLayer Body;
 		Body.Source = MakeColorRef(EMixtormatColorRole::Accent);
 		Body.Blend = Theme.Fill.BodyBlend;
@@ -194,15 +228,24 @@ namespace Mixtormat
 			Body.Source.Saturation = Theme.Fill.ActiveSaturation;
 			break;
 
+		case EMixtormatFillState::Disabled:
+			Top = Theme.Fill.DisabledOpacity;
+			Bottom = Theme.Fill.DisabledOpacity;
+			Body.Source.Saturation = Theme.Fill.DisabledSaturation;
+			break;
+
 		case EMixtormatFillState::Rest:
 		default:
 			Body.Source.Saturation = Theme.Fill.Saturation;
 			break;
 		}
 
-		Body.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Vertical, Top, Bottom, 6);
+		Body.OpacityRamp = MakeFalloffRamp(EMixtormatAxis::Vertical, Top, Bottom, Theme.Fill.FalloffPower, 6);
 		Recipe.Layers.Add(Body);
 
+		// No shade pass. The prototype's toggle fill carries only the body gradient, and adding the
+		// fill's horizontal Multiply shade here would darken a 16px control across its short axis --
+		// a gradient the design never authored for this surface.
 		return Recipe;
 	}
 

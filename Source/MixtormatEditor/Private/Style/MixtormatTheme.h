@@ -289,6 +289,12 @@ namespace Mixtormat
 		float HoverSaturation = 1.4f;
 		float ActiveSaturation = 1.0f;
 
+		// A disabled fill is flat at one weight rather than merely paler, so it reads as unavailable
+		// instead of as a lighter value of the same thing. Applied to both ends, which is why it is
+		// one number rather than a pair.
+		float DisabledOpacity = 0.12f;
+		float DisabledSaturation = 0.5f;
+
 		float ShadeStart = 0.25f;
 		float ShadeMid = 0.0f;
 		float ShadeEnd = 0.02f;

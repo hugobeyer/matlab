@@ -28,6 +28,15 @@ namespace Mixtormat
 	// is a curve, not a falloff, and routing it through a two-point form would move the midpoint.
 	FMixtormatRamp MakeMidpointRamp(EMixtormatAxis Axis, float Start, float Mid, float MidPosition, float End);
 
+	// A ramp sampled through the shared power curve rather than interpolated straight between its
+	// endpoints.
+	//
+	// This exists because the fill's body is authored with FillFalloffPower 0.05 -- it holds near its
+	// top value and drops late, which is what reads as a lit surface. A linear ramp through the same
+	// two endpoints is a different gradient that happens to share its endpoints, and it is exactly
+	// the kind of substitution that survives every structural check.
+	FMixtormatRamp MakeFalloffRamp(EMixtormatAxis Axis, float Start, float End, float Power, int32 Samples);
+
 	enum class EMixtormatWellState : uint8
 	{
 		Rest,
@@ -49,6 +58,7 @@ namespace Mixtormat
 		Rest,
 		Hover,
 		Active,
+		Disabled,
 	};
 
 	// The slider fill: the well's own ground and recess, then an Additive accent body, then a black
@@ -62,9 +72,19 @@ namespace Mixtormat
 	// A toggle is a well, plus the fill when checked (§19). It owns no surface of its own -- this is
 	// the first proof that recipes compose rather than accumulate.
 	//
-	// Checked + hovered is reachable by painting the well in Hover and this on top, rather than by
-	// a fourth combination here.
-	FMixtormatSurfaceRecipe MakeCheckedToggleRecipe(const FMixtormatTheme& Theme, EMixtormatFillState FillState = EMixtormatFillState::Rest);
+	// The fill is painted over the SAME rect as the well, not inset inside it: SMixtormatSurfaceBox's
+	// padding insets the content, not the surface. That is what keeps the two recesses aligned --
+	// the well's ramp is authored over the well's height, and a fill composited into an inset rect
+	// would compress the same ramp into a shorter box and leave a visible step at its edges.
+	//
+	// The well state is a parameter because the fill covers the well: if only the well lifted on
+	// hover, the area under the fill would stay dark and the control would read as two surfaces.
+	//
+	// Checked + hovered is the composition of the two parameters, not a fourth case.
+	FMixtormatSurfaceRecipe MakeCheckedToggleRecipe(
+		const FMixtormatTheme& Theme,
+		EMixtormatWellState WellState = EMixtormatWellState::Rest,
+		EMixtormatFillState FillState = EMixtormatFillState::Rest);
 
 	enum class EMixtormatButtonState : uint8
 	{

@@ -8,8 +8,10 @@
 #include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatPalette.h"
+#include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
-#include "UI/Primitives/MixtormatGradientPainter.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "UI/Primitives/MixtormatWell.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Input/SEditableText.h"
@@ -425,21 +427,14 @@ int32 SMixtormatSlider::OnPaint(
 	// as the same control in a different state.
 	const bool bHovered = IsHovered();
 	const bool bScrubbing = bMovedPastThreshold;
-	const float FillSaturation = !bEnabled
-		? MixtormatTokens::FillDisabledSaturation
-		: bScrubbing ? MixtormatTokens::FillActiveSaturation
-		: bHighlight ? MixtormatTokens::FillHoverSaturation
-		: MixtormatTokens::FillSaturation;
-	const float FillTopAlpha = !bEnabled
-		? MixtormatTokens::FillDisabledOpacity
-		: bScrubbing ? MixtormatTokens::FillBodyActiveTop
-		: bHighlight ? MixtormatTokens::FillBodyHoverTop
-		: MixtormatTokens::FillBodyTop;
-	const float FillBottomAlpha = !bEnabled
-		? MixtormatTokens::FillDisabledOpacity
-		: bScrubbing ? MixtormatTokens::FillBodyActiveBottom
-		: bHighlight ? MixtormatTokens::FillBodyHoverBottom
-		: MixtormatTokens::FillBodyBottom;
+
+	// The fill's authored state, resolved from the widget's own flags. The recipe carries the
+	// numbers; this only decides which set.
+	const Mixtormat::EMixtormatFillState FillState =
+		!bEnabled ? Mixtormat::EMixtormatFillState::Disabled
+		: bScrubbing ? Mixtormat::EMixtormatFillState::Active
+		: bHighlight ? Mixtormat::EMixtormatFillState::Hover
+		: Mixtormat::EMixtormatFillState::Rest;
 
 	// The well. Ground, recess and border are the shared painter's job now, so the trough, the
 	// chip and the toggle cannot drift apart again.
@@ -479,49 +474,29 @@ int32 SMixtormatSlider::OnPaint(
 	const float FillRight = FMath::Max(OriginFraction, ValueFraction) * Size.X;
 	if (FillRight - FillLeft > MixtormatTokens::MinPaintedFill)
 	{
-		// Two stacked gradients, as the design specifies the fill: a vertical ramp for the body,
-		// and a horizontal black shade over it that falls away fast and then holds.
+		// Two stacked passes, as the design specifies the fill: a vertical ramp for the body added
+		// over the accent, and a horizontal black shade over that with a movable midpoint.
 		//
-		// The body is the accent added at a falling opacity, sampled through the shared power curve
-		// rather than interpolated straight between its endpoints. FillFalloffPower is 0.05, so the
-		// ramp holds near its top value and drops late -- a straight lerp here would read as an even
-		// fade and lose the "lit surface" quality the design is after.
-		const FVector2f FillSize(FillRight - FillLeft, LocalSize.Y);
 		// Drawn at the fill's own size rather than full-size behind a clip. The clipped version
 		// collapsed to a couple of pixels at the bottom of the row -- correct width, no height --
-		// and this is the same explicitly-sized geometry the tick and the stripe below already
-		// use, which does render.
+		// and this is the same explicitly-sized geometry the tick and the stripe below already use,
+		// which does render.
+		const FVector2f FillSize(FillRight - FillLeft, LocalSize.Y);
 		const FPaintGeometry FillGeometry = AllottedGeometry.ToPaintGeometry(
 			FillSize, FSlateLayoutTransform(FVector2f(FillLeft, 0.0f)));
 
-		// Saturation is applied to these stops alone. The accent underneath is untouched, which
-		// is what lets the same accent stay unsaturated everywhere else it is used.
-		// Sampled rather than two endpoints, so the authored exponent reaches Slate instead of
-		// being flattened into a linear vertex interpolation.
-		TArray<MixtormatGradient::FStop, TInlineAllocator<16>> Body;
-		MixtormatGradient::AppendFalloffStops(
-			Body,
-			MixtormatCompositing::Saturate(MixtormatPalette::Accent(), FillSaturation),
-			FillTopAlpha,
-			FillBottomAlpha,
-			MixtormatTokens::FillFalloffPower,
-			0.0f, 1.0f,
-			MixtormatTokens::GradientSamplesPerSpan);
-		MixtormatGradient::Paint(
-			OutDrawElements, LayerId + 1, FillGeometry, FillSize,
-			Orient_Vertical, Body, FVector4f(0.0f));
+		const Mixtormat::FMixtormatSurfaceRecipe FillRecipe =
+			Mixtormat::MakeFillRecipe(FMixtormatThemeStore::GetTheme(), FillState);
 
-		// The shade pass: black at alpha across the fill, with its own authored midpoint. Same
-		// multiply semantics as the well's recess and the gradient box's cross-axis pass -- Slate has
-		// no multiply blend, so black-at-alpha is how it is expressed everywhere here.
-		const MixtormatGradient::FStop Shade[] = {
-			{ 0.0f, MixtormatPalette::MultiplyStart() },
-			{ MixtormatTokens::FillShadeMidPosition, MixtormatPalette::MultiplyMid() },
-			{ 1.0f, MixtormatPalette::MultiplyEnd() },
-		};
-		MixtormatGradient::Paint(
-			OutDrawElements, LayerId + 2, FillGeometry, FillSize,
-			Orient_Horizontal, Shade, FVector4f(0.0f));
+		Mixtormat::FMixtormatSurfaceSamples FillSamples;
+		Mixtormat::CompositeSurface(
+			FillRecipe,
+			FMixtormatThemeStore::GetResolved().Palette,
+			Mixtormat::FMixtormatStateModifier(),
+			FillSamples);
+
+		Mixtormat::FMixtormatSurfacePainter::PaintBody(
+			OutDrawElements, LayerId + 1, FillGeometry, FillRecipe, FillSamples);
 	}
 
 	// The well's border goes on last, over the fill, so the rim stays continuous across it.

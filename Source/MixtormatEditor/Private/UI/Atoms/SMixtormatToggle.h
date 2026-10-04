@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Framework/SlateDelegates.h"
+#include "Style/MixtormatTheme.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -30,8 +31,18 @@ public:
 	void Construct(const FArguments& InArgs);
 
 private:
-	FLinearColor GetFillTop() const;
-	FLinearColor GetFillBottom() const;
+	// The fill, as a recipe rather than as two colours.
+	//
+	// The mixed (Undetermined) state keeps the resting fill: that is a real visual for "this row
+	// disagrees with itself", so it is preserved rather than folded into the on state. Unchecked
+	// yields a recipe with the fill layer disabled, which is the same result as a zero-alpha fill
+	// and one fewer element.
+	//
+	// Rebuilt per paint rather than cached in a brush, because a brush name cannot be interpolated
+	// and a later state animation needs a rest value and a state value to lerp between.
+	//
+	// Qualified: this widget is at global scope and the recipe lives in namespace Mixtormat.
+	Mixtormat::FMixtormatSurfaceRecipe GetFillRecipe() const;
 
 	TAttribute<ECheckBoxState> IsChecked;
 };

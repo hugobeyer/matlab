@@ -268,7 +268,17 @@ namespace Mixtormat
 		const FMixtormatSurfaceRecipe& Recipe,
 		const FMixtormatSurfaceSamples& BodySamples)
 	{
-		const FVector2f Size = Geometry.GetLocalSize();
+		return PaintBody(Elements, LayerId, Geometry.ToPaintGeometry(), Recipe, BodySamples);
+	}
+
+	int32 FMixtormatSurfacePainter::PaintBody(
+		FSlateWindowElementList& Elements,
+		const int32 LayerId,
+		const FPaintGeometry& PaintGeometry,
+		const FMixtormatSurfaceRecipe& Recipe,
+		const FMixtormatSurfaceSamples& BodySamples)
+	{
+		const FVector2f Size = PaintGeometry.GetLocalSize();
 		if (Size.X <= 0.0f || Size.Y <= 0.0f || BodySamples.Colors.Num() == 0)
 		{
 			return LayerId;
@@ -288,7 +298,7 @@ namespace Mixtormat
 		if (Radius <= 0.0f && BodySamples.Colors.Num() == 1)
 		{
 			FSlateDrawElement::MakeBox(
-				Elements, LayerId, Geometry.ToPaintGeometry(), White,
+				Elements, LayerId, PaintGeometry, White,
 				ESlateDrawEffect::None, BodySamples.Colors[0]);
 			return LayerId;
 		}
@@ -312,7 +322,7 @@ namespace Mixtormat
 		}
 
 		MixtormatGradient::Paint(
-			Elements, LayerId, Geometry.ToPaintGeometry(), Size,
+			Elements, LayerId, PaintGeometry, Size,
 			SlateOrientation(BodySamples.Axis), Stops, Radii);
 		return LayerId;
 	}

@@ -133,6 +133,9 @@ namespace Mixtormat
 		T.Fill.Saturation = 0.7f;
 		T.Fill.HoverSaturation = 1.4f;
 		T.Fill.ActiveSaturation = 1.0f;
+		// --fill-disabled-opacity .12, --fill-disabled-saturation .5
+		T.Fill.DisabledOpacity = 0.12f;
+		T.Fill.DisabledSaturation = 0.5f;
 		T.Fill.ShadeStart = 0.25f;
 		T.Fill.ShadeMid = 0.0f;
 		T.Fill.ShadeEnd = 0.02f;
@@ -389,6 +392,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Fill.ShadeStart"), InOutTheme.Fill.ShadeStart);
 		Clamp01(TEXT("Fill.ShadeMid"), InOutTheme.Fill.ShadeMid);
 		Clamp01(TEXT("Fill.ShadeEnd"), InOutTheme.Fill.ShadeEnd);
+		Clamp01(TEXT("Fill.DisabledOpacity"), InOutTheme.Fill.DisabledOpacity);
 
 		// Saturations are multipliers and may legitimately exceed 1 -- the prototype saturates
 		// the well border at 2 and card bodies at 2.2 -- so only a negative value is wrong.

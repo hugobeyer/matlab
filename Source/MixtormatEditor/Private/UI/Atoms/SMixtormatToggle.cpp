@@ -3,9 +3,10 @@
 #include "UI/Atoms/SMixtormatToggle.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
+#include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
-#include "UI/Primitives/SMixtormatGradientBox.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -43,13 +44,14 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 				.DisabledShadeTop(MixtormatTokens::ToggleDisabledShadeTop)
 				.DisabledShadeBottom(MixtormatTokens::ToggleDisabledShadeBottom)
 				[
-					SNew(SMixtormatGradientBox)
-					// The fill is the accent at authored opacity, sampled through the same falloff
-					// and saturation the slider uses -- one vocabulary for both.
-					.StartColor(this, &SMixtormatToggle::GetFillTop)
-					.EndColor(this, &SMixtormatToggle::GetFillBottom)
-					.Orientation(Orient_Vertical)
-					.CornerRadius(0.0f)
+					// The fill is the same recipe the slider paints, at the toggle's inset size --
+					// one vocabulary for both. Painting a recipe rather than two colours is what
+					// lets it be Additive over a Multiply recess rather than a translucent wash.
+					SNew(SMixtormatSurfaceBox)
+					.Recipe(this, &SMixtormatToggle::GetFillRecipe)
+					// The well's rim must stay continuous across the fill, so this surface's own
+					// borders are not drawn.
+					.PaintBorders(false)
 					.Padding(FMargin(MixtormatTokens::ToggleFillInset))
 					[
 						SNew(SBox)
@@ -65,33 +67,34 @@ void SMixtormatToggle::Construct(const FArguments& InArgs)
 	];
 }
 
-FLinearColor SMixtormatToggle::GetFillTop() const
-{
-	// The mixed (Undetermined) state keeps the resting fill. That is a real visual for "this row
-	// disagrees with itself", so it is preserved rather than folded into the on state.
-	const ECheckBoxState State = IsChecked.Get(ECheckBoxState::Unchecked);
-	if (State == ECheckBoxState::Undetermined)
+// Hover lifts the fill as well as the well behind it. Both read from the same pointer state, so
+		// a toggle that brightened only its rim would look like a different control. The fill covers
+		// the well, so it has to carry the well's state as well as its own.
+	Mixtormat::FMixtormatSurfaceRecipe SMixtormatToggle::GetFillRecipe() const
 	{
-		return MixtormatPalette::FillBodyTop();
-	}
-	if (State == ECheckBoxState::Checked)
-	{
-		return IsHovered() ? MixtormatPalette::FillBodyHoverTop() : MixtormatPalette::FillBodyTop();
-	}
-	// Unchecked: no fill at all, rather than a fill at zero alpha. Same result, one less element.
-	return FLinearColor::Transparent;
-}
+		const ECheckBoxState State = IsChecked.Get(ECheckBoxState::Unchecked);
 
-FLinearColor SMixtormatToggle::GetFillBottom() const
-{
-	const ECheckBoxState State = IsChecked.Get(ECheckBoxState::Unchecked);
-	if (State == ECheckBoxState::Undetermined)
+	// Unchecked: the fill layer is switched off rather than the surface dropped, so the padding
+	// and the content slot stay exactly as they are and only the paint goes away.
+	if (State != ECheckBoxState::Checked && State != ECheckBoxState::Undetermined)
 	{
-		return MixtormatPalette::FillBodyBottom();
+		Mixtormat::FMixtormatSurfaceRecipe Empty;
+		Empty.Base = Mixtormat::MakeColorRef(Mixtormat::EMixtormatColorRole::Ground);
+		// AddDefaulted then Last, not AddDefaulted().bEnabled: AddDefaulted returns the new
+				// element's index, not a reference to it.
+				Empty.Layers.AddDefaulted();
+				Empty.Layers.Last().bEnabled = false;
+		return Empty;
 	}
-	if (State == ECheckBoxState::Checked)
-	{
-		return IsHovered() ? MixtormatPalette::FillBodyHoverBottom() : MixtormatPalette::FillBodyBottom();
-	}
-	return FLinearColor::Transparent;
+
+	const Mixtormat::EMixtormatWellState WellState =
+		IsHovered() ? Mixtormat::EMixtormatWellState::Hover : Mixtormat::EMixtormatWellState::Rest;
+
+	const Mixtormat::EMixtormatFillState FillState =
+		!IsEnabled() ? Mixtormat::EMixtormatFillState::Disabled
+		: IsHovered() ? Mixtormat::EMixtormatFillState::Hover
+		: Mixtormat::EMixtormatFillState::Rest;
+
+	return Mixtormat::MakeCheckedToggleRecipe(
+		FMixtormatThemeStore::GetTheme(), WellState, FillState);
 }

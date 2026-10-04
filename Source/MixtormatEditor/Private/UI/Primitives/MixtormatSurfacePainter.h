@@ -142,9 +142,27 @@ namespace Mixtormat
 			const FMixtormatSurfaceRecipe& Recipe,
 			const FMixtormatSurfaceSamples& BodySamples);
 
+		// The same, for a sub-rect of a widget rather than the whole of it.
+		//
+		// This is not a convenience: a slider's fill and a toggle's checked inset are both the same
+		// recipe drawn into a smaller box, and FGeometry cannot express an offset at all. An earlier
+		// version clipped a full-size paint instead, which collapsed to the right width and no
+		// height -- so the primitive the painter takes is the one Slate's draw calls actually
+		// consume, and the FGeometry overload forwards to it.
+		static int32 PaintBody(
+			FSlateWindowElementList& Elements,
+			int32 LayerId,
+			const FPaintGeometry& PaintGeometry,
+			const FMixtormatSurfaceRecipe& Recipe,
+			const FMixtormatSurfaceSamples& BodySamples);
+
 		// Borders only, on their own layer. A blended border has to composite against the body it
 		// was drawn over, so this takes the body's samples rather than re-deriving a colour that
 		// would not match what is already on screen.
+		//
+		// FGeometry, not FPaintGeometry: each edge is an offset sub-box, and only FGeometry can
+		// produce one. A surface whose borders live inside a sub-rect draws that sub-rect's own
+		// FGeometry rather than asking for an offset form here.
 		static int32 PaintBorders(
 			FSlateWindowElementList& Elements,
 			int32 LayerId,
