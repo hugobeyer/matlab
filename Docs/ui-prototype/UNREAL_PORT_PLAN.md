@@ -33,15 +33,21 @@ Gaps confirmed during the audit:
   (`MixtormatGradientPainter.cpp:88-95`); `AxisPoint` picks one axis
   (`:17-20`). The vignette, the radial falloff and any conic effect have no Slate
   equivalent yet.
-- Saturation is not modelled. Every `*-saturation` token in `tokens.css` needs an
-  explicit RGB transform in the palette or painter.
-- Soft-light and plus-lighter blend modes do not exist in Slate. Plus-lighter is
-  already resolved by adding source colour at alpha in two places —
-  `GroupCardBackground` (`MixtormatPalette.h:47-50`) and the rail-button plate
-  (`MixtormatStyle.cpp:311-314`) — so any new additive layer follows that pattern rather
-  than a blend-mode enum. Soft-light has **no** such precedent: the only two uses
-  (`--foldout-accent-blend-mode`, `--layer-group-blend-mode`) become an explicit
-  darkened source, not an add.
+- Saturation is not modelled, and it does **not** belong at palette read time. One
+  source colour is rendered at several different saturations — `--accent-rgb` is the fill
+  at `fill-saturation: 0.7`, the group button at `group-button-gradient-saturation: 1.5`,
+  and the active glow at `layer-active-glow-saturation: 1.5` — so a saturate applied
+  inside `MixtormatPalette::Accent()` would be wrong for at least two of the three.
+  Saturation is a property of the individual paint layer or gradient stop.
+- Soft-light and plus-lighter blend modes do not exist in Slate. Plus-lighter already has
+  two working precedents — `GroupCardBackground` (`MixtormatPalette.h:47-50`) and the
+  rail-button plate (`MixtormatStyle.cpp:311-314`) both add source at alpha — and
+  multiply already has one, the second-axis black-at-alpha pass in
+  `SMixtormatGradientBox` (`MixtormatGradientBox.h:49-52`). Soft-light has neither: it is
+  a backdrop-relative operation, not an add, so both users
+  (`--foldout-accent-blend-mode`, `--layer-group-blend-mode`, applied at
+  `components.css:177` and `:90`) need an explicit compositing helper rather than a
+  recolour.
 - No token exists for the shared button style, the collapse-icon states, the layer
   active hairline/glow, the vignettes, or the card gradient reach.
 - The UI Style panel has no tabs and no per-section grouping; it is a filtered list.
@@ -51,8 +57,8 @@ Gaps confirmed during the audit:
   rounds it by the global `CornerRadius`. The prototype's overlays carry no plate, no
   title and no drag (`README.md:84`), and the prototype's radius is zero everywhere but
   cards. Removing a plate is a layout change, not a restyle.
-- Overlay cluster width is derived, not authored: `InspectorWidth * 0.5f`
-  (`Mixtormat_Preview.cpp:1397`, `:1489`, `:1512`).
+- **Overlay cluster width is derived, not authored:** `InspectorWidth * 0.5f` on **three**
+  clusters (`Mixtormat_Preview.cpp:1397`, `:1489`, `:1512`).
 - `falloff.js` samples 6 stops (`falloff.js:8`); `GradientSamplesPerSpan` is 12
   (`MixtormatDesignTokens.h:66`). The port needs the curve, not the stop count.
 - `--well-saturation` / `--well-hover-saturation` are `backdrop-filter: saturate()`
@@ -85,20 +91,23 @@ carried over as "close enough". This is the checklist.
 
 | Prototype token group | Unreal destination |
 | --- | --- |
-| `row-height`, `row-gap`, `paired-gap`, `dropdown-label-gap`, `dragger-text-inset`, `dropdown-label-ratio` | existing `RowHeight`, `RowGap`, `RowLabelGap`, `DraggerTextInset`, `DropdownLabelRatio` |
-| `toggle-size`, `toggle-fill-inset`, `icon-size`, `icon-hit-padding`, `button-height` | existing `ToggleSize`, `ToggleFillInset`, `IconButtonSize`, `IconButtonHitSlop`, `ButtonHeight` |
+| `row-height`, `row-gap`, `paired-gap`, `dropdown-label-gap`, `dragger-text-inset`, `dropdown-label-ratio` | existing `RowHeight`, `RowGap`, `RowLabelGap`, `DraggerTextInset`, `DropdownLabelRatio`. `paired-gap` needs a real token: `MakePair` hardcodes a spacer of `RowGap * 2.0f` (`SMixtormatRow.cpp:140`), which is 6px against the prototype's 3px. Add `PairedGap` and use it there |
+| `icon-size`, `icon-hit-padding` | `IconButtonSize` for `icon-size`. `IconButtonHitSlop` is **not** 1:1 with `icon-hit-padding`: CSS adds 2.5px on *each* side, while `SMixtormatIconButton` computes `TargetSize = GlyphSize + IconButtonHitSlop` once (`SMixtormatIconButton.cpp:23-24`), so the equivalent total is 5px, not 2.5. Retune the value, not the token |
+| `menu-icon-size` | existing `MenuIconSize` (`MixtormatDesignTokens.h:249`), which is what the menu item actually draws (`SMixtormatMenuItem.cpp:38-39`). Retune 12 to 14 |
+| `thumbnail-size` | existing `LayerThumbnailSize` (`MixtormatDesignTokens.h:474`), read by the layer row thumbnail box (`SMixtormatLayerRow.cpp:130-131`). Retune 24 to 20; `gallery-tile-size` and `gallery-swatch-radius` stay **new** |
+| `topbar-icon-size` | existing `ToolbarIconSize`, badly named but it is the token every top-bar button uses (`SMixtormat_Shell.cpp:116`, `:138`, `:161`, `:184`, `:220`, `:243`, `:266`). Retune 12 to 18; do not add a second top-bar icon token |
 | `foldout-height`, `-gutter`, `-body-top/-bottom`, `-outer-top/-bottom`, `-header-padding-*` | **new** `Foldout*` tokens; `GroupHeaderHeight`/`PanelGutter` partially cover them today |
-| `card-*` geometry (radius, header height, four header pads, four outer margins, body pads, header margins, leading gap) | **new**, added alongside `GroupCard*` rather than renaming it — see "Naming collisions" below |
+| `card-*` geometry (radius, header height, four header pads, four outer margins, body pads, header margins, leading gap) | **reuse the existing `GroupCard*` tokens, do not add a parallel family** — see "Naming collisions" below. Most properties already map: `card-header-*` to `GroupCardHeaderPadding*`, `card-outer-*` to `GroupCardOuterMargin*`, `card-body-horizontal` to `GroupCardHorizontalPadding`, `card-body-top/-bottom` to `GroupCardContentPadding*`, `card-header-height` to `GroupCardTitleHeight`, `card-leading-gap` to `GroupCardLeadingGap`. Only `card-radius`, `card-header-margin-top/-bottom`, `card-falloff-power`, `card-gradient-reach`, `card-header-saturation` and `card-body-saturation` are genuinely new roles |
 | `group-button-*` geometry (`group-button-height`, `-hairline-width`, `-separator-width`, `-separator-height`) | **new** `GroupButton*`. `ButtonHeight` is the generic button height, not this family |
 | `layer-height`, `child-height`, `layer-group-height`, `layer-gap`, `layer-indent`, `layer-badge-width` | existing `LayerRowHeight`, `LayerChildRowHeight`, `LayerGroupRowHeight`, `LayerRowGap`, `LayerChildIndent`, `BadgeWidth`. `BadgeWidth` is `constexpr` (`MixtormatDesignTokens.h:281`), so it is fixed until that changes |
-| `layer-hierarchy-line-width`, `layer-visibility-size/-radius`, `layer-active-*` | **new**. `LayerConnectorOpacity` (`MixtormatDesignTokens.h:496`) already carries the connector opacity at 0.45, so only the width is new |
+| `layer-hierarchy-line-width`, `layer-visibility-size/-radius`, `layer-active-*` | **new**. `LayerConnectorOpacity` (`MixtormatDesignTokens.h:496`) already carries the connector opacity at 0.45. The **width is not a token problem**: connectors are PNG brushes (`TreeTee`/`TreeElbow`) drawn at `LayerChildIconSize` (`SMixtormatLayerChildRow.cpp:80-88`), so stroke weight is baked into the artwork and only the alpha is tunable. Exact parity needs a thickness-aware path (procedural draw or per-weight PNGs), not a new float |
 | `well-border-width`, `well-radius` | **new**. `OutlineWidth` is one global stroke weight and `CornerRadius` is a global radius; the prototype's well is a 1px border on a 0px radius, which the globals cannot express together |
 | `overlay-control-width` | **new**; overlay width must stop deriving from `InspectorWidth` |
 | shell: `left-width`, `inspector-width`, `topbar-height`, `status-height`, `panel-padding`, `splitter-size/-hit-size` | existing `LayerStackWidth`, `InspectorWidth`, `TopBarHeight`, `StatusBarHeight`, `PanelPadding`, `SplitterHandleSize/HitSize` |
 | popovers: `menu-width`, `menu-row-height`, `menu-padding`, `popup-lip-height`, `help-*` | `MenuWidth`, `MenuPanelPadding` map directly. `MenuItemHeight` and `MenuLipHeight` exist but are derived (see gaps), so `menu-row-height` and `popup-lip-height` need a `RecomputeDerived` change. `help-max-width`, `help-padding` and `help-delay` have **no** destination: the plugin has no hover-help surface, only editor `SToolTip`s |
-| per-role icon sizes (`foldout-icon-size`, `card-icon-size`, `layer-icon-size`, `layer-module-icon-size`, `topbar-icon-size`, `overlay-icon-size`, `menu-icon-size`, `toolbar-icon-size`, `rail-icon-size`, `icon-sheet-preview-size`) | **new**, one token each. `MenuIconSize` and `ToolbarIconSize` exist but describe a different role. The prototype comment at `tokens.css:230-235` is explicit that equal values are not one role |
+| per-role icon sizes (`foldout-icon-size`, `card-icon-size`, `layer-icon-size`, `layer-module-icon-size`, `overlay-icon-size`, `rail-icon-size`, `icon-sheet-preview-size`) | **new**, one token each. `menu-icon-size`, `thumbnail-size` and `topbar-icon-size` already have destinations and are listed above. The prototype comment at `tokens.css:230-235` is explicit that equal values are not one role |
 | `foldout-icon-padding`, `card-eye-size` | **new**. `ChevronSize` (`MixtormatDesignTokens.h:205`) and `LayerEyeSize` (`:493`) already exist and cover the glyph box, not the padding around it |
-| `thumbnail-size`, `thumbnail-radius`, `gallery-swatch-radius`, `gallery-tile-size`, `gallery-gap` | **new**. `LayerThumbnailSize` covers `layer-thumbnail` only, not the generic tile |
+| `gallery-tile-size`, `gallery-gap`, `gallery-swatch-radius`, `thumbnail-radius` | **new**. The tile gallery has its own family (`MaterialGalleryTileDefault`/`Gap`/`Padding`, `MixtormatDesignTokens.h:307-313`) whose min/max/step grid the port must not disturb — retune the default only |
 | `badge-width` | **new**. `BadgeWidth` (`MixtormatDesignTokens.h:281`) covers `layer-badge-width` |
 | `window-grip-size` | **new** |
 | dialogs/popovers: `dialog-width`, `dialog-padding`, `popover-width`, `popover-padding`, `popover-gap` | `DialogPadding` covers `dialog-padding`. The rest are **new**; `ActionDialogWidth` is the action dialog, not this one |
@@ -135,53 +144,72 @@ carried over as "close enough". This is the checklist.
 
 | Prototype token | Unreal destination |
 | --- | --- |
-| `body-size`, `caption-size`, `dragger-font-size`, `card-title-size`, `foldout-title-size`, `layer-group-title-size`, `group-button-font-size`, `control-label-size` | existing `FontBody`, `FontSliderLabel`, `FontCardTitle`, `FontGroupCardTitle`. `caption-size` and `dragger-font-size` are **new**: `FontCaption` (8px) and `FontDragGhostLabel` (9px) are different roles from the prototype's 11px caption and 10px dragger. `foldout-title-size` and `group-button-font-size` are **new** |
-| `control-label-size` | `FontSliderLabel` is locked to `FontBody - 1` (`MixtormatDesignTokens.h:559`) and the prototype wants both at 10px, so this is a `RecomputeDerived` change, not a token |
-| weights (`value-weight`, `card-title-weight`, `foldout-title-weight`, `group-button-font-weight`, `layer-group-title-weight`, `control-label-weight`) | existing bold sliders (`CardTitleBold`, `GroupCardTitleBold`, `GroupHeaderBold`) are 0..1 switches; the prototype wants real weights, so **new** per-role weight tokens feeding `FSlateFontInfo` |
-| tracking (`foldout-title-tracking`, `card-title-tracking`, `group-button-tracking`, `control-label-tracking`) | existing `CaptionLetterSpacing` and `GroupCardTitleLetterSpacing` are in 1/1000 em, not pixels, and are baked into specific style entries (`MixtormatStyle.cpp:467`, `:627`, `:640`, `:651`). The prototype authors px, so the mapping is a unit conversion. `card-title-tracking` maps to the wrong entry today — `Mixtormat.CardTitle` reads `CaptionLetterSpacing`, not the group-card one — and the other three have no existing entry at all |
+| `body-size`, `caption-size`, `dragger-font-size`, `card-title-size`, `foldout-title-size`, `layer-group-title-size`, `group-button-font-size`, `control-label-size` | `body-size` is `FontBody`. `caption-size` is `FontCaption`, read by `Mixtormat.RowCaption` (`MixtormatStyle.cpp:620-628`) — same role, retune 8 to 11, do not add a token. `dragger-font-size` and `control-label-size` are **new**: CSS authors the dragger/value face and the control label face independently, and Unreal drives all three slider roles — label, value and entry — from the single `FontSliderLabel` (`MixtormatStyle.cpp:587`, `:596`, `:615`). Split them so both degrees of freedom survive. `foldout-title-size` and `group-button-font-size` are **new** |
+| weights (`value-weight`, `card-title-weight`, `foldout-title-weight`, `group-button-font-weight`, `layer-group-title-weight`, `control-label-weight`) | existing bold switches (`CardTitleBold`, `GroupCardTitleBold`, `GroupHeaderBold`) are 0..1 resolved by a hard `>= 0.5 ? Bold : Regular` (`MixtormatStyle.cpp:50-54`); the prototype wants real weights (400/600), so **new** per-role weight tokens feeding `FSlateFontInfo`. Split label and value first: today only the value is bold (`:596`), and `--control-label-weight: 400` says the label should not be |
+| tracking (`foldout-title-tracking`, `card-title-tracking`, `group-button-tracking`, `control-label-tracking`) | `card-title-tracking` already has the right counterpart: the non-compact card title reads `Mixtormat.GroupCardTitle` (`SMixtormatInspectorCard.cpp:49`), and that style is built from `GroupCardTitleLetterSpacing` (`MixtormatStyle.cpp:651`). Retune only. (`Mixtormat.CardTitle` at `:640` is the unrelated compact popover card and reads `CaptionLetterSpacing` — do not change it for this token.) Both Unreal values are in 1/1000 em, so the px authored values need a unit conversion. `foldout-title-tracking`, `group-button-tracking` and `control-label-tracking` have no existing entry and are **new** |
 | `--font-family` (Roboto / Inter) | **not a numeric token**. Slate font faces come from the composite font; Roboto stays default, Inter is an opt-in swap |
 | `dragger-label-case` | **prototype-only**. Slate has no per-row transform; either drop it or map to separate style entries |
 
-### Naming collisions: add alongside, do not rename
+### Naming collisions: reuse the existing names, add only what is missing
 
-The `card-*` row above cannot be a 1:1 rename of `GroupCard*`. Three reasons, in
-order of cost:
+The `card-*` row above must not become a 1:1 rename of `GroupCard*`, and it must not
+become a parallel `Card*` family either. The rule is narrower: **reuse a persisted
+Unreal token wherever the semantics already match, and add only the roles that have no
+home.** Every mapping below already has a home:
+
+| Prototype | Existing Unreal token |
+| --- | --- |
+| `card-header-left/-top/-right/-bottom` | `GroupCardHeaderPaddingLeft/Top/Right/Bottom` |
+| `card-outer-left/-top/-right/-bottom` | `GroupCardOuterMarginLeft/Top/Right/Bottom` |
+| `card-body-horizontal` | `GroupCardHorizontalPadding` |
+| `card-body-top/-bottom` | `GroupCardContentPaddingTop/Bottom` |
+| `card-header-height` | `GroupCardTitleHeight` |
+| `card-header-opacity` | `GroupCardHeaderOpacity` |
+| `card-body-opacity` | `GroupCardBodyOpacity` |
+| `card-leading-gap` | `GroupCardLeadingGap` |
+
+Only `card-radius`, `card-header-margin-top/-bottom`, `card-falloff-power`,
+`card-gradient-reach` and the two card saturations are new roles.
+
+Three reasons this is the only safe shape:
 
 1. **The token names are the persisted keys.** `THEME_NUMBER` stringifies its second
    argument as the registry name (`MixtormatLiveTheme.cpp:47-48`) and `Serialize` writes
    `Entry.Name` as the JSON key (`:261`). A rename orphans every saved
    `Saved/Mixtormat/LiveTheme.json`, and `Deserialize` rejects the whole document on one
-   unknown numeric key (`:302-307`) — a user's theme stops loading, it does not half-load.
-2. **A 1:1 rename to `Card*` collides with an existing `Card*` family.**
-   `CardPadding`, `CardGap` and `CardTitleGap` (`MixtormatDesignTokens.h:331-334`) belong
-   to the compact popover card layout, deliberately kept separate from the inspector card
-   (`:336-337`). `GroupCard*` names carry that distinction; `Card*` would erase it.
-3. **The readers are scattered.** `SMixtormatInspectorCard.cpp` reads seventeen distinct
-   `GroupCard*` tokens across `Construct` and `OnPaint` (`:37`, `:40`, `:56`, `:60-84`,
-   `:90`, `:94`, `:111`, `:114`, `:185-192`, `:198-204`); `GroupCardLeadingIconSize`
-   additionally reaches four inspector builders (`MixtormatInspectorHeight.cpp:65`, `:72`,
-   `MixtormatInspectorIds.cpp:443`, `MixtormatInspectorLayer.cpp:180`); and
-   `MixtormatStyle.cpp:645-654` builds the `Mixtormat.GroupCardTitle` text style from
-   `FontGroupCardTitle`, `GroupCardTitleBold` and `GroupCardTitleLetterSpacing`.
-   `MixtormatLiveTheme.cpp:82-102` registers twenty `GroupCard*` entries and
-   `MixtormatLiveTheme.cpp:192`, `:194` register two `GroupCard*` colours.
+   unknown numeric key (`:302-307`) — a user's theme stops loading, it does not
+   half-load. Do not delete the old keys in this port.
+2. **`Card*` is already taken, twice.** `CardPadding`, `CardGap` and `CardTitleGap`
+   (`MixtormatDesignTokens.h:331-334`) are the compact popover card, deliberately kept
+   apart from the inspector card (`:336-337`). `FontCardTitle` (`:518`) and
+   `CardTitleBold` (`:535`) are that same compact card. So dropping the `Group` prefix
+   from `FontGroupCardTitle` or `GroupCardTitleBold` collides directly, and the
+   `GroupCard*` names are what keep the two cards distinguishable.
+3. **The readers are already correct.** `SMixtormatInspectorCard.cpp` reads seventeen
+   distinct `GroupCard*` tokens across `Construct` and `OnPaint` (`:37`, `:40`, `:56`,
+   `:60-84`, `:90`, `:94`, `:111`, `:114`, `:185-192`, `:198-204`), and its title reads
+   `Mixtormat.GroupCardTitle` (`:49`). `GroupCardLeadingIconSize` additionally reaches
+   four inspector builders (`MixtormatInspectorHeight.cpp:65`, `:72`,
+   `MixtormatInspectorIds.cpp:443`, `MixtormatInspectorLayer.cpp:180`);
+   `MixtormatStyle.cpp:645-654` builds the title style; `MixtormatLiveTheme.cpp:82-102`
+   registers twenty `GroupCard*` entries and `:192`, `:194` two colours. Renaming is all
+   cost and no benefit here.
 
-Recommendation: add the prototype-named set alongside `GroupCard*` under a distinct
-prefix — `CardHeader*` / `CardBody*` / `CardOuter*` are free, and reusing the bare
-`Card*` prefix would collide with reason 2 — then move callers one file at a time and
-delete the old set in a later pass. If the keys must change in the same pass, teach
-`Deserialize` to accept the old key and emit the new one: it is already the only place
-that validates, and it already runs `Reset()` before applying (`:334-341`).
+The six new roles take the `GroupCard` prefix so the family stays one family:
+`GroupCardRadius`, `GroupCardHeaderMarginTop/Bottom`, `GroupCardFalloffPower`,
+`GroupCardGradientReach`, `GroupCardHeaderSaturation`, `GroupCardBodySaturation`.
 
 One caller is already wrong in the direction the port is heading.
 `MakeFeaturePreviewButton` defaults its icon to `LayerEyeSize` (`Mixtormat.h:213`), a
 layer-stack token, and its four card callers all override it with
-`GroupCardLeadingIconSize` anyway. The add-alongside pass is the moment to give it a
-card default.
+`GroupCardLeadingIconSize` anyway. Give it a card default while the family is open.
 
 ### What must be built, not just registered
 
-- A saturation transform applied at palette read time.
+- A saturation helper applied per paint layer, with the caller supplying the value.
+- An exact soft-light compositing helper, for the foldout accent tint and the layer-group
+  cross pass. Neither is an add, so the existing plus-lighter precedent does not cover
+  them.
 - Radial/vignette support in `MixtormatGradientPainter` (currently linear only:
   `MakeGradient` takes an `EOrientation` and nothing else, `MixtormatGradientPainter.cpp:88-95`).
 - Per-endpoint well border falloff instead of one flat multiplier
@@ -215,15 +243,17 @@ card default.
   for anything: it only distinguishes the very first pass (`:75`, `:109-112`).
 - **Not every state is a registered brush.** Layer rows read per-state colours through
   `SMixtormatGradientBox` lambdas (`SMixtormatLayerRow.cpp:65-69`), not through named
-  brushes. The saturation pass therefore has to work at palette read time; a
-  `Refresh()`-only change will reach the layer states and nothing else.
+  brushes. A colour reached through those lambdas is resolved per paint, so it takes a
+  saturation value per call site; a `Refresh()`-only change cannot reach a state whose
+  colour is computed in the widget.
 - **Drag/drop targeting is fraction-normalised, not pixel-sized.** `LocalFraction` divides
-  by the row's own height and is compared against `0.5` and
-  `GroupRowIntoZoneFraction` (`SMixtormatDropTargets.h:92-132`), so changing
-  `LayerRowHeight`, `LayerChildRowHeight` or `LayerRowGap` does not break it. The real
-  exposure is that the "into this group" band is `GroupRowIntoZoneFraction *
-  LayerGroupRowHeight` in absolute pixels, and the prototype's 18px group row makes that
-  band 4.5px rather than 5.5px.
+  by the row's own height (`SMixtormatDropTargets.h:92-102`), so changing
+  `LayerRowHeight`, `LayerChildRowHeight` or `LayerRowGap` does not break the
+  comparisons. `GroupRowIntoZoneFraction` is 0.25 (`:123-132`), which reads as
+  **25% Before + 50% Into + 25% After**, not a 25% "into" band: the Into zone is
+  `Fraction > 0.25 && Fraction <= 0.75`. At 22px that is 11px, and at the prototype's
+  18px group row it is 9px. Verify the 9px band is still hittable; if not, raise the
+  fraction rather than the row height.
 - **Drop-zone geometry is not the only thing coupled to row metrics.** The insertion
   line is `DropInsertionLineThickness` (a `constexpr`, `MixtormatDesignTokens.h:90`)
   and the child indent is folded into the row's own padding as
@@ -242,9 +272,11 @@ card default.
   clusters are `SMixtormatGradientBox` with their own `.Padding`
   (`Mixtormat_Preview.cpp:1390`, `:1402`, `:1459`, `:1469`, `:1482`, `:1494`, `:1505`);
   dropping the plate also drops the cluster inset that was measured against it, and each
-  one rounds by the global `CornerRadius`. The two clusters whose width is
-  `InspectorWidth * 0.5f` (`:1397`, `:1489`, `:1512`) are the ones `overlay-control-width`
-  replaces.
+  one rounds by the global `CornerRadius`. There is **no** Slate `.overlay-title`
+  wrapper to remove — the prototype's title strip has no counterpart here, so nothing
+  needs deleting for it. Keep every control, gizmo, combo and action: only the plate and
+  its inset go. Three clusters derive their width from `InspectorWidth * 0.5f`
+  (`:1397`, `:1489`, `:1512`) and those are the ones `overlay-control-width` replaces.
 - **The card painter has no reach hook to extend.** `SMixtormatInspectorCard::OnPaint`
   builds three stops from the measured header height
   (`SMixtormatInspectorCard.cpp:193-208`), so reach has to be added to that array rather
@@ -281,17 +313,33 @@ card default.
 ## Mapping of the shared button style
 
 The prototype unifies tabs, segmented groups, and toolbar actions into one token set
-(`group-button-*`). In Slate this is one `FButtonStyle` family:
+(`group-button-*`). In Slate that is one **token** family feeding three different
+widget-style types, because the three callers are not the same kind of widget:
 
-- `Mixtormat.GroupButton`, `.GroupButtonHover`, `.GroupButtonSelected`,
-  `.GroupButtonPressed`, `.GroupButtonDisabled`
+- top-bar and toolbar actions are `SButton` — an `FButtonStyle`
+  (`Mixtormat.TopButton`, registered at `MixtormatStyle.cpp:235-247`);
+- tabs are an `SCheckBox` reading `Mixtormat.TabToggle`, swapping a named brush per
+  state (`SMixtormatTabStrip.cpp:52-58`) — an `FCheckBoxStyle`;
+- segmented control cells are hand-painted, not styled: an `SMixtormatGradientBox` with
+  its own start/end/multiply colours and a `CornerRadiusInner`
+  (`SMixtormatSegmentedControl.cpp:33-49`).
+
+So the work is: add the tokens once, then add an `FButtonStyle` and an `FCheckBoxStyle`
+that read them, and feed the existing custom segment painter from the same tokens.
+Do not build a five-entry `FButtonStyle` family and try to make `SCheckBox` and the
+segment painter use it.
+
+- `Mixtormat.GroupButton` (`FButtonStyle`) and `Mixtormat.GroupButtonSelected`
+  (`FCheckBoxStyle`), each carrying normal / hovered / pressed / disabled.
 - Text style `Mixtormat.GroupButtonText` from `group-button-font-size`, `-weight`,
-  `-tracking`, `-text-opacity`.
-- Top hairline drawn in the normal brush; separators drawn as a 1px child border
+  `-tracking`, `-text-opacity`. The segment painter reuses it via
+  `ColorAndOpacity` rather than a text style, so it must be readable as a bare
+  `FLinearColor` too.
+- Top hairline drawn into the normal brush; separators drawn as a 1px child border
   between cells, matching `--group-button-separator-*`.
 
-Existing `Mixtormat.TopButton` and the tab styles keep their current names until the
-new family is verified; the old entries stay registered so nothing regresses.
+Existing `Mixtormat.TopButton` and the tab styles keep their current names; the new
+entries are added alongside so nothing regresses.
 
 ## UI Style panel: current state
 
@@ -334,60 +382,81 @@ What it does **not** yet have, and what the port still owes it:
 | Panel layout follows the token system | hardcoded `PanelPadding = 10.0f`, `RowGap = 3.0f`, `ControlWidth = 100.0f` in an anonymous namespace (`:24-27`), shadowing `MixtormatTokens::PanelPadding` and `RowGap` | reuse the shared tokens so the panel restyles with the rest of the UI |
 | Search covers categories | `Matches` tests name and category (`:164-167`), but colour rows only match on name and always report the literal category `"Colors"` (`:83-90`) | index colours under real categories if the tabs land |
 
-Panel work is therefore step 8 below, and it should follow the token registrations:
+Panel work is therefore step 13 below, and it should follow the token registrations:
 a control for a token that does not exist yet would be dead UI.
 
 ## Work order
 
-Each step is independently reviewable and stops at a screenshot comparison.
+Each step is independently reviewable and stops at a screenshot comparison. The order
+is foundation first, then rendering primitives, then the surfaces that use them.
 
-1. **Collapse icons.** `FoldoutIconSize`, `FoldoutIconPadding`,
-   `FoldoutIconOpacity`, hover/pressed opacity and shade, plus the
-   `Mixtormat.Icon.ChevronRight`/`ChevronDown` swaps for both inspector foldouts and
-   layer rows. The two icon brushes are already registered; this step is the state
-   styling and the swap. Small, isolated, and it validates the shared-token pattern.
-   Note that `ChevronSize` is shared with the chip, the menu item, the layer group row
-   and the child-output preview (`SMixtormatLayerGroupRow.cpp:166`,
-   `SMixtormatLayerRow.cpp:216`, `SMixtormatChip.cpp:54`, `SMixtormatMenuItem.cpp:81`),
-   and the preview uses `ChevronSize * 0.6f` (`SMixtormat_Preview.cpp:759-761`), so
-   retuning it for foldouts moves five callers. `FoldoutIconSize` is a separate new
-   token for exactly this reason.
-2. **Layer visibility squircles.** Replace the layer eye brush with a rounded square
-   at `LayerVisibilitySize` and `LayerVisibilityRadius`. Keeps `data-action=eye`
-   behaviour and tooltip text unchanged.
-3. **Shared button family.** Add the tokens and the five `FButtonStyle`s, then move
-   tabs, segmented controls, and the top bar onto them one caller at a time.
-4. **Layer active states.** Accent hairline plus downward-fading glow
-   (`LayerActiveHairline*`, `LayerActiveGlow*`), including the group-selected case.
-5. **Card gradient reach.** Port the reach and mirrored tail into
-   `SMixtormatGradientBox`/the card painter. Requires the sampled power curve, which
-   `falloff.js` reproduces with six stops; port the sampling, not the JavaScript.
-6. **Vignettes.** New radial support in `MixtormatGradientPainter` plus
-   `PanelVignette*`, `CardVignette*`, `FoldoutVignette*`. Explicitly multiply-only.
-7. **Dropdown presentation.** The prototype's menu-styled dropdown maps to the
-   existing `SMixtormatChip`/`MixtormatRow::MakeDropdown` popup path, restyled with
-   the menu surface. Binding and value handling are untouched.
-8. **UI Style panel parity.** Tabs per section, matching category names, two-column
-   numeric layout, and hover help carrying each token's default and range.
-9. **Saturation pass.** Apply the twenty-three `*-saturation` tokens at palette read
-   time, so every affected paint layer picks them up at once. Decide the two
-   backdrop-filter cases separately. Do this before the falloff work, because both
-   operate on the same sampled stops.
-10. **Typography pass.** Real per-role weights and tracking, replacing the 0..1 bold
-   switches once no caller still depends on the switch semantics. Three bold switches
-   exist (`CardTitleBold`, `GroupCardTitleBold`, `GroupHeaderBold`) and three read sites
-   (`MixtormatStyle.cpp:179`, `:633`, `:645`) via `Weight()`, which is a hard
-   `>= 0.5 ? Bold : Regular` (`MixtormatStyle.cpp:50-54`). Reaching a 400/600 pair needs
-   `FSlateFontInfo` typefaces that the default font family may not carry.
-11. **`RecomputeDerived()` unlock.** `MenuItemHeight`, `MenuLipHeight`, `TabHeight`,
+### Foundation
+
+1. **Tokens and mappings.** Preserve every persisted `GroupCard*` key and reuse it (see
+   "Naming collisions"). Add the genuinely new roles. Retune the ones that already have a
+   home: `MenuIconSize` 12 to 14, `LayerThumbnailSize` 24 to 20, `ToolbarIconSize` 12 to
+   18, `FontCaption` 8 to 11, `IconButtonHitSlop` 8 to 5. Add `PairedGap` and use it in
+   `MakePair` in place of `RowGap * 2.0f` (`SMixtormatRow.cpp:140`). Convert the
+   `constexpr` tokens the panel must edit to `inline` — `THEME_NUMBER` takes
+   `&MixtormatTokens::Name` (`MixtormatLiveTheme.cpp:47-48`), so `BadgeWidth`,
+   `OutlineWidth` and the like cannot be registered until they change.
+2. **`RecomputeDerived()` unlock.** `MenuItemHeight`, `MenuLipHeight`, `TabHeight`,
    `SegmentHeight` and `FontSliderLabel` are all derived
-   (`MixtormatDesignTokens.h:549-560`). Nothing above reaches its authored value until
-   this lands, and step 10 depends on it. Keep it separate from step 10 so a weight
-   regression is not confused with a layout one.
+   (`MixtormatDesignTokens.h:549-560`). Nothing reaches its authored value until this
+   lands, and steps 3 to 11 all depend on it. Keep it separate so a layout regression is
+   not confused with a paint one.
 
-Steps 9, 10 and 11 are wide but shallow; doing them late keeps the earlier visual
-comparisons attributable to a single change. Step 11 gates several of the tokens the
-earlier steps add, so it cannot move past them.
+### Rendering primitives
+
+3. **Paint-layer primitives.** A `Ground` palette role; per-paint-layer saturation (not
+   palette read time — one accent is used at several saturations); an exact soft-light
+   compositing helper; power-curve stop sampling; and a radial vignette path in
+   `MixtormatGradientPainter`. Everything below is built on these, so a bug here shows up
+   in every later screenshot.
+
+### Surfaces
+
+4. **Controls.** Well fill shade and per-endpoint border falloff; slider fill, shade and
+   falloff ramps; the modified stripe; the zero tick; toggle disabled shade; paired
+   spacing. All of these are hand-painted today, so none is a brush swap.
+5. **Foldouts.** Geometry, title styling, the lift falloff, the soft-light tint layer,
+   the hairline, the vignette, and the chevron states. Note `ChevronSize` is shared with
+   the chip, the menu item, the layer group row and the child-output preview
+   (`SMixtormatLayerGroupRow.cpp:166`, `SMixtormatLayerRow.cpp:216`,
+   `SMixtormatChip.cpp:54`, `SMixtormatMenuItem.cpp:81`), and the preview uses
+   `ChevronSize * 0.6f` (`SMixtormat_Preview.cpp:759-761`), so retuning it moves five
+   callers — `FoldoutIconSize` is a separate token for exactly that reason.
+6. **Group Cards.** Retune the existing `GroupCard*`; add only radius, header margins,
+   falloff, reach, vignette and the two saturations.
+7. **Shared action tokens.** An `SButton` adapter (`FButtonStyle`), an `SCheckBox`
+   adapter (`FCheckBoxStyle`), and the existing custom segment painter fed from the same
+   tokens. Three widget types, one token family.
+8. **Layer stack.** Heights and indent, separate badge widths, thumbnails, squircle
+   visibility, active glow, saturation, and thickness-aware hierarchy connectors (PNG
+   brushes cannot carry stroke weight — `SMixtormatLayerChildRow.cpp:80-88`). Verify the
+   9px Into drop band still feels right at the prototype's 18px group row.
+9. **Shell and galleries.** Widths, splitter sizing, shell gap, panel vignette, gallery
+   defaults. Preserve splitter resizing and the gallery zoom min/max/step grid.
+10. **Menus, dropdowns, popovers and help.** Keep existing popup behaviour; unlock the
+    menu row height and lip; port the popup surface; port help geometry and delay.
+11. **Preview overlays.** Remove seven plates and their insets, replace all three
+    `InspectorWidth * 0.5f` widths. Keep every control, gizmo and action.
+12. **Typography.** Correct the existing mappings first (`FontCaption`, the
+    `GroupCardTitleLetterSpacing` path), then split the slider label and value faces,
+    then real weight faces, then px to 1/1000-em tracking, then the font-family choice.
+13. **UI Style panel.** Tabs and real categories, two-column layout, default/range help,
+    shared spacing.
+14. **Parity validation.** Screenshots plus Save to Load, rebuild state restoration,
+    splitters, gallery zoom, drag and drop, and open popups.
+
+### Notes on ordering
+
+- The saturation pass is per paint layer, not a palette-wide transform, so it cannot be
+  a single late sweep the way it first appeared here. Each surface adopts its own
+  saturation tokens in its own step; only the shared helper lands in step 3.
+- Step 2 gates most of the surface steps. It cannot move past them.
+- Steps 12 and 13 are wide but shallow; doing them late keeps the earlier visual
+  comparisons attributable to a single change.
 
 ## Risk notes
 
@@ -403,14 +472,19 @@ earlier steps add, so it cannot move past them.
   must use per-surface radii and leave the global fallback alone until every caller is
   checked.
 - Layer row heights, indents, and connector geometry feed drag/drop, but the drop zones
-  are fraction-normalised (`SMixtormatDropTargets.h:95-132`), so height and gap changes
-  are safe. The narrow band is the group "into" zone: it shrinks in absolute pixels as
-  `LayerGroupRowHeight` goes from 22 to the prototype's 18.
-- Preview overlays are built once in `BuildPreviewPanel`. Removing their plates and
-  titles is a layout change there, not a style change, and it takes the cluster inset
-  with it.
+  are fraction-normalised (`SMixtormatDropTargets.h:92-132`), so height and gap changes
+  are safe. The Into zone is 50% of the row, which shrinks from 11px to 9px when
+  `LayerGroupRowHeight` goes 22 to the prototype's 18.
+- Preview overlays are built once in `BuildPreviewPanel`. Removing their plates is a
+  layout change there, not a style change, and it takes the cluster inset with it. Keep
+  the individual control labels: the prototype drops only the cluster title strip, which
+  has no Slate counterpart here.
 - The prototype's variable fonts have not been validated in Slate. Use static weight
-  instances for the engine and keep Roboto as the default family.
+  instances for the engine and keep Roboto as the default family. Reaching the authored
+  400/600 pair needs typefaces the default family may not carry: the three bold switches
+  (`CardTitleBold`, `GroupCardTitleBold`, `GroupHeaderBold`) resolve through `Weight()`,
+  a hard `>= 0.5 ? Bold : Regular` (`MixtormatStyle.cpp:50-54`, read at `:179`, `:633`,
+  `:645`), so a real weight token needs a real typeface, not a switch.
 
 ## Validation
 
