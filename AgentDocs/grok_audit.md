@@ -6,13 +6,13 @@
 - `MixtormatEditor` (~210 files; Slate UI, hierarchy, inspector, preview, bake, style system).
 Module dependency direction is correct and one-way: Runtime ← Shaders ← Editor. No Runtime→Editor or Runtime→Shaders leakage.
 
-**Overall architecture assessment:** Coherent production architecture with a clear primary pipeline (authored `UMixtormatMaterial` → layer/children hierarchy with `ScopeOwnerChildId` scoping + instances → gather (Layer/Mask/ID/Generator/Effect) → compose requests + content hashing → RDG GPU passes → published outputs / OutputReference → preview / bake). Hierarchy, masking, IDs, generators, and effects are intentionally distinct categories with documented semantics. Caching is reflection-based and deliberately thorough. The largest risk areas are (1) iterative authored-parameter GPU work at 2K/4K, (2) residual dual theme systems, and (3) the sheer size of a few ownership files making end-to-end reasoning harder than necessary. Static inspection does not prove release-blocking crashes or data corruption.
+**Overall architecture assessment:** Coherent production architecture with a clear primary pipeline (authored `UMixtormatMaterial` → layer/children hierarchy with `ScopeOwnerChildId` scoping + instances → gather (Layer/Mask/ID/Generator/Effect) → compose requests + content hashing → RDG GPU passes → published outputs / OutputReference → preview / bake). Hierarchy, masking, IDs, generators, and effects are intentionally distinct categories with documented semantics. Caching is reflection-based and deliberately thorough. The largest risk areas are (1) iterative authored-parameter GPU work at 2K/4K, (2) leftover LiveTheme/Palette files after ThemeStore migration, and (3) the sheer size of a few ownership files making end-to-end reasoning harder than necessary. Static inspection does not prove release-blocking crashes or data corruption.
 
 **Highest-risk correctness issue (static):** None proven as P0. Strongest residual concerns are stale-GUID / instance / scoped-child recovery paths and possible cache-key vs. visual-result mismatches under hierarchy moves or source deletion (need runtime validation).
 
 **Highest-value performance issue:** Authored-iteration simulation-style passes (Erosion, Craquelure grow, Generator Flow jumps, Rock Formation facets, etc.) that allocate full-resolution `PF_R32_FLOAT` / `PF_R32_UINT` intermediates and run sequential ping-pong loops whose cost scales linearly with iteration count × resolution². Caching mitigates recompute but not the cost of a cold or invalidated bake/preview.
 
-**Highest-value architectural cleanup:** Complete deletion of the legacy theme path (`FMixtormatLiveTheme`, `DesignTokens`, `Palette`) after migrating remaining readers to `FMixtormatThemeStore` → resolved style → recipes. Second: tighten generator-layer channel/irrelevant-control surface so generators stay height/ID/structure producers.
+**Highest-value architectural cleanup:** Delete leftover legacy theme files (`FMixtormatLiveTheme`, `MixtormatPalette.h`) after moving the remaining Palette callers onto `FMixtormatThemeStore`. Production UI already resolves through ThemeStore → resolved style → recipes. Second: tighten generator-layer channel/irrelevant-control surface so generators stay height/ID/structure producers.
 
 **Release-safe from static inspection?** Yes, with the usual caveats that GPU resource lifetime, RDG assumptions, and complex GUID remapping under copy/paste/delete must be validated at runtime. No catastrophic static path to crash, memory corruption, or destructive serialization was proven.
 
@@ -38,14 +38,7 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 **Evidence:** Proven from static inspection of the pass loops and texture creation.
 
 **P1-02**  
-**Files:** `Source/MixtormatEditor/Private/Style/*` (LiveTheme, DesignTokens, Palette, ThemeStore, ResolvedStyle, Recipes, StyleLocator) + many UI atom/container files that still reference the old path.  
-**Code:** Dual theme systems coexist; ~557 references still touch legacy symbols.  
-**Observed:** New architecture (`ThemeStore` → validation → resolved → recipes → painters) is present and intended as canonical, but production widgets continue to read legacy state.  
-**Why it matters:** Prevents clean deletion of the old system, creates dual sources of truth, and makes live theme editing and reconstruction fragile.  
-**Recommended fix:** Finish migration of every production reader, then delete `FMixtormatLiveTheme`, `DesignTokens`, `Palette` and related panels/tests. No backwards-compatibility requirement.  
-**Confidence:** High.  
-**Timing:** Before Release (UI stability).  
-**Evidence:** Proven (file presence + grep counts of residual readers).
+**Status:** Mostly done (2026-10-05 recheck). ThemeStore is the production path. LiveThemePanel is gone. Residual: `MixtormatLiveTheme.*`, `MixtormatPalette.h`, and a few Palette callers (`SMixtormatBadge`, `SMixtormatScalarRamp`, `SMixtormatRow`, bake dialog, layer menus, overlay plate in `MixtormatStyle.cpp`). DesignTokens still used for layout numbers. Demoted leftover deletion to P2-07.
 
 **P1-03**  
 **Files:** `Source/MixtormatRuntime/Public/MixtormatMaterial.h` (`FMixtormatLayerChild`, `ScopeOwnerChildId`, instance fields), gather files (`MixtormatMaskGather.cpp`, `MixtormatIdGather.cpp`), Editor hierarchy/actions.  
@@ -73,6 +66,8 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 
 **P2-06** Preview vs bake quality settings share more infrastructure than ideal; some iterative passes do not clearly scale quality by context.
 
+**P2-07** Leftover legacy theme: `FMixtormatLiveTheme` + `MixtormatPalette.h` still exist. Remaining production Palette reads: Badge, ScalarRamp, Row hairline, BakeSettingsDialog error text, LayerMenus group accents, Style overlay plate. Move those to ThemeStore resolved palette, then delete LiveTheme/Palette. DesignTokens can stay until layout numbers live on resolved ControlLayout.
+
 ---
 
 ### P3 — MINOR / DEFERRED
@@ -99,7 +94,7 @@ Caching (prefix + content hash) is effective when keys are stable; cold or hiera
 ---
 
 ### B. ARCHITECTURE TOP 10
-1. Finish theme migration → delete legacy.  
+1. Finish leftover Palette callers → delete LiveTheme/Palette.  
 2. Canonical effective-owner / placement validator shared by Editor + gather.  
 3. Generator surface cleanup (no irrelevant material channels).  
 4. Single shaping/gate evaluation path.  
@@ -113,6 +108,7 @@ Caching (prefix + content hash) is effective when keys are stable; cold or hiera
 ---
 
 ### C. THINGS THAT ARE ALREADY GOOD
+- **ThemeStore → resolved style → recipes** is the production UI path; LiveThemePanel is gone.
 - **Module boundaries and dependency direction** are clean and correct.  
 - **Content-hash caching** (`MixtormatComposeHash`) is deliberately thorough (reflection + asset identity + change stamps, skips display names).  
 - **Child type taxonomy** and comments in `MixtormatMaterial.h` clearly separate Mask / Effect / Generated / Generator / ID producers/consumers / OutputReference with serialization-safety discipline.  
@@ -128,7 +124,8 @@ These should not be rewritten for cleanup’s sake.
 ### D. DELETE / KEEP / REFACTOR
 | Item | Classification | Reason |
 |------|----------------|--------|
-| `FMixtormatLiveTheme`, DesignTokens, Palette, LiveThemePanel | MIGRATE THEN DELETE | Residual readers still exist; target is single ThemeStore architecture |
+| `FMixtormatLiveTheme`, Palette, LiveThemePanel | DELETE (panel already gone) | ThemeStore is canonical; leftover files + few Palette callers |
+| DesignTokens | KEEP until ControlLayout owns numbers | Still used for layout/spacing tokens |
 | ThemeStore / ResolvedStyle / Recipes / Schema / Locator | KEEP | Canonical new system |
 | ComposeHash + prefix caches | KEEP | Correct design |
 | Generator-as-layer abstraction | KEEP (with surface cleanup) | Intentional and documented; not a forced abstraction |
@@ -145,8 +142,8 @@ These should not be rewritten for cleanup’s sake.
    Orphaned or cross-layer references that still resolve to previous data.  
 3. **Generator → published ID → Ramp/UV/Relief From IDs → gate mask → Effect**  
    Duplicate evaluation or gate order change after hierarchy mutation.  
-4. **Theme edit → ThemeStore vs residual LiveTheme reader → widget reconstruct**  
-   Inconsistent live styling.  
+4. **Theme edit → ThemeStore vs leftover Palette/LiveTheme readers**  
+   Only remaining dual-source risk is the few Palette callers; most widgets already use ThemeStore.  
 5. **4K bake → iterative R32 passes → packing**  
    Memory/bandwidth spikes if intermediates are not released promptly.
 
@@ -154,7 +151,7 @@ These should not be rewritten for cleanup’s sake.
 
 ### F. RELEASE BLOCKERS
 - **Proven blockers:** None from static inspection.  
-- **Strongly recommended before release:** Theme legacy deletion after migration; preview iteration scaling for the top iterative passes; validation of GUID recovery under complex hierarchy mutations.  
+- **Strongly recommended before release:** Preview iteration scaling for the top iterative passes; validation of GUID recovery under complex hierarchy mutations. Leftover LiveTheme/Palette deletion is cleanup, not a proven UI-stability blocker.  
 - **Safe to defer:** Further file splitting, minor helper unification, extra published intermediates that are not currently required.
 
 ---
@@ -164,7 +161,7 @@ These should not be rewritten for cleanup’s sake.
 2. **Smallest-risk high-value GPU wins** – preview vs bake iteration/quality scale factors on Erosion/Craquelure/Generator Flow/Rock (Shaders only).  
 3. **Hierarchy/scoping coherence** – single placement validator.  
 4. **Generator / gate / output surface cleanup**.  
-5. **Legacy theme deletion** (after reader migration).  
+5. **Leftover LiveTheme/Palette deletion** (after remaining Palette callers).  
 6. **Editor cleanup** (repeated scans, large-file extraction).  
 7. **Deeper optimizations** (format narrowing, intermediate reuse) only after profiling confirms the static hotspots.
 
@@ -179,7 +176,7 @@ Prefer incremental patches. Do not rewrite the gather/compositor or the child ta
 - Module Build.cs files (all three).  
 - `Mixtormat.uplugin`.  
 - Shaders module structure: all Compositing/ gather + ComposeHash, GpuCompositor entry, GeneratorPasses / EffectPasses / MaskPasses high-level structure, iterative loops, texture creation patterns.  
-- Theme subsystem file set and residual usage counts.  
+- Theme subsystem: ThemeStore is canonical; LiveTheme/Palette leftover rechecked 2026-10-05.  
 - Editor top-level structure, largest ownership files (Layer hierarchy/actions/children, Inspector*, Preview, BakeService), Style directory.
 
 **Partially inspected:**
