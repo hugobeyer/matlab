@@ -33,9 +33,18 @@
 #bind parm quarter_fill float val=0.55
 #bind parm quarter_size float val=0.82
 #bind parm quarter_height float val=0.72
+// Per-copy offset jitter (tile fraction), X and Y separate; stays seamless because it is constant per phase.
+#bind parm quarter_jitter_x float val=0.10
+#bind parm quarter_jitter_y float val=0.10
 
-#bind parm camera_yaw float val=45
-#bind parm camera_pitch float val=35.264
+// Cross-section of each rock: 4 = box, 6 = hexagon, 8 = octagon, ...
+#bind parm sides int val=4
+// When on, each cell picks its own side count from {4, 6, 8}.
+#bind parm shape_random int val=0
+
+// Yaw normalised: -1..1 maps to -90..90 degrees. Pitch: -1..1 maps to -45..45.
+#bind parm camera_yaw float val=0.5
+#bind parm camera_pitch float val=0.784
 #bind parm view_scale float val=1.55
 
 #bind parm seed float val=1234
@@ -73,25 +82,97 @@ static float2 rotate2(float2 p, float a)
     return (float2)(c * p.x - s * p.y, s * p.x + c * p.y);
 }
 
-static float safe_inv(float x)
-{
-    if (fabs(x) < 1e-8f)
-        return x < 0.0f ? -1e8f : 1e8f;
-    return 1.0f / x;
-}
+/*
+    Convex N-gon prism, extruded in Z from zmin to zmax.
 
-static float ray_box(float3 ro, float3 rd, float3 bmin, float3 bmax)
+    The cross-section is a regular polygon of apothem 1 in a
+    normalised XY space (the ray is divided by the half-extents,
+    which preserves the ray parameter t). Each side plane gets
+    its own jitter, so outlines stay irregular like the box did.
+
+    sides = 4 reproduces the axis-aligned box exactly.
+*/
+static float ray_prism(
+    float3 ro, float3 rd,
+    float2 extent, int sides,
+    float zmin, float zmax,
+    float jag, float seed)
 {
-    float3 inv = (float3)(safe_inv(rd.x), safe_inv(rd.y), safe_inv(rd.z));
-    float3 ta = (bmin - ro) * inv;
-    float3 tb = (bmax - ro) * inv;
-    float3 tmn = fmin(ta, tb);
-    float3 tmx = fmax(ta, tb);
-    float tn = fmax(tmn.x, fmax(tmn.y, tmn.z));
-    float tf = fmin(tmx.x, fmin(tmx.y, tmx.z));
-    if (tf < 0.0f || tn > tf)
+    // Normalise XY so the polygon is regular regardless of stretch.
+    float2 nro = (float2)(ro.x / extent.x, ro.y / extent.y);
+    float2 nrd = (float2)(rd.x / extent.x, rd.y / extent.y);
+
+    float t_enter = -1e20f;
+    float t_exit = 1e20f;
+
+    // Z caps.
+    {
+        float denom = rd.z;
+        float num = zmax - ro.z;
+        if (fabs(denom) < 1e-8f)
+        {
+            if (num < 0.0f)
+                return -1.0f;
+        }
+        else
+        {
+            float t = num / denom;
+            if (denom > 0.0f)
+                t_exit = fmin(t_exit, t);
+            else
+                t_enter = fmax(t_enter, t);
+        }
+    }
+    {
+        float denom = rd.z;
+        float num = zmin - ro.z;
+        if (fabs(denom) < 1e-8f)
+        {
+            if (num > 0.0f)
+                return -1.0f;
+        }
+        else
+        {
+            float t = num / denom;
+            if (denom > 0.0f)
+                t_exit = fmin(t_exit, t);
+            else
+                t_enter = fmax(t_enter, t);
+        }
+    }
+
+    float step = 6.28318530718f / (float)sides;
+
+    for (int k = 0; k < sides; ++k)
+    {
+        float theta = (float)k * step;
+        float2 n = (float2)(cos(theta), sin(theta));
+
+        // Per-side irregularity.
+        float j = 1.0f + (hash11(seed + (float)k * 12.9898f) * 2.0f - 1.0f) * jag;
+
+        float denom = n.x * nrd.x + n.y * nrd.y;
+        float num = j - (n.x * nro.x + n.y * nro.y);
+
+        if (fabs(denom) < 1e-8f)
+        {
+            if (num < 0.0f)
+                return -1.0f;
+        }
+        else
+        {
+            float t = num / denom;
+            if (denom > 0.0f)
+                t_exit = fmin(t_exit, t);
+            else
+                t_enter = fmax(t_enter, t);
+        }
+    }
+
+    if (t_enter > t_exit || t_exit < 0.0f)
         return -1.0f;
-    return tn >= 0.0f ? tn : tf;
+
+    return t_enter >= 0.0f ? t_enter : t_exit;
 }
 
 static float quantized01(float x, int steps)
@@ -117,8 +198,8 @@ static float quantized01(float x, int steps)
     uv.x *= aspect;
     uv *= @view_scale;
 
-    float yaw = @camera_yaw * 0.0174532925199433f;
-    float pitch = @camera_pitch * 0.0174532925199433f;
+    float yaw = @camera_yaw * 1.57079632679f;
+    float pitch = @camera_pitch * 0.78539816339f;
 
     float cp = cos(pitch);
     float sp = sin(pitch);
@@ -156,6 +237,8 @@ static float quantized01(float x, int steps)
     float quarter_fill = clamp(@quarter_fill, 0.0f, 1.0f);
     float quarter_size = fmax(@quarter_size, 0.01f);
     float quarter_height = fmax(@quarter_height, 0.01f);
+    float quarter_jitter_x = clamp(@quarter_jitter_x, 0.0f, 0.48f);
+    float quarter_jitter_y = clamp(@quarter_jitter_y, 0.0f, 0.48f);
 
     // --- Derived from the compact parameter set -------------------------
     float jit = fmax(@jitter, 0.0f);
@@ -178,6 +261,8 @@ static float quantized01(float x, int steps)
     // Depth ramp rides on the camera distance: near = 0.5x, far = 1.5x.
     float dnear = cam_dist * 0.5f;
     float dfar = cam_dist * 1.5f;
+
+    int base_sides = clamp(@sides, 3, 12);
 
     int cluster_cells = max(@formation_cells, 1);
     int pad = 2;
@@ -208,6 +293,17 @@ static float quantized01(float x, int steps)
         float phase_x = (float)xi * 0.25f;
         float phase_y = (float)yi / (float)y_sub;
         int secondary = phase != 0;
+
+        /*
+            Jitter each staggered copy's offset. The offset is
+            constant per phase, so copies one tile apart stay
+            identical and the pattern remains seamless.
+        */
+        if (secondary)
+        {
+            phase_x += (hash11((float)phase * 5.31f + @seed * 0.611f) * 2.0f - 1.0f) * quarter_jitter_x;
+            phase_y += (hash11((float)phase * 9.73f + @seed * 0.917f) * 2.0f - 1.0f) * quarter_jitter_y;
+        }
 
         float phase_density = secondary ? density * quarter_fill : density;
         float phase_size = secondary ? quarter_size : 1.0f;
@@ -313,22 +409,6 @@ static float quantized01(float x, int steps)
                         float hy = 0.5f * cell_size.y * syv;
 
                         /*
-                            Each side varies independently,
-                            making slab/block outlines
-                            irregular while retaining
-                            planar geometry.
-                        */
-                        float ml = 1.0f + rand_signed(cell, phase_seed, 83.17f) * sidejag;
-                        float mr = 1.0f + rand_signed(cell, phase_seed, 97.13f) * sidejag;
-                        float mb = 1.0f + rand_signed(cell, phase_seed, 109.91f) * sidejag;
-                        float mt = 1.0f + rand_signed(cell, phase_seed, 127.37f) * sidejag;
-
-                        float xmin = -hx * ml;
-                        float xmax = hx * mr;
-                        float ymin = -hy * mb;
-                        float ymax = hy * mt;
-
-                        /*
                             Formation-level height
                             clustering.
                         */
@@ -376,10 +456,21 @@ static float quantized01(float x, int steps)
                         float3 lro = (float3)(lroxy.x, lroxy.y, rel.z);
                         float3 lrd = (float3)(lrdxy.x, lrdxy.y, rd.z);
 
-                        float t = ray_box(
+                        // Per-cell shape, optionally randomised.
+                        int cell_sides = base_sides;
+                        if (@shape_random)
+                        {
+                            float sr = rand_cell(cell, phase_seed, 251.17f);
+                            cell_sides = 4 + 2 * (int)(sr * 3.0f);
+                        }
+
+                        float side_seed = rand_cell(cell, phase_seed, 269.83f) * 1000.0f;
+
+                        float t = ray_prism(
                             lro, lrd,
-                            (float3)(xmin, ymin, -height * 0.5f),
-                            (float3)(xmax, ymax, height * 0.5f));
+                            (float2)(hx, hy), cell_sides,
+                            -height * 0.5f, height * 0.5f,
+                            sidejag, side_seed);
 
                         if (t >= 0.0f && t < best_t)
                         {
