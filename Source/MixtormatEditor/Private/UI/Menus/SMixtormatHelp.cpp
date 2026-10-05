@@ -11,10 +11,29 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+namespace
+{
+	void ClearNativeToolTips(const TSharedRef<SWidget>& Widget)
+	{
+		Widget->SetToolTipText(FText::GetEmpty());
+		if (FChildren* Children = Widget->GetChildren())
+		{
+			for (int32 Index = 0; Index < Children->Num(); ++Index)
+			{
+				ClearNativeToolTips(Children->GetChildAt(Index));
+			}
+		}
+	}
+}
+
 void SMixtormatHelp::Construct(const FArguments& InArgs)
 {
 	HelpText = InArgs._Text;
 	HelpEnabled = InArgs._Enabled;
+
+	// This subtree has one help system. Remove any native Slate tooltip inherited by child widgets.
+	ClearNativeToolTips(InArgs._Content.Widget);
+
 	SMenuAnchor::Construct(
 		SMenuAnchor::FArguments()
 		.Placement(MenuPlacement_BelowAnchor)
@@ -107,6 +126,7 @@ TSharedRef<SWidget> SMixtormatHelp::BuildHelpContent()
 		})
 		[
 			SNew(SMixtormatMenuPanel)
+			.Visibility(EVisibility::HitTestInvisible)
 			.Padding(FMargin(MixtormatTokens::HelpPadding))
 			[
 				Lines

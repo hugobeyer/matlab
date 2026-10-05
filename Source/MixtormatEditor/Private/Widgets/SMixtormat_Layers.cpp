@@ -223,24 +223,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								})
 								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
 							]
-							// Two creations, two glyphs: a square for a material, a circle for a fill. The
-							// same icon button the eye and the chevrons are, so the bar costs one row and
-							// no plate.
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							[
-								SNew(SMixtormatIconButton)
-								.Icon(MixtormatIcons::LayerMaterial())
-								.ToolTip(LOCTEXT("AddMaterialLayerHintCompact", "Add a material layer from the selected library surface."))
-								.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Material); })
-							]
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							.Padding(0.0f, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
-							[
-								SNew(SMixtormatIconButton)
-								.Icon(MixtormatIcons::LayerFill())
-								.ToolTip(LOCTEXT("AddFillLayerHintCompact", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
-								.OnClicked_Lambda([this]() { AddWorkingLayer(EMixtormatLayerType::Fill); })
-							]
 						]
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
@@ -278,11 +260,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 					[
 						SNew(SHorizontalBox)
 						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
-						+ SHorizontalBox::Slot().FillWidth(1.0f)
-						[
-							SNew(SSpacer)
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 						[
 							SNew(SBox)
 							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
@@ -293,7 +271,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
 								[
 									SNew(SHorizontalBox)
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 									[
 										SNew(SBox)
 										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
@@ -312,7 +290,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						// Beside the two Add buttons rather than in the stack: grouping acts on the
 						// selection, so it belongs with the other things that change the stack
 						// rather than with anything a single row owns.
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 						
 						[
 							SNew(SBox)
@@ -356,8 +334,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
-						[
+												[
 							SNew(SBox)
 							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[

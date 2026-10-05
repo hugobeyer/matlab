@@ -121,10 +121,13 @@ int32 SMixtormatGroupButtonSurface::OnPaint(const FPaintArgs& Args, const FGeome
 	// surface had a hand-rolled painter.
 	int32 Layer = Mixtormat::FMixtormatSurfacePainter::PaintBody(
 		Elements, LayerId, Geometry, Recipe, Samples);
-	Layer = Mixtormat::FMixtormatSurfacePainter::PaintBorders(
-		Elements, Layer, Geometry, Recipe, Palette, WidgetStyle, Samples);
 
 	FWidgetStyle ContentStyle = WidgetStyle;
 	ContentStyle.SetForegroundColor(TextColor(State));
-	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, Layer + 1, ContentStyle, bParentEnabled);
+	Layer = SCompoundWidget::OnPaint(
+		Args, Geometry, CullingRect, Elements, Layer + 1, ContentStyle, bParentEnabled);
+
+	// Chrome must remain above full-width child content.
+	return Mixtormat::FMixtormatSurfacePainter::PaintBorders(
+		Elements, Layer + 1, Geometry, Recipe, Palette, WidgetStyle, Samples);
 }

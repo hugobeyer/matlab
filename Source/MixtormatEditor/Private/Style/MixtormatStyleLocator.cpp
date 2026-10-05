@@ -19,7 +19,7 @@ namespace Mixtormat
 			float RenderOpacity = 1.0f;
 		};
 
-		TArray<FLocatedWidget> GLocated;
+		TOptional<FLocatedWidget> GLocated;
 
 		bool Is(const FName Type, const TCHAR* Name)
 		{
@@ -89,32 +89,40 @@ namespace Mixtormat
 			}
 		}
 
-		void Collect(const TSharedRef<SWidget>& Widget, const EMixtormatStyleTarget Target)
+		bool CollectFirst(const TSharedRef<SWidget>& Widget, const EMixtormatStyleTarget Target)
 		{
 			const FName Type = Widget->GetType();
 
 			if (Is(Type, TEXT("SMixtormatThemePanel")))
 			{
-				return;
+				return false;
 			}
 
-			if (Matches(Target, Type))
+			const FVector2f Size = Widget->GetCachedGeometry().GetLocalSize();
+			if (Matches(Target, Type)
+				&& Widget->GetVisibility().IsVisible()
+				&& Size.X > 1.0f && Size.Y > 1.0f)
 			{
-				FLocatedWidget& Entry = GLocated.AddDefaulted_GetRef();
+				FLocatedWidget Entry;
 				Entry.Widget = Widget;
 				Entry.RenderOpacity = Widget->GetRenderOpacity();
-				return;
+				GLocated = Entry;
+				return true;
 			}
 
 			FChildren* Children = Widget->GetChildren();
 			if (!Children)
 			{
-				return;
+				return false;
 			}
 			for (int32 Index = 0; Index < Children->Num(); ++Index)
 			{
-				Collect(Children->GetChildAt(Index), Target);
+				if (CollectFirst(Children->GetChildAt(Index), Target))
+				{
+					return true;
+				}
 			}
+			return false;
 		}
 	}
 
@@ -155,10 +163,13 @@ namespace Mixtormat
 
 		for (const TSharedRef<SWindow>& Window : FSlateApplication::Get().GetTopLevelWindows())
 		{
-			Collect(Window, Target);
+			if (CollectFirst(Window, Target))
+			{
+				break;
+			}
 		}
 
-		if (GLocated.IsEmpty())
+		if (!GLocated.IsSet())
 		{
 			return false;
 		}
@@ -169,19 +180,32 @@ namespace Mixtormat
 
 	void FMixtormatStyleLocator::SetDimmed(const bool bDimmed)
 	{
-		for (const FLocatedWidget& Entry : GLocated)
+		if (!GLocated.IsSet())
 		{
-			if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
-			{
-				Widget->SetRenderOpacity(bDimmed ? Entry.RenderOpacity * 0.22f : Entry.RenderOpacity);
-				Widget->Invalidate(EInvalidateWidgetReason::Paint);
-			}
+			return;
+		}
+
+		const FLocatedWidget& Entry = GLocated.GetValue();
+		if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
+		{
+			// SWidget has a generic render-opacity API in UE 5.8, but no generic tint API.
+			// Pulse only the exact located widget instead of dimming every widget in its category.
+			Widget->SetRenderOpacity(bDimmed ? Entry.RenderOpacity * 0.18f : Entry.RenderOpacity);
+			Widget->Invalidate(EInvalidateWidgetReason::Paint);
 		}
 	}
 
 	void FMixtormatStyleLocator::End()
 	{
-		SetDimmed(false);
+		if (GLocated.IsSet())
+		{
+			const FLocatedWidget& Entry = GLocated.GetValue();
+			if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
+			{
+				Widget->SetRenderOpacity(Entry.RenderOpacity);
+				Widget->Invalidate(EInvalidateWidgetReason::Paint);
+			}
+		}
 		GLocated.Reset();
 	}
 }
