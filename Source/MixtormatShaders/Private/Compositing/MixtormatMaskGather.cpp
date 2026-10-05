@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Compositing/MixtormatMaskGather.h"
+#include "MixtormatChildScope.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -70,13 +71,8 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		ChildData.SourceChildIndex = SourceChildIndex;
 		if (LayerChild.ScopeOwnerChildId.IsValid())
 		{
-			const int32 OwnerIndex = Layer.Children.IndexOfByPredicate(
-				[&LayerChild](const FMixtormatLayerChild& Candidate)
-				{
-					return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
-				});
+			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 			if (Layer.Children.IsValidIndex(OwnerIndex)
-				&& OwnerIndex < SourceChildIndex
 			&& (Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect
 				|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator))
 			{

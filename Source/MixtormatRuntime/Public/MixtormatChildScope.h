@@ -1,0 +1,24 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "MixtormatMaterial.h"
+
+// One lookup for ScopeOwnerChildId. Editor placement and gather evaluation both use this so a
+// GUID the UI still shows cannot evaluate as a different owner, or as a layer-wide mask.
+namespace MixtormatChildScope
+{
+	MIXTORMATRUNTIME_API int32 FindIndexById(
+		const TArray<FMixtormatLayerChild>& Children,
+		const FGuid& ChildId);
+
+	// INDEX_NONE when the owner id is invalid, missing, self, or not strictly before ChildIndex.
+	MIXTORMATRUNTIME_API int32 ResolveOwnerIndex(
+		const TArray<FMixtormatLayerChild>& Children,
+		int32 ChildIndex);
+
+	// Clears ScopeOwnerChildId when ResolveOwnerIndex would return INDEX_NONE. Returns true if
+	// any child changed.
+	MIXTORMATRUNTIME_API bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children);
+}

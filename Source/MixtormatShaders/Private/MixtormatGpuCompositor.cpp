@@ -14,6 +14,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "GlobalShader.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatEffect.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatMask.h"
@@ -1624,24 +1625,18 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		{
 			return false;
 		}
-		TMap<FGuid, int32> ScopeOwnerIndices;
-		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
-		{
-			ScopeOwnerIndices.Add(Layer.Children[Index].ChildId, Index);
-		}
 		TArray<int32> ScopeOwners;
 		TArray<bool> DisabledGroupScopes;
 		ScopeOwners.Init(INDEX_NONE, Layer.Children.Num());
 		DisabledGroupScopes.Init(false, Layer.Children.Num());
 		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
 		{
-			const FMixtormatLayerChild& Child = Layer.Children[Index];
-			const int32* Owner = ScopeOwnerIndices.Find(Child.ScopeOwnerChildId);
-			if (Child.ScopeOwnerChildId.IsValid() && Owner && *Owner < Index)
+			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index);
+			if (OwnerIndex != INDEX_NONE)
 			{
-				ScopeOwners[Index] = *Owner;
-				const FMixtormatLayerChild& Parent = Layer.Children[*Owner];
-				DisabledGroupScopes[Index] = DisabledGroupScopes[*Owner]
+				ScopeOwners[Index] = OwnerIndex;
+				const FMixtormatLayerChild& Parent = Layer.Children[OwnerIndex];
+				DisabledGroupScopes[Index] = DisabledGroupScopes[OwnerIndex]
 					|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
 			}
 		}
@@ -1737,14 +1732,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			ChildData.SourceChildIndex = SourceChildIndex;
 			if (LayerChild.ScopeOwnerChildId.IsValid())
 			{
-				const int32 OwnerIndex = Layer.Children.IndexOfByPredicate(
-					[&LayerChild](const FMixtormatLayerChild& Candidate)
-					{
-						return Candidate.ChildId == LayerChild.ScopeOwnerChildId;
-					});
+				const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 				bool bWarpableOwner = false;
 				bool bFlowGeneratorOwner = false;
-				if (Layer.Children.IsValidIndex(OwnerIndex) && OwnerIndex < SourceChildIndex)
+				if (OwnerIndex != INDEX_NONE)
 				{
 					const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
 					bWarpableOwner = Owner.Type == EMixtormatLayerChildType::Mask;

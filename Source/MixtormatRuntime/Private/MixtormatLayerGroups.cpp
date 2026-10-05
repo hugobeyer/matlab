@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatLayerGroups.h"
+#include "MixtormatChildScope.h"
 
 #include "Misc/SecureHash.h"
 
@@ -200,6 +201,14 @@ namespace MixtormatLayerGroups
 				}
 				ChildIds.Add(Child.ChildId);
 			}
+		}
+		for (FMixtormatLayer& Layer : Layers)
+		{
+			MixtormatChildScope::SanitizeStaleOwners(Layer.Children);
+		}
+		for (FMixtormatLayerGroup& Group : Groups)
+		{
+			MixtormatChildScope::SanitizeStaleOwners(Group.Children);
 		}
 	}
 

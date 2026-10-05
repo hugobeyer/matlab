@@ -10,7 +10,7 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 
 **Highest-risk correctness issue (static):** None proven as P0. Strongest residual concerns are stale-GUID / instance / scoped-child recovery paths and possible cache-key vs. visual-result mismatches under hierarchy moves or source deletion (need runtime validation).
 
-**Highest-value performance issue:** Authored-iteration simulation-style passes (Erosion, Craquelure grow, Generator Flow jumps, Rock Formation facets, etc.) that allocate full-resolution `PF_R32_FLOAT` / `PF_R32_UINT` intermediates and run sequential ping-pong loops whose cost scales linearly with iteration count × resolution². Caching mitigates recompute but not the cost of a cold or invalidated bake/preview.
+**Highest-value performance issue:** Authored-iteration simulation-style passes at high `CompositionResolution` / bake res. Cost is O(iterations × res²). Preview must use full authored iterations at preview res so it matches bake; do not scale iterations down for preview. Caching mitigates recompute. Treat slowness as a profiling issue, not a correctness fix.
 
 **Highest-value architectural cleanup:** Tighten generator-layer channel/irrelevant-control surface so generators stay height/ID/structure producers. ThemeStore is the colour path.
 
@@ -28,27 +28,13 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 ### P1 — MAJOR ISSUES
 
 **P1-01**  
-**Files:** `Source/MixtormatShaders/Private/Effects/MixtormatErosionPasses.cpp`, `MixtormatCraquelurePasses.cpp`, `MixtormatGpuGeneratorPasses.cpp`, related `.usf`  
-**Code:** Erosion loop (`Iterations` clamped 1–64, ping-pong `EroH`/`EroVel`), Craquelure grow iterations, Generator Flow jump/smooth/apply stages, Rock Formation facet iterations.  
-**Observed:** Sequential full-resolution RDG passes with authored iteration counts; intermediate textures created as `PF_R32_FLOAT` / `PF_R32_UINT`.  
-**Why it matters:** Cost scales as O(iterations × res²). At 4K + high authored iterations this dominates bake and can make interactive preview unusable if the same path is taken. Caching helps only on cache hits.  
-**Recommended fix:** Keep the algorithms; add a quality/iteration scale factor that is lower for preview than bake, and consider narrower formats or early-out where possible. Document safe iteration ranges.  
-**Confidence:** High (code is explicit).  
-**Timing:** Before Release (preview path).  
-**Evidence:** Proven from static inspection of the pass loops and texture creation.
+**Status:** Skipped (product). Preview already has `CompositionResolution` separate from bake. Full authored iterations at that res are required so preview matches export (Craquelure reach already scales by res). Do not add a preview iteration scale. Cost remains a profiling note only.
 
 **P1-02**  
 **Status:** Done. ThemeStore is the only colour path. LiveTheme/Palette deleted (P2-07). DesignTokens still used for layout numbers.
 
 **P1-03**  
-**Files:** `Source/MixtormatRuntime/Public/MixtormatMaterial.h` (`FMixtormatLayerChild`, `ScopeOwnerChildId`, instance fields), gather files (`MixtormatMaskGather.cpp`, `MixtormatIdGather.cpp`), Editor hierarchy/actions.  
-**Code:** ScopeOwnerChildId semantics, instance SourceLayerId/SourceChildId, gather owner lookup.  
-**Observed:** UI placement rules and gather ownership rules are both present and mostly aligned, but the two interpretations live in different modules. Complex combinations (scoped mask under instance under ID Group + OutputReference) are only statically verifiable with difficulty.  
-**Why it matters:** A hierarchy the UI allows can in principle be evaluated differently by gather if recovery / orphan / reorder paths diverge.  
-**Recommended fix:** Single canonical “effective owner / placement validator” used by both Editor and gather; add explicit recovery for stale GUIDs.  
-**Confidence:** Medium (strong structural indication; full divergence not proven on every path).  
-**Timing:** Before Release.  
-**Evidence:** Strong static indication from cross-module ownership model.
+**Status:** Lookup unified. `MixtormatChildScope` (Runtime) is the owner GUID resolver: find-by-id, owner must exist and sit strictly before the child, else INDEX_NONE. Gather (mask + compositor) uses it. Stale `ScopeOwnerChildId` is cleared in `ValidateGroups` (load + structural edits). Placement type-pairs (`CanKeepScopedPlacement`) still live in Editor; widening who can own a mask is separate work.
 
 ---
 
@@ -64,7 +50,7 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 
 **P2-05** Residual transitional comments and compatibility naming in Material.h (legacy Automatic height source, enum append-only discipline, etc.). Harmless but increases cognitive load.
 
-**P2-06** Preview vs bake quality settings share more infrastructure than ideal; some iterative passes do not clearly scale quality by context.
+**P2-06** Skipped with P1-01. Preview vs bake quality is lighting (`Default`/`Lumen`) plus independent resolutions, not pass-iteration scaling.
 
 **P2-07** Done. Remaining Palette callers now use ThemeStore roles; `FMixtormatLiveTheme` and `MixtormatPalette.h` deleted. DesignTokens still hold layout numbers.
 
@@ -78,7 +64,7 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 ---
 
 ### A. GPU PERFORMANCE TOP 10
-1. **Erosion iterative ping-pong** (`MixtormatErosionPasses.cpp` + `.usf`) – linear in iterations (≤64) × res², R32 intermediates. Affects both. Cache mitigates recompute only. Scale iterations for preview; consider early-out. Priority: high.  
+1. **Erosion iterative ping-pong** – linear in iterations (≤64) × res², R32 intermediates. Full iterations at preview res are correct. Cache mitigates recompute. Profile before changing. Priority: note only.  
 2. **Craquelure grow + distance/relief** (`MixtormatCraquelurePasses.cpp`) – multi-pass iterative growth. Same scaling.  
 3. **Generator Flow jump/smooth/resolve/apply** (`MixtormatGpuGeneratorPasses.cpp`) – multi-stage sequential.  
 4. **Rock Formation + facet iterations** (same file) – R32 height + IDs + edge distance.  
@@ -151,18 +137,17 @@ These should not be rewritten for cleanup’s sake.
 
 ### F. RELEASE BLOCKERS
 - **Proven blockers:** None from static inspection.  
-- **Strongly recommended before release:** Preview iteration scaling for the top iterative passes; validation of GUID recovery under complex hierarchy mutations.  
+- **Strongly recommended before release:** Validation of GUID recovery under complex hierarchy mutations.  
 - **Safe to defer:** Further file splitting, minor helper unification, extra published intermediates that are not currently required.
 
 ---
 
 ### G. RECOMMENDED ORDER OF WORK
 1. **Correctness / stale-reference / cache hazards** – GUID recovery, effective-owner canonicalization, cache-key audits under hierarchy mutation (affects Runtime + Shaders gather + Editor actions).  
-2. **Smallest-risk high-value GPU wins** – preview vs bake iteration/quality scale factors on Erosion/Craquelure/Generator Flow/Rock (Shaders only).  
-3. **Hierarchy/scoping coherence** – single placement validator.  
-4. **Generator / gate / output surface cleanup**.  
-5. **Editor cleanup** (repeated scans, large-file extraction).  
-6. **Deeper optimizations** (format narrowing, intermediate reuse) only after profiling confirms the static hotspots.
+2. **Hierarchy/scoping coherence** – single placement validator (P1-03).  
+3. **Generator / gate / output surface cleanup**.  
+4. **Editor cleanup** (repeated scans, large-file extraction).  
+5. **Deeper optimizations** (format narrowing, intermediate reuse) only after profiling confirms the static hotspots.
 
 Prefer incremental patches. Do not rewrite the gather/compositor or the child taxonomy; they are fundamentally sound.
 

@@ -4,6 +4,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "MixtormatOutputReference.h"
@@ -78,12 +79,7 @@ namespace MixtormatLayersPrivate
 
 	int32 FindChildById(const TArray<FMixtormatLayerChild>& Children, const FGuid& ChildId)
 	{
-		return ChildId.IsValid()
-			? Children.IndexOfByPredicate([&ChildId](const FMixtormatLayerChild& Child)
-			{
-				return Child.ChildId == ChildId;
-			})
-			: INDEX_NONE;
+		return MixtormatChildScope::FindIndexById(Children, ChildId);
 	}
 
 	int32 GetScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
