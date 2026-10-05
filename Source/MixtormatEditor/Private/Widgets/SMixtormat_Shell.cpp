@@ -491,35 +491,76 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const FTextBlockStyle& MutedStyle =
+		Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText"));
+
 	return SNew(SBox)
 		.HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.StatusBarHeight)
 		[
 			SNew(SBorder)
 			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f))
 			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+			.BorderBackgroundColor(
+				FMixtormatThemeStore::GetResolved().Palette.Get(
+					Mixtormat::EMixtormatColorRole::Ground))
 			[
 				SNew(SOverlay)
+
 				+ SOverlay::Slot()
+				.HAlign(HAlign_Left)
+				.VAlign(VAlign_Center)
 				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(WorkingStatusText); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText"))).ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))]
-					+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([this]()
-						{
-							const FText QualityText = PreviewQuality == EMixtormatPreviewQuality::Lumen
-								? LOCTEXT("StatusQualityLumen", "Lumen On")
-								: LOCTEXT("StatusQualityDefault", "Default · Studio AO");
-							return FText::Format(LOCTEXT("RealtimeStatusDynamic", "Real-time Preview · {0} · SM6"), QualityText);
-						})
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText")))
-						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
-					]
-					+ SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text_Lambda([this]() { return FText::Format(LOCTEXT("LayerStatus", "Layers {0}"), FText::AsNumber(WorkingLayers.Num())); }).TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.MutedText"))).ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))]
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						return FText::FromString(WorkingStatusText);
+					})
+					.TextStyle(&MutedStyle)
+					.ColorAndOpacity(FSlateColor(
+						FMixtormatThemeStore::GetResolved().Palette.Get(
+							Mixtormat::EMixtormatColorRole::TextMuted)))
 				]
 
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						const FText QualityText =
+							PreviewQuality == EMixtormatPreviewQuality::Lumen
+								? LOCTEXT("StatusQualityLumen", "Lumen On")
+								: LOCTEXT("StatusQualityDefault", "Default · Studio AO");
+
+						return FText::Format(
+							LOCTEXT(
+								"RealtimeStatusDynamic",
+								"Real-time Preview · {0} · SM6"),
+							QualityText);
+					})
+					.TextStyle(&MutedStyle)
+					.ColorAndOpacity(FSlateColor(
+						FMixtormatThemeStore::GetResolved().Palette.Get(
+							Mixtormat::EMixtormatColorRole::TextMuted)))
+				]
+
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Right)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						return FText::Format(
+							LOCTEXT("LayerStatus", "Layers {0}"),
+							FText::AsNumber(WorkingLayers.Num()));
+					})
+					.TextStyle(&MutedStyle)
+					.ColorAndOpacity(FSlateColor(
+						FMixtormatThemeStore::GetResolved().Palette.Get(
+							Mixtormat::EMixtormatColorRole::TextMuted)))
+				]
 			]
 		];
 }
