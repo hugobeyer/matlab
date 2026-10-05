@@ -13,9 +13,9 @@
 // quietly collapse into "paint a darker colour".
 //
 // Additive and Multiply are not new. Both already have working precedents in this codebase --
-// `MixtormatPalette::GroupCardBackground` adds the source at alpha, and `SMixtormatGradientBox`'s
-// second pass darkens with black at alpha so that src * (1 - a) survives. Those are re-expressed
-// here so the semantics are stated once and a caller does not have to rediscover them.
+// group-card lift adds the source at alpha, and `SMixtormatGradientBox`'s second pass darkens
+// with black at alpha so that src * (1 - a) survives. Those are re-expressed here so the
+// semantics are stated once and a caller does not have to rediscover them.
 //
 // The important one is SoftLight. It is backdrop-dependent: the same source colour produces a
 // different result over a dark panel than over a lit foldout, which is precisely why it cannot be

@@ -3,7 +3,6 @@
 #include "UI/Atoms/SMixtormatBadge.h"
 
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -58,7 +57,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 					[
 						SNew(SImage)
 						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.ColorAndOpacity(FSlateColor(MixtormatPalette::BadgeHairline()))
+						.ColorAndOpacity(FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
 					]
 				]
 				+ SOverlay::Slot()
@@ -78,14 +77,12 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 
 FLinearColor SMixtormatBadge::GetTop() const
 {
-	const bool bLive = OnGetMenuContent.IsBound() && (IsHovered() || (MenuAnchor.IsValid() && MenuAnchor->IsOpen()));
-	return bLive ? MixtormatPalette::BadgeTopHover() : MixtormatPalette::BadgeTop();
+	return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
 }
 
 FLinearColor SMixtormatBadge::GetBottom() const
 {
-	const bool bLive = OnGetMenuContent.IsBound() && (IsHovered() || (MenuAnchor.IsValid() && MenuAnchor->IsOpen()));
-	return bLive ? MixtormatPalette::BadgeBottomHover() : MixtormatPalette::BadgeBottom();
+	return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
 }
 
 FReply SMixtormatBadge::OnMouseButtonDown(const FGeometry&, const FPointerEvent& MouseEvent)

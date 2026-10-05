@@ -530,7 +530,17 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAccentMenu(const FGuid GroupId)
 	AddSwatch(
 		FLinearColor(0.0f, 0.0f, 0.0f, 0.0f),
 		LOCTEXT("GroupAccentNone", "No colour"));
-	for (const FLinearColor& Swatch : MixtormatPalette::GroupAccents())
+	static const FLinearColor GroupAccentSwatches[] = {
+		FLinearColor::FromSRGBColor(FColor(0xE0, 0x52, 0x52)),
+		FLinearColor::FromSRGBColor(FColor(0xE0, 0x8A, 0x42)),
+		FLinearColor::FromSRGBColor(FColor(0xE0, 0xC2, 0x4A)),
+		FLinearColor::FromSRGBColor(FColor(0x6F, 0xBF, 0x5A)),
+		FLinearColor::FromSRGBColor(FColor(0x4F, 0xB0, 0xB5)),
+		FLinearColor::FromSRGBColor(FColor(0x5A, 0x8F, 0xD6)),
+		FLinearColor::FromSRGBColor(FColor(0x9B, 0x72, 0xD0)),
+		FLinearColor::FromSRGBColor(FColor(0xD0, 0x66, 0xA5)),
+	};
+	for (const FLinearColor& Swatch : GroupAccentSwatches)
 	{
 		AddSwatch(Swatch, LOCTEXT("GroupAccentSwatch", "Tag this group with this colour"));
 	}

@@ -4,7 +4,6 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatGroupButton.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"

@@ -7,7 +7,6 @@
 #include "IContentBrowserSingleton.h"
 #include "Modules/ModuleManager.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "Styling/AppStyle.h"
@@ -150,7 +149,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() { return ValidationText; })
-				.ColorAndOpacity(MixtormatPalette::ErrorText())
+				.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Error))
 				.AutoWrapText(true)
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)

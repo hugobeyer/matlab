@@ -218,8 +218,3 @@ FString FMixtormatPaths::ProjectMaterialsRoot()
 {
 	return TEXT("/Game/Mixtormat/Materials");
 }
-
-FString FMixtormatPaths::LiveThemePath()
-{
-	return FPaths::Combine(FPaths::ProjectSavedDir(), CurrentProductName.ToString(), TEXT("LiveTheme.json"));
-}

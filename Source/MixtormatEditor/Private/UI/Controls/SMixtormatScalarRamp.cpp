@@ -4,7 +4,6 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
@@ -121,7 +120,8 @@ int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geo
 	const float X0 = Pad, X1 = static_cast<float>(Size.X)-Pad;
 	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y)-Pad;
-	const FLinearColor Bg = MixtormatPalette::ScalarRampBackground();
+	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
+	const FLinearColor Bg = Pal.Get(Mixtormat::EMixtormatColorRole::Ground);
 	const FVector2f GraphSize(X1-X0, Y1-Y0);
 	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(GraphSize,
 		FSlateLayoutTransform(FVector2f(X0,Y0))), FCoreStyle::Get().GetBrush("WhiteBrush"),
@@ -132,15 +132,17 @@ int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geo
 	{
 		const float Top=ViewYMax<=0.0f?Y0:FMath::Clamp(ZeroY,Y0,Y1);
 		FSlateDrawElement::MakeBox(Elements,Layer+1,Geometry.ToPaintGeometry(FVector2f(GraphSize.X,Y1-Top),FSlateLayoutTransform(FVector2f(X0,Top))),
-			FCoreStyle::Get().GetBrush("WhiteBrush"),ESlateDrawEffect::None,MixtormatPalette::ScalarRampOutsideRangeBackground());
+			FCoreStyle::Get().GetBrush("WhiteBrush"),ESlateDrawEffect::None,Pal.Get(Mixtormat::EMixtormatColorRole::Shade));
 	}
 	if (ViewYMax > 1.0f)
 	{
 		const float Bottom=FMath::Min(Y1,OneY);
 		FSlateDrawElement::MakeBox(Elements,Layer+1,Geometry.ToPaintGeometry(FVector2f(GraphSize.X,Bottom-Y0),FSlateLayoutTransform(FVector2f(X0,Y0))),
-			FCoreStyle::Get().GetBrush("WhiteBrush"),ESlateDrawEffect::None,MixtormatPalette::ScalarRampOutsideRangeBackground());
+			FCoreStyle::Get().GetBrush("WhiteBrush"),ESlateDrawEffect::None,Pal.Get(Mixtormat::EMixtormatColorRole::Shade));
 	}
-	const FLinearColor Grid=MixtormatPalette::ScalarRampGrid(), Major=MixtormatPalette::ScalarRampMajorGrid();
+	const FLinearColor Grid=Pal.Get(Mixtormat::EMixtormatColorRole::Hairline);
+	FLinearColor Major=Grid;
+	Major.A = FMath::Min(Major.A * 2.0f, 1.0f);
 	for (int32 I=0;I<=4;++I)
 	{
 		const float X=X0+GraphSize.X*static_cast<float>(I)/4.0f;
@@ -157,7 +159,8 @@ int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geo
 			bBoundary?Major:Grid,false,bBoundary?MixtormatTokens::ScalarRampMajorGridThickness:MixtormatTokens::ScalarRampGridThickness);
 	}
 	TArray<FVector2f> Curve; MixtormatScalarRampMath::SamplePolyline(Ramp,96,Curve);
-	const FLinearColor Fill=MixtormatPalette::ScalarRampFill();
+	FLinearColor Fill=Pal.Get(Mixtormat::EMixtormatColorRole::Accent);
+	Fill.A *= 0.18f;
 	const float Baseline=YScreen(0.0f);
 	for (int32 I=0;I<Curve.Num()-1;++I)
 	{
@@ -169,13 +172,13 @@ int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geo
 	{
 		const TArray<FVector2f> Segment = { ToScreen(Curve[I],Size), ToScreen(Curve[I+1],Size) };
 		FSlateDrawElement::MakeLines(Elements,Layer+4,Geometry.ToPaintGeometry(),Segment,ESlateDrawEffect::None,
-			MixtormatPalette::ScalarRampCurve(),true,MixtormatTokens::ScalarRampCurveThickness);
+			Pal.Get(Mixtormat::EMixtormatColorRole::Accent),true,MixtormatTokens::ScalarRampCurveThickness);
 	}
 	for (int32 I=0;I<Ramp.Points.Num();++I)
 	{
 		const FVector2f P=ToScreen(FVector2f(Ramp.Points[I].X,Ramp.Points[I].Y),Size);
 		const float R=MixtormatTokens::ScalarRampPointSize*0.5f;
-		const FLinearColor C=I==DragPoint?MixtormatPalette::ScalarRampPointSelected():I==HoverPoint?MixtormatPalette::ScalarRampPointHover():MixtormatPalette::ScalarRampPoint();
+		const FLinearColor C=I==DragPoint?Pal.Get(Mixtormat::EMixtormatColorRole::Accent):I==HoverPoint?Pal.Get(Mixtormat::EMixtormatColorRole::Text):Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted);
 		FSlateDrawElement::MakeBox(Elements,Layer+5,Geometry.ToPaintGeometry(FVector2f(R*2,R*2),FSlateLayoutTransform(P-FVector2f(R,R))),FCoreStyle::Get().GetBrush("WhiteBrush"),ESlateDrawEffect::None,C);
 	}
 	return SCompoundWidget::OnPaint(Args,Geometry,Cull,Elements,Layer+6,Style,Enabled);

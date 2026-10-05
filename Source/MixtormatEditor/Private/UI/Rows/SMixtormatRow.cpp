@@ -6,7 +6,6 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
-#include "Style/MixtormatPalette.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/SMixtormatToggle.h"
@@ -178,7 +177,7 @@ TSharedRef<SWidget> MakeInspectorHairline(const TAttribute<bool>& bShown)
 		[
 			SNew(SImage)
 			.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			.ColorAndOpacity_Lambda([]() { return FSlateColor(MixtormatPalette::InspectorHairline()); })
+			.ColorAndOpacity_Lambda([]() { return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)); })
 		];
 }
 

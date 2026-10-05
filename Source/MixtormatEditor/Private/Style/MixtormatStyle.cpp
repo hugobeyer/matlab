@@ -7,7 +7,6 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatGroupButtonTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatTypography.h"
 
 #include "Brushes/SlateColorBrush.h"
@@ -380,7 +379,7 @@ void FMixtormatStyle::Refresh()
 
 	// Viewport rail buttons: each on its own rounded plate. Hover and press add the accent to the
 	// plate; the glyph is dimmed at rest and full on hover (rail icons draw in the foreground).
-	const FLinearColor OverlayPlate = MixtormatPalette::OverlayButtonPlate();
+	const FLinearColor OverlayPlate = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
 	const auto AccentAdded = [&OverlayPlate](const float Amount)
 	{
 		FLinearColor Lit = OverlayPlate + FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent) * Amount;

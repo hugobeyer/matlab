@@ -52,5 +52,4 @@ struct FMixtormatPaths final
 	static FString CylinderMeshObjectPath();
 
 	static FString ProjectMaterialsRoot();
-	static FString LiveThemePath();
 };

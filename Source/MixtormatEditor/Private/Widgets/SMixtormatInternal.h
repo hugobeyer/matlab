@@ -58,7 +58,6 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Atoms/SMixtormatChip.h"
