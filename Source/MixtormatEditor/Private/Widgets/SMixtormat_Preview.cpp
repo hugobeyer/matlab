@@ -1009,96 +1009,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	const FCheckBoxStyle* OverlayToggle = &GetPreviewOverlayToggleStyle();
 
-	TSharedRef<SHorizontalBox> ComparisonControls = SNew(SHorizontalBox);
-	const auto AddComparisonButton = [this, &ComparisonControls, OverlayToggle, PreviewLabelTextStyle](
-		const bool bBefore,
-		const FText& Label,
-		const FText& ToolTip)
-	{
-		ComparisonControls->AddSlot().AutoWidth()
-		[
-			SNew(SMixtormatPreviewPlate)
-			.bChecked_Lambda([this, bBefore]()
-			{
-				return SoloLayerIndex == INDEX_NONE && bShowCompositionBefore == bBefore;
-			})
-			[
-				SNew(SCheckBox)
-				.Style(OverlayToggle)
-				.ToolTipText(ToolTip)
-				.IsEnabled_Lambda([this]() { return bHasWorkingMaterial && !WorkingLayers.IsEmpty(); })
-				.IsChecked_Lambda([this, bBefore]()
-				{
-					return SoloLayerIndex == INDEX_NONE && bShowCompositionBefore == bBefore
-						? ECheckBoxState::Checked
-						: ECheckBoxState::Unchecked;
-				})
-				.OnCheckStateChanged_Lambda([this, bBefore](const ECheckBoxState State)
-				{
-					if (State != ECheckBoxState::Checked)
-					{
-						return;
-					}
-					bShowCompositionBefore = bBefore;
-					if (SoloLayerIndex != INDEX_NONE)
-					{
-						SoloLayerIndex = INDEX_NONE;
-						RebuildLayerList();
-					}
-					RefreshLayeredPreview(false);
-				})
-				[
-					SNew(STextBlock)
-					.Text(Label)
-					.Font(PreviewLabelTextStyle.Font)
-					.ColorAndOpacity_Lambda([this, bBefore]()
-					{
-						const bool bChecked = SoloLayerIndex == INDEX_NONE && bShowCompositionBefore == bBefore;
-						return GetPreviewOverlayLabelColor(false, bChecked);
-					})
-				]
-			]
-		];
-	};
-	AddComparisonButton(true, LOCTEXT("PreviewCompositionBefore", "BEFORE"),
-		LOCTEXT("PreviewCompositionBeforeHint", "Preview the base layer before added layers are composed"));
-	AddComparisonButton(false, LOCTEXT("PreviewCompositionAfter", "AFTER"),
-		LOCTEXT("PreviewCompositionAfterHint", "Preview the complete layer stack"));
-	ComparisonControls->AddSlot().AutoWidth().Padding(
-		FMixtormatThemeStore::GetResolved().PreviewLayout.ComparisonToggleGap, 0.0f, 0.0f, 0.0f)
-	[
-		SNew(SMixtormatPreviewPlate)
-		.bChecked_Lambda([this]() { return bBypassSelectedChild && GetSelectedChildIndex() != INDEX_NONE; })
-		[
-		SNew(SCheckBox)
-		.Style(OverlayToggle)
-		.ToolTipText(LOCTEXT("PreviewBypassSelectedChildHint",
-			"Temporarily disable the selected Mask, Generated Mask, or Effect in the preview only"))
-		.IsEnabled_Lambda([this]() { return GetSelectedChildIndex() != INDEX_NONE; })
-		.IsChecked_Lambda([this]()
-		{
-			return bBypassSelectedChild && GetSelectedChildIndex() != INDEX_NONE
-				? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-		})
-		.OnCheckStateChanged_Lambda([this](const ECheckBoxState State)
-		{
-			bBypassSelectedChild = State == ECheckBoxState::Checked
-				&& GetSelectedChildIndex() != INDEX_NONE;
-			RefreshLayeredPreview(false);
-		})
-		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("PreviewBypassSelectedChild", "Bypass child"))
-			.Font(PreviewLabelTextStyle.Font)
-			.ColorAndOpacity_Lambda([this]()
-			{
-				return GetPreviewOverlayLabelColor(false,
-					bBypassSelectedChild && GetSelectedChildIndex() != INDEX_NONE);
-			})
-		]
-		]
-	];
-
 	TSharedRef<SVerticalBox> GeometryControls = SNew(SVerticalBox);
 	TSharedRef<SVerticalBox> LightingControls = SNew(SVerticalBox);
 	const auto AddMeshButton = [this, &GeometryControls, OverlayToggle](
@@ -1378,6 +1288,21 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	const TArray<FText> QualityToolTips = {
 		LOCTEXT("PreviewQualityDefaultHint", "Stable studio key and cubemap lighting; viewport AO, Lumen, and screen-space reflections are off."),
 		LOCTEXT("PreviewQualityLumenHint", "Enable Lumen global illumination and reflections for an optional lighting check.")};
+	const TSharedRef<SWidget> QualityControls =
+		SNew(SMixtormatSegmentedControl)
+		.Options(QualityOptions)
+		.ToolTips(QualityToolTips)
+		.ActiveIndex_Lambda([this]()
+		{
+			return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
+		})
+		.OnChosen_Lambda([this](const int32 Index)
+		{
+			SetPreviewQuality(Index == 1
+				? EMixtormatPreviewQuality::Lumen
+				: EMixtormatPreviewQuality::Default);
+		});
+
 
 	// Two clusters, split by what the control belongs to rather than by where there was room.
 	//
@@ -1436,22 +1361,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	];
 
 	TSharedRef<SVerticalBox> SceneControls = SNew(SVerticalBox);
-	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
-	[
-		SNew(SMixtormatSegmentedControl)
-		.Options(QualityOptions)
-		.ToolTips(QualityToolTips)
-		.ActiveIndex_Lambda([this]()
-		{
-			return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
-		})
-		.OnChosen_Lambda([this](const int32 Index)
-		{
-			SetPreviewQuality(Index == 1
-				? EMixtormatPreviewQuality::Lumen
-				: EMixtormatPreviewQuality::Default);
-		})
-	];
 	SceneControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 	[
 		MixtormatRow::Make(
@@ -1597,7 +1506,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				MakePreviewCluster(
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[ComparisonControls]
+				[QualityControls]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.ToolbarGap, 0.0f, 0.0f, 0.0f)
 				[
