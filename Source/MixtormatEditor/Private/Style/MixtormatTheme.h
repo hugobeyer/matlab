@@ -376,6 +376,10 @@ namespace Mixtormat
 		float HairlineHoverOpacity = 0.85f;
 		float HairlineSaturation = 2.0f;
 		float HairlineHoverSaturation = 1.4f;
+
+		float ShadowOpacity = 0.055f;
+		float ShadowRange = 12.0f;
+		float ShadowFalloffPower = 1.8f;
 	};
 
 	// Header and body are one continuous gradient over Ground, not two stacked surfaces: the seam
@@ -722,6 +726,10 @@ namespace Mixtormat
 		FLinearColor SplitterHoverSource = FLinearColor::White;
 		float SplitterOpacity = 0.46f;
 		float SplitterHoverOpacity = 0.85f;
+
+		float ColumnShadowOpacity = 0.045f;
+		float ColumnShadowRange = 14.0f;
+		float ColumnShadowFalloffPower = 1.7f;
 	};
 
 	struct FMixtormatShellMetrics
