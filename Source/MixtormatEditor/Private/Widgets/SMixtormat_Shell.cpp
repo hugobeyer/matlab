@@ -240,7 +240,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.Text(LOCTEXT("OpenLiveTheme", "UI STYLE"))
 					.ToolTipText(LOCTEXT("OpenLiveThemeHint", "Developer popup: edit shared UI spacing, sizes, typography and colors live."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
-					.OnClicked(this, &SMixtormat::OpenLiveThemePanel)
+					.OnClicked(this, &SMixtormat::OpenThemePanel)
 				]
 				// Bake is a peer toolbar action, so it uses the same tokenized button, spacing,
 				// icon and label structure as New, Load, Save and Save As.

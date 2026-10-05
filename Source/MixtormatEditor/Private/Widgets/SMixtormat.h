@@ -172,7 +172,7 @@ private:
 	};
 	void BuildWorkspaceUI();
 	void HandleReferencedCompositionUpdated(const FAssetData& AssetData);
-	FReply OpenLiveThemePanel();
+	FReply OpenThemePanel();
 	FReply OpenDocumentation();
 	FReply OpenSettings();
 	// Theme refresh modes

@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-#include "Widgets/SMixtormatLiveThemePanel.h"
+#include "Widgets/SMixtormatThemePanel.h"
 
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatStyleLocator.h"
@@ -62,7 +62,7 @@ namespace
 	}
 }
 
-void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
+void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 {
 	CanEdit = InArgs._CanEdit;
 	OnThemeChanged = InArgs._OnThemeChanged;
@@ -99,7 +99,7 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 			.Options(Tabs)
 			.StretchTabs(false)
 			.ActiveIndex_Lambda([this]() { return SelectedTab == INDEX_NONE ? 0 : SelectedTab + 1; })
-			.OnChosen(this, &SMixtormatLiveThemePanel::SelectTab)
+			.OnChosen(this, &SMixtormatThemePanel::SelectTab)
 		];
 
 	struct FSectionKey
@@ -198,7 +198,7 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 					SNew(SButton)
 					.Text(LOCTEXT("Save", "Save"))
 					.IsEnabled_Lambda([this]() { return CanEdit.Get(true); })
-					.OnClicked(this, &SMixtormatLiveThemePanel::Save)
+					.OnClicked(this, &SMixtormatThemePanel::Save)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(ResetGap, 0.0f)
 				[
@@ -209,14 +209,14 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 						return CanEdit.Get(true)
 							&& IFileManager::Get().FileExists(*Mixtormat::FMixtormatThemeSchema::SavePath());
 					})
-					.OnClicked(this, &SMixtormatLiveThemePanel::Load)
+					.OnClicked(this, &SMixtormatThemePanel::Load)
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SNew(SButton)
 					.Text(LOCTEXT("ResetAll", "Reset All"))
 					.IsEnabled_Lambda([this]() { return CanEdit.Get(true); })
-					.OnClicked(this, &SMixtormatLiveThemePanel::ResetAll)
+					.OnClicked(this, &SMixtormatThemePanel::ResetAll)
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
@@ -235,12 +235,12 @@ void SMixtormatLiveThemePanel::Construct(const FArguments& InArgs)
 	];
 }
 
-SMixtormatLiveThemePanel::~SMixtormatLiveThemePanel()
+SMixtormatThemePanel::~SMixtormatThemePanel()
 {
 	Mixtormat::FMixtormatStyleLocator::End();
 }
 
-TSharedRef<SWidget> SMixtormatLiveThemePanel::MakePropertyRow(
+TSharedRef<SWidget> SMixtormatThemePanel::MakePropertyRow(
 	const Mixtormat::FMixtormatThemeProperty& P)
 {
 	const Mixtormat::FMixtormatThemeProperty* Property = &P;
@@ -344,7 +344,7 @@ TSharedRef<SWidget> SMixtormatLiveThemePanel::MakePropertyRow(
 			[
 				SNew(SButton)
 					.IsEnabled_Lambda([this]() { return CanEdit.Get(true); })
-					.OnClicked(this, &SMixtormatLiveThemePanel::OpenColor, P.Id)
+					.OnClicked(this, &SMixtormatThemePanel::OpenColor, P.Id)
 					[
 						SNew(SColorBlock)
 							.Color_Lambda([Property]() { return Property->GetColor(FMixtormatThemeStore::GetTheme()); })
@@ -398,7 +398,7 @@ TSharedRef<SWidget> SMixtormatLiveThemePanel::MakePropertyRow(
 	return Row;
 }
 
-bool SMixtormatLiveThemePanel::PropertyVisible(const Mixtormat::FMixtormatThemeProperty& P) const
+bool SMixtormatThemePanel::PropertyVisible(const Mixtormat::FMixtormatThemeProperty& P) const
 {
 	if (SelectedTab != INDEX_NONE && SelectedTab != static_cast<int32>(P.Tab))
 	{
@@ -413,7 +413,7 @@ bool SMixtormatLiveThemePanel::PropertyVisible(const Mixtormat::FMixtormatThemeP
 		|| P.Id.ToString().Contains(Filter, ESearchCase::IgnoreCase);
 }
 
-bool SMixtormatLiveThemePanel::SectionVisible(
+bool SMixtormatThemePanel::SectionVisible(
 	const Mixtormat::EMixtormatThemeTab Tab, const FString& Section) const
 {
 	return Mixtormat::FMixtormatThemeSchema::Properties().ContainsByPredicate(
@@ -423,7 +423,7 @@ bool SMixtormatLiveThemePanel::SectionVisible(
 		});
 }
 
-float SMixtormatLiveThemePanel::NumberValue(const Mixtormat::FMixtormatThemeProperty& P) const
+float SMixtormatThemePanel::NumberValue(const Mixtormat::FMixtormatThemeProperty& P) const
 {
 	if (const float* Pending = PendingNumbers.Find(P.Id))
 	{
@@ -432,7 +432,7 @@ float SMixtormatLiveThemePanel::NumberValue(const Mixtormat::FMixtormatThemeProp
 	return P.GetNumber(FMixtormatThemeStore::GetTheme());
 }
 
-bool SMixtormatLiveThemePanel::IsDefault(const Mixtormat::FMixtormatThemeProperty& P) const
+bool SMixtormatThemePanel::IsDefault(const Mixtormat::FMixtormatThemeProperty& P) const
 {
 	const Mixtormat::FMixtormatTheme& Current = FMixtormatThemeStore::GetTheme();
 	const Mixtormat::FMixtormatTheme& Default = Defaults();
@@ -450,7 +450,7 @@ bool SMixtormatLiveThemePanel::IsDefault(const Mixtormat::FMixtormatThemePropert
 	return true;
 }
 
-void SMixtormatLiveThemePanel::PreviewNumber(const FName Id, const float Value)
+void SMixtormatThemePanel::PreviewNumber(const FName Id, const float Value)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Number || !CanEdit.Get(true))
@@ -471,7 +471,7 @@ void SMixtormatLiveThemePanel::PreviewNumber(const FName Id, const float Value)
 	OnThemeChanged.ExecuteIfBound(P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::CommitNumber(const FName Id, const float Value)
+void SMixtormatThemePanel::CommitNumber(const FName Id, const float Value)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Number || !CanEdit.Get(true))
@@ -484,7 +484,7 @@ void SMixtormatLiveThemePanel::CommitNumber(const FName Id, const float Value)
 	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::CommitBool(const FName Id, const bool Value)
+void SMixtormatThemePanel::CommitBool(const FName Id, const bool Value)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Bool || !CanEdit.Get(true))
@@ -496,7 +496,7 @@ void SMixtormatLiveThemePanel::CommitBool(const FName Id, const bool Value)
 	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::CommitChoice(const FName Id, const int32 Value)
+void SMixtormatThemePanel::CommitChoice(const FName Id, const int32 Value)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Choice || !CanEdit.Get(true)
@@ -509,7 +509,7 @@ void SMixtormatLiveThemePanel::CommitChoice(const FName Id, const int32 Value)
 	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::CommitColor(const FLinearColor Value, const FName Id)
+void SMixtormatThemePanel::CommitColor(const FLinearColor Value, const FName Id)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Color || !CanEdit.Get(true))
@@ -521,7 +521,7 @@ void SMixtormatLiveThemePanel::CommitColor(const FLinearColor Value, const FName
 	CommitTheme(MoveTemp(Theme), TEXT("UI style updated."), P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::ResetProperty(const FName Id)
+void SMixtormatThemePanel::ResetProperty(const FName Id)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || !CanEdit.Get(true))
@@ -545,7 +545,7 @@ void SMixtormatLiveThemePanel::ResetProperty(const FName Id)
 	CommitTheme(MoveTemp(Theme), TEXT("Property reset."), P->RefreshMode);
 }
 
-void SMixtormatLiveThemePanel::CommitTheme(
+void SMixtormatThemePanel::CommitTheme(
 	Mixtormat::FMixtormatTheme Theme, const FString& Message, Mixtormat::EMixtormatThemeRefreshMode RefreshMode)
 {
 	FMixtormatThemeStore::SetTheme(MoveTemp(Theme));
@@ -553,7 +553,7 @@ void SMixtormatLiveThemePanel::CommitTheme(
 	OnThemeChanged.ExecuteIfBound(RefreshMode);
 }
 
-FReply SMixtormatLiveThemePanel::OpenColor(const FName Id)
+FReply SMixtormatThemePanel::OpenColor(const FName Id)
 {
 	const Mixtormat::FMixtormatThemeProperty* P = Mixtormat::FMixtormatThemeSchema::Find(Id);
 	if (!P || P->Kind != Mixtormat::EMixtormatThemePropertyKind::Color)
@@ -569,12 +569,12 @@ FReply SMixtormatLiveThemePanel::OpenColor(const FName Id)
 	Args.bOnlyRefreshOnMouseUp = false;
 	Args.InitialColor = P->GetColor(FMixtormatThemeStore::GetTheme());
 	Args.OnColorCommitted = FOnLinearColorValueChanged::CreateSP(
-		this, &SMixtormatLiveThemePanel::CommitColor, Id);
+		this, &SMixtormatThemePanel::CommitColor, Id);
 	OpenColorPicker(Args);
 	return FReply::Handled();
 }
 
-FReply SMixtormatLiveThemePanel::Save()
+FReply SMixtormatThemePanel::Save()
 {
 	FString Error;
 	Status = Mixtormat::FMixtormatThemeSchema::Save(Error)
@@ -583,7 +583,7 @@ FReply SMixtormatLiveThemePanel::Save()
 	return FReply::Handled();
 }
 
-FReply SMixtormatLiveThemePanel::Load()
+FReply SMixtormatThemePanel::Load()
 {
 	FString Error;
 	TArray<FText> Issues;
@@ -598,7 +598,7 @@ FReply SMixtormatLiveThemePanel::Load()
 	return FReply::Handled();
 }
 
-FReply SMixtormatLiveThemePanel::ResetAll()
+FReply SMixtormatThemePanel::ResetAll()
 {
 	if (!CanEdit.Get(true))
 	{
@@ -611,7 +611,7 @@ FReply SMixtormatLiveThemePanel::ResetAll()
 	return FReply::Handled();
 }
 
-void SMixtormatLiveThemePanel::SelectTab(const int32 Index)
+void SMixtormatThemePanel::SelectTab(const int32 Index)
 {
 	SelectedTab = Index <= 0 ? INDEX_NONE : Index - 1;
 	if (PropertyScroll.IsValid())
@@ -620,7 +620,7 @@ void SMixtormatLiveThemePanel::SelectTab(const int32 Index)
 	}
 }
 
-void SMixtormatLiveThemePanel::LocateTarget(const Mixtormat::EMixtormatStyleTarget Target)
+void SMixtormatThemePanel::LocateTarget(const Mixtormat::EMixtormatStyleTarget Target)
 {
 	Mixtormat::FMixtormatStyleLocator::End();
 	LocateFlashPhase = INDEX_NONE;
@@ -649,10 +649,10 @@ void SMixtormatLiveThemePanel::LocateTarget(const Mixtormat::EMixtormatStyleTarg
 	RegisterActiveTimer(
 		0.14f,
 		FWidgetActiveTimerDelegate::CreateSP(
-			this, &SMixtormatLiveThemePanel::AdvanceLocateFlash));
+			this, &SMixtormatThemePanel::AdvanceLocateFlash));
 }
 
-EActiveTimerReturnType SMixtormatLiveThemePanel::AdvanceLocateFlash(
+EActiveTimerReturnType SMixtormatThemePanel::AdvanceLocateFlash(
 	double CurrentTime, float DeltaTime)
 {
 	(void)CurrentTime;
@@ -683,7 +683,7 @@ EActiveTimerReturnType SMixtormatLiveThemePanel::AdvanceLocateFlash(
 	}
 }
 
-void SMixtormatLiveThemePanel::UpdateStatus(const FString& Prefix)
+void SMixtormatThemePanel::UpdateStatus(const FString& Prefix)
 {
 	const FString Issues = ValidationText(FMixtormatThemeStore::GetValidationIssues());
 	Status = Issues.IsEmpty() ? Prefix : Prefix + TEXT("  Validation: ") + Issues;

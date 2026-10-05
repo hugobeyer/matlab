@@ -1,7 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Style/MixtormatStyle.h"
-#include "Style/MixtormatLiveTheme.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatMutableStyleSet.h"
@@ -98,11 +97,8 @@ void FMixtormatStyle::Initialize()
 {
 	if (!StyleInstance.IsValid())
 	{
-		// Resolve the authored Stage-9 theme before any production style or workspace construction.
+		// Resolve the authored theme before any production style or workspace construction.
 		FMixtormatThemeStore::GetResolved();
-		FMixtormatLiveTheme::Initialize();
-		FString ThemeLoadError;
-		FMixtormatLiveTheme::Load(ThemeLoadError);
 		Refresh();
 	}
 }
@@ -110,7 +106,6 @@ void FMixtormatStyle::Initialize()
 void FMixtormatStyle::Refresh()
 {
 	check(IsInGameThread());
-	MixtormatTokens::RecomputeDerived();
 	const bool bFirstRegistration = !StyleInstance.IsValid();
 	using namespace MixtormatStylePrivate;
 

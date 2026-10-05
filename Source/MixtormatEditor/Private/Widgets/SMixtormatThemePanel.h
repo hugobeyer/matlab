@@ -11,18 +11,18 @@ class SScrollBox;
 
 // Stage-9 UI STYLE editor. The widget name stays stable until Stage 10 so the window owner does not
 // churn, but the old LiveTheme registry is no longer involved: every row edits FMixtormatTheme.
-class SMixtormatLiveThemePanel final : public SCompoundWidget
+class SMixtormatThemePanel final : public SCompoundWidget
 {
 public:
 	DECLARE_DELEGATE_OneParam(FOnThemeChanged, Mixtormat::EMixtormatThemeRefreshMode);
 
-	SLATE_BEGIN_ARGS(SMixtormatLiveThemePanel) : _CanEdit(true) {}
+	SLATE_BEGIN_ARGS(SMixtormatThemePanel) : _CanEdit(true) {}
 		SLATE_ATTRIBUTE(bool, CanEdit)
 		SLATE_EVENT(FOnThemeChanged, OnThemeChanged)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
-	virtual ~SMixtormatLiveThemePanel() override;
+	virtual ~SMixtormatThemePanel() override;
 
 private:
 	bool PropertyVisible(const Mixtormat::FMixtormatThemeProperty& Property) const;

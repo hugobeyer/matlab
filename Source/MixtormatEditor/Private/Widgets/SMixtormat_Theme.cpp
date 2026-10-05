@@ -7,7 +7,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Modules/ModuleManager.h"
 #include "UI/Containers/SMixtormatInspectorGroup.h"
-#include "Widgets/SMixtormatLiveThemePanel.h"
+#include "Widgets/SMixtormatThemePanel.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Layout/Children.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -98,7 +98,7 @@ SMixtormat::~SMixtormat()
 	}
 }
 
-FReply SMixtormat::OpenLiveThemePanel()
+FReply SMixtormat::OpenThemePanel()
 {
 
 	if (const TSharedPtr<SWindow> Existing = LiveThemeWindow.Pin())
@@ -112,7 +112,7 @@ FReply SMixtormat::OpenLiveThemePanel()
 		.SupportsMaximize(true)
 		.SupportsMinimize(true)
 		[
-			SNew(SMixtormatLiveThemePanel)
+			SNew(SMixtormatThemePanel)
 			.CanEdit_Lambda([Owner = TWeakPtr<SMixtormat>(SharedThis(this))]()
 			{
 				const TSharedPtr<SMixtormat> Editor = Owner.Pin();

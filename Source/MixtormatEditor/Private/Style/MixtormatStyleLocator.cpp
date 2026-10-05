@@ -93,7 +93,7 @@ namespace Mixtormat
 		{
 			const FName Type = Widget->GetType();
 
-			if (Is(Type, TEXT("SMixtormatLiveThemePanel")))
+			if (Is(Type, TEXT("SMixtormatThemePanel")))
 			{
 				return;
 			}
