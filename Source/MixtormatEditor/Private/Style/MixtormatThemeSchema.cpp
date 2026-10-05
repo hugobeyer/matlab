@@ -665,10 +665,10 @@ void AddIconRole(
 
 	FString FMixtormatThemeSchema::SavePath()
 	{
-		return FPaths::Combine(
-			FPaths::ProjectSavedDir(),
-			FMixtormatPaths::ProductName().ToString(),
-			TEXT("UIStyleTheme.json"));
+		const FString PluginDir = FMixtormatPaths::PluginBaseDir();
+		return PluginDir.IsEmpty()
+			? FString()
+			: FPaths::Combine(PluginDir, TEXT("Config"), TEXT("UIStyleTheme.json"));
 	}
 
 	bool FMixtormatThemeSchema::Save(FString& OutError)
@@ -727,6 +727,11 @@ void AddIconRole(
 		FString Text;
 		FJsonSerializer::Serialize(Root, TJsonWriterFactory<>::Create(&Text));
 		const FString Path = SavePath();
+		if (Path.IsEmpty())
+		{
+			OutError = TEXT("Could not resolve the Mixtormat plugin directory.");
+			return false;
+		}
 		const FString Temp = Path + TEXT(".tmp");
 		if (!IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true)
 			|| !FFileHelper::SaveStringToFile(Text, *Temp)
@@ -743,10 +748,17 @@ void AddIconRole(
 		OutError.Reset();
 		OutValidationIssues.Reset();
 
-		FString Text;
-		if (!FFileHelper::LoadFileToString(Text, *SavePath()))
+		const FString Path = SavePath();
+		if (Path.IsEmpty())
 		{
-			OutError = FString::Printf(TEXT("Could not read %s. Save a UI style theme first."), *SavePath());
+			OutError = TEXT("Could not resolve the Mixtormat plugin directory.");
+			return false;
+		}
+
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *Path))
+		{
+			OutError = FString::Printf(TEXT("Could not read %s. Save a UI style theme first."), *Path);
 			return false;
 		}
 
