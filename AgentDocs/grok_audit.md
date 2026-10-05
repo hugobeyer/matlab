@@ -34,7 +34,7 @@ Module dependency direction is correct and one-way: Runtime ← Shaders ← Edit
 **Status:** Done. ThemeStore is the only colour path. LiveTheme/Palette deleted (P2-07). DesignTokens still used for layout numbers.
 
 **P1-03**  
-**Status:** Lookup unified. `MixtormatChildScope` (Runtime) is the owner GUID resolver: find-by-id, owner must exist and sit strictly before the child, else INDEX_NONE. Gather (mask + compositor) uses it. Stale `ScopeOwnerChildId` is cleared in `ValidateGroups` (load + structural edits). Placement type-pairs (`CanKeepScopedPlacement`) still live in Editor; widening who can own a mask is separate work.
+**Status:** Lookup unified. `MixtormatChildScope` resolves owner GUIDs. `CanOwnScopedMasks` is Runtime (Effect, Generator, Generated, Craquelure, ColorId, RandomId); Editor + gather share it. Scoped masks on those mask-producers lerp the child's contribution via `ApplyScopedMaskGate`.
 
 ---
 

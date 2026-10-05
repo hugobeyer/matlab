@@ -113,6 +113,34 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MergeCS",
 	SF_Compute);
 
+class FMixtormatMaskGateCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMaskGateCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskGateCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Initialize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, AfterMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatMaskGateCS,
+	"/Plugin/Mixtormat/Private/MixtormatMaskGate.usf",
+	"GateCS",
+	SF_Compute);
+
 // Colour ID mask. Selects the regions of an ID map carrying one of a set of chosen colours.
 //
 // The colours are a fixed-size array rather than a buffer: eight is already more of a set than
@@ -598,6 +626,62 @@ namespace MixtormatGpuCompositor
 		return FeatureMask;
 	}
 
+	void ApplyScopedMaskGate(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child)
+	{
+		bool bHasGate = false;
+		for (const FChildRenderData& Candidate : Layer.Children)
+		{
+			if (Candidate.Type == EMixtormatLayerChildType::Mask
+				&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+				&& Candidate.Mask.Weight != 0.0f)
+			{
+				bHasGate = true;
+				break;
+			}
+		}
+		if (!bHasGate || !LayerCtx.CombinedMask)
+		{
+			return;
+		}
+		FRDGTextureRef Gate = AddScopedFeatureMask(
+			Ctx, LayerCtx, Layer, Child.SourceChildIndex, true);
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const int32 WriteIndex = LayerCtx.MaskPassIndex & 1;
+		const int32 ReadIndex = 1 - WriteIndex;
+		FRDGTextureRef After = LayerCtx.CombinedMask;
+		FRDGTextureRef Previous = LayerCtx.MaskTargets[ReadIndex]
+			? LayerCtx.MaskTargets[ReadIndex] : After;
+		FRDGTextureRef Gated = GraphBuilder.CreateTexture(
+			LayerCtx.MaskDesc, TEXT("Mixtormat.ScopedMaskGate"));
+		FMixtormatMaskGateCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatMaskGateCS::FParameters>();
+		Parameters->OutputSize = Ctx.Request.Resolution;
+		Parameters->Initialize = LayerCtx.MaskPassIndex == 0 ? 1u : 0u;
+		Parameters->PreviousMask = Previous;
+		Parameters->AfterMask = After;
+		Parameters->GateMask = Gate;
+		Parameters->LinearWrapSampler = TStaticSamplerState<
+			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+		Parameters->OutputMask = GraphBuilder.CreateUAV(Gated);
+		TShaderMapRef<FMixtormatMaskGateCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.ScopedMaskGate.Layer%d.Child%d",
+				LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Ctx.Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Ctx.Request.Resolution.Y, 8),
+				1));
+		LayerCtx.CombinedMask = Gated;
+		LayerCtx.MaskTargets[WriteIndex] = Gated;
+	}
+
 	// Generated masks read the surface accumulated below this layer, which is the same
 	// ping-pong slot the layer composite reads.
 	void AddGeneratedMaskPass(
@@ -688,6 +772,7 @@ namespace MixtormatGpuCompositor
 				1),
 			LayerIndex == 0);
 		CombinedMask = MaskTargets[MaskWriteIndex];
+		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
 			&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
@@ -821,6 +906,7 @@ namespace MixtormatGpuCompositor
 				1));
 
 		CombinedMask = MaskTargets[MaskWriteIndex];
+		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
 			&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)

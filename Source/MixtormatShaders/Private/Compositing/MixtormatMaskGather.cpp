@@ -72,9 +72,8 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		if (LayerChild.ScopeOwnerChildId.IsValid())
 		{
 			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
-			if (Layer.Children.IsValidIndex(OwnerIndex)
-			&& (Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Effect
-				|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator))
+			if (OwnerIndex != INDEX_NONE
+			&& MixtormatChildScope::CanOwnScopedMasks(Layer.Children[OwnerIndex]))
 			{
 				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
 			}

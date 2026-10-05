@@ -1542,6 +1542,12 @@ namespace MixtormatGpuCompositor
 		const int32 OwnerSourceChildIndex,
 		const bool bIndependentScope = false);
 
+	void ApplyScopedMaskGate(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FChildRenderData& Child);
+
 	void AddGeneratedMaskPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,

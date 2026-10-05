@@ -1,0 +1,27 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float> PreviousMask;
+Texture2D<float> AfterMask;
+Texture2D<float> GateMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutputMask;
+int2 OutputSize;
+uint Initialize;
+
+[numthreads(8, 8, 1)]
+void GateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	if (any(DispatchThreadId.xy >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float2 UV = (float2(DispatchThreadId.xy) + 0.5f) / float2(OutputSize);
+	const float Previous = Initialize != 0
+		? 0.0f
+		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float After = AfterMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	const float Gate = GateMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
+	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, After, Gate));
+}

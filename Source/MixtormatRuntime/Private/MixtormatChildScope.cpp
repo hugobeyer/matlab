@@ -35,6 +35,22 @@ namespace MixtormatChildScope
 		return OwnerIndex;
 	}
 
+	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Effect:
+		case EMixtormatLayerChildType::Generator:
+		case EMixtormatLayerChildType::Generated:
+		case EMixtormatLayerChildType::Craquelure:
+		case EMixtormatLayerChildType::ColorId:
+		case EMixtormatLayerChildType::RandomId:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children)
 	{
 		bool bChanged = false;

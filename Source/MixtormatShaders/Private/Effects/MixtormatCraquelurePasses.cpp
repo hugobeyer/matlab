@@ -710,6 +710,7 @@ namespace MixtormatGpuCompositor
 				CrackGroups);
 
 			CombinedMask = MaskTargets[MaskWriteIndex];
+			ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 			if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 				&& Request.DebugSettings.LayerIndex == LayerIndex
 				&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
@@ -759,6 +760,7 @@ namespace MixtormatGpuCompositor
 				1));
 		QueueCraquelureRelief();
 		CombinedMask = MaskTargets[MaskWriteIndex];
+		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
 			&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)

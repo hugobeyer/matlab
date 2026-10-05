@@ -685,6 +685,7 @@ namespace MixtormatGpuCompositor
 				1));
 
 		CombinedMask = MaskTargets[MaskWriteIndex];
+		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
 			&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)

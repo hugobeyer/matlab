@@ -21,4 +21,7 @@ namespace MixtormatChildScope
 	// Clears ScopeOwnerChildId when ResolveOwnerIndex would return INDEX_NONE. Returns true if
 	// any child changed.
 	MIXTORMATRUNTIME_API bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children);
+
+	// Who may have a Mask child scoped underneath. Gather and Editor both call this.
+	MIXTORMATRUNTIME_API bool CanOwnScopedMasks(const FMixtormatLayerChild& Child);
 }

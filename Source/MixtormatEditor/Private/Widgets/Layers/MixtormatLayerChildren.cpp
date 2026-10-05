@@ -45,12 +45,7 @@ namespace MixtormatLayersPrivate
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
-		// Generators as well as effects. A mask scoped under a generator is the whole of its
-		// Mask Influence: it is the seed source when there is one, and it steers seed
-		// probability, propagation cost and carve amplitude. Without this the control exists
-		// with nothing to read.
-		return Child.Type == EMixtormatLayerChildType::Effect
-			|| Child.Type == EMixtormatLayerChildType::Generator;
+		return MixtormatChildScope::CanOwnScopedMasks(Child);
 	}
 
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)

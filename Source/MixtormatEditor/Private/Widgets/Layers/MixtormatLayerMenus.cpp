@@ -1195,14 +1195,12 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::OutputReference
 		|| bGenerator;
 
-	// The scoped mask, which is the whole of Mask Influence. Offered here rather than in the
-	// effect menu because a generator uses the procedural row -- but it is the same
-	// AssignScopedMaskToChild an effect calls, validated through the same CanOwnScopedMasks, so
-	// a mask dragged onto a generator and a mask added from this menu land identically.
-	if (bGenerator)
+	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		&& CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[ChildIndex]);
+	if (bCanOwnScopedMask)
 	{
-		const bool bCanNestChild = WorkingLayers.IsValidIndex(LayerIndex)
-			&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
+		const bool bCanNestChild = CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
 		const FSoftObjectPath SelectedGeneratorMaskPath = SelectedMaskPath;
 		const FText SelectedGeneratorMaskName = SelectedLibraryMaskName.IsEmpty()
 			? LOCTEXT("NoSelectedGeneratorMask", "Select Mask from Gallery")
