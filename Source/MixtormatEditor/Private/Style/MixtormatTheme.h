@@ -688,6 +688,7 @@ namespace Mixtormat
 		// separate rail size to author: a second copy would be a third number for one plate.
 		float OverlayInset = 8.0f;
 		float OverlayClusterInset = 2.0f;
+		float OverlayLabelGap = 5.0f;
 		float ToolbarGap = 5.0f;
 		float OverlayButtonGap = 4.0f;
 		float ComparisonToggleGap = 4.0f;
