@@ -2,13 +2,9 @@
 
 #include "UI/Layers/SMixtormatLayerContainer.h"
 
-#include "Style/MixtormatDesignTokens.h"
-#include "Style/MixtormatPalette.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 
 void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
@@ -21,28 +17,9 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 		.Padding(0.0f)
 		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InsetPanel")))
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				SNew(SBox)
-				.WidthOverride(MixtormatTokens::LayerEdgeWidth)
-				.Visibility_Lambda([bExpanded]()
-				{
-					// Keep header columns stable when the existing expanded rail is hidden.
-					return bExpanded.Get(false) ? EVisibility::HitTestInvisible : EVisibility::Hidden;
-				})
-				[
-					SNew(SImage).Image(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.LayerEdge")))
-				]
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			[
-				SNew(SVerticalBox)
+			SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()[InArgs._Header.Widget]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
+				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SAssignNew(Children, SVerticalBox)
 					.Visibility_Lambda([bExpanded]()
@@ -50,7 +27,6 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 						return bExpanded.Get(false) ? EVisibility::Visible : EVisibility::Collapsed;
 					})
 				]
-			]
 		]
 	];
 }
