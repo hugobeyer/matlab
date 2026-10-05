@@ -271,7 +271,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
 								[
 									SNew(SHorizontalBox)
-									+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
 										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
@@ -326,15 +326,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 											SNew(SImage).Image(MixtormatIcons::Folder())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("CreateGroupBottom", "Group"))
 									]
 								]
 							]
 						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-												[
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[
 							SNew(SBox)
 							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
