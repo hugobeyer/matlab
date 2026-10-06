@@ -6,10 +6,91 @@
 #define CLIFF_STAGE 0
 #endif
 int2 OutputSize;
-int CountX,CountY,Steps,FormationCells,QuarterYCount,Sides,Seed,VoronoiCells; float Density,SizeMin,SizeMax,SizeAspect,Jitter,FlowVariation,HeightMin,HeightMax,Rotation,LeanX,LeanY,FormationAmount,QuarterFill,QuarterSize,QuarterHeight,QuarterJitterX,QuarterJitterY; uint QuarterCopies,ShapeRandom;
-float CameraYaw,CameraPitch,ViewScale,DepthMin,DepthMax,UnitDistance,UnitDistanceIdLerp,CarveDepth,CarveVoronoi,YBias,YBiasVoronoi,NegativeYUnitDistanceTaper,FlowVoronoi,ChamferWidth,ChamferIntensity,ChamferVoronoi,BlockCavityWidth,RowCavityWidth,CavityIntensity,CavityVoronoiThreshold,CavityVoronoiMaskGain; uint YBiasVoronoiInvert,Reverse;
-Texture2D<float> RawHeight,VoronoiRaw,VoronoiSmooth,SweepIn,IdDistanceIn,RowDistanceIn; Texture2D<float2> Flow; Texture2D<uint> BlockIds,RowIds;
-RWTexture2D<float> OutRawHeight,OutVoronoiRaw,OutVoronoiSmooth,OutSweep,OutIdDistance,OutRowDistance,OutHeight,OutBlockSeam,OutRowSeam,OutCavity,OutCoverage; RWTexture2D<float2> OutFlow; RWTexture2D<uint> OutBlockIds,OutRowIds;
+
+int CountX;
+int CountY;
+int Steps;
+int FormationCells;
+int QuarterYCount;
+int Sides;
+int Seed;
+int VoronoiCells;
+
+float Density;
+float SizeMin;
+float SizeMax;
+float SizeAspect;
+float Jitter;
+float FlowVariation;
+float HeightMin;
+float HeightMax;
+float Rotation;
+float LeanX;
+float LeanY;
+float FormationAmount;
+float QuarterFill;
+float QuarterSize;
+float QuarterHeight;
+float QuarterJitterX;
+float QuarterJitterY;
+
+uint QuarterCopies;
+uint ShapeRandom;
+
+float CameraYaw;
+float CameraPitch;
+float ViewScale;
+float DepthMin;
+float DepthMax;
+
+float UnitDistance;
+float UnitDistanceIdLerp;
+float CarveDepth;
+float CarveVoronoi;
+float YBias;
+float YBiasVoronoi;
+float NegativeYUnitDistanceTaper;
+float FlowVoronoi;
+
+float ChamferWidth;
+float ChamferIntensity;
+float ChamferVoronoi;
+float BlockCavityWidth;
+float RowCavityWidth;
+float CavityIntensity;
+float CavityVoronoiThreshold;
+float CavityVoronoiMaskGain;
+
+uint YBiasVoronoiInvert;
+uint Reverse;
+
+Texture2D<float> RawHeight;
+Texture2D<float2> Flow;
+Texture2D<uint> BlockIds;
+Texture2D<uint> RowIds;
+
+Texture2D<float> VoronoiRaw;
+Texture2D<float> VoronoiSmooth;
+Texture2D<float> SweepIn;
+Texture2D<float> IdDistanceIn;
+Texture2D<float> RowDistanceIn;
+
+RWTexture2D<float> OutRawHeight;
+RWTexture2D<float2> OutFlow;
+RWTexture2D<uint> OutBlockIds;
+RWTexture2D<uint> OutRowIds;
+
+RWTexture2D<float> OutVoronoiRaw;
+RWTexture2D<float> OutVoronoiSmooth;
+RWTexture2D<float> OutSweep;
+RWTexture2D<float> OutIdDistance;
+RWTexture2D<float> OutRowDistance;
+
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutBlockSeam;
+RWTexture2D<float> OutRowSeam;
+RWTexture2D<float> OutCavity;
+RWTexture2D<float> OutCoverage;
 float frac1(float x){return x-floor(x);} float hash11(float x){x=frac1(x*.1031);x*=x+33.33;return frac1(x*(x+x));} float hash21(int2 p,float s){return hash11(p.x*127.1+p.y*311.7+s*74.17);} float rc(int2 p,float s,float q){return hash21(p,s+q);} float rs(int2 p,float s,float q){return rc(p,s,q)*2-1;} float2 r2(float2 p,float a){float c=cos(a),s=sin(a);return float2(c*p.x-s*p.y,s*p.x+c*p.y);} int wi(int x,int n){int r=x%n;return r<0?r+n:r;} float q01(float x,int st){x=clamp(x,0,1);if(st<=1)return x;float n=st-1;return floor(x*n+.5)/n;}
 float rayp(float3 ro,float3 rd,float2 e,int sides,float2 sr,float z0,float z1,float jag,float seed){float2 nro=ro.xy/max(e,float2(1e-8,1e-8)),nrd=rd.xy/max(e,float2(1e-8,1e-8)),n=float2(1,0),cs=0;[loop]for(int k=0;k<sides;++k){float j=1+(hash11(seed+k*12.9898)*2-1)*jag;cs+=(j-1)*n;n=float2(n.x*sr.x-n.y*sr.y,n.x*sr.y+n.y*sr.x);}nro+=cs*(2.0/sides);float te=-1e20,tx=1e20,d=rd.z,num=z1-ro.z;if(abs(d)<1e-8){if(num<0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}num=z0-ro.z;if(abs(d)<1e-8){if(num>0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}n=float2(1,0);[loop]for(int k=0;k<sides;++k){float j=1+(hash11(seed+k*12.9898)*2-1)*jag;d=dot(n,nrd);num=j-dot(n,nro);if(abs(d)<1e-8){if(num<0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}n=float2(n.x*sr.x-n.y*sr.y,n.x*sr.y+n.y*sr.x);}if(te>tx||tx<0)return-1;return te>=0?te:tx;}
 float3 hid(int id,float s){float f=id;return float3(hash11(f*127.1+s*17.13),hash11(f*311.7+s*71.91),hash11(f*191.999+s*143.73));} float2 warp(float2 uv,float h,float2 f,float a){float2 ax=f/max(length(f),1e-6),ac=float2(-ax.y,ax.x);return uv+a*(ax*h+ac*sin(h*6.28318530718)*.35);} float ids(int id,float s,float l){return lerp(1,.5+hash11(id*12.9898+s*78.233),l);} float h31(int3 p,float s){return hash11(p.x*127.1+p.y*311.7+p.z*191.999+s*74.17);} float3 h33(int3 p,float s){return float3(h31(p,s+17.13),h31(p,s+71.91),h31(p,s+143.73));}
