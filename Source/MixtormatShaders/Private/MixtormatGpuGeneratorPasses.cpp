@@ -2315,7 +2315,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 		{
 			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RunningHeight, Child.HeightColorRamp);
-			Bundle.NamedColors.Add(Child.HeightColorRamp.OutputName, Color);
 			Ctx.PublishedFieldOutputs.Add(
 				FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Child.HeightColorRamp.OutputName},
 				FPublishedField{EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false});

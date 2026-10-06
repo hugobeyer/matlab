@@ -821,10 +821,16 @@ namespace MixtormatGpuCompositor
 							AddOutputReferencePasses(Ctx, LayerCtx, Layer);
 							// Transitional child producers keep their established early-publication order.
 							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
+							// A referenced colour field needs the resolved layer input to reach the
+							// composite, so a plain Fill / Material layer with only an OutputReference(Color)
+							// still calls AddLayerInputPass. Generator layers always need it too.
+							if (Layer.bGenerator || LayerCtx.ReferencedColor)
+							{
+								AddLayerInputPass(Ctx, LayerCtx, Layer);
+							}
 							// A Generator layer builds its module chain here; each module publishes its own IDs and masks.
 							if (Layer.bGenerator)
 							{
-								AddLayerInputPass(Ctx, LayerCtx, Layer);
 								{
 									RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatGenerators, "Mixtormat.Generators");
 									AddGeneratorLayerPasses(Ctx, LayerCtx, Layer);

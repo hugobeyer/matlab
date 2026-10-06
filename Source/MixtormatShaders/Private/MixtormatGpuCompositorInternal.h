@@ -1042,9 +1042,6 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef CentreUV = nullptr;
 		FRDGTextureRef Orientation = nullptr;
 		TMap<FName, FRDGTextureRef> NamedMasks;
-		// Colour outputs published by Generator-layer sublayers (Height Color Ramp), for later
-		// albedo/material references. Keyed by the sublayer's authored output name.
-		TMap<FName, FRDGTextureRef> NamedColors;
 		FRDGTextureRef BoundaryField = nullptr;
 		bool bHashedIds = false;
 	};
