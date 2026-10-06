@@ -217,6 +217,40 @@
 
 
 
+// The one list of child types that own the child-inspector scrollbox. Both master visibility
+// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel and
+// still leave the layer inspector showing underneath -- which is what a missing entry looks like,
+// since the layer scrollbox defaults to Visible.
+bool SMixtormat::HasSelectedChildInspector() const
+{
+	return GetSelectedLayerEffect()
+		|| GetSelectedGeneratedMask()
+		|| GetSelectedLayerMask()
+		|| GetSelectedLayerBlur()
+		|| GetSelectedLayerCurvature()
+		|| GetSelectedCraquelure()
+		|| GetSelectedColorId()
+		|| GetSelectedFilter()
+		|| GetSelectedPatternId()
+		|| GetSelectedHsvFilter()
+		|| GetSelectedRandomId()
+		|| GetSelectedRampId()
+		// Both halves of the Pattern split claim their own inspector sections.
+		|| GetSelectedUvId()
+		|| GetSelectedReliefId()
+		|| GetSelectedBoundaryId()
+		|| GetSelectedIdGroup()
+		// The category, not the kind. A generator whose panel is not yet written still has to
+		// claim the inspector, or it would show the layer's own sections instead and read as a
+		// broken selection.
+		|| HasSelectedGenerator()
+		|| HasSelectedOutputReference()
+		// Generator-layer sublayers: each owns its own panel, so each must claim the inspector.
+		|| GetSelectedHeightBlend()
+		|| GetSelectedHeightCurve()
+		|| GetSelectedHeightColorRamp();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 {
 	// The layer rows below all bind through this one resolver, the same way the peel, erosion,
@@ -386,29 +420,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					.IsEnabled_Lambda([this]() { return !IsSelectedChildInstance(); })
 					.Visibility_Lambda([this]()
 					{
-						return GetSelectedLayerEffect()
-							|| GetSelectedGeneratedMask()
-							|| GetSelectedLayerMask()
-							|| GetSelectedLayerBlur()
-							|| GetSelectedLayerCurvature()
-							|| GetSelectedCraquelure()
-							|| GetSelectedColorId()
-							|| GetSelectedFilter()
-							|| GetSelectedPatternId()
-							|| GetSelectedHsvFilter()
-							|| GetSelectedRandomId()
-							|| GetSelectedRampId()
-							// Both halves of the Pattern split claim their own inspector sections.
-							|| GetSelectedUvId()
-							|| GetSelectedReliefId()
-							|| GetSelectedBoundaryId()
-							|| GetSelectedIdGroup()
-							// The category, not the kind. A generator whose panel is not yet
-							// written still has to claim the inspector, or it would show the
-							// layer's own sections instead and read as a broken selection.
-							|| HasSelectedGenerator()
-							|| HasSelectedOutputReference()
-							? EVisibility::Visible : EVisibility::Collapsed;
+						return HasSelectedChildInspector() ? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
@@ -464,29 +476,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					// looks like, since the default here is Visible.
 					.Visibility_Lambda([this]()
 					{
-						return GetSelectedLayerEffect()
-							|| GetSelectedGeneratedMask()
-							|| GetSelectedLayerMask()
-							|| GetSelectedLayerBlur()
-							|| GetSelectedLayerCurvature()
-							|| GetSelectedCraquelure()
-							|| GetSelectedColorId()
-							|| GetSelectedFilter()
-							|| GetSelectedPatternId()
-							|| GetSelectedHsvFilter()
-							|| GetSelectedRandomId()
-							|| GetSelectedRampId()
-							// Both halves of the Pattern split claim their own inspector sections.
-							|| GetSelectedUvId()
-							|| GetSelectedReliefId()
-							|| GetSelectedBoundaryId()
-							|| GetSelectedIdGroup()
-							// The category, not the kind. A generator whose panel is not yet
-							// written still has to claim the inspector, or it would show the
-							// layer's own sections instead and read as a broken selection.
-							|| HasSelectedGenerator()
-							|| HasSelectedOutputReference()
-							? EVisibility::Collapsed : EVisibility::Visible;
+						return HasSelectedChildInspector() ? EVisibility::Collapsed : EVisibility::Visible;
 					})
 
 					+ SScrollBox::Slot()

@@ -355,6 +355,24 @@
 			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
+		},
+		"Generator.PebbleCells:Int":
+		{
+			"default": 16,
+			"uiMin": 1,
+			"uiMax": 128,
+			"snap": 0,
+			"clampMin": 1,
+			"clampMax": 512
+		},
+		"Generator.PebbleScale":
+		{
+			"default": 1,
+			"uiMin": 0.0010000000474974513,
+			"uiMax": 4,
+			"snap": 0.0010000000474974513,
+			"clampMin": 0.0010000000474974513,
+			"clampMax": 4
 		}
 	},
 	"Pattern IDs":

@@ -1432,6 +1432,10 @@ private:
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
 	TSharedRef<SWidget> BuildInspectorPanel();
+	// The one list of child types that own the child-inspector scrollbox. Both master visibility
+	// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel
+	// and still leave the layer inspector showing underneath.
+	bool HasSelectedChildInspector() const;
 
 	TSharedRef<SWidget> BuildChannelInfluenceControls();
 	// A card rather than a group: colour adjustment is part of how a layer composites, so it

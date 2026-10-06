@@ -855,7 +855,13 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::OutputReference
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature
+			// Generator-layer sublayers are stored through SelectedMaskIndex like every other
+			// non-Effect child, so they have to be named here or the resolver chain that reads
+			// GetSelectedChildIndex() reports nothing selected for them.
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp))
 	{
 		return SelectedMaskIndex;
 	}
