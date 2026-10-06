@@ -78,15 +78,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #if BUNDLE_STAGE == 9
 	const float Running = RunningHeight.Load(int3(Pixel, 0));
 	const float Module = ModuleHeight.Load(int3(Pixel, 0));
-	float Combined = lerp(Running,
-		MixtormatApplyHeightOp(Running, Module, 1.0f, HeightOp, HeightSoftness), BlendAmount);
-	if (HeightOp == MIXTORMAT_HEIGHT_OP_HEIGHT_BLEND)
-	{
-		const FMixtormatHeightBlendResult Blend = MixtormatHeightBlend(
-			Running, Module, 1.0f, HbStrength, HbThreshold, HbEdgeSoftness, HbBaseBias, HbBlendBias);
-		Combined = lerp(Running, lerp(Blend.Base, Module + HbBlendBias, Blend.Weight), BlendAmount);
-	}
-	OutScalar[Pixel] = Combined;
+	OutScalar[Pixel] = Running + Module;
 
 #elif BUNDLE_STAGE == 8
 	// Bed position wraps at each bed. Unwrap differences across that boundary before

@@ -22,7 +22,6 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 	ChildData.Type = EMixtormatLayerChildType::Generator;
 	ChildData.SourceChildIndex = SourceChildIndex;
-	ChildData.GeneratorHeightBlend = Generator.HeightBlend;
 	ChildData.Generator.Type = Generator.Type;
 
 	switch (Generator.Type)
@@ -36,6 +35,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		{
 			return FMath::IsFinite(Value) ? Value : Fallback;
 		};
+		ChildData.Generator.bNormalizeHeight = Carver.bStrataNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Carver.StrataHeightScale, 1.0f);
 		Out.Seed = static_cast<uint32>(Carver.Seed);
 		Out.Depth = Finite(Carver.Depth, 0.25f);
 		Out.StrataFrequency = Finite(Carver.StrataFrequency, 6.0f);
@@ -64,6 +65,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		{
 			return FMath::IsFinite(Value) ? Value : Fallback;
 		};
+		ChildData.Generator.bNormalizeHeight = Cracks.bCrackNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Cracks.CrackHeightScale, 1.0f);
 		Out.Seed = Cracks.CrackSeed;
 		// No lattice below one cell.
 		Out.Cells = FMath::Max(Cracks.CrackCells, 1);
@@ -92,7 +95,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			MixtormatComposeHash::FHasher Hasher;
 			// The chamfer and the height scale read the cached field; they do not change it.
 			Hasher.SkipTopLevel = {TEXT("CrackChamferAmount"), TEXT("CrackChamferEdge"),
-				TEXT("CrackHeightScale")};
+				TEXT("CrackHeightScale"), TEXT("bCrackNormalizeHeight")};
 			Hasher.Struct(FMixtormatCracks::StaticStruct(), &Cracks);
 			// Combined height and negative delta are cached separately; invalidate the old field layout.
 			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x437261636B7333ull) | 1ull;
@@ -109,6 +112,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		{
 			return FMath::IsFinite(Value) ? Value : Fallback;
 		};
+		ChildData.Generator.bNormalizeHeight = Rock.bRockNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Rock.RockHeightScale, 1.0f);
 		Out.Style = Finite(Rock.RockStyle, Defaults.RockStyle);
 		// A cell count of zero or less has no lattice to evaluate.
 		Out.Cells = FMath::Max(Rock.RockCells, 1);
@@ -148,7 +153,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		{
 			MixtormatComposeHash::FHasher Hasher;
 			// Height mode and scale consume the cached field; they do not reshape it.
-			Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode")};
+			Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode"), TEXT("bRockNormalizeHeight")};
 			Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 			// Signed gap now expands the cached outline as well as the height edge planes.
 			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x526F636B47617032ull) | 1ull;
@@ -165,6 +170,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		{
 			return FMath::IsFinite(Value) ? Value : Fallback;
 		};
+		ChildData.Generator.bNormalizeHeight = Pebbles.bPebbleNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Pebbles.PebbleHeightScale, 1.0f);
 		Out.Seed = Pebbles.PebbleSeed;
 		// No lattice below one cell; no shape below two planes.
 		Out.Cells = FMath::Max(Pebbles.PebbleCells, 1);
@@ -187,7 +194,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
-			Hasher.SkipTopLevel = {TEXT("PebbleHeightScale")};
+			Hasher.SkipTopLevel = {TEXT("PebbleHeightScale"), TEXT("bPebbleNormalizeHeight")};
 			Hasher.Struct(FMixtormatPebbles::StaticStruct(), &Pebbles);
 			Out.FieldKey = Hasher.Get() | 1ull;
 		}
@@ -200,6 +207,8 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		const FMixtormatCliffStrata Defaults;
 		FCliffStrataRenderData& Out = ChildData.Generator.CliffStrata;
 		const auto Finite = [](const float Value, const float Fallback) { return FMath::IsFinite(Value) ? Value : Fallback; };
+		ChildData.Generator.bNormalizeHeight = Cliff.bCliffNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Cliff.CliffHeightScale, 1.0f);
 		Out.CountX=FMath::Max(Cliff.CountX,1); Out.CountY=FMath::Max(Cliff.CountY,1);
 		Out.Density=Finite(Cliff.Density,Defaults.Density); Out.SizeMin=Finite(Cliff.SizeMin,Defaults.SizeMin); Out.SizeMax=Finite(Cliff.SizeMax,Defaults.SizeMax);
 		Out.SizeAspect=Finite(Cliff.SizeAspect,Defaults.SizeAspect); Out.Jitter=Finite(Cliff.Jitter,Defaults.Jitter); Out.FlowVariation=Finite(Cliff.FlowVariation,Defaults.FlowVariation);
@@ -221,7 +230,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.ChamferVoronoi=Finite(Cliff.ChamferVoronoi,Defaults.ChamferVoronoi); Out.BlockCavityWidth=Finite(Cliff.BlockCavityWidth,Defaults.BlockCavityWidth);
 		Out.RowCavityWidth=Finite(Cliff.RowCavityWidth,Defaults.RowCavityWidth); Out.CavityIntensity=Finite(Cliff.CavityIntensity,Defaults.CavityIntensity);
 		Out.CavityVoronoiThreshold=Finite(Cliff.CavityVoronoiThreshold,Defaults.CavityVoronoiThreshold); Out.CavityVoronoiMaskGain=Finite(Cliff.CavityVoronoiMaskGain,Defaults.CavityVoronoiMaskGain);
-		if(bCacheLayers){MixtormatComposeHash::FHasher Hasher;Hasher.Struct(FMixtormatCliffStrata::StaticStruct(),&Cliff);Out.FieldKey=MixtormatComposeHash::Combine(Hasher.Get(),0x436C696666537472ull)|1ull;}
+		if(bCacheLayers){MixtormatComposeHash::FHasher Hasher;Hasher.SkipTopLevel={TEXT("bCliffNormalizeHeight"),TEXT("CliffHeightScale")};Hasher.Struct(FMixtormatCliffStrata::StaticStruct(),&Cliff);Out.FieldKey=MixtormatComposeHash::Combine(Hasher.Get(),0x436C696666537472ull)|1ull;}
 		break;
 	}
 	}

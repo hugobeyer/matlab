@@ -916,6 +916,8 @@ namespace MixtormatGpuCompositor
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+		bool bNormalizeHeight = true;
+		float HeightScale = 1.0f;
 		FStrataCarverRenderData StrataCarver;
 		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;

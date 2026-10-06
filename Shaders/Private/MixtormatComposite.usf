@@ -650,6 +650,10 @@ float SampleIncomingHeight(float2 UV)
 		: (HeightSource == 0
 			? SampleLayerSourceHeight(UV)
 			: (HeightSource == 1 ? PlacementMask : ConstantHeight));
+	if (IsGenerator != 0)
+	{
+		return SourceHeight;
+	}
 	if (DirectHeightComparison == 0 && InvertHeight != 0)
 	{
 		SourceHeight = 1.0f - SourceHeight;
@@ -692,6 +696,11 @@ float SampleIncomingHeight(float2 UV)
 
 float ApplyHeightOp(float Below, float Layer, float Occupancy)
 {
+	if (IsGenerator != 0)
+	{
+		if (HeightOp == MIXTORMAT_HEIGHT_OP_ADD) { return Below + Layer; }
+		if (HeightOp == MIXTORMAT_HEIGHT_OP_SUBTRACT) { return Below - Layer; }
+	}
 	return MixtormatApplyHeightOp(Below, Layer, Occupancy, HeightOp, HeightSoftness);
 }
 

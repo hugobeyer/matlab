@@ -99,7 +99,7 @@ struct MIXTORMATRUNTIME_API FMixtormatHeightBlend
 	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
-	EMixtormatHeightOp Op = EMixtormatHeightOp::HeightBlend;
+	EMixtormatHeightOp Op = EMixtormatHeightOp::Add;
 
 	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend", meta = (UIMin = "0.0", UIMax = "0.5"))
@@ -2798,7 +2798,16 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 {
 	GENERATED_BODY()
 
-	// Draws every per-bed random: thickness, base, rise and cross-bedding, and the bend field.
+	
+	// Generator height contract: zero is neutral. Normalize maps the largest absolute
+	// excursion to 0.5 without moving zero; Height Scale is applied after normalization.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output")
+	bool bStrataNormalizeHeight = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float StrataHeightScale = 1.0f;
+
+// Draws every per-bed random: thickness, base, rise and cross-bedding, and the bend field.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0"))
 	int32 Seed = 3;
 
@@ -2884,7 +2893,11 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 {
 	GENERATED_BODY()
 
-	// 0..1 spans preset positions 1..2.5: layered through boulder toward rubble.
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output")
+	bool bRockNormalizeHeight = true;
+
+// 0..1 spans preset positions 1..2.5: layered through boulder toward rubble.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RockStyle = 0.05f;
 
@@ -2996,7 +3009,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
 	EMixtormatRockHeightMode RockHeightMode = EMixtormatRockHeightMode::Analytic;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float RockHeightScale = 1.0f;
 };
 
@@ -3008,7 +3021,11 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Output")
+	bool bPebbleNormalizeHeight = true;
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	int32 PebbleSeed = 1;
 
 	// Stones per row; the tile is Cells x Cells.
@@ -3071,7 +3088,7 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	bool bPebbleFacetIds = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Height", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float PebbleHeightScale = 1.0f;
 };
 
@@ -3084,7 +3101,14 @@ struct MIXTORMATRUNTIME_API FMixtormatCliffStrata
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Output")
+	bool bCliffNormalizeHeight = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float CliffHeightScale = 1.0f;
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
 	int32 CountX = 8;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
 	int32 CountY = 7;
@@ -3204,7 +3228,11 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks")
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Output")
+	bool bCrackNormalizeHeight = true;
+
+UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks")
 	int32 CrackSeed = 1;
 
 	// Cells across the tile, per axis.
@@ -3290,7 +3318,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCracks
 
 	// Multiplies the crack field. The layer's height is the flat midpoint 0.5 plus the field, so Add
 	// carves the cracks into the height below and Replace gives flat ground with the cracks cut in.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Height", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float CrackHeightScale = 1.0f;
 };
 

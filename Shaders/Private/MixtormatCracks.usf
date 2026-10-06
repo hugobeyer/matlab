@@ -539,6 +539,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #else
 	// Resolve the shaped signed change around the flat midpoint as one scalar module height.
 	// The ordered module chain applies the shared HeightBlend; no crack mask gates this result.
-	OutHeight[Pixel] = 0.5f + CrackHeight.Load(int3(Pixel, 0)) * HeightScale;
+	OutHeight[Pixel] = CrackHeight.Load(int3(Pixel, 0));
 #endif
 }

@@ -17,6 +17,8 @@
 int2 OutputSize;
 float OutLow;
 float OutHigh;
+uint NormalizeMode;
+float OutputScale;
 Texture2D<float> SourceField;
 RWStructuredBuffer<uint> OutRange;
 StructuredBuffer<uint> Range;
@@ -82,7 +84,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float High = OrderedToFloat(Range[1]);
 	const float Span = High - Low;
 	const float Value = SourceField.Load(int3(Pixel, 0));
-	const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
-	OutField[Pixel] = lerp(OutLow, OutHigh, Unit);
+	if (NormalizeMode == 1u)
+	{
+		const float MaxAbs = max(abs(Low), abs(High));
+		OutField[Pixel] = (MaxAbs > 1e-12f
+			? clamp(0.5f * Value / MaxAbs, -0.5f, 0.5f)
+			: 0.0f) * OutputScale;
+	}
+	else if (NormalizeMode == 2u)
+	{
+		OutField[Pixel] = clamp(Value, -0.5f, 0.5f) * OutputScale;
+	}
+	else
+	{
+		const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
+		OutField[Pixel] = lerp(OutLow, OutHigh, Unit);
+	}
 }
 #endif

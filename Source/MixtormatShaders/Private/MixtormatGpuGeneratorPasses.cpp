@@ -432,6 +432,8 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, OutLow)
 		SHADER_PARAMETER(float, OutHigh)
+		SHADER_PARAMETER(uint32, NormalizeMode)
+		SHADER_PARAMETER(float, OutputScale)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
@@ -486,6 +488,8 @@ FRDGTextureRef AddNormalizeFieldPasses(
 		P->OutputSize = Size;
 		P->OutLow = OutLow;
 		P->OutHigh = OutHigh;
+		P->NormalizeMode = 0u;
+		P->OutputScale = 1.0f;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Normalized);
@@ -493,6 +497,50 @@ FRDGTextureRef AddNormalizeFieldPasses(
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Normalize"), Shader, P, Groups);
 	}
 	return Normalized;
+}
+
+FRDGTextureRef AddSignedGeneratorHeightPasses(
+	FRDGBuilder& GraphBuilder,
+	FRDGTextureRef Field,
+	const FIntPoint Size,
+	const bool bNormalize,
+	const float OutputScale,
+	const TCHAR* Name)
+{
+	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
+		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
+	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
+	{
+		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
+		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+		P->OutputSize = Size;
+		P->SourceField = Field;
+		P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorSigned.Reduce"), Shader, P, Groups);
+	}
+	FRDGTextureRef Signed = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+	{
+		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
+		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+		P->OutputSize = Size;
+		P->OutLow = -0.5f;
+		P->OutHigh = 0.5f;
+		P->NormalizeMode = bNormalize ? 1u : 2u;
+		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
+		P->SourceField = Field;
+		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
+		P->OutField = GraphBuilder.CreateUAV(Signed);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorSigned.Resolve"), Shader, P, Groups);
+	}
+	return Signed;
 }
 
 // Generator flow tools scoped under a Rock Formation. One parameter struct for every stage;
@@ -662,15 +710,6 @@ namespace
 		TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
 		P->OutputSize = Size;
-		const FMixtormatHeightBlend& Blend = Child.GeneratorHeightBlend;
-		P->HeightOp = static_cast<uint32>(Blend.Op);
-		P->HeightSoftness = Blend.Softness;
-		P->BlendAmount = Blend.Amount;
-		P->HbStrength = Blend.Strength;
-		P->HbThreshold = Blend.Threshold;
-		P->HbEdgeSoftness = Blend.EdgeSoftness;
-		P->HbBaseBias = Blend.BaseBias;
-		P->HbBlendBias = Blend.BlendBias;
 		P->RunningHeight = RunningHeight;
 		P->ModuleHeight = Module.Height;
 		P->OutScalar = GraphBuilder.CreateUAV(OutHeight);
@@ -1602,14 +1641,9 @@ namespace
 			return Combined;
 		};
 
-		// Resolve the mode after cache extraction; Measured never mutates the cached raw field.
+		// Raw generator-native field. Shared signed normalization below is the only output convention.
 		FRDGTextureRef RockField = Outputs[0];
-		if (Rock.HeightMode == EMixtormatRockHeightMode::Measured)
-		{
-			RockField = AddNormalizeFieldPasses(GraphBuilder, RockField, Size,
-				0.0f, 1.0f, TEXT("Mixtormat.Rock.NormalizedHeight"));
-		}
-		FRDGTextureRef Height = Combine(RockField, Rock.HeightMode, Rock.HeightScale, TEXT("Mixtormat.Rock.LayerHeight"));
+		FRDGTextureRef Height = Combine(RockField, EMixtormatRockHeightMode::Raw, 1.0f, TEXT("Mixtormat.Rock.LayerHeight"));
 		if (Bundle) { Bundle->Height = Height; }
 		return Height;
 	}
@@ -2079,9 +2113,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	Bundle = FGeneratorBundle();
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-	FRDGTextureRef RunningHeight = LayerCtx.LayerInputHeight;
+	FRDGTextureRef RunningHeight = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Generator.SignedRunningHeight"));
+	AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(RunningHeight), FLinearColor::Black);
 
-	// Modules compose in child order; each one only sees the running result of those above it.
+	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
@@ -2110,6 +2147,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		}
 		if (!Module.Height) { continue; }
+		Module.Height = AddSignedGeneratorHeightPasses(
+			Ctx.GraphBuilder, Module.Height, Size,
+			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+			TEXT("Mixtormat.Generator.SignedHeight"));
 		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,

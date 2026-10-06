@@ -259,7 +259,29 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 	};
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddGeneratorBlendRows(Panel);
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Panel, LOCTEXT("StrataOutput", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("StrataNormalizeHeight", "Normalize Height"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Carver]()
+				{
+					const FMixtormatStrataCarver* G = Carver();
+					return G && G->bStrataNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Carver](const ECheckBoxState State)
+				{
+					if (FMixtormatStrataCarver* G = Carver())
+					{
+						G->bStrataNormalizeHeight = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("StrataNormalizeHeightHint", "Zero-preserving max-absolute normalization to -0.5..0.5.")));
+		AddSliderRow(Output, Slider(
+			LOCTEXT("StrataOutputScale", "Scale"), &FMixtormatStrataCarver::StrataHeightScale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("StrataOutputScaleHint", "Scales the signed generator height after normalization.")));
+	}
 
 	AddSliderRow(Panel, SliderInt(
 		LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 9999.0, 3,
@@ -349,7 +371,29 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 {
 	const auto Crack = [this]() { return GetSelectedCracks(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddGeneratorBlendRows(Panel);
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Panel, LOCTEXT("CrackOutput", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("CrackNormalizeHeight", "Normalize Height"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Crack]()
+				{
+					const FMixtormatCracks* G = Crack();
+					return G && G->bCrackNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Crack](const ECheckBoxState State)
+				{
+					if (FMixtormatCracks* G = Crack())
+					{
+						G->bCrackNormalizeHeight = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("CrackNormalizeHeightHint", "Zero-preserving max-absolute normalization to -0.5..0.5.")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatCracks>(
+			LOCTEXT("CrackHeightScale", "Scale"), Crack, &FMixtormatCracks::CrackHeightScale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("CrackHeightScaleHint", "Scales the signed generator height after normalization.")));
+	}
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatCracks>(
@@ -436,11 +480,6 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 			LOCTEXT("CrackChamferEdge", "Edge Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
 			LOCTEXT("CrackChamferEdgeHint", "Wall-profile transition distance in cell widths; independent of crack width, with no built-in propagation noise."))));
 
-	Panel = AddCard(Cards, LOCTEXT("CrackGrpHeight", "Height"));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatCracks>(
-		LOCTEXT("CrackHeightScale", "Height Scale"), Crack, &FMixtormatCracks::CrackHeightScale, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("CrackHeightScaleHint", "Scales the crack field. The layer's height is the flat midpoint plus the cracks; the layer's Height Op decides how it meets the stack below. Add carves them into the height below.")));
-
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedCracks() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
@@ -519,7 +558,29 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 {
 	const auto Pebble = [this]() { return GetSelectedPebbles(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddGeneratorBlendRows(Panel);
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Panel, LOCTEXT("PebbleOutput", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("PebbleNormalizeHeight", "Normalize Height"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Pebble]()
+				{
+					const FMixtormatPebbles* G = Pebble();
+					return G && G->bPebbleNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Pebble](const ECheckBoxState State)
+				{
+					if (FMixtormatPebbles* G = Pebble())
+					{
+						G->bPebbleNormalizeHeight = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("PebbleNormalizeHeightHint", "Zero-preserving max-absolute normalization to -0.5..0.5.")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatPebbles>(
+			LOCTEXT("PebbleHeightScale", "Scale"), Pebble, &FMixtormatPebbles::PebbleHeightScale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("PebbleHeightScaleHint", "Scales the signed generator height after normalization.")));
+	}
 
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatPebbles>(
@@ -577,13 +638,9 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 		MakeMemberSlider<FMixtormatPebbles>(
 			LOCTEXT("PebbleHeightGain", "Height"), Pebble, &FMixtormatPebbles::PebbleHeightGain, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("PebbleHeightGainHint", "Overall stone height."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatPebbles>(
-			LOCTEXT("PebbleHeightVariation", "Height Var"), Pebble, &FMixtormatPebbles::PebbleHeightVariation, 0.0, 1.0, 0.3, 0.01,
-			LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")),
-		MakeMemberSlider<FMixtormatPebbles>(
-			LOCTEXT("PebbleHeightScale", "Height Scale"), Pebble, &FMixtormatPebbles::PebbleHeightScale, -4.0, 4.0, 1.0, 0.01,
-			LOCTEXT("PebbleHeightScaleHint", "Scales the stone field without rebuilding it. The gaps between stones are 0, so Max keeps the surface below there and Replace cuts it down."))));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatPebbles>(
+		LOCTEXT("PebbleHeightVariation", "Height Var"), Pebble, &FMixtormatPebbles::PebbleHeightVariation, 0.0, 1.0, 0.3, 0.01,
+		LOCTEXT("PebbleHeightVariationHint", "Random height drop per stone.")));
 	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
 		LOCTEXT("PebbleFacetIds", "Facet IDs"),
 		MixtormatRow::MakeCheckbox(
@@ -650,8 +707,16 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 {
 	const auto C=[this](){return GetSelectedCliffStrata();};
-	TSharedRef<SVerticalBox> Panel=SNew(SVerticalBox);AddGeneratorBlendRows(Panel);const TSharedRef<SVerticalBox> Cards=Panel;
+	TSharedRef<SVerticalBox> Panel=SNew(SVerticalBox);const TSharedRef<SVerticalBox> Cards=Panel;
 	auto Pair=[&](TSharedRef<SWidget>A,TSharedRef<SWidget>B){AddSliderRow(Panel,MixtormatRow::MakePair(A,B));};
+	Panel=AddCard(Cards,LOCTEXT("CliffOutput","OUTPUT"));
+	AddSliderRow(Panel,MixtormatRow::MakeTrailing(
+		LOCTEXT("CliffNormalizeHeight","Normalize Height"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([C](){const FMixtormatCliffStrata* G=C();return G&&G->bCliffNormalizeHeight?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}),
+			FOnCheckStateChanged::CreateLambda([this,C](ECheckBoxState S){if(FMixtormatCliffStrata* G=C()){G->bCliffNormalizeHeight=S==ECheckBoxState::Checked;RefreshLayeredPreview();}})),
+		LOCTEXT("CliffNormalizeHeightHint","Zero-preserving max-absolute normalization to -0.5..0.5.")));
+	AddSliderRow(Panel,MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffHeightScale","Scale"),C,&FMixtormatCliffStrata::CliffHeightScale,-4,4,1,.01,LOCTEXT("CliffHeightScaleHint","Scales the signed generator height after normalization.")));
 	Panel=AddCard(Cards,LOCTEXT("CliffLayout","LAYOUT"));
 	Pair(MakeMemberSliderInt<FMixtormatCliffStrata>(LOCTEXT("CliffCountX","Count X"),C,&FMixtormatCliffStrata::CountX,1,64,8,FText::GetEmpty()),MakeMemberSliderInt<FMixtormatCliffStrata>(LOCTEXT("CliffCountY","Count Y"),C,&FMixtormatCliffStrata::CountY,1,64,7,FText::GetEmpty()));
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffDensity","Density"),C,&FMixtormatCliffStrata::Density,0,1,.5,.01,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffJitter","Jitter"),C,&FMixtormatCliffStrata::Jitter,0,1,.1,.01,FText::GetEmpty()));
@@ -694,7 +759,29 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 {
 	const auto Rock = [this]() { return GetSelectedRockFormation(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddGeneratorBlendRows(Panel);
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Panel, LOCTEXT("RockOutput", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("RockNormalizeHeight", "Normalize Height"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Rock]()
+				{
+					const FMixtormatRockFormation* G = Rock();
+					return G && G->bRockNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Rock](const ECheckBoxState State)
+				{
+					if (FMixtormatRockFormation* G = Rock())
+					{
+						G->bRockNormalizeHeight = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("RockNormalizeHeightHint", "Zero-preserving max-absolute normalization to -0.5..0.5.")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockHeightScale", "Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("RockHeightScaleHint", "Scales the signed generator height after normalization.")));
+	}
 
 	const TSharedRef<SVerticalBox> Cards = Panel;
 		Panel = AddCard(Cards, LOCTEXT("RockGrpShape", "SHAPE"));
@@ -817,15 +904,6 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockFacetAlign", "Align"), Rock, &FMixtormatRockFormation::RockFacetAlign, -1.0, 1.0, 0.75, 0.01,
 			LOCTEXT("RockFacetAlignHint", "Positive swings facet planes toward the lean's low side; negative toward its high side.")),
 		SNullWidget::NullWidget));
-
-	Panel = AddCard(Cards, LOCTEXT("RockGrpHeight", "HEIGHT"));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatRockFormation, EMixtormatRockHeightMode>(
-			LOCTEXT("RockHeightMode", "Mode"), Rock, &FMixtormatRockFormation::RockHeightMode,
-			LOCTEXT("RockHeightModeHint", "Raw keeps the field height. Analytic (default) uses setting-derived bounds. Measured normalises the field's own minimum and maximum to 0..1.")),
-		MakeMemberSlider<FMixtormatRockFormation>(
-			LOCTEXT("RockHeightScale", "Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, 0.0, 2.0, 1.0, 0.01,
-			LOCTEXT("RockHeightScaleHint", "Scales height after the selected mode, before blending, without rebuilding the cached field."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })

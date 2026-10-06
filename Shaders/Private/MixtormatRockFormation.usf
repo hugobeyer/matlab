@@ -1164,7 +1164,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const FRockPat P = RockSetup();
 		h = (h - P.height_lo) / max(P.height_hi - P.height_lo, 1e-6f);
 	}
-	OutHeight[Pixel] = h * HeightScale;
+	OutHeight[Pixel] = h;
 #endif
 }
 #endif

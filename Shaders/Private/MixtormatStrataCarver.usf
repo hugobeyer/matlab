@@ -244,5 +244,5 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Strata runs about 0..1 from a bed's base to its crest. Relief is the same shape centred on
 	// zero, and the layer's height is that relief about the flat midpoint. How it meets the stack
 	// below is the layer's Height Op. Mask and ID influence scale the relief itself.
-	OutHeight[P] = 0.5f + (Strata - 0.5f) * Depth * Amount;
+	OutHeight[P] = (Strata - 0.5f) * Depth * Amount;
 }

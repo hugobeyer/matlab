@@ -306,9 +306,9 @@
 		},
 		"Generator.CrackHeightScale":
 		{
-			"default": 2,
-			"uiMin": 0,
-			"uiMax": 8,
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		}
 	},
