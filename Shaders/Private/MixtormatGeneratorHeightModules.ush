@@ -45,25 +45,26 @@ float MixtormatEvalSignedScalarRamp(
 }
 
 // Reusable colour ramp. The domain is whatever the caller feeds in; the generator Height Color
-// Ramp runs -1..1 with zero at the centre.
+// Ramp runs -1..1 with zero at the centre. Positions are packed one per float4 (x is the stop
+// position) because a scalar array is not 16-byte aligned in the parameter struct.
 float4 MixtormatEvalColorRamp(
 	float InputX, uint Count, uint Interpolation,
-	float Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS],
+	float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS],
 	float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS])
 {
 	Count = min(Count, (uint)MIXTORMAT_COLOR_RAMP_MAX_STOPS);
 	if (Count < 2u) { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
-	if (InputX <= Positions[0]) { return Colors[0]; }
-	if (InputX >= Positions[Count - 1u]) { return Colors[Count - 1u]; }
+	if (InputX <= Positions[0].x) { return Colors[0]; }
+	if (InputX >= Positions[Count - 1u].x) { return Colors[Count - 1u]; }
 	uint Segment = Count - 2u;
 	[loop] for (uint I = 0u; I + 1u < Count; ++I)
 	{
-		if (InputX <= Positions[I + 1u]) { Segment = I; break; }
+		if (InputX <= Positions[I + 1u].x) { Segment = I; break; }
 	}
 	const float4 A = Colors[Segment];
 	const float4 B = Colors[Segment + 1u];
-	const float H = max(Positions[Segment + 1u] - Positions[Segment], 1.0e-6f);
-	float T = saturate((InputX - Positions[Segment]) / H);
+	const float H = max(Positions[Segment + 1u].x - Positions[Segment].x, 1.0e-6f);
+	float T = saturate((InputX - Positions[Segment].x) / H);
 	if (Interpolation == 0u) { return A; }
 	if (Interpolation == 2u) { T = T * T * (3.0f - 2.0f * T); }
 	return lerp(A, B, T);

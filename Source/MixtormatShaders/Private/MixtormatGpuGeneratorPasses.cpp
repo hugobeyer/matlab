@@ -729,7 +729,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, StopCount)
 		SHADER_PARAMETER(uint32, Interpolation)
-		SHADER_PARAMETER_SCALAR_ARRAY(float, Positions, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
@@ -867,7 +867,7 @@ namespace
 		P->Interpolation = Ramp.Interpolation;
 		for (int32 Index = 0; Index < FMixtormatColorRamp::MaxStops; ++Index)
 		{
-			GET_SCALAR_ARRAY_ELEMENT(P->Positions, Index) = Ramp.Positions[Index];
+			P->Positions[Index] = FVector4f(Ramp.Positions[Index], 0.0f, 0.0f, 0.0f);
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
 		P->RunningHeight = RunningHeight;

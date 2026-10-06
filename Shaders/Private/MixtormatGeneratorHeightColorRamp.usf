@@ -10,7 +10,7 @@
 int2 OutputSize;
 uint StopCount;
 uint Interpolation;
-float Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 Texture2D<float> RunningHeight;
 RWTexture2D<float4> OutColor;
