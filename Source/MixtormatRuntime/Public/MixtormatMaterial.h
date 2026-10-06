@@ -3141,7 +3141,7 @@ struct MIXTORMATRUNTIME_API FMixtormatCliffStrata
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
 	float CameraPitch = 0.25f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
-	float ViewScale = 2.0f;
+	float ViewScale = 2.50f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
 	float DepthMin = -1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")

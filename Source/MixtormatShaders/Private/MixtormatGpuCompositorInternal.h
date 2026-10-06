@@ -897,7 +897,7 @@ namespace MixtormatGpuCompositor
 		float QuarterJitterX = 0.5f, QuarterJitterY = 0.5f;
 		int32 Sides = 4;
 		bool bShapeRandom = false;
-		float CameraYaw = 0.5f, CameraPitch = 0.25f, ViewScale = 2.0f;
+		float CameraYaw = 0.5f, CameraPitch = 0.25f, ViewScale = 2.50f;
 		float DepthMin = -1.0f, DepthMax = 1.0f;
 		float UnitDistance = 0.3f, UnitDistanceIdLerp = 0.5f;
 		float CarveDepth = 0.375f, CarveVoronoi = 0.1f;

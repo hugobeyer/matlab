@@ -210,7 +210,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.QuarterSize=Finite(Cliff.QuarterSize,Defaults.QuarterSize); Out.QuarterHeight=Finite(Cliff.QuarterHeight,Defaults.QuarterHeight);
 		Out.QuarterJitterX=Finite(Cliff.QuarterJitterX,Defaults.QuarterJitterX); Out.QuarterJitterY=Finite(Cliff.QuarterJitterY,Defaults.QuarterJitterY);
 		Out.Sides=FMath::Clamp(Cliff.Sides,3,12); Out.bShapeRandom=Cliff.bShapeRandom; Out.CameraYaw=Finite(Cliff.CameraYaw,Defaults.CameraYaw);
-		Out.CameraPitch=Finite(Cliff.CameraPitch,Defaults.CameraPitch); Out.ViewScale=Finite(Cliff.ViewScale,Defaults.ViewScale);
+		Out.CameraPitch=Finite(Cliff.CameraPitch,Defaults.CameraPitch); Out.ViewScale=FMath::Max(1.0f,Finite(Cliff.ViewScale,Defaults.ViewScale));
 		Out.DepthMin=Finite(Cliff.DepthMin,Defaults.DepthMin); Out.DepthMax=Finite(Cliff.DepthMax,Defaults.DepthMax);
 		Out.UnitDistance=Finite(Cliff.UnitDistance,Defaults.UnitDistance); Out.UnitDistanceIdLerp=Finite(Cliff.UnitDistanceIdLerp,Defaults.UnitDistanceIdLerp);
 		Out.CarveDepth=Finite(Cliff.CarveDepth,Defaults.CarveDepth); Out.CarveVoronoi=Finite(Cliff.CarveVoronoi,Defaults.CarveVoronoi);

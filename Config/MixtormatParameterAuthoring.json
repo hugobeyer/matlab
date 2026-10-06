@@ -477,5 +477,43 @@
 			"uiMax": 1,
 			"snap": 0.0010000000474974513
 		}
+	},
+	"Cliff Strata":
+	{
+		"Generator.ViewScale":
+		{
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 3,
+			"snap": 0,
+			"clampMin": 1,
+			"clampMax": 5
+		},
+		"Generator.DepthMin":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": -0.5,
+			"clampMax": 1
+		},
+		"Generator.DepthMax":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 3
+		},
+		"Generator.CameraPitch":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0.0099999997764825821
+		}
 	}
 }
