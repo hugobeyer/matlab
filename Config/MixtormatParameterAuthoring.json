@@ -492,11 +492,11 @@
 		"Generator.DepthMin":
 		{
 			"default": -0.5,
-			"uiMin": -0.5,
+			"uiMin": -1,
 			"uiMax": 1,
 			"snap": 0,
-			"clampMin": -1,
-			"clampMax": 1
+			"clampMin": -2,
+			"clampMax": 2
 		},
 		"Generator.DepthMax":
 		{
@@ -595,6 +595,60 @@
 			"snap": 0,
 			"clampMin": 0,
 			"clampMax": 1
+		},
+		"Generator.UnitDistance":
+		{
+			"default": 0.30000001192092896,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 1
+		},
+		"Generator.CarveDepth":
+		{
+			"default": 0.375,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": -1,
+			"clampMax": 1
+		},
+		"Generator.UnitDistanceIdLerp":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1.5,
+			"snap": 0.10000000149011612,
+			"clampMin": 0,
+			"clampMax": 1.5
+		},
+		"Generator.CarveVoronoi":
+		{
+			"default": 0.5,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": -1,
+			"clampMax": 1
+		},
+		"Generator.YBiasVoronoi":
+		{
+			"default": 0,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0,
+			"clampMin": -4,
+			"clampMax": 4
+		},
+		"Generator.NegativeYUnitDistanceTaper":
+		{
+			"default": 1,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": -4,
+			"clampMax": 4
 		}
 	}
 }
