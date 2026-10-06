@@ -1,9 +1,11 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #ifndef CLIFF_STAGE
 #define CLIFF_STAGE 0
 #endif
-uint2 OutputSize;
+int2 OutputSize;
 int CountX,CountY,Steps,FormationCells,QuarterYCount,Sides,Seed,VoronoiCells; float Density,SizeMin,SizeMax,SizeAspect,Jitter,FlowVariation,HeightMin,HeightMax,Rotation,LeanX,LeanY,FormationAmount,QuarterFill,QuarterSize,QuarterHeight,QuarterJitterX,QuarterJitterY; uint QuarterCopies,ShapeRandom;
 float CameraYaw,CameraPitch,ViewScale,DepthMin,DepthMax,UnitDistance,UnitDistanceIdLerp,CarveDepth,CarveVoronoi,YBias,YBiasVoronoi,NegativeYUnitDistanceTaper,FlowVoronoi,ChamferWidth,ChamferIntensity,ChamferVoronoi,BlockCavityWidth,RowCavityWidth,CavityIntensity,CavityVoronoiThreshold,CavityVoronoiMaskGain; uint YBiasVoronoiInvert,Reverse;
 Texture2D<float> RawHeight,VoronoiRaw,VoronoiSmooth,SweepIn,IdDistanceIn,RowDistanceIn; Texture2D<float2> Flow; Texture2D<uint> BlockIds,RowIds;
