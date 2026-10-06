@@ -895,16 +895,20 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	float2x2 Orientation;
 	const float2 SourceUV = LayerSourceUVAndOrientation(UV, Orientation);
-	// A referenced colour field becomes the destination layer's Base Color input when no material
-	// surface is available, so Fill / Generator layers still resolve a referenced colour into their
-	// Base Color. The colour field is already at output resolution, so it is sampled directly in
-	// output UV space rather than going through the destination layer's UV transform a second time.
+	// A referenced colour field wins as the Base Color source: it replaces the surface's Base Color
+	// when present, and supplies one when there is no surface (Fill / Generator layers). Normal,
+	// Roughness, AO, Metallic and Height still come from the surface when one exists -- the
+	// reference replaces only the Base Color channel. The colour field is already at output
+	// resolution, so it is sampled directly in output UV space rather than going through the
+	// destination layer's UV transform a second time.
 	const float4 ReferencedColor = ReferencedColorEnabled != 0
 		? ReferencedColorField.Load(int3(Pixel, 0))
 		: float4(1.0f, 1.0f, 1.0f, 1.0f);
-	const float4 SourceBC = HasSurface != 0
-		? LayerBC.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
-		: (ReferencedColorEnabled != 0 ? ReferencedColor : float4(1.0f, 1.0f, 1.0f, 1.0f));
+	const float4 SourceBC = ReferencedColorEnabled != 0
+		? ReferencedColor
+		: (HasSurface != 0
+			? LayerBC.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
+			: float4(1.0f, 1.0f, 1.0f, 1.0f));
 	const float4 SourceRAM = HasSurface != 0
 		? LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.04f);
