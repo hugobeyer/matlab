@@ -102,8 +102,6 @@ int FacetIterations;
 float FacetFalloff;
 float FacetRandom;
 float FacetAlign;
-float DepthMin;
-float DepthMax;
 
 Texture2D<float> RockHeight;
 Texture2D<uint> RockIds;
@@ -1162,31 +1160,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif ROCK_STAGE == 3
 	const FRockPat P = RockSetup();
 	const float heightRange = max(P.height_hi - P.height_lo, 1e-6f);
-	
-	// Get the raw signed height from the field stage
-	const float rawHeight = RockHeight.Load(int3(Pixel, 0));
-	
-	// Remap raw height to user-controlled depth range [DepthMin, DepthMax]
-	// First normalize raw height to 0..1 range based on analytic bounds
-	float t = 0.0f;
-	if (fabs(heightRange) > 1e-8f)
-	{
-		t = (rawHeight - P.height_lo) / heightRange;
-	}
-	// Remap from 0..1 to [DepthMin, DepthMax]
-	const float depthHeight = lerp(DepthMin, DepthMax, t);
-	
-	// Apply the existing normalization (0..1) and store as normalized height
-	// The normalized height should be based on the depth-remapped value
-	// We need to calculate the normalized height from the depth-remapped value
-	float normalizedHeight = 0.0f;
-	if (RockIds.Load(int3(Pixel, 0)) != MIXTORMAT_INVALID_REGION)
-	{
-		// Normalize the depth-remapped height to 0..1 range
-		// using the same analytic bounds as before
-		normalizedHeight = saturate((depthHeight - P.height_lo) / heightRange);
-	}
-	OutRockNormalizedHeight[Pixel] = normalizedHeight;
+	OutRockNormalizedHeight[Pixel] = RockNormalizedHeightAt(Pixel, P.height_lo, heightRange);
 	// Central differences in cell widths, not pixels or tile widths. Wrap to preserve tiling
 	// and account for each axis separately at non-square resolutions.
 	const float2 gradient = float2(

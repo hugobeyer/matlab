@@ -187,8 +187,6 @@ public:
 		SHADER_PARAMETER(float, FacetFalloff)
 		SHADER_PARAMETER(float, FacetRandom)
 		SHADER_PARAMETER(float, FacetAlign)
-		SHADER_PARAMETER(float, DepthMin)
-		SHADER_PARAMETER(float, DepthMax)
 		SHADER_PARAMETER(int32, MaxLeaves)
 		SHADER_PARAMETER(int32, CellsV)
 		SHADER_PARAMETER(float, RowHeight)
@@ -1611,8 +1609,6 @@ namespace
 			P->FacetFalloff = Rock.FacetFalloff;
 			P->FacetRandom = Rock.FacetRandom;
 			P->FacetAlign = Rock.FacetAlign;
-			P->DepthMin = Rock.DepthMin;
-			P->DepthMax = Rock.DepthMax;
 		};
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
@@ -1799,9 +1795,41 @@ namespace
 			}
 		}
 
-		// Raw generator-native signed field. The shared signed normalization pass is the only output
-		// convention; there is no per-generator height mode or scale any more.
-		FRDGTextureRef Height = Outputs[0];
+		// Equalize the raw field to 0..1, then remap into Depth Min/Max. Cached masks stay raw.
+		// Shared Normalize Height and Scale still run later on this result.
+		FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.Rock.DepthRange"));
+		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
+		{
+			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
+			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->OutputSize = Size;
+			P->SourceField = Outputs[0];
+			P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Rock.Depth.Reduce"), Shader, P, Groups);
+		}
+		FRDGTextureRef Height = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Rock.Depth"));
+		{
+			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
+			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->OutputSize = Size;
+			P->OutLow = Rock.DepthMin;
+			P->OutHigh = Rock.DepthMax;
+			P->NormalizeMode = 0u;
+			P->OutputScale = 1.0f;
+			P->SourceField = Outputs[0];
+			P->Range = GraphBuilder.CreateSRV(RangeBuffer);
+			P->OutField = GraphBuilder.CreateUAV(Height);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Rock.Depth.Remap"), Shader, P, Groups);
+		}
 		if (Bundle) { Bundle->Height = Height; }
 		return Height;
 	}
