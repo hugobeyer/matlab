@@ -12,6 +12,26 @@
 
 using namespace MixtormatLayersPrivate;
 
+namespace
+{
+	// One icon per published output, chosen by what the output is rather than by its name: an ID map
+	// gets the ID glyph, a scalar mask the mask glyph, and every typed field (colour, flow, UV) falls
+	// back to the neutral generated glyph until it has artwork of its own. Kept in one place so the
+	// Outputs submenu never grows a second, drifting copy of this mapping.
+	const FSlateBrush* GetPublishedOutputIcon(const FMixtormatPublishedOutputDesc& Output)
+	{
+		if (Output.bCopyableAsMask)
+		{
+			return MixtormatIcons::Mask();
+		}
+		if (Output.FieldKind == EMixtormatPublishedFieldKind::RegionIds)
+		{
+			return MixtormatIcons::Ids();
+		}
+		return MixtormatIcons::Generated();
+	}
+}
+
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 {
 	MixtormatMenu::FBuilder Menu;
@@ -193,8 +213,10 @@ TSharedRef<SWidget> SMixtormat::BuildCopyChildOutputMenu(FMixtormatChildAddress 
 	{
 		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
 		{
+			// The submenu already says "Outputs", so each row names the output itself rather than
+			// repeating the verb: "Region IDs", "Gap", "Color" -- not "Copy IDs", "Copy Gate · Gap".
 			Menu.Item(Output.Label,
-				Output.bCopyableAsMask ? MixtormatIcons::Mask() : MixtormatIcons::Generated(),
+				GetPublishedOutputIcon(Output),
 				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
 				{
 					CopyChildOutput(Address, OutputName);
@@ -233,34 +255,14 @@ void SMixtormat::AddSharedChildMenuItems(
 		}));
 	if (Child)
 	{
-		const TArray<FMixtormatPublishedOutputDesc> CopyableOutputs = GetCopyableOutputs(GetChildCapabilities(*Child));
-		Menu.SubMenu(LOCTEXT("CopyChildOutputContext", "Copy Output"), nullptr,
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address))
-			.Enabled(!CopyableOutputs.IsEmpty());
-		for (const FMixtormatPublishedOutputDesc& Output : CopyableOutputs)
+		// One entry point for published data. The rows used to be repeated here as flattened
+		// "Copy Gate · X" items as well, which said the same thing twice and buried the structural
+		// actions; the submenu is the single, discoverable home for them now. Omitted entirely when
+		// there is nothing to publish, rather than shown disabled and spending a row on nothing.
+		if (!GetCopyableOutputs(GetChildCapabilities(*Child)).IsEmpty())
 		{
-			FText Label = FText::Format(LOCTEXT("CopyChildGateContext", "Copy Gate · {0}"), Output.Label);
-			if (!Output.bCopyableAsMask)
-			{
-				switch (Output.FieldKind)
-				{
-				case EMixtormatPublishedFieldKind::RegionIds: Label = LOCTEXT("CopyChildIdsContext", "Copy IDs"); break;
-				case EMixtormatPublishedFieldKind::Flow:      Label = LOCTEXT("CopyChildFlowContext", "Copy Flow"); break;
-				case EMixtormatPublishedFieldKind::UVMap:     Label = LOCTEXT("CopyChildUvsContext", "Copy UVs"); break;
-				case EMixtormatPublishedFieldKind::Color:     Label = LOCTEXT("CopyChildColorContext", "Copy Color"); break;
-				}
-			}
-			Menu.Item(
-				Label,
-				Output.bCopyableAsMask ? MixtormatIcons::Mask() : MixtormatIcons::Generated(),
-				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
-				{
-					CopyChildOutput(Address, OutputName);
-				}))
-				.Enabled(TAttribute<bool>::CreateLambda([this, Address, OutputName = Output.Name]()
-				{
-					return CanCopyChildOutput(Address, OutputName);
-				}));
+			Menu.SubMenu(LOCTEXT("CopyChildOutputContext", "Outputs"), nullptr,
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address));
 		}
 	}
 	Menu.Item(
