@@ -2770,7 +2770,10 @@ enum class EMixtormatGeneratorType : uint8
 	// Appended: serialized by value.
 	RockFormation UMETA(DisplayName = "Rock Formation"),
 	Pebbles UMETA(DisplayName = "Pebbles"),
-	CliffStrata UMETA(DisplayName = "Cliff Strata")
+	CliffStrata UMETA(DisplayName = "Cliff Strata"),
+	// Appended: a plain field producer. It publishes Value / Gradient / IDs and decides nothing
+	// about what they mean -- height, roughness, mask and the rest are downstream decisions.
+	Noise UMETA(DisplayName = "Noise")
 };
 
 // How a pebble's cut planes are oriented.
@@ -3517,6 +3520,97 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 	bool operator!=(const FMixtormatFinalSettings& Other) const { return !(*this == Other); }
 };
 
+// Which algorithm the Noise module evaluates.
+//
+// Serialised by value. Append only. The families split by their natural output contract:
+// the lattice families (Gradient, Value, FBM) and Bars are zero-centred and signed; Ridged,
+// Billow and the Worley distances are 0..1 magnitudes. The module's height output is the signed
+// remap of whichever contract the family defines -- see FMixtormatNoise.
+UENUM(BlueprintType)
+enum class EMixtormatNoiseType : uint8
+{
+	Gradient UMETA(DisplayName = "Gradient"),
+	Value UMETA(DisplayName = "Value"),
+	FBM UMETA(DisplayName = "FBM"),
+	Ridged UMETA(DisplayName = "Ridged"),
+	Billow UMETA(DisplayName = "Billow"),
+	WorleyF1 UMETA(DisplayName = "Worley F1"),
+	WorleyF2 UMETA(DisplayName = "Worley F2"),
+	WorleyF1MinusF2 UMETA(DisplayName = "Worley F1-F2"),
+	Bars UMETA(DisplayName = "Bars / Stripes")
+};
+
+// Noise: a tileable, seeded, resolution-independent scalar field producer.
+//
+// It publishes what the algorithm genuinely produces -- a Value, a Gradient with directional
+// meaning, and for the Worley family the stable cell IDs -- and decides nothing about what any
+// of it means. Height, roughness, mask, erosion and colour are downstream decisions; the
+// Generator layer's Height Blend / Height Curve sublayers and the published-field consumers
+// own them.
+//
+// The module's height contribution to its Generator layer is the family's value remapped to the
+// shared signed contract (zero-centred, so zero is the neutral generator height):
+//
+//   Gradient / Value / FBM / Bars   the value itself (already zero-centred)
+//   Ridged / Billow                 Value * 2 - 1   (crests and bumps read up)
+//   Worley F1 / F2 / F1-F2          1 - Value * 2   (feature points and walls read up)
+//
+// Every family is periodic by construction -- the lattice is wrapped to an integer period
+// before it is hashed -- so the field tiles exactly at any Scale, and Offset translates it
+// without breaking the wrap. Direction exists only where rotation means anything: Bars, where
+// it snaps to the nearest angle that tiles, exactly like Strata Carver's bedding.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatNoise
+{
+	GENERATED_BODY()
+
+	// The algorithm. Decides the outputs and the value contract, nothing else.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern")
+	EMixtormatNoiseType NoiseType = EMixtormatNoiseType::Gradient;
+
+	// Shifts every per-cell draw, and slides the Bars phase.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "0", UIMax = "9999"))
+	int32 NoiseSeed = 1;
+
+	// Lattice cells across the tile. The base period of every family; floored at 1, because a
+	// lattice that does not close on the tile cannot be wrapped.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
+	float NoiseScale = 8.0f;
+
+	// Octaves for FBM / Ridged / Billow. Each runs on its own integer period, so the stack
+	// tiles whatever the per-octave periods turn out to be.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "1", UIMax = "8", ClampMin = "1", ClampMax = "8"))
+	int32 NoiseDetail = 4;
+
+	// Persistence for FBM / Ridged / Billow: how much of each finer octave survives.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "0", UIMax = "1", Delta = "0.01"))
+	float NoiseRoughness = 0.5f;
+
+	// Frequency multiplier between octaves for FBM / Ridged / Billow. Rounded per octave to the
+	// integer period the lattice needs, so a continuous control never breaks tileability.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "1", UIMax = "4", Delta = "0.05"))
+	float NoiseLacunarity = 2.0f;
+
+	// Domain offset in tile widths. Translating a periodic field leaves it periodic.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseOffsetX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseOffsetY = 0.0f;
+
+	// Bars only: the direction the stripes advance across, in degrees. 0 is horizontal stripes;
+	// the angle snaps to the nearest one that tiles, like Strata Carver's bedding direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "0", UIMax = "360", Delta = "1"))
+	float NoiseDirection = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
+	bool bNoiseNormalizeHeight = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseHeightScale = 1.0f;
+};
+
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -3561,6 +3655,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::CliffStrata"))
 	FMixtormatCliffStrata CliffStrata;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Noise"))
+	FMixtormatNoise Noise;
 };
 
 // How a layer's base colour combines with what is composited below it.

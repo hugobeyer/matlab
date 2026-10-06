@@ -1,0 +1,243 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_NOISE_USH
+#define MIXTORMAT_NOISE_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatCellular.ush"
+
+// Tileable, seeded noise for the Noise generator module.
+//
+// Every family here is periodic by construction, for the same reason the gully lattice and the
+// cellular lattice are: the lattice coordinate is wrapped to an integer period *before* it is
+// hashed, so opposite edges of the tile agree about the lattice. A noise with a wrapped input
+// is a different construction from one whose lattice closes on a period, and it cannot be
+// retrofitted -- the cellular header records that lesson already.
+//
+// FBM stacks octaves, and each octave runs on its own integer period: the base period raised by
+// the rounded lacunarity. A sum of integer-period functions is integer-period, so the stack
+// tiles whatever the per-octave periods turn out to be -- which is what lets Lacunarity stay a
+// continuous control: it is rounded per octave, never allowed to break the lattice.
+//
+// Everything is a function of tile UV alone. No pixel index, no resolution-derived term enters
+// the math, so the same UV evaluates to the same value at any output size.
+
+#define MIXTORMAT_NOISE_TAU   6.28318530717958647692f
+#define MIXTORMAT_NOISE_SQRT2 1.41421356237309504880f
+
+// Octaves finer than this are skipped. At 4096 one lattice cell spans one texel of a 4K bake,
+// so finer octaves carry no signal -- and their lattice coordinates would lose float precision
+// long before that. The cap is a constant, not a resolution, so the field stays
+// resolution-independent: the same UV skips the same octaves everywhere.
+#define MIXTORMAT_NOISE_MAX_PERIOD 4096.0f
+
+// Per-cell value for the value-noise lattice, wrapped to the period so the field repeats.
+float MixtormatNoiseCellValue(int2 Cell, int2 Period, uint Seed)
+{
+	const int2 SafePeriod = max(Period, int2(1, 1));
+	const uint hx = (uint)MixtormatWrapI(Cell.x, SafePeriod.x);
+	const uint hy = (uint)MixtormatWrapI(Cell.y, SafePeriod.y);
+	const uint h = MixtormatHashU(hx * 0x27d4eb2du ^ hy * 0x165667b1u ^ Seed * 0x9e3779b9u);
+	return (float)(h & 0x00FFFFFFu) * (2.0f / 16777215.0f) - 1.0f;
+}
+
+// One octave of periodic value noise with analytic derivatives: (value, d/dx, d/dy).
+// The value is zero-centred in [-1, 1]; the derivative is per lattice unit.
+float3 MixtormatNoiseValueD(float2 p, int Period, uint Seed)
+{
+	const int P = max(Period, 1);
+	const int2 i = (int2)floor(p);
+	const float2 f = p - (float2)i;
+
+	const float2 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	const float2 du = 30.0f * f * f * (f * (f - 2.0f) + 1.0f);
+
+	const int2 SafePeriod = int2(P, P);
+	const float va = MixtormatNoiseCellValue(i + int2(0, 0), SafePeriod, Seed);
+	const float vb = MixtormatNoiseCellValue(i + int2(1, 0), SafePeriod, Seed);
+	const float vc = MixtormatNoiseCellValue(i + int2(0, 1), SafePeriod, Seed);
+	const float vd = MixtormatNoiseCellValue(i + int2(1, 1), SafePeriod, Seed);
+
+	const float k1 = vb - va;
+	const float k2 = vc - va;
+	const float k3 = va - vb - vc + vd;
+	const float value = va + u.x * k1 + u.y * k2 + u.x * u.y * k3;
+
+	// The corner values are constants, so only the fade carries the derivative.
+	const float dx = du.x * (k1 + u.y * k3);
+	const float dy = du.y * (k2 + u.x * k3);
+	return float3(value, dx, dy);
+}
+
+// The next octave's integer period, or 0 when it would run finer than the cap.
+int MixtormatNoiseOctavePeriod(float Period)
+{
+	const float Rounded = round(Period);
+	return Rounded <= MIXTORMAT_NOISE_MAX_PERIOD && Rounded >= 1.0f ? (int)Rounded : 0;
+}
+
+// FBM: signed sum of periodic gradient-noise octaves. Zero-centred, roughly [-1, 1] --
+// gradient noise is bounded by sqrt(2)/2, so each octave is scaled by sqrt(2) first and the
+// weighted average stays inside the same bound.
+// Gradient is d/d(tile UV): the per-octave derivative chain-ruled through the octave's period.
+void MixtormatNoiseFbm(float2 UV, float BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float Period = max(BasePeriod, 1.0f);
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int P = MixtormatNoiseOctavePeriod(Period);
+		if (P == 0) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float)P, P, Seed + (uint)k * 0x2545F491u);
+		Value += Amp * (n.x * MIXTORMAT_NOISE_SQRT2);
+		Gradient += Amp * ((float)P * MIXTORMAT_NOISE_SQRT2) * n.yz;
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
+// Ridged: sum of 1 - |noise| octaves, normalised. 0..1, crests at 1 where the base noise
+// crosses zero. The gradient is the chain rule through the absolute value, so it vanishes on
+// the crest line -- a crest is a maximum, and this is its derivative.
+void MixtormatNoiseRidged(float2 UV, float BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float Period = max(BasePeriod, 1.0f);
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int P = MixtormatNoiseOctavePeriod(Period);
+		if (P == 0) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float)P, P, Seed + (uint)k * 0x2545F491u);
+		const float Signed = n.x * MIXTORMAT_NOISE_SQRT2;
+		Value += Amp * (1.0f - abs(Signed));
+		Gradient -= Amp * ((float)P * MIXTORMAT_NOISE_SQRT2) * (sign(Signed) * n.yz);
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
+// Billow: sum of |noise| octaves, normalised. 0..1, bumps where the base noise is large.
+void MixtormatNoiseBillow(float2 UV, float BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float Period = max(BasePeriod, 1.0f);
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int P = MixtormatNoiseOctavePeriod(Period);
+		if (P == 0) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float)P, P, Seed + (uint)k * 0x2545F491u);
+		const float Signed = n.x * MIXTORMAT_NOISE_SQRT2;
+		Value += Amp * abs(Signed);
+		Gradient += Amp * ((float)P * MIXTORMAT_NOISE_SQRT2) * (sign(Signed) * n.yz);
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
+// Periodic Worley over a jittered lattice. Feature points come from the shared cellular point
+// function -- wrapped to the period before hashing, so cell identity and every distance agree
+// across the tile seam. Jitter is fixed at 1: full Voronoi is what the family means, and the
+// compact control set has no Jitter row this pass.
+struct FMixtormatNoiseWorley
+{
+	float F1;         // distance to the nearest feature point, in cell widths
+	float F2;         // distance to the second nearest
+	uint CellId;      // hash of the owning cell, stable under the period
+	float2 Direction; // unit vector from the feature point toward this pixel -- the gradient of F1
+};
+
+FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
+{
+	const int P = max(Period, 1);
+	const float2 p = UV * (float)P;
+	const int2 Base = (int2)floor(p);
+
+	float BestSq = 1.0e30f;
+	float SecondSq = 1.0e30f;
+	float2 BestDelta = float2(0.0f, 0.0f);
+	int2 NearestCell = Base;
+
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Cell = Base + int2(x, y);
+			const float2 Delta = MixtormatCellPoint(Cell, P, Seed, 1.0f) - p;
+			const float DistSq = dot(Delta, Delta);
+			if (DistSq < BestSq)
+			{
+				SecondSq = BestSq;
+				BestSq = DistSq;
+				BestDelta = Delta;
+				NearestCell = Cell;
+			}
+			else if (DistSq < SecondSq)
+			{
+				SecondSq = DistSq;
+			}
+		}
+	}
+
+	FMixtormatNoiseWorley Result;
+	Result.F1 = sqrt(BestSq);
+	Result.F2 = sqrt(SecondSq);
+	Result.CellId = MixtormatCellHash(NearestCell, P, Seed);
+	// Pixel minus feature, normalised: the direction the distance grows in. A pixel exactly on
+	// a feature point has no direction; the measure-zero case gets zero rather than a NaN.
+	Result.Direction = BestSq > 1.0e-9f ? -BestDelta * rsqrt(BestSq) : float2(0.0f, 0.0f);
+	return Result;
+}
+
+// Bars / Stripes: a phasor on an integer wave vector. The wave is resolved CPU-side by snapping
+// the authored direction to the nearest small integer vector and scaling it so a whole number of
+// cycles crosses the tile -- the same lattice snap Strata Carver's bedding uses. Phase therefore
+// advances by an integer number of cycles across each seam, and cos() closes it exactly.
+//
+// Value = cos(Tau * phase), zero-centred in [-1, 1]. Gradient is the unit phase direction --
+// across the stripes, the way the phase advances. It is constant by design: the honest
+// derivative of a cosine flips sign every half stripe and dies on the crest, which is no
+// direction anyone can flow along.
+void MixtormatNoiseBars(float2 UV, float2 Wave, float PhaseOffset, out float Value, out float2 Gradient)
+{
+	const float Phase = dot(UV, Wave) + PhaseOffset;
+	Value = cos(MIXTORMAT_NOISE_TAU * Phase);
+	const float WaveLength = length(Wave);
+	Gradient = WaveLength > 1.0e-6f ? Wave / WaveLength : float2(0.0f, 1.0f);
+}
+
+#endif

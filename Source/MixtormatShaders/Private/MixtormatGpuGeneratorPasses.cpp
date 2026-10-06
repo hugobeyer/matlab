@@ -2,6 +2,9 @@
 
 #include "MixtormatGpuCompositorInternal.h"
 #include "Compositing/MixtormatComposeHash.h"
+#include "MixtormatGpuNoisePasses.h"
+#include "MixtormatColorRampMath.h"
+#include "MixtormatScalarRampMath.h"
 
 #include "Algo/AnyOf.h"
 #include "GlobalShader.h"
@@ -2353,6 +2356,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			break;
+		case EMixtormatGeneratorType::Noise:
+			// One dispatch, no solve: the field producer publishes its value, gradient and (for
+			// Worley) cell IDs, and leaves the signed height for the shared contract below.
+			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module);
 			break;
 		}
 		if (!Module.Height) { continue; }

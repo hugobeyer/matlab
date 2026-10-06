@@ -1170,4 +1170,11 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		];
 }
 
+// The Noise inspector panel is an integration-pass registration, like the capability and menu
+// entries: it is an SMixtormat member (BuildNoiseControls), and the declaration lives in
+// SMixtormat.h beside BuildCliffStrataControls, which this file does not own. The panel itself
+// follows the BuildCliffStrataControls shape -- OUTPUT card (Normalize Height, Scale), then
+// Type / Seed / Scale, Detail / Roughness / Lacunarity disabled rather than hidden on the
+// single-octave families, Offset X/Y, and Direction disabled everywhere but Bars.
+
 #undef LOCTEXT_NAMESPACE

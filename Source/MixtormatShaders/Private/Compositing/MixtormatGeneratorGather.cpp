@@ -3,6 +3,7 @@
 #include "Compositing/MixtormatGeneratorGather.h"
 
 #include "Compositing/MixtormatComposeHash.h"
+#include "Compositing/MixtormatNoiseRender.h"
 #include "MixtormatColorRampMath.h"
 #include "MixtormatScalarRampMath.h"
 
@@ -229,6 +230,34 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.RowCavityWidth=Finite(Cliff.RowCavityWidth,Defaults.RowCavityWidth); Out.CavityIntensity=Finite(Cliff.CavityIntensity,Defaults.CavityIntensity);
 		Out.CavityVoronoiThreshold=Finite(Cliff.CavityVoronoiThreshold,Defaults.CavityVoronoiThreshold); Out.CavityVoronoiMaskGain=Finite(Cliff.CavityVoronoiMaskGain,Defaults.CavityVoronoiMaskGain);
 		if(bCacheLayers){MixtormatComposeHash::FHasher Hasher;Hasher.SkipTopLevel={TEXT("bCliffNormalizeHeight"),TEXT("CliffHeightScale")};Hasher.Struct(FMixtormatCliffStrata::StaticStruct(),&Cliff);Out.FieldKey=MixtormatComposeHash::Combine(Hasher.Get(),0x436C696666537472ull)|1ull;}
+		break;
+	}
+	case EMixtormatGeneratorType::Noise:
+	{
+		// A field producer: the gather only resolves the settings and hands them to the pass.
+		// Non-finite falls back to the default; Scale and Lacunarity have safety floors, because
+		// a lattice that does not close on the tile cannot be wrapped.
+		const FMixtormatNoise& Noise = Generator.Noise;
+		const FMixtormatNoise Defaults;
+		const auto Finite = [](const float Value, const float Fallback)
+		{
+			return FMath::IsFinite(Value) ? Value : Fallback;
+		};
+		ChildData.Generator.bNormalizeHeight = Noise.bNoiseNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Noise.NoiseHeightScale, Defaults.NoiseHeightScale);
+
+		FMixtormatNoiseRenderData Out;
+		Out.Type = static_cast<int32>(Noise.NoiseType);
+		Out.Seed = Noise.NoiseSeed;
+		Out.Scale = FMath::Max(Finite(Noise.NoiseScale, Defaults.NoiseScale), 1.0f);
+		Out.Detail = FMath::Clamp(Noise.NoiseDetail, 1, 8);
+		Out.Roughness = Finite(Noise.NoiseRoughness, Defaults.NoiseRoughness);
+		Out.Lacunarity = FMath::Max(Finite(Noise.NoiseLacunarity, Defaults.NoiseLacunarity), 1.0f);
+		Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
+		Out.OffsetY = Finite(Noise.NoiseOffsetY, Defaults.NoiseOffsetY);
+		Out.Direction = Finite(Noise.NoiseDirection, Defaults.NoiseDirection);
+		// The settings ride the store to the pass; see MixtormatNoiseRender.h for why.
+		MixtormatNoiseRenderStore().Set(FMixtormatNoiseRenderKey{Data.LayerId, SourceChildIndex}, Out);
 		break;
 	}
 	}

@@ -1,0 +1,144 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Noise: a tileable field producer. One dispatch, no temporaries.
+//
+// The module publishes what the algorithm genuinely produces and decides nothing about what it
+// means. Per pixel it writes:
+//
+//   OutValue     the family's raw contract value (see the table below)
+//   OutHeight    the same field remapped to the shared signed generator contract, zero-centred
+//                so zero is the neutral generator height; the compositor's shared signed
+//                normalization and Height Scale run on this afterwards
+//   OutGradient  the field's gradient, with directional meaning (unit direction for Worley and
+//                Bars, the analytic derivative for the lattice families)
+//   OutIds       the Worley cell identity; bound only when the family produces cells
+//
+//   family            Value contract            module height
+//   ----------------  ------------------------  -----------------
+//   Gradient / Value  signed, zero-centred      the value itself
+//   FBM               signed, zero-centred      the value itself
+//   Ridged            0..1, crests at 1         Value * 2 - 1
+//   Billow            0..1, bumps at 1          Value * 2 - 1
+//   Worley F1/F2/F-F  0..1, distance in cells   1 - Value * 2
+//   Bars              signed cosine phase       the value itself
+//
+// Tiling is by construction, not by wrapping the input: every lattice is wrapped to an integer
+// period before it is hashed (see MixtormatNoise.ush), and Bars runs on an integer wave vector
+// resolved CPU-side. Offset translates the domain, which leaves any periodic field periodic.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
+
+// EMixtormatNoiseType, mirrored as plain constants -- the USF cannot include runtime headers.
+#define NOISE_TYPE_GRADIENT    0
+#define NOISE_TYPE_VALUE       1
+#define NOISE_TYPE_FBM         2
+#define NOISE_TYPE_RIDGED      3
+#define NOISE_TYPE_BILLOW      4
+#define NOISE_TYPE_WORLEY_F1   5
+#define NOISE_TYPE_WORLEY_F2   6
+#define NOISE_TYPE_WORLEY_F1F2 7
+#define NOISE_TYPE_BARS        8
+
+int2 OutputSize;
+int NoiseType;
+uint Seed;
+float Scale;
+int Detail;
+float Roughness;
+float Lacunarity;
+float2 OffsetUV;
+float2 Wave;
+float PhaseOffset;
+uint ProducesIds;
+
+RWTexture2D<float> OutValue;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float2> OutGradient;
+RWTexture2D<uint> OutIds;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize))
+	{
+		return;
+	}
+
+	const float2 UV = MixtormatGeneratorUV((float2(Pixel) + 0.5f) / float2(OutputSize));
+	// frac keeps a large Offset from walking the lattice coordinates out of float precision;
+	// the field has period 1 in tile UV, so the wrap is exact.
+	const float2 Domain = frac(UV + OffsetUV);
+
+	float Value = 0.0f;
+	float2 Gradient = float2(0.0f, 0.0f);
+	uint CellId = MIXTORMAT_INVALID_REGION;
+
+	if (NoiseType == NOISE_TYPE_GRADIENT)
+	{
+		const int P = max((int)round(max(Scale, 1.0f)), 1);
+		const float3 n = MixtormatPeriodicNoiseD(Domain * (float)P, P, Seed);
+		Value = n.x * MIXTORMAT_NOISE_SQRT2;
+		Gradient = (float)P * MIXTORMAT_NOISE_SQRT2 * n.yz;
+	}
+	else if (NoiseType == NOISE_TYPE_VALUE)
+	{
+		const int P = max((int)round(max(Scale, 1.0f)), 1);
+		const float3 n = MixtormatNoiseValueD(Domain * (float)P, P, Seed);
+		Value = n.x;
+		Gradient = (float)P * n.yz;
+	}
+	else if (NoiseType == NOISE_TYPE_FBM)
+	{
+		MixtormatNoiseFbm(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+	}
+	else if (NoiseType == NOISE_TYPE_RIDGED)
+	{
+		MixtormatNoiseRidged(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+	}
+	else if (NoiseType == NOISE_TYPE_BILLOW)
+	{
+		MixtormatNoiseBillow(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+	}
+	else if (NoiseType == NOISE_TYPE_WORLEY_F1
+		|| NoiseType == NOISE_TYPE_WORLEY_F2
+		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
+	{
+		const FMixtormatNoiseWorley w = MixtormatNoiseWorley(Domain, max((int)round(max(Scale, 1.0f)), 1), Seed);
+		const float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
+			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.F2 : (w.F2 - w.F1);
+		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
+		// farthest corners of a cell past one width; the clamp is part of the contract.
+		Value = saturate(Distance);
+		Gradient = w.Direction;
+		CellId = w.CellId;
+	}
+	else // NOISE_TYPE_BARS
+	{
+		MixtormatNoiseBars(Domain, Wave, PhaseOffset, Value, Gradient);
+	}
+
+	// The shared signed generator contract: zero-centred, so zero is the neutral height.
+	float Height = Value;
+	if (NoiseType == NOISE_TYPE_RIDGED || NoiseType == NOISE_TYPE_BILLOW)
+	{
+		Height = Value * 2.0f - 1.0f;
+	}
+	else if (NoiseType == NOISE_TYPE_WORLEY_F1
+		|| NoiseType == NOISE_TYPE_WORLEY_F2
+		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
+	{
+		Height = 1.0f - Value * 2.0f;
+	}
+
+	OutValue[Pixel] = Value;
+	OutHeight[Pixel] = Height;
+	OutGradient[Pixel] = Gradient;
+	if (ProducesIds != 0u)
+	{
+		OutIds[Pixel] = CellId;
+	}
+}
