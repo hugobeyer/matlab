@@ -249,7 +249,7 @@ enum class EMixtormatParameterOwnerType : uint8
 	// Appended with the Generator-layer sublayers, so their rows can be bound and driven.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Curve"),
-	HeightColorRamp UMETA(DisplayName = "Height Color Ramp")
+	HeightColorRamp UMETA(DisplayName = "Color Ramp")
 };
 
 UENUM(BlueprintType)
@@ -3413,14 +3413,42 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 		Curve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
 	}
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
 	bool bEnabled = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve")
+	// Optional zero-preserving max-absolute normalization to -1..1 before the signed input range.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	bool bNormalizeInput = false;
+
+	// Signed input range. The pivot is zero: positive values divide by InputMax, negative by
+	// abs(InputMin). Default -1..1 matches the canonical signed domain.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	float InputMin = -1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	float InputMax = 1.0f;
+
+	// Sign-preserving power transform: sign(x) * pow(abs(x), exponent). Identity at 1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	float Balance = 1.0f;
+
+	// Multiplicative contrast pivoted around zero. Identity at 1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	float Contrast = 1.0f;
+
+	// Signed addition. Identity at 0.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	float Offset = 0.0f;
+
+	// True means -x, not 1-x. Identity when false.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	bool bInvert = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
 	FMixtormatScalarRamp Curve;
 
-	// How much of the curved result replaces the running height.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve", meta = (UIMin = "0.0", UIMax = "1.0"))
+	// How much of the remapped result replaces the running height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Amount = 1.0f;
 };
 
@@ -3440,10 +3468,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 		};
 	}
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bEnabled = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	FMixtormatColorRamp Ramp;
 
 	// Deprecated serialized-only field. The live published output is always the canonical "Color";
@@ -3628,7 +3656,7 @@ enum class EMixtormatLayerChildType : uint8
 	// they read and rewrite the running signed generator height. Appended for serialization safety.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Curve"),
-	HeightColorRamp UMETA(DisplayName = "Height Color Ramp")
+	HeightColorRamp UMETA(DisplayName = "Color Ramp")
 };
 
 USTRUCT(BlueprintType)

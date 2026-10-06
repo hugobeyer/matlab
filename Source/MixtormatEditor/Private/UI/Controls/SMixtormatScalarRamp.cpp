@@ -67,6 +67,41 @@ void SMixtormatScalarRamp::FinishPointDrag()
 	}
 }
 
+void SMixtormatScalarRamp::SwapPointState(const int32 IndexA, const int32 IndexB)
+{
+	// EscapeArms must move with its scalar ramp point; otherwise the arm would stay indexed to
+	// the previous array position and silently apply to the wrong point after a crossing swap.
+	if (EscapeArms.IsValidIndex(IndexA) && EscapeArms.IsValidIndex(IndexB))
+	{
+		Swap(EscapeArms[IndexA], EscapeArms[IndexB]);
+	}
+}
+
+void SMixtormatScalarRamp::NotifyPointRemoved(const int32 RemovedIndex)
+{
+	// Keep the selection on a sensible neighbour: the one that took the removed point's place.
+	if (SelectedPoint == RemovedIndex)
+	{
+		SelectedPoint = FMath::Min(RemovedIndex, GetPointCount() - 1);
+	}
+	else if (SelectedPoint > RemovedIndex)
+	{
+		--SelectedPoint;
+	}
+}
+
+void SMixtormatScalarRamp::NotifyPointInserted(const int32 InsertedIndex)
+{
+	// Inserting a point selects the new point so the user can immediately edit it.
+	SelectedPoint = InsertedIndex;
+}
+
+bool SMixtormatScalarRamp::IsEndpointLocked(const int32 Index) const
+{
+	// Scalar signed remap endpoints stay locked to the domain unless explicitly redesigned.
+	return Index == 0 || Index == Ramp.Points.Num() - 1;
+}
+
 void SMixtormatScalarRamp::BeginPointDrag(const int32 Index, const bool bCreated,
 	const FGeometry& Geometry, const FPointerEvent& Event)
 {
@@ -95,10 +130,12 @@ void SMixtormatScalarRamp::BeginPointDrag(const int32 Index, const bool bCreated
 void SMixtormatScalarRamp::ApplyPointDrag(const int32 Index, const float GraphX, const float GraphY,
 	const FVector2f& ScreenPos)
 {
+	// X is no longer clamped against neighbours here: the shared editor swaps adjacent points
+	// when the dragged point crosses one, so the array stays sorted and the dragged payload
+	// keeps its identity. Endpoints are still locked to the domain.
 	if (!bLockX && Index > 0 && Index < Ramp.Points.Num() - 1)
 	{
-		Ramp.Points[Index].X = FMath::Clamp(GraphX,
-			Ramp.Points[Index - 1].X + 0.001f, Ramp.Points[Index + 1].X - 0.001f);
+		Ramp.Points[Index].X = GraphX;
 	}
 	const float Travel = FMath::Abs(ScreenPos.Y - DragStartScreenY);
 	if (!bLockY)
@@ -216,10 +253,19 @@ void SMixtormatScalarRamp::PaintPointMarker(FSlateWindowElementList& Elements, c
 	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
 	const FVector2f P = GraphToScreen(Size, Ramp.Points[Index].X, Ramp.Points[Index].Y);
 	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	const bool bSelected = Index == SelectedPoint;
+	// Selected point gets a clear accent outline/ring so it stays visible while not being dragged.
+	if (bSelected)
+	{
+		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
+			FVector2f(R * 2.0f + 4.0f, R * 2.0f + 4.0f), FSlateLayoutTransform(P - FVector2f(R + 2.0f, R + 2.0f))),
+			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
+			Pal.Get(Mixtormat::EMixtormatColorRole::Accent));
+	}
 	const FLinearColor C = bActive ? Pal.Get(Mixtormat::EMixtormatColorRole::Accent)
 		: bHover ? Pal.Get(Mixtormat::EMixtormatColorRole::Text)
 		: Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted);
-	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
+	FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
 		FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(P - FVector2f(R, R))),
 		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, C);
 }

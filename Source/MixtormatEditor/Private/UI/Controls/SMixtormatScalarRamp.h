@@ -58,6 +58,11 @@ protected:
 	virtual void FinishPointDrag() override;
 	virtual void BeginPointDrag(int32 Index, bool bCreated, const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual void ApplyPointDrag(int32 Index, float GraphX, float GraphY, const FVector2f& ScreenPos) override;
+	virtual void SwapPointState(int32 IndexA, int32 IndexB) override;
+	virtual void NotifyPointRemoved(int32 RemovedIndex) override;
+	virtual void NotifyPointInserted(int32 InsertedIndex) override;
+	virtual bool AllowsPointCrossing() const override { return true; }
+	virtual bool IsEndpointLocked(int32 Index) const override;
 	virtual void OnRampEdited(bool bInteractive) override;
 	virtual void PaintRampContent(FSlateWindowElementList& Elements, int32 Layer,
 		const FGeometry& Geometry, const FVector2D& Size) const override;

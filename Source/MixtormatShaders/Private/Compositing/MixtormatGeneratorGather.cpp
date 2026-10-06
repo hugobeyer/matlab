@@ -323,6 +323,13 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightCurveRenderData& Out = ChildData.HeightCurve;
 		Out.Amount = FMath::IsFinite(Curve.Amount) ? Curve.Amount : 1.0f;
+		Out.bNormalizeInput = Curve.bNormalizeInput ? 1u : 0u;
+		Out.InputMin = FMath::IsFinite(Curve.InputMin) ? Curve.InputMin : -1.0f;
+		Out.InputMax = FMath::IsFinite(Curve.InputMax) ? Curve.InputMax : 1.0f;
+		Out.Balance = FMath::IsFinite(Curve.Balance) ? Curve.Balance : 1.0f;
+		Out.Contrast = FMath::IsFinite(Curve.Contrast) ? Curve.Contrast : 1.0f;
+		Out.Offset = FMath::IsFinite(Curve.Offset) ? Curve.Offset : 0.0f;
+		Out.bInvert = Curve.bInvert ? 1u : 0u;
 		const MixtormatScalarRampMath::FGpuPayload Payload =
 			MixtormatScalarRampMath::PrepareGpuPayload(Curve.Curve);
 		Out.CurveCount = Payload.PointCount;

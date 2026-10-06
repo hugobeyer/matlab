@@ -1059,10 +1059,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
-	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Curve"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightCurve); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
-	Menu.Item(LOCTEXT("AddHeightColorRampChild", "Height Color Ramp"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddHeightColorRampChild", "Color Ramp"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightColorRamp); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	return Menu.Build();

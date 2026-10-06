@@ -48,10 +48,35 @@ void SMixtormatColorRamp::ResetPoints()
 void SMixtormatColorRamp::ApplyPointDrag(const int32 Index, const float GraphX, const float GraphY,
 	const FVector2f& ScreenPos)
 {
-	// Clamp between the neighbouring stops so the order never changes mid-drag.
-	const float MinX = Index > 0 ? Ramp.Stops[Index - 1].X + 1.0e-4f : DomainMin;
-	const float MaxX = Index + 1 < Ramp.Stops.Num() ? Ramp.Stops[Index + 1].X - 1.0e-4f : DomainMax;
-	Ramp.Stops[Index].X = FMath::Clamp(GraphX, MinX, MaxX);
+	// X is no longer clamped against neighbours here: the shared editor swaps adjacent stops
+	// when the dragged stop crosses one, so the array stays sorted and the dragged payload keeps
+	// its identity. Endpoints are still locked to the domain.
+	Ramp.Stops[Index].X = GraphX;
+}
+
+void SMixtormatColorRamp::NotifyPointRemoved(const int32 RemovedIndex)
+{
+	// Keep the selection on a sensible neighbour: the one that took the removed stop's place.
+	if (SelectedPoint == RemovedIndex)
+	{
+		SelectedPoint = FMath::Min(RemovedIndex, GetPointCount() - 1);
+	}
+	else if (SelectedPoint > RemovedIndex)
+	{
+		--SelectedPoint;
+	}
+}
+
+void SMixtormatColorRamp::NotifyPointInserted(const int32 InsertedIndex)
+{
+	// Inserting a stop selects the new stop so the user can immediately recolour it.
+	SelectedPoint = InsertedIndex;
+}
+
+bool SMixtormatColorRamp::IsEndpointLocked(const int32 Index) const
+{
+	// Color ramp endpoints stay locked to the domain.
+	return Index == 0 || Index == Ramp.Stops.Num() - 1;
 }
 
 void SMixtormatColorRamp::OnRampEdited(const bool bInteractive)
@@ -123,14 +148,24 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 	const float SX = XToScreen(Size, Ramp.Stops[Index].X);
 	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
 	const float HandleY = Y0 + BarHeight + R;
+	const bool bSelected = Index == SelectedPoint;
+	// Selected stop gets a clear accent outline/ring so it stays visible while not being dragged.
+	if (bSelected)
+	{
+		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
+			FVector2f(R * 2.0f + 6.0f, R * 2.0f + 6.0f),
+			FSlateLayoutTransform(FVector2f(SX - R - 3.0f, HandleY - R - 3.0f))),
+			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
+			Pal.Get(Mixtormat::EMixtormatColorRole::Accent));
+	}
 	const FLinearColor Border = bActive ? Pal.Get(Mixtormat::EMixtormatColorRole::Accent)
 		: bHover ? Pal.Get(Mixtormat::EMixtormatColorRole::Text)
 		: Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted);
-	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
+	FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
 		FVector2f(R * 2.0f + 2.0f, R * 2.0f + 2.0f),
 		FSlateLayoutTransform(FVector2f(SX - R - 1.0f, HandleY - R - 1.0f))),
 		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Border);
-	FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
+	FSlateDrawElement::MakeBox(Elements, Layer + 2, Geometry.ToPaintGeometry(
 		FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(FVector2f(SX - R, HandleY - R))),
 		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Ramp.Stops[Index].Color);
 }

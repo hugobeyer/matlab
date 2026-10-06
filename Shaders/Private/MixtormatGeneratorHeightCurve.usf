@@ -1,14 +1,32 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-// Generator-layer Height Curve sublayer: remaps the running signed height through the shared
-// scalar ramp. The ramp is authored in -1..1 with zero at the centre; the signed field is fed in
-// directly and never converted to 0..1.
+// Generator-layer Height Curve / Height Remap sublayer: remaps the running signed height through
+// the shared scalar ramp with signed normalization, signed input range, balance, contrast, offset,
+// invert, and an Amount lerp against the original input.
+//
+// Processing order (locked, shared with CPU/UI):
+//   input
+//   -> optional zero-preserving normalization
+//   -> signed input-range remap
+//   -> curve
+//   -> balance
+//   -> contrast
+//   -> offset
+//   -> invert
+//   -> Amount lerp against original input
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
 
 int2 OutputSize;
 float Amount;
+uint bNormalizeInput;
+float InputMin;
+float InputMax;
+float Balance;
+float Contrast;
+float Offset;
+uint bInvert;
 uint CurveCount;
 uint CurveInterpolation;
 float4 CurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
@@ -21,7 +39,47 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Pixel = int2(DispatchThreadId.xy);
 	if (any(Pixel >= OutputSize)) { return; }
 
-	const float H = RunningHeight.Load(int3(Pixel, 0));
-	const float Curved = MixtormatEvalSignedScalarRamp(H, CurveCount, CurveInterpolation, CurvePoints);
-	OutHeight[Pixel] = lerp(H, Curved, saturate(Amount));
+	const float Original = RunningHeight.Load(int3(Pixel, 0));
+	float X = Original;
+
+	// Optional zero-preserving max-absolute normalization to -1..1. A constant/degenerate input
+	// resolves deterministically without producing NaNs.
+	if (bNormalizeInput != 0)
+	{
+		const float MaxAbs = max(abs(InputMin), abs(InputMax));
+		X = MaxAbs > 1.0e-6f ? X / MaxAbs : 0.0f;
+	}
+
+	// Signed input-range remap. The pivot is zero: positive values divide by InputMax, negative
+	// by abs(InputMin). A degenerate range resolves to zero.
+	{
+		const float AbsMin = abs(InputMin);
+		const float AbsMax = abs(InputMax);
+		if (X >= 0.0f)
+		{
+			X = AbsMax > 1.0e-6f ? X / AbsMax : 0.0f;
+		}
+		else
+		{
+			X = AbsMin > 1.0e-6f ? X / AbsMin : 0.0f;
+		}
+	}
+
+	// Curve: the signed-domain scalar ramp. The ramp is not saturated to 0..1.
+	const float Curved = MixtormatEvalSignedScalarRamp(X, CurveCount, CurveInterpolation, CurvePoints);
+
+	// Balance: sign-preserving power transform. Identity at 1.
+	float Y = sign(Curved) * pow(abs(Curved), Balance);
+
+	// Contrast: multiplicative, pivoted around zero. Identity at 1.
+	Y *= Contrast;
+
+	// Offset: signed addition. Identity at 0.
+	Y += Offset;
+
+	// Invert: -x, not 1-x. Identity when false.
+	if (bInvert != 0) { Y = -Y; }
+
+	// Amount lerp against the original input. Identity at 1.
+	OutHeight[Pixel] = lerp(Original, Y, saturate(Amount));
 }

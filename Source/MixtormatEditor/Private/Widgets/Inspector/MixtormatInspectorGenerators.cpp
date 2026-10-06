@@ -857,9 +857,36 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 	const auto Curve = [this]() { return GetSelectedHeightCurve(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
+	// Optional zero-preserving max-absolute normalization to -1..1 before the signed input range.
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapNormalize", "Normalize Input"), Curve, &FMixtormatGeneratorHeightCurve::bNormalizeInput,
+		LOCTEXT("HeightRemapNormalizeHint", "Zero-preserving max-absolute normalization to -1..1.")));
+	// Signed input range. The pivot is zero: positive values divide by InputMax, negative by abs(InputMin).
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightCurveAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("HeightCurveAmountHint", "How much of the curved result replaces the running height.")));
+		LOCTEXT("HeightRemapInputMin", "Input Min"), Curve, &FMixtormatGeneratorHeightCurve::InputMin, -2.0, 0.0, -1.0, 0.01,
+		LOCTEXT("HeightRemapInputMinHint", "Signed input range minimum. Negative values divide by abs(InputMin).")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapInputMax", "Input Max"), Curve, &FMixtormatGeneratorHeightCurve::InputMax, 0.0, 2.0, 1.0, 0.01,
+		LOCTEXT("HeightRemapInputMaxHint", "Signed input range maximum. Positive values divide by InputMax.")));
+	// Sign-preserving power transform: sign(x) * pow(abs(x), exponent). Identity at 1.
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapBalance", "Balance"), Curve, &FMixtormatGeneratorHeightCurve::Balance, 0.25, 4.0, 1.0, 0.01,
+		LOCTEXT("HeightRemapBalanceHint", "Sign-preserving power transform. Identity at 1.")));
+	// Multiplicative contrast pivoted around zero. Identity at 1.
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapContrast", "Contrast"), Curve, &FMixtormatGeneratorHeightCurve::Contrast, 0.0, 4.0, 1.0, 0.01,
+		LOCTEXT("HeightRemapContrastHint", "Multiplicative contrast pivoted around zero. Identity at 1.")));
+	// Signed addition. Identity at 0.
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapOffset", "Offset"), Curve, &FMixtormatGeneratorHeightCurve::Offset, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("HeightRemapOffsetHint", "Signed addition. Identity at 0.")));
+	// True means -x, not 1-x. Identity when false.
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapInvert", "Invert"), Curve, &FMixtormatGeneratorHeightCurve::bInvert,
+		LOCTEXT("HeightRemapInvertHint", "Negate the result (-x, not 1-x).")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightRemapAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("HeightRemapAmountHint", "How much of the remapped result replaces the running height.")));
 	AddSliderRow(Panel, SNew(SMixtormatScalarRamp)
 		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([Curve]()
 		{
@@ -880,7 +907,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 		})));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightCurve() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightCurveHeading", "HEIGHT CURVE")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightRemapHeading", "HEIGHT REMAP")).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]()
@@ -922,7 +949,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		})));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightColorRampHeading", "HEIGHT COLOR RAMP")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ColorRampHeading", "COLOR RAMP")).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)

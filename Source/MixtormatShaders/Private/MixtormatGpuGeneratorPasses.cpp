@@ -692,7 +692,9 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightBlendCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightBlend.usf", "MainCS", SF_Compute);
 
-// Generator-layer Height Curve sublayer: remaps the running signed height through the scalar ramp.
+// Generator-layer Height Curve / Height Remap sublayer: remaps the running signed height through
+// the scalar ramp with signed normalization, signed input range, balance, contrast, offset,
+// invert, and an Amount lerp against the original input.
 class FMixtormatGeneratorHeightCurveCS final : public FGlobalShader
 {
 public:
@@ -702,6 +704,13 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(uint32, bNormalizeInput)
+		SHADER_PARAMETER(float, InputMin)
+		SHADER_PARAMETER(float, InputMax)
+		SHADER_PARAMETER(float, Balance)
+		SHADER_PARAMETER(float, Contrast)
+		SHADER_PARAMETER(float, Offset)
+		SHADER_PARAMETER(uint32, bInvert)
 		SHADER_PARAMETER(uint32, CurveCount)
 		SHADER_PARAMETER(uint32, CurveInterpolation)
 		SHADER_PARAMETER_ARRAY(FVector4f, CurvePoints, [FMixtormatScalarRamp::MaxPoints])
@@ -824,7 +833,7 @@ namespace
 		return Out;
 	}
 
-	// Generator-layer Height Curve sublayer.
+	// Generator-layer Height Curve / Height Remap sublayer.
 	FRDGTextureRef AddGeneratorHeightCurvePass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
 		const FGeneratorHeightCurveRenderData& Curve)
 	{
@@ -837,6 +846,13 @@ namespace
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorHeightCurveCS::FParameters>();
 		P->OutputSize = Size;
 		P->Amount = Curve.Amount;
+		P->bNormalizeInput = Curve.bNormalizeInput;
+		P->InputMin = Curve.InputMin;
+		P->InputMax = Curve.InputMax;
+		P->Balance = Curve.Balance;
+		P->Contrast = Curve.Contrast;
+		P->Offset = Curve.Offset;
+		P->bInvert = Curve.bInvert;
 		P->CurveCount = Curve.CurveCount;
 		P->CurveInterpolation = Curve.CurveInterpolation;
 		for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
@@ -2212,6 +2228,16 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		if (Reference.Kind == EMixtormatPublishedFieldKind::Color)
 		{
 			// A colour field is copied whole; there is nothing to trace into destination UVs.
+			// The destination layer's Base Color input resolves to this texture, so Fill / Generator
+			// layers without a material surface still receive the referenced colour.
+			LayerCtx.ReferencedColor = Field.Texture;
+			// Reuse the colour blit preview so the reference previews identically to its source.
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
+				Reference.Source.Output, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
+				AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Field.Texture, Debug, Ctx.Request.Resolution);
+			}
 			continue;
 		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -2262,15 +2288,23 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
 		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
 		{
+			// Resolve the source texture first; HasSource must reflect actual texture availability,
+			// not merely a stored child index. A missing source falls back to the running height
+			// for RDG validation, but the shader then uses its operation-specific neutral behaviour
+			// rather than treating RunningHeight as a real operand (which would yield A+A, A-A, 0).
 			FRDGTextureRef Source = RunningHeight;
+			bool bHasSource = false;
 			if (Child.HeightBlend.SourceChildIndex != INDEX_NONE)
 			{
 				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(Child.HeightBlend.SourceChildIndex))
 				{
 					Source = *Found;
+					bHasSource = true;
 				}
 			}
-			RunningHeight = AddGeneratorHeightBlendPass(Ctx, RunningHeight, Source, Child.HeightBlend);
+			FGeneratorHeightBlendRenderData BlendData = Child.HeightBlend;
+			BlendData.SourceChildIndex = bHasSource ? Child.HeightBlend.SourceChildIndex : INDEX_NONE;
+			RunningHeight = AddGeneratorHeightBlendPass(Ctx, RunningHeight, Source, BlendData);
 			continue;
 		}
 		if (Child.Type == EMixtormatLayerChildType::HeightCurve)

@@ -107,13 +107,49 @@ FVector2f SMixtormatRampEditorBase::ScreenToGraph(const FVector2D& Size, const F
 
 int32 SMixtormatRampEditorBase::HitPoint(const FVector2D& Size, const FVector2D& Position) const
 {
+	// 2D hit testing: nearest point within hit radius, selected point on a tie, stable result
+	// when points have similar X positions. The previous X-only test could not tell two nearby
+	// points apart once crossing was allowed.
 	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.3f;
-	for (int32 Index = GetPointCount() - 1; Index >= 0; --Index)
+	int32 Best = INDEX_NONE;
+	float BestDistSq = Radius * Radius;
+	for (int32 Index = 0; Index < GetPointCount(); ++Index)
 	{
 		const FVector2f Screen = GraphToScreen(Size, GetPointX(Index), 0.0f);
-		if (FMath::Abs(static_cast<float>(Position.X) - Screen.X) <= Radius) { return Index; }
+		const float DX = static_cast<float>(Position.X) - Screen.X;
+		const float DY = static_cast<float>(Position.Y) - Screen.Y;
+		const float DistSq = DX * DX + DY * DY;
+		if (DistSq <= BestDistSq)
+		{
+			// Selected point wins on a tie so the user can re-grab the same stop without ambiguity.
+			const bool bTie = FMath::IsNearlyEqual(DistSq, BestDistSq);
+			if (bTie && Index == SelectedPoint) { Best = Index; BestDistSq = DistSq; }
+			else if (!bTie) { Best = Index; BestDistSq = DistSq; }
+		}
 	}
-	return INDEX_NONE;
+	return Best;
+}
+
+void SMixtormatRampEditorBase::SwapPoints(const int32 IndexA, const int32 IndexB)
+{
+	if (IndexA == IndexB || IndexA < 0 || IndexB < 0
+		|| IndexA >= GetPointCount() || IndexB >= GetPointCount()) { return; }
+	// Swap the X payload.
+	const float AX = GetPointX(IndexA);
+	const float BX = GetPointX(IndexB);
+	SetPointX(IndexA, BX);
+	SetPointX(IndexB, AX);
+	// Swap any parallel per-point state (e.g. EscapeArms on the scalar ramp).
+	SwapPointState(IndexA, IndexB);
+	// Update every index-based selection so the dragged payload stays selected across the swap.
+	auto Follow = [IndexA, IndexB](int32& Index)
+	{
+		if (Index == IndexA) { Index = IndexB; }
+		else if (Index == IndexB) { Index = IndexA; }
+	};
+	Follow(DragPoint);
+	Follow(HoverPoint);
+	Follow(SelectedPoint);
 }
 
 FVector2D SMixtormatRampEditorBase::ComputeDesiredSize(float) const
@@ -248,6 +284,7 @@ FReply SMixtormatRampEditorBase::OnMouseButtonDown(const FGeometry& Geometry, co
 		{
 			OnBeginInteractiveEdit.ExecuteIfBound();
 			RemovePoint(Hit);
+			NotifyPointRemoved(Hit);
 			NotifyEdit(true);
 			OnEndInteractiveEdit.ExecuteIfBound();
 		}
@@ -263,9 +300,11 @@ FReply SMixtormatRampEditorBase::OnMouseButtonDown(const FGeometry& Geometry, co
 		OnBeginInteractiveEdit.ExecuteIfBound();
 		Hit = InsertPointAt(Graph.X, Graph.Y);
 		bCreated = true;
+		NotifyPointInserted(Hit);
 	}
 	if (Hit == INDEX_NONE) { return FReply::Handled(); }
 	DragPoint = Hit;
+	SelectedPoint = Hit;
 	bDragging = true;
 	BeginPointDrag(Hit, bCreated, Geometry, Event);
 	if (!bCreated) { OnBeginInteractiveEdit.ExecuteIfBound(); }
@@ -286,6 +325,23 @@ FReply SMixtormatRampEditorBase::OnMouseMove(const FGeometry& Geometry, const FP
 	if (!bDragging || DragPoint < 0 || DragPoint >= GetPointCount()) { return FReply::Unhandled(); }
 	const FVector2f Graph = ScreenToGraph(Size, Local);
 	ApplyPointDrag(DragPoint, Graph.X, Graph.Y, FVector2f(Local));
+	// Allow horizontal point crossing: when the dragged point passes a neighbour, swap the two
+	// adjacent points and update every index-based state so the dragged payload stays selected.
+	if (AllowsPointCrossing())
+	{
+		const float DraggedX = GetPointX(DragPoint);
+		const int32 Count = GetPointCount();
+		// Swap with the left neighbour when the dragged point has moved past it.
+		if (DragPoint > 0 && !IsEndpointLocked(DragPoint - 1) && DraggedX < GetPointX(DragPoint - 1))
+		{
+			SwapPoints(DragPoint - 1, DragPoint);
+		}
+		// Swap with the right neighbour when the dragged point has moved past it.
+		else if (DragPoint + 1 < Count && !IsEndpointLocked(DragPoint + 1) && DraggedX > GetPointX(DragPoint + 1))
+		{
+			SwapPoints(DragPoint, DragPoint + 1);
+		}
+	}
 	NotifyEdit(true);
 	return FReply::Handled();
 }

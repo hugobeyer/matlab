@@ -319,6 +319,11 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RegionUVOrientationField)
 		SHADER_PARAMETER(uint32, ReferencedUVEnabled)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, ReferencedUVField)
+		// A referenced colour field becomes the destination layer's Base Color input when no
+		// material surface is available, so Fill / Generator layers still resolve a referenced
+		// colour into their Base Color.
+		SHADER_PARAMETER(uint32, ReferencedColorEnabled)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ReferencedColorField)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
@@ -647,6 +652,10 @@ namespace MixtormatGpuCompositor
 		ApplyRegionUVParameters(*Parameters, RegionUV, Ctx);
 		Parameters->ReferencedUVEnabled = LayerCtx.ReferencedUV ? 1u : 0u;
 		Parameters->ReferencedUVField = LayerCtx.ReferencedUV ? LayerCtx.ReferencedUV : Ctx.EmptyPatternUV;
+		Parameters->ReferencedColorEnabled = LayerCtx.ReferencedColor ? 1u : 0u;
+		Parameters->ReferencedColorField = LayerCtx.ReferencedColor
+			? LayerCtx.ReferencedColor
+			: Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
 		Parameters->LinearWrapSampler = TStaticSamplerState<
 			SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		Parameters->OutputBC = GraphBuilder.CreateUAV(LayerCtx.LayerInputBC);

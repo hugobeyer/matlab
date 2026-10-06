@@ -244,6 +244,8 @@ namespace MixtormatGpuCompositor
 							return FlowSmooth && Validity && Texture->Desc.Format == PF_FloatRGBA
 								&& FlowSmooth->Desc.Format == PF_FloatRGBA && Validity->Desc.Format == PF_R16F
 								&& FlowSmooth->Desc.Extent == Texture->Desc.Extent && Validity->Desc.Extent == Texture->Desc.Extent;
+						case EMixtormatPublishedFieldKind::Color:
+							return Texture->Desc.Format == PF_FloatRGBA;
 						default:
 							return false;
 						}
@@ -937,10 +939,18 @@ namespace MixtormatGpuCompositor
 		float BlendBias = 0.0f;
 	};
 
-	// Generator-layer Height Curve sublayer, carrying the prepared scalar-ramp GPU payload.
+	// Generator-layer Height Curve / Height Remap sublayer, carrying the prepared scalar-ramp GPU
+	// payload and the signed remap controls.
 	struct FGeneratorHeightCurveRenderData
 	{
 		float Amount = 1.0f;
+		uint32 bNormalizeInput = 0;
+		float InputMin = -1.0f;
+		float InputMax = 1.0f;
+		float Balance = 1.0f;
+		float Contrast = 1.0f;
+		float Offset = 0.0f;
+		uint32 bInvert = 0;
 		uint32 CurveCount = 0;
 		uint32 CurveInterpolation = 0;
 		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> CurvePoints;
@@ -1464,6 +1474,10 @@ namespace MixtormatGpuCompositor
 		FGeneratorBundle GeneratorBundle;
 		// Last valid Flow/UV reference placement. Applied before the destination's own source UVs.
 		FRDGTextureRef ReferencedUV = nullptr;
+		// Last valid Color reference placement. Used as the destination layer's Base Color input
+		// when no material surface is available, so Fill / Generator layers can still resolve a
+		// referenced colour into their Base Color.
+		FRDGTextureRef ReferencedColor = nullptr;
 
 		// Set when a generator rewrote LayerInputHeight: the composite then reads it as this
 		// layer's height even when the layer has no packed height of its own.
@@ -1536,6 +1550,7 @@ namespace MixtormatGpuCompositor
 			LayerInputHeight = nullptr;
 			GeneratorBundle = FGeneratorBundle();
 			ReferencedUV = nullptr;
+			ReferencedColor = nullptr;
 
 			bGeneratedHeight = false;
 			GeneratorFields.Reset();

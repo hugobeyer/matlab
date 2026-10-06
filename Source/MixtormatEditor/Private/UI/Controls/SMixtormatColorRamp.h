@@ -42,6 +42,9 @@ protected:
 	virtual void RemovePoint(int32 Index) override;
 	virtual void ResetPoints() override;
 	virtual void ApplyPointDrag(int32 Index, float GraphX, float GraphY, const FVector2f& ScreenPos) override;
+	virtual void NotifyPointRemoved(int32 RemovedIndex) override;
+	virtual void NotifyPointInserted(int32 InsertedIndex) override;
+	virtual bool IsEndpointLocked(int32 Index) const override;
 	virtual void OnRampEdited(bool bInteractive) override;
 	virtual void PaintRampContent(FSlateWindowElementList& Elements, int32 Layer,
 		const FGeometry& Geometry, const FVector2D& Size) const override;

@@ -66,6 +66,11 @@ float RegionValMax;
 
 uint ReferencedUVEnabled;
 Texture2D<float2> ReferencedUVField;
+// A referenced colour field becomes the destination layer's Base Color input when no material
+// surface is available, so Fill / Generator layers still resolve a referenced colour into their
+// Base Color.
+uint ReferencedColorEnabled;
+Texture2D<float4> ReferencedColorField;
 Texture2D<uint> RegionUVIds;
 Texture2D<float2> RegionUVCentreField;
 Texture2D<float> RegionUVOrientationField;
@@ -890,9 +895,16 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	float2x2 Orientation;
 	const float2 SourceUV = LayerSourceUVAndOrientation(UV, Orientation);
+	// A referenced colour field becomes the destination layer's Base Color input when no material
+	// surface is available, so Fill / Generator layers still resolve a referenced colour into their
+	// Base Color. The colour field is already at output resolution, so it is sampled directly in
+	// output UV space rather than going through the destination layer's UV transform a second time.
+	const float4 ReferencedColor = ReferencedColorEnabled != 0
+		? ReferencedColorField.Load(int3(Pixel, 0))
+		: float4(1.0f, 1.0f, 1.0f, 1.0f);
 	const float4 SourceBC = HasSurface != 0
 		? LayerBC.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
-		: float4(1.0f, 1.0f, 1.0f, 1.0f);
+		: (ReferencedColorEnabled != 0 ? ReferencedColor : float4(1.0f, 1.0f, 1.0f, 1.0f));
 	const float4 SourceRAM = HasSurface != 0
 		? LayerRAM.SampleLevel(LinearWrapSampler, SourceUV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.04f);
@@ -995,7 +1007,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float PreviousHeightValue = PreviousHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	float PreviousOccupancyValue = PreviousOccupancy.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2)
+	// A resolved layer input already carries the referenced colour (or the authored surface) into
+	// output space, so Fill / Generator layers without a material surface still receive a real Base
+	// Color rather than falling back to white.
+	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2 || LayerInputResolved != 0)
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(1.0f, 1.0f, 1.0f, 1.0f);
 	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2)

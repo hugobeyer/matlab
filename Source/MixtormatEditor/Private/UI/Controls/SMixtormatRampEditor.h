@@ -61,6 +61,18 @@ protected:
 	virtual void BeginPointDrag(int32 Index, bool bCreated, const FGeometry& Geometry, const FPointerEvent& Event) {}
 	// Applies one drag step. GraphX/GraphY are already in ramp space.
 	virtual void ApplyPointDrag(int32 Index, float GraphX, float GraphY, const FVector2f& ScreenPos) = 0;
+	// Swaps parallel per-point state when two adjacent points cross during a drag. The default
+	// implementation does nothing; a ramp with parallel state (e.g. EscapeArms) overrides it.
+	virtual void SwapPointState(int32 IndexA, int32 IndexB) {}
+	// Called after a point is removed so the editor can keep its selection on a sensible neighbour.
+	virtual void NotifyPointRemoved(int32 RemovedIndex) {}
+	// Called after a point is inserted so the editor can select the new point.
+	virtual void NotifyPointInserted(int32 InsertedIndex) {}
+	// Returns true when the editor allows the dragged point to cross its neighbours during drag.
+	// Endpoints are locked by default; interior points cross freely.
+	virtual bool AllowsPointCrossing() const { return true; }
+	// Returns true when the endpoint at the given index is locked (cannot move past its neighbour).
+	virtual bool IsEndpointLocked(int32 Index) const { return Index == 0 || Index == GetPointCount() - 1; }
 	// Called after any edit: notify the owner and repaint.
 	virtual void OnRampEdited(bool bInteractive) = 0;
 	virtual void PaintRampContent(FSlateWindowElementList& Elements, int32 Layer,
@@ -88,12 +100,14 @@ protected:
 	FVector2f GraphToScreen(const FVector2D& Size, float X, float Y) const;
 	FVector2f ScreenToGraph(const FVector2D& Size, const FVector2D& Position) const;
 	int32 HitPoint(const FVector2D& Size, const FVector2D& Position) const;
+	// Swaps two adjacent points during a drag. Updates payload, parallel state, and every
+	// index-based selection so the dragged payload stays selected across the swap.
+	void SwapPoints(int32 IndexA, int32 IndexB);
 	void PaintGrid(FSlateWindowElementList& Elements, int32 Layer, const FGeometry& Geometry,
 		const FVector2D& Size) const;
 	void NotifyEdit(bool bInteractive);
 	void SelectInterpolation(int32 Index);
 	void ResetRamp();
-	void BuildToolbar();
 	void BuildLayout();
 
 	float Height = MixtormatTokens::ScalarRampHeight;
@@ -102,6 +116,9 @@ protected:
 	bool bDragging = false;
 	int32 DragPoint = INDEX_NONE;
 	int32 HoverPoint = INDEX_NONE;
+	// Persistent selection. Click selects, dragging keeps it, deletion moves it to a sensible
+	// neighbour, and crossing keeps it attached to the dragged payload.
+	int32 SelectedPoint = INDEX_NONE;
 	FSimpleDelegate OnBeginInteractiveEdit;
 	FSimpleDelegate OnEndInteractiveEdit;
 };
