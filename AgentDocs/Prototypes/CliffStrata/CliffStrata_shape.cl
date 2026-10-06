@@ -5,10 +5,10 @@
 // Connect CliffStrata_blocks outputs: block_id -> id, row_id -> row_id, flow -> flow.
 #bind layer id int
 #bind layer row_id int
-#bind layer !&dst float
-#bind layer !&voronoi_raw float
-#bind layer !&id_distance float
-#bind layer !&row_distance float
+#bind layer &dst float
+#bind layer &voronoi_raw float
+#bind layer &id_distance float
+#bind layer &row_distance float
 #bind parm unitdist float val=0.3
 #bind parm unitdist_id_lerp float val=0.5
 #bind parm carve_depth float val=0.375
