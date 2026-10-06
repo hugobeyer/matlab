@@ -117,6 +117,10 @@ namespace
 			View.ConstData = &Generator.Pebbles;
 			View.Struct = FMixtormatPebbles::StaticStruct();
 			break;
+		case EMixtormatGeneratorType::CliffStrata:
+			View.ConstData = &Generator.CliffStrata;
+			View.Struct = FMixtormatCliffStrata::StaticStruct();
+			break;
 		default: break;
 		}
 		return View;
@@ -539,7 +543,8 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generator:
 			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatCracks::StaticStruct(),
-				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct() };
+				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
+				FMixtormatCliffStrata::StaticStruct() };
 		default: return {};
 		}
 	}

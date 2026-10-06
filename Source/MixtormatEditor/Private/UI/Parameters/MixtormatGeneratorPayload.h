@@ -14,6 +14,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Cracks: return &Generator.Cracks;
 		case EMixtormatGeneratorType::RockFormation: return &Generator.RockFormation;
 		case EMixtormatGeneratorType::Pebbles: return &Generator.Pebbles;
+		case EMixtormatGeneratorType::CliffStrata: return &Generator.CliffStrata;
 		}
 		return nullptr;
 	}
@@ -27,6 +28,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Cracks: return FMixtormatCracks::StaticStruct();
 		case EMixtormatGeneratorType::RockFormation: return FMixtormatRockFormation::StaticStruct();
 		case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();
+		case EMixtormatGeneratorType::CliffStrata: return FMixtormatCliffStrata::StaticStruct();
 		}
 		return nullptr;
 	}

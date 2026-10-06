@@ -289,6 +289,67 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
+
+class FMixtormatCliffStrataCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCliffStrataCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCliffStrataCS, FGlobalShader);
+	class FStage : SHADER_PERMUTATION_INT("CLIFF_STAGE", 9);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(int32, CountX) SHADER_PARAMETER(int32, CountY) SHADER_PARAMETER(float, Density)
+		SHADER_PARAMETER(float, SizeMin) SHADER_PARAMETER(float, SizeMax) SHADER_PARAMETER(float, SizeAspect)
+		SHADER_PARAMETER(float, Jitter) SHADER_PARAMETER(float, FlowVariation) SHADER_PARAMETER(float, HeightMin) SHADER_PARAMETER(float, HeightMax)
+		SHADER_PARAMETER(int32, Steps) SHADER_PARAMETER(float, Rotation) SHADER_PARAMETER(float, LeanX) SHADER_PARAMETER(float, LeanY)
+		SHADER_PARAMETER(int32, FormationCells) SHADER_PARAMETER(float, FormationAmount) SHADER_PARAMETER(uint32, QuarterCopies)
+		SHADER_PARAMETER(int32, QuarterYCount) SHADER_PARAMETER(float, QuarterFill) SHADER_PARAMETER(float, QuarterSize)
+		SHADER_PARAMETER(float, QuarterHeight) SHADER_PARAMETER(float, QuarterJitterX) SHADER_PARAMETER(float, QuarterJitterY)
+		SHADER_PARAMETER(int32, Sides) SHADER_PARAMETER(uint32, ShapeRandom)
+		SHADER_PARAMETER(float, CameraYaw) SHADER_PARAMETER(float, CameraPitch) SHADER_PARAMETER(float, ViewScale)
+		SHADER_PARAMETER(float, DepthMin) SHADER_PARAMETER(float, DepthMax)
+		SHADER_PARAMETER(float, UnitDistance) SHADER_PARAMETER(float, UnitDistanceIdLerp) SHADER_PARAMETER(float, CarveDepth)
+		SHADER_PARAMETER(float, CarveVoronoi) SHADER_PARAMETER(float, YBias) SHADER_PARAMETER(float, YBiasVoronoi)
+		SHADER_PARAMETER(uint32, YBiasVoronoiInvert) SHADER_PARAMETER(float, NegativeYUnitDistanceTaper) SHADER_PARAMETER(uint32, Reverse)
+		SHADER_PARAMETER(int32, Seed) SHADER_PARAMETER(int32, VoronoiCells) SHADER_PARAMETER(float, FlowVoronoi)
+		SHADER_PARAMETER(float, ChamferWidth) SHADER_PARAMETER(float, ChamferIntensity) SHADER_PARAMETER(float, ChamferVoronoi)
+		SHADER_PARAMETER(float, BlockCavityWidth) SHADER_PARAMETER(float, RowCavityWidth) SHADER_PARAMETER(float, CavityIntensity)
+		SHADER_PARAMETER(float, CavityVoronoiThreshold) SHADER_PARAMETER(float, CavityVoronoiMaskGain)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RawHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Flow)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BlockIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RowIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, VoronoiRaw)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, VoronoiSmooth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SweepIn)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, IdDistanceIn)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RowDistanceIn)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRawHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutFlow)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutBlockIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRowIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutVoronoiRaw)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutVoronoiSmooth)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSweep)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutIdDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRowDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBlockSeam)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRowSeam)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCavity)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters){return IsFeatureLevelSupported(Parameters.Platform,ERHIFeatureLevel::SM5);}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatCliffStrataCS,"/Plugin/Mixtormat/Private/MixtormatCliffStrata.usf","MainCS",SF_Compute);
+
 class FMixtormatCracksCS final : public FGlobalShader
 {
 public:
@@ -1928,6 +1989,32 @@ namespace
 		return Combined;
 	}
 
+	FRDGTextureRef AddCliffStrataPasses(FMixtormatComposeContext& Ctx,FMixtormatLayerPassContext& LayerCtx,const FLayerRenderData& Layer,const FGeneratorPassInput& Child,FGeneratorBundle* Bundle=nullptr)
+	{
+		FRDGBuilder& GraphBuilder=Ctx.GraphBuilder;const FCliffStrataRenderData& C=Child.Generator.CliffStrata;const FIntPoint Size=Ctx.Request.Resolution;
+		const FIntVector PixelGroups(FMath::DivideAndRoundUp(Size.X,8),FMath::DivideAndRoundUp(Size.Y,8),1);
+		const auto Make=[&](EPixelFormat F,const TCHAR* N){return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size,F,FClearValueBinding::Black,TexCreate_ShaderResource|TexCreate_UAV),N);};
+		constexpr int32 SlotCount=10;FRDGTextureRef O[SlotCount]={};
+		if(const TArray<FRDGTextureRef,TInlineAllocator<7>>* Memo=LayerCtx.GeneratorFields.Find(Child.SourceChildIndex)){for(int i=0;i<SlotCount;++i)O[i]=(*Memo)[i];}
+		else{
+			static const TCHAR* Names[SlotCount]={TEXT("Mixtormat.CliffStrata.RawHeight"),TEXT("Mixtormat.CliffStrata.Flow"),TEXT("Mixtormat.CliffStrata.BlockIds"),TEXT("Mixtormat.CliffStrata.RowIds"),TEXT("Mixtormat.CliffStrata.VoronoiRaw"),TEXT("Mixtormat.CliffStrata.FinalHeight"),TEXT("Mixtormat.CliffStrata.BlockSeam"),TEXT("Mixtormat.CliffStrata.RowSeam"),TEXT("Mixtormat.CliffStrata.Cavity"),TEXT("Mixtormat.CliffStrata.Coverage")};
+			FMixtormatNodeCache* NodeCache=Ctx.Request.NodeCache.Get();const uint64 NodeKey=NodeCache&&C.FieldKey?MixtormatComposeHash::Combine(C.FieldKey,0x436C696666537472ull):0;
+			auto Hit=NodeKey?NodeCache->Find(NodeKey,Size):TSharedPtr<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();bool complete=Hit.IsValid();for(int i=0;complete&&i<SlotCount;++i)complete=Hit->Outputs[i].IsValid();
+			if(complete){for(int i=0;i<SlotCount;++i)O[i]=GraphBuilder.RegisterExternalTexture(Hit->Outputs[i],Names[i]);}
+			else{
+				O[0]=Make(PF_R32_FLOAT,Names[0]);O[1]=Make(PF_G32R32F,Names[1]);O[2]=Make(PF_R32_UINT,Names[2]);O[3]=Make(PF_R32_UINT,Names[3]);O[4]=Make(PF_R32_FLOAT,Names[4]);O[5]=Make(PF_R32_FLOAT,Names[5]);O[6]=Make(PF_R16F,Names[6]);O[7]=Make(PF_R16F,Names[7]);O[8]=Make(PF_R16F,Names[8]);O[9]=Make(PF_R16F,Names[9]);
+				FRDGTextureRef Smooth=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.VoronoiSmooth")),SweepA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepA")),SweepB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepB")),IdA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdA")),IdB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdB")),RowA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowA")),RowB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowB"));
+				auto Fill=[&](FMixtormatCliffStrataCS::FParameters* P){FillGeneratorPlacement(P,Layer);P->OutputSize=Size;P->CountX=C.CountX;P->CountY=C.CountY;P->Density=C.Density;P->SizeMin=C.SizeMin;P->SizeMax=C.SizeMax;P->SizeAspect=C.SizeAspect;P->Jitter=C.Jitter;P->FlowVariation=C.FlowVariation;P->HeightMin=C.HeightMin;P->HeightMax=C.HeightMax;P->Steps=C.Steps;P->Rotation=C.Rotation;P->LeanX=C.LeanX;P->LeanY=C.LeanY;P->FormationCells=C.FormationCells;P->FormationAmount=C.FormationAmount;P->QuarterCopies=C.bQuarterCopies?1u:0u;P->QuarterYCount=C.QuarterYCount;P->QuarterFill=C.QuarterFill;P->QuarterSize=C.QuarterSize;P->QuarterHeight=C.QuarterHeight;P->QuarterJitterX=C.QuarterJitterX;P->QuarterJitterY=C.QuarterJitterY;P->Sides=C.Sides;P->ShapeRandom=C.bShapeRandom?1u:0u;P->CameraYaw=C.CameraYaw;P->CameraPitch=C.CameraPitch;P->ViewScale=C.ViewScale;P->DepthMin=C.DepthMin;P->DepthMax=C.DepthMax;P->UnitDistance=C.UnitDistance;P->UnitDistanceIdLerp=C.UnitDistanceIdLerp;P->CarveDepth=C.CarveDepth;P->CarveVoronoi=C.CarveVoronoi;P->YBias=C.YBias;P->YBiasVoronoi=C.YBiasVoronoi;P->YBiasVoronoiInvert=C.bYBiasVoronoiInvert?1u:0u;P->NegativeYUnitDistanceTaper=C.NegativeYUnitDistanceTaper;P->Reverse=C.bReverse?1u:0u;P->Seed=C.Seed;P->VoronoiCells=C.VoronoiCells;P->FlowVoronoi=C.FlowVoronoi;P->ChamferWidth=C.ChamferWidth;P->ChamferIntensity=C.ChamferIntensity;P->ChamferVoronoi=C.ChamferVoronoi;P->BlockCavityWidth=C.BlockCavityWidth;P->RowCavityWidth=C.RowCavityWidth;P->CavityIntensity=C.CavityIntensity;P->CavityVoronoiThreshold=C.CavityVoronoiThreshold;P->CavityVoronoiMaskGain=C.CavityVoronoiMaskGain;P->RawHeight=O[0];P->Flow=O[1];P->BlockIds=O[2];P->RowIds=O[3];P->VoronoiRaw=O[4];P->VoronoiSmooth=Smooth;P->SweepIn=SweepA;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;};
+				for(int Stage=0;Stage<9;++Stage){FMixtormatCliffStrataCS::FPermutationDomain Perm;Perm.Set<FMixtormatCliffStrataCS::FStage>(Stage);TShaderMapRef<FMixtormatCliffStrataCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel),Perm);auto* P=GraphBuilder.AllocParameters<FMixtormatCliffStrataCS::FParameters>();Fill(P);P->OutRawHeight=GraphBuilder.CreateUAV(O[0]);P->OutFlow=GraphBuilder.CreateUAV(O[1]);P->OutBlockIds=GraphBuilder.CreateUAV(O[2]);P->OutRowIds=GraphBuilder.CreateUAV(O[3]);P->OutVoronoiRaw=GraphBuilder.CreateUAV(O[4]);P->OutVoronoiSmooth=GraphBuilder.CreateUAV(Smooth);P->OutSweep=GraphBuilder.CreateUAV(Stage==3?SweepA:SweepB);P->OutIdDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?IdA:IdB);P->OutRowDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?RowA:RowB);P->OutHeight=GraphBuilder.CreateUAV(O[5]);P->OutBlockSeam=GraphBuilder.CreateUAV(O[6]);P->OutRowSeam=GraphBuilder.CreateUAV(O[7]);P->OutCavity=GraphBuilder.CreateUAV(O[8]);P->OutCoverage=GraphBuilder.CreateUAV(O[9]);if(Stage==4)P->SweepIn=SweepA;if(Stage==6){P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}if(Stage==7){P->IdDistanceIn=IdB;P->RowDistanceIn=RowB;}if(Stage==8){P->SweepIn=SweepB;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}ClearUnusedGraphResources(Shader,P);const FIntVector Groups=(Stage==3||Stage==6)?FIntVector(1,Size.Y,1):((Stage==4||Stage==7)?FIntVector(Size.X,1,1):PixelGroups);FComputeShaderUtils::AddPass(GraphBuilder,RDG_EVENT_NAME("Mixtormat.CliffStrata.S%d.L%d.C%d",Stage,LayerCtx.LayerIndex,Child.SourceChildIndex),Shader,P,Groups);}
+				if(NodeKey){auto Entry=MakeShared<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();Entry->Key=NodeKey;Entry->Resolution=Size;for(int i=0;i<SlotCount;++i)GraphBuilder.QueueTextureExtraction(O[i],&Entry->Outputs[i]);Ctx.PendingNodeEntries.Add(Entry);}
+			}
+			auto& Stored=LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);Stored.Append(O,SlotCount);
+		}
+		if(Bundle){Bundle->Height=O[5];Bundle->RegionIds=O[2];Bundle->Coverage=O[9];Bundle->NamedMasks.Add(FName(TEXT("CliffBlockSeam")),O[6]);Bundle->NamedMasks.Add(FName(TEXT("CliffRowSeam")),O[7]);Bundle->NamedMasks.Add(FName(TEXT("CliffCavity")),O[8]);Bundle->NamedMasks.Add(FName(TEXT("CliffVoronoi")),O[4]);Bundle->NamedMasks.Add(FName(TEXT("CliffCoverage")),O[9]);}
+		return O[5];
+	}
+
+
 
 }
 
@@ -2017,6 +2104,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		case EMixtormatGeneratorType::Cracks:
 			AddCracksPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			break;
+		case EMixtormatGeneratorType::CliffStrata:
+			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		}
 		if (!Module.Height) { continue; }

@@ -66,6 +66,7 @@ enum class EMixtormatChildCreation : uint8
 	Cracks,
 	RockFormation,
 	Pebbles,
+	CliffStrata,
 	Peeling,
 };
 
@@ -503,6 +504,9 @@ private:
 	FMixtormatPebbles* GetSelectedPebbles();
 	const FMixtormatPebbles* GetSelectedPebbles() const;
 	TSharedRef<SWidget> BuildPebblesControls();
+	FMixtormatCliffStrata* GetSelectedCliffStrata();
+	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
+	TSharedRef<SWidget> BuildCliffStrataControls();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();

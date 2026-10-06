@@ -2764,7 +2764,8 @@ enum class EMixtormatGeneratorType : uint8
 	Cracks UMETA(DisplayName = "Cracks"),
 	// Appended: serialized by value.
 	RockFormation UMETA(DisplayName = "Rock Formation"),
-	Pebbles UMETA(DisplayName = "Pebbles")
+	Pebbles UMETA(DisplayName = "Pebbles"),
+	CliffStrata UMETA(DisplayName = "Cliff Strata")
 };
 
 // How a pebble's cut planes are oriented.
@@ -3074,6 +3075,122 @@ struct MIXTORMATRUNTIME_API FMixtormatPebbles
 	float PebbleHeightScale = 1.0f;
 };
 
+
+// Cliff Strata: projected 3D prism blocks shaped by the paired CliffStrata prototype.
+// Raw projected depth, block/row identity and projected flow are internal; the final generator
+// publishes block Region IDs and scalar masks only. No signed BoundaryField is claimed here.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatCliffStrata
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	int32 CountX = 8;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	int32 CountY = 7;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float Density = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float SizeMin = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float SizeMax = 1.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float SizeAspect = 0.95f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float Jitter = 0.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
+	float FlowVariation = 0.6f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float HeightMin = 0.025f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float HeightMax = 0.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	int32 Steps = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float Rotation = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float LeanX = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float LeanY = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	int32 FormationCells = 5;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float FormationAmount = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	bool bQuarterCopies = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	int32 QuarterYCount = 8;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float QuarterFill = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float QuarterSize = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float QuarterHeight = 2.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float QuarterJitterX = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	float QuarterJitterY = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	int32 Sides = 4;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Formation")
+	bool bShapeRandom = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
+	float CameraYaw = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
+	float CameraPitch = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
+	float ViewScale = 2.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
+	float DepthMin = -1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Projection")
+	float DepthMax = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float UnitDistance = 0.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float UnitDistanceIdLerp = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float CarveDepth = 0.375f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float CarveVoronoi = 0.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float YBias = 0.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float YBiasVoronoi = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	bool bYBiasVoronoiInvert = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	float NegativeYUnitDistanceTaper = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Shape")
+	bool bReverse = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Pattern")
+	int32 Seed = 1234;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Pattern")
+	int32 VoronoiCells = 13;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Pattern")
+	float FlowVoronoi = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float ChamferWidth = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float ChamferIntensity = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float ChamferVoronoi = 0.05f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float BlockCavityWidth = 0.02f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float RowCavityWidth = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float CavityIntensity = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float CavityVoronoiThreshold = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	float CavityVoronoiMaskGain = 0.125f;
+};
+
 // Cracks: a tileable network of straight cracks (the borders of a jittered cell lattice), made
 // rough by a per-crack zigzag and a feathered push near the cracks, with widths that vary along
 // each crack, per crack and by region, chipped rims, random opened gaps, and pieces that rise,
@@ -3252,6 +3369,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Pebbles"))
 	FMixtormatPebbles Pebbles;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::CliffStrata"))
+	FMixtormatCliffStrata CliffStrata;
 };
 
 // How a layer's base colour combines with what is composited below it.

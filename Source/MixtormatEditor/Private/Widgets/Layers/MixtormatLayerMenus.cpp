@@ -20,6 +20,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatGeneratorType::Cracks},
 		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatGeneratorType::RockFormation},
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatGeneratorType::Pebbles},
+		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatGeneratorType::CliffStrata},
 	};
 	for (const auto& Entry : Entries)
 	{
@@ -1027,6 +1028,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		{
 			CreateChild(Target, EMixtormatChildCreation::Pebbles);
 		}))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	return Menu.Build();
 }

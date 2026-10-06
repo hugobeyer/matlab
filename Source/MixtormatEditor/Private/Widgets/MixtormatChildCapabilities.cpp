@@ -177,6 +177,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleRandom", "Random"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::CliffStrata)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,false,true,false,NAME_None});
+			Result.Outputs.Add({FName(TEXT("CliffBlockSeam")),NSLOCTEXT("SMixtormat","PreviewOutputCliffBlockSeam","Block Seam"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+			Result.Outputs.Add({FName(TEXT("CliffRowSeam")),NSLOCTEXT("SMixtormat","PreviewOutputCliffRowSeam","Row Seam"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+			Result.Outputs.Add({FName(TEXT("CliffCavity")),NSLOCTEXT("SMixtormat","PreviewOutputCliffCavity","Cavity"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+			Result.Outputs.Add({FName(TEXT("CliffVoronoi")),NSLOCTEXT("SMixtormat","PreviewOutputCliffVoronoi","Raw Voronoi"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+			Result.Outputs.Add({FName(TEXT("CliffCoverage")),NSLOCTEXT("SMixtormat","PreviewOutputCliffCoverage","Coverage"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+		}
 		break;
 	case EMixtormatLayerChildType::Effect:
 		if (MixtormatIsGeneratorFlowEffect(EffectType))

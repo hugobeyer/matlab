@@ -572,6 +572,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::Cracks:        return EMixtormatChildCreation::Cracks;
 		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
+		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		default:                                     return EMixtormatChildCreation::StrataCarver;
 		}
 	}
@@ -597,6 +598,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Cracks:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -649,6 +651,9 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Pebbles:
 			Child.Generator.Type = EMixtormatGeneratorType::Pebbles;
+			break;
+		case EMixtormatChildCreation::CliffStrata:
+			Child.Generator.Type = EMixtormatGeneratorType::CliffStrata;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -1184,6 +1189,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("RockFormationChildName", "Rock Formation");
 		case EMixtormatGeneratorType::Pebbles:
 			return LOCTEXT("PebblesChildName", "Pebbles");
+		case EMixtormatGeneratorType::CliffStrata:
+			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}
@@ -1738,6 +1745,17 @@ const FMixtormatPebbles* SMixtormat::GetSelectedPebbles() const
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::Pebbles
 		? &Generator->Pebbles : nullptr;
+}
+
+FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata()
+{
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
+}
+const FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata() const
+{
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
 }
 
 const FMixtormatCracks* SMixtormat::GetSelectedCracks() const

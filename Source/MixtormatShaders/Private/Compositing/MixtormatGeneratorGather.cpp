@@ -193,6 +193,37 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		}
 		break;
 	}
+
+	case EMixtormatGeneratorType::CliffStrata:
+	{
+		const FMixtormatCliffStrata& Cliff = Generator.CliffStrata;
+		const FMixtormatCliffStrata Defaults;
+		FCliffStrataRenderData& Out = ChildData.Generator.CliffStrata;
+		const auto Finite = [](const float Value, const float Fallback) { return FMath::IsFinite(Value) ? Value : Fallback; };
+		Out.CountX=FMath::Max(Cliff.CountX,1); Out.CountY=FMath::Max(Cliff.CountY,1);
+		Out.Density=Finite(Cliff.Density,Defaults.Density); Out.SizeMin=Finite(Cliff.SizeMin,Defaults.SizeMin); Out.SizeMax=Finite(Cliff.SizeMax,Defaults.SizeMax);
+		Out.SizeAspect=Finite(Cliff.SizeAspect,Defaults.SizeAspect); Out.Jitter=Finite(Cliff.Jitter,Defaults.Jitter); Out.FlowVariation=Finite(Cliff.FlowVariation,Defaults.FlowVariation);
+		Out.HeightMin=Finite(Cliff.HeightMin,Defaults.HeightMin); Out.HeightMax=Finite(Cliff.HeightMax,Defaults.HeightMax); Out.Steps=FMath::Max(Cliff.Steps,0);
+		Out.Rotation=Finite(Cliff.Rotation,Defaults.Rotation); Out.LeanX=Finite(Cliff.LeanX,Defaults.LeanX); Out.LeanY=Finite(Cliff.LeanY,Defaults.LeanY);
+		Out.FormationCells=FMath::Max(Cliff.FormationCells,1); Out.FormationAmount=Finite(Cliff.FormationAmount,Defaults.FormationAmount);
+		Out.bQuarterCopies=Cliff.bQuarterCopies; Out.QuarterYCount=FMath::Max(Cliff.QuarterYCount,1); Out.QuarterFill=Finite(Cliff.QuarterFill,Defaults.QuarterFill);
+		Out.QuarterSize=Finite(Cliff.QuarterSize,Defaults.QuarterSize); Out.QuarterHeight=Finite(Cliff.QuarterHeight,Defaults.QuarterHeight);
+		Out.QuarterJitterX=Finite(Cliff.QuarterJitterX,Defaults.QuarterJitterX); Out.QuarterJitterY=Finite(Cliff.QuarterJitterY,Defaults.QuarterJitterY);
+		Out.Sides=FMath::Clamp(Cliff.Sides,3,12); Out.bShapeRandom=Cliff.bShapeRandom; Out.CameraYaw=Finite(Cliff.CameraYaw,Defaults.CameraYaw);
+		Out.CameraPitch=Finite(Cliff.CameraPitch,Defaults.CameraPitch); Out.ViewScale=Finite(Cliff.ViewScale,Defaults.ViewScale);
+		Out.DepthMin=Finite(Cliff.DepthMin,Defaults.DepthMin); Out.DepthMax=Finite(Cliff.DepthMax,Defaults.DepthMax);
+		Out.UnitDistance=Finite(Cliff.UnitDistance,Defaults.UnitDistance); Out.UnitDistanceIdLerp=Finite(Cliff.UnitDistanceIdLerp,Defaults.UnitDistanceIdLerp);
+		Out.CarveDepth=Finite(Cliff.CarveDepth,Defaults.CarveDepth); Out.CarveVoronoi=Finite(Cliff.CarveVoronoi,Defaults.CarveVoronoi);
+		Out.YBias=Finite(Cliff.YBias,Defaults.YBias); Out.YBiasVoronoi=Finite(Cliff.YBiasVoronoi,Defaults.YBiasVoronoi); Out.bYBiasVoronoiInvert=Cliff.bYBiasVoronoiInvert;
+		Out.NegativeYUnitDistanceTaper=Finite(Cliff.NegativeYUnitDistanceTaper,Defaults.NegativeYUnitDistanceTaper); Out.bReverse=Cliff.bReverse;
+		Out.Seed=Cliff.Seed; Out.VoronoiCells=FMath::Max(Cliff.VoronoiCells,1); Out.FlowVoronoi=Finite(Cliff.FlowVoronoi,Defaults.FlowVoronoi);
+		Out.ChamferWidth=Finite(Cliff.ChamferWidth,Defaults.ChamferWidth); Out.ChamferIntensity=Finite(Cliff.ChamferIntensity,Defaults.ChamferIntensity);
+		Out.ChamferVoronoi=Finite(Cliff.ChamferVoronoi,Defaults.ChamferVoronoi); Out.BlockCavityWidth=Finite(Cliff.BlockCavityWidth,Defaults.BlockCavityWidth);
+		Out.RowCavityWidth=Finite(Cliff.RowCavityWidth,Defaults.RowCavityWidth); Out.CavityIntensity=Finite(Cliff.CavityIntensity,Defaults.CavityIntensity);
+		Out.CavityVoronoiThreshold=Finite(Cliff.CavityVoronoiThreshold,Defaults.CavityVoronoiThreshold); Out.CavityVoronoiMaskGain=Finite(Cliff.CavityVoronoiMaskGain,Defaults.CavityVoronoiMaskGain);
+		if(bCacheLayers){MixtormatComposeHash::FHasher Hasher;Hasher.Struct(FMixtormatCliffStrata::StaticStruct(),&Cliff);Out.FieldKey=MixtormatComposeHash::Combine(Hasher.Get(),0x436C696666537472ull)|1ull;}
+		break;
+	}
 	}
 	if (PlacementKey != 0)
 	{
@@ -217,6 +248,13 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			{
 				ChildData.Generator.Cracks.FieldKey = MixtormatComposeHash::Combine(
 					ChildData.Generator.Cracks.FieldKey, PlacementKey) | 1ull;
+			}
+			break;
+		case EMixtormatGeneratorType::CliffStrata:
+			if (ChildData.Generator.CliffStrata.FieldKey != 0)
+			{
+				ChildData.Generator.CliffStrata.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.CliffStrata.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		default:

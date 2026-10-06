@@ -880,6 +880,39 @@ namespace MixtormatGpuCompositor
 		uint64 FieldKey = 0;
 	};
 
+
+	struct FCliffStrataRenderData
+	{
+		int32 CountX = 8, CountY = 7;
+		float Density = 0.5f, SizeMin = 1.0f, SizeMax = 1.35f, SizeAspect = 0.95f;
+		float Jitter = 0.1f, FlowVariation = 0.6f;
+		float HeightMin = 0.025f, HeightMax = 0.1f;
+		int32 Steps = 0;
+		float Rotation = 0.35f, LeanX = 0.2f, LeanY = 0.0f;
+		int32 FormationCells = 5;
+		float FormationAmount = 1.0f;
+		bool bQuarterCopies = true;
+		int32 QuarterYCount = 8;
+		float QuarterFill = 0.5f, QuarterSize = 0.9f, QuarterHeight = 2.75f;
+		float QuarterJitterX = 0.5f, QuarterJitterY = 0.5f;
+		int32 Sides = 4;
+		bool bShapeRandom = false;
+		float CameraYaw = 0.5f, CameraPitch = 0.25f, ViewScale = 2.0f;
+		float DepthMin = -1.0f, DepthMax = 1.0f;
+		float UnitDistance = 0.3f, UnitDistanceIdLerp = 0.5f;
+		float CarveDepth = 0.375f, CarveVoronoi = 0.1f;
+		float YBias = 0.3f, YBiasVoronoi = 0.9f;
+		bool bYBiasVoronoiInvert = false;
+		float NegativeYUnitDistanceTaper = 1.0f;
+		bool bReverse = false;
+		int32 Seed = 1234, VoronoiCells = 13;
+		float FlowVoronoi = 0.0f;
+		float ChamferWidth = 0.5f, ChamferIntensity = 1.0f, ChamferVoronoi = 0.05f;
+		float BlockCavityWidth = 0.02f, RowCavityWidth = 0.25f, CavityIntensity = 0.25f;
+		float CavityVoronoiThreshold = 0.5f, CavityVoronoiMaskGain = 0.125f;
+		uint64 FieldKey = 0;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
@@ -887,6 +920,7 @@ namespace MixtormatGpuCompositor
 		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;
 		FPebblesRenderData Pebbles;
+		FCliffStrataRenderData CliffStrata;
 	};
 
 	struct FBoundaryIdRenderData
