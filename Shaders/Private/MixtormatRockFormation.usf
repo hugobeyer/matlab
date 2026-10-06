@@ -758,7 +758,11 @@ float RockLeafHeight(FRockPat P, FRockLeaf L, uint slot, float2 pr, out int cls,
 		T -= P.chip_sign * RockFacetCut(P, L, pr);
 	}
 
-	float H = T;
+	// A negative chamfer raises the edge into a lip instead of cutting it in: the top is raised by
+	// the bevel depth near the edge and the wall falls from that raised edge, so the surface stays
+	// continuous. A positive chamfer keeps the flat top as the base.
+	const bool bRaised = P.chamfer_sign < 0.0f;
+	float H = bRaised ? ROCK_BIG : T;
 	cls = 0;
 	float edgeDi = 0.0f;
 	float edgeW = 0.0f;
@@ -776,29 +780,33 @@ float RockLeafHeight(FRockPat P, FRockLeaf L, uint slot, float2 pr, out int cls,
 		float di = E.z - dot(E.xy, pr) + RockJag(P, u / L.JagSize, tag, set) * L.JagSize;
 		float w = E.w * RockChamferScale(P, u / L.JagSize, tag, set) + RockRimChips(P, u, tag * 2u + 1u);
 		topInset = min(topInset, di - max(w, 0.0f));
-		float wall = T + WallSlope * di;
-		if (wall < H) { H = wall; cls = 2; edgeDi = di; edgeW = w; }
-		if (w > 0.0f)
+		if (bRaised)
 		{
-			float bevel = T + ChamferSlope * (di - w);
-			if (P.chamfer_sign > 0.0f)
+			// The lip: the top raised by the bevel depth, peaking at the edge and meeting the flat
+			// top at di = w. The wall falls from the ridge, so the lip blends into it.
+			const float ridge = T + ChamferSlope * clamp(w - di, 0.0f, w);
+			if (ridge < H) { H = ridge; cls = di >= w ? 0 : 1; edgeDi = di; edgeW = w; }
+			const float lipWall = ridge + WallSlope * di;
+			if (lipWall < H) { H = lipWall; cls = 2; edgeDi = di; edgeW = w; }
+		}
+		else
+		{
+			float wall = T + WallSlope * di;
+			if (wall < H) { H = wall; cls = 2; edgeDi = di; edgeW = w; }
+			if (w > 0.0f)
 			{
+				float bevel = T + ChamferSlope * (di - w);
 				if (bevel < H) { H = bevel; cls = 1; edgeDi = di; edgeW = w; }
-			}
-			else if (di >= 0.0f)
-			{
-				// Signed chamfer, negative: reflect the cut about the top so the edge rises by the
-				// bevel depth (T + ChamferSlope * (w - di)) instead of falling.
-				const float raised = 2.0f * T - bevel;
-				if (raised > H) { H = raised; cls = 1; edgeDi = di; edgeW = w; }
 			}
 		}
 	}
+	// A chunk with no usable edges keeps the flat top.
+	if (H >= ROCK_BIG) { H = T; }
 
 	// Where the bevel meets the wall: T + WallSlope * d = T + ChamferSlope * (d - w). The gather caps
 	// ChamferSlope at WallSlope, so the difference is never negative; the guard is only for the
 	// equal case, where the two never meet.
-	const float footDi = edgeW > 0.0f
+	const float footDi = (edgeW > 0.0f && !bRaised)
 		? -ChamferSlope * edgeW / max(WallSlope - ChamferSlope, 1.0e-6f) : 0.0f;
 	if (cls == 1)
 	{
