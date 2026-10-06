@@ -15,6 +15,8 @@ class SMixtormatScalarRamp final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatScalarRamp)
 		: _Height(MixtormatTokens::ScalarRampHeight)
+		, _CanonicalXMin(0.0f)
+		, _CanonicalXMax(1.0f)
 		, _CanonicalYMin(0.0f)
 		, _CanonicalYMax(1.0f)
 		, _SoftYMin(-1.5f)
@@ -24,6 +26,8 @@ public:
 	{}
 		SLATE_ATTRIBUTE(FMixtormatScalarRamp, Ramp)
 		SLATE_ARGUMENT(float, Height)
+		SLATE_ARGUMENT(float, CanonicalXMin)
+		SLATE_ARGUMENT(float, CanonicalXMax)
 		SLATE_ARGUMENT(float, CanonicalYMin)
 		SLATE_ARGUMENT(float, CanonicalYMax)
 		SLATE_ARGUMENT(float, SoftYMin)
@@ -64,6 +68,8 @@ private:
 	FSimpleDelegate OnBeginInteractiveEdit;
 	FSimpleDelegate OnEndInteractiveEdit;
 	float Height = MixtormatTokens::ScalarRampHeight;
+	float CanonicalXMin = 0.0f;
+	float CanonicalXMax = 1.0f;
 	float CanonicalYMin = 0.0f;
 	float CanonicalYMax = 1.0f;
 	float SoftYMin = -1.5f;

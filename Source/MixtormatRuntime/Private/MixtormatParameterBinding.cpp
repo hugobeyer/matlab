@@ -77,6 +77,9 @@ namespace
 		case EMixtormatParameterOwnerType::UvId: return Child.Type == EMixtormatLayerChildType::UvFromIds;
 		case EMixtormatParameterOwnerType::ReliefId: return Child.Type == EMixtormatLayerChildType::ReliefFromIds;
 		case EMixtormatParameterOwnerType::BoundaryId: return Child.Type == EMixtormatLayerChildType::BoundaryFromIds;
+		case EMixtormatParameterOwnerType::HeightBlend: return Child.Type == EMixtormatLayerChildType::HeightBlend;
+		case EMixtormatParameterOwnerType::HeightCurve: return Child.Type == EMixtormatLayerChildType::HeightCurve;
+		case EMixtormatParameterOwnerType::HeightColorRamp: return Child.Type == EMixtormatLayerChildType::HeightColorRamp;
 		case EMixtormatParameterOwnerType::CombineId: return Child.Type == EMixtormatLayerChildType::CombineId;
 		case EMixtormatParameterOwnerType::IdGroup: return Child.Type == EMixtormatLayerChildType::IdGroup;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
@@ -173,6 +176,9 @@ namespace
 		case EMixtormatParameterOwnerType::UvId: View.ConstData = &Child.UvId; break;
 		case EMixtormatParameterOwnerType::ReliefId: View.ConstData = &Child.ReliefId; break;
 		case EMixtormatParameterOwnerType::BoundaryId: View.ConstData = &Child.BoundaryId; break;
+		case EMixtormatParameterOwnerType::HeightBlend: View.ConstData = &Child.HeightBlend; break;
+		case EMixtormatParameterOwnerType::HeightCurve: View.ConstData = &Child.HeightCurve; break;
+		case EMixtormatParameterOwnerType::HeightColorRamp: View.ConstData = &Child.HeightColorRamp; break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
 		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
@@ -536,6 +542,9 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::UvId: return { FMixtormatUvIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::ReliefId: return { FMixtormatReliefIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::BoundaryId: return { FMixtormatBoundaryIdFilter::StaticStruct() };
+		case EMixtormatParameterOwnerType::HeightBlend: return { FMixtormatGeneratorHeightBlend::StaticStruct() };
+		case EMixtormatParameterOwnerType::HeightCurve: return { FMixtormatGeneratorHeightCurve::StaticStruct() };
+		case EMixtormatParameterOwnerType::HeightColorRamp: return { FMixtormatGeneratorHeightColorRamp::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
 		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };

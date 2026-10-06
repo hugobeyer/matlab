@@ -1438,7 +1438,12 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	{
 		return FReply::Handled();
 	}
-	if (ChildTypeForCreation(Kind) == EMixtormatLayerChildType::Generator && !CanAddGeneratorModule(Target))
+	const EMixtormatLayerChildType CreatedType = ChildTypeForCreation(Kind);
+	if ((CreatedType == EMixtormatLayerChildType::Generator
+		|| CreatedType == EMixtormatLayerChildType::HeightBlend
+		|| CreatedType == EMixtormatLayerChildType::HeightCurve
+		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp)
+		&& !CanAddGeneratorModule(Target))
 	{
 		return FReply::Handled();
 	}
@@ -1495,16 +1500,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	// same as before this function collapsed the ten of them into one. Left alone deliberately --
 	// changing it changes the undo stack, which is not this refactor's to move.
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
-	const bool bLaterModule = ChildTypeForCreation(Kind) == EMixtormatLayerChildType::Generator
-		&& Layer.Children.ContainsByPredicate([](const FMixtormatLayerChild& Existing)
-			{ return Existing.Type == EMixtormatLayerChildType::Generator; });
 	const int32 CreatedIndex = Layer.Children.AddDefaulted();
 	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
-	if (bLaterModule)
-	{
-		// The first module replaces the neutral running height; each later one adds to it.
-		Layer.Children[CreatedIndex].Generator.HeightBlend.Op = EMixtormatHeightOp::Add;
-	}
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);

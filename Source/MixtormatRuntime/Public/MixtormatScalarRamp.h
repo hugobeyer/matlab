@@ -39,6 +39,15 @@ struct MIXTORMATRUNTIME_API FMixtormatScalarRamp
 	static constexpr float MinOutput = -3.0f;
 	static constexpr float MaxOutput = 3.0f;
 
+	// The X domain the curve is authored against. Mask shaping runs 0..1; the generator Height
+	// Curve runs -1..1 with zero at the centre. The evaluation is domain-agnostic -- it reads the
+	// points as authored -- so this only pins the ends and drives the editor's X axis.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalar Ramp")
+	float DomainMin = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalar Ramp")
+	float DomainMax = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalar Ramp")
 	TArray<FMixtormatScalarRampPoint> Points = {
 		FMixtormatScalarRampPoint{0.0f, 0.0f},

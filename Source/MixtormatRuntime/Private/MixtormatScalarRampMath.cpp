@@ -59,13 +59,13 @@ namespace
 float MixtormatScalarRampMath::Evaluate(const FMixtormatScalarRamp& Ramp, const float InputX)
 {
 	if (Ramp.Interpolation == EMixtormatScalarRampInterpolation::Linear && Ramp.Points.Num() == 2
-		&& FMath::IsNearlyEqual(Ramp.Points[0].X, 0.0f) && FMath::IsNearlyEqual(Ramp.Points[0].Y, 0.0f)
-		&& FMath::IsNearlyEqual(Ramp.Points[1].X, 1.0f) && FMath::IsNearlyEqual(Ramp.Points[1].Y, 1.0f))
+		&& FMath::IsNearlyEqual(Ramp.Points[0].X, Ramp.DomainMin) && FMath::IsNearlyEqual(Ramp.Points[0].Y, Ramp.DomainMin)
+		&& FMath::IsNearlyEqual(Ramp.Points[1].X, Ramp.DomainMax) && FMath::IsNearlyEqual(Ramp.Points[1].Y, Ramp.DomainMax))
 	{
 		return InputX;
 	}
-	if (Ramp.Points.Num() < 2) { return FMath::Clamp(InputX, 0.0f, 1.0f); }
-	const float X = FMath::Clamp(InputX, 0.0f, 1.0f);
+	if (Ramp.Points.Num() < 2) { return FMath::Clamp(InputX, Ramp.DomainMin, Ramp.DomainMax); }
+	const float X = FMath::Clamp(InputX, Ramp.DomainMin, Ramp.DomainMax);
 	const int32 I = SegmentAt(Ramp, X);
 	const FMixtormatScalarRampPoint& A = Ramp.Points[I];
 	const FMixtormatScalarRampPoint& B = Ramp.Points[I + 1];
@@ -74,7 +74,7 @@ float MixtormatScalarRampMath::Evaluate(const FMixtormatScalarRamp& Ramp, const 
 	switch (Ramp.Interpolation)
 	{
 	case EMixtormatScalarRampInterpolation::Constant:
-		return X >= 1.0f ? B.Y : A.Y;
+		return X >= Ramp.DomainMax ? B.Y : A.Y;
 	case EMixtormatScalarRampInterpolation::Spline:
 	{
 		const auto Secant = [&Ramp](const int32 S)
@@ -120,24 +120,25 @@ float MixtormatScalarRampMath::Evaluate(const FMixtormatScalarRamp& Ramp, const 
 float MixtormatScalarRampMath::EvaluateTangent(const FMixtormatScalarRamp& Ramp, const float X)
 {
 	constexpr float Epsilon = 1.0e-4f;
-	const float A = FMath::Max(0.0f, X - Epsilon), B = FMath::Min(1.0f, X + Epsilon);
+	const float A = FMath::Max(Ramp.DomainMin, X - Epsilon), B = FMath::Min(Ramp.DomainMax, X + Epsilon);
 	return B > A ? (Evaluate(Ramp, B) - Evaluate(Ramp, A)) / (B - A) : 0.0f;
 }
 
 void MixtormatScalarRampMath::SamplePolyline(const FMixtormatScalarRamp& Ramp, int32 Samples, TArray<FVector2f>& OutPoints)
 {
 	OutPoints.Reset(); Samples = FMath::Max(Samples, 2); OutPoints.Reserve(Samples + Ramp.Points.Num() * 2);
+	const float Span = Ramp.DomainMax - Ramp.DomainMin;
 	if (Ramp.Interpolation == EMixtormatScalarRampInterpolation::Constant && Ramp.Points.Num() >= 2)
 	{
 		for (int32 I = 0; I < Samples; ++I)
 		{
-			const float X = static_cast<float>(I) / static_cast<float>(Samples - 1);
+			const float X = Ramp.DomainMin + Span * static_cast<float>(I) / static_cast<float>(Samples - 1);
 			OutPoints.Emplace(X, Evaluate(Ramp, X));
 		}
 		for (int32 I = 1; I < Ramp.Points.Num() - 1; ++I)
 		{
 			const float X = Ramp.Points[I].X;
-			const float Epsilon = FMath::Min(1.0e-5f, FMath::Min(X, 1.0f - X) * 0.25f);
+			const float Epsilon = FMath::Min(1.0e-5f, FMath::Min(X - Ramp.DomainMin, Ramp.DomainMax - X) * 0.25f);
 			OutPoints.Emplace(X - Epsilon, Ramp.Points[I - 1].Y);
 			OutPoints.Emplace(X + Epsilon, Ramp.Points[I].Y);
 		}
@@ -146,7 +147,7 @@ void MixtormatScalarRampMath::SamplePolyline(const FMixtormatScalarRamp& Ramp, i
 	}
 	for (int32 I = 0; I < Samples; ++I)
 	{
-		const float X = static_cast<float>(I) / static_cast<float>(Samples - 1);
+		const float X = Ramp.DomainMin + Span * static_cast<float>(I) / static_cast<float>(Samples - 1);
 		OutPoints.Emplace(X, Evaluate(Ramp, X));
 	}
 }

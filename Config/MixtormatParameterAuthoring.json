@@ -650,5 +650,67 @@
 			"clampMin": -4,
 			"clampMax": 4
 		}
+	},
+	"Height Blend":
+	{
+		"HeightBlend.Amount":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"HeightBlend.Scale":
+		{
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"HeightBlend.Softness":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0010000000474974513
+		},
+		"HeightBlend.Threshold":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"HeightBlend.EdgeSoftness":
+		{
+			"default": 0.1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.004999999888241291
+		},
+		"HeightBlend.BaseBias":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
+		"HeightBlend.BlendBias":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		}
+	},
+	"Height Curve":
+	{
+		"HeightCurve.Amount":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		}
 	}
 }

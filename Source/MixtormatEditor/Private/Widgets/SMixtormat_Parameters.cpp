@@ -94,6 +94,9 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return EMixtormatParameterOwnerType::UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return EMixtormatParameterOwnerType::ReliefId;
 		case EMixtormatLayerChildType::BoundaryFromIds: return EMixtormatParameterOwnerType::BoundaryId;
+		case EMixtormatLayerChildType::HeightBlend: return EMixtormatParameterOwnerType::HeightBlend;
+		case EMixtormatLayerChildType::HeightCurve: return EMixtormatParameterOwnerType::HeightCurve;
+		case EMixtormatLayerChildType::HeightColorRamp: return EMixtormatParameterOwnerType::HeightColorRamp;
 
 		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
@@ -120,6 +123,9 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return &Child.UvId;
 		case EMixtormatLayerChildType::ReliefFromIds: return &Child.ReliefId;
 		case EMixtormatLayerChildType::BoundaryFromIds: return &Child.BoundaryId;
+		case EMixtormatLayerChildType::HeightBlend: return &Child.HeightBlend;
+		case EMixtormatLayerChildType::HeightCurve: return &Child.HeightCurve;
+		case EMixtormatLayerChildType::HeightColorRamp: return &Child.HeightColorRamp;
 
 		case EMixtormatLayerChildType::IdGroup: return &Child.IdGroup;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
@@ -779,6 +785,9 @@ namespace
 		case EMixtormatLayerChildType::UvFromIds: return FMixtormatUvIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::ReliefFromIds: return FMixtormatReliefIdFilter::StaticStruct();
 		case EMixtormatLayerChildType::BoundaryFromIds: return FMixtormatBoundaryIdFilter::StaticStruct();
+		case EMixtormatLayerChildType::HeightBlend: return FMixtormatGeneratorHeightBlend::StaticStruct();
+		case EMixtormatLayerChildType::HeightCurve: return FMixtormatGeneratorHeightCurve::StaticStruct();
+		case EMixtormatLayerChildType::HeightColorRamp: return FMixtormatGeneratorHeightColorRamp::StaticStruct();
 
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();

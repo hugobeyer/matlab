@@ -1,0 +1,72 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_GENERATOR_HEIGHT_MODULES_USH
+#define MIXTORMAT_GENERATOR_HEIGHT_MODULES_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatScalarRampCapacity.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatColorRampCapacity.ush"
+
+// Mirrors EMixtormatGeneratorHeightOp.
+#define MIXTORMAT_GEN_HEIGHT_OP_ADD 0
+#define MIXTORMAT_GEN_HEIGHT_OP_SUBTRACT 1
+#define MIXTORMAT_GEN_HEIGHT_OP_MIN 2
+#define MIXTORMAT_GEN_HEIGHT_OP_MAX 3
+#define MIXTORMAT_GEN_HEIGHT_OP_DIFFERENCE 4
+#define MIXTORMAT_GEN_HEIGHT_OP_MULTIPLY 5
+#define MIXTORMAT_GEN_HEIGHT_OP_HEIGHT_BLEND 6
+
+// Signed scalar ramp. The generator Height Curve authors its points in -1..1 and feeds the signed
+// height in directly, so X is never saturated to 0..1 the way the mask-shaping ramp is.
+float MixtormatEvalSignedScalarRamp(
+	float InputX, uint Count, uint Interpolation, float4 Points[MIXTORMAT_SCALAR_RAMP_MAX_POINTS])
+{
+	Count = min(Count, (uint)MIXTORMAT_SCALAR_RAMP_MAX_POINTS);
+	if (Count < 2u) { return InputX; }
+	uint Segment = Count - 2u;
+	[loop] for (uint I = 0u; I + 1u < Count; ++I)
+	{
+		if (InputX <= Points[I + 1u].x) { Segment = I; break; }
+	}
+	const float4 A = Points[Segment];
+	const float4 B = Points[Segment + 1u];
+	const float H = max(B.x - A.x, 1.0e-6f);
+	const float T = saturate((InputX - A.x) / H);
+	if (Interpolation == 0u) { return InputX >= B.x ? B.y : A.y; }
+	if (Interpolation == 1u) { return lerp(A.y, B.y, T); }
+	if (Interpolation == 2u)
+	{
+		const float T2 = T * T, T3 = T2 * T;
+		return (2 * T3 - 3 * T2 + 1) * A.y + (T3 - 2 * T2 + T) * H * A.z
+			+ (-2 * T3 + 3 * T2) * B.y + (T3 - T2) * H * B.z;
+	}
+	const float U = 1.0f - T;
+	return clamp(U * A.y + T * B.y + ((U * U * U - U) * A.w + (T * T * T - T) * B.w) * H * H / 6.0f,
+		-3.0f, 3.0f);
+}
+
+// Reusable colour ramp. The domain is whatever the caller feeds in; the generator Height Color
+// Ramp runs -1..1 with zero at the centre.
+float4 MixtormatEvalColorRamp(
+	float InputX, uint Count, uint Interpolation,
+	float Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS],
+	float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS])
+{
+	Count = min(Count, (uint)MIXTORMAT_COLOR_RAMP_MAX_STOPS);
+	if (Count < 2u) { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
+	if (InputX <= Positions[0]) { return Colors[0]; }
+	if (InputX >= Positions[Count - 1u]) { return Colors[Count - 1u]; }
+	uint Segment = Count - 2u;
+	[loop] for (uint I = 0u; I + 1u < Count; ++I)
+	{
+		if (InputX <= Positions[I + 1u]) { Segment = I; break; }
+	}
+	const float4 A = Colors[Segment];
+	const float4 B = Colors[Segment + 1u];
+	const float H = max(Positions[Segment + 1u] - Positions[Segment], 1.0e-6f);
+	float T = saturate((InputX - Positions[Segment]) / H);
+	if (Interpolation == 0u) { return A; }
+	if (Interpolation == 2u) { T = T * T * (3.0f - 2.0f * T); }
+	return lerp(A, B, T);
+}
+
+#endif

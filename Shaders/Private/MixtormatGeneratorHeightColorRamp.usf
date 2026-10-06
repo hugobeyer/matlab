@@ -1,0 +1,26 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Generator-layer Height Color Ramp sublayer: maps the running signed height through a reusable
+// colour ramp and publishes the result as a colour field. The ramp runs -1..1 with zero at the
+// centre; the signed input is preserved rather than remapped to 0..1.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+
+int2 OutputSize;
+uint StopCount;
+uint Interpolation;
+float Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+Texture2D<float> RunningHeight;
+RWTexture2D<float4> OutColor;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+
+	const float H = RunningHeight.Load(int3(Pixel, 0));
+	OutColor[Pixel] = MixtormatEvalColorRamp(H, StopCount, Interpolation, Positions, Colors);
+}

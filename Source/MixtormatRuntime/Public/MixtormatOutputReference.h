@@ -13,7 +13,9 @@ enum class EMixtormatPublishedFieldKind : uint8
 {
 	RegionIds UMETA(DisplayName = "Region IDs"),
 	Flow UMETA(DisplayName = "Flow"),
-	UVMap UMETA(DisplayName = "UV Map")
+	UVMap UMETA(DisplayName = "UV Map"),
+	// A colour field published by a Generator-layer Height Color Ramp, for later albedo/material use.
+	Color UMETA(DisplayName = "Color")
 };
 
 USTRUCT(BlueprintType)

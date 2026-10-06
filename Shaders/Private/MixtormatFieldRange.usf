@@ -1,16 +1,19 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-// Normalizes a generator's height field to 0..1 from its own measured range, on the GPU.
+// Normalizes a field on the GPU. Mode 0 is the original measured-range remap onto
+// [OutLow, OutHigh]. Modes 1 and 2 are the generator signed-height contract:
 //
 // RANGE_STAGE 0 (Reduce):    per-group min/max in groupshared memory, then one atomic per group into
 //   a two-entry buffer. The buffer is cleared to 0 beforehand; entry 0 holds max(~ordered(h)), which
 //   is the minimum, and entry 1 holds max(ordered(h)), the maximum -- both reduce with InterlockedMax
-//   from a zero clear.
-// RANGE_STAGE 1 (Normalize): (h - min) / (max - min), then placed on [OutLow, OutHigh]. A flat
-//   field (no range) maps to OutLow.
+//   from a zero clear. Only run when a measured range is actually needed.
+// RANGE_STAGE 1 (Resolve):   mode 0 remaps (h - min) / (max - min) onto [OutLow, OutHigh]; mode 1
+//   is zero-preserving max-absolute normalization (h / max(abs(min), abs(max))) clamped to -1..1;
+//   mode 2 is the raw signed field clamped to -1..1. Both signed modes then multiply by OutputScale,
+//   which is applied after the clamp and may push the result beyond -1..1.
 //
-// Nothing is clamped: the mapping is exact for the measured field, so its output spans 0..1 by
-// construction.
+// Nothing is clamped after OutputScale: the generator contract is on the base field, and the
+// document/export level owns the final remap.
 
 #include "/Engine/Public/Platform.ush"
 
@@ -86,14 +89,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Value = SourceField.Load(int3(Pixel, 0));
 	if (NormalizeMode == 1u)
 	{
+		// Zero-preserving max-absolute normalization: the largest excursion maps to 1 and zero
+		// stays exactly zero, so empty/background pixels acquire no height offset.
 		const float MaxAbs = max(abs(Low), abs(High));
 		OutField[Pixel] = (MaxAbs > 1e-12f
-			? clamp(0.5f * Value / MaxAbs, -0.5f, 0.5f)
+			? clamp(Value / MaxAbs, -1.0f, 1.0f)
 			: 0.0f) * OutputScale;
 	}
 	else if (NormalizeMode == 2u)
 	{
-		OutField[Pixel] = clamp(Value, -0.5f, 0.5f) * OutputScale;
+		// Normalize off: the raw signed field, clamped to the -1..1 generator contract, then
+		// scaled. No reduction is needed for this path.
+		OutField[Pixel] = clamp(Value, -1.0f, 1.0f) * OutputScale;
 	}
 	else
 	{

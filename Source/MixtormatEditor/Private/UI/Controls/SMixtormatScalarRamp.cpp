@@ -19,6 +19,8 @@ void SMixtormatScalarRamp::Construct(const FArguments& Args)
 	Ramp = Args._Ramp.Get(FMixtormatScalarRamp());
 	Ramp.Sanitize();
 	Height = Args._Height;
+	CanonicalXMin = Args._CanonicalXMin;
+	CanonicalXMax = Args._CanonicalXMax;
 	CanonicalYMin = Args._CanonicalYMin;
 	CanonicalYMax = Args._CanonicalYMax;
 	SoftYMin = Args._SoftYMin;
@@ -78,7 +80,7 @@ FVector2f SMixtormatScalarRamp::ToGraph(const FGeometry& Geometry, const FVector
 	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
 	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y) - Pad;
-	const float X = FMath::Clamp((static_cast<float>(Position.X) - X0) / FMath::Max(X1-X0, 1.0f), 0.0f, 1.0f);
+	const float X = CanonicalXMin + FMath::Clamp((static_cast<float>(Position.X) - X0) / FMath::Max(X1-X0, 1.0f), 0.0f, 1.0f) * (CanonicalXMax - CanonicalXMin);
 	const float MapMin=bDraggingPoint?DragViewYMin:ViewYMin;
 	const float MapMax=bDraggingPoint?DragViewYMax:ViewYMax;
 	const float V = MapMax - (static_cast<float>(Position.Y) - Y0) / FMath::Max(Y1-Y0, 1.0f) * (MapMax-MapMin);
@@ -91,7 +93,7 @@ FVector2f SMixtormatScalarRamp::ToScreen(const FVector2f& Point, const FVector2D
 	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
 	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y) - Pad;
-	return FVector2f(X0 + Point.X * (X1-X0), Y0 + (ViewYMax-Point.Y) / FMath::Max(ViewYMax-ViewYMin, 1.0e-4f) * (Y1-Y0));
+	return FVector2f(X0 + (Point.X - CanonicalXMin) / FMath::Max(CanonicalXMax - CanonicalXMin, 1.0e-4f) * (X1-X0), Y0 + (ViewYMax-Point.Y) / FMath::Max(ViewYMax-ViewYMin, 1.0e-4f) * (Y1-Y0));
 }
 
 int32 SMixtormatScalarRamp::HitPoint(const FVector2f& Pos, const FVector2D& Size) const
@@ -149,6 +151,14 @@ int32 SMixtormatScalarRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geo
 		const TArray<FVector2f> Line = { FVector2f(X,YScreen(1)), FVector2f(X,YScreen(0)) };
 		FSlateDrawElement::MakeLines(Elements,Layer+2,Geometry.ToPaintGeometry(),Line,ESlateDrawEffect::None,
 			I==0||I==4?Major:Grid,false,I==0||I==4?MixtormatTokens::ScalarRampMajorGridThickness:MixtormatTokens::ScalarRampGridThickness);
+	}
+	// Zero is the neutral line for a signed domain; emphasise it when the domain straddles zero.
+	if (CanonicalXMin < 0.0f && CanonicalXMax > 0.0f)
+	{
+		const float ZeroX = ToScreen(FVector2f(0.0f, 0.0f), Size).X;
+		const TArray<FVector2f> Line = { FVector2f(ZeroX,YScreen(1)), FVector2f(ZeroX,YScreen(0)) };
+		FSlateDrawElement::MakeLines(Elements,Layer+2,Geometry.ToPaintGeometry(),Line,ESlateDrawEffect::None,
+			Major,false,MixtormatTokens::ScalarRampMajorGridThickness);
 	}
 	for (int32 I=0;I<=4;++I)
 	{

@@ -67,6 +67,10 @@ enum class EMixtormatChildCreation : uint8
 	RockFormation,
 	Pebbles,
 	CliffStrata,
+	// Generator-layer sublayers.
+	HeightBlend,
+	HeightCurve,
+	HeightColorRamp,
 	Peeling,
 };
 
@@ -398,7 +402,6 @@ private:
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
-	void AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel);
 	void AddHeightBlendRows(
 		const TSharedRef<SVerticalBox>& Panel,
 		TFunction<FMixtormatHeightBlend*()> Resolve,
@@ -507,6 +510,16 @@ private:
 	FMixtormatCliffStrata* GetSelectedCliffStrata();
 	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
 	TSharedRef<SWidget> BuildCliffStrataControls();
+	FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend();
+	const FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend() const;
+	TSharedRef<SWidget> BuildHeightBlendModuleControls();
+	TSharedRef<SWidget> BuildHeightBlendSourceMenu();
+	FMixtormatGeneratorHeightCurve* GetSelectedHeightCurve();
+	const FMixtormatGeneratorHeightCurve* GetSelectedHeightCurve() const;
+	TSharedRef<SWidget> BuildHeightCurveControls();
+	FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp();
+	const FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp() const;
+	TSharedRef<SWidget> BuildHeightColorRampControls();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();

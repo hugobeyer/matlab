@@ -3,6 +3,9 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
+#include "UI/Controls/SMixtormatColorRamp.h"
+#include "UI/Controls/SMixtormatScalarRamp.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
@@ -193,42 +196,6 @@ TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildC
 	return SNew(SMixtormatInspectorCard)
 		.Title(LOCTEXT("InspectorChildOutputsHeading", "OUTPUTS"))
 		[Panel];
-}
-
-void SMixtormat::AddGeneratorBlendRows(const TSharedRef<SVerticalBox>& Panel)
-{
-	const TFunction<FMixtormatHeightBlend*()> Blend = [this]() -> FMixtormatHeightBlend*
-	{
-		FMixtormatGenerator* Generator = GetSelectedGenerator();
-		return Generator ? &Generator->HeightBlend : nullptr;
-	};
-	const TSharedRef<SVerticalBox> HeightBlend = AddCard(
-			Panel, LOCTEXT("GeneratorModuleHeightBlend", "Height Blend"));
-		AddHeightBlendRows(HeightBlend, Blend,
-		LOCTEXT("GeneratorBlendOpHint", "How this module combines with the height the modules above it built. The first module replaces; later ones add. Add and Subtract are signed about 0.5. Min, Max, Difference and Height Blend behave like Replace where nothing is below. Height Blend lets this module run over the height above it where its coverage is strong."),
-		LOCTEXT("GeneratorBlendAmountHint", "How much of this module reaches the layer, multiplied by its own coverage."));
-
-	const TSharedRef<SVerticalBox> Settings = SNew(SVerticalBox)
-		.Visibility_Lambda([Blend]()
-		{
-			const FMixtormatHeightBlend* Current = Blend();
-			return Current && Current->Op == EMixtormatHeightOp::HeightBlend
-				? EVisibility::Visible
-				: EVisibility::Collapsed;
-		});
-	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
-		LOCTEXT("HeightBlendStrength", "Blend Strength"), Blend, &FMixtormatHeightBlend::Strength, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightBlendStrengthHint", "How much of the height contest happens. 0 is plain coverage; 1 is the full contest gated by the mask.")));
-	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
-		LOCTEXT("HeightBlendThresholdLabel", "Threshold"), Blend, &FMixtormatHeightBlend::Threshold, 0.0, 1.0, 0.5, 0.01));
-	AddSliderRow(Settings, MakeMemberSlider<FMixtormatHeightBlend>(
-		LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend, &FMixtormatHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005));
-	AddSliderRow(Settings, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatHeightBlend>(
-			LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend, &FMixtormatHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
-		MakeMemberSlider<FMixtormatHeightBlend>(
-			LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend, &FMixtormatHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01)));
-	AddSliderRow(HeightBlend, Settings);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
@@ -753,6 +720,208 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 			+SHorizontalBox::Slot().AutoWidth().Padding(0,0,FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap,0)[MakeChildOutputPreviewButton([](){FMixtormatLayerChild Probe;Probe.Type=EMixtormatLayerChildType::Generator;Probe.Generator.Type=EMixtormatGeneratorType::CliffStrata;return GetChildPreviewOutputSet(Probe);}())]
 			+SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(TAttribute<ECheckBoxState>::CreateLambda([this](){const FMixtormatGenerator* G=GetSelectedGenerator();return G&&G->bEnabled?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}),FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S){if(FMixtormatGenerator* G=GetSelectedGenerator()){G->bEnabled=S==ECheckBoxState::Checked;RefreshLayeredPreview();RebuildLayerList();}}))])
 		[Cards]];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	if (!GetSelectedHeightBlend()) { return Menu.Build(); }
+	Menu.Item(LOCTEXT("HeightBlendSourceNone", "None"), nullptr,
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			if (FMixtormatGeneratorHeightBlend* Blend = GetSelectedHeightBlend())
+			{
+				Blend->SourceLayerId.Invalidate();
+				Blend->SourceChildId.Invalidate();
+				RefreshLayeredPreview();
+			}
+		}));
+	if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		const FGuid LayerId = WorkingLayers[SelectedLayerIndex].LayerId;
+		for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
+		{
+			if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+			const FGuid ChildId = Child.ChildId;
+			Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([this, LayerId, ChildId]()
+				{
+					if (FMixtormatGeneratorHeightBlend* Blend = GetSelectedHeightBlend())
+					{
+						Blend->SourceLayerId = LayerId;
+						Blend->SourceChildId = ChildId;
+						RefreshLayeredPreview();
+					}
+				}));
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
+{
+	const auto Blend = [this]() { return GetSelectedHeightBlend(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatGeneratorHeightBlend, EMixtormatGeneratorHeightOp>(
+		LOCTEXT("HeightBlendOp", "Operation"), Blend, &FMixtormatGeneratorHeightBlend::Op,
+		LOCTEXT("HeightBlendOpHint", "How the running generator height combines with the referenced module."),
+		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
+		LOCTEXT("HeightBlendSource", "Source"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
+				if (!B || !B->SourceChildId.IsValid()) { return LOCTEXT("HeightBlendSourceNoneLabel", "None"); }
+				if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+				{
+					for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
+					{
+						if (Child.ChildId == B->SourceChildId) { return GetLayerChildName(Child); }
+					}
+				}
+				return LOCTEXT("HeightBlendSourceMissing", "Missing");
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildHeightBlendSourceMenu)),
+		LOCTEXT("HeightBlendSourceHint", "Another module in this layer whose signed height is the second operand.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+		LOCTEXT("HeightBlendAmount", "Amount"), Blend, &FMixtormatGeneratorHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("HeightBlendAmountHint", "How much of the combined result replaces the running height.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+		LOCTEXT("HeightBlendScale", "Scale"), Blend, &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
+		LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+		LOCTEXT("HeightBlendSoftness", "Softness"), Blend, &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
+		LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min and Max, in height units.")));
+
+	const TSharedRef<SVerticalBox> Settings = SNew(SVerticalBox)
+		.Visibility_Lambda([Blend]()
+		{
+			const FMixtormatGeneratorHeightBlend* B = Blend();
+			return B && B->Op == EMixtormatGeneratorHeightOp::HeightBlend
+				? EVisibility::Visible : EVisibility::Collapsed;
+		});
+	AddSliderRow(Settings, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+		LOCTEXT("HeightBlendThreshold", "Threshold"), Blend, &FMixtormatGeneratorHeightBlend::Threshold, -1.0, 1.0, 0.0, 0.01));
+	AddSliderRow(Settings, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+		LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend, &FMixtormatGeneratorHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005));
+	AddSliderRow(Settings, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+			LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend, &FMixtormatGeneratorHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
+		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+			LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend, &FMixtormatGeneratorHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, Settings);
+
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightBlend() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightBlendHeading", "HEIGHT BLEND")).InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
+					return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S)
+				{
+					if (FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend())
+					{
+						B->bEnabled = S == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}))])
+		[Panel]];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
+{
+	const auto Curve = [this]() { return GetSelectedHeightCurve(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+		LOCTEXT("HeightCurveAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("HeightCurveAmountHint", "How much of the curved result replaces the running height.")));
+	AddSliderRow(Panel, SNew(SMixtormatScalarRamp)
+		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([Curve]()
+		{
+			const FMixtormatGeneratorHeightCurve* C = Curve();
+			return C ? C->Curve : FMixtormatScalarRamp();
+		}))
+		.CanonicalXMin(-1.0f).CanonicalXMax(1.0f)
+		.CanonicalYMin(-1.0f).CanonicalYMax(1.0f)
+		.SoftYMin(-1.5f).SoftYMax(1.5f)
+		.ExtendedYMin(-3.0f).ExtendedYMax(3.0f)
+		.OnChanged(FOnMixtormatScalarRampChanged::CreateLambda([this, Curve](const FMixtormatScalarRamp& NewRamp)
+		{
+			if (FMixtormatGeneratorHeightCurve* C = Curve())
+			{
+				C->Curve = NewRamp;
+				RefreshLayeredPreview();
+			}
+		})));
+
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightCurve() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightCurveHeading", "HEIGHT CURVE")).InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatGeneratorHeightCurve* C = GetSelectedHeightCurve();
+					return C && C->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S)
+				{
+					if (FMixtormatGeneratorHeightCurve* C = GetSelectedHeightCurve())
+					{
+						C->bEnabled = S == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}))])
+		[Panel]];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
+{
+	const auto Ramp = [this]() { return GetSelectedHeightColorRamp(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	AddSliderRow(Panel, SNew(SMixtormatColorRamp)
+		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Ramp]()
+		{
+			const FMixtormatGeneratorHeightColorRamp* R = Ramp();
+			return R ? R->Ramp : FMixtormatColorRamp();
+		}))
+		.DomainMin(-1.0f).DomainMax(1.0f)
+		.OnChanged(FOnMixtormatColorRampChanged::CreateLambda([this, Ramp](const FMixtormatColorRamp& NewRamp)
+		{
+			if (FMixtormatGeneratorHeightColorRamp* R = Ramp())
+			{
+				R->Ramp = NewRamp;
+				RefreshLayeredPreview();
+			}
+		})));
+
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightColorRampHeading", "HEIGHT COLOR RAMP")).InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					const FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp();
+					return R && R->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S)
+				{
+					if (FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp())
+					{
+						R->bEnabled = S == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}))])
+		[Panel]];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()

@@ -102,8 +102,6 @@ int FacetIterations;
 float FacetFalloff;
 float FacetRandom;
 float FacetAlign;
-uint HeightMode;
-float HeightScale;
 
 Texture2D<float> RockHeight;
 Texture2D<uint> RockIds;
@@ -967,7 +965,7 @@ FRockPat RockSetup()
 }
 
 #if ROCK_STAGE == 3
-// Gates use analytic bounds regardless of the layer's HeightMode or HeightScale.
+// Gates use analytic bounds, independent of the generator's signed output convention.
 float RockNormalizedHeightAt(int2 Pixel, float HeightLo, float HeightRange)
 {
 	Pixel = int2(RockWrap(Pixel.x, OutputSize.x), RockWrap(Pixel.y, OutputSize.y));
@@ -1151,20 +1149,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 boundary = RockBoundaryField.Load(int3(Pixel, 0));
 	OutRockGap[Pixel] = boundary.y > 0.0f && boundary.x <= 0.0f ? 0.0f : 1.0f;
 #else
-	// Resolve one scalar module height; the ordered module chain applies its shared HeightBlend.
-	// Analytic maps the settings' own bounds to 0..1; Raw and Measured arrive here as they are
-	// (Measured was normalised by the field-range pass before this).
-	float h = RockHeight.Load(int3(Pixel, 0));
-	if (HeightMode == 1u && RockIds.Load(int3(Pixel, 0)) == MIXTORMAT_INVALID_REGION)
-	{
-		h = 0.0f;
-	}
-	else if (HeightMode == 1u)
-	{
-		const FRockPat P = RockSetup();
-		h = (h - P.height_lo) / max(P.height_hi - P.height_lo, 1e-6f);
-	}
-	OutHeight[Pixel] = h;
+	// Resolve the generator's native signed height. Normalization and scale are the shared
+	// generator output pass's job, not this shader's.
+	OutHeight[Pixel] = RockHeight.Load(int3(Pixel, 0));
 #endif
 }
 #endif

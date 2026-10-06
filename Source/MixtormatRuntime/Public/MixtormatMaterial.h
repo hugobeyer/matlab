@@ -9,6 +9,7 @@
 #include "MixtormatMaskBlur.h"
 #include "MixtormatMaskCurvature.h"
 #include "MixtormatMaskShaping.h"
+#include "MixtormatColorRamp.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatMaterial.generated.h"
 
@@ -244,7 +245,11 @@ enum class EMixtormatParameterOwnerType : uint8
 	// fell through to Layer, which stored their bindings on the layer and resolved to nothing.
 	CombineId UMETA(DisplayName = "Combine IDs"),
 	IdGroup UMETA(DisplayName = "ID Group"),
-	BoundaryId UMETA(DisplayName = "Boundary From IDs")
+	BoundaryId UMETA(DisplayName = "Boundary From IDs"),
+	// Appended with the Generator-layer sublayers, so their rows can be bound and driven.
+	HeightBlend UMETA(DisplayName = "Height Blend"),
+	HeightCurve UMETA(DisplayName = "Height Curve"),
+	HeightColorRamp UMETA(DisplayName = "Height Color Ramp")
 };
 
 UENUM(BlueprintType)
@@ -2800,7 +2805,8 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 
 	
 	// Generator height contract: zero is neutral. Normalize maps the largest absolute
-	// excursion to 0.5 without moving zero; Height Scale is applied after normalization.
+	// excursion to 1 without moving zero; Height Scale is applied after normalization and may
+	// exceed -1..1.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output")
 	bool bStrataNormalizeHeight = true;
 
@@ -3005,8 +3011,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float RockFacetAlign = 0.75f;
 
-	// Analytic uses setting-derived bounds; Measured uses the field's own min/max.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation")
+	// Deprecated: the shared signed normalization supersedes the per-generator height mode. Kept
+	// only so existing assets load; it is never read.
+	UPROPERTY()
 	EMixtormatRockHeightMode RockHeightMode = EMixtormatRockHeightMode::Analytic;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
@@ -3316,10 +3323,130 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks")
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Chamfer", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
 	float CrackChamferEdge = 0.12f;
 
-	// Multiplies the crack field. The layer's height is the flat midpoint 0.5 plus the field, so Add
-	// carves the cracks into the height below and Replace gives flat ground with the cracks cut in.
+	// Multiplies the crack field. The generator height is signed about zero, so Add carves the
+	// cracks into the height below and Replace gives flat ground with the cracks cut in.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cracks|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float CrackHeightScale = 1.0f;
+};
+
+// How a Generator-layer Height Blend module combines the running signed height with another
+// module's signed height. This is the one place specialised generator height combination lives;
+// the generators themselves are plain signed field producers.
+UENUM(BlueprintType)
+enum class EMixtormatGeneratorHeightOp : uint8
+{
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Min UMETA(DisplayName = "Min"),
+	Max UMETA(DisplayName = "Max"),
+	Difference UMETA(DisplayName = "Difference"),
+	// Scales the running height by Scale; the referenced module is not read.
+	Multiply UMETA(DisplayName = "Multiply / Scale"),
+	HeightBlend UMETA(DisplayName = "Height Blend")
+};
+
+// A Generator-layer sublayer that combines the running signed height with another module's signed
+// height. Ordered in the layer's child chain like any other module.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightBlend
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
+	EMixtormatGeneratorHeightOp Op = EMixtormatGeneratorHeightOp::Add;
+
+	// Another module in this Generator layer whose signed height is the second operand. Invalid
+	// falls back to the running height itself, which makes Multiply/Scale a plain scale.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
+	FGuid SourceLayerId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
+	FGuid SourceChildId;
+
+	// How much of the combined result replaces the running height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Amount = 1.0f;
+
+	// Multiply/Scale factor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float Scale = 1.0f;
+
+	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Softness = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float Threshold = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (DisplayName = "Edge Softness", UIMin = "0.0", UIMax = "1.0"))
+	float EdgeSoftness = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BaseBias = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	float BlendBias = 0.0f;
+};
+
+// A Generator-layer sublayer that remaps the running signed height through the shared scalar ramp.
+// The ramp is authored in -1..1 with zero at the centre; the signed field is never converted to
+// 0..1 first.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
+{
+	GENERATED_BODY()
+
+	FMixtormatGeneratorHeightCurve()
+	{
+		Curve.DomainMin = -1.0f;
+		Curve.DomainMax = 1.0f;
+		Curve.Points = {
+			FMixtormatScalarRampPoint{-1.0f, -1.0f},
+			FMixtormatScalarRampPoint{0.0f, 0.0f},
+			FMixtormatScalarRampPoint{1.0f, 1.0f}
+		};
+		Curve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve")
+	FMixtormatScalarRamp Curve;
+
+	// How much of the curved result replaces the running height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Curve", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Amount = 1.0f;
+};
+
+// A Generator-layer sublayer that maps the running signed height through a reusable colour ramp
+// and publishes the result as a colour field for later albedo/material use.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
+{
+	GENERATED_BODY()
+
+	FMixtormatGeneratorHeightColorRamp()
+	{
+		Ramp.Stops = {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)},
+			FMixtormatColorRampStop{0.0f, FLinearColor(0.5f, 0.5f, 0.5f, 1.0f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(1.0f, 1.0f, 1.0f, 1.0f)}
+		};
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
+	FMixtormatColorRamp Ramp;
+
+	// The published colour output name, for later albedo/material references.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
+	FName OutputName = FName(TEXT("HeightColor"));
 };
 
 USTRUCT(BlueprintType)
@@ -3382,8 +3509,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
 	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 
-	// Modules compose additively into their Generator layer in child order unless changed.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend")
+	// Deprecated: per-generator blend is gone. Generator modules are plain signed field producers
+	// and combination lives in the Generator-layer Height Blend sublayer. Kept only so existing
+	// assets load; it is never read.
+	UPROPERTY()
 	FMixtormatHeightBlend HeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Add);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
@@ -3490,7 +3619,12 @@ enum class EMixtormatLayerChildType : uint8
 	// Appended for serialization safety. Owns ordered scoped Region-ID references/legacy producers.
 	IdGroup UMETA(DisplayName = "ID Group"),
 	OutputReference UMETA(DisplayName = "Output Reference"),
-	BoundaryFromIds UMETA(DisplayName = "Boundary From IDs")
+	BoundaryFromIds UMETA(DisplayName = "Boundary From IDs"),
+	// Generator-layer sublayers. Ordered in the layer's child chain alongside Generator modules;
+	// they read and rewrite the running signed generator height. Appended for serialization safety.
+	HeightBlend UMETA(DisplayName = "Height Blend"),
+	HeightCurve UMETA(DisplayName = "Height Curve"),
+	HeightColorRamp UMETA(DisplayName = "Height Color Ramp")
 };
 
 USTRUCT(BlueprintType)
@@ -3586,6 +3720,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::BoundaryFromIds"))
 	FMixtormatBoundaryIdFilter BoundaryId;
+
+	// Generator-layer sublayer payloads. Ordered in the layer's child chain with the Generator
+	// modules; each rewrites the running signed generator height (or publishes colour) in place.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightBlend"))
+	FMixtormatGeneratorHeightBlend HeightBlend;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightCurve"))
+	FMixtormatGeneratorHeightCurve HeightCurve;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightColorRamp"))
+	FMixtormatGeneratorHeightColorRamp HeightColorRamp;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

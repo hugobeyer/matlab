@@ -1,0 +1,48 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Generator-layer Height Blend sublayer: combines the running signed generator height with
+// another module's signed height. The one place specialised generator height combination lives.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+
+int2 OutputSize;
+uint Op;
+uint HasSource;
+float Amount;
+float Scale;
+float Softness;
+float Threshold;
+float EdgeSoftness;
+float BaseBias;
+float BlendBias;
+Texture2D<float> RunningHeight;
+Texture2D<float> SourceHeight;
+RWTexture2D<float> OutHeight;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+
+	const float A = RunningHeight.Load(int3(Pixel, 0));
+	// No referenced module is a neutral zero operand, so Add is a no-op and Multiply/Scale still
+	// scales the running height.
+	const float B = HasSource != 0u ? SourceHeight.Load(int3(Pixel, 0)) : 0.0f;
+
+	float Combined = A;
+	if (Op == MIXTORMAT_GEN_HEIGHT_OP_ADD) { Combined = A + B; }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_SUBTRACT) { Combined = A - B; }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_MIN) { Combined = -MixtormatHeightSmoothMax(-A, -B, Softness); }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_MAX) { Combined = MixtormatHeightSmoothMax(A, B, Softness); }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_DIFFERENCE) { Combined = abs(A - B); }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_MULTIPLY) { Combined = A * Scale; }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_HEIGHT_BLEND)
+	{
+		Combined = MixtormatHeightBlend(A, B, 1.0f, 1.0f, Threshold, EdgeSoftness, BaseBias, BlendBias).Height;
+	}
+
+	OutHeight[Pixel] = lerp(A, Combined, saturate(Amount));
+}

@@ -96,6 +96,22 @@ namespace MixtormatLayerBadges
 		}
 	}
 
+	// The Generator-layer Height Blend sublayer's own op set, distinct from the layer height op.
+	FText ForGeneratorHeightOp(const EMixtormatGeneratorHeightOp Op)
+	{
+		switch (Op)
+		{
+		case EMixtormatGeneratorHeightOp::Add:        return LOCTEXT("GenHeightOpBadgeAdd", "ADD");
+		case EMixtormatGeneratorHeightOp::Subtract:   return LOCTEXT("GenHeightOpBadgeSub", "SUB");
+		case EMixtormatGeneratorHeightOp::Min:        return LOCTEXT("GenHeightOpBadgeMin", "MIN");
+		case EMixtormatGeneratorHeightOp::Max:        return LOCTEXT("GenHeightOpBadgeMax", "MAX");
+		case EMixtormatGeneratorHeightOp::Difference: return LOCTEXT("GenHeightOpBadgeDif", "DIF");
+		case EMixtormatGeneratorHeightOp::Multiply:   return LOCTEXT("GenHeightOpBadgeMul", "MUL");
+		case EMixtormatGeneratorHeightOp::HeightBlend: return LOCTEXT("GenHeightOpBadgeHB", "HB");
+		default:                                      return LOCTEXT("GenHeightOpBadgeAdd2", "ADD");
+		}
+	}
+
 	FText ForLayer(const FMixtormatLayer& Layer)
 	{
 		if (CompositionOf(Layer) == EComposition::Detail)
@@ -215,9 +231,17 @@ namespace MixtormatLayerBadges
 		}
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
-			// How this module blends into the layer's running height; the row name already says
-			// which generator it is.
-			return ForHeightOp(Child.Generator.HeightBlend.Op);
+			// Generators are plain signed field producers now; the row name says which one it is.
+			return FText::GetEmpty();
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
+		{
+			return ForGeneratorHeightOp(Child.HeightBlend.Op);
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightCurve
+			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp)
+		{
+			return FText::GetEmpty();
 		}
 		if (Child.Type == EMixtormatLayerChildType::Curvature)
 		{
@@ -280,6 +304,9 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		case EMixtormatLayerChildType::Generator: return LOCTEXT("ChildKindGenerator", "GEN");
+		case EMixtormatLayerChildType::HeightBlend: return LOCTEXT("ChildKindHeightBlend", "HBLD");
+		case EMixtormatLayerChildType::HeightCurve: return LOCTEXT("ChildKindHeightCurve", "HCRV");
+		case EMixtormatLayerChildType::HeightColorRamp: return LOCTEXT("ChildKindHeightColorRamp", "HCLR");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

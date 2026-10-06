@@ -1,0 +1,27 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+// Generator-layer Height Curve sublayer: remaps the running signed height through the shared
+// scalar ramp. The ramp is authored in -1..1 with zero at the centre; the signed field is fed in
+// directly and never converted to 0..1.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+
+int2 OutputSize;
+float Amount;
+uint CurveCount;
+uint CurveInterpolation;
+float4 CurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+Texture2D<float> RunningHeight;
+RWTexture2D<float> OutHeight;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+
+	const float H = RunningHeight.Load(int3(Pixel, 0));
+	const float Curved = MixtormatEvalSignedScalarRamp(H, CurveCount, CurveInterpolation, CurvePoints);
+	OutHeight[Pixel] = lerp(H, Curved, saturate(Amount));
+}

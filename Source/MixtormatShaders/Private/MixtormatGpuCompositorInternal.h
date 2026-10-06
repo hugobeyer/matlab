@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/StaticArray.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "MixtormatEffect.h"
 #include "MixtormatGpuCompositor.h"
@@ -812,7 +813,6 @@ namespace MixtormatGpuCompositor
 		float Tilt = 0.1f;
 		float ChamferAmount = 0.0f;
 		float ChamferEdge = 0.12f;
-		float HeightScale = 1.0f;
 		// Hash of the field-shaping settings only (not chamfer), for the node cache.
 		uint64 FieldKey = 0;
 	};
@@ -850,9 +850,7 @@ namespace MixtormatGpuCompositor
 		float FacetFalloff = 4.0f;
 		float FacetRandom = 1.0f;
 		float FacetAlign = 0.75f;
-		EMixtormatRockHeightMode HeightMode = EMixtormatRockHeightMode::Analytic;
-		float HeightScale = 1.0f;
-		// Hash of the field-shaping settings only (not HeightScale or HeightMode), for the node cache.
+		// Hash of the field-shaping settings only, for the node cache.
 		uint64 FieldKey = 0;
 	};
 
@@ -875,8 +873,7 @@ namespace MixtormatGpuCompositor
 		float HeightGain = 1.0f;
 		float HeightVariation = 0.3f;
 		bool bFacetIds = false;
-		float HeightScale = 1.0f;
-		// Hash of the field-shaping settings only (not HeightScale), for the node cache.
+		// Hash of the field-shaping settings only, for the node cache.
 		uint64 FieldKey = 0;
 	};
 
@@ -925,6 +922,40 @@ namespace MixtormatGpuCompositor
 		FCliffStrataRenderData CliffStrata;
 	};
 
+	// Generator-layer Height Blend sublayer. SourceChildIndex is the referenced module resolved to
+	// this layer's child index; INDEX_NONE falls back to the running height.
+	struct FGeneratorHeightBlendRenderData
+	{
+		int32 Op = 0;
+		int32 SourceChildIndex = INDEX_NONE;
+		float Amount = 1.0f;
+		float Scale = 1.0f;
+		float Softness = 0.0f;
+		float Threshold = 0.0f;
+		float EdgeSoftness = 0.1f;
+		float BaseBias = 0.0f;
+		float BlendBias = 0.0f;
+	};
+
+	// Generator-layer Height Curve sublayer, carrying the prepared scalar-ramp GPU payload.
+	struct FGeneratorHeightCurveRenderData
+	{
+		float Amount = 1.0f;
+		uint32 CurveCount = 0;
+		uint32 CurveInterpolation = 0;
+		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> CurvePoints;
+	};
+
+	// Generator-layer Height Color Ramp sublayer, carrying the prepared colour-ramp GPU payload.
+	struct FGeneratorHeightColorRampRenderData
+	{
+		FName OutputName;
+		uint32 StopCount = 0;
+		uint32 Interpolation = 0;
+		TStaticArray<float, FMixtormatColorRamp::MaxStops> Positions;
+		TStaticArray<FVector4f, FMixtormatColorRamp::MaxStops> Colors;
+	};
+
 	struct FBoundaryIdRenderData
 	{
 		bool bExplicitSource = false;
@@ -942,7 +973,6 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
 		int32 SourceChildIndex = INDEX_NONE;
-		FMixtormatHeightBlend GeneratorHeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Replace);
 		// Hash of this child's own settings for FMixtormatNodeCache; 0 when caching is off.
 		uint64 CacheKey = 0;
 		// Source index of the feature this child gates. INDEX_NONE keeps layer scope.
@@ -960,6 +990,9 @@ namespace MixtormatGpuCompositor
 
 		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
+		FGeneratorHeightBlendRenderData HeightBlend;
+		FGeneratorHeightCurveRenderData HeightCurve;
+		FGeneratorHeightColorRampRenderData HeightColorRamp;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
@@ -999,6 +1032,9 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef CentreUV = nullptr;
 		FRDGTextureRef Orientation = nullptr;
 		TMap<FName, FRDGTextureRef> NamedMasks;
+		// Colour outputs published by Generator-layer sublayers (Height Color Ramp), for later
+		// albedo/material references. Keyed by the sublayer's authored output name.
+		TMap<FName, FRDGTextureRef> NamedColors;
 		FRDGTextureRef BoundaryField = nullptr;
 		bool bHashedIds = false;
 	};
@@ -1436,6 +1472,10 @@ namespace MixtormatGpuCompositor
 		// height phase share one evaluation.
 		TMap<int32, TArray<FRDGTextureRef, TInlineAllocator<7>>> GeneratorFields;
 
+		// Each Generator module's signed height, keyed by source child index, so a later Height
+		// Blend sublayer can read another module's result.
+		TMap<int32, FRDGTextureRef> GeneratorModuleHeights;
+
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
 
@@ -1499,6 +1539,7 @@ namespace MixtormatGpuCompositor
 
 			bGeneratedHeight = false;
 			GeneratorFields.Reset();
+			GeneratorModuleHeights.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};

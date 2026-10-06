@@ -52,7 +52,6 @@ float Slip;
 float Tilt;
 float ChamferAmount;
 float ChamferEdge;
-float HeightScale;
 
 Texture2D<float> CrackHeight;
 Texture2D<float> CrackDelta;

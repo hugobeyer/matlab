@@ -599,6 +599,9 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
+		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
+		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -1279,6 +1282,18 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			? LOCTEXT("ColorIdChildName", "Color ID")
 			: FText::FromString(IdPath.GetAssetName());
 	}
+	if (Child.Type == EMixtormatLayerChildType::HeightBlend)
+	{
+		return LOCTEXT("HeightBlendChildName", "Height Blend");
+	}
+	if (Child.Type == EMixtormatLayerChildType::HeightCurve)
+	{
+		return LOCTEXT("HeightCurveChildName", "Height Curve");
+	}
+	if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
+	{
+		return LOCTEXT("HeightColorRampChildName", "Height Color Ramp");
+	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
 		: Child.Mask.MaskTexture.ToSoftObjectPath();
@@ -1756,6 +1771,51 @@ const FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata() const
 {
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
+}
+
+FMixtormatGeneratorHeightBlend* SMixtormat::GetSelectedHeightBlend()
+{
+	return const_cast<FMixtormatGeneratorHeightBlend*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedHeightBlend());
+}
+
+const FMixtormatGeneratorHeightBlend* SMixtormat::GetSelectedHeightBlend() const
+{
+	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
+	{
+		return Child->Type == EMixtormatLayerChildType::HeightBlend ? &Child->HeightBlend : nullptr;
+	}
+	return nullptr;
+}
+
+FMixtormatGeneratorHeightCurve* SMixtormat::GetSelectedHeightCurve()
+{
+	return const_cast<FMixtormatGeneratorHeightCurve*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedHeightCurve());
+}
+
+const FMixtormatGeneratorHeightCurve* SMixtormat::GetSelectedHeightCurve() const
+{
+	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
+	{
+		return Child->Type == EMixtormatLayerChildType::HeightCurve ? &Child->HeightCurve : nullptr;
+	}
+	return nullptr;
+}
+
+FMixtormatGeneratorHeightColorRamp* SMixtormat::GetSelectedHeightColorRamp()
+{
+	return const_cast<FMixtormatGeneratorHeightColorRamp*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedHeightColorRamp());
+}
+
+const FMixtormatGeneratorHeightColorRamp* SMixtormat::GetSelectedHeightColorRamp() const
+{
+	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
+	{
+		return Child->Type == EMixtormatLayerChildType::HeightColorRamp ? &Child->HeightColorRamp : nullptr;
+	}
+	return nullptr;
 }
 
 const FMixtormatCracks* SMixtormat::GetSelectedCracks() const

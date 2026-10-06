@@ -848,12 +848,17 @@ namespace MixtormatGpuCompositor
 						AddLayerHeightSmoothPasses(Ctx, LayerCtx, Layer);
 						if (Layer.bGenerator && LayerCtx.GeneratorBundle.Height)
 						{
-							const int32 BelowIndex = 1 - (LayerIndex & 1);
-							FRDGTextureRef SourceHeight = Ctx.OutputHeight[BelowIndex];
 							LayerCtx.bGeneratedHeight = true;
+							// The running generator height is a signed delta around 0, while the document height
+							// below is an accumulated absolute field. The normal helper reads Previous - Current,
+							// so feed it the delta against zero rather than comparing incompatible domains.
+							FRDGTextureRef ZeroHeight = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+								Request.Resolution, PF_R32_FLOAT, FClearValueBinding::Black,
+								TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.GeneratorNormalZero"));
+							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ZeroHeight), FLinearColor::Black);
 							FRDGTextureRef FormedNormal = GraphBuilder.CreateTexture(
 								LayerCtx.LayerInputN->Desc, TEXT("Mixtormat.GeneratorLayerNormal"));
-							AddHeightDerivedNormalPass(Ctx, SourceHeight, LayerCtx.LayerInputHeight,
+							AddHeightDerivedNormalPass(Ctx, LayerCtx.LayerInputHeight, ZeroHeight,
 								LayerCtx.LayerInputN, LayerCtx.LayerInputRAM, FormedNormal, nullptr,
 								Request.Resolution, HeightDerivedNormalStrength, false,
 								TEXT("GeneratorLayer"));

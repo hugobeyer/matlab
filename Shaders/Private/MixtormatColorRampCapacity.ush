@@ -1,0 +1,2 @@
+#pragma once
+#define MIXTORMAT_COLOR_RAMP_MAX_STOPS 8

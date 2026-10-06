@@ -184,8 +184,6 @@ public:
 		SHADER_PARAMETER(float, FacetFalloff)
 		SHADER_PARAMETER(float, FacetRandom)
 		SHADER_PARAMETER(float, FacetAlign)
-		SHADER_PARAMETER(uint32, HeightMode)
-		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(int32, MaxLeaves)
 		SHADER_PARAMETER(int32, CellsV)
 		SHADER_PARAMETER(float, RowHeight)
@@ -267,7 +265,6 @@ public:
 		SHADER_PARAMETER(float, HeightGain)
 		SHADER_PARAMETER(float, HeightVariation)
 		SHADER_PARAMETER(uint32, FacetIds)
-		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PebbleHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPebbleCoverage)
@@ -389,7 +386,6 @@ public:
 		SHADER_PARAMETER(float, Tilt)
 		SHADER_PARAMETER(float, ChamferAmount)
 		SHADER_PARAMETER(float, ChamferEdge)
-		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackDelta)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CrackMask)
@@ -508,9 +504,12 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	const TCHAR* Name)
 {
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+	// The reduce is only needed for the zero-preserving normalization. Normalize off uses the raw
+	// signed field, so the min/max dispatch is skipped entirely.
 	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
 		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
 	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
+	if (bNormalize)
 	{
 		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
@@ -530,8 +529,8 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
 		P->OutputSize = Size;
-		P->OutLow = -0.5f;
-		P->OutHigh = 0.5f;
+		P->OutLow = -1.0f;
+		P->OutHigh = 1.0f;
 		P->NormalizeMode = bNormalize ? 1u : 2u;
 		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
 		P->SourceField = Field;
@@ -636,14 +635,6 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 
-		SHADER_PARAMETER(uint32, HeightOp)
-		SHADER_PARAMETER(float, HeightSoftness)
-		SHADER_PARAMETER(float, BlendAmount)
-		SHADER_PARAMETER(float, HbStrength)
-		SHADER_PARAMETER(float, HbThreshold)
-		SHADER_PARAMETER(float, HbEdgeSoftness)
-		SHADER_PARAMETER(float, HbBaseBias)
-		SHADER_PARAMETER(float, HbBlendBias)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, IdField)
@@ -668,6 +659,90 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
+
+// Generator-layer Height Blend sublayer: combines the running signed height with another module's.
+class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightBlendCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightBlendCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, Op)
+		SHADER_PARAMETER(uint32, HasSource)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, Scale)
+		SHADER_PARAMETER(float, Softness)
+		SHADER_PARAMETER(float, Threshold)
+		SHADER_PARAMETER(float, EdgeSoftness)
+		SHADER_PARAMETER(float, BaseBias)
+		SHADER_PARAMETER(float, BlendBias)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightBlendCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightBlend.usf", "MainCS", SF_Compute);
+
+// Generator-layer Height Curve sublayer: remaps the running signed height through the scalar ramp.
+class FMixtormatGeneratorHeightCurveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightCurveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightCurveCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(uint32, CurveCount)
+		SHADER_PARAMETER(uint32, CurveInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, CurvePoints, [FMixtormatScalarRamp::MaxPoints])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightCurveCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightCurve.usf", "MainCS", SF_Compute);
+
+// Generator-layer Height Color Ramp sublayer: maps the running signed height through a colour ramp.
+class FMixtormatGeneratorHeightColorRampCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightColorRampCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightColorRampCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, StopCount)
+		SHADER_PARAMETER(uint32, Interpolation)
+		SHADER_PARAMETER_SCALAR_ARRAY(float, Positions, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightColorRampCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightColorRamp.usf", "MainCS", SF_Compute);
 
 namespace
 {
@@ -716,6 +791,91 @@ namespace
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.Combine"), Shader, P,
 			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	}
+
+	// Generator-layer Height Blend sublayer. Source is the referenced module's signed height, or
+	// the running height itself when nothing is referenced.
+	FRDGTextureRef AddGeneratorHeightBlendPass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
+		FRDGTextureRef SourceHeight, const FGeneratorHeightBlendRenderData& Blend)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Out = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.HeightBlend"));
+		TShaderMapRef<FMixtormatGeneratorHeightBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorHeightBlendCS::FParameters>();
+		P->OutputSize = Size;
+		P->Op = static_cast<uint32>(Blend.Op);
+		P->HasSource = Blend.SourceChildIndex != INDEX_NONE ? 1u : 0u;
+		P->Amount = Blend.Amount;
+		P->Scale = Blend.Scale;
+		P->Softness = Blend.Softness;
+		P->Threshold = Blend.Threshold;
+		P->EdgeSoftness = Blend.EdgeSoftness;
+		P->BaseBias = Blend.BaseBias;
+		P->BlendBias = Blend.BlendBias;
+		P->RunningHeight = RunningHeight;
+		P->SourceHeight = SourceHeight;
+		P->OutHeight = GraphBuilder.CreateUAV(Out);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightBlend"), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Out;
+	}
+
+	// Generator-layer Height Curve sublayer.
+	FRDGTextureRef AddGeneratorHeightCurvePass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
+		const FGeneratorHeightCurveRenderData& Curve)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Out = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.HeightCurve"));
+		TShaderMapRef<FMixtormatGeneratorHeightCurveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorHeightCurveCS::FParameters>();
+		P->OutputSize = Size;
+		P->Amount = Curve.Amount;
+		P->CurveCount = Curve.CurveCount;
+		P->CurveInterpolation = Curve.CurveInterpolation;
+		for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+		{
+			P->CurvePoints[Index] = Curve.CurvePoints[Index];
+		}
+		P->RunningHeight = RunningHeight;
+		P->OutHeight = GraphBuilder.CreateUAV(Out);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightCurve"), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Out;
+	}
+
+	// Generator-layer Height Color Ramp sublayer. Returns the published colour field.
+	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
+		const FGeneratorHeightColorRampRenderData& Ramp)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Out = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.HeightColorRamp"));
+		TShaderMapRef<FMixtormatGeneratorHeightColorRampCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorHeightColorRampCS::FParameters>();
+		P->OutputSize = Size;
+		P->StopCount = Ramp.StopCount;
+		P->Interpolation = Ramp.Interpolation;
+		for (int32 Index = 0; Index < FMixtormatColorRamp::MaxStops; ++Index)
+		{
+			GET_SCALAR_ARRAY_ELEMENT(P->Positions, Index) = Ramp.Positions[Index];
+			P->Colors[Index] = Ramp.Colors[Index];
+		}
+		P->RunningHeight = RunningHeight;
+		P->OutColor = GraphBuilder.CreateUAV(Out);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightColorRamp"), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Out;
 	}
 
 	FRDGTextureRef RemapBundleField(FMixtormatComposeContext& Ctx, FRDGTextureRef Field,
@@ -1430,9 +1590,6 @@ namespace
 			P->FacetFalloff = Rock.FacetFalloff;
 			P->FacetRandom = Rock.FacetRandom;
 			P->FacetAlign = Rock.FacetAlign;
-			// Build and Field must never bake these combine-only settings into cached outputs.
-			P->HeightMode = static_cast<uint32>(EMixtormatRockHeightMode::Raw);
-			P->HeightScale = 1.0f;
 		};
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,
@@ -1601,8 +1758,8 @@ namespace
 			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
 			Stored.Append(Outputs, RockSlotCount);
 		}
-		// Independent normalised gate, including field-only evaluation; never the mode-selected
-		// or flow-modified layer height and never affected by HeightScale.
+		// Independent normalised gate, including field-only evaluation; never the flow-modified
+		// layer height.
 		if (Bundle)
 		{
 
@@ -1619,31 +1776,9 @@ namespace
 			}
 		}
 
-		const auto Combine = [&](FRDGTextureRef Field, const EMixtormatRockHeightMode HeightMode,
-			const float HeightScale, const TCHAR* Name)
-		{
-			FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-								Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-			FMixtormatRockFormationCS::FPermutationDomain Permutation;
-			Permutation.Set<FMixtormatRockFormationCS::FStage>(2);
-			TShaderMapRef<FMixtormatRockFormationCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-			auto* P = GraphBuilder.AllocParameters<FMixtormatRockFormationCS::FParameters>();
-			FillParameters(P);
-			P->HeightMode = static_cast<uint32>(HeightMode);
-			P->HeightScale = HeightScale;
-			P->RockHeight = Field;
-			P->RockIds = Outputs[5];
-			P->OutHeight = GraphBuilder.CreateUAV(Combined);
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(GraphBuilder,
-				RDG_EVENT_NAME("%s.L%d.C%d", Name, LayerCtx.LayerIndex, Child.SourceChildIndex),
-				Shader, P, Groups);
-			return Combined;
-		};
-
-		// Raw generator-native field. Shared signed normalization below is the only output convention.
-		FRDGTextureRef RockField = Outputs[0];
-		FRDGTextureRef Height = Combine(RockField, EMixtormatRockHeightMode::Raw, 1.0f, TEXT("Mixtormat.Rock.LayerHeight"));
+		// Raw generator-native signed field. The shared signed normalization pass is the only output
+		// convention; there is no per-generator height mode or scale any more.
+		FRDGTextureRef Height = Outputs[0];
 		if (Bundle) { Bundle->Height = Height; }
 		return Height;
 	}
@@ -1693,7 +1828,6 @@ namespace
 			P->Tilt = Cracks.Tilt;
 			P->ChamferAmount = Cracks.ChamferAmount;
 			P->ChamferEdge = Cracks.ChamferEdge;
-			P->HeightScale = Cracks.HeightScale;
 		};
 		const auto Make = [&GraphBuilder, Size](EPixelFormat Format, const TCHAR* Name)
 		{
@@ -1906,7 +2040,6 @@ namespace
 			P->HeightGain = Pebbles.HeightGain;
 			P->HeightVariation = Pebbles.HeightVariation;
 			P->FacetIds = Pebbles.bFacetIds ? 1u : 0u;
-			P->HeightScale = Pebbles.HeightScale;
 		};
 
 		// Node-cache slots: height, coverage, edge distance, random, IDs.
@@ -2121,6 +2254,34 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
+		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
+		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
+		{
+			FRDGTextureRef Source = RunningHeight;
+			if (Child.HeightBlend.SourceChildIndex != INDEX_NONE)
+			{
+				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(Child.HeightBlend.SourceChildIndex))
+				{
+					Source = *Found;
+				}
+			}
+			RunningHeight = AddGeneratorHeightBlendPass(Ctx, RunningHeight, Source, Child.HeightBlend);
+			continue;
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightCurve)
+		{
+			RunningHeight = AddGeneratorHeightCurvePass(Ctx, RunningHeight, Child.HeightCurve);
+			continue;
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
+		{
+			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RunningHeight, Child.HeightColorRamp);
+			Bundle.NamedColors.Add(Child.HeightColorRamp.OutputName, Color);
+			Ctx.PublishedFieldOutputs.Add(
+				FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Child.HeightColorRamp.OutputName},
+				FPublishedField{EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false});
+			continue;
+		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
@@ -2147,15 +2308,21 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		}
 		if (!Module.Height) { continue; }
-		Module.Height = AddSignedGeneratorHeightPasses(
-			Ctx.GraphBuilder, Module.Height, Size,
-			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
-			TEXT("Mixtormat.Generator.SignedHeight"));
+		// Flow runs on the generator's native field, before the shared signed normalization: the
+		// flow algorithm reads the field's own amplitude for its seed threshold and carve depth.
 		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}
+		// The shared signed output contract: zero-preserving max-absolute normalization to -1..1,
+		// then Height Scale (which may exceed -1..1). Applied after flow.
+		Module.Height = AddSignedGeneratorHeightPasses(
+			Ctx.GraphBuilder, Module.Height, Size,
+			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+			TEXT("Mixtormat.Generator.SignedHeight"));
+		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
+		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
 
 		// The only publication point: every module publishes under its own child index, after its
 		// flow. The layer's default IDs are therefore the last module that produced any.

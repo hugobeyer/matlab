@@ -3,6 +3,8 @@
 #include "Compositing/MixtormatGeneratorGather.h"
 
 #include "Compositing/MixtormatComposeHash.h"
+#include "MixtormatColorRampMath.h"
+#include "MixtormatScalarRampMath.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -89,7 +91,6 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.Tilt = Finite(Cracks.CrackTilt, Defaults.CrackTilt);
 		Out.ChamferAmount = Finite(Cracks.CrackChamferAmount, Defaults.CrackChamferAmount);
 		Out.ChamferEdge = Finite(Cracks.CrackChamferEdge, Defaults.CrackChamferEdge);
-		Out.HeightScale = Finite(Cracks.CrackHeightScale, Defaults.CrackHeightScale);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
@@ -147,8 +148,6 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.FacetFalloff = Finite(Rock.RockFacetFalloff, Defaults.RockFacetFalloff);
 		Out.FacetRandom = Finite(Rock.RockFacetRandom, Defaults.RockFacetRandom);
 		Out.FacetAlign = Finite(Rock.RockFacetAlign, Defaults.RockFacetAlign);
-		Out.HeightMode = Rock.RockHeightMode;
-		Out.HeightScale = Finite(Rock.RockHeightScale, Defaults.RockHeightScale);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
@@ -190,7 +189,6 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.HeightGain = Finite(Pebbles.PebbleHeightGain, Defaults.PebbleHeightGain);
 		Out.HeightVariation = Finite(Pebbles.PebbleHeightVariation, Defaults.PebbleHeightVariation);
 		Out.bFacetIds = Pebbles.bPebbleFacetIds;
-		Out.HeightScale = Finite(Pebbles.PebbleHeightScale, Defaults.PebbleHeightScale);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
@@ -269,6 +267,88 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		default:
 			break;
 		}
+	}
+}
+
+void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
+	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer)
+{
+	// Sublayers exist only on Generator layers, and a disabled layer must not gather them.
+	if (!bGeneratorLayer || !Layer.bEnabled) { return; }
+
+	switch (LayerChild.Type)
+	{
+	case EMixtormatLayerChildType::HeightBlend:
+	{
+		const FMixtormatGeneratorHeightBlend& Blend = LayerChild.HeightBlend;
+		if (!Blend.bEnabled) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::HeightBlend;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FGeneratorHeightBlendRenderData& Out = ChildData.HeightBlend;
+		const auto Finite = [](const float Value, const float Fallback)
+		{
+			return FMath::IsFinite(Value) ? Value : Fallback;
+		};
+		Out.Op = static_cast<int32>(Blend.Op);
+		Out.Amount = Finite(Blend.Amount, 1.0f);
+		Out.Scale = Finite(Blend.Scale, 1.0f);
+		Out.Softness = Finite(Blend.Softness, 0.0f);
+		Out.Threshold = Finite(Blend.Threshold, 0.0f);
+		Out.EdgeSoftness = Finite(Blend.EdgeSoftness, 0.1f);
+		Out.BaseBias = Finite(Blend.BaseBias, 0.0f);
+		Out.BlendBias = Finite(Blend.BlendBias, 0.0f);
+		// Resolve the referenced module to this layer's child index. Only an earlier module can
+		// have produced a height by the time this sublayer runs.
+		Out.SourceChildIndex = INDEX_NONE;
+		if (Blend.SourceChildId.IsValid())
+		{
+			for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
+			{
+				if (Layer.Children[Index].ChildId == Blend.SourceChildId)
+				{
+					Out.SourceChildIndex = Index;
+					break;
+				}
+			}
+		}
+		break;
+	}
+	case EMixtormatLayerChildType::HeightCurve:
+	{
+		const FMixtormatGeneratorHeightCurve& Curve = LayerChild.HeightCurve;
+		if (!Curve.bEnabled) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::HeightCurve;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FGeneratorHeightCurveRenderData& Out = ChildData.HeightCurve;
+		Out.Amount = FMath::IsFinite(Curve.Amount) ? Curve.Amount : 1.0f;
+		const MixtormatScalarRampMath::FGpuPayload Payload =
+			MixtormatScalarRampMath::PrepareGpuPayload(Curve.Curve);
+		Out.CurveCount = Payload.PointCount;
+		Out.CurveInterpolation = Payload.Interpolation;
+		Out.CurvePoints = Payload.Points;
+		break;
+	}
+	case EMixtormatLayerChildType::HeightColorRamp:
+	{
+		const FMixtormatGeneratorHeightColorRamp& Ramp = LayerChild.HeightColorRamp;
+		if (!Ramp.bEnabled) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::HeightColorRamp;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
+		Out.OutputName = Ramp.OutputName.IsNone() ? FName(TEXT("HeightColor")) : Ramp.OutputName;
+		const MixtormatColorRampMath::FGpuPayload Payload =
+			MixtormatColorRampMath::PrepareGpuPayload(Ramp.Ramp);
+		Out.StopCount = Payload.StopCount;
+		Out.Interpolation = Payload.Interpolation;
+		Out.Positions = Payload.Positions;
+		Out.Colors = Payload.Colors;
+		break;
+	}
+	default:
+		break;
 	}
 }
 }

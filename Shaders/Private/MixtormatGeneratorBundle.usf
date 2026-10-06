@@ -8,15 +8,6 @@
 // 6 orientation (radians), 7 signed scalar distance, 8 Strata bed boundary, 9 height combine.
 int2 OutputSize;
 
-uint HeightOp;
-float HeightSoftness;
-float BlendAmount;
-// Height Blend op only: see FMixtormatHeightBlend.
-float HbStrength;
-float HbThreshold;
-float HbEdgeSoftness;
-float HbBaseBias;
-float HbBlendBias;
 Texture2D<float2> WarpedUV;
 Texture2D<float> ScalarField;
 Texture2D<uint> IdField;
