@@ -330,6 +330,7 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 		.ExpandableRange(RangeOptions.bExpandable)
 		.HardMinValue(RangeOptions.HardMin)
 		.HardMaxValue(RangeOptions.HardMax)
+		.KeepPopupOpenOnCommit(RangeOptions.bKeepPopupOpenOnCommit)
 		.Precision(bInteger ? 0 : 3)
 		.ToolTip(ToolTip)
 		.OnValueChanged(OnValueChanged)

@@ -19,6 +19,9 @@ struct FMixtormatSliderRangeOptions
 	TAttribute<bool> bExpandable = false;
 	TAttribute<double> HardMin = -UE_BIG_NUMBER;
 	TAttribute<double> HardMax = UE_BIG_NUMBER;
+	// Developer popovers are live editors, not one-shot menus. Keeping focus inside the
+	// popover on Enter/Tab prevents Slate's menu stack from dismissing it after a value commit.
+	bool bKeepPopupOpenOnCommit = false;
 };
 
 // One-row value control in the Blender idiom: a single bar carrying the label on the left,
@@ -46,6 +49,7 @@ public:
 		, _ExpandableRange(false)
 		, _HardMinValue(-UE_BIG_NUMBER)
 		, _HardMaxValue(UE_BIG_NUMBER)
+		, _KeepPopupOpenOnCommit(false)
 	{}
 		SLATE_ATTRIBUTE(FText, Label)
 		SLATE_ATTRIBUTE(double, Value)
@@ -73,6 +77,7 @@ public:
 		// default. Editor-side only; never reaches a shader.
 		SLATE_ATTRIBUTE(double, HardMinValue)
 		SLATE_ATTRIBUTE(double, HardMaxValue)
+		SLATE_ARGUMENT(bool, KeepPopupOpenOnCommit)
 		SLATE_ATTRIBUTE(FText, ToolTip)
 		SLATE_EVENT(FMixtormatOnSliderValueChanged, OnValueChanged)
 		SLATE_EVENT(FSimpleDelegate, OnReset)
@@ -104,7 +109,8 @@ public:
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
-	virtual bool SupportsKeyboardFocus() const override { return false; }
+	virtual FReply OnFocusReceived(const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent) override;
+	virtual bool SupportsKeyboardFocus() const override { return bKeepPopupOpenOnCommit; }
 
 private:
 	double GetValue() const;
@@ -133,6 +139,7 @@ private:
 	TAttribute<bool> ExpandableAttribute;
 	TAttribute<double> HardMinAttribute;
 	TAttribute<double> HardMaxAttribute;
+	bool bKeepPopupOpenOnCommit = false;
 	// Grown ends of the soft range. Kept after the drag so the bar stays scaled while the
 	// value lives out there; dropped when a drag starts back inside the soft range.
 	TOptional<double> ExpandedMin;

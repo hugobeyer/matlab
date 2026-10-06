@@ -1106,6 +1106,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 		const bool bMax,
 		const float OtherFallback)
 	{
+		FMixtormatSliderRangeOptions Options;
+		Options.bKeepPopupOpenOnCommit = true;
 		Rows->AddSlot().AutoHeight()
 			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
@@ -1139,7 +1141,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 						}
 					}),
 					FSimpleDelegate(),
-					LOCTEXT("DevOverrideBoundHint", "Session-only. Typed values were never restricted by the UI range."))
+					LOCTEXT("DevOverrideBoundHint", "Session-only. Typed values were never restricted by the UI range."),
+					Options)
 			];
 	};
 	AddBoundRow(LOCTEXT("DevOverrideMin", "Override Min"), MetaMin, false, MetaMax);
@@ -1261,6 +1264,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		Options.bExpandable = true;
 		Options.HardMin = HardMin;
 		Options.HardMax = HardMax;
+		Options.bKeepPopupOpenOnCommit = true;
 		Rows->AddSlot()
 			.AutoHeight()
 			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
@@ -1303,6 +1307,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				LOCTEXT("DevAuthoringLabel", "Label"),
 				SNew(SEditableTextBox)
 				.Text(FText::FromString(Current.Label))
+				.ClearKeyboardFocusOnCommit(false)
 				.HintText(LOCTEXT("DevAuthoringLabelHint", "Display label override"))
 				.OnTextChanged(FOnTextChanged::CreateLambda([Update](const FText& Text)
 				{
@@ -1430,6 +1435,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		};
 		FMixtormatSliderRangeOptions Options;
 		Options.bExpandable = true;
+		Options.bKeepPopupOpenOnCommit = true;
 		Rows->AddSlot()
 			.AutoHeight()
 			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)

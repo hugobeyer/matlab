@@ -32,6 +32,7 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	ExpandableAttribute = InArgs._ExpandableRange;
 	HardMinAttribute = InArgs._HardMinValue;
 	HardMaxAttribute = InArgs._HardMaxValue;
+	bKeepPopupOpenOnCommit = InArgs._KeepPopupOpenOnCommit;
 	OnValueChanged = InArgs._OnValueChanged;
 	OnReset = InArgs._OnReset;
 	OnBeginDrag = InArgs._OnBeginDrag;
@@ -68,7 +69,7 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 		.Font(ControlValueTextStyle.Font)
 		.ColorAndOpacity(ControlValueTextStyle.ColorAndOpacity)
 		.SelectAllTextWhenFocused(true)
-		.ClearKeyboardFocusOnCommit(true)
+		.ClearKeyboardFocusOnCommit(!bKeepPopupOpenOnCommit)
 		.RevertTextOnEscape(true)
 		.Visibility(EVisibility::Collapsed)
 		.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
@@ -171,12 +172,34 @@ void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit:
 	{
 		CommitValue(Parsed, false);
 	}
+
+	// Enter normally clears keyboard focus after SEditableText commits. In an application-menu
+	// submenu that is also interpreted as leaving the menu stack, which closes the developer
+	// authoring popup. Put focus on this slider instead. Tab is deliberately not redirected here:
+	// Slate's navigation is allowed to continue to the next focusable developer slider.
+	if (bKeepPopupOpenOnCommit && CommitType == ETextCommit::OnEnter
+		&& FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::SetDirectly);
+	}
 }
 
 FVector2D SMixtormatSlider::ComputeDesiredSize(float) const
 {
 	const Mixtormat::FMixtormatControlMetrics& Layout = FMixtormatThemeStore::GetResolved().ControlLayout;
 		return FVector2D(Layout.RowFieldMinWidth, Layout.RowHeight);
+}
+
+FReply SMixtormatSlider::OnFocusReceived(const FGeometry&, const FFocusEvent& InFocusEvent)
+{
+	// Only the opt-in developer sliders participate in keyboard navigation. When Tab lands on
+	// one, enter its text field immediately so successive Tab commits can move through the editor
+	// without ever dropping focus out of the popup.
+	if (bKeepPopupOpenOnCommit && InFocusEvent.GetCause() == EFocusCause::Navigation)
+	{
+		BeginTextEntry();
+	}
+	return FReply::Handled();
 }
 
 FCursorReply SMixtormatSlider::OnCursorQuery(const FGeometry&, const FPointerEvent&) const
