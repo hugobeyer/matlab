@@ -31,6 +31,7 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	virtual void Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) override;
+	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override;
 	virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
 
 protected:
@@ -57,11 +58,23 @@ protected:
 	virtual void SetInterpolation(int32 Index) override;
 	virtual FText GetInterpolationLabel(int32 Index) const override;
 	virtual const FSlateBrush* GetInterpolationIcon(int32 Index) const override;
+	virtual FVector2f GetMarkerScreenPosition(const FVector2D& Size, int32 Index) const override;
+
+	// Screen Y of the colour-stop handle under the gradient bar (shared by paint and hit-test).
+	float GetHandleScreenY(const FVector2D& Size) const;
 
 private:
 	void OpenStopPicker(int32 StopIndex);
+	void ApplyPreset(int32 PresetIndex);
+	void SetSelectedStopColor(FLinearColor Color);
+	void SetSelectedStopX(float X);
+	FReply OnSwatchClicked();
+	TSharedRef<SWidget> BuildSelectedStopRow();
+	TSharedRef<SWidget> BuildPresetStrip();
+	void RebuildChrome();
 
 	TAttribute<FMixtormatColorRamp> RampAttribute;
 	FMixtormatColorRamp Ramp;
 	FOnMixtormatColorRampChanged OnChanged;
+	TSharedPtr<SVerticalBox> ChromeBox;
 };

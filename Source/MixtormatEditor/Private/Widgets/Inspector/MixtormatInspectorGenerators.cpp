@@ -11,6 +11,7 @@
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -808,37 +809,36 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
             LOCTEXT("HeightBlendAmount", "Amount"), Blend,
             &FMixtormatGeneratorHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
             LOCTEXT("HeightBlendAmountHint", "How much of the combined result replaces the running height.")),
-        SNew(SBox)
-        .Visibility_Lambda([OpIs]()
+        SNew(SWidgetSwitcher)
+        .WidgetIndex_Lambda([OpIs]() -> int32
         {
-            return OpIs(EMixtormatGeneratorHeightOp::Multiply)
-                ? EVisibility::Visible : EVisibility::Collapsed;
+            if (OpIs(EMixtormatGeneratorHeightOp::Multiply)) { return 0; }
+            if (OpIs(EMixtormatGeneratorHeightOp::Min)
+                || OpIs(EMixtormatGeneratorHeightOp::Max)
+                || OpIs(EMixtormatGeneratorHeightOp::HeightBlend)) { return 1; }
+            return 2;
         })
+        + SWidgetSwitcher::Slot()
         [
             MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
                 LOCTEXT("HeightBlendScale", "Scale"), Blend,
                 &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
                 LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor. With no source the module is neutral."))
+        ]
+        + SWidgetSwitcher::Slot()
+        [
+            MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                LOCTEXT("HeightBlendSoftness", "Softness"), Blend,
+                &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
+                LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min, Max and Height Blend, in height units. 0 is a hard join."))
+        ]
+        + SWidgetSwitcher::Slot()
+        [
+            SNullWidget::NullWidget
         ]));
 
-    AddSliderRow(Panel, SNew(SBox)
-        .Visibility_Lambda([OpIs]()
-        {
-            return OpIs(EMixtormatGeneratorHeightOp::Min)
-                || OpIs(EMixtormatGeneratorHeightOp::Max)
-                || OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
-                ? EVisibility::Visible : EVisibility::Collapsed;
-        })
-        [
-            MixtormatRow::MakePair(
-                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-                    LOCTEXT("HeightBlendSoftness", "Softness"), Blend,
-                    &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
-                    LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min, Max and Height Blend, in height units. 0 is a hard join.")),
-                SNullWidget::NullWidget)
-        ]);
-
-    AddSliderRow(Panel, SNew(SBox)
+    AddSliderRow(Panel,
+        SNew(SBox)
         .Visibility_Lambda([OpIs]()
         {
             return OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
@@ -853,8 +853,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
                     LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend,
                     &FMixtormatGeneratorHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005))
         ]);
-
-    AddSliderRow(Panel, SNew(SBox)
+    AddSliderRow(Panel,
+        SNew(SBox)
         .Visibility_Lambda([OpIs]()
         {
             return OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
@@ -1234,11 +1234,147 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		];
 }
 
-// The Noise inspector panel is an integration-pass registration, like the capability and menu
-// entries: it is an SMixtormat member (BuildNoiseControls), and the declaration lives in
-// SMixtormat.h beside BuildCliffStrataControls, which this file does not own. The panel itself
-// follows the BuildCliffStrataControls shape -- OUTPUT card (Normalize Height, Scale), then
-// Type / Seed / Scale, Detail / Roughness / Lacunarity disabled rather than hidden on the
-// single-octave families, Offset X/Y, and Direction disabled everywhere but Bars.
+
+TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
+{
+	const auto Noise = [this]() { return GetSelectedNoise(); };
+	const auto IsBars = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N && N->NoiseType == EMixtormatNoiseType::Bars;
+	};
+	const auto IsMultiOctave = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		if (!N) { return false; }
+		switch (N->NoiseType)
+		{
+		case EMixtormatNoiseType::FBM:
+		case EMixtormatNoiseType::Ridged:
+		case EMixtormatNoiseType::Billow:
+			return true;
+		default:
+			return false;
+		}
+	};
+
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Cards, LOCTEXT("NoiseOutput", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseHeightScale", "Scale"), Noise, &FMixtormatNoise::NoiseHeightScale, -4.0, 4.0, 1.0, 0.01,
+				LOCTEXT("NoiseHeightScaleHint", "Scales the signed generator height after normalization.")),
+			MixtormatRow::MakeTrailing(
+				LOCTEXT("NoiseNormalizeHeight", "Normalize"),
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Noise]()
+					{
+						const FMixtormatNoise* N = Noise();
+						return N && N->bNoiseNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this, Noise](const ECheckBoxState State)
+					{
+						if (FMixtormatNoise* N = Noise())
+						{
+							N->bNoiseNormalizeHeight = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+						}
+					}),
+					LOCTEXT("NoiseNormalizeHeightHint", "Zero-preserving max-absolute normalize of the module height.")))));
+	}
+	{
+		const TSharedRef<SVerticalBox> Pattern = AddCard(Cards, LOCTEXT("NoisePattern", "PATTERN"));
+		AddSliderRow(Pattern, MakeMemberEnum<FMixtormatNoise, EMixtormatNoiseType>(
+			LOCTEXT("NoiseType", "Type"), Noise, &FMixtormatNoise::NoiseType,
+			LOCTEXT("NoiseTypeHint", "Noise family. Worley types publish Region IDs; Bars uses Direction."),
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+		AddSliderRow(Pattern, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatNoise>(
+				LOCTEXT("NoiseSeed", "Seed"), Noise, &FMixtormatNoise::NoiseSeed, 0.0, 9999.0, 1),
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseScale", "Scale"), Noise, &FMixtormatNoise::NoiseScale, 1.0, 64.0, 8.0, 0.1,
+				LOCTEXT("NoiseScaleHint", "Lattice cells across the tile."))));
+		AddSliderRow(Pattern,
+			SNew(SBox)
+			.IsEnabled_Lambda([IsMultiOctave]() { return IsMultiOctave(); })
+			[
+				MixtormatRow::MakePair(
+					MakeMemberSliderInt<FMixtormatNoise>(
+						LOCTEXT("NoiseDetail", "Detail"), Noise, &FMixtormatNoise::NoiseDetail, 1.0, 8.0, 4,
+						LOCTEXT("NoiseDetailHint", "Octave count. Active for FBM, Ridged and Billow.")),
+					MakeMemberSlider<FMixtormatNoise>(
+						LOCTEXT("NoiseRoughness", "Roughness"), Noise, &FMixtormatNoise::NoiseRoughness, 0.0, 1.0, 0.5, 0.01))
+			]);
+		AddSliderRow(Pattern,
+			SNew(SBox)
+			.IsEnabled_Lambda([IsMultiOctave]() { return IsMultiOctave(); })
+			[
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseLacunarity", "Lacunarity"), Noise, &FMixtormatNoise::NoiseLacunarity, 1.0, 4.0, 2.0, 0.01,
+					LOCTEXT("NoiseLacunarityHint", "Frequency step between octaves."))
+			]);
+	}
+	{
+		const TSharedRef<SVerticalBox> Place = AddCard(Cards, LOCTEXT("NoisePlacement", "PLACEMENT"));
+		AddSliderRow(Place, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseOffsetX", "Offset X"), Noise, &FMixtormatNoise::NoiseOffsetX, -1.0, 1.0, 0.0, 0.01),
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseOffsetY", "Offset Y"), Noise, &FMixtormatNoise::NoiseOffsetY, -1.0, 1.0, 0.0, 0.01)));
+		AddSliderRow(Place,
+			SNew(SBox)
+			.IsEnabled_Lambda([IsBars]() { return IsBars(); })
+			[
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseDirection", "Direction"), Noise, &FMixtormatNoise::NoiseDirection, 0.0, 360.0, 0.0, 1.0,
+					LOCTEXT("NoiseDirectionHint", "Bars only: stripe advance angle; snaps to a tileable direction."))
+			]);
+	}
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("NoiseHeading", "NOISE"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
+					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
+					{
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::Noise;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("NoiseEnabledHint", "Enable this noise module"))
+				])
+			[
+				Cards
+			]
+		];
+}
 
 #undef LOCTEXT_NAMESPACE

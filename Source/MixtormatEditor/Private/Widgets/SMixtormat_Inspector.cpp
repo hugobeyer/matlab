@@ -475,6 +475,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildRockFormationControls()]
 					+ SScrollBox::Slot()[BuildPebblesControls()]
 					+ SScrollBox::Slot()[BuildCliffStrataControls()]
+					+ SScrollBox::Slot()[BuildNoiseControls()]
 					+ SScrollBox::Slot()[BuildHeightBlendModuleControls()]
 					+ SScrollBox::Slot()[BuildHeightCurveControls()]
 					+ SScrollBox::Slot()[BuildHeightColorRampControls()]

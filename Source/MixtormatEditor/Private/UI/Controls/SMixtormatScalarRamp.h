@@ -79,6 +79,7 @@ protected:
 	virtual float GetInputViewYMin() const override { return bDragging ? DragViewYMin : ViewYMin; }
 	virtual float GetInputViewYMax() const override { return bDragging ? DragViewYMax : ViewYMax; }
 	virtual void FrameView() override { bAutoZoom = true; FrameCurve(); }
+	virtual FVector2f GetMarkerScreenPosition(const FVector2D& Size, int32 Index) const override;
 
 private:
 	enum class EEscapeArm : uint8 { None, Canonical, Hard };

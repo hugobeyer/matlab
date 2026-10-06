@@ -246,9 +246,10 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	if (Bundle)
 	{
 		Bundle->Height = Height;
-		// Stable cell identity, published through the canonical region-ID path so the ID
-		// consumers below this row read it like any other producer's IDs.
-		if (Ids)
+		// Only the Worley family produces stable cell IDs. EmptyRegionIds is non-null (a
+		// binding placeholder), so gating on Ids alone would publish a fake ID map for every
+		// non-Worley family.
+		if (bProducesIds)
 		{
 			Bundle->RegionIds = Ids;
 		}

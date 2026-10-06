@@ -92,8 +92,21 @@ protected:
 	virtual float GetInputViewYMin() const { return GetViewYMin(); }
 	virtual float GetInputViewYMax() const { return GetViewYMax(); }
 	virtual void FrameView() {}
+	// Screen-space centre of the interactive marker for the given point. Scalar ramps map the
+	// curve (X,Y); colour ramps place handles under the gradient bar. Hit-testing and selection
+	// rings must use this rather than assuming graph Y = 0.
+	virtual FVector2f GetMarkerScreenPosition(const FVector2D& Size, int32 Index) const = 0;
 
 	// ---- Shared helpers -----------------------------------------------------------------------
+	// Local graph rectangle shared by paint, hit-testing and drag mapping (excludes toolbar).
+	struct FGraphRect
+	{
+		float X0 = 0.0f;
+		float Y0 = 0.0f;
+		float X1 = 0.0f;
+		float Y1 = 0.0f;
+	};
+	FGraphRect GetGraphRect(const FVector2D& Size) const;
 	float XToScreen(const FVector2D& Size, float X) const;
 	float ScreenToX(const FVector2D& Size, float ScreenX) const;
 	float YToScreen(const FVector2D& Size, float Y) const;

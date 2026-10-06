@@ -1861,6 +1861,18 @@ const FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata() const
 	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
 }
 
+FMixtormatNoise* SMixtormat::GetSelectedNoise()
+{
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Noise ? &Generator->Noise : nullptr;
+}
+
+const FMixtormatNoise* SMixtormat::GetSelectedNoise() const
+{
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Noise ? &Generator->Noise : nullptr;
+}
+
 FMixtormatGeneratorHeightBlend* SMixtormat::GetSelectedHeightBlend()
 {
 	return const_cast<FMixtormatGeneratorHeightBlend*>(

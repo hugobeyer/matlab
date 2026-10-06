@@ -9,6 +9,12 @@
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Colors/SColorPicker.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace MixtormatColorRampPrivate
 {
@@ -46,6 +52,24 @@ void SMixtormatColorRamp::Construct(const FArguments& Args)
 	OnBeginInteractiveEdit = Args._OnBeginInteractiveEdit;
 	OnEndInteractiveEdit = Args._OnEndInteractiveEdit;
 	BuildLayout();
+	// Chrome under the shared toolbar/graph: preset chips + selected-stop swatch/position.
+	ChromeBox = SNew(SVerticalBox);
+	RebuildChrome();
+	const TSharedRef<SWidget> Existing = ChildSlot.GetWidget();
+	ChildSlot
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()[Existing]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)[ChromeBox.ToSharedRef()]
+	];
+	if (SelectedPoint == INDEX_NONE && Ramp.Stops.Num() > 0) { SelectedPoint = 0; }
+}
+
+FVector2D SMixtormatColorRamp::ComputeDesiredSize(float LayoutScaleMultiplier) const
+{
+	const FVector2D Base = SMixtormatRampEditorBase::ComputeDesiredSize(LayoutScaleMultiplier);
+	// Preset strip (~18px) + stop row (~22px) + gaps stacked under the shared graph.
+	return FVector2D(Base.X, Base.Y + 48.0f);
 }
 
 void SMixtormatColorRamp::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime,
@@ -114,12 +138,14 @@ void SMixtormatColorRamp::NotifyPointRemoved(const int32 RemovedIndex)
 	{
 		--SelectedPoint;
 	}
+	RebuildChrome();
 }
 
 void SMixtormatColorRamp::NotifyPointInserted(const int32 InsertedIndex)
 {
 	// Inserting a stop selects the new stop so the user can immediately recolour it.
 	SelectedPoint = InsertedIndex;
+	RebuildChrome();
 }
 
 bool SMixtormatColorRamp::IsEndpointLocked(const int32 Index) const
@@ -131,6 +157,7 @@ bool SMixtormatColorRamp::IsEndpointLocked(const int32 Index) const
 void SMixtormatColorRamp::OnRampEdited(const bool bInteractive)
 {
 	OnChanged.ExecuteIfBound(Ramp);
+	if (!bInteractive) { RebuildChrome(); }
 }
 
 void SMixtormatColorRamp::SetInterpolation(const int32 Index)
@@ -161,10 +188,9 @@ const FSlateBrush* SMixtormatColorRamp::GetInterpolationIcon(const int32 Index) 
 void SMixtormatColorRamp::PaintRampContent(FSlateWindowElementList& Elements, const int32 Layer,
 	const FGeometry& Geometry, const FVector2D& Size) const
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
-	const float Y1 = static_cast<float>(Size.Y) - Pad;
+	const FGraphRect Rect = GetGraphRect(Size);
+	const float Y0 = Rect.Y0;
+	const float Y1 = Rect.Y1;
 	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
 
 	// The gradient bar, sampled across the domain. One box per sample, so the bar reads the same
@@ -189,14 +215,10 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 	const bool bActive, const bool bHover) const
 {
 	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
-	const float Y1 = static_cast<float>(Size.Y) - Pad;
-	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
-	const float SX = XToScreen(Size, Ramp.Stops[Index].X);
+	const FVector2f Marker = GetMarkerScreenPosition(Size, Index);
+	const float SX = Marker.X;
+	const float HandleY = Marker.Y;
 	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
-	const float HandleY = Y0 + BarHeight + R;
 	const bool bSelected = Index == SelectedPoint;
 	// Selected stop gets a clear accent outline/ring so it stays visible while not being dragged.
 	if (bSelected)
@@ -218,6 +240,240 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 		FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(FVector2f(SX - R, HandleY - R))),
 		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
 		MixtormatColorRampPrivate::Opaque(Ramp.Stops[Index].Color));
+}
+
+
+float SMixtormatColorRamp::GetHandleScreenY(const FVector2D& Size) const
+{
+	const FGraphRect Rect = GetGraphRect(Size);
+	const float BarHeight = FMath::Max((Rect.Y1 - Rect.Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
+	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	return Rect.Y0 + BarHeight + R;
+}
+
+FVector2f SMixtormatColorRamp::GetMarkerScreenPosition(const FVector2D& Size, const int32 Index) const
+{
+	if (!Ramp.Stops.IsValidIndex(Index))
+	{
+		return FVector2f::ZeroVector;
+	}
+	return FVector2f(XToScreen(Size, Ramp.Stops[Index].X), GetHandleScreenY(Size));
+}
+
+namespace MixtormatColorRampPresets
+{
+	struct FPreset
+	{
+		const TCHAR* Name = nullptr;
+		TArray<FMixtormatColorRampStop> Stops;
+	};
+
+	static FPreset Make(const TCHAR* Name, const TArray<FMixtormatColorRampStop>& Stops)
+	{
+		FPreset P;
+		P.Name = Name;
+		P.Stops = Stops;
+		return P;
+	}
+
+	// Compact built-in material-oriented gradients over the signed height domain [-1, 1].
+	static TArray<FPreset> All()
+	{
+		TArray<FPreset> Out;
+		Out.Add(Make(TEXT("Stone"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.12f, 0.12f, 0.13f)},
+			FMixtormatColorRampStop{-0.25f, FLinearColor(0.28f, 0.27f, 0.26f)},
+			FMixtormatColorRampStop{0.35f, FLinearColor(0.48f, 0.46f, 0.43f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.72f, 0.70f, 0.66f)},
+		}));
+		Out.Add(Make(TEXT("Clay"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.22f, 0.12f, 0.08f)},
+			FMixtormatColorRampStop{-0.2f, FLinearColor(0.42f, 0.24f, 0.16f)},
+			FMixtormatColorRampStop{0.4f, FLinearColor(0.62f, 0.38f, 0.26f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.78f, 0.58f, 0.42f)},
+		}));
+		Out.Add(Make(TEXT("Oxide"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.08f, 0.05f, 0.04f)},
+			FMixtormatColorRampStop{-0.15f, FLinearColor(0.35f, 0.12f, 0.06f)},
+			FMixtormatColorRampStop{0.3f, FLinearColor(0.65f, 0.22f, 0.08f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.85f, 0.45f, 0.18f)},
+		}));
+		Out.Add(Make(TEXT("Moss"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.06f, 0.08f, 0.04f)},
+			FMixtormatColorRampStop{-0.2f, FLinearColor(0.12f, 0.22f, 0.08f)},
+			FMixtormatColorRampStop{0.35f, FLinearColor(0.28f, 0.42f, 0.16f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.48f, 0.58f, 0.28f)},
+		}));
+		Out.Add(Make(TEXT("Mineral"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.10f, 0.12f, 0.18f)},
+			FMixtormatColorRampStop{-0.3f, FLinearColor(0.18f, 0.28f, 0.42f)},
+			FMixtormatColorRampStop{0.2f, FLinearColor(0.35f, 0.55f, 0.62f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.75f, 0.82f, 0.88f)},
+		}));
+		Out.Add(Make(TEXT("Sand"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.28f, 0.22f, 0.14f)},
+			FMixtormatColorRampStop{-0.15f, FLinearColor(0.55f, 0.45f, 0.28f)},
+			FMixtormatColorRampStop{0.4f, FLinearColor(0.78f, 0.68f, 0.45f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.92f, 0.86f, 0.68f)},
+		}));
+		Out.Add(Make(TEXT("Split Surface"), {
+			FMixtormatColorRampStop{-1.0f, FLinearColor(0.08f, 0.08f, 0.09f)},
+			FMixtormatColorRampStop{-0.05f, FLinearColor(0.22f, 0.20f, 0.18f)},
+			FMixtormatColorRampStop{0.05f, FLinearColor(0.55f, 0.52f, 0.48f)},
+			FMixtormatColorRampStop{1.0f, FLinearColor(0.88f, 0.86f, 0.82f)},
+		}));
+		return Out;
+	}
+}
+
+void SMixtormatColorRamp::ApplyPreset(const int32 PresetIndex)
+{
+	const TArray<MixtormatColorRampPresets::FPreset> Presets = MixtormatColorRampPresets::All();
+	if (!Presets.IsValidIndex(PresetIndex)) { return; }
+	OnBeginInteractiveEdit.ExecuteIfBound();
+	Ramp.Stops = Presets[PresetIndex].Stops;
+	Ramp.Interpolation = EMixtormatColorRampInterpolation::Linear;
+	Ramp.Sanitize();
+	SelectedPoint = Ramp.Stops.Num() > 0 ? 0 : INDEX_NONE;
+	NotifyEdit(true);
+	OnEndInteractiveEdit.ExecuteIfBound();
+	RebuildChrome();
+}
+
+void SMixtormatColorRamp::SetSelectedStopColor(const FLinearColor Color)
+{
+	if (!Ramp.Stops.IsValidIndex(SelectedPoint)) { return; }
+	Ramp.Stops[SelectedPoint].Color = Color;
+	NotifyEdit(false);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void SMixtormatColorRamp::SetSelectedStopX(const float X)
+{
+	if (!Ramp.Stops.IsValidIndex(SelectedPoint)) { return; }
+	// Endpoints stay locked to the domain; interior stops may move and cross via drag.
+	if (IsEndpointLocked(SelectedPoint)) { return; }
+	Ramp.Stops[SelectedPoint].X = FMath::Clamp(X, DomainMin, DomainMax);
+	// Keep array sorted by swapping through neighbours if needed.
+	while (SelectedPoint > 0 && Ramp.Stops[SelectedPoint].X < Ramp.Stops[SelectedPoint - 1].X)
+	{
+		Swap(Ramp.Stops[SelectedPoint], Ramp.Stops[SelectedPoint - 1]);
+		--SelectedPoint;
+	}
+	while (SelectedPoint + 1 < Ramp.Stops.Num()
+		&& Ramp.Stops[SelectedPoint].X > Ramp.Stops[SelectedPoint + 1].X)
+	{
+		Swap(Ramp.Stops[SelectedPoint], Ramp.Stops[SelectedPoint + 1]);
+		++SelectedPoint;
+	}
+	NotifyEdit(false);
+}
+
+FReply SMixtormatColorRamp::OnSwatchClicked()
+{
+	if (Ramp.Stops.IsValidIndex(SelectedPoint))
+	{
+		OpenStopPicker(SelectedPoint);
+	}
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormatColorRamp::BuildPresetStrip()
+{
+	const TArray<MixtormatColorRampPresets::FPreset> Presets = MixtormatColorRampPresets::All();
+	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+	for (int32 Index = 0; Index < Presets.Num(); ++Index)
+	{
+		const int32 PresetIndex = Index;
+		const FMixtormatColorRampStop& Mid = Presets[Index].Stops[Presets[Index].Stops.Num() / 2];
+		Row->AddSlot().AutoWidth().Padding(Index == 0 ? 0.0f : 3.0f, 0.0f)
+		[
+			SNew(SBox).WidthOverride(18.0f).HeightOverride(14.0f)
+			[
+				SNew(SButton)
+				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+				.ContentPadding(0.0f)
+				.ToolTipText(FText::FromString(Presets[Index].Name))
+				.OnClicked_Lambda([this, PresetIndex]()
+				{
+					ApplyPreset(PresetIndex);
+					return FReply::Handled();
+				})
+				[
+					SNew(SColorBlock)
+					.Color(Mid.Color)
+					.ShowBackgroundForAlpha(false)
+					.Size(FVector2D(18.0, 14.0))
+				]
+			]
+		];
+	}
+	return Row;
+}
+
+TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
+{
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+		[
+			SNew(STextBlock).Text(FText::FromString(TEXT("Stop")))
+			.ColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f)))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 8.0f, 0.0f)
+		[
+			SNew(SBox).WidthOverride(22.0f).HeightOverride(16.0f)
+			[
+				SNew(SButton)
+				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+				.ContentPadding(0.0f)
+				.IsEnabled_Lambda([this]() { return Ramp.Stops.IsValidIndex(SelectedPoint); })
+				.OnClicked(this, &SMixtormatColorRamp::OnSwatchClicked)
+				.ToolTipText(FText::FromString(TEXT("Edit stop colour")))
+				[
+					SNew(SColorBlock)
+					.Color_Lambda([this]()
+					{
+						return Ramp.Stops.IsValidIndex(SelectedPoint)
+							? Ramp.Stops[SelectedPoint].Color : FLinearColor::Black;
+					})
+					.ShowBackgroundForAlpha(false)
+					.Size(FVector2D(22.0, 16.0))
+				]
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 4.0f, 0.0f)
+		[
+			SNew(STextBlock).Text(FText::FromString(TEXT("Pos")))
+			.ColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f)))
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+		[
+			SNew(SSpinBox<float>)
+			.MinValue(DomainMin).MaxValue(DomainMax)
+			.MinSliderValue(DomainMin).MaxSliderValue(DomainMax)
+			.Delta(0.01f)
+			.IsEnabled_Lambda([this]()
+			{
+				return Ramp.Stops.IsValidIndex(SelectedPoint) && !IsEndpointLocked(SelectedPoint);
+			})
+			.Value_Lambda([this]()
+			{
+				return Ramp.Stops.IsValidIndex(SelectedPoint) ? Ramp.Stops[SelectedPoint].X : 0.0f;
+			})
+			.OnValueChanged_Lambda([this](const float V) { SetSelectedStopX(V); })
+			.OnValueCommitted_Lambda([this](const float V, ETextCommit::Type)
+			{
+				SetSelectedStopX(V);
+			})
+		];
+}
+
+void SMixtormatColorRamp::RebuildChrome()
+{
+	if (!ChromeBox.IsValid()) { return; }
+	ChromeBox->ClearChildren();
+	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)[BuildPresetStrip()];
+	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)[BuildSelectedStopRow()];
 }
 
 void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)

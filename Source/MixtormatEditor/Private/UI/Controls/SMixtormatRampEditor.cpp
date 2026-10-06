@@ -64,29 +64,42 @@ void SMixtormatRampEditorBase::BuildLayout()
 	];
 }
 
-float SMixtormatRampEditorBase::XToScreen(const FVector2D& Size, const float X) const
+SMixtormatRampEditorBase::FGraphRect SMixtormatRampEditorBase::GetGraphRect(const FVector2D& Size) const
 {
 	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	return X0 + (X - DomainMin) / FMath::Max(DomainMax - DomainMin, 1.0e-4f) * (X1 - X0);
+	const float Toolbar = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
+		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap;
+	FGraphRect Rect;
+	Rect.X0 = Pad;
+	Rect.X1 = static_cast<float>(Size.X) - Pad;
+	Rect.Y0 = Toolbar + Pad;
+	// Prefer the authored graph height so chrome stacked under the ramp (preset strip, stop
+	// row) cannot stretch the paint/hit band into those widgets.
+	const float PreferredY1 = Toolbar + Pad + Height + Pad;
+	const float SizeY1 = static_cast<float>(Size.Y) - Pad;
+	Rect.Y1 = FMath::Min(PreferredY1, SizeY1);
+	if (Rect.Y1 <= Rect.Y0 + 1.0f) { Rect.Y1 = SizeY1; }
+	return Rect;
+}
+
+float SMixtormatRampEditorBase::XToScreen(const FVector2D& Size, const float X) const
+{
+	const FGraphRect Rect = GetGraphRect(Size);
+	return Rect.X0 + (X - DomainMin) / FMath::Max(DomainMax - DomainMin, 1.0e-4f) * (Rect.X1 - Rect.X0);
 }
 
 float SMixtormatRampEditorBase::ScreenToX(const FVector2D& Size, const float ScreenX) const
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	const float T = FMath::Clamp((ScreenX - X0) / FMath::Max(X1 - X0, 1.0f), 0.0f, 1.0f);
+	const FGraphRect Rect = GetGraphRect(Size);
+	const float T = FMath::Clamp((ScreenX - Rect.X0) / FMath::Max(Rect.X1 - Rect.X0, 1.0f), 0.0f, 1.0f);
 	return DomainMin + T * (DomainMax - DomainMin);
 }
 
 float SMixtormatRampEditorBase::YToScreen(const FVector2D& Size, const float Y) const
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
-	const float Y1 = static_cast<float>(Size.Y) - Pad;
+	const FGraphRect Rect = GetGraphRect(Size);
 	const float ViewMin = GetViewYMin(), ViewMax = GetViewYMax();
-	return Y0 + (ViewMax - Y) / FMath::Max(ViewMax - ViewMin, 1.0e-4f) * (Y1 - Y0);
+	return Rect.Y0 + (ViewMax - Y) / FMath::Max(ViewMax - ViewMin, 1.0e-4f) * (Rect.Y1 - Rect.Y0);
 }
 
 FVector2f SMixtormatRampEditorBase::GraphToScreen(const FVector2D& Size, const float X, const float Y) const
@@ -96,26 +109,22 @@ FVector2f SMixtormatRampEditorBase::GraphToScreen(const FVector2D& Size, const f
 
 FVector2f SMixtormatRampEditorBase::ScreenToGraph(const FVector2D& Size, const FVector2D& Position) const
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
-	const float Y1 = static_cast<float>(Size.Y) - Pad;
+	const FGraphRect Rect = GetGraphRect(Size);
 	const float ViewMin = GetInputViewYMin(), ViewMax = GetInputViewYMax();
-	const float Y = ViewMax - (static_cast<float>(Position.Y) - Y0) / FMath::Max(Y1 - Y0, 1.0f) * (ViewMax - ViewMin);
+	const float Y = ViewMax - (static_cast<float>(Position.Y) - Rect.Y0)
+		/ FMath::Max(Rect.Y1 - Rect.Y0, 1.0f) * (ViewMax - ViewMin);
 	return FVector2f(ScreenToX(Size, static_cast<float>(Position.X)), Y);
 }
 
 int32 SMixtormatRampEditorBase::HitPoint(const FVector2D& Size, const FVector2D& Position) const
 {
-	// 2D hit testing: nearest point within hit radius, selected point on a tie, stable result
-	// when points have similar X positions. The previous X-only test could not tell two nearby
-	// points apart once crossing was allowed.
+	// 2D hit testing against each marker's actual screen position (curve point or colour handle).
 	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.3f;
 	int32 Best = INDEX_NONE;
 	float BestDistSq = Radius * Radius;
 	for (int32 Index = 0; Index < GetPointCount(); ++Index)
 	{
-		const FVector2f Screen = GraphToScreen(Size, GetPointX(Index), 0.0f);
+		const FVector2f Screen = GetMarkerScreenPosition(Size, Index);
 		const float DX = static_cast<float>(Position.X) - Screen.X;
 		const float DY = static_cast<float>(Position.Y) - Screen.Y;
 		const float DistSq = DX * DX + DY * DY;
@@ -163,11 +172,8 @@ FVector2D SMixtormatRampEditorBase::ComputeDesiredSize(float) const
 void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, const int32 Layer,
 	const FGeometry& Geometry, const FVector2D& Size) const
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
-	const float Y1 = static_cast<float>(Size.Y) - Pad;
+	const FGraphRect Rect = GetGraphRect(Size);
+	const float X0 = Rect.X0, X1 = Rect.X1, Y0 = Rect.Y0, Y1 = Rect.Y1;
 	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
 	const FVector2f GraphSize(X1 - X0, Y1 - Y0);
 	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(GraphSize,

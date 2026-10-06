@@ -514,6 +514,9 @@ private:
 	FMixtormatCliffStrata* GetSelectedCliffStrata();
 	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
 	TSharedRef<SWidget> BuildCliffStrataControls();
+	FMixtormatNoise* GetSelectedNoise();
+	const FMixtormatNoise* GetSelectedNoise() const;
+	TSharedRef<SWidget> BuildNoiseControls();
 	FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend();
 	const FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend() const;
 	TSharedRef<SWidget> BuildHeightBlendModuleControls();

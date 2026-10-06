@@ -104,12 +104,27 @@ void SMixtormatScalarRamp::FinishPointDrag()
 
 void SMixtormatScalarRamp::SwapPointState(const int32 IndexA, const int32 IndexB)
 {
+	// Full (X,Y) payload must travel with the drag identity. Shared SwapPoints already swaps X;
+	// Y has to move here or the neighbour's height stays under the cursor after a cross.
+	if (Ramp.Points.IsValidIndex(IndexA) && Ramp.Points.IsValidIndex(IndexB))
+	{
+		Swap(Ramp.Points[IndexA].Y, Ramp.Points[IndexB].Y);
+	}
 	// EscapeArms must move with its scalar ramp point; otherwise the arm would stay indexed to
 	// the previous array position and silently apply to the wrong point after a crossing swap.
 	if (EscapeArms.IsValidIndex(IndexA) && EscapeArms.IsValidIndex(IndexB))
 	{
 		Swap(EscapeArms[IndexA], EscapeArms[IndexB]);
 	}
+}
+
+FVector2f SMixtormatScalarRamp::GetMarkerScreenPosition(const FVector2D& Size, const int32 Index) const
+{
+	if (!Ramp.Points.IsValidIndex(Index))
+	{
+		return FVector2f::ZeroVector;
+	}
+	return GraphToScreen(Size, Ramp.Points[Index].X, Ramp.Points[Index].Y);
 }
 
 void SMixtormatScalarRamp::NotifyPointRemoved(const int32 RemovedIndex)

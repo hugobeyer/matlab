@@ -234,6 +234,26 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("CliffVoronoi")),NSLOCTEXT("SMixtormat","PreviewOutputCliffVoronoi","Raw Voronoi"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
 			Result.Outputs.Add({FName(TEXT("CliffCoverage")),NSLOCTEXT("SMixtormat","PreviewOutputCliffCoverage","Coverage"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+		{
+			// Value + Gradient always. Region IDs only for Worley families (matches GPU publish).
+			Result.Outputs.Add({FName(TEXT("Value")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseValue", "Value"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::ScalarSigned});
+			Result.Outputs.Add({FName(TEXT("Gradient")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGradient", "Gradient"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::Vector2});
+			const EMixtormatNoiseType NoiseType = Child.Generator.Noise.NoiseType;
+			if (NoiseType == EMixtormatNoiseType::WorleyF1
+				|| NoiseType == EMixtormatNoiseType::WorleyF2
+				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2)
+			{
+				Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+					false, true, false, NAME_None, true, EMixtormatPublishedFieldKind::RegionIds});
+			}
+		}
 		break;
 	case EMixtormatLayerChildType::Effect:
 		if (MixtormatIsGeneratorFlowEffect(EffectType))
