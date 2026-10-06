@@ -109,7 +109,7 @@ if(any(D.xy>=OutputSize))return;int2 p=D.xy;int xm=wi(p.x-1,OutputSize.x),xp=wi(
 // Prototype Shape iteration 2 - horizontal eikonal: LEFT->RIGHT then RIGHT->LEFT.
 if(D.x!=0||D.y>=OutputSize.y)return;int y=D.y;float dx=1.0/max((float)OutputSize.x,1.0),base_u=max(abs(UnitDistance),1e-6);
 float val=RawHeight[int2(0,y)];
-[loop]for(int x=0;x<(int)OutputSize.x;++x){int2 p=int2(x,y);float h=RawHeight[p],v=clamp(VoronoiSmooth[p],0.0,1.0),sv=(v*2-1)*max(0.0,1+(v*2-1)*CarveVoronoi),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==0)val=h;else if(Reverse){val-=fall;val=max(val,h);}else{val+=fall;val=min(val,h);}OutSweep[p]=val;}
+[loop]for(int x=0;x<(int)OutputSize.x;++x){int2 p=int2(x,y);float h=RawHeight[p],v=clamp(SweepIn[p],0.0,1.0),sv=(v*2-1)*max(0.0,1+(v*2-1)*CarveVoronoi),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==0)val=h;else if(Reverse){val-=fall;val=max(val,h);}else{val+=fall;val=min(val,h);}OutSweep[p]=val;}
 val=RawHeight[int2((int)OutputSize.x-1,y)];
 [loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);float h=RawHeight[p],current=OutSweep[p],depth=abs(current-h),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),modulation=clamp(depth/u,0.0,1.0),voronoi=clamp(VoronoiSmooth[p],0.0,1.0),carve_scale=max(0.0,1+(voronoi*2-1)*CarveVoronoi),sv=(modulation*2-1)*carve_scale,fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==(int)OutputSize.x-1)val=h;else if(Reverse){val-=fall;val=max(val,h);val=max(val,current);}else{val+=fall;val=min(val,h);val=min(val,current);}OutSweep[p]=val;}
 #elif CLIFF_STAGE==4

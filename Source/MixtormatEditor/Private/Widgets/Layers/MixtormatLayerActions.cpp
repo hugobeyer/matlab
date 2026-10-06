@@ -52,6 +52,8 @@ void SMixtormat::InitializeNewLayer(
 			return &Existing != &Layer && Existing.DisplayName.EqualTo(DefaultName);
 		}));
 		Layer.DisplayName = DefaultName;
+		// A generator replaces the height below it rather than only rising above it.
+		Layer.HeightBlend.Op = EMixtormatHeightOp::Replace;
 		break;
 	}
 	}
