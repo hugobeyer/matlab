@@ -237,8 +237,15 @@ void SMixtormat::AddSharedChildMenuItems(
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const bool bInstance = Child && Child->IsInstance();
 
-	AddGeneratorFlowMenuItems(Menu, Address);
-	Menu.Separator();
+	// Generator-flow tools only exist for a generator that can carry them. On anything else the
+	// three rows were permanently disabled -- clutter no state could ever enable -- so they are
+	// omitted rather than shown greyed. A generator that can own them keeps them, disabled only
+	// while the current state (a full scope, say) blocks the add.
+	if (Child && CanOwnGeneratorFlow(*Child))
+	{
+		AddGeneratorFlowMenuItems(Menu, Address);
+		Menu.Separator();
+	}
 	Menu.Item(
 		LOCTEXT("CopyChildContext", "Copy"),
 		MixtormatIcons::Duplicate(),

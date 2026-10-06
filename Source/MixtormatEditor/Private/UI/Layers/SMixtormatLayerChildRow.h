@@ -52,6 +52,12 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleActive)
 		SLATE_EVENT(FPointerEventHandler, OnDragDetected)
 		SLATE_EVENT(FOnGetContent, OnGetContextMenu)
+		// Shift + right button: the same published-output menu the full context menu nests under
+		// "Outputs", opened directly. An accelerator only -- the full menu keeps its own entry.
+		SLATE_EVENT(FOnGetContent, OnGetOutputMenu)
+		// Whether this child publishes anything copyable. False leaves Shift + right button on the
+		// normal menu rather than opening an empty popup.
+		SLATE_ATTRIBUTE(bool, bHasOutputMenu)
 		// Left click on the badge: the child's blend mode, when it has one.
 		SLATE_EVENT(FOnGetContent, OnGetBadgeMenu)
 	SLATE_END_ARGS()
@@ -63,9 +69,18 @@ public:
 
 private:
 
+	// Which of the two menus the anchor should build for the open it is about to do: the full
+	// context menu, or the published-output menu Shift + right button asked for.
+	TSharedRef<SWidget> BuildContextMenuContent();
+
 	TAttribute<bool> bSelected;
 	TAttribute<bool> bInstanceSource;
 	FSimpleDelegate OnSelected;
 	FPointerEventHandler OnRowDragDetected;
+	FOnGetContent OnGetContextMenu;
+	FOnGetContent OnGetOutputMenu;
+	TAttribute<bool> bHasOutputMenu;
+	// Set for the duration of one open, in OnMouseButtonDown, before the anchor is opened.
+	bool bOutputMenuOnly = false;
 	TSharedPtr<SMenuAnchor> ContextAnchor;
 };

@@ -667,6 +667,21 @@
 			"snap": 0,
 			"clampMin": -4,
 			"clampMax": 4
+		},
+		"Generator.ChamferVoronoi":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMax": 2
+		},
+		"Generator.ChamferWidth":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 0.5,
+			"snap": 0
 		}
 	},
 	"Height Blend":

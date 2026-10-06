@@ -26,6 +26,9 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	bInstanceSource = InArgs._bInstanceSource;
 	OnSelected = InArgs._OnSelected;
 	OnRowDragDetected = InArgs._OnDragDetected;
+	OnGetContextMenu = InArgs._OnGetContextMenu;
+	OnGetOutputMenu = InArgs._OnGetOutputMenu;
+	bHasOutputMenu = InArgs._bHasOutputMenu;
 
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 	const FTextBlockStyle NameTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
@@ -41,7 +44,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 		SAssignNew(ContextAnchor, SMenuAnchor)
 		.Placement(MenuPlacement_MenuRight)
 		.UseApplicationMenuStack(true)
-		.OnGetMenuContent(InArgs._OnGetContextMenu)
+		.OnGetMenuContent(FOnGetContent::CreateSP(this, &SMixtormatLayerChildRow::BuildContextMenuContent))
 		[
 			// Horizontal, not vertical: children stay dark at the left and lift toward the right,
 			// so they remain subordinate to the owning layer's top-to-bottom gradient.
@@ -185,6 +188,10 @@ FReply SMixtormatLayerChildRow::OnMouseButtonDown(const FGeometry&, const FPoint
 	{
 		// Select first, so the menu is built against the child it opened on.
 		OnSelected.ExecuteIfBound();
+		// Shift is an accelerator onto the published outputs, never the only way to reach them:
+		// the full menu still nests the very same content under "Outputs". A child with nothing
+		// to publish keeps the normal menu rather than opening an empty popup.
+		bOutputMenuOnly = MouseEvent.IsShiftDown() && bHasOutputMenu.Get(false) && OnGetOutputMenu.IsBound();
 		if (ContextAnchor.IsValid())
 		{
 			ContextAnchor->SetIsOpen(true);
@@ -205,6 +212,17 @@ FReply SMixtormatLayerChildRow::OnDragDetected(const FGeometry& MyGeometry, cons
 	return OnRowDragDetected.IsBound()
 		? OnRowDragDetected.Execute(MyGeometry, MouseEvent)
 		: FReply::Unhandled();
+}
+
+TSharedRef<SWidget> SMixtormatLayerChildRow::BuildContextMenuContent()
+{
+	// Shift + right button asked for the published outputs directly; everything else gets the full
+	// menu, which nests the very same output content under "Outputs".
+	if (bOutputMenuOnly && OnGetOutputMenu.IsBound())
+	{
+		return OnGetOutputMenu.Execute();
+	}
+	return OnGetContextMenu.Execute();
 }
 
 #undef LOCTEXT_NAMESPACE

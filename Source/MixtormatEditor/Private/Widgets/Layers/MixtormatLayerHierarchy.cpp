@@ -863,6 +863,19 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			{
 				return BuildGroupChildContextMenu(GroupId, ChildIndex);
 			})
+			// Shift + right button opens the published outputs directly, through the same builder
+			// the full menu nests under "Outputs". Gated by whether this child publishes anything,
+			// so a child with no copyable output keeps the normal menu instead of an empty popup.
+			.OnGetOutputMenu_Lambda([this, GroupId, ChildIndex]()
+			{
+				return BuildCopyChildOutputMenu(MakeGroupChildAddress(GroupId, ChildIndex));
+			})
+			.bHasOutputMenu_Lambda([this, GroupId, ChildIndex]()
+			{
+				const FMixtormatLayerGroup* Current = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				return Current && Current->Children.IsValidIndex(ChildIndex)
+					&& !GetCopyableOutputs(GetChildCapabilities(Current->Children[ChildIndex])).IsEmpty();
+			})
 			// Decided here, not in the lambda: Child is a reference into an array the row outlives,
 			// and the answer cannot change without the row being rebuilt anyway.
 			.OnDragDetected_Lambda([this, GroupId, ChildIndex, ChildName, bCanReorder]
@@ -1181,6 +1194,18 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					return bEffect
 						? BuildEffectContextMenu(LayerIndex, ChildIndex)
 						: BuildMaskContextMenu(LayerIndex, ChildIndex);
+				})
+				// Shift + right button opens the published outputs directly, through the same builder
+				// the full menu nests under "Outputs". Gated by whether this child publishes anything,
+				// so a child with no copyable output keeps the normal menu instead of an empty popup.
+				.OnGetOutputMenu_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return BuildCopyChildOutputMenu(MakeChildAddress(LayerIndex, ChildIndex));
+				})
+				.bHasOutputMenu_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					const FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex);
+					return Child && !GetCopyableOutputs(GetChildCapabilities(*Child)).IsEmpty();
 				})
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
