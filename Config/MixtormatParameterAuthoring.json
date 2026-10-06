@@ -514,6 +514,87 @@
 			"uiMax": 1,
 			"snap": 0,
 			"clampMin": 0.0099999997764825821
+		},
+		"Generator.QuarterJitterY":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 1
+		},
+		"Generator.QuarterHeight":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 16
+		},
+		"Generator.QuarterFill":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 1
+		},
+		"Generator.FormationCells:Int":
+		{
+			"default": 3,
+			"uiMin": 0,
+			"uiMax": 6,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 6
+		},
+		"Generator.LeanX":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821,
+			"clampMin": -1,
+			"clampMax": 1
+		},
+		"Generator.LeanY":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821,
+			"clampMin": -1,
+			"clampMax": 1
+		},
+		"Generator.HeightMin":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.10000000149011612,
+			"clampMin": -32,
+			"clampMax": 32
+		},
+		"Generator.HeightMax":
+		{
+			"default": 0.20000000298023224,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.10000000149011612,
+			"clampMin": -32,
+			"clampMax": 32
+		},
+		"Generator.FormationAmount":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 1
 		}
 	}
 }
