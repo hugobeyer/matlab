@@ -764,96 +764,148 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
 
 TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
 {
-	const auto Blend = [this]() { return GetSelectedHeightBlend(); };
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+    const auto Blend = [this]() { return GetSelectedHeightBlend(); };
+    const auto OpIs = [Blend](const EMixtormatGeneratorHeightOp Op)
+    {
+        const FMixtormatGeneratorHeightBlend* B = Blend();
+        return B && B->Op == Op;
+    };
 
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatGeneratorHeightBlend, EMixtormatGeneratorHeightOp>(
-		LOCTEXT("HeightBlendOp", "Operation"), Blend, &FMixtormatGeneratorHeightBlend::Op,
-		LOCTEXT("HeightBlendOpHint", "How the running generator height combines with the referenced module."),
-		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
-	AddSliderRow(Panel, MixtormatRow::MakeTrailing(
-		LOCTEXT("HeightBlendSource", "Source"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
-				if (!B || !B->SourceChildId.IsValid()) { return LOCTEXT("HeightBlendSourceNoneLabel", "None"); }
-				if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-				{
-					for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
-					{
-						if (Child.ChildId == B->SourceChildId) { return GetLayerChildName(Child); }
-					}
-				}
-				return LOCTEXT("HeightBlendSourceMissing", "Missing");
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildHeightBlendSourceMenu)),
-		LOCTEXT("HeightBlendSourceHint", "Another module in this layer whose signed height is the second operand.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-		LOCTEXT("HeightBlendAmount", "Amount"), Blend, &FMixtormatGeneratorHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("HeightBlendAmountHint", "How much of the combined result replaces the running height.")));
+    TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	// Scale belongs to Multiply/Scale alone; Softness is the rounded join shared by Min, Max and
-	// Height Blend. Each row is shown only where the shader actually reads it, so the panel never
-	// offers a control that does nothing for the selected operation.
-	const auto OpIs = [Blend](const EMixtormatGeneratorHeightOp Op)
-	{
-		const FMixtormatGeneratorHeightBlend* B = Blend();
-		return B && B->Op == Op;
-	};
-	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([OpIs]()
-	{
-		return OpIs(EMixtormatGeneratorHeightOp::Multiply) ? EVisibility::Visible : EVisibility::Collapsed;
-	})[
-		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-			LOCTEXT("HeightBlendScale", "Scale"), Blend, &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
-			LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor. With no source the module is neutral."))]);
-	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([OpIs]()
-	{
-		return OpIs(EMixtormatGeneratorHeightOp::Min) || OpIs(EMixtormatGeneratorHeightOp::Max)
-			|| OpIs(EMixtormatGeneratorHeightOp::HeightBlend) ? EVisibility::Visible : EVisibility::Collapsed;
-	})[
-		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-			LOCTEXT("HeightBlendSoftness", "Softness"), Blend, &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
-			LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min, Max and Height Blend, in height units. 0 is a hard join."))]);
+    AddSliderRow(Panel, MixtormatRow::MakePair(
+        MakeMemberEnum<FMixtormatGeneratorHeightBlend, EMixtormatGeneratorHeightOp>(
+            LOCTEXT("HeightBlendOp", "Operation"), Blend, &FMixtormatGeneratorHeightBlend::Op,
+            LOCTEXT("HeightBlendOpHint", "How the running generator height combines with the referenced module."),
+            FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
+        MixtormatRow::MakeTrailing(
+            LOCTEXT("HeightBlendSource", "Source"),
+            MixtormatRow::MakeChip(
+                TAttribute<FText>::CreateLambda([this]()
+                {
+                    const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
+                    if (!B || !B->SourceChildId.IsValid())
+                    {
+                        return LOCTEXT("HeightBlendSourceNoneLabel", "None");
+                    }
+                    if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+                    {
+                        for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
+                        {
+                            if (Child.ChildId == B->SourceChildId)
+                            {
+                                return GetLayerChildName(Child);
+                            }
+                        }
+                    }
+                    return LOCTEXT("HeightBlendSourceMissing", "Missing");
+                }),
+                FOnGetContent::CreateSP(this, &SMixtormat::BuildHeightBlendSourceMenu)),
+            LOCTEXT("HeightBlendSourceHint", "Another module in this layer whose signed height is the second operand."))));
 
-	const TSharedRef<SVerticalBox> Settings = SNew(SVerticalBox)
-		.Visibility_Lambda([Blend]()
-		{
-			const FMixtormatGeneratorHeightBlend* B = Blend();
-			return B && B->Op == EMixtormatGeneratorHeightOp::HeightBlend
-				? EVisibility::Visible : EVisibility::Collapsed;
-		});
-	AddSliderRow(Settings, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-		LOCTEXT("HeightBlendThreshold", "Threshold"), Blend, &FMixtormatGeneratorHeightBlend::Threshold, -1.0, 1.0, 0.0, 0.01));
-	AddSliderRow(Settings, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-		LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend, &FMixtormatGeneratorHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005));
-	AddSliderRow(Settings, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-			LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend, &FMixtormatGeneratorHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
-		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-			LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend, &FMixtormatGeneratorHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01)));
-	AddSliderRow(Panel, Settings);
+    AddSliderRow(Panel, MixtormatRow::MakePair(
+        MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+            LOCTEXT("HeightBlendAmount", "Amount"), Blend,
+            &FMixtormatGeneratorHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
+            LOCTEXT("HeightBlendAmountHint", "How much of the combined result replaces the running height.")),
+        SNew(SBox)
+        .Visibility_Lambda([OpIs]()
+        {
+            return OpIs(EMixtormatGeneratorHeightOp::Multiply)
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                LOCTEXT("HeightBlendScale", "Scale"), Blend,
+                &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
+                LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor. With no source the module is neutral."))
+        ]));
 
-	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightBlend() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightBlendHeading", "HEIGHT BLEND")).InitiallyExpanded(true)
-		.HeaderAction(SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
-				TAttribute<ECheckBoxState>::CreateLambda([this]()
-				{
-					const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
-					return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-				}),
-				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S)
-				{
-					if (FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend())
-					{
-						B->bEnabled = S == ECheckBoxState::Checked;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				}))])
-		[Panel]];
+    AddSliderRow(Panel, SNew(SBox)
+        .Visibility_Lambda([OpIs]()
+        {
+            return OpIs(EMixtormatGeneratorHeightOp::Min)
+                || OpIs(EMixtormatGeneratorHeightOp::Max)
+                || OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            MixtormatRow::MakePair(
+                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                    LOCTEXT("HeightBlendSoftness", "Softness"), Blend,
+                    &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
+                    LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min, Max and Height Blend, in height units. 0 is a hard join.")),
+                SNullWidget::NullWidget)
+        ]);
+
+    AddSliderRow(Panel, SNew(SBox)
+        .Visibility_Lambda([OpIs]()
+        {
+            return OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            MixtormatRow::MakePair(
+                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                    LOCTEXT("HeightBlendThreshold", "Threshold"), Blend,
+                    &FMixtormatGeneratorHeightBlend::Threshold, -1.0, 1.0, 0.0, 0.01),
+                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                    LOCTEXT("HeightBlendEdgeSoftness", "Edge Softness"), Blend,
+                    &FMixtormatGeneratorHeightBlend::EdgeSoftness, 0.0, 1.0, 0.1, 0.005))
+        ]);
+
+    AddSliderRow(Panel, SNew(SBox)
+        .Visibility_Lambda([OpIs]()
+        {
+            return OpIs(EMixtormatGeneratorHeightOp::HeightBlend)
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            MixtormatRow::MakePair(
+                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                    LOCTEXT("HeightBlendBaseBias", "Base Bias"), Blend,
+                    &FMixtormatGeneratorHeightBlend::BaseBias, -1.0, 1.0, 0.0, 0.01),
+                MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+                    LOCTEXT("HeightBlendBlendBias", "Blend Bias"), Blend,
+                    &FMixtormatGeneratorHeightBlend::BlendBias, -1.0, 1.0, 0.0, 0.01))
+        ]);
+
+    return SNew(SBox)
+        .Visibility_Lambda([this]()
+        {
+            return GetSelectedHeightBlend() ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            SNew(SMixtormatInspectorGroup)
+            .Title(LOCTEXT("HeightBlendHeading", "HEIGHT BLEND"))
+            .InitiallyExpanded(true)
+            .HeaderAction(
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    MixtormatRow::MakeCheckbox(
+                        TAttribute<ECheckBoxState>::CreateLambda([this]()
+                        {
+                            const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
+                            return B && B->bEnabled
+                                ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+                        }),
+                        FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State)
+                        {
+                            if (FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend())
+                            {
+                                B->bEnabled = State == ECheckBoxState::Checked;
+                                RefreshLayeredPreview();
+                                RebuildLayerList();
+                            }
+                        }))
+                ])
+            [
+                Panel
+            ]
+        ];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()

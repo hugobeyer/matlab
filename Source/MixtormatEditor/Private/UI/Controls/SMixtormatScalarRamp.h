@@ -42,6 +42,7 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	virtual void Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) override;
 	virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
 	virtual FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent&) override;
 	virtual FReply OnMouseMove(const FGeometry&, const FPointerEvent&) override;
@@ -86,6 +87,7 @@ private:
 	void FrameCurve();
 	void FinishDrag();
 
+	TAttribute<FMixtormatScalarRamp> RampAttribute;
 	FMixtormatScalarRamp Ramp;
 	FOnMixtormatScalarRampChanged OnChanged;
 	float CanonicalXMin = 0.0f;

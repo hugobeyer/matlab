@@ -9,9 +9,26 @@
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 
+namespace MixtormatScalarRampPrivate
+{
+	bool Equals(const FMixtormatScalarRamp& A, const FMixtormatScalarRamp& B)
+	{
+		if (A.Interpolation != B.Interpolation || A.Points.Num() != B.Points.Num()) { return false; }
+		for (int32 Index = 0; Index < A.Points.Num(); ++Index)
+		{
+			if (A.Points[Index].X != B.Points[Index].X || A.Points[Index].Y != B.Points[Index].Y)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
 void SMixtormatScalarRamp::Construct(const FArguments& Args)
 {
-	Ramp = Args._Ramp.Get(FMixtormatScalarRamp());
+	RampAttribute = Args._Ramp;
+	Ramp = RampAttribute.Get(FMixtormatScalarRamp());
 	Ramp.Sanitize();
 	Height = Args._Height;
 	CanonicalXMin = Args._CanonicalXMin;
@@ -30,6 +47,24 @@ void SMixtormatScalarRamp::Construct(const FArguments& Args)
 	EscapeArms.Init(EEscapeArm::None, Ramp.Points.Num());
 	FrameCurve();
 	BuildLayout();
+}
+
+void SMixtormatScalarRamp::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime,
+	const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	if (bDragging || bDraggingFrame || !RampAttribute.IsBound()) { return; }
+
+	FMixtormatScalarRamp AuthoredRamp = RampAttribute.Get(Ramp);
+	AuthoredRamp.Sanitize();
+	if (MixtormatScalarRampPrivate::Equals(Ramp, AuthoredRamp)) { return; }
+
+	Ramp = MoveTemp(AuthoredRamp);
+	EscapeArms.Init(EEscapeArm::None, Ramp.Points.Num());
+	if (!Ramp.Points.IsValidIndex(SelectedPoint)) { SelectedPoint = INDEX_NONE; }
+	HoverPoint = INDEX_NONE;
+	bAutoZoom = true;
+	FrameCurve();
 }
 
 int32 SMixtormatScalarRamp::InsertPointAt(const float X, const float GraphY)
