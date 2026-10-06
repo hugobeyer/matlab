@@ -482,20 +482,20 @@
 	{
 		"Generator.ViewScale":
 		{
-			"default": 2,
+			"default": 3,
 			"uiMin": 1,
-			"uiMax": 3,
+			"uiMax": 5,
 			"snap": 0,
-			"clampMin": 1,
+			"clampMin": 2,
 			"clampMax": 5
 		},
 		"Generator.DepthMin":
 		{
-			"default": 0,
-			"uiMin": 0,
+			"default": -0.5,
+			"uiMin": -0.5,
 			"uiMax": 1,
 			"snap": 0,
-			"clampMin": -0.5,
+			"clampMin": -1,
 			"clampMax": 1
 		},
 		"Generator.DepthMax":
