@@ -1590,6 +1590,7 @@ private:
 	int32 BakeAASamples = 1;
 	EMixtormatStudioLighting StudioLighting = EMixtormatStudioLighting::Neutral;
 	EMixtormatPreviewMesh PreviewMesh = EMixtormatPreviewMesh::Sphere;
+	EMixtormatPlaneOrientation PlaneOrientation = EMixtormatPlaneOrientation::Horizontal;
 	EMixtormatPreviewQuality PreviewQuality = EMixtormatPreviewQuality::Default;
 	EMixtormatPreviewAntiAliasing PreviewAntiAliasing = EMixtormatPreviewAntiAliasing::Temporal;
 	int32 PreviewScreenPercentage = MixtormatPreviewScreenPercentage::Default;

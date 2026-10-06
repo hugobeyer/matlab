@@ -31,6 +31,15 @@ enum class EMixtormatPreviewMesh : uint8
 	Cylinder
 };
 
+// The Plane mesh has a second preview mode: the same authored asset laid flat (Horizontal, its
+// orientation at zero rotation, normal +Z) or stood upright so its normal faces +X. It is only
+// meaningful for EMixtormatPreviewMesh::Plane; every other mesh ignores it.
+enum class EMixtormatPlaneOrientation : uint8
+{
+	Horizontal,
+	VerticalX
+};
+
 // Temporary V-key diagnostic cycle: a raw look at one composited output at a time, unlit, with
 // no toolbar exposure yet. Material has to stay first and at value 0, with 0 doubling as "off"
 // so Material means "untouched".
@@ -147,7 +156,7 @@ public:
 	// when switching between lighting modes.
 	void SetPreviewLightIntensity(float Scale);
 	void SetPreviewSkylightIntensity(float Scale);
-	void SetPreviewMesh(EMixtormatPreviewMesh MeshType);
+	void SetPreviewMesh(EMixtormatPreviewMesh MeshType, EMixtormatPlaneOrientation PlaneOrientation);
 	void SetStudioLighting(EMixtormatStudioLighting LightingPreset);
 	void SetPreviewQuality(EMixtormatPreviewQuality Quality);
 	void SetPreviewAntiAliasing(EMixtormatPreviewAntiAliasing AntiAliasing);
@@ -272,6 +281,7 @@ private:
 	int32 bDebugChildIndex = INDEX_NONE;
 	bool bUsingStudioEnvironment = false;
 	EMixtormatPreviewMesh CurrentPreviewMesh = EMixtormatPreviewMesh::Sphere;
+	EMixtormatPlaneOrientation CurrentPlaneOrientation = EMixtormatPlaneOrientation::Horizontal;
 	EMixtormatPreviewQuality CurrentPreviewQuality = EMixtormatPreviewQuality::Default;
 	bool bDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;

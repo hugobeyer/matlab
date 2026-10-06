@@ -511,7 +511,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	SetStudioLighting(EMixtormatStudioLighting::Neutral);
 
 	SEditorViewport::Construct(SEditorViewport::FArguments());
-	SetPreviewMesh(EMixtormatPreviewMesh::Sphere);
+	SetPreviewMesh(EMixtormatPreviewMesh::Sphere, EMixtormatPlaneOrientation::Horizontal);
 	SetPreviewMaterial(LoadObject<UMaterialInterface>(
 		nullptr,
 		*FMixtormatPaths::PreviewMaterialObjectPath()));
@@ -873,16 +873,25 @@ void SMixtormatPreviewViewport::UpdatePreviewMeshFloorClearance()
 	PreviewMeshComponent->SetRelativeLocation(FVector::ZeroVector);
 	PreviewMeshComponent->UpdateBounds();
 	const float PlaneDisplacementClearance = bDisplacementEnabled ? DisplacementAmount : 0.0f;
-	const float FloorClearance = CurrentPreviewMesh == EMixtormatPreviewMesh::Plane
-		? 2.0f + PlaneDisplacementClearance
-		: 0.5f;
+	// Horizontal Plane keeps its generous clearance so displacement has room. The vertical Plane
+	// is meant to stand on the ground, so its post-rotation bounds are placed with Min.Z at 0 and
+	// no extra clearance is added.
+	const bool bVerticalPlane = CurrentPreviewMesh == EMixtormatPreviewMesh::Plane
+		&& CurrentPlaneOrientation == EMixtormatPlaneOrientation::VerticalX;
+	const float FloorClearance = bVerticalPlane
+		? 0.0f
+		: CurrentPreviewMesh == EMixtormatPreviewMesh::Plane
+			? 2.0f + PlaneDisplacementClearance
+			: 0.5f;
 	const float HeightAboveFloor = -PreviewMeshComponent->Bounds.GetBox().Min.Z + FloorClearance;
 	PreviewMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, HeightAboveFloor));
 	PreviewMeshComponent->UpdateBounds();
 	PreviewTarget = PreviewMeshComponent->Bounds.Origin;
 }
 
-void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshType)
+void SMixtormatPreviewViewport::SetPreviewMesh(
+	const EMixtormatPreviewMesh MeshType,
+	const EMixtormatPlaneOrientation PlaneOrientation)
 {
 	if (!PreviewMeshComponent)
 	{
@@ -933,8 +942,19 @@ void SMixtormatPreviewViewport::SetPreviewMesh(const EMixtormatPreviewMesh MeshT
 		}
 	}
 	PreviewMeshComponent->SetStaticMesh(PreviewMesh);
+	if (MeshType == EMixtormatPreviewMesh::Plane
+		&& PlaneOrientation == EMixtormatPlaneOrientation::VerticalX)
+	{
+		// Stand the flat plane upright so its normal (the mesh's local +Z) faces world +X. A
+		// positive pitch points local +Z at -X, so the quarter turn is negative. It is applied on
+		// top of whatever rotation this mesh needed to lie flat, so the authored plugin asset
+		// (flat at zero) and the engine fallback each reach +X from their own base rather than from
+		// an assumed shared orientation.
+		MeshRotation.Pitch -= 90.0f;
+	}
 	PreviewMeshComponent->SetRelativeRotation(MeshRotation);
 	CurrentPreviewMesh = MeshType;
+	CurrentPlaneOrientation = PlaneOrientation;
 	UpdatePreviewMeshFloorClearance();
 
 	UpdateStudioFloor();

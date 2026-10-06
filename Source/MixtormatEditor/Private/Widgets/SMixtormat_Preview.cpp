@@ -15,6 +15,7 @@
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Rendering/SlateRenderTransform.h"
 
 
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
@@ -225,12 +226,24 @@ FReply SMixtormat::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent
 
 FReply SMixtormat::SetPreviewMesh(const EMixtormatPreviewMesh MeshType)
 {
-	PreviewMesh = MeshType;
+	if (MeshType == EMixtormatPreviewMesh::Plane && PreviewMesh == EMixtormatPreviewMesh::Plane)
+	{
+		// The Plane button is already selected, so a click cycles its orientation rather than
+		// re-selecting the mesh. Every other click path below resets it to Horizontal.
+		PlaneOrientation = PlaneOrientation == EMixtormatPlaneOrientation::Horizontal
+			? EMixtormatPlaneOrientation::VerticalX
+			: EMixtormatPlaneOrientation::Horizontal;
+	}
+	else
+	{
+		PreviewMesh = MeshType;
+		PlaneOrientation = EMixtormatPlaneOrientation::Horizontal;
+	}
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
 		{
-			Viewport->SetPreviewMesh(MeshType);
+			Viewport->SetPreviewMesh(MeshType, PlaneOrientation);
 		}
 	}
 	return FReply::Handled();
@@ -1016,6 +1029,25 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		const FText& ToolTip,
 		const FSlateBrush* Icon)
 	{
+		// The Plane icon turns 90 degrees when the Plane is stood upright, so the button reads its
+		// state before the tooltip is hovered. Only the glyph is transformed -- the checkbox around
+		// it is the hit target, so the layout size is unchanged.
+		TSharedRef<SImage> Glyph = SNew(SImage)
+			.Image(Icon)
+			.ColorAndOpacity_Lambda([this, MeshType]()
+			{
+				// A selected rail button is aria-pressed in the prototype, so the accent reads
+				// as pressed rather than as a separate "selected" colour.
+				return GetPreviewOverlayIconColor(false, PreviewMesh == MeshType);
+			});
+		Glyph->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+		Glyph->SetRenderTransform(TAttribute<TOptional<FSlateRenderTransform>>::CreateLambda([this, MeshType]()
+		{
+			return MeshType == EMixtormatPreviewMesh::Plane
+					&& PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
+				? TOptional<FSlateRenderTransform>(FSlateRenderTransform(FQuat2D(FMath::DegreesToRadians(90.0f))))
+				: TOptional<FSlateRenderTransform>();
+		}));
 		GeometryControls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayButtonGap)
 		[
 			SNew(SBox)
@@ -1027,7 +1059,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				[
 				SNew(SCheckBox)
 				.Style(OverlayToggle)
-				.ToolTipText(ToolTip)
+				.ToolTipText_Lambda([this, MeshType, ToolTip]()
+				{
+					if (MeshType == EMixtormatPreviewMesh::Plane)
+					{
+						return PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
+							? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X")
+							: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal");
+					}
+					return ToolTip;
+				})
 				.IsChecked_Lambda([this, MeshType]()
 				{
 					return PreviewMesh == MeshType ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
@@ -1040,14 +1081,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
 					[
-						SNew(SImage)
-						.Image(Icon)
-						.ColorAndOpacity_Lambda([this, MeshType]()
-						{
-							// A selected rail button is aria-pressed in the prototype, so the accent reads
-							// as pressed rather than as a separate "selected" colour.
-							return GetPreviewOverlayIconColor(false, PreviewMesh == MeshType);
-						})
+						Glyph
 					]
 				]
 			]
