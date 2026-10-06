@@ -179,6 +179,8 @@ struct FRockPat
 	float hvar, lvar, chip, wall_k;
 	float cell_gap, seam_gap, outer_ch, inner_ch;
 	float chamfer, seam_chamfer, chamfer_random, fracture_height_bias;
+	// Sign of the signed chamfer and facet-chip controls: +1 cuts in, -1 raises out.
+	float chamfer_sign, chip_sign;
 	uint seed;
 	float height_clusters, skew;
 	float spin, spin_random, tilt_angle, tilt_dir, tilt_random, size_random, stretch_random;
@@ -752,7 +754,8 @@ float RockLeafHeight(FRockPat P, FRockLeaf L, uint slot, float2 pr, out int cls,
 	float T = L.TopConstant + dot(float2(L.Sx, L.Sy), pr);
 	if (L.ChipOn != 0u)
 	{
-		T -= RockFacetCut(P, L, pr);
+		// Signed facet chips: positive cuts the facets in (current), negative raises them out.
+		T -= P.chip_sign * RockFacetCut(P, L, pr);
 	}
 
 	float H = T;
@@ -778,7 +781,17 @@ float RockLeafHeight(FRockPat P, FRockLeaf L, uint slot, float2 pr, out int cls,
 		if (w > 0.0f)
 		{
 			float bevel = T + ChamferSlope * (di - w);
-			if (bevel < H) { H = bevel; cls = 1; edgeDi = di; edgeW = w; }
+			if (P.chamfer_sign > 0.0f)
+			{
+				if (bevel < H) { H = bevel; cls = 1; edgeDi = di; edgeW = w; }
+			}
+			else if (di >= 0.0f)
+			{
+				// Signed chamfer, negative: reflect the cut about the top so the edge rises by the
+				// bevel depth (T + ChamferSlope * (w - di)) instead of falling.
+				const float raised = 2.0f * T - bevel;
+				if (raised > H) { H = raised; cls = 1; edgeDi = di; edgeW = w; }
+			}
 		}
 	}
 
@@ -889,7 +902,8 @@ FRockPat RockSetup()
 	P.lvar = v[5];
 	P.height_clusters = HeightClusters;
 	P.skew = Skew;
-	P.chip = v[6] * FacetChips;
+	P.chip = v[6] * abs(FacetChips);
+	P.chip_sign = FacetChips < 0.0f ? -1.0f : 1.0f;
 	P.wall_k = tan(radians(v[7]));
 	// Signed domain offset: positive shrinks, negative expands, zero leaves packing unchanged.
 	// 1 is twice the style's natural gap; only positive gaps get the anti-aliasing pixel floor.
@@ -901,8 +915,9 @@ FRockPat RockSetup()
 	// little wider than cliff.
 	P.outer_ch = v[10] / 0.08f;
 	P.inner_ch = v[11] / 0.05f;
-	P.chamfer = ChamferAmount;
-	P.seam_chamfer = ChamferAmount * ROCK_SEAM_CHAMFER;
+	P.chamfer = abs(ChamferAmount);
+	P.seam_chamfer = abs(ChamferAmount) * ROCK_SEAM_CHAMFER;
+	P.chamfer_sign = ChamferAmount < 0.0f ? -1.0f : 1.0f;
 	P.chamfer_random = ChamferRandom;
 	P.fracture_height_bias = FractureHeightBias;
 	P.irr = v[12];
@@ -944,7 +959,10 @@ FRockPat RockSetup()
 	//          shift a site by up to a whole cell sideways.
 	P.build_reach_i = max(2, (int)ceil(2.0f * P.rh));
 	P.build_reach_j = max(2, (int)ceil(2.0f / P.rh));
-	const float reach = 0.5f + 1.0f / max(P.wall_k, 1.0e-4f)
+	// A negative chamfer raises the edge, so the wall falls from higher and reaches further out.
+	const float cellMin = (float)max(min(P.cu, P.cv), 1);
+	const float lipBound = P.chamfer_sign < 0.0f ? ChamferSlope * 0.75f / cellMin : 0.0f;
+	const float reach = 0.5f + (1.0f + lipBound) / max(P.wall_k, 1.0e-4f)
 		+ 0.5f * max(abs(P.cell_gap), abs(P.seam_gap)) + 2.0f * max(abs(P.jag_amp[0]), abs(P.jag_amp[1])) + P.rim_chip_size;
 	P.field_reach_i = max(2, (int)ceil(reach + P.strata) + 1);
 	P.field_reach_j = max(2, (int)ceil(reach / P.rh) + 1);
@@ -957,7 +975,10 @@ FRockPat RockSetup()
 	const float leanMax = tan(radians(abs(P.tilt_angle)))
 		+ tan(radians(abs(P.tilt_random))) * (1.0f + ROCK_PIECE_LEAN);
 	const float chunkWidth = 2.0f * 1.5f * max(1.0f, P.rh);
-	P.height_hi = 1.0f + abs(P.fracture_height_bias);
+	// A negative chamfer raises a lip above the top and a negative facet-chip raises the facets;
+	// bound both for the normalized-height gate. One cell width is a safe upper bound.
+	const float raiseBound = lipBound + (P.chip_sign < 0.0f ? ROCK_FACET_K / cellMin : 0.0f);
+	P.height_hi = 1.0f + abs(P.fracture_height_bias) + raiseBound;
 	P.height_lo = 1.0f - P.height_clusters * (P.hvar + P.lvar) - abs(P.fracture_height_bias)
 		- leanMax * chunkWidth
 		- P.wall_k * 0.5f * max(0.0f, max(P.cell_gap, P.seam_gap));

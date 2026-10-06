@@ -2924,7 +2924,8 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	float RockFracture = 1.0f;
 
 	// Share of each edge's room to the chunk centre; seams take a fixed smaller share.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	// Signed: positive cuts the bevel in (current), zero is no chamfer, negative raises a lip.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float RockChamfer = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
@@ -2997,7 +2998,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
 	float RockRimChipSize = 0.075f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	// Depth of faceted cuts into each chunk. Signed: positive cuts in (current), zero is flat,
+	// negative raises the facets out.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float RockFacetChips = 0.5f;
 
 	// Each round adds two planes; falloff above 1 grows later rounds instead of shrinking them.
