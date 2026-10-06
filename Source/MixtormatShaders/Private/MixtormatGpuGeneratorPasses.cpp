@@ -187,6 +187,8 @@ public:
 		SHADER_PARAMETER(float, FacetFalloff)
 		SHADER_PARAMETER(float, FacetRandom)
 		SHADER_PARAMETER(float, FacetAlign)
+		SHADER_PARAMETER(float, DepthMin)
+		SHADER_PARAMETER(float, DepthMax)
 		SHADER_PARAMETER(int32, MaxLeaves)
 		SHADER_PARAMETER(int32, CellsV)
 		SHADER_PARAMETER(float, RowHeight)
@@ -1609,6 +1611,8 @@ namespace
 			P->FacetFalloff = Rock.FacetFalloff;
 			P->FacetRandom = Rock.FacetRandom;
 			P->FacetAlign = Rock.FacetAlign;
+			P->DepthMin = Rock.DepthMin;
+			P->DepthMax = Rock.DepthMax;
 		};
 
 		// Fixed cache slots: height, top, chamfer, wall, signed boundary distance, IDs,

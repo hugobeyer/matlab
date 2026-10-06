@@ -3024,6 +3024,12 @@ struct MIXTORMATRUNTIME_API FMixtormatRockFormation
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float RockHeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float RockDepthMin = -1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rock Formation|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float RockDepthMax = 1.0f;
 };
 
 // Pebbles: faceted, chamfered stones scattered on a tileable jittered grid. Each stone has its

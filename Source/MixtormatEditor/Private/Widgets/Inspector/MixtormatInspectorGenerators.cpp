@@ -1001,6 +1001,12 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		AddSliderRow(Output, MakeMemberSlider<FMixtormatRockFormation>(
 			LOCTEXT("RockHeightScale", "Scale"), Rock, &FMixtormatRockFormation::RockHeightScale, -4.0, 4.0, 1.0, 0.01,
 			LOCTEXT("RockHeightScaleHint", "Scales the signed generator height after normalization.")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockDepthMin", "Depth Min"), Rock, &FMixtormatRockFormation::RockDepthMin, -4.0, 4.0, -1.0, 0.01,
+			LOCTEXT("RockDepthMinHint", "Minimum depth value after remapping (default -1).")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatRockFormation>(
+			LOCTEXT("RockDepthMax", "Depth Max"), Rock, &FMixtormatRockFormation::RockDepthMax, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("RockDepthMaxHint", "Maximum depth value after remapping (default 1).")));
 	}
 
 	const TSharedRef<SVerticalBox> Cards = Panel;

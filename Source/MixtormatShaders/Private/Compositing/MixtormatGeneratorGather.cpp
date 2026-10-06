@@ -149,11 +149,13 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		Out.FacetFalloff = Finite(Rock.RockFacetFalloff, Defaults.RockFacetFalloff);
 		Out.FacetRandom = Finite(Rock.RockFacetRandom, Defaults.RockFacetRandom);
 		Out.FacetAlign = Finite(Rock.RockFacetAlign, Defaults.RockFacetAlign);
+		Out.DepthMin = Finite(Rock.RockDepthMin, Defaults.RockDepthMin);
+		Out.DepthMax = Finite(Rock.RockDepthMax, Defaults.RockDepthMax);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
 			// Height mode and scale consume the cached field; they do not reshape it.
-			Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode"), TEXT("bRockNormalizeHeight")};
+			Hasher.SkipTopLevel = {TEXT("RockHeightScale"), TEXT("RockHeightMode"), TEXT("bRockNormalizeHeight"), TEXT("RockDepthMin"), TEXT("RockDepthMax")};
 			Hasher.Struct(FMixtormatRockFormation::StaticStruct(), &Rock);
 			// Signed gap now expands the cached outline as well as the height edge planes.
 			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x526F636B47617032ull) | 1ull;

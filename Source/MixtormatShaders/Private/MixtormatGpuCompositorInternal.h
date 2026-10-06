@@ -874,6 +874,8 @@ namespace MixtormatGpuCompositor
 		float FacetFalloff = 4.0f;
 		float FacetRandom = 1.0f;
 		float FacetAlign = 0.75f;
+		float DepthMin = -1.0f;
+		float DepthMax = 1.0f;
 		// Hash of the field-shaping settings only, for the node cache.
 		uint64 FieldKey = 0;
 	};
