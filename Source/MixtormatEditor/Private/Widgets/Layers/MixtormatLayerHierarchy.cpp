@@ -755,26 +755,7 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 
 bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)
 {
-	switch (Child.Type)
-	{
-	case EMixtormatLayerChildType::Effect:      return Child.Effect.bEnabled;
-	case EMixtormatLayerChildType::Generated:   return Child.Generated.bEnabled;
-	case EMixtormatLayerChildType::Craquelure:  return Child.Craquelure.bEnabled;
-	case EMixtormatLayerChildType::ColorId:     return Child.ColorId.bEnabled;
-	case EMixtormatLayerChildType::Filter:      return Child.Filter.bEnabled;
-	case EMixtormatLayerChildType::HsvFilter:   return Child.HsvFilter.bEnabled;
-	case EMixtormatLayerChildType::RandomId:    return Child.RandomId.bEnabled;
-	case EMixtormatLayerChildType::RampId:      return Child.RampId.bEnabled;
-	case EMixtormatLayerChildType::UvFromIds:   return Child.UvId.bEnabled;
-	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
-	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
-	case EMixtormatLayerChildType::PatternId:   return Child.PatternId.bEnabled;
-
-	case EMixtormatLayerChildType::IdGroup:     return Child.IdGroup.bEnabled;
-	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
-	case EMixtormatLayerChildType::Generator:   return Child.Generator.bEnabled;
-	default:                                    return Child.Mask.bEnabled;
-	}
+	return MixtormatLayersPrivate::IsChildEnabled(Child);
 }
 
 void SMixtormat::ClearLayerSelection()
@@ -1081,7 +1062,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			// flag, a context menu with no blend mode on it, and the shared duplicate/instance
 			// items. It is not a mask and must not fall through to the mask row, which would
 			// toggle FMixtormatLayerChild::Mask on a child that has none.
-			|| Child.Type == EMixtormatLayerChildType::Generator;
+			|| Child.Type == EMixtormatLayerChildType::Generator
+			// The Generator sublayers are the same case: they carry their own enable flag, so
+			// their row toggle has to route through the procedural path rather than SetMaskEnabled.
+			|| Child.Type == EMixtormatLayerChildType::HeightBlend
+			|| Child.Type == EMixtormatLayerChildType::HeightCurve
+			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Container->AddChild(
@@ -1231,29 +1217,7 @@ bool SMixtormat::IsLayerChildEnabled(const int32 LayerIndex, const int32 ChildIn
 	{
 		return false;
 	}
-	const FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
-	switch (Child.Type)
-	{
-	case EMixtormatLayerChildType::Effect:    return Child.Effect.bEnabled;
-	case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
-	case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
-	case EMixtormatLayerChildType::ColorId:   return Child.ColorId.bEnabled;
-	case EMixtormatLayerChildType::Filter:    return Child.Filter.bEnabled;
-	case EMixtormatLayerChildType::HsvFilter: return Child.HsvFilter.bEnabled;
-	case EMixtormatLayerChildType::RandomId:  return Child.RandomId.bEnabled;
-	case EMixtormatLayerChildType::RampId:    return Child.RampId.bEnabled;
-	case EMixtormatLayerChildType::UvFromIds: return Child.UvId.bEnabled;
-	case EMixtormatLayerChildType::ReliefFromIds: return Child.ReliefId.bEnabled;
-	case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
-	case EMixtormatLayerChildType::PatternId: return Child.PatternId.bEnabled;
-
-	case EMixtormatLayerChildType::IdGroup:   return Child.IdGroup.bEnabled;
-	case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
-	case EMixtormatLayerChildType::Blur:      return Child.Blur.bEnabled;
-	case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
-	case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
-	default:                                  return Child.Mask.bEnabled;
-	}
+	return MixtormatLayersPrivate::IsChildEnabled(*ResolveChild(LayerIndex, ChildIndex));
 }
 
 #undef LOCTEXT_NAMESPACE

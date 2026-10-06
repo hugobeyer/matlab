@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "Style/MixtormatThemeStore.h"
 
@@ -705,70 +706,10 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	{
 		PreviewOverrideLayers = WorkingLayers;
 		FMixtormatLayerChild& Child = PreviewOverrideLayers[SelectedLayerIndex].Children[BypassedChildIndex];
-		if (Child.Type == EMixtormatLayerChildType::Effect)
-		{
-			Child.Effect.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::Generated)
-		{
-			Child.Generated.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::Craquelure)
-		{
-			Child.Craquelure.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::ColorId)
-		{
-			Child.ColorId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::Filter)
-		{
-			Child.Filter.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::HsvFilter)
-		{
-			Child.HsvFilter.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::RandomId)
-		{
-			Child.RandomId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::RampId)
-		{
-			Child.RampId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::UvFromIds)
-		{
-			Child.UvId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::ReliefFromIds)
-		{
-			Child.ReliefId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds)
-		{
-			Child.BoundaryId.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::PatternId)
-		{
-			Child.PatternId.bEnabled = false;
-		}
-
-		else if (Child.Type == EMixtormatLayerChildType::IdGroup)
-		{
-			Child.IdGroup.bEnabled = false;
-		}
-		else if (Child.Type == EMixtormatLayerChildType::Generator)
-		{
-			// The wrapper, not the payload. Bypass means "this node does not run", and the
-			// gather branch tests FMixtormatGenerator::bEnabled before it looks at the kind --
-			// so one flag turns off every generator rather than one per payload.
-			Child.Generator.bEnabled = false;
-		}
-		else
-		{
-			Child.Mask.bEnabled = false;
-		}
+		// Preview-only: the authored child is untouched. The shared helper is the one place that
+		// knows which payload carries the enable flag, so a new child type cannot fall through to
+		// the Mask payload here either.
+		MixtormatLayersPrivate::SetChildEnabled(Child, false);
 		PreviewLayers = &PreviewOverrideLayers;
 	}
 	if (DebugPreviewMode == EMixtormatDebugPreviewMode::None

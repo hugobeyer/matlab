@@ -67,6 +67,74 @@ namespace MixtormatLayersPrivate
 			|| Child.Type == EMixtormatLayerChildType::Curvature;
 	}
 
+	// The authored enable flag of any child, whatever payload carries it. One place, so a new
+	// child type cannot be added to the stack and silently read or write the Mask payload's flag.
+	bool IsChildEnabled(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Mask:            return Child.Mask.bEnabled;
+		case EMixtormatLayerChildType::Effect:          return Child.Effect.bEnabled;
+		case EMixtormatLayerChildType::Generated:       return Child.Generated.bEnabled;
+		case EMixtormatLayerChildType::Craquelure:      return Child.Craquelure.bEnabled;
+		case EMixtormatLayerChildType::ColorId:         return Child.ColorId.bEnabled;
+		case EMixtormatLayerChildType::Filter:          return Child.Filter.bEnabled;
+		case EMixtormatLayerChildType::HsvFilter:       return Child.HsvFilter.bEnabled;
+		case EMixtormatLayerChildType::RandomId:        return Child.RandomId.bEnabled;
+		case EMixtormatLayerChildType::RampId:          return Child.RampId.bEnabled;
+		case EMixtormatLayerChildType::UvFromIds:       return Child.UvId.bEnabled;
+		case EMixtormatLayerChildType::ReliefFromIds:   return Child.ReliefId.bEnabled;
+		case EMixtormatLayerChildType::BoundaryFromIds: return Child.BoundaryId.bEnabled;
+		case EMixtormatLayerChildType::PatternId:       return Child.PatternId.bEnabled;
+		case EMixtormatLayerChildType::IdGroup:         return Child.IdGroup.bEnabled;
+		case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
+		case EMixtormatLayerChildType::Generator:       return Child.Generator.bEnabled;
+		case EMixtormatLayerChildType::Blur:            return Child.Blur.bEnabled;
+		case EMixtormatLayerChildType::Curvature:       return Child.Curvature.bEnabled;
+		case EMixtormatLayerChildType::HeightBlend:     return Child.HeightBlend.bEnabled;
+		case EMixtormatLayerChildType::HeightCurve:     return Child.HeightCurve.bEnabled;
+		case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
+		default:
+			// A new child type that carries its own enable flag must be named here rather than
+			// silently reporting the Mask payload's flag.
+			checkNoEntry();
+			return true;
+		}
+	}
+
+	void SetChildEnabled(FMixtormatLayerChild& Child, const bool bEnabled)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Mask:            Child.Mask.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Effect:          Child.Effect.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Generated:       Child.Generated.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Craquelure:      Child.Craquelure.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::ColorId:         Child.ColorId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Filter:          Child.Filter.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::HsvFilter:       Child.HsvFilter.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::RandomId:        Child.RandomId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::RampId:          Child.RampId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::UvFromIds:       Child.UvId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::ReliefFromIds:   Child.ReliefId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::BoundaryFromIds: Child.BoundaryId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::PatternId:       Child.PatternId.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::IdGroup:         Child.IdGroup.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Generator:       Child.Generator.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Blur:            Child.Blur.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Curvature:       Child.Curvature.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::HeightBlend:     Child.HeightBlend.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::HeightCurve:     Child.HeightCurve.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::HeightColorRamp: Child.HeightColorRamp.bEnabled = bEnabled; break;
+		default:
+			// A new child type that carries its own enable flag must be named here rather than
+			// silently mutating the Mask payload's flag.
+			checkNoEntry();
+			break;
+		}
+	}
+
 	// Scoping is a property of a child array, not of what owns one. A layer's Children and a
 	// group's shared Children are the same shape and obey the same rules, so these take the array
 	// -- which is what lets one set of creators serve both containers. (They were duplicated per

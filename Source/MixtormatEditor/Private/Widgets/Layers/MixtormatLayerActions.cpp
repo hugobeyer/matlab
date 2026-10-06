@@ -1264,26 +1264,7 @@ FReply SMixtormat::ToggleGroupChildEnabled(const FGuid GroupId, const int32 Chil
 		return FReply::Handled();
 	}
 	FMixtormatLayerChild& Child = Group->Children[ChildIndex];
-	switch (Child.Type)
-	{
-	case EMixtormatLayerChildType::Effect:      Child.Effect.bEnabled = !Child.Effect.bEnabled; break;
-	case EMixtormatLayerChildType::Generated:   Child.Generated.bEnabled = !Child.Generated.bEnabled; break;
-	case EMixtormatLayerChildType::Craquelure:  Child.Craquelure.bEnabled = !Child.Craquelure.bEnabled; break;
-	case EMixtormatLayerChildType::ColorId:     Child.ColorId.bEnabled = !Child.ColorId.bEnabled; break;
-	case EMixtormatLayerChildType::Filter:      Child.Filter.bEnabled = !Child.Filter.bEnabled; break;
-	case EMixtormatLayerChildType::HsvFilter:   Child.HsvFilter.bEnabled = !Child.HsvFilter.bEnabled; break;
-	case EMixtormatLayerChildType::RandomId:    Child.RandomId.bEnabled = !Child.RandomId.bEnabled; break;
-	case EMixtormatLayerChildType::RampId:      Child.RampId.bEnabled = !Child.RampId.bEnabled; break;
-	case EMixtormatLayerChildType::UvFromIds:   Child.UvId.bEnabled = !Child.UvId.bEnabled; break;
-	case EMixtormatLayerChildType::ReliefFromIds: Child.ReliefId.bEnabled = !Child.ReliefId.bEnabled; break;
-	case EMixtormatLayerChildType::BoundaryFromIds: Child.BoundaryId.bEnabled = !Child.BoundaryId.bEnabled; break;
-	case EMixtormatLayerChildType::PatternId:   Child.PatternId.bEnabled = !Child.PatternId.bEnabled; break;
-
-	case EMixtormatLayerChildType::IdGroup:     Child.IdGroup.bEnabled = !Child.IdGroup.bEnabled; break;
-	case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = !Child.OutputReference.bEnabled; break;
-	case EMixtormatLayerChildType::Generator:   Child.Generator.bEnabled = !Child.Generator.bEnabled; break;
-	default:                                    Child.Mask.bEnabled = !Child.Mask.bEnabled; break;
-	}
+	MixtormatLayersPrivate::SetChildEnabled(Child, !MixtormatLayersPrivate::IsChildEnabled(Child));
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();
@@ -1769,58 +1750,7 @@ void SMixtormat::SetGeneratedEnabled(
 
 	// The shared procedural-child row routes mask producers and data filters here.
 	const bool bEnabled = CheckState == ECheckBoxState::Checked;
-	FMixtormatLayerChild& Child = *ResolveChild(LayerIndex, ChildIndex);
-	switch (Child.Type)
-	{
-	case EMixtormatLayerChildType::Generated:
-		Child.Generated.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::Craquelure:
-		Child.Craquelure.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::ColorId:
-		Child.ColorId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::Filter:
-		Child.Filter.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::HsvFilter:
-		Child.HsvFilter.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::RandomId:
-		Child.RandomId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::RampId:
-		Child.RampId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::UvFromIds:
-		Child.UvId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::ReliefFromIds:
-		Child.ReliefId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::BoundaryFromIds:
-		Child.BoundaryId.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::PatternId:
-		Child.PatternId.bEnabled = bEnabled;
-		break;
-
-	case EMixtormatLayerChildType::IdGroup:
-		Child.IdGroup.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::OutputReference:
-		Child.OutputReference.bEnabled = bEnabled;
-		break;
-	case EMixtormatLayerChildType::Generator:
-		// The wrapper's flag. The kind chooses a payload; whether the node runs at all is one
-		// question for the whole category, and the gather branch asks it before it looks at
-		// the kind.
-		Child.Generator.bEnabled = bEnabled;
-		break;
-	default:
-		return;
-	}
+	MixtormatLayersPrivate::SetChildEnabled(*ResolveChild(LayerIndex, ChildIndex), bEnabled);
 
 	RefreshLayeredPreview();
 	RebuildLayerList();

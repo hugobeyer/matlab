@@ -56,6 +56,11 @@ namespace MixtormatLayersPrivate
 
 	bool IsMaskFilter(const FMixtormatLayerChild& Child);
 
+	// The authored enable flag of any child, whatever payload carries it. One place, so a new
+	// child type cannot be added to the stack and silently read or write the Mask payload's flag.
+	bool IsChildEnabled(const FMixtormatLayerChild& Child);
+	void SetChildEnabled(FMixtormatLayerChild& Child, bool bEnabled);
+
 	int32 FindChildById(const TArray<FMixtormatLayerChild>& Children, const FGuid& ChildId);
 
 	int32 GetScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex);
