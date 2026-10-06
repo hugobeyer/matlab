@@ -10,9 +10,34 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Colors/SColorPicker.h"
 
+namespace MixtormatColorRampPrivate
+{
+	bool Equals(const FMixtormatColorRamp& A, const FMixtormatColorRamp& B)
+	{
+		if (A.Interpolation != B.Interpolation || A.Stops.Num() != B.Stops.Num()) { return false; }
+		for (int32 Index = 0; Index < A.Stops.Num(); ++Index)
+		{
+			const FMixtormatColorRampStop& AS = A.Stops[Index];
+			const FMixtormatColorRampStop& BS = B.Stops[Index];
+			if (AS.X != BS.X || AS.Color.R != BS.Color.R || AS.Color.G != BS.Color.G
+				|| AS.Color.B != BS.Color.B || AS.Color.A != BS.Color.A)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	FLinearColor Opaque(const FLinearColor& Color)
+	{
+		return FLinearColor(Color.R, Color.G, Color.B, 1.0f);
+	}
+}
+
 void SMixtormatColorRamp::Construct(const FArguments& Args)
 {
-	Ramp = Args._Ramp.Get(FMixtormatColorRamp());
+	RampAttribute = Args._Ramp;
+	Ramp = RampAttribute.Get(FMixtormatColorRamp());
 	Ramp.Sanitize();
 	Height = Args._Height;
 	DomainMin = Args._DomainMin;
@@ -21,6 +46,22 @@ void SMixtormatColorRamp::Construct(const FArguments& Args)
 	OnBeginInteractiveEdit = Args._OnBeginInteractiveEdit;
 	OnEndInteractiveEdit = Args._OnEndInteractiveEdit;
 	BuildLayout();
+}
+
+void SMixtormatColorRamp::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime,
+	const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	if (bDragging || !RampAttribute.IsBound()) { return; }
+
+	FMixtormatColorRamp AuthoredRamp = RampAttribute.Get(Ramp);
+	AuthoredRamp.Sanitize();
+	if (MixtormatColorRampPrivate::Equals(Ramp, AuthoredRamp)) { return; }
+
+	Ramp = MoveTemp(AuthoredRamp);
+	if (!Ramp.Stops.IsValidIndex(SelectedPoint)) { SelectedPoint = INDEX_NONE; }
+	HoverPoint = INDEX_NONE;
+	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 int32 SMixtormatColorRamp::InsertPointAt(const float X, const float GraphY)
@@ -52,6 +93,14 @@ void SMixtormatColorRamp::ApplyPointDrag(const int32 Index, const float GraphX, 
 	// when the dragged stop crosses one, so the array stays sorted and the dragged payload keeps
 	// its identity. Endpoints are still locked to the domain.
 	Ramp.Stops[Index].X = GraphX;
+}
+
+void SMixtormatColorRamp::SwapPointState(const int32 IndexA, const int32 IndexB)
+{
+	if (Ramp.Stops.IsValidIndex(IndexA) && Ramp.Stops.IsValidIndex(IndexB))
+	{
+		Swap(Ramp.Stops[IndexA].Color, Ramp.Stops[IndexB].Color);
+	}
 }
 
 void SMixtormatColorRamp::NotifyPointRemoved(const int32 RemovedIndex)
@@ -131,7 +180,7 @@ void SMixtormatColorRamp::PaintRampContent(FSlateWindowElementList& Elements, co
 		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
 			FVector2f(FMath::Max(XB - XA, 1.0f), BarHeight), FSlateLayoutTransform(FVector2f(XA, Y0))),
 			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
-			MixtormatColorRampMath::Evaluate(Ramp, Value));
+			MixtormatColorRampPrivate::Opaque(MixtormatColorRampMath::Evaluate(Ramp, Value)));
 	}
 }
 
@@ -167,7 +216,8 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Border);
 	FSlateDrawElement::MakeBox(Elements, Layer + 2, Geometry.ToPaintGeometry(
 		FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(FVector2f(SX - R, HandleY - R))),
-		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Ramp.Stops[Index].Color);
+		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
+		MixtormatColorRampPrivate::Opaque(Ramp.Stops[Index].Color));
 }
 
 void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)
@@ -177,6 +227,8 @@ void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)
 	FColorPickerArgs PickerArgs;
 	PickerArgs.bIsModal = false;
 	PickerArgs.bUseAlpha = false;
+	PickerArgs.bOnlyRefreshOnMouseUp = false;
+	PickerArgs.ParentWidget = SharedThis(this);
 	PickerArgs.InitialColor = Original;
 	PickerArgs.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda(
 		[this, StopIndex](const FLinearColor NewColor)

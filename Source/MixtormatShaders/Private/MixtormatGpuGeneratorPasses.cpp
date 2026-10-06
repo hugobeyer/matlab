@@ -2283,6 +2283,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
 	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
 	Bundle = FGeneratorBundle();
+	FRDGTextureRef GeneratedColor = nullptr;
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
 	FRDGTextureRef RunningHeight = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -2323,9 +2324,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 		{
 			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RunningHeight, Child.HeightColorRamp);
+			const FPublishedField ColorField{
+				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(
 				FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Child.HeightColorRamp.OutputName},
-				FPublishedField{EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false});
+				ColorField);
+			if (ColorField.IsComplete()) { GeneratedColor = Color; }
 			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
 				Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
 			{
@@ -2412,6 +2416,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 
 		AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+	}
+	// Color Ramp only publishes Color. The Generator layer owns whether the last valid ordered
+	// Color result becomes this layer's Base Color input.
+	if (Layer.bGeneratorAlbedo && GeneratedColor)
+	{
+		LayerCtx.LayerInputBC = GeneratedColor;
 	}
 	if (!RunningHeight) { return; }
 	Bundle.Height = RunningHeight;

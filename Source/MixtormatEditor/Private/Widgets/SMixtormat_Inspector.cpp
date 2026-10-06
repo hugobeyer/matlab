@@ -269,7 +269,26 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 	};
 	const TSharedRef<SVerticalBox> GeneratorComposition = SNew(SVerticalBox);
 	const TSharedRef<SVerticalBox> GeneratorHeight = AddCard(
-		GeneratorComposition, LOCTEXT("CardHeightBlend", "Height Blend"));
+		GeneratorComposition, LOCTEXT("CardGeneratorOutput", "OUTPUT"));
+	AddSliderRow(GeneratorHeight, MixtormatRow::MakeTrailing(
+		LOCTEXT("GeneratorLayerAlbedo", "Albedo"),
+		MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([this]()
+			{
+				return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					&& WorkingLayers[SelectedLayerIndex].bGeneratorAlbedo
+					? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			}),
+			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+			{
+				if (WorkingLayers.IsValidIndex(SelectedLayerIndex)
+					&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
+				{
+					WorkingLayers[SelectedLayerIndex].bGeneratorAlbedo = State == ECheckBoxState::Checked;
+					RefreshLayeredPreview();
+				}
+			})),
+		LOCTEXT("GeneratorLayerAlbedoHint", "Use the last valid Color result in the ordered generator stack as this layer's Base Color.")));
 	AddSliderRow(GeneratorHeight, MakeMemberEnum<FMixtormatHeightBlend, EMixtormatHeightOp>(
 		LOCTEXT("GeneratorLayerHeightOperation", "Height Operation"), GeneratorBlend,
 		&FMixtormatHeightBlend::Op,

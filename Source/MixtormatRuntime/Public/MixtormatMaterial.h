@@ -248,7 +248,7 @@ enum class EMixtormatParameterOwnerType : uint8
 	BoundaryId UMETA(DisplayName = "Boundary From IDs"),
 	// Appended with the Generator-layer sublayers, so their rows can be bound and driven.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
-	HeightCurve UMETA(DisplayName = "Height Curve"),
+	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp")
 };
 
@@ -3755,7 +3755,7 @@ enum class EMixtormatLayerChildType : uint8
 	// Generator-layer sublayers. Ordered in the layer's child chain alongside Generator modules;
 	// they read and rewrite the running signed generator height. Appended for serialization safety.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
-	HeightCurve UMETA(DisplayName = "Height Curve"),
+	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp")
 };
 
@@ -3946,6 +3946,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
 
+	// Generator-layer output routing. Color producers remain independent of this destination choice.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Output", meta = (DisplayName = "Albedo"))
+	bool bGeneratorAlbedo = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	bool bEnabled = true;

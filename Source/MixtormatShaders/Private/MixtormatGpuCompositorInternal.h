@@ -1072,6 +1072,7 @@ namespace MixtormatGpuCompositor
 	{
 		FGuid LayerId;
 		bool bGenerator = false;
+		bool bGeneratorAlbedo = false;
 
 		// Hash of the layer without its children: everything a producer reading the layer's own
 		// maps can see (surface, reference source, UV transform). 0 when caching is off.

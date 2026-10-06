@@ -1376,11 +1376,11 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	}
 	if (Child.Type == EMixtormatLayerChildType::HeightCurve)
 	{
-		return LOCTEXT("HeightCurveChildName", "Height Curve");
+		return LOCTEXT("HeightCurveChildName", "Height Remap");
 	}
 	if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 	{
-		return LOCTEXT("HeightColorRampChildName", "Height Color Ramp");
+		return LOCTEXT("HeightColorRampChildName", "Color Ramp");
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()

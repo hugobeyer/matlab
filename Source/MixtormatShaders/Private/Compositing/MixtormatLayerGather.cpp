@@ -63,6 +63,7 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	}
 	Data.LayerId = Layer.LayerId;
 	Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator;
+	Data.bGeneratorAlbedo = Data.bGenerator && Layer.bGeneratorAlbedo;
 
 	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
 	// Only a layer's combined mask is a usable signal this step. A child mask lives in the

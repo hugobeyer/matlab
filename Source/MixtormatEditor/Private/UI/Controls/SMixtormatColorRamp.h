@@ -30,6 +30,7 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	virtual void Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) override;
 	virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
 
 protected:
@@ -42,6 +43,7 @@ protected:
 	virtual void RemovePoint(int32 Index) override;
 	virtual void ResetPoints() override;
 	virtual void ApplyPointDrag(int32 Index, float GraphX, float GraphY, const FVector2f& ScreenPos) override;
+	virtual void SwapPointState(int32 IndexA, int32 IndexB) override;
 	virtual void NotifyPointRemoved(int32 RemovedIndex) override;
 	virtual void NotifyPointInserted(int32 InsertedIndex) override;
 	virtual bool IsEndpointLocked(int32 Index) const override;
@@ -59,6 +61,7 @@ protected:
 private:
 	void OpenStopPicker(int32 StopIndex);
 
+	TAttribute<FMixtormatColorRamp> RampAttribute;
 	FMixtormatColorRamp Ramp;
 	FOnMixtormatColorRampChanged OnChanged;
 };
