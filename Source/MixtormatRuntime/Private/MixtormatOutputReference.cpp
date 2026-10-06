@@ -15,12 +15,14 @@ namespace MixtormatOutputReferences
 			return INDEX_NONE;
 		}
 		const FName Expected = Reference.Kind == EMixtormatPublishedFieldKind::RegionIds
-			? FName(TEXT("RegionIds")) : (Reference.Kind == EMixtormatPublishedFieldKind::Flow
-				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV")));
+			? FName(TEXT("RegionIds")) : Reference.Kind == EMixtormatPublishedFieldKind::Flow
+				? FName(TEXT("FlowDirection")) : Reference.Kind == EMixtormatPublishedFieldKind::UVMap
+					? FName(TEXT("WarpedUV")) : FName(TEXT("Color"));
 		if (Reference.OutputName != Expected
 			|| (Reference.Kind != EMixtormatPublishedFieldKind::RegionIds
 				&& Reference.Kind != EMixtormatPublishedFieldKind::Flow
-				&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap))
+				&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap
+				&& Reference.Kind != EMixtormatPublishedFieldKind::Color))
 		{
 			return INDEX_NONE;
 		}

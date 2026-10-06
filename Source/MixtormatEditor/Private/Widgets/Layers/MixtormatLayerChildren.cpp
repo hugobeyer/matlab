@@ -228,12 +228,15 @@ namespace MixtormatLayersPrivate
 			&& Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
 	}
 
-	bool MakeRegionIdsReference(const FMixtormatLayerChild& Source,
-		const FMixtormatChildAddress& Address, FMixtormatLayerChild& Reference)
+	bool MakePublishedFieldReference(const FMixtormatLayerChild& Source,
+		const FMixtormatChildAddress& Address, const EMixtormatPublishedFieldKind Kind,
+		FMixtormatLayerChild& Reference)
 	{
 		Reference = FMixtormatLayerChild();
 		Reference.Type = EMixtormatLayerChildType::OutputReference;
-		if (IsRegionIdsReference(Source))
+		// An existing reference of the same kind is chained through rather than re-resolved.
+		if (Source.Type == EMixtormatLayerChildType::OutputReference
+			&& Source.OutputReference.Kind == Kind)
 		{
 			Reference.OutputReference = Source.OutputReference;
 			Reference.OutputReference.bEnabled = true;
@@ -241,10 +244,9 @@ namespace MixtormatLayersPrivate
 		}
 		const FMixtormatChildCapabilities Caps = GetChildCapabilities(Source);
 		const FMixtormatPublishedOutputDesc* Output = Caps.Outputs.FindByPredicate(
-			[](const FMixtormatPublishedOutputDesc& Candidate)
+			[Kind](const FMixtormatPublishedOutputDesc& Candidate)
 			{
-				return Candidate.bCopyableAsField
-					&& Candidate.FieldKind == EMixtormatPublishedFieldKind::RegionIds;
+				return Candidate.bCopyableAsField && Candidate.FieldKind == Kind;
 			});
 		if (!Output || !Address.IsValid()) { return false; }
 		Reference.OutputReference.SourceLayerId = Address.OwnerId;
@@ -252,6 +254,13 @@ namespace MixtormatLayersPrivate
 		Reference.OutputReference.OutputName = Output->Name;
 		Reference.OutputReference.Kind = Output->FieldKind;
 		return true;
+	}
+
+	bool MakeRegionIdsReference(const FMixtormatLayerChild& Source,
+		const FMixtormatChildAddress& Address, FMixtormatLayerChild& Reference)
+	{
+		return MakePublishedFieldReference(Source, Address,
+			EMixtormatPublishedFieldKind::RegionIds, Reference);
 	}
 
 	bool ValidateRegionIdsPlacement(const FMixtormatBindingScope& Scope,

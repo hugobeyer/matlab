@@ -683,7 +683,7 @@
 		},
 		"HeightBlend.EdgeSoftness":
 		{
-			"default": 0.1,
+			"default": 0.10000000149011612,
 			"uiMin": 0,
 			"uiMax": 1,
 			"snap": 0.004999999888241291
@@ -711,6 +711,16 @@
 			"uiMin": 0,
 			"uiMax": 1,
 			"snap": 0.0099999997764825821
+		}
+	},
+	"Strata Carver":
+	{
+		"Generator.Seed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 100,
+			"snap": 0
 		}
 	}
 }

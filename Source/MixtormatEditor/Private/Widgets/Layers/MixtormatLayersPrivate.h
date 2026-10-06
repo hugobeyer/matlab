@@ -95,6 +95,12 @@ namespace MixtormatLayersPrivate
 	bool MakeRegionIdsReference(const FMixtormatLayerChild& Source,
 		const FMixtormatChildAddress& Address, FMixtormatLayerChild& Reference);
 
+	// The general form: builds an OutputReference to the first bCopyableAsField output of the
+	// requested kind. MakeRegionIdsReference is the RegionIds specialisation of this.
+	bool MakePublishedFieldReference(const FMixtormatLayerChild& Source,
+		const FMixtormatChildAddress& Address, EMixtormatPublishedFieldKind Kind,
+		FMixtormatLayerChild& Reference);
+
 	bool ValidateRegionIdsPlacement(const FMixtormatBindingScope& Scope,
 		const FMixtormatLayerChild& Child, const FGuid OwnerId, const int32 InsertIndex);
 

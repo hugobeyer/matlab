@@ -338,7 +338,7 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.Type = EMixtormatLayerChildType::HeightColorRamp;
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
-		Out.OutputName = Ramp.OutputName.IsNone() ? FName(TEXT("HeightColor")) : Ramp.OutputName;
+		Out.OutputName = FName(TEXT("Color"));
 		const MixtormatColorRampMath::FGpuPayload Payload =
 			MixtormatColorRampMath::PrepareGpuPayload(Ramp.Ramp);
 		Out.StopCount = Payload.StopCount;

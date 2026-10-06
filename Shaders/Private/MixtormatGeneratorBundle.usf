@@ -1,7 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
 
 // Bundle remapping is exclusively for actual flow deformation, never source UV placement.
 // 0 scalar, 1 IDs (nearest), 2 boundary, 3 vector, 5 centre UV,

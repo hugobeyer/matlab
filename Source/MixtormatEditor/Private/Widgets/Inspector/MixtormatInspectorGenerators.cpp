@@ -788,12 +788,30 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
 		LOCTEXT("HeightBlendAmount", "Amount"), Blend, &FMixtormatGeneratorHeightBlend::Amount, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("HeightBlendAmountHint", "How much of the combined result replaces the running height.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-		LOCTEXT("HeightBlendScale", "Scale"), Blend, &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
-		LOCTEXT("HeightBlendSoftness", "Softness"), Blend, &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
-		LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min and Max, in height units.")));
+
+	// Scale belongs to Multiply/Scale alone; Softness is the rounded join shared by Min, Max and
+	// Height Blend. Each row is shown only where the shader actually reads it, so the panel never
+	// offers a control that does nothing for the selected operation.
+	const auto OpIs = [Blend](const EMixtormatGeneratorHeightOp Op)
+	{
+		const FMixtormatGeneratorHeightBlend* B = Blend();
+		return B && B->Op == Op;
+	};
+	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([OpIs]()
+	{
+		return OpIs(EMixtormatGeneratorHeightOp::Multiply) ? EVisibility::Visible : EVisibility::Collapsed;
+	})[
+		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+			LOCTEXT("HeightBlendScale", "Scale"), Blend, &FMixtormatGeneratorHeightBlend::Scale, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("HeightBlendScaleHint", "Multiply/Scale factor. With no source the module is neutral."))]);
+	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([OpIs]()
+	{
+		return OpIs(EMixtormatGeneratorHeightOp::Min) || OpIs(EMixtormatGeneratorHeightOp::Max)
+			|| OpIs(EMixtormatGeneratorHeightOp::HeightBlend) ? EVisibility::Visible : EVisibility::Collapsed;
+	})[
+		MakeMemberSlider<FMixtormatGeneratorHeightBlend>(
+			LOCTEXT("HeightBlendSoftness", "Softness"), Blend, &FMixtormatGeneratorHeightBlend::Softness, 0.0, 1.0, 0.0, 0.001,
+			LOCTEXT("HeightBlendSoftnessHint", "Rounded join for Min, Max and Height Blend, in height units. 0 is a hard join."))]);
 
 	const TSharedRef<SVerticalBox> Settings = SNew(SVerticalBox)
 		.Visibility_Lambda([Blend]()
@@ -909,11 +927,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 			[
-				MakeChildOutputPreviewButton([this]()
-				{
-					const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-					return Child ? GetChildPreviewOutputSet(*Child) : FMixtormatChildPreviewOutputSet();
-				}())
+				MakeChildOutputPreviewButton(
+					GetPreviewOutputSetForChildType(EMixtormatLayerChildType::HeightColorRamp))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]()

@@ -29,9 +29,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const float A = RunningHeight.Load(int3(Pixel, 0));
 	// No referenced module is a neutral operand, and neutral differs per operation: 0 for Add and
-	// Subtract, Scale (neutral at 1) for Multiply. Min, Max, Difference and Height Blend have no
-	// neutral operand, so with no source they pass the running height through untouched rather
-	// than comparing it against a zero that was never authored.
+	// Subtract, 1 for Multiply. Min, Max, Difference and Height Blend have no neutral operand, so
+	// with no source they pass the running height through untouched rather than comparing it
+	// against a zero that was never authored.
 	const float B = HasSource != 0u ? SourceHeight.Load(int3(Pixel, 0)) : 0.0f;
 
 	float Combined = A;
@@ -49,12 +49,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		if (HasSource != 0u) { Combined = abs(A - B); }
 	}
-	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_MULTIPLY) { Combined = A * Scale; }
+	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_MULTIPLY)
+	{
+		// The multiplicative operand is the authored Scale when a module is referenced, and neutral
+		// (1) when it is not. The authored Scale is never substituted for the missing source, so an
+		// unconnected Multiply is a no-op rather than a silent scale of the running height.
+		Combined = A * (HasSource != 0u ? Scale : 1.0f);
+	}
 	else if (Op == MIXTORMAT_GEN_HEIGHT_OP_HEIGHT_BLEND)
 	{
 		if (HasSource != 0u)
 		{
-			Combined = MixtormatHeightBlend(A, B, 1.0f, 1.0f, Threshold, EdgeSoftness, BaseBias, BlendBias).Height;
+			// Softness is the rounded join shared with Min and Max; Edge Softness widens the same
+			// transition. Both are authored, so both feed the contest width.
+			const float Join = max(Softness, 0.0f) + max(EdgeSoftness, 0.0f);
+			Combined = MixtormatHeightBlend(A, B, 1.0f, 1.0f, Threshold, Join, BaseBias, BlendBias).Height;
 		}
 	}
 

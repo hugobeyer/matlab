@@ -3358,8 +3358,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightBlend
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
 	EMixtormatGeneratorHeightOp Op = EMixtormatGeneratorHeightOp::Add;
 
-	// Another module in this Generator layer whose signed height is the second operand. Invalid
-	// falls back to the running height itself, which makes Multiply/Scale a plain scale.
+	// Another module in this Generator layer whose signed height is the second operand. Invalid is a
+	// neutral operand per operation (0 for Add/Subtract, 1 for Multiply) or a pass-through for the
+	// operations that have no neutral (Min, Max, Difference, Height Blend).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend")
 	FGuid SourceLayerId;
 
@@ -3370,11 +3371,12 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightBlend
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Amount = 1.0f;
 
-	// Multiply/Scale factor.
+	// Multiply/Scale factor. Read only when a source is set; with no source the multiplicative
+	// operand is neutral (1), so an unconnected Multiply changes nothing.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float Scale = 1.0f;
 
-	// Width of the rounded join for Min and Max, in height units. 0 is a hard min or max.
+	// Width of the rounded join for Min, Max and Height Blend, in height units. 0 is a hard join.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Blend", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Softness = 0.0f;
 
@@ -3444,9 +3446,11 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
 	FMixtormatColorRamp Ramp;
 
-	// The published colour output name, for later albedo/material references.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Color Ramp")
-	FName OutputName = FName(TEXT("HeightColor"));
+	// Deprecated serialized-only field. The live published output is always the canonical "Color";
+	// this is retained so older assets keep their saved value, but it is never read for identity
+	// and is deliberately not exposed as an editable inspector field.
+	UPROPERTY()
+	FName OutputName = FName(TEXT("Color"));
 };
 
 USTRUCT(BlueprintType)

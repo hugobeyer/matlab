@@ -2096,8 +2096,7 @@ TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
 		.IsEnabled_Lambda([this]()
 		{
 			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-			return Child && !Child->IsInstance()
-				&& Child->OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+			return Child && Child->Type == EMixtormatLayerChildType::OutputReference && !Child->IsInstance();
 		})
 		[
 			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()

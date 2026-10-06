@@ -346,6 +346,10 @@ private:
 	bool ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) const;
 	TSharedRef<SWidget> BuildIdGroupSourceMenu(FMixtormatChildAddress Dest);
 	TSharedRef<SWidget> BuildOutputReferenceSourceMenu(FMixtormatChildAddress Dest);
+	// The shared body of both menus: lists every producer that publishes a bCopyableAsField output
+	// of the requested kind. RegionIds keeps its IdGroup add/replace behaviour; other kinds only
+	// replace an existing OutputReference.
+	TSharedRef<SWidget> BuildPublishedSourceMenu(FMixtormatChildAddress Dest, EMixtormatPublishedFieldKind Kind);
 	FReply ReplaceOutputReferenceSource(const FMixtormatChildAddress& Dest, const FMixtormatOutputReference& Reference);
 	bool HasSelectedOutputReference() const;
 	bool IsOutputReferenceAvailable(const FMixtormatChildAddress& Address) const;

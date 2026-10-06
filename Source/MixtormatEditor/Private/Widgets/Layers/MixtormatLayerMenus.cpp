@@ -301,12 +301,9 @@ void SMixtormat::AddSharedChildMenuItems(
 			FSimpleDelegate::CreateLambda([this, Address]() { GoToChildInstanceSource(Address); }))
 			.Enabled(MixtormatParameterBinding::FindChild(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
 				Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId) != nullptr);
-		if (IsRegionIdsReference(*Child))
-		{
-			Menu.SubMenu(LOCTEXT("ReplaceOutputSourceContext", "Source"), nullptr,
-				FOnGetContent::CreateSP(this, &SMixtormat::BuildOutputReferenceSourceMenu, Address))
-				.Enabled(!bInstance);
-		}
+		Menu.SubMenu(LOCTEXT("ReplaceOutputSourceContext", "Source"), nullptr,
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildOutputReferenceSourceMenu, Address))
+			.Enabled(!bInstance);
 	}
 	if (!bInstance)
 	{
@@ -811,13 +808,28 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 
 TSharedRef<SWidget> SMixtormat::BuildIdGroupSourceMenu(const FMixtormatChildAddress Dest)
 {
+	return BuildPublishedSourceMenu(Dest, EMixtormatPublishedFieldKind::RegionIds);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildOutputReferenceSourceMenu(const FMixtormatChildAddress Dest)
+{
+	const FMixtormatLayerChild* Destination = ResolveChildAt(Dest);
+	return BuildPublishedSourceMenu(Dest, Destination
+		? Destination->OutputReference.Kind : EMixtormatPublishedFieldKind::RegionIds);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPublishedSourceMenu(
+	const FMixtormatChildAddress Dest, const EMixtormatPublishedFieldKind Kind)
+{
 	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(LOCTEXT("IdGroupSourcesCaption", "Region IDs sources"));
+	Menu.Caption(Kind == EMixtormatPublishedFieldKind::RegionIds
+		? LOCTEXT("IdGroupSourcesCaption", "Region IDs sources")
+		: LOCTEXT("PublishedSourcesCaption", "Published field sources"));
 	const FMixtormatLayerChild* Destination = ResolveChildAt(Dest);
 	if (!Destination) { return Menu.Build(); }
 	const bool bAdd = Destination->Type == EMixtormatLayerChildType::IdGroup;
 	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
-	const auto AddSources = [this, &Menu, &Scope, &Dest, Destination, bAdd](
+	const auto AddSources = [this, &Menu, &Scope, &Dest, Destination, bAdd, Kind](
 		const EMixtormatChildOwnerType OwnerType, const FGuid OwnerId, const FText& OwnerName,
 		const TArray<FMixtormatLayerChild>& Children)
 	{
@@ -825,16 +837,18 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupSourceMenu(const FMixtormatChildAddr
 		{
 			const FMixtormatChildAddress Source{OwnerType, OwnerId, Producer.ChildId};
 			FMixtormatLayerChild Reference;
-			if (!MakeRegionIdsReference(Producer, Source, Reference)) { continue; }
+			if (!MakePublishedFieldReference(Producer, Source, Kind, Reference)) { continue; }
 			Reference.ChildId = Destination->ChildId;
 			Reference.ScopeOwnerChildId = Destination->ScopeOwnerChildId;
 			const bool bAvailable = bAdd ? CanAddIdGroupSource(Source, Dest)
-				: IsRegionIdsReference(*Destination) && !Destination->IsInstance()
+				: Destination->Type == EMixtormatLayerChildType::OutputReference
+					&& Destination->OutputReference.Kind == Kind && !Destination->IsInstance()
 					&& IsPublishedSourceEnabled(Scope, Source.OwnerId, Source.ChildId)
 					&& IsPublishedSourceEnabled(Scope, Reference.OutputReference.SourceLayerId, Reference.OutputReference.SourceChildId)
 					&& CanReadPublishedOutputAt(Scope, Reference, Dest.OwnerId, ResolveChildIndexAt(Dest));
 			Menu.Item(FText::Format(LOCTEXT("IdGroupSourceEntry", "{0} / {1}"), OwnerName,
-				GetLayerChildName(Producer)), MixtormatIcons::Ids(),
+				GetLayerChildName(Producer)),
+				Kind == EMixtormatPublishedFieldKind::RegionIds ? MixtormatIcons::Ids() : MixtormatIcons::Generated(),
 				FSimpleDelegate::CreateLambda([this, Dest, Source, Ref = Reference.OutputReference, bAdd]()
 				{
 					if (bAdd) { AddIdGroupSource(Source, Dest); }
@@ -852,14 +866,12 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupSourceMenu(const FMixtormatChildAddr
 	}
 	if (Menu.IsEmpty())
 	{
-		Menu.Item(LOCTEXT("IdGroupNoSources", "No Region IDs outputs"), nullptr, FSimpleDelegate()).Enabled(false);
+		Menu.Item(Kind == EMixtormatPublishedFieldKind::RegionIds
+			? LOCTEXT("IdGroupNoSources", "No Region IDs outputs")
+			: LOCTEXT("PublishedNoSources", "No compatible outputs"),
+			nullptr, FSimpleDelegate()).Enabled(false);
 	}
 	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildOutputReferenceSourceMenu(const FMixtormatChildAddress Dest)
-{
-	return BuildIdGroupSourceMenu(Dest);
 }
 
 void SMixtormat::AddIdGroupMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)

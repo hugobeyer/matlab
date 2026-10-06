@@ -1525,8 +1525,8 @@ FReply SMixtormat::ReplaceOutputReferenceSource(
 	const FMixtormatChildAddress& Dest, const FMixtormatOutputReference& Reference)
 {
 	FMixtormatLayerChild* Child = ResolveChildAt(Dest);
-	if (!Child || !IsRegionIdsReference(*Child) || Child->IsInstance()
-		|| Reference.Kind != EMixtormatPublishedFieldKind::RegionIds) { return FReply::Unhandled(); }
+	if (!Child || Child->Type != EMixtormatLayerChildType::OutputReference || Child->IsInstance()
+		|| Reference.Kind != Child->OutputReference.Kind) { return FReply::Unhandled(); }
 	FMixtormatLayerChild Candidate = *Child;
 	Candidate.OutputReference = Reference;
 	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};

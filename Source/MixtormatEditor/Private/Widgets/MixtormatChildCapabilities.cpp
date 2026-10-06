@@ -239,10 +239,9 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		break;
 	case EMixtormatLayerChildType::HeightColorRamp:
 		// The published colour field. Previewable and copyable as a typed field, never as a scalar
-		// mask: a colour is not a coverage value a Replace-blend mask child could read.
-		Result.Outputs.Add({
-			Child.HeightColorRamp.OutputName.IsNone()
-				? FName(TEXT("HeightColor")) : Child.HeightColorRamp.OutputName,
+		// mask: a colour is not a coverage value a Replace-blend mask child could read. The output
+		// name is the canonical "Color"; the serialized legacy field is never used for identity.
+		Result.Outputs.Add({FName(TEXT("Color")),
 			NSLOCTEXT("SMixtormat", "PreviewOutputHeightColor", "Color"),
 			EMixtormatPreviewOutputKind::Color, false, true, false, NAME_None,
 			true, EMixtormatPublishedFieldKind::Color});
