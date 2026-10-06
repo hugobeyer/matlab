@@ -3,6 +3,7 @@
 #include "Widgets/MixtormatChildCapabilities.h"
 
 #include "MixtormatEffect.h"
+#include "MixtormatOutputReference.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Modules/ModuleManager.h"
 
@@ -30,6 +31,53 @@ EMixtormatEffectType ResolveChildEffectType(const FMixtormatLayerChild& Child)
 		}
 	}
 	return Child.Effect.ProceduralType;
+}
+
+namespace
+{
+	// Identity an OutputReference re-publishes under: the published name and the preview colourist
+	// that best shows it. Named kinds keep the canonical producer name (resolved through the runtime
+	// helper so this no longer re-derives it from a kind ternary); a generic field kind carries the
+	// name its producer published. Kept in one place so the reference block stays kind-exhaustive.
+	void DescribeFieldReference(const FMixtormatOutputReference& Reference,
+		FName& OutName, EMixtormatPreviewOutputKind& OutPreview, FText& OutLabel)
+	{
+		OutName = MixtormatOutputReferences::CanonicalFieldOutputName(Reference.Kind);
+		if (OutName.IsNone()) { OutName = Reference.OutputName; }
+		switch (Reference.Kind)
+		{
+		case EMixtormatPublishedFieldKind::Flow:
+			OutPreview = EMixtormatPreviewOutputKind::FlowDirection;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputFlow", "Flow");
+			break;
+		case EMixtormatPublishedFieldKind::UVMap:
+			OutPreview = EMixtormatPreviewOutputKind::WarpedUVGrid;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs");
+			break;
+		case EMixtormatPublishedFieldKind::Color:
+			OutPreview = EMixtormatPreviewOutputKind::Color;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputColor", "Color");
+			break;
+		case EMixtormatPublishedFieldKind::SDF:
+			OutPreview = EMixtormatPreviewOutputKind::SignedDistance;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputSignedDistance", "Signed Distance");
+			break;
+		case EMixtormatPublishedFieldKind::Scalar01:
+		case EMixtormatPublishedFieldKind::ScalarSigned:
+			OutPreview = EMixtormatPreviewOutputKind::Mask;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputScalar", "Scalar");
+			break;
+		case EMixtormatPublishedFieldKind::Vector2:
+			OutPreview = EMixtormatPreviewOutputKind::Mask;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputVector2", "Vector");
+			break;
+		case EMixtormatPublishedFieldKind::RegionIds:
+		default:
+			OutPreview = EMixtormatPreviewOutputKind::RegionIds;
+			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputRegionIds", "Region IDs");
+			break;
+		}
+	}
 }
 
 FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Child)
@@ -290,26 +338,16 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	if (Child.Type == EMixtormatLayerChildType::OutputReference
 		&& Child.OutputReference.Kind != EMixtormatPublishedFieldKind::RegionIds)
 	{
+		// A reference is re-copyable as the same typed field. Only a colour reference is previewable:
+		// the generic scalar/SDF/vector kinds have no destination-copy blit yet, so their eye is
+		// left off rather than offering a preview the compositor does not render.
 		const EMixtormatPublishedFieldKind Kind = Child.OutputReference.Kind;
-		if (Kind == EMixtormatPublishedFieldKind::Color)
-		{
-			// A colour reference shows the colour it carries, under the name it was copied with.
-			Result.Outputs.Add({Child.OutputReference.OutputName,
-				NSLOCTEXT("SMixtormat", "CopyOutputColor", "Color"),
-				EMixtormatPreviewOutputKind::Color, false, true, false, NAME_None, true, Kind});
-		}
-		else
-		{
-			const bool bIds = Kind == EMixtormatPublishedFieldKind::RegionIds;
-			const bool bFlow = Kind == EMixtormatPublishedFieldKind::Flow;
-			Result.Outputs.Add({bIds ? FName(TEXT("RegionIds")) : bFlow
-				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV")),
-				bIds ? RegionIdsLabel : bFlow ? NSLOCTEXT("SMixtormat", "CopyOutputFlow", "Flow")
-					: NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs"),
-				bIds ? EMixtormatPreviewOutputKind::RegionIds : bFlow
-					? EMixtormatPreviewOutputKind::FlowDirection : EMixtormatPreviewOutputKind::WarpedUVGrid,
-				false, false, false, NAME_None, true, Kind});
-		}
+		FName Name;
+		EMixtormatPreviewOutputKind Preview = EMixtormatPreviewOutputKind::Mask;
+		FText Label;
+		DescribeFieldReference(Child.OutputReference, Name, Preview, Label);
+		Result.Outputs.Add({Name, Label, Preview, false,
+			Kind == EMixtormatPublishedFieldKind::Color, false, NAME_None, true, Kind});
 	}
 	return Result;
 }

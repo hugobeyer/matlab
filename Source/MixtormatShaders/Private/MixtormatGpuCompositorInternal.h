@@ -223,6 +223,34 @@ namespace MixtormatGpuCompositor
 	// Shares the existing stable layer/child/output address shape; kind belongs to the payload.
 	using FPublishedFieldKey = FPublishedMaskKey;
 
+	// Canonical storage format for a typed field's primary texture. Producers create their field in
+	// this format and FPublishedField::IsComplete validates against it, so the two never drift.
+	// Flow's auxiliary FlowSmooth (PF_FloatRGBA, same as its primary) and Validity (PF_R16F) are
+	// checked separately in IsComplete. Returns PF_Unknown for a kind with no storage contract.
+	inline EPixelFormat GetPublishedFieldFormat(const EMixtormatPublishedFieldKind Kind)
+	{
+		switch (Kind)
+		{
+		// Integer region identifiers.
+		case EMixtormatPublishedFieldKind::RegionIds:    return PF_R32_UINT;
+		// Absolute/transformed coordinates; full float so 4K texels resolve.
+		case EMixtormatPublishedFieldKind::UVMap:        return PF_G32R32F;
+		// Directional/transport field, with its smoothed and validity payloads alongside.
+		case EMixtormatPublishedFieldKind::Flow:         return PF_FloatRGBA;
+		// RGB/RGBA field.
+		case EMixtormatPublishedFieldKind::Color:        return PF_FloatRGBA;
+		// Nominal 0..1 scalar; half precision matches the existing 0..1 mask storage.
+		case EMixtormatPublishedFieldKind::Scalar01:     return PF_R16F;
+		// Signed scalar: full float to preserve negatives beyond half range.
+		case EMixtormatPublishedFieldKind::ScalarSigned: return PF_R32_FLOAT;
+		// Signed distance: full float, matching existing Rock/Pebble edge distance fields.
+		case EMixtormatPublishedFieldKind::SDF:          return PF_R32_FLOAT;
+		// Generic 2-component vector; half precision, matching existing 2-channel fields.
+		case EMixtormatPublishedFieldKind::Vector2:      return PF_G16R16F;
+		default:                                         return PF_Unknown;
+		}
+	}
+
 	struct FPublishedField
 	{
 		EMixtormatPublishedFieldKind Kind = EMixtormatPublishedFieldKind::RegionIds;
@@ -231,24 +259,18 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Validity = nullptr;
 		bool bHashedIds = false;
 
+		// Explicit per-kind validation. The primary texture must exist and carry the canonical format
+		// for the kind (GetPublishedFieldFormat); Flow must additionally carry its smoothing and
+		// validity payload at the same extent. Every kind is represented, and an unknown kind -- one
+		// whose canonical format is PF_Unknown -- is never complete.
 		bool IsComplete() const
 		{
-			if (!Texture) { return false; }
-						switch (Kind)
-						{
-						case EMixtormatPublishedFieldKind::RegionIds:
-							return Texture->Desc.Format == PF_R32_UINT;
-						case EMixtormatPublishedFieldKind::UVMap:
-							return Texture->Desc.Format == PF_G32R32F;
-						case EMixtormatPublishedFieldKind::Flow:
-							return FlowSmooth && Validity && Texture->Desc.Format == PF_FloatRGBA
-								&& FlowSmooth->Desc.Format == PF_FloatRGBA && Validity->Desc.Format == PF_R16F
-								&& FlowSmooth->Desc.Extent == Texture->Desc.Extent && Validity->Desc.Extent == Texture->Desc.Extent;
-						case EMixtormatPublishedFieldKind::Color:
-							return Texture->Desc.Format == PF_FloatRGBA;
-						default:
-							return false;
-						}
+			if (!Texture || Texture->Desc.Format != GetPublishedFieldFormat(Kind)) { return false; }
+			if (Kind != EMixtormatPublishedFieldKind::Flow) { return true; }
+			return FlowSmooth && Validity
+				&& FlowSmooth->Desc.Format == PF_FloatRGBA && Validity->Desc.Format == PF_R16F
+				&& FlowSmooth->Desc.Extent == Texture->Desc.Extent
+				&& Validity->Desc.Extent == Texture->Desc.Extent;
 		}
 	};
 

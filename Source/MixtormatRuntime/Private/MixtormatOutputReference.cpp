@@ -6,6 +6,41 @@
 
 namespace MixtormatOutputReferences
 {
+	FName CanonicalFieldOutputName(const EMixtormatPublishedFieldKind Kind)
+	{
+		switch (Kind)
+		{
+		case EMixtormatPublishedFieldKind::RegionIds: return FName(TEXT("RegionIds"));
+		case EMixtormatPublishedFieldKind::Flow:      return FName(TEXT("FlowDirection"));
+		case EMixtormatPublishedFieldKind::UVMap:     return FName(TEXT("WarpedUV"));
+		case EMixtormatPublishedFieldKind::Color:     return FName(TEXT("Color"));
+		// Generic field kinds are addressed by the producer's own output name.
+		case EMixtormatPublishedFieldKind::Scalar01:
+		case EMixtormatPublishedFieldKind::ScalarSigned:
+		case EMixtormatPublishedFieldKind::SDF:
+		case EMixtormatPublishedFieldKind::Vector2:   return NAME_None;
+		default:                                      return NAME_None;
+		}
+	}
+
+	bool IsValidFieldKind(const EMixtormatPublishedFieldKind Kind)
+	{
+		switch (Kind)
+		{
+		case EMixtormatPublishedFieldKind::RegionIds:
+		case EMixtormatPublishedFieldKind::Flow:
+		case EMixtormatPublishedFieldKind::UVMap:
+		case EMixtormatPublishedFieldKind::Color:
+		case EMixtormatPublishedFieldKind::Scalar01:
+		case EMixtormatPublishedFieldKind::ScalarSigned:
+		case EMixtormatPublishedFieldKind::SDF:
+		case EMixtormatPublishedFieldKind::Vector2:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	int32 ResolveEarlierSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const FMixtormatOutputReference& Reference)
 	{
@@ -14,18 +49,11 @@ namespace MixtormatOutputReferences
 		{
 			return INDEX_NONE;
 		}
-		const FName Expected = Reference.Kind == EMixtormatPublishedFieldKind::RegionIds
-			? FName(TEXT("RegionIds")) : Reference.Kind == EMixtormatPublishedFieldKind::Flow
-				? FName(TEXT("FlowDirection")) : Reference.Kind == EMixtormatPublishedFieldKind::UVMap
-					? FName(TEXT("WarpedUV")) : FName(TEXT("Color"));
-		if (Reference.OutputName != Expected
-			|| (Reference.Kind != EMixtormatPublishedFieldKind::RegionIds
-				&& Reference.Kind != EMixtormatPublishedFieldKind::Flow
-				&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap
-				&& Reference.Kind != EMixtormatPublishedFieldKind::Color))
-		{
-			return INDEX_NONE;
-		}
+		if (!IsValidFieldKind(Reference.Kind)) { return INDEX_NONE; }
+		// Named kinds keep their canonical published output name; a generic kind carries the
+		// producer's own name, so only the named kinds constrain Reference.OutputName here.
+		const FName Expected = CanonicalFieldOutputName(Reference.Kind);
+		if (Expected != NAME_None && Reference.OutputName != Expected) { return INDEX_NONE; }
 		for (int32 LayerIndex = 0; LayerIndex < DestinationLayerIndex; ++LayerIndex)
 		{
 			const FMixtormatLayer& Layer = Layers[LayerIndex];
@@ -104,7 +132,7 @@ namespace MixtormatOutputReferences
 				return Child.ChildId == DestinationChildId;
 			}) && ResolveEarlierSource(Layers, DestinationLayer, Reference) != INDEX_NONE;
 		}
-		if (Reference.OutputName != FName(TEXT("RegionIds"))) { return false; }
+		if (Reference.OutputName != CanonicalFieldOutputName(EMixtormatPublishedFieldKind::RegionIds)) { return false; }
 
 		// Resolve inherited payloads without changing placement identity or the authored arrays.
 		TArray<FMixtormatLayer> ResolvedLayers = Layers;
@@ -220,7 +248,7 @@ namespace MixtormatOutputReferences
 				if (Edge.bEnabled && Edge.Kind == EMixtormatPublishedFieldKind::RegionIds)
 				{
 					const int32 Target = FindNode(Edge.SourceLayerId, Edge.SourceChildId);
-					if (!Edge.HasSource() || Edge.OutputName != FName(TEXT("RegionIds"))
+					if (!Edge.HasSource() || Edge.OutputName != CanonicalFieldOutputName(EMixtormatPublishedFieldKind::RegionIds)
 						|| Target == INDEX_NONE || !Nodes[Target].bEnabled
 						|| !ProducesRegionIds(ResolvedLayers[Nodes[Target].Layer].Children[Nodes[Target].Child]))
 					{

@@ -8,6 +8,10 @@
 struct FMixtormatLayer;
 
 // Scalar outputs remain ordinary Mask children with their existing published-source fields.
+//
+// Values are append-only: the first four keep their serialized numeric values, so saved assets and
+// the prefix cache stay valid. A kind carries its semantic contract -- never collapse two kinds
+// (Vector2 / Flow / UVMap, or ScalarSigned / SDF) just because their storage formats may coincide.
 UENUM(BlueprintType)
 enum class EMixtormatPublishedFieldKind : uint8
 {
@@ -15,7 +19,16 @@ enum class EMixtormatPublishedFieldKind : uint8
 	Flow UMETA(DisplayName = "Flow"),
 	UVMap UMETA(DisplayName = "UV Map"),
 	// A colour field published by a Generator-layer Height Color Ramp, for later albedo/material use.
-	Color UMETA(DisplayName = "Color")
+	Color UMETA(DisplayName = "Color"),
+	// Nominal 0..1 scalar domain. Generic scalar data; not inherently a mask.
+	Scalar01 UMETA(DisplayName = "Scalar 0..1"),
+	// Signed scalar data. Must preserve negative values.
+	ScalarSigned UMETA(DisplayName = "Scalar Signed"),
+	// Signed-distance semantic data, distinct from an arbitrary signed scalar.
+	SDF UMETA(DisplayName = "Signed Distance"),
+	// Generic 2-component vector field. Not a Flow (directional transport) and not a UVMap
+	// (absolute/transformed coordinates).
+	Vector2 UMETA(DisplayName = "Vector 2")
 };
 
 USTRUCT(BlueprintType)
@@ -57,6 +70,16 @@ struct MIXTORMATRUNTIME_API FMixtormatOutputReference
 
 namespace MixtormatOutputReferences
 {
+	// True for every kind the reference system understands. Exhaustive over the enum, so an
+	// unrecognised (future) value can never silently pass reference validation.
+	MIXTORMATRUNTIME_API bool IsValidFieldKind(EMixtormatPublishedFieldKind Kind);
+
+	// The published output name a kind is canonically addressed by -- the same name its producer
+	// publishes -- or NAME_None when the producer chooses its own output name. RegionIds, Flow,
+	// UVMap and Color keep their established names; the generic scalar/vector field kinds are
+	// addressed by whatever name the producer published.
+	MIXTORMATRUNTIME_API FName CanonicalFieldOutputName(EMixtormatPublishedFieldKind Kind);
+
 	// Effective layers only: group addresses must first pass through BuildEffectiveLayers.
 	// Returns the authored source-child index, never a compacted render-child index.
 	MIXTORMATRUNTIME_API int32 ResolveEarlierSource(
