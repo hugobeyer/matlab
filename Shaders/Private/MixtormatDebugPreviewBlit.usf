@@ -113,6 +113,22 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputDebug[Pixel] = float4(MixtormatRegionDebugColor(Root), 1.0f);
 }
 
+// A colour field published by a Generator-layer Height Color Ramp. Already linear, so it goes to
+// the debug target as authored rather than through the scalar blit's sRGB-to-linear step.
+Texture2D<float4> SourceColor;
+
+[numthreads(8, 8, 1)]
+void MainColorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float4 Colour = SourceColor.Load(int3(Pixel, 0));
+	OutputDebug[Pixel] = float4(Colour.rgb, 1.0f);
+}
+
 // The raw ids behind whatever the Region IDs preview is showing, one float per pixel.
 //
 // Separate from MainRegionIdsCS on purpose. That one produces a colour chosen to be legible --

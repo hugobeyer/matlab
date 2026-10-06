@@ -906,6 +906,15 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightColorRampHeading", "HEIGHT COLOR RAMP")).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
+				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+			[
+				MakeChildOutputPreviewButton([this]()
+				{
+					const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+					return Child ? GetChildPreviewOutputSet(*Child) : FMixtormatChildPreviewOutputSet();
+				}())
+			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]()
 				{

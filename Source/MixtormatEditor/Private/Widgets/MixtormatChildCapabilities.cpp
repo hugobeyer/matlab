@@ -237,6 +237,16 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				true, true, false, NAME_None});
 		}
 		break;
+	case EMixtormatLayerChildType::HeightColorRamp:
+		// The published colour field. Previewable and copyable as a typed field, never as a scalar
+		// mask: a colour is not a coverage value a Replace-blend mask child could read.
+		Result.Outputs.Add({
+			Child.HeightColorRamp.OutputName.IsNone()
+				? FName(TEXT("HeightColor")) : Child.HeightColorRamp.OutputName,
+			NSLOCTEXT("SMixtormat", "PreviewOutputHeightColor", "Color"),
+			EMixtormatPreviewOutputKind::Color, false, true, false, NAME_None,
+			true, EMixtormatPublishedFieldKind::Color});
+		break;
 	default:
 		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Random
 		// From IDs, Peeling) publishes nothing a preview or Copy Output could use.
@@ -282,15 +292,25 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		&& Child.OutputReference.Kind != EMixtormatPublishedFieldKind::RegionIds)
 	{
 		const EMixtormatPublishedFieldKind Kind = Child.OutputReference.Kind;
-		const bool bIds = Kind == EMixtormatPublishedFieldKind::RegionIds;
-		const bool bFlow = Kind == EMixtormatPublishedFieldKind::Flow;
-		Result.Outputs.Add({bIds ? FName(TEXT("RegionIds")) : bFlow
-			? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV")),
-			bIds ? RegionIdsLabel : bFlow ? NSLOCTEXT("SMixtormat", "CopyOutputFlow", "Flow")
-				: NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs"),
-			bIds ? EMixtormatPreviewOutputKind::RegionIds : bFlow
-				? EMixtormatPreviewOutputKind::FlowDirection : EMixtormatPreviewOutputKind::WarpedUVGrid,
-			false, false, false, NAME_None, true, Kind});
+		if (Kind == EMixtormatPublishedFieldKind::Color)
+		{
+			// A colour reference shows the colour it carries, under the name it was copied with.
+			Result.Outputs.Add({Child.OutputReference.OutputName,
+				NSLOCTEXT("SMixtormat", "CopyOutputColor", "Color"),
+				EMixtormatPreviewOutputKind::Color, false, true, false, NAME_None, true, Kind});
+		}
+		else
+		{
+			const bool bIds = Kind == EMixtormatPublishedFieldKind::RegionIds;
+			const bool bFlow = Kind == EMixtormatPublishedFieldKind::Flow;
+			Result.Outputs.Add({bIds ? FName(TEXT("RegionIds")) : bFlow
+				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV")),
+				bIds ? RegionIdsLabel : bFlow ? NSLOCTEXT("SMixtormat", "CopyOutputFlow", "Flow")
+					: NSLOCTEXT("SMixtormat", "CopyOutputUVs", "UVs"),
+				bIds ? EMixtormatPreviewOutputKind::RegionIds : bFlow
+					? EMixtormatPreviewOutputKind::FlowDirection : EMixtormatPreviewOutputKind::WarpedUVGrid,
+				false, false, false, NAME_None, true, Kind});
+		}
 	}
 	return Result;
 }

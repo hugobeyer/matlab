@@ -53,6 +53,7 @@ namespace Mixtormat
 					|| Is(Type, TEXT("SMixtormatWellBox"))
 					|| Is(Type, TEXT("SMixtormatInspectorWell"))
 					|| Is(Type, TEXT("SMixtormatScalarRamp"))
+					|| Is(Type, TEXT("SMixtormatColorRamp"))
 					|| Is(Type, TEXT("SMixtormatSegmentedControl"))
 					|| Is(Type, TEXT("SMixtormatTabStrip"));
 

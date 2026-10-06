@@ -2,20 +2,13 @@
 
 #include "UI/Controls/SMixtormatColorRamp.h"
 
-#include "MixtormatColorRampMath.h"
 #include "Editor.h"
+#include "MixtormatColorRampMath.h"
 #include "Rendering/DrawElements.h"
-#include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
-#include "Styling/SlateTypes.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Colors/SColorPicker.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/Text/STextBlock.h"
-#include "Framework/Application/SlateApplication.h"
 
 void SMixtormatColorRamp::Construct(const FArguments& Args)
 {
@@ -27,133 +20,119 @@ void SMixtormatColorRamp::Construct(const FArguments& Args)
 	OnChanged = Args._OnChanged;
 	OnBeginInteractiveEdit = Args._OnBeginInteractiveEdit;
 	OnEndInteractiveEdit = Args._OnEndInteractiveEdit;
+	BuildLayout();
+}
 
-	const TSharedRef<SHorizontalBox> Toolbar = SNew(SHorizontalBox);
-	const auto AddButton = [&Toolbar](const FText& Label, const FSimpleDelegate& Click)
-	{
-		Toolbar->AddSlot().AutoWidth().Padding(0.0f, 0.0f,
-			FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap, 0.0f)
-		[
-			SNew(SButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-			.ContentPadding(2.0f)
-			.OnClicked_Lambda([Click]() { Click.ExecuteIfBound(); return FReply::Handled(); })
-			[SNew(STextBlock).Text(Label)]
-		];
+int32 SMixtormatColorRamp::InsertPointAt(const float X, const float GraphY)
+{
+	int32 Insert = 0;
+	while (Insert < Ramp.Stops.Num() && Ramp.Stops[Insert].X < X) { ++Insert; }
+	Ramp.Stops.Insert(FMixtormatColorRampStop{X, MixtormatColorRampMath::Evaluate(Ramp, X)}, Insert);
+	return Insert;
+}
+
+void SMixtormatColorRamp::RemovePoint(const int32 Index)
+{
+	Ramp.Stops.RemoveAt(Index);
+}
+
+void SMixtormatColorRamp::ResetPoints()
+{
+	Ramp.Stops = {
+		FMixtormatColorRampStop{DomainMin, FLinearColor::Black},
+		FMixtormatColorRampStop{DomainMax, FLinearColor::White}
 	};
-	AddButton(FText::FromString(TEXT("Interpolation")), FSimpleDelegate::CreateSP(this, &SMixtormatColorRamp::CycleInterpolation));
-	AddButton(FText::FromString(TEXT("Reset")), FSimpleDelegate::CreateSP(this, &SMixtormatColorRamp::ResetRamp));
-
-	ChildSlot
-	[
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
-			FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap)
-		[
-			SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight)[Toolbar]
-		]
-		+ SVerticalBox::Slot().AutoHeight()
-		[
-			SNew(SBox).HeightOverride(Height + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding * 2.0f)
-		]
-	];
+	Ramp.Interpolation = EMixtormatColorRampInterpolation::Linear;
 }
 
-float SMixtormatColorRamp::XToScreen(const FVector2D& Size, const float X) const
+void SMixtormatColorRamp::ApplyPointDrag(const int32 Index, const float GraphX, const float GraphY,
+	const FVector2f& ScreenPos)
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	return X0 + (X - DomainMin) / FMath::Max(DomainMax - DomainMin, 1.0e-4f) * (X1 - X0);
+	// Clamp between the neighbouring stops so the order never changes mid-drag.
+	const float MinX = Index > 0 ? Ramp.Stops[Index - 1].X + 1.0e-4f : DomainMin;
+	const float MaxX = Index + 1 < Ramp.Stops.Num() ? Ramp.Stops[Index + 1].X - 1.0e-4f : DomainMax;
+	Ramp.Stops[Index].X = FMath::Clamp(GraphX, MinX, MaxX);
 }
 
-float SMixtormatColorRamp::ScreenToX(const FVector2D& Size, const float ScreenX) const
+void SMixtormatColorRamp::OnRampEdited(const bool bInteractive)
 {
-	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
-	const float T = FMath::Clamp((ScreenX - X0) / FMath::Max(X1 - X0, 1.0f), 0.0f, 1.0f);
-	return DomainMin + T * (DomainMax - DomainMin);
+	OnChanged.ExecuteIfBound(Ramp);
 }
 
-int32 SMixtormatColorRamp::HitStop(const FVector2D& Size, const FVector2D& Position) const
+void SMixtormatColorRamp::SetInterpolation(const int32 Index)
 {
-	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.3f;
-	for (int32 Index = Ramp.Stops.Num() - 1; Index >= 0; --Index)
+	Ramp.Interpolation = static_cast<EMixtormatColorRampInterpolation>(Index);
+}
+
+FText SMixtormatColorRamp::GetInterpolationLabel(const int32 Index) const
+{
+	switch (Index)
 	{
-		const float SX = XToScreen(Size, Ramp.Stops[Index].X);
-		if (FMath::Abs(static_cast<float>(Position.X) - SX) <= Radius) { return Index; }
+	case 0: return FText::FromString(TEXT("Constant"));
+	case 1: return FText::FromString(TEXT("Linear"));
+	default: return FText::FromString(TEXT("Smooth"));
 	}
-	return INDEX_NONE;
 }
 
-FVector2D SMixtormatColorRamp::ComputeDesiredSize(float) const
+const FSlateBrush* SMixtormatColorRamp::GetInterpolationIcon(const int32 Index) const
 {
-	return FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.RowFieldMinWidth * 2.0f,
-		Height + FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding * 2.0f
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
-		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap);
+	switch (Index)
+	{
+	case 0: return MixtormatIcons::ScalarRampConstant();
+	case 1: return MixtormatIcons::ScalarRampLinear();
+	default: return MixtormatIcons::ScalarRampSpline();
+	}
 }
 
-int32 SMixtormatColorRamp::OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Cull,
-	FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool Enabled) const
+void SMixtormatColorRamp::PaintRampContent(FSlateWindowElementList& Elements, const int32 Layer,
+	const FGeometry& Geometry, const FVector2D& Size) const
 {
-	const FVector2D Size = Geometry.GetLocalSize();
 	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
-	const float X0 = Pad, X1 = static_cast<float>(Size.X) - Pad;
 	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
 		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
 	const float Y1 = static_cast<float>(Size.Y) - Pad;
-	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
-
-	// Gradient bar, sampled across the domain.
-	constexpr int32 Samples = 96;
 	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
+
+	// The gradient bar, sampled across the domain. One box per sample, so the bar reads the same
+	// interpolation the GPU evaluates.
+	constexpr int32 Samples = 96;
 	for (int32 Index = 0; Index < Samples; ++Index)
 	{
 		const float T0 = static_cast<float>(Index) / static_cast<float>(Samples);
 		const float T1 = static_cast<float>(Index + 1) / static_cast<float>(Samples);
-		const float XA = X0 + (X1 - X0) * T0;
-		const float XB = X0 + (X1 - X0) * T1;
+		const float XA = XToScreen(Size, DomainMin + (DomainMax - DomainMin) * T0);
+		const float XB = XToScreen(Size, DomainMin + (DomainMax - DomainMin) * T1);
 		const float Value = DomainMin + (DomainMax - DomainMin) * (T0 + T1) * 0.5f;
-		const FLinearColor Color = MixtormatColorRampMath::Evaluate(Ramp, Value);
 		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
 			FVector2f(FMath::Max(XB - XA, 1.0f), BarHeight), FSlateLayoutTransform(FVector2f(XA, Y0))),
-			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Color);
+			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
+			MixtormatColorRampMath::Evaluate(Ramp, Value));
 	}
-
-	// Zero line for a signed domain.
-	if (DomainMin < 0.0f && DomainMax > 0.0f)
-	{
-		const float ZeroX = XToScreen(Size, 0.0f);
-		const TArray<FVector2f> Line = { FVector2f(ZeroX, Y0), FVector2f(ZeroX, Y0 + BarHeight) };
-		FSlateDrawElement::MakeLines(Elements, Layer + 1, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted), false,
-			MixtormatTokens::ScalarRampGridThickness);
-	}
-
-	// Stop handles.
-	const float HandleY = Y0 + BarHeight + MixtormatTokens::ScalarRampPointSize * 0.5f;
-	for (int32 Index = 0; Index < Ramp.Stops.Num(); ++Index)
-	{
-		const float SX = XToScreen(Size, Ramp.Stops[Index].X);
-		const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
-		const FLinearColor Border = Index == DragStop ? Pal.Get(Mixtormat::EMixtormatColorRole::Accent)
-			: Index == HoverStop ? Pal.Get(Mixtormat::EMixtormatColorRole::Text)
-			: Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted);
-		FSlateDrawElement::MakeBox(Elements, Layer + 2, Geometry.ToPaintGeometry(
-			FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(FVector2f(SX - R, HandleY - R))),
-			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Ramp.Stops[Index].Color);
-		FSlateDrawElement::MakeBox(Elements, Layer + 3, Geometry.ToPaintGeometry(
-			FVector2f(R * 2.0f + 2.0f, R * 2.0f + 2.0f), FSlateLayoutTransform(FVector2f(SX - R - 1.0f, HandleY - R - 1.0f))),
-			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Border);
-	}
-	return SCompoundWidget::OnPaint(Args, Geometry, Cull, Elements, Layer + 4, Style, Enabled);
 }
 
-void SMixtormatColorRamp::NotifyEdit(bool bInteractive)
+void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, const int32 Layer,
+	const FGeometry& Geometry, const FVector2D& Size, const int32 Index,
+	const bool bActive, const bool bHover) const
 {
-	Invalidate(EInvalidateWidgetReason::Paint);
-	OnChanged.ExecuteIfBound(Ramp);
-	if (!bInteractive) { OnBeginInteractiveEdit.ExecuteIfBound(); OnEndInteractiveEdit.ExecuteIfBound(); }
+	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
+	const float Pad = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampViewportPadding;
+	const float Y0 = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarHeight
+		+ FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap + Pad;
+	const float Y1 = static_cast<float>(Size.Y) - Pad;
+	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
+	const float SX = XToScreen(Size, Ramp.Stops[Index].X);
+	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	const float HandleY = Y0 + BarHeight + R;
+	const FLinearColor Border = bActive ? Pal.Get(Mixtormat::EMixtormatColorRole::Accent)
+		: bHover ? Pal.Get(Mixtormat::EMixtormatColorRole::Text)
+		: Pal.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
+		FVector2f(R * 2.0f + 2.0f, R * 2.0f + 2.0f),
+		FSlateLayoutTransform(FVector2f(SX - R - 1.0f, HandleY - R - 1.0f))),
+		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Border);
+	FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
+		FVector2f(R * 2.0f, R * 2.0f), FSlateLayoutTransform(FVector2f(SX - R, HandleY - R))),
+		FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, Ramp.Stops[Index].Color);
 }
 
 void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)
@@ -185,124 +164,18 @@ void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)
 	OpenColorPicker(PickerArgs);
 }
 
-void SMixtormatColorRamp::CycleInterpolation()
-{
-	OnBeginInteractiveEdit.ExecuteIfBound();
-	const uint8 Next = (static_cast<uint8>(Ramp.Interpolation) + 1u)
-		% (static_cast<uint8>(EMixtormatColorRampInterpolation::Smooth) + 1u);
-	Ramp.Interpolation = static_cast<EMixtormatColorRampInterpolation>(Next);
-	NotifyEdit(true);
-	OnEndInteractiveEdit.ExecuteIfBound();
-}
-
-void SMixtormatColorRamp::ResetRamp()
-{
-	OnBeginInteractiveEdit.ExecuteIfBound();
-	Ramp.Stops = {
-		FMixtormatColorRampStop{DomainMin, FLinearColor::Black},
-		FMixtormatColorRampStop{DomainMax, FLinearColor::White}
-	};
-	Ramp.Interpolation = EMixtormatColorRampInterpolation::Linear;
-	NotifyEdit(true);
-	OnEndInteractiveEdit.ExecuteIfBound();
-}
-
 FReply SMixtormatColorRamp::OnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
 {
-	FSlateApplication::Get().SetKeyboardFocus(SharedThis(this), EFocusCause::SetDirectly);
-	const FVector2D Size = Geometry.GetLocalSize();
-	const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
-	const int32 Hit = HitStop(Size, Local);
-
-	if (Event.GetEffectingButton() == EKeys::RightMouseButton)
+	// Ctrl-click a stop to recolour it; everything else is the shared ramp interaction.
+	if (Event.GetEffectingButton() == EKeys::LeftMouseButton && Event.IsControlDown())
 	{
-		if (Hit != INDEX_NONE && Ramp.Stops.Num() > 2)
-		{
-			OnBeginInteractiveEdit.ExecuteIfBound();
-			Ramp.Stops.RemoveAt(Hit);
-			NotifyEdit(true);
-			OnEndInteractiveEdit.ExecuteIfBound();
-		}
-		return FReply::Handled();
-	}
-
-	if (Event.GetEffectingButton() == EKeys::LeftMouseButton)
-	{
-		if (Event.IsControlDown() && Hit != INDEX_NONE)
+		const int32 Hit = HitPoint(Geometry.GetLocalSize(),
+			Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition()));
+		if (Hit != INDEX_NONE)
 		{
 			OpenStopPicker(Hit);
 			return FReply::Handled();
 		}
-		if (Hit == INDEX_NONE)
-		{
-			if (Ramp.Stops.Num() >= FMixtormatColorRamp::MaxStops) { return FReply::Handled(); }
-			const float X = ScreenToX(Size, static_cast<float>(Local.X));
-			OnBeginInteractiveEdit.ExecuteIfBound();
-			int32 InsertAt = Ramp.Stops.Num();
-			for (int32 Index = 0; Index < Ramp.Stops.Num(); ++Index)
-			{
-				if (Ramp.Stops[Index].X > X) { InsertAt = Index; break; }
-			}
-			Ramp.Stops.Insert(FMixtormatColorRampStop{X, MixtormatColorRampMath::Evaluate(Ramp, X)}, InsertAt);
-			DragStop = InsertAt;
-			bDragging = true;
-			bMoved = true;
-			NotifyEdit(true);
-			return FReply::Handled().CaptureMouse(SharedThis(this));
-		}
-		DragStop = Hit;
-		bDragging = true;
-		bMoved = false;
-		OnBeginInteractiveEdit.ExecuteIfBound();
-		return FReply::Handled().CaptureMouse(SharedThis(this));
 	}
-	return FReply::Unhandled();
-}
-
-FReply SMixtormatColorRamp::OnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event)
-{
-	const FVector2D Size = Geometry.GetLocalSize();
-	const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
-	if (!HasMouseCapture())
-	{
-		const int32 NewHover = HitStop(Size, Local);
-		if (NewHover != HoverStop) { HoverStop = NewHover; Invalidate(EInvalidateWidgetReason::Paint); }
-		return FReply::Unhandled();
-	}
-	if (bDragging && Ramp.Stops.IsValidIndex(DragStop))
-	{
-		// Clamp between the neighbouring stops so the order never changes mid-drag.
-		const float MinX = DragStop > 0 ? Ramp.Stops[DragStop - 1].X + 1.0e-4f : DomainMin;
-		const float MaxX = DragStop + 1 < Ramp.Stops.Num()
-			? Ramp.Stops[DragStop + 1].X - 1.0e-4f : DomainMax;
-		Ramp.Stops[DragStop].X = FMath::Clamp(ScreenToX(Size, static_cast<float>(Local.X)), MinX, MaxX);
-		bMoved = true;
-		NotifyEdit(true);
-		return FReply::Handled();
-	}
-	return FReply::Unhandled();
-}
-
-FReply SMixtormatColorRamp::OnMouseButtonUp(const FGeometry&, const FPointerEvent& Event)
-{
-	if (Event.GetEffectingButton() != EKeys::LeftMouseButton) { return FReply::Unhandled(); }
-	if (bDragging)
-	{
-		bDragging = false;
-		DragStop = INDEX_NONE;
-		OnEndInteractiveEdit.ExecuteIfBound();
-		return FReply::Handled().ReleaseMouseCapture();
-	}
-	return FReply::Unhandled();
-}
-
-void SMixtormatColorRamp::OnMouseCaptureLost(const FCaptureLostEvent& Event)
-{
-	if (bDragging)
-	{
-		bDragging = false;
-		DragStop = INDEX_NONE;
-		OnEndInteractiveEdit.ExecuteIfBound();
-	}
-	SCompoundWidget::OnMouseCaptureLost(Event);
+	return SMixtormatRampEditorBase::OnMouseButtonDown(Geometry, Event);
 }

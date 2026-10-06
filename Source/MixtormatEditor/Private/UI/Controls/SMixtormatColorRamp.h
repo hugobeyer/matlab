@@ -4,20 +4,19 @@
 
 #include "CoreMinimal.h"
 #include "MixtormatColorRamp.h"
-#include "Style/MixtormatDesignTokens.h"
+#include "UI/Controls/SMixtormatRampEditor.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
-#include "Widgets/SCompoundWidget.h"
 
 DECLARE_DELEGATE_OneParam(FOnMixtormatColorRampChanged, const FMixtormatColorRamp&);
 
-// A reusable colour-ramp editor: a gradient bar with draggable stops. The X domain is authored by
-// the consumer, so the same widget serves a 0..1 mask ramp and a -1..1 signed height ramp.
-class SMixtormatColorRamp final : public SCompoundWidget
+// The colour half of the shared ramp editor: the same points, domain and interaction as the scalar
+// ramp, with an RGB payload and a gradient bar instead of a curve.
+class SMixtormatColorRamp final : public SMixtormatRampEditorBase
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatColorRamp)
 		: _Height(MixtormatTokens::ScalarRampHeight)
-		, _DomainMin(0.0f)
+		, _DomainMin(-1.0f)
 		, _DomainMax(1.0f)
 	{}
 		SLATE_ATTRIBUTE(FMixtormatColorRamp, Ramp)
@@ -30,33 +29,33 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
-	virtual int32 OnPaint(const FPaintArgs&, const FGeometry&, const FSlateRect&,
-		FSlateWindowElementList&, int32, const FWidgetStyle&, bool) const override;
-	virtual FVector2D ComputeDesiredSize(float) const override;
+
 	virtual FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
-	virtual FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent&) override;
-	virtual FReply OnMouseMove(const FGeometry&, const FPointerEvent&) override;
-	virtual void OnMouseCaptureLost(const FCaptureLostEvent&) override;
-	virtual bool SupportsKeyboardFocus() const override { return true; }
+
+protected:
+	// ---- SMixtormatRampEditorBase -------------------------------------------------------------
+	virtual int32 GetPointCount() const override { return Ramp.Stops.Num(); }
+	virtual int32 GetMaxPoints() const override { return FMixtormatColorRamp::MaxStops; }
+	virtual float GetPointX(int32 Index) const override { return Ramp.Stops[Index].X; }
+	virtual void SetPointX(int32 Index, float X) override { Ramp.Stops[Index].X = X; }
+	virtual int32 InsertPointAt(float X, float GraphY) override;
+	virtual void RemovePoint(int32 Index) override;
+	virtual void ResetPoints() override;
+	virtual void ApplyPointDrag(int32 Index, float GraphX, float GraphY, const FVector2f& ScreenPos) override;
+	virtual void OnRampEdited(bool bInteractive) override;
+	virtual void PaintRampContent(FSlateWindowElementList& Elements, int32 Layer,
+		const FGeometry& Geometry, const FVector2D& Size) const override;
+	virtual void PaintPointMarker(FSlateWindowElementList& Elements, int32 Layer,
+		const FGeometry& Geometry, const FVector2D& Size, int32 Index, bool bActive, bool bHover) const override;
+	virtual int32 GetInterpolationCount() const override { return 3; }
+	virtual int32 GetInterpolation() const override { return static_cast<int32>(Ramp.Interpolation); }
+	virtual void SetInterpolation(int32 Index) override;
+	virtual FText GetInterpolationLabel(int32 Index) const override;
+	virtual const FSlateBrush* GetInterpolationIcon(int32 Index) const override;
 
 private:
-	float XToScreen(const FVector2D& Size, float X) const;
-	float ScreenToX(const FVector2D& Size, float ScreenX) const;
-	int32 HitStop(const FVector2D& Size, const FVector2D& Position) const;
-	void NotifyEdit(bool bInteractive);
 	void OpenStopPicker(int32 StopIndex);
-	void CycleInterpolation();
-	void ResetRamp();
 
 	FMixtormatColorRamp Ramp;
 	FOnMixtormatColorRampChanged OnChanged;
-	FSimpleDelegate OnBeginInteractiveEdit;
-	FSimpleDelegate OnEndInteractiveEdit;
-	float Height = MixtormatTokens::ScalarRampHeight;
-	float DomainMin = 0.0f;
-	float DomainMax = 1.0f;
-	bool bDragging = false;
-	bool bMoved = false;
-	int32 DragStop = INDEX_NONE;
-	int32 HoverStop = INDEX_NONE;
 };

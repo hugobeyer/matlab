@@ -1890,6 +1890,13 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 
+	// A published colour field (a Generator-layer Height Color Ramp), shown as authored.
+	void AddDebugPreviewColorBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceColor,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
+
 	// A signed distance (negative inside) as two colours with iso-lines. DistanceToPixels takes
 	// the producer's unit to output pixels -- Resolution.X for a field in UV widths.
 	void AddDebugPreviewSignedDistanceBlitPass(

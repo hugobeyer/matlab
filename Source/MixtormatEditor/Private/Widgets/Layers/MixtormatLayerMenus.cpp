@@ -247,6 +247,7 @@ void SMixtormat::AddSharedChildMenuItems(
 				case EMixtormatPublishedFieldKind::RegionIds: Label = LOCTEXT("CopyChildIdsContext", "Copy IDs"); break;
 				case EMixtormatPublishedFieldKind::Flow:      Label = LOCTEXT("CopyChildFlowContext", "Copy Flow"); break;
 				case EMixtormatPublishedFieldKind::UVMap:     Label = LOCTEXT("CopyChildUvsContext", "Copy UVs"); break;
+				case EMixtormatPublishedFieldKind::Color:     Label = LOCTEXT("CopyChildColorContext", "Copy Color"); break;
 				}
 			}
 			Menu.Item(

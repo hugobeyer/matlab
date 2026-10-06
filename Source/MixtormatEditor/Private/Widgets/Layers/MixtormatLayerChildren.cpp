@@ -1259,6 +1259,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		}
 		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("FlowReferenceChildName", "Flow Reference");
 		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("UvReferenceChildName", "UVs Reference");
+		case EMixtormatPublishedFieldKind::Color:     return LOCTEXT("ColorReferenceChildName", "Color Reference");
 		}
 		return LOCTEXT("OutputReferenceChildName", "Output Reference");
 	}

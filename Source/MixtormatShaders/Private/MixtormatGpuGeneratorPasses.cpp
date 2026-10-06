@@ -2209,6 +2209,11 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 			LayerCtx.ReferencedUV = Field.Texture;
 			continue;
 		}
+		if (Reference.Kind == EMixtormatPublishedFieldKind::Color)
+		{
+			// A colour field is copied whole; there is nothing to trace into destination UVs.
+			continue;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -2280,6 +2285,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Ctx.PublishedFieldOutputs.Add(
 				FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Child.HeightColorRamp.OutputName},
 				FPublishedField{EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false});
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
+				Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Color, Debug, Size);
+			}
 			continue;
 		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }

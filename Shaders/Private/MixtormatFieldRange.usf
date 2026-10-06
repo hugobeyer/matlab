@@ -9,11 +9,11 @@
 //   from a zero clear. Only run when a measured range is actually needed.
 // RANGE_STAGE 1 (Resolve):   mode 0 remaps (h - min) / (max - min) onto [OutLow, OutHigh]; mode 1
 //   is zero-preserving max-absolute normalization (h / max(abs(min), abs(max))) clamped to -1..1;
-//   mode 2 is the raw signed field clamped to -1..1. Both signed modes then multiply by OutputScale,
-//   which is applied after the clamp and may push the result beyond -1..1.
+//   mode 2 is the raw signed field times OutputScale, unclamped. Both signed modes multiply by
+//   OutputScale after the (mode 1) clamp, so Scale may push the result beyond -1..1.
 //
-// Nothing is clamped after OutputScale: the generator contract is on the base field, and the
-// document/export level owns the final remap.
+// Nothing is clamped after OutputScale: the generator contract is on the normalized base field,
+// and the document/export level owns the final remap.
 
 #include "/Engine/Public/Platform.ush"
 
@@ -98,9 +98,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	else if (NormalizeMode == 2u)
 	{
-		// Normalize off: the raw signed field, clamped to the -1..1 generator contract, then
-		// scaled. No reduction is needed for this path.
-		OutField[Pixel] = clamp(Value, -1.0f, 1.0f) * OutputScale;
+		// Normalize off: the raw signed field times Scale, with no clamp at all. The generator
+		// contract is enforced by the normalization path; this path is the escape hatch for a
+		// field whose own amplitude is already meaningful. No reduction is needed for it.
+		OutField[Pixel] = Value * OutputScale;
 	}
 	else
 	{

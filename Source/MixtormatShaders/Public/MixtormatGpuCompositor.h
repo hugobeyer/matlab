@@ -61,7 +61,9 @@ enum class EMixtormatPreviewOutputKind : uint8
 	WarpedUVGrid,
 	// A signed distance, negative inside: inside and outside in two colours with iso-lines at a
 	// fixed pixel spacing, so a field that runs well past 0..1 still reads rather than saturating.
-	SignedDistance
+	SignedDistance,
+	// A published colour field, shown as authored (a Generator-layer Height Color Ramp).
+	Color
 };
 
 // Names one previewable output on one child, by stable identity rather than by array position --
