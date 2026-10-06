@@ -2240,6 +2240,11 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 			}
 			continue;
 		}
+		// The generic scalar/vector kinds (Scalar01, ScalarSigned, SDF, Vector2) have no destination
+		// consumer yet. The republish above already resolved the typed field under the destination
+		// address; nothing further is traced into destination UVs. Stopping here keeps them from
+		// silently falling into the Flow trace below -- a scalar is not a directional transport field.
+		if (Reference.Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(

@@ -1343,6 +1343,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("FlowReferenceChildName", "Flow Reference");
 		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("UvReferenceChildName", "UVs Reference");
 		case EMixtormatPublishedFieldKind::Color:     return LOCTEXT("ColorReferenceChildName", "Color Reference");
+		case EMixtormatPublishedFieldKind::Scalar01:     return LOCTEXT("Scalar01ReferenceChildName", "Scalar 0..1 Reference");
+		case EMixtormatPublishedFieldKind::ScalarSigned: return LOCTEXT("ScalarSignedReferenceChildName", "Signed Scalar Reference");
+		case EMixtormatPublishedFieldKind::SDF:          return LOCTEXT("SdfReferenceChildName", "Signed Distance Reference");
+		case EMixtormatPublishedFieldKind::Vector2:      return LOCTEXT("Vector2ReferenceChildName", "Vector Reference");
 		}
 		return LOCTEXT("OutputReferenceChildName", "Output Reference");
 	}

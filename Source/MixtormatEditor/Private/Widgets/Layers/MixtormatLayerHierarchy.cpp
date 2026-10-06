@@ -61,6 +61,10 @@ namespace MixtormatLayersPrivate
 		case EMixtormatPublishedFieldKind::Flow:      return LOCTEXT("OutputReferenceFlowKind", "REF · FLOW");
 		case EMixtormatPublishedFieldKind::UVMap:     return LOCTEXT("OutputReferenceUvKind", "REF · UVs");
 		case EMixtormatPublishedFieldKind::Color:     return LOCTEXT("OutputReferenceColorKind", "REF · CLR");
+		case EMixtormatPublishedFieldKind::Scalar01:     return LOCTEXT("OutputReferenceScalar01Kind", "REF · S01");
+		case EMixtormatPublishedFieldKind::ScalarSigned: return LOCTEXT("OutputReferenceScalarSignedKind", "REF · SGN");
+		case EMixtormatPublishedFieldKind::SDF:          return LOCTEXT("OutputReferenceSdfKind", "REF · SDF");
+		case EMixtormatPublishedFieldKind::Vector2:      return LOCTEXT("OutputReferenceVector2Kind", "REF · V2");
 		}
 		return LOCTEXT("OutputReferenceKind", "REF · FIELD");
 	}
