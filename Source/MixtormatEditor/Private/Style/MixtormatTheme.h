@@ -750,9 +750,8 @@ namespace Mixtormat
 
 	struct FMixtormatShellMetrics
 	{
-		// Layout only. The shell's column ratios are runtime state on SMixtormat (ShellLeftFraction
-		// and friends), not theme values: a theme must not be able to resize a panel the user has
-		// already arranged, so there is deliberately no authored width or height seed here.
+		// Layout only. The Inspector/Preview shell ratio is runtime state on SMixtormat, not a theme
+		// value: a theme must not resize a panel the user has already arranged.
 		float TopBarHeight = 38.0f;
 		float TopBarActionInset = 0.0f;
 		float StatusBarHeight = 24.0f;

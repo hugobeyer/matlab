@@ -1528,10 +1528,8 @@ private:
 	TWeakPtr<SWindow> LiveThemeWindow;
 	bool bThemeRefreshPending = false;
 	EThemeRefreshMode PendingRefreshMode = EThemeRefreshMode::Reconstruct;
-	float ShellLeftFraction = 0.19f;
-	float ShellCenterFraction = 0.60f;
+	float ShellCenterFraction = 0.79f;
 	float ShellRightFraction = 0.21f;
-	bool bLeftPanelCollapsed = false;
 	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
 	enum class ELeftPanelPlacement : uint8 { Docked, Overlay, Hidden };
 	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;

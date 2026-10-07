@@ -403,32 +403,14 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 			.Style(&MixtormatShell::GetSplitterStyle())
 			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
 			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
-			+ SSplitter::Slot()
-						.Value_Lambda([this]() { return bLeftPanelCollapsed ? 0.01f : ShellLeftFraction; })
-						.OnSlotResized_Lambda([this](float Value)
-						{
-							// Keep expanded widths separate from the temporary collapsed arrangement. While the
-							// left panel is away its share is carried by the centre slot, so this sliver's
-							// value is meaningless and must not become the remembered width.
-							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed)
-							{
-								ShellLeftFraction = Value;
-							}
-						})
-			[
-				SNew(SBox)
-				.Visibility_Lambda([this]() { return bLeftPanelCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
-				[BuildLeftColumn()]
-			]
+
 			+ SSplitter::Slot()
 						.Value_Lambda([this]()
 						{
 							// While the inspector column is away the centre slot carries its share, so the
 							// splitter still divides the full width and a drag on the left handle reports
 							// values in the units the expanded layout stores.
-							return ShellCenterFraction
-								+ (bLeftPanelCollapsed ? ShellLeftFraction - 0.01f : 0.0f)
-								+ (bInspectorCollapsed ? ShellRightFraction : 0.0f);
+							return ShellCenterFraction + (bInspectorCollapsed ? ShellRightFraction : 0.0f);
 						})
 						.OnSlotResized_Lambda([this](float Value)
 						{
@@ -443,10 +425,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 							{
 								Value = FMath::Max(0.0f, Value - ShellRightFraction);
 							}
-							if (bLeftPanelCollapsed)
-							{
-								Value = FMath::Max(0.0f, Value - (ShellLeftFraction - 0.01f));
-							}
+
 							ShellCenterFraction = Value;
 						})
 			[
@@ -564,8 +543,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 
 TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 {
-	// The rail is the column's navigation and stays docked; only the layer stack travels. The cell
-	// shows whichever page the rail selects, and the layer stack is either in it or floating.
+	// The rail and selected page share a viewport overlay; only the Layers stack can pop out.
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
@@ -575,7 +553,6 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
 				SNew(SBox)
-				.Padding(FMargin(MixtormatTokens::LeftRailPadding))
 				[
 					SNew(SMixtormatIconRail)
 					.Options({

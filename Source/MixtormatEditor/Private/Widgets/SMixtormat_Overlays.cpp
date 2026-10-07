@@ -68,12 +68,11 @@ FReply SMixtormat::ToggleLeftPanelCollapsed()
 
 void SMixtormat::ApplyLeftPanelPlacement()
 {
-	bLeftPanelCollapsed = LeftPanelPlacement != ELeftPanelPlacement::Docked;
+
 	LeftPanelOverlay.bFloating = LeftPanelPlacement == ELeftPanelPlacement::Overlay;
 	if (LeftPanelOverlay.bFloating)
 	{
-		// The layer stack travels alone -- the rail stays in the column -- and lands inset from the
-		// viewport's left edge at its content height. One instance, reparented, never a copy.
+		// The layer stack travels alone; the pinned rail and selected page remain in the Preview overlay.
 		MixtormatOverlay::Place(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds(),
 			MixtormatTokens::LayerStackWidth, false);
 		MixtormatOverlay::Clamp(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());

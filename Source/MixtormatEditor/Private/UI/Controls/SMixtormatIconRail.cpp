@@ -42,7 +42,8 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
 		const TAttribute<bool> bActive = TAttribute<bool>::CreateLambda(
 			[Active = ActiveIndex, Index]() { return Active.Get(0) == Index; });
 		const FMixtormatOnSegmentChosen OnChosen = InArgs._OnChosen;
-		Rail->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::LeftRailButtonGap)
+		Rail->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
+					FMixtormatThemeStore::GetResolved().PreviewLayout.LeftRailButtonGap)
 		[
 			// The shared styled help, not Slate's default tooltip.
 			SNew(SMixtormatHelp)

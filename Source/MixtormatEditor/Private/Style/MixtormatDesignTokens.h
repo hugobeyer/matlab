@@ -642,25 +642,13 @@ namespace MixtormatTokens
 	// The floating left panel's drag margin above the tab strip: an empty strip, not a header row.
 	// The panel's identity is the tabs themselves, so this is a grab target and nothing else.
 	inline float OverlayPanelGrabMargin = 8.0f;
-	// The left column's icon rail: a narrow vertical strip of page icons. Its own tokens because
-	// the rail is a column, not a row -- the tab strip's paddings do not describe it.
-	inline float LeftRailPadding = 4.0f;
-	inline float LeftRailButtonGap = 2.0f;
+
 	// An empty state's line -- "No layer selected", "No global variables yet." -- is present but
 	// deliberately quiet: it is a note about the absence of content, not content.
 	inline float EmptyStateOpacity = 0.5f;
 	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting card
-	// on the left and the geometry card on the right. Wide enough that the popup reads as arranged
-	// around the cursor rather than as a panel that happens to be near it.
-	inline float QuickControlsCentreGap = 210.0f;
-	// Between the popup's rows: keep the four cards distinct and leave room for the centre guide.
-	inline float QuickControlsRowGap = 22.0f;
-	// The fine crosshair stops short of the cardinal cards and fades as it moves away from centre.
-	inline float QuickControlsGuideAxisLength = 176.0f;
-	inline float QuickControlsGuideAxisThickness = 1.0f;
-	inline float QuickControlsGuideAxisOpacity = 0.24f;
+	// Structural guide tessellation and bloom falloff; user-retunable presentation values live in Preview metrics.
 	inline int32 QuickControlsGuideAxisSegments = 7;
-	inline float QuickControlsGuideGlowDiameter = 112.0f;
 	inline int32 QuickControlsGuideGlowRings = 7;
 	inline float QuickControlsGuideGlowRingStep = 14.0f;
 	inline float QuickControlsGuideGlowOpacityMin = 0.004f;

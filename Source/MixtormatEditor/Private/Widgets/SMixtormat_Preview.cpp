@@ -1039,7 +1039,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			})
 			[MakePreviewCluster(BuildPreviewCameraControls())]
 		]
-		// The floating panels -- the Inspector and the left panel -- share one stack, so a press
+		// Pinned navigation lives inside the viewport overlay, so it does not reserve shell width.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
+		.Padding(FMargin(Resolved.PreviewLayout.LeftRailInset, 0.0f, 0.0f, 0.0f))
+		[
+			BuildLeftColumn()
+		]
+		// The floating panels -- the Inspector and the Layers stack -- share one stack, so a press
 		// can bring either to the front (D25). The stack is self-hit-test-invisible: empty viewport
 		// still reaches the viewport underneath.
 		+ SOverlay::Slot()
